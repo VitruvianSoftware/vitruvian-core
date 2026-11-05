@@ -1,0 +1,695 @@
+/**
+ * Copyright (c) 2026 VitruvianSoftware
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+import assert from "node:assert/strict";
+import { test } from "node:test";
+
+import {
+  burnDown,
+  initialFlow,
+  reduce,
+  remaining,
+  runCost,
+  spend,
+  taskBoard,
+} from "./core.mjs";
+
+function deepFreeze(obj) {
+  if (obj === null || typeof obj !== "object") {
+    return obj;
+  }
+  Object.freeze(obj);
+  for (const value of Object.values(obj)) {
+    deepFreeze(value);
+  }
+  return obj;
+}
+
+test("initialFlow returns null and plan creates tasks with dependency readiness", () => {
+  assert.equal(initialFlow(), null);
+
+  const flow = reduce(initialFlow(), {
+    type: "plan",
+    at: 1000,
+    title: "Orchestrator rollout",
+    tasks: [
+      { title: "Build core", specialist: "wren", tier: "core", after: [] },
+      { title: "Wire hooks", specialist: "forge", tier: "core", after: [1] },
+      { title: "Run smoke", specialist: "scout", tier: "fast", after: [1, 2] },
+    ],
+  });
+
+  assert.equal(flow.title, "Orchestrator rollout");
+  assert.equal(flow.phase, "plan");
+  assert.equal(flow.startedAt, 1000);
+  assert.equal(flow.closedAt, null);
+  assert.equal(remaining(flow), 3);
+  assert.deepEqual(flow.tasks, [
+    {
+      n: 1,
+      title: "Build core",
+      specialist: "wren",
+      tier: "core",
+      after: [],
+      state: "ready",
+      round: 0,
+    },
+    {
+      n: 2,
+      title: "Wire hooks",
+      specialist: "forge",
+      tier: "core",
+      after: [1],
+      state: "waiting",
+      round: 0,
+    },
+    {
+      n: 3,
+      title: "Run smoke",
+      specialist: "scout",
+      tier: "fast",
+      after: [1, 2],
+      state: "waiting",
+      round: 0,
+    },
+  ]);
+
+  assert.deepEqual(taskBoard(flow), [
+    {
+      n: 1,
+      title: "Build core",
+      specialist: "wren",
+      tier: "core",
+      state: "ready",
+      round: 0,
+      after: [],
+      waitingOn: [],
+    },
+    {
+      n: 2,
+      title: "Wire hooks",
+      specialist: "forge",
+      tier: "core",
+      state: "waiting",
+      round: 0,
+      after: [1],
+      waitingOn: [1],
+    },
+    {
+      n: 3,
+      title: "Run smoke",
+      specialist: "scout",
+      tier: "fast",
+      state: "waiting",
+      round: 0,
+      after: [1, 2],
+      waitingOn: [1, 2],
+    },
+  ]);
+});
+
+test("run.start matches by trimmed title and sets running; unmatched title gives taskN null", () => {
+  let flow = reduce(null, {
+    type: "plan",
+    at: 1000,
+    title: "Flow",
+    tasks: [
+      { title: "Build core", specialist: "wren", tier: "core", after: [] },
+    ],
+  });
+
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 1100,
+    id: "run-1",
+    harness: "claude-code",
+    agent: "wren",
+    model: "claude-sonnet-5-5",
+    effort: "high",
+    title: "  Build core  ",
+    role: "worker",
+  });
+
+  assert.equal(flow.runs.length, 1);
+  assert.equal(flow.runs[0].taskN, 1);
+  assert.equal(flow.tasks[0].state, "running");
+
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 1200,
+    id: "run-lead",
+    harness: "claude-code",
+    agent: "beacon",
+    model: "claude-opus-5-5",
+    effort: "high",
+    title: "Ad-hoc synthesis",
+    role: "lead",
+  });
+
+  assert.equal(flow.runs.length, 2);
+  assert.equal(flow.runs[1].taskN, null);
+  assert.equal(flow.runs[1].role, "lead");
+});
+
+test("run.end done moves task to review; accept/return rounds and dependency unblocking", () => {
+  let flow = reduce(null, {
+    type: "plan",
+    at: 1000,
+    title: "Review loop",
+    tasks: [
+      { title: "Task A", specialist: "wren", tier: "core", after: [] },
+      { title: "Task B", specialist: "scout", tier: "fast", after: [1] },
+    ],
+  });
+
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 1100,
+    id: "r1",
+    harness: "antigravity",
+    agent: "wren",
+    model: "flash",
+    effort: null,
+    title: "Task A",
+    role: "worker",
+  });
+  assert.equal(flow.tasks[0].state, "running");
+
+  flow = reduce(flow, {
+    type: "run.end",
+    at: 1200,
+    id: "r1",
+    status: "done",
+    tokens: { input: 1000, output: 500, cacheRead: 0, cacheWrite: 0 },
+  });
+  assert.equal(flow.tasks[0].state, "review");
+  assert.equal(flow.runs[0].status, "done");
+  assert.equal(flow.runs[0].endedAt, 1200);
+
+  // Return task 1 -> state "returned", round 1
+  flow = reduce(flow, { type: "task.return", at: 1300, n: 1 });
+  assert.equal(flow.tasks[0].state, "returned");
+  assert.equal(flow.tasks[0].round, 1);
+  assert.equal(flow.tasks[1].state, "waiting");
+
+  // Re-run returned task -> goes to "running" and keeps its round (1)
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 1400,
+    id: "r2",
+    harness: "antigravity",
+    agent: "wren",
+    model: "flash",
+    effort: null,
+    title: "Task A",
+    role: "worker",
+  });
+  assert.equal(flow.tasks[0].state, "running");
+  assert.equal(flow.tasks[0].round, 1);
+
+  flow = reduce(flow, {
+    type: "run.end",
+    at: 1500,
+    id: "r2",
+    status: "done",
+  });
+  assert.equal(flow.tasks[0].state, "review");
+
+  // Accept task 1 -> unblocks task 2 from "waiting" to "ready"
+  flow = reduce(flow, { type: "task.accept", at: 1600, n: 1 });
+  assert.equal(flow.tasks[0].state, "accepted");
+  assert.equal(flow.tasks[0].round, 1);
+  assert.equal(flow.tasks[1].state, "ready");
+  assert.deepEqual(taskBoard(flow)[1].waitingOn, []);
+});
+
+test("re-plan keeps accepted tasks by matching title and records the replan", () => {
+  let flow = reduce(null, {
+    type: "plan",
+    at: 1000,
+    title: "Initial Plan",
+    tasks: [
+      { title: "Step 1", specialist: "wren", tier: "core", after: [] },
+      { title: "Step 2", specialist: "wren", tier: "core", after: [1] },
+    ],
+  });
+
+  flow = reduce(flow, { type: "task.accept", at: 2000, n: 1 });
+  assert.equal(flow.tasks[0].state, "accepted");
+  assert.equal(remaining(flow), 1);
+
+  flow = reduce(flow, {
+    type: "plan",
+    at: 3000,
+    title: "Revised Plan",
+    tasks: [
+      { title: "Step 1", specialist: "wren", tier: "core", after: [] },
+      { title: "Step 2", specialist: "wren", tier: "core", after: [1] },
+      { title: "Step 3", specialist: "scout", tier: "fast", after: [2] },
+    ],
+  });
+
+  assert.equal(flow.title, "Revised Plan");
+  assert.deepEqual(flow.replans, [{ at: 3000, total: 3 }]);
+  assert.equal(flow.tasks[0].state, "accepted");
+  assert.equal(flow.tasks[1].state, "ready");
+  assert.equal(flow.tasks[2].state, "waiting");
+  assert.equal(remaining(flow), 2);
+});
+
+test("history appends only on remaining count change and burnDown computes full series", () => {
+  let flow = reduce(null, {
+    type: "plan",
+    at: 1000,
+    title: "BurnDown Script",
+    tasks: [
+      { title: "T1", specialist: "wren", tier: "core", after: [] },
+      { title: "T2", specialist: "scout", tier: "fast", after: [1] },
+    ],
+  });
+
+  // Phase, run.start, run.progress, run.end, task.return do not change remaining count
+  flow = reduce(flow, { type: "phase", at: 1100, phase: "delegate" });
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 1200,
+    id: "r1",
+    harness: "claude-code",
+    agent: "wren",
+    model: "sonnet",
+    effort: "high",
+    title: "T1",
+    role: "worker",
+  });
+  flow = reduce(flow, {
+    type: "run.progress",
+    at: 1300,
+    id: "r1",
+    steps: { done: 1, total: 2, note: "Coding" },
+    contextPct: 24,
+  });
+  flow = reduce(flow, { type: "run.end", at: 1400, id: "r1", status: "done" });
+  assert.deepEqual(flow.history, [{ at: 1000, remaining: 2 }]);
+
+  // Accept T1 at 2000 -> remaining drops to 1
+  flow = reduce(flow, { type: "task.accept", at: 2000, n: 1 });
+  assert.deepEqual(flow.history, [
+    { at: 1000, remaining: 2 },
+    { at: 2000, remaining: 1 },
+  ]);
+
+  // Re-plan at 2500 adding T3 -> remaining rises to 2
+  flow = reduce(flow, {
+    type: "plan",
+    at: 2500,
+    title: "BurnDown Script",
+    tasks: [
+      { title: "T1", specialist: "wren", tier: "core", after: [] },
+      { title: "T2", specialist: "scout", tier: "fast", after: [1] },
+      { title: "T3", specialist: "quill", tier: "fast", after: [2] },
+    ],
+  });
+
+  // Accept T2 at 3000 and T3 at 4000, then close at 4500 (close does not change remaining)
+  flow = reduce(flow, { type: "task.accept", at: 3000, n: 2 });
+  flow = reduce(flow, { type: "task.accept", at: 4000, n: 3 });
+  flow = reduce(flow, { type: "close", at: 4500 });
+  assert.equal(flow.phase, "close");
+  assert.equal(flow.closedAt, 4500);
+
+  const bd = burnDown(flow);
+  assert.deepEqual(bd, {
+    points: [
+      { at: 1000, remaining: 2 },
+      { at: 2000, remaining: 1 },
+      { at: 2500, remaining: 2 },
+      { at: 3000, remaining: 1 },
+      { at: 4000, remaining: 0 },
+    ],
+    replans: [{ at: 2500, total: 3 }],
+    ideal: [
+      { at: 1000, remaining: 2 },
+      { at: 4000, remaining: 0 },
+    ],
+  });
+});
+
+test("spend splits lead and workers, prices sonnet exactly, and puts gemini in unpriced", () => {
+  let flow = reduce(null, {
+    type: "plan",
+    at: 1000,
+    title: "Cost Check",
+    tasks: [{ title: "T1", specialist: "wren", tier: "core", after: [] }],
+  });
+
+  // 1) Worker Sonnet run:
+  //    Rates for /sonnet/i: [input=2, output=10, cacheRead=0.2, cacheWrite=2.5] per 1M tokens.
+  //    Tokens: input=100_000, output=20_000, cacheRead=50_000, cacheWrite=10_000
+  //    Arithmetic:
+  //      (100_000 * 2 + 20_000 * 10 + 50_000 * 0.2 + 10_000 * 2.5) / 1_000_000
+  //      = (200_000 + 200_000 + 10_000 + 25_000) / 1_000_000
+  //      = 435_000 / 1_000_000
+  //      = 0.435 USD
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 1100,
+    id: "sonnet-worker",
+    harness: "claude-code",
+    agent: "wren",
+    model: "claude-sonnet-5-5",
+    effort: "high",
+    title: "T1",
+    role: "worker",
+  });
+  flow = reduce(flow, {
+    type: "run.end",
+    at: 1200,
+    id: "sonnet-worker",
+    status: "done",
+    tokens: {
+      input: 100_000,
+      output: 20_000,
+      cacheRead: 50_000,
+      cacheWrite: 10_000,
+    },
+  });
+
+  const expectedSonnetUsd =
+    (100_000 * 2 + 20_000 * 10 + 50_000 * 0.2 + 10_000 * 2.5) / 1_000_000;
+  assert.equal(expectedSonnetUsd, 0.435);
+  assert.equal(runCost(flow.runs[0]), 0.435);
+
+  // 2) Lead Opus 5.5 run:
+  //    Rates for /opus-5-5/i: [input=4, output=20, cacheRead=0.2, cacheWrite=5] per 1M tokens.
+  //    Tokens: input=50_000, output=5_000, cacheRead=0, cacheWrite=0
+  //    Arithmetic: (50_000 * 4 + 5_000 * 20) / 1_000_000 = 300_000 / 1_000_000 = 0.3 USD
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 1300,
+    id: "opus-lead",
+    harness: "claude-code",
+    agent: "beacon",
+    model: "claude-opus-5-5",
+    effort: "high",
+    title: "Plan & review",
+    role: "lead",
+  });
+  flow = reduce(flow, {
+    type: "run.progress",
+    at: 1350,
+    id: "opus-lead",
+    tokens: { input: 50_000, output: 5_000, cacheRead: 0, cacheWrite: 0 },
+  });
+  assert.equal(runCost(flow.runs[1]), 0.3);
+
+  // 3) Unpriced Gemini run:
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 1400,
+    id: "gemini-worker",
+    harness: "antigravity",
+    agent: "scout",
+    model: "gemini-3.8-flash-high",
+    effort: null,
+    title: "CI check",
+    role: "worker",
+  });
+  flow = reduce(flow, {
+    type: "run.end",
+    at: 1500,
+    id: "gemini-worker",
+    status: "done",
+    tokens: { input: 30_000, output: 4_000, cacheRead: 6_000, cacheWrite: 0 },
+  });
+  assert.equal(runCost(flow.runs[2]), null);
+
+  const summary = spend(flow);
+  assert.deepEqual(summary, {
+    total: 0.735,
+    byModel: {
+      "claude-sonnet-5-5": 0.435,
+      "claude-opus-5-5": 0.3,
+    },
+    lead: 0.3,
+    workers: 0.435,
+    unpriced: {
+      runs: 1,
+      tokens: 40_000,
+    },
+  });
+});
+
+test("reduce never mutates its input and unknown events or unknown run ids are no-ops", () => {
+  const planEvent = deepFreeze({
+    type: "plan",
+    at: 1000,
+    title: "Immutable Flow",
+    tasks: [
+      { title: "Task 1", specialist: "wren", tier: "core", after: [] },
+      { title: "Task 2", specialist: "forge", tier: "core", after: [1] },
+    ],
+  });
+
+  const flow1 = deepFreeze(reduce(null, planEvent));
+  const flow2 = deepFreeze(
+    reduce(
+      flow1,
+      deepFreeze({
+        type: "run.start",
+        at: 1100,
+        id: "r1",
+        harness: "opencode",
+        agent: "wren",
+        model: "anthropic/claude-haiku-5-5",
+        effort: "medium",
+        title: "Task 1",
+        role: "worker",
+      }),
+    ),
+  );
+
+  // Unknown event type and unknown run id in run.progress / run.end return flow unchanged
+  assert.equal(
+    reduce(flow2, deepFreeze({ type: "unknown.event", at: 1200 })),
+    flow2,
+  );
+  assert.equal(
+    reduce(
+      flow2,
+      deepFreeze({
+        type: "run.progress",
+        at: 1200,
+        id: "missing-id",
+        contextPct: 50,
+      }),
+    ),
+    flow2,
+  );
+  assert.equal(
+    reduce(
+      flow2,
+      deepFreeze({
+        type: "run.end",
+        at: 1200,
+        id: "missing-id",
+        status: "done",
+      }),
+    ),
+    flow2,
+  );
+
+  const flow3 = deepFreeze(
+    reduce(
+      flow2,
+      deepFreeze({
+        type: "run.progress",
+        at: 1250,
+        id: "r1",
+        tokens: { input: 100, output: 50 },
+        steps: { done: 1, total: 3, note: "step 1" },
+        contextPct: 12,
+      }),
+    ),
+  );
+  assert.notEqual(flow3, flow2);
+  assert.equal(flow2.runs[0].tokens.input, 0);
+  assert.equal(flow3.runs[0].tokens.input, 100);
+});
+
+test("run.end with status error moves task to returned with round unchanged", () => {
+  let flow = reduce(null, {
+    type: "plan",
+    at: 1000,
+    title: "Error Flow",
+    tasks: [{ title: "Task A", specialist: "wren", tier: "core", after: [] }],
+  });
+
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 1100,
+    id: "r1",
+    harness: "claude-code",
+    agent: "wren",
+    model: "sonnet",
+    effort: "high",
+    title: "Task A",
+    role: "worker",
+  });
+  assert.equal(flow.tasks[0].state, "running");
+
+  flow = reduce(flow, {
+    type: "run.end",
+    at: 1200,
+    id: "r1",
+    status: "error",
+  });
+  assert.equal(flow.tasks[0].state, "returned");
+  assert.equal(flow.tasks[0].round, 0);
+});
+
+test("re-plan re-matches every run taskN by title against the new task list", () => {
+  let flow = reduce(null, {
+    type: "plan",
+    at: 1000,
+    title: "Replan Runs",
+    tasks: [
+      { title: "A", specialist: "wren", tier: "core", after: [] },
+      { title: "B", specialist: "wren", tier: "core", after: [] },
+      { title: "C", specialist: "wren", tier: "core", after: [] },
+    ],
+  });
+
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 1100,
+    id: "r3",
+    harness: "claude-code",
+    agent: "wren",
+    model: "sonnet",
+    effort: "high",
+    title: "C",
+    role: "worker",
+  });
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 1150,
+    id: "r-dropped",
+    harness: "claude-code",
+    agent: "wren",
+    model: "sonnet",
+    effort: "high",
+    title: "B",
+    role: "worker",
+  });
+  assert.equal(flow.runs[0].taskN, 3);
+  assert.equal(flow.runs[1].taskN, 2);
+
+  flow = reduce(flow, {
+    type: "plan",
+    at: 1200,
+    title: "Replan Runs",
+    tasks: [
+      { title: "A", specialist: "wren", tier: "core", after: [] },
+      { title: "Z", specialist: "wren", tier: "core", after: [] },
+      { title: "B", specialist: "wren", tier: "core", after: [] },
+      { title: "C", specialist: "wren", tier: "core", after: [] },
+    ],
+  });
+  assert.equal(flow.runs[0].taskN, 4);
+  assert.equal(flow.runs[1].taskN, 3);
+
+  // Removing a task sets its run's taskN to null
+  flow = reduce(flow, {
+    type: "plan",
+    at: 1300,
+    title: "Replan Runs",
+    tasks: [
+      { title: "A", specialist: "wren", tier: "core", after: [] },
+      { title: "C", specialist: "wren", tier: "core", after: [] },
+    ],
+  });
+  assert.equal(flow.runs[0].taskN, 2);
+  assert.equal(flow.runs[1].taskN, null);
+});
+
+test("re-plan preserves running, review, and returned task state and round", () => {
+  let flow = reduce(null, {
+    type: "plan",
+    at: 1000,
+    title: "State Preservation",
+    tasks: [
+      { title: "A", specialist: "wren", tier: "core", after: [] },
+      { title: "B", specialist: "wren", tier: "core", after: [] },
+      { title: "C", specialist: "wren", tier: "core", after: [] },
+      { title: "D", specialist: "wren", tier: "core", after: [] },
+    ],
+  });
+
+  // A: returned with round 1
+  flow = reduce(flow, { type: "task.return", at: 1100, n: 1 });
+  // B: running
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 1200,
+    id: "rb",
+    harness: "claude-code",
+    agent: "wren",
+    model: "sonnet",
+    effort: "high",
+    title: "B",
+    role: "worker",
+  });
+  // C: in review
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 1250,
+    id: "rc",
+    harness: "claude-code",
+    agent: "wren",
+    model: "sonnet",
+    effort: "high",
+    title: "C",
+    role: "worker",
+  });
+  flow = reduce(flow, { type: "run.end", at: 1300, id: "rc", status: "done" });
+
+  // Re-plan where D now depends on B (so D goes from ready -> waiting), while A, B, C keep state & round
+  flow = reduce(flow, {
+    type: "plan",
+    at: 1400,
+    title: "State Preservation",
+    tasks: [
+      { title: "A", specialist: "wren", tier: "core", after: [] },
+      { title: "B", specialist: "wren", tier: "core", after: [] },
+      { title: "C", specialist: "wren", tier: "core", after: [] },
+      { title: "D", specialist: "wren", tier: "core", after: [2] },
+    ],
+  });
+
+  assert.equal(flow.tasks[0].state, "returned");
+  assert.equal(flow.tasks[0].round, 1);
+  assert.equal(flow.tasks[1].state, "running");
+  assert.equal(flow.tasks[1].round, 0);
+  assert.equal(flow.tasks[2].state, "review");
+  assert.equal(flow.tasks[2].round, 0);
+  assert.equal(flow.tasks[3].state, "waiting");
+});
