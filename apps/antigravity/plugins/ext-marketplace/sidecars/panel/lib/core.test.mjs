@@ -34,6 +34,9 @@ import {
   summariseMarketplace,
 } from "./core.mjs";
 
+// Plugins that have a standalone mirror repository (tools/copybara/copy.bara.sky).
+const STANDALONE_MIRRORS = new Set(["gh-watch"]);
+
 const EXPECTED_IDS = [
   "gh-watch",
   "worktree-band",
@@ -53,7 +56,12 @@ test("MARKETPLACE_CATALOG lists all 9 first-party Vitruvian extensions", () => {
     EXPECTED_IDS,
   );
   for (const item of MARKETPLACE_CATALOG) {
-    assert.equal(item.repo, `https://github.com/VitruvianSoftware/${item.id}`);
+    // Only plugins with a standalone mirror link to their own repo; the rest install
+    // from their monorepo folder (agy installs from a GitHub subpath).
+    const expectedRepo = STANDALONE_MIRRORS.has(item.id)
+      ? `https://github.com/VitruvianSoftware/${item.id}`
+      : `https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/${item.id}`;
+    assert.equal(item.repo, expectedRepo);
     assert.equal(item.monorepoPath, `apps/antigravity/plugins/${item.id}`);
     assert.ok(item.name && item.description && item.category);
     assert.ok(Array.isArray(item.highlights) && item.highlights.length > 0);

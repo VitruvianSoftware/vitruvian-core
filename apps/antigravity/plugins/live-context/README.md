@@ -52,7 +52,7 @@ state needs `git` and an authenticated `gh`.
 From GitHub:
 
 ```bash
-agy plugin install https://github.com/VitruvianSoftware/live-context
+agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/live-context
 ```
 
 Or from a local checkout:
@@ -70,7 +70,8 @@ Disable the plugin under Customizations → Installed, pull the latest changes,
 and enable it again:
 
 ```bash
-git -C ~/.gemini/config/plugins/live-context pull
+# agy installs a copy, not a git clone: re-run the install to update
+agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/live-context
 ```
 
 ## Layout

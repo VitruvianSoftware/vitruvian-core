@@ -16,7 +16,7 @@
         "url": "https://github.com/VitruvianSoftware"
       },
       "homepage": "https://vitruviansoftware.dev/ai/",
-      "repository": "https://github.com/VitruvianSoftware/ext-marketplace",
+      "repository": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/ext-marketplace",
       "license": "MIT",
       "keywords": [
         "marketplace",
@@ -53,7 +53,7 @@
         "url": "https://github.com/VitruvianSoftware"
       },
       "homepage": "https://vitruviansoftware.dev/ai/",
-      "repository": "https://github.com/VitruvianSoftware/worktree-band",
+      "repository": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/worktree-band",
       "license": "MIT",
       "keywords": [
         "git",
@@ -72,7 +72,7 @@
         "url": "https://github.com/VitruvianSoftware"
       },
       "homepage": "https://vitruviansoftware.dev/ai/",
-      "repository": "https://github.com/VitruvianSoftware/ralph-loop",
+      "repository": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/ralph-loop",
       "license": "MIT",
       "keywords": [
         "ralph-loop",
@@ -91,7 +91,7 @@
         "url": "https://github.com/VitruvianSoftware"
       },
       "homepage": "https://vitruviansoftware.dev/ai/",
-      "repository": "https://github.com/VitruvianSoftware/hookify",
+      "repository": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/hookify",
       "license": "MIT",
       "keywords": [
         "hooks",
@@ -109,7 +109,7 @@
         "url": "https://github.com/VitruvianSoftware"
       },
       "homepage": "https://vitruviansoftware.dev/ai/",
-      "repository": "https://github.com/VitruvianSoftware/security-guidance",
+      "repository": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/security-guidance",
       "license": "MIT",
       "keywords": [
         "security",
@@ -127,7 +127,7 @@
         "url": "https://github.com/VitruvianSoftware"
       },
       "homepage": "https://vitruviansoftware.dev/ai/",
-      "repository": "https://github.com/VitruvianSoftware/receipts-report",
+      "repository": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/receipts-report",
       "license": "MIT",
       "keywords": [
         "receipts",
@@ -146,7 +146,7 @@
         "url": "https://github.com/VitruvianSoftware"
       },
       "homepage": "https://vitruviansoftware.dev/ai/",
-      "repository": "https://github.com/VitruvianSoftware/live-context",
+      "repository": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/live-context",
       "license": "MIT",
       "keywords": [
         "context",
@@ -165,7 +165,7 @@
         "url": "https://github.com/VitruvianSoftware"
       },
       "homepage": "https://vitruviansoftware.dev/ai/",
-      "repository": "https://github.com/VitruvianSoftware/savvy-fleet",
+      "repository": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/savvy-fleet",
       "license": "MIT",
       "keywords": [
         "subagents",
@@ -184,7 +184,7 @@
         "url": "https://github.com/VitruvianSoftware"
       },
       "homepage": "https://vitruviansoftware.dev/ai/",
-      "repository": "https://github.com/VitruvianSoftware/vitruvian-core",
+      "repository": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/claude-code/plugins/vitruvian-orchestrator",
       "license": "MIT",
       "keywords": [
         "subagents",
