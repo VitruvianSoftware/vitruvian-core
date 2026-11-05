@@ -9,8 +9,9 @@ import XCTest
 @testable import Courier
 
 /// A message row under the pointer: the hover bar on the bubble's corner, the add-reaction chip, and who reacted. The
-/// harness can't move a pointer, so `messageRowHoverOverride` draws a row as hovered. Look at message-hover-*: the bar
-/// sits on the bubble's top outer corner (not at the window's edge), mostly above it; the card names who reacted.
+/// harness can't move a pointer, so `messageRowHoverOverride` draws a row as hovered. Look at message-hover-*: beside
+/// a short bubble the bar sits on its outer side, level with it, and the message above stays readable; over a wide
+/// one it sits on the top outer corner, inside the row; the card names who reacted.
 @MainActor
 final class MessageHoverSnapshotTests: XCTestCase {
     private static let width: CGFloat = 700
@@ -44,7 +45,8 @@ final class MessageHoverSnapshotTests: XCTestCase {
         for size in sizes { XCTAssertGreaterThan(size.height, 60) }
     }
 
-    /// The key case: a short message from someone else. The bar is beside the bubble, not across the window.
+    /// The key case: a short message from someone else. The bar is beside the bubble, not at the window's edge, and
+    /// not over the message above.
     func testTheirShortMessageHovered() throws {
         let events = [
             Fixture.text("$h1", "Are we still on for the hike on Saturday?", mine: false, ts: 9),
@@ -52,6 +54,17 @@ final class MessageHoverSnapshotTests: XCTestCase {
             Fixture.text("$h3", "Yes, see you at eight.", mine: true, ts: 2),
         ]
         try render("message-hover-theirs-short") { timeline(events, hovered: "$h2") }
+    }
+
+    /// "Hi!" right under a longer message from the same sender: the bar goes beside "Hi!", and the message above
+    /// stays readable.
+    func testTheirShortMessageUnderTheirLongerOneHovered() throws {
+        let events = [
+            Fixture.text("$s1", "Are we still on for the hike on Saturday? I can drive if you need a lift.",
+                         mine: false, ts: 9),
+            Fixture.text("$s2", "Hi!", mine: false, ts: 8),
+        ]
+        try render("message-hover-theirs-short-after-same-sender") { timeline(events, hovered: "$s2") }
     }
 
     func testMyMessageHovered() throws {
@@ -83,7 +96,7 @@ final class MessageHoverSnapshotTests: XCTestCase {
         try render("message-hover-reaction-card") { timeline(events, hovered: "$c1", card: "👍") }
     }
 
-    /// A message nearly as wide as the timeline: the bar stays inside the row, over the bubble's top.
+    /// A message nearly as wide as the timeline: no room beside it, so the bar sits over its top corner, inside the row.
     func testTheirLongMessageHovered() throws {
         let long = "The trail closes at sunset, so we should leave the car park by half past two at the latest. "
             + "Bring water, a warm layer, and something to eat at the top; the café there shuts early on Saturdays."

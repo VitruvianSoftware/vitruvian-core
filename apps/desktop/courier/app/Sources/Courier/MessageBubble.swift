@@ -362,10 +362,7 @@ struct MessageRowView: View {
     @State private var activeDetectedDate: DetectedMessageDate?
 
     private static let avatarSize: CGFloat = 28
-    /// How far the hover bar reaches in over the bubble's corner, and how far down over its top edge.
-    private static let barInset: CGFloat = 28
-    private static let barOverlap: CGFloat = 8
-    /// Space kept between the bar or the reaction card and the row's sides.
+    /// Space kept between the reaction card and the row's sides.
     private static let edgeMargin: CGFloat = 4
 
     var body: some View {
@@ -434,12 +431,13 @@ struct MessageRowView: View {
             if ui.historyOpen.contains(message.id) { ui.loadHistory(message.id) }
         }
         .simultaneousGesture(TapGesture().onEnded { click() })
-        // The hover bar, over the bubble's top outer corner. Drawn by the row, outside its click gestures, so a
-        // click on the bar doesn't also select the message.
+        // The hover bar, beside the bubble or over its top outer corner (HoverBarPlacement). Drawn by the row,
+        // outside its click gestures, so a click on the bar doesn't also select the message.
         .overlayPreferenceValue(BubbleBoundsKey.self, alignment: .topLeading) { anchor in
             if showsHoverBar, let anchor {
                 GeometryReader { proxy in
-                    let spot = barOrigin(bubble: proxy[anchor], row: proxy.size)
+                    let spot = HoverBarPlacement.origin(bubble: proxy[anchor], row: proxy.size, bar: barSize,
+                                                        mine: message.mine)
                     HoverActions(message: message, actions: actions) { showsMenu = true }
                         .fixedSize()
                         .onGeometryChange(for: CGSize.self) { $0.size } action: { barSize = $0 }
@@ -545,15 +543,6 @@ struct MessageRowView: View {
             guard !Task.isCancelled, !isHovering, !isBarHovered else { return }
             showsBar = false
         }
-    }
-
-    /// Where the bar's top-leading corner goes, in the row: reaching `barInset` in over the bubble's top outer corner
-    /// (trailing for theirs, leading for mine), its bottom `barOverlap` below the bubble's top, and inside the row.
-    private func barOrigin(bubble: CGRect, row: CGSize) -> CGPoint {
-        let inset = min(Self.barInset, bubble.width / 2)
-        let preferred = message.mine ? bubble.minX + inset - barSize.width : bubble.maxX - inset
-        let x = max(Self.edgeMargin, min(preferred, row.width - barSize.width - Self.edgeMargin))
-        return CGPoint(x: x, y: bubble.minY - barSize.height + Self.barOverlap)
     }
 
     /// Where the reaction card goes: just above its chip, centred on it, inside the row.
@@ -1260,6 +1249,33 @@ private struct CappedWidth: Layout {
 
     func placeSubviews(in bounds: CGRect, proposal _: ProposedViewSize, subviews: Subviews, cache _: inout ()) {
         subviews.first?.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size))
+    }
+}
+
+/// Where a message's hover bar goes, in its row (all in the row's coordinates; the result is the bar's top-leading
+/// corner). Beside the bubble on its outer side (right of theirs, left of mine) when it fits there, so the message
+/// above stays readable; over the bubble's top outer corner, mostly above it, when the bubble is too wide for that.
+enum HoverBarPlacement {
+    /// Between the bubble and a bar beside it. The row's hover covers it, so the pointer can cross it.
+    static let gap: CGFloat = 6
+    /// Kept between the bar and the row's sides.
+    static let edgeMargin: CGFloat = 4
+    /// Over the corner: how far the bar reaches in over it, and how far down over the bubble's top edge.
+    static let cornerInset: CGFloat = 28
+    static let cornerOverlap: CGFloat = 8
+
+    static func origin(bubble: CGRect, row: CGSize, bar: CGSize, mine: Bool) -> CGPoint {
+        let beside = mine ? bubble.minX - gap - bar.width : bubble.maxX + gap
+        let fits = mine ? beside >= edgeMargin : beside + bar.width <= row.width - edgeMargin
+        if fits {
+            // Level with the bubble's top, or centred on a bubble shorter than the bar; never above the row.
+            let y = bubble.height >= bar.height ? bubble.minY : bubble.midY - bar.height / 2
+            return CGPoint(x: beside, y: max(0, y))
+        }
+        let inset = min(cornerInset, bubble.width / 2)
+        let preferred = mine ? bubble.minX + inset - bar.width : bubble.maxX - inset
+        let x = max(edgeMargin, min(preferred, row.width - bar.width - edgeMargin))
+        return CGPoint(x: x, y: bubble.minY - bar.height + cornerOverlap)
     }
 }
 
