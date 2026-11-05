@@ -105,7 +105,7 @@ spec:
                               values: [fedora, nuc9i9]
                 containers:
                   - name: runner
-                    image: ghcr.io/vitruviansoftware/vitruvian-ci-runner@sha256:f24e04da315c7e8086f03e13b452a0017f63af91ed037fb536b4a777e00b2a74
+                    image: ghcr.io/vitruviansoftware/vitruvian-ci-runner@sha256:0bb1b40b9e1f62eec01bd6e615ce6588befb36b41f3fa5a51226297e25e474b4
                     command: ["/home/runner/run.sh"]
                     resources:
                       requests:
