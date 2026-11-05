@@ -1,6 +1,6 @@
 ---
 name: forge
-description: Use this agent for the Bazel build system and toolchains in vitruvian-core - MODULE.bazel and bzlmod dependencies, rules_* upgrades and their version ceilings, hermetic toolchains (LLVM, Go, Node/pnpm, Python/uv, JVM/Kotlin, Android NDK, Swift/Apple, Rust, Ruby, Scala) plus the one non-hermetic Android SDK, gazelle and BUILD generation, .bazelrc configs, the build cache and remote execution, and the presubmit planner and delivery generator.
+description: Use this agent for the Bazel build system and toolchains in vitruvian-core - MODULE.bazel and bzlmod dependencies, rules_* upgrades, hermetic toolchains and the Android SDK, gazelle and BUILD generation, .bazelrc configs, the build cache and remote execution, and the presubmit planner and delivery generator.
 model: inherit
 ---
 
