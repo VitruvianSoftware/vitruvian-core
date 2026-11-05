@@ -28,8 +28,8 @@ const (
 	// MaxOutboundTextLength is the maximum character count for an outbound iMessage.
 	MaxOutboundTextLength = 20000
 
-	localTxnPrefix     = "imessage-local-"
-	pendingEchoTTL     = 30 * time.Second
+	localTxnPrefix      = "imessage-local-"
+	pendingEchoTTL      = 30 * time.Second
 	maxPendingOutbounds = 128
 )
 

@@ -350,8 +350,8 @@ type Client struct {
 }
 
 var (
-	_ bridgev2.NetworkAPI             = (*Client)(nil)
-	_ bridgev2.BackfillingNetworkAPI  = (*Client)(nil)
+	_ bridgev2.NetworkAPI                    = (*Client)(nil)
+	_ bridgev2.BackfillingNetworkAPI         = (*Client)(nil)
 	_ bridgev2.IdentifierResolvingNetworkAPI = (*Client)(nil)
 	_ bridgev2.GhostDMCreatingNetworkAPI     = (*Client)(nil)
 	_ bridgev2.ContactListingNetworkAPI      = (*Client)(nil)
