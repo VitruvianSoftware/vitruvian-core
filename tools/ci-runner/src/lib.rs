@@ -196,6 +196,26 @@ pub fn run() -> i32 {
         &mut fail,
     );
 
+    // MODULE.bazel resolves @androidsdk from $ANDROID_HOME; the //... sweep
+    // fails analysis on a runner without it.
+    let android_home = env_or_default("ANDROID_HOME", "");
+    let problems = android_sdk_problems(&android_home);
+    check(
+        &format!(
+            "ANDROID_HOME={} has platform {} and build-tools {}{}",
+            android_home,
+            ANDROID_PLATFORM,
+            ANDROID_BUILD_TOOLS,
+            if problems.is_empty() {
+                String::new()
+            } else {
+                format!(" (missing: {})", problems.join(", "))
+            }
+        ),
+        problems.is_empty(),
+        &mut fail,
+    );
+
     if !fail {
         println!("parity: OK");
         0
@@ -203,6 +223,26 @@ pub fn run() -> i32 {
         eprintln!("parity: FAILED");
         1
     }
+}
+
+const ANDROID_PLATFORM: &str = "android-35";
+const ANDROID_BUILD_TOOLS: &str = "35.0.0";
+
+/// What an Android SDK at `home` lacks for the repo's Android targets. An empty
+/// `home` (ANDROID_HOME unset) lacks everything.
+pub fn android_sdk_problems(home: &str) -> Vec<String> {
+    if home.is_empty() {
+        return vec!["ANDROID_HOME is not set".to_string()];
+    }
+    let root = Path::new(home);
+    [
+        format!("platforms/{}/android.jar", ANDROID_PLATFORM),
+        format!("build-tools/{}/aapt2", ANDROID_BUILD_TOOLS),
+        "platform-tools/adb".to_string(),
+    ]
+    .into_iter()
+    .filter(|rel| !root.join(rel).is_file())
+    .collect()
 }
 
 /// `rustc --version` prints `rustc 1.75.0 (82e1608df 2023-12-21)`.
@@ -225,6 +265,42 @@ fn is_executable(path: &str) -> bool {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn android_sdk_unset_is_a_problem() {
+        assert_eq!(android_sdk_problems(""), vec!["ANDROID_HOME is not set"]);
+    }
+
+    #[test]
+    fn android_sdk_missing_pieces_are_named() {
+        let dir = std::env::temp_dir().join("parity_test_sdk_partial");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("platforms/android-35")).unwrap();
+        fs::write(dir.join("platforms/android-35/android.jar"), "").unwrap();
+        let p = android_sdk_problems(dir.to_str().unwrap());
+        assert_eq!(
+            p,
+            vec!["build-tools/35.0.0/aapt2", "platform-tools/adb"],
+            "{p:?}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn android_sdk_complete_has_no_problems() {
+        let dir = std::env::temp_dir().join("parity_test_sdk_full");
+        let _ = fs::remove_dir_all(&dir);
+        for f in [
+            "platforms/android-35/android.jar",
+            "build-tools/35.0.0/aapt2",
+            "platform-tools/adb",
+        ] {
+            fs::create_dir_all(dir.join(f).parent().unwrap()).unwrap();
+            fs::write(dir.join(f), "").unwrap();
+        }
+        assert!(android_sdk_problems(dir.to_str().unwrap()).is_empty());
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn test_rustc_version_is() {
