@@ -1,0 +1,38 @@
+# Copyright (c) 2026 VitruvianSoftware
+# SPDX-License-Identifier: MIT
+
+# Local (cloud-free) client for the Olight Ostation 2 Pro charger.
+#
+# Its own workspace and Cargo.lock, apart from the root one, like
+# apps/mcp/roborock: Bazel reads this lock through the @ostation_crates hub
+# (MODULE.bazel). Re-lock with
+#   bazel run //tools/crates:lock -- --dir apps/cli/ostation
+
+[workspace]
+
+[package]
+name = "ostation"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT"
+description = "Local LAN client for the Olight Ostation 2 Pro (Tuya protocol 3.5, 18-byte header)"
+publish = false
+
+[lib]
+name = "ostation_lib"
+path = "rust_src/lib.rs"
+
+[[bin]]
+name = "ostation"
+path = "rust_src/main.rs"
+
+[dependencies]
+aes-gcm = "0.10"
+getrandom = "0.2"
+hmac = "0.12"
+serde_json = "1"
+sha2 = "0.10"
+
+[profile.release]
+opt-level = 3
