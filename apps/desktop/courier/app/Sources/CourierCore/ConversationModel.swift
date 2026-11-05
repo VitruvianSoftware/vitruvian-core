@@ -273,7 +273,17 @@ public final class ConversationModel: ObservableObject {
     /// In a merged chat, the network id of `activeReplyRoomID`.
     @Published public private(set) var activeReplyNetwork: String?
     /// Oldest first.
-    @Published public private(set) var items: [TimelineItem] = []
+    @Published public private(set) var items: [TimelineItem] = [] {
+        didSet {
+            var map: [String: TimelineMessage] = [:]
+            map.reserveCapacity(items.count)
+            for case let .message(message) in items {
+                map[message.id] = message
+            }
+            messagesByID = map
+        }
+    }
+    private var messagesByID: [String: TimelineMessage] = [:]
     /// The newest page of the open chat has been read (or, for a chat opened at a message, the page around it).
     @Published public private(set) var isLoaded = false
     /// There are older messages than the ones loaded.
@@ -1240,16 +1250,19 @@ public final class ConversationModel: ObservableObject {
     private static func position(_ event: Event) -> Position { Position(ts: event.ts, seq: event.seq) }
 
     private func rebuild() {
-        items = Timeline.build(events: Array(events.values), me: Timeline.meUserID, firstUnreadID: firstUnreadID,
-                               now: now(), hideDeleted: hidesDeleted, isDirect: isDirectChat ?? false,
-                               showChatUpdates: showChatUpdatesPreference,
-                               calendar: calendar)
+        let nextItems = Timeline.build(events: Array(events.values), me: Timeline.meUserID, firstUnreadID: firstUnreadID,
+                                       now: now(), hideDeleted: hidesDeleted, isDirect: isDirectChat ?? false,
+                                       showChatUpdates: showChatUpdatesPreference,
+                                       calendar: calendar)
+        if nextItems != items {
+            items = nextItems
+        }
         lastOutgoingID = items.reversed().lazy.compactMap { item -> String? in
             // The one Timeline put Sent, Delivered or Seen under: my newest that went, not a note, not deleted.
             if case let .message(message) = item, message.mine, !message.isNote, message.kind != .deleted,
                message.statusLine?.hasGone == true { message.id } else { nil }
         }.first
-        if let selected = selectedMessageID, !items.contains(where: { $0.id == selected }) {
+        if let selected = selectedMessageID, messagesByID[selected] == nil {
             selectedMessageID = nil
         }
         // My held messages, as the chat has them now: the composer's ⌘Z takes back the newest.
@@ -1376,8 +1389,7 @@ public final class ConversationModel: ObservableObject {
 
     /// A message of the open chat, as loaded.
     func message(_ eventID: String) -> TimelineMessage? {
-        for case let .message(message) in items where message.id == eventID { return message }
-        return nil
+        messagesByID[eventID]
     }
 
     // MARK: - A window around a message
@@ -1760,9 +1772,8 @@ public final class ConversationModel: ObservableObject {
     /// Starts a reply to the message in the composer.
     public func reply(to eventID: String) {
         guard !isLocked else { return }
-        for case let .message(message) in items where message.id == eventID && message.kind != .deleted {
+        if let message = messagesByID[eventID], message.kind != .deleted {
             composer.startReply(to: message.quoted)
-            return
         }
     }
 

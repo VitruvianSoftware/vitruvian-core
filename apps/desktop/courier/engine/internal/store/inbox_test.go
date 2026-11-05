@@ -1125,3 +1125,66 @@ func TestMergedRoomsUnreadFilterTimerNoteInNewerMember(t *testing.T) {
 	require.Equal(t, sigRoom, unreadPage[0].ID, "merge must show on the Signal member")
 	require.Equal(t, 1, unreadPage[0].Unread)
 }
+
+func TestBatchedMergedChatsEnrichmentAndSuggestions(t *testing.T) {
+	s, ctx := open(t), context.Background()
+
+	// Create 4 rooms for 2 merged chats and 2 rooms for merge suggestions.
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!m1a:courier.local", Network: "whatsapp", Name: "Alice WA", AvatarURI: "mxc://courier.local/alice", IsDirect: true, CreatedAt: time.Unix(1, 0)}))
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!m1b:courier.local", Network: "signal", Name: "Alice Sig", IsDirect: true, CreatedAt: time.Unix(2, 0)}))
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!m2a:courier.local", Network: "telegram", Name: "Bob TG", IsDirect: true, CreatedAt: time.Unix(3, 0)}))
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!m2b:courier.local", Network: "whatsapp", Name: "Bob WA", IsDirect: true, CreatedAt: time.Unix(4, 0)}))
+
+	mkMsg(t, s, "!m1a:courier.local", "$e1", ghost, "m.room.message", text("hi 1"), time.Unix(10, 0))
+	mkMsg(t, s, "!m1b:courier.local", "$e2", ghost, "m.room.message", `{"msgtype":"m.text","body":"ping","m.mentions":{"room":true}}`, time.Unix(20, 0))
+	mkMsg(t, s, "!m2a:courier.local", "$e3", ghost, "m.room.message", text("yo"), time.Unix(30, 0))
+	require.NoError(t, s.MarkReadLocal(ctx, "!m2a:courier.local", "$e3", time.Unix(30, 0)))
+	_, err := s.SetMarkedUnread(ctx, []string{"!m2b:courier.local"}, true)
+	require.NoError(t, err)
+
+	mc1, err := s.CreateMergedChat(ctx, "Alice Merged", []string{"!m1a:courier.local", "!m1b:courier.local"})
+	require.NoError(t, err)
+	mc2, err := s.CreateMergedChat(ctx, "Bob Merged", []string{"!m2a:courier.local", "!m2b:courier.local"})
+	require.NoError(t, err)
+
+	listed, err := s.ListMergedChats(ctx)
+	require.NoError(t, err)
+	require.Len(t, listed, 2)
+	require.Equal(t, []string{"!m1a:courier.local", "!m1b:courier.local"}, listed[0].RoomIDs)
+	require.Equal(t, []string{"whatsapp", "signal"}, listed[0].Networks)
+	require.Equal(t, []string{"!m2a:courier.local", "!m2b:courier.local"}, listed[1].RoomIDs)
+	require.Equal(t, []string{"telegram", "whatsapp"}, listed[1].Networks)
+
+	rows, err := s.Inbox(ctx)
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+	require.Equal(t, mc2.MergeID, rows[0].MergeID)
+	require.Equal(t, "Bob Merged", rows[0].Name)
+	require.True(t, rows[0].MarkedUnread)
+	require.Equal(t, 0, rows[0].Unread)
+
+	require.Equal(t, mc1.MergeID, rows[1].MergeID)
+	require.Equal(t, "Alice Merged", rows[1].Name)
+	require.Equal(t, "mxc://courier.local/alice", rows[1].AvatarURI)
+	require.Equal(t, 2, rows[1].Unread)
+	require.Equal(t, 1, rows[1].UnreadMentions)
+
+	// Unmerged DM rooms for SuggestMergedChats batched member/profile query.
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!s1:courier.local", Network: "whatsapp", Name: "+15550001", IsDirect: true, CreatedAt: time.Unix(5, 0)}))
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!s2:courier.local", Network: "signal", Name: "Carol Danvers", IsDirect: true, CreatedAt: time.Unix(6, 0)}))
+	require.NoError(t, s.UpsertProfile(ctx, Profile{UserID: "@carol_wa:courier.local", DisplayName: "Carol Danvers", Identifiers: []string{"tel:+1-555-0001"}}))
+	require.NoError(t, s.UpsertProfile(ctx, Profile{UserID: "@carol_sig:courier.local", DisplayName: "Carol Danvers", Identifiers: []string{"+1 (555) 0001"}}))
+	require.NoError(t, s.SetMember(ctx, "!s1:courier.local", "@carol_wa:courier.local", json.RawMessage(`{"membership":"join","displayname":"Carol Danvers"}`)))
+	require.NoError(t, s.SetMember(ctx, "!s2:courier.local", "@carol_sig:courier.local", json.RawMessage(`{"membership":"join","displayname":"Carol Danvers"}`)))
+
+	suggestions, err := s.SuggestMergedChats(ctx)
+	require.NoError(t, err)
+	require.Len(t, suggestions, 1)
+	require.Equal(t, "Carol Danvers", suggestions[0].DisplayName)
+	require.Equal(t, "identifier", suggestions[0].Reason)
+	require.Equal(t, []string{"!s1:courier.local", "!s2:courier.local"}, suggestions[0].RoomIDs)
+
+	// Verify isContentViewOnceWithNetwork fast-path and after_read detection.
+	require.False(t, s.isContentViewOnceWithNetwork(ctx, "!s2:courier.local", "signal", `{"msgtype":"m.image","body":"photo.jpg"}`))
+	require.True(t, s.isContentViewOnceWithNetwork(ctx, "!s2:courier.local", "signal", `{"msgtype":"m.image","body":"photo.jpg","com.beeper.disappearing_timer":{"type":"after_read","timer":300000}}`))
+}

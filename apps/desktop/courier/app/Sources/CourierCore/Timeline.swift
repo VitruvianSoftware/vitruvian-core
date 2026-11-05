@@ -604,7 +604,7 @@ public enum Timeline {
             if let target = event.content["redacts"]?.stringValue { redacted.insert(target) }
         }
 
-        let builtMessages = messages(events: events, me: me, now: now, hideDeleted: hideDeleted, isDirect: isDirect)
+        let builtMessages = messages(ordered: ordered, redacted: redacted, me: me, now: now, hideDeleted: hideDeleted, isDirect: isDirect)
         let messageByID = Dictionary(builtMessages.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
 
         var items: [TimelineItem] = []
@@ -913,6 +913,11 @@ public enum Timeline {
         for event in ordered where event.type == "m.room.redaction" && event.status != .failed {
             if let target = event.content["redacts"]?.stringValue { redacted.insert(target) }
         }
+        return messages(ordered: ordered, redacted: redacted, me: me, now: now, hideDeleted: hideDeleted, isDirect: isDirect)
+    }
+
+    private static func messages(ordered: [Event], redacted: Set<String>, me: String, now: Date?, hideDeleted: Bool,
+                                 isDirect: Bool) -> [TimelineMessage] {
 
         // A message past its disappearing time is gone, as if it were not on the page: nothing quotes it, and its
         // reactions and edits find nothing.

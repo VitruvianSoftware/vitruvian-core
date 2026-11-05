@@ -27,6 +27,12 @@ func TestOpenCreatesWALDatabase(t *testing.T) {
 	var fk int
 	require.NoError(t, db.QueryRow(context.Background(), "PRAGMA foreign_keys").Scan(&fk))
 	require.Equal(t, 1, fk)
+	var syncMode int
+	require.NoError(t, db.QueryRow(context.Background(), "PRAGMA synchronous").Scan(&syncMode))
+	require.Equal(t, 1, syncMode)
+	var tempStore int
+	require.NoError(t, db.QueryRow(context.Background(), "PRAGMA temp_store").Scan(&tempStore))
+	require.Equal(t, 2, tempStore)
 }
 
 func mode(t *testing.T, path string) os.FileMode {

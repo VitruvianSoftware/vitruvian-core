@@ -1727,6 +1727,37 @@ final class InboxModelTests: XCTestCase {
                        "Archive Undo must keep the already-archived member archived")
         await stop(h)
     }
+
+    func testCachedRowsByIDAndNoRedundantMergedChatsPublish() async throws {
+        let h = try await start(rooms: [
+            room("!a", ts: 300, unread: 4, draft: "hello"),
+            room("!b", ts: 200, unread: 1, draft: ""),
+        ], autoRelease: true)
+        XCTAssertEqual(h.inbox.row(of: "!a")?.roomID, "!a")
+        XCTAssertEqual(h.inbox.unreadCount(of: "!a"), 4)
+        XCTAssertEqual(h.inbox.savedDraft(of: "!a"), "hello")
+        XCTAssertNil(h.inbox.row(of: "!missing"))
+
+        let mc = MergedChat(
+            mergeID: "merge:1",
+            name: "Alice",
+            avatarPath: "",
+            lastRoomID: "!a",
+            roomIDs: ["!a", "!b"],
+            networks: ["whatsapp", "signal"],
+            createdTS: 100
+        )
+        var publishCount = 0
+        let cancellable = h.app.$mergedChats.dropFirst().sink { _ in publishCount += 1 }
+        defer { cancellable.cancel() }
+
+        h.inbox.setMergedChats([mc])
+        XCTAssertEqual(publishCount, 1)
+        // Setting identical merged chats must not trigger another @Published emission.
+        h.inbox.setMergedChats([mc])
+        XCTAssertEqual(publishCount, 1)
+        await stop(h)
+    }
 }
 
 // MARK: - Harness

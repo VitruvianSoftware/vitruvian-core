@@ -400,20 +400,7 @@ func (s *Store) isContentViewOnce(ctx context.Context, roomID, network, kind str
 	if kind != "image" && kind != "video" && kind != "audio" && kind != "voice" && kind != "file" {
 		return false
 	}
-	var c struct {
-		DisappearingTimer *struct {
-			Type  string `json:"type"`
-			Timer int64  `json:"timer"`
-		} `json:"com.beeper.disappearing_timer"`
-	}
-	if json.Unmarshal(content, &c) != nil || c.DisappearingTimer == nil || c.DisappearingTimer.Type != "after_read" || c.DisappearingTimer.Timer <= 0 {
-		return false
-	}
-	netName, roomTimerMS := s.RoomViewOnceContext(ctx, roomID)
-	if network == "" {
-		network = netName
-	}
-	return IsViewOnceTimer(network, c.DisappearingTimer.Timer, roomTimerMS)
+	return s.isContentViewOnceWithNetwork(ctx, roomID, network, string(content))
 }
 
 func (m messageSearch) excludesViewOnce() bool {
