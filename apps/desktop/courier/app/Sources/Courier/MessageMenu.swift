@@ -129,6 +129,8 @@ enum MessageRowActions {
             select: select,
             reply: reply,
             react: { id, key in Task { await conversation.react(to: id, key: key) } },
+            unreact: { event in Task { await conversation.unreact(eventID: event) } },
+            isPickingReaction: { id in messageActions.request == .reactionPicker(messageID: id) },
             retry: { id in Task { await conversation.retry(id) } },
             discard: { id in Task { await conversation.discard(id) } },
             dontSend: { id in Task { await messageActions.dontSend(id, from: source) } },

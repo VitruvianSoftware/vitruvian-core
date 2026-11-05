@@ -301,7 +301,12 @@ final class MessagePresentationTests: XCTestCase {
         )
         XCTAssertTrue(stickerRow.suppressesBubbleBackground, "m.sticker suppresses the coloured text bubble background")
         XCTAssertEqual(stickerRow.ts, stickerTS, "sticker keeps its timestamp")
-        XCTAssertEqual(stickerRow.reactions, [ReactionChip(key: "🎉", count: 1, mine: false)], "sticker keeps its reactions")
+        XCTAssertEqual(
+            stickerRow.reactions,
+            [ReactionChip(key: "🎉", count: 1, mine: false,
+                          reactors: [Reactor(userID: "@ann:example.test", name: "Ann Example", isMe: false)])],
+            "sticker keeps its reactions"
+        )
         XCTAssertEqual(
             stickerRow.reply,
             .quoted(QuotedMessage(eventID: "$quote-1", senderName: "Ann Example", mine: false, text: "See you on the trail!", kind: .text)),
