@@ -923,7 +923,8 @@ func (r *ChatDB) loadMessageAttachments(ctx context.Context, msgRowIDs []int64) 
 		}
 		return fallback
 	}
-	query := fmt.Sprintf(`
+	query := fmt.Sprintf(
+		`
 		SELECT
 			maj.message_id,
 			a.ROWID,
