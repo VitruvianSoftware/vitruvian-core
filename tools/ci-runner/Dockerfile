@@ -77,6 +77,40 @@ RUN curl -fsSL -o /tmp/rust.tar.xz \
  && rm -rf /tmp/rust /tmp/rust.tar.xz \
  && rustc --version
 
+# Android SDK: MODULE.bazel resolves @androidsdk from $ANDROID_HOME at analysis
+# time (Google does not allow vendoring it), and the `//...` sweep analyses the
+# Android packages, so without it every sweep fails on this runner:
+# `no such target '@@rules_android++android_sdk_repository_extension+androidsdk//:fail'`.
+# GitHub's hosted image has it at /usr/local/lib/android/sdk; same path here.
+# Only what the Android targets need (targetSdkVersion 35 in
+# apps/mobile/android-remote/BUILD), each zip pinned by SHA-256 rather than
+# fetched through sdkmanager, which would resolve "latest" at build time.
+# Bump platform and build-tools together with targetSdkVersion.
+ARG ANDROID_PLATFORM_ZIP=platform-35_r02.zip
+ARG ANDROID_PLATFORM_SHA256=0988cacad01b38a18a47bac14a0695f246bc76c1b06c0eeb8eb0dc825ab0c8e0
+ARG ANDROID_BUILD_TOOLS_VERSION=35.0.0
+ARG ANDROID_BUILD_TOOLS_ZIP=build-tools_r35_linux.zip
+ARG ANDROID_BUILD_TOOLS_SHA256=bd3a4966912eb8b30ed0d00b0cda6b6543b949d5ffe00bea54c04c81e1561d88
+ARG ANDROID_PLATFORM_TOOLS_ZIP=platform-tools_r37.0.2-linux.zip
+ARG ANDROID_PLATFORM_TOOLS_SHA256=dfc80a84a6710e5674415d4b55ae599c01aa4961822f53097d747472f410f157
+ENV ANDROID_HOME=/usr/local/lib/android/sdk \
+    ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
+RUN set -eux; \
+    base=https://dl.google.com/android/repository; \
+    mkdir -p "$ANDROID_HOME/platforms" "$ANDROID_HOME/build-tools" /tmp/android; \
+    for z in "$ANDROID_PLATFORM_ZIP:$ANDROID_PLATFORM_SHA256" \
+             "$ANDROID_BUILD_TOOLS_ZIP:$ANDROID_BUILD_TOOLS_SHA256" \
+             "$ANDROID_PLATFORM_TOOLS_ZIP:$ANDROID_PLATFORM_TOOLS_SHA256"; do \
+      curl -fsSL -o "/tmp/android/${z%%:*}" "$base/${z%%:*}"; \
+      echo "${z##*:}  /tmp/android/${z%%:*}" | sha256sum -c -; \
+    done; \
+    unzip -q "/tmp/android/$ANDROID_PLATFORM_ZIP" -d /tmp/android/platform; \
+    mv /tmp/android/platform/android-35 "$ANDROID_HOME/platforms/android-35"; \
+    unzip -q "/tmp/android/$ANDROID_BUILD_TOOLS_ZIP" -d /tmp/android/build-tools; \
+    mv /tmp/android/build-tools/* "$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION"; \
+    unzip -q "/tmp/android/$ANDROID_PLATFORM_TOOLS_ZIP" -d "$ANDROID_HOME"; \
+    rm -rf /tmp/android
+
 # The runner user, uid 1001 as ARC's pods run it, with passwordless sudo.
 RUN useradd --create-home --uid 1001 --shell /bin/bash runner \
  && echo 'runner ALL=(ALL) NOPASSWD:ALL' >/etc/sudoers.d/runner \
