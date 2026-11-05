@@ -1183,4 +1183,63 @@ func TestSetExtraProfileMetaPersistsIdentifiersTimezoneAndBot(t *testing.T) {
 	require.Equal(t, "Alice Example", mc["displayname"])
 	require.Equal(t, userID, mc["state_key"])
 	require.Equal(t, userID, mc["target_user_id"])
+
+	// Background roster sync (bridgev2 syncParticipants with ExcludeChangesFromTimeline: true) sends an auto-accept
+	// invite marked com.beeper.exclude_from_timeline followed by the ghost's join; neither may record a timeline event.
+	bobIntent := c.GhostIntent("bob")
+	bobID := string(c.FormatGhostMXID("bob"))
+	_, err = c.BotIntent().SendState(ctx, roomID, event.StateMember, bobID, &event.Content{
+		Parsed: &event.MemberEventContent{Membership: event.MembershipInvite, Displayname: "Bob Synced"},
+		Raw: map[string]any{
+			"fi.mau.will_auto_accept":          true,
+			"com.beeper.exclude_from_timeline": true,
+		},
+	}, ts.Add(2*time.Second))
+	require.NoError(t, err)
+	_, err = bobIntent.SendState(ctx, roomID, event.StateMember, bobID, &event.Content{
+		Parsed: &event.MemberEventContent{Membership: event.MembershipJoin, Displayname: "Bob Synced"},
+	}, ts.Add(2*time.Second))
+	require.NoError(t, err)
+	require.Equal(t, 1, countEvents(t, c, roomID, event.StateMember.Type), "excluded roster sync must not add a timeline join event")
+
+	// A live join (auto-accept invite without com.beeper.exclude_from_timeline followed by join) records 1 timeline event.
+	carolIntent := c.GhostIntent("carol")
+	carolID := string(c.FormatGhostMXID("carol"))
+	_, err = c.BotIntent().SendState(ctx, roomID, event.StateMember, carolID, &event.Content{
+		Parsed: &event.MemberEventContent{Membership: event.MembershipInvite, Displayname: "Carol Live"},
+		Raw: map[string]any{
+			"fi.mau.will_auto_accept": true,
+		},
+	}, ts.Add(3*time.Second))
+	require.NoError(t, err)
+	_, err = carolIntent.SendState(ctx, roomID, event.StateMember, carolID, &event.Content{
+		Parsed: &event.MemberEventContent{Membership: event.MembershipJoin, Displayname: "Carol Live"},
+	}, ts.Add(3*time.Second))
+	require.NoError(t, err)
+	require.Equal(t, 2, countEvents(t, c, roomID, event.StateMember.Type), "live join must still record a timeline event")
+
+	// UpdateInfo roster sync with zero timestamp (e.g. mautrix-slack generateMemberList) and full-roster diff removal
+	// ("User is not in remote chat") must also be excluded from the timeline.
+	daveIntent := c.GhostIntent("dave")
+	daveID := string(c.FormatGhostMXID("dave"))
+	_, err = c.BotIntent().SendState(ctx, roomID, event.StateMember, daveID, &event.Content{
+		Parsed: &event.MemberEventContent{Membership: event.MembershipInvite, Displayname: "Dave Synced"},
+		Raw: map[string]any{
+			"fi.mau.will_auto_accept": true,
+		},
+	}, time.Time{})
+	require.NoError(t, err)
+	_, err = daveIntent.SendState(ctx, roomID, event.StateMember, daveID, &event.Content{
+		Parsed: &event.MemberEventContent{Membership: event.MembershipJoin, Displayname: "Dave Synced"},
+	}, time.Time{})
+	require.NoError(t, err)
+	_, err = c.BotIntent().SendState(ctx, roomID, event.StateMember, daveID, &event.Content{
+		Parsed: &event.MemberEventContent{
+			Membership:  event.MembershipLeave,
+			Displayname: "Dave Synced",
+			Reason:      "User is not in remote chat",
+		},
+	}, ts.Add(4*time.Second))
+	require.NoError(t, err)
+	require.Equal(t, 2, countEvents(t, c, roomID, event.StateMember.Type), "UpdateInfo zero-ts roster sync and full-roster diff removal must not record timeline events")
 }

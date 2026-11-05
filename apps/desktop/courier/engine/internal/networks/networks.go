@@ -80,7 +80,7 @@ func All() []Network {
 			// email needs an emailed code (and a captcha cookies step if Slack demands one); token needs pasted
 			// browser cookies; app needs bot tokens.
 			Flows: []string{"email", "token", "app"},
-			Spec:  simpleSpec("slack", "Slack", "go.mau.fi/mautrix-slack", func() bridgev2.NetworkConnector { return &slack.SlackConnector{} }),
+			Spec:  slackSpec,
 		},
 		{
 			Name: "discord", DisplayName: "Discord",
@@ -198,6 +198,26 @@ func whatsappSpec() (engine.Spec, error) {
 	}, nil
 }
 
+// slackSpec raises mautrix-slack's channel participant sync limit from the example config's default of 5
+// (and sync-only-on-create) so channel rosters and member counts match Slack on startup resync and refreshes.
+func slackSpec() (engine.Spec, error) {
+	return engine.Spec{
+		Name:        "slack",
+		DisplayName: "Slack",
+		ModulePath:  "go.mau.fi/mautrix-slack",
+		Connector:   func() (bridgev2.NetworkConnector, error) { return &slack.SlackConnector{}, nil },
+		Configure: func(data any) error {
+			cfg, ok := data.(*slack.Config)
+			if !ok {
+				return fmt.Errorf("unexpected Slack config type %T", data)
+			}
+			cfg.ParticipantSyncCount = 10000
+			cfg.ParticipantSyncOnlyOnCreate = false
+			return nil
+		},
+	}, nil
+}
+
 // twitterSpec enables X branding and x.com login URLs on mautrix-twitter, whose example config defaults x: false.
 func twitterSpec() (engine.Spec, error) {
 	return engine.Spec{
@@ -251,7 +271,7 @@ func telegramSpec() (engine.Spec, error) {
 		// The id is written from the parsed number: YAML reads a raw "0042" as octal, which would silently
 		// become a different (wrong) credential.
 		Configure: func(data any) error {
-			return yaml.Unmarshal([]byte(fmt.Sprintf("api_id: %s\napi_hash: %q\n", strconv.FormatUint(n, 10), hash)), data)
+			return yaml.Unmarshal([]byte(fmt.Sprintf("api_id: %s\napi_hash: %q\nmember_list:\n  max_initial_sync: 10000\n", strconv.FormatUint(n, 10), hash)), data)
 		},
 	}, nil
 }

@@ -12,6 +12,10 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"maunium.net/go/mautrix/id"
+
+	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 )
 
 // ErrPinned is SetArchived's answer when every chat it was asked to archive is pinned.
@@ -428,10 +432,131 @@ type MemberHit struct {
 	IsBot       bool     `json:"is_bot"`
 }
 
+type selfProfileInfo struct {
+	name        string
+	avatarURI   string
+	identifiers []string
+	timezone    string
+	ghostIDs    map[string]bool
+}
+
+func (s *Store) resolveSelfProfile(ctx context.Context, network, loginID string) selfProfileInfo {
+	info := selfProfileInfo{ghostIDs: map[string]bool{}}
+	if network == "" {
+		return info
+	}
+	rows, err := s.db.Query(ctx, `SELECT login_id, state FROM login_state
+		WHERE network = $1 AND login_id <> ''
+		ORDER BY CASE WHEN login_id = $2 THEN 0 ELSE 1 END, login_id`, network, loginID)
+	if err != nil {
+		return info
+	}
+	defer rows.Close()
+
+	type loginRow struct {
+		loginID string
+		state   string
+	}
+	var logins []loginRow
+	for rows.Next() {
+		var r loginRow
+		if rows.Scan(&r.loginID, &r.state) == nil {
+			logins = append(logins, r)
+		}
+	}
+	for i, r := range logins {
+		var st struct {
+			RemoteID      string `json:"remote_id"`
+			RemoteName    string `json:"remote_name"`
+			RemoteProfile struct {
+				Name     string `json:"name"`
+				Username string `json:"username"`
+				Email    string `json:"email"`
+				Phone    string `json:"phone"`
+				Avatar   string `json:"avatar"`
+			} `json:"remote_profile"`
+		}
+		_ = json.Unmarshal([]byte(r.state), &st)
+		remoteID := cmp.Or(st.RemoteID, r.loginID)
+		var candidateGhosts []string
+		if remoteID != "" {
+			g1 := string(id.NewUserID(network+"_"+id.EncodeUserLocalpart(remoteID), ids.ServerName))
+			g2 := string(id.NewUserID(network+"_"+id.EncodeUserLocalpart(strings.ToLower(remoteID)), ids.ServerName))
+			info.ghostIDs[g1] = true
+			info.ghostIDs[g2] = true
+			candidateGhosts = []string{g1, g2}
+		}
+		if i == 0 {
+			var ghostProf Profile
+			for _, g := range candidateGhosts {
+				if p, ok, err := s.GetProfile(ctx, g); err == nil && ok {
+					ghostProf = p
+					break
+				}
+			}
+			info.name = cmp.Or(st.RemoteProfile.Name, ghostProf.DisplayName, st.RemoteProfile.Username)
+			info.avatarURI = cmp.Or(st.RemoteProfile.Avatar, ghostProf.AvatarURI)
+			info.timezone = ghostProf.Timezone
+			seenIDs := map[string]bool{}
+			addID := func(id string) {
+				id = strings.TrimSpace(id)
+				if id != "" && !seenIDs[id] {
+					seenIDs[id] = true
+					info.identifiers = append(info.identifiers, id)
+				}
+			}
+			if phone := strings.TrimSpace(st.RemoteProfile.Phone); phone != "" {
+				if !strings.HasPrefix(strings.ToLower(phone), "tel:") {
+					if strings.HasPrefix(phone, "+") {
+						phone = "tel:" + phone
+					} else {
+						phone = "tel:+" + phone
+					}
+				}
+				addID(phone)
+			}
+			if email := strings.TrimSpace(st.RemoteProfile.Email); email != "" {
+				if !strings.HasPrefix(strings.ToLower(email), "mailto:") {
+					email = "mailto:" + email
+				}
+				addID(email)
+			}
+			for _, id := range ghostProf.Identifiers {
+				addID(id)
+			}
+		}
+	}
+	return info
+}
+
 // RoomMembers lists the joined and invited members of roomID, joining members with profiles and reading each member's
 // power level from the room's m.room.power_levels state JSON (users[userID], defaulting to users_default, with
-// IsAdmin: level >= 50).
+// IsAdmin: level >= 50). Internal bridge service bots (io.element.functional_members / @<network>bot:courier.local)
+// and duplicate self-ghosts are excluded, and bare @me:courier.local rows inherit the account's remote profile.
 func (s *Store) RoomMembers(ctx context.Context, roomID string) ([]MemberHit, error) {
+	var roomNetwork, roomLoginID string
+	_ = s.db.QueryRow(ctx, `SELECT network, login_id FROM rooms WHERE room_id = $1`, roomID).Scan(&roomNetwork, &roomLoginID)
+
+	serviceMembers := map[string]bool{}
+	if roomNetwork != "" {
+		serviceMembers["@"+roomNetwork+"bot:"+ids.ServerName] = true
+	}
+	if raw, ok, err := s.GetState(ctx, roomID, "io.element.functional_members", ""); err != nil {
+		return nil, err
+	} else if ok {
+		var fm struct {
+			ServiceMembers []string `json:"service_members"`
+		}
+		if json.Unmarshal(raw, &fm) == nil {
+			for _, sm := range fm.ServiceMembers {
+				if sm != "" && sm != string(ids.Me) {
+					serviceMembers[sm] = true
+				}
+			}
+		}
+	}
+	selfInfo := s.resolveSelfProfile(ctx, roomNetwork, roomLoginID)
+
 	var pl struct {
 		Users        map[string]int `json:"users"`
 		UsersDefault int            `json:"users_default"`
@@ -454,7 +579,14 @@ func (s *Store) RoomMembers(ctx context.Context, roomID string) ([]MemberHit, er
 	}
 	defer rows.Close()
 
-	out := []MemberHit{}
+	type scannedMember struct {
+		userID, membership, mcDisplayName, mcAvatarURL string
+		profName, profAvatar, tz                       string
+		ids                                            []string
+		isBot                                          bool
+	}
+	var scanned []scannedMember
+	hasMe := false
 	for rows.Next() {
 		var (
 			userID, contentJSON               string
@@ -474,32 +606,72 @@ func (s *Store) RoomMembers(ctx context.Context, roomID string) ([]MemberHit, er
 		if membership != "join" && membership != "invite" {
 			continue
 		}
-		ids := []string{}
+		memberIDs := []string{}
 		if idsJSON != "" && idsJSON != "[]" {
-			_ = json.Unmarshal([]byte(idsJSON), &ids)
+			_ = json.Unmarshal([]byte(idsJSON), &memberIDs)
 		}
-		if ids == nil {
-			ids = []string{}
+		if memberIDs == nil {
+			memberIDs = []string{}
+		}
+		if userID == string(ids.Me) {
+			hasMe = true
+		}
+		scanned = append(scanned, scannedMember{
+			userID:        userID,
+			membership:    membership,
+			mcDisplayName: mc.DisplayName,
+			mcAvatarURL:   mc.AvatarURL,
+			profName:      profName,
+			profAvatar:    profAvatar,
+			tz:            tz,
+			ids:           memberIDs,
+			isBot:         isBot != 0,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	out := []MemberHit{}
+	for _, m := range scanned {
+		if m.userID != string(ids.Me) {
+			if serviceMembers[m.userID] || (hasMe && selfInfo.ghostIDs[m.userID]) {
+				continue
+			}
 		}
 		level := pl.UsersDefault
-		if l, ok := pl.Users[userID]; ok {
+		if l, ok := pl.Users[m.userID]; ok {
 			level = l
 		}
-		local, _, _ := strings.Cut(strings.TrimPrefix(userID, "@"), ":")
-		name := cmp.Or(mc.DisplayName, profName, local)
-		avatar := cmp.Or(mc.AvatarURL, profAvatar)
+		local, _, _ := strings.Cut(strings.TrimPrefix(m.userID, "@"), ":")
+		name := cmp.Or(m.mcDisplayName, m.profName)
+		avatar := cmp.Or(m.mcAvatarURL, m.profAvatar)
+		memberIDs := m.ids
+		tz := m.tz
+		if m.userID == string(ids.Me) {
+			name = cmp.Or(name, selfInfo.name, local)
+			avatar = cmp.Or(avatar, selfInfo.avatarURI)
+			if len(memberIDs) == 0 && len(selfInfo.identifiers) > 0 {
+				memberIDs = selfInfo.identifiers
+			}
+			if tz == "" {
+				tz = selfInfo.timezone
+			}
+		} else {
+			name = cmp.Or(name, local)
+		}
 		out = append(out, MemberHit{
-			UserID:      userID,
+			UserID:      m.userID,
 			Name:        name,
 			DisplayName: name,
 			AvatarURI:   avatar,
-			Membership:  membership,
+			Membership:  m.membership,
 			PowerLevel:  level,
 			IsAdmin:     level >= 50,
-			Identifiers: ids,
+			Identifiers: memberIDs,
 			Timezone:    tz,
-			IsBot:       isBot != 0,
+			IsBot:       m.isBot,
 		})
 	}
-	return out, rows.Err()
+	return out, nil
 }

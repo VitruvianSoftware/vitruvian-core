@@ -260,7 +260,7 @@ public struct ChatInfoPane: View {
             }
 
             if info.isDirect, let member = directOtherMember {
-                ForEach(member.identifiers, id: \.self) { identifier in
+                ForEach(ContactsBridge.displayableIdentifiers(member.identifiers), id: \.self) { identifier in
                     Text(verbatim: ContactsBridge.displayIdentifier(identifier))
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -303,6 +303,20 @@ public struct ChatInfoPane: View {
         }
         guard !letters.isEmpty else { return "?" }
         return String(letters).uppercased()
+    }
+
+    public static func participantDisplayName(for member: Member) -> String {
+        let base = member.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if member.userID == Timeline.meUserID {
+            if base.isEmpty || base.caseInsensitiveCompare("me") == .orderedSame {
+                return String(localized: "You")
+            }
+            if base.localizedCaseInsensitiveContains("(you)") {
+                return base
+            }
+            return String(localized: "\(base) (you)")
+        }
+        return base.isEmpty ? member.userID : base
     }
 
     // MARK: - Filter Bar
@@ -391,23 +405,25 @@ public struct ChatInfoPane: View {
                 }
 
                 ForEach(filteredMembers, id: \.userID) { member in
+                    let participantName = Self.participantDisplayName(for: member)
+                    let displayIdentifiers = ContactsBridge.displayableIdentifiers(member.identifiers)
                     Button {
                         onSelectMember(member)
                     } label: {
                         HStack(spacing: 8) {
                             AvatarView(
                                 path: member.avatarPath,
-                                initials: Self.initials(of: member.name),
-                                seed: member.name,
+                                initials: Self.initials(of: member.name.isEmpty ? participantName : member.name),
+                                seed: member.name.isEmpty ? participantName : member.name,
                                 size: 30
                             )
                             .frame(width: 30, height: 30)
 
                             VStack(alignment: .leading, spacing: 1) {
-                                Text(member.name.isEmpty ? member.userID : member.name)
+                                Text(participantName)
                                     .font(.callout)
                                     .lineLimit(1)
-                                if let firstID = member.identifiers.first {
+                                if let firstID = displayIdentifiers.first {
                                     Text(verbatim: ContactsBridge.displayIdentifier(firstID))
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)

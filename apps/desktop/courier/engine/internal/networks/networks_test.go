@@ -1139,3 +1139,34 @@ func TestTwitterConfigEnablesXBranding(t *testing.T) {
 	require.True(t, nc.(*twitter.TwitterConnector).Config.X)
 	require.Equal(t, "X", nc.GetName().DisplayName)
 }
+
+func TestSlackAndTelegramSyncFullParticipantRosters(t *testing.T) {
+	sl, ok := Get("slack")
+	require.True(t, ok)
+	slSpec, err := sl.Spec()
+	require.NoError(t, err)
+	require.NotNil(t, slSpec.Configure)
+	slNC, err := slSpec.Connector()
+	require.NoError(t, err)
+	slExample, slData, _ := slNC.GetConfig()
+	require.NoError(t, yaml.Unmarshal([]byte(slExample), slData))
+	require.NoError(t, slSpec.Configure(slData))
+	slCfg := slNC.(*slack.SlackConnector).Config
+	require.Equal(t, 10000, slCfg.ParticipantSyncCount)
+	require.False(t, slCfg.ParticipantSyncOnlyOnCreate)
+
+	t.Setenv("COURIER_TELEGRAM_API_ID", "424242")
+	t.Setenv("COURIER_TELEGRAM_API_HASH", "0123456789abcdef0123456789abcdef")
+	tg, ok := Get("telegram")
+	require.True(t, ok)
+	tgSpec, err := tg.Spec()
+	require.NoError(t, err)
+	tgNC, err := tgSpec.Connector()
+	require.NoError(t, err)
+	tgExample, tgData, _ := tgNC.GetConfig()
+	require.NoError(t, yaml.Unmarshal([]byte(tgExample), tgData))
+	require.NoError(t, tgSpec.Configure(tgData))
+	tgCfg := tgNC.(*telegram.TelegramConnector).Config
+	require.Equal(t, 10000, tgCfg.MemberList.MaxInitialSync)
+	require.True(t, tgCfg.MemberList.SkipDeleted)
+}

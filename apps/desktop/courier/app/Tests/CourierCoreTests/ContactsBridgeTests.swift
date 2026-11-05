@@ -44,6 +44,20 @@ final class ContactsBridgeTests: XCTestCase {
 
         // Formats E.164 phone numbers the same way Chat Info does (+1 555-010-0101).
         XCTAssertEqual(ContactsBridge.displayIdentifier("tel:+15550100101"), "+1 555-010-0101")
+        XCTAssertEqual(ContactsBridge.displayIdentifier("telegram:alice_test"), "@alice_test")
+        XCTAssertEqual(ContactsBridge.displayIdentifier("bluesky:alice.bsky.social"), "@alice.bsky.social")
+        XCTAssertTrue(ContactsBridge.isInternalIdentifier("slack-internal:U08JV4QJBF1"))
+        XCTAssertTrue(ContactsBridge.isInternalIdentifier("linkedin:ACoAAB123"))
+        XCTAssertTrue(ContactsBridge.isInternalIdentifier("did:plc:abc123"))
+        XCTAssertEqual(
+            ContactsBridge.displayableIdentifiers([
+                "slack-internal:U08JV4QJBF1",
+                "did:plc:abc123",
+                "bluesky:alice.bsky.social",
+                "mailto:alice@example.com",
+            ]),
+            ["bluesky:alice.bsky.social", "mailto:alice@example.com"]
+        )
     }
 
     func testDeniedAuthorizationDoesNotPromptAndReportsDenied() async throws {
