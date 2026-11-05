@@ -5,6 +5,7 @@
 package sqlite
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -33,10 +34,14 @@ func Open(path string) (*dbutil.Database, error) {
 		return nil, fmt.Errorf("open %s: %w", path, err)
 	}
 	f.Close()
-	uri := fmt.Sprintf("file:%s?_txlock=immediate&_busy_timeout=5000&_journal_mode=WAL&_foreign_keys=on", path)
+	uri := fmt.Sprintf("file:%s?_txlock=immediate&_busy_timeout=5000&_journal_mode=WAL&_synchronous=NORMAL&_foreign_keys=on", path)
 	db, err := dbutil.NewWithDialect(uri, "sqlite3-fk-wal")
 	if err != nil {
 		return nil, fmt.Errorf("open %s: %w", path, err)
+	}
+	if _, err = db.Exec(context.Background(), "PRAGMA temp_store = MEMORY"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("temp_store %s: %w", path, err)
 	}
 	// Narrow files made by an earlier run, or by the user, including the sidecars if they exist.
 	for _, p := range []string{path, path + "-wal", path + "-shm"} {

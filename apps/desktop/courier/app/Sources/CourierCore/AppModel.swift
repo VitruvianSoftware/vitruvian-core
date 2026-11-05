@@ -30,6 +30,12 @@ public final class AppModel: ObservableObject {
     /// Merged chat definitions known to the app, keyed by `mergeID`.
     @Published public var mergedChats: [String: MergedChat] = [:]
 
+    /// Updates `mergedChats` only when the dictionary actually changed, avoiding redundant `objectWillChange` notifications.
+    public func setMergedChats(_ next: [String: MergedChat]) {
+        guard mergedChats != next else { return }
+        mergedChats = next
+    }
+
     /// Whether `roomID` is currently open in the conversation pane: true when `roomID == selectedRoomID`, or when
     /// the selection is a merged chat and `roomID` is one of its member rooms.
     public func isOpen(roomID: String) -> Bool {

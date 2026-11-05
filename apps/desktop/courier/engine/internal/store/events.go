@@ -47,13 +47,12 @@ func IsViewOnceTimer(network string, msgTimerMS int64, roomAfterReadTimerMS int6
 	}
 }
 
-// RoomViewOnceContext returns roomID's network name and its current after_read disappearing timer duration in
-// milliseconds (0 when no after_read timer is active on the room).
-func (s *Store) RoomViewOnceContext(ctx context.Context, roomID string) (network string, roomAfterReadTimerMS int64) {
+// roomAfterReadTimerMS returns roomID's current after_read disappearing timer duration in milliseconds (0 when no
+// after_read timer is active on the room).
+func (s *Store) roomAfterReadTimerMS(ctx context.Context, roomID string) int64 {
 	if s == nil || roomID == "" {
-		return "", 0
+		return 0
 	}
-	_ = s.db.QueryRow(ctx, `SELECT network FROM rooms WHERE room_id = $1`, roomID).Scan(&network)
 	var raw string
 	if err := s.db.QueryRow(ctx, `SELECT content FROM state WHERE room_id = $1 AND type = 'com.beeper.disappearing_timer' AND state_key = ''`, roomID).Scan(&raw); err == nil && raw != "" {
 		var dt struct {
@@ -61,10 +60,44 @@ func (s *Store) RoomViewOnceContext(ctx context.Context, roomID string) (network
 			Timer int64  `json:"timer"`
 		}
 		if json.Unmarshal([]byte(raw), &dt) == nil && dt.Type == "after_read" && dt.Timer > 0 {
-			roomAfterReadTimerMS = dt.Timer
+			return dt.Timer
 		}
 	}
-	return network, roomAfterReadTimerMS
+	return 0
+}
+
+// RoomViewOnceContext returns roomID's network name and its current after_read disappearing timer duration in
+// milliseconds (0 when no after_read timer is active on the room).
+func (s *Store) RoomViewOnceContext(ctx context.Context, roomID string) (network string, roomAfterReadTimerMS int64) {
+	if s == nil || roomID == "" {
+		return "", 0
+	}
+	_ = s.db.QueryRow(ctx, `SELECT network FROM rooms WHERE room_id = $1`, roomID).Scan(&network)
+	return network, s.roomAfterReadTimerMS(ctx, roomID)
+}
+
+// isContentViewOnceWithNetwork reports whether rawContent in roomID (on network, looked up only when empty) carries a
+// view-once after_read timer.
+func (s *Store) isContentViewOnceWithNetwork(ctx context.Context, roomID, network, rawContent string) bool {
+	if !strings.Contains(rawContent, "view_once") && !strings.Contains(rawContent, "after_read") {
+		return false
+	}
+	var c struct {
+		DisappearingTimer *struct {
+			Type  string `json:"type"`
+			Timer int64  `json:"timer"`
+		} `json:"com.beeper.disappearing_timer"`
+	}
+	if json.Unmarshal([]byte(rawContent), &c) != nil || c.DisappearingTimer == nil || c.DisappearingTimer.Type != "after_read" || c.DisappearingTimer.Timer <= 0 {
+		return false
+	}
+	var roomTimerMS int64
+	if network == "" {
+		network, roomTimerMS = s.RoomViewOnceContext(ctx, roomID)
+	} else {
+		roomTimerMS = s.roomAfterReadTimerMS(ctx, roomID)
+	}
+	return IsViewOnceTimer(network, c.DisappearingTimer.Timer, roomTimerMS)
 }
 
 type rawRow struct {
@@ -230,13 +263,19 @@ func extractEvents(ctx context.Context, s *Store, ms *media.Store, roomID string
 	var roomTimerMS int64
 	if s != nil && roomID != "" {
 		ids := make([]string, 0, len(rows))
+		hasViewOnceCandidate := false
 		for _, r := range rows {
 			if r.eventID != "" {
 				ids = append(ids, r.eventID)
 			}
+			if !hasViewOnceCandidate && (strings.Contains(r.content, "after_read") || strings.Contains(r.content, "view_once")) {
+				hasViewOnceCandidate = true
+			}
 		}
 		playedSet, _ = s.MediaPlayedSet(ctx, roomID, ids)
-		network, roomTimerMS = s.RoomViewOnceContext(ctx, roomID)
+		if hasViewOnceCandidate {
+			network, roomTimerMS = s.RoomViewOnceContext(ctx, roomID)
+		}
 	}
 	out := make([]Event, len(rows))
 	for i, r := range rows {

@@ -371,34 +371,34 @@ func (s *Store) ListMergedChats(ctx context.Context) ([]MergedChat, error) {
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	if len(out) == 0 {
+		return []MergedChat{}, nil
+	}
+	idxByMergeID := make(map[string]int, len(out))
 	for i := range out {
-		mrows, err := s.db.Query(ctx, `
-			SELECT mcr.room_id, r.network
-			FROM merged_chat_rooms mcr
-			JOIN rooms r ON r.room_id = mcr.room_id
-			WHERE mcr.merge_id = $1
-			ORDER BY mcr.position ASC, mcr.room_id ASC`, out[i].MergeID)
-		if err != nil {
+		idxByMergeID[out[i].MergeID] = i
+	}
+	mrows, err := s.db.Query(ctx, `
+		SELECT mcr.merge_id, mcr.room_id, r.network
+		FROM merged_chat_rooms mcr
+		JOIN rooms r ON r.room_id = mcr.room_id
+		ORDER BY mcr.merge_id ASC, mcr.position ASC, mcr.room_id ASC`)
+	if err != nil {
+		return nil, err
+	}
+	for mrows.Next() {
+		var mid, rid, net string
+		if err := mrows.Scan(&mid, &rid, &net); err != nil {
+			mrows.Close()
 			return nil, err
 		}
-		for mrows.Next() {
-			var rid, net string
-			if err := mrows.Scan(&rid, &net); err != nil {
-				mrows.Close()
-				return nil, err
-			}
-			out[i].RoomIDs = append(out[i].RoomIDs, rid)
-			out[i].Networks = append(out[i].Networks, net)
-		}
-		if err := mrows.Close(); err != nil {
-			return nil, err
-		}
-		if err := mrows.Err(); err != nil {
-			return nil, err
+		if idx, ok := idxByMergeID[mid]; ok {
+			out[idx].RoomIDs = append(out[idx].RoomIDs, rid)
+			out[idx].Networks = append(out[idx].Networks, net)
 		}
 	}
-	if out == nil {
-		out = []MergedChat{}
+	if err := errors.Join(mrows.Err(), mrows.Close()); err != nil {
+		return nil, err
 	}
 	return out, nil
 }
@@ -411,88 +411,76 @@ func (s *Store) SuggestMergedChats(ctx context.Context) ([]MergeSuggestion, erro
 		roomID      string
 		network     string
 		displayName string
+		chosenName  string
 		identifiers []string
 	}
 
 	rows, err := s.db.Query(ctx, `
-		SELECT r.room_id, r.network, COALESCE(NULLIF(rp.local_name, ''), r.name)
+		SELECT r.room_id,
+		       r.network,
+		       COALESCE(NULLIF(rp.local_name, ''), r.name),
+		       COALESCE(p.display_name, ''),
+		       COALESCE(p.identifiers_json, '[]'),
+		       COALESCE(m.content, '')
 		FROM rooms r
 		LEFT JOIN room_prefs rp ON rp.room_id = r.room_id
+		LEFT JOIN members m ON m.room_id = r.room_id AND m.user_id <> $1
+		LEFT JOIN profiles p ON p.user_id = m.user_id
 		WHERE r.is_direct = 1
 		  AND COALESCE(rp.hidden, 0) = 0
 		  AND NOT EXISTS (SELECT 1 FROM merged_chat_rooms mcr WHERE mcr.room_id = r.room_id)
-		ORDER BY r.created_at ASC, r.room_id ASC`)
+		ORDER BY r.created_at ASC, r.room_id ASC, m.user_id ASC`, string(ids.Me))
 	if err != nil {
 		return nil, err
 	}
 	var cands []roomCandidate
+	idxByRoomID := make(map[string]int)
 	for rows.Next() {
-		var c roomCandidate
-		if err := rows.Scan(&c.roomID, &c.network, &c.displayName); err != nil {
+		var roomID, network, roomName, pName, idsJSON, memberContent string
+		if err := rows.Scan(&roomID, &network, &roomName, &pName, &idsJSON, &memberContent); err != nil {
 			rows.Close()
 			return nil, err
 		}
-		cands = append(cands, c)
+		idx, exists := idxByRoomID[roomID]
+		if !exists {
+			idx = len(cands)
+			idxByRoomID[roomID] = idx
+			cands = append(cands, roomCandidate{
+				roomID:      roomID,
+				network:     network,
+				displayName: strings.TrimSpace(roomName),
+			})
+		}
+		c := &cands[idx]
+		if c.chosenName == "" {
+			if strings.TrimSpace(pName) != "" {
+				c.chosenName = strings.TrimSpace(pName)
+			} else if memberContent != "" {
+				var mc struct {
+					Displayname string `json:"displayname"`
+				}
+				if json.Unmarshal([]byte(memberContent), &mc) == nil && strings.TrimSpace(mc.Displayname) != "" {
+					c.chosenName = strings.TrimSpace(mc.Displayname)
+				}
+			}
+		}
+		var rawIDs []string
+		if idsJSON != "" && idsJSON != "[]" {
+			_ = json.Unmarshal([]byte(idsJSON), &rawIDs)
+		}
+		for _, raw := range rawIDs {
+			if norm := normalizeMergeIdentifier(raw); norm != "" && !slices.Contains(c.identifiers, norm) {
+				c.identifiers = append(c.identifiers, norm)
+			}
+		}
 	}
-	if err := rows.Close(); err != nil {
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
 		return nil, err
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
 	for i := range cands {
-		pRows, err := s.db.Query(ctx, `
-			SELECT COALESCE(p.display_name, ''), COALESCE(p.identifiers_json, '[]'), m.content
-			FROM members m
-			LEFT JOIN profiles p ON p.user_id = m.user_id
-			WHERE m.room_id = $1 AND m.user_id <> $2
-			ORDER BY m.user_id ASC`, cands[i].roomID, string(ids.Me))
-		if err != nil {
-			return nil, err
+		if cands[i].chosenName != "" {
+			cands[i].displayName = cands[i].chosenName
 		}
-		var chosenName string
-		var normIDs []string
-		for pRows.Next() {
-			var pName, idsJSON, memberContent string
-			if err := pRows.Scan(&pName, &idsJSON, &memberContent); err != nil {
-				pRows.Close()
-				return nil, err
-			}
-			if chosenName == "" {
-				if strings.TrimSpace(pName) != "" {
-					chosenName = strings.TrimSpace(pName)
-				} else {
-					var mc struct {
-						Displayname string `json:"displayname"`
-					}
-					if json.Unmarshal([]byte(memberContent), &mc) == nil && strings.TrimSpace(mc.Displayname) != "" {
-						chosenName = strings.TrimSpace(mc.Displayname)
-					}
-				}
-			}
-			var rawIDs []string
-			if idsJSON != "" && idsJSON != "[]" {
-				_ = json.Unmarshal([]byte(idsJSON), &rawIDs)
-			}
-			for _, raw := range rawIDs {
-				if norm := normalizeMergeIdentifier(raw); norm != "" && !slices.Contains(normIDs, norm) {
-					normIDs = append(normIDs, norm)
-				}
-			}
-		}
-		if err := pRows.Close(); err != nil {
-			return nil, err
-		}
-		if err := pRows.Err(); err != nil {
-			return nil, err
-		}
-		if chosenName != "" {
-			cands[i].displayName = chosenName
-		} else {
-			cands[i].displayName = strings.TrimSpace(cands[i].displayName)
-		}
-		cands[i].identifiers = normIDs
 	}
 
 	suggestedRoom := make(map[string]bool, len(cands))

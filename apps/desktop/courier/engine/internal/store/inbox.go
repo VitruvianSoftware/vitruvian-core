@@ -242,53 +242,67 @@ func (s *Store) enrichMergedInboxRows(ctx context.Context, rows []InboxRow) erro
 	if len(mergeIDs) == 0 {
 		return nil
 	}
+	idsJSON, err := json.Marshal(mergeIDs)
+	if err != nil {
+		return err
+	}
 	type mergeAgg struct {
 		name      string
 		avatarURI string
-		bestRow   InboxRow
 		hasBest   bool
 		unread    int
 		mentions  int
 		marked    bool
 	}
 	aggs := make(map[string]*mergeAgg, len(mergeIDs))
-	for _, mid := range mergeIDs {
-		var name, avatarURI string
-		err := s.db.QueryRow(ctx, `SELECT name, avatar_uri FROM merged_chats WHERE merge_id = $1`, mid).Scan(&name, &avatarURI)
-		if errors.Is(err, sql.ErrNoRows) {
-			continue
-		}
-		if err != nil {
+	mcRows, err := s.db.Query(ctx, `SELECT merge_id, name, avatar_uri FROM merged_chats WHERE merge_id IN (SELECT value FROM json_each($1))`, string(idsJSON))
+	if err != nil {
+		return err
+	}
+	for mcRows.Next() {
+		var mid, name, avatarURI string
+		if err := mcRows.Scan(&mid, &name, &avatarURI); err != nil {
+			mcRows.Close()
 			return err
 		}
 		aggs[mid] = &mergeAgg{name: name, avatarURI: avatarURI}
-		mRows, err := s.db.Query(ctx, `SELECT `+inboxColsSQL+`
-			FROM merged_chat_rooms mcr
-			JOIN rooms r ON r.room_id = mcr.room_id
-			`+inboxJoinsSQL+`
-			WHERE mcr.merge_id = $2
-			ORDER BY r.last_ts DESC, r.created_at DESC, r.room_id ASC`, myID, mid)
-		if err != nil {
+	}
+	if err := errors.Join(mcRows.Err(), mcRows.Close()); err != nil {
+		return err
+	}
+	if len(aggs) == 0 {
+		return nil
+	}
+	mRows, err := s.db.Query(ctx, `SELECT mcr.merge_id,
+			(SELECT COUNT(*) FROM events u WHERE `+unreadSQL+`),
+			(SELECT COUNT(*) FROM events u WHERE `+unreadSQL+` AND `+mentionsMeSQL+`),
+			COALESCE(p.marked_unread, 0)
+		FROM merged_chat_rooms mcr
+		JOIN rooms r ON r.room_id = mcr.room_id
+		LEFT JOIN room_prefs p ON p.room_id = r.room_id
+		`+readMarkerJoins+`
+		WHERE mcr.merge_id IN (SELECT value FROM json_each($2))`, myID, string(idsJSON))
+	if err != nil {
+		return err
+	}
+	for mRows.Next() {
+		var mid string
+		var unread, mentions, marked int
+		if err := mRows.Scan(&mid, &unread, &mentions, &marked); err != nil {
+			mRows.Close()
 			return err
 		}
-		for mRows.Next() {
-			mr, scanErr := s.scanInboxRow(mRows)
-			if scanErr != nil {
-				mRows.Close()
-				return scanErr
-			}
-			agg := aggs[mid]
-			if !agg.hasBest {
-				agg.bestRow = mr
-				agg.hasBest = true
-			}
-			agg.unread += mr.Unread
-			agg.mentions += mr.UnreadMentions
-			agg.marked = agg.marked || mr.MarkedUnread
+		agg, ok := aggs[mid]
+		if !ok {
+			continue
 		}
-		if err := errors.Join(mRows.Err(), mRows.Close()); err != nil {
-			return err
-		}
+		agg.hasBest = true
+		agg.unread += unread
+		agg.mentions += mentions
+		agg.marked = agg.marked || marked == 1
+	}
+	if err := errors.Join(mRows.Err(), mRows.Close()); err != nil {
+		return err
 	}
 	for i := range rows {
 		mid := rows[i].MergeID

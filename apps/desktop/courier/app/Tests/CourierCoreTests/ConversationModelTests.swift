@@ -2865,4 +2865,14 @@ final class ConversationThreadUnreadTests: XCTestCase {
         XCTAssertEqual(h.app.pendingMessage?.roomID, "!a")
         XCTAssertEqual(h.app.pendingMessage?.eventID, "$far1")
     }
+
+    func testFastMessageLookupByIDAndReply() async throws {
+        let h = try await start()
+        try await waitUntil { h.conversation.items.count >= 3 }
+        XCTAssertNotNil(h.conversation.message("$5"))
+        XCTAssertNil(h.conversation.message("$nonexistent"))
+
+        h.conversation.reply(to: "$5")
+        XCTAssertEqual(h.conversation.composer.replyTarget?.eventID, "$5")
+    }
 }

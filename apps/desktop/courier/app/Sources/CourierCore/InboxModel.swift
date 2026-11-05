@@ -146,7 +146,18 @@ public final class InboxModel: ObservableObject {
     public static let maxRecentlyViewed = 20
 
     /// The chats shown, in the engine's order for `query`.
-    @Published public private(set) var rows: [InboxRow] = []
+    @Published public private(set) var rows: [InboxRow] = [] {
+        didSet {
+            var map: [String: InboxRow] = [:]
+            map.reserveCapacity(rows.count * 2)
+            for row in rows {
+                if map[row.id] == nil { map[row.id] = row }
+                if map[row.roomID] == nil { map[row.roomID] = row }
+            }
+            cachedRowsByID = map
+        }
+    }
+    private var cachedRowsByID: [String: InboxRow] = [:]
     /// Most-recently-viewed chat room IDs (newest first), used by `DockMenuModel` for "Recent Chats".
     @Published public private(set) var recentlyViewedRoomIDs: [String] = []
     /// Whether the inbox has been read at least once from the engine that is up or was.
@@ -175,7 +186,7 @@ public final class InboxModel: ObservableObject {
     /// Known merged chats keyed by `mergeID` (`merge:xyz`), owned by `AppModel.mergedChats`.
     public var mergedChats: [String: MergedChat] {
         get { appModel.mergedChats }
-        set { appModel.mergedChats = newValue }
+        set { appModel.setMergedChats(newValue) }
     }
 
     /// The open chat's row was looked up because the list doesn't have it: its unread count is known only now,
@@ -371,7 +382,7 @@ public final class InboxModel: ObservableObject {
 
     /// The list's row of a chat, else the open chat's looked-up row.
     private func knownRow(_ roomID: String) -> InboxRow? {
-        rows.first { $0.id == roomID || $0.roomID == roomID }
+        cachedRowsByID[roomID]
             ?? lookedUpRow.flatMap { ($0.id == roomID || $0.roomID == roomID) ? $0 : nil }
     }
 
@@ -409,7 +420,7 @@ public final class InboxModel: ObservableObject {
         lookedUpRow = nil
         rowLookup = nil
         guard let roomID, !roomID.hasPrefix("merge:"),
-              !rows.contains(where: { $0.id == roomID || $0.roomID == roomID }),
+              cachedRowsByID[roomID] == nil,
               let client = appModel.client else { return }
         lookupSerial += 1
         let serial = lookupSerial
@@ -433,7 +444,7 @@ public final class InboxModel: ObservableObject {
             if let merged = mergedChats[roomID] {
                 onOpenMergedChat(merged)
                 resolved = merged.mergeID
-            } else if let row = rows.first(where: { $0.id == roomID }), !row.mergeID.isEmpty,
+            } else if let row = cachedRowsByID[roomID], !row.mergeID.isEmpty,
                       let merged = mergedChats[row.mergeID] {
                 onOpenMergedChat(merged)
                 resolved = merged.mergeID
@@ -1336,12 +1347,7 @@ public final class InboxModel: ObservableObject {
     }
 
     private var rowsByID: [String: InboxRow] {
-        var map: [String: InboxRow] = [:]
-        for row in rows {
-            if map[row.id] == nil { map[row.id] = row }
-            if map[row.roomID] == nil { map[row.roomID] = row }
-        }
-        return map
+        cachedRowsByID
     }
 
     /// Expands any merged row ID (`merge:...`, or a row with a non-empty `mergeID`) to all of its member room IDs
@@ -1518,22 +1524,34 @@ public final class InboxModel: ObservableObject {
         if collected.contains(where: { !$0.mergeID.isEmpty || $0.roomID.hasPrefix("merge:") }) || !mergedChats.isEmpty {
             if let merges: MergeListResult = try? await client.call("merge.list", Empty()),
                client === appModel.client, generation == queryGeneration {
-                mergedChats = Dictionary(
+                let nextMerged = Dictionary(
                     merges.mergedChats.map { ($0.mergeID, $0) },
                     uniquingKeysWith: { first, _ in first }
                 )
+                if nextMerged != mergedChats {
+                    mergedChats = nextMerged
+                }
             }
         }
+        let deduped: [InboxRow]
         if query.space.hasPrefix("account:") {
-            rows = collected.map { var r = $0; r.mergeID = ""; return r }
+            deduped = collected.map { var r = $0; r.mergeID = ""; return r }
         } else {
-            rows = Self.collapseMergedRows(collected, mergedChats: mergedChats)
+            deduped = Self.collapseMergedRows(collected, mergedChats: mergedChats)
+        }
+        if rows != deduped {
+            rows = deduped
         }
         nextCursor = cursor
-        hasMore = cursor != nil
+        let nextHasMore = cursor != nil
+        if hasMore != nextHasMore {
+            hasMore = nextHasMore
+        }
         firstPageOnly = false
         listVersion += 1
-        isLoaded = true
+        if !isLoaded {
+            isLoaded = true
+        }
         return true
     }
 
@@ -1800,7 +1818,9 @@ public final class InboxModel: ObservableObject {
 
     /// Replaces the cached merged chats dictionary (used by tests and `merge.*` updates).
     public func setMergedChats(_ chats: [MergedChat]) {
-        mergedChats = Dictionary(chats.map { ($0.mergeID, $0) }, uniquingKeysWith: { first, _ in first })
+        let next = Dictionary(chats.map { ($0.mergeID, $0) }, uniquingKeysWith: { first, _ in first })
+        guard mergedChats != next else { return }
+        mergedChats = next
     }
 
     /// Opens `MergedChatEditorSheet` for creating a merge starting with `row` or editing an existing merged chat.
