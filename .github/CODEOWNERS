@@ -26,6 +26,7 @@
 /tools/ @VitruvianSoftware/platform-team
 /packages/design-system/ @VitruvianSoftware/platform-team
 /packages/design-system-android/ @VitruvianSoftware/platform-team
+/packages/orchestrator-core/ @VitruvianSoftware/platform-team
 /packages/pulumi/ @VitruvianSoftware/platform-team
 /tools/agent-guard/ @VitruvianSoftware/platform-team
 /apps/cli/devx/ @VitruvianSoftware/devx-team @VitruvianSoftware/platform-team
