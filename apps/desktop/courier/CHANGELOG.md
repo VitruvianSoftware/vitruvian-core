@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.7](https://github.com/VitruvianSoftware/vitruvian-core/compare/courier-v0.3.6...courier-v0.3.7) (2026-11-05)
+
+
+### Performance Improvements
+
+* **courier:** eliminate store N+1 queries, WAL fsync overhead, and redundant SwiftUI redraws ([#4333](https://github.com/VitruvianSoftware/vitruvian-core/issues/4333)) ([f836e60](https://github.com/VitruvianSoftware/vitruvian-core/commit/f836e6051b741c5062026fa3f0108ebbfee32b7c))
+
 ## [0.3.6](https://github.com/VitruvianSoftware/vitruvian-core/compare/courier-v0.3.5...courier-v0.3.6) (2026-11-04)
 
 
