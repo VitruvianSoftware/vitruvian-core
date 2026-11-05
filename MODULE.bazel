@@ -812,6 +812,32 @@ bazel_dep(name = "rules_kotlin", version = "2.3.20")
 # Force a transitive resolution of rules_android to pick up Bazel 9 fixes
 bazel_dep(name = "rules_android", version = "0.7.3")
 
+# rules_android 0.7.3 ships its `rules_android_maven` repo UNPINNED (its
+# lock_file line is commented out), so coursier resolves and downloads those
+# jars itself at fetch time, outside Bazel's downloader: tools/downloader.cfg
+# cannot redirect them. On 2026-11-05 Maven Central answered HTTP 429 for one
+# of them (org.robolectric:nativeruntime-dist-compat:1.0.16) for hours, from CI
+# and from a laptop, and every merge-queue trial that analysed an Android
+# target failed. Google's official Maven Central mirror served the same file.
+#
+# A root `maven.install` with the same name overrides rules_android's settings,
+# and its `repositories` REPLACE rules_android's list (measured: with only the
+# mirror listed, coursier tried nothing else). So the full list is spelled out:
+# Google Maven first (androidx and com.android.tools live only there), then
+# Google's mirror of Maven Central, then Maven Central itself as the last
+# resort. rules_android's two non-default settings are repeated verbatim.
+# Drop this block once rules_android pins the repo.
+maven.install(
+    name = "rules_android_maven",
+    aar_import_bzl_label = "@rules_android//rules:rules.bzl",
+    repositories = [
+        "https://maven.google.com",
+        "https://maven-central.storage-download.googleapis.com/maven2",
+        "https://repo1.maven.org/maven2",
+    ],
+    use_starlark_android_rules = True,
+)
+
 # Android NDK, so an APK can be built for the ABIs a DEVICE uses rather than
 # the ABI of whichever machine happened to build it.
 #
