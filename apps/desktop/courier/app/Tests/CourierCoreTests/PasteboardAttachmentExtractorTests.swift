@@ -172,4 +172,62 @@ final class PasteboardAttachmentExtractorTests: XCTestCase {
             ).isEmpty
         )
     }
+
+    func testWriteImageDataSniffsMagicBytesAndPrunesStaleTempDirectories() throws {
+        let image = makeTestImage(width: 10, height: 10)
+        let tiffData = try XCTUnwrap(image.tiffRepresentation)
+
+        let oldDate = Date(timeIntervalSince1970: 1_700_000_000)
+        let oldURL = try XCTUnwrap(
+            PasteboardAttachmentExtractor.writeImageData(
+                tiffData,
+                preferredExtension: "png",
+                tempDirectory: tempDir,
+                now: oldDate
+            )
+        )
+        XCTAssertEqual(oldURL.pathExtension, "png")
+        try FileManager.default.setAttributes(
+            [.modificationDate: oldDate, .creationDate: oldDate],
+            ofItemAtPath: oldURL.deletingLastPathComponent().path
+        )
+
+        let recentDate = oldDate.addingTimeInterval(48 * 3600)
+        let recentURL = try XCTUnwrap(
+            PasteboardAttachmentExtractor.writeImageData(
+                tiffData,
+                preferredExtension: "tiff",
+                tempDirectory: tempDir,
+                now: recentDate
+            )
+        )
+        XCTAssertEqual(recentURL.pathExtension, "png")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: recentURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: oldURL.deletingLastPathComponent().path))
+    }
+
+    func testTimeFormatPreferenceCachesFormattersAndFlushesOnLocaleChange() {
+        let sampleDate = Date(timeIntervalSince1970: 1_762_320_000)
+        let tz = TimeZone(identifier: "UTC")!
+        let locale = Locale(identifier: "en_US")
+
+        let first = TimeFormatPreference.twelveHour.formatTime(sampleDate, locale: locale, timeZone: tz)
+        let second = TimeFormatPreference.twelveHour.formatTime(sampleDate, locale: locale, timeZone: tz)
+        XCTAssertEqual(first, second)
+
+        NotificationCenter.default.post(name: NSLocale.currentLocaleDidChangeNotification, object: nil)
+        let afterFlush = TimeFormatPreference.twentyFourHour.formatDateTime(sampleDate, locale: locale, timeZone: tz)
+        XCTAssertFalse(afterFlush.isEmpty)
+    }
+
+    func testRichTextLayoutMemoizesBlocks() {
+        let rich = RichText(
+            text: "Hello world\nSecond line",
+            entities: [TextEntity(kind: .bold, offset: 0, length: 5)]
+        )
+        let first = RichTextLayout.blocks(of: rich)
+        let second = RichTextLayout.blocks(of: rich)
+        XCTAssertEqual(first, second)
+        XCTAssertEqual(first.count, 1)
+    }
 }

@@ -108,6 +108,7 @@ struct ThreadPane: View {
             ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
+            let rowActions = actions
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 0) {
@@ -119,11 +120,11 @@ struct ThreadPane: View {
                         ForEach(thread.items) { item in
                             TimelineItemView(item: item, isSelected: focus.paneSelection == item.id,
                                              isHighlighted: thread.highlightedMessageID == item.id,
-                                             showsSent: false, actions: actions, ui: ui)
+                                             showsSent: false, actions: rowActions, ui: ui)
                                 .id(item.id)
                         }
                     }
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, 14)
                     .padding(.bottom, 8)
                 }
                 .defaultScrollAnchor(.bottom)

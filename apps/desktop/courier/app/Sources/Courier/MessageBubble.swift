@@ -66,6 +66,8 @@ struct MessageActions {
     var timeFormat: TimeFormatPreference = .system
     /// Whether message timestamps are shown in the timeline header (`ComposerPreferences.showMessageTimestamps`).
     var showMessageTimestamps = true
+    /// Shared composer preferences instance to avoid per-row `UserDefaults` allocation in `FileAttachmentChip`.
+    var composerPreferences: ComposerPreferences? = nil
     /// Optional appearance preferences for theme bubble colours, font scaling, and name/avatar redaction.
     var appearance: AppearancePreferences? = nil
     /// Per-message inline translation disposition (`MessageTranslationRowView`).
@@ -385,8 +387,8 @@ struct MessageRowView: View {
         }
         .padding(.top, message.startsGroup ? 10 : 2)
         .padding(.vertical, 1)
-        .background(isSelected ? Color.accentColor.opacity(0.10) : .clear)
-        .background(Color.yellow.opacity(0.28 * highlight))
+        .background(RoundedRectangle(cornerRadius: 8).fill(isSelected ? Color.accentColor.opacity(0.10) : .clear))
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.yellow.opacity(0.28 * highlight)))
         .onChange(of: isHighlighted, initial: true) { _, on in fadeHighlight(on) }
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
@@ -501,7 +503,7 @@ struct MessageRowView: View {
         let isRedacted = resolvedAppearance?.redactNamesAndPictures ?? false
         if message.startsGroup {
             AvatarView(path: message.senderAvatarPath, initials: InboxRow.initials(of: message.senderName),
-                       seed: message.senderName)
+                       seed: message.senderName, size: Self.avatarSize)
                 .blur(radius: isRedacted ? 6 : 0)
                 .clipShape(Circle())
                 .frame(width: Self.avatarSize, height: Self.avatarSize)
@@ -706,7 +708,7 @@ struct MessageRowView: View {
                 if InlinePDFView.canDisplay(message) {
                     InlinePDFView(message: message)
                 } else {
-                    FileAttachmentChip(message: message)
+                    FileAttachmentChip(message: message, preferences: actions.composerPreferences)
                 }
                 caption
             case .location:
@@ -1033,7 +1035,7 @@ enum LinkedText {
     private static let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
 
     static func attributed(_ text: String, now: Date = Date(), detectDates: Bool = true) -> AttributedString {
-        let cacheKey = "\(detectDates ? 1 : 0):\(Int(now.timeIntervalSince1970 / 60)):\(text)" as NSString
+        let cacheKey = "\(detectDates ? 1 : 0):\(Int(now.timeIntervalSince1970 / 900)):\(text)" as NSString
         if let known = cache.object(forKey: cacheKey) { return known.value }
         var result = AttributedString(text)
         let whole = NSRange(text.startIndex..., in: text)

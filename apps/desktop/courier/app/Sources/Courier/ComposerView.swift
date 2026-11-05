@@ -314,7 +314,8 @@ struct ComposerView: View {
         } label: {
             Image(systemName: "plus.circle")
                 .font(.title3)
-                .frame(width: 28, height: 28)
+                .frame(width: 28, height: ComposerTextView.minimumHeight)
+                .contentShape(Rectangle())
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
@@ -346,6 +347,8 @@ struct ComposerView: View {
             Image(systemName: "arrow.up.circle.fill")
                 .font(.system(size: 26))
                 .foregroundStyle(composer.canSend ? Color.accentColor : Color.secondary.opacity(0.5))
+                .frame(width: 28, height: ComposerTextView.minimumHeight)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(!composer.canSend)
@@ -397,7 +400,8 @@ struct ComposerView: View {
         } label: {
             Image(systemName: "face.smiling")
                 .font(.title3)
-                .frame(width: 28, height: 28)
+                .frame(width: 28, height: ComposerTextView.minimumHeight)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(String(localized: "Emoji & Symbols (⌃⌘Space)"))
@@ -411,7 +415,8 @@ struct ComposerView: View {
         } label: {
             Image(systemName: "mic")
                 .font(.title3)
-                .frame(width: 28, height: 28)
+                .frame(width: 28, height: ComposerTextView.minimumHeight)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(composer.roomID == nil)
@@ -431,7 +436,8 @@ struct ComposerView: View {
                     RoundedRectangle(cornerRadius: 4)
                         .strokeBorder(Color.primary.opacity(0.65), lineWidth: 1.2)
                 )
-                .frame(width: 28, height: 28)
+                .frame(width: 28, height: ComposerTextView.minimumHeight)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(!composer.canSendGIF)
@@ -448,7 +454,8 @@ struct ComposerView: View {
         } label: {
             Image(systemName: "sparkles.rectangle.stack")
                 .font(.title3)
-                .frame(width: 28, height: 28)
+                .frame(width: 28, height: ComposerTextView.minimumHeight)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(!composer.canSendSticker)
@@ -465,7 +472,8 @@ struct ComposerView: View {
         } label: {
             Image(systemName: "paperclip")
                 .font(.title3)
-                .frame(width: 28, height: 28)
+                .frame(width: 28, height: ComposerTextView.minimumHeight)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(composer.roomID == nil)
@@ -479,7 +487,8 @@ struct ComposerView: View {
         } label: {
             Image(systemName: "clock.arrow.circlepath")
                 .font(.title3)
-                .frame(width: 28, height: 28)
+                .frame(width: 28, height: ComposerTextView.minimumHeight)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(!composer.canSchedule || menus.sendLater == nil)
@@ -799,7 +808,7 @@ struct ComposerTextView: NSViewRepresentable {
         textView.font = PlainTextView.baseFont
         textView.textColor = .labelColor
         textView.typingAttributes = PlainTextView.baseAttributes
-        textView.textContainerInset = NSSize(width: 6, height: 7)
+        textView.textContainerInset = NSSize(width: 6, height: 8)
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = [.width]
@@ -1229,7 +1238,7 @@ final class PlainTextView: NSTextView {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             .subtracting([.capsLock, .numericPad, .function])
         let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
-        return flags == [.command] && (key == "v" || event.keyCode == 0x09)
+        return flags == [.command] && key == "v"
     }
 
     static func formatKind(for event: NSEvent) -> TextEntity.Kind? {

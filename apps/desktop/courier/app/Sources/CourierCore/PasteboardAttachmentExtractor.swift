@@ -66,8 +66,8 @@ public enum PasteboardAttachmentExtractor {
         return [savedURL]
     }
 
-    /// Materializes raw image bytes (converting TIFF/HEIC bitmaps to PNG when needed) into a uniquely-located
-    /// temporary file with a clean `"Pasted Image <timestamp>.<ext>"` filename.
+    /// Materializes raw image bytes (converting TIFF/HEIC/unrecognized bitmaps to PNG when needed) into a
+    /// uniquely-located temporary file with a clean `"Pasted Image <timestamp>.<ext>"` filename.
     public static func writeImageData(
         _ data: Data,
         preferredExtension: String = "png",
@@ -75,25 +75,56 @@ public enum PasteboardAttachmentExtractor {
         now: Date = Date()
     ) -> URL? {
         guard !data.isEmpty else { return nil }
-        let ext = preferredExtension.lowercased()
-        if ext == "tiff" || ext == "tif" || ext == "heic" {
-            if let rep = NSBitmapImageRep(data: data),
-               let pngData = rep.representation(using: .png, properties: [:]),
-               !pngData.isEmpty {
-                return writeTemporaryImage(
-                    data: pngData,
-                    fileExtension: "png",
-                    tempDirectory: tempDirectory,
-                    now: now
-                )
-            }
+        if let sniffedExt = sniffDirectImageExtension(data) {
+            return writeTemporaryImage(
+                data: data,
+                fileExtension: sniffedExt,
+                tempDirectory: tempDirectory,
+                now: now
+            )
         }
+        if let rep = NSBitmapImageRep(data: data),
+           let pngData = rep.representation(using: .png, properties: [:]),
+           !pngData.isEmpty {
+            return writeTemporaryImage(
+                data: pngData,
+                fileExtension: "png",
+                tempDirectory: tempDirectory,
+                now: now
+            )
+        }
+        let ext = preferredExtension.lowercased()
         return writeTemporaryImage(
             data: data,
             fileExtension: ext.isEmpty ? "png" : ext,
             tempDirectory: tempDirectory,
             now: now
         )
+    }
+
+    /// Detects PNG, JPEG, GIF, or WebP from magic bytes so raw bytes keep their exact format and any other
+    /// container (TIFF, HEIC, BMP) is transcoded to PNG.
+    private static func sniffDirectImageExtension(_ data: Data) -> String? {
+        let bytes = [UInt8](data.prefix(12))
+        if bytes.count >= 8,
+           bytes[0] == 0x89, bytes[1] == 0x50, bytes[2] == 0x4E, bytes[3] == 0x47,
+           bytes[4] == 0x0D, bytes[5] == 0x0A, bytes[6] == 0x1A, bytes[7] == 0x0A {
+            return "png"
+        }
+        if bytes.count >= 3, bytes[0] == 0xFF, bytes[1] == 0xD8, bytes[2] == 0xFF {
+            return "jpg"
+        }
+        if bytes.count >= 6,
+           bytes[0] == 0x47, bytes[1] == 0x49, bytes[2] == 0x46, bytes[3] == 0x38,
+           (bytes[4] == 0x37 || bytes[4] == 0x39), bytes[5] == 0x61 {
+            return "gif"
+        }
+        if bytes.count >= 12,
+           bytes[0] == 0x52, bytes[1] == 0x49, bytes[2] == 0x46, bytes[3] == 0x46,
+           bytes[8] == 0x57, bytes[9] == 0x45, bytes[10] == 0x42, bytes[11] == 0x50 {
+            return "webp"
+        }
+        return nil
     }
 
     private static func fileURLs(on pasteboard: NSPasteboard) -> [URL] {
@@ -180,9 +211,9 @@ public enum PasteboardAttachmentExtractor {
         tempDirectory: URL,
         now: Date
     ) -> URL? {
-        let baseDir = tempDirectory
-            .appendingPathComponent("Courier-Pasted-Images", isDirectory: true)
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let rootDir = tempDirectory.appendingPathComponent("Courier-Pasted-Images", isDirectory: true)
+        pruneStaleDirectories(in: rootDir, now: now)
+        let baseDir = rootDir.appendingPathComponent(UUID().uuidString, isDirectory: true)
         do {
             try FileManager.default.createDirectory(at: baseDir, withIntermediateDirectories: true)
             let fileURL = baseDir.appendingPathComponent(fileName(for: now, fileExtension: fileExtension))
@@ -190,6 +221,25 @@ public enum PasteboardAttachmentExtractor {
             return fileURL
         } catch {
             return nil
+        }
+    }
+
+    private static func pruneStaleDirectories(in rootDir: URL, now: Date) {
+        let fm = FileManager.default
+        guard let children = try? fm.contentsOfDirectory(
+            at: rootDir,
+            includingPropertiesForKeys: [.creationDateKey, .contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return
+        }
+        let cutoff = now.addingTimeInterval(-24 * 3600)
+        for child in children {
+            guard let values = try? child.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey]),
+                  let date = values.contentModificationDate ?? values.creationDate,
+                  date < cutoff
+            else { continue }
+            try? fm.removeItem(at: child)
         }
     }
 

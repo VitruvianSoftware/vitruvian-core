@@ -284,6 +284,20 @@ struct PendingAttachmentChip: View {
     var network: String = ""
     let remove: () -> Void
 
+    nonisolated(unsafe) private static let previewCache: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.countLimit = 128
+        return cache
+    }()
+    nonisolated(unsafe) private static let iconCache: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.countLimit = 128
+        return cache
+    }()
+
+    @State private var loadedPreview: NSImage?
+    @State private var loadedIcon: NSImage?
+
     private var exceedsNetworkLimit: Bool {
         guard let maxSizeBytes, maxSizeBytes > 0 else { return false }
         return attachment.size > maxSizeBytes
@@ -298,26 +312,37 @@ struct PendingAttachmentChip: View {
         return String(localized: "Exceeds \(limitText) limit")
     }
 
-    private var imagePreview: NSImage? {
-        guard attachment.url.isFileURL else { return nil }
+    private var isImageAttachment: Bool {
+        guard attachment.url.isFileURL else { return false }
         let ext = attachment.url.pathExtension.lowercased()
-        guard let utType = UTType(filenameExtension: ext), utType.conforms(to: .image) else {
-            return nil
-        }
-        return NSImage(contentsOf: attachment.url)
+        guard let utType = UTType(filenameExtension: ext) else { return false }
+        return utType.conforms(to: .image)
+    }
+
+    private var effectivePreview: NSImage? {
+        loadedPreview ?? Self.previewCache.object(forKey: attachment.url.path as NSString)
+    }
+
+    private var effectiveIcon: NSImage? {
+        loadedIcon ?? Self.iconCache.object(forKey: attachment.url.path as NSString)
     }
 
     var body: some View {
         HStack(spacing: 8) {
-            if let preview = imagePreview {
+            if let preview = effectivePreview {
                 Image(nsImage: preview)
                     .resizable()
                     .scaledToFill()
                     .frame(width: 32, height: 32)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
-            } else {
-                Image(nsImage: NSWorkspace.shared.icon(forFile: attachment.url.path))
+            } else if let icon = effectiveIcon {
+                Image(nsImage: icon)
                     .resizable()
+                    .frame(width: 28, height: 28)
+            } else {
+                Image(systemName: isImageAttachment ? "photo" : "doc")
+                    .font(.system(size: 16))
+                    .foregroundStyle(.secondary)
                     .frame(width: 28, height: 28)
             }
             VStack(alignment: .leading, spacing: 1) {
@@ -357,6 +382,33 @@ struct PendingAttachmentChip: View {
             RoundedRectangle(cornerRadius: 8)
                 .strokeBorder(exceedsNetworkLimit ? Color.orange.opacity(0.6) : Color.clear, lineWidth: 1)
         )
+        .task(id: attachment.url) {
+            loadedPreview = nil
+            loadedIcon = nil
+            let key = attachment.url.path as NSString
+            if isImageAttachment {
+                if let cached = Self.previewCache.object(forKey: key) {
+                    loadedPreview = cached
+                    return
+                }
+                let url = attachment.url
+                let decoded = await Task.detached(priority: .userInitiated) {
+                    NSImage(contentsOf: url)
+                }.value
+                if let decoded {
+                    Self.previewCache.setObject(decoded, forKey: key)
+                    loadedPreview = decoded
+                    return
+                }
+            }
+            if let cachedIcon = Self.iconCache.object(forKey: key) {
+                loadedIcon = cachedIcon
+            } else {
+                let icon = NSWorkspace.shared.icon(forFile: attachment.url.path)
+                Self.iconCache.setObject(icon, forKey: key)
+                loadedIcon = icon
+            }
+        }
         .accessibilityElement(children: .contain)
     }
 }
@@ -450,15 +502,17 @@ public struct FileAttachmentChip: View {
         String(localized: "Not downloaded yet"),
     ]
 
+    nonisolated(unsafe) private static let defaultPreferences = ComposerPreferences()
+
     public init(
         message: TimelineMessage,
         isDownloading: Bool = false,
-        preferences: ComposerPreferences = ComposerPreferences(),
+        preferences: ComposerPreferences? = nil,
         onDownload: ((TimelineMessage) -> Void)? = nil
     ) {
         self.message = message
         self.isDownloading = isDownloading
-        self.preferences = preferences
+        self.preferences = preferences ?? Self.defaultPreferences
         self.onDownload = onDownload
     }
 

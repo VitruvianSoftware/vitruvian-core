@@ -5,6 +5,12 @@ import AppKit
 import CourierCore
 import SwiftUI
 
+/// Tracks the row under the pointer without invalidating the entire `InboxList` body on every row transition.
+@MainActor
+private final class InboxHoverTracker {
+    var roomID: String?
+}
+
 /// The chat list: the banners, a header (the space's name with Filter and Display Options, or while selecting, how
 /// many are selected), pinned chats, the chats, and while selecting the actions for them. Toasts sit at its
 /// bottom.
@@ -15,11 +21,17 @@ struct InboxList: View {
     @ObservedObject var composerPreferences: ComposerPreferences = ComposerPreferences()
     @ObservedObject var ui: InboxUI
     @Environment(\.openDetachedWindow) private var openDetachedWindow
-    /// The chat the pointer is over: `x` selects it, and it shows the hover button.
-    @State private var hovered: String?
+    @Environment(\.appearancePreferences) private var appearanceEnv
+    /// The chat the pointer is over: `x` selects it, and `InboxRowView` tracks its own hover state locally.
+    @State private var hoverTracker = InboxHoverTracker()
 
     var rowStyle: RowStyle {
-        RowStyle(preferences, composerPreferences: composerPreferences)
+        RowStyle(
+            preferences,
+            composerPreferences: composerPreferences,
+            redactNamesAndPictures: appearanceEnv?.redactNamesAndPictures ?? false,
+            fontSizeScale: appearanceEnv?.fontSizeScale ?? .default
+        )
     }
 
     func formattedRowTimestamp(
@@ -142,7 +154,13 @@ struct InboxList: View {
                             mergedNetworks: inbox.mergedNetworks(for: row),
                             now: timeline.date, style: style,
                             isSelecting: inbox.isSelecting, isSelected: inbox.selection.contains(row.id),
-                            isHovered: hovered == row.id,
+                            onHoverChange: { inside in
+                                if inside {
+                                    hoverTracker.roomID = row.id
+                                } else if hoverTracker.roomID == row.id {
+                                    hoverTracker.roomID = nil
+                                }
+                            },
                             hoverAct: { hoverAct(row, style.hoverAction) },
                             accept: { Task { await inbox.acceptRequest(ids: [row.id]) } },
                             decline: { Task { await inbox.declineRequest(ids: [row.id]) } }) {
@@ -150,9 +168,6 @@ struct InboxList: View {
                                                 showsKeys: false)
                             }
                             .tag(row.id)
-                            .onHover { inside in
-                                if inside { hovered = row.id } else if hovered == row.id { hovered = nil }
-                            }
                             // Within the last 20 chats loaded: read the next page.
                             .onAppear { inbox.rowAppeared(at: index + offset) }
                     }
@@ -208,13 +223,13 @@ struct InboxList: View {
         switch (press.characters.lowercased(), modifiers) {
         case ("e", []):
             // Selecting: the selection. No chat open: the chat the pointer is on (Ruling 32).
-            let ids = inbox.plainKeyTargets(pointedAt: hovered)
+            let ids = inbox.plainKeyTargets(pointedAt: hoverTracker.roomID)
             guard !ids.isEmpty else { return .ignored }
             let unarchive = inbox.targetRows(ids).allSatisfy(\.archived)
             Task { await inbox.archive(!unarchive, ids: ids) }
             return .handled
         case ("x", []):
-            guard let hovered else { return .ignored }
+            guard let hovered = hoverTracker.roomID else { return .ignored }
             inbox.toggleSelected(hovered)
             return .handled
         case ("j", [.shift]):

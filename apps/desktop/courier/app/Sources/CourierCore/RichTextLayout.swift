@@ -48,11 +48,36 @@ public enum RichTextLayout {
         }
     }
 
+    private final class CacheKey: NSObject {
+        let rich: RichText
+        init(_ rich: RichText) { self.rich = rich }
+        override var hash: Int { rich.hashValue }
+        override func isEqual(_ object: Any?) -> Bool {
+            guard let other = object as? CacheKey else { return false }
+            return rich == other.rich
+        }
+    }
+
+    private final class BlocksBox {
+        let blocks: [Block]
+        init(_ blocks: [Block]) { self.blocks = blocks }
+    }
+
+    nonisolated(unsafe) private static let blocksCache: NSCache<CacheKey, BlocksBox> = {
+        let cache = NSCache<CacheKey, BlocksBox>()
+        cache.countLimit = 2000
+        return cache
+    }()
+
     /// The blocks of `rich`, in order. A list's lines are its items; an ordered list counts from 1 (the protocol
     /// keeps no start number, so `<ol start=N>` from another app reads from 1). A code block's lines are plain runs.
     public static func blocks(of rich: RichText) -> [Block] {
         let text = rich.text as NSString
         guard text.length > 0 else { return [] }
+        let key = CacheKey(rich)
+        if let cached = blocksCache.object(forKey: key) {
+            return cached.blocks
+        }
         var lines: [NSRange] = []
         var start = 0
         for index in 0 ..< text.length where text.character(at: index) == 0x0A {
@@ -89,6 +114,7 @@ public enum RichTextLayout {
             currentLines.append(runs)
         }
         flush()
+        blocksCache.setObject(BlocksBox(blocks), forKey: key)
         return blocks
     }
 

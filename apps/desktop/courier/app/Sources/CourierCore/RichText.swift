@@ -5,7 +5,7 @@ import Foundation
 
 /// A message's text and its formatting ranges, as the composer makes them and the engine takes them: plain text, with
 /// ranges in UTF-16 code units. Typed characters are never formatting: there is no Markdown.
-public struct RichText: Equatable, Sendable {
+public struct RichText: Equatable, Hashable, Sendable {
     public var text: String
     /// In `TextEntity.precedes` order.
     public var entities: [TextEntity]

@@ -1,6 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import AppKit
 import CourierCore
 import SwiftUI
 
@@ -21,8 +22,18 @@ struct PinnedStrip: View {
                            isSelected: inbox.isSelecting && inbox.selection.contains(row.id),
                            showsBadge: inbox.preferences.showNetworkIcons,
                            tinted: inbox.preferences.colorNetworkIcons)
-                    .onTapGesture(count: 2) { doubleClick(row) }
-                    .onTapGesture { click(row) }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        let flags = NSEvent.modifierFlags
+                        let isSelectingOrModified = inbox.isSelecting
+                            || flags.contains(.command)
+                            || flags.contains(.shift)
+                        if !isSelectingOrModified, (NSApp.currentEvent?.clickCount ?? 1) >= 2 {
+                            doubleClick(row)
+                        } else {
+                            click(row)
+                        }
+                    }
                     .contextMenu {
                         ChatContextMenu(inbox: inbox, spaces: spaces, ui: ui, ids: menuIDs(row))
                     }

@@ -86,26 +86,61 @@ public enum TimeFormatPreference: String, CaseIterable, Codable, Sendable {
             .flatMap(TimeFormatPreference.init(rawValue:)) ?? .system
     }
 
+    private static let formatterLock = NSLock()
+    nonisolated(unsafe) private static var timeFormatters: [String: DateFormatter] = [:]
+    nonisolated(unsafe) private static var dateFormatters: [String: DateFormatter] = [:]
+    private static let localeObserver: Void = {
+        let clear: @Sendable (Notification) -> Void = { _ in
+            formatterLock.withLock {
+                timeFormatters.removeAll()
+                dateFormatters.removeAll()
+            }
+        }
+        NotificationCenter.default.addObserver(
+            forName: NSLocale.currentLocaleDidChangeNotification,
+            object: nil,
+            queue: nil,
+            using: clear
+        )
+        NotificationCenter.default.addObserver(
+            forName: .NSSystemTimeZoneDidChange,
+            object: nil,
+            queue: nil,
+            using: clear
+        )
+    }()
+
     public func formatTime(
         _ date: Date,
         locale: Locale = .current,
         timeZone: TimeZone = .current
     ) -> String {
-        let formatter = DateFormatter()
-        formatter.timeZone = timeZone
-        switch self {
-        case .system:
-            formatter.locale = locale
-            formatter.dateStyle = .none
-            formatter.timeStyle = .short
-        case .twelveHour:
-            formatter.locale = Locale(identifier: "en_US_POSIX")
-            formatter.dateFormat = "h:mm a"
-        case .twentyFourHour:
-            formatter.locale = Locale(identifier: "en_US_POSIX")
-            formatter.dateFormat = "HH:mm"
+        _ = Self.localeObserver
+        let key = "\(rawValue)|\(locale.identifier)|\(timeZone.identifier)"
+        return Self.formatterLock.withLock {
+            let formatter: DateFormatter
+            if let cached = Self.timeFormatters[key] {
+                formatter = cached
+            } else {
+                let created = DateFormatter()
+                created.timeZone = timeZone
+                switch self {
+                case .system:
+                    created.locale = locale
+                    created.dateStyle = .none
+                    created.timeStyle = .short
+                case .twelveHour:
+                    created.locale = Locale(identifier: "en_US_POSIX")
+                    created.dateFormat = "h:mm a"
+                case .twentyFourHour:
+                    created.locale = Locale(identifier: "en_US_POSIX")
+                    created.dateFormat = "HH:mm"
+                }
+                Self.timeFormatters[key] = created
+                formatter = created
+            }
+            return formatter.string(from: date)
         }
-        return formatter.string(from: date)
     }
 
     public func formatDateTime(
@@ -114,20 +149,41 @@ public enum TimeFormatPreference: String, CaseIterable, Codable, Sendable {
         locale: Locale = .current,
         timeZone: TimeZone = .current
     ) -> String {
+        _ = Self.localeObserver
         if self == .system {
-            let formatter = DateFormatter()
-            formatter.locale = locale
-            formatter.timeZone = timeZone
-            formatter.dateStyle = dateStyle
-            formatter.timeStyle = .short
-            return formatter.string(from: date)
+            let key = "dt|\(dateStyle.rawValue)|\(locale.identifier)|\(timeZone.identifier)"
+            return Self.formatterLock.withLock {
+                let formatter: DateFormatter
+                if let cached = Self.dateFormatters[key] {
+                    formatter = cached
+                } else {
+                    let created = DateFormatter()
+                    created.locale = locale
+                    created.timeZone = timeZone
+                    created.dateStyle = dateStyle
+                    created.timeStyle = .short
+                    Self.dateFormatters[key] = created
+                    formatter = created
+                }
+                return formatter.string(from: date)
+            }
         }
-        let dateFormatter = DateFormatter()
-        dateFormatter.locale = locale
-        dateFormatter.timeZone = timeZone
-        dateFormatter.dateStyle = dateStyle
-        dateFormatter.timeStyle = .none
-        let datePart = dateFormatter.string(from: date)
+        let key = "d|\(dateStyle.rawValue)|\(locale.identifier)|\(timeZone.identifier)"
+        let datePart: String = Self.formatterLock.withLock {
+            let dateFormatter: DateFormatter
+            if let cached = Self.dateFormatters[key] {
+                dateFormatter = cached
+            } else {
+                let created = DateFormatter()
+                created.locale = locale
+                created.timeZone = timeZone
+                created.dateStyle = dateStyle
+                created.timeStyle = .none
+                Self.dateFormatters[key] = created
+                dateFormatter = created
+            }
+            return dateFormatter.string(from: date)
+        }
         let timePart = formatTime(date, locale: locale, timeZone: timeZone)
         return "\(datePart), \(timePart)"
     }
