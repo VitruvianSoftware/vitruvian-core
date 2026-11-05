@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.8](https://github.com/VitruvianSoftware/vitruvian-core/compare/courier-v0.3.7...courier-v0.3.8) (2026-11-05)
+
+
+### Features
+
+* **courier:** add native on-device macOS iMessage bridge ([#4337](https://github.com/VitruvianSoftware/vitruvian-core/issues/4337)) ([d2c5097](https://github.com/VitruvianSoftware/vitruvian-core/commit/d2c5097ab169066165261632ac71da4e17539d48))
+
 ## [0.3.7](https://github.com/VitruvianSoftware/vitruvian-core/compare/courier-v0.3.6...courier-v0.3.7) (2026-11-05)
 
 
