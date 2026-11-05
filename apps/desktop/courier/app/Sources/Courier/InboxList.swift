@@ -173,6 +173,7 @@ struct InboxList: View {
                     }
                 }
                 .listStyle(.inset)
+                .courierSidebarList()
                 .contextMenu(forSelectionType: String.self) { ids in
                     if let id = ids.first {
                         ChatContextMenu(inbox: inbox, spaces: spaces, ui: ui, ids: menuIDs(id))

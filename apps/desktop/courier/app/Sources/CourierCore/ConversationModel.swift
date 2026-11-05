@@ -1784,6 +1784,15 @@ public final class ConversationModel: ObservableObject {
         reply(to: id)
     }
 
+    /// Nothing selected: a click on the selected message, Esc, or a click on the timeline's empty space. False when
+    /// nothing was, so Esc goes on to its next use.
+    @discardableResult
+    public func deselectMessage() -> Bool {
+        guard selectedMessageID != nil else { return false }
+        selectedMessageID = nil
+        return true
+    }
+
     /// The selected message, as loaded.
     public var selectedMessage: TimelineMessage? { selectedMessageID.flatMap(message) }
 

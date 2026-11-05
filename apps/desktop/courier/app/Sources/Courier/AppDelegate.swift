@@ -317,6 +317,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             mainInbox: inbox,
             spaces: spaces,
             lifecycle: lifecycle,
+            appearance: appearance,
             onSearchInChat: { [weak self] roomID in
                 self?.windowOpener.show()
                 self?.search.show(in: roomID)
