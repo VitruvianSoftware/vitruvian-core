@@ -204,7 +204,9 @@ func twitterSpec() (engine.Spec, error) {
 		Name:        "twitter",
 		DisplayName: "X",
 		ModulePath:  "go.mau.fi/mautrix-twitter",
-		Connector:   func() (bridgev2.NetworkConnector, error) { return &twitter.TwitterConnector{Config: twitter.Config{X: true}}, nil },
+		Connector: func() (bridgev2.NetworkConnector, error) {
+			return &twitter.TwitterConnector{Config: twitter.Config{X: true}}, nil
+		},
 		Configure: func(data any) error {
 			cfg, ok := data.(*twitter.Config)
 			if !ok {

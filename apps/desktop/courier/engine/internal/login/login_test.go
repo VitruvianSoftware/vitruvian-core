@@ -907,4 +907,3 @@ func TestBlueskyPasswordStepDefaultsDomainToBskySocial(t *testing.T) {
 	require.Equal(t, "bsky.social", step.Fields[0].DefaultValue)
 	w.d.Cancel(step.LoginID)
 }
-
