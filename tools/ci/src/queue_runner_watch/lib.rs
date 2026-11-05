@@ -33,8 +33,8 @@
 //! Spec: docs/superpowers/specs/2026-10-19-queue-runners-on-homelab-design.md
 //!
 //! Env: REPO, RUN_ID (this workflow run), CANARY_JOB (job name, default
-//! "canary"), WAIT_SECONDS (default 240), GH_TOKEN (can write variables and
-//! cancel runs), GH_BIN (tests).
+//! "canary"), WAIT_SECONDS (default 600), POLL_SECONDS (default 15), GH_TOKEN
+//! (can write variables and cancel runs), GH_BIN (tests).
 
 use shell_compat::{capture, cat, env, env_or, err, out, status, subst};
 use std::process::Command;
@@ -56,17 +56,21 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
         }
     };
     let job = env_or("CANARY_JOB", b"canary");
-    let wait_s = env_or("WAIT_SECONDS", b"240");
+    let wait_s = env_or("WAIT_SECONDS", b"600");
+    let poll_s = env_or("POLL_SECONDS", b"15");
     let var_name = b"QUEUE_RUNNER_FALLBACK";
 
-    // sleep
     let wait_secs: u64 = std::str::from_utf8(&wait_s)
         .ok()
         .and_then(|s| s.parse().ok())
-        .unwrap_or(240);
-    std::thread::sleep(std::time::Duration::from_secs(wait_secs));
+        .unwrap_or(600);
+    let poll_secs: u64 = std::str::from_utf8(&poll_s)
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(15);
 
-    // Query canary job state
+    // Poll canary job state until it starts/completes or WAIT_SECONDS elapses.
     let jq_expr = cat(&[
         b".jobs[] | select(.name == \"",
         &job,
@@ -75,21 +79,34 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
         // error, gh prints nothing and the watcher sees no canary job.
         br#"") | "\(.status) \(.conclusion // "")""#,
     ]);
-    let r = capture(
-        48,
-        Command::new(shell_compat::os(&gh))
-            .arg("api")
-            .arg(shell_compat::os(&cat(&[
-                b"repos/",
-                &repo,
-                b"/actions/runs/",
-                &run_id,
-                b"/jobs",
-            ])))
-            .arg("--jq")
-            .arg(shell_compat::os(&jq_expr)),
-    );
-    let state = subst(r.stdout);
+    let mut elapsed: u64 = 0;
+    let state = loop {
+        let step = poll_secs.min(wait_secs.saturating_sub(elapsed));
+        if step > 0 {
+            std::thread::sleep(std::time::Duration::from_secs(step));
+            elapsed += step;
+        }
+        let r = capture(
+            48,
+            Command::new(shell_compat::os(&gh))
+                .arg("api")
+                .arg(shell_compat::os(&cat(&[
+                    b"repos/",
+                    &repo,
+                    b"/actions/runs/",
+                    &run_id,
+                    b"/jobs",
+                ])))
+                .arg("--jq")
+                .arg(shell_compat::os(&jq_expr)),
+        );
+        let s = subst(r.stdout);
+        let space = s.iter().position(|&c| c == b' ').unwrap_or(s.len());
+        let st = &s[..space];
+        if st == b"in_progress" || st == b"completed" || elapsed >= wait_secs {
+            break s;
+        }
+    };
     if state.is_empty() {
         err(&cat(&[
             b"queue-runner-watch: no job named '",

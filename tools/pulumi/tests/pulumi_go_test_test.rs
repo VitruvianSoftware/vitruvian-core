@@ -84,3 +84,39 @@ fn t4_execs_go_test_in_project_with_gowork_off() {
     );
     assert!(got.contains("gowork=off args=test ./..."), "{got}");
 }
+
+// 5. VITRUVIAN_GO_BIN (resolved relative to initial cwd before chdir) works
+// even when no `go` is on PATH, setting GOROOT to the SDK root two levels up
+// and GOTOOLCHAIN=local.
+#[test]
+fn t5_vitruvian_go_bin_runs_without_go_on_path() {
+    let d = tempdir("go-test");
+    let empty_path = d.join("empty-path");
+    std::fs::create_dir_all(&empty_path).unwrap();
+    let sdk_bin = d.join("sdk/bin");
+    std::fs::create_dir_all(&sdk_bin).unwrap();
+    write_exec(
+        &sdk_bin.join("go"),
+        "#!/bin/sh\necho \"pwd=$PWD goroot=$GOROOT gotoolchain=$GOTOOLCHAIN gowork=$GOWORK args=$*\" >\"$GO_LOG\"\nexit 0\n",
+    );
+    let project = d.join("project");
+    std::fs::create_dir_all(&project).unwrap();
+    let log = d.join("go.log");
+    let mut c = cmd(&bin("PULUMI_GO_TEST_BIN"), empty_path.to_str().unwrap());
+    c.current_dir(&d)
+        .env("VITRUVIAN_GO_BIN", "sdk/bin/go")
+        .env("GO_LOG", &log)
+        .arg("project");
+    let o = run(c);
+    assert_eq!(code(&o), 0, "stderr: {}", stderr(&o));
+    let d_canon = std::fs::canonicalize(&d).unwrap();
+    let got = read(&log);
+    assert!(
+        got.contains(&format!("goroot={}", d_canon.join("sdk").display())),
+        "{got}"
+    );
+    assert!(
+        got.contains("gotoolchain=local gowork=off args=test ./..."),
+        "{got}"
+    );
+}

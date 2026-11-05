@@ -150,14 +150,14 @@ def pulumi_go_test(name = "test", extra_data = [], timeout = None, visibility = 
         name = name,
         srcs = ["//tools/pulumi:pulumi-go-test"],
         args = [native.package_name()],
-        data = native.glob(["**/*.go", "go.mod", "go.sum"]) + extra_data,
-        # Bazel sanitizes the test environment to PATH=/bin:/usr/bin:/usr/local/bin,
-        # so an ambient `go` installed anywhere else (mise, asdf, /opt/homebrew,
-        # actions/setup-go's toolcache) is invisible and the wrapper's toolchain
-        # guard fires on a machine that HAS go. Inherit the caller's PATH so this
-        # target resolves the same toolchain the developer's shell does; HOME and
-        # the GO* cache vars come along because `go test` writes to the module and
-        # build caches and re-downloads the module graph without them.
+        data = native.glob(["**/*.go", "go.mod", "go.sum"]) + ["//tools/go-sdk:go"] + extra_data,
+        env = {
+            "VITRUVIAN_GO_BIN": "$(rootpath //tools/go-sdk:go)",
+        },
+        # Hand the test Bazel's registered Go SDK via VITRUVIAN_GO_BIN so
+        # self-hosted queue runners without an ambient `go` on PATH still pass,
+        # while inheriting HOME and the GO* cache vars so `go test` reuses any
+        # warm module/build cache on the machine.
         env_inherit = [
             "PATH",
             "HOME",

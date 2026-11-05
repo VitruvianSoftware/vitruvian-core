@@ -26,5 +26,5 @@ load(":defs.bzl", "go_sdk_go")
 # folder two above it.
 go_sdk_go(
     name = "go",
-    visibility = ["//packages/vitruvian-sdk:__pkg__"],
+    visibility = ["//visibility:public"],
 )
