@@ -1,0 +1,365 @@
+/*
+ * Copyright (c) 2026 VitruvianSoftware
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+:root {
+  color-scheme: light dark;
+  --bg: var(--background, #f8fafc);
+  --fg: var(--foreground, #0f172a);
+  --muted-fg: var(--muted-foreground, #64748b);
+  --card-bg: var(--card, #ffffff);
+  --border-color: var(--border, #e2e8f0);
+  --chip-bg: #f1f5f9;
+  --status-green: #15803d;
+  --status-green-bg: rgba(21, 128, 61, 0.12);
+  --status-blue: #1d4ed8;
+  --status-blue-bg: rgba(29, 78, 216, 0.12);
+  --status-amber: #b45309;
+  --status-amber-bg: rgba(180, 83, 9, 0.12);
+  --status-red: #b91c1c;
+  --status-red-bg: rgba(185, 28, 28, 0.12);
+  --status-neutral: #475569;
+  --status-neutral-bg: rgba(71, 85, 105, 0.12);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: var(--background, #0b0f19);
+    --fg: var(--foreground, #e2e8f0);
+    --muted-fg: var(--muted-foreground, #94a3b8);
+    --card-bg: var(--card, #111827);
+    --border-color: var(--border, #1e293b);
+    --chip-bg: #1e293b;
+    --status-green: #4ade80;
+    --status-green-bg: rgba(74, 222, 128, 0.15);
+    --status-blue: #60a5fa;
+    --status-blue-bg: rgba(96, 165, 250, 0.15);
+    --status-amber: #fbbf24;
+    --status-amber-bg: rgba(251, 191, 36, 0.15);
+    --status-red: #f87171;
+    --status-red-bg: rgba(248, 113, 113, 0.15);
+    --status-neutral: #94a3b8;
+    --status-neutral-bg: rgba(148, 163, 184, 0.15);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  line-height: 1.45;
+  font-size: 0.85rem;
+}
+
+.panel {
+  padding: 0.85rem;
+}
+
+.flow-view {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.empty-state {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  border: 1px dashed var(--border-color);
+  border-radius: 8px;
+  color: var(--muted-fg);
+  text-align: center;
+}
+
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+h1 {
+  font-size: 1rem;
+  margin: 0;
+  font-weight: 600;
+}
+
+h2 {
+  font-size: 0.88rem;
+  margin: 0;
+  font-weight: 600;
+}
+
+p {
+  margin: 0.25rem 0 0;
+}
+
+.muted {
+  color: var(--muted-fg);
+}
+
+.small {
+  font-size: 0.76rem;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.header-stats {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.stat-pill {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: var(--chip-bg);
+  border: 1px solid var(--border-color);
+  font-weight: 500;
+}
+
+.phase-pills {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin-top: 0.6rem;
+}
+
+.phase-pill {
+  font-size: 0.72rem;
+  padding: 0.12rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  color: var(--muted-fg);
+  background: transparent;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.phase-pill.done {
+  color: var(--muted-fg);
+  opacity: 0.8;
+}
+
+.phase-pill.current {
+  color: var(--status-blue);
+  background: var(--status-blue-bg);
+  border-color: var(--status-blue);
+  font-weight: 600;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.burndown-container {
+  width: 100%;
+}
+
+.burndown-svg {
+  width: 100%;
+  height: 116px;
+  display: block;
+}
+
+.burndown-grid {
+  stroke: var(--border-color);
+  stroke-width: 1;
+}
+
+.burndown-axis-text {
+  fill: var(--muted-fg);
+  font-size: 11.5px;
+  font-family: inherit;
+}
+
+.burndown-ideal {
+  stroke: var(--muted-fg);
+  stroke-width: 1.25;
+  opacity: 0.7;
+}
+
+.burndown-actual {
+  stroke: var(--status-blue);
+  stroke-width: 2;
+}
+
+.burndown-point {
+  fill: var(--status-blue);
+}
+
+.burndown-replan-line {
+  stroke: var(--status-amber);
+  stroke-width: 1.25;
+}
+
+.burndown-replan-marker {
+  fill: var(--status-amber);
+}
+
+.burndown-replan-text {
+  fill: var(--muted-fg);
+  font-size: 11.5px;
+  font-family: inherit;
+}
+
+.list-stack {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.row-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  flex-wrap: wrap;
+}
+
+.row-main {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  flex: 1 1 160px;
+}
+
+.row-title {
+  font-weight: 500;
+  word-break: break-word;
+}
+
+.task-num {
+  font-size: 0.75rem;
+}
+
+.row-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.meta-chip {
+  font-size: 0.7rem;
+  padding: 0.08rem 0.4rem;
+  border-radius: 4px;
+  background: var(--chip-bg);
+  color: var(--fg);
+  white-space: nowrap;
+}
+
+.status-badge {
+  font-size: 0.7rem;
+  padding: 0.1rem 0.48rem;
+  border-radius: 999px;
+  font-weight: 600;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+
+.status-green {
+  color: var(--status-green);
+  background: var(--status-green-bg);
+}
+
+.status-blue {
+  color: var(--status-blue);
+  background: var(--status-blue-bg);
+}
+
+.status-amber {
+  color: var(--status-amber);
+  background: var(--status-amber-bg);
+}
+
+.status-red {
+  color: var(--status-red);
+  background: var(--status-red-bg);
+}
+
+.status-neutral {
+  color: var(--status-neutral);
+  background: var(--status-neutral-bg);
+}
+
+.spend-roles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+
+.spend-models {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.35rem;
+  margin-top: 0.4rem;
+}
+
+.spend-pill {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background: var(--chip-bg);
+  white-space: nowrap;
+}
+
+.spend-pill strong {
+  text-align: right;
+  margin-left: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

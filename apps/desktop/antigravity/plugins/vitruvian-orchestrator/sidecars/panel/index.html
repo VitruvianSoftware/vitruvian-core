@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<!--
+  Copyright (c) 2026 VitruvianSoftware
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in
+  all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Orchestrator</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/preload.js"></script>
+</head>
+<body>
+  <main class="panel">
+    <p id="empty-state" class="empty-state">
+      This panel fills in when the lead <code>orchestrate</code> skill reports a plan.
+    </p>
+
+    <div id="flow-view" class="flow-view" hidden>
+      <!-- 1. Header -->
+      <header class="card header-card" aria-labelledby="flow-title">
+        <div class="header-top">
+          <div>
+            <h1 id="flow-title">Orchestrator</h1>
+            <p id="flow-meta" class="muted small"></p>
+          </div>
+          <div class="header-stats">
+            <span id="accepted-summary" class="stat-pill">accepted 0 of 0</span>
+            <span id="cost-summary" class="stat-pill mono">est. $0.00</span>
+          </div>
+        </div>
+        <nav id="phase-pills" class="phase-pills" aria-label="Flow phases"></nav>
+      </header>
+
+      <!-- 2. Burn-down -->
+      <section class="card" aria-labelledby="burndown-heading">
+        <div class="section-header">
+          <h2 id="burndown-heading">Burn-down</h2>
+          <span id="burndown-caption" class="muted small"></span>
+        </div>
+        <div id="burndown-container" class="burndown-container"></div>
+      </section>
+
+      <!-- 3. Task board -->
+      <section class="card" aria-labelledby="tasks-heading">
+        <div class="section-header">
+          <h2 id="tasks-heading">Task Board</h2>
+          <span id="tasks-caption" class="muted small"></span>
+        </div>
+        <div id="task-board" class="list-stack"></div>
+      </section>
+
+      <!-- 4. Agents -->
+      <section class="card" aria-labelledby="agents-heading">
+        <div class="section-header">
+          <h2 id="agents-heading">Agents</h2>
+          <span id="agents-caption" class="muted small"></span>
+        </div>
+        <div id="agents-list" class="list-stack"></div>
+        <p id="agents-empty" class="muted small">No runs recorded yet.</p>
+      </section>
+
+      <!-- 5. Spend -->
+      <section class="card" aria-labelledby="spend-heading">
+        <div class="section-header">
+          <h2 id="spend-heading">Spend</h2>
+          <span id="spend-total" class="mono small muted"></span>
+        </div>
+        <div id="spend-roles" class="spend-roles"></div>
+        <div id="spend-models" class="spend-models"></div>
+        <p id="spend-unpriced" class="muted small" hidden></p>
+      </section>
+    </div>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

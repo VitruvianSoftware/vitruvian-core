@@ -178,7 +178,7 @@
     {
       "name": "vitruvian-orchestrator",
       "source": "./apps/claude-code/plugins/vitruvian-orchestrator",
-      "description": "Lead orchestrator skill for routing multi-domain work across specialist subagents in Claude Code.",
+      "description": "Lead orchestrator skill plus a live panel: task board, burn-down, agents and spend for multi-agent work in Claude Code.",
       "author": {
         "name": "VitruvianSoftware",
         "url": "https://github.com/VitruvianSoftware"

@@ -21,6 +21,10 @@
 """The vitruvian-orchestrator plugin: the files the site registry reads."""
 
 # gazelle:ignore
+# The mod (hooks/) runs inside Claude Code, not under Bazel; its tests run with
+# `claude plugin test`. Keep gazelle from generating js targets for it.
+# gazelle:exclude hooks
+# gazelle:exclude tsconfig.json
 
 filegroup(
     name = "site_sources",

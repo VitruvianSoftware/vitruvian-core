@@ -557,7 +557,7 @@
       "kind": "plugin",
       "category": "Agent Plugin",
       "status": "in-development",
-      "summary": "Lead orchestrator skill for routing multi-domain work across specialist subagents in Antigravity.",
+      "summary": "Lead orchestrator skill and live orchestration sidecar panel for routing multi-domain work across specialist subagents in Antigravity.",
       "repo": "",
       "mirrorRepo": "https://github.com/VitruvianSoftware/vitruvian-core",
       "source": "apps/desktop/antigravity/plugins/vitruvian-orchestrator",
@@ -565,13 +565,17 @@
         "antigravity"
       ],
       "capabilities": [
-        "1 Skill"
+        "Sidecar UI",
+        "1 Skill",
+        "Rules"
       ],
       "skills": [
         "orchestrate"
       ],
       "hooks": [],
-      "rules": [],
+      "rules": [
+        "AGENTS.md"
+      ],
       "needs": "Antigravity desktop or Claude Code CLI",
       "note": "",
       "installs": [
@@ -590,7 +594,7 @@
       "kind": "plugin",
       "category": "Agent Plugin",
       "status": "in-development",
-      "summary": "Lead orchestrator skill for routing multi-domain work across specialist subagents in Claude Code.",
+      "summary": "Lead orchestrator skill plus a live panel: task board, burn-down, agents and spend for multi-agent work in Claude Code.",
       "repo": "",
       "mirrorRepo": "https://github.com/VitruvianSoftware/vitruvian-core",
       "source": "apps/claude-code/plugins/vitruvian-orchestrator",

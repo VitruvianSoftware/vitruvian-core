@@ -1,14 +1,21 @@
 {
   "name": "vitruvian-orchestrator",
-  "version": "0.1.0",
-  "description": "Lead orchestrator skill for routing multi-domain work across specialist subagents in Antigravity.",
+  "version": "0.2.0",
+  "description": "Lead orchestrator skill and live orchestration sidecar panel for routing multi-domain work across specialist subagents in Antigravity.",
   "author": {
     "name": "VitruvianSoftware",
     "url": "https://github.com/VitruvianSoftware"
   },
   "repository": "https://github.com/VitruvianSoftware/vitruvian-core",
   "license": "MIT",
-  "keywords": ["subagents", "orchestration", "routing", "antigravity"],
+  "keywords": [
+    "subagents",
+    "orchestration",
+    "routing",
+    "antigravity",
+    "sidecar",
+    "mcp"
+  ],
   "x-vitruvian": {
     "ecosystems": ["antigravity"]
   }

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "vitruvian-orchestrator": {
+      "command": "node",
+      "args": ["mcp/server.mjs"]
+    }
+  }
+}
