@@ -236,14 +236,16 @@ public final class AccountsAndBridgesModel: ObservableObject {
         network != "slack"
     }
 
-    /// Official desktop bundle ID for each supported network (`nil` for Google Messages).
+    /// Official desktop bundle ID for each supported network (`nil` for web-only networks).
     public static func officialDockBundleID(for network: String) -> String? {
         switch network {
         case "whatsapp": return "net.whatsapp.WhatsApp"
         case "signal": return "org.whispersystems.signal-desktop"
         case "telegram": return "ru.keepcoder.Telegram"
         case "slack": return "com.tinyspeck.slackmacgap"
-        case "gmessages": return nil
+        case "discord": return "com.hnc.Discord"
+        case "facebook": return "com.facebook.archon"
+        case "gmessages", "googlechat", "instagram", "twitter", "linkedin", "gvoice", "bluesky": return nil
         default: return nil
         }
     }

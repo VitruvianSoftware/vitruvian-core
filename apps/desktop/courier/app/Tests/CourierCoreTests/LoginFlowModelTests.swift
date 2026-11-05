@@ -95,6 +95,26 @@ final class LoginFlowModelTests: XCTestCase {
         XCTAssertEqual(LoginFlowModel.offeredFlows(network: "gmessages", reported: ["google"]), ["google"])
         XCTAssertEqual(LoginFlowModel.offeredFlows(network: "whatsapp", reported: ["qr"]), ["qr"])
         XCTAssertEqual(LoginFlowModel.offeredFlows(network: "signal", reported: ["qr"]), ["qr"])
+        XCTAssertEqual(LoginFlowModel.offeredFlows(network: "discord", reported: ["qr", "token", "machine", "DEBUG_USERINPUT_token"]),
+                       ["token", "qr", "machine", "DEBUG_USERINPUT_token"])
+        XCTAssertEqual(LoginFlowModel.offeredFlows(network: "facebook", reported: ["messenger", "facebook", "messenger-lite"]),
+                       ["facebook", "messenger", "messenger-lite"])
+        XCTAssertEqual(LoginFlowModel.offeredFlows(network: "instagram", reported: ["instagram-password", "instagram"]),
+                       ["instagram", "instagram-password"])
+        XCTAssertEqual(LoginFlowModel.offeredFlows(network: "twitter", reported: ["password", "cookies"]),
+                       ["cookies", "password"])
+        XCTAssertEqual(LoginFlowModel.offeredFlows(network: "linkedin", reported: ["cookies"]), ["cookies"])
+        XCTAssertEqual(LoginFlowModel.offeredFlows(network: "gvoice", reported: ["cookies"]), ["cookies"])
+        XCTAssertEqual(LoginFlowModel.offeredFlows(network: "bluesky", reported: ["password"]), ["password"])
+        XCTAssertEqual(LoginFlowModel.flowName("token", network: "discord"), "Sign in on the web")
+        XCTAssertEqual(LoginFlowModel.flowName("qr", network: "discord"), "QR code")
+        XCTAssertEqual(LoginFlowModel.flowName("DEBUG_USERINPUT_token", network: "discord"), "Discord token")
+        XCTAssertEqual(LoginFlowModel.flowName("facebook", network: "facebook"), "Sign in on facebook.com")
+        XCTAssertEqual(LoginFlowModel.flowName("instagram", network: "instagram"), "Sign in on the web")
+        XCTAssertEqual(LoginFlowModel.flowName("cookies", network: "twitter"), "Sign in to X")
+        XCTAssertEqual(LoginFlowModel.flowName("cookies", network: "linkedin"), "Sign in on the web")
+        XCTAssertEqual(LoginFlowModel.flowName("cookies", network: "gvoice"), "Google account")
+        XCTAssertEqual(LoginFlowModel.flowName("password", network: "bluesky"), "Username & password")
         // A network or flows this app has no preference for: the engine's, in its order.
         XCTAssertEqual(LoginFlowModel.offeredFlows(network: "newnet", reported: ["b", "a"]), ["b", "a"])
         XCTAssertEqual(LoginFlowModel.offeredFlows(network: "slack", reported: ["app"]), ["app"])

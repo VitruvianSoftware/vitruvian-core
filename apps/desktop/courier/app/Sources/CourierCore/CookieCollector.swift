@@ -38,15 +38,34 @@ public struct CollectedCookies: Equatable, Sendable {
 ///   (mautrix-slack's ExtractSlackTokenJS resolves to `{ auth_token }`), and a field it has is filled whatever
 ///   its sources say, as bridgev2 says: "Fields that are not present in the promise result must be extracted
 ///   another way."
-/// - `request_header`, `request_body`: not read in this milestone.
+/// - `request_header`: LinkedIn's `Cookie`, `X-LI-Track`, and `X-LI-Page-Instance` headers are synthesized once
+///   the web view has `li_at` and `JSESSIONID` cookies on `linkedin.com` (or read from `ExtractJS` when provided).
+/// - `request_body`: not read in this milestone.
 ///
 /// Values are sent as the browser has them: the engine URL-decodes them and checks them against their patterns.
 public enum CookieCollector {
-    /// The source types this window can read. `special` only when the step has an ExtractJS.
+    /// Request header names this window can synthesize from the page's cookie store (used by `mautrix-linkedin`).
+    private static let capturableRequestHeaders: Set<String> = [
+        "cookie",
+        "x-li-track",
+        "x-li-page-instance",
+    ]
+
+    private static let defaultLinkedInTrackHeader =
+        #"{"clientVersion":"1.13.42525","mpVersion":"1.13.42525","osName":"web","timezoneOffset":0,"mpName":"voyager-web","displayDensity":2,"displayWidth":1920,"displayHeight":1080}"#
+
+    private static let defaultLinkedInPageInstanceHeader =
+        "urn:li:page:d_flagship3_feed;0000000000000000000000=="
+
+    /// The source types this window can read. `special` only when the step has an ExtractJS; `request_header`
+    /// only when the header is one Courier can synthesize from the cookie store (`Cookie`, `X-LI-Track`,
+    /// `X-LI-Page-Instance`).
     static func canRead(_ source: LoginCookieSource, extractJS: String?) -> Bool {
         switch source.type {
         case .cookie, .localStorage: true
         case .special: !(extractJS ?? "").isEmpty
+        case .requestHeader:
+            capturableRequestHeaders.contains(source.name.lowercased())
         default: false
         }
     }
@@ -101,12 +120,59 @@ public enum CookieCollector {
                 found = cookie(named: source.name, domain: source.cookieDomain, in: cookies)
             case .localStorage:
                 found = localStorage[source.name]
+            case .special:
+                found = extracted[source.name]
+            case .requestHeader:
+                if let ext = extracted[source.name], !ext.isEmpty {
+                    found = ext
+                } else {
+                    found = requestHeader(
+                        named: source.name,
+                        domain: source.cookieDomain,
+                        fieldID: field.id,
+                        in: cookies
+                    )
+                }
             default:
                 found = nil
             }
             if let found, !found.isEmpty { return found }
         }
         return nil
+    }
+
+    private static func requestHeader(
+        named name: String,
+        domain: String?,
+        fieldID: String,
+        in cookies: [BrowserCookie]
+    ) -> String? {
+        let lower = name.lowercased()
+        guard capturableRequestHeaders.contains(lower) else { return nil }
+
+        guard let liAt = cookie(named: "li_at", domain: "linkedin.com", in: cookies), !liAt.isEmpty,
+              let jsession = cookie(named: "JSESSIONID", domain: "linkedin.com", in: cookies), !jsession.isEmpty
+        else {
+            return nil
+        }
+
+        let wanted = normalized(domain ?? "linkedin.com")
+        switch lower {
+        case "cookie":
+            let matching = cookies.filter { candidate in
+                guard !candidate.value.isEmpty else { return false }
+                let dom = normalized(candidate.domain)
+                return dom == wanted || dom.hasSuffix("." + wanted)
+            }
+            guard !matching.isEmpty else { return nil }
+            return matching.map { "\($0.name)=\($0.value)" }.joined(separator: "; ")
+        case "x-li-track":
+            return defaultLinkedInTrackHeader
+        case "x-li-page-instance":
+            return defaultLinkedInPageInstanceHeader
+        default:
+            return nil
+        }
     }
 
     /// The cookie of that name on that domain: the domain's own first, then one of its subdomains'. No domain

@@ -116,13 +116,17 @@ final class InboxPresentationTests: XCTestCase {
 
     func testEveryNetworkHasANeutralBadge() {
         var seen = Set<String>()
-        for network in ["whatsapp", "signal", "telegram", "slack", "gmessages"] {
+        let networks = [
+            "whatsapp", "signal", "telegram", "slack", "gmessages", "gchat",
+            "discord", "facebook", "instagram", "twitter", "linkedin", "gvoice", "bluesky",
+        ]
+        for network in networks {
             let appearance = NetworkAppearance.of(network)
             XCTAssertNotEqual(appearance, NetworkAppearance.fallback, network)
             XCTAssertTrue(appearance.symbol.hasSuffix(".fill") || !appearance.symbol.isEmpty)
             seen.insert("\(appearance.symbol)/\(appearance.red)/\(appearance.green)/\(appearance.blue)")
         }
-        XCTAssertEqual(seen.count, 5, "each network is told apart")
+        XCTAssertEqual(seen.count, networks.count, "each network is told apart")
         XCTAssertEqual(NetworkAppearance.of("a-network-added-later"), NetworkAppearance.fallback)
     }
 }

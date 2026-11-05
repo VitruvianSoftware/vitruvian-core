@@ -5,6 +5,13 @@
     { "name": "telegram", "display_name": "Telegram" },
     { "name": "gmessages", "display_name": "Google Messages" },
     { "name": "slack", "display_name": "Slack" },
+    { "name": "discord", "display_name": "Discord" },
+    { "name": "facebook", "display_name": "Facebook Messenger" },
+    { "name": "instagram", "display_name": "Instagram" },
+    { "name": "twitter", "display_name": "X" },
+    { "name": "linkedin", "display_name": "LinkedIn" },
+    { "name": "gvoice", "display_name": "Google Voice" },
+    { "name": "bluesky", "display_name": "Bluesky" },
     { "name": "signal", "display_name": "Signal", "macos_only": true },
     { "name": "gchat", "display_name": "Google Chat", "macos_only": true }
   ]

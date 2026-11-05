@@ -75,4 +75,20 @@ final class SignInPageTests: XCTestCase {
         XCTAssertEqual(SignInPage.userAgent(""), .applicationName("Version/26.0 Safari/605.1.15"))
         XCTAssertEqual(SignInPage.userAgent(nil), .applicationName("Version/26.0 Safari/605.1.15"))
     }
+
+    func testPageCustomizationScriptHidesUnsupportedSSOOnXAndLinkedIn() {
+        let xScript = SignInPage.pageCustomizationScript(for: url("https://x.com/i/flow/login"))
+        XCTAssertNotNil(xScript)
+        XCTAssertEqual(xScript, SignInPage.pageCustomizationScript(for: url("https://twitter.com/i/flow/login")))
+        XCTAssertTrue(xScript?.contains("apple_sign_in_button") == true)
+
+        let linkedInScript = SignInPage.pageCustomizationScript(for: url("https://www.linkedin.com/login"))
+        XCTAssertNotNil(linkedInScript)
+        XCTAssertTrue(linkedInScript?.contains("#google-auth-button") == true)
+        XCTAssertTrue(linkedInScript?.contains(".passkey-btn") == true)
+
+        XCTAssertNil(SignInPage.pageCustomizationScript(for: url("https://www.facebook.com/login")))
+        XCTAssertNil(SignInPage.pageCustomizationScript(for: url("https://discord.com/login")))
+        XCTAssertNil(SignInPage.pageCustomizationScript(for: nil))
+    }
 }

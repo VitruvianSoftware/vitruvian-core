@@ -14,9 +14,16 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog"
+	bluesky "go.mau.fi/mautrix-bluesky/pkg/connector"
+	discord "go.mau.fi/mautrix-discord/pkg/connector"
 	gmessages "go.mau.fi/mautrix-gmessages/pkg/connector"
+	gvoice "go.mau.fi/mautrix-gvoice/pkg/connector"
+	linkedin "go.mau.fi/mautrix-linkedin/pkg/connector"
+	facebook "go.mau.fi/mautrix-meta/pkg/connector"
+	instagram "go.mau.fi/mautrix-meta/pkg/igconnector"
 	slack "go.mau.fi/mautrix-slack/pkg/connector"
 	telegram "go.mau.fi/mautrix-telegram/pkg/connector"
+	twitter "go.mau.fi/mautrix-twitter/pkg/connector"
 	whatsapp "go.mau.fi/mautrix-whatsapp/pkg/connector"
 	"gopkg.in/yaml.v3"
 	"maunium.net/go/mautrix/bridgev2"
@@ -74,6 +81,48 @@ func All() []Network {
 			// browser cookies; app needs bot tokens.
 			Flows: []string{"email", "token", "app"},
 			Spec:  simpleSpec("slack", "Slack", "go.mau.fi/mautrix-slack", func() bridgev2.NetworkConnector { return &slack.SlackConnector{} }),
+		},
+		{
+			Name: "discord", DisplayName: "Discord",
+			ModulePath: "go.mau.fi/mautrix-discord",
+			Flows:      []string{"token", "qr", "DEBUG_USERINPUT_token", "machine"},
+			Spec:       simpleSpec("discord", "Discord", "go.mau.fi/mautrix-discord", func() bridgev2.NetworkConnector { return &discord.DiscordConnector{} }),
+		},
+		{
+			Name: "facebook", DisplayName: "Facebook Messenger",
+			ModulePath: "go.mau.fi/mautrix-meta",
+			Flows:      []string{"facebook", "messenger", "messenger-lite", "messenger-lite-android"},
+			Spec:       simpleSpec("facebook", "Facebook Messenger", "go.mau.fi/mautrix-meta", func() bridgev2.NetworkConnector { return &facebook.MetaConnector{} }),
+		},
+		{
+			Name: "instagram", DisplayName: "Instagram",
+			ModulePath: "go.mau.fi/mautrix-meta",
+			Flows:      []string{"instagram", "instagram-password"},
+			Spec:       simpleSpec("instagram", "Instagram", "go.mau.fi/mautrix-meta", func() bridgev2.NetworkConnector { return &instagram.IGConnector{} }),
+		},
+		{
+			Name: "twitter", DisplayName: "X",
+			ModulePath: "go.mau.fi/mautrix-twitter",
+			Flows:      []string{"cookies", "password"},
+			Spec:       twitterSpec,
+		},
+		{
+			Name: "linkedin", DisplayName: "LinkedIn",
+			ModulePath: "go.mau.fi/mautrix-linkedin",
+			Flows:      []string{"cookies"},
+			Spec:       simpleSpec("linkedin", "LinkedIn", "go.mau.fi/mautrix-linkedin", func() bridgev2.NetworkConnector { return &linkedin.LinkedInConnector{} }),
+		},
+		{
+			Name: "gvoice", DisplayName: "Google Voice",
+			ModulePath: "go.mau.fi/mautrix-gvoice",
+			Flows:      []string{"cookies"},
+			Spec:       simpleSpec("gvoice", "Google Voice", "go.mau.fi/mautrix-gvoice", func() bridgev2.NetworkConnector { return &gvoice.GVConnector{} }),
+		},
+		{
+			Name: "bluesky", DisplayName: "Bluesky",
+			ModulePath: "go.mau.fi/mautrix-bluesky",
+			Flows:      []string{"password"},
+			Spec:       simpleSpec("bluesky", "Bluesky", "go.mau.fi/mautrix-bluesky", func() bridgev2.NetworkConnector { return &bluesky.BlueskyConnector{} }),
 		},
 	}, platformNetworks()...)
 }
@@ -144,6 +193,26 @@ func whatsappSpec() (engine.Spec, error) {
 			}
 			cfg.ArchiveTag = event.RoomTagLowPriority
 			cfg.ExtEvPolls = true
+			return nil
+		},
+	}, nil
+}
+
+// twitterSpec enables X branding and x.com login URLs on mautrix-twitter, whose example config defaults x: false.
+func twitterSpec() (engine.Spec, error) {
+	return engine.Spec{
+		Name:        "twitter",
+		DisplayName: "X",
+		ModulePath:  "go.mau.fi/mautrix-twitter",
+		Connector: func() (bridgev2.NetworkConnector, error) {
+			return &twitter.TwitterConnector{Config: twitter.Config{X: true}}, nil
+		},
+		Configure: func(data any) error {
+			cfg, ok := data.(*twitter.Config)
+			if !ok {
+				return fmt.Errorf("unexpected X config type %T", data)
+			}
+			cfg.X = true
 			return nil
 		},
 	}, nil

@@ -18,13 +18,17 @@ import (
 	"github.com/VitruvianSoftware/courier/engine/internal/gchat"
 )
 
-// On macOS Signal and Google Chat are registered after the portable four.
+// On macOS Signal and Google Chat are registered after the portable eleven.
 func TestSignalIsRegisteredLastOnDarwin(t *testing.T) {
 	var names []string
 	for _, n := range All() {
 		names = append(names, n.Name)
 	}
-	require.Equal(t, []string{"whatsapp", "telegram", "gmessages", "slack", "signal", "gchat"}, names)
+	require.Equal(t, []string{
+		"whatsapp", "telegram", "gmessages", "slack",
+		"discord", "facebook", "instagram", "twitter", "linkedin", "gvoice", "bluesky",
+		"signal", "gchat",
+	}, names)
 
 	signal, ok := Get("signal")
 	require.True(t, ok)

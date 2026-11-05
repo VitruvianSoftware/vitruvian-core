@@ -885,3 +885,25 @@ func TestCancelNetworkCancelsActiveLogin(t *testing.T) {
 	w.d.SetHost("fake", h)
 	w.d.Cancel(stepOther.LoginID)
 }
+
+func TestBlueskyPasswordStepDefaultsDomainToBskySocial(t *testing.T) {
+	ctx := context.Background()
+	bskyStep := &bridgev2.LoginStep{
+		Type:   bridgev2.LoginStepTypeUserInput,
+		StepID: "fi.mau.bluesky.password",
+		UserInputParams: &bridgev2.LoginUserInputParams{
+			Fields: []bridgev2.LoginInputDataField{
+				{Type: bridgev2.LoginInputFieldTypeUsername, ID: "domain", Name: "PDS Domain"},
+				{Type: bridgev2.LoginInputFieldTypeUsername, ID: "handle", Name: "Handle or DID"},
+				{Type: bridgev2.LoginInputFieldTypePassword, ID: "password", Name: "App Password"},
+			},
+		},
+	}
+	w := newWorld(t, false, bskyStep)
+	step, err := w.d.Start(ctx, "fake", fakenet.ScriptFlow, StartOptions{})
+	require.NoError(t, err)
+	require.Len(t, step.Fields, 3)
+	require.Equal(t, "domain", step.Fields[0].ID)
+	require.Equal(t, "bsky.social", step.Fields[0].DefaultValue)
+	w.d.Cancel(step.LoginID)
+}
