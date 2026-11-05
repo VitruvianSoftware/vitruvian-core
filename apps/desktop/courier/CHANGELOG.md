@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.9](https://github.com/VitruvianSoftware/vitruvian-core/compare/courier-v0.3.8...courier-v0.3.9) (2026-11-05)
+
+
+### Bug Fixes
+
+* **courier:** support pasting clipboard images into the message composer ([#4339](https://github.com/VitruvianSoftware/vitruvian-core/issues/4339)) ([120a885](https://github.com/VitruvianSoftware/vitruvian-core/commit/120a8851d796af791273efcb01176d9b3a1caa95))
+
+
+### Performance Improvements
+
+* **courier:** isolate timeline redraws on keystrokes, cache formatters and previews, and polish UI alignments ([#4340](https://github.com/VitruvianSoftware/vitruvian-core/issues/4340)) ([fc53d40](https://github.com/VitruvianSoftware/vitruvian-core/commit/fc53d40836cb91155e325000aac5dc2383a85779))
+
 ## [0.3.8](https://github.com/VitruvianSoftware/vitruvian-core/compare/courier-v0.3.7...courier-v0.3.8) (2026-11-05)
 
 
