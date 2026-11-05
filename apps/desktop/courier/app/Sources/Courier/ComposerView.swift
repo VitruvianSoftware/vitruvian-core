@@ -806,7 +806,24 @@ struct ComposerTextView: NSViewRepresentable {
         textView.textContainer?.widthTracksTextView = true
         textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
         textView.placeholder = placeholder
+        textView.registerForDraggedTypes(
+            textView.acceptableDragTypes + [
+                .fileURL,
+                .png,
+                .tiff,
+                NSPasteboard.PasteboardType(UTType.gif.identifier),
+                NSPasteboard.PasteboardType(UTType.jpeg.identifier),
+                NSPasteboard.PasteboardType(UTType.webP.identifier),
+            ]
+        )
         textView.onPasteFiles = { context.coordinator.parent.onPasteFiles($0) }
+        textView.canAcceptWindowPaste = { [weak composer] in
+            guard let composer else { return false }
+            return !composer.isLocked
+                && composer.roomID != nil
+                && !composer.voiceRecorder.isRecordingOrReviewing
+                && !composer.isThreadPaneComposer
+        }
         textView.onFormat = { context.coordinator.format($0, typed: $1) }
         textView.onKeyboard = { [weak composer] has in
             if composer?.hasKeyboard != has { composer?.hasKeyboard = has }
@@ -1045,6 +1062,7 @@ final class PlainTextView: NSTextView {
         didSet { needsDisplay = true }
     }
     var onPasteFiles: ([URL]) -> Bool = { _ in false }
+    var canAcceptWindowPaste: () -> Bool = { false }
     /// A formatting key was pressed (`typed` for `, which is also a character); false lets the key do what it
     /// otherwise does.
     var onFormat: (TextEntity.Kind, _ typed: Bool) -> Bool = { _, _ in false }
@@ -1187,10 +1205,31 @@ final class PlainTextView: NSTextView {
 
     /// The formatting keys (Task 12's table): ⌘B, ⌘I, ⌘⇧X, ⌘⌥C, ⌘⇧9, ⌘⇧8, ⌘⇧7, ⌘⇧K. Never ⌘K or ⌘F.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if Self.isPasteShortcut(event) {
+            if window?.firstResponder === self {
+                paste(nil)
+                return true
+            }
+            if window?.isKeyWindow == true,
+               window?.attachedSheet == nil,
+               !(window?.firstResponder is NSText),
+               canAcceptWindowPaste() {
+                window?.makeFirstResponder(self)
+                paste(nil)
+                return true
+            }
+        }
         guard window?.firstResponder === self, let kind = Self.formatKind(for: event) else {
             return super.performKeyEquivalent(with: event)
         }
         return onFormat(kind, false) || super.performKeyEquivalent(with: event)
+    }
+
+    static func isPasteShortcut(_ event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            .subtracting([.capsLock, .numericPad, .function])
+        let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
+        return flags == [.command] && (key == "v" || event.keyCode == 0x09)
     }
 
     static func formatKind(for event: NSEvent) -> TextEntity.Kind? {
@@ -1233,28 +1272,36 @@ final class PlainTextView: NSTextView {
         super.keyDown(with: event)
     }
 
-    private static func files(on pasteboard: NSPasteboard) -> [URL] {
-        (pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
-    }
-
-    /// Files dropped on the box are attached; left to the text view, their paths would be typed into the text.
+    /// Files or clipboard images dropped on the box are attached; left to the text view, their paths would be typed into the text.
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        Self.files(on: sender.draggingPasteboard).isEmpty ? super.draggingEntered(sender) : .copy
+        PasteboardAttachmentExtractor.hasFilesOrImage(on: sender.draggingPasteboard)
+            ? .copy
+            : super.draggingEntered(sender)
     }
 
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-        Self.files(on: sender.draggingPasteboard).isEmpty ? super.draggingUpdated(sender) : .copy
+        PasteboardAttachmentExtractor.hasFilesOrImage(on: sender.draggingPasteboard)
+            ? .copy
+            : super.draggingUpdated(sender)
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        let files = Self.files(on: sender.draggingPasteboard)
+        let files = PasteboardAttachmentExtractor.extractFiles(from: sender.draggingPasteboard)
         if !files.isEmpty, onPasteFiles(files) { return true }
         return super.performDragOperation(sender)
     }
 
+    @discardableResult
+    func paste(from pasteboard: NSPasteboard) -> Bool {
+        let files = PasteboardAttachmentExtractor.extractFiles(from: pasteboard)
+        if !files.isEmpty, onPasteFiles(files) {
+            return true
+        }
+        return false
+    }
+
     override func paste(_ sender: Any?) {
-        let files = Self.files(on: NSPasteboard.general)
-        if !files.isEmpty, onPasteFiles(files) { return }
+        if paste(from: .general) { return }
         // Plain text only: formatting from the other app is left behind.
         pasteAsPlainText(sender)
     }

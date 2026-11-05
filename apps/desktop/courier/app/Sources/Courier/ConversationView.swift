@@ -277,7 +277,7 @@ struct ConversationView: View {
                 FileDropOverlayView(isShiftHeld: NSEvent.modifierFlags.contains(.shift))
             }
         }
-        .onDrop(of: [.fileURL], isTargeted: $isDropTargeted, perform: drop)
+        .onDrop(of: [.fileURL, .image], isTargeted: $isDropTargeted, perform: drop)
         .onChange(of: controlActiveState, initial: true) { _, state in
             conversation.setWindowKey(state == .key)
         }
@@ -682,21 +682,52 @@ struct ConversationView: View {
     // MARK: Dropping files
 
     private func drop(_ providers: [NSItemProvider]) -> Bool {
-        let matching = providers.filter {
+        let fileProviders = providers.filter {
             $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
                 && $0.canLoadObject(ofClass: URL.self)
         }
-        guard !matching.isEmpty else { return false }
+        let imageProviders = providers.filter {
+            !$0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
+                && $0.hasItemConformingToTypeIdentifier(UTType.image.identifier)
+        }
+        guard !fileProviders.isEmpty || !imageProviders.isEmpty else { return false }
         let shiftHeld = NSEvent.modifierFlags.contains(.shift)
         let lock = NSLock()
         var loadedURLs: [URL] = []
         let group = DispatchGroup()
-        for provider in matching {
+        for provider in fileProviders {
             group.enter()
             _ = provider.loadObject(ofClass: URL.self) { url, _ in
                 if let url, url.isFileURL {
                     lock.withLock { loadedURLs.append(url) }
                 }
+                group.leave()
+            }
+        }
+        for provider in imageProviders {
+            group.enter()
+            let preferredTypes: [(UTType, String)] = [
+                (.gif, "gif"),
+                (.png, "png"),
+                (.jpeg, "jpg"),
+                (.webP, "webp"),
+                (.tiff, "tiff"),
+                (.image, "png"),
+            ]
+            if let match = preferredTypes.first(where: {
+                provider.hasItemConformingToTypeIdentifier($0.0.identifier)
+            }) {
+                _ = provider.loadDataRepresentation(forTypeIdentifier: match.0.identifier) { data, _ in
+                    if let data,
+                       let savedURL = PasteboardAttachmentExtractor.writeImageData(
+                           data,
+                           preferredExtension: match.1
+                       ) {
+                        lock.withLock { loadedURLs.append(savedURL) }
+                    }
+                    group.leave()
+                }
+            } else {
                 group.leave()
             }
         }
