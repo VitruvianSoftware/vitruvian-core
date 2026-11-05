@@ -119,6 +119,7 @@ final class InboxPresentationTests: XCTestCase {
         let networks = [
             "whatsapp", "signal", "telegram", "slack", "gmessages", "gchat",
             "discord", "facebook", "instagram", "twitter", "linkedin", "gvoice", "bluesky",
+            "imessage",
         ]
         for network in networks {
             let appearance = NetworkAppearance.of(network)

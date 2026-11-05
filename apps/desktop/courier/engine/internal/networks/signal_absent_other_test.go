@@ -25,6 +25,8 @@ func TestSignalIsAbsentOffDarwin(t *testing.T) {
 	require.False(t, ok)
 	_, ok = Get("gchat")
 	require.False(t, ok)
+	_, ok = Get("imessage")
+	require.False(t, ok)
 }
 
 // platformClients has no row to add off macOS: Signal isn't built here.

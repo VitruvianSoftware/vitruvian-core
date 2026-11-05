@@ -156,6 +156,7 @@ public struct NetworkAppearance: Equatable, Sendable {
         case "linkedin": NetworkAppearance(symbol: "briefcase.circle.fill", red: 0.04, green: 0.40, blue: 0.76)
         case "gvoice": NetworkAppearance(symbol: "phone.bubble.fill", red: 0.04, green: 0.62, blue: 0.35)
         case "bluesky": NetworkAppearance(symbol: "cloud.circle.fill", red: 0.07, green: 0.52, blue: 1.00)
+        case "imessage": NetworkAppearance(symbol: "message.badge.filled.fill", red: 0.20, green: 0.78, blue: 0.35)
         default: fallback
         }
     }

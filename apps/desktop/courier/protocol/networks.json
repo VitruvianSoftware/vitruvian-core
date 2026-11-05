@@ -13,6 +13,7 @@
     { "name": "gvoice", "display_name": "Google Voice" },
     { "name": "bluesky", "display_name": "Bluesky" },
     { "name": "signal", "display_name": "Signal", "macos_only": true },
-    { "name": "gchat", "display_name": "Google Chat", "macos_only": true }
+    { "name": "gchat", "display_name": "Google Chat", "macos_only": true },
+    { "name": "imessage", "display_name": "iMessage", "macos_only": true }
   ]
 }

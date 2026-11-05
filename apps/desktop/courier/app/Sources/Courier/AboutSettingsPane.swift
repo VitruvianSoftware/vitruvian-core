@@ -68,6 +68,7 @@ struct AboutSettingsPane: View {
         ("mautrix-linkedin", "AGPL-3.0-or-later", "On-device LinkedIn Messaging connector (go.mau.fi/mautrix-linkedin v0.2609.0)."),
         ("mautrix-gvoice", "AGPL-3.0-or-later", "On-device Google Voice connector (go.mau.fi/mautrix-gvoice)."),
         ("mautrix-bluesky", "AGPL-3.0-or-later", "On-device Bluesky chat connector (go.mau.fi/mautrix-bluesky)."),
+        ("courier-imessage", "AGPL-3.0-or-later", "On-device macOS iMessage connector (github.com/VitruvianSoftware/courier/engine/internal/imessage)."),
         ("SQLite & FTS5", "Public Domain / MIT", "Embedded relational store and full-text message index."),
     ]
 

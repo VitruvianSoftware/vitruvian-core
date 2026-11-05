@@ -18,6 +18,7 @@ import (
 
 	"github.com/VitruvianSoftware/courier/engine/internal/engine"
 	"github.com/VitruvianSoftware/courier/engine/internal/gchat"
+	"github.com/VitruvianSoftware/courier/engine/internal/imessage"
 )
 
 // platformNetworks lists the networks that exist only on this platform, after the portable ones in All.
@@ -37,6 +38,12 @@ func platformNetworks() []Network {
 			Flows:      []string{"cookies"},
 			Spec:       gchatSpec,
 		},
+		{
+			Name: "imessage", DisplayName: "iMessage",
+			ModulePath: "maunium.net/go/mautrix",
+			Flows:      []string{"local"},
+			Spec:       imessageSpec,
+		},
 	}
 }
 
@@ -46,6 +53,15 @@ func gchatSpec() (engine.Spec, error) {
 		DisplayName: "Google Chat",
 		ModulePath:  "maunium.net/go/mautrix",
 		Connector:   func() (bridgev2.NetworkConnector, error) { return gchat.NewConnector(), nil },
+	}, nil
+}
+
+func imessageSpec() (engine.Spec, error) {
+	return engine.Spec{
+		Name:        "imessage",
+		DisplayName: "iMessage",
+		ModulePath:  "maunium.net/go/mautrix",
+		Connector:   func() (bridgev2.NetworkConnector, error) { return imessage.NewConnector(), nil },
 	}, nil
 }
 

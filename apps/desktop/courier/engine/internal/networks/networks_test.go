@@ -688,6 +688,7 @@ var readReceiptsByRow = map[string]bool{
 	"bluesky dm":  false,
 	"signal dm":   true, "signal group": true, "signal note to self": true,
 	"gchat dm": true, "gchat space": true, "gchat threaded space": true,
+	"imessage dm": true, "imessage group": true,
 }
 
 // pinnedBridges are the module versions the plan's receipts, typing and accounts table was read at (go.mod).
@@ -872,6 +873,10 @@ func TestGroupAndChatManagementTableMatchesTheBridges(t *testing.T) {
 		"gchat": {
 			SetName: true, SetTopic: true, SetAvatar: false,
 			Membership: true, PowerLevels: false, DeleteChat: true,
+		},
+		"imessage": {
+			SetName: false, SetTopic: false, SetAvatar: false,
+			Membership: false, PowerLevels: false, DeleteChat: false,
 		},
 		"discord": {
 			SetName: false, SetTopic: false, SetAvatar: false,

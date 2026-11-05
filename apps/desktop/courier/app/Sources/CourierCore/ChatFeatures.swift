@@ -27,6 +27,7 @@ public enum NetworkNames {
         "linkedin": "LinkedIn",
         "gvoice": "Google Voice",
         "bluesky": "Bluesky",
+        "imessage": "iMessage",
     ]
 
     /// The network's name, or nil for an id this app doesn't know.
