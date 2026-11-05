@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.10](https://github.com/VitruvianSoftware/vitruvian-core/compare/courier-v0.3.9...courier-v0.3.10) (2026-11-05)
+
+
+### Features
+
+* **courier:** show who reacted, keep the hover bar next to the message, and polish reactions ([#4352](https://github.com/VitruvianSoftware/vitruvian-core/issues/4352)) ([86af745](https://github.com/VitruvianSoftware/vitruvian-core/commit/86af74542459dc58bdb5c40b189d417418d652b6))
+
+
+### Bug Fixes
+
+* **courier:** sync full channel rosters and resolve self profile and service bots in Chat Info ([#4351](https://github.com/VitruvianSoftware/vitruvian-core/issues/4351)) ([bb914ce](https://github.com/VitruvianSoftware/vitruvian-core/commit/bb914cee3f1f87384f90a78b97e49b6323761022))
+
 ## [0.3.9](https://github.com/VitruvianSoftware/vitruvian-core/compare/courier-v0.3.8...courier-v0.3.9) (2026-11-05)
 
 
