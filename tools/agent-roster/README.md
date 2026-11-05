@@ -28,7 +28,7 @@ bazel run //tools/agent-roster -- --write
 
 Reads `.agents/roster/skills/orchestrate/{claude-code,antigravity,opencode}.md`, checks that each template has YAML frontmatter with `name: orchestrate`, a valid `description:` (<= 320 chars), and exactly one `<!-- roster:table -->` line, and writes:
 
-- `apps/desktop/claude-code/plugins/vitruvian-orchestrator/skills/orchestrate/SKILL.md`
+- `apps/claude-code/plugins/vitruvian-orchestrator/skills/orchestrate/SKILL.md`
 - `apps/desktop/antigravity/plugins/vitruvian-orchestrator/skills/orchestrate/SKILL.md`
 - `.opencode/skills/orchestrate/SKILL.md`
 

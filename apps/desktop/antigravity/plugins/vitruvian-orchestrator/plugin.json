@@ -8,5 +8,8 @@
   },
   "repository": "https://github.com/VitruvianSoftware/vitruvian-core",
   "license": "MIT",
-  "keywords": ["subagents", "orchestration", "routing", "antigravity"]
+  "keywords": ["subagents", "orchestration", "routing", "antigravity"],
+  "x-vitruvian": {
+    "ecosystems": ["antigravity"]
+  }
 }

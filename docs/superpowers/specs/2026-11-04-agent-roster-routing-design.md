@@ -89,7 +89,7 @@ plugins share one core, so the flow, the task list and the cost maths are writte
 
 | Part | Claude Code plugin | Antigravity plugin |
 |---|---|---|
-| Location | `apps/desktop/claude-code/plugins/vitruvian-orchestrator/` (new) | `apps/desktop/antigravity/plugins/vitruvian-orchestrator/` |
+| Location | `apps/claude-code/plugins/vitruvian-orchestrator/` (new) | `apps/desktop/antigravity/plugins/vitruvian-orchestrator/` |
 | Generated agents | `agents/*.md` (opus / sonnet / haiku) | `agents/*.md` (`pro` / `flash`, description ≤ 320) |
 | Generated lead skill | `skills/orchestrate/SKILL.md` | `skills/orchestrate/SKILL.md` |
 | Live view | a mod (`hooks/register.tsx`): bar above the prompt + agents pane | a sidecar side panel (`sidecars/panel/`) |

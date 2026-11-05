@@ -22,7 +22,7 @@
 //! - `.agents/agents/<name>.md` (Antigravity)
 //! - `.claude/agents/<name>.md` (Claude Code)
 //! - `.opencode/agents/<name>.md` (OpenCode)
-//! - `apps/desktop/claude-code/plugins/vitruvian-orchestrator/skills/orchestrate/SKILL.md`
+//! - `apps/claude-code/plugins/vitruvian-orchestrator/skills/orchestrate/SKILL.md`
 //! - `apps/desktop/antigravity/plugins/vitruvian-orchestrator/skills/orchestrate/SKILL.md`
 //! - `.opencode/skills/orchestrate/SKILL.md`
 
@@ -38,7 +38,7 @@ pub const REQUIRED_HARNESSES: [&str; 3] = ["claude-code", "antigravity", "openco
 pub const SKILL_OUTPUTS: [(&str, &str); 3] = [
     (
         "claude-code",
-        "apps/desktop/claude-code/plugins/vitruvian-orchestrator/skills/orchestrate/SKILL.md",
+        "apps/claude-code/plugins/vitruvian-orchestrator/skills/orchestrate/SKILL.md",
     ),
     (
         "antigravity",
@@ -1492,7 +1492,7 @@ scout\tcore\tSecond scout.
         assert_eq!(files.len(), 12);
 
         assert_eq!(
-            files["apps/desktop/claude-code/plugins/vitruvian-orchestrator/skills/orchestrate/SKILL.md"],
+            files["apps/claude-code/plugins/vitruvian-orchestrator/skills/orchestrate/SKILL.md"],
             concat!(
                 "---\n",
                 "name: orchestrate\n",
