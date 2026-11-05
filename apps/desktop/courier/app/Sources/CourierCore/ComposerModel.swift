@@ -717,7 +717,7 @@ public final class ComposerModel: ObservableObject {
 
     /// The thread pane's composer (`ThreadModel` sets it): always in its thread, and Return in it, empty, acts on
     /// the message selected in the pane.
-    var isThreadPaneComposer = false
+    public var isThreadPaneComposer = false
 
     /// Return in an empty composer acts on the selected message: in the chat's composer writing a new message, and
     /// in the thread pane's (`ThreadPane` gives it the pane's selection).
