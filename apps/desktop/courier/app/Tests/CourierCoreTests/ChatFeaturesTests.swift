@@ -279,6 +279,7 @@ final class ChatFeaturesTests: XCTestCase {
         XCTAssertEqual(NetworkNames.displayName(of: "linkedin"), "LinkedIn")
         XCTAssertEqual(NetworkNames.displayName(of: "gvoice"), "Google Voice")
         XCTAssertEqual(NetworkNames.displayName(of: "bluesky"), "Bluesky")
+        XCTAssertEqual(NetworkNames.displayName(of: "imessage"), "iMessage")
         XCTAssertNil(NetworkNames.displayName(of: "matrix"))
         // The protocol's list of every network, which the engine's registry is checked against too: all five,
         // Slack and Google Messages included, not only the ones the accounts example shows.

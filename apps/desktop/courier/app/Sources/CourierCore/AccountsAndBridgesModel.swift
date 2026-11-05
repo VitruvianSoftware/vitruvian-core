@@ -245,6 +245,7 @@ public final class AccountsAndBridgesModel: ObservableObject {
         case "slack": return "com.tinyspeck.slackmacgap"
         case "discord": return "com.hnc.Discord"
         case "facebook": return "com.facebook.archon"
+        case "imessage": return "com.apple.MobileSMS"
         case "gmessages", "googlechat", "instagram", "twitter", "linkedin", "gvoice", "bluesky": return nil
         default: return nil
         }

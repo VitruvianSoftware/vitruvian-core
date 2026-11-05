@@ -63,11 +63,13 @@ go_test(
     ] + select({
         "@rules_go//go/platform:darwin": [
             "//apps/desktop/courier/engine/internal/gchat",
+            "//apps/desktop/courier/engine/internal/imessage",
             "@fi_mau_go_mautrix_signal//pkg/connector",
             "@fi_mau_go_mautrix_signal//pkg/libsignalgo",
         ],
         "@rules_go//go/platform:ios": [
             "//apps/desktop/courier/engine/internal/gchat",
+            "//apps/desktop/courier/engine/internal/imessage",
             "@fi_mau_go_mautrix_signal//pkg/connector",
             "@fi_mau_go_mautrix_signal//pkg/libsignalgo",
         ],
@@ -106,10 +108,12 @@ go_library(
     ] + select({
         "@rules_go//go/platform:darwin": [
             "//apps/desktop/courier/engine/internal/gchat",
+            "//apps/desktop/courier/engine/internal/imessage",
             "@fi_mau_go_mautrix_signal//pkg/connector",
         ],
         "@rules_go//go/platform:ios": [
             "//apps/desktop/courier/engine/internal/gchat",
+            "//apps/desktop/courier/engine/internal/imessage",
             "@fi_mau_go_mautrix_signal//pkg/connector",
         ],
         "//conditions:default": [],

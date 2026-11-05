@@ -283,6 +283,7 @@ public final class LoginFlowModel: ObservableObject {
         "linkedin": ["cookies"],
         "gvoice": ["cookies"],
         "bluesky": ["password"],
+        "imessage": ["local"],
     ]
 
     /// The flows to offer: the app's choice, of those the engine reports. For a network (or flows) the app has
@@ -338,6 +339,7 @@ public final class LoginFlowModel: ObservableObject {
         case ("twitter", "password"): String(localized: "Username & password")
         case ("linkedin", "cookies"): String(localized: "Sign in on the web")
         case ("bluesky", "password"): String(localized: "Username & password")
+        case ("imessage", "local"): String(localized: "Messages on this Mac")
         case (_, "qr"): String(localized: "QR code")
         case (_, "phone"): String(localized: "Phone number")
         default: flow

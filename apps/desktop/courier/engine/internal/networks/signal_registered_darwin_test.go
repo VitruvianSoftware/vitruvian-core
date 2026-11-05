@@ -16,9 +16,10 @@ import (
 
 	"github.com/VitruvianSoftware/courier/engine/internal/actions"
 	"github.com/VitruvianSoftware/courier/engine/internal/gchat"
+	"github.com/VitruvianSoftware/courier/engine/internal/imessage"
 )
 
-// On macOS Signal and Google Chat are registered after the portable eleven.
+// On macOS Signal, Google Chat and iMessage are registered after the portable eleven.
 func TestSignalIsRegisteredLastOnDarwin(t *testing.T) {
 	var names []string
 	for _, n := range All() {
@@ -27,7 +28,7 @@ func TestSignalIsRegisteredLastOnDarwin(t *testing.T) {
 	require.Equal(t, []string{
 		"whatsapp", "telegram", "gmessages", "slack",
 		"discord", "facebook", "instagram", "twitter", "linkedin", "gvoice", "bluesky",
-		"signal", "gchat",
+		"signal", "gchat", "imessage",
 	}, names)
 
 	signal, ok := Get("signal")
@@ -39,9 +40,14 @@ func TestSignalIsRegisteredLastOnDarwin(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "Google Chat", gchatNet.DisplayName)
 	require.Equal(t, []string{"cookies"}, gchatNet.Flows)
+
+	imNet, ok := Get("imessage")
+	require.True(t, ok)
+	require.Equal(t, "iMessage", imNet.DisplayName)
+	require.Equal(t, []string{"local"}, imNet.Flows)
 }
 
-// platformClients adds Signal's and Google Chat's rows of the sync table.
+// platformClients adds Signal's, Google Chat's and iMessage's rows of the sync table.
 func platformClients() map[string]platformClient {
 	return map[string]platformClient{
 		"signal": {
@@ -49,6 +55,9 @@ func platformClients() map[string]platformClient {
 		},
 		"gchat": {
 			client: (*gchat.Client)(nil), sent: []string{"mute"}, implements: []string{"mute"},
+		},
+		"imessage": {
+			client: (*imessage.Client)(nil), sent: []string{}, implements: []string{},
 		},
 	}
 }
@@ -77,6 +86,10 @@ func platformActionRows() (map[string]actionRow, map[string]handlerRow) {
 	gcSpace.MentionRoom = true
 	gcThreadedSpace := gcSpace
 	gcThreadedSpace.Thread = true
+	imClient := (*imessage.Client)(nil)
+	im := actions.Features{
+		Reply: true, Formatting: noKind, MaxTextLength: imessage.MaxOutboundTextLength,
+	}
 	return map[string]actionRow{
 			"signal dm":            {client, portalOf(database.RoomTypeDM, "their-uuid", nil), sig},
 			"signal group":         {client, portalOf(database.RoomTypeDefault, "group-id", nil), sig},
@@ -84,9 +97,12 @@ func platformActionRows() (map[string]actionRow, map[string]handlerRow) {
 			"gchat dm":             {gcClient, portalOf(database.RoomTypeDM, gchat.MakeDMPortalID("111"), &gchat.PortalMetadata{TopicThreaded: false}), gcDM},
 			"gchat space":          {gcClient, portalOf(database.RoomTypeDefault, gchat.MakeSpacePortalID("222"), &gchat.PortalMetadata{TopicThreaded: false}), gcSpace},
 			"gchat threaded space": {gcClient, portalOf(database.RoomTypeDefault, gchat.MakeSpacePortalID("333"), &gchat.PortalMetadata{TopicThreaded: true}), gcThreadedSpace},
+			"imessage dm":          {imClient, portalOf(database.RoomTypeDM, "iMessage;-;+15551234567", &imessage.PortalMetadata{}), im},
+			"imessage group":       {imClient, portalOf(database.RoomTypeDefault, "iMessage;+;chat123", &imessage.PortalMetadata{}), im},
 		}, map[string]handlerRow{
-			"signal": {client, []string{"edit", "remove", "poll", "timer"}},
-			"gchat":  {gcClient, []string{"edit", "remove"}},
+			"signal":   {client, []string{"edit", "remove", "poll", "timer"}},
+			"gchat":    {gcClient, []string{"edit", "remove"}},
+			"imessage": {imClient, []string{}},
 		}
 }
 
@@ -97,7 +113,7 @@ func platformPollChecks() map[string]func(data any) bool {
 	}
 }
 
-// platformReceiptColumns adds Signal's and Google Chat's columns of the receipts, typing and accounts table.
+// platformReceiptColumns adds Signal's, Google Chat's and iMessage's columns of the receipts, typing and accounts table.
 func platformReceiptColumns() map[string]receiptNetwork {
 	return map[string]receiptNetwork{
 		"signal": {
@@ -108,6 +124,11 @@ func platformReceiptColumns() map[string]receiptNetwork {
 		"gchat": {
 			connector: gchat.NewConnector(), client: (*gchat.Client)(nil),
 			sends: []string{"read_receipts", "typing"}, replyPrivately: []string{"resolve_identifier", "create_chat_with_ghost"},
+			implicitReads: false,
+		},
+		"imessage": {
+			connector: imessage.NewConnector(), client: (*imessage.Client)(nil),
+			sends: []string{"read_receipts"}, replyPrivately: []string{"resolve_identifier", "create_chat_with_ghost"},
 			implicitReads: false,
 		},
 	}
