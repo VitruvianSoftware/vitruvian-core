@@ -26,7 +26,7 @@ final class MessageActionBarSnapshotTests: XCTestCase {
         ], sender: mine ? nil : sender, name: name)
     }
 
-    private func timeline(_ events: [Event], selected: String, card: String? = nil) -> some View {
+    private func timeline(_ events: [Event], selected: String, card: String? = nil, bottom: CGFloat = 14) -> some View {
         let ui = MessageUI()
         let actions = Courier.MessageActions(now: { Fixture.now })
         return VStack(spacing: 0) {
@@ -37,7 +37,7 @@ final class MessageActionBarSnapshotTests: XCTestCase {
         }
         .padding(.horizontal, 14)
         .padding(.top, 40)
-        .padding(.bottom, 14)
+        .padding(.bottom, bottom)
         .environment(\.reactionCardOverride, card.map { ReactionCardOverride(messageID: selected, reactionKey: $0) })
     }
 
@@ -103,6 +103,20 @@ final class MessageActionBarSnapshotTests: XCTestCase {
         XCTAssertEqual(chips.map(\.count), [12, 2, 1])
         XCTAssertTrue(chips[0].summary(maxNames: 10).hasSuffix("2 others reacted with 👍"))
         try render("message-bar-reaction-card") { timeline(events, selected: "$c1", card: "👍") }
+    }
+
+    /// A short message, its bar beside it: the card above the chip would cover the bar's first reactions, so it goes
+    /// below the chip (ReactionCardPlacement).
+    func testReactionCardGoesBelowTheChipToKeepOffTheBar() throws {
+        var events = [
+            Fixture.text("$w0", "Do you still have the spare poles?", mine: true, ts: 30),
+            Fixture.text("$w1", "Weather looks fine.", mine: false, ts: 20),
+        ]
+        for (index, name) in ["Bo", "Cy", "Di"].enumerated() {
+            events.append(reaction("$wr\(index)", to: "$w1", key: "👍", ts: 19 - index,
+                                   sender: "@\(name.lowercased()):courier.local", name: "\(name) Example"))
+        }
+        try render("message-bar-reaction-card-below") { timeline(events, selected: "$w1", card: "👍", bottom: 110) }
     }
 
     /// A message nearly as wide as the timeline: no room beside it, so the bar sits over its top corner, inside the row.

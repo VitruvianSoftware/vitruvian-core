@@ -146,9 +146,16 @@ extension View {
     /// What sits on an edge of a transcript (the composer and what is above it at the bottom; a banner at the top).
     /// Without glass, it is stacked against the transcript, the look before the option. With glass, the transcript
     /// runs under it: it sits in the transcript's safe area, so the last message stays in view above the composer and
-    /// scrolls under it, behind a soft scroll edge.
+    /// scrolls under it, behind the scroll edge (`courierScrollEdges`, on the transcript's scroll view).
     func courierEdgeBar<Bar: View>(_ edge: VerticalEdge, @ViewBuilder _ bar: () -> Bar) -> some View {
         modifier(CourierEdgeBar(edge: edge, bar: bar()))
+    }
+
+    /// On a transcript's own scroll view: with glass, the scroll edge effect where content runs under the window's
+    /// toolbar and under the floating composer, so messages fade out under the bars instead of showing through the
+    /// glass. On the scroll view itself: set on a view around it, it didn't reach it. Nothing without glass.
+    func courierScrollEdges() -> some View {
+        modifier(CourierScrollEdges())
     }
 
     /// A background that, with glass, reaches under the bars over the transcript (the toolbar, the composer), as the
@@ -186,13 +193,26 @@ private struct CourierEdgeBar<Bar: View>: ViewModifier {
         if #available(macOS 26.0, *), liquidGlass {
             content
                 .safeAreaBar(edge: edge, spacing: 0) { bar }
-                .scrollEdgeEffectStyle(.soft, for: edge == .top ? .top : .bottom)
         } else {
             VStack(spacing: 0) {
                 if edge == .top { bar }
                 content
                 if edge == .bottom { bar }
             }
+        }
+    }
+}
+
+private struct CourierScrollEdges: ViewModifier {
+    @Environment(\.liquidGlass) private var liquidGlass
+
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *), liquidGlass {
+            // Hard, as Mail's and Finder's: the soft style left messages showing through the glass behind the chat's
+            // name in the toolbar (checked in the test copy on macOS 27.2).
+            content.scrollEdgeEffectStyle(.hard, for: [.top, .bottom])
+        } else {
+            content
         }
     }
 }
@@ -227,7 +247,6 @@ private struct CourierChatToolbar<Identity: View, Actions: View>: ViewModifier {
                 }
                 // The chat's name is the title now: the window's own ("Courier", "Connected") would be a second one.
                 .toolbar(removing: .title)
-                .scrollEdgeEffectStyle(.soft, for: .top)
         } else {
             content
         }

@@ -547,6 +547,7 @@ struct ConversationView: View {
                 .padding(.bottom, 8)
             }
             .defaultScrollAnchor(.bottom)
+            .courierScrollEdges()
             // A click on the timeline's empty space (not on a message, which takes its own click) deselects.
             .deselectsOnEmptyClick { conversation.deselectMessage() }
             .overlay(alignment: .bottomTrailing) { jumpButton }

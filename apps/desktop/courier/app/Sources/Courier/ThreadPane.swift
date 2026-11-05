@@ -141,6 +141,7 @@ struct ThreadPane: View {
                     .padding(.bottom, 8)
                 }
                 .defaultScrollAnchor(.bottom)
+                .courierScrollEdges()
                 .deselectsOnEmptyClick { [focus] in _ = Self.deselect(focus) }
                 .onChange(of: thread.scrollToMessageRequest, initial: true) { _, request in
                     guard let request else { return }

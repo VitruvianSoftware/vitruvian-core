@@ -55,3 +55,40 @@ final class MessageActionBarPlacementTests: XCTestCase {
                        MessageActionBarPlacement.edgeMargin)
     }
 }
+
+/// Where the who-reacted card goes: above its chip, unless that would cover the selected message's action bar.
+final class ReactionCardPlacementTests: XCTestCase {
+    private let row = CGSize(width: 672, height: 90)
+    private let card = CGSize(width: 220, height: 70)
+    /// A chip under a short bubble, near the row's left.
+    private let chip = CGRect(x: 40, y: 60, width: 40, height: 20)
+
+    func testAboveTheChipWithNoBar() {
+        let spot = ReactionCardPlacement.origin(chip: chip, row: row, card: card, avoiding: nil)
+        XCTAssertEqual(spot.y, chip.minY - card.height - ReactionCardPlacement.gap)
+        XCTAssertEqual(spot.x, ReactionCardPlacement.edgeMargin, "centred on the chip, but held inside the row")
+    }
+
+    func testAboveTheChipWhenTheBarIsElsewhere() {
+        let bar = CGRect(x: 400, y: 10, width: 260, height: 28)
+        let spot = ReactionCardPlacement.origin(chip: chip, row: row, card: card, avoiding: bar)
+        XCTAssertEqual(spot.y, chip.minY - card.height - ReactionCardPlacement.gap)
+    }
+
+    /// The case in the running app: the bar beside a short bubble, right where the card above the chip would go.
+    func testBelowTheChipWhenAboveWouldCoverTheBar() {
+        let bar = CGRect(x: 120, y: 20, width: 260, height: 28)
+        let spot = ReactionCardPlacement.origin(chip: chip, row: row, card: card, avoiding: bar)
+        XCTAssertEqual(spot.y, chip.maxY + ReactionCardPlacement.gap, "below the chip, across the gap")
+        XCTAssertEqual(spot.x, ReactionCardPlacement.edgeMargin, "still held inside the row")
+        let placed = CGRect(origin: spot, size: card)
+        XCTAssertFalse(placed.intersects(bar))
+    }
+
+    /// Before the bar has measured itself it has no size, and covers nothing.
+    func testABarNotYetMeasuredIsIgnored() {
+        let bar = CGRect(x: 60, y: 20, width: 0, height: 0)
+        let spot = ReactionCardPlacement.origin(chip: chip, row: row, card: card, avoiding: bar)
+        XCTAssertEqual(spot.y, chip.minY - card.height - ReactionCardPlacement.gap)
+    }
+}

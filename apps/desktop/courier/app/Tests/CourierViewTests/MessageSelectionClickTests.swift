@@ -43,6 +43,7 @@ final class MessageSelectionClickTests: XCTestCase {
                 .padding(.horizontal, 14)
             }
             .deselectsOnEmptyClick { box.selected = nil }
+            .environment(\.clickTargetProbe) { name, frame in box.frames[name] = frame }
             .frame(width: 600, height: 300)
         }
     }
@@ -56,6 +57,11 @@ final class MessageSelectionClickTests: XCTestCase {
         let items = Fixture.items([
             Fixture.text("$a", "Are we still on for the hike on Saturday?", mine: false, ts: 9),
             Fixture.text("$b", "Yes, see you at eight.", mine: true, ts: 2),
+            Fixture.event("$r", type: "m.reaction", mine: false, ts: 1, content: [
+                "m.relates_to": .object([
+                    "rel_type": .string("m.annotation"), "event_id": .string("$a"), "key": .string("👍"),
+                ]),
+            ], sender: "@bo:courier.local", name: "Bo Example"),
         ])
         let host = NSHostingView(rootView: Harness(box: box, items: items))
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 300), styleMask: [.borderless],
@@ -99,6 +105,13 @@ final class MessageSelectionClickTests: XCTestCase {
         settle()
     }
 
+    /// The middle of a probed button in a row (`clickTargetProbe`): "chip/<message>/<key>", "add/<message>",
+    /// "bar/<title>".
+    private func point(ofButton name: String) throws -> CGPoint {
+        let frame = try XCTUnwrap(box.frames[name], "button \(name) was laid out")
+        return CGPoint(x: frame.midX, y: frame.midY)
+    }
+
     /// The middle of a message's row, a little in from its bubble's side.
     private func point(in id: String) throws -> CGPoint {
         let frame = try XCTUnwrap(box.frames[id], "row \(id) was laid out")
@@ -136,5 +149,31 @@ final class MessageSelectionClickTests: XCTestCase {
         XCTAssertLessThan(below, host.bounds.height, "there is empty space below the messages")
         try click(CGPoint(x: 300, y: below))
         XCTAssertNil(box.selected, "a click below the messages deselects")
+    }
+
+    /// A click on a reaction chip of the selected message reacts; it must not deselect the message as well.
+    func testAClickOnAReactionChipKeepsTheSelection() throws {
+        try click(try point(in: "$a"))
+        try XCTSkipIf(box.selected == nil, "the window got no clicks (no window server for it here)")
+        try click(try point(ofButton: "chip/$a/👍"))
+        XCTAssertEqual(box.selected, "$a", "the chip took the click, not the row")
+    }
+
+    /// The add-reaction chip after the chips shows once the message is selected; a click on it is the chip's.
+    func testAClickOnTheAddReactionChipKeepsTheSelection() throws {
+        try click(try point(in: "$a"))
+        try XCTSkipIf(box.selected == nil, "the window got no clicks (no window server for it here)")
+        try click(try point(ofButton: "add/$a"))
+        XCTAssertEqual(box.selected, "$a")
+    }
+
+    /// The action bar's buttons are drawn outside the row's click, so they never toggle the selection.
+    func testAClickOnTheActionBarKeepsTheSelection() throws {
+        try click(try point(in: "$a"))
+        try XCTSkipIf(box.selected == nil, "the window got no clicks (no window server for it here)")
+        try click(try point(ofButton: "bar/Reply"))
+        XCTAssertEqual(box.selected, "$a")
+        try click(try point(ofButton: "bar/React with ❤️"))
+        XCTAssertEqual(box.selected, "$a")
     }
 }
