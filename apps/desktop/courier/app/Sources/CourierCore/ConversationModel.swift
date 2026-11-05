@@ -2646,6 +2646,14 @@ public final class ConversationModel: ObservableObject {
         }
     }
 
+    /// Takes back a reaction of mine: unsends the reaction's own event. A network that can't take one back says so,
+    /// as any failed action does.
+    public func unreact(eventID: String) async {
+        await act { client, _ in
+            let _: Sent = try await client.call("message.unsend", EventParams(eventID: eventID))
+        }
+    }
+
     /// Sends a message that failed again, as the same message.
     public func retry(_ eventID: String) async {
         await act { client, _ in

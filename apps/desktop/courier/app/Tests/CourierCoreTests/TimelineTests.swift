@@ -55,10 +55,10 @@ final class TimelineTests: XCTestCase {
     }
 
     private func reaction(_ id: String, to target: String, key: String, ts: Int64, seq: Int64 = 0,
-                          from sender: String = "@bob:example.test", mine: Bool = false,
+                          from sender: String = "@bob:example.test", name: String = "x", mine: Bool = false,
                           status: String = "sent") -> Event {
         let content = #"{"m.relates_to":{"rel_type":"m.annotation","event_id":"\#(target)","key":"\#(key)"}}"#
-        return Event(eventID: id, roomID: "!room", sender: mine ? me : sender, senderName: "x", mine: mine,
+        return Event(eventID: id, roomID: "!room", sender: mine ? me : sender, senderName: name, mine: mine,
                      type: "m.reaction", content: json(content), ts: ts, seq: seq, status: EventStatus(rawValue: status))
     }
 
@@ -184,6 +184,57 @@ final class TimelineTests: XCTestCase {
         XCTAssertEqual(shown[0].reactions.map(\.count), [2, 1])
         XCTAssertEqual(shown[0].reactions.map(\.mine), [false, true])
         XCTAssertEqual(shown[1].reactions.map(\.key), ["🙏"])
+    }
+
+    func testReactionsRecordWhoGaveThemInOrder() {
+        let events = [
+            message("$1", ts: at(14, 10, 0)),
+            reaction("$r1", to: "$1", key: "👍", ts: at(14, 10, 2), from: "@bob:example.test", name: " Bo "),
+            reaction("$r2", to: "$1", key: "👍", ts: at(14, 10, 3), mine: true),
+            reaction("$r3", to: "$1", key: "👍", ts: at(14, 10, 4), from: "@cy:example.test", name: ""),
+            // Bo again, and me again: each is listed once, where they first reacted.
+            reaction("$r4", to: "$1", key: "👍", ts: at(14, 10, 5), from: "@bob:example.test", name: "Bo"),
+            reaction("$r5", to: "$1", key: "👍", ts: at(14, 10, 6), mine: true),
+            reaction("$r6", to: "$1", key: "❤️", ts: at(14, 10, 7), from: "@cy:example.test", name: "Cy"),
+        ]
+        let chips = messages(build(events))[0].reactions
+        XCTAssertEqual(chips.map(\.key), ["👍", "❤️"])
+        XCTAssertEqual(chips[0].reactors, [
+            Reactor(userID: "@bob:example.test", name: "Bo", isMe: false),
+            Reactor(userID: me, name: "x", isMe: true),
+            // No name on the event: the user id, as for a message's sender.
+            Reactor(userID: "@cy:example.test", name: "@cy:example.test", isMe: false),
+        ])
+        XCTAssertEqual(chips[0].count, 3, "the count is the people, not the events")
+        XCTAssertEqual(chips[0].myEventID, "$r5", "my newest reaction is the one to take back")
+        XCTAssertNil(chips[1].myEventID, "I didn't give this one")
+        XCTAssertEqual(chips[1].reactors.map(\.isMe), [false])
+    }
+
+    func testTakingBackMyReactionClearsItsEvent() {
+        let events = [
+            message("$1", ts: at(14, 10, 0)),
+            reaction("$r1", to: "$1", key: "👍", ts: at(14, 10, 1), from: "@bob:example.test", name: "Bo"),
+            reaction("$r2", to: "$1", key: "👍", ts: at(14, 10, 2), mine: true),
+        ]
+        XCTAssertEqual(messages(build(events))[0].reactions[0].myEventID, "$r2")
+        let taken = messages(build(events + [redaction("$d", of: "$r2", ts: at(14, 10, 3))]))[0].reactions
+        XCTAssertEqual(taken.map(\.count), [1])
+        XCTAssertNil(taken[0].myEventID)
+        XCTAssertFalse(taken[0].mine)
+        XCTAssertEqual(taken[0].reactors.map(\.name), ["Bo"])
+    }
+
+    func testAFailedReactionOfMineHasNoEventToTakeBack() {
+        let events = [
+            message("$1", ts: at(14, 10, 0)),
+            reaction("$r1", to: "$1", key: "👍", ts: at(14, 10, 1), from: "@bob:example.test", name: "Bo"),
+            reaction("$r2", to: "$1", key: "👍", ts: at(14, 10, 2), mine: true, status: "failed"),
+        ]
+        let chip = messages(build(events))[0].reactions[0]
+        XCTAssertFalse(chip.mine)
+        XCTAssertNil(chip.myEventID)
+        XCTAssertEqual(chip.reactors.map(\.isMe), [false])
     }
 
     func testReactionToUnknownTargetIsDropped() {
