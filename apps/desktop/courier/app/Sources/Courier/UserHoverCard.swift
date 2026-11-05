@@ -336,11 +336,14 @@ public struct UserHoverCard: View {
     }
 
     private var displayedIdentifiers: [String] {
-        member.identifiers.isEmpty ? [member.userID] : member.identifiers
+        ContactsBridge.displayableIdentifiers(member.identifiers)
     }
 
     private var primaryHandle: String {
-        ContactsBridge.displayIdentifier(member.identifiers.first ?? member.userID)
+        if let first = displayedIdentifiers.first {
+            return ContactsBridge.displayIdentifier(first)
+        }
+        return displayName
     }
 
     private func iconName(for raw: String) -> String {

@@ -87,11 +87,13 @@ func (in *Intent) sendState(ctx context.Context, roomID id.RoomID, evtType event
 		return nil, err
 	}
 	var prevMember *event.MemberEventContent
+	var prevRaw json.RawMessage
 	if evtType == event.StateMember && !created {
 		prevMember, err = in.c.GetMemberInfo(ctx, roomID, id.UserID(stateKey))
 		if err != nil {
 			return nil, err
 		}
+		prevRaw, _, _ = in.c.store.GetState(ctx, string(roomID), event.StateMember.Type, stateKey)
 	}
 	changed, err := in.c.store.SetState(ctx, string(roomID), evtType.Type, stateKey, raw)
 	if err != nil {
@@ -102,7 +104,7 @@ func (in *Intent) sendState(ctx context.Context, roomID id.RoomID, evtType event
 	}
 	evtID := ids.RandomEventID()
 	if evtType == event.StateMember && !created {
-		if err = in.recordMemberTimelineEvent(ctx, roomID, evtID, stateKey, raw, prevMember, ts); err != nil {
+		if err = in.recordMemberTimelineEvent(ctx, roomID, evtID, stateKey, raw, prevMember, prevRaw, ts); err != nil {
 			return nil, err
 		}
 	}
@@ -114,17 +116,25 @@ func (in *Intent) sendState(ctx context.Context, roomID id.RoomID, evtType event
 // state updates (com.beeper.exclude_from_timeline), rollbacks, and profile-only updates where membership is unchanged.
 func (in *Intent) recordMemberTimelineEvent(
 	ctx context.Context, roomID id.RoomID, evtID id.EventID, stateKey string,
-	raw json.RawMessage, prev *event.MemberEventContent, ts time.Time,
+	raw json.RawMessage, prev *event.MemberEventContent, prevRaw json.RawMessage, ts time.Time,
 ) error {
 	var mc struct {
 		Membership          event.Membership `json:"membership"`
 		Displayname         string           `json:"displayname"`
+		Reason              string           `json:"reason"`
 		WillAutoAccept      bool             `json:"fi.mau.will_auto_accept"`
 		ExcludeFromTimeline bool             `json:"com.beeper.exclude_from_timeline"`
 		MemberRollback      bool             `json:"com.beeper.member_rollback"`
 	}
 	if err := json.Unmarshal(raw, &mc); err != nil {
 		return nil
+	}
+	var prevFlags struct {
+		WillAutoAccept      bool `json:"fi.mau.will_auto_accept"`
+		ExcludeFromTimeline bool `json:"com.beeper.exclude_from_timeline"`
+	}
+	if len(prevRaw) > 0 {
+		_ = json.Unmarshal(prevRaw, &prevFlags)
 	}
 	prevMembership := event.MembershipLeave
 	if prev != nil {
@@ -133,7 +143,14 @@ func (in *Intent) recordMemberTimelineEvent(
 			prevMembership = event.MembershipJoin
 		}
 	}
-	if mc.Membership == "" || mc.Membership == prevMembership || mc.WillAutoAccept || mc.ExcludeFromTimeline || mc.MemberRollback {
+	// Upstream bridgev2 v0.31.0 (portal.go:4854, 5201) stamps com.beeper.exclude_from_timeline on the pre-join invite
+	// (fi.mau.will_auto_accept: true) rather than the follow-up auto-accepted join, and passes a zero timestamp from
+	// UpdateInfo when syncing full rosters (e.g. mautrix-slack generateMemberList, which leaves ExcludeChangesFromTimeline
+	// unset); honouring prevFlags, zero-ts auto-accept joins, and full-roster diff leaves ("User is not in remote chat")
+	// ensures background participant roster syncs never pollute the timeline with fake join/leave events.
+	if mc.Membership == "" || mc.Membership == prevMembership || mc.WillAutoAccept || mc.ExcludeFromTimeline || mc.MemberRollback ||
+		mc.Reason == "User is not in remote chat" ||
+		(prevFlags.WillAutoAccept && (prevFlags.ExcludeFromTimeline || ts.IsZero())) {
 		return nil
 	}
 	var fields map[string]any
