@@ -5,7 +5,7 @@ import AppKit
 import SwiftUI
 import XCTest
 
-/// A hovered message row draws above its neighbours (its hover bar and reaction card reach past its top). Its zIndex
+/// A selected message row draws above its neighbours (its action bar and reaction card reach past its top). Its zIndex
 /// is set inside MessageRowView, two views below the timeline's LazyVStack (TimelineItemView, then the row) and under
 /// the `.id` and `.popover` the chat puts on each item. These check that SwiftUI honours a zIndex set that deep: the
 /// first row draws a block reaching down into the second, which covers it unless the first is raised.

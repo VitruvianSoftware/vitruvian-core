@@ -113,6 +113,7 @@ extension MenuKey {
 enum MessageRowActions {
     static func make(conversation: ConversationModel, messageActions: MessageActionsModel,
                      preferences: ComposerPreferences, composer: ComposerModel, ui: MessageUI, source: MessageSource,
+                     deselect: @escaping () -> Void = {},
                      select: @escaping (String) -> Void) -> MessageActions {
         func perform(_ action: MessageAction, _ id: String) {
             Task { await messageActions.perform(action, on: id, from: source) }
@@ -127,6 +128,7 @@ enum MessageRowActions {
         let registry = dispatcher?.hotkeys ?? HotkeyRegistry()
         return MessageActions(
             select: select,
+            deselect: deselect,
             reply: reply,
             react: { id, key in Task { await conversation.react(to: id, key: key) } },
             unreact: { event in Task { await conversation.unreact(eventID: event) } },

@@ -8,11 +8,13 @@ import SwiftUI
 /// What a message row can ask for. The conversation (or the thread pane) gives each its call; a preview gives none.
 struct MessageActions {
     var select: (String) -> Void = { _ in }
+    /// A click on the selected message again: nothing is selected.
+    var deselect: () -> Void = {}
     var reply: (String) -> Void = { _ in }
     var react: (String, String) -> Void = { _, _ in }
     /// Takes back a reaction of mine, by its own event id.
     var unreact: (String) -> Void = { _ in }
-    /// The full reaction picker is open for this message: its row keeps the hover bar up meanwhile.
+    /// The full reaction picker is open for this message: its row keeps the action bar up meanwhile.
     var isPickingReaction: (String) -> Bool = { _ in false }
     var retry: (String) -> Void = { _ in }
     var discard: (String) -> Void = { _ in }
@@ -340,14 +342,7 @@ struct MessageRowView: View {
     @ObservedObject var ui: MessageUI
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.appearancePreferences) private var appearanceEnv
-    @Environment(\.messageRowHoverOverride) private var hoverOverride
-    /// The pointer is on the row; on its hover bar (which reaches above the row).
-    @State private var isHovering = false
-    @State private var isBarHovered = false
-    /// The hover bar is up: it goes a moment after the pointer leaves both the row and the bar, so moving from the
-    /// bubble up onto the bar never loses it.
-    @State private var showsBar = false
-    @State private var hideBar: Task<Void, Never>?
+    @Environment(\.reactionCardOverride) private var cardOverride
     @State private var barSize: CGSize = .zero
     /// The reaction chip under the pointer, and the one whose card is open (after a short rest on it).
     @State private var hoveredChip: String?
@@ -407,14 +402,10 @@ struct MessageRowView: View {
         }
         .padding(.top, message.startsGroup ? 10 : 2)
         .padding(.vertical, 1)
-        .background(RoundedRectangle(cornerRadius: 8).fill(rowFill))
+        .background(RoundedRectangle(cornerRadius: 8).fill(isSelected ? Color.accentColor.opacity(0.10) : .clear))
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.yellow.opacity(0.28 * highlight)))
         .onChange(of: isHighlighted, initial: true) { _, on in fadeHighlight(on) }
         .contentShape(Rectangle())
-        .onHover { hovering in
-            isHovering = hovering
-            hoverChanged()
-        }
         .gesture(TapGesture(count: 2).onEnded {
             guard canAct else { return }
             if actions.doubleClickShowsMenu { showsMenu = true } else { actions.doubleClick(message.id) }
@@ -431,20 +422,17 @@ struct MessageRowView: View {
             if ui.historyOpen.contains(message.id) { ui.loadHistory(message.id) }
         }
         .simultaneousGesture(TapGesture().onEnded { click() })
-        // The hover bar, beside the bubble or over its top outer corner (HoverBarPlacement). Drawn by the row,
-        // outside its click gestures, so a click on the bar doesn't also select the message.
+        // The action bar of the selected message, beside the bubble or over its top outer corner
+        // (MessageActionBarPlacement). Drawn by the row, outside its click gestures, so a click on the bar doesn't
+        // also select or deselect the message.
         .overlayPreferenceValue(BubbleBoundsKey.self, alignment: .topLeading) { anchor in
-            if showsHoverBar, let anchor {
+            if showsActionBar, let anchor {
                 GeometryReader { proxy in
-                    let spot = HoverBarPlacement.origin(bubble: proxy[anchor], row: proxy.size, bar: barSize,
-                                                        mine: message.mine)
-                    HoverActions(message: message, actions: actions) { showsMenu = true }
+                    let spot = MessageActionBarPlacement.origin(bubble: proxy[anchor], row: proxy.size, bar: barSize,
+                                                               mine: message.mine)
+                    MessageActionBar(message: message, actions: actions) { showsMenu = true }
                         .fixedSize()
                         .onGeometryChange(for: CGSize.self) { $0.size } action: { barSize = $0 }
-                        .onHover { hovering in
-                            isBarHovered = hovering
-                            hoverChanged()
-                        }
                         .offset(x: spot.x, y: spot.y)
                         .opacity(barSize == .zero ? 0 : 1)
                 }
@@ -509,41 +497,21 @@ struct MessageRowView: View {
         .zIndex(isRaised ? 1 : 0)
     }
 
-    // MARK: Hover
+    // MARK: Selection
 
-    /// The snapshot tests draw a row as if the pointer were on it.
-    private var isForcedHover: Bool { hoverOverride?.messageID == message.id }
-
-    /// The pointer is on the row or its bar (or the grace moment after it left).
-    private var isHot: Bool { showsBar || isForcedHover }
-
-    private var showsHoverBar: Bool {
-        canAct && (isHot || isSelected || showsMenu || actions.isPickingReaction(message.id))
+    /// The action bar is the selected message's (a click, or the arrow keys, select it), and stays up while its
+    /// menu or its reaction picker is open. Pointing at a message shows nothing: moving the pointer quickly over
+    /// the chat flashed a bar on every row it crossed.
+    private var showsActionBar: Bool {
+        canAct && (isSelected || showsMenu || actions.isPickingReaction(message.id))
     }
 
-    private var openCardKey: String? { isForcedHover ? hoverOverride?.reactionCardKey : cardChip }
-
-    private var isRaised: Bool { showsHoverBar || openCardKey != nil }
-
-    /// Selection first, then the faint hover tint.
-    private var rowFill: Color {
-        if isSelected { return Color.accentColor.opacity(0.10) }
-        return isHot ? Color.primary.opacity(0.035) : .clear
+    /// The chip whose who-reacted card is open: the one the pointer rested on, or the one the snapshot tests open.
+    private var openCardKey: String? {
+        cardOverride?.messageID == message.id ? cardOverride?.reactionKey : cardChip
     }
 
-    /// Shows the bar at once; hides it a moment after the pointer has left both the row and the bar.
-    private func hoverChanged() {
-        hideBar?.cancel()
-        if isHovering || isBarHovered {
-            showsBar = true
-            return
-        }
-        hideBar = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(120))
-            guard !Task.isCancelled, !isHovering, !isBarHovered else { return }
-            showsBar = false
-        }
-    }
+    private var isRaised: Bool { showsActionBar || openCardKey != nil }
 
     /// Where the reaction card goes: just above its chip, centred on it, inside the row.
     private func cardOrigin(chip: CGRect, row: CGSize) -> CGPoint {
@@ -569,10 +537,16 @@ struct MessageRowView: View {
         }
     }
 
-    /// A click selects the message; on a held one, with "Click pending messages to undo send" on, it undoes it.
+    /// A click selects the message, and a click on the selected one deselects it; on a held one, with "Click pending
+    /// messages to undo send" on, it undoes it. The second click of a double click is the double click's alone (the
+    /// menu, or what Settings ▸ Messages says): inside a timeline that deselects on an empty click
+    /// (`deselectsOnEmptyClick`), SwiftUI doesn't end this tap for it, so a double click leaves the message selected
+    /// (MessageSelectionClickTests).
     private func click() {
         if message.statusLine == .queued, let undo = actions.undoHeld {
             undo(message.id)
+        } else if isSelected {
+            actions.deselect()
         } else {
             actions.select(message.id)
         }
@@ -927,7 +901,7 @@ struct MessageRowView: View {
         return chip.mine ? Color.accentColor.opacity(hovered ? 0.32 : 0.22) : Color.primary.opacity(hovered ? 0.14 : 0.08)
     }
 
-    /// "Add Reaction…" at the end of the chips, while the row is hovered. Always laid out, so the row keeps its
+    /// "Add Reaction…" at the end of the chips, while the message is selected. Always laid out, so the row keeps its
     /// height and width when it shows.
     private var addReactionChip: some View {
         Button {
@@ -943,9 +917,9 @@ struct MessageRowView: View {
         .foregroundStyle(.secondary)
         .help(String(localized: "Add Reaction…"))
         .accessibilityLabel(String(localized: "Add Reaction…"))
-        .opacity(isHot ? 1 : 0)
-        .allowsHitTesting(isHot)
-        .accessibilityHidden(!isHot)
+        .opacity(isSelected ? 1 : 0)
+        .allowsHitTesting(isSelected)
+        .accessibilityHidden(!isSelected)
     }
 
     /// My newest edit was refused: the message reads as before it, and this offers to send the edit again or drop it.
@@ -1132,8 +1106,9 @@ private struct QuoteView: View {
     }
 }
 
-/// The bar on hover: the quick reactions (the default first), Add Reaction…, Reply and More (the message's menu).
-private struct HoverActions: View {
+/// The selected message's bar: the quick reactions (the default first), Add Reaction…, Reply and More (the message's
+/// menu).
+private struct MessageActionBar: View {
     let message: TimelineMessage
     let actions: MessageActions
     let showMenu: () -> Void
@@ -1141,24 +1116,24 @@ private struct HoverActions: View {
     var body: some View {
         HStack(spacing: 1) {
             ForEach(ConversationModel.quickReactions, id: \.self) { key in
-                HoverButton(String(localized: "React with \(key)")) {
+                ActionBarButton(String(localized: "React with \(key)")) {
                     actions.react(message.id, key)
                 } label: {
                     Text(key)
                 }
             }
             Divider().frame(height: 14).padding(.horizontal, 3)
-            HoverButton(String(localized: "Add Reaction…")) {
+            ActionBarButton(String(localized: "Add Reaction…")) {
                 actions.perform(.action(.react), message.id)
             } label: {
                 AddReactionGlyph()
             }
-            HoverButton(String(localized: "Reply")) {
+            ActionBarButton(String(localized: "Reply")) {
                 actions.reply(message.id)
             } label: {
                 Image(systemName: "arrowshape.turn.up.left")
             }
-            HoverButton(String(localized: "More")) {
+            ActionBarButton(String(localized: "More")) {
                 showMenu()
             } label: {
                 Image(systemName: "ellipsis")
@@ -1166,14 +1141,12 @@ private struct HoverActions: View {
         }
         .padding(.horizontal, 4)
         .padding(.vertical, 3)
-        .background(RoundedRectangle(cornerRadius: 8).fill(.regularMaterial))
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.quaternary))
-        .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
+        .courierSurface(.actionBar)
     }
 }
 
-/// One of the hover bar's buttons: its name as help and for VoiceOver, and a faint tint under the pointer.
-private struct HoverButton<Label: View>: View {
+/// One of the action bar's buttons: its name as help and for VoiceOver, and a faint tint under the pointer.
+private struct ActionBarButton<Label: View>: View {
     let title: String
     let action: () -> Void
     let label: Label
@@ -1231,9 +1204,7 @@ private struct ReactionCard: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
         }
-        .background(RoundedRectangle(cornerRadius: 8).fill(.regularMaterial))
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.quaternary))
-        .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
+        .courierSurface(.reactionCard)
     }
 }
 
@@ -1252,11 +1223,12 @@ private struct CappedWidth: Layout {
     }
 }
 
-/// Where a message's hover bar goes, in its row (all in the row's coordinates; the result is the bar's top-leading
-/// corner). Beside the bubble on its outer side (right of theirs, left of mine) when it fits there, so the message
-/// above stays readable; over the bubble's top outer corner, mostly above it, when the bubble is too wide for that.
-enum HoverBarPlacement {
-    /// Between the bubble and a bar beside it. The row's hover covers it, so the pointer can cross it.
+/// Where the selected message's action bar goes, in its row (all in the row's coordinates; the result is the bar's
+/// top-leading corner). Beside the bubble on its outer side (right of theirs, left of mine) when it fits there, so the
+/// message above stays readable; over the bubble's top outer corner, mostly above it, when the bubble is too wide for
+/// that.
+enum MessageActionBarPlacement {
+    /// Between the bubble and a bar beside it.
     static let gap: CGFloat = 6
     /// Kept between the bar and the row's sides.
     static let edgeMargin: CGFloat = 4
@@ -1279,7 +1251,7 @@ enum HoverBarPlacement {
     }
 }
 
-/// Where a row's bubble is, for its hover bar.
+/// Where a row's bubble is, for its action bar.
 private struct BubbleBoundsKey: PreferenceKey {
     static let defaultValue: Anchor<CGRect>? = nil
     static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) { value = value ?? nextValue() }
@@ -1291,21 +1263,30 @@ private struct ReactionCardAnchorKey: PreferenceKey {
     static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) { value = value ?? nextValue() }
 }
 
-/// For the snapshot tests, which can't move a pointer: draws one message's row as if hovered, and, with a key, with
-/// that reaction's card open. Nil (the default) in the app.
-struct MessageRowHoverOverride: Equatable {
-    var messageID: String
-    var reactionCardKey: String?
+extension View {
+    /// A click on this timeline where no row takes it (the space around and below the messages, a day separator)
+    /// runs `deselect`. A row's own click wins over this: SwiftUI gives a click to the innermost gesture.
+    func deselectsOnEmptyClick(_ deselect: @escaping () -> Void) -> some View {
+        contentShape(Rectangle()).onTapGesture(perform: deselect)
+    }
 }
 
-private struct MessageRowHoverOverrideKey: EnvironmentKey {
-    static let defaultValue: MessageRowHoverOverride? = nil
+/// For the snapshot tests, which can't rest a pointer on a reaction chip: draws one message's row with that
+/// reaction's who-reacted card open. (Selection, which shows the action bar, is the row's `isSelected`.) Nil (the
+/// default) in the app.
+struct ReactionCardOverride: Equatable {
+    var messageID: String
+    var reactionKey: String
+}
+
+private struct ReactionCardOverrideKey: EnvironmentKey {
+    static let defaultValue: ReactionCardOverride? = nil
 }
 
 extension EnvironmentValues {
-    var messageRowHoverOverride: MessageRowHoverOverride? {
-        get { self[MessageRowHoverOverrideKey.self] }
-        set { self[MessageRowHoverOverrideKey.self] = newValue }
+    var reactionCardOverride: ReactionCardOverride? {
+        get { self[ReactionCardOverrideKey.self] }
+        set { self[ReactionCardOverrideKey.self] = newValue }
     }
 }
 

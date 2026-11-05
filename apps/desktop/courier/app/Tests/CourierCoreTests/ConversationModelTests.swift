@@ -1330,6 +1330,20 @@ final class ConversationModelTests: XCTestCase {
         XCTAssertEqual(h.conversation.composer.replyTarget?.eventID, "$2")
         await stop(h)
     }
+
+    /// Esc, a second click on the selected message, or a click on empty space: nothing selected. With nothing
+    /// selected it says so, so Esc goes on to close the thread pane.
+    func testDeselectMessage() async throws {
+        let h = try await start(["!a": history(2)])
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.isLoaded }
+        XCTAssertFalse(h.conversation.deselectMessage(), "nothing was selected")
+        h.conversation.selectedMessageID = "$2"
+        XCTAssertTrue(h.conversation.deselectMessage())
+        XCTAssertNil(h.conversation.selectedMessageID)
+        XCTAssertFalse(h.conversation.deselectMessage(), "a second Esc is for what comes after")
+        await stop(h)
+    }
 }
 
 // MARK: - Protocol 5: typing, receipts, Mark as Unread, Reply Privately
