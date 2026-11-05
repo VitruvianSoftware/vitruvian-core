@@ -1,0 +1,17 @@
+# Model tiers per harness for the vitruvian-core specialist roster.
+# - Antigravity agent files accept only model inherit|flash|pro (pro = Gemini 4 Argon,
+#   flash = Gemini 3.8 Flash) and have no effort field (use "-").
+# - OpenCode needs full provider/model ids (e.g. anthropic/claude-opus-5-5).
+# - Claude Code accepts opus|sonnet|haiku|fable|inherit or a full claude-* id,
+#   plus effort medium|high|xhigh|max.
+# - Effort "low" is forbidden.
+tier	harness	model	effort
+lead	claude-code	opus	high
+lead	antigravity	pro	-
+lead	opencode	anthropic/claude-opus-5-5	high
+core	claude-code	sonnet	high
+core	antigravity	flash	-
+core	opencode	anthropic/claude-sonnet-5-5	high
+fast	claude-code	haiku	medium
+fast	antigravity	flash	-
+fast	opencode	anthropic/claude-haiku-5-5	medium

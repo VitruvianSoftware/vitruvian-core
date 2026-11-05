@@ -276,6 +276,7 @@ gazelle(
 multirun(
     name = "tidy",
     commands = [
+        "//tools/agent-roster:write",
         ":gazelle",
         ":gazelle_python_manifest.update",
         "//tools/format",
