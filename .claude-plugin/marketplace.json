@@ -192,6 +192,24 @@
         "home-automation",
         "mcp"
       ]
+    },
+    {
+      "name": "vitruvian-orchestrator",
+      "source": "./apps/desktop/claude-code/plugins/vitruvian-orchestrator",
+      "description": "Lead orchestrator skill for routing multi-domain work across specialist subagents in Claude Code.",
+      "author": {
+        "name": "VitruvianSoftware",
+        "url": "https://github.com/VitruvianSoftware"
+      },
+      "homepage": "https://vitruviansoftware.dev/ai/",
+      "repository": "https://github.com/VitruvianSoftware/vitruvian-core",
+      "license": "MIT",
+      "keywords": [
+        "subagents",
+        "orchestration",
+        "routing",
+        "claude-code"
+      ]
     }
   ]
 }
