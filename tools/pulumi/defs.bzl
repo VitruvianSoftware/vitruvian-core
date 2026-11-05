@@ -150,9 +150,9 @@ def pulumi_go_test(name = "test", extra_data = [], timeout = None, visibility = 
         name = name,
         srcs = ["//tools/pulumi:pulumi-go-test"],
         args = [native.package_name()],
-        data = native.glob(["**/*.go", "go.mod", "go.sum"]) + ["//tools/go-sdk:go"] + extra_data,
+        data = native.glob(["**/*.go", "go.mod", "go.sum"]) + ["//tools/pulumi:go-sdk"] + extra_data,
         env = {
-            "VITRUVIAN_GO_BIN": "$(rootpath //tools/go-sdk:go)",
+            "VITRUVIAN_GO_BIN": "$(rootpath //tools/pulumi:go-sdk)",
         },
         # Hand the test Bazel's registered Go SDK via VITRUVIAN_GO_BIN so
         # self-hosted queue runners without an ambient `go` on PATH still pass,
