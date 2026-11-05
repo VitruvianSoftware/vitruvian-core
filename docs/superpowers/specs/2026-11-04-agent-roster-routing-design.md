@@ -89,7 +89,7 @@ plugins share one core, so the flow, the task list and the cost maths are writte
 
 | Part | Claude Code plugin | Antigravity plugin |
 |---|---|---|
-| Location | `apps/claude-code/plugins/vitruvian-orchestrator/` (new) | `apps/desktop/antigravity/plugins/vitruvian-orchestrator/` |
+| Location | `apps/claude-code/plugins/vitruvian-orchestrator/` (new) | `apps/antigravity/plugins/vitruvian-orchestrator/` |
 | Generated agents | `agents/*.md` (opus / sonnet / haiku) | `agents/*.md` (`pro` / `flash`, description ≤ 320) |
 | Generated lead skill | `skills/orchestrate/SKILL.md` | `skills/orchestrate/SKILL.md` |
 | Live view | a mod (`hooks/register.tsx`): bar above the prompt + agents pane | a sidecar side panel (`sidecars/panel/`) |
@@ -183,7 +183,7 @@ Token rules in the skill:
 
 **Removal of savvy-\*:** once both plugins are installed and James has run one real flow in
 each harness, uninstall savvy-flow and savvy-progress (Claude Code) and savvy-fleet
-(Antigravity), and delete `apps/desktop/antigravity/plugins/savvy-fleet/` and its mirror.
+(Antigravity), and delete `apps/antigravity/plugins/savvy-fleet/` and its mirror.
 
 ## Verified facts (2026-11-04, Antigravity CLI 1.5.0)
 

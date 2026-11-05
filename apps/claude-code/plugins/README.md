@@ -1,12 +1,12 @@
 # Claude Code Plugins (`apps/claude-code/plugins/`)
 
-Standalone plugins and mods built specifically for **Claude Code** live in subdirectories here (`apps/claude-code/plugins/<plugin-name>/`). Multi-host plugins that also include an Antigravity Desktop sidecar panel live in [`apps/desktop/antigravity/plugins/`](../../desktop/antigravity/plugins/) and carry both `plugin.json` (Antigravity) and `.claude-plugin/plugin.json` (Claude Code).
+Standalone plugins and mods built specifically for **Claude Code** live in subdirectories here (`apps/claude-code/plugins/<plugin-name>/`). Multi-host plugins that also include an Antigravity Desktop sidecar panel live in [`apps/antigravity/plugins/`](../../antigravity/plugins/) and carry both `plugin.json` (Antigravity) and `.claude-plugin/plugin.json` (Claude Code).
 
 ## Self-Registration by Convention
 
 You do **not** need to hand-edit `apps/web/vitruviansoftware-dev/_data/extensions.yml`, `apps/web/vitruviansoftware-dev/ai/catalog.json`, or the root `.claude-plugin/marketplace.json`.
 
-Any directory under `apps/claude-code/plugins/<name>/` (or `apps/desktop/antigravity/plugins/<name>/`) containing `.claude-plugin/plugin.json` or `plugin.json` is discovered automatically by `//tools/sync-site-tools:sync`.
+Any directory under `apps/claude-code/plugins/<name>/` (or `apps/antigravity/plugins/<name>/`) containing `.claude-plugin/plugin.json` or `plugin.json` is discovered automatically by `//tools/sync-site-tools:sync`.
 
 ### Standard Directory Layout
 
