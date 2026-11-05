@@ -267,6 +267,9 @@ final class SignInWindowController: NSObject, NSWindowDelegate, WKNavigationDele
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         state.bar.shown(webView.url)
+        if let script = SignInPage.pageCustomizationScript(for: webView.url) {
+            webView.evaluateJavaScript(script, completionHandler: nil)
+        }
         runExtract()
         Task { await check(manual: false) }
     }

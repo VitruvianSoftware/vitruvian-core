@@ -20,6 +20,13 @@ public enum NetworkNames {
         "gmessages": "Google Messages",
         "slack": "Slack",
         "gchat": "Google Chat",
+        "discord": "Discord",
+        "facebook": "Facebook Messenger",
+        "instagram": "Instagram",
+        "twitter": "X",
+        "linkedin": "LinkedIn",
+        "gvoice": "Google Voice",
+        "bluesky": "Bluesky",
     ]
 
     /// The network's name, or nil for an id this app doesn't know.

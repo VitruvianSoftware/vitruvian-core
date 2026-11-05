@@ -276,6 +276,13 @@ public final class LoginFlowModel: ObservableObject {
         "whatsapp": ["qr"],
         "signal": ["qr"],
         "telegram": ["qr", "phone"],
+        "discord": ["token", "qr", "machine", "DEBUG_USERINPUT_token", "user-token"],
+        "facebook": ["facebook", "messenger", "messenger-lite", "messenger-lite-android"],
+        "instagram": ["instagram", "instagram-password"],
+        "twitter": ["cookies", "password"],
+        "linkedin": ["cookies"],
+        "gvoice": ["cookies"],
+        "bluesky": ["password"],
     ]
 
     /// The flows to offer: the app's choice, of those the engine reports. For a network (or flows) the app has
@@ -317,6 +324,20 @@ public final class LoginFlowModel: ObservableObject {
         case ("slack", "app"): String(localized: "Slack app tokens")
         case ("gmessages", "google"): String(localized: "Google account")
         case ("gchat", "cookies"): String(localized: "Google account")
+        case ("gvoice", "cookies"): String(localized: "Google account")
+        case ("discord", "token"): String(localized: "Sign in on the web")
+        case ("discord", "machine"): String(localized: "Email or phone & password")
+        case ("discord", "DEBUG_USERINPUT_token"), ("discord", "user-token"): String(localized: "Discord token")
+        case ("facebook", "facebook"): String(localized: "Sign in on facebook.com")
+        case ("facebook", "messenger"): String(localized: "Sign in on messenger.com")
+        case ("facebook", "messenger-lite"): String(localized: "Email or phone & password")
+        case ("facebook", "messenger-lite-android"): String(localized: "Email or phone & password (Android)")
+        case ("instagram", "instagram"): String(localized: "Sign in on the web")
+        case ("instagram", "instagram-password"): String(localized: "Username & password")
+        case ("twitter", "cookies"): String(localized: "Sign in to X")
+        case ("twitter", "password"): String(localized: "Username & password")
+        case ("linkedin", "cookies"): String(localized: "Sign in on the web")
+        case ("bluesky", "password"): String(localized: "Username & password")
         case (_, "qr"): String(localized: "QR code")
         case (_, "phone"): String(localized: "Phone number")
         default: flow

@@ -149,6 +149,13 @@ public struct NetworkAppearance: Equatable, Sendable {
         case "slack": NetworkAppearance(symbol: "number.circle.fill", red: 0.55, green: 0.27, blue: 0.62)
         case "gmessages": NetworkAppearance(symbol: "message.circle.fill", red: 0.08, green: 0.50, blue: 0.62)
         case "gchat": NetworkAppearance(symbol: "bubble.left.and.bubble.right.fill", red: 0.00, green: 0.67, blue: 0.28)
+        case "discord": NetworkAppearance(symbol: "gamecontroller.circle.fill", red: 0.35, green: 0.40, blue: 0.95)
+        case "facebook": NetworkAppearance(symbol: "bolt.horizontal.circle.fill", red: 0.00, green: 0.52, blue: 1.00)
+        case "instagram": NetworkAppearance(symbol: "camera.circle.fill", red: 0.88, green: 0.19, blue: 0.42)
+        case "twitter": NetworkAppearance(symbol: "at.circle.fill", red: 0.11, green: 0.61, blue: 0.94)
+        case "linkedin": NetworkAppearance(symbol: "briefcase.circle.fill", red: 0.04, green: 0.40, blue: 0.76)
+        case "gvoice": NetworkAppearance(symbol: "phone.bubble.fill", red: 0.04, green: 0.62, blue: 0.35)
+        case "bluesky": NetworkAppearance(symbol: "cloud.circle.fill", red: 0.07, green: 0.52, blue: 1.00)
         default: fallback
         }
     }

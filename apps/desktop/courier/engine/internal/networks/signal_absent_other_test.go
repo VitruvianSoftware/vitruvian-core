@@ -17,7 +17,10 @@ func TestSignalIsAbsentOffDarwin(t *testing.T) {
 	for _, n := range All() {
 		names = append(names, n.Name)
 	}
-	require.Equal(t, []string{"whatsapp", "telegram", "gmessages", "slack"}, names)
+	require.Equal(t, []string{
+		"whatsapp", "telegram", "gmessages", "slack",
+		"discord", "facebook", "instagram", "twitter", "linkedin", "gvoice", "bluesky",
+	}, names)
 	_, ok := Get("signal")
 	require.False(t, ok)
 	_, ok = Get("gchat")

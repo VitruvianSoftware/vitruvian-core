@@ -220,4 +220,80 @@ final class CookieCollectorTests: XCTestCase {
         XCTAssertFalse(CookieCollector.isReady(params, url: "https://accounts.google.com/ServiceLogin", collected: collected))
         XCTAssertTrue(CookieCollector.isReady(params, url: "https://chat.google.com/u/0/", collected: collected))
     }
+
+    func testSynthesizesLinkedInRequestHeadersFromCookies() {
+        let params = LoginCookies(
+            url: "https://www.linkedin.com/login",
+            userAgent: "Mozilla/5.0",
+            waitForURL: nil,
+            extractJS: nil,
+            fields: [
+                field("cookie", [source(.requestHeader, "Cookie")]),
+                field("x-li-track", [source(.requestHeader, "X-LI-Track")]),
+                field("x-li-page-instance", [source(.requestHeader, "X-LI-Page-Instance")]),
+                field("user_agent", required: false, [source(.special, "user_agent")]),
+            ]
+        )
+        XCTAssertEqual(CookieCollector.uncapturableFields(params), [], "LinkedIn's request headers are synthesized once li_at and JSESSIONID arrive")
+
+        // Before li_at and JSESSIONID are set, nothing is synthesized.
+        let before = CookieCollector.collect(
+            params,
+            cookies: [BrowserCookie(name: "bcookie", domain: ".linkedin.com", value: "v=2&abc")],
+            localStorage: [:],
+            extracted: [:]
+        )
+        XCTAssertFalse(before.isComplete)
+        XCTAssertEqual(Set(before.missingRequired), ["cookie", "x-li-track", "x-li-page-instance"])
+
+        // Once both li_at and JSESSIONID are present on linkedin.com, CookieCollector synthesizes the headers.
+        let after = CookieCollector.collect(
+            params,
+            cookies: [
+                BrowserCookie(name: "li_at", domain: ".www.linkedin.com", value: "AQED-token"),
+                BrowserCookie(name: "JSESSIONID", domain: ".www.linkedin.com", value: "\"ajax:1234567890\""),
+                BrowserCookie(name: "bcookie", domain: ".linkedin.com", value: "v=2&abc"),
+                BrowserCookie(name: "other", domain: "example.com", value: "ignored"),
+            ],
+            localStorage: [:],
+            extracted: [:]
+        )
+        XCTAssertTrue(after.isComplete)
+        XCTAssertTrue(after.values["cookie"]?.contains("li_at=AQED-token") == true)
+        XCTAssertTrue(after.values["cookie"]?.contains("JSESSIONID=\"ajax:1234567890\"") == true)
+        XCTAssertFalse(after.values["cookie"]?.contains("other=ignored") == true)
+        XCTAssertNotNil(after.values["x-li-track"])
+        XCTAssertEqual(after.values["x-li-page-instance"], "urn:li:page:d_flagship3_feed;0000000000000000000000==")
+    }
+
+    func testCollectsDiscordSpecialAndMetaTwitterCookies() {
+        let discordParams = step([
+            field("token", [source(.special, "fi.mau.discord.token"), source(.requestHeader, "Authorization")]),
+        ], extractJS: "new Promise(resolve => resolve({\"fi.mau.discord.token\": \"mfa.synthetic\"}))")
+        XCTAssertEqual(CookieCollector.uncapturableFields(discordParams), [])
+        let discordCollected = CookieCollector.collect(
+            discordParams,
+            cookies: [],
+            localStorage: [:],
+            extracted: ["fi.mau.discord.token": "mfa.synthetic"]
+        )
+        XCTAssertTrue(discordCollected.isComplete)
+        XCTAssertEqual(discordCollected.values["token"], "mfa.synthetic")
+
+        let twitterParams = step([
+            field("ct0", [source(.cookie, "ct0", domain: "x.com")]),
+            field("auth_token", [source(.cookie, "auth_token", domain: "x.com")]),
+        ])
+        let twitterCollected = CookieCollector.collect(
+            twitterParams,
+            cookies: [
+                BrowserCookie(name: "ct0", domain: ".x.com", value: "csrf-1"),
+                BrowserCookie(name: "auth_token", domain: ".x.com", value: "auth-1"),
+            ],
+            localStorage: [:],
+            extracted: [:]
+        )
+        XCTAssertTrue(twitterCollected.isComplete)
+        XCTAssertEqual(twitterCollected.values, ["ct0": "csrf-1", "auth_token": "auth-1"])
+    }
 }

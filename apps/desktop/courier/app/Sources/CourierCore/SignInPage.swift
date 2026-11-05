@@ -81,4 +81,49 @@ public enum SignInPage {
               let stepHost = step.host?.lowercased(), !stepHost.isEmpty else { return false }
         return host == stepHost || host.hasSuffix("." + stepHost)
     }
+
+    /// JavaScript injected into the sign-in web view after navigation finishes to hide unsupported third-party SSO
+    /// and passkey buttons on networks whose embedded login flow requires direct credential/cookie entry (X and
+    /// LinkedIn, per `03-networks-backend-native.md` §1.3).
+    public static func pageCustomizationScript(for url: URL?) -> String? {
+        guard let host = url?.host?.lowercased() else { return nil }
+        if host == "x.com" || host.hasSuffix(".x.com")
+            || host == "twitter.com" || host.hasSuffix(".twitter.com")
+        {
+            return """
+                (function () {
+                  function hideUnsupportedXAuthButtons() {
+                    const selectors = [
+                      'iframe[src*="accounts.google.com/gsi/button"]',
+                      'button[data-testid="apple_sign_in_button"]',
+                      'button:has(svg path[d^="M11.5 7C12.3284"])'
+                    ];
+                    document.querySelectorAll(selectors.join(', ')).forEach(function (el) {
+                      el.style.display = 'none';
+                    });
+                  }
+                  hideUnsupportedXAuthButtons();
+                  if (typeof MutationObserver !== 'undefined' && document.body) {
+                    new MutationObserver(hideUnsupportedXAuthButtons)
+                      .observe(document.body, { childList: true, subtree: true });
+                  }
+                })();
+                """
+        }
+        if host == "linkedin.com" || host.hasSuffix(".linkedin.com") {
+            return """
+                (function () {
+                  const selectors = ['#google-auth-button', '.sign-in-with-apple-button', '.passkey-btn'];
+                  document.querySelectorAll(selectors.join(', ')).forEach(function (el) {
+                    el.style.display = 'none';
+                  });
+                  const separator = document.querySelector('.or-separator');
+                  if (separator) {
+                    separator.style.display = 'none';
+                  }
+                })();
+                """
+        }
+        return nil
+    }
 }

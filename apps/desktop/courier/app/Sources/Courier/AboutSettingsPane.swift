@@ -61,6 +61,13 @@ struct AboutSettingsPane: View {
         ("mautrix-telegram", "AGPL-3.0-or-later", "On-device Telegram MTProto connector (go.mau.fi/mautrix-telegram v0.2609.0)."),
         ("mautrix-slack", "AGPL-3.0-or-later", "On-device Slack workspace connector (go.mau.fi/mautrix-slack v0.2609.1)."),
         ("mautrix-gmessages", "AGPL-3.0-or-later", "On-device Google Messages paired-phone connector (go.mau.fi/mautrix-gmessages v0.2609.0)."),
+        ("mautrix-googlechat", "AGPL-3.0-or-later", "On-device Google Chat connector (github.com/VitruvianSoftware/courier/bridges/googlechat)."),
+        ("mautrix-discord", "AGPL-3.0-or-later", "On-device Discord connector (go.mau.fi/mautrix-discord)."),
+        ("mautrix-meta", "AGPL-3.0-or-later", "On-device Facebook Messenger and Instagram connector (go.mau.fi/mautrix-meta v0.2609.0)."),
+        ("mautrix-twitter", "AGPL-3.0-or-later", "On-device X (Twitter) connector (go.mau.fi/mautrix-twitter v0.2609.0)."),
+        ("mautrix-linkedin", "AGPL-3.0-or-later", "On-device LinkedIn Messaging connector (go.mau.fi/mautrix-linkedin v0.2609.0)."),
+        ("mautrix-gvoice", "AGPL-3.0-or-later", "On-device Google Voice connector (go.mau.fi/mautrix-gvoice)."),
+        ("mautrix-bluesky", "AGPL-3.0-or-later", "On-device Bluesky chat connector (go.mau.fi/mautrix-bluesky)."),
         ("SQLite & FTS5", "Public Domain / MIT", "Embedded relational store and full-text message index."),
     ]
 

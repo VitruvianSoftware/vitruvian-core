@@ -18,12 +18,21 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
+	bluesky "go.mau.fi/mautrix-bluesky/pkg/connector"
+	discord "go.mau.fi/mautrix-discord/pkg/connector"
+	"go.mau.fi/mautrix-discord/pkg/discordid"
 	gmessages "go.mau.fi/mautrix-gmessages/pkg/connector"
 	"go.mau.fi/mautrix-gmessages/pkg/libgm/gmproto"
+	gvoice "go.mau.fi/mautrix-gvoice/pkg/connector"
+	linkedin "go.mau.fi/mautrix-linkedin/pkg/connector"
+	facebook "go.mau.fi/mautrix-meta/pkg/connector"
+	instagram "go.mau.fi/mautrix-meta/pkg/igconnector"
+	"go.mau.fi/mautrix-meta/pkg/metaid"
 	slack "go.mau.fi/mautrix-slack/pkg/connector"
 	"go.mau.fi/mautrix-slack/pkg/slackid"
 	telegram "go.mau.fi/mautrix-telegram/pkg/connector"
 	telegramids "go.mau.fi/mautrix-telegram/pkg/connector/ids"
+	twitter "go.mau.fi/mautrix-twitter/pkg/connector"
 	whatsapp "go.mau.fi/mautrix-whatsapp/pkg/connector"
 	"go.mau.fi/mautrix-whatsapp/pkg/waid"
 	"gopkg.in/yaml.v3"
@@ -54,7 +63,10 @@ func TestRegistryNamesAreSafeGhostPrefixes(t *testing.T) {
 		require.NotEmpty(t, n.Flows, n.Name)
 		require.NotNil(t, n.Spec, n.Name)
 	}
-	for _, name := range []string{"whatsapp", "telegram", "gmessages", "slack"} {
+	for _, name := range []string{
+		"whatsapp", "telegram", "gmessages", "slack",
+		"discord", "facebook", "instagram", "twitter", "linkedin", "gvoice", "bluesky",
+	} {
 		_, ok := Get(name)
 		require.True(t, ok, name)
 	}
@@ -68,6 +80,13 @@ func TestRegistryFlowsMatchWhatEachBridgeOffers(t *testing.T) {
 		"telegram":  {"qr", "phone"},
 		"gmessages": {"google"}, // upstream disabled QR login; its GetLoginFlows lists only google
 		"slack":     {"email", "token", "app"},
+		"discord":   {"token", "qr", "DEBUG_USERINPUT_token", "machine"},
+		"facebook":  {"facebook", "messenger", "messenger-lite", "messenger-lite-android"},
+		"instagram": {"instagram", "instagram-password"},
+		"twitter":   {"cookies", "password"},
+		"linkedin":  {"cookies"},
+		"gvoice":    {"cookies"},
+		"bluesky":   {"password"},
 	}
 	for name, flows := range want {
 		n, ok := Get(name)
@@ -235,6 +254,13 @@ func TestNetworkSyncTableMatchesTheBridges(t *testing.T) {
 		"telegram":  {client: (*telegram.TelegramClient)(nil), sent: []string{"pin", "mute"}, implements: []string{"pin", "mute"}},
 		"gmessages": {client: (*gmessages.GMClient)(nil), sent: []string{}, implements: []string{}},
 		"slack":     {client: (*slack.SlackClient)(nil), sent: []string{}, implements: []string{}},
+		"discord":   {client: (*discord.DiscordClient)(nil), sent: []string{"mute"}, implements: []string{"mute"}},
+		"facebook":  {client: (*facebook.MetaClient)(nil), sent: []string{"accept_request"}, implements: []string{"accept_request"}},
+		"instagram": {client: (*instagram.IGClient)(nil), sent: []string{"pin", "mute", "accept_request"}, implements: []string{"pin", "mute", "accept_request"}},
+		"twitter":   {client: (*twitter.TwitterClient)(nil), sent: []string{"pin", "mute", "accept_request"}, implements: []string{"pin", "mute", "accept_request"}},
+		"linkedin":  {client: (*linkedin.LinkedInClient)(nil), sent: []string{}, implements: []string{}},
+		"gvoice":    {client: (*gvoice.GVClient)(nil), sent: []string{}, implements: []string{}},
+		"bluesky":   {client: (*bluesky.BlueskyClient)(nil), sent: []string{}, implements: []string{}},
 	}
 	for name, c := range platformClients() {
 		rows[name] = c
@@ -244,7 +270,8 @@ func TestNetworkSyncTableMatchesTheBridges(t *testing.T) {
 		registered = append(registered, n.Name)
 	}
 	require.ElementsMatch(t, registered, keys(rows), "every registered network has a row")
-	for name, r := range rows {
+	for _, name := range registered {
+		r := rows[name]
 		require.Equal(t, r.sent, actions.SyncsOf(r.client), "what Courier sends %s", name)
 		_, pin := r.client.(bridgev2.TagHandlingNetworkAPI)
 		_, mute := r.client.(bridgev2.MuteHandlingNetworkAPI)
@@ -390,6 +417,41 @@ func messageActionRows() (map[string]actionRow, map[string]handlerRow) {
 	slNoDelete := sl
 	slNoDelete.Unsend = false
 
+	dcDM := actions.Features{
+		Reply: true, Edit: true, Unsend: true,
+		Formatting: noSpoiler, MaxTextLength: 2000,
+	}
+	dcGuild := dcDM
+	dcGuild.Thread = true
+
+	metaFormatting := []richtext.Kind{
+		richtext.Bold, richtext.Italic, richtext.Strike, richtext.Code, richtext.Pre,
+		richtext.Quote, richtext.Mention,
+	}
+	fb := actions.Features{
+		Reply: true, Edit: true, EditMaxAge: 15 * time.Minute, EditMaxCount: 5, Unsend: true,
+		Formatting: metaFormatting, MaxTextLength: 20000,
+	}
+	ig := actions.Features{
+		Reply: true, Edit: true, EditMaxAge: 15 * time.Minute, EditMaxCount: 5, Unsend: true,
+		Formatting: metaFormatting, MaxTextLength: 1000,
+	}
+	tw := actions.Features{
+		Reply: true, Edit: true, EditMaxAge: 15 * time.Minute, EditMaxCount: 10,
+		DeleteReachesPhone: true, Formatting: noKind, MaxTextLength: 10000,
+	}
+	li := actions.Features{
+		Reply: true, Edit: true, EditMaxAge: 60 * time.Minute,
+		Unsend: true, UnsendMaxAge: 60 * time.Minute,
+		Formatting: []richtext.Kind{richtext.Mention}, MaxTextLength: 8000,
+	}
+	gv := actions.Features{
+		Formatting: noKind, MaxTextLength: 160,
+	}
+	bs := actions.Features{
+		Formatting: noKind, MaxTextLength: 10000,
+	}
+
 	tgClient := &telegram.TelegramClient{}
 	// An empty AllowedReactions list ("no reactions") keeps GetCapabilities from asking Telegram for its list.
 	tgMeta := func() any { return &telegram.PortalMetadata{AllowedReactions: []string{}} }
@@ -415,12 +477,30 @@ func messageActionRows() (map[string]actionRow, map[string]handlerRow) {
 		"slack workspace with edit limit": {(*slack.SlackClient)(nil), slackChannel(&slackid.PortalMetadata{EditMaxAge: ptrTo(10)}), slEditLimit},
 		"slack workspace without edits":   {(*slack.SlackClient)(nil), slackChannel(&slackid.PortalMetadata{EditMaxAge: ptrTo(0)}), slNoEdit},
 		"slack workspace without deletes": {(*slack.SlackClient)(nil), slackChannel(&slackid.PortalMetadata{AllowDelete: ptrTo(false)}), slNoDelete},
+		"discord dm":                      {(*discord.DiscordClient)(nil), portalOf(database.RoomTypeDM, "D1", &discordid.PortalMetadata{}), dcDM},
+		"discord channel":                 {(*discord.DiscordClient)(nil), portalOf(database.RoomTypeDefault, "C1", &discordid.PortalMetadata{GuildID: "G1"}), dcGuild},
+		"facebook dm":                     {(*facebook.MetaClient)(nil), portalOf(database.RoomTypeDM, "1", &metaid.PortalMetadata{}), fb},
+		"facebook group":                  {(*facebook.MetaClient)(nil), portalOf(database.RoomTypeDefault, "2", &metaid.PortalMetadata{}), fb},
+		"instagram dm":                    {(*instagram.IGClient)(nil), portalOf(database.RoomTypeDM, "1", &metaid.PortalMetadata{}), ig},
+		"instagram group":                 {(*instagram.IGClient)(nil), portalOf(database.RoomTypeDefault, "2", &metaid.PortalMetadata{}), ig},
+		"twitter dm":                      {(*twitter.TwitterClient)(nil), portalOf(database.RoomTypeDM, "1", nil), tw},
+		"twitter group":                   {(*twitter.TwitterClient)(nil), portalOf(database.RoomTypeDefault, "2", nil), tw},
+		"linkedin dm":                     {(*linkedin.LinkedInClient)(nil), portalOf(database.RoomTypeDM, "1", nil), li},
+		"gvoice dm":                       {(*gvoice.GVClient)(nil), portalOf(database.RoomTypeDM, "1", nil), gv},
+		"bluesky dm":                      {(*bluesky.BlueskyClient)(nil), portalOf(database.RoomTypeDM, "1", nil), bs},
 	}
 	handlers := map[string]handlerRow{
 		"whatsapp":  {(*whatsapp.WhatsAppClient)(nil), []string{"edit", "remove", "poll", "timer"}},
 		"telegram":  {tgClient, []string{"edit", "remove", "timer"}},
 		"gmessages": {(*gmessages.GMClient)(nil), []string{"remove"}},
 		"slack":     {(*slack.SlackClient)(nil), []string{"edit", "remove"}},
+		"discord":   {(*discord.DiscordClient)(nil), []string{"edit", "remove"}},
+		"facebook":  {(*facebook.MetaClient)(nil), []string{"edit", "remove"}},
+		"instagram": {(*instagram.IGClient)(nil), []string{"edit", "remove"}},
+		"twitter":   {(*twitter.TwitterClient)(nil), []string{"edit", "remove"}},
+		"linkedin":  {(*linkedin.LinkedInClient)(nil), []string{"edit", "remove"}},
+		"gvoice":    {(*gvoice.GVClient)(nil), []string{}},
+		"bluesky":   {(*bluesky.BlueskyClient)(nil), []string{}},
 	}
 	platformRows, platformHandlers := platformActionRows()
 	for name, r := range platformRows {
@@ -599,7 +679,14 @@ var readReceiptsByRow = map[string]bool{
 	"gmessages rcs": true, "gmessages sms": true,
 	"slack channel": false, "slack dm": false, "slack workspace with edit limit": false,
 	"slack workspace without edits": false, "slack workspace without deletes": false,
-	"signal dm": true, "signal group": true, "signal note to self": true,
+	"discord dm": false, "discord channel": false,
+	"facebook dm": false, "facebook group": false,
+	"instagram dm": false, "instagram group": false,
+	"twitter dm": false, "twitter group": false,
+	"linkedin dm": true,
+	"gvoice dm":   false,
+	"bluesky dm":  false,
+	"signal dm":   true, "signal group": true, "signal note to self": true,
 	"gchat dm": true, "gchat space": true, "gchat threaded space": true,
 }
 
@@ -611,6 +698,12 @@ var pinnedBridges = map[string]string{
 	"go.mau.fi/mautrix-telegram":  "v0.2609.0",
 	"go.mau.fi/mautrix-gmessages": "v0.2609.0",
 	"go.mau.fi/mautrix-slack":     "v0.2609.1",
+	"go.mau.fi/mautrix-discord":   "v0.7.6-0.20260926144058-6c79932f943e",
+	"go.mau.fi/mautrix-meta":      "v0.2609.0",
+	"go.mau.fi/mautrix-twitter":   "v0.2609.0",
+	"go.mau.fi/mautrix-linkedin":  "v0.2609.0",
+	"go.mau.fi/mautrix-gvoice":    "v0.2605.1-0.20261016110121-8e81cb84f65f",
+	"go.mau.fi/mautrix-bluesky":   "v0.2510.1-0.20260516111029-0c2076b1b009",
 }
 
 // The plan's "What each action reaches" table for receipts, typing and second accounts (Global Constraints), read
@@ -660,6 +753,36 @@ func TestReceiptsTypingAndAccountsTableMatchTheBridges(t *testing.T) {
 			connector: &slack.SlackConnector{}, client: (*slack.SlackClient)(nil),
 			sends: []string{"read_receipts", "typing"}, replyPrivately: []string{"resolve_identifier", "create_chat_with_ghost"},
 		},
+		"discord": {
+			connector: &discord.DiscordConnector{}, client: (*discord.DiscordClient)(nil),
+			sends: []string{"read_receipts", "typing"}, replyPrivately: []string{},
+		},
+		"facebook": {
+			connector: &facebook.MetaConnector{}, client: (*facebook.MetaClient)(nil),
+			sends: []string{"read_receipts", "typing"}, replyPrivately: []string{"resolve_identifier"},
+			implicitReads: true,
+		},
+		"instagram": {
+			connector: &instagram.IGConnector{}, client: (*instagram.IGClient)(nil),
+			sends: []string{"read_receipts", "typing"}, replyPrivately: []string{"resolve_identifier"},
+			implicitReads: true,
+		},
+		"twitter": {
+			connector: &twitter.TwitterConnector{Config: twitter.Config{X: true}}, client: (*twitter.TwitterClient)(nil),
+			sends: []string{"read_receipts", "typing"}, replyPrivately: []string{"resolve_identifier"},
+		},
+		"linkedin": {
+			connector: &linkedin.LinkedInConnector{}, client: (*linkedin.LinkedInClient)(nil),
+			sends: []string{"read_receipts", "typing"}, replyPrivately: []string{"resolve_identifier", "create_chat_with_ghost"},
+		},
+		"gvoice": {
+			connector: &gvoice.GVConnector{}, client: (*gvoice.GVClient)(nil),
+			sends: []string{"read_receipts"}, replyPrivately: []string{"resolve_identifier"},
+		},
+		"bluesky": {
+			connector: &bluesky.BlueskyConnector{}, client: (*bluesky.BlueskyClient)(nil),
+			sends: []string{"read_receipts"}, replyPrivately: []string{},
+		},
 	}
 	for name, c := range platformReceiptColumns() {
 		columns[name] = c
@@ -670,7 +793,8 @@ func TestReceiptsTypingAndAccountsTableMatchTheBridges(t *testing.T) {
 	}
 	require.ElementsMatch(t, registered, keys(columns), "every registered network has a column")
 
-	for name, c := range columns {
+	for _, name := range registered {
+		c := columns[name]
 		_, reads := c.client.(bridgev2.ReadReceiptHandlingNetworkAPI)
 		_, typing := c.client.(bridgev2.TypingHandlingNetworkAPI)
 		require.Equal(t, c.sends, pick(reads, "read_receipts", typing, "typing"), "what of mine reaches %s", name)
@@ -749,6 +873,34 @@ func TestGroupAndChatManagementTableMatchesTheBridges(t *testing.T) {
 			SetName: true, SetTopic: true, SetAvatar: false,
 			Membership: true, PowerLevels: false, DeleteChat: true,
 		},
+		"discord": {
+			SetName: false, SetTopic: false, SetAvatar: false,
+			Membership: false, PowerLevels: false, DeleteChat: false,
+		},
+		"facebook": {
+			SetName: true, SetTopic: false, SetAvatar: true,
+			Membership: true, PowerLevels: false, DeleteChat: true,
+		},
+		"instagram": {
+			SetName: true, SetTopic: false, SetAvatar: true,
+			Membership: true, PowerLevels: false, DeleteChat: true,
+		},
+		"twitter": {
+			SetName: true, SetTopic: false, SetAvatar: true,
+			Membership: true, PowerLevels: false, DeleteChat: true,
+		},
+		"linkedin": {
+			SetName: true, SetTopic: false, SetAvatar: false,
+			Membership: true, PowerLevels: false, DeleteChat: true,
+		},
+		"gvoice": {
+			SetName: false, SetTopic: false, SetAvatar: false,
+			Membership: false, PowerLevels: false, DeleteChat: true,
+		},
+		"bluesky": {
+			SetName: false, SetTopic: false, SetAvatar: false,
+			Membership: false, PowerLevels: false, DeleteChat: false,
+		},
 	}
 
 	clients := map[string]bridgev2.NetworkAPI{
@@ -756,6 +908,13 @@ func TestGroupAndChatManagementTableMatchesTheBridges(t *testing.T) {
 		"telegram":  (*telegram.TelegramClient)(nil),
 		"gmessages": (*gmessages.GMClient)(nil),
 		"slack":     (*slack.SlackClient)(nil),
+		"discord":   (*discord.DiscordClient)(nil),
+		"facebook":  (*facebook.MetaClient)(nil),
+		"instagram": (*instagram.IGClient)(nil),
+		"twitter":   (*twitter.TwitterClient)(nil),
+		"linkedin":  (*linkedin.LinkedInClient)(nil),
+		"gvoice":    (*gvoice.GVClient)(nil),
+		"bluesky":   (*bluesky.BlueskyClient)(nil),
 	}
 	for name, pc := range platformClients() {
 		clients[name] = pc.client
@@ -961,4 +1120,17 @@ func TestModuleVersions(t *testing.T) {
 		require.Equal(t, n.ModulePath, spec.ModulePath, n.Name)
 		require.Equal(t, n.DisplayName, spec.DisplayName, n.Name)
 	}
+}
+
+func TestTwitterConfigEnablesXBranding(t *testing.T) {
+	tw, ok := Get("twitter")
+	require.True(t, ok)
+	spec, err := tw.Spec()
+	require.NoError(t, err)
+	nc, err := spec.Connector()
+	require.NoError(t, err)
+	_, data, _ := nc.GetConfig()
+	require.NoError(t, spec.Configure(data))
+	require.True(t, nc.(*twitter.TwitterConnector).Config.X)
+	require.Equal(t, "X", nc.GetName().DisplayName)
 }

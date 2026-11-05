@@ -105,7 +105,11 @@ func toStep(loginID string, st *bridgev2.LoginStep) Step {
 	case bridgev2.LoginStepTypeUserInput:
 		out.Type = StepUserInput
 		if p := st.UserInputParams; p != nil {
-			for _, f := range p.Fields {
+			for i := range p.Fields {
+				f := &p.Fields[i]
+				if st.StepID == "fi.mau.bluesky.password" && f.ID == "domain" && f.DefaultValue == "" {
+					f.DefaultValue = "bsky.social"
+				}
 				out.Fields = append(out.Fields, Field{
 					ID: f.ID, Name: f.Name, Description: f.Description, Type: string(f.Type),
 					Pattern: f.Pattern, Options: f.Options, DefaultValue: f.DefaultValue,
