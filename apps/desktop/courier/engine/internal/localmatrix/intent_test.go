@@ -1191,7 +1191,7 @@ func TestSetExtraProfileMetaPersistsIdentifiersTimezoneAndBot(t *testing.T) {
 	_, err = c.BotIntent().SendState(ctx, roomID, event.StateMember, bobID, &event.Content{
 		Parsed: &event.MemberEventContent{Membership: event.MembershipInvite, Displayname: "Bob Synced"},
 		Raw: map[string]any{
-			"fi.mau.will_auto_accept":         true,
+			"fi.mau.will_auto_accept":          true,
 			"com.beeper.exclude_from_timeline": true,
 		},
 	}, ts.Add(2*time.Second))
