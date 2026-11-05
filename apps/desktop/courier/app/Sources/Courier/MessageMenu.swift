@@ -191,6 +191,7 @@ enum MessageRowActions {
             loadExternalEmbedsAutomatically: preferences.loadExternalEmbedsAutomatically,
             timeFormat: preferences.timeFormat,
             showMessageTimestamps: preferences.showMessageTimestamps,
+            composerPreferences: preferences,
             translation: { id in
                 guard let disp = messageActions.translations[id] else { return nil }
                 let lang = messageActions.translationTargetLanguages[id] ?? "English"

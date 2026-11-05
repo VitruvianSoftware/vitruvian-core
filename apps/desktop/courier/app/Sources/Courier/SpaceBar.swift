@@ -257,6 +257,7 @@ private struct SpaceIcon: View {
                     }
                 }
                 .opacity(space.muted || isStarting ? 0.6 : 1)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }

@@ -266,7 +266,7 @@ public struct ChatInfoPane: View {
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                 }
-                if let localTime = Self.localTimeText(for: member.tz, now: now()) {
+                if let localTime = Self.localTimeText(for: member.tz, now: now(), locale: .current) {
                     Label(localTime, systemImage: "clock")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -289,11 +289,11 @@ public struct ChatInfoPane: View {
     private var avatarView: some View {
         let displayAvatar = !info.localAvatarURI.isEmpty ? info.localAvatarURI : info.avatarPath
         if !displayAvatar.isEmpty {
-            AvatarView(path: displayAvatar, initials: Self.initials(of: info.name), seed: info.name)
+            AvatarView(path: displayAvatar, initials: Self.initials(of: info.name), seed: info.name, size: 52)
         } else if !info.isDirect {
             GroupAvatar(seed: info.name)
         } else {
-            AvatarView(path: "", initials: Self.initials(of: info.name), seed: info.name)
+            AvatarView(path: "", initials: Self.initials(of: info.name), seed: info.name, size: 52)
         }
     }
 
@@ -379,7 +379,7 @@ public struct ChatInfoPane: View {
             count: filteredMembers.count,
             isExpanded: $participantsExpanded
         ) {
-            VStack(alignment: .leading, spacing: 6) {
+            LazyVStack(alignment: .leading, spacing: 6) {
                 if info.features.canInvite {
                     Button(action: onAddParticipants) {
                         Label(String(localized: "Add Participants…"), systemImage: "person.badge.plus")
@@ -398,7 +398,8 @@ public struct ChatInfoPane: View {
                             AvatarView(
                                 path: member.avatarPath,
                                 initials: Self.initials(of: member.name),
-                                seed: member.name
+                                seed: member.name,
+                                size: 30
                             )
                             .frame(width: 30, height: 30)
 

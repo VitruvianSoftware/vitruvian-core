@@ -12,8 +12,8 @@ import UniformTypeIdentifiers
 /// reply's title, a new poll) are shown from here.
 struct ConversationView: View {
     @ObservedObject var conversation: ConversationModel
-    @ObservedObject var composer: ComposerModel
-    @ObservedObject var inbox: InboxModel
+    let composer: ComposerModel
+    let inbox: InboxModel
     @ObservedObject var messageActions: MessageActionsModel
     let scheduled: ScheduledModel
     @ObservedObject var preferences: ComposerPreferences
@@ -29,6 +29,7 @@ struct ConversationView: View {
     @State private var restoreAnchor: String?
     @State private var topInView = false
     @State private var composerTextHeight: CGFloat = ComposerTextView.minimumHeight
+    @State private var composerChromeSignature: String = ""
     /// Leaving the bottom is told a moment late: new content below pushes the end out of sight for an instant
     /// before the view scrolls to it, and that is not the person scrolling up.
     @State private var leavingBottom: Task<Void, Never>?
@@ -229,12 +230,13 @@ struct ConversationView: View {
     }
 
     private var chat: some View {
-        let headerRow = conversation.roomID.flatMap { inbox.row(of: $0) } ?? inbox.selectedRow
         let effectiveTheme = resolvedAppearance?.effectiveTheme(for: conversation.roomID)
         return VStack(spacing: 0) {
-            ConversationHeader(row: headerRow, networkName: headerRow.map { inbox.networkName($0.network) },
-                               conversation: conversation,
-                               redactNamesAndPictures: resolvedAppearance?.redactNamesAndPictures ?? false)
+            ConversationHeaderContainer(
+                inbox: inbox,
+                conversation: conversation,
+                redactNamesAndPictures: resolvedAppearance?.redactNamesAndPictures ?? false
+            )
             Divider()
             if let banner = conversation.unreadThreadsBanner {
                 ThreadRepliesBanner(text: banner, mentionsMe: conversation.unreadThreadsMentionMe,
@@ -258,26 +260,25 @@ struct ConversationView: View {
             }
             ScheduledStrip(scheduled: scheduled)
             TypingLine(text: conversation.typingLine)
-            ComposerView(composer: composer, preferences: preferences, textHeight: $composerTextHeight,
-                         showsIncognitoMark: conversation.incognitoIsOn && preferences.showIncognitoMark,
-                         mergedChat: conversation.mergedChat,
-                         activeReplyRoomID: conversation.activeReplyRoomID,
-                         activeReplyNetwork: conversation.activeReplyNetwork,
-                         activeReplyAccountName: conversation.activeReplyRoomID.flatMap { inbox.row(of: $0)?.loginName } ?? "",
-                         onCycleReplyNetwork: conversation.cycleMergedReplyNetwork,
-                         menus: ComposerMenus(sendLater: messageActions.requestSendLater,
-                                              createPoll: { conversation.isCreatingPoll = true },
-                                              pollsUnavailable: conversation.features.pollsUnavailableReason(
-                                                  network: conversation.network)),
-                         escapeFirst: { inbox.escape() }, escapeLast: closeThread, upArrow: upArrow)
-                .simultaneousGesture(TapGesture().onEnded { focus.inPane = false })
+            ConversationComposerContainer(
+                composer: composer,
+                inbox: inbox,
+                conversation: conversation,
+                preferences: preferences,
+                messageActions: messageActions,
+                focus: focus,
+                textHeight: $composerTextHeight,
+                chromeSignature: $composerChromeSignature,
+                closeThread: closeThread,
+                upArrow: upArrow
+            )
         }
         .overlay {
             if isDropTargeted {
                 FileDropOverlayView(isShiftHeld: NSEvent.modifierFlags.contains(.shift))
             }
         }
-        .onDrop(of: [.fileURL], isTargeted: $isDropTargeted, perform: drop)
+        .onDrop(of: [.fileURL, .image], isTargeted: $isDropTargeted, perform: drop)
         .onChange(of: controlActiveState, initial: true) { _, state in
             conversation.setWindowKey(state == .key)
         }
@@ -446,7 +447,8 @@ struct ConversationView: View {
     }
 
     private var messages: some View {
-        ScrollViewReader { proxy in
+        let rowActions = actions
+        return ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 0) {
                     if conversation.hasOlder {
@@ -469,7 +471,7 @@ struct ConversationView: View {
                     ForEach(conversation.items) { item in
                         TimelineItemView(item: item, isSelected: conversation.selectedMessageID == item.id,
                                          isHighlighted: conversation.highlightedMessageID == item.id,
-                                         showsSent: conversation.lastOutgoingID == item.id, actions: actions, ui: ui)
+                                         showsSent: conversation.lastOutgoingID == item.id, actions: rowActions, ui: ui)
                             .id(item.id)
                             .popover(
                                 isPresented: Binding(
@@ -562,7 +564,7 @@ struct ConversationView: View {
 
     /// Changes when anything under the timeline changes size.
     private var bottomBarSignature: [String] {
-        [composer.replyTarget?.eventID ?? "", String(composer.attachments.count), composer.notice == nil ? "" : "notice",
+        [composerChromeSignature,
          conversation.problem == nil ? "" : "problem", String(describing: composerTextHeight),
          conversation.typingLine == nil ? "" : "typing"]
     }
@@ -682,21 +684,52 @@ struct ConversationView: View {
     // MARK: Dropping files
 
     private func drop(_ providers: [NSItemProvider]) -> Bool {
-        let matching = providers.filter {
+        let fileProviders = providers.filter {
             $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
                 && $0.canLoadObject(ofClass: URL.self)
         }
-        guard !matching.isEmpty else { return false }
+        let imageProviders = providers.filter {
+            !$0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
+                && $0.hasItemConformingToTypeIdentifier(UTType.image.identifier)
+        }
+        guard !fileProviders.isEmpty || !imageProviders.isEmpty else { return false }
         let shiftHeld = NSEvent.modifierFlags.contains(.shift)
         let lock = NSLock()
         var loadedURLs: [URL] = []
         let group = DispatchGroup()
-        for provider in matching {
+        for provider in fileProviders {
             group.enter()
             _ = provider.loadObject(ofClass: URL.self) { url, _ in
                 if let url, url.isFileURL {
                     lock.withLock { loadedURLs.append(url) }
                 }
+                group.leave()
+            }
+        }
+        for provider in imageProviders {
+            group.enter()
+            let preferredTypes: [(UTType, String)] = [
+                (.gif, "gif"),
+                (.png, "png"),
+                (.jpeg, "jpg"),
+                (.webP, "webp"),
+                (.tiff, "tiff"),
+                (.image, "png"),
+            ]
+            if let match = preferredTypes.first(where: {
+                provider.hasItemConformingToTypeIdentifier($0.0.identifier)
+            }) {
+                _ = provider.loadDataRepresentation(forTypeIdentifier: match.0.identifier) { data, _ in
+                    if let data,
+                       let savedURL = PasteboardAttachmentExtractor.writeImageData(
+                           data,
+                           preferredExtension: match.1
+                       ) {
+                        lock.withLock { loadedURLs.append(savedURL) }
+                    }
+                    group.leave()
+                }
+            } else {
                 group.leave()
             }
         }
@@ -713,6 +746,69 @@ struct ConversationView: View {
     }
 }
 
+/// Isolates `InboxModel` observation to the header bar so inbox updates in other chats do not invalidate `timeline`.
+private struct ConversationHeaderContainer: View {
+    @ObservedObject var inbox: InboxModel
+    @ObservedObject var conversation: ConversationModel
+    var redactNamesAndPictures: Bool = false
+
+    var body: some View {
+        let headerRow = conversation.roomID.flatMap { inbox.row(of: $0) } ?? inbox.selectedRow
+        ConversationHeader(
+            row: headerRow,
+            networkName: headerRow.map { inbox.networkName($0.network) },
+            conversation: conversation,
+            redactNamesAndPictures: redactNamesAndPictures
+        )
+    }
+}
+
+/// Isolates `ComposerModel` and `InboxModel` observation to the composer bar so keystrokes never redraw `timeline`.
+private struct ConversationComposerContainer: View {
+    @ObservedObject var composer: ComposerModel
+    @ObservedObject var inbox: InboxModel
+    @ObservedObject var conversation: ConversationModel
+    @ObservedObject var preferences: ComposerPreferences
+    let messageActions: MessageActionsModel
+    let focus: MessageFocus
+    @Binding var textHeight: CGFloat
+    @Binding var chromeSignature: String
+    let closeThread: () -> Bool
+    let upArrow: () -> Bool
+
+    private var currentChromeSignature: String {
+        "\(composer.replyTarget?.eventID ?? "")|\(composer.attachments.count)|\(composer.notice == nil ? "" : "notice")"
+    }
+
+    var body: some View {
+        ComposerView(
+            composer: composer,
+            preferences: preferences,
+            textHeight: $textHeight,
+            showsIncognitoMark: conversation.incognitoIsOn && preferences.showIncognitoMark,
+            mergedChat: conversation.mergedChat,
+            activeReplyRoomID: conversation.activeReplyRoomID,
+            activeReplyNetwork: conversation.activeReplyNetwork,
+            activeReplyAccountName: conversation.activeReplyRoomID.flatMap { inbox.row(of: $0)?.loginName } ?? "",
+            onCycleReplyNetwork: conversation.cycleMergedReplyNetwork,
+            menus: ComposerMenus(
+                sendLater: messageActions.requestSendLater,
+                createPoll: { conversation.isCreatingPoll = true },
+                pollsUnavailable: conversation.features.pollsUnavailableReason(network: conversation.network)
+            ),
+            escapeFirst: { inbox.escape() },
+            escapeLast: closeThread,
+            upArrow: upArrow
+        )
+        .simultaneousGesture(TapGesture().onEnded { focus.inPane = false })
+        .onChange(of: currentChromeSignature, initial: true) { _, sig in
+            if chromeSignature != sig {
+                chromeSignature = sig
+            }
+        }
+    }
+}
+
 /// The chat's picture, name and network, and with a disappearing timer running, "Messages disappear after 7 days",
 /// with the timer's menu.
 private struct ConversationHeader: View {
@@ -724,7 +820,7 @@ private struct ConversationHeader: View {
     var body: some View {
         HStack(spacing: 10) {
             if let row {
-                AvatarView(path: row.avatarPath, initials: row.initials, seed: row.name)
+                AvatarView(path: row.avatarPath, initials: row.initials, seed: row.name, size: 32)
                     .blur(radius: redactNamesAndPictures ? 6 : 0)
                     .clipShape(Circle())
                     .frame(width: 32, height: 32)

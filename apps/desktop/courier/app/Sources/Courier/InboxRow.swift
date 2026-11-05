@@ -17,7 +17,12 @@ struct RowStyle: Equatable {
     var redactNamesAndPictures = false
     var fontSizeScale = FontSizeScale.default
 
-    init(_ preferences: InboxPreferences, timeFormat: TimeFormatPreference = .system) {
+    init(
+        _ preferences: InboxPreferences,
+        timeFormat: TimeFormatPreference = .system,
+        redactNamesAndPictures: Bool = false,
+        fontSizeScale: FontSizeScale = .default
+    ) {
         showPreviews = preferences.showPreviews
         showUnreadCounts = preferences.showUnreadCounts
         compact = preferences.compactList
@@ -25,10 +30,22 @@ struct RowStyle: Equatable {
         colorNetworkIcons = preferences.colorNetworkIcons
         hoverAction = preferences.hoverAction
         self.timeFormat = timeFormat
+        self.redactNamesAndPictures = redactNamesAndPictures
+        self.fontSizeScale = fontSizeScale
     }
 
-    init(_ preferences: InboxPreferences, composerPreferences: ComposerPreferences) {
-        self.init(preferences, timeFormat: composerPreferences.timeFormat)
+    init(
+        _ preferences: InboxPreferences,
+        composerPreferences: ComposerPreferences,
+        redactNamesAndPictures: Bool = false,
+        fontSizeScale: FontSizeScale = .default
+    ) {
+        self.init(
+            preferences,
+            timeFormat: composerPreferences.timeFormat,
+            redactNamesAndPictures: redactNamesAndPictures,
+            fontSizeScale: fontSizeScale
+        )
     }
 }
 
@@ -44,17 +61,24 @@ struct InboxRowView<HoverMenu: View>: View {
     let style: RowStyle
     let isSelecting: Bool
     let isSelected: Bool
-    let isHovered: Bool
+    var isHovered: Bool? = nil
+    /// Reports pointer enter/exit to the parent list without forcing a full-list `@State` invalidation.
+    var onHoverChange: ((Bool) -> Void)? = nil
     /// The hover button, when the setting is Archive or Mark Read/Unread.
     let hoverAct: () -> Void
     let accept: () -> Void
     let decline: () -> Void
     /// The hover button's menu, when the setting is Menu.
     @ViewBuilder let hoverMenu: () -> HoverMenu
+    @State private var localHovered = false
     @Environment(\.appearancePreferences) private var appearanceEnv
     @Environment(\.redactNamesAndPictures) private var redactsNamesAndPictures
 
     @Environment(\.courierZoomMultiplier) private var zoom
+
+    private var effectiveHovered: Bool {
+        isHovered ?? localHovered
+    }
 
     /// The chat's name: the body or headline style (13 pt), at the zoom level.
     private var titleFont: Font {
@@ -95,7 +119,7 @@ struct InboxRowView<HoverMenu: View>: View {
                         .layoutPriority(1)
                     if let tag = row.accountTag { AccountTag(name: tag) }
                     Spacer(minLength: 4)
-                    if isHovered, !isSelecting, style.hoverAction != .nothing {
+                    if effectiveHovered, !isSelecting, style.hoverAction != .nothing {
                         hoverButton
                     } else {
                         HStack(spacing: 3) {
@@ -113,7 +137,10 @@ struct InboxRowView<HoverMenu: View>: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(style.compact ? 1 : 2)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    marks
+                    HStack(alignment: .center, spacing: 5) {
+                        marks
+                    }
+                    .frame(minHeight: round(previewPointSize * 1.25))
                 }
                 if row.request {
                     HStack(spacing: 6) {
@@ -138,13 +165,18 @@ struct InboxRowView<HoverMenu: View>: View {
             }
         }
         .padding(.vertical, style.compact ? 1 : 4)
+        .contentShape(Rectangle())
+        .onHover { inside in
+            localHovered = inside
+            onHoverChange?(inside)
+        }
         .accessibilityElement(children: .combine)
     }
 
     private var avatar: some View {
         let size: CGFloat = style.compact ? 28 : 40
         let badgeSize: CGFloat = style.compact ? 11 : 14
-        return ChatAvatar(row: row)
+        return ChatAvatar(row: row, size: size)
             .blur(radius: isRedacted ? 6 : 0)
             .clipShape(Circle())
             .frame(width: size, height: size)
@@ -236,7 +268,6 @@ struct InboxRowView<HoverMenu: View>: View {
             Circle()
                 .fill(row.muted || row.mutedBy != .none ? Color.gray.opacity(0.55) : Color.accentColor)
                 .frame(width: 9, height: 9)
-                .padding(.top, 4)
                 .help(row.markedUnread ? String(localized: "Marked as unread") : String(localized: "Unread"))
                 .accessibilityLabel(String(localized: "Unread"))
         }
@@ -336,16 +367,17 @@ enum ChatPreview {
 /// A chat's picture: its own, else a group's mark, else "?" for a chat with no name, else its initials.
 struct ChatAvatar: View {
     let row: InboxRow
+    var size: CGFloat = 40
 
     var body: some View {
         if !row.avatarPath.isEmpty {
-            AvatarView(path: row.avatarPath, initials: row.initials, seed: row.name)
+            AvatarView(path: row.avatarPath, initials: row.initials, seed: row.name, size: size)
         } else if row.name.isEmpty {
             UnknownAvatar()
         } else if !row.isDirect {
             GroupAvatar(seed: row.name)
         } else {
-            AvatarView(path: "", initials: row.initials, seed: row.name)
+            AvatarView(path: "", initials: row.initials, seed: row.name, size: size)
         }
     }
 }
@@ -428,24 +460,35 @@ struct AvatarView: View {
     let path: String
     let initials: String
     let seed: String
+    var size: CGFloat = 40
     @State private var image: NSImage?
+
+    private var effectiveImage: NSImage? {
+        image ?? AvatarCache.shared.cachedImage(atPath: path)
+    }
 
     var body: some View {
         ZStack {
-            if let image {
-                Image(nsImage: image)
+            if let effectiveImage {
+                Image(nsImage: effectiveImage)
                     .resizable()
                     .scaledToFill()
             } else {
                 Circle().fill(Self.color(for: seed))
                 Text(initials)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: max(10, round(size * 0.38)), weight: .semibold))
                     .foregroundStyle(.white)
             }
         }
         .clipShape(Circle())
         .accessibilityHidden(true)
-        .task(id: path) { image = await AvatarCache.shared.image(atPath: path) }
+        .task(id: path) {
+            if let cached = AvatarCache.shared.cachedImage(atPath: path) {
+                image = cached
+            } else {
+                image = await AvatarCache.shared.image(atPath: path)
+            }
+        }
     }
 
     /// A colour that is the same for a name in every run (a Swift hash is not).
@@ -462,6 +505,11 @@ final class AvatarCache: @unchecked Sendable {
     private let cache = NSCache<NSString, NSImage>()
 
     init() { cache.countLimit = 400 }
+
+    func cachedImage(atPath path: String) -> NSImage? {
+        guard !path.isEmpty else { return nil }
+        return cache.object(forKey: path as NSString)
+    }
 
     func image(atPath path: String) async -> NSImage? {
         guard !path.isEmpty else { return nil }
