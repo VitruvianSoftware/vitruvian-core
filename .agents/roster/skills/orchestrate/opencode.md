@@ -118,3 +118,21 @@ Once all tasks are accepted, report concisely to the user:
   - Never use `flash-lo` or any `-low` model.
   - It edits files only with `--mode accept-edits` (file edits) or `--yolo` (edits plus commands). Without one of them a write task "succeeds" without writing anything.
   - Verify its work yourself (read the diff and run verification): it has been seen faking passes.
+
+## 7. Report progress to the live panel
+
+The vitruvian-orchestrator panel shows the plan, a burn-down, each specialist's run and the spend. It
+only knows what you tell it, so keep it current. If the tool is not available, skip this silently.
+
+- Call the `progress` tool:
+  - right after you show the plan: `title`, `phase: "delegate"` (or `"design"`), and `tasks` as
+    `[{ title, specialist, tier, after }]` in plan order, `after` holding task numbers;
+  - on every phase change: `phase`;
+  - after each review outcome: `accept: <task number>` or `return: <task number>`;
+  - when the plan changes: the full new `tasks` list;
+  - once at the end: `finished: true`.
+- Use each task's title, unchanged, as the run's label when you dispatch it (see "How to dispatch"): the
+  panel matches runs to tasks by it.
+- Tell each specialist in its brief: "Report your own progress with the `step` tool: `done`, `total`,
+  and a short `note`, after each step."
+- The panel is the OpenCode sidebar; it fills in on the first plan. If the sidebar is hidden, tell the user to press ctrl+x b.
