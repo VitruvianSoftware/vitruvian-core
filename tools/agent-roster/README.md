@@ -1,6 +1,6 @@
 # `//tools/agent-roster`
 
-Generates per-harness agent files for Claude Code (`.claude/agents/*.md`), Antigravity (`.agents/agents/*.md`), and OpenCode (`.opencode/agents/*.md`) from the single roster under `.agents/roster/`.
+Generates per-harness agent files for Claude Code (`.claude/agents/*.md`), Antigravity (`.agents/agents/*.md`), and OpenCode (`.opencode/agents/*.md`) and each harness's `orchestrate` lead skill (`SKILL.md`) from the single roster under `.agents/roster/`.
 
 ## Commands
 
@@ -23,3 +23,13 @@ bazel run //tools/agent-roster -- --write
   - Antigravity: `model` in `{inherit, flash, pro}`, `effort` must be `-`.
   - Claude Code: `model` in `{inherit, opus, sonnet, haiku, fable}` or `claude-*`, `effort` in `{-, medium, high, xhigh, max}`.
   - OpenCode: `model` matching `provider/model` (`^[a-z0-9-]+/[A-Za-z0-9._-]+(#[a-z]+)?$`), `effort` in `{-, medium, high, xhigh, max}` (written as `reasoningEffort`).
+
+## Lead skill (`orchestrate`)
+
+Reads `.agents/roster/skills/orchestrate/{claude-code,antigravity,opencode}.md`, checks that each template has YAML frontmatter with `name: orchestrate`, a valid `description:` (<= 320 chars), and exactly one `<!-- roster:table -->` line, and writes:
+
+- `apps/claude-code/plugins/vitruvian-orchestrator/skills/orchestrate/SKILL.md`
+- `apps/desktop/antigravity/plugins/vitruvian-orchestrator/skills/orchestrate/SKILL.md`
+- `.opencode/skills/orchestrate/SKILL.md`
+
+Each `SKILL.md` gets the generated header comment after its frontmatter and a harness-specific `| Agent | Tier | Model | Routing rule |` table in `agents.tsv` order.

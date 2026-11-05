@@ -552,6 +552,71 @@
       ]
     },
     {
+      "id": "vitruvian-orchestrator",
+      "name": "vitruvian-orchestrator",
+      "kind": "plugin",
+      "category": "Agent Plugin",
+      "status": "in-development",
+      "summary": "Lead orchestrator skill for routing multi-domain work across specialist subagents in Antigravity.",
+      "repo": "",
+      "mirrorRepo": "https://github.com/VitruvianSoftware/vitruvian-core",
+      "source": "apps/desktop/antigravity/plugins/vitruvian-orchestrator",
+      "ecosystems": [
+        "antigravity"
+      ],
+      "capabilities": [
+        "1 Skill"
+      ],
+      "skills": [
+        "orchestrate"
+      ],
+      "hooks": [],
+      "rules": [],
+      "needs": "Antigravity desktop or Claude Code CLI",
+      "note": "",
+      "installs": [
+        {
+          "tool": "Antigravity",
+          "ecosystem": "antigravity",
+          "label": "Install in Antigravity",
+          "command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core",
+          "monorepo_command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/antigravity/plugins/vitruvian-orchestrator"
+        }
+      ]
+    },
+    {
+      "id": "vitruvian-orchestrator",
+      "name": "vitruvian-orchestrator",
+      "kind": "plugin",
+      "category": "Agent Plugin",
+      "status": "in-development",
+      "summary": "Lead orchestrator skill for routing multi-domain work across specialist subagents in Claude Code.",
+      "repo": "",
+      "mirrorRepo": "https://github.com/VitruvianSoftware/vitruvian-core",
+      "source": "apps/claude-code/plugins/vitruvian-orchestrator",
+      "ecosystems": [
+        "claude-code"
+      ],
+      "capabilities": [
+        "1 Skill"
+      ],
+      "skills": [
+        "orchestrate"
+      ],
+      "hooks": [],
+      "rules": [],
+      "needs": "Antigravity desktop or Claude Code CLI",
+      "note": "",
+      "installs": [
+        {
+          "tool": "Claude Code",
+          "ecosystem": "claude-code",
+          "label": "Install in Claude Code (after adding marketplace)",
+          "command": "claude plugin install vitruvian-orchestrator"
+        }
+      ]
+    },
+    {
       "id": "mcp-roborock",
       "name": "mcp-roborock",
       "kind": "plugin",

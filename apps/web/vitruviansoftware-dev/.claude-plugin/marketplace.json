@@ -176,6 +176,24 @@
       ]
     },
     {
+      "name": "vitruvian-orchestrator",
+      "source": "./apps/claude-code/plugins/vitruvian-orchestrator",
+      "description": "Lead orchestrator skill for routing multi-domain work across specialist subagents in Claude Code.",
+      "author": {
+        "name": "VitruvianSoftware",
+        "url": "https://github.com/VitruvianSoftware"
+      },
+      "homepage": "https://vitruviansoftware.dev/ai/",
+      "repository": "https://github.com/VitruvianSoftware/vitruvian-core",
+      "license": "MIT",
+      "keywords": [
+        "subagents",
+        "orchestration",
+        "routing",
+        "claude-code"
+      ]
+    },
+    {
       "name": "mcp-roborock",
       "source": "./apps/mcp/roborock/plugin",
       "description": "A Roborock vacuum integration: a local daemon, an MCP server and plugins that let a coding agent check status, start room cleans or send the robot home.",

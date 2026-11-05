@@ -1,0 +1,15 @@
+{
+  "name": "vitruvian-orchestrator",
+  "version": "0.1.0",
+  "description": "Lead orchestrator skill for routing multi-domain work across specialist subagents in Antigravity.",
+  "author": {
+    "name": "VitruvianSoftware",
+    "url": "https://github.com/VitruvianSoftware"
+  },
+  "repository": "https://github.com/VitruvianSoftware/vitruvian-core",
+  "license": "MIT",
+  "keywords": ["subagents", "orchestration", "routing", "antigravity"],
+  "x-vitruvian": {
+    "ecosystems": ["antigravity"]
+  }
+}
