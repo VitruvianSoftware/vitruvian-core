@@ -1287,6 +1287,18 @@ final class ConversationModelTests: XCTestCase {
         await stop(h)
     }
 
+    func testTakingBackAReactionUnsendsItsEvent() async throws {
+        let h = try await start(["!a": history(2)])
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.isLoaded }
+
+        await h.conversation.unreact(eventID: "$myReaction")
+        XCTAssertEqual(h.server.receivedParams("message.unsend").first as? [String: String],
+                       ["event_id": "$myReaction"])
+        XCTAssertNil(h.conversation.problem)
+        await stop(h)
+    }
+
     func testTheQuickReactionsStartWithAHeart() {
         XCTAssertEqual(ConversationModel.quickReactions, ["❤️", "👍", "😂", "😮", "😢", "🙏"])
     }

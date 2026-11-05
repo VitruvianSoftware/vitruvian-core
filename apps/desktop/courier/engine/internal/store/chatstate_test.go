@@ -751,3 +751,53 @@ func TestRoomMembersIncludesPowerLevelsAndProfileMeta(t *testing.T) {
 	require.Equal(t, []string{"telegram:bob_bot"}, bob.Identifiers)
 	require.True(t, bob.IsBot)
 }
+
+func TestRoomMembersExcludesServiceBotsAndEnrichesBareMeProfile(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	const roomID = "!slack-ds:courier.local"
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: roomID, Network: "slack", Name: "#data-science"}))
+	require.NoError(t, s.SetRoomLogin(ctx, roomID, "T08JV4QGT71-U0A7J6EFZC4"))
+	_, err := s.SetState(ctx, roomID, "io.element.functional_members", "", []byte(`{"service_members":["@slackbot:courier.local","@slack_t08jv4qgt71-u0a7j6efzc4:courier.local"]}`))
+	require.NoError(t, err)
+	_, err = s.SetState(ctx, roomID, "m.room.power_levels", "", []byte(`{"users":{"@slackbot:courier.local":9001,"@me:courier.local":50}}`))
+	require.NoError(t, err)
+
+	// Login state and self-ghost profile for the Slack account.
+	require.NoError(t, s.SetLoginState(ctx, "slack", "T08JV4QGT71-U0A7J6EFZC4", []byte(`{
+		"state_event":"CONNECTED",
+		"remote_id":"T08JV4QGT71-U0A7J6EFZC4",
+		"remote_name":"Tabula",
+		"remote_profile":{"name":"James","email":"james@tabula.io","username":"james","avatar":"mxc://courier.local/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+	}`)))
+	selfGhost := "@slack_t08jv4qgt71-u0a7j6efzc4:courier.local"
+	selfName := "James"
+	selfAvatar := "mxc://courier.local/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	require.NoError(t, s.SetProfile(ctx, selfGhost, &selfName, &selfAvatar))
+	require.NoError(t, s.SetProfileExtraMeta(ctx, selfGhost, []string{"slack-internal:U0A7J6EFZC4"}, "America/Los_Angeles", false))
+
+	// Members: bare @me, @slackbot, duplicate self-ghost, and two teammates.
+	require.NoError(t, s.SetMember(ctx, roomID, "@me:courier.local", []byte(`{"membership":"join"}`)))
+	require.NoError(t, s.SetMember(ctx, roomID, "@slackbot:courier.local", []byte(`{"membership":"join"}`)))
+	require.NoError(t, s.SetMember(ctx, roomID, selfGhost, []byte(`{"membership":"join","displayname":"James"}`)))
+	require.NoError(t, s.SetMember(ctx, roomID, "@slack_t08jv4qgt71-u01:courier.local", []byte(`{"membership":"join","displayname":"Louis Schmitlin"}`)))
+	require.NoError(t, s.SetMember(ctx, roomID, "@slack_t08jv4qgt71-u02:courier.local", []byte(`{"membership":"join","displayname":"Chandini"}`)))
+
+	members, err := s.RoomMembers(ctx, roomID)
+	require.NoError(t, err)
+	require.Len(t, members, 3, "slackbot and duplicate self-ghost must be excluded")
+
+	byUser := map[string]MemberHit{}
+	for _, m := range members {
+		byUser[m.UserID] = m
+	}
+	require.NotContains(t, byUser, "@slackbot:courier.local")
+	require.NotContains(t, byUser, selfGhost)
+
+	meHit, ok := byUser["@me:courier.local"]
+	require.True(t, ok)
+	require.Equal(t, "James", meHit.Name)
+	require.Equal(t, selfAvatar, meHit.AvatarURI)
+	require.Equal(t, "America/Los_Angeles", meHit.Timezone)
+	require.Equal(t, []string{"mailto:james@tabula.io", "slack-internal:U0A7J6EFZC4"}, meHit.Identifiers)
+	require.True(t, meHit.IsAdmin)
+}

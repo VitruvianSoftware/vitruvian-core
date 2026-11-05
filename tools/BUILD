@@ -69,9 +69,10 @@ bazel_env(
         "pnpm": "@pnpm",
         "yo": ":yo",
         "python": "$(PYTHON3)",
-        "bundle": "@ruby//:bundle",
-        "gem": "@ruby//:gem",
-        "ruby": "@ruby",
+        # Ruby is dormant (see the rules_ruby block in MODULE.bazel):
+        # "bundle": "@ruby//:bundle",
+        # "gem": "@ruby//:gem",
+        # "ruby": "@ruby",
     } | MULTITOOL_TOOLS | GO_TOOLS,
 )
 

@@ -1,5 +1,11 @@
 # Ruby dependency versions
 
+> **Dormant since 2026-11-05.** The Bazel Ruby toolchain (`rules_ruby` in `MODULE.bazel`, and
+> `ruby`/`gem`/`bundle` in `//tools:bazel_env`) is commented out: nothing Bazel builds uses it, and
+> every cold CI run was compiling Ruby from source. The vitruviansoftware.dev Jekyll site is
+> built by its standalone repo, not Bazel. The steps to revive it are in the comment in
+> `MODULE.bazel`. The rest of this page describes how it works when enabled.
+
 See [Dependency Versioning & the One Version Rule](index.md) for the concepts referenced here.
 
 ## How this repo resolves them
