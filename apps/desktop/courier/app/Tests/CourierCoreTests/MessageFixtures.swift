@@ -94,8 +94,10 @@ func startConversation(_ events: [String: [[String: Any]]],
                                          locale: locale)
     conversation.composer.quickReplies = quickReplies
     conversation.setWindowKey(true)
+    var initialReloadDone = false
+    app.onConnect { _ in initialReloadDone = true }
     app.start()
-    try await waitUntil { app.client != nil }
+    try await waitUntil { app.client != nil && initialReloadDone }
     return ConversationHarness(script: script, server: server, app: app, conversation: conversation,
                                preferences: preferences, quickReplies: quickReplies, store: store, rows: box)
 }
