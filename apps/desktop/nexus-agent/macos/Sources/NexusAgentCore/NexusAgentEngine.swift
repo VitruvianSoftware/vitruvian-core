@@ -1192,6 +1192,32 @@ extension NexusAgentEngine {
         return (usage, model)
     }
 
+    /// A saved record's own time: an ISO-8601 `timestamp` (Claude Code
+    /// writes `2026-10-22T01:20:49.851Z`), with or without the fraction.
+    /// Nil when the record has none or it does not read as a time.
+    public nonisolated static func recordTime(_ value: Any?) -> Date? {
+        guard let text = value as? String, !text.isEmpty else { return nil }
+        if let date = try? Date(text, strategy: isoWithFraction) { return date }
+        return try? Date(text, strategy: isoWithoutFraction)
+    }
+
+    private nonisolated static let isoWithFraction = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
+    private nonisolated static let isoWithoutFraction = Date.ISO8601FormatStyle()
+
+    /// OpenCode's time: milliseconds since 1970, as a number or as text.
+    nonisolated static func openCodeTime(_ value: Any?) -> Date? {
+        let millis: Double?
+        if let number = value as? NSNumber {
+            millis = number.doubleValue
+        } else if let text = value as? String {
+            millis = Double(text)
+        } else {
+            millis = nil
+        }
+        guard let millis, millis > 0 else { return nil }
+        return Date(timeIntervalSince1970: millis / 1000)
+    }
+
     public nonisolated static func parseClaudeTranscript(_ content: String) -> [NexusAgentChatMessage]? {
         var messages: [NexusAgentChatMessage] = []
         // Where each tool call's step is, so its result can be put on it.
@@ -1225,7 +1251,8 @@ extension NexusAgentEngine {
                 }
                 let cleaned = extractUserPrompt(userText)
                 if !cleaned.isEmpty {
-                    messages.append(NexusAgentChatMessage(role: .user, text: cleaned))
+                    messages.append(NexusAgentChatMessage(role: .user, text: cleaned,
+                                                          createdAt: recordTime(json["timestamp"])))
                 }
             } else if type == "assistant" {
                 var assistantText = ""
@@ -1291,7 +1318,8 @@ extension NexusAgentEngine {
                             role: .agent,
                             text: trimmedText,
                             toolSteps: steps.isEmpty ? nil : steps,
-                            thinkingText: thinkingText
+                            thinkingText: thinkingText,
+                            createdAt: recordTime(json["timestamp"])
                         ))
                         for (index, step) in steps.enumerated() {
                             stepAt[step.id] = (messages.count - 1, index)
@@ -1322,7 +1350,8 @@ extension NexusAgentEngine {
         return [
             "SELECT type, data FROM session_message WHERE session_id = \(id) AND type IN ('user', 'assistant') ORDER BY seq;",
             "SELECT m.id AS message_id, json_extract(m.data, '$.role') AS role, p.data AS data, "
-                + "json_extract(m.data, '$.tokens') AS tokens, json_extract(m.data, '$.modelID') AS model_id "
+                + "json_extract(m.data, '$.tokens') AS tokens, json_extract(m.data, '$.modelID') AS model_id, "
+                + "json_extract(m.data, '$.time.created') AS created "
                 + "FROM message m JOIN part p ON p.message_id = m.id WHERE m.session_id = \(id) "
                 + "ORDER BY m.time_created, m.id, p.id;",
         ]
@@ -1357,7 +1386,7 @@ extension NexusAgentEngine {
         // step's tokens and model (2.x keeps them in the message, 1.x in
         // columns of its own).
         var grouped: [(key: String?, role: String, parts: [[String: Any]], context: NexusAgentContextUsage?,
-                       model: String?)] = []
+                       model: String?, created: Date?)] = []
         for row in rows {
             guard let data = object(row["data"]) else { continue }
             if let type = row["type"] as? String {
@@ -1366,14 +1395,16 @@ extension NexusAgentEngine {
                     : data["content"] as? [[String: Any]] ?? []
                 let context = object(data["tokens"]).flatMap { NexusAgentContextUsage.openCode(tokens: $0) }
                 let model = (data["model"] as? [String: Any])?["id"] as? String ?? data["modelID"] as? String
-                grouped.append((nil, type, parts, context, model))
+                let created = openCodeTime((data["time"] as? [String: Any])?["created"])
+                grouped.append((nil, type, parts, context, model, created))
             } else if let role = row["role"] as? String {
                 let key = row["message_id"] as? String
                 if let key, let last = grouped.last, last.key == key {
                     grouped[grouped.count - 1].parts.append(data)
                 } else {
                     let context = object(row["tokens"]).flatMap { NexusAgentContextUsage.openCode(tokens: $0) }
-                    grouped.append((key, role, [data], context, row["model_id"] as? String))
+                    grouped.append((key, role, [data], context, row["model_id"] as? String,
+                                    openCodeTime(row["created"])))
                 }
             }
         }
@@ -1382,7 +1413,9 @@ extension NexusAgentEngine {
             let texts = message.parts.filter { $0["type"] as? String == "text" }.compactMap { $0["text"] as? String }
             if message.role == "user" {
                 let cleaned = extractUserPrompt(texts.joined(separator: "\n"))
-                if !cleaned.isEmpty { messages.append(NexusAgentChatMessage(role: .user, text: cleaned)) }
+                if !cleaned.isEmpty {
+                    messages.append(NexusAgentChatMessage(role: .user, text: cleaned, createdAt: message.created))
+                }
                 continue
             }
             guard message.role == "assistant" else { continue }
@@ -1434,7 +1467,8 @@ extension NexusAgentEngine {
                 messages.append(NexusAgentChatMessage(role: .agent, text: text,
                                                       toolSteps: steps.isEmpty ? nil : steps,
                                                       thinkingText: thinking.isEmpty ? nil : thinking,
-                                                      contextUsage: message.context))
+                                                      contextUsage: message.context,
+                                                      createdAt: message.created))
                 if let model = message.model, !model.isEmpty, message.context != nil {
                     messages[messages.count - 1].modelName = model
                 }
@@ -1481,7 +1515,8 @@ extension NexusAgentEngine {
             if type == "USER_INPUT", let rawContent = json["content"] as? String {
                 let cleaned = extractUserPrompt(rawContent)
                 if !cleaned.isEmpty {
-                    messages.append(NexusAgentChatMessage(role: .user, text: cleaned))
+                    messages.append(NexusAgentChatMessage(role: .user, text: cleaned,
+                                                          createdAt: recordTime(json["timestamp"] ?? json["created_at"])))
                 }
             } else if type == "PLANNER_RESPONSE" {
                 let text = (json["content"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -1503,7 +1538,9 @@ extension NexusAgentEngine {
                     }
                 }
                 if !text.isEmpty || !steps.isEmpty || thinking != nil {
-                    messages.append(NexusAgentChatMessage(role: .agent, text: text, toolSteps: steps.isEmpty ? nil : steps, thinkingText: thinking))
+                    messages.append(NexusAgentChatMessage(role: .agent, text: text, toolSteps: steps.isEmpty ? nil : steps,
+                                                          thinkingText: thinking,
+                                                          createdAt: recordTime(json["timestamp"] ?? json["created_at"])))
                 }
             } else if type == "GENERIC", (json["source"] as? String) == "MODEL",
                       let output = json["content"] as? String,

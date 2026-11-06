@@ -49,6 +49,7 @@ final class EngineHostTests: XCTestCase {
         }
         var promptHistoryWrites = 0
         var worktreeMode = false
+        var timelineOnLeft = false
         var strings = NexusAgentHostStrings()
         var approvals: [NexusAgentTurnNotice] = []
         var finished: [(notice: NexusAgentTurnNotice, isChatVisible: Bool)] = []

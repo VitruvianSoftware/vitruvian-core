@@ -240,7 +240,11 @@ swift_test(
     # the examples it shares with the bot's tests. ChatSymbolsTests reads the
     # chat view's sources to prove every SF Symbol it draws exists.
     # MermaidPageTests draws a diagram with the shipped copy of Mermaid.
+    # TimelineTests reads the standalone host and its Settings to prove the
+    # timeline's edge is kept under one key.
     data = [
+        "Sources/NexusAgent/SettingsView.swift",
+        "Sources/NexusAgent/StandaloneHost.swift",
         ":shared_sources",
         ":shared_ui_resources",
         ":shared_ui_sources",

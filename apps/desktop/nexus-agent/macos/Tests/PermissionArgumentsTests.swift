@@ -42,6 +42,7 @@ final class PermissionArgumentsTests: XCTestCase {
         var savedProviders: [NexusAgentCLIProvider] = []
         var promptHistory: [String] = []
         var worktreeMode = false
+        var timelineOnLeft = false
         var strings = NexusAgentHostStrings()
         func turnNeedsApproval(_ notice: NexusAgentTurnNotice) {}
         func turnFinished(_ notice: NexusAgentTurnNotice, isChatVisible: Bool) {}

@@ -80,6 +80,8 @@ public struct NexusAgentChatView: View {
     /// The conversation is scrolled to its first message, or near it.
     @State private var isNearTop = true
     @State private var scrollViewHeight: CGFloat = 500
+    /// The turn at the top of the conversation, for the timeline's dot.
+    @State private var activeTurn = 0
     @State private var hoveringInlineStop = false
     @State private var hoveringNewChat = false
     @State private var hoveringSessions = false
@@ -1053,8 +1055,7 @@ public struct NexusAgentChatView: View {
     /// Whether a message has a bubble: an agent's message with nothing in
     /// it yet (no text, steps or question) is not drawn, and not counted.
     private static func isShown(_ message: NexusAgentChatMessage) -> Bool {
-        !(message.role == .agent && message.text.isEmpty && message.approvalRequest == nil
-            && (message.toolSteps ?? []).isEmpty && (message.thinkingText ?? "").isEmpty)
+        NexusAgentTimeline.isShown(message)
     }
 
     /// The reply still being written: the last agent message while a turn runs.
@@ -1274,7 +1275,10 @@ public struct NexusAgentChatView: View {
     }
 
     private var conversation: some View {
-        ZStack(alignment: .bottomTrailing) {
+        let turns = NexusAgentTimeline.turns(from: session.messages)
+        let showsTimeline = NexusAgentTimeline.showsRail(turnCount: turns.count)
+        let turnOf = showsTimeline ? NexusAgentTimeline.turnIndexByMessage(turns) : [:]
+        return ZStack(alignment: .bottomTrailing) {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 10) {
@@ -1299,6 +1303,9 @@ public struct NexusAgentChatView: View {
                                 },
                                 isStreaming: session.isRunning && message.id == streamingReplyID,
                                 workingDirectory: conversationDirectory)
+                                // The timeline scrolls to a prompt by its id.
+                                .id(message.id)
+                                .background(timelineAnchor(turn: turnOf[message.id]))
                             }
                         }
                         if session.isRunning { progress }
@@ -1341,6 +1348,10 @@ public struct NexusAgentChatView: View {
                         Color.clear.frame(height: 1).id(Self.bottomID)
                     }
                     .padding(14)
+                    // A gutter for the timeline, so its dots never sit on
+                    // the avatars at that edge.
+                    .padding(session.timelineOnLeft ? .leading : .trailing,
+                             showsTimeline ? NexusAgentTimelineScrubber.gutter : 0)
                     .background(
                         GeometryReader { geo in
                             Color.clear
@@ -1375,6 +1386,22 @@ public struct NexusAgentChatView: View {
                 .onPreferenceChange(ScrollViewHeightPreferenceKey.self) { [viewHeight = $scrollViewHeight] height in
                     viewHeight.wrappedValue = height
                 }
+                .onPreferenceChange(TimelineTopsPreferenceKey.self) { [active = $activeTurn] tops in
+                    let next = NexusAgentTimeline.activeTurn(tops: tops, current: active.wrappedValue)
+                    if next != active.wrappedValue { active.wrappedValue = next }
+                }
+                .overlay {
+                    if showsTimeline {
+                        NexusAgentTimelineScrubber(
+                            turns: turns, activeIndex: min(activeTurn, turns.count - 1),
+                            onLeft: $session.timelineOnLeft, strings: strings
+                        ) { id in
+                            withAnimation(.easeOut(duration: 0.3)) {
+                                proxy.scrollTo(id, anchor: .top)
+                            }
+                        }
+                    }
+                }
                 .onChange(of: session.messages) { _, _ in
                     if isNearBottom {
                         withAnimation(.easeOut(duration: 0.2)) {
@@ -1394,6 +1421,17 @@ public struct NexusAgentChatView: View {
             }
             .animation(.easeInOut(duration: 0.25), value: isNearBottom)
             .animation(.easeInOut(duration: 0.25), value: isNearTop)
+        }
+    }
+
+    /// Where a bubble's turn starts, for the timeline's active dot; nothing
+    /// for a bubble of no turn, or while the timeline is not shown.
+    private func timelineAnchor(turn: Int?) -> some View {
+        GeometryReader { geo in
+            Color.clear.preference(
+                key: TimelineTopsPreferenceKey.self,
+                value: turn.map { [$0: geo.frame(in: .named("chatScroll")).minY] } ?? [:]
+            )
         }
     }
 
