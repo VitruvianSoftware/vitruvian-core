@@ -165,7 +165,7 @@ jobs:
           service-account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
       - name: Install Pulumi
-        uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
+        uses: pulumi/actions@96c7761824268174e0d2a4e8c7d75671eebd24a7 # v7.1.0
 
       # --refresh mirrors the apply below EXACTLY. A preview computed without it
       # can differ from what the apply then does, which would make this gate
@@ -258,7 +258,7 @@ jobs:
           service-account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
       - name: Install Pulumi
-        uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
+        uses: pulumi/actions@96c7761824268174e0d2a4e8c7d75671eebd24a7 # v7.1.0
 
       # Upstream-leaf layout: the environment selects the business-unit leaf
       # Pulumi project dir; every leaf has exactly one stack, `production`.

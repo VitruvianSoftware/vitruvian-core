@@ -39,7 +39,7 @@ runs:
   using: composite
   steps:
     - name: Join the tailnet (ephemeral, tag:ci)
-      uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd # v4.2.0
+      uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c # v4.4.0
       with:
         # OAuth client (no expiry) — mints a short-lived ephemeral tag:ci key
         # per run, so there's no 90-day auth-key rotation chore. The client
