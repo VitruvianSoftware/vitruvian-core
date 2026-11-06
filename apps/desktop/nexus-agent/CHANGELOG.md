@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.32.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.31.1...nexus-agent-v1.32.0) (2026-11-06)
+
+
+### Features
+
+* **nexus-agent:** add a timeline scrubber with hover preview to the chat ([#4368](https://github.com/VitruvianSoftware/vitruvian-core/issues/4368)) ([8e3753c](https://github.com/VitruvianSoftware/vitruvian-core/commit/8e3753c679a95535369715ca20842f404a8fdc00))
+
 ## [1.31.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.31.0...nexus-agent-v1.31.1) (2026-10-24)
 
 
