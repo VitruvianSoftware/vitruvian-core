@@ -56,6 +56,7 @@ Read these once; they explain *why* the repo works the way it does.
 |---|---|
 | [The SDLC: from branch to production](concepts/sdlc.md) | The full lifecycle — worktree → PR → merge queue → deploy → release → promotion — with the diagrams to navigate it |
 | [Monorepo architecture](concepts/monorepo-architecture.md) | How apps, infrastructure planes, the platform, and mirrors fit together |
+| [How the agent team works](concepts/agent-team.md) | The Opus lead plans and reviews; specialists implement, test and document on Gemini |
 | [Guiding Principles](engineering/application-development-principles.md) | **The authoritative standard** — cross-cutting principles + a per-category playbook for every app type |
 | [Core vs. application infrastructure](engineering/core-vs-application-infrastructure.md) | Where a resource's IaC lives — the core/archetype/application split |
 | [Deployment strategy](engineering/deployment-strategy.md) | One promotion model: merge → development; release cut → nonproduction → production |

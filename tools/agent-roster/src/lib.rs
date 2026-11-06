@@ -90,6 +90,11 @@ pub struct TierSpec {
     pub claude_code: HarnessModel,
     pub antigravity: HarnessModel,
     pub opencode: HarnessModel,
+    /// The Gemini model (an `agy models` id) that does this tier's work when the tier has a
+    /// `gemini` row. Such a tier runs natively on Gemini in Antigravity; in Claude Code and
+    /// OpenCode its agents are generated as drivers that hand the work to this model through
+    /// `agy-delegate` and verify the result.
+    pub gemini: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -264,6 +269,18 @@ fn is_valid_claude_code_model(s: &str) -> bool {
         || (s.starts_with("claude-") && s.len() > "claude-".len())
 }
 
+/// A Gemini model id for `agy-delegate -m`: starts with `gemini-`, and is never a low or lite variant.
+pub fn is_valid_gemini_model(s: &str) -> bool {
+    s.starts_with("gemini-")
+        && s.len() > "gemini-".len()
+        && s.bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'-')
+        && !s.ends_with("-low")
+        && !s.contains("-low-")
+        && !s.contains("lite")
+        && !s.contains("flash-lo")
+}
+
 fn is_valid_effort(s: &str) -> bool {
     matches!(s, "-" | "medium" | "high" | "xhigh" | "max")
 }
@@ -332,9 +349,23 @@ pub fn validate_roster(
                     ));
                 }
             }
+            "gemini" => {
+                if !is_valid_gemini_model(&row.model) {
+                    errors.push(format!(
+                        "tier '{}' (gemini): invalid model '{}' (rule: gemini model must be an agy model id starting with \"gemini-\", never a low, lite or flash-lo variant)",
+                        row.tier, row.model
+                    ));
+                }
+                if row.effort != "-" {
+                    errors.push(format!(
+                        "tier '{}' (gemini): invalid effort '{}' (rule: gemini effort must be \"-\"; the model id carries it)",
+                        row.tier, row.effort
+                    ));
+                }
+            }
             other => {
                 errors.push(format!(
-                    "tier '{}': unknown harness '{}' (rule: harness must be claude-code, antigravity, or opencode)",
+                    "tier '{}': unknown harness '{}' (rule: harness must be claude-code, antigravity, opencode, or gemini)",
                     row.tier, other
                 ));
             }
@@ -421,12 +452,14 @@ pub fn validate_roster(
             map.remove("antigravity"),
             map.remove("opencode"),
         ) {
+            let gemini = map.remove("gemini").map(|hm| hm.model);
             tiers.insert(
                 tier_name,
                 TierSpec {
                     claude_code,
                     antigravity,
                     opencode,
+                    gemini,
                 },
             );
         }
@@ -625,6 +658,14 @@ fn format_table_cell(hm: &HarnessModel) -> String {
     }
 }
 
+/// A table cell for a harness where the tier's agents are drivers: `driver model → gemini model`.
+fn format_driver_cell(hm: &HarnessModel, gemini: &Option<String>) -> String {
+    match gemini {
+        Some(g) => format!("{} → {}", format_table_cell(hm), g),
+        None => format_table_cell(hm),
+    }
+}
+
 /// Render the markdown table that replaces `<!-- roster:table -->` in agent prompts.
 pub fn render_roster_table(roster: &Roster) -> String {
     let mut lines = Vec::with_capacity(roster.agents.len() + 2);
@@ -636,9 +677,9 @@ pub fn render_roster_table(roster: &Roster) -> String {
             "| {} | {} | {} | {} | {} |",
             agent.name,
             agent.tier,
-            format_table_cell(&spec.claude_code),
+            format_driver_cell(&spec.claude_code, &spec.gemini),
             format_table_cell(&spec.antigravity),
-            format_table_cell(&spec.opencode),
+            format_driver_cell(&spec.opencode, &spec.gemini),
         ));
     }
     lines.join("\n")
@@ -651,18 +692,15 @@ pub fn render_harness_roster_table(roster: &Roster, harness: &str) -> String {
     lines.push("|---|---|---|---|".to_string());
     for agent in &roster.agents {
         let spec = &roster.tiers[&agent.tier];
-        let hm = match harness {
-            "claude-code" => &spec.claude_code,
-            "antigravity" => &spec.antigravity,
-            "opencode" => &spec.opencode,
+        let cell = match harness {
+            "claude-code" => format_driver_cell(&spec.claude_code, &spec.gemini),
+            "antigravity" => format_table_cell(&spec.antigravity),
+            "opencode" => format_driver_cell(&spec.opencode, &spec.gemini),
             other => panic!("unknown harness '{other}'"),
         };
         lines.push(format!(
             "| {} | {} | {} | {} |",
-            agent.name,
-            agent.tier,
-            format_table_cell(hm),
-            agent.description,
+            agent.name, agent.tier, cell, agent.description,
         ));
     }
     lines.join("\n")
@@ -708,6 +746,52 @@ pub fn render_skill(roster: &Roster, harness: &str, raw_template: &str) -> Strin
     )
 }
 
+/// The tools a Claude Code driver may use: enough to run `agy-delegate`, read the result,
+/// run verification and report progress, and nothing that edits files.
+pub const CLAUDE_CODE_DRIVER_TOOLS: &str =
+    "Bash, Read, Grep, Glob, mcp__vitruvian-orchestrator__step";
+
+/// Body of a driver agent (Claude Code or OpenCode) whose tier does its work on Gemini.
+/// `step_tool` is the harness's name for the panel's step tool.
+pub fn render_driver_body(agent: &AgentRow, gemini: &str, step_tool: &str, role: &str) -> String {
+    let name = &agent.name;
+    format!(
+        r#"You are {name}, a driver. You do not write the code, tests or docs yourself. You hand the work to Gemini (`{gemini}`) through Antigravity, check what comes back, and report to the lead. The "Your role" section below is what Gemini works as.
+
+## How you run a task
+
+1. **Write the brief to a file.** Save the lead's brief, unchanged, to a new file such as `$TMPDIR/{name}-<short task name>.md`, and keep its path in `BRIEF`. Append, word for word, the "Your role" section below, then this line: `Do not commit or push unless the brief says so. Do not run speaker-broadcast or any other notification or announcement command. Report: files changed, each command you ran with its exit code, and anything you could not finish.`
+2. **Hand it to Gemini** from the repository root:
+
+   ```sh
+   agy-delegate -m {gemini} -d "$(git rev-parse --show-toplevel)" --yolo --digest --timeout 45m - < "$BRIEF"
+   ```
+
+   - If the brief asks only for a review or an answer and must not change files, use `--mode plan` instead of `--yolo`.
+   - Run it in the background for long work; it prints Gemini's digest when it finishes.
+   - Exit codes: 0 ok, 2 agy failed, 3 empty answer, 10 quota, 11 auth, 12 timeout.
+3. **Report progress** with the {step_tool}: `done`, `total`, a short `note`, and `delegate: "{gemini}"`. Call it when you hand off, when Gemini returns, and after you verify. If the tool is missing, skip it silently.
+4. **Check the work yourself.** Gemini has been seen claiming passes it did not get, and changing its environment to force them. Never pass on its "done" unchecked.
+   - Run `git status --short` and `git diff --stat`, and confirm the change stays inside the brief's scope.
+   - Read the changed files that matter.
+   - Run the brief's verification commands yourself and note each exit code.
+5. **Correct it, at most twice.** If the work is wrong or incomplete, send Gemini a new brief: the original, plus a precise defect list with file and line references. Do not resume an earlier conversation, because other drivers may be running Gemini at the same time.
+6. **Report to the lead** in under 200 words: `DONE`, `NEEDS_WORK` or `BLOCKED`; the files changed; each verification command with its exit code; and open risks. Do not paste Gemini's raw output.
+
+## Rules
+
+- Do not edit files yourself; your tools are limited for that reason. Even a one-line fix goes to Gemini, or into your report for the lead.
+- If `agy-delegate` exits 10, 11 or 12, or fails twice in a row, stop and report `BLOCKED` with the exit code. The lead decides whether the task is finished on Claude.
+- Never use `flash-lo`, a `-lite` model or any `-low` model.
+- `AGENTS.md` binds Gemini as it binds you. Make sure every brief tells it to use the repository's Bazel targets for build, test, format and git.
+
+## Your role
+
+{role}"#,
+        role = role.trim_end_matches('\n'),
+    )
+}
+
 /// Render Antigravity `.agents/agents/<name>.md`.
 pub fn render_antigravity_agent(agent: &AgentRow, spec: &TierSpec, body: &str) -> String {
     format!(
@@ -727,12 +811,20 @@ pub fn render_claude_code_agent(agent: &AgentRow, spec: &TierSpec, body: &str) -
     } else {
         format!("effort: {}\n", spec.claude_code.effort)
     };
+    let (tools_line, body) = match &spec.gemini {
+        Some(g) => (
+            format!("tools: {CLAUDE_CODE_DRIVER_TOOLS}\n"),
+            render_driver_body(agent, g, "`mcp__vitruvian-orchestrator__step` tool", body),
+        ),
+        None => (String::new(), body.to_string()),
+    };
     format!(
-        "---\nname: {}\ndescription: {}\nmodel: {}\n{}---\n{}\n\n{}\n",
+        "---\nname: {}\ndescription: {}\nmodel: {}\n{}{}---\n{}\n\n{}\n",
         agent.name,
         agent.description,
         spec.claude_code.model,
         effort_line,
+        tools_line,
         GENERATED_COMMENT,
         body.trim_end_matches('\n')
     )
@@ -745,11 +837,19 @@ pub fn render_opencode_agent(agent: &AgentRow, spec: &TierSpec, body: &str) -> S
     } else {
         format!("reasoningEffort: {}\n", spec.opencode.effort)
     };
+    let (tools_block, body) = match &spec.gemini {
+        Some(g) => (
+            "tools:\n  write: false\n  edit: false\n  patch: false\n".to_string(),
+            render_driver_body(agent, g, "`step` tool", body),
+        ),
+        None => (String::new(), body.to_string()),
+    };
     format!(
-        "---\ndescription: {}\nmode: subagent\nmodel: {}\n{}---\n{}\n\n{}\n",
+        "---\ndescription: {}\nmode: subagent\nmodel: {}\n{}{}---\n{}\n\n{}\n",
         agent.description,
         spec.opencode.model,
         effort_line,
+        tools_block,
         GENERATED_COMMENT,
         body.trim_end_matches('\n')
     )
@@ -1024,6 +1124,115 @@ pace\tfast\tRelease readiness manager for vitruvian-core.
         m.insert("scout".to_string(), "You are scout.\n".to_string());
         m.insert("pace".to_string(), "You are pace.\n".to_string());
         m
+    }
+
+    const GEMINI_TIERS: &str = "\
+tier\tharness\tmodel\teffort
+lead\tclaude-code\topus\thigh
+lead\tantigravity\tpro\t-
+lead\topencode\tanthropic/claude-opus-5-5\thigh
+deep\tclaude-code\thaiku\tmedium
+deep\tantigravity\tpro\t-
+deep\topencode\tanthropic/claude-haiku-5-5\tmedium
+deep\tgemini\tgemini-4-argon-high\t-
+";
+
+    const GEMINI_AGENTS: &str = "\
+name\ttier\tdescription
+beacon\tlead\tLead dispatcher for vitruvian-core.
+wren\tdeep\tApplication engineer for vitruvian-core.
+";
+
+    fn gemini_prompts() -> BTreeMap<String, String> {
+        let mut m = BTreeMap::new();
+        m.insert("beacon".to_string(), "You are beacon.\n".to_string());
+        m.insert(
+            "wren".to_string(),
+            "You are wren.\n\n<!-- roster:table -->\n".to_string(),
+        );
+        m
+    }
+
+    #[test]
+    fn gemini_tier_renders_drivers_outside_antigravity() {
+        let roster = load_and_validate(GEMINI_TIERS, GEMINI_AGENTS, &gemini_prompts())
+            .expect("gemini roster should be valid");
+        assert_eq!(
+            roster.tiers["deep"].gemini.as_deref(),
+            Some("gemini-4-argon-high")
+        );
+        assert_eq!(roster.tiers["lead"].gemini, None);
+        let files = render_all(&roster);
+
+        // Antigravity runs the role natively on Gemini: no driver text, model from its own column.
+        let ag = &files[".agents/agents/wren.md"];
+        assert!(ag.starts_with("---\nname: wren\ndescription: Application engineer for vitruvian-core.\nmodel: pro\n---\n"));
+        assert!(!ag.contains("agy-delegate"));
+        assert!(ag.contains("| wren | deep | haiku (medium) → gemini-4-argon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-argon-high |"));
+
+        // Claude Code: a Haiku driver with no editing tools that hands the role to Gemini.
+        let cc = &files[".claude/agents/wren.md"];
+        assert!(cc.starts_with(concat!(
+            "---\nname: wren\ndescription: Application engineer for vitruvian-core.\n",
+            "model: haiku\neffort: medium\n",
+            "tools: Bash, Read, Grep, Glob, mcp__vitruvian-orchestrator__step\n---\n",
+        )));
+        assert!(cc.contains("You are wren, a driver."));
+        assert!(cc.contains("agy-delegate -m gemini-4-argon-high -d \"$(git rev-parse --show-toplevel)\" --yolo --digest --timeout 45m - < \"$BRIEF\""));
+        assert!(cc.contains("`mcp__vitruvian-orchestrator__step` tool"));
+        assert!(cc.contains("delegate: \"gemini-4-argon-high\""));
+        assert!(cc.contains("Do not run speaker-broadcast"));
+        assert!(cc.trim_end().ends_with(
+            "| beacon | lead | opus (high) | pro | anthropic/claude-opus-5-5 (high) |\n| wren | deep | haiku (medium) → gemini-4-argon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-argon-high |"
+        ));
+        let role_at = cc
+            .find("## Your role\n\nYou are wren.")
+            .expect("role section follows the driver steps");
+        assert!(cc.find("## How you run a task").unwrap() < role_at);
+
+        // OpenCode: same driver, its own step tool name, editing tools switched off.
+        let oc = &files[".opencode/agents/wren.md"];
+        assert!(oc.starts_with(concat!(
+            "---\ndescription: Application engineer for vitruvian-core.\nmode: subagent\n",
+            "model: anthropic/claude-haiku-5-5\nreasoningEffort: medium\n",
+            "tools:\n  write: false\n  edit: false\n  patch: false\n---\n",
+        )));
+        assert!(oc.contains("with the `step` tool"));
+        assert!(!oc.contains("mcp__vitruvian-orchestrator__step"));
+
+        // The lead keeps a native Claude agent with no tool limits.
+        let lead = &files[".claude/agents/beacon.md"];
+        assert!(!lead.contains("tools:"));
+        assert!(!lead.contains("agy-delegate"));
+    }
+
+    #[test]
+    fn rejects_invalid_gemini_rows() {
+        for (model, effort) in [
+            ("gemini-3.8-flash-low", "-"),
+            ("gemini-3.8-flash-lite", "-"),
+            ("gemini-4-flash-lo", "-"),
+            ("claude-opus-5-5", "-"),
+            ("gemini-4-argon-high", "high"),
+        ] {
+            let tiers = GEMINI_TIERS.replace(
+                "deep\tgemini\tgemini-4-argon-high\t-",
+                &format!("deep\tgemini\t{model}\t{effort}"),
+            );
+            let errs = load_and_validate(&tiers, GEMINI_AGENTS, &gemini_prompts())
+                .expect_err(&format!("{model}/{effort} must be rejected"));
+            assert!(
+                errs.iter().any(|e| e.contains("(gemini)")),
+                "{model}/{effort}: {errs:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn accepts_current_gemini_models() {
+        for m in ["gemini-4-argon-high", "gemini-3.8-flash-high"] {
+            assert!(is_valid_gemini_model(m), "{m}");
+        }
     }
 
     #[test]

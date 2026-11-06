@@ -327,4 +327,59 @@ describe("sidebar formatting", () => {
     );
     assert.match(joined, /Unpriced: local-model: 2\.0k tok/);
   });
+
+  it("passes delegate on step calls and renders driver → delegate arrow and delegated spend summary", () => {
+    let { flow } = applyProgressCall(
+      null,
+      {
+        title: "Delegated rollout",
+        phase: "delegate",
+        tasks: [
+          {
+            title: "Delegate via agy",
+            specialist: "wren",
+            tier: "core",
+            after: [],
+          },
+        ],
+      },
+      1000,
+    );
+
+    flow = reduce(flow, {
+      type: "run.start",
+      at: 1100,
+      id: "ses_haiku_driver",
+      role: "worker",
+      agent: "wren",
+      title: "Delegate via agy",
+      model: "anthropic/claude-haiku-5-5",
+      effort: "medium",
+    });
+
+    const stepRes = applyStepCall(
+      flow,
+      "ses_haiku_driver",
+      {
+        done: 1,
+        total: 2,
+        note: "agy-delegate",
+        delegate: "gemini-4-argon-high",
+      },
+      1200,
+    );
+    assert.equal(stepRes.matched, true);
+    assert.equal(stepRes.flow?.runs[0].delegate, "gemini-4-argon-high");
+
+    const lines = formatSidebarLines(stepRes.flow, 2200);
+    const joined = lines.join("\n");
+    assert.match(
+      joined,
+      /wren #1 \(claude-haiku-5-5 → gemini-4-argon-high · medium\)/,
+    );
+    assert.match(
+      joined,
+      /delegated to Gemini: 1 run \(gemini-4-argon-high ×1\), not priced/,
+    );
+  });
 });

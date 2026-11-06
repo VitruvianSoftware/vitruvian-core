@@ -72,6 +72,7 @@ export type Run = {
   agent: string;
   model: string;
   effort: string | null;
+  delegate: string | null;
   title: string;
   taskN: number | null;
   startedAt: number;
@@ -123,12 +124,18 @@ export type UnpricedSummary = {
   tokens: number;
 };
 
+export type DelegatedSummary = {
+  runs: number;
+  byModel: Record<string, number>;
+};
+
 export type SpendSummary = {
   total: number;
   byModel: Record<string, number>;
   lead: number;
   workers: number;
   unpriced: UnpricedSummary;
+  delegated: DelegatedSummary;
 };
 
 export type FlowEvent = {
@@ -142,6 +149,7 @@ export type FlowEvent = {
   agent?: string;
   model?: string;
   effort?: string | null;
+  delegate?: string | null;
   role?: RunRole;
   tokens?: Partial<TokenCounts>;
   steps?: Partial<StepProgress> | null;
