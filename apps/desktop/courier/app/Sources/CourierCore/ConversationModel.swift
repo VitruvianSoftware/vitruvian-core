@@ -654,6 +654,12 @@ public final class ConversationModel: ObservableObject {
         }
     }
 
+    /// Shows `info` as the open chat's Chat Info, for view tests without an engine.
+    public func setChatInfoForTesting(_ info: RoomInfoResult?) {
+        chatInfo = info
+        isShowingChatInfo = info != nil
+    }
+
     private func open(_ room: String?) {
         if let room, let merged = appModel.mergedChats[room] {
             if roomID == merged.mergeID { return }

@@ -39,6 +39,8 @@ struct ConversationView: View {
     /// timeline starting there, not the person reaching it, and reads nothing newer.
     @State private var scrolledToMessage: Int?
     @State private var inviteCandidates: [ContactCandidate] = []
+    /// The thread's and Chat Info's widths, for their headers in the toolbar.
+    @State private var sidePaneWidths: [SidePane: CGFloat] = [:]
 
     var body: some View {
         HSplitView {
@@ -46,8 +48,10 @@ struct ConversationView: View {
                 .frame(minWidth: 340, maxWidth: .infinity)
             if thread.rootID != nil, thread.roomID == conversation.roomID {
                 ThreadPane(thread: thread, conversation: conversation, composer: thread.composer,
-                           messageActions: messageActions, preferences: preferences, focus: focus)
+                           messageActions: messageActions, preferences: preferences, focus: focus,
+                           headerInToolbar: drawsLiquidGlass, chatName: chatName)
                     .frame(minWidth: 280, idealWidth: 340, maxWidth: 560)
+                    .reportsSidePaneWidth(.thread)
             }
             if conversation.isShowingChatInfo, let info = conversation.chatInfo {
                 ChatInfoPane(
@@ -114,10 +118,22 @@ struct ConversationView: View {
                     onReportSpam: {
                         Task { await conversation.beginReportSpam(info: info) }
                     },
-                    onClose: conversation.toggleChatInfo
+                    onClose: conversation.toggleChatInfo,
+                    headerInToolbar: drawsLiquidGlass
                 )
                 .frame(minWidth: 280, idealWidth: 320, maxWidth: 420)
+                .reportsSidePaneWidth(.chatInfo)
             }
+        }
+        .onPreferenceChange(SidePaneWidthKey.self) { sidePaneWidths = $0 }
+        .courierChatToolbar {
+            ConversationHeaderContainer(inbox: inbox, conversation: conversation, redactNamesAndPictures: redact,
+                                        part: .identity)
+        } actions: {
+            ConversationHeaderContainer(inbox: inbox, conversation: conversation, redactNamesAndPictures: redact,
+                                        part: .actions)
+        } panes: {
+            sidePaneHeaders
         }
         .onAppear { ui.history = { [messageActions] in await messageActions.history(of: $0) } }
         .onChange(of: messageActions.request) { _, request in
@@ -230,9 +246,39 @@ struct ConversationView: View {
         appearance ?? appearanceEnv
     }
 
+    private var redact: Bool { resolvedAppearance?.redactNamesAndPictures ?? false }
+
+    /// The open chat's name, under the thread's title (redacted when names are).
+    private var chatName: String? {
+        guard let row = conversation.roomID.flatMap({ inbox.row(of: $0) }) ?? inbox.selectedRow else { return nil }
+        return redact ? AppearancePreferences.redactedText(row.name, kind: .chatTitle) : row.name
+    }
+
+    /// With glass, the open side panes' headers as one toolbar item: each exactly as wide as its pane, side by side as
+    /// the panes are, so each title sits over its own pane. The toolbar lays the item against its trailing edge, where
+    /// the panes are. Nothing until the panes have been measured, so a header never shows at a guessed width.
+    @ViewBuilder
+    private var sidePaneHeaders: some View {
+        let showsThread = thread.rootID != nil && thread.roomID == conversation.roomID
+        let info = conversation.isShowingChatInfo ? conversation.chatInfo : nil
+        let threadWidth = showsThread ? sidePaneWidths[.thread] : nil
+        let infoWidth = info != nil ? sidePaneWidths[.chatInfo] : nil
+        if threadWidth != nil || infoWidth != nil {
+            HStack(spacing: 0) {
+                if let threadWidth {
+                    ThreadPaneHeader(thread: thread, focus: focus, chatName: chatName, inToolbar: true)
+                        .frame(width: max(0, threadWidth - (infoWidth == nil ? PaneHeaderMetrics.toolbarItemSlack : 0)))
+                }
+                if let info, let infoWidth {
+                    ChatInfoHeader(roomID: info.roomID, onClose: conversation.toggleChatInfo, inToolbar: true)
+                        .frame(width: max(0, infoWidth - PaneHeaderMetrics.toolbarItemSlack))
+                }
+            }
+        }
+    }
+
     private var chat: some View {
         let effectiveTheme = resolvedAppearance?.effectiveTheme(for: conversation.roomID)
-        let redact = resolvedAppearance?.redactNamesAndPictures ?? false
         return VStack(spacing: 0) {
             // With glass the chat's name and buttons are in the window's toolbar (courierChatToolbar), not a strip.
             if !drawsLiquidGlass {
@@ -281,13 +327,6 @@ struct ConversationView: View {
                     )
                 }
             }
-        }
-        .courierChatToolbar {
-            ConversationHeaderContainer(inbox: inbox, conversation: conversation, redactNamesAndPictures: redact,
-                                        part: .identity)
-        } actions: {
-            ConversationHeaderContainer(inbox: inbox, conversation: conversation, redactNamesAndPictures: redact,
-                                        part: .actions)
         }
         .overlay {
             if isDropTargeted {
@@ -851,9 +890,9 @@ private struct ConversationHeader: View {
                 Spacer(minLength: 0)
                 actions
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .frame(minHeight: 48)
+            // The height every column's header strip has, so the titles share a line (PaneHeader.swift).
+            .padding(.horizontal, PaneHeaderMetrics.inset)
+            .frame(height: PaneHeaderMetrics.stripHeight)
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(.isHeader)
         case .identity:
