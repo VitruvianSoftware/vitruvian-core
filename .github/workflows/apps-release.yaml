@@ -50,13 +50,114 @@ on:
       - "apps/mcp/slack/**"
       - "apps/desktop/nexus-agent/**"
       - "apps/web/oauth-user-inspector/**"
+      - ".github/workflows/apps-release.yaml"
 
 permissions:
   contents: write
   pull-requests: write
 
 jobs:
+  setup:
+    runs-on: ubuntu-26.04
+    # Just a full-history checkout + changed-app diff; cap it so a hung
+    # clone/step can't pin a runner. release-please is capped separately below.
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # need history for the diff
+      - id: set-matrix
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+
+          ALL_APPS=(
+            apps/cli/devx
+            apps/cli/homelab
+            apps/antigravity/plugins/ext-marketplace
+            apps/antigravity/plugins/gh-watch
+            apps/antigravity/plugins/hookify
+            apps/antigravity/plugins/live-context
+            apps/antigravity/plugins/ralph-loop
+            apps/antigravity/plugins/receipts-report
+            apps/antigravity/plugins/savvy-fleet
+            apps/antigravity/plugins/security-guidance
+            apps/antigravity/plugins/worktree-band
+            apps/mcp/slack
+            apps/desktop/nexus-agent
+            apps/web/oauth-user-inspector
+            apps/web/oauth-user-inspector/infra
+          )
+
+          # Detect changed files in this push. Fall back to all apps if the
+          # before SHA is empty/zero-ref (branch creation or force push) or
+          # if apps-release.yaml itself changed.
+          BEFORE_SHA="${BEFORE_SHA:-}"
+          ZERO_SHA="0000000000000000000000000000000000000000"
+          if [ -z "${BEFORE_SHA}" ] || [ "${BEFORE_SHA}" = "${ZERO_SHA}" ] || ! git rev-parse --verify --quiet "${BEFORE_SHA}^{commit}" >/dev/null 2>&1; then
+            echo "setup: cannot compute diff (new branch or force-push) → releasing all apps"
+            ALL=true
+          else
+            CHANGED_FILES="$(git diff --name-only "${BEFORE_SHA}" HEAD)"
+            if grep -q "^\.github/workflows/apps-release\.yaml$" <<<"${CHANGED_FILES}"; then
+              echo "setup: workflow file changed → releasing all apps"
+              ALL=true
+            else
+              ALL=false
+            fi
+          fi
+
+          if [ "${ALL}" = "true" ]; then
+            MATCHED_APPS_LIST=$(printf "%s\n" "${ALL_APPS[@]}")
+          else
+            # Filter out inert/metadata files (docs, markdown, inert assets, catalog-info, OWNERS)
+            # that cannot trigger a release.
+            IGNORE_REGEX='^(gitops/|docs/|\.agents/)|\.(md|png|jpg|jpeg|svg|txt)$|(^|/)(catalog-info\.yaml|OWNERS|CODEOWNERS)$'
+            RELEVANT_FILES="$(grep -E -v "${IGNORE_REGEX}" <<<"${CHANGED_FILES}" || true)"
+
+            MATCHED_APPS_LIST=""
+            if [ -n "${RELEVANT_FILES}" ]; then
+              for app in "${ALL_APPS[@]}"; do
+                if [ "${app}" = "apps/web/oauth-user-inspector" ]; then
+                  # Exclude files matching ^apps/web/oauth-user-inspector/infra/
+                  # (matching its release-please-config.json exclude-paths) so an
+                  # infra-only change does not trigger the parent web app.
+                  APP_FILES="$(grep -E -v '^apps/web/oauth-user-inspector/infra/' <<<"${RELEVANT_FILES}" || true)"
+                  if [ -n "${APP_FILES}" ] && grep -q "^${app}/" <<<"${APP_FILES}"; then
+                    MATCHED_APPS_LIST="${MATCHED_APPS_LIST}${MATCHED_APPS_LIST:+$'\n'}${app}"
+                  fi
+                else
+                  # Herestring, NOT `echo ... | grep -q`: `run:` blocks execute under
+                  # `bash -eo pipefail`, and `grep -q` exits on its first match, so a
+                  # RELEVANT_FILES list past the 64 KiB pipe buffer makes the still-
+                  # writing echo take SIGPIPE and the pipeline report 141 -- dropping
+                  # an app that DID change out of the release matrix, silently.
+                  if grep -q "^${app}/" <<<"${RELEVANT_FILES}"; then
+                    MATCHED_APPS_LIST="${MATCHED_APPS_LIST}${MATCHED_APPS_LIST:+$'\n'}${app}"
+                  fi
+                fi
+              done
+            fi
+          fi
+
+          if [ -z "${MATCHED_APPS_LIST}" ]; then
+            echo "setup: no apps changed → empty matrix"
+            echo "matrix=[]" >> "$GITHUB_OUTPUT"
+          else
+            echo "setup: releasing apps:"
+            # shellcheck disable=SC2001
+            echo "${MATCHED_APPS_LIST}" | sed 's/^/  /'
+            json_array=$(echo "${MATCHED_APPS_LIST}" | jq -R -s -c 'split("\n") | map(select(length > 0))')
+            echo "matrix=$json_array" >> "$GITHUB_OUTPUT"
+          fi
+
   release-please:
+    needs: setup
+    if: needs.setup.outputs.matrix != '[]'
     runs-on: ubuntu-26.04
     timeout-minutes: 45
     # Per-app concurrency: never cancel a release run; serialize each app's runs
@@ -66,25 +167,9 @@ jobs:
       cancel-in-progress: false
     strategy:
       fail-fast: false
+      max-parallel: 5
       matrix:
-        app:
-          [
-            apps/cli/devx,
-            apps/cli/homelab,
-            apps/antigravity/plugins/ext-marketplace,
-            apps/antigravity/plugins/gh-watch,
-            apps/antigravity/plugins/hookify,
-            apps/antigravity/plugins/live-context,
-            apps/antigravity/plugins/ralph-loop,
-            apps/antigravity/plugins/receipts-report,
-            apps/antigravity/plugins/savvy-fleet,
-            apps/antigravity/plugins/security-guidance,
-            apps/antigravity/plugins/worktree-band,
-            apps/mcp/slack,
-            apps/desktop/nexus-agent,
-            apps/web/oauth-user-inspector,
-            apps/web/oauth-user-inspector/infra,
-          ]
+        app: ${{ fromJson(needs.setup.outputs.matrix) }}
     steps:
       # `mint-sync-app-token` is a LOCAL composite action; GitHub can't resolve
       # `uses: ./...` without the repo already checked out onto the runner.
