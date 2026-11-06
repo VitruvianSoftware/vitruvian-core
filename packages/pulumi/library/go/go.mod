@@ -1,6 +1,6 @@
 module github.com/VitruvianSoftware/pulumi-library/go
 
-go 1.26.6
+go 1.26.10
 
 require (
 	github.com/pulumi/pulumi/sdk/v3 v3.273.0

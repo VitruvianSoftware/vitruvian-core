@@ -1,6 +1,6 @@
 module github.com/VitruvianSoftware/courier/engine
 
-go 1.26.6
+go 1.26.10
 
 require (
 	github.com/mdp/qrterminal/v3 v3.2.1

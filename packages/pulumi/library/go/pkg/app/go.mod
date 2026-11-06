@@ -1,6 +1,6 @@
 module github.com/VitruvianSoftware/pulumi-library/go/pkg/app
 
-go 1.26.6
+go 1.26.10
 
 require (
 	github.com/VitruvianSoftware/pulumi-library/go v0.5.1
