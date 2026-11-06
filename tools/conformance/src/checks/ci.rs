@@ -912,6 +912,63 @@ pub(crate) fn uses_setup_bazel_directly(content: &str) -> bool {
         .any(|l| !l.starts_with('#') && l.contains("bazel-contrib/setup-bazel@"))
 }
 
+/// What is wrong with how `setup-bazel/action.yml` restores the repository
+/// cache, as (found, want, why) triples; empty when nothing is.
+///
+/// setup-bazel 0.19.1 never exits its main step after an aborted cache
+/// download (the stalled request keeps node alive), so on a slow runner a bad
+/// download sat until the job's timeout: twice in the merge queue on
+/// 2026-11-06, cancelling a required check (PR #4380). setup-bazel may restore
+/// the repository cache only where it also saves it, GitHub-hosted jobs on
+/// main; everywhere else actions/cache/restore does, which exits when it is
+/// done and gives up on a stalled download after SEGMENT_DOWNLOAD_TIMEOUT_MINS.
+pub(crate) fn repository_restore_problems(content: &str) -> Vec<(String, String, String)> {
+    let mut problems = Vec::new();
+    match yaml_value_of(content, "repository-cache") {
+        Some(v) if cache_save_expr_guarded(&v) => {}
+        found => problems.push((
+            format!("repository-cache: {}", found.as_deref().unwrap_or("unset (true)")),
+            "repository-cache: main && github-hosted".to_string(),
+            "setup-bazel would restore the repository cache on queue and PR runs, where an aborted download hangs the step until the job times out (2026-11-06, PR #4380)".to_string(),
+        )),
+    }
+    let lines: Vec<&str> = content
+        .lines()
+        .map(strip)
+        .filter(|l| !l.starts_with('#'))
+        .collect();
+    if !lines.iter().any(|l| l.contains("actions/cache/restore@")) {
+        problems.push((
+            "no actions/cache/restore step".to_string(),
+            "actions/cache/restore of ~/.cache/bazel-repo".to_string(),
+            "queue and PR runs would start with no repository cache at all".to_string(),
+        ));
+    }
+    let timeout = lines
+        .iter()
+        .find_map(|l| l.strip_prefix("SEGMENT_DOWNLOAD_TIMEOUT_MINS:"))
+        .map(|v| {
+            v.trim()
+                .trim_matches('"')
+                .trim_matches('\'')
+                .parse::<u32>()
+                .ok()
+        });
+    match timeout {
+        Some(Some(minutes)) if (1..=5).contains(&minutes) => {}
+        found => problems.push((
+            format!("SEGMENT_DOWNLOAD_TIMEOUT_MINS: {}", match found {
+                None => "unset (10)".to_string(),
+                Some(None) => "not a number".to_string(),
+                Some(Some(m)) => m.to_string(),
+            }),
+            "SEGMENT_DOWNLOAD_TIMEOUT_MINS: 1 to 5".to_string(),
+            "a stalled download would hold the restore past the 15-minute jobs' timeout before it gives up".to_string(),
+        )),
+    }
+    problems
+}
+
 /// The `uses:` and `if:` of every step in a composite action, in order.
 fn composite_steps(content: &str) -> Vec<(String, Option<String>)> {
     let mut steps: Vec<(String, Option<String>)> = Vec::new();
@@ -1047,6 +1104,19 @@ pub fn check_cache_save(ctx: &Context) {
                 );
                 ok = false;
             }
+        }
+    }
+
+    // 1a. setup-bazel restores the repository cache only where it saves it;
+    //     actions/cache/restore, bounded, does it everywhere else.
+    let setup_rel = ".github/actions/setup-bazel/action.yml";
+    if let Ok(content) = fs::read_to_string(format!("{}/setup-bazel/action.yml", actions_dir)) {
+        for (found, want, why) in repository_restore_problems(&content) {
+            ctx.emit_fail(
+                "cachesave", setup_rel, &found, &want, &why,
+                "restore the repository cache with actions/cache/restore (SEGMENT_DOWNLOAD_TIMEOUT_MINS 1-5) and give setup-bazel's repository-cache the cache-save guard",
+            );
+            ok = false;
         }
     }
 
@@ -1370,6 +1440,71 @@ jobs:
         assert!(!cache_save_expr_guarded(
             "${{ github.ref == 'refs/heads/main' && runner.environment == 'github-hosted' || github.event_name == 'merge_group' }}"
         ));
+    }
+
+    const SETUP_BAZEL_GOOD: &str = "\
+runs:
+  using: composite
+  steps:
+    - name: Restore the Bazel repository cache
+      if: ${{ !(github.ref == 'refs/heads/main' && runner.environment == 'github-hosted') }}
+      uses: actions/cache/restore@abc # v6
+      env:
+        SEGMENT_DOWNLOAD_TIMEOUT_MINS: \"4\"
+      with:
+        path: ~/.cache/bazel-repo
+    - uses: bazel-contrib/setup-bazel@abc # 0.19.1
+      with:
+        repository-cache: ${{ github.ref == 'refs/heads/main' && runner.environment == 'github-hosted' }}
+        cache-save: ${{ github.ref == 'refs/heads/main' && runner.environment == 'github-hosted' }}
+";
+
+    #[test]
+    fn repository_restore_accepts_the_bounded_restore() {
+        assert_eq!(repository_restore_problems(SETUP_BAZEL_GOOD), Vec::new());
+    }
+
+    #[test]
+    fn repository_restore_rejects_the_incident_shape() {
+        // The 2026-11-06 shape: setup-bazel restores it everywhere, nothing else does.
+        let incident = "\
+    - uses: bazel-contrib/setup-bazel@abc # 0.19.1
+      with:
+        repository-cache: true
+        cache-save: ${{ github.ref == 'refs/heads/main' && runner.environment == 'github-hosted' }}
+";
+        let found: Vec<String> = repository_restore_problems(incident)
+            .into_iter()
+            .map(|p| p.0)
+            .collect();
+        assert_eq!(
+            found,
+            vec![
+                "repository-cache: true".to_string(),
+                "no actions/cache/restore step".to_string(),
+                "SEGMENT_DOWNLOAD_TIMEOUT_MINS: unset (10)".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn repository_restore_rejects_an_unbounded_or_slow_timeout() {
+        let dropped =
+            SETUP_BAZEL_GOOD.replace("        SEGMENT_DOWNLOAD_TIMEOUT_MINS: \"4\"\n", "");
+        assert_eq!(repository_restore_problems(&dropped).len(), 1);
+        let slow = SETUP_BAZEL_GOOD.replace("\"4\"", "\"12\"");
+        assert_eq!(
+            repository_restore_problems(&slow)[0].0,
+            "SEGMENT_DOWNLOAD_TIMEOUT_MINS: 12"
+        );
+        let unguarded = SETUP_BAZEL_GOOD.replace(
+            "repository-cache: ${{ github.ref == 'refs/heads/main' && runner.environment == 'github-hosted' }}",
+            "repository-cache: true",
+        );
+        assert_eq!(
+            repository_restore_problems(&unguarded)[0].0,
+            "repository-cache: true"
+        );
     }
 
     const LLVM_GOOD: &str = "\
