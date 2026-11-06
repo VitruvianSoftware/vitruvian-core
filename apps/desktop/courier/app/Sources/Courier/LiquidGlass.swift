@@ -167,9 +167,15 @@ extension View {
     /// With glass, the open chat in the window's toolbar: `identity` (its picture, name and network) where the window's
     /// title was, plain, and `actions` (Chat Info and the rest) as the toolbar's own grouped glass buttons, so there
     /// is one bar and not a header strip under the title. Without glass nothing: the chat's header strip shows them.
-    func courierChatToolbar<Identity: View, Actions: View>(@ViewBuilder identity: () -> Identity,
-                                                           @ViewBuilder actions: () -> Actions) -> some View {
-        modifier(CourierChatToolbar(identity: identity(), actions: actions()))
+    ///
+    /// `panes` is the open side panes' headers (the thread, Chat Info), one item after the chat's buttons, at the
+    /// toolbar's trailing edge over the panes (`PaneHeader`).
+    func courierChatToolbar<Identity: View, Actions: View, Panes: View>(
+        @ViewBuilder identity: () -> Identity,
+        @ViewBuilder actions: () -> Actions,
+        @ViewBuilder panes: () -> Panes
+    ) -> some View {
+        modifier(CourierChatToolbar(identity: identity(), actions: actions(), panes: panes()))
     }
 
     /// The chat list, in the window's sidebar: with glass its own opaque background goes, so the sidebar's floating
@@ -229,9 +235,10 @@ private struct CourierExtendsUnderBars: ViewModifier {
     }
 }
 
-private struct CourierChatToolbar<Identity: View, Actions: View>: ViewModifier {
+private struct CourierChatToolbar<Identity: View, Actions: View, Panes: View>: ViewModifier {
     let identity: Identity
     let actions: Actions
+    let panes: Panes
     @Environment(\.liquidGlass) private var liquidGlass
 
     func body(content: Content) -> some View {
@@ -244,6 +251,9 @@ private struct CourierChatToolbar<Identity: View, Actions: View>: ViewModifier {
                     // is its leading edge, next to the name).
                     ToolbarSpacer(.flexible)
                     ToolbarItemGroup(placement: .automatic) { actions }
+                    // The panes' own titles and buttons draw their glass themselves (`PaneHeader`).
+                    ToolbarItem(placement: .automatic) { panes }
+                        .sharedBackgroundVisibility(.hidden)
                 }
                 // The chat's name is the title now: the window's own ("Courier", "Connected") would be a second one.
                 .toolbar(removing: .title)

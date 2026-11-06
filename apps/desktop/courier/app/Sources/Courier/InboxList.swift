@@ -22,6 +22,7 @@ struct InboxList: View {
     @ObservedObject var ui: InboxUI
     @Environment(\.openDetachedWindow) private var openDetachedWindow
     @Environment(\.appearancePreferences) private var appearanceEnv
+    @Environment(\.drawsLiquidGlass) private var drawsLiquidGlass
     /// The chat the pointer is over: `x` selects it, and `InboxRowView` tracks its own hover state locally.
     @State private var hoverTracker = InboxHoverTracker()
 
@@ -60,10 +61,11 @@ struct InboxList: View {
             }
             if inbox.isSelecting {
                 SelectionHeader(inbox: inbox)
-            } else {
+                Divider()
+            } else if !drawsLiquidGlass {
                 header
+                Divider()
             }
-            Divider()
             if !preferences.regularPinnedRows, !pinned.isEmpty {
                 PinnedStrip(inbox: inbox, spaces: spaces, ui: ui, rows: pinned, doubleClick: doubleClick)
                 Divider()
@@ -76,6 +78,7 @@ struct InboxList: View {
         }
         .overlay(alignment: .bottom) { ToastView(inbox: inbox) }
         .overlay(alignment: .top) { popoverAnchors }
+        .modifier(InboxToolbarHeader(inbox: inbox, title: spaceTitle))
     }
 
     /// Where ⌘⌥A's accounts and ⌘L's Remind Me open: the top of the list, whatever its header shows.
@@ -116,8 +119,9 @@ struct InboxList: View {
             FilterMenu(inbox: inbox)
             DisplayOptionsMenu(inbox: inbox)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        // The same strip as the chat's and the panes' headers, so the titles share a line across the window.
+        .padding(.horizontal, PaneHeaderMetrics.inset)
+        .frame(height: PaneHeaderMetrics.stripHeight)
     }
 
     private var spaceTitle: String {
@@ -317,5 +321,39 @@ private struct SkeletonRows: View {
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .accessibilityLabel(String(localized: "Loading chats"))
+    }
+}
+
+/// With glass, the space's name and its menus in the sidebar's part of the window's toolbar, on the line of the
+/// traffic lights and of every other column's header (PaneHeader.swift). Not while selecting, whose header stays in
+/// the list; nothing without glass, where `InboxList.header` is a strip.
+private struct InboxToolbarHeader: ViewModifier {
+    @ObservedObject var inbox: InboxModel
+    let title: String
+    @Environment(\.drawsLiquidGlass) private var drawsLiquidGlass
+
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *), drawsLiquidGlass {
+            content.toolbar {
+                if !inbox.isSelecting {
+                    // `.navigation` would put the name in the chat's half of the toolbar: the sidebar's items are its
+                    // automatic ones, the name first, then the menus pushed to the sidebar button.
+                    ToolbarItem(placement: .automatic) {
+                        Text(title)
+                            .font(.headline)
+                            .lineLimit(1)
+                            .accessibilityAddTraits(.isHeader)
+                    }
+                    .sharedBackgroundVisibility(.hidden)
+                    ToolbarSpacer(.flexible)
+                    ToolbarItemGroup(placement: .automatic) {
+                        FilterMenu(inbox: inbox, inToolbar: true)
+                        DisplayOptionsMenu(inbox: inbox, inToolbar: true)
+                    }
+                }
+            }
+        } else {
+            content
+        }
     }
 }
