@@ -200,6 +200,17 @@ runs:
     #
     # tools/conformance (CACHESAVE) fails if setup-bazel restores the
     # repository cache outside that guard, or this restore loses its timeout.
+    #
+    # The path must be the same string setup-bazel saves under, an absolute
+    # $HOME/.cache/bazel-repo: an Actions cache entry's version is a hash of
+    # its paths, so `~/.cache/bazel-repo` found nothing, not even by prefix
+    # (checked in this PR's first run).
+    - name: Where setup-bazel keeps the repository cache
+      id: repo-cache
+      if: ${{ !(github.ref == 'refs/heads/main' && runner.environment == 'github-hosted') }}
+      shell: bash
+      run: echo "path=${HOME}/.cache/bazel-repo" >> "${GITHUB_OUTPUT}"
+
     - name: Restore the Bazel repository cache
       if: ${{ !(github.ref == 'refs/heads/main' && runner.environment == 'github-hosted') }}
       continue-on-error: true
@@ -207,7 +218,7 @@ runs:
       env:
         SEGMENT_DOWNLOAD_TIMEOUT_MINS: "4"
       with:
-        path: ~/.cache/bazel-repo
+        path: ${{ steps.repo-cache.outputs.path }}
         key: setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-${{ hashFiles('MODULE.bazel', 'WORKSPACE.bazel', 'WORKSPACE.bzlmod', 'WORKSPACE') }}
         restore-keys: |
           setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-
@@ -228,4 +239,4 @@ runs:
     - name: Use the restored repository cache
       if: ${{ !(github.ref == 'refs/heads/main' && runner.environment == 'github-hosted') }}
       shell: bash
-      run: printf '\ncommon --repository_cache=%s\n' "${HOME}/.cache/bazel-repo" >> "${HOME}/.bazelrc"
+      run: printf '\ncommon --repository_cache=%s\n' "${{ steps.repo-cache.outputs.path }}" >> "${HOME}/.bazelrc"

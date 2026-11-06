@@ -944,6 +944,16 @@ pub(crate) fn repository_restore_problems(content: &str) -> Vec<(String, String,
             "queue and PR runs would start with no repository cache at all".to_string(),
         ));
     }
+    if lines
+        .iter()
+        .any(|l| l.starts_with("path:") && l.contains("~/"))
+    {
+        problems.push((
+            "path: ~/...".to_string(),
+            "path: $HOME/.cache/bazel-repo, absolute, as setup-bazel saves it".to_string(),
+            "an Actions cache entry's version is a hash of its path strings, so `~/` never matches what main saved: every restore misses".to_string(),
+        ));
+    }
     let timeout = lines
         .iter()
         .find_map(|l| l.strip_prefix("SEGMENT_DOWNLOAD_TIMEOUT_MINS:"))
@@ -1452,7 +1462,7 @@ runs:
       env:
         SEGMENT_DOWNLOAD_TIMEOUT_MINS: \"4\"
       with:
-        path: ~/.cache/bazel-repo
+        path: ${{ steps.repo-cache.outputs.path }}
     - uses: bazel-contrib/setup-bazel@abc # 0.19.1
       with:
         repository-cache: ${{ github.ref == 'refs/heads/main' && runner.environment == 'github-hosted' }}
@@ -1497,6 +1507,12 @@ runs:
             repository_restore_problems(&slow)[0].0,
             "SEGMENT_DOWNLOAD_TIMEOUT_MINS: 12"
         );
+        // This PR's first run: `~/` never matched main's entries.
+        let tilde = SETUP_BAZEL_GOOD.replace(
+            "${{ steps.repo-cache.outputs.path }}",
+            "~/.cache/bazel-repo",
+        );
+        assert_eq!(repository_restore_problems(&tilde)[0].0, "path: ~/...");
         let unguarded = SETUP_BAZEL_GOOD.replace(
             "repository-cache: ${{ github.ref == 'refs/heads/main' && runner.environment == 'github-hosted' }}",
             "repository-cache: true",
