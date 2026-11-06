@@ -38,7 +38,7 @@ Antigravity's Node.js.
 From GitHub:
 
 ```bash
-agy plugin install https://github.com/VitruvianSoftware/receipts-report
+agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/receipts-report
 ```
 
 Or from a local checkout:
@@ -56,7 +56,8 @@ Disable the plugin under Customizations → Installed, pull the latest changes,
 and enable it again:
 
 ```bash
-git -C ~/.gemini/config/plugins/receipts-report pull
+# agy installs a copy, not a git clone: re-run the install to update
+agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/receipts-report
 ```
 
 ## Layout

@@ -35,7 +35,7 @@ Antigravity's Node.js.
 From GitHub:
 
 ```bash
-agy plugin install https://github.com/VitruvianSoftware/ralph-loop
+agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/ralph-loop
 ```
 
 Or from a local checkout:
@@ -53,7 +53,8 @@ Disable the plugin under Customizations → Installed, pull the latest changes,
 then enable it again:
 
 ```bash
-git -C ~/.gemini/config/plugins/ralph-loop pull
+# agy installs a copy, not a git clone: re-run the install to update
+agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/ralph-loop
 ```
 
 ## Layout

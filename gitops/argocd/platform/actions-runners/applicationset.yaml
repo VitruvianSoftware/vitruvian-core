@@ -109,7 +109,9 @@ spec:
                     command: ["/home/runner/run.sh"]
                     resources:
                       requests:
-                        cpu: "4"
+                        # 3500m lets all 8 maxRunners schedule across fedora (5 pods)
+                        # and nuc9i9 (3 pods beside ~4.14 CPU of baseline workloads).
+                        cpu: "3500m"
                         memory: 8Gi
                       limits:
                         cpu: "8"

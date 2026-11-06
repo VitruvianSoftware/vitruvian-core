@@ -131,7 +131,8 @@ Antigravity has no update command for it. To update, disable the plugin
 under Customizations → Installed, pull, then enable it again:
 
 ```bash
-git -C ~/.gemini/config/plugins/gh-watch pull
+# agy installs a copy, not a git clone: re-run the install to update
+agy plugin install https://github.com/VitruvianSoftware/gh-watch
 ```
 
 Disabling first matters: Antigravity only reloads a plugin's background

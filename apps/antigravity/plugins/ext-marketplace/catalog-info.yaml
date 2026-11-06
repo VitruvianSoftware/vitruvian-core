@@ -37,10 +37,10 @@ metadata:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
     backstage.io/techdocs-ref: dir:.
     vitruvian.dev/release-model: none
-    vitruvian.dev/mirror: VitruvianSoftware/ext-marketplace
+    vitruvian.dev/mirror: internal-monorepo
     vitruvian.dev/environments: development
   links:
-    - url: https://github.com/VitruvianSoftware/ext-marketplace
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/ext-marketplace
       title: GitHub Mirror
       icon: github
     - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/ext-marketplace

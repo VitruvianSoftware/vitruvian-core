@@ -23,7 +23,7 @@ Antigravity's Node.js.
 From GitHub:
 
 ```bash
-agy plugin install https://github.com/VitruvianSoftware/ext-marketplace
+agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/ext-marketplace
 ```
 
 Or link directly from the `vitruvian-core` monorepo:
@@ -37,7 +37,8 @@ Open the marketplace panel from any conversation using `[Extensions Marketplace]
 ## Update
 
 ```bash
-git -C ~/.gemini/config/plugins/ext-marketplace pull
+# agy installs a copy, not a git clone: re-run the install to update
+agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/ext-marketplace
 ```
 
 ## Architecture

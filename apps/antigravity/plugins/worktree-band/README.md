@@ -28,7 +28,7 @@ usage, offering one-click (or automatic) post-merge cleanup.
 From GitHub:
 
 ```bash
-agy plugin install https://github.com/VitruvianSoftware/worktree-band
+agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/worktree-band
 ```
 
 Or from a local checkout:
@@ -46,7 +46,8 @@ Disable the plugin under Customizations → Installed, pull the latest changes,
 then enable it again:
 
 ```bash
-git -C ~/.gemini/config/plugins/worktree-band pull
+# agy installs a copy, not a git clone: re-run the install to update
+agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/worktree-band
 ```
 
 ## Requirements

@@ -49,7 +49,7 @@ the reason on stderr. The side panel runs on Antigravity's Node.js.
 From GitHub:
 
 ```bash
-agy plugin install https://github.com/VitruvianSoftware/security-guidance
+agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/security-guidance
 ```
 
 Or link a local checkout into Antigravity's plugin folder:
@@ -67,7 +67,8 @@ Disable the plugin under Customizations → Installed, pull the latest changes,
 and re-enable:
 
 ```bash
-git -C ~/.gemini/config/plugins/security-guidance pull
+# agy installs a copy, not a git clone: re-run the install to update
+agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/security-guidance
 ```
 
 ## Layout
