@@ -354,6 +354,10 @@ export function applyStepCall(flow, callerRunId, input, at = Date.now()) {
     typeof input?.note === "string" && input.note.trim().length > 0
       ? input.note.trim()
       : "";
+  const delegate =
+    typeof input?.delegate === "string" && input.delegate.trim().length > 0
+      ? input.delegate.trim()
+      : undefined;
 
   if (
     !Number.isInteger(done) ||
@@ -407,6 +411,7 @@ export function applyStepCall(flow, callerRunId, input, at = Date.now()) {
       total,
       note,
     },
+    ...(delegate ? { delegate } : {}),
   });
 
   return {
@@ -581,14 +586,20 @@ export function formatSidebarData(flow, now = Date.now()) {
         : "—";
     const endMs = r.endedAt ?? now;
     const elapsedMs = Math.max(0, endMs - (r.startedAt || endMs));
+    const baseModel = shortModelName(r.model);
+    const delegateModel = r.delegate ? shortModelName(r.delegate) : null;
+    const modelLabel = delegateModel
+      ? `${baseModel} → ${delegateModel}`
+      : baseModel;
     return {
       id: r.id,
       taskId:
         r.taskN !== null && r.taskN !== undefined ? String(r.taskN) : undefined,
       role: r.role,
       agent: r.agent,
-      model: shortModelName(r.model),
+      model: modelLabel,
       fullModel: r.model,
+      delegate: r.delegate ?? null,
       effort: r.effort || "high",
       stepsText,
       tokens: totalTokens,
@@ -623,6 +634,15 @@ export function formatSidebarData(flow, now = Date.now()) {
         tokensText: `${formatTokensCompact(tok)} tok`,
       };
     });
+
+  const delegatedText =
+    sp.delegated.runs > 0
+      ? `delegated to Gemini: ${sp.delegated.runs} ${sp.delegated.runs === 1 ? "run" : "runs"} (${Object.entries(
+          sp.delegated.byModel,
+        )
+          .map(([m, n]) => `${m} ×${n}`)
+          .join(", ")}), not priced`
+      : "";
 
   return {
     empty: false,
@@ -661,6 +681,8 @@ export function formatSidebarData(flow, now = Date.now()) {
       byModel: byModelRows,
       unpricedSummary: sp.unpriced,
       unpriced: unpricedRunsList,
+      delegated: sp.delegated,
+      delegatedText,
     },
   };
 }
@@ -739,6 +761,9 @@ export function formatSidebarLines(flow, now = Date.now()) {
       .map((u) => `${u.model}: ${u.tokensText}`)
       .join(", ");
     lines.push(`Unpriced: ${unpricedParts}`);
+  }
+  if (data.spend.delegated.runs > 0) {
+    lines.push(`  ${data.spend.delegatedText}`);
   }
 
   return lines;

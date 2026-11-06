@@ -20,6 +20,12 @@ routing rules are written down in three places, and they disagree:
 The agent files themselves say `model: inherit` (except `scout`), so none of those tables is
 enforced. Claude Code sees the agents only through hand-made symlinks in `~/.claude/agents/`.
 
+> **Update 2026-11-05:** only the lead runs on Claude Opus. Every specialist's work now runs on
+> Gemini (tiers `deep` = Gemini 4 Argon, `light` = Gemini 3.8 Flash), through a Haiku driver in
+> Claude Code and OpenCode, and each change is staffed with an implementer, `scout` for QA,
+> `compass` for UAT and `quill` for docs before the lead's final review. The `core` and `fast` tiers below are gone. See
+> [How the agent team works](../../concepts/agent-team.md).
+
 ## Goals
 
 1. **Work like buzz.** One lead agent plans and reviews. Specialists do the work, and they can

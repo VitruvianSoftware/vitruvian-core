@@ -1,17 +1,35 @@
 # Model tiers per harness for the vitruvian-core specialist roster.
+#
+# Only the lead thinks on Claude. Every specialist's work runs on Gemini:
+# - lead:  the lead and beacon. Claude Opus in Claude Code and OpenCode; Antigravity has
+#          no Opus, so there it is Gemini 4 Argon (pro).
+# - deep:  specialists whose work needs judgement (implementation, QA, infrastructure, security).
+#          Gemini 4 Argon.
+# - light: specialists whose work is lighter (docs, release tracking). Gemini 3.8 Flash.
+#
+# A tier with a `gemini` row does its work on that Gemini model. Antigravity runs it natively
+# (its own column). In Claude Code and OpenCode the generator writes a driver instead: a small
+# Haiku agent with no editing tools that hands the work to the `gemini` model through
+# agy-delegate, checks the result and reports back. So for those tiers the claude-code and
+# opencode columns are the driver's model, not the model doing the work.
+#
+# Format rules:
 # - Antigravity agent files accept only model inherit|flash|pro (pro = Gemini 4 Argon,
 #   flash = Gemini 3.8 Flash) and have no effort field (use "-").
 # - OpenCode needs full provider/model ids (e.g. anthropic/claude-opus-5-5).
 # - Claude Code accepts opus|sonnet|haiku|fable|inherit or a full claude-* id,
 #   plus effort medium|high|xhigh|max.
+# - gemini takes an exact `agy models` id and effort "-"; never a low, lite or flash-lo model.
 # - Effort "low" is forbidden.
 tier	harness	model	effort
 lead	claude-code	opus	high
 lead	antigravity	pro	-
 lead	opencode	anthropic/claude-opus-5-5	high
-core	claude-code	sonnet	high
-core	antigravity	flash	-
-core	opencode	anthropic/claude-sonnet-5-5	high
-fast	claude-code	haiku	medium
-fast	antigravity	flash	-
-fast	opencode	anthropic/claude-haiku-5-5	medium
+deep	claude-code	haiku	medium
+deep	antigravity	pro	-
+deep	opencode	anthropic/claude-haiku-5-5	medium
+deep	gemini	gemini-4-argon-high	-
+light	claude-code	haiku	medium
+light	antigravity	flash	-
+light	opencode	anthropic/claude-haiku-5-5	medium
+light	gemini	gemini-3.8-flash-high	-

@@ -4,14 +4,14 @@ Claude Code plugin for routing multi-domain engineering work across the Vitruvia
 
 ## What is in this plugin
 
-- **`orchestrate` lead skill (`skills/orchestrate/SKILL.md`)**: Generated from `.agents/roster/` by `//tools/agent-roster`. Turns the active Claude Code session into the lead orchestrator that plans across five phases (`plan` → `design` → `delegate` → `review` → `close`), dispatches tasks to specialist subagents using the Claude Code model and effort ladder (`lead`, `core`, `fast`), routes bulk work off Claude tokens via `agy-delegate`, and reviews diffs adversarially.
+- **`orchestrate` lead skill (`skills/orchestrate/SKILL.md`)**: Generated from `.agents/roster/` by `//tools/agent-roster`. Turns the active Claude Code session into the lead orchestrator that plans across five phases (`plan` → `design` → `delegate` → `review` → `close`), staffs every change with an implementer, `scout` for QA, `compass` for UAT and `quill` for docs, dispatches them as Haiku drivers that hand the work to Gemini via `agy-delegate` (only the lead runs on Opus), and does the final review. See [How the agent team works](../../../../docs/concepts/agent-team.md).
 - **Specialist subagents**: Live in the repository's `.claude/agents/*.md` (also generated from `.agents/roster/`), where Claude Code loads them automatically for the project.
 - **Live orchestration panel (`hooks/register.tsx`)**: A Claude Code mod that renders a live `Orchestrator` pane (`id: "vitruvian-orchestrator"`) and an `AbovePrompt` status band on both terminal and desktop surfaces, backed by the vendored `hooks/lib/orchestrator-core.mjs` state machine:
   1. **Header**: Flow title, phase pills (`plan`, `design`, `delegate`, `review`, `close` with muted checks for completed phases and highlighted active phase), `"accepted N of M"`, and estimated cost so far (`est.`).
   2. **Burn-down**: Remaining unaccepted tasks over time with a dashed ideal line and re-plan markers (rendered as an SVG chart on desktop and a one-line text sparkline on terminal).
   3. **Task board**: One row per planned task showing `#n`, title, specialist, tier, status (`waiting`, `ready`, `running`, `review`, `returned`, `accepted`), return round, and `"waits on #x"` when blocked on dependencies.
-  4. **Agents**: One row per run (lead and subagent workers) showing the agent name and chibi mascot (on desktop), full model ID, effort, step progress (`done/total`) or context window percentage, token count, estimated cost (`est.`) or `unpriced`, elapsed time, and run status.
-  5. **Spend**: Estimated spend split between `lead` and `workers`, per-model breakdown, and unpriced runs reported by token count rather than dollars.
+  4. **Agents**: One row per run (lead and subagent workers) showing the agent name and chibi mascot (on desktop), full model ID (for a Gemini driver, `driver → gemini model`), effort, step progress (`done/total`) or context window percentage, token count, estimated cost (`est.`) or `unpriced`, elapsed time, and run status.
+  5. **Spend**: Estimated spend split between `lead` and `workers`, per-model breakdown, unpriced runs reported by token count rather than dollars, and a count of runs delegated to Gemini.
   - **AbovePrompt band**: Appears once a flow exists, showing `title · phase · N of M accepted` and a crew-size button (`×N`) that opens the `Orchestrator` pane. The pane auto-opens once per flow when the first plan arrives.
 
 ## Tools and commands

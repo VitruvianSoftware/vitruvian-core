@@ -89,6 +89,7 @@
  * @property {string} agent
  * @property {string} model
  * @property {string | null} effort
+ * @property {string | null} delegate
  * @property {string} title
  * @property {number | null} taskN
  * @property {number} startedAt
@@ -146,12 +147,19 @@
  */
 
 /**
+ * @typedef {Object} DelegatedSummary
+ * @property {number} runs
+ * @property {Record<string, number>} byModel
+ */
+
+/**
  * @typedef {Object} SpendSummary
  * @property {number} total
  * @property {Record<string, number>} byModel
  * @property {number} lead
  * @property {number} workers
  * @property {UnpricedSummary} unpriced
+ * @property {DelegatedSummary} delegated
  */
 
 /**
@@ -166,6 +174,7 @@
  * @property {string} [agent]
  * @property {string} [model]
  * @property {string | null} [effort]
+ * @property {string | null} [delegate]
  * @property {RunRole} [role]
  * @property {Partial<TokenCounts>} [tokens]
  * @property {Partial<StepProgress> | null} [steps]
@@ -226,6 +235,7 @@ function cloneRun(run) {
     agent: run.agent,
     model: run.model,
     effort: run.effort,
+    delegate: run.delegate ?? null,
     title: run.title,
     taskN: run.taskN,
     startedAt: run.startedAt,
@@ -436,6 +446,7 @@ export function reduce(flow, event) {
         agent: event.agent,
         model: event.model,
         effort: event.effort ?? null,
+        delegate: event.delegate ?? null,
         title: event.title,
         taskN,
         startedAt: event.at,
@@ -501,8 +512,13 @@ export function reduce(flow, event) {
                 : null;
         const contextPct =
           event.contextPct !== undefined ? event.contextPct : r.contextPct;
+        const delegate =
+          typeof event.delegate === "string" && event.delegate.trim().length > 0
+            ? event.delegate.trim()
+            : (r.delegate ?? null);
         return {
           ...cloneRun(r),
+          delegate,
           tokens,
           steps,
           contextPct,
@@ -752,11 +768,14 @@ export function runCost(run) {
 export function spend(flow) {
   /** @type {Record<string, number>} */
   const byModel = {};
+  /** @type {Record<string, number>} */
+  const delegatedByModel = {};
   let total = 0;
   let lead = 0;
   let workers = 0;
   let unpricedRuns = 0;
   let unpricedTokens = 0;
+  let delegatedRuns = 0;
 
   if (!flow) {
     return {
@@ -765,10 +784,16 @@ export function spend(flow) {
       lead: 0,
       workers: 0,
       unpriced: { runs: 0, tokens: 0 },
+      delegated: { runs: 0, byModel: delegatedByModel },
     };
   }
 
   for (const run of flow.runs) {
+    if (typeof run.delegate === "string" && run.delegate.length > 0) {
+      delegatedRuns += 1;
+      delegatedByModel[run.delegate] =
+        (delegatedByModel[run.delegate] ?? 0) + 1;
+    }
     const cost = runCost(run);
     if (cost === null) {
       unpricedRuns += 1;
@@ -802,6 +827,10 @@ export function spend(flow) {
     unpriced: {
       runs: unpricedRuns,
       tokens: unpricedTokens,
+    },
+    delegated: {
+      runs: delegatedRuns,
+      byModel: delegatedByModel,
     },
   };
 }

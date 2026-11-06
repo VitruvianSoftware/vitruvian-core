@@ -543,3 +543,73 @@ test("narrow 60-column terminal pane and band keep every line within 60 columns 
   }
   await bandUi.unmount();
 });
+
+test("step call with delegate shows driver → delegate model arrow and delegated spend line", async ($, on) => {
+  mock.clock(on, { now: 12_000 });
+  on("ui.open", () => ({ value: { isPlaced: true } }));
+  on("agent.spawn", async (_, e) => ({
+    model: e.model ?? "claude-haiku-5-5",
+    agentId: "wren-delegate",
+  }));
+
+  await $.tool.call({
+    tool: PROGRESS_TOOL,
+    title: "Gemini delegation",
+    phase: "delegate",
+    tasks: [
+      {
+        title: "Implement feature via agy",
+        specialist: "wren",
+        tier: "core",
+        after: [],
+      },
+    ],
+  } as never);
+
+  await $.agent.spawn({
+    subagentType: "wren",
+    description: "Implement feature via agy",
+    prompt: "Delegate to Gemini",
+    model: "claude-haiku-5-5",
+  });
+
+  await $.tool.call({
+    tool: STEP_TOOL,
+    done: 1,
+    total: 2,
+    note: "agy-delegate running",
+    delegate: "gemini-4-argon-high",
+    agentId: "wren-delegate",
+  } as never);
+
+  for (const surface of ["terminal", "desktop"] as const) {
+    const ui = await $.ui.mount({ ...PANE_MOUNT, surface });
+
+    const arrowText = await ui.find({
+      type: "Text",
+      text: /claude-haiku-5-5 → gemini-4-argon-high/,
+    });
+    expect(arrowText).toBeDefined();
+
+    const spendDelegated = await ui.find({
+      type: "Text",
+      text: /delegated to Gemini: 1 run \(gemini-4-argon-high ×1\), not priced/,
+    });
+    expect(spendDelegated).toBeDefined();
+
+    if (surface === "desktop") {
+      const svgs = await ui.findAll({ type: "Svg" });
+      const agentSvg = svgs.find((s) =>
+        String((s.props as { alt?: string }).alt).includes(
+          "claude-haiku-5-5 → gemini-4-argon-high",
+        ),
+      );
+      expect(agentSvg).toBeDefined();
+      expect(String((agentSvg?.props as { source?: string }).source)).toContain(
+        "claude-haiku-5-5 → gemini-4-argon-high",
+      );
+    }
+
+    await ui.unmount();
+  }
+});
