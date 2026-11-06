@@ -1348,6 +1348,10 @@ public struct NexusAgentChatView: View {
                         Color.clear.frame(height: 1).id(Self.bottomID)
                     }
                     .padding(14)
+                    // A gutter for the timeline, so its dots never sit on
+                    // the avatars at that edge.
+                    .padding(session.timelineOnLeft ? .leading : .trailing,
+                             showsTimeline ? NexusAgentTimelineScrubber.gutter : 0)
                     .background(
                         GeometryReader { geo in
                             Color.clear

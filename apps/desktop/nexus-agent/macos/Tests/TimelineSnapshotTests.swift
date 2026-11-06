@@ -72,7 +72,7 @@ final class TimelineSnapshotTests: XCTestCase {
             for shot in cases {
                 let view = ZStack {
                     (scheme == .dark ? Color(white: 0.12) : Color(white: 0.97))
-                    FakeConversation(messages: messages)
+                    FakeConversation(messages: messages, onLeft: shot.onLeft)
                         .frame(width: Self.size.width, height: Self.size.height, alignment: .top)
                         .clipped()
                     NexusAgentTimelineScrubber(
@@ -98,6 +98,8 @@ final class TimelineSnapshotTests: XCTestCase {
 /// The chat's bubbles in a plain stack: ImageRenderer draws no scroll view.
 private struct FakeConversation: View {
     let messages: [NexusAgentChatMessage]
+    /// The timeline's edge, where the chat leaves it a gutter.
+    let onLeft: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -106,6 +108,7 @@ private struct FakeConversation: View {
             }
         }
         .padding(14)
+        .padding(onLeft ? .leading : .trailing, NexusAgentTimelineScrubber.gutter)
         .fixedSize(horizontal: false, vertical: true)
     }
 }

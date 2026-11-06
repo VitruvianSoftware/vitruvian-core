@@ -317,6 +317,9 @@ struct NexusAgentTimelineScrubber: View {
     static let dotInset: CGFloat = 4
     static let cardWidth: CGFloat = 260
     static let cardGap: CGFloat = 6
+    /// Extra room the transcript leaves at the rail's edge: the rail spans
+    /// 20 points from the edge, the transcript's own padding is 14.
+    static let gutter: CGFloat = 12
 
     init(turns: [NexusAgentTimeline.Turn], activeIndex: Int, onLeft: Binding<Bool>,
          strings: NexusAgentChatStrings, now: Date? = nil, hovered: Int? = nil,
