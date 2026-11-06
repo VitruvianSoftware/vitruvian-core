@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.32.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.32.0...nexus-agent-v1.32.1) (2026-11-06)
+
+
+### Bug Fixes
+
+* **nexus-agent:** answer window commands at once, then open the window ([#4379](https://github.com/VitruvianSoftware/vitruvian-core/issues/4379)) ([4233a93](https://github.com/VitruvianSoftware/vitruvian-core/commit/4233a93523c2d10da1a6a5354ccc028ec90d42ee))
+
 ## [1.32.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.31.1...nexus-agent-v1.32.0) (2026-11-06)
 
 
