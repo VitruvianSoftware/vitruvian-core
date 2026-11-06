@@ -172,12 +172,71 @@ runs:
     # hash against go.sum whatever the source, and fails on a mismatch.
     #
     # tools/conformance (GOPROXY) fails if this line loses the pipe fallback.
+    #
+    # The repository cache is restored by setup-bazel only where it is also
+    # saved (GitHub-hosted jobs on main, the same guard as cache-save); every
+    # other job restores it with actions/cache/restore, in the step below.
+    #
+    # setup-bazel 0.19.1 never exits its main step after an aborted download:
+    # it logs "Failed to restore repository cache", but the stalled HTTP
+    # request keeps node alive, so the step sits until the job's timeout. On
+    # 2026-11-06 that happened twice in the merge queue on vitruvian-queue
+    # runners (run 42277456783 job lint-naming: the 3.6 GB download stopped at
+    # 47.5% at 19:15:48, the job was cancelled at its 15-minute limit at
+    # 19:27:23; run 42280417088 the same), cancelling a required check and
+    # dropping PR #4380 from the queue. 3 of 17 queue-runner restores in the
+    # last 40 queue CI runs were aborted; the queue runners download it at
+    # ~10 MB/s (median 318 s, max 481 s), against ~60 s on hosted runners.
+    # actions/cache/restore ends with process.exit for exactly this case ("node
+    # will stay alive if any promises are not resolved, which is a possibility
+    # if HTTP requests are dangling"), and SEGMENT_DOWNLOAD_TIMEOUT_MINS gives
+    # up on a stalled download, so a bad download is a cache miss: Bazel then
+    # fetches what it needs itself.
+    #
+    # The key is setup-bazel's own (setup-bazel-<cache-version>-<platform>-
+    # <arch>-repository-<hash of MODULE.bazel and the WORKSPACE files>), so it
+    # reads the entries main saves; the restore-keys prefix matches the newest
+    # one if the hash differs.
+    #
+    # tools/conformance (CACHESAVE) fails if setup-bazel restores the
+    # repository cache outside that guard, or this restore loses its timeout.
+    #
+    # The path must be the same string setup-bazel saves under, an absolute
+    # $HOME/.cache/bazel-repo: an Actions cache entry's version is a hash of
+    # its paths, so `~/.cache/bazel-repo` found nothing, not even by prefix
+    # (checked in this PR's first run).
+    - name: Where setup-bazel keeps the repository cache
+      id: repo-cache
+      if: ${{ !(github.ref == 'refs/heads/main' && runner.environment == 'github-hosted') }}
+      shell: bash
+      run: echo "path=${HOME}/.cache/bazel-repo" >> "${GITHUB_OUTPUT}"
+
+    - name: Restore the Bazel repository cache
+      if: ${{ !(github.ref == 'refs/heads/main' && runner.environment == 'github-hosted') }}
+      continue-on-error: true
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      env:
+        SEGMENT_DOWNLOAD_TIMEOUT_MINS: "4"
+      with:
+        path: ${{ steps.repo-cache.outputs.path }}
+        key: setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-${{ hashFiles('MODULE.bazel', 'WORKSPACE.bazel', 'WORKSPACE.bzlmod', 'WORKSPACE') }}
+        restore-keys: |
+          setup-bazel-1-${{ runner.os == 'macOS' && 'darwin' || 'linux' }}-${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}-repository-
+
     - uses: bazel-contrib/setup-bazel@104e3eea9447cdaa4b00d0fb46191a3985d26ab3 # 0.19.1
       with:
         bazelisk-cache: true
-        repository-cache: true
+        repository-cache: ${{ github.ref == 'refs/heads/main' && runner.environment == 'github-hosted' }}
         cache-save: ${{ github.ref == 'refs/heads/main' && runner.environment == 'github-hosted' }}
         bazelrc: |
           common --announce_rc --color=yes --curses=yes
           common --show_progress_rate_limit=60 --show_timestamps
           common --repo_env=GOPROXY=https://proxy.golang.org|direct
+
+    # Without its repository cache setup-bazel leaves --repository_cache out
+    # of ~/.bazelrc, so point Bazel at the folder restored above. setup-bazel
+    # writes the file without a final newline, hence the leading one.
+    - name: Use the restored repository cache
+      if: ${{ !(github.ref == 'refs/heads/main' && runner.environment == 'github-hosted') }}
+      shell: bash
+      run: printf '\ncommon --repository_cache=%s\n' "${{ steps.repo-cache.outputs.path }}" >> "${HOME}/.bazelrc"
