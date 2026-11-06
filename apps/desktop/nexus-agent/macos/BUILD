@@ -315,7 +315,10 @@ rust_test(
     },
     env_inherit = ["DEVELOPER_DIR"],
     # SwiftPM wants the real toolchain and its own sandbox: run outside Bazel's.
+    # Marked exclusive so its multi-core SwiftPM build does not starve
+    # tool_conformance_test's 2-second IPC timeout on 3-vCPU macOS runners.
     tags = [
+        "exclusive",
         "local",
         "manual",
     ],

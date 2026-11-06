@@ -138,6 +138,9 @@ fn global_impact_check() {
         ("tools/ci/affected-targets.sh", false, ""),
         ("tools/pipeline/defs.bzl", false, ""),
         ("tools/pulumi/defs.bzl", false, ""),
+        ("tools/agent-roster/src/lib.rs", false, ""),
+        ("tools/agent-app/src/main.rs", false, ""),
+        ("tools/watch-pr/src/main.rs", false, ""),
         ("tools/owners/main.go", false, ""),
         ("tools/adb-connect/adb_connect.py", false, ""),
         ("tools/repin", false, ""),
@@ -161,6 +164,112 @@ fn global_impact_check() {
             "{f}"
         );
     }
+    for dir in INERT_TOOLS {
+        let sample = format!("tools/{dir}file.rs");
+        assert_eq!(
+            check_global_impact(&v(&[&sample])),
+            (false, String::new()),
+            "{sample}"
+        );
+    }
+    for toolchain_dir in [
+        "android_ndk/",
+        "apple-signing/",
+        "crates/",
+        "go-sdk/",
+        "go_deps/",
+        "gomod/",
+        "maven/",
+        "node_modules/",
+        "oci/",
+        "platforms/",
+        "pytest/",
+        "remote/",
+        "src/",
+        "swift-test-preferences/",
+        "testinfra/",
+        "toolchains/",
+    ] {
+        let sample = format!("tools/{toolchain_dir}file.bzl");
+        let want = format!("core toolchain directory changed: {sample}");
+        assert_eq!(
+            check_global_impact(&v(&[&sample])),
+            (true, want),
+            "{sample}"
+        );
+    }
+}
+
+#[test]
+fn resolve_diff_base_prefers_head1_for_pr_merge_commit() {
+    use crate::git::{resolve_diff_base, rev_parse, DiffOptions};
+    use unitfile::gocompat::exec::{self, Cmd, Ctx};
+
+    let d = tmp("pr-merge-base");
+    let root = d.to_str().unwrap();
+    let ctx = Ctx::background();
+    let run_git = |args: &[&str]| {
+        let mut c = Cmd::new("git", args);
+        c.dir = root.to_string();
+        let (r, out) = exec::run(&c, &ctx);
+        assert!(
+            r.is_ok(),
+            "git {args:?} failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    };
+
+    run_git(&["init", "-b", "main"]);
+    run_git(&["config", "user.email", "test@example.com"]);
+    run_git(&["config", "user.name", "Test"]);
+    write(&d, "file.txt", "base\n");
+    run_git(&["add", "."]);
+    run_git(&["commit", "-m", "initial"]);
+    let stale_base = rev_parse(&ctx, root, "HEAD");
+
+    // Advance main by one commit (HEAD^1 of the synthetic merge).
+    write(&d, "main_only.txt", "main advance\n");
+    run_git(&["add", "."]);
+    run_git(&["commit", "-m", "main advance"]);
+    let main_tip = rev_parse(&ctx, root, "HEAD");
+
+    // Create PR branch off stale_base.
+    run_git(&["checkout", "-b", "pr", &stale_base]);
+    write(&d, "pr_only.txt", "pr change\n");
+    run_git(&["add", "."]);
+    run_git(&["commit", "-m", "pr change"]);
+    let pr_tip = rev_parse(&ctx, root, "HEAD");
+
+    // Create synthetic merge commit (refs/pull/<N>/merge shape: parent1 = main_tip, parent2 = pr_tip).
+    run_git(&["checkout", "--detach", &main_tip]);
+    run_git(&["merge", "--no-ff", "-m", "Merge PR into main", &pr_tip]);
+
+    // On a pull_request event with HEAD at the synthetic merge commit, resolve_diff_base
+    // must return main_tip (HEAD^1) rather than the stale base.sha.
+    let got = resolve_diff_base(
+        &ctx,
+        &DiffOptions {
+            repo_root: root.to_string(),
+            base: stale_base.clone(),
+            head: "HEAD".to_string(),
+            event: "pull_request".to_string(),
+            ..Default::default()
+        },
+    );
+    assert_eq!(got, main_tip);
+
+    // On a merge_group event (non-PR), explicit base is preserved as-is.
+    let got_mg = resolve_diff_base(
+        &ctx,
+        &DiffOptions {
+            repo_root: root.to_string(),
+            base: stale_base.clone(),
+            head: "HEAD".to_string(),
+            event: "merge_group".to_string(),
+            ..Default::default()
+        },
+    );
+    assert_eq!(got_mg, stale_base);
 }
 
 #[test]
