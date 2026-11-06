@@ -51,6 +51,10 @@ public struct NexusAgentChatMessage: Identifiable, Equatable {
     public var thinkingTokens: Int?
     /// How long the model spent reasoning before it answered.
     public var thinkingDurationMs: Int?
+    /// When the message was written: now, for one the chat sends or
+    /// receives; the record's own time, for one read back from a saved
+    /// transcript that keeps one; nil when nothing says.
+    public var createdAt: Date?
 
     public init(
         id: UUID = UUID(),
@@ -71,7 +75,8 @@ public struct NexusAgentChatMessage: Identifiable, Equatable {
         approvalRequest: NexusAgentApprovalRequest? = nil,
         contextUsage: NexusAgentContextUsage? = nil,
         thinkingTokens: Int? = nil,
-        thinkingDurationMs: Int? = nil
+        thinkingDurationMs: Int? = nil,
+        createdAt: Date? = nil
     ) {
         self.id = id
         self.role = role
@@ -92,6 +97,7 @@ public struct NexusAgentChatMessage: Identifiable, Equatable {
         self.contextUsage = contextUsage
         self.thinkingTokens = thinkingTokens
         self.thinkingDurationMs = thinkingDurationMs
+        self.createdAt = createdAt
     }
 }
 
@@ -167,6 +173,11 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
     /// Turns run with `-w` (isolated git worktree) while on. Remembered.
     @Published public var worktreeMode: Bool {
         didSet { host.worktreeMode = worktreeMode }
+    }
+    /// The conversation's timeline sits on the left edge while on, on the
+    /// right while off. Remembered.
+    @Published public var timelineOnLeft: Bool {
+        didSet { host.timelineOnLeft = timelineOnLeft }
     }
     /// How many prompts the host is given to keep. The running chat holds
     /// every prompt sent since it opened; only what is saved is cut.
@@ -305,6 +316,7 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         self.host = host
         self.planMode = host.planMode
         self.worktreeMode = host.worktreeMode
+        self.timelineOnLeft = host.timelineOnLeft
         self.promptHistory = host.promptHistory
         self.accountManager = NexusAgentAccountManager(
             stateDirectory: environment.stateDirectory,
@@ -613,7 +625,7 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         guard !text.isEmpty, !isRunning else { return }
         draft = ""
         mode = .chat
-        messages.append(NexusAgentChatMessage(role: .user, text: text))
+        messages.append(NexusAgentChatMessage(role: .user, text: text, createdAt: Date()))
         // A prompt the history already holds, anywhere in it, is neither
         // added again nor moved to the end; a new one goes last and the
         // host is given the most recent ones to keep.
@@ -641,7 +653,7 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
             // Named for the provider that was to run the turn: it is
             // Claude's program that is missing when Claude is chosen.
             let reason = strings.missingProgram(of: configuration.activeProvider)
-            messages.append(NexusAgentChatMessage(role: .agent, text: reason, isError: true))
+            messages.append(NexusAgentChatMessage(role: .agent, text: reason, isError: true, createdAt: Date()))
             // With the chat out of sight nobody sees that bubble, so the
             // host is told as it is of any other failed turn.
             report(NexusAgentTurnNotice(providerName: providerName, text: "", failed: true, endedCleanly: false,
@@ -709,7 +721,8 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         undoCheckpoint = (planMode || worktreeMode) ? nil : takeCheckpoint(directory)
         undoCheckpointDirectory = undoCheckpoint == nil ? nil : directory
         let model = configuration.model.trimmingCharacters(in: .whitespaces)
-        let reply = NexusAgentChatMessage(role: .agent, text: "", modelName: model.isEmpty ? nil : model)
+        let reply = NexusAgentChatMessage(role: .agent, text: "", modelName: model.isEmpty ? nil : model,
+                                          createdAt: Date())
         replyID = reply.id
         messages.append(reply)
         isRunning = true
@@ -786,7 +799,7 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
     /// other failed turn, in the bubble's words: with the chat out of
     /// sight the bubble is seen by nobody.
     private func refuse(_ prompt: String, saying reason: String) {
-        messages.append(NexusAgentChatMessage(role: .agent, text: reason, isError: true))
+        messages.append(NexusAgentChatMessage(role: .agent, text: reason, isError: true, createdAt: Date()))
         lastFailedPrompt = prompt
         report(NexusAgentTurnNotice(providerName: providerName, text: "", failed: true, endedCleanly: false,
                                     failureDetail: reason))
@@ -1107,7 +1120,8 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
                     // Parallel tool calls ask together; a card still
                     // waiting is kept, and this one gets its own bubble.
                     let nextMsg = NexusAgentChatMessage(role: .agent, text: "", toolCalls: currentToolCalls,
-                                                        modelName: messages[idx].modelName, approvalRequest: req)
+                                                        modelName: messages[idx].modelName, approvalRequest: req,
+                                                        createdAt: Date())
                     messages.append(nextMsg)
                     self.replyID = nextMsg.id
                 } else {
@@ -1115,7 +1129,8 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
                     messages[idx].toolCalls = currentToolCalls
                 }
             } else {
-                let msg = NexusAgentChatMessage(role: .agent, text: "", toolCalls: currentToolCalls, approvalRequest: req)
+                let msg = NexusAgentChatMessage(role: .agent, text: "", toolCalls: currentToolCalls, approvalRequest: req,
+                                            createdAt: Date())
                 messages.append(msg)
                 replyID = msg.id
             }
@@ -1207,7 +1222,7 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
             if let error {
                 reportedError = true
                 reportedErrorText = error
-                messages.append(NexusAgentChatMessage(role: .agent, text: error, isError: true))
+                messages.append(NexusAgentChatMessage(role: .agent, text: error, isError: true, createdAt: Date()))
             }
         }
     }
@@ -1346,7 +1361,7 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
               restoreCheckpoint(checkpoint, directory) else { return false }
         undoCheckpoint = nil
         undoCheckpointDirectory = nil
-        if !note.isEmpty { messages.append(NexusAgentChatMessage(role: .agent, text: note)) }
+        if !note.isEmpty { messages.append(NexusAgentChatMessage(role: .agent, text: note, createdAt: Date())) }
         return true
     }
 
@@ -1395,7 +1410,7 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
     private func replyIndex() -> Int? {
         if let replyID, let idx = messages.firstIndex(where: { $0.id == replyID }) { return idx }
         guard isRunning else { return nil }
-        let msg = NexusAgentChatMessage(role: .agent, text: "")
+        let msg = NexusAgentChatMessage(role: .agent, text: "", createdAt: Date())
         messages.append(msg)
         replyID = msg.id
         return messages.count - 1
@@ -1704,7 +1719,7 @@ extension NexusAgentQuickPromptSession {
             mode = .chat
             // Text only: figures on the note itself would be added in
             // again by the next `/cost`.
-            messages.append(NexusAgentChatMessage(role: .agent, text: costSummary(totals)))
+            messages.append(NexusAgentChatMessage(role: .agent, text: costSummary(totals), createdAt: Date()))
             return done(.cost(totals))
         case "fork":
             guard forkCurrentConversation() else { return done(.nothingToFork) }

@@ -53,6 +53,12 @@ final class StandaloneHost: NexusAgentHost {
         set { UserDefaults.standard.set(newValue, forKey: "planMode") }
     }
 
+    /// The same key Settings' toggle keeps it under.
+    var timelineOnLeft: Bool {
+        get { UserDefaults.standard.bool(forKey: "timelineOnLeft") }
+        set { UserDefaults.standard.set(newValue, forKey: "timelineOnLeft") }
+    }
+
     var hiddenClaudeSessionIDs: [String] {
         get { UserDefaults.standard.stringArray(forKey: "hiddenClaudeSessionIds") ?? [] }
         set { UserDefaults.standard.set(newValue, forKey: "hiddenClaudeSessionIds") }

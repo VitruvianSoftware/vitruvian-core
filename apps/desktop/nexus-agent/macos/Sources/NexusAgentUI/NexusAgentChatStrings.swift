@@ -254,6 +254,24 @@ public struct NexusAgentChatStrings: Sendable, Equatable {
     /// `/cost`'s note, before its figures.
     public var costHeading = "Session so far: "
 
+    // MARK: The conversation's timeline
+    //
+    // As the composer's: English defaults here, not in `init`.
+
+    /// What VoiceOver calls the rail of dots, one per prompt.
+    public var timelineLabel = "Conversation timeline"
+    /// A dot's label is `timelinePromptPrefix` N `timelineOf` M
+    /// `timelinePromptSeparator` and the prompt's first words; the card's
+    /// footer is N `timelineOf` M alone.
+    public var timelinePromptPrefix = "Prompt "
+    public var timelineOf = " of "
+    public var timelinePromptSeparator = ": "
+    /// The card's second line while the prompt has no reply yet.
+    public var timelineWaitingForReply = "Waiting for reply…"
+    /// The rail's menu: move it to the other edge.
+    public var timelineMoveLeft = "Move timeline to left edge"
+    public var timelineMoveRight = "Move timeline to right edge"
+
     public init(
         quickPromptTitle: String = "Agent Quick Prompt",
         askPrefix: String = "Ask ",

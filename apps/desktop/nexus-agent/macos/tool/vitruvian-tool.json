@@ -274,6 +274,28 @@
       "default": false
     },
     {
+      "id": "timelineOnLeft",
+      "title": {
+        "en": "Show the conversation timeline on the left",
+        "pt-BR": "Mostrar a linha do tempo da conversa à esquerda",
+        "tr": "Sohbet zaman çizelgesini solda göster",
+        "ru": "Показывать хронологию разговора слева",
+        "es": "Mostrar la línea de tiempo de la conversación a la izquierda",
+        "sk": "Zobraziť časovú os konverzácie vľavo",
+        "de": "Zeitleiste der Unterhaltung links anzeigen",
+        "fr": "Afficher la chronologie de la conversation à gauche",
+        "it": "Mostra la cronologia della conversazione a sinistra",
+        "ja": "会話のタイムラインを左側に表示",
+        "ko": "대화 타임라인을 왼쪽에 표시",
+        "uk": "Показувати хронологію розмови ліворуч",
+        "zh-Hans": "在左侧显示对话时间线",
+        "zh-TW": "在左側顯示對話時間軸",
+        "zh-HK": "在左側顯示對話時間軸"
+      },
+      "type": "boolean",
+      "default": false
+    },
+    {
       "id": "chosenProvider",
       "type": "string",
       "default": ""
