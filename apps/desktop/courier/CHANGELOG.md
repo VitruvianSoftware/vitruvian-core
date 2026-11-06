@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.12](https://github.com/VitruvianSoftware/vitruvian-core/compare/courier-v0.3.11...courier-v0.3.12) (2026-11-06)
+
+
+### Features
+
+* **courier:** put every column's header on one line ([#4380](https://github.com/VitruvianSoftware/vitruvian-core/issues/4380)) ([7bdf47e](https://github.com/VitruvianSoftware/vitruvian-core/commit/7bdf47e84d9991ea752d1bc442f1949d5f75523e))
+
 ## [0.3.11](https://github.com/VitruvianSoftware/vitruvian-core/compare/courier-v0.3.10...courier-v0.3.11) (2026-11-06)
 
 
