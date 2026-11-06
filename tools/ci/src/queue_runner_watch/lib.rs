@@ -39,6 +39,100 @@
 use shell_compat::{capture, cat, env, env_or, err, out, status, subst};
 use std::process::Command;
 
+/// Cancel any `in_progress` or `queued` `merge_group` workflow runs whose
+/// `gh-readonly-queue/main/...` branch ref has already been deleted on GitHub
+/// (because the queue entry merged or was evicted). Without this, evicted
+/// queue runs remain queued/running on self-hosted `vitruvian-queue` runners
+/// and starve subsequent merge-queue and canary jobs.
+fn cancel_orphaned_merge_group_runs(gh: &[u8], repo: &[u8], own_run_id: &[u8]) {
+    let mut candidates: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
+    for st in [b"in_progress".as_slice(), b"queued".as_slice()] {
+        let r = capture(
+            42,
+            Command::new(shell_compat::os(gh))
+                .arg("api")
+                .arg(shell_compat::os(&cat(&[
+                    b"repos/",
+                    repo,
+                    b"/actions/runs?event=merge_group&status=",
+                    st,
+                    b"&per_page=100",
+                ])))
+                .arg("--jq")
+                .arg(r#".workflow_runs[] | "\(.id) \(.head_branch // "")""#),
+        );
+        if !r.ok() {
+            return;
+        }
+        let text = subst(r.stdout);
+        for line in text.split(|&c| c == b'\n') {
+            if line.is_empty() {
+                continue;
+            }
+            if let Some(sp) = line.iter().position(|&c| c == b' ') {
+                let id = &line[..sp];
+                let branch = &line[sp + 1..];
+                if id != own_run_id && branch.starts_with(b"gh-readonly-queue/main/") {
+                    candidates.push((id.to_vec(), branch.to_vec()));
+                }
+            }
+        }
+    }
+    if candidates.is_empty() {
+        return;
+    }
+
+    let refs_r = capture(
+        45,
+        Command::new(shell_compat::os(gh))
+            .arg("api")
+            .arg(shell_compat::os(&cat(&[
+                b"repos/",
+                repo,
+                b"/git/matching-refs/heads/gh-readonly-queue/main/",
+            ])))
+            .arg("--jq")
+            .arg(".[].ref"),
+    );
+    if !refs_r.ok() {
+        return;
+    }
+    let refs_text = subst(refs_r.stdout);
+    let live_refs: Vec<&[u8]> = refs_text
+        .split(|&c| c == b'\n')
+        .filter(|l| !l.is_empty())
+        .collect();
+
+    for (id, branch) in candidates {
+        let full_ref = cat(&[b"refs/heads/", &branch]);
+        if !live_refs.iter().any(|&r| r == full_ref.as_slice()) {
+            let _ = status(
+                47,
+                Command::new(shell_compat::os(gh))
+                    .arg("api")
+                    .arg("-X")
+                    .arg("POST")
+                    .arg(shell_compat::os(&cat(&[
+                        b"repos/",
+                        repo,
+                        b"/actions/runs/",
+                        &id,
+                        b"/cancel",
+                    ])))
+                    .stdout(std::process::Stdio::null()),
+                true,
+            );
+            out(&cat(&[
+                b"queue-runner-watch: cancelled orphaned merge_group run ",
+                &id,
+                b" (",
+                &branch,
+                b")\n",
+            ]));
+        }
+    }
+}
+
 pub fn run(_args: &[Vec<u8>]) -> i32 {
     let gh = env_or("GH_BIN", b"gh");
     let repo = match env("REPO") {
@@ -59,6 +153,8 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
     let wait_s = env_or("WAIT_SECONDS", b"600");
     let poll_s = env_or("POLL_SECONDS", b"15");
     let var_name = b"QUEUE_RUNNER_FALLBACK";
+
+    cancel_orphaned_merge_group_runs(&gh, &repo, &run_id);
 
     let wait_secs: u64 = std::str::from_utf8(&wait_s)
         .ok()
