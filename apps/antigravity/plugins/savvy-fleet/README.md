@@ -14,7 +14,7 @@ An Antigravity desktop plugin that ports the tiered orchestrator-worker workflow
 From GitHub:
 
 ```bash
-agy plugin install https://github.com/VitruvianSoftware/savvy-fleet
+agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/savvy-fleet
 ```
 
 Or link directly from the `vitruvian-core` monorepo:
@@ -28,7 +28,8 @@ Then enable it under Customizations → Installed, or open the sidecar panel fro
 ## Update
 
 ```bash
-git -C ~/.gemini/config/plugins/savvy-fleet pull
+# agy installs a copy, not a git clone: re-run the install to update
+agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/savvy-fleet
 ```
 
 Disable and re-enable the plugin after updating so Antigravity restarts the background sidecar process.

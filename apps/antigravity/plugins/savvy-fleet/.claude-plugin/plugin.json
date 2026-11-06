@@ -5,7 +5,7 @@
     "name": "VitruvianSoftware",
     "url": "https://github.com/VitruvianSoftware"
   },
-  "repository": "https://github.com/VitruvianSoftware/savvy-fleet",
+  "repository": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/savvy-fleet",
   "license": "MIT",
   "keywords": [
     "subagents",
