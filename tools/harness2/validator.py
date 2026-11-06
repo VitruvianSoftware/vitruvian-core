@@ -347,7 +347,7 @@ def _handler_problems(h, at: str, root: Optional[Path]) -> List[str]:
 
 
 def hooks_json_problems(doc, root: Optional[Path] = None) -> List[str]:
-    """Mirrors //apps/desktop/antigravity:hooks_json_test's shape check."""
+    """Mirrors //apps/antigravity:hooks_json_test's shape check."""
     if not isinstance(doc, dict):
         return ["hooks.json must be an object of named hook sets"]
     out: List[str] = []

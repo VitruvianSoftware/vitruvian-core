@@ -3095,7 +3095,7 @@ index 8852a3022..d75eed6be 100644
 +++ b/.github/CODEOWNERS
 @@ -31,6 +31,7 @@
  /apps/cli/homelab/ @VitruvianSoftware/homelab-team @VitruvianSoftware/platform-team
- /apps/desktop/antigravity/ @VitruvianSoftware/platform-team
+ /apps/antigravity/ @VitruvianSoftware/platform-team
  /apps/desktop/nexus-agent/ @VitruvianSoftware/nexus-agent-team @VitruvianSoftware/platform-team
 +/apps/desktop/vitruvian-tool-github/ @VitruvianSoftware/platform-team
  /apps/embedded/esp32-s3/ @VitruvianSoftware/platform-team
@@ -4147,7 +4147,7 @@ index 5237cb829..bfd41c435 100755
      - ./apps/mcp/roborock/catalog-info.yaml
      - ./apps/desktop/nexus-agent/catalog-info.yaml
 +    - ./apps/desktop/vitruvian-tool-github/catalog-info.yaml
-     - ./apps/desktop/antigravity/plugins/gh-watch/catalog-info.yaml
+     - ./apps/antigravity/plugins/gh-watch/catalog-info.yaml
      - ./apps/web/oauth-user-inspector/catalog-info.yaml
      - ./apps/web/vitruviansoftware-dev/catalog-info.yaml
 ```

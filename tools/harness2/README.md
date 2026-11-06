@@ -77,7 +77,7 @@ instructions someone planted. Distill is built on that assumption:
 | Where | What |
 |---|---|
 | `~/.gemini/config/plugins/harness2/` | The plugin. `hooks/` + `lib/` are code and are refreshed on every install. `rules/`, `skills/`, `scripts/`, `sub_agents/`, `guardrails.json`, `hookify-rules.json` are the **harness** distill edits; install only seeds them when missing (`--reseed` overwrites, after a backup) |
-| `~/.gemini/config/plugins/hookify/` | Copied from `apps/desktop/antigravity/plugins/hookify` if not already installed |
+| `~/.gemini/config/plugins/hookify/` | Copied from `apps/antigravity/plugins/hookify` if not already installed |
 | `~/.gemini/config/config.json` | `harness2` and `hookify` set to enabled; every other key kept; backed up first |
 | `~/.gemini/antigravity/hookify-rules.json` | The harness's `harness2-*` rules merged in; your other rules kept |
 | `~/.gemini/antigravity/harness2/` | `state/` (per-conversation locks), `library/` (lessons + adopted trees), `runs/`, `events.jsonl`, `hooks.log` |

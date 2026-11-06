@@ -167,7 +167,7 @@ def hookify_source(explicit: Optional[str]) -> Optional[Path]:
         cands.append(Path(explicit))
     ws = os.environ.get("BUILD_WORKSPACE_DIRECTORY")
     if ws:
-        cands.append(Path(ws) / "apps/desktop/antigravity/plugins/hookify")
+        cands.append(Path(ws) / "apps/antigravity/plugins/hookify")
     for c in cands:
         if (c / "hooks.json").is_file():
             return c

@@ -23,7 +23,7 @@
 //! - `.claude/agents/<name>.md` (Claude Code)
 //! - `.opencode/agents/<name>.md` (OpenCode)
 //! - `apps/claude-code/plugins/vitruvian-orchestrator/skills/orchestrate/SKILL.md`
-//! - `apps/desktop/antigravity/plugins/vitruvian-orchestrator/skills/orchestrate/SKILL.md`
+//! - `apps/antigravity/plugins/vitruvian-orchestrator/skills/orchestrate/SKILL.md`
 //! - `.opencode/skills/orchestrate/SKILL.md`
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -41,7 +41,7 @@ pub const OUTPUT_DIRS: [&str; 3] = [".agents/agents", ".claude/agents", ".openco
 pub const CORE_SOURCE: &str = "packages/orchestrator-core/src/core.mjs";
 pub const CORE_COPIES: [&str; 3] = [
     "apps/claude-code/plugins/vitruvian-orchestrator/hooks/lib/orchestrator-core.mjs",
-    "apps/desktop/antigravity/plugins/vitruvian-orchestrator/sidecars/panel/lib/orchestrator-core.mjs",
+    "apps/antigravity/plugins/vitruvian-orchestrator/sidecars/panel/lib/orchestrator-core.mjs",
     "apps/opencode/plugins/vitruvian-orchestrator/lib/orchestrator-core.mjs",
 ];
 
@@ -59,7 +59,7 @@ pub const SKILL_OUTPUTS: [(&str, &str); 3] = [
     ),
     (
         "antigravity",
-        "apps/desktop/antigravity/plugins/vitruvian-orchestrator/skills/orchestrate/SKILL.md",
+        "apps/antigravity/plugins/vitruvian-orchestrator/skills/orchestrate/SKILL.md",
     ),
     ("opencode", ".opencode/skills/orchestrate/SKILL.md"),
 ];
@@ -1537,7 +1537,7 @@ scout\tcore\tSecond scout.
         );
 
         assert_eq!(
-            files["apps/desktop/antigravity/plugins/vitruvian-orchestrator/skills/orchestrate/SKILL.md"],
+            files["apps/antigravity/plugins/vitruvian-orchestrator/skills/orchestrate/SKILL.md"],
             concat!(
                 "---\n",
                 "name: orchestrate\n",

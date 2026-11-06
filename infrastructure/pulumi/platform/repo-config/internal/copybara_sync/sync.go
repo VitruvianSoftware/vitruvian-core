@@ -171,7 +171,7 @@ var syncedProjects = []syncedProject{
 	},
 	{
 		// Standalone mirror for the gh-watch Antigravity plugin
-		// (apps/desktop/antigravity/plugins/gh-watch). Public, so anyone can
+		// (apps/antigravity/plugins/gh-watch). Public, so anyone can
 		// install it with `agy plugin install https://github.com/VitruvianSoftware/gh-watch`.
 		// Name uppercase-snakes to GH_WATCH -> GH_WATCH_SYNC_SSH_KEY, consumed by
 		// copybara-export-gh-watch.yaml.

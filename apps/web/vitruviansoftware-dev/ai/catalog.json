@@ -83,7 +83,7 @@
       "summary": "Extensions Marketplace and installed plugin manager sidecar for Antigravity.",
       "repo": "",
       "mirrorRepo": "https://github.com/VitruvianSoftware/ext-marketplace",
-      "source": "apps/desktop/antigravity/plugins/ext-marketplace",
+      "source": "apps/antigravity/plugins/ext-marketplace",
       "ecosystems": [
         "antigravity",
         "claude-code",
@@ -112,7 +112,7 @@
           "ecosystem": "antigravity",
           "label": "Install in Antigravity",
           "command": "agy plugin install https://github.com/VitruvianSoftware/ext-marketplace",
-          "monorepo_command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/antigravity/plugins/ext-marketplace"
+          "monorepo_command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/ext-marketplace"
         },
         {
           "tool": "Claude Code",
@@ -124,7 +124,7 @@
           "tool": "Codex / OpenCode",
           "ecosystem": "codex-opencode",
           "label": "Load portable SKILL.md (/ext-marketplace)",
-          "command": "cp -R apps/desktop/antigravity/plugins/ext-marketplace/skills/* ~/.agents/skills/"
+          "command": "cp -R apps/antigravity/plugins/ext-marketplace/skills/* ~/.agents/skills/"
         }
       ]
     },
@@ -137,7 +137,7 @@
       "summary": "Watches your pull requests on GitHub and wakes the conversation that owns one when its CI starts failing.",
       "repo": "https://github.com/VitruvianSoftware/gh-watch",
       "mirrorRepo": "https://github.com/VitruvianSoftware/gh-watch",
-      "source": "apps/desktop/antigravity/plugins/gh-watch",
+      "source": "apps/antigravity/plugins/gh-watch",
       "ecosystems": [
         "antigravity",
         "claude-code"
@@ -181,7 +181,7 @@
       "summary": "Tracks git worktrees, pull request status, and Bazel output-base disk usage, with safe post-merge cleanup.",
       "repo": "",
       "mirrorRepo": "https://github.com/VitruvianSoftware/worktree-band",
-      "source": "apps/desktop/antigravity/plugins/worktree-band",
+      "source": "apps/antigravity/plugins/worktree-band",
       "ecosystems": [
         "antigravity",
         "claude-code",
@@ -210,7 +210,7 @@
           "ecosystem": "antigravity",
           "label": "Install in Antigravity",
           "command": "agy plugin install https://github.com/VitruvianSoftware/worktree-band",
-          "monorepo_command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/antigravity/plugins/worktree-band"
+          "monorepo_command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/worktree-band"
         },
         {
           "tool": "Claude Code",
@@ -222,7 +222,7 @@
           "tool": "Codex / OpenCode",
           "ecosystem": "codex-opencode",
           "label": "Load portable SKILL.md (/worktree-band)",
-          "command": "cp -R apps/desktop/antigravity/plugins/worktree-band/skills/* ~/.agents/skills/"
+          "command": "cp -R apps/antigravity/plugins/worktree-band/skills/* ~/.agents/skills/"
         }
       ]
     },
@@ -235,7 +235,7 @@
       "summary": "Self-referential iterative development loops for Antigravity conversations until completion criteria are met.",
       "repo": "",
       "mirrorRepo": "https://github.com/VitruvianSoftware/ralph-loop",
-      "source": "apps/desktop/antigravity/plugins/ralph-loop",
+      "source": "apps/antigravity/plugins/ralph-loop",
       "ecosystems": [
         "antigravity",
         "claude-code",
@@ -264,7 +264,7 @@
           "ecosystem": "antigravity",
           "label": "Install in Antigravity",
           "command": "agy plugin install https://github.com/VitruvianSoftware/ralph-loop",
-          "monorepo_command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/antigravity/plugins/ralph-loop"
+          "monorepo_command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/ralph-loop"
         },
         {
           "tool": "Claude Code",
@@ -276,7 +276,7 @@
           "tool": "Codex / OpenCode",
           "ecosystem": "codex-opencode",
           "label": "Load portable SKILL.md (/ralph-loop)",
-          "command": "cp -R apps/desktop/antigravity/plugins/ralph-loop/skills/* ~/.agents/skills/"
+          "command": "cp -R apps/antigravity/plugins/ralph-loop/skills/* ~/.agents/skills/"
         }
       ]
     },
@@ -289,7 +289,7 @@
       "summary": "Declarative rule engine for Antigravity hooks supporting PreToolUse permission gating, argument rewriting, and Stop assertions.",
       "repo": "",
       "mirrorRepo": "https://github.com/VitruvianSoftware/hookify",
-      "source": "apps/desktop/antigravity/plugins/hookify",
+      "source": "apps/antigravity/plugins/hookify",
       "ecosystems": [
         "antigravity",
         "claude-code",
@@ -318,7 +318,7 @@
           "ecosystem": "antigravity",
           "label": "Install in Antigravity",
           "command": "agy plugin install https://github.com/VitruvianSoftware/hookify",
-          "monorepo_command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/antigravity/plugins/hookify"
+          "monorepo_command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/hookify"
         },
         {
           "tool": "Claude Code",
@@ -330,7 +330,7 @@
           "tool": "Codex / OpenCode",
           "ecosystem": "codex-opencode",
           "label": "Load portable SKILL.md (/hookify)",
-          "command": "cp -R apps/desktop/antigravity/plugins/hookify/skills/* ~/.agents/skills/"
+          "command": "cp -R apps/antigravity/plugins/hookify/skills/* ~/.agents/skills/"
         }
       ]
     },
@@ -343,7 +343,7 @@
       "summary": "Real-time vulnerability and secret scanner for Antigravity PreToolUse and Stop hooks with interactive remediation guidance.",
       "repo": "",
       "mirrorRepo": "https://github.com/VitruvianSoftware/security-guidance",
-      "source": "apps/desktop/antigravity/plugins/security-guidance",
+      "source": "apps/antigravity/plugins/security-guidance",
       "ecosystems": [
         "antigravity",
         "claude-code",
@@ -372,7 +372,7 @@
           "ecosystem": "antigravity",
           "label": "Install in Antigravity",
           "command": "agy plugin install https://github.com/VitruvianSoftware/security-guidance",
-          "monorepo_command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/antigravity/plugins/security-guidance"
+          "monorepo_command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/security-guidance"
         },
         {
           "tool": "Claude Code",
@@ -384,7 +384,7 @@
           "tool": "Codex / OpenCode",
           "ecosystem": "codex-opencode",
           "label": "Load portable SKILL.md (/security-guidance)",
-          "command": "cp -R apps/desktop/antigravity/plugins/security-guidance/skills/* ~/.agents/skills/"
+          "command": "cp -R apps/antigravity/plugins/security-guidance/skills/* ~/.agents/skills/"
         }
       ]
     },
@@ -397,7 +397,7 @@
       "summary": "Scans Antigravity session transcripts, aggregates per-project activity and commit/PR receipts, detects token hotspots, and exports HTML or CSV impact reports.",
       "repo": "",
       "mirrorRepo": "https://github.com/VitruvianSoftware/receipts-report",
-      "source": "apps/desktop/antigravity/plugins/receipts-report",
+      "source": "apps/antigravity/plugins/receipts-report",
       "ecosystems": [
         "antigravity",
         "claude-code",
@@ -426,7 +426,7 @@
           "ecosystem": "antigravity",
           "label": "Install in Antigravity",
           "command": "agy plugin install https://github.com/VitruvianSoftware/receipts-report",
-          "monorepo_command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/antigravity/plugins/receipts-report"
+          "monorepo_command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/receipts-report"
         },
         {
           "tool": "Claude Code",
@@ -438,7 +438,7 @@
           "tool": "Codex / OpenCode",
           "ecosystem": "codex-opencode",
           "label": "Load portable SKILL.md (/receipts-report)",
-          "command": "cp -R apps/desktop/antigravity/plugins/receipts-report/skills/* ~/.agents/skills/"
+          "command": "cp -R apps/antigravity/plugins/receipts-report/skills/* ~/.agents/skills/"
         }
       ]
     },
@@ -451,7 +451,7 @@
       "summary": "Injects live Git branch/status, open/merged GitHub PRs, and the user's response contract on every turn via PreInvocation hooks, and validates reply shape on Stop.",
       "repo": "",
       "mirrorRepo": "https://github.com/VitruvianSoftware/live-context",
-      "source": "apps/desktop/antigravity/plugins/live-context",
+      "source": "apps/antigravity/plugins/live-context",
       "ecosystems": [
         "antigravity",
         "claude-code",
@@ -480,7 +480,7 @@
           "ecosystem": "antigravity",
           "label": "Install in Antigravity",
           "command": "agy plugin install https://github.com/VitruvianSoftware/live-context",
-          "monorepo_command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/antigravity/plugins/live-context"
+          "monorepo_command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/live-context"
         },
         {
           "tool": "Claude Code",
@@ -492,7 +492,7 @@
           "tool": "Codex / OpenCode",
           "ecosystem": "codex-opencode",
           "label": "Load portable SKILL.md (/live-context)",
-          "command": "cp -R apps/desktop/antigravity/plugins/live-context/skills/* ~/.agents/skills/"
+          "command": "cp -R apps/antigravity/plugins/live-context/skills/* ~/.agents/skills/"
         }
       ]
     },
@@ -505,7 +505,7 @@
       "summary": "Tiered orchestrator-worker subagent fleet tracker and live telemetry sidecar for Antigravity.",
       "repo": "",
       "mirrorRepo": "https://github.com/VitruvianSoftware/savvy-fleet",
-      "source": "apps/desktop/antigravity/plugins/savvy-fleet",
+      "source": "apps/antigravity/plugins/savvy-fleet",
       "ecosystems": [
         "antigravity",
         "claude-code",
@@ -535,7 +535,7 @@
           "ecosystem": "antigravity",
           "label": "Install in Antigravity",
           "command": "agy plugin install https://github.com/VitruvianSoftware/savvy-fleet",
-          "monorepo_command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/antigravity/plugins/savvy-fleet"
+          "monorepo_command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/savvy-fleet"
         },
         {
           "tool": "Claude Code",
@@ -547,7 +547,7 @@
           "tool": "Codex / OpenCode",
           "ecosystem": "codex-opencode",
           "label": "Load portable SKILL.md (/savvy-fleet, /savvy-flow)",
-          "command": "cp -R apps/desktop/antigravity/plugins/savvy-fleet/skills/* ~/.agents/skills/"
+          "command": "cp -R apps/antigravity/plugins/savvy-fleet/skills/* ~/.agents/skills/"
         }
       ]
     },
@@ -560,7 +560,7 @@
       "summary": "Lead orchestrator skill and live orchestration sidecar panel for routing multi-domain work across specialist subagents in Antigravity.",
       "repo": "",
       "mirrorRepo": "https://github.com/VitruvianSoftware/vitruvian-core",
-      "source": "apps/desktop/antigravity/plugins/vitruvian-orchestrator",
+      "source": "apps/antigravity/plugins/vitruvian-orchestrator",
       "ecosystems": [
         "antigravity"
       ],
@@ -584,7 +584,7 @@
           "ecosystem": "antigravity",
           "label": "Install in Antigravity",
           "command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core",
-          "monorepo_command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/antigravity/plugins/vitruvian-orchestrator"
+          "monorepo_command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/vitruvian-orchestrator"
         }
       ]
     },

@@ -34,7 +34,7 @@ pub const CLAUDE_MARKETPLACE_ROOT: &str = ".claude-plugin/marketplace.json";
 pub const CLAUDE_MARKETPLACE_WEB: &str =
     "apps/web/vitruviansoftware-dev/.claude-plugin/marketplace.json";
 
-pub const ANTIGRAVITY_PLUGINS_DIR: &str = "apps/desktop/antigravity/plugins";
+pub const ANTIGRAVITY_PLUGINS_DIR: &str = "apps/antigravity/plugins";
 pub const CLAUDE_CODE_PLUGINS_DIR: &str = "apps/claude-code/plugins";
 
 /// The order first-party plugins are shown in; others follow, by id.
@@ -1045,7 +1045,7 @@ mod tests {
     #[test]
     fn a_version_bump_changes_nothing() {
         let tmp = TempDir::new("bump");
-        let rel = "apps/desktop/antigravity/plugins/sample-ext";
+        let rel = "apps/antigravity/plugins/sample-ext";
         tmp.write(&format!("{}/skills/sample-ext/SKILL.md", rel), "# skill\n");
         tmp.write(
             &format!("{}/.claude-plugin/plugin.json", rel),
@@ -1083,7 +1083,7 @@ mod tests {
             vec![
                 "agy plugin install https://github.com/VitruvianSoftware/sample-ext",
                 "claude plugin install sample-ext",
-                "cp -R apps/desktop/antigravity/plugins/sample-ext/skills/* ~/.agents/skills/",
+                "cp -R apps/antigravity/plugins/sample-ext/skills/* ~/.agents/skills/",
             ]
         );
     }
@@ -1093,7 +1093,7 @@ mod tests {
         let tmp = TempDir::new("order");
         for name in ["zeta", "gh-watch", "alpha", "ext-marketplace"] {
             tmp.write(
-                &format!("apps/desktop/antigravity/plugins/{}/plugin.json", name),
+                &format!("apps/antigravity/plugins/{}/plugin.json", name),
                 &format!(r#"{{"name": "{}"}}"#, name),
             );
         }
@@ -1121,13 +1121,10 @@ mod tests {
     fn mixed_ids_fail_to_sort_as_python() {
         let tmp = TempDir::new("mixed");
         tmp.write(
-            "apps/desktop/antigravity/plugins/a/plugin.json",
+            "apps/antigravity/plugins/a/plugin.json",
             r#"{"name": "zzz"}"#,
         );
-        tmp.write(
-            "apps/desktop/antigravity/plugins/b/plugin.json",
-            r#"{"name": 5}"#,
-        );
+        tmp.write("apps/antigravity/plugins/b/plugin.json", r#"{"name": 5}"#);
         assert_eq!(
             discover_all(&tmp.root()).unwrap_err().last_line(),
             "TypeError: '<' not supported between instances of 'int' and 'str'"

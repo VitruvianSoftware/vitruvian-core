@@ -234,8 +234,8 @@ exports_files(
 # Keep Gazelle out of non-Go app subtrees, while letting Gazelle manage apps/cli/devx
 # and apps/desktop/courier (Go modules). The other apps are listed one by one
 # because Gazelle cannot un-exclude a child of an excluded directory.
+# gazelle:exclude apps/antigravity
 # gazelle:exclude apps/cli/homelab
-# gazelle:exclude apps/desktop/antigravity
 # gazelle:exclude apps/desktop/home-speaker
 # gazelle:exclude apps/desktop/nexus-agent
 # gazelle:exclude apps/desktop/vitruvian

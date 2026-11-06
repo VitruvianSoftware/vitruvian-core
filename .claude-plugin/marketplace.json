@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "ext-marketplace",
-      "source": "./apps/desktop/antigravity/plugins/ext-marketplace",
+      "source": "./apps/antigravity/plugins/ext-marketplace",
       "description": "Extensions Marketplace and installed plugin manager sidecar for Antigravity.",
       "author": {
         "name": "VitruvianSoftware",
@@ -28,7 +28,7 @@
     },
     {
       "name": "gh-watch",
-      "source": "./apps/desktop/antigravity/plugins/gh-watch",
+      "source": "./apps/antigravity/plugins/gh-watch",
       "description": "Watches your pull requests on GitHub and wakes the conversation that owns one when its CI starts failing.",
       "author": {
         "name": "VitruvianSoftware",
@@ -46,7 +46,7 @@
     },
     {
       "name": "worktree-band",
-      "source": "./apps/desktop/antigravity/plugins/worktree-band",
+      "source": "./apps/antigravity/plugins/worktree-band",
       "description": "Tracks git worktrees, pull request status, and Bazel output-base disk usage, with safe post-merge cleanup.",
       "author": {
         "name": "VitruvianSoftware",
@@ -65,7 +65,7 @@
     },
     {
       "name": "ralph-loop",
-      "source": "./apps/desktop/antigravity/plugins/ralph-loop",
+      "source": "./apps/antigravity/plugins/ralph-loop",
       "description": "Self-referential iterative development loops for Antigravity conversations until completion criteria are met.",
       "author": {
         "name": "VitruvianSoftware",
@@ -84,7 +84,7 @@
     },
     {
       "name": "hookify",
-      "source": "./apps/desktop/antigravity/plugins/hookify",
+      "source": "./apps/antigravity/plugins/hookify",
       "description": "Declarative rule engine for Antigravity hooks supporting PreToolUse permission gating, argument rewriting, and Stop assertions.",
       "author": {
         "name": "VitruvianSoftware",
@@ -102,7 +102,7 @@
     },
     {
       "name": "security-guidance",
-      "source": "./apps/desktop/antigravity/plugins/security-guidance",
+      "source": "./apps/antigravity/plugins/security-guidance",
       "description": "Real-time vulnerability and secret scanner for Antigravity PreToolUse and Stop hooks with interactive remediation guidance.",
       "author": {
         "name": "VitruvianSoftware",
@@ -120,7 +120,7 @@
     },
     {
       "name": "receipts-report",
-      "source": "./apps/desktop/antigravity/plugins/receipts-report",
+      "source": "./apps/antigravity/plugins/receipts-report",
       "description": "Scans Antigravity session transcripts, aggregates per-project activity and commit/PR receipts, detects token hotspots, and exports HTML or CSV impact reports.",
       "author": {
         "name": "VitruvianSoftware",
@@ -139,7 +139,7 @@
     },
     {
       "name": "live-context",
-      "source": "./apps/desktop/antigravity/plugins/live-context",
+      "source": "./apps/antigravity/plugins/live-context",
       "description": "Injects live Git branch/status, open/merged GitHub PRs, and the user's response contract on every turn via PreInvocation hooks, and validates reply shape on Stop.",
       "author": {
         "name": "VitruvianSoftware",
@@ -158,7 +158,7 @@
     },
     {
       "name": "savvy-fleet",
-      "source": "./apps/desktop/antigravity/plugins/savvy-fleet",
+      "source": "./apps/antigravity/plugins/savvy-fleet",
       "description": "Tiered orchestrator-worker subagent fleet tracker and live telemetry sidecar for Antigravity.",
       "author": {
         "name": "VitruvianSoftware",
