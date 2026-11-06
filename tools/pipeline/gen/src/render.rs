@@ -544,7 +544,13 @@ pub fn render_presubmit_workflow(
 
         b.push_str(&format!("  {job_name}:\n"));
         b.push_str(&format!("    name: {}\n", u.name));
-        b.push_str(&format!("    runs-on: {}\n", runs_on(&u.runner)));
+        // Emulator units require /dev/kvm, which unprivileged homelab k3s runner pods do not expose.
+        let runner = if u.needs_emulator {
+            &u.runner
+        } else {
+            runs_on(&u.runner)
+        };
+        b.push_str(&format!("    runs-on: {runner}\n"));
         b.push_str(&format!("    timeout-minutes: {}\n", u.timeout_minutes));
 
         let mut needs: Vec<String> = vec!["plan".to_string()];
