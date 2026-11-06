@@ -8,17 +8,21 @@ import SwiftUI
 /// line that says what it does. Only for a chat whose network has a timer.
 struct DisappearingMenu: View {
     @ObservedObject var conversation: ConversationModel
+    /// In the window's toolbar (with Liquid Glass): the toolbar's own menu style, not a borderless one.
+    var inToolbar = false
 
     var body: some View {
         let choices = conversation.timerChoices
         if !choices.isEmpty {
-            Menu {
+            let menu = Menu {
                 DisappearingItems(choices: choices) { choice in Task { await conversation.setTimer(choice) } }
             } label: {
                 Image(systemName: conversation.features.currentTimer.map { $0.timerMS > 0 } == true
                     ? "timer" : "timer.circle")
             }
-            .menuStyle(.borderlessButton)
+            Group {
+                if inToolbar { menu } else { menu.menuStyle(.borderlessButton) }
+            }
             .menuIndicator(.hidden)
             .fixedSize()
             .disabled(conversation.isChangingTimer)

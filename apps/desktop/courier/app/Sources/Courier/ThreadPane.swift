@@ -24,14 +24,18 @@ struct ThreadPane: View {
             header
             Divider()
             replies
-            ComposerView(composer: composer, preferences: preferences, textHeight: $composerTextHeight,
-                         showsIncognitoMark: conversation.incognitoIsOn && preferences.showIncognitoMark,
-                         placeholder: String(localized: "Reply in thread…"),
-                         escapeLast: {
-                             close()
-                             return true
-                         })
-                .simultaneousGesture(TapGesture().onEnded { focus.inPane = true })
+                // With glass the replies run under the pane's composer, as the chat's messages do under its own.
+                .courierEdgeBar(.bottom) {
+                    ComposerView(composer: composer, preferences: preferences, textHeight: $composerTextHeight,
+                                 showsIncognitoMark: conversation.incognitoIsOn && preferences.showIncognitoMark,
+                                 placeholder: String(localized: "Reply in thread…"),
+                                 escapeLast: {
+                                     if Self.deselect(focus) { return true }
+                                     close()
+                                     return true
+                                 })
+                        .simultaneousGesture(TapGesture().onEnded { focus.inPane = true })
+                }
         }
         .courierSurface(.sidePane)
         .onAppear {
@@ -45,7 +49,8 @@ struct ThreadPane: View {
                 return nil
             }
         }
-        .onExitCommand { if !composer.escape() { close() } }
+        // Esc ends an edit or clears a reply first, then deselects the pane's message, then closes the pane.
+        .onExitCommand { if !composer.escape(), !Self.deselect(focus) { close() } }
         // Edit History asked from the pane opens below the pane's bubble.
         .onChange(of: messageActions.request) { _, request in
             if case let .history(id, .thread)? = request {
@@ -53,6 +58,14 @@ struct ThreadPane: View {
                 messageActions.dismissRequest()
             }
         }
+    }
+
+    /// Nothing selected in the pane (a click on its selected message, Esc, a click on the pane's empty space); false
+    /// when nothing was.
+    private static func deselect(_ focus: MessageFocus) -> Bool {
+        guard focus.paneSelection != nil else { return false }
+        focus.paneSelection = nil
+        return true
     }
 
     private func close() {
@@ -128,6 +141,8 @@ struct ThreadPane: View {
                     .padding(.bottom, 8)
                 }
                 .defaultScrollAnchor(.bottom)
+                .courierScrollEdges()
+                .deselectsOnEmptyClick { [focus] in _ = Self.deselect(focus) }
                 .onChange(of: thread.scrollToMessageRequest, initial: true) { _, request in
                     guard let request else { return }
                     DispatchQueue.main.async { proxy.scrollTo(request.messageID, anchor: .center) }
@@ -139,7 +154,8 @@ struct ThreadPane: View {
     /// The pane's rows act `from: .thread`.
     private var actions: MessageActions {
         MessageRowActions.make(conversation: conversation, messageActions: messageActions, preferences: preferences,
-                               composer: composer, ui: ui, source: .thread) { id in
+                               composer: composer, ui: ui, source: .thread,
+                               deselect: { [focus] in _ = Self.deselect(focus) }) { id in
             focus.paneSelection = id
             focus.inPane = true
         }

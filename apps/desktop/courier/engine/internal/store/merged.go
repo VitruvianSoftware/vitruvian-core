@@ -350,7 +350,7 @@ func (s *Store) ListMergedChats(ctx context.Context) ([]MergedChat, error) {
 	rows, err := s.db.Query(ctx, `
 		SELECT merge_id, name, avatar_uri, last_room_id, created_ts
 		FROM merged_chats
-		ORDER BY created_ts ASC, merge_id ASC`)
+		ORDER BY created_ts ASC, rowid ASC, merge_id ASC`)
 	if err != nil {
 		return nil, err
 	}

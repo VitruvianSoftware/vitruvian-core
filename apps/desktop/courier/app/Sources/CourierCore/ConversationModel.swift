@@ -1784,6 +1784,15 @@ public final class ConversationModel: ObservableObject {
         reply(to: id)
     }
 
+    /// Nothing selected: a click on the selected message, Esc, or a click on the timeline's empty space. False when
+    /// nothing was, so Esc goes on to its next use.
+    @discardableResult
+    public func deselectMessage() -> Bool {
+        guard selectedMessageID != nil else { return false }
+        selectedMessageID = nil
+        return true
+    }
+
     /// The selected message, as loaded.
     public var selectedMessage: TimelineMessage? { selectedMessageID.flatMap(message) }
 
@@ -2643,6 +2652,14 @@ public final class ConversationModel: ObservableObject {
             let targetRoom = (messageRoom?.isEmpty == false ? messageRoom : nil) ?? self.activeReplyRoomID ?? room
             guard !targetRoom.hasPrefix("merge:") else { return }
             let _: Sent = try await client.call("message.react", ReactParams(roomID: targetRoom, eventID: eventID, key: key))
+        }
+    }
+
+    /// Takes back a reaction of mine: unsends the reaction's own event. A network that can't take one back says so,
+    /// as any failed action does.
+    public func unreact(eventID: String) async {
+        await act { client, _ in
+            let _: Sent = try await client.call("message.unsend", EventParams(eventID: eventID))
         }
     }
 

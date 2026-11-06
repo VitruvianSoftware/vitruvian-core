@@ -289,3 +289,42 @@ fn the_real_filter_reads_a_null_conclusion_as_empty() {
         r.why()
     );
 }
+
+#[test]
+fn polls_until_a_queued_canary_starts_under_burst_load() {
+    let dir = TempDir::new();
+    write_exe(
+        dir.join("gh"),
+        r#"#!/usr/bin/env bash
+echo "$*" >>"$FAKE_DIR/calls"
+case "$*" in
+  *"/jobs"*)
+    if [ ! -f "$FAKE_DIR/polled_once" ]; then
+      : >"$FAKE_DIR/polled_once"
+      echo "queued "
+    else
+      echo "in_progress "
+    fi ;;
+  *"/variables/QUEUE_RUNNER_FALLBACK"*"--jq"*) echo "on" ;;
+esac
+"#,
+    );
+    let out = Run::new(&bin("BIN"))
+        .env("FAKE_DIR", dir.path())
+        .env("GH_BIN", dir.join("gh"))
+        .env("REPO", "o/r")
+        .env("RUN_ID", "7")
+        .env("WAIT_SECONDS", "2")
+        .env("POLL_SECONDS", "1")
+        .env_remove("CANARY_JOB")
+        .go();
+    let r = Ran {
+        out,
+        calls: read(dir.join("calls")),
+    };
+    assert!(
+        r.out.code == 0 && r.wrote(&format!("{PATCH}off")) && !r.wrote("/cancel"),
+        "{}",
+        r.why()
+    );
+}

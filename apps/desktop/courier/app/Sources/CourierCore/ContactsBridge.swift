@@ -149,14 +149,59 @@ public final class ContactsBridge: ObservableObject {
         return false
     }
 
-    /// Formats a raw identifier (`tel:+15550100101`, `mailto:alice@example.com`, `@alice`) for display.
+    private static let handlePrefixes = [
+        "telegram:",
+        "instagram:",
+        "twitter:",
+        "bluesky:",
+        "discord:",
+        "facebook:",
+    ]
+
+    private static let internalIdentifierPrefixes = [
+        "slack-internal:",
+        "linkedin:",
+        "did:",
+    ]
+
+    /// Returns `true` when `raw` is an opaque internal bridge identifier (`slack-internal:U08...`,
+    /// `linkedin:ACo...`, `did:plc:...`) that should not be shown to users as a handle.
+    nonisolated public static func isInternalIdentifier(_ raw: String) -> Bool {
+        let lower = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !lower.isEmpty else { return true }
+        return internalIdentifierPrefixes.contains { lower.hasPrefix($0) }
+    }
+
+    /// Filters a member's raw identifiers down to human-meaningful handles, phone numbers, and emails.
+    nonisolated public static func displayableIdentifiers(_ rawIdentifiers: [String]) -> [String] {
+        var seen = Set<String>()
+        var out: [String] = []
+        for raw in rawIdentifiers {
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, !isInternalIdentifier(trimmed) else { continue }
+            let formatted = displayIdentifier(trimmed)
+            guard !formatted.isEmpty, seen.insert(formatted).inserted else { continue }
+            out.append(trimmed)
+        }
+        return out
+    }
+
+    /// Formats a raw identifier (`tel:+15550100101`, `mailto:alice@example.com`, `telegram:alice`, `@alice`) for display.
     /// Formats NANP E.164 phone numbers (`+15550100101`) as `+1 555-010-0101` so the hover card and Chat Info match.
     nonisolated public static func displayIdentifier(_ raw: String) -> String {
         var trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.lowercased().hasPrefix("tel:") {
+        let lower = trimmed.lowercased()
+        if lower.hasPrefix("tel:") {
             trimmed = String(trimmed.dropFirst(4)).trimmingCharacters(in: .whitespacesAndNewlines)
-        } else if trimmed.lowercased().hasPrefix("mailto:") {
+        } else if lower.hasPrefix("mailto:") {
             return String(trimmed.dropFirst(7)).trimmingCharacters(in: .whitespacesAndNewlines)
+        } else {
+            for prefix in handlePrefixes where lower.hasPrefix(prefix) {
+                let rest = String(trimmed.dropFirst(prefix.count))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let clean = rest.hasPrefix("@") ? String(rest.dropFirst()) : rest
+                return clean.isEmpty ? trimmed : "@\(clean)"
+            }
         }
         if let e164 = normalizePhone(trimmed), e164.count == 12, e164.hasPrefix("+1") {
             let digits = Array(e164.dropFirst(2))

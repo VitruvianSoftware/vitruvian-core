@@ -8,8 +8,14 @@ import SwiftUI
 /// What a message row can ask for. The conversation (or the thread pane) gives each its call; a preview gives none.
 struct MessageActions {
     var select: (String) -> Void = { _ in }
+    /// A click on the selected message again: nothing is selected.
+    var deselect: () -> Void = {}
     var reply: (String) -> Void = { _ in }
     var react: (String, String) -> Void = { _, _ in }
+    /// Takes back a reaction of mine, by its own event id.
+    var unreact: (String) -> Void = { _ in }
+    /// The full reaction picker is open for this message: its row keeps the action bar up meanwhile.
+    var isPickingReaction: (String) -> Bool = { _ in false }
     var retry: (String) -> Void = { _ in }
     var discard: (String) -> Void = { _ in }
     /// Don't Send, on a message waiting for its network: takes it back, as Undo does. Nil where nothing can (a
@@ -336,11 +342,23 @@ struct MessageRowView: View {
     @ObservedObject var ui: MessageUI
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.appearancePreferences) private var appearanceEnv
-    @State private var isHovering = false
+    @Environment(\.reactionCardOverride) private var cardOverride
+    @State private var barSize: CGSize = .zero
+    /// The reaction chip under the pointer, and the one whose card is open (after a short rest on it).
+    @State private var hoveredChip: String?
+    @State private var cardChip: String?
+    @State private var openCard: Task<Void, Never>?
+    @State private var cardSize: CGSize = .zero
     /// The highlight's tint, from 1 to 0.
     @State private var highlight: Double = 0
     /// A double click set to show the menu.
     @State private var showsMenu = false
+    /// Where the row's own buttons and media are (`takesOwnClick`), in the row's coordinates: a click there is theirs.
+    @State private var ownClickFrames: [CGRect] = []
+    /// A link in the text was just opened; the row's last click, and whether the message was selected before it.
+    /// Which of a link's two handlers runs first isn't fixed, so each looks for the other (`linkOpened`).
+    @State private var linkOpenedAt: Date?
+    @State private var lastRowClick: (at: Date, wasSelected: Bool)?
     /// Detected date clicked inside the message bubble, presenting `AddCalendarEventPopover`.
     @State private var activeDetectedDate: DetectedMessageDate?
 
@@ -360,22 +378,25 @@ struct MessageRowView: View {
                     bubble
                     if !message.mine { bookmarkMark }
                 }
+                .anchorPreference(key: RowAnchorsKey.self, value: .bounds) { RowAnchors(bubble: $0) }
                 if let translated = actions.translation(message.id) {
                     MessageTranslationRowView(
                         targetLanguage: translated.targetLanguage,
                         disposition: translated.disposition,
                         onDismiss: { actions.dismissTranslation(message.id) }
                     )
+                    .takesOwnClick()
                 }
-                if message.editFailed != nil { editNotSent }
+                if message.editFailed != nil { editNotSent.takesOwnClick() }
                 if ui.historyOpen.contains(message.id) {
                     EditHistoryView(versions: ui.versions[message.id], mine: message.mine, timeFormat: actions.timeFormat)
                 }
                 if let thread = message.thread, thread.replies > 0, let open = actions.openThread {
                     ThreadSummaryLine(summary: thread) { open(message.id) }
+                        .takesOwnClick()
                 }
                 if !message.reactions.isEmpty { reactions }
-                if message.mine { statusLine }
+                if message.mine { statusLine.takesOwnClick() }
                 if let countdown = actions.disappearsIn(message) {
                     Label(countdown, systemImage: "timer")
                         .font(.caption2)
@@ -391,7 +412,6 @@ struct MessageRowView: View {
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.yellow.opacity(0.28 * highlight)))
         .onChange(of: isHighlighted, initial: true) { _, on in fadeHighlight(on) }
         .contentShape(Rectangle())
-        .onHover { isHovering = $0 }
         .gesture(TapGesture(count: 2).onEnded {
             guard canAct else { return }
             if actions.doubleClickShowsMenu { showsMenu = true } else { actions.doubleClick(message.id) }
@@ -407,11 +427,47 @@ struct MessageRowView: View {
             ui.forget(message.id)
             if ui.historyOpen.contains(message.id) { ui.loadHistory(message.id) }
         }
-        .simultaneousGesture(TapGesture().onEnded { click() })
-        .overlay(alignment: message.mine ? .topLeading : .topTrailing) {
-            if (isHovering || isSelected) && canAct { HoverActions(message: message, actions: actions) }
+        .simultaneousGesture(SpatialTapGesture(coordinateSpace: .named(OwnClickFramesKey.space)).onEnded { tap in
+            rowClicked(at: tap.location)
+        })
+        // The row's space, around its gesture, for where its own buttons and media are and where a click lands.
+        .coordinateSpace(.named(OwnClickFramesKey.space))
+        .onPreferenceChange(OwnClickFramesKey.self) { ownClickFrames = $0 }
+        // The action bar of the selected message, beside the bubble or over its top outer corner
+        // (MessageActionBarPlacement), and who reacted, by the chip the pointer rests on (ReactionCardPlacement),
+        // kept off the bar. Drawn by the row, outside its click gestures, so a click on the bar doesn't also select or
+        // deselect the message; the card is only to read and takes no clicks.
+        .overlayPreferenceValue(RowAnchorsKey.self, alignment: .topLeading) { anchors in
+            let card = openCardKey.flatMap { key in message.reactions.first { $0.key == key } }
+            if (showsActionBar && anchors.bubble != nil) || (card != nil && anchors.openChip != nil) {
+                GeometryReader { proxy in
+                    let bar: CGRect? = showsActionBar ? anchors.bubble.map { bubble in
+                        CGRect(origin: MessageActionBarPlacement.origin(bubble: proxy[bubble], row: proxy.size,
+                                                                        bar: barSize, mine: message.mine),
+                               size: barSize)
+                    } : nil
+                    if let bar {
+                        MessageActionBar(message: message, actions: actions) { showsMenu = true }
+                            .fixedSize()
+                            .onGeometryChange(for: CGSize.self) { $0.size } action: { barSize = $0 }
+                            .offset(x: bar.minX, y: bar.minY)
+                            .opacity(barSize == .zero ? 0 : 1)
+                    }
+                    if let card, let chip = anchors.openChip {
+                        let spot = ReactionCardPlacement.origin(chip: proxy[chip], row: proxy.size, card: cardSize,
+                                                                avoiding: bar)
+                        ReactionCard(chip: card)
+                            .fixedSize()
+                            .onGeometryChange(for: CGSize.self) { $0.size } action: { cardSize = $0 }
+                            .offset(x: spot.x, y: spot.y)
+                            .opacity(cardSize == .zero ? 0 : 1)
+                            .allowsHitTesting(false)
+                    }
+                }
+            }
         }
         .environment(\.openURL, OpenURLAction { url in
+            linkOpened()
             if url.scheme == "courier-calendar" {
                 if let detected = CalendarBridge.detectedDate(from: url) {
                     activeDetectedDate = detected
@@ -451,12 +507,90 @@ struct MessageRowView: View {
             activeDetectedDate = nil
         }
         .accessibilityElement(children: .contain)
+        // Above the rows around it while its bar or a reaction card is up: both reach past the row's top. This is
+        // the stack's own child, through TimelineItemView (RowLayeringTests checks that it takes).
+        .zIndex(isRaised ? 1 : 0)
     }
 
-    /// A click selects the message; on a held one, with "Click pending messages to undo send" on, it undoes it.
+    // MARK: Selection
+
+    /// The action bar is the selected message's (a click, or the arrow keys, select it), and stays up while its
+    /// menu or its reaction picker is open. Pointing at a message shows nothing: moving the pointer quickly over
+    /// the chat flashed a bar on every row it crossed.
+    private var showsActionBar: Bool {
+        canAct && (isSelected || showsMenu || actions.isPickingReaction(message.id))
+    }
+
+    /// The chip whose who-reacted card is open: the one the pointer rested on, or the one the snapshot tests open.
+    private var openCardKey: String? {
+        cardOverride?.messageID == message.id ? cardOverride?.reactionKey : cardChip
+    }
+
+    private var isRaised: Bool { showsActionBar || openCardKey != nil }
+
+    /// The pointer on a chip: its hover tint at once, its card after a short rest; off it, both go at once.
+    private func chipHovered(_ key: String, _ hovering: Bool) {
+        openCard?.cancel()
+        if hovering {
+            hoveredChip = key
+            cardChip = nil
+            openCard = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(300))
+                guard !Task.isCancelled, hoveredChip == key else { return }
+                cardChip = key
+            }
+        } else if hoveredChip == key {
+            hoveredChip = nil
+            cardChip = nil
+        }
+    }
+
+    /// A click on the row: the message's own (`click`) unless it landed on a button, a chip, a picture or a poll in the
+    /// row (they act on it themselves), or opened a link in the text.
+    private func rowClicked(at point: CGPoint) {
+        if ownClickFrames.contains(where: { $0.contains(point) }) { return }
+        if let opened = linkOpenedAt, Date().timeIntervalSince(opened) < Self.sameClick {
+            linkOpenedAt = nil
+            return
+        }
+        lastRowClick = (Date(), isSelected)
+        click()
+    }
+
+    /// A link in the text was opened by a click: that click was the link's. If the row already took it as its own,
+    /// the selection goes back to what it was.
+    private func linkOpened() {
+        if let last = lastRowClick, Date().timeIntervalSince(last.at) < Self.sameClick {
+            lastRowClick = nil
+            if last.wasSelected { actions.select(message.id) } else { actions.deselect() }
+        } else {
+            linkOpenedAt = Date()
+        }
+    }
+
+    /// How close a link's opening and the row's click are when they are one click.
+    private static let sameClick: TimeInterval = 0.3
+
+    /// Text (or a deleted or undecrypted message's note): a click on it is the row's. Anything else in the bubble
+    /// takes its own clicks.
+    private var contentIsText: Bool {
+        guard !message.viewOnce, !message.showsMediaRemovedPlaceholder, message.galleryItems.isEmpty else { return false }
+        switch message.kind {
+        case .text, .notice, .emote, .deleted, .undecryptable: return true
+        default: return false
+        }
+    }
+
+    /// A click selects the message, and a click on the selected one deselects it; on a held one, with "Click pending
+    /// messages to undo send" on, it undoes it. The second click of a double click is the double click's alone (the
+    /// menu, or what Settings ▸ Messages says): inside a timeline that deselects on an empty click
+    /// (`deselectsOnEmptyClick`), SwiftUI doesn't end this tap for it, so a double click leaves the message selected
+    /// (MessageSelectionClickTests).
     private func click() {
         if message.statusLine == .queued, let undo = actions.undoHeld {
             undo(message.id)
+        } else if isSelected {
+            actions.deselect()
         } else {
             actions.select(message.id)
         }
@@ -575,10 +709,16 @@ struct MessageRowView: View {
                                 .fill(message.suppressesBubbleBackground ? Color.primary.opacity(0.08) : .clear)
                         )
                 }
-                content
+                if contentIsText {
+                    content
+                } else {
+                    // A picture, a video, a file, a poll, a location: what it does with a click is its own.
+                    content.takesOwnClick()
+                }
                 if message.kind != .deleted && message.kind != .undecryptable {
                     ForEach(Array(message.linkPreviews.enumerated()), id: \.offset) { _, preview in
                         LinkPreviewCardView(preview: preview, onBubble: message.mine && !message.suppressesBubbleBackground)
+                            .takesOwnClick()
                     }
                     if let embed = ExternalEmbedDescriptor.first(in: message) {
                         EmbedConsentCard(
@@ -588,13 +728,14 @@ struct MessageRowView: View {
                             onBubble: message.mine && !message.suppressesBubbleBackground,
                             onLoadEmbed: { ui.loadedEmbeds.insert(message.id) }
                         )
+                        .takesOwnClick()
                     }
                 }
             }
             .accessibilityElement(children: message.kind == .poll ? .contain : .combine)
             // A poll is a group of its option buttons, summed up as "who: question".
             .accessibilityLabel(accessibilityText)
-            if message.isEdited { editedButton }
+            if message.isEdited { editedButton.takesOwnClick() }
         }
         .foregroundStyle(foreground)
         .padding(.horizontal, message.suppressesBubbleBackground ? 2 : (message.kind == .image || message.kind == .sticker || message.kind == .video ? 4 : 11))
@@ -779,30 +920,63 @@ struct MessageRowView: View {
         HStack(spacing: 4) {
             ForEach(message.reactions) { chip in
                 Button {
-                    // Giving the same one again is not a way to take it back (that is milestone 4).
-                    if !chip.mine { actions.react(message.id, chip.key) }
+                    // Mine again takes it back; anyone else's adds mine.
+                    if chip.mine, let event = chip.myEventID {
+                        actions.unreact(event)
+                    } else {
+                        actions.react(message.id, chip.key)
+                    }
                 } label: {
                     HStack(spacing: 3) {
                         Text(chip.key)
-                        if chip.count > 1 {
-                            Text("\(chip.count)").font(.caption.monospacedDigit())
-                        }
+                        Text("\(chip.count)").font(.caption.monospacedDigit())
                     }
                     .padding(.horizontal, 7)
                     .padding(.vertical, 2)
-                    .background(Capsule().fill(chip.mine ? Color.accentColor.opacity(0.22) : Color.primary.opacity(0.08)))
+                    .background(Capsule().fill(chipFill(chip)))
                     .overlay(Capsule().strokeBorder(chip.mine ? Color.accentColor : .clear, lineWidth: 1))
+                    .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(reactionLabel(chip))
+                .onHover { chipHovered(chip.key, $0) }
+                .clickTargetProbe("chip/\(message.id)/\(chip.key)")
+                .takesOwnClick()
+                .anchorPreference(key: RowAnchorsKey.self, value: .bounds) {
+                    RowAnchors(openChip: openCardKey == chip.key ? $0 : nil)
+                }
+                .accessibilityLabel(chip.summary())
             }
+            if canAct { addReactionChip }
         }
         .padding(.horizontal, 4)
     }
 
-    private func reactionLabel(_ chip: ReactionChip) -> String {
-        chip.mine ? String(localized: "\(chip.key), \(chip.count), including you")
-            : String(localized: "\(chip.key), \(chip.count)")
+    private func chipFill(_ chip: ReactionChip) -> Color {
+        let hovered = hoveredChip == chip.key
+        return chip.mine ? Color.accentColor.opacity(hovered ? 0.32 : 0.22) : Color.primary.opacity(hovered ? 0.14 : 0.08)
+    }
+
+    /// "Add Reaction…" at the end of the chips, while the message is selected. Always laid out, so the row keeps its
+    /// height and width when it shows.
+    private var addReactionChip: some View {
+        Button {
+            actions.perform(.action(.react), message.id)
+        } label: {
+            AddReactionGlyph()
+                .padding(.horizontal, 7)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(Color.primary.opacity(0.06)))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .help(String(localized: "Add Reaction…"))
+        .accessibilityLabel(String(localized: "Add Reaction…"))
+        .clickTargetProbe("add/\(message.id)")
+        .takesOwnClick()
+        .opacity(isSelected ? 1 : 0)
+        .allowsHitTesting(isSelected)
+        .accessibilityHidden(!isSelected)
     }
 
     /// My newest edit was refused: the message reads as before it, and this offers to send the edit again or drop it.
@@ -989,37 +1163,262 @@ private struct QuoteView: View {
     }
 }
 
-/// The strip on hover: the quick reactions (the default first) and Reply.
-private struct HoverActions: View {
+/// The selected message's bar: the quick reactions (the default first), Add Reaction…, Reply and More (the message's
+/// menu).
+private struct MessageActionBar: View {
     let message: TimelineMessage
     let actions: MessageActions
+    let showMenu: () -> Void
 
     var body: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 1) {
             ForEach(ConversationModel.quickReactions, id: \.self) { key in
-                Button(key) { actions.react(message.id, key) }
-                    .buttonStyle(.plain)
-                    .padding(3)
-                    .help(String(localized: "React with \(key)"))
-                    .accessibilityLabel(String(localized: "React with \(key)"))
+                ActionBarButton(String(localized: "React with \(key)")) {
+                    actions.react(message.id, key)
+                } label: {
+                    Text(key)
+                }
             }
-            Divider().frame(height: 14)
-            Button {
+            Divider().frame(height: 14).padding(.horizontal, 3)
+            ActionBarButton(String(localized: "Add Reaction…")) {
+                actions.perform(.action(.react), message.id)
+            } label: {
+                AddReactionGlyph()
+            }
+            ActionBarButton(String(localized: "Reply")) {
                 actions.reply(message.id)
             } label: {
                 Image(systemName: "arrowshape.turn.up.left")
             }
-            .buttonStyle(.plain)
-            .padding(3)
-            .help(String(localized: "Reply"))
-            .accessibilityLabel(String(localized: "Reply"))
+            ActionBarButton(String(localized: "More")) {
+                showMenu()
+            } label: {
+                Image(systemName: "ellipsis")
+            }
         }
-        .padding(.horizontal, 5)
-        .padding(.vertical, 2)
-        .background(Capsule().fill(.regularMaterial))
-        .overlay(Capsule().strokeBorder(.quaternary))
-        .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
-        .padding(.top, 2)
+        .padding(.horizontal, 4)
+        .padding(.vertical, 3)
+        .courierSurface(.actionBar)
+    }
+}
+
+/// One of the action bar's buttons: its name as help and for VoiceOver, and a faint tint under the pointer.
+private struct ActionBarButton<Label: View>: View {
+    let title: String
+    let action: () -> Void
+    let label: Label
+    @State private var isHovering = false
+
+    init(_ title: String, action: @escaping () -> Void, @ViewBuilder label: () -> Label) {
+        self.title = title
+        self.action = action
+        self.label = label()
+    }
+
+    var body: some View {
+        Button(action: action) {
+            label
+                .frame(minWidth: 22, minHeight: 22)
+                .background(RoundedRectangle(cornerRadius: 5).fill(isHovering ? Color.primary.opacity(0.08) : .clear))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .help(title)
+        .accessibilityLabel(title)
+        .clickTargetProbe("bar/\(title)")
+    }
+}
+
+/// A smiling face with a small plus: add a reaction.
+private struct AddReactionGlyph: View {
+    var body: some View {
+        Image(systemName: "face.smiling")
+            .overlay(alignment: .bottomTrailing) {
+                Image(systemName: "plus")
+                    .font(.system(size: 7, weight: .heavy))
+                    .padding(1)
+                    .background(Circle().fill(.background))
+                    .offset(x: 4, y: 3)
+            }
+            .padding(.trailing, 3)
+            .accessibilityHidden(true)
+    }
+}
+
+/// Who reacted with one emoji: the emoji large, and the names under it (`ReactionChip.summary`).
+private struct ReactionCard: View {
+    let chip: ReactionChip
+
+    var body: some View {
+        CappedWidth(maxWidth: 220) {
+            VStack(spacing: 4) {
+                Text(chip.key).font(.system(size: 28))
+                Text(chip.summary())
+                    .font(.caption)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+        }
+        .courierSurface(.reactionCard)
+    }
+}
+
+/// Its content at the width it would like, but no wider than `maxWidth` (where text wraps), whatever it is offered.
+private struct CappedWidth: Layout {
+    let maxWidth: CGFloat
+
+    func sizeThatFits(proposal _: ProposedViewSize, subviews: Subviews, cache _: inout ()) -> CGSize {
+        guard let content = subviews.first else { return .zero }
+        let width = min(content.sizeThatFits(.unspecified).width, maxWidth)
+        return content.sizeThatFits(ProposedViewSize(width: width, height: nil))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal _: ProposedViewSize, subviews: Subviews, cache _: inout ()) {
+        subviews.first?.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size))
+    }
+}
+
+/// Where the selected message's action bar goes, in its row (all in the row's coordinates; the result is the bar's
+/// top-leading corner). Beside the bubble on its outer side (right of theirs, left of mine) when it fits there, so the
+/// message above stays readable; over the bubble's top outer corner, mostly above it, when the bubble is too wide for
+/// that.
+enum MessageActionBarPlacement {
+    /// Between the bubble and a bar beside it.
+    static let gap: CGFloat = 6
+    /// Kept between the bar and the row's sides.
+    static let edgeMargin: CGFloat = 4
+    /// Over the corner: how far the bar reaches in over it, and how far down over the bubble's top edge.
+    static let cornerInset: CGFloat = 28
+    static let cornerOverlap: CGFloat = 8
+
+    static func origin(bubble: CGRect, row: CGSize, bar: CGSize, mine: Bool) -> CGPoint {
+        let beside = mine ? bubble.minX - gap - bar.width : bubble.maxX + gap
+        let fits = mine ? beside >= edgeMargin : beside + bar.width <= row.width - edgeMargin
+        if fits {
+            // Level with the bubble's top, or centred on a bubble shorter than the bar; never above the row.
+            let y = bubble.height >= bar.height ? bubble.minY : bubble.midY - bar.height / 2
+            return CGPoint(x: beside, y: max(0, y))
+        }
+        let inset = min(cornerInset, bubble.width / 2)
+        let preferred = mine ? bubble.minX + inset - bar.width : bubble.maxX - inset
+        let x = max(edgeMargin, min(preferred, row.width - bar.width - edgeMargin))
+        return CGPoint(x: x, y: bubble.minY - bar.height + cornerOverlap)
+    }
+}
+
+/// Where the reaction card goes, in its row (the row's coordinates; the result is the card's top-leading corner):
+/// above its chip, centred on it and held inside the row's sides. When that would cover the selected message's action
+/// bar (a chip under a short bubble, the bar beside it), below the chip instead.
+enum ReactionCardPlacement {
+    /// Between the card and its chip.
+    static let gap: CGFloat = 6
+    /// Kept between the card and the row's sides.
+    static let edgeMargin: CGFloat = 4
+
+    static func origin(chip: CGRect, row: CGSize, card: CGSize, avoiding bar: CGRect?) -> CGPoint {
+        let centred = chip.midX - card.width / 2
+        let x = max(edgeMargin, min(centred, row.width - card.width - edgeMargin))
+        let above = CGRect(x: x, y: chip.minY - card.height - gap, width: card.width, height: card.height)
+        if let bar, !bar.isEmpty, above.intersects(bar) {
+            return CGPoint(x: x, y: chip.maxY + gap)
+        }
+        return above.origin
+    }
+}
+
+/// Where a row's bubble is (for its action bar) and the reaction chip whose card is open (for the card).
+private struct RowAnchors {
+    var bubble: Anchor<CGRect>?
+    var openChip: Anchor<CGRect>?
+}
+
+private struct RowAnchorsKey: PreferenceKey {
+    static let defaultValue = RowAnchors()
+    static func reduce(value: inout RowAnchors, nextValue: () -> RowAnchors) {
+        let next = nextValue()
+        value.bubble = value.bubble ?? next.bubble
+        value.openChip = value.openChip ?? next.openChip
+    }
+}
+
+extension View {
+    /// A click on this timeline where no row takes it (the space around and below the messages, a day separator)
+    /// runs `deselect`. A row's own click wins over this: SwiftUI gives a click to the innermost gesture.
+    func deselectsOnEmptyClick(_ deselect: @escaping () -> Void) -> some View {
+        contentShape(Rectangle()).onTapGesture(perform: deselect)
+    }
+}
+
+/// For the click tests, which need to know where a row's buttons are (SwiftUI builds no accessibility tree for an
+/// offscreen window): called with each probed button's name and its frame in the window. Nil (the default) in the app,
+/// where the probes add nothing.
+private struct ClickTargetProbeKey: EnvironmentKey {
+    static let defaultValue: ((String, CGRect) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    var clickTargetProbe: ((String, CGRect) -> Void)? {
+        get { self[ClickTargetProbeKey.self] }
+        set { self[ClickTargetProbeKey.self] = newValue }
+    }
+}
+
+private struct ClickTargetProbe: ViewModifier {
+    let name: String
+    @Environment(\.clickTargetProbe) private var probe
+
+    func body(content: Content) -> some View {
+        if let probe {
+            content.onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { probe(name, $0) }
+        } else {
+            content
+        }
+    }
+}
+
+extension View {
+    fileprivate func clickTargetProbe(_ name: String) -> some View {
+        modifier(ClickTargetProbe(name: name))
+    }
+
+    /// This part of a message row acts on a click itself (a button, a chip, a picture, a poll): the row doesn't also
+    /// take the click as selecting or deselecting the message.
+    fileprivate func takesOwnClick() -> some View {
+        background {
+            GeometryReader { proxy in
+                Color.clear.preference(key: OwnClickFramesKey.self,
+                                       value: [proxy.frame(in: .named(OwnClickFramesKey.space))])
+            }
+        }
+    }
+}
+
+/// Where a message row's parts that take their own clicks are, in the row's coordinate space.
+private struct OwnClickFramesKey: PreferenceKey {
+    static let space = "courier.messageRow"
+    static let defaultValue: [CGRect] = []
+    static func reduce(value: inout [CGRect], nextValue: () -> [CGRect]) { value += nextValue() }
+}
+
+/// For the snapshot tests, which can't rest a pointer on a reaction chip: draws one message's row with that
+/// reaction's who-reacted card open. (Selection, which shows the action bar, is the row's `isSelected`.) Nil (the
+/// default) in the app.
+struct ReactionCardOverride: Equatable {
+    var messageID: String
+    var reactionKey: String
+}
+
+private struct ReactionCardOverrideKey: EnvironmentKey {
+    static let defaultValue: ReactionCardOverride? = nil
+}
+
+extension EnvironmentValues {
+    var reactionCardOverride: ReactionCardOverride? {
+        get { self[ReactionCardOverrideKey.self] }
+        set { self[ReactionCardOverrideKey.self] = newValue }
     }
 }
 

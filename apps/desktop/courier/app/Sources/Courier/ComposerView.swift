@@ -102,85 +102,16 @@ struct ComposerView: View {
         String(localized: "Open System Settings"),
     ]
 
+    @Environment(\.drawsLiquidGlass) private var drawsLiquidGlass
+
+    /// The message box's height at one line, with glass: the text's height and the field's padding above and below.
+    static let floatingFieldPadding: CGFloat = 4
+    static var floatingSingleLineHeight: CGFloat { ComposerTextView.minimumHeight + 2 * floatingFieldPadding }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(Array(composer.notices.enumerated()), id: \.offset) { _, notice in
-                NoticeBar(text: noticeText(notice)) { composer.dismissNotice() }
-            }
-            ComposerVoiceStatusBanner(voiceRecorder: composer.voiceRecorder)
-            if let mergedChat, let activeNetwork = activeReplyNetwork, !activeNetwork.isEmpty {
-                mergedReplyNetworkPill(mergedChat: mergedChat, activeNetwork: activeNetwork)
-            }
-            if case .editing = composer.mode {
-                EditBar { _ = composer.escape() }
-            }
-            if let reply = composer.replyTarget {
-                ReplyChip(quote: reply) { composer.cancelReply() }
-            }
-            if let pendingGIF = composer.pendingGIF {
-                PendingGIFPillView(item: pendingGIF, thumbnailLoader: composer.thumbnailLoader) {
-                    composer.removePendingGIF()
-                }
-            }
-            if !composer.attachments.isEmpty {
-                PendingAttachmentsStrip(
-                    attachments: composer.attachments,
-                    features: composer.features,
-                    network: activeReplyNetwork ?? composer.network
-                ) { id in
-                    composer.removeAttachment(id)
-                }
-            }
-            picker
-            if showsFormattingBar {
-                FormattingBarView(items: FormattingBar.items(features: composer.features, network: composer.network)) {
-                    format($0)
-                }
-            }
-            ComposerInputOrVoiceRow(
-                composer: composer,
-                preferences: preferences,
-                voiceRecorder: composer.voiceRecorder
-            ) {
-                HStack(alignment: .bottom, spacing: 8) {
-                    plusMenu
-                    ComposerTextView(
-                        composer: composer,
-                        ui: ui,
-                        height: $textHeight,
-                        placeholder: placeholder,
-                        focusToken: "\(composer.roomID ?? "")|\(composer.replyTarget?.eventID ?? "")|\(modeToken)",
-                        isSpellcheckEnabled: preferences.enableSpellcheck,
-                        onEscape: { escapeFirst() || composer.escape() || escapeLast() },
-                        onUpArrow: upArrow,
-                        onPasteFiles: { urls in
-                            composer.attach(urls)
-                            return true
-                        })
-                        .frame(height: textHeight)
-                        .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.06)))
-                        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.quaternary))
-
-                    if showsIncognitoMark { IncognitoMark() }
-
-                    if case .editing = composer.mode {
-                        EmptyView()
-                    } else {
-                        secondaryActionButton
-                        if preferences.primaryComposerButton != .gifPicker && preferences.secondaryComposerButton != .gifPicker {
-                            gifToolbarButton
-                        }
-                        stickerToolbarButton
-                    }
-
-                    primaryActionButton
-
-                    sendButton
-                }
-            }
+        Group {
+            if drawsLiquidGlass { floating } else { bar }
         }
-        .padding(10)
-        .courierSurface(.composerBar)
         .sheet(item: $ui.link) { request in LinkDialog(request: request) }
         .onChange(of: composer.mentionQuery?.text) { _, _ in findMembers() }
         // ⌘⇧K, the bar's Link, or the Message menu's Link…: the dialog, over the range asked for.
@@ -192,6 +123,137 @@ struct ComposerView: View {
             }
         }
         .onChange(of: pickerToken) { _, _ in ui.pickerIndex = 0 }
+    }
+
+    /// Without glass: a bar under the messages, across the pane, the look before the option.
+    private var bar: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            extras
+            inputRow(floating: false)
+        }
+        .padding(10)
+        .courierSurface(.composerBar)
+    }
+
+    /// With glass, as Messages draws it: the box (its text, its buttons and what sits above them) in one glass shape,
+    /// and the plus a round glass button just left of it, together floating 12 points in from the pane's sides and
+    /// bottom, over the messages that scroll under them.
+    private var floating: some View {
+        CourierGlassGroup(spacing: 8) {
+            HStack(alignment: .bottom, spacing: 8) {
+                ComposerIdleOnly(voiceRecorder: composer.voiceRecorder) {
+                    plusMenu(floating: true)
+                        .courierSurface(.composerButton)
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    extras
+                    inputRow(floating: true)
+                }
+                .padding(.leading, 12)
+                .padding(.trailing, Self.floatingFieldPadding + 1)
+                .padding(.vertical, Self.floatingFieldPadding)
+                .courierSurface(.composerField(singleLineHeight: Self.floatingSingleLineHeight))
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 6)
+        .padding(.bottom, 12)
+    }
+
+    /// What sits above the text: notices, the voice note's state, the network a merged chat replies on, the edit or
+    /// the reply, files and a GIF waiting to go, a picker, and the formatting bar.
+    @ViewBuilder
+    private var extras: some View {
+        ForEach(Array(composer.notices.enumerated()), id: \.offset) { _, notice in
+            NoticeBar(text: noticeText(notice)) { composer.dismissNotice() }
+        }
+        ComposerVoiceStatusBanner(voiceRecorder: composer.voiceRecorder)
+        if let mergedChat, let activeNetwork = activeReplyNetwork, !activeNetwork.isEmpty {
+            mergedReplyNetworkPill(mergedChat: mergedChat, activeNetwork: activeNetwork)
+        }
+        if case .editing = composer.mode {
+            EditBar { _ = composer.escape() }
+        }
+        if let reply = composer.replyTarget {
+            ReplyChip(quote: reply) { composer.cancelReply() }
+        }
+        if let pendingGIF = composer.pendingGIF {
+            PendingGIFPillView(item: pendingGIF, thumbnailLoader: composer.thumbnailLoader) {
+                composer.removePendingGIF()
+            }
+        }
+        if !composer.attachments.isEmpty {
+            PendingAttachmentsStrip(
+                attachments: composer.attachments,
+                features: composer.features,
+                network: activeReplyNetwork ?? composer.network
+            ) { id in
+                composer.removeAttachment(id)
+            }
+        }
+        picker
+        if showsFormattingBar {
+            FormattingBarView(items: FormattingBar.items(features: composer.features, network: composer.network)) {
+                format($0)
+            }
+        }
+    }
+
+    /// The text and its buttons, or while a voice note is recorded, its bar. Without glass the plus is its first
+    /// button; with glass it floats beside the box (`floating`) and the send button is the accent glass.
+    private func inputRow(floating: Bool) -> some View {
+        ComposerInputOrVoiceRow(
+            composer: composer,
+            preferences: preferences,
+            voiceRecorder: composer.voiceRecorder
+        ) {
+            HStack(alignment: .bottom, spacing: 8) {
+                if !floating { plusMenu(floating: false) }
+                textView(floating: floating)
+
+                if showsIncognitoMark { IncognitoMark() }
+
+                if case .editing = composer.mode {
+                    EmptyView()
+                } else {
+                    secondaryActionButton
+                    if preferences.primaryComposerButton != .gifPicker && preferences.secondaryComposerButton != .gifPicker {
+                        gifToolbarButton
+                    }
+                    stickerToolbarButton
+                }
+
+                primaryActionButton
+
+                sendButton(floating: floating)
+            }
+        }
+    }
+
+    /// The text: in its own rounded box without glass; with glass the glass shape around it is the box.
+    @ViewBuilder
+    private func textView(floating: Bool) -> some View {
+        let text = ComposerTextView(
+            composer: composer,
+            ui: ui,
+            height: $textHeight,
+            placeholder: placeholder,
+            focusToken: "\(composer.roomID ?? "")|\(composer.replyTarget?.eventID ?? "")|\(modeToken)",
+            isSpellcheckEnabled: preferences.enableSpellcheck,
+            onEscape: { escapeFirst() || composer.escape() || escapeLast() },
+            onUpArrow: upArrow,
+            onPasteFiles: { urls in
+                composer.attach(urls)
+                return true
+            })
+            .frame(height: textHeight)
+        if floating {
+            text
+        } else {
+            text
+                .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.06)))
+                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.quaternary))
+        }
     }
 
     // MARK: Parts
@@ -260,7 +322,8 @@ struct ComposerView: View {
     ]
 
     /// The plus menu: Emoji, GIF (⌘⇧G), Sticker (⌘⌥⇧S), Add Attachment (⌘O), and in a chat Send Later… and Create Poll….
-    private var plusMenu: some View {
+    /// With glass (`floating`) a plain plus, as tall as the box at one line, for the round glass button around it.
+    private func plusMenu(floating: Bool) -> some View {
         Menu {
             Button(String(localized: "Add Emoji…")) {
                 composer.openEmojiAutocomplete()
@@ -312,10 +375,17 @@ struct ComposerView: View {
             }
             .disabled(composer.roomID == nil || composer.hotkeyDispatcher?.lifecycle.isLocked == true)
         } label: {
-            Image(systemName: "plus.circle")
-                .font(.title3)
-                .frame(width: 28, height: ComposerTextView.minimumHeight)
-                .contentShape(Rectangle())
+            if floating {
+                Image(systemName: "plus")
+                    .font(.title3.weight(.medium))
+                    .frame(width: Self.floatingSingleLineHeight, height: Self.floatingSingleLineHeight)
+                    .contentShape(Circle())
+            } else {
+                Image(systemName: "plus.circle")
+                    .font(.title3)
+                    .frame(width: 28, height: ComposerTextView.minimumHeight)
+                    .contentShape(Rectangle())
+            }
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
@@ -339,18 +409,26 @@ struct ComposerView: View {
         }
     }
 
-    /// Send, with a menu (a right click) of Send Later… and Send and Archive (⌘↩).
-    private var sendButton: some View {
-        Button {
+    /// Send, with a menu (a right click) of Send Later… and Send and Archive (⌘↩). With glass (`floating`) a round
+    /// button in the prominent glass, tinted with the accent colour.
+    @ViewBuilder
+    private func sendButton(floating: Bool) -> some View {
+        let button = Button {
             composer.submit()
         } label: {
-            Image(systemName: "arrow.up.circle.fill")
-                .font(.system(size: 26))
-                .foregroundStyle(composer.canSend ? Color.accentColor : Color.secondary.opacity(0.5))
-                .frame(width: 28, height: ComposerTextView.minimumHeight)
-                .contentShape(Rectangle())
+            if floating {
+                Image(systemName: "arrow.up")
+                    .font(.system(size: 13, weight: .bold))
+                    .frame(width: 18, height: 18)
+            } else {
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.system(size: 26))
+                    .foregroundStyle(composer.canSend ? Color.accentColor : Color.secondary.opacity(0.5))
+                    .frame(width: 28, height: ComposerTextView.minimumHeight)
+                    .contentShape(Rectangle())
+            }
         }
-        .buttonStyle(.plain)
+        .courierSendButtonStyle()
         .disabled(!composer.canSend)
         .contextMenu {
             if let sendLater = menus.sendLater { sendLaterItem(sendLater) }
@@ -359,6 +437,8 @@ struct ComposerView: View {
         }
         .help(String(localized: "Send (Return). Right-click for Send Later and Send and Archive."))
         .accessibilityLabel(String(localized: "Send"))
+        // With glass, level with the text's one line, so it stays at the box's bottom as the box grows.
+        if floating { button.frame(height: ComposerTextView.minimumHeight) } else { button }
     }
 
     @ViewBuilder
@@ -1381,6 +1461,20 @@ private struct ComposerVoiceStatusBanner: View {
             }
         case .idle, .recording, .reviewing:
             EmptyView()
+        }
+    }
+}
+
+/// Its content only while no voice note is being recorded or reviewed: with glass, the plus beside the message box,
+/// which the recording bar takes the place of.
+private struct ComposerIdleOnly<Content: View>: View {
+    @ObservedObject var voiceRecorder: VoiceRecorderModel
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        switch voiceRecorder.state {
+        case .recording, .reviewing: EmptyView()
+        case .idle, .permissionDenied, .failed: content()
         }
     }
 }

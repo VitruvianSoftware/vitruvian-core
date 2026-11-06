@@ -1287,6 +1287,18 @@ final class ConversationModelTests: XCTestCase {
         await stop(h)
     }
 
+    func testTakingBackAReactionUnsendsItsEvent() async throws {
+        let h = try await start(["!a": history(2)])
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.isLoaded }
+
+        await h.conversation.unreact(eventID: "$myReaction")
+        XCTAssertEqual(h.server.receivedParams("message.unsend").first as? [String: String],
+                       ["event_id": "$myReaction"])
+        XCTAssertNil(h.conversation.problem)
+        await stop(h)
+    }
+
     func testTheQuickReactionsStartWithAHeart() {
         XCTAssertEqual(ConversationModel.quickReactions, ["❤️", "👍", "😂", "😮", "😢", "🙏"])
     }
@@ -1316,6 +1328,20 @@ final class ConversationModelTests: XCTestCase {
         h.conversation.selectedMessageID = "$2"
         h.conversation.replyToSelected()
         XCTAssertEqual(h.conversation.composer.replyTarget?.eventID, "$2")
+        await stop(h)
+    }
+
+    /// Esc, a second click on the selected message, or a click on empty space: nothing selected. With nothing
+    /// selected it says so, so Esc goes on to close the thread pane.
+    func testDeselectMessage() async throws {
+        let h = try await start(["!a": history(2)])
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { h.conversation.isLoaded }
+        XCTAssertFalse(h.conversation.deselectMessage(), "nothing was selected")
+        h.conversation.selectedMessageID = "$2"
+        XCTAssertTrue(h.conversation.deselectMessage())
+        XCTAssertNil(h.conversation.selectedMessageID)
+        XCTAssertFalse(h.conversation.deselectMessage(), "a second Esc is for what comes after")
         await stop(h)
     }
 }

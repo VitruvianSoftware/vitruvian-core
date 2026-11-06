@@ -133,13 +133,60 @@ public enum ReplyPreview: Equatable, Sendable {
     case notLoaded(eventID: String)
 }
 
-/// One emoji under a message, with how many people gave it.
+/// Someone who reacted to a message.
+public struct Reactor: Equatable, Sendable {
+    public let userID: String
+    /// Their name as the reaction carried it, or their user id when it carried none.
+    public let name: String
+    public let isMe: Bool
+
+    public init(userID: String, name: String, isMe: Bool) {
+        self.userID = userID
+        self.name = name
+        self.isMe = isMe
+    }
+}
+
+/// One emoji under a message, with how many people gave it and who.
 public struct ReactionChip: Equatable, Identifiable, Sendable {
     public let key: String
+    /// How many people gave it (each counted once).
     public let count: Int
     /// I gave this one.
     public let mine: Bool
+    /// Who gave it, in the order each first did, each once.
+    public let reactors: [Reactor]
+    /// My reaction's event, the newest if I gave it more than once: what taking it back unsends. Nil when I didn't
+    /// give it, or my reaction failed.
+    public let myEventID: String?
     public var id: String { key }
+
+    public init(key: String, count: Int, mine: Bool, reactors: [Reactor] = [], myEventID: String? = nil) {
+        self.key = key
+        self.count = count
+        self.mine = mine
+        self.reactors = reactors
+        self.myEventID = myEventID
+    }
+
+    /// Who reacted, in words, as Slack says it: "You, Ann and Bo reacted with 👍". I am "You" and come first; past
+    /// `maxNames` names the rest are counted ("… and 2 others").
+    public func summary(maxNames: Int = 10, locale: Locale = .current) -> String {
+        var names: [String] = []
+        if mine || reactors.contains(where: \.isMe) { names.append(String(localized: "You")) }
+        names += reactors.filter { !$0.isMe }.map(\.name)
+        let total = max(count, names.count)
+        var parts = Array(names.prefix(max(maxNames, 1)))
+        let rest = total - parts.count
+        if rest == 1 {
+            parts.append(String(localized: "1 other"))
+        } else if rest > 1 {
+            parts.append(String(localized: "\(rest) others"))
+        }
+        guard !parts.isEmpty else { return String(localized: "Reacted with \(key)") }
+        let list = parts.formatted(.list(type: .and).locale(locale))
+        return String(localized: "\(list) reacted with \(key)")
+    }
 }
 
 /// Why a message of mine was never sent: the engine's exact status_reason, which the app words itself.
@@ -843,6 +890,11 @@ public enum Timeline {
            !target.isEmpty {
             return target
         }
+        return senderName(of: event)
+    }
+
+    /// The sender's name as the event carries it, or their user id when it carries none.
+    private static func senderName(of event: Event) -> String {
         let sender = event.senderName.trimmingCharacters(in: .whitespacesAndNewlines)
         return sender.isEmpty ? event.sender : sender
     }
@@ -954,8 +1006,14 @@ public enum Timeline {
             if isMine(base) { newestOwnEdit[target] = event }
         }
 
-        // Reactions: one chip per emoji per message, counted by distinct people.
-        struct Tally { var people = Set<String>(); var mine = false }
+        // Reactions: one chip per emoji per message, counted by distinct people, who are kept in the order each first
+        // gave it. My newest live one is what taking it back unsends.
+        struct Tally {
+            var people = Set<String>()
+            var reactors: [Reactor] = []
+            var mine = false
+            var myEventID: String?
+        }
         var order: [String: [String]] = [:]
         var tallies: [String: [String: Tally]] = [:]
         for event in ordered where event.type == "m.reaction" && event.status != .failed
@@ -965,8 +1023,14 @@ public enum Timeline {
                   baseByID[target] != nil, !redacted.contains(target) else { continue }
             var tally = tallies[target, default: [:]][key] ?? Tally()
             if tallies[target]?[key] == nil { order[target, default: []].append(key) }
-            tally.people.insert(event.sender)
-            if event.mine || event.sender == me { tally.mine = true }
+            let isMe = event.mine || event.sender == me
+            if tally.people.insert(event.sender).inserted {
+                tally.reactors.append(Reactor(userID: event.sender, name: senderName(of: event), isMe: isMe))
+            }
+            if isMe {
+                tally.mine = true
+                tally.myEventID = event.eventID
+            }
             tallies[target, default: [:]][key] = tally
         }
 
@@ -976,7 +1040,8 @@ public enum Timeline {
             let shown = describe(base, edit: isDeleted ? nil : latestEdit[base.eventID], mine: isMine(base))
             let chips = isDeleted ? [] : (order[base.eventID] ?? []).compactMap { key -> ReactionChip? in
                 guard let tally = tallies[base.eventID]?[key] else { return nil }
-                return ReactionChip(key: key, count: tally.people.count, mine: tally.mine)
+                return ReactionChip(key: key, count: tally.people.count, mine: tally.mine, reactors: tally.reactors,
+                                    myEventID: tally.myEventID)
             }
             let refused = isDeleted ? nil : newestOwnEdit[base.eventID].flatMap { $0.status == .failed ? $0 : nil }
             let played = base.played ?? false

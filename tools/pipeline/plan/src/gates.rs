@@ -74,6 +74,7 @@ const INERT_TOOLS: &[&str] = &[
     "owners/",
     "boundaries/",
     "pipeline/",
+    "pulumi/",
 ];
 
 fn is_docs_file(f: &str) -> bool {

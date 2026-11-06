@@ -23,6 +23,7 @@ struct ConversationView: View {
     var appearance: AppearancePreferences? = nil
     @Environment(\.controlActiveState) private var controlActiveState
     @Environment(\.appearancePreferences) private var appearanceEnv
+    @Environment(\.drawsLiquidGlass) private var drawsLiquidGlass
     @StateObject private var ui = MessageUI()
     @State private var isDropTargeted = false
     /// The message that was first when older ones were asked for: the view returns to it once they are in.
@@ -231,16 +232,11 @@ struct ConversationView: View {
 
     private var chat: some View {
         let effectiveTheme = resolvedAppearance?.effectiveTheme(for: conversation.roomID)
+        let redact = resolvedAppearance?.redactNamesAndPictures ?? false
         return VStack(spacing: 0) {
-            ConversationHeaderContainer(
-                inbox: inbox,
-                conversation: conversation,
-                redactNamesAndPictures: resolvedAppearance?.redactNamesAndPictures ?? false
-            )
-            Divider()
-            if let banner = conversation.unreadThreadsBanner {
-                ThreadRepliesBanner(text: banner, mentionsMe: conversation.unreadThreadsMentionMe,
-                                    show: conversation.showNextUnreadThread)
+            // With glass the chat's name and buttons are in the window's toolbar (courierChatToolbar), not a strip.
+            if !drawsLiquidGlass {
+                ConversationHeaderContainer(inbox: inbox, conversation: conversation, redactNamesAndPictures: redact)
                 Divider()
             }
             ZStack {
@@ -252,26 +248,46 @@ struct ConversationView: View {
                         blur: effectiveTheme.wallpaperBlur,
                         reduceTransparency: resolvedAppearance?.reduceTransparency ?? false
                     )
+                    .courierExtendsUnderBars()
                 }
                 timeline
             }
-            if let problem = conversation.problem {
-                ProblemBar(problem: problem, retry: conversation.reload)
+            .courierEdgeBar(.top) {
+                if let banner = conversation.unreadThreadsBanner {
+                    ThreadRepliesBanner(text: banner, mentionsMe: conversation.unreadThreadsMentionMe,
+                                        show: conversation.showNextUnreadThread)
+                    if !drawsLiquidGlass { Divider() }
+                }
             }
-            ScheduledStrip(scheduled: scheduled)
-            TypingLine(text: conversation.typingLine)
-            ConversationComposerContainer(
-                composer: composer,
-                inbox: inbox,
-                conversation: conversation,
-                preferences: preferences,
-                messageActions: messageActions,
-                focus: focus,
-                textHeight: $composerTextHeight,
-                chromeSignature: $composerChromeSignature,
-                closeThread: closeThread,
-                upArrow: upArrow
-            )
+            // With glass the messages run under the composer, which floats over their bottom.
+            .courierEdgeBar(.bottom) {
+                VStack(spacing: 0) {
+                    if let problem = conversation.problem {
+                        ProblemBar(problem: problem, retry: conversation.reload)
+                    }
+                    ScheduledStrip(scheduled: scheduled)
+                    TypingLine(text: conversation.typingLine)
+                    ConversationComposerContainer(
+                        composer: composer,
+                        inbox: inbox,
+                        conversation: conversation,
+                        preferences: preferences,
+                        messageActions: messageActions,
+                        focus: focus,
+                        textHeight: $composerTextHeight,
+                        chromeSignature: $composerChromeSignature,
+                        closeThread: { conversation.deselectMessage() || closeThread() },
+                        upArrow: upArrow
+                    )
+                }
+            }
+        }
+        .courierChatToolbar {
+            ConversationHeaderContainer(inbox: inbox, conversation: conversation, redactNamesAndPictures: redact,
+                                        part: .identity)
+        } actions: {
+            ConversationHeaderContainer(inbox: inbox, conversation: conversation, redactNamesAndPictures: redact,
+                                        part: .actions)
         }
         .overlay {
             if isDropTargeted {
@@ -284,8 +300,9 @@ struct ConversationView: View {
         }
         // A window that closes (⌘W) is never told it stopped being key: going away says it.
         .onDisappear { conversation.setWindowKey(false) }
-        // Esc leaves selection mode first, then ends an edit or clears a reply, then closes the thread pane.
-        .onExitCommand { if !inbox.escape(), !composer.escape() { _ = closeThread() } }
+        // Esc leaves selection mode first, then ends an edit or clears a reply, then deselects the message, then
+        // closes the thread pane.
+        .onExitCommand { if !inbox.escape(), !composer.escape(), !conversation.deselectMessage() { _ = closeThread() } }
     }
 
     /// Esc's last use: the thread pane closes.
@@ -530,6 +547,9 @@ struct ConversationView: View {
                 .padding(.bottom, 8)
             }
             .defaultScrollAnchor(.bottom)
+            .courierScrollEdges()
+            // A click on the timeline's empty space (not on a message, which takes its own click) deselects.
+            .deselectsOnEmptyClick { conversation.deselectMessage() }
             .overlay(alignment: .bottomTrailing) { jumpButton }
             .onChange(of: conversation.isLoadingOlder) { _, loading in
                 if !loading, topInView, !conversation.olderFailed { requestOlder() }
@@ -664,7 +684,7 @@ struct ConversationView: View {
     private var actions: MessageActions {
         var base = MessageRowActions.make(
             conversation: conversation, messageActions: messageActions, preferences: preferences,
-            composer: composer, ui: ui, source: .chat
+            composer: composer, ui: ui, source: .chat, deselect: { conversation.deselectMessage() }
         ) { id in
             conversation.selectedMessageID = id
             focus.inPane = false
@@ -751,6 +771,7 @@ private struct ConversationHeaderContainer: View {
     @ObservedObject var inbox: InboxModel
     @ObservedObject var conversation: ConversationModel
     var redactNamesAndPictures: Bool = false
+    var part: ConversationHeader.Part = .strip
 
     var body: some View {
         let headerRow = conversation.roomID.flatMap { inbox.row(of: $0) } ?? inbox.selectedRow
@@ -758,7 +779,8 @@ private struct ConversationHeaderContainer: View {
             row: headerRow,
             networkName: headerRow.map { inbox.networkName($0.network) },
             conversation: conversation,
-            redactNamesAndPictures: redactNamesAndPictures
+            redactNamesAndPictures: redactNamesAndPictures,
+            part: part
         )
     }
 }
@@ -810,54 +832,78 @@ private struct ConversationComposerContainer: View {
 }
 
 /// The chat's picture, name and network, and with a disappearing timer running, "Messages disappear after 7 days",
-/// with the timer's menu.
+/// with the timer's menu. Without glass it is a strip over the messages; with glass its two parts go in the window's
+/// toolbar, the identity where the title was and the buttons as toolbar buttons.
 private struct ConversationHeader: View {
+    enum Part { case strip, identity, actions }
+
     let row: InboxRow?
     let networkName: String?
     @ObservedObject var conversation: ConversationModel
     var redactNamesAndPictures: Bool = false
+    var part: Part = .strip
 
     var body: some View {
-        HStack(spacing: 10) {
-            if let row {
-                AvatarView(path: row.avatarPath, initials: row.initials, seed: row.name, size: 32)
-                    .blur(radius: redactNamesAndPictures ? 6 : 0)
-                    .clipShape(Circle())
-                    .frame(width: 32, height: 32)
-                VStack(alignment: .leading, spacing: 1) {
-                    HStack(spacing: 6) {
-                        Text(
-                            redactNamesAndPictures
-                                ? AppearancePreferences.redactedText(row.name, kind: .chatTitle)
-                                : row.name
-                        )
-                            .font(.headline)
-                            .lineLimit(1)
-                        NetworkBadge(network: row.network, name: networkName ?? row.network, size: 14)
-                    }
-                    if let timer = conversation.timerLine {
-                        Label(timer, systemImage: "timer")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
+        switch part {
+        case .strip:
+            HStack(spacing: 10) {
+                identity
+                Spacer(minLength: 0)
+                actions
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .frame(minHeight: 48)
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isHeader)
+        case .identity:
+            HStack(spacing: 10) { identity }
+                .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(.isHeader)
+        case .actions:
+            actions
+        }
+    }
+
+    @ViewBuilder
+    private var identity: some View {
+        if let row {
+            AvatarView(path: row.avatarPath, initials: row.initials, seed: row.name, size: 32)
+                .blur(radius: redactNamesAndPictures ? 6 : 0)
+                .clipShape(Circle())
+                .frame(width: 32, height: 32)
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 6) {
+                    Text(
+                        redactNamesAndPictures
+                            ? AppearancePreferences.redactedText(row.name, kind: .chatTitle)
+                            : row.name
+                    )
+                        .font(.headline)
+                        .lineLimit(1)
+                    NetworkBadge(network: row.network, name: networkName ?? row.network, size: 14)
+                }
+                if let timer = conversation.timerLine {
+                    Label(timer, systemImage: "timer")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
             }
-            Spacer(minLength: 0)
-            DisappearingMenu(conversation: conversation)
-            Button(action: conversation.toggleChatInfo) {
-                Image(systemName: conversation.isShowingChatInfo ? "info.circle.fill" : "info.circle")
-            }
-            .buttonStyle(.borderless)
-            .help(String(localized: "Chat Info (⌘⇧I)"))
-            .accessibilityLabel(String(localized: "Chat Info"))
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .frame(minHeight: 48)
-        .courierSurface(.headerBar)
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isHeader)
+    }
+
+    /// The buttons: borderless in the strip; in the toolbar in the toolbar's own style, which draws them as glass.
+    @ViewBuilder
+    private var actions: some View {
+        let inToolbar = part == .actions
+        DisappearingMenu(conversation: conversation, inToolbar: inToolbar)
+        let info = Button(action: conversation.toggleChatInfo) {
+            Image(systemName: conversation.isShowingChatInfo ? "info.circle.fill" : "info.circle")
+        }
+        .help(String(localized: "Chat Info (⌘⇧I)"))
+        .accessibilityLabel(String(localized: "Chat Info"))
+        if inToolbar { info } else { info.buttonStyle(.borderless) }
     }
 }
 

@@ -327,6 +327,16 @@ struct DetachedThreadWindowView: View {
     }
 }
 
+/// Settings ▸ Appearance ▸ Use Liquid Glass, in a detached window's environment, following the setting as it changes.
+private struct DetachedGlassEnvironment<Content: View>: View {
+    @ObservedObject var appearance: AppearancePreferences
+    let content: Content
+
+    var body: some View {
+        content.environment(\.liquidGlass, appearance.liquidGlassIsActive)
+    }
+}
+
 /// Manages `NSWindow` instances for `DetachedWindowRegistry` targets (`chat`, `space`, `thread`).
 @MainActor
 final class DetachedWindowManager: NSObject, NSWindowDelegate {
@@ -336,6 +346,9 @@ final class DetachedWindowManager: NSObject, NSWindowDelegate {
     private weak var spaces: SpacesModel?
     private let lifecycle: SystemLifecycleModel
     private let onSearchInChat: (@MainActor (String) -> Void)?
+    /// Settings ▸ Appearance, for Use Liquid Glass: the detached windows follow it as the main window does.
+    private let appearance: AppearancePreferences?
+    private var appearanceCancellable: AnyCancellable?
     private(set) var windows: [DetachedWindowTarget: NSWindow] = [:]
     private var unlockedTitles: [DetachedWindowTarget: String] = [:]
     private var closingFromRegistry = Set<DetachedWindowTarget>()
@@ -349,8 +362,10 @@ final class DetachedWindowManager: NSObject, NSWindowDelegate {
         mainInbox: InboxModel,
         spaces: SpacesModel,
         lifecycle: SystemLifecycleModel,
+        appearance: AppearancePreferences? = nil,
         onSearchInChat: (@MainActor (String) -> Void)? = nil
     ) {
+        self.appearance = appearance
         self.registry = registry
         self.appModel = appModel
         self.mainInbox = mainInbox
@@ -367,6 +382,12 @@ final class DetachedWindowManager: NSObject, NSWindowDelegate {
         }
         registry.onClose = { [weak self] target in
             self?.closeWindowFromRegistry(for: target)
+        }
+        // The setting changed: each window's title bar follows, once the change is in (objectWillChange is before it).
+        appearanceCancellable = appearance?.objectWillChange.sink { [weak self] _ in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated { self?.applyLiquidGlassToWindows() }
+            }
         }
         lockStateCancellable = lifecycle.$isLocked.sink { [weak self] locked in
             self?.applyLockTitleState(isLocked: locked)
@@ -415,6 +436,42 @@ final class DetachedWindowManager: NSObject, NSWindowDelegate {
         }
     }
 
+    private var liquidGlassIsActive: Bool { appearance?.liquidGlassIsActive ?? false }
+
+    private func applyLiquidGlassToWindows() {
+        for (target, window) in windows {
+            Self.applyLiquidGlass(liquidGlassIsActive, to: window, target: target)
+        }
+    }
+
+    /// With Liquid Glass, a chat's window is one toolbar over the messages, as the main window is: the content runs
+    /// under the title bar (so the messages scroll under the toolbar), and in a single chat's window the chat's name
+    /// in the toolbar is the title, so the window's own is hidden. A thread's window has no toolbar and keeps its
+    /// title bar. Without glass, the window as before.
+    static func applyLiquidGlass(_ on: Bool, to window: NSWindow, target: DetachedWindowTarget) {
+        if case .thread = target { return }
+        if on {
+            window.styleMask.insert(.fullSizeContentView)
+        } else {
+            window.styleMask.remove(.fullSizeContentView)
+        }
+        if case .chat = target { window.titleVisibility = on ? .hidden : .visible }
+    }
+
+    /// The window's content, with the glass setting in its environment, in a hosting controller that hands the
+    /// content's toolbar (the chat's name and buttons, with glass) to the window.
+    private func hosting(_ view: some View) -> NSViewController {
+        let controller: NSViewController
+        if let appearance {
+            let hosting = NSHostingController(rootView: DetachedGlassEnvironment(appearance: appearance, content: view))
+            hosting.sceneBridgingOptions = [.toolbars]
+            controller = hosting
+        } else {
+            controller = NSHostingController(rootView: view)
+        }
+        return controller
+    }
+
     private func presentWindow(for target: DetachedWindowTarget) {
         if let existing = windows[target] {
             existing.makeKeyAndOrderFront(nil)
@@ -438,7 +495,7 @@ final class DetachedWindowManager: NSObject, NSWindowDelegate {
                     registry?.open(childTarget)
                 }
             )
-            controller = NSHostingController(rootView: view)
+            controller = hosting(view)
 
         case let .space(spaceID):
             contentRect = NSRect(x: 0, y: 0, width: 960, height: 660)
@@ -456,7 +513,7 @@ final class DetachedWindowManager: NSObject, NSWindowDelegate {
                 },
                 onSearchInChat: onSearchInChat
             )
-            controller = NSHostingController(rootView: view)
+            controller = hosting(view)
 
         case let .thread(roomID, _):
             contentRect = NSRect(x: 0, y: 0, width: 460, height: 600)
@@ -467,7 +524,7 @@ final class DetachedWindowManager: NSObject, NSWindowDelegate {
                 session: session,
                 lifecycle: lifecycle
             )
-            controller = NSHostingController(rootView: view)
+            controller = hosting(view)
         }
 
         let window = NSWindow(
@@ -483,6 +540,7 @@ final class DetachedWindowManager: NSObject, NSWindowDelegate {
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.contentViewController = controller
+        Self.applyLiquidGlass(liquidGlassIsActive, to: window, target: target)
         window.center()
         windows[target] = window
         window.makeKeyAndOrderFront(nil)

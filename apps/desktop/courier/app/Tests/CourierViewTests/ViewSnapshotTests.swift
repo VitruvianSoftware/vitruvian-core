@@ -5206,7 +5206,8 @@ private struct SnapshotCredentials: CredentialStore {
     func delete(account: String) throws {}
 }
 
-private final class SnapshotMessageSender: MessageSending, @unchecked Sendable {
+/// A sender that sends nothing, for the composers the snapshots draw.
+final class SnapshotMessageSender: MessageSending, @unchecked Sendable {
     func sendText(roomID _: String, text _: String, replyTo _: String?) async throws {}
     func sendFile(roomID _: String, url _: URL, size _: Int64, replyTo _: String?) async throws {}
     func send(roomID _: String, rich _: RichText, replyTo _: String?, threadRoot _: String?, holdMillis _: Int) async throws -> String { "$snap" }
