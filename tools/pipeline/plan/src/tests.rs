@@ -137,6 +137,7 @@ fn global_impact_check() {
         ("BUILD", true, "root build/toolchain config changed: BUILD"),
         ("tools/ci/affected-targets.sh", false, ""),
         ("tools/pipeline/defs.bzl", false, ""),
+        ("tools/pulumi/defs.bzl", false, ""),
         ("tools/owners/main.go", false, ""),
         ("tools/adb-connect/adb_connect.py", false, ""),
         ("tools/repin", false, ""),
