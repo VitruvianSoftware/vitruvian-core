@@ -111,6 +111,7 @@ is two clicks per agent; everything either side of them is here.
   bazel run //tools/agent-app -- pr-comment [--agent <agent>] <pr> --body-file <f> | --body <s>
   bazel run //tools/agent-app -- pr-review [--agent <agent>] <pr> (--approve | --comment | --request-changes) [--body-file <f> | --body <s>]
   bazel run //tools/agent-app -- pr-ready [--agent <agent>] <pr> [gh pr ready args]
+  bazel run //tools/agent-app -- pr-update-branch [--agent <agent>] <pr> [--rebase]
   bazel run //tools/agent-app -- pr-close [--agent <agent>] <pr> [--comment <s>] [--delete-branch]
   bazel run //tools/agent-app -- pr-enqueue [--agent <agent>] <pr> [gh pr merge args]
                                   # arm auto-merge into the merge queue; never --admin
@@ -1814,6 +1815,11 @@ impl Tool {
             b"pr-ready" => self.pr_passthrough(
                 b"ready",
                 "pr-ready [--agent <agent>] <pr> [gh pr ready args]",
+                rest,
+            ),
+            b"pr-update-branch" => self.pr_passthrough(
+                b"update-branch",
+                "pr-update-branch [--agent <agent>] <pr> [--rebase]",
                 rest,
             ),
             b"pr-close" => self.pr_passthrough(

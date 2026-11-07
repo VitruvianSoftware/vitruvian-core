@@ -3250,8 +3250,12 @@ pub fn run_os(args: &[OsString]) -> i32 {
         return 1;
     }
 
+    let base_was_explicit = !base.is_empty();
     if base.is_empty() {
-        if git_show_ref_quiet(b"refs/remotes/origin/main") {
+        let remote_branch = bcat!("refs/remotes/origin/", branch);
+        if git_show_ref_quiet(&remote_branch) {
+            base = bcat!("origin/", branch);
+        } else if git_show_ref_quiet(b"refs/remotes/origin/main") {
             base = b"origin/main".to_vec();
         } else {
             base = b"HEAD".to_vec();
@@ -3262,7 +3266,14 @@ pub fn run_os(args: &[OsString]) -> i32 {
         return code;
     }
 
-    let (add_status, add_line) = if git_show_ref_quiet(&bcat!("refs/heads/", branch)) {
+    let local_head = bcat!("refs/heads/", branch);
+    let has_local_head = git_show_ref_quiet(&local_head);
+    let can_reset_local_head = has_local_head
+        && (git_is_ancestor(&local_head, &base)
+            || ((base_was_explicit || git_show_ref_quiet(&bcat!("refs/remotes/origin/", branch)))
+                && git_is_ancestor(&local_head, &ctx.base_ref)));
+
+    let (add_status, add_line) = if has_local_head && !can_reset_local_head {
         (
             Command::new("git")
                 .args(["worktree", "add"])
@@ -3275,9 +3286,10 @@ pub fn run_os(args: &[OsString]) -> i32 {
             697usize,
         )
     } else {
+        let create_flag = if has_local_head { "-B" } else { "-b" };
         (
             Command::new("git")
-                .args(["worktree", "add", "-b"])
+                .args(["worktree", "add", create_flag])
                 .arg(bytes_to_os(branch))
                 .arg(bytes_to_os(&dest))
                 .arg(bytes_to_os(&base))
