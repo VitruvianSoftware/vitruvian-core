@@ -613,3 +613,15 @@ test("step call with delegate shows driver → delegate model arrow and delegate
     await ui.unmount();
   }
 });
+
+test("the panel toggle is /orchestrator-panel, not a near-twin of /orchestrate", async ($, on) => {
+  const opened: string[] = [];
+  on("ui.open", (_, e) => {
+    opened.push(e.id);
+    return { value: { isPlaced: true } };
+  });
+  mock.clock(on, { now: 1000 });
+  on("ui.panes", () => ({ value: [] }));
+  const r = await $.command.run({ command: "orchestrator-panel", args: "" });
+  expect(JSON.stringify(r)).toContain("Orchestrator panel");
+});

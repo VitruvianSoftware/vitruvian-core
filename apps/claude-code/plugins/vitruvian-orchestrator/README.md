@@ -18,7 +18,7 @@ Claude Code plugin for routing multi-domain engineering work across the Vitruvia
 
 - **`mcp__vitruvian-orchestrator__progress`** (registered as `progress`): Called by the lead orchestrator to create or re-plan tasks (`title`, `tasks`), transition `phase` (`plan`, `design`, `delegate`, `review`, `close`), `accept` or `return` a 1-based task number after review, and mark the flow `finished`.
 - **`mcp__vitruvian-orchestrator__step`** (registered as `step`): Called by a worker subagent to report its own step progress (`done`, `total`, `note`), matched automatically to the calling subagent's `agentId`.
-- **`/orchestrator`**: Slash command that toggles the `Orchestrator` live pane open or closed.
+- **`/orchestrator-panel`**: Slash command that toggles the `Orchestrator` live pane open or closed.
 
 ## Attribution
 
