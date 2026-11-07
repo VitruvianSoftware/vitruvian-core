@@ -433,6 +433,41 @@ export function reduce(flow, event) {
           : undefined;
       const taskN = matchedTask ? matchedTask.n : null;
 
+      // A run id the flow already has is the same agent starting again (a
+      // follow-up message, or the host waking a background agent). Keep one
+      // row: reopen it if it had ended, and never append a duplicate.
+      const existingRun = flow.runs.find((r) => r.id === event.id);
+      if (existingRun) {
+        const resumedTaskN = existingRun.taskN ?? taskN;
+        return finalizeFlow(
+          {
+            ...flow,
+            tasks: flow.tasks.map((t) =>
+              existingRun.endedAt !== null &&
+              resumedTaskN !== null &&
+              t.n === resumedTaskN &&
+              t.state !== "accepted"
+                ? {
+                    ...cloneTask(t),
+                    state: /** @type {TaskState} */ ("running"),
+                  }
+                : cloneTask(t),
+            ),
+            runs: flow.runs.map((r) =>
+              r.id === event.id && r.endedAt !== null
+                ? {
+                    ...cloneRun(r),
+                    taskN: resumedTaskN,
+                    endedAt: null,
+                    status: /** @type {RunStatus} */ ("running"),
+                  }
+                : cloneRun(r),
+            ),
+          },
+          event.at,
+        );
+      }
+
       const tasks = flow.tasks.map((t) =>
         taskN !== null && t.n === taskN
           ? { ...cloneTask(t), state: /** @type {TaskState} */ ("running") }
@@ -639,11 +674,23 @@ export function reduce(flow, event) {
       if (!flow) {
         return flow;
       }
+      // Closing ends the flow, so nothing in it is still running: end every
+      // open run (the lead's included) or its row stays blue and its clock
+      // keeps counting for as long as the session stays open.
       return finalizeFlow(
         {
           ...flow,
           phase: "close",
           closedAt: event.at,
+          runs: flow.runs.map((r) =>
+            r.endedAt === null
+              ? {
+                  ...cloneRun(r),
+                  endedAt: event.at,
+                  status: /** @type {RunStatus} */ ("done"),
+                }
+              : cloneRun(r),
+          ),
         },
         event.at,
       );
