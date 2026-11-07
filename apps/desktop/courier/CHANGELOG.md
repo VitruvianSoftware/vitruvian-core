@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.13](https://github.com/VitruvianSoftware/vitruvian-core/compare/courier-v0.3.12...courier-v0.3.13) (2026-11-07)
+
+
+### Features
+
+* **courier:** the test copy opens with made-up chats (run_test_copy --seed) ([#4392](https://github.com/VitruvianSoftware/vitruvian-core/issues/4392)) ([00e10d7](https://github.com/VitruvianSoftware/vitruvian-core/commit/00e10d7eecec5f317cfdd6cbf09781bea5fb3d49))
+
 ## [0.3.12](https://github.com/VitruvianSoftware/vitruvian-core/compare/courier-v0.3.11...courier-v0.3.12) (2026-11-06)
 
 
