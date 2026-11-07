@@ -1909,8 +1909,8 @@ func mergeQueueRule() *github.RepositoryRulesetRulesMergeQueueArgs {
 		CheckResponseTimeoutMinutes:  pulumi.Int(60),
 		MinEntriesToMerge:            pulumi.Int(1),
 		MinEntriesToMergeWaitMinutes: pulumi.Int(5),
-		MaxEntriesToBuild:            pulumi.Int(5),
-		MaxEntriesToMerge:            pulumi.Int(5),
+		MaxEntriesToBuild:            pulumi.Int(10),
+		MaxEntriesToMerge:            pulumi.Int(10),
 	}
 }
 
