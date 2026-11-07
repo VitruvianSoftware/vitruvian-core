@@ -61,7 +61,7 @@
     "@jtarrio/webrtlsdr": "^3.0.7",
     "@mapbox/vector-tile": "^3.0.0",
     "@meri-imperiumi/eccodes-wasm": "^2.48.2",
-    "cesium": "1.146.0",
+    "cesium": "1.147.0",
     "egm96-universal": "^1.1.1",
     "hls.js": "^1.7.4",
     "mapillary-js": "^4.1.2",
@@ -70,11 +70,11 @@
     "pinia": "^4.1.0",
     "satellite.js": "^7.1.0",
     "vue": "^3.5.44",
-    "vue-i18n": "^11.4.15",
+    "vue-i18n": "^11.4.17",
     "ws": "^8.22.1"
   },
   "devDependencies": {
-    "@cesium/engine": "26.4.0",
+    "@cesium/engine": "26.5.0",
     "@happy-dom/global-registrator": "^21.0.4",
     "@vitejs/plugin-vue": "^6.0.0",
     "@vue/test-utils": "^2.5.1",
