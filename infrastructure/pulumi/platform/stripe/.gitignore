@@ -1,0 +1,6 @@
+# Stack configs here are committed on purpose (non-secret values; the Stripe
+# key is either STRIPE_API_KEY or Pulumi ciphertext). The negation for this
+# directory lives in infrastructure/pulumi/.gitignore.
+
+# Compiled Pulumi program binary left behind by a manual `go build .`.
+/stripe

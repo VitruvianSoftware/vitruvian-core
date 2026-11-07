@@ -44,6 +44,7 @@ infrastructure/pulumi/foundation/gcp-projects/business_unit_2/shared/Pulumi.yaml
 infrastructure/pulumi/foundation/org-folders/Pulumi.yaml	foundation-org-folders
 infrastructure/pulumi/platform/dev-local/Pulumi.yaml	monorepo
 infrastructure/pulumi/platform/repo-config/Pulumi.yaml	vitruvian-core-repo-config
+infrastructure/pulumi/platform/stripe/Pulumi.yaml	vitruvian-stripe
 infrastructure/pulumi/platform/zitadel-apps-mcp-slack/Pulumi.yaml	pulumi_zitadel_apps_mcp_slack
 infrastructure/pulumi/platform/zitadel-apps/Pulumi.yaml	zitadel-apps
 apps/web/oauth-user-inspector/infra/app/Pulumi.yaml	pulumi_oauth_user_inspector
