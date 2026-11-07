@@ -200,8 +200,8 @@ func TestMergeQueueRule(t *testing.T) {
 		{"CheckResponseTimeoutMinutes", r.CheckResponseTimeoutMinutes, pulumi.Int(60)},
 		{"MinEntriesToMerge", r.MinEntriesToMerge, pulumi.Int(1)},
 		{"MinEntriesToMergeWaitMinutes", r.MinEntriesToMergeWaitMinutes, pulumi.Int(5)},
-		{"MaxEntriesToBuild", r.MaxEntriesToBuild, pulumi.Int(5)},
-		{"MaxEntriesToMerge", r.MaxEntriesToMerge, pulumi.Int(5)},
+		{"MaxEntriesToBuild", r.MaxEntriesToBuild, pulumi.Int(10)},
+		{"MaxEntriesToMerge", r.MaxEntriesToMerge, pulumi.Int(10)},
 	} {
 		if c.got != c.want {
 			t.Errorf("%s = %v, want %v", c.name, c.got, c.want)
