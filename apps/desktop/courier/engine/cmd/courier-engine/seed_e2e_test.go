@@ -115,19 +115,27 @@ func TestSeedPlaysGroupThreadsOnce(t *testing.T) {
 	c := dial(t, ready.Socket)
 	require.Equal(t, []string{"whatsapp"}, c.hello().Networks, "only the scenario's networks, under their real names")
 
+	// Wait for every chat by name, not just four rows: a direct chat's row can appear before the bridge has named it
+	// (seen in the merge queue, run 42326600819: Cy Example's row still had no name).
+	names := []string{"Launch crew", "Ann Example", "Bo Example", "Cy Example"}
 	var rows map[string]seededRow
 	var group []seededEvent
 	c.until(func() bool {
 		rows = c.inbox()
-		g, ok := rows["Launch crew"]
-		if len(rows) < 4 || !ok {
-			return false
+		for _, name := range names {
+			if _, ok := rows[name]; !ok {
+				return false
+			}
 		}
+		if !rows["Cy Example"].Pinned {
+			return false // the pin is chat state, which can land after the name
+		}
+		g := rows["Launch crew"]
 		group = c.messages(g.RoomID, "")
 		return len(group) >= 9
 	})
 	require.Len(t, rows, 4)
-	for _, name := range []string{"Launch crew", "Ann Example", "Bo Example", "Cy Example"} {
+	for _, name := range names {
 		require.Contains(t, rows, name)
 		require.Equal(t, "whatsapp", rows[name].Network)
 	}
@@ -159,10 +167,21 @@ func TestSeedPlaysGroupThreadsOnce(t *testing.T) {
 	replies := c.messages(rows["Launch crew"].RoomID, root.EventID)
 	require.Len(t, replies, 4, "the thread's three replies and its root")
 
-	played, err := seed.Played(data)
-	require.NoError(t, err)
-	require.True(t, played)
-	require.Equal(t, "Sam Seed", c.startedAccounts()["whatsapp"].RemoteName)
+	// Playback queues the scenario, then marks the folder; the chats above can be in before the mark is. Wait for the
+	// mark and for every chat's messages, so the restart below finds the whole scenario stored.
+	count := func() int {
+		n := 0
+		for _, r := range c.inbox() {
+			n += len(c.messages(r.RoomID, ""))
+		}
+		return n
+	}
+	const allMessages = 9 + 3 + 2 + 3 // every chat's messages outside threads
+	// Polled, not c.until: writing the mark sends no notification, and the account's name can land after its chats.
+	require.Eventually(t, func() bool {
+		played, err := seed.Played(data)
+		return err == nil && played && count() == allMessages && c.startedAccounts()["whatsapp"].RemoteName == "Sam Seed"
+	}, 30*time.Second, 100*time.Millisecond, "the folder marked played, every message stored, the account named")
 
 	require.NoError(t, p.cmd.Process.Signal(syscall.SIGTERM))
 	require.Equal(t, 0, p.exited(t, 60*time.Second), "stderr:\n%s", p.stderr.String())
@@ -174,15 +193,8 @@ func TestSeedPlaysGroupThreadsOnce(t *testing.T) {
 	acct := c.startedAccounts()["whatsapp"]
 	require.Equal(t, "CONNECTED", acct.State, "the account the first start made loads again")
 	require.Equal(t, "Sam Seed", acct.RemoteName)
-	count := func() int {
-		n := 0
-		for _, r := range c.inbox() {
-			n += len(c.messages(r.RoomID, ""))
-		}
-		return n
-	}
-	first := count()
-	require.Equal(t, 9+3+2+3, first, "every chat's messages outside threads, once")
+	first := count() // count reads through c, which is the new connection now
+	require.Equal(t, allMessages, first, "every chat's messages outside threads, once")
 	// Give a stray playback time to show: nothing more may arrive.
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
