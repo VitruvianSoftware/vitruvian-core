@@ -20,17 +20,39 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 -->
 
-# stripe-donations
+# stripe
 
-Donation buttons for Vitruvian Software's free apps, with the Stripe side kept
-as code: one **Product**, one **pay-what-you-want Price**, and one **Payment
-Link per app**. Pulumi-in-Go like every other stack here; underneath, it uses
-**Stripe's own Terraform provider** through Pulumi's `terraform-provider`
-package.
+Vitruvian Software's Stripe account as code: products, prices and Payment
+Links, through **Stripe's own Terraform provider** bridged into Pulumi-in-Go
+with Pulumi's `terraform-provider` package. The first product line is
+**donations** for the free apps: one **Product**, one **pay-what-you-want
+Price**, and one **Payment Link per app**. Paid products come later as a
+second product line in the same stack.
 
 > **Status: scaffold.** Nothing is deployed and nothing here has called Stripe.
 > `main.go` is build-tagged out until the Stripe Go SDK is generated (below).
 > The sandbox stack targets Stripe **test mode** and refuses a live key.
+
+## Layout
+
+```mermaid
+flowchart TB
+  M["main.go<br/>one provider, one function per product line"] --> A["internal/account<br/>mode, currency, key-mode guard"]
+  M --> D["internal/donations<br/>donation product, price, links"]
+  M -.-> F["internal/&lt;paid line&gt;<br/>(later)"]
+  M --> K["internal/stripekey<br/>STRIPE_API_KEY or Pulumi secret"]
+  K --> A
+  C["Pulumi.sandbox.yaml<br/>vitruvian-stripe:mode / currency<br/>vitruvian-stripe:donations {…}"] --> M
+```
+
+Config is split the same way: account-wide keys at the top level, and one
+object per product line (`vitruvian-stripe:donations` today). A paid line adds
+a sibling object and a package beside `internal/donations`, without touching
+the donation resources.
+
+The Pulumi project is named `vitruvian-stripe`, not `stripe`, because `stripe:`
+is the provider package's own config namespace (`stripe:apiKey`). Pulumi keys
+stack state on that name, so it stays fixed once a stack exists.
 
 ## What it builds
 
@@ -53,7 +75,7 @@ flowchart LR
   Prog --> Out["output: donationLinks<br/>app key → Stripe URL"]
 ```
 
-One shared price keeps the suggested amount in one place. One link per app
+For donations, one shared price keeps the suggested amount in one place. One link per app
 keeps attribution: each link carries `metadata.app`, so Stripe's dashboard and
 exports show which app a donation came from, at no extra cost.
 
@@ -71,16 +93,17 @@ accepts `donate`, and `custom_unit_amount` changes are `RequiresReplace`.
 The Pulumi registry lists the `stripe` package at 0.3.0 (2026-08-14).
 
 **This is a new mechanism for the repo** (a parameterized package plus a
-locally generated SDK, rather than a published `pulumi-<x>` Go module), so per
+locally generated SDK, rather than a published `pulumi-<x>` Go module), which
 the [principles](../../../../docs/engineering/application-development-principles.md)
-it needs a maintainer yes before it lands.
+put to the maintainer. James approved it, committed SDK included, on
+2026-11-07.
 
 ## Generating the Stripe SDK
 
 Needs the Pulumi CLI (>= 3.147) and network access to the Terraform registry.
 
 ```sh
-cd infrastructure/pulumi/platform/stripe-donations
+cd infrastructure/pulumi/platform/stripe
 GOWORK=off pulumi package add terraform-provider registry.terraform.io/stripe/stripe 0.3.0
 GOWORK=off go mod tidy
 ```
@@ -99,19 +122,19 @@ sequenceDiagram
   participant Dev as Laptop or CI
   participant Prog as Pulumi program
   participant Stripe
-  Dev->>Prog: STRIPE_API_KEY (pipeline secret) or stripe-donations:apiKey (ciphertext)
+  Dev->>Prog: STRIPE_API_KEY (pipeline secret) or vitruvian-stripe:apiKey (ciphertext)
   Prog->>Prog: mode=test needs sk_test_ or rk_test_
   alt key is for the other mode, or a pk_ key
     Prog--xDev: run fails, key never echoed
   else matches
-    Prog->>Stripe: create/update product, price, links
+    Prog->>Stripe: create/update products, prices, links
   end
 ```
 
 - Use a **restricted key** (`rk_test_…`) limited to writing Products, Prices
   and Payment Links, from a Stripe sandbox.
 - Locally: `export STRIPE_API_KEY=…` for the session, or
-  `bazel run //infrastructure/pulumi/platform/stripe-donations:config -- set --secret apiKey --stack sandbox`
+  `bazel run //infrastructure/pulumi/platform/stripe:config -- set --secret apiKey --stack sandbox`
   (stores ciphertext only). A test fails if a plaintext key lands in the stack file.
 - Live mode is a separate stack (`Pulumi.live.yaml`, `mode: live`), which also
   turns on `protect` for the product and links.

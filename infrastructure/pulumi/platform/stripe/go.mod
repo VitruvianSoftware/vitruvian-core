@@ -1,4 +1,4 @@
-module github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/platform/stripe-donations
+module github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/platform/stripe
 
 go 1.26.10
 

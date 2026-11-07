@@ -26,12 +26,12 @@ import (
 	"testing"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/platform/stripe/internal/account"
 )
 
 func valid() Settings {
 	return Settings{
-		Mode:            ModeTest,
-		Currency:        "usd",
 		ProductName:     "Support Vitruvian Software",
 		Amounts:         Amounts{Minimum: 100, Preset: 500, Maximum: 100000},
 		ThankYouMessage: "Thank you!",
@@ -50,8 +50,6 @@ func TestValidateRejectsBadConfig(t *testing.T) {
 		mutate func(*Settings)
 		want   string
 	}{
-		"unknown mode":         {func(s *Settings) { s.Mode = "prod" }, "mode must be"},
-		"uppercase currency":   {func(s *Settings) { s.Currency = "USD" }, "currency"},
 		"missing product name": {func(s *Settings) { s.ProductName = " " }, "productName"},
 		"preset below minimum": {func(s *Settings) { s.Amounts.Preset = 50 }, "minimum <= preset <= maximum"},
 		"preset above maximum": {func(s *Settings) { s.Amounts.Preset = 200000 }, "minimum <= preset <= maximum"},
@@ -76,50 +74,15 @@ func TestValidateRejectsBadConfig(t *testing.T) {
 	}
 }
 
-func TestCheckKeyMode(t *testing.T) {
-	ok := []struct {
-		key  string
-		mode Mode
-	}{
-		{"sk_test_abc", ModeTest},
-		{"rk_test_abc", ModeTest},
-		{"sk_live_abc", ModeLive},
-		{"rk_live_abc", ModeLive},
-	}
-	for _, c := range ok {
-		if err := CheckKeyMode(c.key, c.mode); err != nil {
-			t.Errorf("CheckKeyMode(%q-prefixed, %s) = %v, want nil", c.key[:8], c.mode, err)
-		}
-	}
-
-	bad := []struct {
-		key  string
-		mode Mode
-	}{
-		{"sk_live_abc", ModeTest}, // live key on the sandbox stack: the case this guard exists for
-		{"rk_live_abc", ModeTest},
-		{"sk_test_abc", ModeLive},
-		{"pk_test_abc", ModeTest},
-		{"", ModeTest},
-	}
-	for _, c := range bad {
-		err := CheckKeyMode(c.key, c.mode)
-		if err == nil {
-			t.Errorf("CheckKeyMode(%q, %s) = nil, want an error", c.key, c.mode)
-			continue
-		}
-		if c.key != "" && strings.Contains(err.Error(), c.key) {
-			t.Errorf("error message leaks the key: %v", err)
-		}
-	}
-}
-
 func TestLinkMetadataNamesTheApp(t *testing.T) {
 	md := LinkMetadata(App{Key: "home-speaker", Name: "HomeSpeaker"}, "sandbox")
-	if md["app"] != "home-speaker" || md["stack"] != "sandbox" || md["managed-by"] != "pulumi" {
+	if md["app"] != "home-speaker" || md["product-line"] != "donations" || md["stack"] != "sandbox" || md["managed-by"] != "pulumi" {
 		t.Fatalf("unexpected metadata: %v", md)
 	}
 }
+
+// ns is the stack's config namespace: the `name:` in Pulumi.yaml.
+const ns = "vitruvian-stripe:"
 
 // The committed sandbox stack config must pass the same validation the apply
 // runs, and must stay in test mode: a live-mode flip belongs in its own stack.
@@ -135,43 +98,44 @@ func TestCommittedSandboxConfig(t *testing.T) {
 		t.Fatalf("parse stack config: %v", err)
 	}
 	if _, ok := doc.Config["stripe:apiKey"]; ok {
-		t.Fatal("Pulumi.sandbox.yaml sets stripe:apiKey; the program passes the key to the provider itself (internal/stripekey), so set STRIPE_API_KEY or the secret stripe-donations:apiKey instead")
+		t.Fatal("Pulumi.sandbox.yaml sets stripe:apiKey; the program passes the key to the provider itself (internal/stripekey), so set STRIPE_API_KEY or the secret " + ns + "apiKey instead")
 	}
 	// The key may only appear as Pulumi ciphertext (`pulumi config set
 	// --secret`), never as a plain string.
-	if n, ok := doc.Config["stripe-donations:apiKey"]; ok {
+	if n, ok := doc.Config[ns+"apiKey"]; ok {
 		var secure struct {
 			Secure string `yaml:"secure"`
 		}
 		if n.Kind != yaml.MappingNode || n.Decode(&secure) != nil || secure.Secure == "" {
-			t.Fatal("stripe-donations:apiKey is in Pulumi.sandbox.yaml as plaintext; set it with `config -- set --secret apiKey` so only ciphertext is committed, or use STRIPE_API_KEY")
+			t.Fatal(ns + "apiKey is in Pulumi.sandbox.yaml as plaintext; set it with `config -- set --secret apiKey` so only ciphertext is committed, or use STRIPE_API_KEY")
 		}
+	}
+
+	decode := func(key string, into any) {
+		t.Helper()
+		n, ok := doc.Config[ns+key]
+		if !ok {
+			t.Fatalf("Pulumi.sandbox.yaml is missing %s%s", ns, key)
+		}
+		if err := n.Decode(into); err != nil {
+			t.Fatalf("decode %s%s: %v", ns, key, err)
+		}
+	}
+	var acct account.Settings
+	var mode string
+	decode("mode", &mode)
+	acct.Mode = account.Mode(mode)
+	decode("currency", &acct.Currency)
+	if err := acct.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if acct.Mode != account.ModeTest {
+		t.Fatalf("the sandbox stack must stay in test mode, got %q", acct.Mode)
 	}
 
 	var s Settings
-	decode := func(key string, into any) {
-		t.Helper()
-		n, ok := doc.Config["stripe-donations:"+key]
-		if !ok {
-			t.Fatalf("Pulumi.sandbox.yaml is missing stripe-donations:%s", key)
-		}
-		if err := n.Decode(into); err != nil {
-			t.Fatalf("decode stripe-donations:%s: %v", key, err)
-		}
-	}
-	var mode string
-	decode("mode", &mode)
-	s.Mode = Mode(mode)
-	decode("currency", &s.Currency)
-	decode("productName", &s.ProductName)
-	decode("amounts", &s.Amounts)
-	decode("thankYouMessage", &s.ThankYouMessage)
-	decode("apps", &s.Apps)
-
+	decode("donations", &s)
 	if err := s.Validate(); err != nil {
 		t.Fatal(err)
-	}
-	if s.Mode != ModeTest {
-		t.Fatalf("the sandbox stack must stay in test mode, got %q", s.Mode)
 	}
 }

@@ -26,29 +26,33 @@
 # The Stripe key is never here in plaintext. CI injects it as STRIPE_API_KEY
 # from a pipeline secret. Locally, either export STRIPE_API_KEY for the session
 # or store it as a Pulumi secret, which writes only ciphertext here:
-#   bazel run //infrastructure/pulumi/platform/stripe-donations:config -- \
+#   bazel run //infrastructure/pulumi/platform/stripe:config -- \
 #     set --secret apiKey --stack sandbox
 # A test fails the build if a plaintext key ever lands in this file.
 config:
-  stripe-donations:mode: test
-  stripe-donations:currency: usd
-  stripe-donations:productName: Support Vitruvian Software
-  # Cents. Donors type any amount in [minimum, maximum], starting at preset.
-  # Changing ANY of these replaces the Price (Stripe prices are immutable;
-  # the provider marks custom_unit_amount RequiresReplace). The Payment Links
-  # selling it then have to point at the new Price, which can mean new links
-  # with new URLs. That is why apps link to a stable redirect, not to Stripe.
-  stripe-donations:amounts:
-    minimum: 100
-    preset: 500
-    maximum: 100000
-  stripe-donations:thankYouMessage: >-
-    Thank you for supporting Vitruvian Software. Everything we make stays free
-    because people like you chip in.
-  # One Payment Link per app. `key` names the resource and is written to the
-  # link's metadata, so donations are attributed per app in Stripe.
-  # Vitruvian (desktop) first: it already ships a Support page whose donate
-  # button is wired to AppInfo.coffeeURL and hidden until a link exists.
-  stripe-donations:apps:
-    - key: vitruvian
-      name: Vitruvian
+  # Account-wide: true of everything this stack sells.
+  vitruvian-stripe:mode: test
+  vitruvian-stripe:currency: usd
+  # Product line 1: donations for the free apps. Paid products, when they
+  # come, get a sibling object here (and a package beside internal/donations).
+  vitruvian-stripe:donations:
+    productName: Support Vitruvian Software
+    # Cents. Donors type any amount in [minimum, maximum], starting at preset.
+    # Changing ANY of these replaces the Price (Stripe prices are immutable;
+    # the provider marks custom_unit_amount RequiresReplace). The Payment Links
+    # selling it then have to point at the new Price, which can mean new links
+    # with new URLs. That is why apps link to a stable redirect, not to Stripe.
+    amounts:
+      minimum: 100
+      preset: 500
+      maximum: 100000
+    thankYouMessage: >-
+      Thank you for supporting Vitruvian Software. Everything we make stays free
+      because people like you chip in.
+    # One Payment Link per app. `key` names the resource and is written to the
+    # link's metadata, so donations are attributed per app in Stripe.
+    # Vitruvian (desktop) first: it already ships a Support page whose donate
+    # button is wired to AppInfo.coffeeURL and hidden until a link exists.
+    apps:
+      - key: vitruvian
+        name: Vitruvian

@@ -21,7 +21,7 @@
 // Package stripekey resolves the Stripe API key for the provider, following
 // the repo's secret pattern (principles §2.4, repo-config/internal/secrets):
 // the STRIPE_API_KEY environment variable first (a pipeline secret in CI),
-// then the encrypted stack secret `stripe-donations:apiKey` for local work.
+// then the encrypted stack secret `vitruvian-stripe:apiKey` for local work.
 //
 // On top of that pattern it refuses a key for the wrong Stripe mode, so a live
 // key can never drive the sandbox stack. The check runs inside an Apply, so the
@@ -34,7 +34,7 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 
-	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/platform/stripe-donations/internal/donations"
+	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/platform/stripe/internal/account"
 )
 
 // EnvName is the variable CI sets from its pipeline secret. It is also the
@@ -47,7 +47,7 @@ const ConfigKey = "apiKey"
 
 // Resolve returns the key as a secret Output that fails the deployment when
 // the key does not match mode.
-func Resolve(cfg *config.Config, mode donations.Mode) pulumi.StringOutput {
+func Resolve(cfg *config.Config, mode account.Mode) pulumi.StringOutput {
 	var raw pulumi.StringOutput
 	if v := os.Getenv(EnvName); v != "" {
 		raw = pulumi.ToSecret(pulumi.String(v)).(pulumi.StringOutput)
@@ -55,7 +55,7 @@ func Resolve(cfg *config.Config, mode donations.Mode) pulumi.StringOutput {
 		raw = cfg.RequireSecret(ConfigKey)
 	}
 	checked := raw.ApplyT(func(k string) (string, error) {
-		if err := donations.CheckKeyMode(k, mode); err != nil {
+		if err := account.CheckKeyMode(k, mode); err != nil {
 			return "", err
 		}
 		return k, nil

@@ -260,14 +260,14 @@ spec:
 apiVersion: backstage.io/v1alpha1
 kind: Resource
 metadata:
-  name: pulumi-stripe-donations
-  title: Stripe Donations (Product, Price & Payment Links)
-  description: As-code Stripe donation product, pay-what-you-want price and one Payment Link per free app, through Stripe's own provider bridged into Pulumi Go
+  name: pulumi-stripe
+  title: Stripe (Products, Prices & Payment Links)
+  description: As-code Stripe products, prices and Payment Links (donations for the free apps first, paid products later), through Stripe's own provider bridged into Pulumi Go
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
     backstage.io/techdocs-ref: dir:..
   links:
-    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/infrastructure/pulumi/platform/stripe-donations
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/infrastructure/pulumi/platform/stripe
       title: Source Code
       icon: github
 spec:

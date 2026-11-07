@@ -28,7 +28,7 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 
-	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/platform/stripe-donations/internal/donations"
+	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/platform/stripe/internal/account"
 )
 
 type mocks int
@@ -43,10 +43,10 @@ func (mocks) Call(args pulumi.MockCallArgs) (resource.PropertyMap, error) {
 
 // resolve runs Resolve inside a mocked Pulumi program and reports the
 // resolved value, whether it stayed secret, and the error the run returned.
-func resolve(t *testing.T, mode donations.Mode, wait bool) (value string, secret bool, runErr error) {
+func resolve(t *testing.T, mode account.Mode, wait bool) (value string, secret bool, runErr error) {
 	t.Helper()
 	runErr = pulumi.RunErr(func(ctx *pulumi.Context) error {
-		out := Resolve(config.New(ctx, "stripe-donations"), mode)
+		out := Resolve(config.New(ctx, "vitruvian-stripe"), mode)
 		// The check is wired to an export, as main.go wires it to the
 		// provider: a failed Apply has to fail the run, not vanish.
 		ctx.Export("key", out)
@@ -58,13 +58,13 @@ func resolve(t *testing.T, mode donations.Mode, wait bool) (value string, secret
 			value = <-got
 		}
 		return nil
-	}, pulumi.WithMocks("stripe-donations", "sandbox", mocks(0)))
+	}, pulumi.WithMocks("vitruvian-stripe", "sandbox", mocks(0)))
 	return value, secret, runErr
 }
 
 func TestResolvePrefersEnvAndStaysSecret(t *testing.T) {
 	t.Setenv(EnvName, "sk_test_fromenv")
-	got, secret, err := resolve(t, donations.ModeTest, true)
+	got, secret, err := resolve(t, account.ModeTest, true)
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestResolvePrefersEnvAndStaysSecret(t *testing.T) {
 func TestResolveRefusesLiveKeyInTestMode(t *testing.T) {
 	// Split so secret scanners do not read the fake as a real key.
 	t.Setenv(EnvName, "sk_live_"+"neverused")
-	_, _, err := resolve(t, donations.ModeTest, false)
+	_, _, err := resolve(t, account.ModeTest, false)
 	if err == nil {
 		t.Fatal("a live key on a test-mode stack must fail the run")
 	}

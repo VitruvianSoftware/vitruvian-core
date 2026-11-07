@@ -3,4 +3,4 @@
 # directory lives in infrastructure/pulumi/.gitignore.
 
 # Compiled Pulumi program binary left behind by a manual `go build .`.
-/stripe-donations
+/stripe
