@@ -28,7 +28,7 @@ require (
 
 require (
 	github.com/PuerkitoBio/goquery v1.13.0 // indirect
-	github.com/andybalholm/brotli v1.2.2 // indirect
+	github.com/andybalholm/brotli v1.2.7 // indirect
 	github.com/andybalholm/cascadia v1.3.4 // indirect
 	github.com/apache/thrift v0.24.0 // indirect
 	github.com/beeper/poly1305 v0.0.0-20250815183548-d4eede7bbf3c // indirect
@@ -124,7 +124,7 @@ require (
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/gotd/ige v0.2.2 // indirect
 	github.com/gotd/neo v0.1.5 // indirect
-	github.com/klauspost/compress v1.19.2 // indirect
+	github.com/klauspost/compress v1.20.2 // indirect
 	github.com/lib/pq v1.12.3 // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.21 // indirect
