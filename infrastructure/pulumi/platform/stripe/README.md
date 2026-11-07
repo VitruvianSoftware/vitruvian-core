@@ -29,10 +29,13 @@ with Pulumi's `terraform-provider` package. The first product line is
 Price**, and one **Payment Link per app**. Paid products come later as a
 second product line in the same stack.
 
-> **Status: not yet applied.** The program builds against the generated Stripe
-> Go SDK (`sdks/stripe`), but nothing is deployed and nothing here has called
-> Stripe. Applying it waits on a `delivery()` declaration (below).
-> The sandbox stack targets Stripe **test mode** and refuses a live key.
+> **Status: wired, waiting on the keys.** The `stripe` delivery unit applies two
+> stacks from CI on every push to `main` that touches them: the **sandbox**
+> (Stripe test mode) first, then **production** (live mode), which also waits
+> for a required reviewer. Each refuses the other mode's key. Until an
+> Environment holds its `STRIPE_API_KEY`, that rung says so and applies nothing,
+> and production never starts unless the sandbox really applied. See
+> [Applying it](#applying-it).
 
 ## Layout
 
@@ -43,7 +46,7 @@ flowchart TB
   M -.-> F["internal/&lt;paid line&gt;<br/>(later)"]
   M --> K["internal/stripekey<br/>STRIPE_API_KEY or Pulumi secret"]
   K --> A
-  C["Pulumi.sandbox.yaml<br/>vitruvian-stripe:mode / currency<br/>vitruvian-stripe:donations {…}"] --> M
+  C["Pulumi.sandbox.yaml (test) and<br/>Pulumi.production.yaml (live)<br/>vitruvian-stripe:mode / currency<br/>vitruvian-stripe:donations {…}"] --> M
 ```
 
 Config is split the same way: account-wide keys at the top level, and one
@@ -147,8 +150,10 @@ sequenceDiagram
 - Locally: `export STRIPE_API_KEY=…` for the session, or
   `bazel run //infrastructure/pulumi/platform/stripe:config -- set --secret apiKey --stack sandbox`
   (stores ciphertext only). A test fails if a plaintext key lands in the stack file.
-- Live mode is a separate stack (`Pulumi.live.yaml`, `mode: live`), which also
-  turns on `protect` for the product and links.
+- Live mode is the `production` stack ([`Pulumi.production.yaml`](Pulumi.production.yaml),
+  `mode: live`), which needs `sk_live_`/`rk_live_` and also turns on `protect`
+  for the product and links. Its donations settings must equal the sandbox's
+  (a test fails otherwise), so the sandbox run rehearses exactly what goes live.
 
 ## How apps show the button
 
@@ -171,9 +176,59 @@ flowchart LR
 | devx, homelab (CLIs) | A line in `--version` / README, plus a `.github/FUNDING.yml` `custom:` entry for the mirrors. |
 | vitruviansoftware.dev | The redirect pages themselves (a `_data` file of app → link), plus a Support link on Downloads. |
 
+## Applying it
+
+No `:up` from a laptop. The `stripe` `delivery()` unit in [`BUILD`](BUILD)
+renders the `stripe-sandbox` and `stripe-production` jobs of
+[`delivery-stripe.yaml`](../../../../.github/workflows/delivery-stripe.yaml)
+(generated; their steps live in `//tools/delivery/gen`, `render_stripe_steps`).
+
+```mermaid
+flowchart TB
+  P["push to main touching<br/>platform/stripe/"] --> O["orchestrate:<br/>is the stripe unit affected?"]
+  O -->|yes| SJ["stripe-sandbox job<br/>Environment stripe-sandbox (main only)"]
+  SJ --> SC{"mode = test and key is<br/>sk_test_ or rk_test_?"}
+  SC -- "wrong mode or key" --> F["fail"]
+  SC -- "no key" --> N["notice: nothing applied<br/>production stays shut"]
+  SC -- yes --> SU["pulumi up --stack sandbox"]
+  SU -->|"applied = true"| A["stripe-production job waits for<br/>the required reviewer's approval"]
+  A --> PC{"mode = live and key is<br/>sk_live_ or rk_live_?"}
+  PC -- "wrong mode or key" --> F
+  PC -- "no key" --> N2["notice: nothing applied"]
+  PC -- yes --> PU["pulumi up --stack production<br/>(protect on, real money)"]
+```
+
+A dispatch of `delivery-stripe.yaml` names one environment and runs only that
+rung (production still waits for the reviewer).
+
+| Stack | GitHub Environment | Secret | Accepts | Gate |
+|---|---|---|---|---|
+| `sandbox` | `stripe-sandbox` | `STRIPE_API_KEY` | `sk_test_…`, `rk_test_…` | merge to `main` |
+| `production` | `stripe-production` | `STRIPE_API_KEY` | `sk_live_…`, `rk_live_…` | sandbox applied in the same run, then a required reviewer |
+
+Both Environments are declared in
+[`repo-config`](../repo-config/stripe_environments.go), and only `main` may
+deploy to them, so no pull request can read a key. The secrets are set with
+[`//tools/sync-env-secrets`](../../../../tools/sync-env-secrets/README.md#stripe-sandbox-and-stripe-production),
+never by hand and never in git. Stripe creates API keys only in its Dashboard,
+so each key starts there; use a restricted key limited to writing Products,
+Prices and Payment Links.
+
+```sh
+bazel run //tools/sync-env-secrets:unlock
+bazel run //tools/sync-env-secrets:set -- stripe-sandbox STRIPE_API_KEY
+bazel run //tools/sync-env-secrets:set -- stripe-production STRIPE_API_KEY
+bazel run //tools/sync-env-secrets:apply -- stripe-sandbox
+bazel run //tools/sync-env-secrets:apply -- stripe-production
+```
+
+`set` prompts for the key without echoing it and backs the store up to
+Bitwarden; `apply` puts it in the Environment.
+
+Then push a change under this directory, or dispatch `delivery-stripe.yaml`
+(unit `stripe`, environment `sandbox`). Each run's summary lists the product,
+the price and one Payment Link URL per app.
+
 ## Not in this change
 
-- **Applying it.** No `:up` from a laptop; a `delivery()` declaration and a
-  `STRIPE_API_KEY` GitHub Environment secret (declared in `repo-config`) come
-  with the first real apply.
 - The redirect pages on the website and the app changes above.

@@ -18,23 +18,57 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+load("//tools/delivery:defs.bzl", "delivery")
 load("//tools/pulumi:defs.bzl", "pulumi_go_test", "pulumi_project")
 
 # `bazel run //infrastructure/pulumi/platform/stripe:{setup,preview,config}`.
-# No :up from a laptop (AGENTS.md): applies come from a pipeline once a
-# delivery() declaration exists for this stack (a follow-up, see README.md).
+# No :up from a laptop (AGENTS.md): the delivery() unit below applies it.
 pulumi_project(
     name = "stripe",
     dir = "infrastructure/pulumi/platform/stripe",
 )
 
-# Validates the committed sandbox config and the key-mode guard. The test reads
-# Pulumi.sandbox.yaml, so it is passed in as data.
+# Validates both committed stack configs and the key-mode guard. The tests read
+# Pulumi.sandbox.yaml and Pulumi.production.yaml, so they are passed in as data.
 pulumi_go_test(
+    # The default (moderate, 300 s) is too tight: a cold `go test` build of the
+    # Pulumi SDKs alone takes ~100 s, and in a full //... sweep it timed out
+    # at 300 s (#4402). Same fix as gcp-bootstrap. "long" allows 900 s.
+    timeout = "long",
     extra_data = [
+        "Pulumi.production.yaml",
         "Pulumi.sandbox.yaml",
         # The replace in go.mod points here; glob("go.mod") only matches the
         # top-level one.
         "sdks/stripe/go.mod",
     ],
+)
+
+# Applies the stacks from .github/workflows/delivery-stripe.yaml, in order, on
+# every push to main that touches them (and on dispatch):
+#   1. sandbox (test mode). Refuses a key that is not sk_test_/rk_test_ and a
+#      stack config whose mode is not "test".
+#   2. production (live mode, real money). Starts only after the sandbox
+#      ACTUALLY applied in the same run, waits for the stripe-production
+#      Environment's required reviewer, and refuses a key that is not
+#      sk_live_/rk_live_ and a config whose mode is not "live".
+# The program refuses a mismatched key again. Each key is its Environment's
+# STRIPE_API_KEY secret (main only, declared in repo-config). With no key there
+# yet, a rung says so and applies nothing, and production stays shut. The
+# job's steps live in //tools/delivery/gen (render_stripe_steps): this stack
+# never had a hand-written workflow.
+delivery(
+    name = "stripe",
+    app = "stripe",
+    environments = [
+        "sandbox",
+        "production",
+    ],
+    extra_paths = [
+        "infrastructure/pulumi/platform/stripe/",
+    ],
+    github_environment = "stripe-{env}",
+    kind = "pulumi",
+    render = "transcribed",
+    run = "//infrastructure/pulumi/platform/stripe:up",
 )
