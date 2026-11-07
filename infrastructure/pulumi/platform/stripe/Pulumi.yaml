@@ -33,7 +33,7 @@ description: Stripe products, prices and Payment Links as code. Donations today,
 # Both versions are pinned so a preview on another machine resolves the same
 # schema: the top-level `version` is the pulumi-terraform-provider plugin, the
 # second parameter is Stripe's provider. Regenerate the Go SDK (sdks/stripe)
-# whenever either changes; see README.md "Generating the Stripe SDK".
+# whenever either changes; see README.md "Regenerating the Stripe SDK".
 packages:
   stripe:
     source: terraform-provider

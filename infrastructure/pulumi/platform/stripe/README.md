@@ -29,8 +29,9 @@ with Pulumi's `terraform-provider` package. The first product line is
 Price**, and one **Payment Link per app**. Paid products come later as a
 second product line in the same stack.
 
-> **Status: scaffold.** Nothing is deployed and nothing here has called Stripe.
-> `main.go` is build-tagged out until the Stripe Go SDK is generated (below).
+> **Status: not yet applied.** The program builds against the generated Stripe
+> Go SDK (`sdks/stripe`), but nothing is deployed and nothing here has called
+> Stripe. Applying it waits on a `delivery()` declaration (below).
 > The sandbox stack targets Stripe **test mode** and refuses a live key.
 
 ## Layout
@@ -98,9 +99,13 @@ the [principles](../../../../docs/engineering/application-development-principles
 put to the maintainer. James approved it, committed SDK included, on
 2026-11-07.
 
-## Generating the Stripe SDK
+## Regenerating the Stripe SDK
 
-Needs the Pulumi CLI (>= 3.147) and network access to the Terraform registry.
+`sdks/stripe` is generated and committed (2026-11-07: terraform-provider
+1.5.0 bridging `stripe/stripe` 0.3.0), so CI and clean checkouts build without
+the Pulumi CLI. Regenerate it whenever either version in `Pulumi.yaml`
+changes. Needs the Pulumi CLI (>= 3.147) and network access to the Terraform
+registry.
 
 ```sh
 cd infrastructure/pulumi/platform/stripe
@@ -108,12 +113,18 @@ GOWORK=off pulumi package add terraform-provider registry.terraform.io/stripe/st
 GOWORK=off go mod tidy
 ```
 
-That writes the SDK to `sdks/stripe`, adds a `replace` for
-`github.com/pulumi/pulumi-terraform-provider/sdks/go/stripe` to `go.mod`, and
-re-pins `packages:` in `Pulumi.yaml`. Then, in the same commit: delete the
-`//go:build ignore` line from `main.go`, fix anything the real SDK types
-disagree with, and commit `sdks/stripe` so CI and clean checkouts build. Keep
-the package versions in `Pulumi.yaml` and the SDK in step.
+That rewrites `sdks/stripe`, keeps the `replace` for
+`github.com/pulumi/pulumi-terraform-provider/sdks/go/stripe` in `go.mod`, and
+re-pins `packages:` in `Pulumi.yaml`. Then, in the same commit:
+
+- set the `go` directive in `sdks/stripe/go.mod` back to the one in `go.work`
+  (the generator writes an older one, and `//tools/conformance:check` holds
+  every `go.mod` to the repo's Go version);
+- fix anything the new SDK types disagree with in `main.go`;
+- keep the versions in `Pulumi.yaml` and the SDK in step.
+
+The SDK is exempt from the MIT header check (`//tools/license`), as generated
+code.
 
 ## Keys and modes
 

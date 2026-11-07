@@ -31,5 +31,10 @@ pulumi_project(
 # Validates the committed sandbox config and the key-mode guard. The test reads
 # Pulumi.sandbox.yaml, so it is passed in as data.
 pulumi_go_test(
-    extra_data = ["Pulumi.sandbox.yaml"],
+    extra_data = [
+        "Pulumi.sandbox.yaml",
+        # The replace in go.mod points here; glob("go.mod") only matches the
+        # top-level one.
+        "sdks/stripe/go.mod",
+    ],
 )

@@ -18,13 +18,10 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-// SCAFFOLD: this file is excluded from builds (the go:build line at the top) until the Stripe
-// Go SDK is generated into sdks/stripe and committed. It is written against the
-// types the Pulumi registry documents for the `stripe` package (Stripe's
-// provider 0.3.0): stripe.NewProduct, stripe.NewPrice with CustomUnitAmounts,
-// stripe.NewPaymentLink. Generating the SDK is the first step of the follow-up
-// (README.md, "Generating the Stripe SDK"); delete the build line in the same
-// commit so CI compiles it from then on.
+// Built against the Stripe Go SDK generated into sdks/stripe (Stripe's
+// provider 0.3.0 through Pulumi's terraform-provider 1.5.0; see README.md,
+// "Regenerating the Stripe SDK"): stripe.NewProduct, stripe.NewPrice with
+// CustomUnitAmounts, stripe.NewPaymentLink.
 //
 // One Stripe account per stack. Each product line is its own function over a
 // shared provider; donations is the first:
