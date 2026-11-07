@@ -11,13 +11,18 @@ description: >-
 {%- comment -%}
   The address the app's Settings > Support > Donate button opens
   (AppInfo.donateURL). It forwards to the Payment Link in
-  _data/donations.yml, and only to an address that starts with https://buy.stripe.com/.
+  _data/donations.yml, and only to a live-mode Stripe Payment Link: an address
+  on https://buy.stripe.com/ or https://donate.stripe.com/ (Stripe serves links
+  whose submit type is "donate" from the second), never a test_ link.
 {%- endcomment -%}
 {%- assign app = site.data.donations.vitruvian -%}
 {%- assign link = app.url | strip -%}
 {%- assign live = false -%}
-{%- assign prefix = link | slice: 0, 23 -%}
-{%- if prefix == "https://buy.stripe.com/" and link.size > 23 -%}{%- assign live = true -%}{%- endif -%}
+{%- assign buy = link | slice: 0, 23 -%}
+{%- assign donate = link | slice: 0, 26 -%}
+{%- if buy == "https://buy.stripe.com/" and link.size > 23 -%}{%- assign live = true -%}{%- endif -%}
+{%- if donate == "https://donate.stripe.com/" and link.size > 26 -%}{%- assign live = true -%}{%- endif -%}
+{%- if link contains "/test_" -%}{%- assign live = false -%}{%- endif -%}
 
 <section class="not-found">
   <div class="container">

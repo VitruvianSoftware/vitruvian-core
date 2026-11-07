@@ -165,7 +165,7 @@ address we own, which forwards to the current link.
 ```mermaid
 flowchart LR
   A["App button<br/>Donate"] --> R["vitruviansoftware.dev/donate/&lt;app&gt;<br/>(stable, we own it)"]
-  R -->|redirect| S["buy.stripe.com/…<br/>(stack output donationLinks)"]
+  R -->|redirect| S["buy.stripe.com/… or donate.stripe.com/…<br/>(stack output donationLinks)"]
   S --> T["Stripe-hosted checkout<br/>donor picks amount"]
 ```
 
