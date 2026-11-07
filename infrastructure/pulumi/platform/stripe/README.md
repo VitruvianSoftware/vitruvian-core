@@ -171,10 +171,10 @@ flowchart LR
 
 | App | Where the button goes |
 |---|---|
-| Vitruvian (desktop) | Already built: Settings > Support has a Donate button calling `AppInfo.coffeeURL`, hidden while `AppInfo.hasCommunityChannels` is false. Point `coffeeURL` at the redirect and show the page. |
+| Vitruvian (desktop) | Done: Settings > Support's Donate button opens `AppInfo.donateURL`, `https://vitruviansoftware.dev/donate/vitruvian/`. |
 | HomeSpeaker, NexusAgent, Courier (desktop) | A "Support" item in the menu-bar menu or Settings that opens the redirect in the browser. |
 | devx, homelab (CLIs) | A line in `--version` / README, plus a `.github/FUNDING.yml` `custom:` entry for the mirrors. |
-| vitruviansoftware.dev | The redirect pages themselves (a `_data` file of app → link), plus a Support link on Downloads. |
+| vitruviansoftware.dev | The redirect pages, `donate/<key>.html`, read `_data/donations.yml`. Once production has applied, copy each `donationLinks` URL there under its key; until then the page says donations open soon. A Support link on Downloads is still to do. |
 
 ## Applying it
 

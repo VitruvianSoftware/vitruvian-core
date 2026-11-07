@@ -456,8 +456,10 @@ package enum SettingsDirectory {
                 SettingsDirectoryItem(page: .about, title: s.tabAbout, icon: "info.circle",
                                       keywords: [s.reviewIntro, s.reviewHighlights]),
                 SettingsDirectoryItem(page: .releaseNotes, title: s.tabReleaseNotes, icon: "sparkles"),
-                // No .support item: its donation, Discord and X channels were
-                // upstream's (see AppInfo.hasCommunityChannels).
+                // Donations only: the Discord and X channels on the page were
+                // upstream's and stay hidden (see AppInfo.hasCommunityChannels).
+                SettingsDirectoryItem(page: .support, title: s.tabSupport, icon: "heart",
+                                      keywords: [s.donateButton, s.donateHeading]),
             ]),
         ]
     }

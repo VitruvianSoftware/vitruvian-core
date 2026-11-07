@@ -1,0 +1,40 @@
+---
+layout: page
+title: Support Vitruvian
+permalink: /donate/vitruvian/
+hero: false
+sitemap: false
+description: >-
+  Donate to Vitruvian, the free and open-source macOS app from Vitruvian Software.
+  Payments are handled by Stripe.
+---
+{%- comment -%}
+  The address the app's Settings > Support > Donate button opens
+  (AppInfo.donateURL). It forwards to the Payment Link in
+  _data/donations.yml, and only to an address that starts with https://buy.stripe.com/.
+{%- endcomment -%}
+{%- assign app = site.data.donations.vitruvian -%}
+{%- assign link = app.url | strip -%}
+{%- assign live = false -%}
+{%- assign prefix = link | slice: 0, 23 -%}
+{%- if prefix == "https://buy.stripe.com/" and link.size > 23 -%}{%- assign live = true -%}{%- endif -%}
+
+<section class="not-found">
+  <div class="container">
+    {%- if live %}
+    <h1>Taking you to Stripe...</h1>
+    <p class="lead">Thank you for supporting {{ app.name }}. You choose the amount on Stripe's checkout page.</p>
+    <div class="btn-row">
+      <a class="btn btn-primary" href="{{ link }}">Continue to checkout</a>
+    </div>
+    <script>window.location.replace({{ link | jsonify }});</script>
+    {%- else %}
+    <h1>Donations for {{ app.name }} open soon.</h1>
+    <p class="lead">Thank you for wanting to help. Until then, a star on GitHub helps more people find {{ app.name }}.</p>
+    <div class="btn-row">
+      <a class="btn btn-primary" href="{{ site.monorepo }}/tree/main/apps/desktop/vitruvian">Star on GitHub</a>
+      <a class="btn" href="{{ '/downloads/' | relative_url }}">Downloads</a>
+    </div>
+    {%- endif %}
+  </div>
+</section>

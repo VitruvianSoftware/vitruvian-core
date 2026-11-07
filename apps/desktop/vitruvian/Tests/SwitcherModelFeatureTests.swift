@@ -2219,7 +2219,13 @@ enum SwitcherModelFeatureTests {
                "update showcase media override is empty by default")
         suite.expect(!AppInfo.hasCommunityChannels && !SupportUpdateIntroInfo.isOffered
                      && !SupportUpdateIntroInfo.shouldShow(appVersion: "3.4.0", lastSeenVersion: nil),
-               "Vitruvian has no donation channel, so the support prompt never shows")
+               "Vitruvian has no community channels, so upstream's post-update support prompt never shows")
+        suite.expect(AppInfo.donateURL.absoluteString == "https://vitruviansoftware.dev/donate/vitruvian/"
+                     && AppInfo.coffeeURL == AppInfo.donateURL,
+               "the Donate button opens our own redirect, never a Stripe URL that a replaced Payment Link would break")
+        suite.expect(SettingsDirectory.sidebarSections(Strings.enUS, language: .enUS, isAvailable: { _ in true })
+                         .contains { $0.items.contains { $0.id == .page(.support) } },
+               "Settings lists the Support page, now that donations have a home")
         // The retained release logic stays covered with the invitation switched on.
         let supportOffered = SupportUpdateIntroInfo.isOffered
         SupportUpdateIntroInfo.isOffered = true
@@ -2238,8 +2244,9 @@ enum SwitcherModelFeatureTests {
                && !SupportUpdateIntroInfo.shouldShow(appVersion: "3.5.0", lastSeenVersion: nil),
                "support prompt never leaks into another release series")
         // A prefix check passed while every link led to a repository that does
-        // not exist; name the repository itself (AboutLinksContract).
-        for url in [AppInfo.repositoryURL, AppInfo.coffeeURL, AppInfo.discordURL, AppInfo.socialURL] {
+        // not exist; name the repository itself (AboutLinksContract). The
+        // donation link is checked above: it goes to our own site, not GitHub.
+        for url in [AppInfo.repositoryURL, AppInfo.discordURL, AppInfo.socialURL] {
             suite.expect(url.host == "github.com"
                          && url.pathComponents.prefix(3) == ["/", "VitruvianSoftware", "vitruvian-core"]
                          && !url.absoluteString.lowercased().contains("vorssaint"),

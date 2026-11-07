@@ -329,9 +329,10 @@ enum LocalizationFeatureContractTests {
             ]
             suite.expect(supportCommunityStrings.allSatisfy { !$0.isEmpty && !$0.contains("—") },
                    "\(prefix) support and community strings are complete without em dash")
-            suite.expect(strings.donateButton.contains("Buy Me a Coffee")
-                   && strings.supportIntroCoffeeButton.contains("Buy Me a Coffee"),
-                   "\(prefix) financial support points only to Buy Me a Coffee")
+            suite.expect(strings.donateMessage.contains("Stripe")
+                   && !strings.donateMessage.contains("Buy Me a Coffee")
+                   && !strings.donateButton.contains("Buy Me a Coffee"),
+                   "\(prefix) the Support page's donation goes through Stripe, not upstream's Buy Me a Coffee")
             suite.expect(strings.supportIntroStarMessage.localizedCaseInsensitiveContains("GitHub")
                    && strings.discordIntroJoinButton.localizedCaseInsensitiveContains("Discord"),
                    "\(prefix) non-financial support and community actions name their destinations")
