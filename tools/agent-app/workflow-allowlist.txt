@@ -43,3 +43,11 @@ foundation-proj-deploy.yaml environment business-unit allow-destructive
 # its digest guard requires for any enabled workload. The GitHub Environment
 # rules still apply; no app-infra leaf has a required reviewer.
 foundation-app-deploy.yaml environment business-unit app-image-digests
+# Applies the Stripe stack (infrastructure/pulumi/platform/stripe) to one
+# environment: unit is always stripe, environment is sandbox or production.
+# Added 2026-11-07 at James's request, so an agent can start the sandbox apply
+# after the keys change instead of waiting for the next merge. No
+# allow-unsoaked key. The stripe-production Environment still holds every
+# production run for James's approval, and the sandbox job refuses a key that
+# is not test-mode.
+delivery-stripe.yaml unit environment

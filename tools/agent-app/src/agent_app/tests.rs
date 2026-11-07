@@ -259,6 +259,10 @@ fn committed_allowlist_pins_the_foundation_entries() {
         allowlist_entry(&list, b"agent-app-permissions.yaml"),
         Some(vec![])
     );
+    assert_eq!(
+        allowlist_entry(&list, b"delivery-stripe.yaml"),
+        Some(v(&["unit", "environment"]))
+    );
 }
 
 #[test]
