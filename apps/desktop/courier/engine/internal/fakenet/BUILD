@@ -4,6 +4,7 @@ go_library(
     name = "fakenet",
     srcs = [
         "fakenet.go",
+        "remote.go",
         "script.go",
         "wait.go",
     ],

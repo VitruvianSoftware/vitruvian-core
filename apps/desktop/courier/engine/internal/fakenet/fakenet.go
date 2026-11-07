@@ -279,6 +279,12 @@ type Network struct {
 	// PlainLogins, when set before a login is made, names logins (by ID) whose client is plain, as NewPlain's are,
 	// though the network's others take chat changes: a test can tell which login a change was asked of.
 	PlainLogins map[string]bool
+	// BridgeName, when set before the bridge starts, is what GetName returns: a fake standing in for a real network
+	// (WhatsApp, say) under its name. Nil is the default, "Fake" (network ID "fake").
+	BridgeName *bridgev2.BridgeName
+	// People, when set before the bridge starts, are the names GetUserInfo gives people by network ID, and the names
+	// a chat's member list (Chat.Members) carries for them. Someone not in it gets an empty UserInfo, as before.
+	People map[string]string
 
 	plain   bool // the client takes no tags, mutes, unread marks or request accepts
 	chatsMu sync.Mutex
@@ -408,6 +414,9 @@ var _ bridgev2.NetworkConnector = (*Network)(nil)
 func (n *Network) Init(br *bridgev2.Bridge)    { n.br = br }
 func (n *Network) Start(context.Context) error { return nil }
 func (n *Network) GetName() bridgev2.BridgeName {
+	if n.BridgeName != nil {
+		return *n.BridgeName
+	}
 	return bridgev2.BridgeName{DisplayName: "Fake", NetworkID: "fake", BeeperBridgeType: "fake", DefaultPort: 0}
 }
 func (n *Network) GetDBMetaTypes() database.MetaTypes { return database.MetaTypes{} }
@@ -655,7 +664,11 @@ func (c *client) members(people ...string) *bridgev2.ChatMemberList {
 		PowerLevel:  &level,
 	})
 	for _, p := range people {
-		m.Set(bridgev2.ChatMember{EventSender: bridgev2.EventSender{Sender: networkid.UserID(p)}, Membership: event.MembershipJoin})
+		member := bridgev2.ChatMember{EventSender: bridgev2.EventSender{Sender: networkid.UserID(p)}, Membership: event.MembershipJoin}
+		if name, ok := c.n.People[p]; ok {
+			member.UserInfo = &bridgev2.UserInfo{Name: &name}
+		}
+		m.Set(member)
 	}
 	return &bridgev2.ChatMemberList{
 		MemberMap: m,
@@ -667,7 +680,13 @@ func (c *client) members(people ...string) *bridgev2.ChatMemberList {
 	}
 }
 
-func (c *client) GetUserInfo(context.Context, *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
+// GetUserInfo is the person's name from People, when it has one; otherwise it says nothing.
+func (c *client) GetUserInfo(_ context.Context, g *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
+	if g != nil {
+		if name, ok := c.n.People[string(g.ID)]; ok {
+			return &bridgev2.UserInfo{Name: &name}, nil
+		}
+	}
 	return &bridgev2.UserInfo{}, nil
 }
 

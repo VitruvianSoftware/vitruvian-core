@@ -14,6 +14,7 @@ Unit tests can't show that a window really opens or a column really hides. To ch
 ```sh
 bazel run --config=macos-app //apps/desktop/courier/app:run_test_copy            # its data in $TMPDIR/courier-test-copy/data
 bazel run --config=macos-app //apps/desktop/courier/app:run_test_copy -- --data DIR
+bazel run --config=macos-app //apps/desktop/courier/app:run_test_copy -- --seed group-threads   # full of made-up chats
 ```
 
 It is the same app, built as `:CourierTestCopy` with its own bundle identifier (`com.vitruviansoftware.courier.dev`) and name ("Courier Test Copy"), so it stays apart from the Courier you use:
@@ -23,7 +24,20 @@ It is the same app, built as `:CourierTestCopy` with its own bundle identifier (
 - **Keychain.** It keeps its Telegram keys under its own service, `com.vitruviansoftware.courier.dev.telegram`, so it never reads the installed app's.
 - **The installed app** in `/Applications` is never touched: the copy is unpacked under `$TMPDIR/courier-test-copy/app`, and `run_test_copy` refuses an app whose bundle identifier isn't the test copy's. Both can run at once.
 
-It has no networks until you add one, so the Chat and Message items that need a chat are greyed out. Quit it from its menu, or `osascript -e 'tell application id "com.vitruviansoftware.courier.dev" to quit'`. Its menus can be driven by System Events (`click menu item "Settings…" of menu 1 of menu bar item "Courier Test Copy" of menu bar 1 of process "Courier Test Copy"`), which is how the menu bar was checked item by item.
+Without `--seed` it has no networks until you add one, so the Chat and Message items that need a chat are greyed out.
+
+**Opening it full of chats.** `--seed NAME` opens it with the made-up chats of `../seed/scenarios/NAME.json`
+(`group-threads`, `direct`, `long-content`, `multi-network`, `empty`; an unknown name lists them), so a change to how
+chats look can be checked by hand or by screenshot without signing in to anything. Its data folder is
+`$TMPDIR/courier-test-copy/seed-NAME`, emptied on every run, so each run starts from the scenario as written (with
+`--data DIR` the folder is yours, and a scenario already played into it is not played again). The test copy bundles
+`courier-engine-seeded`, the engine built with the `courierseed` tag: given `COURIER_SEED` (which `run_test_copy`
+passes), it runs fake networks under the scenario's real network names instead of the real bridges, and plays the
+scenario once. Without `COURIER_SEED` it is the ordinary engine. The released `:Courier` bundles the plain engine,
+which holds none of this code: `:release_engine_has_no_seed_test` checks both apps. The scenario format is in
+`../seed/README.md`, and the view tests draw the same files (`SeedScenarioSnapshotTests`).
+
+Quit it from its menu, or `osascript -e 'tell application id "com.vitruviansoftware.courier.dev" to quit'`. Its menus can be driven by System Events (`click menu item "Settings…" of menu 1 of menu bar item "Courier Test Copy" of menu bar 1 of process "Courier Test Copy"`), which is how the menu bar was checked item by item.
 
 ## Courier's Telegram app ID
 

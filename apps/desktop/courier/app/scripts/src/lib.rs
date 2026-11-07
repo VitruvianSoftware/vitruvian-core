@@ -4,6 +4,7 @@
 pub mod app_holds_engine;
 pub mod archs;
 pub mod engine_contract;
+pub mod engine_seed;
 pub mod inject_app_credentials;
 pub mod install;
 pub mod publish;

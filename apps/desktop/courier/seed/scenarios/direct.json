@@ -1,0 +1,118 @@
+{
+  "accounts": [
+    { "network": "whatsapp", "login": "seed-wa", "name": "Sam Seed" }
+  ],
+  "people": [{ "id": "ann", "name": "Ann Example" }],
+  "chats": [
+    {
+      "account": "seed-wa",
+      "id": "dm-ann",
+      "name": "Ann Example",
+      "direct": true,
+      "members": ["ann"],
+      "unread": true,
+      "messages": [
+        {
+          "id": "d01",
+          "from": "ann",
+          "minutesAgo": 2900,
+          "text": "Hi! Did you get home all right last night?"
+        },
+        {
+          "id": "d02",
+          "from": "me",
+          "minutesAgo": 2895,
+          "text": "I did, thanks. The last train was nearly empty."
+        },
+        {
+          "id": "d03",
+          "from": "ann",
+          "minutesAgo": 2890,
+          "text": "Good to hear."
+        },
+        {
+          "id": "d04",
+          "from": "me",
+          "minutesAgo": 1500,
+          "text": "Are you free this weekend?"
+        },
+        {
+          "id": "d05",
+          "from": "ann",
+          "minutesAgo": 1490,
+          "text": "Saturday morning works. Sunday I'm visiting my aunt."
+        },
+        {
+          "id": "d06",
+          "from": "me",
+          "minutesAgo": 1485,
+          "text": "Saturday it is. Farmers' market?"
+        },
+        {
+          "id": "d07",
+          "from": "ann",
+          "minutesAgo": 1480,
+          "text": "Yes please, I need more of those plums.",
+          "reactions": [{ "from": "me", "emoji": "😄" }]
+        },
+        {
+          "id": "d08",
+          "from": "me",
+          "minutesAgo": 600,
+          "text": "I'll meet you by the fountain at nine."
+        },
+        {
+          "id": "d09",
+          "from": "ann",
+          "minutesAgo": 590,
+          "text": "Perfect.",
+          "replyTo": "d08"
+        },
+        {
+          "id": "d10",
+          "from": "ann",
+          "minutesAgo": 300,
+          "text": "Should I bring the big basket or the small one?"
+        },
+        {
+          "id": "d11",
+          "from": "me",
+          "minutesAgo": 290,
+          "text": "Big one. We always buy too much."
+        },
+        { "id": "d12", "from": "ann", "minutesAgo": 289, "text": "Ha, true." },
+        {
+          "id": "d13",
+          "from": "me",
+          "minutesAgo": 120,
+          "text": "Weather looks fine, by the way."
+        },
+        {
+          "id": "d14",
+          "from": "ann",
+          "minutesAgo": 118,
+          "text": "Great, no umbrella then."
+        },
+        {
+          "id": "d15",
+          "from": "me",
+          "minutesAgo": 60,
+          "text": "Do you want a coffee on the way?"
+        },
+        {
+          "id": "d16",
+          "from": "ann",
+          "minutesAgo": 15,
+          "text": "Oat flat white, if you're offering!"
+        },
+        {
+          "id": "d17",
+          "from": "ann",
+          "minutesAgo": 14,
+          "text": "See you soon.",
+          "reactions": [{ "from": "me", "emoji": "👍" }]
+        }
+      ]
+    }
+  ]
+}

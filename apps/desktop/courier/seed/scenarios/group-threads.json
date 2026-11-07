@@ -1,0 +1,204 @@
+{
+  "accounts": [
+    { "network": "whatsapp", "login": "seed-wa", "name": "Sam Seed" }
+  ],
+  "people": [
+    { "id": "ann", "name": "Ann Example" },
+    { "id": "bo", "name": "Bo Example" },
+    { "id": "cy", "name": "Cy Example" },
+    { "id": "dee", "name": "Dee Example" }
+  ],
+  "chats": [
+    {
+      "account": "seed-wa",
+      "id": "grp-launch",
+      "name": "Launch crew",
+      "direct": false,
+      "members": ["ann", "bo", "cy", "dee"],
+      "pinned": false,
+      "muted": false,
+      "unread": true,
+      "messages": [
+        {
+          "id": "m1",
+          "from": "ann",
+          "minutesAgo": 240,
+          "text": "Morning all. The launch checklist is in the shared folder."
+        },
+        {
+          "id": "m2",
+          "from": "bo",
+          "minutesAgo": 236,
+          "text": "Thanks Ann, reading it now."
+        },
+        {
+          "id": "m3",
+          "from": "me",
+          "minutesAgo": 230,
+          "text": "Who can take the release notes?",
+          "reactions": [{ "from": "ann", "emoji": "👀" }]
+        },
+        {
+          "id": "t1-r1",
+          "from": "cy",
+          "minutesAgo": 228,
+          "text": "I can draft them this afternoon.",
+          "thread": "m3"
+        },
+        {
+          "id": "t1-r2",
+          "from": "me",
+          "minutesAgo": 225,
+          "text": "Great, thank you.",
+          "thread": "m3"
+        },
+        {
+          "id": "t1-r3",
+          "from": "dee",
+          "minutesAgo": 220,
+          "text": "I'll proofread once they're up.",
+          "thread": "m3",
+          "reactions": [{ "from": "cy", "emoji": "🙏" }]
+        },
+        {
+          "id": "m4",
+          "from": "dee",
+          "minutesAgo": 180,
+          "text": "Reminder: the demo room is booked for 3 pm."
+        },
+        {
+          "id": "m5",
+          "from": "ann",
+          "minutesAgo": 175,
+          "text": "Perfect. I'll bring the spare adapter.",
+          "replyTo": "m4",
+          "reactions": [
+            { "from": "bo", "emoji": "👍" },
+            { "from": "me", "emoji": "👍" }
+          ]
+        },
+        {
+          "id": "m6",
+          "from": "bo",
+          "minutesAgo": 120,
+          "text": "Has anyone tried the new build on the old laptops?"
+        },
+        {
+          "id": "t2-r1",
+          "from": "cy",
+          "minutesAgo": 115,
+          "text": "Yes, it starts in about four seconds.",
+          "thread": "m6"
+        },
+        {
+          "id": "t2-r2",
+          "from": "bo",
+          "minutesAgo": 110,
+          "text": "Better than last time!",
+          "thread": "m6",
+          "reactions": [{ "from": "ann", "emoji": "🎉" }]
+        },
+        {
+          "id": "m7",
+          "from": "me",
+          "minutesAgo": 60,
+          "text": "I'll send the final go/no-go at 2.",
+          "replyTo": "m6"
+        },
+        {
+          "id": "m8",
+          "from": "cy",
+          "minutesAgo": 12,
+          "text": "Release notes draft is ready for review.",
+          "reactions": [{ "from": "dee", "emoji": "❤️" }]
+        },
+        {
+          "id": "m9",
+          "from": "ann",
+          "minutesAgo": 4,
+          "text": "Looks good to me. Ship it?"
+        }
+      ]
+    },
+    {
+      "account": "seed-wa",
+      "id": "dm-ann",
+      "name": "Ann Example",
+      "direct": true,
+      "members": ["ann"],
+      "unread": false,
+      "messages": [
+        {
+          "id": "a1",
+          "from": "ann",
+          "minutesAgo": 300,
+          "text": "Are we still on for lunch tomorrow?"
+        },
+        {
+          "id": "a2",
+          "from": "me",
+          "minutesAgo": 290,
+          "text": "Yes! The usual place at noon."
+        },
+        {
+          "id": "a3",
+          "from": "ann",
+          "minutesAgo": 288,
+          "text": "See you there.",
+          "reactions": [{ "from": "me", "emoji": "😊" }]
+        }
+      ]
+    },
+    {
+      "account": "seed-wa",
+      "id": "dm-bo",
+      "name": "Bo Example",
+      "direct": true,
+      "members": ["bo"],
+      "unread": true,
+      "messages": [
+        {
+          "id": "b1",
+          "from": "me",
+          "minutesAgo": 95,
+          "text": "Could you send me the slides when you get a minute?"
+        },
+        {
+          "id": "b2",
+          "from": "bo",
+          "minutesAgo": 30,
+          "text": "Sure, sending them over now."
+        },
+        {
+          "id": "b3",
+          "from": "bo",
+          "minutesAgo": 29,
+          "text": "Let me know if anything's missing."
+        }
+      ]
+    },
+    {
+      "account": "seed-wa",
+      "id": "dm-cy",
+      "name": "Cy Example",
+      "direct": true,
+      "members": ["cy"],
+      "pinned": true,
+      "unread": false,
+      "messages": [
+        {
+          "id": "c1",
+          "from": "cy",
+          "minutesAgo": 1500,
+          "text": "Happy Friday!"
+        },
+        {
+          "id": "c2",
+          "from": "me",
+          "minutesAgo": 1490,
+          "text": "You too, have a good weekend."
+        }
+      ]
+    }
+  ]
+}
