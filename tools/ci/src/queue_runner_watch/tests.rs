@@ -375,3 +375,48 @@ esac
         r.why()
     );
 }
+
+#[test]
+fn a_queued_canary_keeps_fallback_off_when_live_merge_group_runs_are_in_progress() {
+    let dir = TempDir::new();
+    write_exe(
+        dir.join("gh"),
+        r#"#!/usr/bin/env bash
+echo "$*" >>"$FAKE_DIR/calls"
+case "$*" in
+  *"/actions/runs?event=merge_group&status=in_progress"*)
+    printf '202 gh-readonly-queue/main/pr-2-live\n' ;;
+  *"/actions/runs?event=merge_group&status=queued"*)
+    ;;
+  *"/git/matching-refs/heads/gh-readonly-queue/main/"*)
+    printf 'refs/heads/gh-readonly-queue/main/pr-2-live\n' ;;
+  *"/jobs"*)
+    echo "queued " ;;
+  *"/variables/QUEUE_RUNNER_FALLBACK"*"--jq"*)
+    echo "off" ;;
+esac
+"#,
+    );
+    let out = Run::new(&bin("BIN"))
+        .env("FAKE_DIR", dir.path())
+        .env("GH_BIN", dir.join("gh"))
+        .env("REPO", "o/r")
+        .env("RUN_ID", "7")
+        .env("WAIT_SECONDS", "0")
+        .env_remove("CANARY_JOB")
+        .go();
+    let r = Ran {
+        out,
+        calls: read(dir.join("calls")),
+    };
+    assert!(
+        r.out.code == 0
+            && r.no_write()
+            && !r.wrote("/cancel")
+            && r.out
+                .stdout
+                .contains("merge_group runs are in_progress: homelab runners are busy"),
+        "{}",
+        r.why()
+    );
+}

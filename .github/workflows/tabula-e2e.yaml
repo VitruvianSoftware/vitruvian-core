@@ -194,7 +194,11 @@ jobs:
         if: always() && steps.gate.outputs.relevant != 'false'
         continue-on-error: true
         run: |
-          log="bazel-testlogs/apps/suites/tabula/extension/e2e/test.log"
+          if [ "${GITHUB_EVENT_NAME:-}" = "schedule" ]; then
+            log="bazel-testlogs/apps/suites/tabula/extension/e2e_quarantine/test.log"
+          else
+            log="bazel-testlogs/apps/suites/tabula/extension/e2e/test.log"
+          fi
           if [ ! -f "$log" ]; then echo "no test.log at $log"; exit 0; fi
           echo "### Slowest E2E tests (top 25, milliseconds)"
           sed -E 's/\x1b\[[0-9;]*m//g' "$log" \
@@ -213,7 +217,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: playwright-results
-          path: bazel-testlogs/apps/suites/tabula/extension/e2e/
+          path: ${{ github.event_name == 'schedule' && 'bazel-testlogs/apps/suites/tabula/extension/e2e_quarantine/' || 'bazel-testlogs/apps/suites/tabula/extension/e2e/' }}
           retention-days: 7
 
       # Tripwire -- see the llvm-cache-tripwire composite for the rationale

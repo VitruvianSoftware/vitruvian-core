@@ -112,7 +112,20 @@ const PERIODIC_SYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const IDLE_DETECTION_INTERVAL_S = 60;
 const SSE_RECONNECT_DELAY_MS = 5000; // 5 seconds
 
-// Configurable via environment variables injected by Webpack
+/**
+ * Normalize a timestamp (epoch milliseconds or ISO-8601 string from the API)
+ * into finite epoch milliseconds. Returns 0 for missing or unparseable values.
+ */
+function toEpochMs(value: number | string | undefined | null): number {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+  if (typeof value === "string" && value.length > 0) {
+    const parsed = new Date(value).getTime();
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
 const { API_URL } = process.env;
 
 // ============================================
@@ -615,10 +628,11 @@ export class SyncService {
         const serverWs = error.data as Workspace | undefined;
         if (!serverWs) throw error;
         const local = await StorageService.getWorkspaceById(operation.entityId);
-        const localTime = new Date(
-          local?.updatedAt || workspace.updatedAt || 0,
-        ).getTime();
-        const serverTime = new Date(serverWs.updatedAt || 0).getTime();
+        const localTime = Math.max(
+          toEpochMs(local?.updatedAt),
+          toEpochMs(workspace.updatedAt),
+        );
+        const serverTime = toEpochMs(serverWs.updatedAt);
         if (local && localTime >= serverTime) {
           // Local wins: adopt the server version number, retry with it
           await this.applyServerWorkspaceMeta(operation.entityId, serverWs);
@@ -652,10 +666,11 @@ export class SyncService {
         if (!serverGroup) throw error;
         const groups = await StorageService.getSpaceGroups();
         const local = groups.find((g) => g.id === operation.entityId);
-        const localTime = new Date(
-          local?.updatedAt || group.updatedAt || 0,
-        ).getTime();
-        const serverTime = new Date(serverGroup.updatedAt || 0).getTime();
+        const localTime = Math.max(
+          toEpochMs(local?.updatedAt),
+          toEpochMs(group.updatedAt),
+        );
+        const serverTime = toEpochMs(serverGroup.updatedAt);
         if (local && localTime >= serverTime) {
           await this.applyServerSpaceGroupMeta(operation.entityId, serverGroup);
           throw new ConflictRetryError(

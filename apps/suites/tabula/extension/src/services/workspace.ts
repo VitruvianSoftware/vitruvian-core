@@ -81,6 +81,35 @@ export function normalizeResourceUrl(url: string): string {
   return `https://${trimmed}`;
 }
 
+/**
+ * Normalize a timestamp (epoch milliseconds or ISO-8601 string from the API)
+ * into finite epoch milliseconds. Returns 0 for missing or unparseable values
+ * so timestamp arithmetic never produces NaN.
+ */
+export function toEpochMs(value: number | string | undefined | null): number {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+  if (typeof value === "string" && value.length > 0) {
+    const parsed = new Date(value).getTime();
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+/**
+ * Compute a strictly monotonic epoch-ms timestamp after `previous`, even when
+ * `previous` is an ISO-8601 string persisted from a server response. Without
+ * `toEpochMs`, `(previous || 0) + 1` concatenates `"1"` onto an ISO string and
+ * `Math.max(Date.now(), "2026-...Z1")` yields `NaN`, causing 409 conflict
+ * resolution and pull merges to treat `localTime` as 0 and drop local edits.
+ */
+export function nextUpdatedAt(
+  previous: number | string | undefined | null,
+): number {
+  return Math.max(Date.now(), toEpochMs(previous) + 1);
+}
+
 export class WorkspaceService {
   /**
    * Generate a unique workspace ID
@@ -258,10 +287,7 @@ export class WorkspaceService {
           ...input, // specific overrides
           name: name ?? currentWorkspace.name, // use processed name or existing
           icon: icon ?? currentWorkspace.icon, // use processed icon or existing
-          updatedAt: Math.max(
-            Date.now(),
-            (currentWorkspace.updatedAt || 0) + 1,
-          ),
+          updatedAt: nextUpdatedAt(currentWorkspace.updatedAt),
         };
 
         workspaces[index] = updatedWorkspace;
@@ -318,10 +344,7 @@ export class WorkspaceService {
           ...workspaces[index],
           tabs,
           tabGroups,
-          updatedAt: Math.max(
-            Date.now(),
-            (workspaces[index].updatedAt || 0) + 1,
-          ),
+          updatedAt: nextUpdatedAt(workspaces[index].updatedAt),
         };
 
         // eslint-disable-next-line no-console
@@ -447,8 +470,8 @@ export class WorkspaceService {
             const localWs = localWorkspaces.find((l) => l.id === remoteWs.id);
 
             // Normalize timestamps to handle potential string/ISO formats from API
-            const localTime = new Date(localWs?.updatedAt || 0).getTime();
-            const remoteTime = new Date(remoteWs.updatedAt || 0).getTime();
+            const localTime = toEpochMs(localWs?.updatedAt);
+            const remoteTime = toEpochMs(remoteWs.updatedAt);
             const localHasUnsyncedEdits =
               !!localWs && pendingSaves.has(remoteWs.id);
 
@@ -541,7 +564,7 @@ export class WorkspaceService {
             ...current,
             position: incoming.position,
             groupId: incoming.groupId,
-            updatedAt: Math.max(Date.now(), (current.updatedAt || 0) + 1),
+            updatedAt: nextUpdatedAt(current.updatedAt),
           };
           changed.push(freshWorkspaces[index]);
         });
@@ -638,10 +661,7 @@ export class WorkspaceService {
 
       workspaces[index].tabs = cleanTabs;
       workspaces[index].tabGroups = currentTabGroups;
-      workspaces[index].updatedAt = Math.max(
-        Date.now(),
-        (workspaces[index].updatedAt || 0) + 1,
-      );
+      workspaces[index].updatedAt = nextUpdatedAt(workspaces[index].updatedAt);
       await StorageService.saveWorkspaces(workspaces);
 
       if (await AuthService.getToken()) {
@@ -704,9 +724,8 @@ export class WorkspaceService {
           workspaces[index].sections[0].resources.push(newResource);
         }
 
-        workspaces[index].updatedAt = Math.max(
-          Date.now(),
-          (workspaces[index].updatedAt || 0) + 1,
+        workspaces[index].updatedAt = nextUpdatedAt(
+          workspaces[index].updatedAt,
         );
         await StorageService.saveWorkspaces(workspaces);
 
@@ -760,9 +779,8 @@ export class WorkspaceService {
           );
         }
 
-        workspaces[index].updatedAt = Math.max(
-          Date.now(),
-          (workspaces[index].updatedAt || 0) + 1,
+        workspaces[index].updatedAt = nextUpdatedAt(
+          workspaces[index].updatedAt,
         );
         await StorageService.saveWorkspaces(workspaces);
 
@@ -951,7 +969,7 @@ export class WorkspaceService {
             ...workspaces[wsIndex],
             tabs: updatedTabs,
             tabGroups: freshTabGroups,
-            updatedAt: Date.now(),
+            updatedAt: nextUpdatedAt(workspaces[wsIndex].updatedAt),
           };
           await StorageService.saveWorkspaces(workspaces);
 
@@ -1046,9 +1064,8 @@ export class WorkspaceService {
         };
 
         workspaces[index].sections.push(newSection);
-        workspaces[index].updatedAt = Math.max(
-          Date.now(),
-          (workspaces[index].updatedAt || 0) + 1,
+        workspaces[index].updatedAt = nextUpdatedAt(
+          workspaces[index].updatedAt,
         );
         await StorageService.saveWorkspaces(workspaces);
 
@@ -1081,9 +1098,8 @@ export class WorkspaceService {
           workspaces[index].sections = workspaces[index].sections.filter(
             (s) => s.id !== sectionId,
           );
-          workspaces[index].updatedAt = Math.max(
-            Date.now(),
-            (workspaces[index].updatedAt || 0) + 1,
+          workspaces[index].updatedAt = nextUpdatedAt(
+            workspaces[index].updatedAt,
           );
           await StorageService.saveWorkspaces(workspaces);
 
@@ -1121,9 +1137,8 @@ export class WorkspaceService {
           );
           if (sectionIndex !== -1) {
             workspaces[index].sections[sectionIndex].title = newTitle;
-            workspaces[index].updatedAt = Math.max(
-              Date.now(),
-              (workspaces[index].updatedAt || 0) + 1,
+            workspaces[index].updatedAt = nextUpdatedAt(
+              workspaces[index].updatedAt,
             );
             await StorageService.saveWorkspaces(workspaces);
 
@@ -1174,9 +1189,8 @@ export class WorkspaceService {
         };
 
         workspaces[wsIndex].sections[sectionIndex].resources.push(newResource);
-        workspaces[wsIndex].updatedAt = Math.max(
-          Date.now(),
-          (workspaces[wsIndex].updatedAt || 0) + 1,
+        workspaces[wsIndex].updatedAt = nextUpdatedAt(
+          workspaces[wsIndex].updatedAt,
         );
         await StorageService.saveWorkspaces(workspaces);
 
@@ -1217,9 +1231,8 @@ export class WorkspaceService {
         workspaces[wsIndex].sections[sectionIndex].resources = workspaces[
           wsIndex
         ].sections[sectionIndex].resources.filter((r) => r.id !== resourceId);
-        workspaces[wsIndex].updatedAt = Math.max(
-          Date.now(),
-          (workspaces[wsIndex].updatedAt || 0) + 1,
+        workspaces[wsIndex].updatedAt = nextUpdatedAt(
+          workspaces[wsIndex].updatedAt,
         );
         await StorageService.saveWorkspaces(workspaces);
 
@@ -1266,9 +1279,8 @@ export class WorkspaceService {
         // Prepend to match the optimistic prepend (and addTask) — avoids the
         // note visibly jumping from top to bottom when the echo lands
         workspaces[index].notes.unshift(newNote);
-        workspaces[index].updatedAt = Math.max(
-          Date.now(),
-          (workspaces[index].updatedAt || 0) + 1,
+        workspaces[index].updatedAt = nextUpdatedAt(
+          workspaces[index].updatedAt,
         );
         await StorageService.saveWorkspaces(workspaces);
 
@@ -1312,9 +1324,8 @@ export class WorkspaceService {
           updatedAt: Date.now(),
         };
 
-        workspaces[wsIndex].updatedAt = Math.max(
-          Date.now(),
-          (workspaces[wsIndex].updatedAt || 0) + 1,
+        workspaces[wsIndex].updatedAt = nextUpdatedAt(
+          workspaces[wsIndex].updatedAt,
         );
         await StorageService.saveWorkspaces(workspaces);
 
@@ -1347,9 +1358,8 @@ export class WorkspaceService {
           workspaces[index].notes = workspaces[index].notes.filter(
             (n) => n.id !== noteId,
           );
-          workspaces[index].updatedAt = Math.max(
-            Date.now(),
-            (workspaces[index].updatedAt || 0) + 1,
+          workspaces[index].updatedAt = nextUpdatedAt(
+            workspaces[index].updatedAt,
           );
           await StorageService.saveWorkspaces(workspaces);
 
@@ -1420,10 +1430,7 @@ export class WorkspaceService {
           section.resources.splice(destination.index, 0, resource);
         }
 
-        workspace.updatedAt = Math.max(
-          Date.now(),
-          (workspace.updatedAt || 0) + 1,
-        );
+        workspace.updatedAt = nextUpdatedAt(workspace.updatedAt);
         await StorageService.saveWorkspaces(workspaces);
 
         await this.queueWorkspaceSync(workspace);
@@ -1468,9 +1475,8 @@ export class WorkspaceService {
         };
 
         workspaces[index].tasks.unshift(newTask); // Add to top
-        workspaces[index].updatedAt = Math.max(
-          Date.now(),
-          (workspaces[index].updatedAt || 0) + 1,
+        workspaces[index].updatedAt = nextUpdatedAt(
+          workspaces[index].updatedAt,
         );
         await StorageService.saveWorkspaces(workspaces);
 
@@ -1509,9 +1515,8 @@ export class WorkspaceService {
 
         workspaces[wsIndex].tasks[taskIndex].completed =
           !workspaces[wsIndex].tasks[taskIndex].completed;
-        workspaces[wsIndex].updatedAt = Math.max(
-          Date.now(),
-          (workspaces[wsIndex].updatedAt || 0) + 1,
+        workspaces[wsIndex].updatedAt = nextUpdatedAt(
+          workspaces[wsIndex].updatedAt,
         );
         await StorageService.saveWorkspaces(workspaces);
 
@@ -1544,9 +1549,8 @@ export class WorkspaceService {
           workspaces[index].tasks = workspaces[index].tasks.filter(
             (t) => t.id !== taskId,
           );
-          workspaces[index].updatedAt = Math.max(
-            Date.now(),
-            (workspaces[index].updatedAt || 0) + 1,
+          workspaces[index].updatedAt = nextUpdatedAt(
+            workspaces[index].updatedAt,
           );
           await StorageService.saveWorkspaces(workspaces);
 
@@ -1591,9 +1595,8 @@ export class WorkspaceService {
           ...updates,
         };
 
-        workspaces[wsIndex].updatedAt = Math.max(
-          Date.now(),
-          (workspaces[wsIndex].updatedAt || 0) + 1,
+        workspaces[wsIndex].updatedAt = nextUpdatedAt(
+          workspaces[wsIndex].updatedAt,
         );
         await StorageService.saveWorkspaces(workspaces);
 
@@ -1645,9 +1648,8 @@ export class WorkspaceService {
           ...updates,
         };
 
-        workspaces[wsIndex].updatedAt = Math.max(
-          Date.now(),
-          (workspaces[wsIndex].updatedAt || 0) + 1,
+        workspaces[wsIndex].updatedAt = nextUpdatedAt(
+          workspaces[wsIndex].updatedAt,
         );
         await StorageService.saveWorkspaces(workspaces);
 
@@ -1687,8 +1689,8 @@ export class WorkspaceService {
             const localGroup = localMap.get(remoteGroup.id);
             if (localGroup) {
               // Normalize timestamps to handle potential string/ISO formats from API
-              const localTime = new Date(localGroup.updatedAt || 0).getTime();
-              const remoteTime = new Date(remoteGroup.updatedAt || 0).getTime();
+              const localTime = toEpochMs(localGroup.updatedAt);
+              const remoteTime = toEpochMs(remoteGroup.updatedAt);
               if (localTime >= remoteTime) {
                 const kept: SpaceGroup = {
                   ...localGroup,
@@ -1794,7 +1796,7 @@ export class WorkspaceService {
               // JSON.stringify so the server would never clear the field
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               groupId: null as any,
-              updatedAt: Math.max(Date.now(), (ws.updatedAt || 0) + 1),
+              updatedAt: nextUpdatedAt(ws.updatedAt),
             };
             changedWorkspaces.push(updated);
             return updated;
@@ -1828,6 +1830,9 @@ export class WorkspaceService {
           throw new Error("Space group not found");
         }
         groups[groupIndex].title = title;
+        groups[groupIndex].updatedAt = nextUpdatedAt(
+          groups[groupIndex].updatedAt,
+        );
         await StorageService.saveSpaceGroups(groups);
 
         await this.queueSpaceGroupSync(groups[groupIndex]);
@@ -1863,9 +1868,8 @@ export class WorkspaceService {
           (groups[groupIndex] as any).color = updates.color;
         }
         // Use monotonic timestamp to prevent clock skew issues causing remote state to revert local changes
-        groups[groupIndex].updatedAt = Math.max(
-          Date.now(),
-          (groups[groupIndex].updatedAt || 0) + 1,
+        groups[groupIndex].updatedAt = nextUpdatedAt(
+          groups[groupIndex].updatedAt,
         );
         await StorageService.saveSpaceGroups(groups);
 
@@ -1898,7 +1902,7 @@ export class WorkspaceService {
           freshGroups[index] = {
             ...current,
             position: incoming.position,
-            updatedAt: Math.max(Date.now(), (current.updatedAt || 0) + 1),
+            updatedAt: nextUpdatedAt(current.updatedAt),
           };
           changed.push(freshGroups[index]);
         });
@@ -1929,6 +1933,9 @@ export class WorkspaceService {
           throw new Error("Space group not found");
         }
         groups[groupIndex].collapsed = !groups[groupIndex].collapsed;
+        groups[groupIndex].updatedAt = nextUpdatedAt(
+          groups[groupIndex].updatedAt,
+        );
         await StorageService.saveSpaceGroups(groups);
 
         await this.queueSpaceGroupSync(groups[groupIndex]);
@@ -1966,9 +1973,8 @@ export class WorkspaceService {
         }
 
         // Use monotonic timestamp to prevent clock skew issues causing remote state to revert local changes
-        updatedWorkspace.updatedAt = Math.max(
-          Date.now(),
-          (workspaces[wsIndex].updatedAt || 0) + 1,
+        updatedWorkspace.updatedAt = nextUpdatedAt(
+          workspaces[wsIndex].updatedAt,
         );
 
         workspaces[wsIndex] = updatedWorkspace;
