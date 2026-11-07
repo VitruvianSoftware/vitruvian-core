@@ -18,6 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+import AppKit
 import Foundation
 import NexusAgentCore
 import XCTest
@@ -35,6 +36,31 @@ final class TimelineTests: XCTestCase {
 
     private func agent(_ text: String, isError: Bool = false) -> NexusAgentChatMessage {
         NexusAgentChatMessage(role: .agent, text: text, isError: isError)
+    }
+
+    // MARK: - Edges
+
+    /// macOS draws the scroll bar at the right edge, over the transcript.
+    /// On that side the rail must stand wholly inside it, or the bar and
+    /// the dots overlap and a drag on the bar lands on a dot.
+    func testTheRightHandRailStandsClearOfTheScrollBar() {
+        let bar = max(NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy),
+                      NSScroller.scrollerWidth(for: .regular, scrollerStyle: .overlay))
+        XCTAssertGreaterThanOrEqual(NexusAgentTimelineScrubber.edge(onLeft: false), bar,
+                                    "the rail's outer side is past the widest scroll bar")
+        XCTAssertEqual(NexusAgentTimelineScrubber.edge(onLeft: true), NexusAgentTimelineScrubber.edgeInset,
+                       "the left has no scroll bar, so the rail stays near its edge")
+    }
+
+    /// The transcript leaves the same clear space beside the rail on both
+    /// sides: 6 points between the rail's inner side and the text.
+    func testTheGutterLeavesTheSameRoomBesideTheRailOnEitherSide() {
+        let padding: CGFloat = 14
+        for onLeft in [true, false] {
+            let railInner = NexusAgentTimelineScrubber.edge(onLeft: onLeft) + NexusAgentTimelineScrubber.railWidth
+            let textStart = padding + NexusAgentTimelineScrubber.gutter(onLeft: onLeft)
+            XCTAssertEqual(textStart - railInner, 6, onLeft ? "left" : "right")
+        }
     }
 
     // MARK: - Turns

@@ -310,6 +310,10 @@ struct NexusAgentTimelineScrubber: View {
 
     static let railWidth: CGFloat = 14
     static let edgeInset: CGFloat = 6
+    /// Room for the scroll bar, which macOS draws at the right edge: on
+    /// that side the rail stands inside it, so the two never overlap and
+    /// dragging the scroll bar never lands on a dot.
+    static let scrollerClearance: CGFloat = 16
     static let topInset: CGFloat = 12
     /// Clear of the jump buttons, which stand 72 points tall at most.
     static let bottomInset: CGFloat = 84
@@ -317,9 +321,17 @@ struct NexusAgentTimelineScrubber: View {
     static let dotInset: CGFloat = 4
     static let cardWidth: CGFloat = 260
     static let cardGap: CGFloat = 6
+    /// How far the rail stands from its edge: past the scroll bar on the right.
+    static func edge(onLeft: Bool) -> CGFloat {
+        onLeft ? edgeInset : edgeInset + scrollerClearance
+    }
+
     /// Extra room the transcript leaves at the rail's edge: the rail spans
-    /// 20 points from the edge, the transcript's own padding is 14.
-    static let gutter: CGFloat = 12
+    /// 20 points from the left edge (36 from the right, past the scroll
+    /// bar), and the transcript's own padding is 14.
+    static func gutter(onLeft: Bool) -> CGFloat {
+        edge(onLeft: onLeft) + railWidth - 8
+    }
 
     init(turns: [NexusAgentTimeline.Turn], activeIndex: Int, onLeft: Binding<Bool>,
          strings: NexusAgentChatStrings, now: Date? = nil, hovered: Int? = nil,
@@ -341,8 +353,8 @@ struct NexusAgentTimelineScrubber: View {
                 count: turns.count, height: max(0, railHeight - 2 * Self.dotInset),
                 active: min(max(activeIndex, 0), max(turns.count - 1, 0)))
             let railX = onLeft
-                ? Self.edgeInset + Self.railWidth / 2
-                : geo.size.width - Self.edgeInset - Self.railWidth / 2
+                ? Self.edge(onLeft: true) + Self.railWidth / 2
+                : geo.size.width - Self.edge(onLeft: false) - Self.railWidth / 2
             ZStack(alignment: .topLeading) {
                 rail(layout: layout, height: railHeight)
                     .frame(width: Self.railWidth, height: railHeight)
