@@ -4,7 +4,7 @@
   "build_context": "",
   "changelog_inputs": {},
   "companions": [],
-  "environments": ["sandbox"],
+  "environments": ["sandbox", "production"],
   "exclude_paths": [],
   "extra_paths": ["infrastructure/pulumi/platform/stripe/"],
   "gate_var": "",

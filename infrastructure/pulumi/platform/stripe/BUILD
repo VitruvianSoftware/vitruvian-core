@@ -28,10 +28,11 @@ pulumi_project(
     dir = "infrastructure/pulumi/platform/stripe",
 )
 
-# Validates the committed sandbox config and the key-mode guard. The test reads
-# Pulumi.sandbox.yaml, so it is passed in as data.
+# Validates both committed stack configs and the key-mode guard. The tests read
+# Pulumi.sandbox.yaml and Pulumi.production.yaml, so they are passed in as data.
 pulumi_go_test(
     extra_data = [
+        "Pulumi.production.yaml",
         "Pulumi.sandbox.yaml",
         # The replace in go.mod points here; glob("go.mod") only matches the
         # top-level one.
@@ -39,18 +40,26 @@ pulumi_go_test(
     ],
 )
 
-# Applies the stack to the Stripe SANDBOX on every push to main that touches it
-# (and on dispatch), from .github/workflows/delivery-stripe.yaml. One rung, test
-# mode only: the job refuses a key that is not sk_test_/rk_test_ and a stack
-# config whose mode is not "test", and the program refuses a mismatched key
-# again. The key is the stripe-sandbox Environment's STRIPE_API_KEY secret
-# (main only, declared in repo-config). With no key there yet, the job says so
-# and applies nothing. The job's steps live in //tools/delivery/gen
-# (render_stripe_steps): this stack never had a hand-written workflow.
+# Applies the stacks from .github/workflows/delivery-stripe.yaml, in order, on
+# every push to main that touches them (and on dispatch):
+#   1. sandbox (test mode). Refuses a key that is not sk_test_/rk_test_ and a
+#      stack config whose mode is not "test".
+#   2. production (live mode, real money). Starts only after the sandbox
+#      ACTUALLY applied in the same run, waits for the stripe-production
+#      Environment's required reviewer, and refuses a key that is not
+#      sk_live_/rk_live_ and a config whose mode is not "live".
+# The program refuses a mismatched key again. Each key is its Environment's
+# STRIPE_API_KEY secret (main only, declared in repo-config). With no key there
+# yet, a rung says so and applies nothing, and production stays shut. The
+# job's steps live in //tools/delivery/gen (render_stripe_steps): this stack
+# never had a hand-written workflow.
 delivery(
     name = "stripe",
     app = "stripe",
-    environments = ["sandbox"],
+    environments = [
+        "sandbox",
+        "production",
+    ],
     extra_paths = [
         "infrastructure/pulumi/platform/stripe/",
     ],

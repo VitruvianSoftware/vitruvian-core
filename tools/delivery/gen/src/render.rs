@@ -309,6 +309,12 @@ struct TranscribedSpec {
     env: &'static [&'static str],
     runs_on: &'static str,
     render_steps: TranscribedSteps,
+    /// When non-empty, a later push-ladder rung starts only if the rung
+    /// before it reported this job output as 'true', not merely succeeded.
+    /// The steps must include a step with this id that writes
+    /// `<chain_output>=true` to $GITHUB_OUTPUT once the rung really
+    /// delivered (a rung that succeeds by skipping must not unlock the next).
+    chain_output: &'static str,
 }
 
 fn transcribed_job(name: &str) -> Option<TranscribedSpec> {
@@ -318,6 +324,7 @@ fn transcribed_job(name: &str) -> Option<TranscribedSpec> {
         env,
         runs_on,
         render_steps,
+        chain_output: "",
     };
     match name {
         "tabula-dev-latest" => Some(spec(
@@ -365,13 +372,18 @@ fn transcribed_job(name: &str) -> Option<TranscribedSpec> {
         // A NATIVE transcription: the Stripe stack never had a hand-written
         // workflow, so this is its job's only origin (no legacy_workflow).
         // Checkout only: the stack reaches Stripe with an API key, not GCP.
-        "stripe" => Some(spec(
-            20,
-            &["contents: read"],
-            &["GOWORK: off", "GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}"],
-            "",
-            render_stripe_steps,
-        )),
+        // Production chains on `applied`: a sandbox rung that skipped for
+        // want of a key succeeds, but must not walk a push into production.
+        "stripe" => Some(TranscribedSpec {
+            chain_output: "applied",
+            ..spec(
+                20,
+                &["contents: read"],
+                &["GOWORK: off", "GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}"],
+                "",
+                render_stripe_steps,
+            )
+        }),
         _ => None,
     }
 }
@@ -611,17 +623,45 @@ fn render_tabula_build_stack_steps(b: &mut String, _u: &Unit, _env: &str, opts: 
 /// The key is never echoed. An environment with no key yet is not a failure:
 /// the rung says so and stops, so merging the stack before James has added the
 /// key leaves main green instead of red.
-fn render_stripe_steps(b: &mut String, _u: &Unit, env: &str, opts: &Opts) -> R {
+/// Which Stripe mode each stripe rung applies, and the only key prefixes it
+/// accepts. A key for the other mode is refused before Pulumi starts, and the
+/// program refuses it again (internal/account.CheckKeyMode).
+fn stripe_rung(env: &str) -> Option<(&'static str, &'static str, &'static str)> {
+    match env {
+        "sandbox" => Some(("test", "sk_test_*|rk_test_*", "sk_test_ or rk_test_")),
+        "production" => Some(("live", "sk_live_*|rk_live_*", "sk_live_ or rk_live_")),
+        _ => None,
+    }
+}
+
+fn render_stripe_steps(b: &mut String, u: &Unit, env: &str, opts: &Opts) -> R {
     let dir = "infrastructure/pulumi/platform/stripe";
+    let (mode, patterns, named) = match stripe_rung(env) {
+        Some(r) => r,
+        None => fail!(
+            "unit {} declares environment {}, but render_stripe_steps knows only sandbox (test mode) and production (live mode) — an unknown rung would apply with no key-mode guard",
+            q(&u.name),
+            q(env)
+        ),
+    };
+    let ghenv = u.github_environment.replace("{env}", env);
     b.push_str("    steps:\n");
     w!(b, "      - uses: {}\n", opts.pin("actions/checkout")?);
     b.push_str("        with:\n");
     b.push_str("          persist-credentials: false\n");
     b.push('\n');
-    b.push_str("      # Refuse anything but a test-mode key BEFORE Pulumi starts. The program\n");
-    b.push_str("      # checks again (internal/account.CheckKeyMode), so a live key is turned\n");
-    b.push_str("      # away twice. The key is compared, never printed.\n");
-    b.push_str("      - name: Check the Stripe key is a test-mode key\n");
+    w!(
+        b,
+        "      # Refuse anything but a {}-mode key BEFORE Pulumi starts. The program\n",
+        mode
+    );
+    b.push_str("      # checks again (internal/account.CheckKeyMode), so a wrong-mode key is\n");
+    b.push_str("      # turned away twice. The key is compared, never printed.\n");
+    w!(
+        b,
+        "      - name: Check the Stripe key is a {}-mode key\n",
+        mode
+    );
     b.push_str("        id: key\n");
     b.push_str("        env:\n");
     b.push_str("          STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}\n");
@@ -631,18 +671,18 @@ fn render_stripe_steps(b: &mut String, _u: &Unit, env: &str, opts: &Opts) -> R {
     b.push_str(
         "          mode=\"$(sed -n 's/^  vitruvian-stripe:mode: *//p' \"$STACK_CONFIG\")\"\n",
     );
-    b.push_str("          if [ \"$mode\" != \"test\" ]; then\n");
-    b.push_str("            echo \"::error::$STACK_CONFIG has mode '$mode', not 'test'. This job only applies a Stripe sandbox.\"\n");
+    w!(b, "          if [ \"$mode\" != \"{}\" ]; then\n", mode);
+    w!(b, "            echo \"::error::$STACK_CONFIG has mode '$mode', not '{}'. The {} rung applies only a {}-mode stack.\"\n", mode, env, mode);
     b.push_str("            exit 1\n");
     b.push_str("          fi\n");
     b.push_str("          if [ -z \"${STRIPE_API_KEY:-}\" ]; then\n");
-    w!(b, "            echo \"::notice::No STRIPE_API_KEY in the stripe-{} environment yet, so nothing was applied. See {}/README.md.\"\n", env, dir);
+    w!(b, "            echo \"::notice::No STRIPE_API_KEY in the {} environment yet, so nothing was applied. See {}/README.md.\"\n", ghenv, dir);
     b.push_str("            echo \"present=false\" >> \"$GITHUB_OUTPUT\"\n");
     b.push_str("            exit 0\n");
     b.push_str("          fi\n");
     b.push_str("          case \"$STRIPE_API_KEY\" in\n");
-    b.push_str("            sk_test_*|rk_test_*) ;;\n");
-    w!(b, "            *) echo \"::error::STRIPE_API_KEY in the stripe-{} environment is not a test-mode secret key (sk_test_ or rk_test_). Refusing to apply; the key is not printed.\"; exit 1 ;;\n", env);
+    w!(b, "            {}) ;;\n", patterns);
+    w!(b, "            *) echo \"::error::STRIPE_API_KEY in the {} environment is not a {}-mode secret key ({}). Refusing to apply; the key is not printed.\"; exit 1 ;;\n", ghenv, mode, named);
     b.push_str("          esac\n");
     b.push_str("          echo \"present=true\" >> \"$GITHUB_OUTPUT\"\n");
     b.push('\n');
@@ -669,18 +709,26 @@ fn render_stripe_steps(b: &mut String, _u: &Unit, env: &str, opts: &Opts) -> R {
     w!(b, "          working-directory: {}\n", dir);
     b.push_str("          pulumi-access-token: ${{ secrets.PULUMI_ACCESS_TOKEN }}\n");
     b.push('\n');
+    b.push_str("      # Only reached when the apply above exited 0 (it fails the job\n");
+    b.push_str("      # otherwise). A rung that skipped for want of a key never writes it,\n");
+    b.push_str("      # so the next rung stays shut.\n");
+    b.push_str("      - name: Record that the stack applied\n");
+    b.push_str("        id: applied\n");
+    b.push_str("        if: steps.key.outputs.present == 'true'\n");
+    b.push_str("        run: echo \"applied=true\" >> \"$GITHUB_OUTPUT\"\n");
+    b.push('\n');
     b.push_str("      - name: Pulumi digest → step summary\n");
     b.push_str("        if: always() && steps.key.outputs.present == 'true'\n");
     w!(b, "        uses: {}\n", PULUMI_SUMMARY_ACTION);
     b.push_str("        with:\n");
-    b.push_str("          label: stripe\n");
+    w!(b, "          label: stripe {}\n", env);
     b.push_str("          out-file: ${{ runner.temp }}/pulumi-out.txt\n");
     b.push_str("          exit-code: ${{ steps.pulumi.outputs['exit-code'] || steps.pulumi.outputs.exit_code }}\n");
     b.push('\n');
     b.push_str("      # The product, price and one Payment Link per app: IDs and URLs only.\n");
     b.push_str("      # The stack exports no secret, and --show-secrets is never passed.\n");
     b.push_str("      - name: Stack outputs → step summary\n");
-    b.push_str("        if: steps.key.outputs.present == 'true' && (steps.pulumi.outputs['exit-code'] || steps.pulumi.outputs.exit_code) == '0'\n");
+    b.push_str("        if: steps.applied.outputs.applied == 'true'\n");
     w!(b, "        working-directory: {}\n", dir);
     b.push_str("        env:\n");
     b.push_str("          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}\n");
@@ -2005,7 +2053,11 @@ fn render_reusable_rung(b: &mut String, u: &Unit, rung: usize, env: &str, opts: 
         "    needs: [{}]\n",
         push_ladder_needs(u, rung).join(", ")
     );
-    w!(b, "    if: {}\n", push_ladder_condition(u, rung, env, opts));
+    w!(
+        b,
+        "    if: {}\n",
+        push_ladder_condition(u, rung, env, "", opts)
+    );
     b.push_str("    concurrency:\n");
     w!(b, "      group: delivery-{}-{}\n", u.name, env);
     b.push_str("      cancel-in-progress: false\n");
@@ -2050,7 +2102,11 @@ fn render_transcribed_rung(b: &mut String, u: &Unit, rung: usize, env: &str, opt
             "    needs: [{}]\n",
             push_ladder_needs(u, rung).join(", ")
         );
-        w!(b, "    if: {}\n", push_ladder_condition(u, rung, env, opts));
+        w!(
+            b,
+            "    if: {}\n",
+            push_ladder_condition(u, rung, env, spec.chain_output, opts)
+        );
     }
     b.push_str("    concurrency:\n");
     w!(b, "      group: delivery-{}-{}\n", u.name, env);
@@ -2085,6 +2141,17 @@ fn render_transcribed_rung(b: &mut String, u: &Unit, rung: usize, env: &str, opt
         for e in spec.env {
             w!(b, "      {}\n", e);
         }
+    }
+    if !spec.chain_output.is_empty() && rung + 1 < u.environments.len() {
+        b.push_str("    # Read by the next rung's `if:`: 'true' only once this rung delivered.\n");
+        b.push_str("    outputs:\n");
+        w!(
+            b,
+            "      {}: ${{{{ steps.{}.outputs.{} }}}}\n",
+            spec.chain_output,
+            spec.chain_output,
+            spec.chain_output
+        );
     }
     (spec.render_steps)(b, u, env, opts)
 }
@@ -2155,7 +2222,13 @@ fn push_ladder_needs(u: &Unit, rung: usize) -> Vec<String> {
     needs
 }
 
-fn push_ladder_condition(u: &Unit, rung: usize, env: &str, opts: &Opts) -> String {
+fn push_ladder_condition(
+    u: &Unit,
+    rung: usize,
+    env: &str,
+    chain_output: &str,
+    opts: &Opts,
+) -> String {
     let mut push = push_arm(&[u]);
     if !u.gate_var.is_empty() {
         let inner = push
@@ -2168,11 +2241,15 @@ fn push_ladder_condition(u: &Unit, rung: usize, env: &str, opts: &Opts) -> Strin
         );
     }
     if rung > 0 {
-        push = format!(
-            "({} && needs.{}.result == 'success')",
-            push,
-            deploy_job_id(u, &u.environments[rung - 1])
-        );
+        let prev = deploy_job_id(u, &u.environments[rung - 1]);
+        if chain_output.is_empty() {
+            push = format!("({} && needs.{}.result == 'success')", push, prev);
+        } else {
+            push = format!(
+                "({} && needs.{}.result == 'success' && needs.{}.outputs.{} == 'true')",
+                push, prev, prev, chain_output
+            );
+        }
     }
     let mut arms = vec![push];
     if opts.dispatch {

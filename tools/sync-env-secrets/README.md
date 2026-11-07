@@ -147,17 +147,21 @@ The local install reads the same two files from `secrets/courier-release/`
 `set -- courier-release COURIER_TELEGRAM_API_ID` (and `..._HASH`), then
 `apply -- courier-release`.
 
-## `stripe-sandbox`
+## `stripe-sandbox` and `stripe-production`
 
-Secret of the GitHub Environment that
+Secrets of the GitHub Environments that
 [`delivery-stripe.yaml`](../../.github/workflows/delivery-stripe.yaml)'s
-`stripe-sandbox` job binds. The environment itself is declared in
-[`repo-config`](../../infrastructure/pulumi/platform/repo-config/stripe_sandbox.go):
-only `main` may deploy to it.
+`stripe-sandbox` and `stripe-production` jobs bind. The environments are
+declared in
+[`repo-config`](../../infrastructure/pulumi/platform/repo-config/stripe_environments.go):
+only `main` may deploy to them, and `stripe-production` also needs a required
+reviewer's approval.
 
-| Secret | What it is |
-|---|---|
-| `STRIPE_API_KEY` | A Stripe **sandbox** (test-mode) secret key, ideally a restricted `rk_test_…` key limited to writing Products, Prices and Payment Links. The job refuses any key that does not start `sk_test_` or `rk_test_`. |
+| Environment | Secret | What it is |
+|---|---|---|
+| `stripe-sandbox` | `STRIPE_API_KEY` | A Stripe **sandbox** (test-mode) secret key, ideally a restricted `rk_test_…` key limited to writing Products, Prices and Payment Links. The job refuses any key that does not start `sk_test_` or `rk_test_`. |
+| `stripe-production` | `STRIPE_API_KEY` | The **live** account's key, ideally a restricted `rk_live_…` key with the same permissions. The job refuses any key that does not start `sk_live_` or `rk_live_`. |
 
-To set it: `set -- stripe-sandbox STRIPE_API_KEY` (which also backs the store up
-to Bitwarden), then `apply -- stripe-sandbox`.
+To set them: `set -- stripe-sandbox STRIPE_API_KEY` and
+`set -- stripe-production STRIPE_API_KEY` (each also backs the store up to
+Bitwarden), then `apply -- stripe-sandbox` and `apply -- stripe-production`.

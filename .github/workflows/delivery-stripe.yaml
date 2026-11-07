@@ -53,7 +53,7 @@
 # renaming or deleting a delivery() declaration shows up as a DIFF in this
 # generated file, which is what makes tidy-check's regeneration assertion
 # mean something even for a unit that renders no job yet.
-#   - stripe  kind=pulumi  run=//infrastructure/pulumi/platform/stripe:up  envs=sandbox  promotion=push-all
+#   - stripe  kind=pulumi  run=//infrastructure/pulumi/platform/stripe:up  envs=sandbox,production  promotion=push-all
 #       paths:  infrastructure/pulumi/platform/stripe/
 #       render: transcribed
 
@@ -81,6 +81,7 @@ on:
         default: sandbox
         options:
           - sandbox
+          - production
       allow-unsoaked:
         description: Promote even if the unit's development deploy is RED (logged loudly; //tools/ci:require_dev_soak)
         type: boolean
@@ -244,10 +245,11 @@ jobs:
           # signed off before the legacy path is deleted.
           retention-days: 30
 
-  # ======== unit: stripe → sandbox ========
+  # ======== unit: stripe → sandbox → production ========
   # Declared in infrastructure/pulumi/platform/stripe/BUILD; break-glass target: //infrastructure/pulumi/platform/stripe:up
 
-  # Single rung: delivers on an affected push (and on a dispatch naming it).
+  # Rung 1 of the sequential ladder: delivers on an affected push. The
+  # later rungs chain behind it, exactly as the legacy workflow's jobs do.
   # GitHub Environment: stripe-sandbox (its reviewer gate and WIF vars).
   stripe-sandbox:
     needs: [orchestrate]
@@ -265,14 +267,17 @@ jobs:
     env:
       GOWORK: off
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    # Read by the next rung's `if:`: 'true' only once this rung delivered.
+    outputs:
+      applied: ${{ steps.applied.outputs.applied }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       # Refuse anything but a test-mode key BEFORE Pulumi starts. The program
-      # checks again (internal/account.CheckKeyMode), so a live key is turned
-      # away twice. The key is compared, never printed.
+      # checks again (internal/account.CheckKeyMode), so a wrong-mode key is
+      # turned away twice. The key is compared, never printed.
       - name: Check the Stripe key is a test-mode key
         id: key
         env:
@@ -282,7 +287,7 @@ jobs:
           set -euo pipefail
           mode="$(sed -n 's/^  vitruvian-stripe:mode: *//p' "$STACK_CONFIG")"
           if [ "$mode" != "test" ]; then
-            echo "::error::$STACK_CONFIG has mode '$mode', not 'test'. This job only applies a Stripe sandbox."
+            echo "::error::$STACK_CONFIG has mode '$mode', not 'test'. The sandbox rung applies only a test-mode stack."
             exit 1
           fi
           if [ -z "${STRIPE_API_KEY:-}" ]; then
@@ -319,18 +324,26 @@ jobs:
           working-directory: infrastructure/pulumi/platform/stripe
           pulumi-access-token: ${{ secrets.PULUMI_ACCESS_TOKEN }}
 
+      # Only reached when the apply above exited 0 (it fails the job
+      # otherwise). A rung that skipped for want of a key never writes it,
+      # so the next rung stays shut.
+      - name: Record that the stack applied
+        id: applied
+        if: steps.key.outputs.present == 'true'
+        run: echo "applied=true" >> "$GITHUB_OUTPUT"
+
       - name: Pulumi digest → step summary
         if: always() && steps.key.outputs.present == 'true'
         uses: ./.github/actions/pulumi-summary
         with:
-          label: stripe
+          label: stripe sandbox
           out-file: ${{ runner.temp }}/pulumi-out.txt
           exit-code: ${{ steps.pulumi.outputs['exit-code'] || steps.pulumi.outputs.exit_code }}
 
       # The product, price and one Payment Link per app: IDs and URLs only.
       # The stack exports no secret, and --show-secrets is never passed.
       - name: Stack outputs → step summary
-        if: steps.key.outputs.present == 'true' && (steps.pulumi.outputs['exit-code'] || steps.pulumi.outputs.exit_code) == '0'
+        if: steps.applied.outputs.applied == 'true'
         working-directory: infrastructure/pulumi/platform/stripe
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
@@ -340,5 +353,109 @@ jobs:
             echo "### Stripe sandbox outputs"
             echo '```json'
             pulumi stack output --json --stack sandbox
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Rung 2 of 2: starts only once stripe-sandbox succeeded in THIS run.
+  # GitHub Environment: stripe-production (its reviewer gate and WIF vars).
+  stripe-production:
+    needs: [orchestrate, stripe-sandbox]
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && (((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_stripe == 'true')) && needs.stripe-sandbox.result == 'success' && needs.stripe-sandbox.outputs.applied == 'true') || (github.event_name == 'workflow_dispatch' && inputs.unit == 'stripe' && inputs.environment == 'production'))
+    concurrency:
+      group: delivery-stripe-production
+      cancel-in-progress: false
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    # Job-level permissions REPLACE the workflow-level block, which is
+    # narrower than this job needs.
+    permissions:
+      contents: read
+    environment: stripe-production
+    env:
+      GOWORK: off
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Refuse anything but a live-mode key BEFORE Pulumi starts. The program
+      # checks again (internal/account.CheckKeyMode), so a wrong-mode key is
+      # turned away twice. The key is compared, never printed.
+      - name: Check the Stripe key is a live-mode key
+        id: key
+        env:
+          STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
+          STACK_CONFIG: infrastructure/pulumi/platform/stripe/Pulumi.production.yaml
+        run: |
+          set -euo pipefail
+          mode="$(sed -n 's/^  vitruvian-stripe:mode: *//p' "$STACK_CONFIG")"
+          if [ "$mode" != "live" ]; then
+            echo "::error::$STACK_CONFIG has mode '$mode', not 'live'. The production rung applies only a live-mode stack."
+            exit 1
+          fi
+          if [ -z "${STRIPE_API_KEY:-}" ]; then
+            echo "::notice::No STRIPE_API_KEY in the stripe-production environment yet, so nothing was applied. See infrastructure/pulumi/platform/stripe/README.md."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          case "$STRIPE_API_KEY" in
+            sk_live_*|rk_live_*) ;;
+            *) echo "::error::STRIPE_API_KEY in the stripe-production environment is not a live-mode secret key (sk_live_ or rk_live_). Refusing to apply; the key is not printed."; exit 1 ;;
+          esac
+          echo "present=true" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Go
+        if: steps.key.outputs.present == 'true'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: infrastructure/pulumi/platform/stripe/go.mod
+          cache-dependency-path: infrastructure/pulumi/platform/stripe/go.sum
+
+      - name: Install Pulumi
+        if: steps.key.outputs.present == 'true'
+        uses: pulumi/actions@96c7761824268174e0d2a4e8c7d75671eebd24a7 # v7.1.0
+
+      - name: Pulumi up (stripe / production)
+        id: pulumi
+        if: steps.key.outputs.present == 'true'
+        uses: ./.github/actions/pulumi-run-captured
+        env:
+          STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
+        with:
+          command: up
+          stack: production
+          working-directory: infrastructure/pulumi/platform/stripe
+          pulumi-access-token: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+
+      # Only reached when the apply above exited 0 (it fails the job
+      # otherwise). A rung that skipped for want of a key never writes it,
+      # so the next rung stays shut.
+      - name: Record that the stack applied
+        id: applied
+        if: steps.key.outputs.present == 'true'
+        run: echo "applied=true" >> "$GITHUB_OUTPUT"
+
+      - name: Pulumi digest → step summary
+        if: always() && steps.key.outputs.present == 'true'
+        uses: ./.github/actions/pulumi-summary
+        with:
+          label: stripe production
+          out-file: ${{ runner.temp }}/pulumi-out.txt
+          exit-code: ${{ steps.pulumi.outputs['exit-code'] || steps.pulumi.outputs.exit_code }}
+
+      # The product, price and one Payment Link per app: IDs and URLs only.
+      # The stack exports no secret, and --show-secrets is never passed.
+      - name: Stack outputs → step summary
+        if: steps.applied.outputs.applied == 'true'
+        working-directory: infrastructure/pulumi/platform/stripe
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          {
+            echo "### Stripe production outputs"
+            echo '```json'
+            pulumi stack output --json --stack production
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"

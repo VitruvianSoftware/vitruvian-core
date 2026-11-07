@@ -22,6 +22,7 @@ package donations
 
 import (
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -84,10 +85,12 @@ func TestLinkMetadataNamesTheApp(t *testing.T) {
 // ns is the stack's config namespace: the `name:` in Pulumi.yaml.
 const ns = "vitruvian-stripe:"
 
-// The committed sandbox stack config must pass the same validation the apply
-// runs, and must stay in test mode: a live-mode flip belongs in its own stack.
-func TestCommittedSandboxConfig(t *testing.T) {
-	raw, err := os.ReadFile("../../Pulumi.sandbox.yaml")
+// checkCommittedConfig asserts a committed stack config passes the same
+// validation the apply runs and keeps its mode: a mode flip belongs in the
+// other stack, never in this one.
+func checkCommittedConfig(t *testing.T, file string, wantMode account.Mode) Settings {
+	t.Helper()
+	raw, err := os.ReadFile("../../" + file)
 	if err != nil {
 		t.Fatalf("read stack config: %v", err)
 	}
@@ -98,7 +101,7 @@ func TestCommittedSandboxConfig(t *testing.T) {
 		t.Fatalf("parse stack config: %v", err)
 	}
 	if _, ok := doc.Config["stripe:apiKey"]; ok {
-		t.Fatal("Pulumi.sandbox.yaml sets stripe:apiKey; the program passes the key to the provider itself (internal/stripekey), so set STRIPE_API_KEY or the secret " + ns + "apiKey instead")
+		t.Fatal(file + " sets stripe:apiKey; the program passes the key to the provider itself (internal/stripekey), so set STRIPE_API_KEY or the secret " + ns + "apiKey instead")
 	}
 	// The key may only appear as Pulumi ciphertext (`pulumi config set
 	// --secret`), never as a plain string.
@@ -107,7 +110,7 @@ func TestCommittedSandboxConfig(t *testing.T) {
 			Secure string `yaml:"secure"`
 		}
 		if n.Kind != yaml.MappingNode || n.Decode(&secure) != nil || secure.Secure == "" {
-			t.Fatal(ns + "apiKey is in Pulumi.sandbox.yaml as plaintext; set it with `config -- set --secret apiKey` so only ciphertext is committed, or use STRIPE_API_KEY")
+			t.Fatal(ns + "apiKey is in " + file + " as plaintext; set it with `config -- set --secret apiKey` so only ciphertext is committed, or use STRIPE_API_KEY")
 		}
 	}
 
@@ -115,7 +118,7 @@ func TestCommittedSandboxConfig(t *testing.T) {
 		t.Helper()
 		n, ok := doc.Config[ns+key]
 		if !ok {
-			t.Fatalf("Pulumi.sandbox.yaml is missing %s%s", ns, key)
+			t.Fatalf("%s is missing %s%s", file, ns, key)
 		}
 		if err := n.Decode(into); err != nil {
 			t.Fatalf("decode %s%s: %v", ns, key, err)
@@ -129,13 +132,34 @@ func TestCommittedSandboxConfig(t *testing.T) {
 	if err := acct.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	if acct.Mode != account.ModeTest {
-		t.Fatalf("the sandbox stack must stay in test mode, got %q", acct.Mode)
+	if acct.Mode != wantMode {
+		t.Fatalf("%s must stay in %s mode, got %q", file, wantMode, acct.Mode)
 	}
 
 	var s Settings
 	decode("donations", &s)
 	if err := s.Validate(); err != nil {
 		t.Fatal(err)
+	}
+	return s
+}
+
+// The committed stack configs: each keeps its mode (CI's key guard reads it
+// too), holds no plaintext key, and validates.
+func TestCommittedSandboxConfig(t *testing.T) {
+	checkCommittedConfig(t, "Pulumi.sandbox.yaml", account.ModeTest)
+}
+
+func TestCommittedProductionConfig(t *testing.T) {
+	checkCommittedConfig(t, "Pulumi.production.yaml", account.ModeLive)
+}
+
+// The sandbox run is the rehearsal of the live one, so both sell the same
+// donations: a setting changed in one stack only would go live untested.
+func TestSandboxRehearsesProduction(t *testing.T) {
+	sandbox := checkCommittedConfig(t, "Pulumi.sandbox.yaml", account.ModeTest)
+	production := checkCommittedConfig(t, "Pulumi.production.yaml", account.ModeLive)
+	if !reflect.DeepEqual(sandbox, production) {
+		t.Fatalf("donations differ between the stacks:\n sandbox:    %+v\n production: %+v", sandbox, production)
 	}
 }
