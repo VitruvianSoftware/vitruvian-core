@@ -1,0 +1,201 @@
+{
+  "accounts": [
+    { "network": "whatsapp", "login": "seed-wa", "name": "Sam Seed" },
+    { "network": "slack", "login": "seed-slack", "name": "Example Co" },
+    { "network": "telegram", "login": "seed-tg", "name": "Sam Seed" }
+  ],
+  "people": [
+    { "id": "ann", "name": "Ann Example" },
+    { "id": "bo", "name": "Bo Example" },
+    { "id": "cy", "name": "Cy Example" },
+    { "id": "dee", "name": "Dee Example" },
+    { "id": "eli", "name": "Eli Example" },
+    { "id": "fay", "name": "Fay Example" }
+  ],
+  "chats": [
+    {
+      "account": "seed-wa",
+      "id": "grp-family",
+      "name": "Family",
+      "direct": false,
+      "members": ["ann", "bo"],
+      "pinned": true,
+      "unread": true,
+      "messages": [
+        {
+          "id": "w1",
+          "from": "ann",
+          "minutesAgo": 50,
+          "text": "Dinner on Sunday?"
+        },
+        {
+          "id": "w2",
+          "from": "bo",
+          "minutesAgo": 45,
+          "text": "I'm in.",
+          "reactions": [{ "from": "ann", "emoji": "❤️" }]
+        }
+      ]
+    },
+    {
+      "account": "seed-wa",
+      "id": "dm-cy",
+      "name": "Cy Example",
+      "direct": true,
+      "members": ["cy"],
+      "unread": false,
+      "messages": [
+        {
+          "id": "w3",
+          "from": "cy",
+          "minutesAgo": 400,
+          "text": "Thanks for yesterday!"
+        },
+        { "id": "w4", "from": "me", "minutesAgo": 395, "text": "Any time." }
+      ]
+    },
+    {
+      "account": "seed-wa",
+      "id": "grp-book",
+      "name": "Book club",
+      "direct": false,
+      "members": ["ann", "cy", "dee"],
+      "muted": true,
+      "unread": true,
+      "messages": [
+        {
+          "id": "w5",
+          "from": "dee",
+          "minutesAgo": 700,
+          "text": "Next month's pick is the one with the lighthouse."
+        },
+        {
+          "id": "w6",
+          "from": "cy",
+          "minutesAgo": 650,
+          "text": "Already started it!"
+        }
+      ]
+    },
+    {
+      "account": "seed-slack",
+      "id": "ch-general",
+      "name": "general",
+      "direct": false,
+      "members": ["dee", "eli", "fay"],
+      "unread": true,
+      "messages": [
+        {
+          "id": "s1",
+          "from": "eli",
+          "minutesAgo": 90,
+          "text": "Standup moved to 10:15 today."
+        },
+        {
+          "id": "s2",
+          "from": "fay",
+          "minutesAgo": 85,
+          "text": "Noted.",
+          "thread": "s1"
+        },
+        {
+          "id": "s3",
+          "from": "me",
+          "minutesAgo": 80,
+          "text": "Thanks for the heads up.",
+          "thread": "s1"
+        }
+      ]
+    },
+    {
+      "account": "seed-slack",
+      "id": "ch-random",
+      "name": "random",
+      "direct": false,
+      "members": ["dee", "eli", "fay"],
+      "muted": true,
+      "unread": false,
+      "messages": [
+        {
+          "id": "s4",
+          "from": "fay",
+          "minutesAgo": 1200,
+          "text": "Someone left cake in the kitchen 🍰"
+        }
+      ]
+    },
+    {
+      "account": "seed-slack",
+      "id": "dm-eli",
+      "name": "Eli Example",
+      "direct": true,
+      "members": ["eli"],
+      "pinned": true,
+      "unread": true,
+      "messages": [
+        {
+          "id": "s5",
+          "from": "eli",
+          "minutesAgo": 20,
+          "text": "Got a minute to look at the review?"
+        }
+      ]
+    },
+    {
+      "account": "seed-tg",
+      "id": "grp-hike",
+      "name": "Weekend hikers",
+      "direct": false,
+      "members": ["ann", "fay"],
+      "unread": false,
+      "messages": [
+        {
+          "id": "g1",
+          "from": "fay",
+          "minutesAgo": 3000,
+          "text": "Trail is dry, see you at 8."
+        },
+        {
+          "id": "g2",
+          "from": "me",
+          "minutesAgo": 2990,
+          "text": "Bringing snacks."
+        }
+      ]
+    },
+    {
+      "account": "seed-tg",
+      "id": "dm-fay",
+      "name": "Fay Example",
+      "direct": true,
+      "members": ["fay"],
+      "unread": true,
+      "messages": [
+        {
+          "id": "g3",
+          "from": "fay",
+          "minutesAgo": 5,
+          "text": "Photos from Saturday are up!"
+        }
+      ]
+    },
+    {
+      "account": "seed-tg",
+      "id": "dm-bo",
+      "name": "Bo Example",
+      "direct": true,
+      "members": ["bo"],
+      "muted": true,
+      "unread": false,
+      "messages": [
+        {
+          "id": "g4",
+          "from": "me",
+          "minutesAgo": 2000,
+          "text": "Happy birthday!"
+        },
+        { "id": "g5", "from": "bo", "minutesAgo": 1990, "text": "Thank you 😊" }
+      ]
+    }
+  ]
+}

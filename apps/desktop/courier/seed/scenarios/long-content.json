@@ -1,0 +1,83 @@
+{
+  "accounts": [
+    { "network": "telegram", "login": "seed-tg", "name": "Sam Seed" }
+  ],
+  "people": [
+    { "id": "ann", "name": "Ann Example" },
+    {
+      "id": "bartholomew",
+      "name": "Bartholomew Maximilian Longname-Example the Third"
+    },
+    { "id": "cy", "name": "Cy Example" }
+  ],
+  "chats": [
+    {
+      "account": "seed-tg",
+      "id": "grp-long",
+      "name": "The Extremely Long Group Name For Planning The Annual Neighbourhood Garden Festival And Bake Sale 2026",
+      "direct": false,
+      "members": ["ann", "bartholomew", "cy"],
+      "unread": true,
+      "messages": [
+        {
+          "id": "l1",
+          "from": "bartholomew",
+          "minutesAgo": 200,
+          "text": "Here is the full plan, as promised. We start setting up the tables at seven in the morning, which means the van needs to be loaded the night before, and whoever has the keys to the shed should arrive at least half an hour early so that the chairs, the bunting, the gazebo poles and the two big urns for tea are all out and ready before the bakers turn up with their trays, because last year we lost twenty minutes looking for the extension lead and the queue for scones was already round the corner by the time we opened."
+        },
+        {
+          "id": "l2",
+          "from": "ann",
+          "minutesAgo": 190,
+          "text": "Shopping list:\n- flour (6 kg)\n- sugar (4 kg)\n- butter\n- eggs, lots of eggs\n\nAnd please, nobody forget the paper plates again."
+        },
+        {
+          "id": "l3",
+          "from": "me",
+          "minutesAgo": 180,
+          "text": "The sign-up sheet is at https://example.com/garden-festival/2026/volunteers/sign-up?shift=morning&table=cakes&ref=group-chat-long-link-for-testing and the map is at https://example.org/maps/park"
+        },
+        {
+          "id": "l4",
+          "from": "cy",
+          "minutesAgo": 170,
+          "text": "🎉🎉🎉 🌻🌼🌷 🍰🧁🍪 ☕️🫖 🎪🎈🎶 👏👏👏"
+        },
+        {
+          "id": "l5",
+          "from": "bartholomew",
+          "minutesAgo": 160,
+          "text": "Averyveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongwordwithnospacesatalltoseehowthebubblewraps"
+        },
+        {
+          "id": "l6",
+          "from": "me",
+          "minutesAgo": 30,
+          "text": "Line one\nLine two\nLine three\n\nAfter a blank line.\n    Indented line.\nLast line 👋",
+          "replyTo": "l1",
+          "reactions": [
+            { "from": "ann", "emoji": "😂" },
+            { "from": "cy", "emoji": "😂" },
+            { "from": "bartholomew", "emoji": "👍" }
+          ]
+        }
+      ]
+    },
+    {
+      "account": "seed-tg",
+      "id": "dm-bartholomew",
+      "name": "Bartholomew Maximilian Longname-Example the Third",
+      "direct": true,
+      "members": ["bartholomew"],
+      "unread": true,
+      "messages": [
+        {
+          "id": "lb1",
+          "from": "bartholomew",
+          "minutesAgo": 10,
+          "text": "Quick one: could you check https://example.net/a/very/long/path/that/keeps/going/and/going/and/going/until/it/certainly/does/not/fit/on/one/line/of/the/inbox/preview/index.html before tonight?"
+        }
+      ]
+    }
+  ]
+}
