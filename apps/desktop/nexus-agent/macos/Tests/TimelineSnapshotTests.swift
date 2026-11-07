@@ -108,7 +108,7 @@ private struct FakeConversation: View {
             }
         }
         .padding(14)
-        .padding(onLeft ? .leading : .trailing, NexusAgentTimelineScrubber.gutter)
+        .padding(onLeft ? .leading : .trailing, NexusAgentTimelineScrubber.gutter(onLeft: onLeft))
         .fixedSize(horizontal: false, vertical: true)
     }
 }
