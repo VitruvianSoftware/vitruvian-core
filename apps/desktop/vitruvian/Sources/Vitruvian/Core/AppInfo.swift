@@ -25,11 +25,16 @@ package enum AppInfo {
     /// the protocol, the Swift kit and the `vitruvian-tool` command. The
     /// Extensions page links to it under the catalog.
     package static let sdkURL = URL(string: "https://github.com/VitruvianSoftware/vitruvian-sdk")!
-    /// Upstream's donation, Discord and X channels belong to upstream. The fork
-    /// has none yet, so the Support page and the post-update support prompt are
-    /// hidden and these links fall back to the repository.
+    /// Upstream's Discord and X channels belong to upstream. The fork has none
+    /// yet, so the Support page's community card and the post-update support
+    /// prompt stay hidden, and these links fall back to the repository.
     package static let hasCommunityChannels = false
-    package static let coffeeURL = repositoryURL
+    /// Donations go through Stripe (infrastructure/pulumi/platform/stripe in the
+    /// monorepo). The app opens a stable address on our own site, which forwards
+    /// to the current Payment Link, so a replaced link never strands a shipped
+    /// build. Settings > Support's Donate button opens it.
+    package static let donateURL = URL(string: "https://vitruviansoftware.dev/donate/vitruvian/")!
+    package static let coffeeURL = donateURL
     package static let discordURL = repositoryURL
     package static let socialURL = repositoryURL
 

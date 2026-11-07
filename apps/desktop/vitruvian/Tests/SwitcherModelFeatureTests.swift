@@ -2219,7 +2219,13 @@ enum SwitcherModelFeatureTests {
                "update showcase media override is empty by default")
         suite.expect(!AppInfo.hasCommunityChannels && !SupportUpdateIntroInfo.isOffered
                      && !SupportUpdateIntroInfo.shouldShow(appVersion: "3.4.0", lastSeenVersion: nil),
-               "Vitruvian has no donation channel, so the support prompt never shows")
+               "Vitruvian has no community channels, so upstream's post-update support prompt never shows")
+        suite.expect(AppInfo.donateURL.absoluteString == "https://vitruviansoftware.dev/donate/vitruvian/"
+                     && AppInfo.coffeeURL == AppInfo.donateURL,
+               "the Donate button opens our own redirect, never a Stripe URL that a replaced Payment Link would break")
+        suite.expect(SettingsDirectory.sidebarSections(Strings.enUS, language: .enUS, isAvailable: { _ in true })
+                         .contains { $0.items.contains { $0.id == .page(.support) } },
+               "Settings lists the Support page, now that donations have a home")
         // The retained release logic stays covered with the invitation switched on.
         let supportOffered = SupportUpdateIntroInfo.isOffered
         SupportUpdateIntroInfo.isOffered = true

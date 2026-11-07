@@ -1,0 +1,15 @@
+# Where each app's Donate button lands.
+#
+# Apps never embed a Stripe URL: a Payment Link that is replaced gets a new
+# address, and shipped builds can't be updated. They open
+# https://vitruviansoftware.dev/donate/<key>/ instead (donate/<key>.html),
+# which forwards to the `url` here.
+#
+# `url` is the app's live-mode Payment Link: the `donationLinks` output of the
+# production stack in infrastructure/pulumi/platform/stripe, under the same
+# key. Never a sandbox (test-mode) link. While it is empty, the page says
+# donations are not open yet instead of forwarding.
+
+vitruvian:
+  name: Vitruvian
+  url: ""

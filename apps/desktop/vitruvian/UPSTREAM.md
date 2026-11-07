@@ -138,6 +138,13 @@ byte identical to upstream except `.gitignore` (listed below). Left out:
 GPL-3.0 §5(a) requires a notice that the work was modified, with a date. This log
 is that notice. Add an entry for every change to upstream files.
 
+- **2026-11-07**: Settings > Support now shows, for donations through Stripe. It was hidden because its Buy Me a Coffee link was upstream's. Upstream files changed:
+  - `Core/AppInfo.swift`: `donateURL` is `https://vitruviansoftware.dev/donate/vitruvian/`, our own address that forwards to the current Stripe Payment Link (`infrastructure/pulumi/platform/stripe`), and `coffeeURL` is now that address. `hasCommunityChannels` stays false and now covers only the Discord and X channels.
+  - `Services/Settings/SettingsDirectory.swift`: the sidebar lists the Support page, found by its Donate button and heading.
+  - `UI/Settings/SettingsView.swift`: the Donate button opens `donateURL` with a heart icon, and the Discord and X card shows only when `hasCommunityChannels` is true.
+  - `Core/Localization.swift` and `Core/Localizations/Strings+*.swift` (all 15 languages): `donateMessage` and `donateButton` name Stripe and drop upstream's first-person "built in my spare time" and Buy Me a Coffee. The post-update prompt's strings are unchanged, since that prompt stays off.
+  - `Tests/LocalizationFeatureContractTests.swift`: every language's donation names Stripe and not Buy Me a Coffee, in place of requiring Buy Me a Coffee.
+  - `Tests/SwitcherModelFeatureTests.swift`: the Donate button opens the redirect, and the sidebar lists the Support page.
 - **2026-11-02**: The unit tests no longer save into the account's real `~/Library/Preferences`. Leftover test suites there had grown to some 56,000 files across the monorepo's apps and stopped macOS saving any app's settings. The tests now open their suites through `Tests/ScratchDefaults.swift` (VitruvianSoftware's, the same in every Swift test folder), and the `swift_test` in `BUILD` comes from `//tools/swift-test-preferences`, which keeps every suite and `UserDefaults.standard` in a container under the test's TEST_TMPDIR. `bazel/src/run_unit_tests/lib.rs` no longer deletes test plists from the real folder after the run; it fails the run if one appears there. Upstream files changed:
   - `Tests/*.swift` (70 files): `UserDefaults(suiteName:)` becomes `ScratchDefaults.suite(named:)`, with the same names.
   - `Tests/PreferenceNamespaceTests.swift`: checks that a test's suite and `UserDefaults.standard` are saved in the test's own container and never reach the real folder, in place of checking that every suite name was one the sweep in `build.sh` deleted.
