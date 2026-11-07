@@ -235,6 +235,7 @@ def delivery(
 
     if render not in ("", "reusable", "transcribed"):
         fail("delivery(%s): render must be \"\", \"reusable\" or \"transcribed\", got %r" % (name, render))
+
     # legacy_workflow + legacy_job are provenance for a job that was copied out
     # of a hand-written workflow, so they come as a pair: one without the other
     # points at nothing. A unit that never had a hand-written workflow (a NEW
