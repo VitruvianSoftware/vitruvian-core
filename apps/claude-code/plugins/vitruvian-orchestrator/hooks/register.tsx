@@ -1850,7 +1850,7 @@ export const register: Register = (on) => {
     });
 
     await $.command.register({
-      name: "orchestrator",
+      name: "orchestrator-panel",
       description:
         "Show or hide the Orchestrator live panel (flow header, burn-down, task board, agents, and spend)",
     });
@@ -1867,7 +1867,7 @@ export const register: Register = (on) => {
     return started;
   });
 
-  on("command.run", { command: "orchestrator" }, async ($) => {
+  on("command.run", { command: "orchestrator-panel" }, async ($) => {
     const isOpen = await togglePane($);
     return {
       text: isOpen

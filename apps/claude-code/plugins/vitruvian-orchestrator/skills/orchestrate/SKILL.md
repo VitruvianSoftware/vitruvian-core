@@ -14,6 +14,7 @@ You run on Claude Opus. The specialists do not: each one in the roster table is 
 
 - **Use it** when a task spans two or more domains, or requires large or parallel work across the repository.
 - **Do not use it** when a few tool calls settle the request. Do small tasks yourself; delegating a tiny task costs more time and tokens than it saves.
+- **Once invoked, always post a plan**, even when you do the work yourself. A task you do yourself is one row with `specialist: "lead"` and your own tier. The user watches the panel, so a run with no plan looks like nothing happened.
 
 ## 2. The roster
 
@@ -154,9 +155,11 @@ only knows what you tell it, so keep it current. If the tool is not available, s
   - on every phase change: `phase`;
   - after each review outcome: `accept: <task number>` or `return: <task number>`;
   - when the plan changes: the full new `tasks` list;
+  - when you do a task yourself, `accept: <task number>` once it passes your own checks;
   - once at the end: `finished: true`.
+- Post the plan on every run of this skill, even a one-task plan you do yourself (see section 1).
 - Use each task's title, unchanged, as the run's label when you dispatch it (see "How to dispatch"): the
   panel matches runs to tasks by it.
 - Tell each specialist in its brief: "Report your own progress with the `mcp__vitruvian-orchestrator__step`: `done`, `total`,
   and a short `note`, after each step."
-- Run `/orchestrator` to open or close the panel; it also opens by itself on the first plan.
+- Run `/orchestrator-panel` to open or close the panel; it also opens by itself on the first plan.
