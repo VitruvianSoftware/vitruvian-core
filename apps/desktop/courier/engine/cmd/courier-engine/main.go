@@ -79,6 +79,9 @@ const maxSocketPath = 103
 // serveStopWait bounds how long shutdown waits for requests in flight (a send waiting on a phone, say).
 const serveStopWait = 5 * time.Second
 
+// afterStart is what runs once every network has started (or failed to): the test copy's scenario playback.
+type afterStart func(ctx context.Context, eng *engine.Engine, log zerolog.Logger)
+
 type config struct {
 	data   string   // absolute
 	parent *os.File // the inherited descriptor to watch; nil: no watchdog
@@ -237,6 +240,14 @@ func run(cfg config, stdout, stderr io.Writer) error {
 		return fmt.Errorf("mark interrupted sends: %w", err)
 	}
 
+	// The test copy's engine (seed_on.go, built with the courierseed tag) may put fake networks in cfg.nets here and
+	// play a made-up scenario into them once they have started (COURIER_SEED). The released engine's seedSetup
+	// (seed_off.go) does nothing, and the binary holds none of that code.
+	seedPlay, err := seedSetup(&cfg, os.Getenv)
+	if err != nil {
+		return err
+	}
+
 	// Account spaces and a row's muted_by_name say "WhatsApp", not "whatsapp" (Ruling 5).
 	all := cfg.nets
 	if all == nil {
@@ -342,6 +353,9 @@ func run(cfg config, stdout, stderr io.Writer) error {
 	go func() {
 		defer close(startDone)
 		eng.StartNetworks(startCtx, cfg.data, m, specs, log)
+		if seedPlay != nil && startCtx.Err() == nil {
+			seedPlay(startCtx, eng, log)
+		}
 	}()
 	defer func() {
 		stopStart()
