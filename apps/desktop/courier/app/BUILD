@@ -85,6 +85,8 @@ swift_test(
     name = "CourierViewTests",
     size = "large",
     srcs = glob(["Tests/CourierViewTests/**/*.swift"]),
+    # The made-up chats the test copy can open with: SeedScenarioSnapshotTests draws one (SeedScenario.swift).
+    data = ["//apps/desktop/courier/seed:scenarios"],
     tags = [
         "exclusive",
         "manual",
@@ -177,7 +179,7 @@ genrule(
 macos_application(
     name = "CourierTestCopy",
     additional_contents = {
-        ":engine_helper": "Helpers",
+        "//apps/desktop/courier/app/seeded:engine_helper": "Helpers",
     },
     bundle_id = "com.vitruviansoftware.courier.dev",
     bundle_name = "Courier Test Copy",
@@ -189,16 +191,24 @@ macos_application(
     deps = [":CourierLib"],
 )
 
-# bazel run --config=macos-app //apps/desktop/courier/app:run_test_copy [-- --data DIR]
+# bazel run --config=macos-app //apps/desktop/courier/app:run_test_copy [-- --data DIR] [-- --seed NAME]
 #
 # Unpacks :CourierTestCopy into a temporary folder and opens it with COURIER_DATA_DIR set to its own data folder
-# (default: a folder under $TMPDIR). It refuses an app whose bundle identifier is not the test copy's, and a data
+# (default: a folder under $TMPDIR). --seed NAME opens it full of the made-up chats of ../seed/scenarios/NAME.json,
+# in a fresh $TMPDIR/courier-test-copy/seed-NAME (COURIER_SEED). It refuses an app whose bundle identifier is not the test copy's, and a data
 # folder that is the installed app's. It never touches /Applications/Courier.app.
 rust_binary(
     name = "run_test_copy",
     srcs = ["scripts/src/bin/run_test_copy.rs"],
-    args = ["$(rootpaths :CourierTestCopy)"],
-    data = [":CourierTestCopy"],
+    args = [
+        "$(rootpaths :CourierTestCopy)",
+        "--scenarios",
+        "$(rootpaths //apps/desktop/courier/seed:scenarios)",
+    ],
+    data = [
+        ":CourierTestCopy",
+        "//apps/desktop/courier/seed:scenarios",
+    ],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     tags = ["manual"],
@@ -219,6 +229,34 @@ rust_test(
     ],
     crate_root = "scripts/src/bin/app_holds_engine.rs",
     data = [":Courier"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+    use_libtest_harness = False,
+    deps = [":courier_scripts_lib"],
+)
+
+# Which engine each app bundles: :Courier's must not hold the seed player (the made-up chats only the test copy may
+# open with), and :CourierTestCopy's must. It looks in each bundled engine for the seed package's Marker, read from
+# its source. macOS-only and `manual`, like :app_holds_engine_test; the courier-app-macos unit below runs it.
+rust_test(
+    name = "release_engine_has_no_seed_test",
+    size = "small",
+    srcs = ["scripts/src/bin/release_engine_has_no_seed.rs"],
+    args = [
+        "$(rootpath //apps/desktop/courier/engine/internal/seed:seed.go)",
+        "--release",
+        "$(rootpaths :Courier)",
+        "--test-copy",
+        "$(rootpaths :CourierTestCopy)",
+    ],
+    crate_root = "scripts/src/bin/release_engine_has_no_seed.rs",
+    data = [
+        ":Courier",
+        ":CourierTestCopy",
+        "//apps/desktop/courier/engine/internal/seed:seed.go",
+    ],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     tags = ["manual"],
@@ -314,6 +352,7 @@ pipeline_unit(
         ":app_holds_engine_test",
         ":engine_contract_test",
         ":inject_app_credentials_test",
+        ":release_engine_has_no_seed_test",
     ],
     tier = "L1",
     # A cold build of the engine it bundles is libsignal's 2,000+ actions
