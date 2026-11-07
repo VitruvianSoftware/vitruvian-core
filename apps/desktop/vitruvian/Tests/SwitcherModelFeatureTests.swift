@@ -2244,8 +2244,9 @@ enum SwitcherModelFeatureTests {
                && !SupportUpdateIntroInfo.shouldShow(appVersion: "3.5.0", lastSeenVersion: nil),
                "support prompt never leaks into another release series")
         // A prefix check passed while every link led to a repository that does
-        // not exist; name the repository itself (AboutLinksContract).
-        for url in [AppInfo.repositoryURL, AppInfo.coffeeURL, AppInfo.discordURL, AppInfo.socialURL] {
+        // not exist; name the repository itself (AboutLinksContract). The
+        // donation link is checked above: it goes to our own site, not GitHub.
+        for url in [AppInfo.repositoryURL, AppInfo.discordURL, AppInfo.socialURL] {
             suite.expect(url.host == "github.com"
                          && url.pathComponents.prefix(3) == ["/", "VitruvianSoftware", "vitruvian-core"]
                          && !url.absoluteString.lowercased().contains("vorssaint"),
