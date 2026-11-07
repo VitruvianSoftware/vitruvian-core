@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.88.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.87.1...vitruvian-v3.88.0) (2026-11-07)
+
+
+### Features
+
+* **vitruvian:** Donate button in Settings &gt; Support goes to Stripe ([#4406](https://github.com/VitruvianSoftware/vitruvian-core/issues/4406)) ([85a4812](https://github.com/VitruvianSoftware/vitruvian-core/commit/85a4812dabb3ff9f311f9037903b8ce771bb2c31))
+
 ## [3.87.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.87.0...vitruvian-v3.87.1) (2026-11-03)
 
 
