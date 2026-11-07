@@ -37,6 +37,7 @@ const FIXTURES: &[&str] = &[
     "gravastar-mouse-publish",
     "oauth-user-inspector-identity",
     "oauth-user-inspector",
+    "stripe",
     "tabula-api",
     "tabula-build-stack",
     "tabula-dev-latest",
@@ -414,6 +415,7 @@ fn group_by_app_gives_every_app_its_own_workflow() {
                 "zitadel-apps",
             ],
         ),
+        ("stripe", vec!["stripe"]),
         (
             "tabula",
             vec![
@@ -775,4 +777,99 @@ fn soak_job_outlives_the_gates_wait() {
     // development deploy still running; a shorter job timeout would kill it
     // mid-wait with no verdict.
     assert!(job.contains("    timeout-minutes: 50\n"), "{job}");
+}
+
+/// Each Stripe rung takes only its own mode's key: sandbox test, production
+/// live. These are the lines that make it so; a regeneration that loses one of
+/// them would let a rung apply the other mode's key, apply before the key-mode
+/// check runs, or walk a push into production without a sandbox apply.
+#[test]
+fn stripe_rungs_accept_only_their_own_key_mode() {
+    let us: Vec<Unit> = fixtures()
+        .into_iter()
+        .filter(|u| u.name == "stripe")
+        .collect();
+    let got = must_render(&us, 2);
+    let after_sandbox = got
+        .split("\n  stripe-sandbox:\n")
+        .nth(1)
+        .expect("no stripe-sandbox job rendered");
+    let (sandbox, production) = after_sandbox
+        .split_once("\n  stripe-production:\n")
+        .expect("no stripe-production job rendered after stripe-sandbox");
+
+    for (job, env, mode, accept, refuse) in [
+        (sandbox, "sandbox", "test", "sk_test_*|rk_test_*", "live"),
+        (
+            production,
+            "production",
+            "live",
+            "sk_live_*|rk_live_*",
+            "test",
+        ),
+    ] {
+        for want in [
+            format!("    environment: stripe-{}\n", env),
+            format!("            {}) ;;\n", accept),
+            format!("            *) echo \"::error::STRIPE_API_KEY in the stripe-{} environment is not a {}-mode secret key", env, mode),
+            format!("          if [ \"$mode\" != \"{}\" ]; then\n", mode),
+            format!("          stack: {}\n", env),
+        ] {
+            assert!(job.contains(&want), "stripe-{} job lacks {:?}", env, want);
+        }
+        // The only accepted keys are this rung's mode: no case arm admits the other.
+        assert!(
+            !job.contains(&format!("sk_{}_*", refuse))
+                && !job.contains(&format!("rk_{}_*", refuse)),
+            "stripe-{} accepts a {}-mode key",
+            env,
+            refuse
+        );
+        // The guard runs before Pulumi, and every Pulumi step waits on it.
+        let guard = job.find("id: key").unwrap();
+        let up = job
+            .find("uses: ./.github/actions/pulumi-run-captured")
+            .unwrap();
+        assert!(
+            guard < up,
+            "stripe-{}: the key check must run before pulumi up",
+            env
+        );
+        assert_eq!(
+            job.matches("if: steps.key.outputs.present == 'true'\n")
+                .count(),
+            4,
+            "stripe-{}: Go, Pulumi, pulumi up and the applied marker must each wait on the key check",
+            env
+        );
+        // A Stripe key, never a cloud identity.
+        assert!(!job.contains("id-token: write"));
+        assert!(
+            !job.lines()
+                .any(|l| !l.trim_start().starts_with('#') && l.contains("--show-secrets")),
+            "nothing in the stripe-{} job may print secret outputs",
+            env
+        );
+    }
+
+    // Production starts on a push only after the sandbox REALLY applied in the
+    // same run: a sandbox rung that skipped for want of a key succeeds, so
+    // result == 'success' alone would walk the push into production.
+    assert!(
+        sandbox.contains("    outputs:\n      applied: ${{ steps.applied.outputs.applied }}\n"),
+        "stripe-sandbox must export whether it applied"
+    );
+    assert!(production.contains("    needs: [orchestrate, stripe-sandbox]\n"));
+    let cond = production
+        .lines()
+        .find(|l| l.starts_with("    if: "))
+        .expect("stripe-production has no if:");
+    assert!(
+        cond.contains("needs.stripe-sandbox.result == 'success' && needs.stripe-sandbox.outputs.applied == 'true'"),
+        "stripe-production's push arm must wait on the sandbox having applied: {}",
+        cond
+    );
+    // The applied marker is only written once pulumi up exited 0.
+    let marker = sandbox.find("id: applied").unwrap();
+    assert!(sandbox.find("id: pulumi").unwrap() < marker);
 }

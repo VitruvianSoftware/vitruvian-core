@@ -146,3 +146,22 @@ The local install reads the same two files from `secrets/courier-release/`
 (`apps/desktop/courier/app/README.md`). To set them:
 `set -- courier-release COURIER_TELEGRAM_API_ID` (and `..._HASH`), then
 `apply -- courier-release`.
+
+## `stripe-sandbox` and `stripe-production`
+
+Secrets of the GitHub Environments that
+[`delivery-stripe.yaml`](../../.github/workflows/delivery-stripe.yaml)'s
+`stripe-sandbox` and `stripe-production` jobs bind. The environments are
+declared in
+[`repo-config`](../../infrastructure/pulumi/platform/repo-config/stripe_environments.go):
+only `main` may deploy to them, and `stripe-production` also needs a required
+reviewer's approval.
+
+| Environment | Secret | What it is |
+|---|---|---|
+| `stripe-sandbox` | `STRIPE_API_KEY` | A Stripe **sandbox** (test-mode) secret key, ideally a restricted `rk_test_…` key limited to writing Products, Prices and Payment Links. The job refuses any key that does not start `sk_test_` or `rk_test_`. |
+| `stripe-production` | `STRIPE_API_KEY` | The **live** account's key, ideally a restricted `rk_live_…` key with the same permissions. The job refuses any key that does not start `sk_live_` or `rk_live_`. |
+
+To set them: `set -- stripe-sandbox STRIPE_API_KEY` and
+`set -- stripe-production STRIPE_API_KEY` (each also backs the store up to
+Bitwarden), then `apply -- stripe-sandbox` and `apply -- stripe-production`.

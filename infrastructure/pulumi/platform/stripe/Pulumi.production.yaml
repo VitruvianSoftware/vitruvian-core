@@ -1,0 +1,61 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Committed stack config (config-as-code, principle §2.5): non-secret values
+# only. This stack is the LIVE Stripe account: real money. The program refuses a
+# test key here (internal/stripekey), and CI applies it only after the sandbox
+# stack (Pulumi.sandbox.yaml) applied in the same run, and only once a required
+# reviewer approves the stripe-production GitHub Environment. Keep the
+# donations settings below in step with the sandbox's, so the sandbox run is a
+# true rehearsal of this one.
+#
+# The Stripe key is never here in plaintext. CI injects it as STRIPE_API_KEY
+# from a pipeline secret. Locally, either export STRIPE_API_KEY for the session
+# or store it as a Pulumi secret, which writes only ciphertext here:
+#   bazel run //infrastructure/pulumi/platform/stripe:config -- \
+#     set --secret apiKey --stack production
+# A test fails the build if a plaintext key ever lands in this file.
+config:
+  # Account-wide: true of everything this stack sells.
+  vitruvian-stripe:mode: live
+  vitruvian-stripe:currency: usd
+  # Product line 1: donations for the free apps. Paid products, when they
+  # come, get a sibling object here (and a package beside internal/donations).
+  vitruvian-stripe:donations:
+    productName: Support Vitruvian Software
+    # Cents. Donors type any amount in [minimum, maximum], starting at preset.
+    # Changing ANY of these replaces the Price (Stripe prices are immutable;
+    # the provider marks custom_unit_amount RequiresReplace). The Payment Links
+    # selling it then have to point at the new Price, which can mean new links
+    # with new URLs. That is why apps link to a stable redirect, not to Stripe.
+    amounts:
+      minimum: 100
+      preset: 500
+      maximum: 100000
+    thankYouMessage: >-
+      Thank you for supporting Vitruvian Software. Everything we make stays free
+      because people like you chip in.
+    # One Payment Link per app. `key` names the resource and is written to the
+    # link's metadata, so donations are attributed per app in Stripe.
+    # Vitruvian (desktop) first: it already ships a Support page whose donate
+    # button is wired to AppInfo.coffeeURL and hidden until a link exists.
+    apps:
+      - key: vitruvian
+        name: Vitruvian

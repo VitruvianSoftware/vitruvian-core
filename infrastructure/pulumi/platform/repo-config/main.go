@@ -476,6 +476,16 @@ func program(ctx *pulumi.Context) error {
 		return err
 	}
 
+	// The Stripe stacks' delivery jobs and their keys: sandbox, then
+	// production behind a required reviewer (stripe_environments.go).
+	stripeReviewers, err := productionReviewerIds(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	if err := stripeEnvironments(ctx, repo, stripeReviewers); err != nil {
+		return err
+	}
+
 	if err := foundationEnvironments(ctx, cfg, repo); err != nil {
 		return err
 	}

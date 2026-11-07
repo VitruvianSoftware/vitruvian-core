@@ -20,8 +20,8 @@
 
 # Committed stack config (config-as-code, principle §2.5): non-secret values
 # only. This stack targets a Stripe SANDBOX (test mode); the program refuses a
-# live key here (internal/stripekey). A live stack, when it exists, gets its own
-# Pulumi.live.yaml with mode: live.
+# live key here (internal/stripekey). The live account is Pulumi.production.yaml,
+# applied only after this stack, behind a required reviewer.
 #
 # The Stripe key is never here in plaintext. CI injects it as STRIPE_API_KEY
 # from a pipeline secret. Locally, either export STRIPE_API_KEY for the session

@@ -127,8 +127,10 @@ def delivery(
         was the parity test's baseline while both files existed; Phase 3 deleted
         those workflows, so it now records where the transcription came from for
         anyone reading the generated job (git history has the original). Not a
-        runtime input.
-      legacy_job: the job id inside legacy_workflow that was transcribed.
+        runtime input. Empty for a unit that never had a hand-written workflow
+        (e.g. stripe): its transcribed job was written in //tools/delivery/gen.
+      legacy_job: the job id inside legacy_workflow that was transcribed. Set
+        with legacy_workflow or not at all.
       gate_var: an ADDITIONAL repo-variable condition every rendered rung must
         satisfy, e.g. "SYNC_AUTH_AUTO_APPLY" — the opt-in switch a legacy job
         carries because its apply is off by default. Dropping it would turn
@@ -233,8 +235,15 @@ def delivery(
 
     if render not in ("", "reusable", "transcribed"):
         fail("delivery(%s): render must be \"\", \"reusable\" or \"transcribed\", got %r" % (name, render))
-    if render == "transcribed" and not (legacy_workflow and legacy_job):
-        fail("delivery(%s): render = \"transcribed\" needs legacy_workflow + legacy_job — a transcription with no recorded origin is a block of workflow YAML nobody can trace back to the job it was copied from" % name)
+
+    # legacy_workflow + legacy_job are provenance for a job that was copied out
+    # of a hand-written workflow, so they come as a pair: one without the other
+    # points at nothing. A unit that never had a hand-written workflow (a NEW
+    # pulumi stack, which conformance no longer lets anyone hand-write) sets
+    # neither; its job's only origin is its entry in //tools/delivery/gen's
+    # transcribed jobs, which the generator names in the rendered comment.
+    if bool(legacy_workflow) != bool(legacy_job):
+        fail("delivery(%s): legacy_workflow and legacy_job come as a pair (the workflow a job was transcribed from, and that job's id) — set both or neither" % name)
     if render and kind == "cloud-run":
         fail("delivery(%s): kind=\"cloud-run\" already has a render shape (_deploy-cloud-run.yaml); render = %r would render it twice" % (name, render))
     if legacy_workflow and not legacy_workflow.startswith(".github/workflows/"):

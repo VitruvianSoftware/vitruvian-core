@@ -64,6 +64,9 @@
 #   - oauth-user-inspector-identity  kind=pulumi  run=//apps/web/oauth-user-inspector/infra/identity:up  envs=development,nonproduction,production  promotion=push-all
 #       paths:  apps/web/oauth-user-inspector/infra/identity/ \.github/workflows/_oauth-identity-apply\.yaml
 #       render: reusable from .github/workflows/oauth-user-inspector-identity-stack.yaml job "development"
+#   - stripe  kind=pulumi  run=//infrastructure/pulumi/platform/stripe:up  envs=sandbox,production  promotion=push-all
+#       paths:  infrastructure/pulumi/platform/stripe/
+#       render: transcribed
 #   - tabula-api  kind=cloud-run  run=//apps/suites/tabula/infra/app:deploy  envs=development,nonproduction,production  promotion=release:tabula-api-v
 #       paths:  apps/suites/tabula/infra/app/ apps/suites/tabula/infra/web/ apps/suites/tabula/web/ tools/deploy/ \.github/workflows/_deploy-cloud-run\.yaml
 #       graph:  //apps/suites/tabula/api:image_push //apps/suites/tabula/extension:chrome_zip
@@ -188,6 +191,7 @@ jobs:
       affected_gravastar_mouse_publish: ${{ steps.manifest.outputs.affected_gravastar_mouse_publish }}
       affected_oauth_user_inspector: ${{ steps.manifest.outputs.affected_oauth_user_inspector }}
       affected_oauth_user_inspector_identity: ${{ steps.manifest.outputs.affected_oauth_user_inspector_identity }}
+      affected_stripe: ${{ steps.manifest.outputs.affected_stripe }}
       affected_tabula_api: ${{ steps.manifest.outputs.affected_tabula_api }}
       affected_tabula_build_stack: ${{ steps.manifest.outputs.affected_tabula_build_stack }}
       affected_tabula_dev_latest: ${{ steps.manifest.outputs.affected_tabula_dev_latest }}
@@ -254,7 +258,7 @@ jobs:
           # The units THIS workflow delivers. The engine judges only these, so
           # one app's workflow never pays for another app's target-determinator
           # sweep. A name the engine cannot find fails the manifest open.
-          ORCHESTRATE_UNITS: charts esp32-s3 gravastar-mouse-publish oauth-user-inspector oauth-user-inspector-identity tabula-api tabula-build-stack tabula-dev-latest tabula-identity tabula-web vitruvian zitadel-apps
+          ORCHESTRATE_UNITS: charts esp32-s3 gravastar-mouse-publish oauth-user-inspector oauth-user-inspector-identity stripe tabula-api tabula-build-stack tabula-dev-latest tabula-identity tabula-web vitruvian zitadel-apps
         run: bazel run //tools/delivery/orchestrate -- --out delivery-manifest.json
       - name: Upload the delivery manifest
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

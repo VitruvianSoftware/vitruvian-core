@@ -24,6 +24,10 @@ pulumi_project(
 # `bazel test` visibility into the same `go test ./...` CI already runs (see
 # pulumi_go_test() in defs.bzl for why this doesn't run on RBE).
 pulumi_go_test(
+    # The default (moderate, 300 s) is too tight: a cold `go test` build of the
+    # Pulumi SDKs alone takes ~100 s, and in a full //... sweep it timed out
+    # at 300 s (#4402). Same fix as gcp-bootstrap. "long" allows 900 s.
+    timeout = "long",
     # guard_review_test.go checks every file the session-start launcher
     # compiles is covered by guardReviewPaths, so it needs to see them.
     # preview_vars_test.go reads the committed stack config to check the
