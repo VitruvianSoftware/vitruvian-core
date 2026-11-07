@@ -3,6 +3,7 @@ module github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/platfor
 go 1.26.10
 
 require (
+	github.com/pulumi/pulumi-terraform-provider/sdks/go/stripe v0.0.0-00010101000000-000000000000
 	github.com/pulumi/pulumi/sdk/v3 v3.259.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -117,3 +118,5 @@ require (
 	google.golang.org/protobuf v1.36.11 // indirect
 	lukechampine.com/frand v1.4.2 // indirect
 )
+
+replace github.com/pulumi/pulumi-terraform-provider/sdks/go/stripe => ./sdks/stripe

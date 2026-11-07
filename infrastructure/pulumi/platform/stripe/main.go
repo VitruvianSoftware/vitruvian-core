@@ -1,5 +1,3 @@
-//go:build ignore
-
 // Copyright (c) 2026 VitruvianSoftware
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
