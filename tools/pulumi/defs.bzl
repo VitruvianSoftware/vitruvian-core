@@ -127,6 +127,14 @@ def pulumi_go_test(name = "test", extra_data = [], timeout = None, visibility = 
     network. Same reasoning `tabula/api`'s `no-remote-exec` service tests use
     for an unavailable-on-RBE dependency — this runs locally only, not on RBE.
 
+    Also tagged `exclusive`: Bazel runs it alone, after the build, one at a
+    time. Each project compiles a generated Pulumi provider SDK as one huge Go
+    package, and a cold `go test ./...` peaks at about 9 GB (gcp-bootstrap),
+    6 GB (stripe) and 3.4 GB (repo-config). Run side by side in a full `//...`
+    sweep they outgrow the 16 GiB, swapless merge-queue runner pod, which is
+    killed and shows up as "the self-hosted runner lost communication" (#4405's
+    queue runs, twice). Serial costs a few minutes, and only on a cold cache.
+
     Call this from the Pulumi project's own BUILD file, alongside
     `pulumi_project`, e.g.:
 
@@ -166,6 +174,7 @@ def pulumi_go_test(name = "test", extra_data = [], timeout = None, visibility = 
             "GOMODCACHE",
         ],
         tags = [
+            "exclusive",
             "no-remote-exec",
             "requires-network",
         ],
