@@ -29,10 +29,11 @@ with Pulumi's `terraform-provider` package. The first product line is
 Price**, and one **Payment Link per app**. Paid products come later as a
 second product line in the same stack.
 
-> **Status: not yet applied.** The program builds against the generated Stripe
-> Go SDK (`sdks/stripe`), but nothing is deployed and nothing here has called
-> Stripe. Applying it waits on a `delivery()` declaration (below).
-> The sandbox stack targets Stripe **test mode** and refuses a live key.
+> **Status: wired, waiting on the key.** The `stripe` delivery unit applies the
+> sandbox stack from CI on every push to `main` that touches it. Until the
+> `stripe-sandbox` Environment holds a `STRIPE_API_KEY`, that job says so and
+> applies nothing. The sandbox stack targets Stripe **test mode** and refuses a
+> live key. See [Applying it](#applying-it).
 
 ## Layout
 
@@ -171,9 +172,49 @@ flowchart LR
 | devx, homelab (CLIs) | A line in `--version` / README, plus a `.github/FUNDING.yml` `custom:` entry for the mirrors. |
 | vitruviansoftware.dev | The redirect pages themselves (a `_data` file of app → link), plus a Support link on Downloads. |
 
+## Applying it
+
+No `:up` from a laptop. The `stripe` `delivery()` unit in [`BUILD`](BUILD)
+renders the `stripe-sandbox` job of
+[`delivery-stripe.yaml`](../../../../.github/workflows/delivery-stripe.yaml)
+(generated; its steps live in `//tools/delivery/gen`, `render_stripe_steps`).
+
+```mermaid
+flowchart LR
+  P["push to main touching<br/>platform/stripe/"] --> O["orchestrate:<br/>is the stripe unit affected?"]
+  D["workflow_dispatch<br/>unit=stripe, env=sandbox"] --> J
+  O -->|yes| J["stripe-sandbox job<br/>Environment stripe-sandbox (main only)"]
+  J --> C{"Pulumi.sandbox.yaml mode = test?"}
+  C -- no --> F["fail"]
+  C -- yes --> K{"STRIPE_API_KEY set?"}
+  K -- no --> N["notice: nothing applied, job green"]
+  K -- yes --> T{"sk_test_ or rk_test_?"}
+  T -- no --> F
+  T -- yes --> U["pulumi up --stack sandbox<br/>(program checks the key again)"]
+  U --> S["step summary: product, price,<br/>donationLinks"]
+```
+
+The key is the `STRIPE_API_KEY` secret of the **`stripe-sandbox`** GitHub
+Environment. The Environment is declared in
+[`repo-config`](../repo-config/stripe_sandbox.go) and only `main` may deploy
+to it, so no pull request can read the key. The secret itself is set with
+[`//tools/sync-env-secrets`](../../../../tools/sync-env-secrets/README.md#stripe-sandbox),
+never by hand and never in git:
+
+```sh
+bazel run //tools/sync-env-secrets:unlock
+bazel run //tools/sync-env-secrets:set -- stripe-sandbox STRIPE_API_KEY
+bazel run //tools/sync-env-secrets:apply -- stripe-sandbox
+```
+
+`set` prompts for the key without echoing it and backs the store up to
+Bitwarden; `apply` puts it in the Environment.
+
+Then dispatch `delivery-stripe.yaml` (unit `stripe`, environment `sandbox`), or
+push a change under this directory. The run's summary lists the product, the
+price and one Payment Link URL per app.
+
 ## Not in this change
 
-- **Applying it.** No `:up` from a laptop; a `delivery()` declaration and a
-  `STRIPE_API_KEY` GitHub Environment secret (declared in `repo-config`) come
-  with the first real apply.
+- A live-mode stack (`Pulumi.live.yaml`) and its own Environment.
 - The redirect pages on the website and the app changes above.

@@ -37,6 +37,7 @@ const FIXTURES: &[&str] = &[
     "gravastar-mouse-publish",
     "oauth-user-inspector-identity",
     "oauth-user-inspector",
+    "stripe",
     "tabula-api",
     "tabula-build-stack",
     "tabula-dev-latest",
@@ -414,6 +415,7 @@ fn group_by_app_gives_every_app_its_own_workflow() {
                 "zitadel-apps",
             ],
         ),
+        ("stripe", vec!["stripe"]),
         (
             "tabula",
             vec![
@@ -775,4 +777,48 @@ fn soak_job_outlives_the_gates_wait() {
     // development deploy still running; a shorter job timeout would kill it
     // mid-wait with no verdict.
     assert!(job.contains("    timeout-minutes: 50\n"), "{job}");
+}
+
+/// The Stripe rung is test mode only. These are the lines that make it so; a
+/// regeneration that loses one of them would let the job apply a live key, or
+/// apply before the key-mode check runs.
+#[test]
+fn stripe_job_refuses_anything_but_a_test_key() {
+    let us: Vec<Unit> = fixtures()
+        .into_iter()
+        .filter(|u| u.name == "stripe")
+        .collect();
+    let got = must_render(&us, 2);
+    let job = got
+        .split("\n  stripe-sandbox:\n")
+        .nth(1)
+        .expect("no stripe-sandbox job rendered");
+    for want in [
+        "    environment: stripe-sandbox\n",
+        "            sk_test_*|rk_test_*) ;;\n",
+        "            *) echo \"::error::STRIPE_API_KEY in the stripe-sandbox environment is not a test-mode secret key",
+        "          if [ \"$mode\" != \"test\" ]; then\n",
+        "          stack: sandbox\n",
+    ] {
+        assert!(job.contains(want), "stripe job lacks {:?}", want);
+    }
+    // The guard runs before Pulumi, and every Pulumi step waits on it.
+    let guard = job.find("id: key").unwrap();
+    let up = job
+        .find("uses: ./.github/actions/pulumi-run-captured")
+        .unwrap();
+    assert!(guard < up, "the key check must run before pulumi up");
+    assert_eq!(
+        job.matches("if: steps.key.outputs.present == 'true'\n")
+            .count(),
+        3,
+        "Go, Pulumi and pulumi up must each wait on the key check"
+    );
+    // A Stripe key, never a cloud identity.
+    assert!(!job.contains("id-token: write"));
+    assert!(
+        !job.lines()
+            .any(|l| !l.trim_start().starts_with('#') && l.contains("--show-secrets")),
+        "nothing in the stripe job may print secret outputs"
+    );
 }

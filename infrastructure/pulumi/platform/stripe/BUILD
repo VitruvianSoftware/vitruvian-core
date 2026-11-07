@@ -18,11 +18,11 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+load("//tools/delivery:defs.bzl", "delivery")
 load("//tools/pulumi:defs.bzl", "pulumi_go_test", "pulumi_project")
 
 # `bazel run //infrastructure/pulumi/platform/stripe:{setup,preview,config}`.
-# No :up from a laptop (AGENTS.md): applies come from a pipeline once a
-# delivery() declaration exists for this stack (a follow-up, see README.md).
+# No :up from a laptop (AGENTS.md): the delivery() unit below applies it.
 pulumi_project(
     name = "stripe",
     dir = "infrastructure/pulumi/platform/stripe",
@@ -37,4 +37,25 @@ pulumi_go_test(
         # top-level one.
         "sdks/stripe/go.mod",
     ],
+)
+
+# Applies the stack to the Stripe SANDBOX on every push to main that touches it
+# (and on dispatch), from .github/workflows/delivery-stripe.yaml. One rung, test
+# mode only: the job refuses a key that is not sk_test_/rk_test_ and a stack
+# config whose mode is not "test", and the program refuses a mismatched key
+# again. The key is the stripe-sandbox Environment's STRIPE_API_KEY secret
+# (main only, declared in repo-config). With no key there yet, the job says so
+# and applies nothing. The job's steps live in //tools/delivery/gen
+# (render_stripe_steps): this stack never had a hand-written workflow.
+delivery(
+    name = "stripe",
+    app = "stripe",
+    environments = ["sandbox"],
+    extra_paths = [
+        "infrastructure/pulumi/platform/stripe/",
+    ],
+    github_environment = "stripe-{env}",
+    kind = "pulumi",
+    render = "transcribed",
+    run = "//infrastructure/pulumi/platform/stripe:up",
 )

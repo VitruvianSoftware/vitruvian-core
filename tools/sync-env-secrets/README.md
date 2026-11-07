@@ -146,3 +146,18 @@ The local install reads the same two files from `secrets/courier-release/`
 (`apps/desktop/courier/app/README.md`). To set them:
 `set -- courier-release COURIER_TELEGRAM_API_ID` (and `..._HASH`), then
 `apply -- courier-release`.
+
+## `stripe-sandbox`
+
+Secret of the GitHub Environment that
+[`delivery-stripe.yaml`](../../.github/workflows/delivery-stripe.yaml)'s
+`stripe-sandbox` job binds. The environment itself is declared in
+[`repo-config`](../../infrastructure/pulumi/platform/repo-config/stripe_sandbox.go):
+only `main` may deploy to it.
+
+| Secret | What it is |
+|---|---|
+| `STRIPE_API_KEY` | A Stripe **sandbox** (test-mode) secret key, ideally a restricted `rk_test_…` key limited to writing Products, Prices and Payment Links. The job refuses any key that does not start `sk_test_` or `rk_test_`. |
+
+To set it: `set -- stripe-sandbox STRIPE_API_KEY` (which also backs the store up
+to Bitwarden), then `apply -- stripe-sandbox`.

@@ -362,6 +362,16 @@ fn transcribed_job(name: &str) -> Option<TranscribedSpec> {
             "",
             render_tabula_build_stack_steps,
         )),
+        // A NATIVE transcription: the Stripe stack never had a hand-written
+        // workflow, so this is its job's only origin (no legacy_workflow).
+        // Checkout only: the stack reaches Stripe with an API key, not GCP.
+        "stripe" => Some(spec(
+            20,
+            &["contents: read"],
+            &["GOWORK: off", "GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}"],
+            "",
+            render_stripe_steps,
+        )),
         _ => None,
     }
 }
@@ -589,6 +599,103 @@ fn render_tabula_build_stack_steps(b: &mut String, _u: &Unit, _env: &str, opts: 
     b.push_str("          label: tabula-build\n");
     b.push_str("          out-file: ${{ runner.temp }}/pulumi-out.txt\n");
     b.push_str("          exit-code: ${{ steps.pulumi.outputs['exit-code'] || steps.pulumi.outputs.exit_code }}\n");
+    Ok(())
+}
+
+/// The Stripe stack (infrastructure/pulumi/platform/stripe). It is test mode
+/// only: the stack's single rung is the Stripe sandbox, and three checks keep a
+/// live key out of it, two here and one in the program itself
+/// (internal/account.CheckKeyMode, run inside the provider's key Apply):
+///   1. the committed stack config must say `mode: test`;
+///   2. the environment's STRIPE_API_KEY must start sk_test_ or rk_test_.
+/// The key is never echoed. An environment with no key yet is not a failure:
+/// the rung says so and stops, so merging the stack before James has added the
+/// key leaves main green instead of red.
+fn render_stripe_steps(b: &mut String, _u: &Unit, env: &str, opts: &Opts) -> R {
+    let dir = "infrastructure/pulumi/platform/stripe";
+    b.push_str("    steps:\n");
+    w!(b, "      - uses: {}\n", opts.pin("actions/checkout")?);
+    b.push_str("        with:\n");
+    b.push_str("          persist-credentials: false\n");
+    b.push('\n');
+    b.push_str("      # Refuse anything but a test-mode key BEFORE Pulumi starts. The program\n");
+    b.push_str("      # checks again (internal/account.CheckKeyMode), so a live key is turned\n");
+    b.push_str("      # away twice. The key is compared, never printed.\n");
+    b.push_str("      - name: Check the Stripe key is a test-mode key\n");
+    b.push_str("        id: key\n");
+    b.push_str("        env:\n");
+    b.push_str("          STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}\n");
+    w!(b, "          STACK_CONFIG: {}/Pulumi.{}.yaml\n", dir, env);
+    b.push_str("        run: |\n");
+    b.push_str("          set -euo pipefail\n");
+    b.push_str(
+        "          mode=\"$(sed -n 's/^  vitruvian-stripe:mode: *//p' \"$STACK_CONFIG\")\"\n",
+    );
+    b.push_str("          if [ \"$mode\" != \"test\" ]; then\n");
+    b.push_str("            echo \"::error::$STACK_CONFIG has mode '$mode', not 'test'. This job only applies a Stripe sandbox.\"\n");
+    b.push_str("            exit 1\n");
+    b.push_str("          fi\n");
+    b.push_str("          if [ -z \"${STRIPE_API_KEY:-}\" ]; then\n");
+    w!(b, "            echo \"::notice::No STRIPE_API_KEY in the stripe-{} environment yet, so nothing was applied. See {}/README.md.\"\n", env, dir);
+    b.push_str("            echo \"present=false\" >> \"$GITHUB_OUTPUT\"\n");
+    b.push_str("            exit 0\n");
+    b.push_str("          fi\n");
+    b.push_str("          case \"$STRIPE_API_KEY\" in\n");
+    b.push_str("            sk_test_*|rk_test_*) ;;\n");
+    w!(b, "            *) echo \"::error::STRIPE_API_KEY in the stripe-{} environment is not a test-mode secret key (sk_test_ or rk_test_). Refusing to apply; the key is not printed.\"; exit 1 ;;\n", env);
+    b.push_str("          esac\n");
+    b.push_str("          echo \"present=true\" >> \"$GITHUB_OUTPUT\"\n");
+    b.push('\n');
+    b.push_str("      - name: Set up Go\n");
+    b.push_str("        if: steps.key.outputs.present == 'true'\n");
+    w!(b, "        uses: {}\n", opts.pin("actions/setup-go")?);
+    b.push_str("        with:\n");
+    w!(b, "          go-version-file: {}/go.mod\n", dir);
+    w!(b, "          cache-dependency-path: {}/go.sum\n", dir);
+    b.push('\n');
+    b.push_str("      - name: Install Pulumi\n");
+    b.push_str("        if: steps.key.outputs.present == 'true'\n");
+    w!(b, "        uses: {}\n", opts.pin("pulumi/actions")?);
+    b.push('\n');
+    w!(b, "      - name: Pulumi up (stripe / {})\n", env);
+    b.push_str("        id: pulumi\n");
+    b.push_str("        if: steps.key.outputs.present == 'true'\n");
+    w!(b, "        uses: {}\n", PULUMI_RUN_CAPTURED_ACTION);
+    b.push_str("        env:\n");
+    b.push_str("          STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}\n");
+    b.push_str("        with:\n");
+    b.push_str("          command: up\n");
+    w!(b, "          stack: {}\n", env);
+    w!(b, "          working-directory: {}\n", dir);
+    b.push_str("          pulumi-access-token: ${{ secrets.PULUMI_ACCESS_TOKEN }}\n");
+    b.push('\n');
+    b.push_str("      - name: Pulumi digest → step summary\n");
+    b.push_str("        if: always() && steps.key.outputs.present == 'true'\n");
+    w!(b, "        uses: {}\n", PULUMI_SUMMARY_ACTION);
+    b.push_str("        with:\n");
+    b.push_str("          label: stripe\n");
+    b.push_str("          out-file: ${{ runner.temp }}/pulumi-out.txt\n");
+    b.push_str("          exit-code: ${{ steps.pulumi.outputs['exit-code'] || steps.pulumi.outputs.exit_code }}\n");
+    b.push('\n');
+    b.push_str("      # The product, price and one Payment Link per app: IDs and URLs only.\n");
+    b.push_str("      # The stack exports no secret, and --show-secrets is never passed.\n");
+    b.push_str("      - name: Stack outputs → step summary\n");
+    b.push_str("        if: steps.key.outputs.present == 'true' && (steps.pulumi.outputs['exit-code'] || steps.pulumi.outputs.exit_code) == '0'\n");
+    w!(b, "        working-directory: {}\n", dir);
+    b.push_str("        env:\n");
+    b.push_str("          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}\n");
+    b.push_str("        run: |\n");
+    b.push_str("          set -euo pipefail\n");
+    b.push_str("          {\n");
+    w!(b, "            echo \"### Stripe {} outputs\"\n", env);
+    b.push_str("            echo '```json'\n");
+    w!(
+        b,
+        "            pulumi stack output --json --stack {}\n",
+        env
+    );
+    b.push_str("            echo '```'\n");
+    b.push_str("          } >> \"$GITHUB_STEP_SUMMARY\"\n");
     Ok(())
 }
 
@@ -1955,8 +2062,13 @@ fn render_transcribed_rung(b: &mut String, u: &Unit, rung: usize, env: &str, opt
     };
     w!(b, "    runs-on: {}\n", runs_on);
     w!(b, "    timeout-minutes: {}\n", spec.timeout_minutes);
-    b.push_str("    # Transcribed from the legacy job: job-level permissions REPLACE the\n");
-    b.push_str("    # workflow-level block, which is narrower than this job needs.\n");
+    if u.legacy_workflow.is_empty() {
+        b.push_str("    # Job-level permissions REPLACE the workflow-level block, which is\n");
+        b.push_str("    # narrower than this job needs.\n");
+    } else {
+        b.push_str("    # Transcribed from the legacy job: job-level permissions REPLACE the\n");
+        b.push_str("    # workflow-level block, which is narrower than this job needs.\n");
+    }
     b.push_str("    permissions:\n");
     for p in spec.permissions {
         w!(b, "      {}\n", p);

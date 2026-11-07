@@ -476,6 +476,12 @@ func program(ctx *pulumi.Context) error {
 		return err
 	}
 
+	// The Stripe sandbox's delivery job and its test-mode key
+	// (stripe_sandbox.go).
+	if err := stripeSandboxEnvironment(ctx, repo); err != nil {
+		return err
+	}
+
 	if err := foundationEnvironments(ctx, cfg, repo); err != nil {
 		return err
 	}
