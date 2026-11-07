@@ -44,15 +44,15 @@ Approved by James on 2026-09-29. It applies to every delegation you make.
 | Agent | Tier | Claude Code | Antigravity | OpenCode |
 |---|---|---|---|---|
 | beacon | lead | opus (high) | pro | anthropic/claude-opus-5-5 (high) |
-| aegis | lead | opus (high) | pro | anthropic/claude-opus-5-5 (high) |
-| wren | lead | opus (high) | pro | anthropic/claude-opus-5-5 (high) |
-| atlas | lead | opus (high) | pro | anthropic/claude-opus-5-5 (high) |
-| forge | lead | opus (high) | pro | anthropic/claude-opus-5-5 (high) |
-| compass | lead | opus (high) | pro | anthropic/claude-opus-5-5 (high) |
-| ridge | core | sonnet (high) | flash | anthropic/claude-sonnet-5-5 (high) |
-| scout | core | sonnet (high) | flash | anthropic/claude-sonnet-5-5 (high) |
-| quill | core | sonnet (high) | flash | anthropic/claude-sonnet-5-5 (high) |
-| pace | fast | haiku (medium) | flash | anthropic/claude-haiku-5-5 (medium) |
+| aegis | deep | haiku (medium) → gemini-4-argon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-argon-high |
+| wren | deep | haiku (medium) → gemini-4-argon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-argon-high |
+| atlas | deep | haiku (medium) → gemini-4-argon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-argon-high |
+| forge | deep | haiku (medium) → gemini-4-argon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-argon-high |
+| compass | deep | haiku (medium) → gemini-4-argon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-argon-high |
+| ridge | deep | haiku (medium) → gemini-4-argon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-argon-high |
+| scout | deep | haiku (medium) → gemini-4-argon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-argon-high |
+| quill | light | haiku (medium) → gemini-3.8-flash-high | flash | anthropic/claude-haiku-5-5 (medium) → gemini-3.8-flash-high |
+| pace | light | haiku (medium) → gemini-3.8-flash-high | flash | anthropic/claude-haiku-5-5 (medium) → gemini-3.8-flash-high |
 
 - The fallback policy does not relax the hard rule: when a model is unavailable, fall back to another model at standard effort or higher.
 - **Pass the model on each dispatch; agent files keep `model: inherit`.** Antigravity silently drops an agent whose `model` is anything but `inherit`, `flash` or `pro`, or whose `description` is longer than about 320 characters. Choose the tier's model per call instead: `model` on Claude Code's `Agent` tool, `Model` on Antigravity's `invoke_subagent`.

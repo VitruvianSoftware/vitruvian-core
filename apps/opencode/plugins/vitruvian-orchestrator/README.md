@@ -7,8 +7,8 @@ OpenCode server + TUI plugin for the `orchestrate` skill (`packages/orchestrator
 1. **Header**: Flow title, 5-phase lifecycle pills (`plan`, `design`, `delegate`, `review`, `close` — completed phases marked `✓`, current phase highlighted), `accepted N of M`, and total estimated cost (`est. $X.XX`).
 2. **Burn-down**: Compact Unicode text sparkline (`▁▂▃▄▅▆▇█`) of remaining task counts over time against the linear ideal line (`total → 0`), plus replan markers (`⟳`).
 3. **Task Board**: One row per task (`#id`, `title`, `[specialist/tier]`, derived `state`, return round `rN` when `round > 0`, and `waits on #x` when blocked by upstream dependencies).
-4. **Agents**: One row per lead/worker run (`agent`, `model`, `effort`, `steps` `done/total` or `ctx %`, token count, `est. $cost` or `unpriced`, elapsed duration, and `status`).
-5. **Spend**: Breakdown of `lead` vs `workers` USD spend, per-model spend, and unpriced model token counts.
+4. **Agents**: One row per lead/worker run (`agent`, `model` (for a Gemini driver, `driver → gemini model`), `effort`, `steps` `done/total` or `ctx %`, token count, `est. $cost` or `unpriced`, elapsed duration, and `status`).
+5. **Spend**: Breakdown of `lead` vs `workers` USD spend, per-model spend, unpriced model token counts, and a count of runs delegated to Gemini.
 
 When no plan has been reported for the active root session, the sidebar shows:
 `Orchestrator panel fills in when the lead skill reports a plan.`

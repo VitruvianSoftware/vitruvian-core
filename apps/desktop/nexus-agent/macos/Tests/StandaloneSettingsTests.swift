@@ -164,6 +164,7 @@ final class StandaloneSettingsTests: XCTestCase {
         var hiddenClaudeSessionIDs: [String] = []
         var promptHistory: [String] = []
         var worktreeMode = false
+        var timelineOnLeft = false
         var strings = NexusAgentHostStrings()
 
         var chosenProviderID: UUID? {

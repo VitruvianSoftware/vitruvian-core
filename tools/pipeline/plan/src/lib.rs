@@ -33,6 +33,7 @@ pub mod query;
 
 pub use gates::{
     check_global_impact, classify_persona_and_operation, is_docs_only, resolve_packages,
+    INERT_TOOLS,
 };
 pub use query::{
     build_test_rdeps_query, compute_rdeps_map, earlier_map_base, internal_query_errors, last_lines,

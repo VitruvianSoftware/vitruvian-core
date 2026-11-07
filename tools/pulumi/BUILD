@@ -33,6 +33,14 @@ No `pulumi` CLI is vendored here: the wrappers exec the developer's installed
 """
 
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("//tools/go-sdk:defs.bzl", "go_sdk_go")
+
+# Hermetic Go SDK binary + runfiles for pulumi_go_test() targets on runners
+# without an ambient `go` on PATH.
+go_sdk_go(
+    name = "go-sdk",
+    visibility = ["//visibility:public"],
+)
 
 # Every tool's code, plus what it needs of Python carried by hand for
 # rotate-access-token: src/json.rs (json.loads/dumps), src/argparse.rs,

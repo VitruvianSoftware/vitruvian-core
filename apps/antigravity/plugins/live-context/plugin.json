@@ -6,7 +6,7 @@
     "name": "VitruvianSoftware",
     "url": "https://github.com/VitruvianSoftware"
   },
-  "repository": "https://github.com/VitruvianSoftware/live-context",
+  "repository": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/live-context",
   "license": "MIT",
   "keywords": [
     "context",

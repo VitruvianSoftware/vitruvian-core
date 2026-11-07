@@ -455,6 +455,113 @@ test("spend splits lead and workers, prices sonnet exactly, and puts gemini in u
       runs: 1,
       tokens: 40_000,
     },
+    delegated: {
+      runs: 0,
+      byModel: {},
+    },
+  });
+});
+
+test("delegate model on run.start, run.progress, and spend.delegated summary", () => {
+  let flow = reduce(null, {
+    type: "plan",
+    at: 1000,
+    title: "Delegated Flow",
+    tasks: [
+      { title: "T1", specialist: "wren", tier: "core", after: [] },
+      { title: "T2", specialist: "atlas", tier: "core", after: [] },
+      { title: "T3", specialist: "scout", tier: "fast", after: [] },
+    ],
+  });
+
+  // 1) run.start without delegate -> defaults to null
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 1100,
+    id: "r1",
+    harness: "claude-code",
+    agent: "wren",
+    model: "claude-haiku-5-5",
+    effort: "medium",
+    title: "T1",
+    role: "worker",
+  });
+  assert.equal(flow.runs[0].delegate, null);
+
+  // 2) run.start with delegate -> sets delegate immediately
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 1150,
+    id: "r2",
+    harness: "claude-code",
+    agent: "atlas",
+    model: "claude-haiku-5-5",
+    effort: "medium",
+    delegate: "gemini-4-argon-high",
+    title: "T2",
+    role: "worker",
+  });
+  assert.equal(flow.runs[1].delegate, "gemini-4-argon-high");
+
+  // 3) run.progress with non-empty delegate sets it on r1
+  flow = reduce(flow, {
+    type: "run.progress",
+    at: 1200,
+    id: "r1",
+    steps: { done: 1, total: 2, note: "delegated via agy" },
+    delegate: "gemini-4-argon-high",
+  });
+  assert.equal(flow.runs[0].delegate, "gemini-4-argon-high");
+
+  // 4) Subsequent run.progress without delegate (or empty string) does not clear it
+  flow = reduce(flow, {
+    type: "run.progress",
+    at: 1250,
+    id: "r1",
+    steps: { done: 2, total: 2, note: "done" },
+    tokens: { input: 10_000, output: 2_000, cacheRead: 0, cacheWrite: 0 },
+  });
+  assert.equal(flow.runs[0].delegate, "gemini-4-argon-high");
+
+  flow = reduce(flow, {
+    type: "run.progress",
+    at: 1260,
+    id: "r1",
+    delegate: "",
+  });
+  assert.equal(flow.runs[0].delegate, "gemini-4-argon-high");
+
+  // 5) Another delegated run with a different Gemini model
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 1300,
+    id: "r3",
+    harness: "opencode",
+    agent: "scout",
+    model: "claude-haiku-5-5",
+    effort: "medium",
+    title: "T3",
+    role: "worker",
+  });
+  flow = reduce(flow, {
+    type: "run.progress",
+    at: 1350,
+    id: "r3",
+    steps: { done: 1, total: 1, note: "ci check" },
+    delegate: "gemini-3.8-flash-high",
+  });
+  assert.equal(flow.runs[2].delegate, "gemini-3.8-flash-high");
+
+  // Driver cost is still estimated from run.model (claude-haiku-5-5: [1, 5, 0.1, 1.25] per 1M)
+  // r1 tokens: 10_000 * 1 + 2_000 * 5 = 20_000 / 1_000_000 = 0.02 USD
+  const summary = spend(flow);
+  assert.equal(summary.total, 0.02);
+  assert.deepEqual(summary.delegated, {
+    runs: 3,
+    byModel: {
+      "gemini-4-argon-high": 2,
+      "gemini-3.8-flash-high": 1,
+    },
   });
 });
 

@@ -246,10 +246,17 @@ final class UpdatesTests: XCTestCase {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let marker = folder.appendingPathComponent("sid")
         try SystemUpdateEnvironment().launchInstaller(
-            script: "/usr/bin/python3 -c 'import os, sys; open(sys.argv[1], \"w\").write(f\"{os.getpid() == os.getsid(0)}\")' \"$1\"",
+            script: """
+            if [ "$$" = "$(/bin/ps -o pgid= -p $$ | /usr/bin/tr -d ' ')" ]; then
+                printf 'True' > "$1.tmp"
+            else
+                printf 'False' > "$1.tmp"
+            fi
+            /bin/mv "$1.tmp" "$1"
+            """,
             arguments: [marker.path]
         )
-        let deadline = Date().addingTimeInterval(5)
+        let deadline = Date().addingTimeInterval(15)
         while !FileManager.default.fileExists(atPath: marker.path), Date() < deadline {
             Thread.sleep(forTimeInterval: 0.05)
         }

@@ -6,7 +6,7 @@
     "name": "VitruvianSoftware",
     "url": "https://github.com/VitruvianSoftware"
   },
-  "repository": "https://github.com/VitruvianSoftware/hookify",
+  "repository": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/hookify",
   "license": "MIT",
   "keywords": [
     "hooks",

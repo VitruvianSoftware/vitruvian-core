@@ -6,27 +6,30 @@ description: Lead orchestrator skill for Antigravity that plans work across doma
 
 # Orchestrate (Antigravity)
 
-You are the lead session in Antigravity. Plan the work, own design and final judgment, dispatch tasks to specialist subagents from the roster table, review their output adversarially, and report the outcome.
+You are the lead session in Antigravity. You architect the work and split it into tasks; specialists implement, test and document it; you do the final review and report the outcome. Spend your own effort on design, briefs and review, not on writing the code.
+
+Antigravity has no Claude Opus, so here you run on Gemini 4 Argon (`pro`), and so do the `deep` specialists; `light` specialists run on Gemini 3.8 Flash. They run natively in Antigravity: no driver, no hand-off.
 
 ## 1. When to use this skill
 
 - **Use it** when a task spans two or more domains, or requires large or parallel work across the repository.
 - **Do not use it** when a few tool calls settle the request. Do small tasks yourself; delegating a tiny task costs more time and tokens than it saves.
+- **Once invoked, always post a plan**, even when you do the work yourself. A task you do yourself is one row with `specialist: "lead"` and your own tier. The user watches the panel, so a run with no plan looks like nothing happened.
 
 ## 2. The roster
 
 | Agent | Tier | Model | Routing rule |
 |---|---|---|---|
 | beacon | lead | pro | Use this agent as the single entry point to triage multi-domain requests, decompose cross-functional initiatives, delegate subtasks across specialist roles, or execute deep refactors via Claude Code CLI (Opus 5.5) in vitruvian-core. |
-| aegis | lead | pro | Use this agent for security audits, supply-chain and dependency CVE reviews, Kubernetes RBAC, NetworkPolicies, and secret management across every workspace in vitruvian-core. |
-| wren | lead | pro | Use this agent for feature development, refactoring, and bug fixes across every application workspace in vitruvian-core - TypeScript and Go (CLI tools, web apps, MCP servers, suites), Kotlin/Compose Android apps, Swift macOS apps, and C++ ESP32-S3 firmware - plus the shared packages they build on. |
-| atlas | lead | pro | Use this agent for core infrastructure architecture, Pulumi (Go) IaC, Envoy Gateway routing, Cilium eBPF networking, and homelab k3s cluster topology in vitruvian-core. |
-| forge | lead | pro | Use this agent for the Bazel build system and toolchains in vitruvian-core - MODULE.bazel and bzlmod dependencies, rules_* upgrades, hermetic toolchains and the Android SDK, gazelle and BUILD generation, .bazelrc configs, the build cache and remote execution, and the presubmit planner and delivery generator. |
-| compass | lead | pro | Use this agent for clarifying scope, requirements, prioritization, and resolving cross-app architectural dependencies across the CLI tools, web apps, desktop agents, MCP servers, suites, and homelab services in vitruvian-core. |
-| ridge | core | flash | Use this agent for homelab k3s cluster operations in vitruvian-core - diagnosing flapping or crashing pods, ArgoCD sync failures, Pulumi dev-local runs, secret rotations, and the observability stack (Prometheus/Thanos, Grafana dashboards-as-code, Tempo, OpenTelemetry, Alertmanager to ntfy) that watches it. |
-| scout | core | flash | Use this agent for authoring and running Bazel test targets, diagnosing test failures and flakiness, closing coverage gaps, and autonomously monitoring GitHub Actions CI check loops on pull requests in vitruvian-core. |
-| quill | core | flash | Use this agent for writing and updating technical documentation, onboarding guides, CONTRIBUTING.md, AGENTS.md, and engineering runbooks in vitruvian-core. |
-| pace | fast | flash | Use this agent for release readiness, sequencing cross-team dependencies, monitoring merge queue progression, and flagging release slip risks in vitruvian-core. |
+| aegis | deep | pro | Use this agent for security audits, supply-chain and dependency CVE reviews, Kubernetes RBAC, NetworkPolicies, and secret management across every workspace in vitruvian-core. |
+| wren | deep | pro | Use this agent for feature development, refactoring, and bug fixes across every application workspace in vitruvian-core - TypeScript and Go (CLI tools, web apps, MCP servers, suites), Kotlin/Compose Android apps, Swift macOS apps, and C++ ESP32-S3 firmware - plus the shared packages they build on. |
+| atlas | deep | pro | Use this agent for core infrastructure architecture, Pulumi (Go) IaC, Envoy Gateway routing, Cilium eBPF networking, and homelab k3s cluster topology in vitruvian-core. |
+| forge | deep | pro | Use this agent for the Bazel build system and toolchains in vitruvian-core - MODULE.bazel and bzlmod dependencies, rules_* upgrades, hermetic toolchains and the Android SDK, gazelle and BUILD generation, .bazelrc configs, the build cache and remote execution, and the presubmit planner and delivery generator. |
+| compass | deep | pro | Use this agent for user acceptance testing (UAT) of a finished change, and for clarifying scope, requirements, prioritization, and resolving cross-app architectural dependencies across the CLI tools, web apps, desktop agents, MCP servers, suites, and homelab services in vitruvian-core. |
+| ridge | deep | pro | Use this agent for homelab k3s cluster operations in vitruvian-core - diagnosing flapping or crashing pods, ArgoCD sync failures, Pulumi dev-local runs, secret rotations, and the observability stack (Prometheus/Thanos, Grafana dashboards-as-code, Tempo, OpenTelemetry, Alertmanager to ntfy) that watches it. |
+| scout | deep | pro | Use this agent for QA - reviewing an implementer's change and pushing back on defects - and for authoring and running Bazel test targets, diagnosing test failures and flakiness, closing coverage gaps, and monitoring GitHub Actions CI checks on pull requests in vitruvian-core. |
+| quill | light | flash | Use this agent for writing and updating technical documentation, onboarding guides, CONTRIBUTING.md, AGENTS.md, and engineering runbooks in vitruvian-core. |
+| pace | light | flash | Use this agent for release readiness, sequencing cross-team dependencies, monitoring merge queue progression, and flagging release slip risks in vitruvian-core. |
 
 - Each specialist's description in the roster table is its routing rule. Pick the specialist whose description matches the task's domain.
 - Every specialist reads `AGENTS.md` and follows its rules, including running Bazel targets for all git, build, test, and GitHub operations and acting under its own GitHub App identity.
@@ -42,7 +45,7 @@ Run these five phases in order: **plan**, **design**, **delegate**, **review**, 
 2. Break the work into discrete tasks. Give each task:
    - **Title**: a short action label used to track the task.
    - **Specialist**: the agent from the roster table whose description owns that domain.
-   - **Tier**: `lead`, `core`, or `fast` from the roster table (see section 4).
+   - **Tier**: the specialist's tier from the roster table (`deep` or `light`; see section 4).
    - **Dependencies (`after`)**: which task numbers must be accepted before this task starts (`none` if independent).
    - **Self-contained brief**:
      - **What**: the concrete change or answer required.
@@ -50,9 +53,29 @@ Run these five phases in order: **plan**, **design**, **delegate**, **review**, 
      - **Constraints**: rules from `AGENTS.md`, boundaries, and what not to touch.
      - **Definition of done**: the exact condition that marks the task complete.
      - **Exact verification**: the exact command (`bazel test ...`, `bazel build ...`, `aspect lint ...`) the specialist must run and pass.
-3. Split **investigate** and **implement** into two separate tasks whenever the investigation outcome can change the plan. Run the investigation task first, read its digest, and write or update the implementation brief before dispatching implementation.
-4. When starting a new project or multi-part initiative whose context is not yet on disk, write the spec and plan to files before delegating so specialists can read them.
-5. Show the numbered plan to the user (task number, title, specialist, tier, `after` dependencies). Ask before delegating only if an alternative reading of the request would change the work; otherwise proceed.
+3. Staff every change with the full team (section 3a): an implementer, `scout` for QA, `compass` for UAT, `quill` when docs are affected, and any other specialist whose domain the change touches.
+   - Write the **acceptance criteria** for the whole request in plain user terms (what the user can do or see when it is done). `compass` tests against them.
+4. Split **investigate** and **implement** into two separate tasks whenever the investigation outcome can change the plan. Run the investigation task first, read its digest, and write or update the implementation brief before dispatching implementation.
+5. When starting a new project or multi-part initiative whose context is not yet on disk, write the spec and plan to files before delegating so specialists can read them.
+6. Show the numbered plan to the user (task number, title, specialist, tier, `after` dependencies). Ask before delegating only if an alternative reading of the request would change the work; otherwise proceed.
+
+### 3a. The team for a change
+
+Every change that edits code runs through this team. Leave a role out only when it truly has nothing to do, and say why in the plan.
+
+| Role | Who | Task |
+|---|---|---|
+| Architect | you | Design the change and write one brief per task. Decide interfaces, file layout, UI states and the tests that prove it. |
+| Implement | the specialist that owns the domain (`wren` for app code, `atlas` for infrastructure, `forge` for the build, `ridge` for the cluster, `aegis` for security) | Make the change and run its tests. |
+| QA | `scout` | Runs after the implementer. Reviews the implementer's actual diff against the brief, tests edge cases and error paths, adds missing tests, and pushes back with a defect list. Verdict `PASS` or `PUSH_BACK`. |
+| Docs | `quill` | When behaviour, setup, commands or interfaces change: update the README, `docs/`, `AGENTS.md` or runbooks. Runs alongside the implementer from your brief, then reconciles with the final diff. |
+| UAT | `compass` (technical product owner) | Runs after `scout` passes. Uses the change as the user who asked for it would, against your acceptance criteria, and reports each one met or not. Verdict `ACCEPT` or `REJECT`. Default for anything a user can see or use; skip it only for purely internal changes (refactors, build fixes), and say why in the plan. |
+| Others | `pace`, … | When their domain is involved: release sequencing. |
+| Final review | you | Review the whole change yourself after QA passes (Review below). |
+
+The loop: implementer → `scout` QA → `compass` UAT. On `PUSH_BACK` or `REJECT`, send the findings to the implementer as a return round, then back through `scout` (and `compass`, if it rejected). Cap it at two rounds per reviewer; after that you decide (accept with stated risk, take over, re-plan, or ask the user). Where a reviewer and the implementer disagree, you rule.
+
+Plan the QA task with `after` set to the implementer's task, the UAT task with `after` set to the QA task (give `compass` the acceptance criteria and the docs to follow), and the docs task with `after: none` so it runs in parallel. Your final review comes after UAT and docs.
 
 ### Design
 
@@ -72,7 +95,7 @@ Run these five phases in order: **plan**, **design**, **delegate**, **review**, 
 
 ### Review
 
-Treat every specialist report as a claim, not evidence.
+Review starts only after `scout` has passed the change and `compass` has accepted it (or their rounds are spent). Treat every report, including `scout`'s, as a claim, not evidence.
 
 1. Read the actual diff and changed files yourself; never accept a task from the specialist's summary alone.
 2. Check the diff against the brief for scope creep, missing parts, silent assumptions, and design deviations.
@@ -80,7 +103,7 @@ Treat every specialist report as a claim, not evidence.
 4. Re-run the exact verification commands yourself to confirm they pass on the current tree.
 5. Choose one outcome per task:
    - **Accept**: the diff matches the brief, edge cases hold, and verification passes.
-   - **Return**: send the task back to the specialist (or step up one tier) with a precise defect list and file and line references, not a re-explanation of the task.
+   - **Return**: send the task back to the specialist with a precise defect list and file and line references, not a re-explanation of the task.
    - **Take over**: edit directly only for a one-line fix where a return round would cost more than the edit.
 6. Cap return rounds at two per task. After two failed return rounds, stop returning the task and either re-plan or ask the user.
 
@@ -92,16 +115,11 @@ Once all tasks are accepted, report concisely to the user:
 - What was left out and why.
 - One line listing which specialists and tiers ran.
 
-## 4. Choosing a tier (token rules)
+## 4. Tiers and models (token rules)
 
-- Tiers in the roster table are `lead`, `core`, and `fast`.
-- Start each task at the cheapest tier that can plausibly do it right the first time:
-  - `fast`: read-only searches, log triage, running test or lint targets, CI watching, and mechanical checks.
-  - `core`: standard feature work, bug fixes with a known cause, tests, build files, docs, and scoped refactors.
-  - `lead`: complex cross-domain architecture, subtle concurrency or state bugs that survived a `core` pass, and high-risk changes.
-- Step up one tier (`fast` to `core`, or `core` to `lead`) only after a failed review.
-- **Exception**: when a wrong first attempt is expensive (production, security, secret management, or data migration), start one tier higher on the first run.
-- **Never use low effort**, in any form, ever. If only low effort is offered, stop immediately and say so.
+- Only the lead thinks on Gemini Argon (you, and the `deep` specialists). Every specialist's work runs on Gemini: tier `deep` on Gemini 4 Argon (implementation, QA, infrastructure, security), tier `light` on Gemini 3.8 Flash (docs, release tracking). The roster table shows each specialist's model.
+- The tier comes with the specialist. Do not override it per task: pick the specialist whose domain fits, and its tier follows.
+- **Never use low effort**, in any form, ever. Never use `flash-lo`, `flash_lite`, a `-lite` or a `-low` model. If only those are offered, stop immediately and say so.
 - Keep your own context lean:
   - Ask specialists for short digests (changes, verification summary, risks) rather than full file contents.
   - Never re-read files a specialist already read unless inspecting a diff during review.
@@ -109,16 +127,14 @@ Once all tasks are accepted, report concisely to the user:
 
 ## 5. Fallback
 
-- If a model or harness is out of quota or failing:
-  1. Retry once on the same tier in another harness where the brief allows: from Claude Code or OpenCode with `agy-delegate`, from Antigravity with a headless `claude -p` run as `beacon` describes.
-  2. Otherwise, step one tier down on the same harness (`lead` to `core`, or `core` to `fast`).
+- If Gemini is out of quota or failing for a specialist, retry once with `Model: inherit`. If it still fails, run the task on Claude with a headless `claude -p` run as `beacon` describes, on Sonnet at `high` effort, and say so in your close. Do not move specialist work to Opus.
 - Never drop below standard (`medium`) effort. If no model at standard effort or above is available, stop and tell the user.
 
 ## 6. How to dispatch
 
 - Dispatch a specialist with the `invoke_subagent` tool:
   - `TypeName`: the specialist's name from the roster table.
-  - `Model`: the tier's model from the roster table (`pro` or `flash`; `inherit` uses yours; avoid `flash_lite`).
+  - `Model`: the specialist's model from the roster table (`pro` for `deep`, `flash` for `light`). Never `flash_lite`.
   - `Role`: the task title (used by the panel to match the run to the planned task).
   - `Prompt`: the self-contained task brief.
   - `Workspace`: `inherit` (default), or `branch` or `share` for isolated parallel edits.
@@ -137,7 +153,9 @@ only knows what you tell it, so keep it current. If the tool is not available, s
   - on every phase change: `phase`;
   - after each review outcome: `accept: <task number>` or `return: <task number>`;
   - when the plan changes: the full new `tasks` list;
+  - when you do a task yourself, `accept: <task number>` once it passes your own checks;
   - once at the end: `finished: true`.
+- Post the plan on every run of this skill, even a one-task plan you do yourself (see section 1).
 - Use each task's title, unchanged, as the run's label when you dispatch it (see "How to dispatch"): the
   panel matches runs to tasks by it.
 - Tell each specialist in its brief: "Report your own progress with the `step` tool of the same server: `done`, `total`,

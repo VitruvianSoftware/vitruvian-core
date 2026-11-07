@@ -15,14 +15,22 @@ struct ThreadPane: View {
     @ObservedObject var focus: MessageFocus
     var showsOpenInNewWindowButton = true
     var onOpenInNewWindow: ((String, String) -> Void)?
-    @Environment(\.openDetachedWindow) private var openDetachedWindow
+    /// With glass in the main window the header is a toolbar item (`ThreadPaneHeader`, placed by ConversationView), so
+    /// the pane draws none of its own.
+    var headerInToolbar = false
+    /// The chat the thread is in, under the pane's title.
+    var chatName: String?
     @StateObject private var ui = MessageUI()
     @State private var composerTextHeight: CGFloat = ComposerTextView.minimumHeight
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Divider()
+            if !headerInToolbar {
+                ThreadPaneHeader(thread: thread, focus: focus, chatName: chatName,
+                                 showsOpenInNewWindowButton: showsOpenInNewWindowButton,
+                                 onOpenInNewWindow: onOpenInNewWindow, inToolbar: false)
+                Divider()
+            }
             replies
                 // With glass the replies run under the pane's composer, as the chat's messages do under its own.
                 .courierEdgeBar(.bottom) {
@@ -69,43 +77,14 @@ struct ThreadPane: View {
     }
 
     private func close() {
+        Self.close(thread, focus: focus)
+    }
+
+    /// Closes the pane: nothing selected or focused in it any more, and the thread closed.
+    static func close(_ thread: ThreadModel, focus: MessageFocus) {
         focus.paneSelection = nil
         focus.inPane = false
         thread.close()
-    }
-
-    private var header: some View {
-        HStack(spacing: 8) {
-            Text(String(localized: "Thread"))
-                .font(.headline)
-            Spacer(minLength: 0)
-            if showsOpenInNewWindowButton, let roomID = thread.roomID, let rootID = thread.rootID {
-                Button {
-                    if let onOpenInNewWindow {
-                        onOpenInNewWindow(roomID, rootID)
-                    } else {
-                        openDetachedWindow?(.thread(roomID: roomID, rootEventID: rootID))
-                    }
-                } label: {
-                    Image(systemName: "macwindow.badge.plus")
-                }
-                .buttonStyle(.borderless)
-                .help(String(localized: "Open in New Window"))
-                .accessibilityLabel(String(localized: "Open in New Window"))
-            }
-            if showsOpenInNewWindowButton {
-                Button(action: close) {
-                    Image(systemName: "xmark")
-                }
-                .buttonStyle(.borderless)
-                .help(String(localized: "Close (Esc)"))
-                .accessibilityLabel(String(localized: "Close thread"))
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .frame(minHeight: 48)
-        .accessibilityAddTraits(.isHeader)
     }
 
     @ViewBuilder
@@ -249,5 +228,42 @@ struct ThreadRepliesBanner: View {
         .help(String(localized: "Show the thread with new replies"))
         .accessibilityLabel(text)
         .accessibilityHint(String(localized: "Opens the thread at its first new reply"))
+    }
+}
+
+/// The thread pane's header: "Thread" over the chat's name, with Open in New Window and Close. A strip at the pane's
+/// top, or with glass, the pane's item in the window's toolbar (`inToolbar`).
+struct ThreadPaneHeader: View {
+    @ObservedObject var thread: ThreadModel
+    @ObservedObject var focus: MessageFocus
+    var chatName: String?
+    var showsOpenInNewWindowButton = true
+    var onOpenInNewWindow: ((String, String) -> Void)?
+    var inToolbar: Bool
+    @Environment(\.openDetachedWindow) private var openDetachedWindow
+
+    var body: some View {
+        PaneHeader(title: String(localized: "Thread"), subtitle: chatName, inToolbar: inToolbar) {
+            if showsOpenInNewWindowButton, let roomID = thread.roomID, let rootID = thread.rootID {
+                Button {
+                    if let onOpenInNewWindow {
+                        onOpenInNewWindow(roomID, rootID)
+                    } else {
+                        openDetachedWindow?(.thread(roomID: roomID, rootEventID: rootID))
+                    }
+                } label: {
+                    Image(systemName: "macwindow.badge.plus")
+                }
+                .help(String(localized: "Open in New Window"))
+                .accessibilityLabel(String(localized: "Open in New Window"))
+            }
+            if showsOpenInNewWindowButton {
+                Button { ThreadPane.close(thread, focus: focus) } label: {
+                    Image(systemName: "xmark")
+                }
+                .help(String(localized: "Close (Esc)"))
+                .accessibilityLabel(String(localized: "Close thread"))
+            }
+        }
     }
 }

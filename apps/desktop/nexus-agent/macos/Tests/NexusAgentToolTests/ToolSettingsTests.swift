@@ -121,6 +121,34 @@ final class ToolSettingsTests: XCTestCase {
         XCTAssertEqual(told.count, 2)
     }
 
+    func testTheTimelinesEdgeIsATitledPreferenceKeptInTheFile() throws {
+        XCTAssertTrue(ToolSettings.Key.titled.contains("timelineOnLeft"), "the app draws and keeps it, as plan mode")
+        let settings = ToolSettings(folder: folder)
+        XCTAssertFalse(settings.timelineOnLeft, "the right edge by default")
+        _ = settings.apply(handed: ["timelineOnLeft": .bool(true)])
+        XCTAssertTrue(settings.timelineOnLeft, "taken from what the app hands over")
+        XCTAssertTrue(ToolSettings(folder: folder).timelineOnLeft, "and read back from settings.json")
+        var told: [(String, JSONValue)] = []
+        settings.preferenceChanged = { told.append(($0, $1)) }
+        settings.timelineOnLeft = false
+        settings.timelineOnLeft = false
+        XCTAssertEqual(told.map(\.0), ["timelineOnLeft"], "the chat's change is told to the app once")
+        XCTAssertEqual(told.map(\.1), [.bool(false)])
+        XCTAssertFalse(ToolSettings(folder: folder).timelineOnLeft)
+        settings.changed(["timelineOnLeft": .string("yes")])
+        XCTAssertFalse(settings.timelineOnLeft, "a value of the wrong kind is left out")
+        settings.changed(["timelineOnLeft": .bool(true)])
+        XCTAssertTrue(settings.timelineOnLeft)
+        XCTAssertEqual(told.count, 1, "the app's own change is not told back")
+        // A file from before the key reads as the right edge.
+        let earlier = #"{"autoStart":false,"botDirectory":"","planMode":false,"worktreeMode":false}"#
+        try Data(earlier.utf8).write(to: folder.appendingPathComponent(ToolSettings.fileName))
+        XCTAssertFalse(ToolSettings(folder: folder).timelineOnLeft)
+        let decoded = try JSONDecoder().decode(ToolSettings.Values.self,
+                                               from: try JSONEncoder().encode(ToolSettings(folder: folder).values))
+        XCTAssertFalse(decoded.timelineOnLeft)
+    }
+
     func testTheHostsStringsFollowTheLanguage() {
         let settings = ToolSettings(folder: folder)
         settings.language = "de"

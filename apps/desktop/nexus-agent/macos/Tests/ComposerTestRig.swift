@@ -32,6 +32,7 @@ final class ComposerQuietHost: NexusAgentHost {
     var savedProviders: [NexusAgentCLIProvider] = []
     var promptHistory: [String] = []
     var worktreeMode = false
+    var timelineOnLeft = false
     var strings = NexusAgentHostStrings()
     var sessionPreferences = NexusAgentSessionPreferences()
     func turnNeedsApproval(_ notice: NexusAgentTurnNotice) {}

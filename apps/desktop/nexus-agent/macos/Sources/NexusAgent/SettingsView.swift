@@ -63,6 +63,12 @@ struct SettingsView: View {
                 }
 
                 HStack {
+                    Text("")
+                        .frame(width: 120, alignment: .trailing)
+                    TimelineSideToggle(session: botManager.engine.session)
+                }
+
+                HStack {
                     Text("Quick Prompt Hotkey")
                         .frame(width: 120, alignment: .trailing)
                     HotkeyRecorderView(
@@ -444,6 +450,17 @@ struct SettingsView: View {
 // MARK: - Provider Row
 
 /// A single row in the provider list — shows name, truncated template, edit/delete controls.
+/// The chat's timeline edge. Bound to the session, as the chat's own
+/// right-click menu is, so the two cannot disagree; the session keeps it
+/// through the host, under `timelineOnLeft`.
+struct TimelineSideToggle: View {
+    @ObservedObject var session: NexusAgentQuickPromptSession
+
+    var body: some View {
+        Toggle("Show the conversation timeline on the left", isOn: $session.timelineOnLeft)
+    }
+}
+
 struct ProviderRow: View {
     @Binding var provider: CLIProvider
     let isActive: Bool

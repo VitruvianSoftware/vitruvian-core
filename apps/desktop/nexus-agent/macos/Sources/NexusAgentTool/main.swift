@@ -150,7 +150,7 @@ for id in [NexusAgentTool.islandPanel, NexusAgentTool.settingsPanel] {
     kit.panels[id]?.onClose = { _ in onMain { nexus.panelClosed(id) } }
 }
 for command in NexusAgentTool.Command.all + NexusAgentTool.Command.ade {
-    tool.command(command) { _ in try onMain { try nexus.run(command: command) } }
+    tool.command(command) { _ in try CommandAnswer.handle(command) { try nexus.run(command: $0) } }
 }
 tool.onStart = { app in
     let language = app.language

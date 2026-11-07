@@ -402,7 +402,9 @@ mod tests {
         mac.runner = "xcode-27".into();
         let mut other = unit("other");
         other.runner = "ubuntu-latest".into();
-        let got = render(&[linux, mac, other]);
+        let mut emu = unit("emu");
+        emu.needs_emulator = true;
+        let got = render(&[linux, mac, other, emu]);
 
         let job = |name: &str| {
             let start = got.find(&format!("  unit-{name}:\n")).expect(name);
@@ -411,6 +413,7 @@ mod tests {
         assert_eq!(job("linux"), format!("    {ROUTED}"));
         assert_eq!(job("mac"), "    runs-on: xcode-27\n");
         assert_eq!(job("other"), "    runs-on: ubuntu-latest\n");
+        assert_eq!(job("emu"), "    runs-on: ubuntu-26.04\n");
 
         let after = |header: &str| {
             let start = got.find(header).expect(header);

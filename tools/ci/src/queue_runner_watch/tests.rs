@@ -289,3 +289,89 @@ fn the_real_filter_reads_a_null_conclusion_as_empty() {
         r.why()
     );
 }
+
+#[test]
+fn polls_until_a_queued_canary_starts_under_burst_load() {
+    let dir = TempDir::new();
+    write_exe(
+        dir.join("gh"),
+        r#"#!/usr/bin/env bash
+echo "$*" >>"$FAKE_DIR/calls"
+case "$*" in
+  *"/jobs"*)
+    if [ ! -f "$FAKE_DIR/polled_once" ]; then
+      : >"$FAKE_DIR/polled_once"
+      echo "queued "
+    else
+      echo "in_progress "
+    fi ;;
+  *"/variables/QUEUE_RUNNER_FALLBACK"*"--jq"*) echo "on" ;;
+esac
+"#,
+    );
+    let out = Run::new(&bin("BIN"))
+        .env("FAKE_DIR", dir.path())
+        .env("GH_BIN", dir.join("gh"))
+        .env("REPO", "o/r")
+        .env("RUN_ID", "7")
+        .env("WAIT_SECONDS", "2")
+        .env("POLL_SECONDS", "1")
+        .env_remove("CANARY_JOB")
+        .go();
+    let r = Ran {
+        out,
+        calls: read(dir.join("calls")),
+    };
+    assert!(
+        r.out.code == 0 && r.wrote(&format!("{PATCH}off")) && !r.wrote("/cancel"),
+        "{}",
+        r.why()
+    );
+}
+
+#[test]
+fn cancels_orphaned_merge_group_runs_whose_queue_branch_is_gone() {
+    let dir = TempDir::new();
+    write_exe(
+        dir.join("gh"),
+        r#"#!/usr/bin/env bash
+echo "$*" >>"$FAKE_DIR/calls"
+case "$*" in
+  *"/actions/runs?event=merge_group&status=in_progress"*)
+    printf '101 gh-readonly-queue/main/pr-1-dead\n102 gh-readonly-queue/main/pr-2-live\n7 gh-readonly-queue/main/pr-7-self\n' ;;
+  *"/actions/runs?event=merge_group&status=queued"*)
+    printf '103 gh-readonly-queue/main/pr-3-dead\n' ;;
+  *"/git/matching-refs/heads/gh-readonly-queue/main/"*)
+    printf 'refs/heads/gh-readonly-queue/main/pr-2-live\nrefs/heads/gh-readonly-queue/main/pr-7-self\n' ;;
+  *"/jobs"*)
+    echo "in_progress " ;;
+  *"/variables/QUEUE_RUNNER_FALLBACK"*"--jq"*)
+    echo "off" ;;
+esac
+"#,
+    );
+    let out = Run::new(&bin("BIN"))
+        .env("FAKE_DIR", dir.path())
+        .env("GH_BIN", dir.join("gh"))
+        .env("REPO", "o/r")
+        .env("RUN_ID", "7")
+        .env("WAIT_SECONDS", "0")
+        .env_remove("CANARY_JOB")
+        .go();
+    let r = Ran {
+        out,
+        calls: read(dir.join("calls")),
+    };
+    assert!(
+        r.out.code == 0
+            && r.wrote("-X POST repos/o/r/actions/runs/101/cancel")
+            && r.wrote("-X POST repos/o/r/actions/runs/103/cancel")
+            && !r.wrote("runs/102/cancel")
+            && !r.wrote("runs/7/cancel")
+            && r.out
+                .stdout
+                .contains("cancelled orphaned merge_group run 101"),
+        "{}",
+        r.why()
+    );
+}

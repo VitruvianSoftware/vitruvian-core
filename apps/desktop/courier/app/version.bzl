@@ -3,4 +3,4 @@
 
 """Courier's one version: the app's CFBundleShortVersionString (app/BUILD) and the engine's hello (engine/cmd/courier-engine/BUILD) both read it."""
 
-COURIER_VERSION = "0.3.10"  # x-release-please-version
+COURIER_VERSION = "0.3.12"  # x-release-please-version

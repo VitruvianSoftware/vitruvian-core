@@ -123,7 +123,7 @@ jobs:
           service-account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
       - name: Install Pulumi
-        uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
+        uses: pulumi/actions@96c7761824268174e0d2a4e8c7d75671eebd24a7 # v7.1.0
 
       # Consume the region from the earlier phase (foundation design): read the
       # canonical regions out of gcp-bootstrap's common_config output and hand them

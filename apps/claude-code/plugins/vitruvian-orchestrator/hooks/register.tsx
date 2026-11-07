@@ -94,6 +94,7 @@ type StepInput = {
   done?: number;
   total?: number;
   note?: string;
+  delegate?: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -1688,8 +1689,11 @@ const agentRowSvg = (W: number, r: Run, at: number): string => {
         ? Math.min(1, r.steps.done / r.steps.total)
         : Math.min(1, (r.contextPct ?? 0) / 100);
   const fillW = Math.round(textW * ratioVal);
+  const modelLabel = r.delegate
+    ? `${r.model || "—"} → ${r.delegate}`
+    : r.model || "—";
   const meta = [
-    r.model || "—",
+    modelLabel,
     ...(r.effort ? [r.effort] : []),
     ...(r.role === "lead" ? ["lead"] : []),
     r.status,
@@ -1835,13 +1839,18 @@ export const register: Register = (on) => {
             type: "string",
             description: "Short label for the current step.",
           },
+          delegate: {
+            type: "string",
+            description:
+              "Model that did the work when you handed it to another engine, e.g. gemini-4-argon-high.",
+          },
         },
         required: ["done", "total"],
       },
     });
 
     await $.command.register({
-      name: "orchestrator",
+      name: "orchestrator-panel",
       description:
         "Show or hide the Orchestrator live panel (flow header, burn-down, task board, agents, and spend)",
     });
@@ -1858,7 +1867,7 @@ export const register: Register = (on) => {
     return started;
   });
 
-  on("command.run", { command: "orchestrator" }, async ($) => {
+  on("command.run", { command: "orchestrator-panel" }, async ($) => {
     const isOpen = await togglePane($);
     return {
       text: isOpen
@@ -1941,11 +1950,16 @@ export const register: Register = (on) => {
         typeof input.note === "string"
           ? input.note.trim()
           : (existing.steps?.note ?? "");
+      const delegate =
+        typeof input.delegate === "string" && input.delegate.trim().length > 0
+          ? input.delegate.trim()
+          : undefined;
       return reduce(prev, {
         type: "run.progress",
         at,
         id: agentId,
         steps: { done, total, note },
+        ...(delegate ? { delegate } : {}),
       });
     });
     await update($, now, () => at);
@@ -2365,9 +2379,10 @@ export const register: Register = (on) => {
       const tokText = `${fmtTokens(runTotalTokens(r))} tok`;
       const elapsedText = fmtTime(runElapsed(r, at));
       const agentName = r.role === "lead" ? "lead" : r.agent;
+      const modelLabel = r.delegate ? `${r.model} → ${r.delegate}` : r.model;
       const detailLines = wrapSegments(
         [
-          r.model,
+          modelLabel,
           ...(r.effort ? [r.effort] : []),
           stepOrCtx,
           tokText,
@@ -2383,7 +2398,7 @@ export const register: Register = (on) => {
           {hasDesktopSvg && "Svg" in ui ? (
             <ui.Svg
               source={agentRowSvg(W, r, at)}
-              alt={`${agentName} (${r.model}): ${r.status}, ${costText}`}
+              alt={`${agentName} (${modelLabel}): ${r.status}, ${costText}`}
               width={W}
               height={58}
             />
@@ -2510,6 +2525,15 @@ export const register: Register = (on) => {
                     {line}
                   </Text>
                 ))}
+              {sp.delegated.runs > 0 && (
+                <Text dimColor>
+                  {`  delegated to Gemini: ${sp.delegated.runs} ${sp.delegated.runs === 1 ? "run" : "runs"} (${Object.entries(
+                    sp.delegated.byModel,
+                  )
+                    .map(([m, n]) => `${m} ×${n}`)
+                    .join(", ")}), not priced`}
+                </Text>
+              )}
             </Box>
           </Box>
         )}

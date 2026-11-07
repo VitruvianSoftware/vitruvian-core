@@ -36,6 +36,8 @@ pub const CLAUDE_MARKETPLACE_WEB: &str =
 
 pub const ANTIGRAVITY_PLUGINS_DIR: &str = "apps/antigravity/plugins";
 pub const CLAUDE_CODE_PLUGINS_DIR: &str = "apps/claude-code/plugins";
+/// The monorepo itself: a plugin whose `repository` is this has no standalone mirror.
+pub const MONOREPO_URL: &str = "https://github.com/VitruvianSoftware/vitruvian-core";
 
 /// The order first-party plugins are shown in; others follow, by id.
 pub const PREFERRED_PLUGIN_ORDER: &[&str] = &[
@@ -169,7 +171,7 @@ pub fn ecosystems() -> Vec<Value> {
             "Native plugins with sidecar web panels, lifecycle hooks, rules, and skills for Antigravity Desktop.",
             Some((
                 "Install the Antigravity Extensions Marketplace",
-                "agy plugin install https://github.com/VitruvianSoftware/ext-marketplace",
+                "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/ext-marketplace",
                 "/ai/catalog.json",
             )),
         ),
@@ -482,7 +484,18 @@ pub fn discover_plugin_dir(
                 "Antigravity",
                 "antigravity",
                 s("Install in Antigravity"),
-                Value::Str(str_cat(&["agy plugin install "], &repo_url.py_str())),
+                // A plugin with no standalone mirror names the monorepo itself; installing
+                // the bare monorepo URL would install the repository root, not the plugin,
+                // so point the command at the plugin's own folder (agy installs from a
+                // GitHub subpath).
+                Value::Str(str_cat(
+                    &["agy plugin install "],
+                    &if repo_url.py_str() == PyStr::from(MONOREPO_URL) {
+                        install_target.clone()
+                    } else {
+                        repo_url.py_str()
+                    },
+                )),
             );
             pairs.push((
                 "monorepo_command",

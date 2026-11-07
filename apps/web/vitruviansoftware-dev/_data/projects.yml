@@ -180,7 +180,7 @@ projects:
       from the Vitruvian catalog or any GitHub repository.
     tags: [JavaScript, Antigravity, Marketplace]
     source: apps/antigravity/plugins/ext-marketplace
-    install: agy plugin install https://github.com/VitruvianSoftware/ext-marketplace
+    install: agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/ext-marketplace
 
   - name: worktree-band
     group: agents

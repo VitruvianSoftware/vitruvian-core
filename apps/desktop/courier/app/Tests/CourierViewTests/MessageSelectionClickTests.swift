@@ -51,6 +51,7 @@ final class MessageSelectionClickTests: XCTestCase {
     private var window: NSWindow!
     private var host: NSView!
     private let box = Box()
+    private var lastClickTimestamp: TimeInterval = 0
 
     override func setUp() async throws {
         _ = NSApplication.shared
@@ -81,28 +82,34 @@ final class MessageSelectionClickTests: XCTestCase {
         window = nil
     }
 
-    private func settle() {
+    private func settle(until condition: (() -> Bool)? = nil) {
         for _ in 0 ..< 25 {
             RunLoop.main.run(mode: .default, before: Date(timeIntervalSinceNow: 0.004))
             host.layoutSubtreeIfNeeded()
+            if condition?() == true { break }
         }
     }
 
     /// A click at a point in the host's coordinates (top-left origin), `count` being its place in a double click. A
     /// single click waits out the double-click interval first, as a person's separate clicks do: SwiftUI would take
-    /// two quick clicks on one spot for a double click.
-    private func click(_ point: CGPoint, count: Int = 1) throws {
+    /// two quick clicks on one spot for a double click. When `settleUntil` is given (as on the first click of a double
+    /// click), settling stops as soon as the condition holds so a loaded CI runner does not spend more than
+    /// `NSEvent.doubleClickInterval` in `settle()` before the second click arrives.
+    private func click(_ point: CGPoint, count: Int = 1, settleUntil: (() -> Bool)? = nil) throws {
         if count == 1 {
             RunLoop.main.run(until: Date(timeIntervalSinceNow: NSEvent.doubleClickInterval + 0.1))
         }
+        let now = ProcessInfo.processInfo.systemUptime
+        let timestamp = count > 1 ? min(now, lastClickTimestamp + 0.05) : now
+        lastClickTimestamp = timestamp
         let location = NSPoint(x: point.x, y: host.bounds.height - point.y)
         for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
             let event = try XCTUnwrap(NSEvent.mouseEvent(
-                with: type, location: location, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                with: type, location: location, modifierFlags: [], timestamp: timestamp,
                 windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: count, pressure: 1))
             NSApp.sendEvent(event)
         }
-        settle()
+        settle(until: settleUntil)
     }
 
     /// The middle of a probed button in a row (`clickTargetProbe`): "chip/<message>/<key>", "add/<message>",
@@ -129,7 +136,7 @@ final class MessageSelectionClickTests: XCTestCase {
 
     func testTheSecondClickOfADoubleClickLeavesItSelected() throws {
         let row = try point(in: "$b")
-        try click(row, count: 1)
+        try click(row, count: 1, settleUntil: { [box] in box.selected == "$b" })
         try XCTSkipIf(box.selected == nil, "the window got no clicks (no window server for it here)")
         try click(row, count: 2)
         XCTAssertEqual(box.selected, "$b")

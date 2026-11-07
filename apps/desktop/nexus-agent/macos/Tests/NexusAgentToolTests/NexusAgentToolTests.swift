@@ -300,6 +300,18 @@ final class NexusAgentToolTests: XCTestCase {
         XCTAssertEqual(link.written.last?.value, .bool(false))
     }
 
+    func testTheTimelinesEdgeReachesTheChatAndTheChatsChoiceReachesTheApp() {
+        let tool = tool()
+        tool.start(language: "en", handed: [:])
+        XCTAssertFalse(engine.session.timelineOnLeft)
+        tool.preferencesChanged(["timelineOnLeft": .bool(true)])
+        XCTAssertTrue(engine.session.timelineOnLeft, "the app's toggle moves the chat's rail")
+        // The rail's own menu moves it back: the app's copy follows.
+        engine.session.timelineOnLeft = false
+        XCTAssertEqual(link.written.last?.key, "timelineOnLeft")
+        XCTAssertEqual(link.written.last?.value, .bool(false))
+    }
+
     func testTurnsAreToldWithTheBadgeAndAMessage() {
         rig.installBot()
         let tool = tool()

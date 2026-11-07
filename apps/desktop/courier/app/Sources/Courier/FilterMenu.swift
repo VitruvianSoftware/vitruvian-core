@@ -58,6 +58,8 @@ enum FilterText {
 /// Filter (N): the 14 filters as checkmarks, All, and Clear all filters.
 struct FilterMenu: View {
     @ObservedObject var inbox: InboxModel
+    /// In the window's toolbar: the toolbar's own menu button (its glass, its size), the symbol alone.
+    var inToolbar = false
 
     var body: some View {
         Menu {
@@ -81,8 +83,7 @@ struct FilterMenu: View {
                 : "line.3.horizontal.decrease.circle.fill")
                 .labelStyle(.titleAndIcon)
         }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
+        .modifier(HeaderMenuStyle(inToolbar: inToolbar))
         .help(String(localized: "Narrow the list (⌥Tab steps through the common filters)"))
     }
 
@@ -95,6 +96,8 @@ struct FilterMenu: View {
 /// Display Options: the four orders.
 struct DisplayOptionsMenu: View {
     @ObservedObject var inbox: InboxModel
+    /// In the window's toolbar: the toolbar's own menu button.
+    var inToolbar = false
 
     var body: some View {
         Menu {
@@ -107,10 +110,25 @@ struct DisplayOptionsMenu: View {
             Image(systemName: "arrow.up.arrow.down.circle")
                 .accessibilityLabel(String(localized: "Display Options"))
         }
-        .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .fixedSize()
+        .modifier(HeaderMenuStyle(inToolbar: inToolbar))
         .help(String(localized: "Display Options"))
+    }
+}
+
+/// The list header's menus: borderless and as wide as their label in the strip; in the toolbar, left to the toolbar,
+/// which draws them as its own glass buttons (a borderless, fixed-size menu there came out as a squashed sliver).
+private struct HeaderMenuStyle: ViewModifier {
+    let inToolbar: Bool
+
+    func body(content: Content) -> some View {
+        if inToolbar {
+            content
+        } else {
+            content
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+        }
     }
 }
 

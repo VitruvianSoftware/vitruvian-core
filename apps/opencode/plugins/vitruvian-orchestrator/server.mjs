@@ -136,6 +136,11 @@ const STEP_INPUT_SCHEMA = {
       type: "string",
       description: "Optional short label for the current sub-step.",
     },
+    delegate: {
+      type: "string",
+      description:
+        "Model that did the work when you handed it to another engine, e.g. gemini-4-argon-high.",
+    },
   },
   required: ["done", "total"],
   additionalProperties: false,

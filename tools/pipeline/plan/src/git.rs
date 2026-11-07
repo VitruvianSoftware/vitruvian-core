@@ -59,6 +59,21 @@ fn merge_base(ctx: &Ctx, dir: &str, reference: &str) -> Option<String> {
 
 /// The base revision to diff against.
 pub fn resolve_diff_base(ctx: &Ctx, o: &DiffOptions) -> String {
+    if o.event == "pull_request" && (o.head.is_empty() || o.head == "HEAD") {
+        // On a pull_request checkout of refs/pull/<N>/merge, HEAD is a synthetic
+        // merge commit whose first parent (HEAD^1) is the current base branch tip
+        // and whose second parent (HEAD^2) is the PR head. Because
+        // github.event.pull_request.base.sha (--base) can lag behind HEAD^1
+        // whenever main advances after the PR was opened, diffing a stale base.sha
+        // against the merge commit HEAD would include every commit that landed on
+        // main since the PR opened. Prefer HEAD^1 when HEAD is a merge commit.
+        if !rev_parse(ctx, &o.repo_root, "HEAD^2").is_empty() {
+            let p1 = rev_parse(ctx, &o.repo_root, "HEAD^1");
+            if !p1.is_empty() {
+                return p1;
+            }
+        }
+    }
     if !o.base.is_empty() {
         return o.base.clone();
     }

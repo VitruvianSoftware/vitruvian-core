@@ -1,9 +1,9 @@
 module tabula-build
 
-go 1.26.6
+go 1.26.10
 
 require (
-	github.com/pulumi/pulumi-gcp/sdk/v9 v9.37.1
+	github.com/pulumi/pulumi-gcp/sdk/v9 v9.37.2
 	github.com/pulumi/pulumi/sdk/v3 v3.273.0
 )
 

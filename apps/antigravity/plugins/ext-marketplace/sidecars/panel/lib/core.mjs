@@ -48,7 +48,7 @@ export const MARKETPLACE_CATALOG = Object.freeze([
     version: "0.1.0",
     description:
       "Tracks active git worktrees, dirty status, branch hygiene, and one-click safe pruning.",
-    repo: "https://github.com/VitruvianSoftware/worktree-band",
+    repo: "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/worktree-band",
     monorepoPath: "apps/antigravity/plugins/worktree-band",
     category: "Git & Workspaces",
     highlights: Object.freeze([
@@ -63,7 +63,7 @@ export const MARKETPLACE_CATALOG = Object.freeze([
     version: "0.1.0",
     description:
       "Autonomous iterative verification loop that keeps refining and testing until completion criteria pass.",
-    repo: "https://github.com/VitruvianSoftware/ralph-loop",
+    repo: "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/ralph-loop",
     monorepoPath: "apps/antigravity/plugins/ralph-loop",
     category: "Autonomous Loops",
     highlights: Object.freeze([
@@ -78,7 +78,7 @@ export const MARKETPLACE_CATALOG = Object.freeze([
     version: "0.1.0",
     description:
       "Declarative PreToolUse and PostToolUse hook rule builder, tester, and policy inspector.",
-    repo: "https://github.com/VitruvianSoftware/hookify",
+    repo: "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/hookify",
     monorepoPath: "apps/antigravity/plugins/hookify",
     category: "Guardrails & Hooks",
     highlights: Object.freeze([
@@ -93,7 +93,7 @@ export const MARKETPLACE_CATALOG = Object.freeze([
     version: "0.1.0",
     description:
       "Real-time security posture advisor, secret pattern detector, and high-risk command inspector.",
-    repo: "https://github.com/VitruvianSoftware/security-guidance",
+    repo: "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/security-guidance",
     monorepoPath: "apps/antigravity/plugins/security-guidance",
     category: "Security",
     highlights: Object.freeze([
@@ -108,7 +108,7 @@ export const MARKETPLACE_CATALOG = Object.freeze([
     version: "0.1.0",
     description:
       "Generates verifiable engineering receipts, tool audit ledgers, and PR delivery summaries.",
-    repo: "https://github.com/VitruvianSoftware/receipts-report",
+    repo: "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/receipts-report",
     monorepoPath: "apps/antigravity/plugins/receipts-report",
     category: "Telemetry & Audit",
     highlights: Object.freeze([
@@ -123,7 +123,7 @@ export const MARKETPLACE_CATALOG = Object.freeze([
     version: "0.1.0",
     description:
       "Inspects active workspace rules, loaded skills, MCP server tools, and context budget utilization.",
-    repo: "https://github.com/VitruvianSoftware/live-context",
+    repo: "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/live-context",
     monorepoPath: "apps/antigravity/plugins/live-context",
     category: "Context & Memory",
     highlights: Object.freeze([
@@ -138,7 +138,7 @@ export const MARKETPLACE_CATALOG = Object.freeze([
     version: "0.1.0",
     description:
       "Tiered orchestrator-worker subagent flow (savvy-flow) and live subagent fleet telemetry.",
-    repo: "https://github.com/VitruvianSoftware/savvy-fleet",
+    repo: "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/savvy-fleet",
     monorepoPath: "apps/antigravity/plugins/savvy-fleet",
     category: "Subagents",
     highlights: Object.freeze([
@@ -153,7 +153,7 @@ export const MARKETPLACE_CATALOG = Object.freeze([
     version: "0.1.0",
     description:
       "Unified Extensions Marketplace catalog and installed plugin manager sidecar for Antigravity.",
-    repo: "https://github.com/VitruvianSoftware/ext-marketplace",
+    repo: "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/ext-marketplace",
     monorepoPath: "apps/antigravity/plugins/ext-marketplace",
     category: "Extensions",
     highlights: Object.freeze([

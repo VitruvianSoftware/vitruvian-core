@@ -6,7 +6,7 @@
     "name": "VitruvianSoftware",
     "url": "https://github.com/VitruvianSoftware"
   },
-  "repository": "https://github.com/VitruvianSoftware/receipts-report",
+  "repository": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/receipts-report",
   "license": "MIT",
   "keywords": [
     "receipts",

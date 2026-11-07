@@ -22,7 +22,20 @@ bazel run //tools/agent-roster -- --write
 - **Per-harness models and effort**:
   - Antigravity: `model` in `{inherit, flash, pro}`, `effort` must be `-`.
   - Claude Code: `model` in `{inherit, opus, sonnet, haiku, fable}` or `claude-*`, `effort` in `{-, medium, high, xhigh, max}`.
+  - Gemini (optional row per tier): an exact `agy models` id starting with `gemini-`, never a `-low`, `-lite` or `flash-lo` variant; `effort` must be `-`.
   - OpenCode: `model` matching `provider/model` (`^[a-z0-9-]+/[A-Za-z0-9._-]+(#[a-z]+)?$`), `effort` in `{-, medium, high, xhigh, max}` (written as `reasoningEffort`).
+
+## Gemini tiers and driver agents
+
+A tier with a `gemini` row in `tiers.tsv` does its work on that Gemini model:
+
+- **Antigravity** runs the agent natively, on the model in its own column (`pro` or `flash`).
+- **Claude Code and OpenCode** get a *driver*: an agent on the tier's own (Haiku) model, with its editing tools switched off, whose body tells it to hand the brief and the agent's role to Gemini with `agy-delegate -m <gemini model>`, verify the result itself, and report `DONE`, `NEEDS_WORK` or `BLOCKED`. The agent's role prompt follows under `## Your role`, which is what Gemini works as.
+  - Claude Code: `tools: Bash, Read, Grep, Glob, mcp__vitruvian-orchestrator__step`.
+  - OpenCode: `tools:` with `write`, `edit` and `patch` set to `false`.
+- Roster tables show such cells as `driver model → gemini model`.
+
+Tiers without a `gemini` row (the `lead` tier) render exactly as before. Why and how the team uses this: [How the agent team works](../../docs/concepts/agent-team.md).
 
 ## Lead skill (`orchestrate`)
 

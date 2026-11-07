@@ -1,6 +1,6 @@
 module foundation-3-networks-hub-and-spoke-nonproduction
 
-go 1.26.6
+go 1.26.10
 
 require (
 	foundation-3-networks-hub-and-spoke/modules v0.0.0-00010101000000-000000000000

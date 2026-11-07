@@ -21,8 +21,8 @@
 # Is the homelab runner pool taking jobs, and can it run them? Every 10 minutes
 # and after every push to main, a canary asks the homelab runners for a job and
 # runs the runner image's own parity checks (//tools/ci-runner:parity: bazel,
-# shellcheck, node, sudo...) while //tools/ci:queue_runner_watch waits on a
-# GitHub-hosted runner. A canary nobody picks up in 4 minutes, or one whose
+# shellcheck, node, sudo...) while //tools/ci:queue_runner_watch polls on a
+# GitHub-hosted runner. A canary nobody picks up in 10 minutes, or one whose
 # checks fail, sets the
 # repository variable QUEUE_RUNNER_FALLBACK to "on", which sends the merge
 # queue's jobs back to GitHub-hosted runners (spec §4); one that runs sets it
@@ -68,7 +68,7 @@ jobs:
   canary:
     if: ${{ vars.QUEUE_RUNNER == 'on' }}
     runs-on: vitruvian-queue
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -96,7 +96,7 @@ jobs:
   watch:
     if: ${{ vars.QUEUE_RUNNER == 'on' }}
     runs-on: ubuntu-26.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -124,6 +124,6 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
-          WAIT_SECONDS: '240'
+          WAIT_SECONDS: '600'
           WATCHER: ${{ steps.watcher.outputs.path }}
         run: '"$WATCHER"'

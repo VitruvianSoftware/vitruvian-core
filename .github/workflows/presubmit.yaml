@@ -1389,7 +1389,7 @@ jobs:
 
   unit-remote-boot:
     name: remote-boot
-    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
+    runs-on: ubuntu-26.04
     timeout-minutes: 45
     needs: [plan]
     if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'remote-boot')) }}

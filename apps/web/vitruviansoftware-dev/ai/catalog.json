@@ -24,7 +24,7 @@
       "badge": "Antigravity",
       "blurb": "Native plugins with sidecar web panels, lifecycle hooks, rules, and skills for Antigravity Desktop.",
       "bootstrap_label": "Install the Antigravity Extensions Marketplace",
-      "bootstrap_command": "agy plugin install https://github.com/VitruvianSoftware/ext-marketplace",
+      "bootstrap_command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/ext-marketplace",
       "feed_url": "/ai/catalog.json"
     },
     {
@@ -82,7 +82,7 @@
       "status": "in-development",
       "summary": "Extensions Marketplace and installed plugin manager sidecar for Antigravity.",
       "repo": "",
-      "mirrorRepo": "https://github.com/VitruvianSoftware/ext-marketplace",
+      "mirrorRepo": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/ext-marketplace",
       "source": "apps/antigravity/plugins/ext-marketplace",
       "ecosystems": [
         "antigravity",
@@ -111,7 +111,7 @@
           "tool": "Antigravity",
           "ecosystem": "antigravity",
           "label": "Install in Antigravity",
-          "command": "agy plugin install https://github.com/VitruvianSoftware/ext-marketplace",
+          "command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/ext-marketplace",
           "monorepo_command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/ext-marketplace"
         },
         {
@@ -180,7 +180,7 @@
       "status": "in-development",
       "summary": "Tracks git worktrees, pull request status, and Bazel output-base disk usage, with safe post-merge cleanup.",
       "repo": "",
-      "mirrorRepo": "https://github.com/VitruvianSoftware/worktree-band",
+      "mirrorRepo": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/worktree-band",
       "source": "apps/antigravity/plugins/worktree-band",
       "ecosystems": [
         "antigravity",
@@ -209,7 +209,7 @@
           "tool": "Antigravity",
           "ecosystem": "antigravity",
           "label": "Install in Antigravity",
-          "command": "agy plugin install https://github.com/VitruvianSoftware/worktree-band",
+          "command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/worktree-band",
           "monorepo_command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/worktree-band"
         },
         {
@@ -234,7 +234,7 @@
       "status": "in-development",
       "summary": "Self-referential iterative development loops for Antigravity conversations until completion criteria are met.",
       "repo": "",
-      "mirrorRepo": "https://github.com/VitruvianSoftware/ralph-loop",
+      "mirrorRepo": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/ralph-loop",
       "source": "apps/antigravity/plugins/ralph-loop",
       "ecosystems": [
         "antigravity",
@@ -263,7 +263,7 @@
           "tool": "Antigravity",
           "ecosystem": "antigravity",
           "label": "Install in Antigravity",
-          "command": "agy plugin install https://github.com/VitruvianSoftware/ralph-loop",
+          "command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/ralph-loop",
           "monorepo_command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/ralph-loop"
         },
         {
@@ -288,7 +288,7 @@
       "status": "in-development",
       "summary": "Declarative rule engine for Antigravity hooks supporting PreToolUse permission gating, argument rewriting, and Stop assertions.",
       "repo": "",
-      "mirrorRepo": "https://github.com/VitruvianSoftware/hookify",
+      "mirrorRepo": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/hookify",
       "source": "apps/antigravity/plugins/hookify",
       "ecosystems": [
         "antigravity",
@@ -317,7 +317,7 @@
           "tool": "Antigravity",
           "ecosystem": "antigravity",
           "label": "Install in Antigravity",
-          "command": "agy plugin install https://github.com/VitruvianSoftware/hookify",
+          "command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/hookify",
           "monorepo_command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/hookify"
         },
         {
@@ -342,7 +342,7 @@
       "status": "in-development",
       "summary": "Real-time vulnerability and secret scanner for Antigravity PreToolUse and Stop hooks with interactive remediation guidance.",
       "repo": "",
-      "mirrorRepo": "https://github.com/VitruvianSoftware/security-guidance",
+      "mirrorRepo": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/security-guidance",
       "source": "apps/antigravity/plugins/security-guidance",
       "ecosystems": [
         "antigravity",
@@ -371,7 +371,7 @@
           "tool": "Antigravity",
           "ecosystem": "antigravity",
           "label": "Install in Antigravity",
-          "command": "agy plugin install https://github.com/VitruvianSoftware/security-guidance",
+          "command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/security-guidance",
           "monorepo_command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/security-guidance"
         },
         {
@@ -396,7 +396,7 @@
       "status": "in-development",
       "summary": "Scans Antigravity session transcripts, aggregates per-project activity and commit/PR receipts, detects token hotspots, and exports HTML or CSV impact reports.",
       "repo": "",
-      "mirrorRepo": "https://github.com/VitruvianSoftware/receipts-report",
+      "mirrorRepo": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/receipts-report",
       "source": "apps/antigravity/plugins/receipts-report",
       "ecosystems": [
         "antigravity",
@@ -425,7 +425,7 @@
           "tool": "Antigravity",
           "ecosystem": "antigravity",
           "label": "Install in Antigravity",
-          "command": "agy plugin install https://github.com/VitruvianSoftware/receipts-report",
+          "command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/receipts-report",
           "monorepo_command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/receipts-report"
         },
         {
@@ -450,7 +450,7 @@
       "status": "in-development",
       "summary": "Injects live Git branch/status, open/merged GitHub PRs, and the user's response contract on every turn via PreInvocation hooks, and validates reply shape on Stop.",
       "repo": "",
-      "mirrorRepo": "https://github.com/VitruvianSoftware/live-context",
+      "mirrorRepo": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/live-context",
       "source": "apps/antigravity/plugins/live-context",
       "ecosystems": [
         "antigravity",
@@ -479,7 +479,7 @@
           "tool": "Antigravity",
           "ecosystem": "antigravity",
           "label": "Install in Antigravity",
-          "command": "agy plugin install https://github.com/VitruvianSoftware/live-context",
+          "command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/live-context",
           "monorepo_command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/live-context"
         },
         {
@@ -504,7 +504,7 @@
       "status": "in-development",
       "summary": "Tiered orchestrator-worker subagent fleet tracker and live telemetry sidecar for Antigravity.",
       "repo": "",
-      "mirrorRepo": "https://github.com/VitruvianSoftware/savvy-fleet",
+      "mirrorRepo": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/savvy-fleet",
       "source": "apps/antigravity/plugins/savvy-fleet",
       "ecosystems": [
         "antigravity",
@@ -534,7 +534,7 @@
           "tool": "Antigravity",
           "ecosystem": "antigravity",
           "label": "Install in Antigravity",
-          "command": "agy plugin install https://github.com/VitruvianSoftware/savvy-fleet",
+          "command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/savvy-fleet",
           "monorepo_command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/savvy-fleet"
         },
         {
@@ -559,7 +559,7 @@
       "status": "in-development",
       "summary": "Lead orchestrator skill and live orchestration sidecar panel for routing multi-domain work across specialist subagents in Antigravity.",
       "repo": "",
-      "mirrorRepo": "https://github.com/VitruvianSoftware/vitruvian-core",
+      "mirrorRepo": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/vitruvian-orchestrator",
       "source": "apps/antigravity/plugins/vitruvian-orchestrator",
       "ecosystems": [
         "antigravity"
@@ -583,7 +583,7 @@
           "tool": "Antigravity",
           "ecosystem": "antigravity",
           "label": "Install in Antigravity",
-          "command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core",
+          "command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/vitruvian-orchestrator",
           "monorepo_command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/antigravity/plugins/vitruvian-orchestrator"
         }
       ]
@@ -596,7 +596,7 @@
       "status": "in-development",
       "summary": "Lead orchestrator skill plus a live panel: task board, burn-down, agents and spend for multi-agent work in Claude Code.",
       "repo": "",
-      "mirrorRepo": "https://github.com/VitruvianSoftware/vitruvian-core",
+      "mirrorRepo": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/claude-code/plugins/vitruvian-orchestrator",
       "source": "apps/claude-code/plugins/vitruvian-orchestrator",
       "ecosystems": [
         "claude-code"
