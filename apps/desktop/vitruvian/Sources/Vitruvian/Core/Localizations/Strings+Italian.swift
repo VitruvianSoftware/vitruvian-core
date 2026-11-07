@@ -907,7 +907,7 @@ extension Strings {
         shortcutsPageTitle: "Abbreviazioni da tastiera",
         settingsSearchPlaceholder: "Cerca nelle impostazioni",
         donateHeading: "Aiuta Vitruvian a continuare a crescere",
-        donateMessage: "Vitruvian è gratuito e open source, e lo resterà sempre. Se vuoi sostenerne lo sviluppo, puoi donare l'importo che preferisci. I pagamenti sono gestiti in modo sicuro da Stripe.",
+        donateMessage: "Vitruvian è gratuito e open source, e lo resterà sempre. Se vuoi sostenerne lo sviluppo, puoi donare l’importo che preferisci. I pagamenti sono gestiti in modo sicuro da Stripe.",
         donateButton: "Fai una donazione",
         donateThanks: "Grazie di essere qui. 🖤",
         supportIntroTitle: "Aiuta Vitruvian a continuare a crescere",
