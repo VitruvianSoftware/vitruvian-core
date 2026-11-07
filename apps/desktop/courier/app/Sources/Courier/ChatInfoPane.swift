@@ -43,6 +43,9 @@ public struct ChatInfoPane: View {
     public var onDeleteChat: () -> Void = {}
     public var onReportSpam: () -> Void = {}
     public var onClose: () -> Void = {}
+    /// With glass in the main window the header is a toolbar item (`ChatInfoHeader`, placed by ConversationView), so
+    /// the pane draws none of its own.
+    public var headerInToolbar: Bool = false
 
     @Environment(\.openWindow) private var openWindow
     @State private var filterText: String = ""
@@ -81,8 +84,10 @@ public struct ChatInfoPane: View {
         onLeaveGroup: @escaping () -> Void = {},
         onDeleteChat: @escaping () -> Void = {},
         onReportSpam: @escaping () -> Void = {},
-        onClose: @escaping () -> Void = {}
+        onClose: @escaping () -> Void = {},
+        headerInToolbar: Bool = false
     ) {
+        self.headerInToolbar = headerInToolbar
         self.info = info
         self.bookmarks = bookmarks
         self.isRefreshing = isRefreshing
@@ -131,8 +136,11 @@ public struct ChatInfoPane: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            topBar
-            Divider()
+            if !headerInToolbar {
+                ChatInfoHeader(roomID: info.roomID, showsCloseButton: showsCloseButton, onClose: onClose,
+                               inToolbar: false)
+                Divider()
+            }
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     identityHeader
@@ -158,45 +166,16 @@ public struct ChatInfoPane: View {
                     securityAndTimerSection
                     actionsSection
                 }
-                .padding(12)
+                // The header's inset, so the sections line up under its title.
+                .padding(PaneHeaderMetrics.inset)
             }
+            .courierScrollEdges()
         }
         .frame(minWidth: 280)
         .courierSurface(.sidePane)
         .onChange(of: focusSearchTrigger) { _, _ in
             isFilterFocused = true
         }
-    }
-
-    // MARK: - Top Bar
-
-    private var topBar: some View {
-        HStack(spacing: 8) {
-            Text(String(localized: "Chat Info"))
-                .font(.headline)
-            Spacer(minLength: 0)
-            Button {
-                openWindow(id: WindowID.chatInfo, value: info.roomID)
-            } label: {
-                Image(systemName: "macwindow.on.rectangle")
-            }
-            .buttonStyle(.borderless)
-            .help(String(localized: "Open Chat Info in Separate Window"))
-            .accessibilityLabel(String(localized: "Open Chat Info in Separate Window"))
-
-            if showsCloseButton {
-                Button(action: onClose) {
-                    Image(systemName: "xmark")
-                }
-                .buttonStyle(.borderless)
-                .help(String(localized: "Close Chat Info (⌘⇧I)"))
-                .accessibilityLabel(String(localized: "Close chat info"))
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .frame(minHeight: 48)
-        .accessibilityAddTraits(.isHeader)
     }
 
     // MARK: - Header (Ruling 1)
@@ -1017,5 +996,34 @@ struct ChatInfoWindow: View {
             loadedInfo = info
         }
         loadedBookmarks = bookmarks
+    }
+}
+
+/// Chat Info's header: its title, Open in Separate Window and Close. A strip at the pane's top, or with glass, the
+/// pane's item in the window's toolbar (`inToolbar`).
+struct ChatInfoHeader: View {
+    let roomID: String
+    var showsCloseButton = true
+    var onClose: () -> Void = {}
+    var inToolbar: Bool
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        PaneHeader(title: String(localized: "Chat Info"), inToolbar: inToolbar) {
+            Button {
+                openWindow(id: WindowID.chatInfo, value: roomID)
+            } label: {
+                Image(systemName: "macwindow.on.rectangle")
+            }
+            .help(String(localized: "Open Chat Info in Separate Window"))
+            .accessibilityLabel(String(localized: "Open Chat Info in Separate Window"))
+            if showsCloseButton {
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                }
+                .help(String(localized: "Close Chat Info (⌘⇧I)"))
+                .accessibilityLabel(String(localized: "Close chat info"))
+            }
+        }
     }
 }

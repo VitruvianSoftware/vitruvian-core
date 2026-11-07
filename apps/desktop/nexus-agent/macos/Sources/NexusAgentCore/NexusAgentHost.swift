@@ -47,6 +47,9 @@ public protocol NexusAgentHost: AnyObject {
     var promptHistory: [String] { get set }
     /// Worktree mode, remembered between launches.
     var worktreeMode: Bool { get set }
+    /// Whether the conversation's timeline sits on the left edge rather
+    /// than the right, remembered between launches.
+    var timelineOnLeft: Bool { get set }
     /// Sessions the user pinned or renamed in the drawer, remembered
     /// between launches. Defaults to nothing kept.
     var sessionPreferences: NexusAgentSessionPreferences { get set }

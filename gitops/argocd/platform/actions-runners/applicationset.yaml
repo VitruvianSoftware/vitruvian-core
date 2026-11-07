@@ -113,9 +113,13 @@ spec:
                         # and nuc9i9 (3 pods beside ~4.14 CPU of baseline workloads).
                         cpu: "3500m"
                         memory: 8Gi
+                        # 15Gi prevents scheduler from packing runner pods onto nodes lacking free rootfs disk.
+                        ephemeral-storage: 15Gi
                       limits:
                         cpu: "8"
                         memory: 16Gi
+                        # 40Gi isolates runaway builds to protect sibling runner pods from node eviction.
+                        ephemeral-storage: 40Gi
                     securityContext:
                       runAsNonRoot: true
                       runAsUser: 1001

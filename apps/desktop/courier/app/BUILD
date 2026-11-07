@@ -85,7 +85,10 @@ swift_test(
     name = "CourierViewTests",
     size = "large",
     srcs = glob(["Tests/CourierViewTests/**/*.swift"]),
-    tags = ["manual"],
+    tags = [
+        "exclusive",
+        "manual",
+    ],
     target_compatible_with = ["@platforms//os:macos"],
     deps = [
         ":CourierCore",

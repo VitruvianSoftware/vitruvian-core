@@ -198,6 +198,9 @@ public final class NexusAgentTool {
         if before.worktreeMode != parts.settings.values.worktreeMode {
             parts.engine.session.worktreeMode = parts.settings.values.worktreeMode
         }
+        if before.timelineOnLeft != parts.settings.values.timelineOnLeft {
+            parts.engine.session.timelineOnLeft = parts.settings.values.timelineOnLeft
+        }
     }
 
     public func languageChanged(_ language: String) {

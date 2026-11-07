@@ -502,7 +502,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2
       # On the oldest Python the kit promises: 3.9, Apple's python3.
       - name: Test the kit on Python 3.9
         working-directory: kits/python
@@ -524,7 +524,7 @@ jobs:
       # vitruvian-core's //tools/registry-trust:check reads what PyPI then
       # says, and fails on a version with no provenance.
       - name: Attest the built files
-        uses: astral-sh/attest-action@f589a42a7efb6fe400b4f400de60b4bc90390027 # v0.0.6
+        uses: astral-sh/attest-action@39b6ce43875c196a579e31635b11aa2a2036384a # v0.0.7
         with:
           paths: kits/python/dist/*
       - name: Publish
@@ -589,7 +589,7 @@ jobs:
           persist-credentials: false
       - name: Exchange the runner's identity for a crates.io token
         id: auth
-        uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1.0.5
+        uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1.0.6
       - name: Publish
         working-directory: kits/rust
         env:

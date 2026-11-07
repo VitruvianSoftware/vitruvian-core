@@ -26,11 +26,12 @@ import VitruvianToolProtocol
 /// the Vitruvian app draws and hands over (`storage`), and the ones only
 /// the tool keeps, in `settings.json` in the folder the app gives it.
 ///
-/// Four preferences have a title in the manifest, so the app draws them in
+/// Five preferences have a title in the manifest, so the app draws them in
 /// the tool's detail and is their keeper: the bot folder, starting the bot
-/// at launch, plan mode and worktree mode. They are read from what the app
-/// hands over at every start and on every `preferences/changed`, and when
-/// the chat changes one (plan mode, worktree mode) the tool tells the app
+/// at launch, plan mode, worktree mode and the timeline's edge. They are
+/// read from what the app hands over at every start and on every
+/// `preferences/changed`, and when the chat changes one (plan mode,
+/// worktree mode, the timeline's edge) the tool tells the app
 /// through `preferenceChanged`, so the app's copy follows. The six others
 /// have no title: the provider chosen, the providers of the person's own,
 /// the prompt history, the archived Claude sessions, the model chosen for
@@ -48,6 +49,7 @@ public final class ToolSettings: NexusAgentHost {
         public static let autoStart = "autoStart"
         public static let planMode = "planMode"
         public static let worktreeMode = "worktreeMode"
+        public static let timelineOnLeft = "timelineOnLeft"
         public static let chosenProvider = "chosenProvider"
         public static let savedProviders = "savedProviders"
         public static let promptHistory = "promptHistory"
@@ -55,7 +57,7 @@ public final class ToolSettings: NexusAgentHost {
         public static let chosenModels = "chosenModels"
         public static let sessionPreferences = "sessionPreferences"
         /// The ones the app draws and keeps.
-        public static let titled = [botDirectory, autoStart, planMode, worktreeMode]
+        public static let titled = [botDirectory, autoStart, planMode, worktreeMode, timelineOnLeft]
         /// The ones handed over once.
         public static let untitled = [chosenProvider, savedProviders, promptHistory, hiddenClaudeSessions,
                                       chosenModels, sessionPreferences]
@@ -67,6 +69,7 @@ public final class ToolSettings: NexusAgentHost {
         public var autoStart = false
         public var planMode = false
         public var worktreeMode = false
+        public var timelineOnLeft = false
         public var chosenProvider = ""
         public var savedProviders: [NexusAgentCLIProvider] = []
         public var promptHistory: [String] = []
@@ -78,7 +81,7 @@ public final class ToolSettings: NexusAgentHost {
         public init() {}
 
         private enum CodingKeys: String, CodingKey {
-            case botDirectory, autoStart, planMode, worktreeMode, chosenProvider, savedProviders, promptHistory
+            case botDirectory, autoStart, planMode, worktreeMode, timelineOnLeft, chosenProvider, savedProviders, promptHistory
             case hiddenClaudeSessions, chosenModels, sessionPreferences
         }
 
@@ -91,6 +94,7 @@ public final class ToolSettings: NexusAgentHost {
             autoStart = try container.decodeIfPresent(Bool.self, forKey: .autoStart) ?? false
             planMode = try container.decodeIfPresent(Bool.self, forKey: .planMode) ?? false
             worktreeMode = try container.decodeIfPresent(Bool.self, forKey: .worktreeMode) ?? false
+            timelineOnLeft = try container.decodeIfPresent(Bool.self, forKey: .timelineOnLeft) ?? false
             chosenProvider = try container.decodeIfPresent(String.self, forKey: .chosenProvider) ?? ""
             savedProviders = try container.decodeIfPresent([NexusAgentCLIProvider].self, forKey: .savedProviders) ?? []
             promptHistory = try container.decodeIfPresent([String].self, forKey: .promptHistory) ?? []
@@ -178,6 +182,9 @@ public final class ToolSettings: NexusAgentHost {
         case Key.worktreeMode:
             guard let flag = value.boolValue else { return false }
             values.worktreeMode = flag
+        case Key.timelineOnLeft:
+            guard let flag = value.boolValue else { return false }
+            values.timelineOnLeft = flag
         case Key.chosenProvider:
             guard let text = value.stringValue else { return false }
             values.chosenProvider = text
@@ -242,6 +249,16 @@ public final class ToolSettings: NexusAgentHost {
             values.worktreeMode = newValue
             save()
             preferenceChanged(Key.worktreeMode, .bool(newValue))
+        }
+    }
+
+    public var timelineOnLeft: Bool {
+        get { values.timelineOnLeft }
+        set {
+            guard values.timelineOnLeft != newValue else { return }
+            values.timelineOnLeft = newValue
+            save()
+            preferenceChanged(Key.timelineOnLeft, .bool(newValue))
         }
     }
 

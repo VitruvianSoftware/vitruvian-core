@@ -5,12 +5,15 @@ description: Lead orchestrator skill for OpenCode that plans work across domains
 
 # Orchestrate (OpenCode)
 
-You are the lead session in OpenCode. Plan the work, own design and final judgment, dispatch tasks to specialist subagents from the roster table, review their output adversarially, and report the outcome.
+You are the lead session in OpenCode. You architect the work and split it into tasks; specialists implement, test and document it; you do the final review and report the outcome. Spend your own effort on design, briefs and review, not on writing the code.
+
+You run on Claude Opus. The specialists do not: each one in the roster table is a small Haiku driver that hands its task to Gemini through Antigravity (`agy-delegate`), checks the result and reports back. That keeps Claude tokens for your planning and review.
 
 ## 1. When to use this skill
 
 - **Use it** when a task spans two or more domains, or requires large or parallel work across the repository.
 - **Do not use it** when a few tool calls settle the request. Do small tasks yourself; delegating a tiny task costs more time and tokens than it saves.
+- **Once invoked, always post a plan**, even when you do the work yourself. A task you do yourself is one row with `specialist: "lead"` and your own tier. The user watches the panel, so a run with no plan looks like nothing happened.
 
 ## 2. The roster
 
@@ -30,7 +33,7 @@ Run these five phases in order: **plan**, **design**, **delegate**, **review**, 
 2. Break the work into discrete tasks. Give each task:
    - **Title**: a short action label used to track the task.
    - **Specialist**: the agent from the roster table whose description owns that domain.
-   - **Tier**: `lead`, `core`, or `fast` from the roster table (see section 4).
+   - **Tier**: the specialist's tier from the roster table (`deep` or `light`; see section 4).
    - **Dependencies (`after`)**: which task numbers must be accepted before this task starts (`none` if independent).
    - **Self-contained brief**:
      - **What**: the concrete change or answer required.
@@ -38,9 +41,29 @@ Run these five phases in order: **plan**, **design**, **delegate**, **review**, 
      - **Constraints**: rules from `AGENTS.md`, boundaries, and what not to touch.
      - **Definition of done**: the exact condition that marks the task complete.
      - **Exact verification**: the exact command (`bazel test ...`, `bazel build ...`, `aspect lint ...`) the specialist must run and pass.
-3. Split **investigate** and **implement** into two separate tasks whenever the investigation outcome can change the plan. Run the investigation task first, read its digest, and write or update the implementation brief before dispatching implementation.
-4. When starting a new project or multi-part initiative whose context is not yet on disk, write the spec and plan to files before delegating so specialists can read them.
-5. Show the numbered plan to the user (task number, title, specialist, tier, `after` dependencies). Ask before delegating only if an alternative reading of the request would change the work; otherwise proceed.
+3. Staff every change with the full team (section 3a): an implementer, `scout` for QA, `compass` for UAT, `quill` when docs are affected, and any other specialist whose domain the change touches.
+   - Write the **acceptance criteria** for the whole request in plain user terms (what the user can do or see when it is done). `compass` tests against them.
+4. Split **investigate** and **implement** into two separate tasks whenever the investigation outcome can change the plan. Run the investigation task first, read its digest, and write or update the implementation brief before dispatching implementation.
+5. When starting a new project or multi-part initiative whose context is not yet on disk, write the spec and plan to files before delegating so specialists can read them.
+6. Show the numbered plan to the user (task number, title, specialist, tier, `after` dependencies). Ask before delegating only if an alternative reading of the request would change the work; otherwise proceed.
+
+### 3a. The team for a change
+
+Every change that edits code runs through this team. Leave a role out only when it truly has nothing to do, and say why in the plan.
+
+| Role | Who | Task |
+|---|---|---|
+| Architect | you | Design the change and write one brief per task. Decide interfaces, file layout, UI states and the tests that prove it. |
+| Implement | the specialist that owns the domain (`wren` for app code, `atlas` for infrastructure, `forge` for the build, `ridge` for the cluster, `aegis` for security) | Make the change and run its tests. |
+| QA | `scout` | Runs after the implementer. Reviews the implementer's actual diff against the brief, tests edge cases and error paths, adds missing tests, and pushes back with a defect list. Verdict `PASS` or `PUSH_BACK`. |
+| Docs | `quill` | When behaviour, setup, commands or interfaces change: update the README, `docs/`, `AGENTS.md` or runbooks. Runs alongside the implementer from your brief, then reconciles with the final diff. |
+| UAT | `compass` (technical product owner) | Runs after `scout` passes. Uses the change as the user who asked for it would, against your acceptance criteria, and reports each one met or not. Verdict `ACCEPT` or `REJECT`. Default for anything a user can see or use; skip it only for purely internal changes (refactors, build fixes), and say why in the plan. |
+| Others | `pace`, … | When their domain is involved: release sequencing. |
+| Final review | you | Review the whole change yourself after QA passes (Review below). |
+
+The loop: implementer → `scout` QA → `compass` UAT. On `PUSH_BACK` or `REJECT`, send the findings to the implementer as a return round, then back through `scout` (and `compass`, if it rejected). Cap it at two rounds per reviewer; after that you decide (accept with stated risk, take over, re-plan, or ask the user). Where a reviewer and the implementer disagree, you rule.
+
+Plan the QA task with `after` set to the implementer's task, the UAT task with `after` set to the QA task (give `compass` the acceptance criteria and the docs to follow), and the docs task with `after: none` so it runs in parallel. Your final review comes after UAT and docs.
 
 ### Design
 
@@ -60,7 +83,7 @@ Run these five phases in order: **plan**, **design**, **delegate**, **review**, 
 
 ### Review
 
-Treat every specialist report as a claim, not evidence.
+Review starts only after `scout` has passed the change and `compass` has accepted it (or their rounds are spent). Treat every report, including `scout`'s, as a claim, not evidence.
 
 1. Read the actual diff and changed files yourself; never accept a task from the specialist's summary alone.
 2. Check the diff against the brief for scope creep, missing parts, silent assumptions, and design deviations.
@@ -68,7 +91,7 @@ Treat every specialist report as a claim, not evidence.
 4. Re-run the exact verification commands yourself to confirm they pass on the current tree.
 5. Choose one outcome per task:
    - **Accept**: the diff matches the brief, edge cases hold, and verification passes.
-   - **Return**: send the task back to the specialist (or step up one tier) with a precise defect list and file and line references, not a re-explanation of the task.
+   - **Return**: send the task back to the specialist with a precise defect list and file and line references, not a re-explanation of the task.
    - **Take over**: edit directly only for a one-line fix where a return round would cost more than the edit.
 6. Cap return rounds at two per task. After two failed return rounds, stop returning the task and either re-plan or ask the user.
 
@@ -80,16 +103,11 @@ Once all tasks are accepted, report concisely to the user:
 - What was left out and why.
 - One line listing which specialists and tiers ran.
 
-## 4. Choosing a tier (token rules)
+## 4. Tiers and models (token rules)
 
-- Tiers in the roster table are `lead`, `core`, and `fast`.
-- Start each task at the cheapest tier that can plausibly do it right the first time:
-  - `fast`: read-only searches, log triage, running test or lint targets, CI watching, and mechanical checks.
-  - `core`: standard feature work, bug fixes with a known cause, tests, build files, docs, and scoped refactors.
-  - `lead`: complex cross-domain architecture, subtle concurrency or state bugs that survived a `core` pass, and high-risk changes.
-- Step up one tier (`fast` to `core`, or `core` to `lead`) only after a failed review.
-- **Exception**: when a wrong first attempt is expensive (production, security, secret management, or data migration), start one tier higher on the first run.
-- **Never use low effort**, in any form, ever. If only low effort is offered, stop immediately and say so.
+- Only the lead thinks on Claude (you). Every specialist's work runs on Gemini: tier `deep` on Gemini 4 Argon (implementation, QA, infrastructure, security), tier `light` on Gemini 3.8 Flash (docs, release tracking). The roster table shows each specialist's model as `driver → Gemini model`: the Haiku driver is the cheap Claude wrapper, the Gemini model does the work.
+- The tier comes with the specialist. Do not override it per task: pick the specialist whose domain fits, and its tier follows.
+- **Never use low effort**, in any form, ever. Never use `flash-lo`, `flash_lite`, a `-lite` or a `-low` model. If only those are offered, stop immediately and say so.
 - Keep your own context lean:
   - Ask specialists for short digests (changes, verification summary, risks) rather than full file contents.
   - Never re-read files a specialist already read unless inspecting a diff during review.
@@ -97,27 +115,22 @@ Once all tasks are accepted, report concisely to the user:
 
 ## 5. Fallback
 
-- If a model or harness is out of quota or failing:
-  1. Retry once on the same tier in another harness where the brief allows: from Claude Code or OpenCode with `agy-delegate`, from Antigravity with a headless `claude -p` run as `beacon` describes.
-  2. Otherwise, step one tier down on the same harness (`lead` to `core`, or `core` to `fast`).
+- A specialist reports `BLOCKED` when Gemini is out of quota, unauthenticated, timed out or failing twice. Retry it once. If it is still blocked:
+  1. Run the task on Claude with the `general` agent on `anthropic/claude-sonnet-5-5` at `high` reasoning effort, using the same brief, and say in your close that it ran on Claude and why.
+  2. Do not move specialist work to Opus. Opus is for the lead.
 - Never drop below standard (`medium`) effort. If no model at standard effort or above is available, stop and tell the user.
 
 ## 6. How to dispatch
 
 - Dispatch a specialist with the `subagent` tool:
   - `agent`: the specialist's name from the roster table.
-  - `model`: the tier's model id from the roster table (`provider/model`, adding `#variant` if needed). Always set `model` explicitly: the tool's own hint says not to, but the roster decides the model.
+  - Leave `model` unset. The agent file sets the Haiku driver; the Gemini model is fixed inside it.
   - `description`: the task title (used by the panel to match the run to the planned task).
-  - `prompt`: the self-contained task brief.
+  - `prompt`: the self-contained task brief. Write it for Gemini, which does the work: it cannot see this chat either.
   - `background`: set `true` for long work.
 - Follow up or return defects by calling `subagent` again, passing the earlier run's `sessionID`. Each follow-up with defect feedback counts as a return round.
 - Nesting is off by default (depth 1): specialists cannot start subagents, so the lead does all dispatch. Do not change `experimental.subagent_depth` unless the user asks.
-- Send bulk work off Claude tokens: route mass scaffolding, exhaustive test generation, migrations, and long reads that return a short digest to Antigravity with `agy-delegate`:
-  - Hard work: `agy-delegate -m gemini-4-argon-high -d <repo> --digest "<brief>"`
-  - Mechanical work: `agy-delegate -m gemini-3.8-flash-high -d <repo> --digest "<brief>"`
-  - Never use `flash-lo` or any `-low` model.
-  - It edits files only with `--mode accept-edits` (file edits) or `--yolo` (edits plus commands). Without one of them a write task "succeeds" without writing anything.
-  - Verify its work yourself (read the diff and run verification): it has been seen faking passes.
+- For a long read-only investigation that only you need (no specialist owns it), you may call Gemini directly: `agy-delegate -m gemini-4-argon-high -d <repo> --mode plan --digest "<question>"`. Treat the digest as a claim.
 
 ## 7. Report progress to the live panel
 
@@ -130,7 +143,9 @@ only knows what you tell it, so keep it current. If the tool is not available, s
   - on every phase change: `phase`;
   - after each review outcome: `accept: <task number>` or `return: <task number>`;
   - when the plan changes: the full new `tasks` list;
+  - when you do a task yourself, `accept: <task number>` once it passes your own checks;
   - once at the end: `finished: true`.
+- Post the plan on every run of this skill, even a one-task plan you do yourself (see section 1).
 - Use each task's title, unchanged, as the run's label when you dispatch it (see "How to dispatch"): the
   panel matches runs to tasks by it.
 - Tell each specialist in its brief: "Report your own progress with the `step` tool: `done`, `total`,

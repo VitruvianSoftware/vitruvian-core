@@ -248,6 +248,9 @@ final class ToolWindowController: NSObject, NSWindowDelegate, QuickPromptWindow 
         (\.worktreeModeOff, "worktreeModeOff"), (\.worktreeContext, "worktreeContext"), (\.planContext, "planContext"),
         (\.pinWindow, "pinWindow"), (\.unpinWindow, "unpinWindow"), (\.scrollToBottom, "scrollToBottom"),
         (\.newMessages, "newMessages"), (\.environmentHint, "emptyHint"), (\.newChatShortcut, "newChatShortcut"),
+        (\.timelineLabel, "timelineLabel"), (\.timelinePromptPrefix, "timelinePromptPrefix"),
+        (\.timelineOf, "timelineOf"), (\.timelineWaitingForReply, "timelineWaitingForReply"),
+        (\.timelineMoveLeft, "timelineMoveLeft"), (\.timelineMoveRight, "timelineMoveRight"),
     ]
 
     private func ensurePanel() -> NSPanel {

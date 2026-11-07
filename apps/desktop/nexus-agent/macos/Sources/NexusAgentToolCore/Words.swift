@@ -21,7 +21,7 @@
 // The tool's words, in the fifteen languages the Vitruvian app speaks. The
 // fifty-six keys the app's Nexus Agent feature had were written by
 // VitruvianSoftware for that app and released under MIT with this file on
-// 2026-10-13 (apps/desktop/vitruvian/UPSTREAM.md); the sixteen others were
+// 2026-10-13 (apps/desktop/vitruvian/UPSTREAM.md); the twenty-two others were
 // written with the English. The app draws them as written and never
 // translates them.
 
@@ -107,6 +107,12 @@ public enum Words {
         "newChatShortcut",
         "dockToNotch",
         "dockToNotchHelp",
+        "timelineLabel",
+        "timelinePromptPrefix",
+        "timelineOf",
+        "timelineWaitingForReply",
+        "timelineMoveLeft",
+        "timelineMoveRight",
     ]
 
     public static func text(_ key: String, _ language: String) -> String {
@@ -199,6 +205,12 @@ public enum Words {
             "newChatShortcut": " (⌘N)",
             "dockToNotch": "Dock to the notch",
             "dockToNotchHelp": "Dock the chat into the notch",
+            "timelineLabel": "Conversation timeline",
+            "timelinePromptPrefix": "Prompt ",
+            "timelineOf": " of ",
+            "timelineWaitingForReply": "Waiting for reply…",
+            "timelineMoveLeft": "Move timeline to left edge",
+            "timelineMoveRight": "Move timeline to right edge",
         ],
         "pt-BR": [
             "quickPromptTitle": "Prompt rápido do agente",
@@ -273,6 +285,12 @@ public enum Words {
             "newChatShortcut": " (⌘N)",
             "dockToNotch": "Encaixar no notch",
             "dockToNotchHelp": "Encaixar a conversa no notch",
+            "timelineLabel": "Linha do tempo da conversa",
+            "timelinePromptPrefix": "Prompt ",
+            "timelineOf": " de ",
+            "timelineWaitingForReply": "Aguardando resposta…",
+            "timelineMoveLeft": "Mover a linha do tempo para a borda esquerda",
+            "timelineMoveRight": "Mover a linha do tempo para a borda direita",
         ],
         "tr": [
             "quickPromptTitle": "Ajan Hızlı İstemi",
@@ -347,6 +365,12 @@ public enum Words {
             "newChatShortcut": " (⌘N)",
             "dockToNotch": "Çentiğe yerleştir",
             "dockToNotchHelp": "Sohbeti çentiğe yerleştir",
+            "timelineLabel": "Sohbet zaman çizelgesi",
+            "timelinePromptPrefix": "İstem ",
+            "timelineOf": " / ",
+            "timelineWaitingForReply": "Yanıt bekleniyor…",
+            "timelineMoveLeft": "Zaman çizelgesini sol kenara taşı",
+            "timelineMoveRight": "Zaman çizelgesini sağ kenara taşı",
         ],
         "ru": [
             "quickPromptTitle": "Быстрый запрос к агенту",
@@ -421,6 +445,12 @@ public enum Words {
             "newChatShortcut": " (⌘N)",
             "dockToNotch": "Закрепить в вырезе",
             "dockToNotchHelp": "Закрепить чат в вырезе экрана",
+            "timelineLabel": "Хронология разговора",
+            "timelinePromptPrefix": "Запрос ",
+            "timelineOf": " из ",
+            "timelineWaitingForReply": "Ожидание ответа…",
+            "timelineMoveLeft": "Переместить хронологию к левому краю",
+            "timelineMoveRight": "Переместить хронологию к правому краю",
         ],
         "es": [
             "quickPromptTitle": "Prompt rápido del agente",
@@ -495,6 +525,12 @@ public enum Words {
             "newChatShortcut": " (⌘N)",
             "dockToNotch": "Acoplar al notch",
             "dockToNotchHelp": "Acoplar el chat al notch",
+            "timelineLabel": "Línea de tiempo de la conversación",
+            "timelinePromptPrefix": "Petición ",
+            "timelineOf": " de ",
+            "timelineWaitingForReply": "Esperando respuesta…",
+            "timelineMoveLeft": "Mover la línea de tiempo al borde izquierdo",
+            "timelineMoveRight": "Mover la línea de tiempo al borde derecho",
         ],
         "sk": [
             "quickPromptTitle": "Rýchla výzva agentovi",
@@ -569,6 +605,12 @@ public enum Words {
             "newChatShortcut": " (⌘N)",
             "dockToNotch": "Ukotviť do výrezu",
             "dockToNotchHelp": "Ukotviť chat do výrezu",
+            "timelineLabel": "Časová os konverzácie",
+            "timelinePromptPrefix": "Výzva ",
+            "timelineOf": " z ",
+            "timelineWaitingForReply": "Čaká sa na odpoveď…",
+            "timelineMoveLeft": "Presunúť časovú os k ľavému okraju",
+            "timelineMoveRight": "Presunúť časovú os k pravému okraju",
         ],
         "de": [
             "quickPromptTitle": "Agent-Schnell-Prompt",
@@ -643,6 +685,12 @@ public enum Words {
             "newChatShortcut": " (⌘N)",
             "dockToNotch": "In der Notch andocken",
             "dockToNotchHelp": "Den Chat in der Notch andocken",
+            "timelineLabel": "Zeitleiste der Unterhaltung",
+            "timelinePromptPrefix": "Prompt ",
+            "timelineOf": " von ",
+            "timelineWaitingForReply": "Warte auf Antwort…",
+            "timelineMoveLeft": "Zeitleiste an den linken Rand verschieben",
+            "timelineMoveRight": "Zeitleiste an den rechten Rand verschieben",
         ],
         "fr": [
             "quickPromptTitle": "Prompt rapide de l’agent",
@@ -717,6 +765,12 @@ public enum Words {
             "newChatShortcut": " (⌘N)",
             "dockToNotch": "Ancrer dans l’encoche",
             "dockToNotchHelp": "Ancrer la conversation dans l’encoche",
+            "timelineLabel": "Chronologie de la conversation",
+            "timelinePromptPrefix": "Requête ",
+            "timelineOf": " sur ",
+            "timelineWaitingForReply": "En attente de réponse…",
+            "timelineMoveLeft": "Déplacer la chronologie vers le bord gauche",
+            "timelineMoveRight": "Déplacer la chronologie vers le bord droit",
         ],
         "it": [
             "quickPromptTitle": "Prompt rapido dell’agente",
@@ -791,6 +845,12 @@ public enum Words {
             "newChatShortcut": " (⌘N)",
             "dockToNotch": "Aggancia al notch",
             "dockToNotchHelp": "Aggancia la chat al notch",
+            "timelineLabel": "Cronologia della conversazione",
+            "timelinePromptPrefix": "Prompt ",
+            "timelineOf": " di ",
+            "timelineWaitingForReply": "In attesa di risposta…",
+            "timelineMoveLeft": "Sposta la cronologia sul bordo sinistro",
+            "timelineMoveRight": "Sposta la cronologia sul bordo destro",
         ],
         "ja": [
             "quickPromptTitle": "エージェントのクイックプロンプト",
@@ -865,6 +925,12 @@ public enum Words {
             "newChatShortcut": " (⌘N)",
             "dockToNotch": "ノッチにドッキング",
             "dockToNotchHelp": "チャットをノッチにドッキング",
+            "timelineLabel": "会話のタイムライン",
+            "timelinePromptPrefix": "プロンプト ",
+            "timelineOf": " / ",
+            "timelineWaitingForReply": "返信を待っています…",
+            "timelineMoveLeft": "タイムラインを左端に移動",
+            "timelineMoveRight": "タイムラインを右端に移動",
         ],
         "ko": [
             "quickPromptTitle": "에이전트 빠른 프롬프트",
@@ -939,6 +1005,12 @@ public enum Words {
             "newChatShortcut": " (⌘N)",
             "dockToNotch": "노치에 도킹",
             "dockToNotchHelp": "채팅을 노치에 도킹",
+            "timelineLabel": "대화 타임라인",
+            "timelinePromptPrefix": "프롬프트 ",
+            "timelineOf": " / ",
+            "timelineWaitingForReply": "답장을 기다리는 중…",
+            "timelineMoveLeft": "타임라인을 왼쪽 가장자리로 이동",
+            "timelineMoveRight": "타임라인을 오른쪽 가장자리로 이동",
         ],
         "uk": [
             "quickPromptTitle": "Швидкий запит до агента",
@@ -1013,6 +1085,12 @@ public enum Words {
             "newChatShortcut": " (⌘N)",
             "dockToNotch": "Закріпити у вирізі",
             "dockToNotchHelp": "Закріпити чат у вирізі екрана",
+            "timelineLabel": "Хронологія розмови",
+            "timelinePromptPrefix": "Запит ",
+            "timelineOf": " з ",
+            "timelineWaitingForReply": "Очікування відповіді…",
+            "timelineMoveLeft": "Перемістити хронологію до лівого краю",
+            "timelineMoveRight": "Перемістити хронологію до правого краю",
         ],
         "zh-Hans": [
             "quickPromptTitle": "智能体快速提问",
@@ -1087,6 +1165,12 @@ public enum Words {
             "newChatShortcut": " (⌘N)",
             "dockToNotch": "停靠到刘海",
             "dockToNotchHelp": "将对话停靠到刘海",
+            "timelineLabel": "对话时间线",
+            "timelinePromptPrefix": "提示 ",
+            "timelineOf": " / ",
+            "timelineWaitingForReply": "正在等待回复…",
+            "timelineMoveLeft": "将时间线移到左侧边缘",
+            "timelineMoveRight": "将时间线移到右侧边缘",
         ],
         "zh-TW": [
             "quickPromptTitle": "代理程式快速提問",
@@ -1161,6 +1245,12 @@ public enum Words {
             "newChatShortcut": " (⌘N)",
             "dockToNotch": "停靠到瀏海",
             "dockToNotchHelp": "將對話停靠到瀏海",
+            "timelineLabel": "對話時間軸",
+            "timelinePromptPrefix": "提示 ",
+            "timelineOf": " / ",
+            "timelineWaitingForReply": "正在等待回覆…",
+            "timelineMoveLeft": "將時間軸移到左側邊緣",
+            "timelineMoveRight": "將時間軸移到右側邊緣",
         ],
         "zh-HK": [
             "quickPromptTitle": "代理程式快速提問",
@@ -1235,6 +1325,12 @@ public enum Words {
             "newChatShortcut": " (⌘N)",
             "dockToNotch": "停泊到瀏海",
             "dockToNotchHelp": "將對話停泊到瀏海",
+            "timelineLabel": "對話時間軸",
+            "timelinePromptPrefix": "提示 ",
+            "timelineOf": " / ",
+            "timelineWaitingForReply": "正在等待回覆…",
+            "timelineMoveLeft": "將時間軸移到左側邊緣",
+            "timelineMoveRight": "將時間軸移到右側邊緣",
         ],
     ]
 }

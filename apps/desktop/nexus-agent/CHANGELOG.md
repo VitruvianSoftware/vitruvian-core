@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.32.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.32.1...nexus-agent-v1.32.2) (2026-11-07)
+
+
+### Bug Fixes
+
+* **nexus-agent:** keep the timeline clear of the scroll bar on the right ([#4387](https://github.com/VitruvianSoftware/vitruvian-core/issues/4387)) ([d0a164a](https://github.com/VitruvianSoftware/vitruvian-core/commit/d0a164a4c19c531d0ac964be58e7dd87397c71b6))
+
+## [1.32.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.32.0...nexus-agent-v1.32.1) (2026-11-06)
+
+
+### Bug Fixes
+
+* **nexus-agent:** answer window commands at once, then open the window ([#4379](https://github.com/VitruvianSoftware/vitruvian-core/issues/4379)) ([4233a93](https://github.com/VitruvianSoftware/vitruvian-core/commit/4233a93523c2d10da1a6a5354ccc028ec90d42ee))
+
+## [1.32.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.31.1...nexus-agent-v1.32.0) (2026-11-06)
+
+
+### Features
+
+* **nexus-agent:** add a timeline scrubber with hover preview to the chat ([#4368](https://github.com/VitruvianSoftware/vitruvian-core/issues/4368)) ([8e3753c](https://github.com/VitruvianSoftware/vitruvian-core/commit/8e3753c679a95535369715ca20842f404a8fdc00))
+
 ## [1.31.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.31.0...nexus-agent-v1.31.1) (2026-10-24)
 
 
