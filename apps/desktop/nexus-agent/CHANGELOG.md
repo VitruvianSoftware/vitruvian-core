@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.32.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.32.1...nexus-agent-v1.32.2) (2026-11-07)
+
+
+### Bug Fixes
+
+* **nexus-agent:** keep the timeline clear of the scroll bar on the right ([#4387](https://github.com/VitruvianSoftware/vitruvian-core/issues/4387)) ([d0a164a](https://github.com/VitruvianSoftware/vitruvian-core/commit/d0a164a4c19c531d0ac964be58e7dd87397c71b6))
+
 ## [1.32.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.32.0...nexus-agent-v1.32.1) (2026-11-06)
 
 
