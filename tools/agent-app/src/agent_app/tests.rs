@@ -557,6 +557,7 @@ fn constants_match_the_gates() {
     assert_eq!(BETA_GATE_LABEL, "beta-not-built");
     assert!(hold_jq().contains("index(\"do-not-automerge\")"));
     assert!(USAGE.starts_with("agent-app — the API half"));
+    assert!(USAGE.contains("pr-update-branch [--agent <agent>] <pr> [--rebase]"));
     assert!(USAGE.ends_with("for why per-agent Apps at all.\n\n"));
 }
 
