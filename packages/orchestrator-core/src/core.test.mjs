@@ -800,3 +800,83 @@ test("re-plan preserves running, review, and returned task state and round", () 
   assert.equal(flow.tasks[2].round, 0);
   assert.equal(flow.tasks[3].state, "waiting");
 });
+
+test("close ends every open run, the lead's included", () => {
+  const start = (id, role, at) => ({
+    type: "run.start",
+    at,
+    id,
+    harness: "claude-code",
+    agent: role === "lead" ? "lead" : "wren",
+    model: "claude-opus-5-5",
+    effort: null,
+    title: role === "lead" ? "Lead orchestrator" : "Build",
+    role,
+  });
+  let flow = reduce(null, {
+    type: "plan",
+    at: 1000,
+    title: "Flow",
+    tasks: [{ title: "Build", specialist: "wren", tier: "core", after: [] }],
+  });
+  flow = reduce(flow, start("lead", "lead", 1000));
+  flow = reduce(flow, start("w1", "worker", 1100));
+  flow = reduce(flow, { type: "run.end", at: 1500, id: "w1", status: "done" });
+  flow = reduce(flow, { type: "task.accept", at: 1600, n: 1 });
+  flow = reduce(flow, { type: "close", at: 2000 });
+
+  const lead = flow.runs.find((r) => r.id === "lead");
+  assert.equal(lead.status, "done");
+  assert.equal(lead.endedAt, 2000);
+  // A run that had already ended keeps its own end time.
+  assert.equal(flow.runs.find((r) => r.id === "w1").endedAt, 1500);
+  assert.equal(flow.runs.filter((r) => r.status === "running").length, 0);
+});
+
+test("run.start with an id the flow already has never adds a second row", () => {
+  const start = (at) => ({
+    type: "run.start",
+    at,
+    id: "agent-1",
+    harness: "claude-code",
+    agent: "general-purpose",
+    model: "claude-sonnet-5-5",
+    effort: null,
+    title: "Build",
+    role: "worker",
+  });
+  let flow = reduce(null, {
+    type: "plan",
+    at: 1000,
+    title: "Flow",
+    tasks: [{ title: "Build", specialist: "wren", tier: "core", after: [] }],
+  });
+  flow = reduce(flow, start(1100));
+  flow = reduce(flow, {
+    type: "run.progress",
+    at: 1200,
+    id: "agent-1",
+    tokens: { input: 500 },
+  });
+  // The host wakes the same background agent again while it runs.
+  flow = reduce(flow, start(1300));
+  flow = reduce(flow, start(1400));
+  assert.equal(flow.runs.length, 1);
+  assert.equal(flow.runs[0].startedAt, 1100);
+  assert.equal(flow.runs[0].tokens.input, 500);
+
+  // A follow-up message after it finished reopens the same row.
+  flow = reduce(flow, {
+    type: "run.end",
+    at: 1500,
+    id: "agent-1",
+    status: "done",
+  });
+  assert.equal(flow.tasks[0].state, "review");
+  flow = reduce(flow, start(1600));
+  assert.equal(flow.runs.length, 1);
+  assert.equal(flow.runs[0].status, "running");
+  assert.equal(flow.runs[0].endedAt, null);
+  assert.equal(flow.runs[0].tokens.input, 500);
+  assert.equal(flow.tasks[0].state, "running");
+});

@@ -1530,8 +1530,23 @@ const bandSvg = (f: Flow, W: number, isWorking: boolean): string => {
     }
   }
 
-  const pillText = `${f.phase} · ${accepted} of ${total} accepted`;
-  const pillW = Math.min(BAR_W, Math.round(18 + pillText.length * 6.2));
+  const PILL_FONT = 10.5;
+  // Bold text runs wider than textWidth's regular-weight estimate.
+  const PILL_EM = 1.2;
+  const pillRoom = (BAR_W - 16) / PILL_EM;
+  const pillText =
+    [
+      `${f.phase} · ${accepted} of ${total} accepted`,
+      `${f.phase} · ${accepted}/${total}`,
+      `${accepted}/${total}`,
+    ]
+      .map((t) => fitText(t, PILL_FONT, pillRoom))
+      .find((t) => !t.endsWith("…")) ??
+    fitText(`${accepted}/${total}`, PILL_FONT, pillRoom);
+  const pillW = Math.min(
+    BAR_W,
+    Math.round(16 + textWidth(pillText, PILL_FONT) * PILL_EM),
+  );
   const pillX = Math.max(
     0,
     Math.min(BAR_W - pillW, Math.max(fillW - pillW, 0)),
@@ -2393,6 +2408,11 @@ export const register: Register = (on) => {
         "  ",
         "  ",
       );
+      // The desktop picture fits the step note to one line; give it in full.
+      const noteLines =
+        r.steps && r.steps.note
+          ? wrapWords(r.steps.note, cols, "  ", "  ")
+          : [];
       return (
         <Box key={`run-${r.id}`} flexDirection="column" marginBottom={1}>
           {hasDesktopSvg && "Svg" in ui ? (
@@ -2403,18 +2423,28 @@ export const register: Register = (on) => {
               height={58}
             />
           ) : null}
-          <Text>
-            <Text color={statusTermColor(r.status)}>
-              {STATUS_GLYPH[r.status] ?? "●"}
-            </Text>{" "}
-            <Text bold>{agentName}</Text>{" "}
-            <Text color={statusTermColor(r.status)}>{r.status}</Text>
-          </Text>
-          {detailLines.map((line, i) => (
-            <Text key={`run-${r.id}-detail-${i}`} dimColor>
-              {line}
-            </Text>
-          ))}
+          {hasDesktopSvg ? (
+            noteLines.map((line, i) => (
+              <Text key={`run-${r.id}-note-${i}`} dimColor>
+                {line}
+              </Text>
+            ))
+          ) : (
+            <>
+              <Text>
+                <Text color={statusTermColor(r.status)}>
+                  {STATUS_GLYPH[r.status] ?? "●"}
+                </Text>{" "}
+                <Text bold>{agentName}</Text>{" "}
+                <Text color={statusTermColor(r.status)}>{r.status}</Text>
+              </Text>
+              {detailLines.map((line, i) => (
+                <Text key={`run-${r.id}-detail-${i}`} dimColor>
+                  {line}
+                </Text>
+              ))}
+            </>
+          )}
         </Box>
       );
     };
@@ -2437,24 +2467,35 @@ export const register: Register = (on) => {
             height={50}
           />
         ) : null}
-        <Box flexDirection="row" justifyContent="space-between">
-          <Text bold>{headerTitleLines[0]}</Text>
-          {toggleCompact}
-        </Box>
-        {headerTitleLines.slice(1).map((line, i) => (
-          <Text key={`hdr-title-${i}`} bold>
-            {line}
-          </Text>
-        ))}
-        <Text dimColor>{phasePillsText}</Text>
-        <Text>
-          accepted {accepted} of {total} · est. {fmtCost(sp.total)}
-        </Text>
+        {hasDesktopSvg ? (
+          <Box flexDirection="row" justifyContent="flex-end">
+            {toggleCompact}
+          </Box>
+        ) : (
+          <>
+            <Box flexDirection="row" justifyContent="space-between">
+              <Text bold>{headerTitleLines[0]}</Text>
+              {toggleCompact}
+            </Box>
+            {headerTitleLines.slice(1).map((line, i) => (
+              <Text key={`hdr-title-${i}`} bold>
+                {line}
+              </Text>
+            ))}
+            <Text dimColor>{phasePillsText}</Text>
+            <Text>
+              accepted {accepted} of {total} · est. {fmtCost(sp.total)}
+            </Text>
+          </>
+        )}
 
         {!p.isCompact && (
           <Box flexDirection="column" marginTop={1}>
             {/* 2. Burn-down */}
-            {burnDownLines.map((line, i) => (
+            {(hasDesktopSvg
+              ? [`Burn-down (${countsTrail} remaining${replanLabel})`]
+              : burnDownLines
+            ).map((line, i) => (
               <Text key={`bd-${i}`} bold>
                 {line}
               </Text>
@@ -2588,9 +2629,6 @@ export const register: Register = (on) => {
             width={width}
             height={H}
           />
-          <Text dimColor>
-            {f.title} · {f.phase} · {accepted} of {total} accepted
-          </Text>
           {crewButton}
           {dismiss}
         </Box>

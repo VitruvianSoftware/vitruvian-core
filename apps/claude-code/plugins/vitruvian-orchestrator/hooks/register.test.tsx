@@ -332,18 +332,27 @@ test("pane mounts on BOTH terminal and desktop with an empty and a seeded flow c
     const task1 = await ui.find({ type: "Text", text: /Wire hooks module/ });
     const task2 = await ui.find({ type: "Text", text: /Audit Bazel targets/ });
     const waitsOn = await ui.find({ type: "Text", text: /waits on #1/ });
-    const phaseText = await ui.find({ type: "Text", text: /delegate/ });
     const estText = await ui.find({ type: "Text", text: /est\./ });
 
     expect(task1).toBeDefined();
     expect(task2).toBeDefined();
     expect(waitsOn).toBeDefined();
-    expect(phaseText).toBeDefined();
     expect(estText).toBeDefined();
 
-    if (surface === "desktop") {
+    if (surface === "terminal") {
+      expect(await ui.find({ type: "Text", text: /delegate/ })).toBeDefined();
+    } else {
       const svgs = await ui.findAll({ type: "Svg" });
       expect(svgs.length).toBeGreaterThanOrEqual(3);
+      // The header picture carries the phase; the text copy is not repeated.
+      expect(
+        svgs.some((s) =>
+          String((s.props as { source?: string }).source).includes("delegate"),
+        ),
+      ).toBe(true);
+      expect(
+        await ui.find({ type: "Text", text: /\[delegate\]/ }),
+      ).toBeUndefined();
       const wrenSvg = svgs.find((s) =>
         String((s.props as { source?: string }).source).includes("c-wren run"),
       );
@@ -386,13 +395,24 @@ test("AbovePrompt band is absent with no flow and shown once a flow exists", asy
 
   for (const surface of ["terminal", "desktop"] as const) {
     const ui = await $.ui.mount({ ...BAND_MOUNT, surface });
-    expect(
-      await ui.find({ type: "Text", text: /Band active flow/ }),
-    ).toBeDefined();
-    expect(await ui.find({ type: "Text", text: /review/ })).toBeDefined();
-    expect(
-      await ui.find({ type: "Text", text: /1 of 2 accepted/ }),
-    ).toBeDefined();
+    if (surface === "terminal") {
+      expect(
+        await ui.find({ type: "Text", text: /Band active flow/ }),
+      ).toBeDefined();
+      expect(await ui.find({ type: "Text", text: /review/ })).toBeDefined();
+      expect(
+        await ui.find({ type: "Text", text: /1 of 2 accepted/ }),
+      ).toBeDefined();
+    } else {
+      // The band picture says it all; no second line repeats it as text.
+      const band = (await ui.findAll({ type: "Svg" }))[0];
+      expect(String((band?.props as { alt?: string }).alt)).toContain(
+        "Band active flow · review · 1 of 2 accepted",
+      );
+      expect(
+        await ui.find({ type: "Text", text: /Band active flow/ }),
+      ).toBeUndefined();
+    }
     expect(
       await ui.find({ type: "Button", key: "orchestrator-crew" }),
     ).toBeDefined();
@@ -589,7 +609,9 @@ test("step call with delegate shows driver → delegate model arrow and delegate
       type: "Text",
       text: /claude-haiku-5-5 → gemini-4-argon-high/,
     });
-    expect(arrowText).toBeDefined();
+    // Terminal shows it as text; desktop draws it once, in the row picture.
+    if (surface === "terminal") expect(arrowText).toBeDefined();
+    else expect(arrowText).toBeUndefined();
 
     const spendDelegated = await ui.find({
       type: "Text",
@@ -624,4 +646,113 @@ test("the panel toggle is /orchestrator-panel, not a near-twin of /orchestrate",
   on("ui.panes", () => ({ value: [] }));
   const r = await $.command.run({ command: "orchestrator-panel", args: "" });
   expect(JSON.stringify(r)).toContain("Orchestrator panel");
+});
+
+test("a closed flow has no running rows, one row per agent, and the desktop draws each row once", async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 });
+  let f: Flow | null = null;
+  on("ui.open", () => ({ value: { isPlaced: true } }));
+  on("state.set", { plugin: PLUGIN, key: "flow" }, (_, e, next) => {
+    f = e.value as Flow | null;
+    return next(e);
+  });
+  // The host reports the same background agent each time it wakes it.
+  on("agent.spawn", async () => ({
+    model: "claude-sonnet-5-5",
+    agentId: "helper-1",
+  }));
+  on("turn.complete", (_, e) => ({
+    text: e.answer,
+    ...(e.usage ? { usage: e.usage } : {}),
+  }));
+
+  await $.tool.call({
+    tool: PROGRESS_TOOL,
+    title: "Seeded copy",
+    phase: "delegate",
+    tasks: [{ title: "Build it", specialist: "wren", tier: "core", after: [] }],
+  } as never);
+  await $.turn.complete({
+    turnId: "lead-1",
+    reason: "answer",
+    answer: "Dispatched",
+    isAborted: false,
+    durationMs: 100,
+    usage: {
+      model: "claude-opus-5-5",
+      input_tokens: 1000,
+      output_tokens: 100,
+      cache_read_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+    },
+  });
+  for (let i = 0; i < 4; i++) {
+    clock.advance(60_000);
+    await $.agent.spawn({
+      subagentType: "general-purpose",
+      description: "Build it",
+      prompt: "Build",
+    });
+  }
+  expect(f?.runs.filter((r) => r.id === "helper-1")).toHaveLength(1);
+
+  await $.tool.call({
+    tool: PROGRESS_TOOL,
+    phase: "review",
+    accept: 1,
+    finished: true,
+  } as never);
+  expect(f?.runs.find((r) => r.id === "lead")?.status).toBe("done");
+  expect(f?.runs.some((r) => r.status === "running")).toBe(false);
+
+  const ui = await $.ui.mount({ ...PANE_MOUNT, surface: "desktop" });
+  const svgs = await ui.findAll({ type: "Svg" });
+  // header + burn-down + one picture per agent row (lead and the helper)
+  expect(svgs).toHaveLength(4);
+  expect(await ui.find({ type: "Text", text: /running/ })).toBeUndefined();
+  expect(
+    await ui.find({ type: "Text", text: /general-purpose/ }),
+  ).toBeUndefined();
+  await ui.unmount();
+});
+
+test("the band's phase pill label always fits inside the pill", async ($, on) => {
+  mock.clock(on, { now: 1000 });
+  on("ui.open", () => ({ value: { isPlaced: true } }));
+  await $.tool.call({
+    tool: PROGRESS_TOOL,
+    title: "Seeded Courier test copy",
+    phase: "close",
+    tasks: [
+      { title: "A", specialist: "wren", tier: "core", after: [] },
+      { title: "B", specialist: "wren", tier: "core", after: [] },
+    ],
+    accept: 1,
+  } as never);
+  await $.tool.call({
+    tool: PROGRESS_TOOL,
+    accept: 2,
+    finished: true,
+  } as never);
+
+  for (const bodyColumns of [40, 60, 80, 140]) {
+    const ui = await $.ui.mount({
+      ...BAND_MOUNT,
+      surface: "desktop",
+      props: { ...BAND_MOUNT.props, bodyColumns },
+    });
+    const source = String(
+      ((await ui.findAll({ type: "Svg" }))[0]?.props as { source?: string })
+        .source,
+    );
+    const pillW = Number(
+      /<rect x="[\d.]+" width="([\d.]+)" height="16"/.exec(source)?.[1],
+    );
+    const label =
+      /font-weight="600" fill="#ffffff">([^<]*)</.exec(source)?.[1] ?? "";
+    // Bold 10.5px text: at most ~0.72em per character even for capitals.
+    expect(label.length).toBeGreaterThan(0);
+    expect(label.length * 10.5 * 0.62).toBeLessThanOrEqual(pillW);
+    await ui.unmount();
+  }
 });
