@@ -31,6 +31,10 @@ pulumi_project(
 # Validates both committed stack configs and the key-mode guard. The tests read
 # Pulumi.sandbox.yaml and Pulumi.production.yaml, so they are passed in as data.
 pulumi_go_test(
+    # The default (moderate, 300 s) is too tight: a cold `go test` build of the
+    # Pulumi SDKs alone takes ~100 s, and in a full //... sweep it timed out
+    # at 300 s (#4402). Same fix as gcp-bootstrap. "long" allows 900 s.
+    timeout = "long",
     extra_data = [
         "Pulumi.production.yaml",
         "Pulumi.sandbox.yaml",
