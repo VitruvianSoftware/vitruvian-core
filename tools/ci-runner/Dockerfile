@@ -48,6 +48,34 @@ RUN apt-get update \
       unzip xz-utils zip zstd \
  && rm -rf /var/lib/apt/lists/*
 
+# libxml2.so.2: LLVM 19.1.7's prebuilt ld.lld links against libxml2.so.2, which
+# Ubuntu 26.04 replaced with libxml2.so.16. Pre-installing noble's libxml2
+# 2.9.14 and its libicu74 dependency here makes .github/actions/setup-bazel's
+# runtime check a 0s no-op on homelab queue runners. Pinned by SHA-256 with the
+# same snapshot.ubuntu.com fallback as setup-bazel.
+ARG LIBICU74_DEB=libicu74_74.2-1ubuntu3.1_amd64.deb
+ARG LIBICU74_SHA256=c9a70989678660eed9a1e904c74fa043da8bec8e2036856fc16e31ced79b04f8
+ARG LIBXML2_DEB=libxml2_2.9.14+dfsg-1.3ubuntu3.10_amd64.deb
+ARG LIBXML2_SHA256=c5a065f85c1e6f605741e365e40cad71c3ceb0e85e2791400bd35b8896e12ad1
+RUN set -eux; \
+    mkdir /tmp/libxml2; \
+    fetch() { \
+      curl -fsSL --retry 4 --retry-all-errors -o "/tmp/libxml2/$1" "$2" \
+        || curl -fsSL --retry 4 --retry-all-errors -o "/tmp/libxml2/$1" "$3"; \
+      echo "$4  /tmp/libxml2/$1" | sha256sum -c -; \
+    }; \
+    fetch "$LIBICU74_DEB" \
+      "http://archive.ubuntu.com/ubuntu/pool/main/i/icu/$LIBICU74_DEB" \
+      "https://snapshot.ubuntu.com/ubuntu/20261025T000000Z/pool/main/i/icu/$LIBICU74_DEB" \
+      "$LIBICU74_SHA256"; \
+    fetch "$LIBXML2_DEB" \
+      "http://archive.ubuntu.com/ubuntu/pool/main/libx/libxml2/$LIBXML2_DEB" \
+      "https://snapshot.ubuntu.com/ubuntu/20261025T000000Z/pool/main/libx/libxml2/$LIBXML2_DEB" \
+      "$LIBXML2_SHA256"; \
+    dpkg -i "/tmp/libxml2/$LIBICU74_DEB" "/tmp/libxml2/$LIBXML2_DEB"; \
+    ldconfig; \
+    rm -rf /tmp/libxml2
+
 # bazel: GitHub's hosted image ships bazelisk as `bazel`; setup-bazel only
 # caches it. The queue jobs run `bazel` directly, so it must be on the PATH
 # (bazelisk picks the version from .bazelversion). Pinned by SHA-256.

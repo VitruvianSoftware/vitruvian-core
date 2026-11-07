@@ -752,7 +752,7 @@ jobs:
     needs: queued
     if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' }}
     runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
-    timeout-minutes: 15
+    timeout-minutes: 45
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:

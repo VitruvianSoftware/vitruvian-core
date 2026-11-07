@@ -133,6 +133,102 @@ fn cancel_orphaned_merge_group_runs(gh: &[u8], repo: &[u8], own_run_id: &[u8]) {
     }
 }
 
+/// Returns true if any other `merge_group` workflow run on a live
+/// `gh-readonly-queue/main/...` ref is currently `in_progress` (and cancels any
+/// newly-orphaned `in_progress` runs whose queue ref disappeared while the
+/// watcher was waiting). When `QUEUE_RUNNER_FALLBACK` is not `"on"`, a live
+/// `in_progress` `merge_group` run proves the homelab runner pool is actively
+/// executing the merge-queue batch rather than dead, so a canary still queued
+/// behind the batch must not flip `QUEUE_RUNNER_FALLBACK` to `"on"`.
+fn has_live_in_progress_merge_group_run(gh: &[u8], repo: &[u8], own_run_id: &[u8]) -> bool {
+    let r = capture(
+        52,
+        Command::new(shell_compat::os(gh))
+            .arg("api")
+            .arg(shell_compat::os(&cat(&[
+                b"repos/",
+                repo,
+                b"/actions/runs?event=merge_group&status=in_progress&per_page=100",
+            ])))
+            .arg("--jq")
+            .arg(r#".workflow_runs[] | "\(.id) \(.head_branch // "")""#),
+    );
+    if !r.ok() {
+        return false;
+    }
+    let text = subst(r.stdout);
+    let mut candidates: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
+    for line in text.split(|&c| c == b'\n') {
+        if line.is_empty() {
+            continue;
+        }
+        if let Some(sp) = line.iter().position(|&c| c == b' ') {
+            let id = &line[..sp];
+            let branch = &line[sp + 1..];
+            if id != own_run_id && branch.starts_with(b"gh-readonly-queue/main/") {
+                candidates.push((id.to_vec(), branch.to_vec()));
+            }
+        }
+    }
+    if candidates.is_empty() {
+        return false;
+    }
+
+    let refs_r = capture(
+        55,
+        Command::new(shell_compat::os(gh))
+            .arg("api")
+            .arg(shell_compat::os(&cat(&[
+                b"repos/",
+                repo,
+                b"/git/matching-refs/heads/gh-readonly-queue/main/",
+            ])))
+            .arg("--jq")
+            .arg(".[].ref"),
+    );
+    if !refs_r.ok() {
+        return false;
+    }
+    let refs_text = subst(refs_r.stdout);
+    let live_refs: Vec<&[u8]> = refs_text
+        .split(|&c| c == b'\n')
+        .filter(|l| !l.is_empty())
+        .collect();
+
+    let mut any_live = false;
+    for (id, branch) in candidates {
+        let full_ref = cat(&[b"refs/heads/", &branch]);
+        if live_refs.iter().any(|&r| r == full_ref.as_slice()) {
+            any_live = true;
+        } else {
+            let _ = status(
+                57,
+                Command::new(shell_compat::os(gh))
+                    .arg("api")
+                    .arg("-X")
+                    .arg("POST")
+                    .arg(shell_compat::os(&cat(&[
+                        b"repos/",
+                        repo,
+                        b"/actions/runs/",
+                        &id,
+                        b"/cancel",
+                    ])))
+                    .stdout(std::process::Stdio::null()),
+                true,
+            );
+            out(&cat(&[
+                b"queue-runner-watch: cancelled orphaned merge_group run ",
+                &id,
+                b" (",
+                &branch,
+                b")\n",
+            ]));
+        }
+    }
+    any_live
+}
+
 pub fn run(_args: &[Vec<u8>]) -> i32 {
     let gh = env_or("GH_BIN", b"gh");
     let repo = match env("REPO") {
@@ -222,30 +318,6 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
         &[][..]
     };
 
-    let (want, why);
-    if status_val == b"in_progress" || (status_val == b"completed" && conclusion == b"success") {
-        want = b"off".as_slice();
-        let mut msg = cat(&[b"the canary ", status_val]);
-        if !conclusion.is_empty() {
-            msg.extend_from_slice(b" (");
-            msg.extend_from_slice(conclusion);
-            msg.extend_from_slice(b")");
-        }
-        msg.extend_from_slice(b": homelab runners are taking jobs");
-        why = msg;
-    } else {
-        want = b"on".as_slice();
-        let mut msg = cat(&[b"the canary is '", status_val]);
-        if !conclusion.is_empty() {
-            msg.extend_from_slice(b" / ");
-            msg.extend_from_slice(conclusion);
-        }
-        msg.extend_from_slice(b"' after ");
-        msg.extend_from_slice(&wait_s);
-        msg.extend_from_slice(b"s: homelab runners are not taking jobs");
-        why = msg;
-    }
-
     // Read current variable
     let current_r = capture(
         66,
@@ -270,6 +342,44 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
     } else {
         b"missing".to_vec()
     };
+
+    let (want, why);
+    if status_val == b"in_progress" || (status_val == b"completed" && conclusion == b"success") {
+        want = b"off".as_slice();
+        let mut msg = cat(&[b"the canary ", status_val]);
+        if !conclusion.is_empty() {
+            msg.extend_from_slice(b" (");
+            msg.extend_from_slice(conclusion);
+            msg.extend_from_slice(b")");
+        }
+        msg.extend_from_slice(b": homelab runners are taking jobs");
+        why = msg;
+    } else if status_val != b"completed"
+        && current != b"on"
+        && has_live_in_progress_merge_group_run(&gh, &repo, &run_id)
+    {
+        want = b"off".as_slice();
+        let mut msg = cat(&[b"the canary is '", status_val]);
+        if !conclusion.is_empty() {
+            msg.extend_from_slice(b" / ");
+            msg.extend_from_slice(conclusion);
+        }
+        msg.extend_from_slice(b"' after ");
+        msg.extend_from_slice(&wait_s);
+        msg.extend_from_slice(b"s, but merge_group runs are in_progress: homelab runners are busy");
+        why = msg;
+    } else {
+        want = b"on".as_slice();
+        let mut msg = cat(&[b"the canary is '", status_val]);
+        if !conclusion.is_empty() {
+            msg.extend_from_slice(b" / ");
+            msg.extend_from_slice(conclusion);
+        }
+        msg.extend_from_slice(b"' after ");
+        msg.extend_from_slice(&wait_s);
+        msg.extend_from_slice(b"s: homelab runners are not taking jobs");
+        why = msg;
+    }
 
     out(&cat(&[
         b"queue-runner-watch: ",

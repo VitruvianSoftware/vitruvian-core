@@ -3129,3 +3129,33 @@ describe("WorkspaceService.addResource URL normalization", () => {
     expect(result.sections[0].resources[0].url).toBe("https://example.com");
   });
 });
+
+describe("WorkspaceService.updateWorkspace with ISO-8601 server updatedAt", () => {
+  it("produces a valid numeric updatedAt strictly greater than a server ISO-8601 timestamp", async () => {
+    const serverIso = new Date(Date.now() + 5000).toISOString();
+    const serverMs = Date.parse(serverIso);
+    const workspace: Workspace = {
+      id: "ws-iso",
+      name: "Original",
+      tabs: [],
+      resources: [],
+      sections: [],
+      notes: [],
+      tasks: [],
+      position: 0,
+      createdAt: serverMs - 1000,
+      updatedAt: serverIso as unknown as number,
+    };
+    (StorageService.getWorkspaces as jest.Mock).mockResolvedValue([workspace]);
+    (StorageService.saveWorkspaces as jest.Mock).mockResolvedValue(undefined);
+
+    const updated = await WorkspaceService.updateWorkspace("ws-iso", {
+      name: "Renamed",
+    });
+
+    expect(updated.name).toBe("Renamed");
+    expect(typeof updated.updatedAt).toBe("number");
+    expect(Number.isFinite(updated.updatedAt)).toBe(true);
+    expect(updated.updatedAt).toBeGreaterThanOrEqual(serverMs + 1);
+  });
+});

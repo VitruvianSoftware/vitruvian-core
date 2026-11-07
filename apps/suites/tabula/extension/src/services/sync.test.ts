@@ -1285,6 +1285,46 @@ describe("SyncService", () => {
       expect((persisted[0].data as Workspace).version).toBe(7);
     });
 
+    it("on 409 with ISO-8601 timestamps where local is newer: adopts server version and retries", async () => {
+      const localIso = "2026-11-07T06:33:13.500Z";
+      const serverIso = "2026-11-07T06:33:12.100Z";
+      const local = createMockWorkspace({
+        id: "ws-conflict-iso",
+        name: "Device A Rename",
+        updatedAt: Date.parse(localIso),
+      });
+      mockStorage.set("tabula_workspaces", [local]);
+
+      const serverCopy = {
+        ...createMockWorkspace({
+          id: "ws-conflict-iso",
+          name: "Device B Rename",
+          updatedAt: serverIso as unknown as number,
+        }),
+        version: 2,
+      };
+      (ApiService.saveWorkspace as jest.Mock).mockRejectedValue(
+        new ApiError("Conflict", 409, serverCopy),
+      );
+
+      await enqueueQuietly({
+        type: "workspace",
+        action: "save",
+        entityId: local.id,
+        data: local,
+      });
+      await SyncService.processQueue();
+
+      const storedWs = mockStorage.get("tabula_workspaces")[0];
+      expect(storedWs.version).toBe(2);
+      expect(storedWs.name).toBe("Device A Rename");
+
+      const persisted = mockStorage.get("tabula_sync_queue");
+      expect(persisted).toHaveLength(1);
+      expect(persisted[0].retries).toBe(1);
+      expect((persisted[0].data as Workspace).version).toBe(2);
+    });
+
     it("on 409 where server is newer: adopts server state and drops the op", async () => {
       const local = createMockWorkspace({
         id: "ws-conflict",
