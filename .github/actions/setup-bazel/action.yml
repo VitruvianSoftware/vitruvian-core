@@ -216,7 +216,16 @@ runs:
       id: repo-cache
       if: ${{ !(github.ref == 'refs/heads/main' && runner.environment == 'github-hosted') }}
       shell: bash
-      run: echo "path=${HOME}/.cache/bazel-repo" >> "${GITHUB_OUTPUT}"
+      run: |
+        if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ]; then
+          for d in "${HOME}/.cache/bazel-repo" "${HOME}/.cache/bazelisk"; do
+            mkdir -p "$d" 2>/dev/null || true
+            if [ -d "$d" ] && [ ! -w "$d" ]; then
+              sudo chown "$(id -u):$(id -g)" "$d"
+            fi
+          done
+        fi
+        echo "path=${HOME}/.cache/bazel-repo" >> "${GITHUB_OUTPUT}"
 
     - name: Restore the Bazel repository cache
       if: ${{ runner.environment == 'github-hosted' && github.ref != 'refs/heads/main' }}

@@ -18,13 +18,15 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Weekly garbage collection for the vitruvian-queue-cache NFS volume.
+# High-watermark garbage collection for the vitruvian-queue-cache NFS volume.
 #
-# Bazel's --repository_cache is content-addressed by SHA-256 and never prunes
-# old entries on its own. Running once a week on the runner nodes (reusing the
-# pinned vitruvian-ci-runner image already present on fedora and nuc9i9)
-# evicts repository-cache blobs unreferenced/unmodified for >14 days so the
-# 50 GiB NFS PVC does not fill up across toolchain and dependency upgrades.
+# Bazel's --repository_cache is content-addressed by SHA-256 and does not
+# update mtime on cache hits (and the nfs StorageClass mounts with noatime).
+# An unconditional 14-day mtime sweep would therefore wipe active dependencies
+# every two weeks. Instead, this CronJob checks /cache/bazel-repo usage once a
+# week and prunes blobs older than 14 days ONLY when usage exceeds the 35 GiB
+# high-watermark (36700160 KiB out of the 50 GiB PVC). All find invocations
+# tolerate concurrent runner pod activity (`|| true`).
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -48,6 +50,7 @@ spec:
             runAsNonRoot: true
             runAsUser: 1001
             fsGroup: 1001
+            fsGroupChangePolicy: OnRootMismatch
           affinity:
             nodeAffinity:
               requiredDuringSchedulingIgnoredDuringExecution:
@@ -64,9 +67,13 @@ spec:
                 - |
                   set -euo pipefail
                   if [ -d /cache/bazel-repo ]; then
-                    echo "Pruning /cache/bazel-repo files older than 14 days..."
-                    find /cache/bazel-repo -type f -mtime +14 -delete
-                    find /cache/bazel-repo -mindepth 1 -type d -empty -delete || true
+                    used_kb="$(du -sk /cache/bazel-repo 2>/dev/null | awk '{print $1}' || echo 0)"
+                    echo "/cache/bazel-repo usage: ${used_kb:-0} KiB (watermark: 36700160 KiB / 35 GiB)"
+                    if [ "${used_kb:-0}" -gt 36700160 ]; then
+                      echo "Above 35 GiB high-watermark; pruning /cache/bazel-repo files older than 14 days..."
+                      find /cache/bazel-repo -type f -mtime +14 -delete || true
+                      find /cache/bazel-repo -mindepth 1 -type d -empty -delete || true
+                    fi
                   fi
                   df -h /cache
               resources:

@@ -96,9 +96,12 @@ spec:
               spec:
                 automountServiceAccountToken: false
                 # nfs StorageClass mounts with 0775; fsGroup 1001 lets the
-                # non-root runner user (1001) write into the shared cache PVC.
+                # non-root runner user (1001) write into the shared cache PVC,
+                # and OnRootMismatch avoids recursive chown across 50 GiB of
+                # CAS blobs on every pod start.
                 securityContext:
                   fsGroup: 1001
+                  fsGroupChangePolicy: OnRootMismatch
                 affinity:
                   nodeAffinity:
                     requiredDuringSchedulingIgnoredDuringExecution:

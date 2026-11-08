@@ -917,11 +917,10 @@ pub(crate) fn uses_setup_bazel_directly(content: &str) -> bool {
 /// persistent `vitruvian-queue-cache` PVC instead of downloading the multi-GB
 /// archive over WAN on every job).
 pub(crate) fn repo_restore_step_guarded(expr: &str) -> bool {
-    let e: String = expr.split_whitespace().collect::<Vec<_>>().join(" ");
-    e.contains("runner.environment == 'github-hosted'")
-        && e.contains("github.ref != 'refs/heads/main'")
-        && !e.contains("||")
-        && !e.contains("!(")
+    let norm: String = expr.split_whitespace().collect::<Vec<_>>().join(" ");
+    let bare = norm.trim_start_matches("${{").trim_end_matches("}}").trim();
+    bare == "runner.environment == 'github-hosted' && github.ref != 'refs/heads/main'"
+        || bare == "github.ref != 'refs/heads/main' && runner.environment == 'github-hosted'"
 }
 
 /// What is wrong with how `setup-bazel/action.yml` restores the repository
@@ -1510,6 +1509,14 @@ runs:
         assert_eq!(
             repository_restore_problems(&self_hosted_too)[0].0,
             "restore if: ${{ !(github.ref == 'refs/heads/main' && runner.environment == 'github-hosted') }}"
+        );
+        let disabled = SETUP_BAZEL_GOOD.replace(
+            "if: ${{ runner.environment == 'github-hosted' && github.ref != 'refs/heads/main' }}",
+            "if: ${{ runner.environment == 'github-hosted' && github.ref != 'refs/heads/main' && false }}",
+        );
+        assert_eq!(
+            repository_restore_problems(&disabled)[0].0,
+            "restore if: ${{ runner.environment == 'github-hosted' && github.ref != 'refs/heads/main' && false }}"
         );
     }
 
