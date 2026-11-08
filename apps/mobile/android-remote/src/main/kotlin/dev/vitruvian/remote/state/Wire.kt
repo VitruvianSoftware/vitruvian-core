@@ -734,11 +734,11 @@ public object DeepLink {
   /**
    * A pairing request from a QR code, or null.
    *
-   * `vitruvian-remote://pair?code=482917&name=atlas&url=http%3A%2F%2F100.64.0.12%3A7411` --
-   * built by the agent's `/pair` page, which the Mac's QR code opens. Strict on purpose: this link
-   * can arrive from any web page, so a malformed field rejects the whole link rather than being
-   * guessed at, and the address may only be a plain host and port, never a path or userinfo. The
-   * caller still asks the person before pairing with it.
+   * `vitruvian-remote://pair?code=482917&name=atlas&url=http%3A%2F%2F100.64.0.12%3A7411` -- built
+   * by the agent's `/pair` page, which the Mac's QR code opens. Strict on purpose: this link can
+   * arrive from any web page, so a malformed field rejects the whole link rather than being guessed
+   * at, and the address may only be a plain host and port, never a path or userinfo. The caller
+   * still asks the person before pairing with it.
    */
   public fun pairing(url: String?): PairLink? {
     val text = url?.trim().orEmpty()
