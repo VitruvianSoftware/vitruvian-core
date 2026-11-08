@@ -130,3 +130,17 @@ regexes = ['''preview-only-not-a-real-cloudflare-token''']
 [[allowlists]]
 description = "the made-up Telegram api_hash in Courier's tests is not a credential"
 regexes = ['''0123456789abcdef0123456789abcdef''']
+
+[[allowlists]]
+description = "a donation app key (kebab-case app name) in the Stripe stack configs or a site donate page names an app, not a credential"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "line"
+paths = [
+  '''^infrastructure/pulumi/platform/stripe/Pulumi\.(sandbox|production)\.yaml$''',
+  '''^apps/web/vitruviansoftware-dev/donate/[a-z0-9-]+\.html$''',
+]
+regexes = [
+  '''^\s*- key: [a-z][a-z0-9-]{0,38}[a-z0-9]\s*$''',
+  '''^\s*\{%- include donate-app\.html key="[a-z][a-z0-9-]{0,38}[a-z0-9]" -%\}\s*$''',
+]

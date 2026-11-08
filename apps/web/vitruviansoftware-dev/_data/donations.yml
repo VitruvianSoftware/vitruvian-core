@@ -8,7 +8,13 @@
 # `url` is the app's live-mode Payment Link: the `donationLinks` output of the
 # production stack in infrastructure/pulumi/platform/stripe, under the same
 # key. Never a sandbox (test-mode) link. While it is empty, the page says
-# donations are not open yet instead of forwarding.
+# donations are not open yet instead of forwarding, and offers a star on
+# `repo`, the app's public repository.
+#
+# Every app has its own key, link and page, so Stripe shows which app each
+# donation backs. The keys here, the stack configs' donations.apps and the
+# donate/<key>.html pages must match; the stripe stack's
+# donations_pages_test.go fails the build when they don't.
 
 # Not an app: the general "support development" link that the site's header,
 # footer and About page open (donate/index.html, /donate/).
@@ -18,4 +24,60 @@ development:
 
 vitruvian:
   name: Vitruvian
+  repo: https://github.com/VitruvianSoftware/vitruvian
   url: "https://donate.stripe.com/7sYeVc23PcZz5Ql9ijbwk00"
+
+courier:
+  name: Courier
+  repo: https://github.com/VitruvianSoftware/courier
+  url: ""
+
+home-speaker:
+  name: HomeSpeaker
+  repo: https://github.com/VitruvianSoftware/home-speaker
+  url: ""
+
+vitruvian-remote:
+  name: Vitruvian Remote
+  repo: https://github.com/VitruvianSoftware/vitruvian-remote
+  url: ""
+
+esp32-desk-companion:
+  name: ESP32-S3 Desk Companion
+  repo: https://github.com/VitruvianSoftware/esp32-desk-companion
+  url: ""
+
+nexus-agent:
+  name: NexusAgent
+  repo: https://github.com/VitruvianSoftware/nexus-agent
+  url: ""
+
+oauth-user-inspector:
+  name: OAuth User Inspector
+  repo: https://github.com/VitruvianSoftware/oauth-user-inspector
+  url: ""
+
+mcp-slack:
+  name: mcp-slack
+  repo: https://github.com/VitruvianSoftware/mcp-slack
+  url: ""
+
+mcp-roborock:
+  name: mcp-roborock
+  repo: https://github.com/VitruvianSoftware/mcp-roborock
+  url: ""
+
+gh-watch:
+  name: gh-watch
+  repo: https://github.com/VitruvianSoftware/gh-watch
+  url: ""
+
+devx:
+  name: devx
+  repo: https://github.com/VitruvianSoftware/devx
+  url: ""
+
+homelab:
+  name: homelab
+  repo: https://github.com/VitruvianSoftware/homelab
+  url: ""
