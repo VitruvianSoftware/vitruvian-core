@@ -27,6 +27,17 @@
 # week and prunes blobs older than 14 days ONLY when usage exceeds the 35 GiB
 # high-watermark (36700160 KiB out of the 50 GiB PVC). All find invocations
 # tolerate concurrent runner pod activity (`|| true`).
+#
+# It prunes ONLY bazel-repo/content_addressable/, the download blobs. Never
+# bazel-repo/contents/: that is Bazel's repo contents cache, whole extracted
+# repositories whose files keep the mtimes from their upstream archives, so a
+# per-file mtime sweep deletes files out of repos that are in use and leaves
+# them half-empty. That happened on 2026-11-08: every merge-queue job then
+# failed with "BUILD file not found" in @rules_python. Bazel collects that
+# cache itself, a whole entry at a time (--repo_contents_cache_gc_max_age).
+# cache_gc_test (BUILD) runs this script against a fake cache to hold that.
+#
+# CACHE_ROOT and WATERMARK_KB exist for that test; the CronJob sets neither.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -67,16 +78,21 @@ spec:
               args:
                 - |
                   set -euo pipefail
-                  if [ -d /cache/bazel-repo ]; then
-                    used_kb="$(du -sk /cache/bazel-repo 2>/dev/null | awk '{print $1}' || echo 0)"
-                    echo "/cache/bazel-repo usage: ${used_kb:-0} KiB (watermark: 36700160 KiB / 35 GiB)"
-                    if [ "${used_kb:-0}" -gt 36700160 ]; then
-                      echo "Above 35 GiB high-watermark; pruning /cache/bazel-repo files older than 14 days..."
-                      find /cache/bazel-repo -type f -mtime +14 -delete || true
-                      find /cache/bazel-repo -mindepth 1 -type d -empty -delete || true
+                  root="${CACHE_ROOT:-/cache}"
+                  watermark_kb="${WATERMARK_KB:-36700160}"
+                  repo="${root}/bazel-repo"
+                  blobs="${repo}/content_addressable"
+                  if [ -d "${repo}" ]; then
+                    used_kb="$(du -sk "${repo}" 2>/dev/null | awk '{print $1}' || echo 0)"
+                    echo "${repo} usage: ${used_kb:-0} KiB (watermark: ${watermark_kb} KiB)"
+                    if [ "${used_kb:-0}" -gt "${watermark_kb}" ] && [ -d "${blobs}" ]; then
+                      # Download blobs only. Never ${repo}/contents: see the header.
+                      echo "Above the high-watermark; pruning ${blobs} files older than 14 days..."
+                      find "${blobs}" -type f -mtime +14 -delete || true
+                      find "${blobs}" -mindepth 1 -type d -empty -delete || true
                     fi
                   fi
-                  df -h /cache
+                  df -h "${root}"
               resources:
                 requests:
                   cpu: "100m"
