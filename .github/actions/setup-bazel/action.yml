@@ -218,6 +218,17 @@ runs:
       shell: bash
       run: |
         if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ]; then
+          # The pod mounts the cache PVC at ~/.cache/bazel-repo and
+          # ~/.cache/bazelisk. The runner image has no ~/.cache, so the
+          # container runtime creates it as root:root 0755 to hold those
+          # mount points, and Bazel's output root (~/.cache/bazel) then fails
+          # with "mkdir(.../.cache/bazel/_bazel_runner): Permission denied"
+          # (every Bazel job on vitruvian-queue from 2026-11-08 01:14 UTC).
+          # Take ~/.cache back first; not recursive, so the NFS mounts under
+          # it are left alone.
+          if [ -d "${HOME}/.cache" ] && [ ! -w "${HOME}/.cache" ]; then
+            sudo chown "$(id -u):$(id -g)" "${HOME}/.cache"
+          fi
           for d in "${HOME}/.cache/bazel-repo" "${HOME}/.cache/bazelisk"; do
             mkdir -p "$d" 2>/dev/null || true
             if [ -d "$d" ] && [ ! -w "$d" ]; then
