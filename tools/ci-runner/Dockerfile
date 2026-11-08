@@ -145,6 +145,9 @@ RUN useradd --create-home --uid 1001 --shell /bin/bash runner \
  && chmod 0440 /etc/sudoers.d/runner
 
 WORKDIR /home/runner
+# ~/.cache is made here, owned by runner, because the scale set mounts the
+# cache PVC beneath it (~/.cache/bazel-repo, ~/.cache/bazelisk): left out, the
+# container runtime creates it root-owned and Bazel cannot write ~/.cache/bazel.
 RUN curl -fsSL -o runner.tar.gz \
       "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz" \
  && echo "${RUNNER_SHA256}  runner.tar.gz" | sha256sum -c - \
@@ -152,6 +155,7 @@ RUN curl -fsSL -o runner.tar.gz \
  && rm runner.tar.gz \
  && ./bin/installdependencies.sh \
  && rm -rf /var/lib/apt/lists/* \
+ && mkdir -p /home/runner/.cache \
  && chown -R runner:runner /home/runner
 
 USER runner

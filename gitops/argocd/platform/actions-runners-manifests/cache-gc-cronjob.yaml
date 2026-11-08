@@ -49,8 +49,9 @@ spec:
           securityContext:
             runAsNonRoot: true
             runAsUser: 1001
-            fsGroup: 1001
-            fsGroupChangePolicy: OnRootMismatch
+            # No fsGroup, as in the runner pods (applicationset.yaml): on this
+            # NFS volume it makes kubelet chown the whole cache on every start.
+            # The GC only deletes files uid 1001 wrote.
           affinity:
             nodeAffinity:
               requiredDuringSchedulingIgnoredDuringExecution:

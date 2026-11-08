@@ -95,13 +95,16 @@ spec:
             template:
               spec:
                 automountServiceAccountToken: false
-                # nfs StorageClass mounts with 0775; fsGroup 1001 lets the
-                # non-root runner user (1001) write into the shared cache PVC,
-                # and OnRootMismatch avoids recursive chown across 50 GiB of
-                # CAS blobs on every pod start.
-                securityContext:
-                  fsGroup: 1001
-                  fsGroupChangePolicy: OnRootMismatch
+                # No fsGroup. nfs.csi.k8s.io has fsGroupPolicy File, so an
+                # fsGroup makes kubelet chown the whole shared cache PVC before
+                # the runner container starts, and OnRootMismatch never skips
+                # it: the StorageClass's mountPermissions 0775 resets the
+                # volume root on every mount, so the root never matches. On
+                # 2026-11-08 that held each new runner pod in ContainerCreating
+                # for about 50 minutes (300k+ files) and timed the queue out.
+                # Everything in the cache is written by uid 1001 already, and
+                # setup-bazel chowns the two mount points (and ~/.cache) when
+                # they aren't writable, which covers a fresh PVC.
                 affinity:
                   nodeAffinity:
                     requiredDuringSchedulingIgnoredDuringExecution:
