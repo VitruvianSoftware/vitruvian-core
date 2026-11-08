@@ -153,13 +153,13 @@ final class SettingsSectionsTests: XCTestCase {
     /// shows, an unpair being confirmed, a phone with tools, both tokens and
     /// every integration set.
     private func largestState(sections: Bool) -> RemotePages.State {
-        let url = QRPairing.pageURL(address: "100.124.228.116", code: "482917")!
+        let url = QRPairing.pageURL(address: "100.64.0.12", code: "482917")!
         var state = RemotePages.State(profile: profile, role: .activeChosen)
         state.offersSections = sections
         state.notice = String(repeating: "A notice that runs long. ", count: 8)
         state.activeQR = RemotePages.ActiveQRSession(
             code: "482917",
-            address: "100.124.228.116",
+            address: "100.64.0.12",
             url: url,
             pngDataURL: QRPairing.pngDataURL(for: url.absoluteString)!,
             expiresAt: Date().addingTimeInterval(300)
@@ -220,7 +220,7 @@ final class SettingsSectionsTests: XCTestCase {
                 "REMOTETOOL_TOOL_FOLDER": toolDir.path,
                 "REMOTETOOL_AGENT_COMMAND": "",
                 "REMOTETOOL_FAKE_STATUS": "paired",
-                "REMOTETOOL_TAILSCALE_ADDRESS": "100.124.228.116",
+                "REMOTETOOL_TAILSCALE_ADDRESS": "100.64.0.12",
                 "REMOTETOOL_STANDALONE_INSTALLED": "0",
             ],
             programPath: toolDir.appendingPathComponent("bin/tool").path

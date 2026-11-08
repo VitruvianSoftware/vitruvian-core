@@ -154,3 +154,7 @@ GRADE=production RELEASE_TAG=esp32-s3-vX.Y.Z bazel run //apps/embedded/esp32-s3:
 Each published bundle (`esp32-s3-mac-controller.zip`) contains the three
 images, `build_info.json`, and the Rust flasher source (`flash/main.rs`, `flash/lib.rs`, `flash/README.txt`)
 that builds natively with `rustc --edition 2021 -O flash/main.rs -o flash-esp32-s3`.
+
+## License
+
+Copyright (c) 2026 Vitruvian Software, LLC. MIT licensed: see [`LICENSE`](LICENSE).

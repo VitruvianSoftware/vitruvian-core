@@ -849,10 +849,15 @@ private final class SentinelClass {}
 
     /// Exercises the real gws binary when one is installed on the machine
     /// running the tests (skips cleanly on CI, which has none, and in the Bazel sandbox).
+    /// The signed-in account comes from HOMESPEAKER_GWS_ACCOUNT, so no one's address
+    /// lives in the source; without it the test does nothing.
     @Test(.enabled(if: !inBazelSandbox, "no Chat login, network or gws in the Bazel sandbox"))
     func gwsListsSpacesWhenInstalled() async throws {
-        guard let path = GwsChatClient.locate() else { return }
-        let client = GwsChatClient(executable: path, account: "james.nguyen@gmail.com")
+        guard let path = GwsChatClient.locate(),
+              let account = ProcessInfo.processInfo.environment["HOMESPEAKER_GWS_ACCOUNT"],
+              !account.isEmpty
+        else { return }
+        let client = GwsChatClient(executable: path, account: account)
         let spaces = try await client.spaces()
         #expect(!spaces.isEmpty, "gws returned no spaces — is it signed in?")
         if let first = spaces.first {

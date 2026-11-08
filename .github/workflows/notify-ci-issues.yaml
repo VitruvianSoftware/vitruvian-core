@@ -138,6 +138,11 @@ jobs:
             VitruvianSoftware/site-vitruviansoftware-dev
             VitruvianSoftware/vitruvian-sdk
             VitruvianSoftware/vitruvian-tool-github
+            VitruvianSoftware/vitruvian
+            VitruvianSoftware/courier
+            VitruvianSoftware/home-speaker
+            VitruvianSoftware/vitruvian-remote
+            VitruvianSoftware/esp32-desk-companion
           NOTIFY_BIN: ${{ steps.notify-bin.outputs.path }}
         run: '"$NOTIFY_BIN"'
 

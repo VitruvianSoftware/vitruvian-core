@@ -167,7 +167,7 @@ public class FormatTest {
   @Test
   public fun shortHostDropsTheDomain() {
     assertEquals("james-macbook-pro", Format.shortHost("James-MacBook-Pro.local"))
-    assertEquals("atlas", Format.shortHost("atlas.coati-koi.ts.net"))
+    assertEquals("atlas", Format.shortHost("atlas.example.ts.net"))
   }
 
   /** A subtitle built from optional parts must never show a dangling separator. */

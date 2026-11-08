@@ -95,7 +95,7 @@ final class RemoteToolTests: XCTestCase {
                 "REMOTETOOL_TOOL_FOLDER": toolDir.path,
                 "REMOTETOOL_AGENT_COMMAND": "",
                 "REMOTETOOL_FAKE_STATUS": "paired",
-                "REMOTETOOL_TAILSCALE_ADDRESS": "100.124.228.116",
+                "REMOTETOOL_TAILSCALE_ADDRESS": "100.64.0.12",
                 "REMOTETOOL_STANDALONE_INSTALLED": "0",
             ],
             programPath: progPath
@@ -113,7 +113,7 @@ final class RemoteToolTests: XCTestCase {
             PanelEvent(block: RemotePages.Block.islandPairWithQR, kind: .tap)
         )))
         XCTAssertTrue(treeContains(qrTree, "data:image/png;base64,"))
-        XCTAssertTrue(treeContains(qrTree, "http://100.124.228.116:7411/pair?code="))
+        XCTAssertTrue(treeContains(qrTree, "http://100.64.0.12:7411/pair?code="))
         XCTAssertTrue(FileManager.default.fileExists(atPath: controller.profile.pairJSONURL.path))
 
         // Open settings and exercise all 4 tabs + persistence.
@@ -206,7 +206,7 @@ final class RemoteToolTests: XCTestCase {
                 "REMOTETOOL_TOOL_FOLDER": toolDir.path,
                 "REMOTETOOL_AGENT_COMMAND": "",
                 "REMOTETOOL_FAKE_STATUS": "paired",
-                "REMOTETOOL_TAILSCALE_ADDRESS": "100.124.228.116",
+                "REMOTETOOL_TAILSCALE_ADDRESS": "100.64.0.12",
                 "REMOTETOOL_STANDALONE_INSTALLED": "1",
             ],
             programPath: progPath

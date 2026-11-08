@@ -139,6 +139,49 @@ func TestTheGitHubToolMirrorIsMadePublicWithItsExportKeyAndNoTapKey(t *testing.T
 	}
 }
 
+// The shipped apps' mirrors (the Vitruvian app, Courier, HomeSpeaker,
+// Vitruvian Remote and the Desk Companion firmware) are public repositories
+// this package makes, each with the export's write key on it, the key's
+// private half in the monorepo, a read-only main, and no App key or tap key:
+// they are source mirrors that release nothing.
+func TestTheShippedAppMirrorsAreMadePublicWithTheirExportKeys(t *testing.T) {
+	got := run(t)
+	for _, mirror := range []struct{ repo, secret string }{
+		{"vitruvian", "VITRUVIAN_SYNC_SSH_KEY"},
+		{"courier", "COURIER_SYNC_SSH_KEY"},
+		{"home-speaker", "HOME_SPEAKER_SYNC_SSH_KEY"},
+		{"vitruvian-remote", "VITRUVIAN_REMOTE_SYNC_SSH_KEY"},
+		{"esp32-desk-companion", "ESP32_DESK_COMPANION_SYNC_SSH_KEY"},
+	} {
+		t.Run(mirror.repo, func(t *testing.T) {
+			if r := got[mirror.repo]; r.typeToken != "github:index/repository:Repository" {
+				t.Fatalf("%s is %q, want a github repository", mirror.repo, r.typeToken)
+			}
+			if v := text(t, got, mirror.repo, "visibility"); v != "public" {
+				t.Errorf("visibility is %q, want public: the mirror is the app's published source", v)
+			}
+			if v := text(t, got, mirror.repo+"-standalone-deploy-key", "repository"); v != mirror.repo {
+				t.Errorf("the export key is on %q, want %s", v, mirror.repo)
+			}
+			if v := text(t, got, mirror.repo+"-sync-ssh-key-secret", "secretName"); v != mirror.secret {
+				t.Errorf("the export secret is %q, want %s", v, mirror.secret)
+			}
+			if v := text(t, got, mirror.repo+"-sync-ssh-key-secret", "repository"); v != "vitruvian-core" {
+				t.Errorf("the export secret is in %q, want vitruvian-core", v)
+			}
+			if _, ok := got[mirror.repo+"-mirror-readonly"]; !ok {
+				t.Error("the mirror's main is not made read-only")
+			}
+			if _, ok := got[mirror.repo+"-dispatch-app-private-key-secret"]; ok {
+				t.Error("an export-only mirror must not hold the App's key")
+			}
+			if _, ok := got[mirror.repo+"-homebrew-tap-key"]; ok {
+				t.Error("a source mirror must hold no key to the tap")
+			}
+		})
+	}
+}
+
 // The mirror's release.yml writes its formula with a key that can write the
 // tap and nothing else.
 func TestTheSDKMirrorHoldsAWriteKeyToTheTapOnly(t *testing.T) {

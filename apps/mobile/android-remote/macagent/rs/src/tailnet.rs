@@ -238,12 +238,12 @@ mod tests {
         assert_eq!(h.watcher.current(), "");
         assert_eq!(h.opened().len(), 0);
 
-        h.set_ip("100.124.228.116");
+        h.set_ip("100.64.0.12");
         h.watcher.tick();
-        assert_eq!(h.watcher.current(), "100.124.228.116");
+        assert_eq!(h.watcher.current(), "100.64.0.12");
         let opened = h.opened();
         assert_eq!(opened.len(), 1);
-        assert_eq!(opened[0].addr, "100.124.228.116:7411");
+        assert_eq!(opened[0].addr, "100.64.0.12:7411");
 
         // Steady state opens nothing more.
         h.watcher.tick();

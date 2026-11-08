@@ -182,8 +182,9 @@ mod tests {
 
     #[test]
     fn test_pair_app_link_matches_the_phones_parser() {
-        let got = pair_app_link("100.124.228.116:7411", "482917", "atlas");
-        let want = "vitruvian-remote://pair?code=482917&name=atlas&url=http%3A%2F%2F100.124.228.116%3A7411";
+        let got = pair_app_link("100.64.0.12:7411", "482917", "atlas");
+        let want =
+            "vitruvian-remote://pair?code=482917&name=atlas&url=http%3A%2F%2F100.64.0.12%3A7411";
         assert_eq!(got, want);
     }
 

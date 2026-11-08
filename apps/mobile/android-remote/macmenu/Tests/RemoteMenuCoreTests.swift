@@ -109,12 +109,12 @@ final class RemoteMenuCoreTests: XCTestCase {
     }
 
     func testQRPageURL() {
-        XCTAssertEqual(QRPairing.pageURL(address: "100.124.228.116", code: "482917")?.absoluteString,
-                       "http://100.124.228.116:7411/pair?code=482917")
+        XCTAssertEqual(QRPairing.pageURL(address: "100.64.0.12", code: "482917")?.absoluteString,
+                       "http://100.64.0.12:7411/pair?code=482917")
         // Only a Tailscale address and a clean six-digit code make a QR.
         XCTAssertNil(QRPairing.pageURL(address: "192.168.1.5", code: "482917"))
-        XCTAssertNil(QRPairing.pageURL(address: "100.124.228.116", code: "48291"))
-        XCTAssertNil(QRPairing.pageURL(address: "100.124.228.116", code: "482 917"))
+        XCTAssertNil(QRPairing.pageURL(address: "100.64.0.12", code: "48291"))
+        XCTAssertNil(QRPairing.pageURL(address: "100.64.0.12", code: "482 917"))
     }
 
     func testTailscaleRange() {
@@ -305,7 +305,7 @@ final class RemoteMenuCoreTests: XCTestCase {
     }
 
     func testQRPairingGeneratesPNGDataURL() {
-        let url = "http://100.124.228.116:7411/pair?code=482917"
+        let url = "http://100.64.0.12:7411/pair?code=482917"
         let dataURL = QRPairing.pngDataURL(for: url)
         XCTAssertNotNil(dataURL)
         XCTAssertTrue(dataURL?.hasPrefix("data:image/png;base64,") == true)

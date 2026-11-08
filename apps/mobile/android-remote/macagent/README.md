@@ -133,7 +133,7 @@ can see from Activity Monitor.
 | `--kube-context`    | *(empty)*                          | kubeconfig context for `/v1/k8s`                  |
 | `--prometheus-url`  | *(empty)*                          | Prometheus base URL for `/v1/promql`; Grafana's datasource proxy works here |
 | `--prometheus-token-file` | *(empty)*                    | bearer token file for the upstream, 0600, never logged |
-| `--ntfy-url`        | *(empty)*                          | ntfy base URL for push notifications, e.g. `https://ntfy.ipv1337.dev` |
+| `--ntfy-url`        | *(empty)*                          | ntfy base URL for push notifications, e.g. `https://ntfy.example.com` |
 | `--ntfy-topic`      | *(empty)*                          | the topic to publish to — treat it as a secret, anyone who knows it can read it |
 | `--ntfy-token-file` | *(empty)*                          | bearer token file for ntfy, 0600, never logged    |
 | `--gh-extra-repos`  | *(empty)*                          | comma-separated `owner/repo` whose open PRs are listed whoever wrote them |
@@ -147,7 +147,7 @@ are (a leading `~` in a value is expanded, because launchd runs no shell):
 ```sh
 bazel run //apps/mobile/android-remote/macagent:install -- \
   --kubeconfig ~/.kube/cluster.yaml --kube-context default \
-  --ntfy-url https://ntfy.ipv1337.dev --ntfy-topic vitruvian-remote-xxxxx \
+  --ntfy-url https://ntfy.example.com --ntfy-topic vitruvian-remote-xxxxx \
   --ntfy-token-file ~/.config/vitruvian-remote-agent/ntfy-token \
   --gh-extra-repos VitruvianSoftware/vitruvian-core \
   --exec-dir ~/Workspace/gh/application/vitruvian/vitruvian-core
