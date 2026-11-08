@@ -14,7 +14,7 @@
 # footer and About page open (donate/index.html, /donate/).
 development:
   name: Vitruvian Software
-  url: ""
+  url: "https://donate.stripe.com/9B64gycIt7Ff4Mh7abbwk01"
 
 vitruvian:
   name: Vitruvian
