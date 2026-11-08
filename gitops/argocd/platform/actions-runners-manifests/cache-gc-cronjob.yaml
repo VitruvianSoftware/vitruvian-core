@@ -1,0 +1,90 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Weekly garbage collection for the vitruvian-queue-cache NFS volume.
+#
+# Bazel's --repository_cache is content-addressed by SHA-256 and never prunes
+# old entries on its own. Running once a week on the runner nodes (reusing the
+# pinned vitruvian-ci-runner image already present on fedora and nuc9i9)
+# evicts repository-cache blobs unreferenced/unmodified for >14 days so the
+# 50 GiB NFS PVC does not fill up across toolchain and dependency upgrades.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: vitruvian-queue-cache-gc
+  namespace: arc-runners
+spec:
+  schedule: "0 4 * * 0"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 1800
+      ttlSecondsAfterFinished: 86400
+      template:
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            fsGroup: 1001
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: kubernetes.io/hostname
+                        operator: In
+                        values: [fedora, nuc9i9]
+          containers:
+            - name: cache-gc
+              image: ghcr.io/vitruviansoftware/vitruvian-ci-runner@sha256:0bb1b40b9e1f62eec01bd6e615ce6588befb36b41f3fa5a51226297e25e474b4
+              command: ["/bin/bash", "-c"]
+              args:
+                - |
+                  set -euo pipefail
+                  if [ -d /cache/bazel-repo ]; then
+                    echo "Pruning /cache/bazel-repo files older than 14 days..."
+                    find /cache/bazel-repo -type f -mtime +14 -delete
+                    find /cache/bazel-repo -mindepth 1 -type d -empty -delete || true
+                  fi
+                  df -h /cache
+              resources:
+                requests:
+                  cpu: "100m"
+                  memory: 256Mi
+                limits:
+                  cpu: "1"
+                  memory: 1Gi
+              securityContext:
+                runAsNonRoot: true
+                runAsUser: 1001
+                privileged: false
+                allowPrivilegeEscalation: false
+              volumeMounts:
+                - name: runner-cache
+                  mountPath: /cache
+          volumes:
+            - name: runner-cache
+              persistentVolumeClaim:
+                claimName: vitruvian-queue-cache

@@ -111,6 +111,9 @@ spec:
                   - name: runner
                     image: ghcr.io/vitruviansoftware/vitruvian-ci-runner@sha256:0bb1b40b9e1f62eec01bd6e615ce6588befb36b41f3fa5a51226297e25e474b4
                     command: ["/home/runner/run.sh"]
+                    # Only content-addressed, lock-free caches live on the
+                    # shared RWX NFS mount (go/pkg/mod uses fcntl *.lock files
+                    # and pnpm-store mutates shared metadata across 8 pods).
                     volumeMounts:
                       - name: runner-cache
                         mountPath: /home/runner/.cache/bazel-repo
@@ -118,12 +121,6 @@ spec:
                       - name: runner-cache
                         mountPath: /home/runner/.cache/bazelisk
                         subPath: bazelisk
-                      - name: runner-cache
-                        mountPath: /home/runner/go/pkg/mod
-                        subPath: go-pkg-mod
-                      - name: runner-cache
-                        mountPath: /home/runner/.local/share/pnpm/store
-                        subPath: pnpm-store
                     resources:
                       requests:
                         # 3500m lets all 8 maxRunners schedule across fedora (5 pods)

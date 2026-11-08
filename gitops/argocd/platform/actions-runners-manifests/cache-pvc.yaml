@@ -23,13 +23,14 @@
 # (/volume1/k8s on springwood-nas, mountPermissions 0775).
 #
 # Ephemeral runner pods mount subpaths of this volume at:
-#   - /home/runner/.cache/bazel-repo (Bazel --repository_cache)
+#   - /home/runner/.cache/bazel-repo (Bazel --repository_cache, SHA-256 CAS)
 #   - /home/runner/.cache/bazelisk   (Bazelisk binary cache)
-#   - /home/runner/go/pkg/mod        (Go module download cache for fetch_repo)
-#   - /home/runner/.local/share/pnpm/store (pnpm content-addressable store)
-# so merge-queue and push-to-main jobs reuse fetched archives across pods
-# on the LAN instead of downloading the 5.55 GB repository-cache tarball and
-# Go modules over WAN on every job.
+# Both caches are content-addressed and lock-free across concurrent pods (unlike
+# Go's `go/pkg/mod/cache/download/*.lock` fcntl locks or pnpm's store index),
+# so merge-queue and push-to-main jobs reuse fetched archives across pods on
+# the LAN without downloading the 5.55 GB repository-cache tarball over WAN on
+# every job or contending on NFSv4 file locks. Pruned weekly by
+# cache-gc-cronjob.yaml.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

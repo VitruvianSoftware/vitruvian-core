@@ -425,7 +425,9 @@ mod tests {
                 + "\n"
         };
         assert_eq!(after("  plan:\n"), format!("    {ROUTED}"));
-        assert_eq!(after("  gate:\n"), format!("    {ROUTED}"));
+        // Fan-in verdict check (1s jq over $NEEDS_JSON) stays hosted so it is
+        // never head-of-line blocked behind later queue entries' unit-* jobs.
+        assert_eq!(after("  gate:\n"), "    runs-on: ubuntu-26.04\n");
         // Main-only and slow: stays hosted (spec phase 2).
         assert_eq!(after("  rdeps-map:\n"), "    runs-on: ubuntu-26.04\n");
         // Never the push-to-main rule, and never a bare label.
