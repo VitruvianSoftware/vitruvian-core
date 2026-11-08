@@ -196,7 +196,7 @@ func TestMergeQueueRule(t *testing.T) {
 		got, want any
 	}{
 		{"MergeMethod", r.MergeMethod, pulumi.String("SQUASH")},
-		{"GroupingStrategy", r.GroupingStrategy, pulumi.String("HEADGREEN")},
+		{"GroupingStrategy", r.GroupingStrategy, pulumi.String("ALLGREEN")},
 		{"CheckResponseTimeoutMinutes", r.CheckResponseTimeoutMinutes, pulumi.Int(60)},
 		{"MinEntriesToMerge", r.MinEntriesToMerge, pulumi.Int(1)},
 		{"MinEntriesToMergeWaitMinutes", r.MinEntriesToMergeWaitMinutes, pulumi.Int(5)},
