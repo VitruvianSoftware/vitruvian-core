@@ -174,8 +174,14 @@ runs:
     # tools/conformance (GOPROXY) fails if this line loses the pipe fallback.
     #
     # The repository cache is restored by setup-bazel only where it is also
-    # saved (GitHub-hosted jobs on main, the same guard as cache-save); every
-    # other job restores it with actions/cache/restore, in the step below.
+    # saved (GitHub-hosted jobs on main, the same guard as cache-save);
+    # GitHub-hosted jobs off main restore it with actions/cache/restore, in the
+    # step below. Self-hosted runners (vitruvian-queue) skip the Actions cache
+    # download altogether: they mount the persistent ReadWriteMany
+    # vitruvian-queue-cache PVC at /home/runner/.cache/bazel-repo and point
+    # --repository_cache at it in "Use the restored repository cache" below, so
+    # ephemeral runner pods do not pull the 5.55 GB archive over WAN on every
+    # job.
     #
     # setup-bazel 0.19.1 never exits its main step after an aborted download:
     # it logs "Failed to restore repository cache", but the stalled HTTP
@@ -199,7 +205,8 @@ runs:
     # one if the hash differs.
     #
     # tools/conformance (CACHESAVE) fails if setup-bazel restores the
-    # repository cache outside that guard, or this restore loses its timeout.
+    # repository cache outside that guard, if actions/cache/restore runs on
+    # self-hosted runners or main, or if this restore loses its timeout.
     #
     # The path must be the same string setup-bazel saves under, an absolute
     # $HOME/.cache/bazel-repo: an Actions cache entry's version is a hash of
@@ -212,7 +219,7 @@ runs:
       run: echo "path=${HOME}/.cache/bazel-repo" >> "${GITHUB_OUTPUT}"
 
     - name: Restore the Bazel repository cache
-      if: ${{ !(github.ref == 'refs/heads/main' && runner.environment == 'github-hosted') }}
+      if: ${{ runner.environment == 'github-hosted' && github.ref != 'refs/heads/main' }}
       continue-on-error: true
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       env:

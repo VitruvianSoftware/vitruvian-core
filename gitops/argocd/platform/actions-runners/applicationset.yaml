@@ -95,6 +95,10 @@ spec:
             template:
               spec:
                 automountServiceAccountToken: false
+                # nfs StorageClass mounts with 0775; fsGroup 1001 lets the
+                # non-root runner user (1001) write into the shared cache PVC.
+                securityContext:
+                  fsGroup: 1001
                 affinity:
                   nodeAffinity:
                     requiredDuringSchedulingIgnoredDuringExecution:
@@ -107,6 +111,19 @@ spec:
                   - name: runner
                     image: ghcr.io/vitruviansoftware/vitruvian-ci-runner@sha256:0bb1b40b9e1f62eec01bd6e615ce6588befb36b41f3fa5a51226297e25e474b4
                     command: ["/home/runner/run.sh"]
+                    volumeMounts:
+                      - name: runner-cache
+                        mountPath: /home/runner/.cache/bazel-repo
+                        subPath: bazel-repo
+                      - name: runner-cache
+                        mountPath: /home/runner/.cache/bazelisk
+                        subPath: bazelisk
+                      - name: runner-cache
+                        mountPath: /home/runner/go/pkg/mod
+                        subPath: go-pkg-mod
+                      - name: runner-cache
+                        mountPath: /home/runner/.local/share/pnpm/store
+                        subPath: pnpm-store
                     resources:
                       requests:
                         # 3500m lets all 8 maxRunners schedule across fedora (5 pods)
@@ -126,6 +143,10 @@ spec:
                       privileged: false
                       # setup-bazel runs `sudo dpkg -i`; sudo needs it.
                       allowPrivilegeEscalation: true
+                volumes:
+                  - name: runner-cache
+                    persistentVolumeClaim:
+                      claimName: vitruvian-queue-cache
       destination:
         server: '{{.server}}'
         namespace: arc-runners

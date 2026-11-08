@@ -912,6 +912,18 @@ pub(crate) fn uses_setup_bazel_directly(content: &str) -> bool {
         .any(|l| !l.starts_with('#') && l.contains("bazel-contrib/setup-bazel@"))
 }
 
+/// The guard on `setup-bazel/action.yml`'s `actions/cache/restore` step:
+/// GitHub-hosted non-main jobs only (self-hosted queue runners mount the
+/// persistent `vitruvian-queue-cache` PVC instead of downloading the multi-GB
+/// archive over WAN on every job).
+pub(crate) fn repo_restore_step_guarded(expr: &str) -> bool {
+    let e: String = expr.split_whitespace().collect::<Vec<_>>().join(" ");
+    e.contains("runner.environment == 'github-hosted'")
+        && e.contains("github.ref != 'refs/heads/main'")
+        && !e.contains("||")
+        && !e.contains("!(")
+}
+
 /// What is wrong with how `setup-bazel/action.yml` restores the repository
 /// cache, as (found, want, why) triples; empty when nothing is.
 ///
@@ -920,8 +932,9 @@ pub(crate) fn uses_setup_bazel_directly(content: &str) -> bool {
 /// download sat until the job's timeout: twice in the merge queue on
 /// 2026-11-06, cancelling a required check (PR #4380). setup-bazel may restore
 /// the repository cache only where it also saves it, GitHub-hosted jobs on
-/// main; everywhere else actions/cache/restore does, which exits when it is
-/// done and gives up on a stalled download after SEGMENT_DOWNLOAD_TIMEOUT_MINS.
+/// main; hosted non-main jobs use actions/cache/restore, which exits when it is
+/// done and gives up on a stalled download after SEGMENT_DOWNLOAD_TIMEOUT_MINS;
+/// self-hosted runners use their persistent local PVC (`vitruvian-queue-cache`).
 pub(crate) fn repository_restore_problems(content: &str) -> Vec<(String, String, String)> {
     let mut problems = Vec::new();
     match yaml_value_of(content, "repository-cache") {
@@ -937,12 +950,26 @@ pub(crate) fn repository_restore_problems(content: &str) -> Vec<(String, String,
         .map(strip)
         .filter(|l| !l.starts_with('#'))
         .collect();
-    if !lines.iter().any(|l| l.contains("actions/cache/restore@")) {
+    let steps = composite_steps(content);
+    let restore_steps: Vec<&(String, Option<String>)> = steps
+        .iter()
+        .filter(|(u, _)| u.starts_with("actions/cache/restore@"))
+        .collect();
+    if restore_steps.is_empty() {
         problems.push((
             "no actions/cache/restore step".to_string(),
             "actions/cache/restore of ~/.cache/bazel-repo".to_string(),
             "queue and PR runs would start with no repository cache at all".to_string(),
         ));
+    } else {
+        match restore_steps[0].1.as_deref() {
+            Some(if_expr) if repo_restore_step_guarded(if_expr) => {}
+            found => problems.push((
+                format!("restore if: {}", found.unwrap_or("unset (always)")),
+                "restore if: runner.environment == 'github-hosted' && github.ref != 'refs/heads/main'".to_string(),
+                "actions/cache/restore must run only on GitHub-hosted non-main jobs; self-hosted queue runners mount the persistent vitruvian-queue-cache PVC and must not download the 5.55 GB archive over WAN".to_string(),
+            )),
+        }
     }
     if lines
         .iter()
@@ -1457,7 +1484,7 @@ runs:
   using: composite
   steps:
     - name: Restore the Bazel repository cache
-      if: ${{ !(github.ref == 'refs/heads/main' && runner.environment == 'github-hosted') }}
+      if: ${{ runner.environment == 'github-hosted' && github.ref != 'refs/heads/main' }}
       uses: actions/cache/restore@abc # v6
       env:
         SEGMENT_DOWNLOAD_TIMEOUT_MINS: \"4\"
@@ -1472,6 +1499,18 @@ runs:
     #[test]
     fn repository_restore_accepts_the_bounded_restore() {
         assert_eq!(repository_restore_problems(SETUP_BAZEL_GOOD), Vec::new());
+    }
+
+    #[test]
+    fn repository_restore_rejects_self_hosted_wan_restore() {
+        let self_hosted_too = SETUP_BAZEL_GOOD.replace(
+            "if: ${{ runner.environment == 'github-hosted' && github.ref != 'refs/heads/main' }}",
+            "if: ${{ !(github.ref == 'refs/heads/main' && runner.environment == 'github-hosted') }}",
+        );
+        assert_eq!(
+            repository_restore_problems(&self_hosted_too)[0].0,
+            "restore if: ${{ !(github.ref == 'refs/heads/main' && runner.environment == 'github-hosted') }}"
+        );
     }
 
     #[test]
