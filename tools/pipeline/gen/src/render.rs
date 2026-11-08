@@ -794,7 +794,13 @@ pub fn render_presubmit_workflow(
     gate_needs.extend(job_names.iter().cloned());
     b.push_str(&format!("    needs: [{}]\n", gate_needs.join(", ")));
     b.push_str("    if: always()\n");
-    b.push_str(&format!("    runs-on: {}\n", runs_on(HOSTED_LINUX)));
+    // Hosted Linux, not vitruvian-queue: the gate is a 1-second jq check on
+    // $NEEDS_JSON with no checkout or Bazel, and unlocks only after every unit
+    // in this workflow run finishes. Routing it to the bounded vitruvian-queue
+    // pool queues it at the back of the FIFO line behind later merge-queue
+    // entries' heavy unit-* jobs, head-of-line blocking the head entry from
+    // merging after all of its own units have already passed.
+    b.push_str(&format!("    runs-on: {}\n", HOSTED_LINUX));
     b.push_str("    timeout-minutes: 5\n");
     b.push_str("    steps:\n");
     b.push_str("      - name: Evaluate Monorepo Gate Verdict\n");

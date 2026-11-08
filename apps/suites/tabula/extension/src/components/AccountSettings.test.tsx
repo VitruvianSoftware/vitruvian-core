@@ -99,7 +99,7 @@ const mockChromeStorage = {
 
 // Absorb the component's window.location.reload() calls (jsdom 26 makes
 // location unforgeable, so the old defineProperty override throws).
-mockLocationReload();
+const mockReload = mockLocationReload();
 
 // Mock Modal component
 jest.mock("./Modal", () => ({
@@ -924,6 +924,15 @@ describe("AccountSettings", () => {
         );
         expect(TabService.openTabs).toHaveBeenCalled();
       });
+
+      // Wait for handleRestoreBackup's post-openTabs 500ms settle timer and
+      // reload so it does not fire during the next test.
+      await waitFor(
+        () => {
+          expect(mockReload).toHaveBeenCalled();
+        },
+        { timeout: 2000 },
+      );
     });
 
     it("should handle restore backup error", async () => {

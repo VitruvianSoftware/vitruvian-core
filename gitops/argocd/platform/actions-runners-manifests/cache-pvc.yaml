@@ -1,0 +1,45 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Persistent cross-node (ReadWriteMany) local cluster cache for the
+# vitruvian-queue runner scale set, backed by the homelab NFS StorageClass
+# (/volume1/k8s on springwood-nas, mountPermissions 0775).
+#
+# Ephemeral runner pods mount subpaths of this volume at:
+#   - /home/runner/.cache/bazel-repo (Bazel --repository_cache, SHA-256 CAS)
+#   - /home/runner/.cache/bazelisk   (Bazelisk binary cache)
+# Both caches are content-addressed and lock-free across concurrent pods (unlike
+# Go's `go/pkg/mod/cache/download/*.lock` fcntl locks or pnpm's store index),
+# so merge-queue and push-to-main jobs reuse fetched archives across pods on
+# the LAN without downloading the 5.55 GB repository-cache tarball over WAN on
+# every job or contending on NFSv4 file locks. Pruned weekly by
+# cache-gc-cronjob.yaml.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vitruvian-queue-cache
+  namespace: arc-runners
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs
+  resources:
+    requests:
+      storage: 50Gi
