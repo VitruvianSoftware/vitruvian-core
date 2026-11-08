@@ -1902,20 +1902,20 @@ const queueRunner = "on"
 
 // mergeQueueRule is how main's merge queue groups, waits and merges.
 //
-// GroupingStrategy is HEADGREEN, on trial since 2026-10-19 (#3518, decided
-// two weeks after it lands): a group merges when its NEWEST entry's checks
-// pass. That entry's test commit contains every earlier entry, so each change
-// is still tested before main, as part of the later commit. Under ALLGREEN
-// every entry had to pass alone, so one entry whose required check never
-// reported held everything behind it for the full CheckResponseTimeout, then
-// got them all rebuilt: on 2026-10-19 that cost the queue an hour while the
-// entry behind it had already passed. The risk HEADGREEN takes is a later
-// entry hiding an earlier one's breakage; #3518 watches main for it, and
-// reverting is setting ALLGREEN back here.
+// GroupingStrategy is ALLGREEN: every entry in a merge group must pass its
+// own required checks before the group merges. Under HEADGREEN (#3518 trial),
+// GitHub merged the entire batch as soon as the newest entry finished and
+// cancelled still-running merge_group workflows on earlier entries while
+// deleting their gh-readonly-queue/main/pr-* branches, leaving intermediate
+// commits on main permanently marked with cancelled/failed checks and
+// impossible to rerun. With the persistent local NFS cache (#4415/#4419) and
+// GitHub-hosted gate job (#4415), entries build in parallel in 6-11 minutes,
+// so ALLGREEN keeps every commit on main 100% green without head-of-line
+// stalls.
 func mergeQueueRule() *github.RepositoryRulesetRulesMergeQueueArgs {
 	return &github.RepositoryRulesetRulesMergeQueueArgs{
 		MergeMethod:                  pulumi.String("SQUASH"),
-		GroupingStrategy:             pulumi.String("HEADGREEN"),
+		GroupingStrategy:             pulumi.String("ALLGREEN"),
 		CheckResponseTimeoutMinutes:  pulumi.Int(60),
 		MinEntriesToMerge:            pulumi.Int(1),
 		MinEntriesToMergeWaitMinutes: pulumi.Int(5),
