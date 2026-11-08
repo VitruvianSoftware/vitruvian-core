@@ -12,102 +12,102 @@
   {
     "number": 31,
     "repository": {
-      "name": "gcp-bootstrap",
-      "nameWithOwner": "abrial-ai/gcp-bootstrap"
+      "name": "widgets",
+      "nameWithOwner": "example-org/widgets"
     },
-    "title": "fix(iam): stop bootstrap revoking platform engineers' projectCreator",
+    "title": "feat(api): add pagination to the list endpoint",
     "updatedAt": "2026-08-06T07:43:48Z",
-    "url": "https://github.com/abrial-ai/gcp-bootstrap/pull/31"
+    "url": "https://github.com/example-org/widgets/pull/31"
   },
   {
     "number": 21,
     "repository": {
-      "name": "gcp-organization",
-      "nameWithOwner": "abrial-ai/gcp-organization"
+      "name": "gadgets",
+      "nameWithOwner": "example-org/gadgets"
     },
-    "title": "feat(iam): bind reduced non-escalating role set to platform contractors",
+    "title": "fix(ui): keep the sidebar width on reload",
     "updatedAt": "2026-08-06T07:36:51Z",
-    "url": "https://github.com/abrial-ai/gcp-organization/pull/21"
+    "url": "https://github.com/example-org/gadgets/pull/21"
   },
   {
     "number": 30,
     "repository": {
-      "name": "gcp-bootstrap",
-      "nameWithOwner": "abrial-ai/gcp-bootstrap"
+      "name": "docs-site",
+      "nameWithOwner": "example-org/docs-site"
     },
-    "title": "feat(groups): add platform-contractor group and manage membership in code",
+    "title": "chore(deps): bump the lint toolchain",
     "updatedAt": "2026-08-06T07:44:33Z",
-    "url": "https://github.com/abrial-ai/gcp-bootstrap/pull/30"
+    "url": "https://github.com/example-org/docs-site/pull/30"
   },
   {
     "number": 590,
     "repository": {
-      "name": "abrialcode",
-      "nameWithOwner": "abrial-ai/abrialcode"
+      "name": "infra-modules",
+      "nameWithOwner": "example-org/infra-modules"
     },
-    "title": "chore(main): release pricing-engine-exec 0.2.0",
+    "title": "docs: explain the release steps",
     "updatedAt": "2026-09-07T11:49:59Z",
-    "url": "https://github.com/abrial-ai/abrialcode/pull/590"
+    "url": "https://github.com/example-org/infra-modules/pull/590"
   },
   {
     "number": 591,
     "repository": {
-      "name": "abrialcode",
-      "nameWithOwner": "abrial-ai/abrialcode"
+      "name": "widgets",
+      "nameWithOwner": "example-org/widgets"
     },
-    "title": "chore(main): release pricing-engine-mgmt 0.2.0",
+    "title": "refactor(core): split the parser module",
     "updatedAt": "2026-09-07T11:49:59Z",
-    "url": "https://github.com/abrial-ai/abrialcode/pull/591"
+    "url": "https://github.com/example-org/widgets/pull/591"
   },
   {
     "number": 588,
     "repository": {
-      "name": "abrialcode",
-      "nameWithOwner": "abrial-ai/abrialcode"
+      "name": "gadgets",
+      "nameWithOwner": "example-org/gadgets"
     },
-    "title": "chore(main): release aimodels 0.2.0",
+    "title": "test: cover the empty-response path",
     "updatedAt": "2026-09-07T11:50:38Z",
-    "url": "https://github.com/abrial-ai/abrialcode/pull/588"
+    "url": "https://github.com/example-org/gadgets/pull/588"
   },
   {
     "number": 587,
     "repository": {
-      "name": "abrialcode",
-      "nameWithOwner": "abrial-ai/abrialcode"
+      "name": "docs-site",
+      "nameWithOwner": "example-org/docs-site"
     },
-    "title": "chore(main): release sftp-promotion 0.2.2",
+    "title": "ci: cache the build between jobs",
     "updatedAt": "2026-09-07T11:50:34Z",
-    "url": "https://github.com/abrial-ai/abrialcode/pull/587"
+    "url": "https://github.com/example-org/docs-site/pull/587"
   },
   {
     "number": 557,
     "repository": {
-      "name": "abrialcode",
-      "nameWithOwner": "abrial-ai/abrialcode"
+      "name": "infra-modules",
+      "nameWithOwner": "example-org/infra-modules"
     },
-    "title": "fix(ci): pin apps/g4-pipelines requirements.txt via uv, add to pip-audit",
+    "title": "fix(auth): refresh tokens before they expire",
     "updatedAt": "2026-08-05T18:01:05Z",
-    "url": "https://github.com/abrial-ai/abrialcode/pull/557"
+    "url": "https://github.com/example-org/infra-modules/pull/557"
   },
   {
     "number": 483,
     "repository": {
-      "name": "abrialcode",
-      "nameWithOwner": "abrial-ai/abrialcode"
+      "name": "widgets",
+      "nameWithOwner": "example-org/widgets"
     },
-    "title": "chore(aimodels): migrate g4 configs to subclass= (pnr → latest-stable resolver)",
+    "title": "feat(api): add pagination to the list endpoint",
     "updatedAt": "2026-09-07T18:00:48Z",
-    "url": "https://github.com/abrial-ai/abrialcode/pull/483"
+    "url": "https://github.com/example-org/widgets/pull/483"
   },
   {
     "number": 474,
     "repository": {
-      "name": "abrialcode",
-      "nameWithOwner": "abrial-ai/abrialcode"
+      "name": "gadgets",
+      "nameWithOwner": "example-org/gadgets"
     },
-    "title": "docs(data-science): experiment-orchestration platform implementation approach",
+    "title": "fix(ui): keep the sidebar width on reload",
     "updatedAt": "2026-08-25T07:49:39Z",
-    "url": "https://github.com/abrial-ai/abrialcode/pull/474"
+    "url": "https://github.com/example-org/gadgets/pull/474"
   },
   {
     "number": 39,
@@ -141,7 +141,10 @@
   },
   {
     "number": 258,
-    "repository": { "name": "devx", "nameWithOwner": "VitruvianSoftware/devx" },
+    "repository": {
+      "name": "devx",
+      "nameWithOwner": "VitruvianSoftware/devx"
+    },
     "title": "chore(main): release 0.66.0",
     "updatedAt": "2026-06-26T19:55:18Z",
     "url": "https://github.com/VitruvianSoftware/devx/pull/258"
@@ -149,51 +152,51 @@
   {
     "number": 47,
     "repository": {
-      "name": "oauth-user-inspector",
-      "nameWithOwner": "BlueCentre/oauth-user-inspector"
+      "name": "docs-site",
+      "nameWithOwner": "example-org/docs-site"
     },
-    "title": "⚡ Optimize redundant iteration over object keys in UserInfoDisplay",
+    "title": "chore(deps): bump the lint toolchain",
     "updatedAt": "2026-05-08T08:06:43Z",
-    "url": "https://github.com/BlueCentre/oauth-user-inspector/pull/47"
+    "url": "https://github.com/example-org/docs-site/pull/47"
   },
   {
     "number": 53,
     "repository": {
-      "name": "lab-backstage",
-      "nameWithOwner": "BlueCentre/lab-backstage"
+      "name": "infra-modules",
+      "nameWithOwner": "example-org/infra-modules"
     },
-    "title": "chore: release 3.1.5",
+    "title": "docs: explain the release steps",
     "updatedAt": "2025-11-21T08:16:06Z",
-    "url": "https://github.com/BlueCentre/lab-backstage/pull/53"
+    "url": "https://github.com/example-org/infra-modules/pull/53"
   },
   {
     "number": 201,
     "repository": {
-      "name": "monorepo",
-      "nameWithOwner": "BlueCentre/monorepo"
+      "name": "widgets",
+      "nameWithOwner": "example-org/widgets"
     },
-    "title": "Enhanced Developer Experience: Add Cloud Run deployment profiles to all containerized applications",
+    "title": "refactor(core): split the parser module",
     "updatedAt": "2025-09-17T05:35:45Z",
-    "url": "https://github.com/BlueCentre/monorepo/pull/201"
+    "url": "https://github.com/example-org/widgets/pull/201"
   },
   {
     "number": 4,
     "repository": {
-      "name": "vscode-copilot-chat",
-      "nameWithOwner": "BlueCentre/vscode-copilot-chat"
+      "name": "gadgets",
+      "nameWithOwner": "example-org/gadgets"
     },
-    "title": "Rebrand/vitruvian software linear",
+    "title": "test: cover the empty-response path",
     "updatedAt": "2025-08-30T04:58:56Z",
-    "url": "https://github.com/BlueCentre/vscode-copilot-chat/pull/4"
+    "url": "https://github.com/example-org/gadgets/pull/4"
   },
   {
     "number": 3,
     "repository": {
-      "name": "vscode-copilot-chat",
-      "nameWithOwner": "BlueCentre/vscode-copilot-chat"
+      "name": "docs-site",
+      "nameWithOwner": "example-org/docs-site"
     },
-    "title": "feat(rebrand): Vitruvian Software",
+    "title": "ci: cache the build between jobs",
     "updatedAt": "2025-08-29T07:17:35Z",
-    "url": "https://github.com/BlueCentre/vscode-copilot-chat/pull/3"
+    "url": "https://github.com/example-org/docs-site/pull/3"
   }
 ]

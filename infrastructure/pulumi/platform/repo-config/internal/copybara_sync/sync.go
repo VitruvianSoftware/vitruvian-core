@@ -221,6 +221,57 @@ var syncedProjects = []syncedProject{
 		CreateRepo:     true,
 		Description:    "The GitHub tool for the Vitruvian Mac app: pull requests and checks in the Dynamic Island, and a GravaStar mouse as a status light",
 	},
+	{
+		// The Vitruvian Mac app (apps/desktop/vitruvian), a GPL-3.0-or-later fork
+		// of vorssaint-utils. Export-only: the mirror is the public source the
+		// GPL owes with every DMG; releases still ship from the monorepo. Name
+		// uppercase-snakes to VITRUVIAN_SYNC_SSH_KEY, consumed by
+		// copybara-export-vitruvian.yaml.
+		Name:           "vitruvian",
+		StandaloneRepo: "vitruvian",
+		OneWay:         true,
+		CreateRepo:     true,
+		Description:    "Vitruvian, a macOS menu-bar utility hub. GPL-3.0 fork of vorssaint-utils, not an official Vorssaint build",
+	},
+	{
+		// Courier (apps/desktop/courier), AGPL-3.0-or-later. Export-only: the
+		// mirror is the public source the AGPL owes; releases ship from the
+		// monorepo. COURIER_SYNC_SSH_KEY, consumed by copybara-export-courier.yaml.
+		Name:           "courier",
+		StandaloneRepo: "courier",
+		OneWay:         true,
+		CreateRepo:     true,
+		Description:    "Courier: every chat app in one inbox, as a native macOS app",
+	},
+	{
+		// HomeSpeaker (apps/desktop/home-speaker), MIT. Export-only.
+		// HOME_SPEAKER_SYNC_SSH_KEY, consumed by copybara-export-home-speaker.yaml.
+		Name:           "home-speaker",
+		StandaloneRepo: "home-speaker",
+		OneWay:         true,
+		CreateRepo:     true,
+		Description:    "HomeSpeaker: a macOS menu bar app that reads agent replies and messages aloud on Google Home speakers, this Mac or your phone",
+	},
+	{
+		// Vitruvian Remote (apps/mobile/android-remote), MIT: the Android app
+		// plus its Mac agent and menu. Export-only. VITRUVIAN_REMOTE_SYNC_SSH_KEY,
+		// consumed by copybara-export-vitruvian-remote.yaml.
+		Name:           "vitruvian-remote",
+		StandaloneRepo: "vitruvian-remote",
+		OneWay:         true,
+		CreateRepo:     true,
+		Description:    "Vitruvian Remote: an Android remote control and observability console for a Mac",
+	},
+	{
+		// The ESP32-S3 Desk Companion firmware (apps/embedded/esp32-s3), MIT.
+		// Export-only. ESP32_DESK_COMPANION_SYNC_SSH_KEY, consumed by
+		// copybara-export-esp32-desk-companion.yaml.
+		Name:           "esp32-desk-companion",
+		StandaloneRepo: "esp32-desk-companion",
+		OneWay:         true,
+		CreateRepo:     true,
+		Description:    "Firmware that turns a Waveshare ESP32-S3 touch display into a Mac desk companion: live metrics and shortcut buttons",
+	},
 }
 
 // secretPrefix converts a project name into the UPPER_SNAKE prefix used for its
