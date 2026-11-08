@@ -142,5 +142,5 @@ paths = [
 ]
 regexes = [
   '''^\s*- key: [a-z][a-z0-9-]{0,38}[a-z0-9]\s*$''',
-  '''^\{%- include donate-app\.html key="[a-z][a-z0-9-]{0,38}[a-z0-9]" -%\}$''',
+  '''^\s*\{%- include donate-app\.html key="[a-z][a-z0-9-]{0,38}[a-z0-9]" -%\}\s*$''',
 ]
