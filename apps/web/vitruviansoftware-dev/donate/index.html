@@ -1,0 +1,46 @@
+---
+layout: page
+title: Support Vitruvian Software
+permalink: /donate/
+hero: false
+description: >-
+  Donate to the development of Vitruvian Software's free and open-source tools.
+  Payments are handled by Stripe.
+---
+{%- comment -%}
+  The general "support development" page: the header's Donate item, the
+  footer's "Support development" link and the About page open it. It forwards
+  to the `development` Payment Link in _data/donations.yml, and only to a
+  live-mode Stripe Payment Link: an address on https://buy.stripe.com/ or
+  https://donate.stripe.com/ (Stripe serves links whose submit type is
+  "donate" from the second), never a test_ link. Per-app pages sit beside it
+  (donate/vitruvian.html).
+{%- endcomment -%}
+{%- assign fund = site.data.donations.development -%}
+{%- assign link = fund.url | strip -%}
+{%- assign live = false -%}
+{%- assign buy = link | slice: 0, 23 -%}
+{%- assign donate = link | slice: 0, 26 -%}
+{%- if buy == "https://buy.stripe.com/" and link.size > 23 -%}{%- assign live = true -%}{%- endif -%}
+{%- if donate == "https://donate.stripe.com/" and link.size > 26 -%}{%- assign live = true -%}{%- endif -%}
+{%- if link contains "/test_" -%}{%- assign live = false -%}{%- endif -%}
+
+<section class="not-found">
+  <div class="container">
+    {%- if live %}
+    <h1>Taking you to Stripe...</h1>
+    <p class="lead">Thank you for supporting {{ fund.name }}. Everything we make stays free, and you choose the amount on Stripe's checkout page.</p>
+    <div class="btn-row">
+      <a class="btn btn-primary" href="{{ link }}">Continue to checkout</a>
+    </div>
+    <script>window.location.replace({{ link | jsonify }});</script>
+    {%- else %}
+    <h1>Donations open soon.</h1>
+    <p class="lead">Thank you for wanting to support {{ fund.name }}. Until then, a star on GitHub helps more people find the work.</p>
+    <div class="btn-row">
+      <a class="btn btn-primary" href="{{ site.monorepo }}">Star on GitHub</a>
+      <a class="btn" href="{{ '/projects/' | relative_url }}">Projects</a>
+    </div>
+    {%- endif %}
+  </div>
+</section>

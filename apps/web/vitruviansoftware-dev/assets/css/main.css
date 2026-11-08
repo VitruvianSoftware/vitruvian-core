@@ -2013,24 +2013,10 @@ img.is-expandable:focus-visible {
   }
 }
 
-@media (max-width: 760px) {
-  body {
-    font-size: 16px;
-  }
-
-  .container {
-    padding: 0 var(--space-5);
-  }
-
-  .section {
-    padding: var(--space-7) 0;
-  }
-
-  .hero,
-  .page-hero {
-    padding: var(--space-7) 0;
-  }
-
+/* The menu button takes over from the inline links below 1160px: nine links
+   in 13px mono need about 1145px of viewport beside the brand, so any narrower
+   and they would crowd or wrap. */
+@media (max-width: 1160px) {
   .nav-toggle {
     display: inline-grid;
   }
@@ -2061,6 +2047,25 @@ img.is-expandable:focus-visible {
 
   .nav-links a[aria-current="page"]::after {
     display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  body {
+    font-size: 16px;
+  }
+
+  .container {
+    padding: 0 var(--space-5);
+  }
+
+  .section {
+    padding: var(--space-7) 0;
+  }
+
+  .hero,
+  .page-hero {
+    padding: var(--space-7) 0;
   }
 
   .grid-2,

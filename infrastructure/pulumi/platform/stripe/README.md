@@ -66,10 +66,12 @@ flowchart LR
     P["Product<br/>Support Vitruvian Software"]
     PR["Price<br/>custom_unit_amount<br/>min / preset / max"]
     L1["Payment Link<br/>donate-vitruvian<br/>submit_type=donate"]
-    L2["Payment Link<br/>donate-&lt;app&gt;"]
+    L2["Payment Link<br/>donate-development<br/>(site-wide, not an app)"]
+    L3["Payment Link<br/>donate-&lt;app&gt;"]
     P --> PR
     PR --> L1
     PR --> L2
+    PR --> L3
   end
   Cfg["Pulumi.sandbox.yaml<br/>(non-secret config)"] --> Prog["main.go<br/>Pulumi Go program"]
   Key["STRIPE_API_KEY<br/>or Pulumi secret"] --> Guard{"key matches<br/>stack mode?"}
@@ -174,6 +176,7 @@ flowchart LR
 | Vitruvian (desktop) | Done: Settings > Support's Donate button opens `AppInfo.donateURL`, `https://vitruviansoftware.dev/donate/vitruvian/`. |
 | HomeSpeaker, NexusAgent, Courier (desktop) | A "Support" item in the menu-bar menu or Settings that opens the redirect in the browser. |
 | devx, homelab (CLIs) | A line in `--version` / README, plus a `.github/FUNDING.yml` `custom:` entry for the mirrors. |
+| vitruviansoftware.dev (general) | Done: the Donate item in the header, "Support development" in the footer and a line on About open `https://vitruviansoftware.dev/donate/`, the `development` key. |
 | vitruviansoftware.dev | The redirect pages, `donate/<key>.html`, read `_data/donations.yml`. Once production has applied, copy each `donationLinks` URL there under its key; until then the page says donations open soon. A Support link on Downloads is still to do. |
 
 ## Applying it

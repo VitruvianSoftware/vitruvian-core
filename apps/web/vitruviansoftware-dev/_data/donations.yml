@@ -10,6 +10,12 @@
 # key. Never a sandbox (test-mode) link. While it is empty, the page says
 # donations are not open yet instead of forwarding.
 
+# Not an app: the general "support development" link that the site's header,
+# footer and About page open (donate/index.html, /donate/).
+development:
+  name: Vitruvian Software
+  url: ""
+
 vitruvian:
   name: Vitruvian
   url: "https://donate.stripe.com/7sYeVc23PcZz5Ql9ijbwk00"

@@ -29,6 +29,7 @@
 //	Product  "Support Vitruvian Software"
 //	  └─ Price  custom_unit_amount (donor picks the amount)
 //	       ├─ PaymentLink  donate-vitruvian   (submit_type=donate, metadata.app=vitruvian)
+//	       ├─ PaymentLink  donate-development (the site-wide link on vitruviansoftware.dev/donate/)
 //	       └─ PaymentLink  donate-<app> ...   one per entry in donations.apps
 //
 // Outputs: donationLinks, a map of app key -> public Payment Link URL, which
