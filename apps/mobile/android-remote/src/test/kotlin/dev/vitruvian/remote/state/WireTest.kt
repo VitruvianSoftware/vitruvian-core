@@ -189,7 +189,7 @@ public class WireTest {
     // not the exception.
     val migrated =
         HostCodec.migrate(
-            url = "http://atlas.coati-koi.ts.net:7411/", token = "t", mac = "", alias = "")
+            url = "http://atlas.example.ts.net:7411/", token = "t", mac = "", alias = "")
     assertEquals("atlas", migrated.single().alias)
   }
 
@@ -262,12 +262,12 @@ public class WireTest {
   // The exact link the agent's /pair page builds; pairpage_test.go asserts the same string, so the
   // Mac and the phone cannot drift apart on its shape.
   private val pairFixture =
-      "vitruvian-remote://pair?code=482917&name=atlas&url=http%3A%2F%2F100.124.228.116%3A7411"
+      "vitruvian-remote://pair?code=482917&name=atlas&url=http%3A%2F%2F100.64.0.12%3A7411"
 
   @Test
   public fun pairingLinkFromTheAgentParses() {
     assertEquals(
-        PairLink(url = "http://100.124.228.116:7411", code = "482917", name = "atlas"),
+        PairLink(url = "http://100.64.0.12:7411", code = "482917", name = "atlas"),
         DeepLink.pairing(pairFixture),
     )
     // It is not a screen: the screen router must leave it alone.

@@ -181,7 +181,7 @@ part of the 2 s cache key.
 
 ## Notifications (agent → ntfy)
 
-Flags `--ntfy-url` (e.g. `https://ntfy.ipv1337.dev`), `--ntfy-topic`, `--ntfy-token-file`
+Flags `--ntfy-url` (e.g. `https://ntfy.example.com`), `--ntfy-topic`, `--ntfy-token-file`
 (bearer, 0600, never logged). Publishes `POST <url>/<topic>` with headers `Title`, `Priority`,
 `Tags`, `Click` (a `vitruvian-remote://<screen>` link the phone opens). Events, each sent once per
 transition and debounced 30 s per key:

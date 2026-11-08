@@ -237,7 +237,7 @@ fn apply_tool_env(home: &Path, data: &Path, folder: &Path, standalone_installed:
     env::set_var("REMOTETOOL_TOOL_FOLDER", folder);
     env::set_var("REMOTETOOL_AGENT_COMMAND", "");
     env::set_var("REMOTETOOL_FAKE_STATUS", "paired");
-    env::set_var("REMOTETOOL_TAILSCALE_ADDRESS", "100.124.228.116");
+    env::set_var("REMOTETOOL_TAILSCALE_ADDRESS", "100.64.0.12");
     env::set_var("REMOTETOOL_STANDALONE_INSTALLED", standalone_installed);
 }
 

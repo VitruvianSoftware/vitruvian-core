@@ -1322,7 +1322,7 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
     private const val STREAM_NO_EXIT = -1
 
     /**
-     * Accepts what a person types - `100.124.228.116`, `atlas.coati-koi.ts.net:7411`,
+     * Accepts what a person types - `100.64.0.12`, `atlas.example.ts.net:7411`,
      * `http://atlas:7411/` - and produces a base URL with a scheme and a port and no trailing
      * slash. The port default matches the agent's.
      */
