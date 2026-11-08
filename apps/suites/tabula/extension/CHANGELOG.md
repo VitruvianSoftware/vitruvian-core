@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.41](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.40...tabula-extension-v0.1.41) (2026-11-08)
+
+
+### Bug Fixes
+
+* **tabula-extension:** fix ISO-8601 updatedAt LWW sync and CI queue/runner reliability ([#4409](https://github.com/VitruvianSoftware/vitruvian-core/issues/4409)) ([c5dfe9e](https://github.com/VitruvianSoftware/vitruvian-core/commit/c5dfe9ef2b2305f8483f860935ee649051260d6b))
+
 ## [0.1.40](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.39...tabula-extension-v0.1.40) (2026-09-20)
 
 
