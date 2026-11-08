@@ -238,6 +238,26 @@ runs:
         fi
         echo "path=${HOME}/.cache/bazel-repo" >> "${GITHUB_OUTPUT}"
 
+    # Self-hosted runners share one Bazel repository cache and one Bazelisk
+    # cache on an NFS volume, so a broken entry there fails every job until
+    # someone clears it. On 2026-11-08 the weekly cache GC left cached repos
+    # half-empty and every merge-queue job failed with "BUILD file not found"
+    # in @rules_python. runner_cache_check.py samples the cache within a time
+    # budget, clears only the cached repos that lost files (or the whole
+    # repo contents cache when a sample shows widespread damage) and any
+    # Bazelisk binary whose SHA-256 no longer matches, so the next job heals
+    # it. It never fails the job; `timeout` caps it if NFS stalls.
+    # runner_cache_check_test (BUILD here) holds the rules.
+    - name: Check the shared runner caches for broken entries
+      if: runner.environment == 'self-hosted' && runner.os == 'Linux'
+      shell: bash
+      run: |
+        timeout 60 python3 "${GITHUB_ACTION_PATH}/runner_cache_check.py" \
+          --repo-cache "${HOME}/.cache/bazel-repo" \
+          --bazelisk-cache "${HOME}/.cache/bazelisk" \
+          --budget-seconds 20 \
+          || echo "::warning title=Runner cache check::stopped early (exit $?); the job goes on"
+
     - name: Restore the Bazel repository cache
       if: ${{ runner.environment == 'github-hosted' && github.ref != 'refs/heads/main' }}
       continue-on-error: true
