@@ -1,0 +1,17 @@
+---
+layout: page
+title: Support Courier
+permalink: /donate/courier/
+hero: false
+sitemap: false
+description: >-
+  Donate to Courier, the free and open-source macOS app from Vitruvian Software that puts every chat app in one inbox.
+  Payments are handled by Stripe.
+---
+{%- comment -%}
+  The address the Sponsor button on the Courier mirror opens.
+  Its donations go to the `courier` Payment Link (_data/donations.yml), so
+  Stripe attributes them to Courier. The page itself is
+  _includes/donate-app.html.
+{%- endcomment -%}
+{%- include donate-app.html key="courier" -%}

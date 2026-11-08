@@ -14,7 +14,7 @@ description: >-
   live-mode Stripe Payment Link: an address on https://buy.stripe.com/ or
   https://donate.stripe.com/ (Stripe serves links whose submit type is
   "donate" from the second), never a test_ link. Per-app pages sit beside it
-  (donate/vitruvian.html).
+  (donate/<key>.html, one per app).
 {%- endcomment -%}
 {%- assign fund = site.data.donations.development -%}
 {%- assign link = fund.url | strip -%}

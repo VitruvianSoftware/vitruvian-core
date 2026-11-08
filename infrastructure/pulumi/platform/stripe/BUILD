@@ -41,6 +41,9 @@ pulumi_go_test(
         # The replace in go.mod points here; glob("go.mod") only matches the
         # top-level one.
         "sdks/stripe/go.mod",
+        # internal/donations/donations_pages_test.go: every app's link has its
+        # page on the site.
+        "//apps/web/vitruviansoftware-dev:donate_pages",
     ],
 )
 

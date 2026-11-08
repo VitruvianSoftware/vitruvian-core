@@ -53,9 +53,13 @@ config:
       Thank you for supporting Vitruvian Software. Everything we make stays free
       because people like you chip in.
     # One Payment Link per app. `key` names the resource and is written to the
-    # link's metadata, so donations are attributed per app in Stripe.
-    # Vitruvian (desktop) first: it already ships a Support page whose donate
-    # button is wired to AppInfo.coffeeURL and hidden until a link exists.
+    # link's metadata, so donations are attributed per app in Stripe: every
+    # app gets its own link, so you can see which app people back. Each key
+    # also has a page, vitruviansoftware.dev/donate/<key>/, which the app's
+    # buttons open (its mirror's Sponsor button too), and an entry in the
+    # site's _data/donations.yml; internal/donations/donations_pages_test.go
+    # keeps the three in step. A Payment Link can only be deactivated, never
+    # deleted, so a key is for good once applied.
     # `development` is not an app: it is the general "support development"
     # link on vitruviansoftware.dev/donate/, for anyone backing the work as a
     # whole rather than one app.
@@ -64,3 +68,25 @@ config:
         name: Vitruvian
       - key: development
         name: Vitruvian Software development
+      - key: courier
+        name: Courier
+      - key: home-speaker
+        name: HomeSpeaker
+      - key: vitruvian-remote
+        name: Vitruvian Remote
+      - key: esp32-desk-companion
+        name: ESP32-S3 Desk Companion
+      - key: nexus-agent
+        name: NexusAgent
+      - key: oauth-user-inspector
+        name: OAuth User Inspector
+      - key: mcp-slack
+        name: mcp-slack
+      - key: mcp-roborock
+        name: mcp-roborock
+      - key: gh-watch
+        name: gh-watch
+      - key: devx
+        name: devx
+      - key: homelab
+        name: homelab

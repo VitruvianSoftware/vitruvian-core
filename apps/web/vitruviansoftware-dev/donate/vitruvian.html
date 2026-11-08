@@ -10,36 +10,9 @@ description: >-
 ---
 {%- comment -%}
   The address the app's Settings > Support > Donate button opens
-  (AppInfo.donateURL). It forwards to the Payment Link in
-  _data/donations.yml, and only to a live-mode Stripe Payment Link: an address
-  on https://buy.stripe.com/ or https://donate.stripe.com/ (Stripe serves links
-  whose submit type is "donate" from the second), never a test_ link.
+  (AppInfo.donateURL), and the Sponsor button on the Vitruvian mirror.
+  Its donations go to the `vitruvian` Payment Link (_data/donations.yml), so
+  Stripe attributes them to Vitruvian. The page itself is
+  _includes/donate-app.html.
 {%- endcomment -%}
-{%- assign app = site.data.donations.vitruvian -%}
-{%- assign link = app.url | strip -%}
-{%- assign live = false -%}
-{%- assign buy = link | slice: 0, 23 -%}
-{%- assign donate = link | slice: 0, 26 -%}
-{%- if buy == "https://buy.stripe.com/" and link.size > 23 -%}{%- assign live = true -%}{%- endif -%}
-{%- if donate == "https://donate.stripe.com/" and link.size > 26 -%}{%- assign live = true -%}{%- endif -%}
-{%- if link contains "/test_" -%}{%- assign live = false -%}{%- endif -%}
-
-<section class="not-found">
-  <div class="container">
-    {%- if live %}
-    <h1>Taking you to Stripe...</h1>
-    <p class="lead">Thank you for supporting {{ app.name }}. You choose the amount on Stripe's checkout page.</p>
-    <div class="btn-row">
-      <a class="btn btn-primary" href="{{ link }}">Continue to checkout</a>
-    </div>
-    <script>window.location.replace({{ link | jsonify }});</script>
-    {%- else %}
-    <h1>Donations for {{ app.name }} open soon.</h1>
-    <p class="lead">Thank you for wanting to help. Until then, a star on GitHub helps more people find {{ app.name }}.</p>
-    <div class="btn-row">
-      <a class="btn btn-primary" href="{{ site.monorepo }}/tree/main/apps/desktop/vitruvian">Star on GitHub</a>
-      <a class="btn" href="{{ '/downloads/' | relative_url }}">Downloads</a>
-    </div>
-    {%- endif %}
-  </div>
-</section>
+{%- include donate-app.html key="vitruvian" -%}
