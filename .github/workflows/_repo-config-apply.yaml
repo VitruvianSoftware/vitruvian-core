@@ -167,6 +167,44 @@ jobs:
                   fi
                   echo "fork PR approval: ${policy}"
 
+            # The "Sponsor" button: GitHub shows it from a repository's
+            # .github/FUNDING.yml only while the repository's Sponsorships
+            # feature is on. The Pulumi GitHub provider has no setting for that
+            # either (pulumi-github v6.15.0 has no sponsorship field), so it is
+            # turned on here through GraphQL's updateRepository, for every
+            # repository in sponsor-button-repos.txt, and read back. A listed
+            # FUNDING.yml that is missing, or a setting that did not take, fails
+            # the run.
+            - name: Turn on the Sponsor button for the repositories that have one
+              env:
+                  GH_TOKEN: ${{ steps.app-token.outputs.token }}
+                  OWNER: ${{ github.repository_owner }}
+                  LIST: infrastructure/pulumi/platform/repo-config/sponsor-button-repos.txt
+              run: |
+                  set -euo pipefail
+                  failed=0
+                  while read -r repo funding _; do
+                      case "${repo}" in "" | "#"*) continue ;; esac
+                      if [ ! -f "${funding}" ]; then
+                          echo "::error::${repo}: ${funding} is missing; the button would open nothing"
+                          failed=1
+                          continue
+                      fi
+                      id="$(gh api graphql -f owner="${OWNER}" -f name="${repo}" \
+                          -f query='query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { id } }' \
+                          --jq .data.repository.id < /dev/null)"
+                      on="$(gh api graphql -f id="${id}" \
+                          -f query='mutation($id: ID!) { updateRepository(input: {repositoryId: $id, hasSponsorshipsEnabled: true}) { repository { hasSponsorshipsEnabled } } }' \
+                          --jq .data.updateRepository.repository.hasSponsorshipsEnabled < /dev/null)"
+                      if [ "${on}" != true ]; then
+                          echo "::error::${repo}: Sponsorships is '${on}' after the update, not true"
+                          failed=1
+                          continue
+                      fi
+                      echo "${repo}: Sponsorships on"
+                  done < "${LIST}"
+                  exit "${failed}"
+
             # Digest of the apply (creates/updates/replaces/deletes, destructive
             # flagged) on the Actions run summary. No PR on a push, so summary only.
             - name: Pulumi digest → step summary

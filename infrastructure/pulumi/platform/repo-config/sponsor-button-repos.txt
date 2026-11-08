@@ -1,0 +1,19 @@
+# Repositories that show a GitHub "Sponsor" button opening the donate page.
+#
+# One line each: the repository name (owner VitruvianSoftware), then the
+# FUNDING.yml in this monorepo that ends up in that repository's .github/. For
+# a public mirror that is the file under the mirrored folder, which Copybara
+# exports to the mirror's root (tools/copybara/copy.bara.sky).
+#
+# GitHub shows the button only when the repository's Sponsorships feature is
+# on, and the Pulumi GitHub provider has no setting for it. So the repo-config
+# apply turns it on for every repository listed here, after `pulumi up`, and
+# reads it back (.github/workflows/_repo-config-apply.yaml). That step also
+# fails when a listed FUNDING.yml is missing. Editing this file re-runs the
+# apply, since it sits under repo-config.
+vitruvian-core          .github/FUNDING.yml
+vitruvian               apps/desktop/vitruvian/.github/FUNDING.yml
+courier                 apps/desktop/courier/.github/FUNDING.yml
+home-speaker            apps/desktop/home-speaker/.github/FUNDING.yml
+vitruvian-remote        apps/mobile/android-remote/.github/FUNDING.yml
+esp32-desk-companion    apps/embedded/esp32-s3/.github/FUNDING.yml

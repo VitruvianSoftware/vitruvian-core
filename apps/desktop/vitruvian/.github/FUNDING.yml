@@ -1,0 +1,10 @@
+# Sponsor button: GitHub reads this file and shows a "Sponsor" button on the
+# repository page that opens the donate page below. It also needs the
+# repository's Sponsorships feature on, which vitruvian-core's repo-config
+# apply turns on for each repository in
+# infrastructure/pulumi/platform/repo-config/sponsor-button-repos.txt.
+# This folder is exported to the root of the public mirror repository, so the
+# file lands in the mirror's own .github/ (tools/copybara/copy.bara.sky).
+# It opens the Vitruvian page, the one the app's Settings > Support > Donate
+# button opens.
+custom: ["https://vitruviansoftware.dev/donate/vitruvian/"]
