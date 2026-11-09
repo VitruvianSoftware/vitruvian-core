@@ -300,9 +300,13 @@ class Check:
         try:
             os.rename(os.path.join(sha_dir, digest), dst)
         except OSError as e:
-            warn(f"Bazelisk's {digest[:12]} download: {why}; could not move it aside ({e})")
+            warn(
+                f"Bazelisk's {digest[:12]} download: {why}; could not move it aside ({e})"
+            )
             return
-        warn(f"moved Bazelisk's {digest[:12]} download aside: {why}; Bazelisk downloads it again")
+        warn(
+            f"moved Bazelisk's {digest[:12]} download aside: {why}; Bazelisk downloads it again"
+        )
 
     # --- our trash -------------------------------------------------------------
 
