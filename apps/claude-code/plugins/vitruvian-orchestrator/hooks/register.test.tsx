@@ -756,3 +756,67 @@ test("the band's phase pill label always fits inside the pill", async ($, on) =>
     await ui.unmount();
   }
 });
+
+test("a helper whose turn ends while its own background work runs stays running until it really finishes", async ($, on) => {
+  mock.clock(on, { now: 1000 });
+  let f: Flow | null = null;
+  let helperStatus = "waiting";
+  on("ui.open", () => ({ value: { isPlaced: true } }));
+  on("state.set", { plugin: PLUGIN, key: "flow" }, (_, e, next) => {
+    f = e.value as Flow | null;
+    return next(e);
+  });
+  on("agent.spawn", async () => ({
+    model: "claude-haiku-5-5",
+    agentId: "wren-bg",
+  }));
+  on("agent.list", () => ({
+    value: [
+      {
+        id: "wren-bg",
+        description: "Build engine",
+        type: "wren",
+        status: helperStatus,
+      },
+    ],
+  }));
+  on("turn.complete", (_, e) => ({
+    text: e.answer,
+    ...(e.usage ? { usage: e.usage } : {}),
+  }));
+
+  await $.tool.call({
+    tool: PROGRESS_TOOL,
+    title: "Background helper",
+    phase: "delegate",
+    tasks: [
+      { title: "Build engine", specialist: "wren", tier: "core", after: [] },
+    ],
+  } as never);
+  await $.agent.spawn({
+    subagentType: "wren",
+    description: "Build engine",
+    prompt: "Hand it to Gemini",
+  });
+
+  const helperTurn = (turnId: string) =>
+    $.turn.complete({
+      turnId,
+      agentId: "wren-bg",
+      reason: "answer",
+      answer: "Gemini is still running",
+      isAborted: false,
+      durationMs: 100,
+    } as never);
+
+  // The driver's turn ends while its Gemini job keeps running.
+  await helperTurn("wren-turn-1");
+  expect(f?.runs.find((r) => r.id === "wren-bg")?.status).toBe("running");
+  expect(f?.tasks[0]?.state).toBe("running");
+
+  // Gemini reports, the driver checks the result and finishes for real.
+  helperStatus = "completed";
+  await helperTurn("wren-turn-2");
+  expect(f?.runs.find((r) => r.id === "wren-bg")?.status).toBe("done");
+  expect(f?.tasks[0]?.state).toBe("review");
+});
