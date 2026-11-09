@@ -47,6 +47,10 @@
       "mode": "enforce",
       "covers": "every other gh command that writes (release, secret, repo, label, ...)"
     },
+    "gh-read": {
+      "mode": "enforce",
+      "covers": "gh reads of this repo (pr view/checks/list, run list/view, workflow list, api GET and GraphQL queries, ...); use agent-app read"
+    },
     "go": {
       "mode": "enforce",
       "covers": "go build/test/vet/run/install/generate/mod/get/fmt"
@@ -95,9 +99,21 @@
       "mode": "enforce",
       "covers": "kubectl writes (apply, delete, patch, edit, exec, rollout, scale, ...) and the kubernetes MCP write tools"
     },
+    "kubectl-read": {
+      "mode": "enforce",
+      "covers": "kubectl reads (get, describe, logs, events, top, rollout status, ...); use the //tools/gitops read targets"
+    },
     "helm": {
       "mode": "enforce",
       "covers": "helm install/upgrade/uninstall/rollback"
+    },
+    "helm-read": {
+      "mode": "enforce",
+      "covers": "helm reads of the cluster (list, status, get, history) and helm template; use //tools/gitops:helm or //tools/ci:chart_render"
+    },
+    "docker": {
+      "mode": "enforce",
+      "covers": "docker/podman build, run, push, exec, compose up: building or running repo images (no Bazel target yet)"
     },
     "bazel-cache": {
       "mode": "enforce",

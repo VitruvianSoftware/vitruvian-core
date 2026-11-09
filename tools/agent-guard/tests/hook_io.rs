@@ -190,13 +190,14 @@ fn kubernetes_mcp() {
         &repo,
         obj(vec![("command", s("get"))]),
     );
-    assert!(h.hook(&p).is_none());
+    // Reads go through //tools/gitops too (kubectl-read).
+    assert_eq!(h.decision_of(&p), "deny");
     let p = claude(
         "mcp__kubernetes__kubectl_rollout",
         &repo,
         obj(vec![("subCommand", s("status"))]),
     );
-    assert!(h.hook(&p).is_none());
+    assert_eq!(h.decision_of(&p), "deny");
 }
 
 #[test]

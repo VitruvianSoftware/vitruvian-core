@@ -26,7 +26,7 @@ use std::collections::{HashMap, HashSet};
 use crate::classify::GitProbe;
 use crate::classify::{
     classify_tool, gh_target_repo, gh_url, is_vitruvian_core_slug, v, Context, Target, Verdict,
-    GUARDRAIL, T_COMMIT, T_GITOPS, T_HELM, T_PR_ENQUEUE,
+    GUARDRAIL, T_COMMIT, T_GITOPS, T_HELM, T_KUBECTL_READ, T_PR_ENQUEUE,
 };
 use crate::invocations::{expand_path, invocations, Invocation};
 use crate::paths::{getcwd, home_dir, isabs, read_text_strict};
@@ -42,7 +42,7 @@ pub const VERSION: &str = "1.0.0";
 pub const MODES: [&str; 3] = ["enforce", "warn", "off"];
 
 /// Categories, in policy order, with what each covers.
-pub const CATEGORIES: [(&str, &str); 27] = [
+pub const CATEGORIES: [(&str, &str); 31] = [
     ("git-commit", "git add / rm / mv / commit"),
     ("git-push", "git push"),
     ("git-history", "git rebase, merge, pull (except ff-only on the primary checkout), reset, cherry-pick, revert, am, bisect, tag"),
@@ -54,6 +54,7 @@ pub const CATEGORIES: [(&str, &str); 27] = [
     ("gh-run", "gh workflow run/enable/disable, gh run rerun/cancel/delete"),
     ("gh-api", "gh api writes and GraphQL mutations"),
     ("gh-other", "every other gh command that writes (release, secret, repo, label, ...)"),
+    ("gh-read", "gh reads of this repo (pr view/checks/list, run list/view, workflow list, api GET and GraphQL queries, ...); use agent-app read"),
     ("go", "go build/test/vet/run/install/generate/mod/get/fmt"),
     ("swift", "swift build/test/run/package, swiftc"),
     ("xcode", "xcodebuild, xcrun notarytool/stapler/altool/swift"),
@@ -66,7 +67,10 @@ pub const CATEGORIES: [(&str, &str); 27] = [
     ("secret-scan", "gitleaks run directly"),
     ("iac", "pulumi and terraform run directly"),
     ("kubectl", "kubectl writes (apply, delete, patch, edit, exec, rollout, scale, ...) and the kubernetes MCP write tools"),
+    ("kubectl-read", "kubectl reads (get, describe, logs, events, top, rollout status, ...); use the //tools/gitops read targets"),
     ("helm", "helm install/upgrade/uninstall/rollback"),
+    ("helm-read", "helm reads of the cluster (list, status, get, history) and helm template; use //tools/gitops:helm or //tools/ci:chart_render"),
+    ("docker", "docker/podman build, run, push, exec, compose up: building or running repo images (no Bazel target yet)"),
     ("bazel-cache", "deleting Bazel output bases (rm -r, bazel clean --expunge, --output_user_root/--output_base overrides)"),
     ("guard-config", "agents changing agent-guard itself, or the files that drive session start"),
     ("oversize", "a command too large to check in time (over 20,000 commands); split it up"),
@@ -734,10 +738,24 @@ pub fn evaluate_tool(
             }
             let ctx = Context::new(home, git_state);
             classify_tool(&Invocation::new(argv, &cwd, vec![]), &ctx).0
-        } else if name == "kubectl_rollout"
-            && ["status", "history"].contains(&str_or_empty(tin.get("subCommand")).as_str())
+        } else if (name == "kubectl_rollout"
+            && ["status", "history"].contains(&str_or_empty(tin.get("subCommand")).as_str()))
+            || [
+                "kubectl_get",
+                "kubectl_describe",
+                "kubectl_logs",
+                "explain_resource",
+                "list_api_resources",
+            ]
+            .contains(&name.as_str())
         {
-            None
+            // Cluster reads go through the //tools/gitops read targets too.
+            Some(v(
+                "kubectl-read",
+                &format!("{} (MCP)", name.replace('_', " ")),
+                Some(T_KUBECTL_READ),
+                "",
+            ))
         } else if [
             "kubectl_apply",
             "kubectl_delete",

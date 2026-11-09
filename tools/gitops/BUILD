@@ -134,6 +134,30 @@ TOOLS = {
         "gitops-cmd.sh",
         ["patch"],
     ),
+    "describe": (
+        "gitops-cmd.sh",
+        ["describe"],
+    ),
+    "logs": (
+        "gitops-cmd.sh",
+        ["logs"],
+    ),
+    "top": (
+        "gitops-cmd.sh",
+        ["top"],
+    ),
+    "events": (
+        "gitops-cmd.sh",
+        ["events"],
+    ),
+    "explain": (
+        "gitops-cmd.sh",
+        ["explain"],
+    ),
+    "api-resources": (
+        "gitops-cmd.sh",
+        ["api-resources"],
+    ),
     "status": (
         "gitops-cmd.sh",
         ["status"],
