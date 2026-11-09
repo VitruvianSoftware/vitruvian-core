@@ -28,7 +28,7 @@
 export class ShellFacade {
   /** Observe camera ownership transfers through the navigation owner. */
   subscribeCameraHandoff(listener) {
-    return this._navigation.subscribeCameraHandoff(listener);
+    return this._navigation?.subscribeCameraHandoff(listener);
   }
 
   get _models3dEnabled() {

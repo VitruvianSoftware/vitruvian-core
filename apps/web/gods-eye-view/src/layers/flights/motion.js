@@ -21,6 +21,7 @@
  */
 
 import * as Cesium from 'cesium';
+import { julianAt } from '../../time/julian.js';
 import {
   COURSE_HOLD_SPEED_MPS,
   lerpAngleDeg,
@@ -178,7 +179,7 @@ export function createMotion({
     const renderTime =
       sampledRenderTime ??
       Cesium.JulianDate.addSeconds(
-        Cesium.JulianDate.now(flightState._scratchRenderTime),
+        julianAt(flightState.now(), flightState._scratchRenderTime),
         -RENDER_DELAY_SEC,
         flightState._scratchRenderTime,
       );
@@ -354,7 +355,7 @@ export function createMotion({
     const history = flightState._positionHistory.get(flightState._trackedIcao);
     if (!history || history.length === 0) return true;
     const renderTime = Cesium.JulianDate.addSeconds(
-      Cesium.JulianDate.now(),
+      julianAt(flightState.now()),
       -RENDER_DELAY_SEC,
       flightState._scratchWarmupTime,
     );

@@ -8,7 +8,7 @@
 # files upstream does not have. See upstream/README.md.
 #
 # change: added (only here), modified (both, but different), deleted (only upstream)
-# base	0088df95ca21b3581b50f49f950569d31c65b9d8	tree	15e67f31a2b8b9b905ce3c64efd84c82697294f3
+# base	6a7a09372a8102a4c2074bb2bf6c65c20e98cb0f	tree	cf82d8b636d9087b8eb15eadbd093563bd3994b2
 # path	change	why
 .dockerignore	modified	Build context for the monorepo's Dockerfile. Upstream now ships its own, for its dev container; this copy keeps the monorepo's.
 BUILD.bazel	added	Bazel targets. Named BUILD.bazel because a file named BUILD collides with upstream's build/ directory on case-insensitive file systems.
@@ -55,7 +55,8 @@ src/app/controls.js	modified	Lands on HOME_VIEW (Irvine, CA) instead of Austin, 
 src/app/startupCamera.test.mjs	modified	Follows flyToAustin's rename to flyToHome.
 src/camera.js	modified	HOME_VIEW, one constant for the landing view, and flyToHome in place of flyToAustin.
 src/data/bundledJson.test.mjs	modified	git grep exits 128 in the Bazel sandbox, which has no .git, as well as 1 for no match.
-src/services/requests.test.mjs	modified	The stalled request holds a timer, so node does not exit before the abort under Bazel, and an already-aborted signal rejects at once.
+src/services/requests.test.mjs	modified	The stalled requests hold a timer, so node does not exit before the abort under Bazel (upstream's own keep-alive covers only one of them), and an already-aborted signal rejects at once.
+src/tooling/osmFeaturesRoute.test.mjs	modified	The hung upstream holds a timer, so node does not exit before the overall budget's unref'd timer fires under Bazel, which cancelled this test and every one after it.
 src/tools/places.test.mjs	modified	The stalled lookups hold a timer, so node does not exit before the abort under Bazel, and an already-aborted signal rejects at once.
 vite.config.js	modified	Replaces vite-plugin-cesium's asset copy with a dereferencing one, because the rules_js fs patches reject its walk over pnpm's symlinks and the bundle shipped without dist/cesium; materializes index.html in place during Bazel builds so Rolldown's native canonicalize stays inside darwin-sandbox.
 src/cyberSonarGpu.js	modified	CYBER_SONAR_CESIUM_VERSION names the cesium release the repository resolves (package.json pins it at the monorepo version), so it follows that version, not upstream's.

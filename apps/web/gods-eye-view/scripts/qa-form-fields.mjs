@@ -61,14 +61,13 @@ try {
       'scene-select',
       'cctv-camera-select',
       'hud-layout-select',
-      'draw-color-select',
       'radio-filter',
       'sdr-gain-select',
     ].map((id) => document.getElementById(id));
     return {
       ids: selects.map((node) => node.id),
       shared:
-        selects.length === 6 &&
+        selects.length === 5 &&
         selects.every((node) => node.classList.contains('gev-field')),
       native: selects.every(
         (node) =>
@@ -80,7 +79,7 @@ try {
     };
   });
   check(
-    'all six panel dropdowns retain native select semantics and shared surface',
+    'all five panel dropdowns retain native select semantics and shared surface',
     inventory.shared && inventory.native,
     inventory,
   );
@@ -304,13 +303,6 @@ try {
         syncShare: false,
       });
   });
-  if (
-    await page.$eval(
-      '#draw-toggle',
-      (node) => node.getAttribute('aria-pressed') !== 'true',
-    )
-  )
-    await page.click('#draw-toggle');
   for (const lang of ['en']) {
     await page.evaluate((lang) => {
       document.documentElement.lang = lang;
@@ -318,12 +310,7 @@ try {
     for (const width of [1440, 620, 390]) {
       await page.setViewport({ width, height: 900 });
       const layout = await page.evaluate(() => {
-        const ids = [
-          'scene-select',
-          'cctv-camera-select',
-          'hud-layout-select',
-          'draw-color-select',
-        ];
+        const ids = ['scene-select', 'cctv-camera-select', 'hud-layout-select'];
         return ids.map((id) => {
           const node = document.getElementById(id),
             rect = node.getBoundingClientRect(),
@@ -454,19 +441,11 @@ try {
         syncShare: false,
       });
   });
-  if (
-    await page.$eval(
-      '#draw-toggle',
-      (node) => node.getAttribute('aria-pressed') !== 'true',
-    )
-  )
-    await page.click('#draw-toggle');
   const translated = await page.evaluate(() => {
     const nodes = [
       'scene-select',
       'cctv-camera-select',
       'hud-layout-select',
-      'draw-color-select',
     ].map((id) => document.getElementById(id));
     return (
       document.documentElement.lang === 'ru' &&

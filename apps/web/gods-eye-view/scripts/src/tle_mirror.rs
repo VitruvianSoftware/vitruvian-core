@@ -53,6 +53,11 @@ pub const MIRRORED_GROUPS: &[&str] = &[
     "glo-ops",
     "galileo",
     "geo",
+    "resource",
+    "weather",
+    "planet",
+    "sar",
+    "science",
     "starlink",
 ];
 

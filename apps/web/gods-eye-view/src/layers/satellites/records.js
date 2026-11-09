@@ -21,7 +21,7 @@
  */
 
 import * as Cesium from 'cesium';
-import { satelliteClassLabel } from '../../data/satelliteClass.js';
+import { satelliteClassText } from '../../data/satelliteClass.js';
 import { ISS_NORAD } from './policy.js';
 
 /**
@@ -60,7 +60,10 @@ export function mapAnalystRecord(raw) {
     // must not leak onto a row that has no satellite identity.
     satelliteClass:
       noradId || group
-        ? satelliteClassLabel(group, { isIss, localize: false })
+        ? satelliteClassText(text(raw?.satelliteClass), group, {
+            isIss,
+            localize: false,
+          })
         : null,
     group,
   };
@@ -101,10 +104,16 @@ export function createRecords({ state, parts }) {
     const limit = Number.isFinite(maxCount)
       ? Math.max(1, Math.floor(maxCount))
       : 2000;
-    const now = new Date();
+    const now = new Date(state.now());
     const result = [];
     const emit = (noradId, sat) => {
       if (result.length >= limit) return false;
+      // A class the user hid stays out of answers too; the tracked one stays.
+      if (
+        noradId !== state._trackedNorad &&
+        parts.controls?._classVisible?.(noradId) === false
+      )
+        return true;
       const pos = analystGeo(noradId, sat, now);
       if (!pos) return true;
       result.push(
@@ -112,6 +121,7 @@ export function createRecords({ state, parts }) {
           noradId,
           name: sat?.name,
           group: sat?.group,
+          satelliteClass: sat?.satelliteClass,
           lat: pos.lat,
           lon: pos.lon,
           altitudeM: pos.altitudeM,

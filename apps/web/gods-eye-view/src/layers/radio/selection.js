@@ -95,6 +95,16 @@ export function createSelection({
     return { filter: layerState._filter, volume: layerState._userVolume };
   }
 
+  // A paused or failed stream of another station would outlive its selection.
+  function releaseStaleRadioStream(stationId) {
+    if (
+      layerState._audioStationId &&
+      layerState._audioStationId !== stationId &&
+      ['paused', 'error'].includes(layerState._audioState)
+    )
+      parts.playback.stopRadioPlayback();
+  }
+
   /** Select a station. Playback occurs only when autoplay is explicitly true. */
 
   function selectRadioStation(
@@ -105,11 +115,18 @@ export function createSelection({
       origin = 'programmatic',
       attemptId = null,
       cameraNavigation = null,
+      playFallback = null,
     } = {},
   ) {
     if (!parts.interaction.radioPresentationAllowed()) return false;
     const station = layerState._stationById.get(String(id));
     if (!station) return false;
+    if (!autoplay) releaseStaleRadioStream(station.id);
+    // Set after the release, which clears fallbacks.
+    if (playFallback) {
+      layerState._playFallbackId = playFallback.id;
+      layerState._playFallbackFocus = playFallback.focus;
+    }
     layerState._tuningUnavailableStationId = null;
     if (
       !parts.navigation.radioCameraNavigationOwnsSelection(
@@ -126,6 +143,7 @@ export function createSelection({
     )
       parts.tuning.endRadioTuning();
     layerState._cancelledTuningPresentationStation = null;
+    const changed = layerState._selectedId !== station.id;
     layerState._selectedId = station.id;
     const generation = ++layerState._selectionGeneration;
     const sessionGeneration = layerState._sessionGeneration;
@@ -144,6 +162,9 @@ export function createSelection({
     if (focus) parts.navigation.focusStation(station);
     parts.presentation.emitState();
     if (autoplay) void parts.playback.playSelectedRadio({ origin, attemptId });
+    // A user step to another station cancels a playback voice prepared.
+    else if (origin === 'user' && changed)
+      parts.presentation.emitPlaybackControl('select', origin);
     return true;
   }
 
@@ -155,6 +176,7 @@ export function createSelection({
       rotate = false,
       stationIds = null,
       autoplay = true,
+      fallback = autoplay,
       origin = 'programmatic',
     } = {},
   ) {
@@ -181,25 +203,29 @@ export function createSelection({
       current < 0
         ? 0
         : (current + (direction < 0 ? -1 : 1) + ranked.length) % ranked.length;
-    layerState._playFallbackId =
-      ranked.length > 1 ? ranked[(nextIndex + 1) % ranked.length].id : null;
+    // Voice defers playback, so its silent step keeps a fallback; silent UI steps do not.
+    const fallbackId =
+      fallback && ranked.length > 1
+        ? ranked[(nextIndex + 1) % ranked.length].id
+        : null;
     const rotationCameraState = rotate
       ? parts.navigation.radioCameraState()
       : null;
     const rotationNavigation = rotate
       ? parts.navigation.beginRadioCameraNavigation(rotationCameraState)
       : null;
-    layerState._playFallbackFocus = rotate
-      ? (fallbackStation) => {
-          parts.navigation.rotateRadioStationIntoView(
-            fallbackStation,
-            0.65,
-            rotationCameraState,
-            rotationNavigation,
-          );
-          return rotationNavigation;
-        }
-      : false;
+    const fallbackFocus =
+      fallback && rotate
+        ? (fallbackStation) => {
+            parts.navigation.rotateRadioStationIntoView(
+              fallbackStation,
+              0.65,
+              rotationCameraState,
+              rotationNavigation,
+            );
+            return rotationNavigation;
+          }
+        : false;
     const station = ranked[nextIndex];
     if (rotate)
       parts.navigation.rotateRadioStationIntoView(
@@ -213,6 +239,7 @@ export function createSelection({
       focus: false,
       origin,
       cameraNavigation: rotationNavigation,
+      playFallback: { id: fallbackId, focus: fallbackFocus },
     });
   }
 
@@ -239,9 +266,12 @@ export function createSelection({
       },
     );
     if (!ranked.length) return null;
-    layerState._playFallbackId = ranked[1]?.id || null;
-    layerState._playFallbackFocus = false;
-    selectRadioStation(ranked[0].id, { autoplay, focus: false, origin });
+    selectRadioStation(ranked[0].id, {
+      autoplay,
+      focus: false,
+      origin,
+      playFallback: { id: ranked[1]?.id || null, focus: false },
+    });
     return ranked[0];
   }
 
