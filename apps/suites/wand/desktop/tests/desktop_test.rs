@@ -40,6 +40,7 @@ use wand_desktop::config::{
 use wand_desktop::glide::{
     GLIDE_DEFAULT_DURATION_US, GLIDE_MAX_DURATION_US, GLIDE_MIN_DURATION_US, GLIDE_TICK_US, Glide,
 };
+use wand_desktop::injector::CANONICAL_KEY_NAMES;
 use wand_desktop::injector::{
     FakeInjector, Injector, InjectorError, PIXEL_SCALE, SCROLL_PIXEL_STEP, scale_move_delta,
     scale_scroll_pixels, scale_scroll_pixels_accum,
@@ -53,9 +54,9 @@ use wand_desktop::linux::{
 };
 #[cfg(target_os = "macos")]
 use wand_desktop::macos::{
-    CANONICAL_KEY_NAMES, DisplayRect, MacosKeySpec, MacosPointToState, NX_KEYTYPE_BRIGHTNESS_UP,
-    NX_KEYTYPE_PLAY, clamp_to_bounds, clamp_to_display_rects, display_containing_point,
-    macos_action_key_spec, macos_keycode_for_key,
+    DisplayRect, MacosKeySpec, MacosPointToState, NX_KEYTYPE_BRIGHTNESS_UP, NX_KEYTYPE_PLAY,
+    clamp_to_bounds, clamp_to_display_rects, display_containing_point, macos_action_key_spec,
+    macos_keycode_for_key,
 };
 use wand_desktop::radial_overlay::{
     RADIAL_VIEWPORT_SIZE, RadialOverlayController, compute_radial_viewport_origin,
@@ -379,82 +380,6 @@ fn replay_session_drives_fake_injector_with_exact_expected_actions() {
 
 #[test]
 fn linux_and_macos_keycode_tables_cover_every_key_and_key_action() {
-    #[cfg(not(target_os = "macos"))]
-    const CANONICAL_KEY_NAMES: &[&str] = &[
-        "a",
-        "b",
-        "c",
-        "d",
-        "e",
-        "f",
-        "g",
-        "h",
-        "i",
-        "j",
-        "k",
-        "l",
-        "m",
-        "n",
-        "o",
-        "p",
-        "q",
-        "r",
-        "s",
-        "t",
-        "u",
-        "v",
-        "w",
-        "x",
-        "y",
-        "z",
-        "0",
-        "1",
-        "2",
-        "3",
-        "4",
-        "5",
-        "6",
-        "7",
-        "8",
-        "9",
-        "Return",
-        "Space",
-        "Tab",
-        "Backspace",
-        "Delete",
-        "Escape",
-        "Up",
-        "Down",
-        "Left",
-        "Right",
-        "Home",
-        "End",
-        "PageUp",
-        "PageDown",
-        "F1",
-        "F2",
-        "F3",
-        "F4",
-        "F5",
-        "F6",
-        "F7",
-        "F8",
-        "F9",
-        "F10",
-        "F11",
-        "F12",
-        "-",
-        "=",
-        "[",
-        "]",
-        "\\",
-        ";",
-        "'",
-        ",",
-        ".",
-        "/",
-        "`",
-    ];
     #[cfg(target_os = "macos")]
     let mut mac_codes = HashSet::new();
     let mut linux_codes = HashSet::new();
