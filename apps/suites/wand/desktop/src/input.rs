@@ -22,13 +22,13 @@
 //! plus deterministic replay session execution.
 
 use crate::config::get_gyro_touchpad_scroll;
-use crate::glide::{Glide, GLIDE_TICK_US};
+use crate::glide::{GLIDE_TICK_US, Glide};
 #[cfg(not(target_os = "macos"))]
 use crate::injector::FakeInjector;
 use crate::injector::Injector;
 use crate::radial_overlay::RadialOverlayController;
 use crate::status::Status;
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 use wand_core::replay::parse as parse_replay;
@@ -336,8 +336,7 @@ impl InputPipeline {
                     }
                     if self.engine.config().settings.motion_glide {
                         if let Some((gx, gy)) = self.glide.on_point_to((*x, *y), t_us)
-                            && let Err(err) =
-                                self.injector.apply(&Action::PointTo { x: gx, y: gy })
+                            && let Err(err) = self.injector.apply(&Action::PointTo { x: gx, y: gy })
                         {
                             log::debug!("Injector error on PointTo: {err}");
                         }

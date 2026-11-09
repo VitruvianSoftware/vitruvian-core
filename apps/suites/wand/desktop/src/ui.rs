@@ -38,8 +38,8 @@ use wand_core::{
 
 use crate::ble::BleCommand;
 use crate::config::{
-    DebouncedSaver, ThemePreference, get_gyro_touchpad_scroll, get_theme,
-    set_gyro_touchpad_scroll, set_theme,
+    DebouncedSaver, ThemePreference, get_gyro_touchpad_scroll, get_theme, set_gyro_touchpad_scroll,
+    set_theme,
 };
 use crate::input::InputCommand;
 use crate::radial_overlay::{
@@ -160,9 +160,9 @@ impl WandApp {
         let _ = self
             .input_tx
             .send(InputCommand::UpdateConfig(self.config.clone()));
-        let _ = self
-            .ble_tx
-            .send(BleCommand::SetAutoReconnect(self.config.settings.auto_reconnect));
+        let _ = self.ble_tx.send(BleCommand::SetAutoReconnect(
+            self.config.settings.auto_reconnect,
+        ));
     }
 
     fn handle_tray_events(&mut self, ctx: &Context, status_snapshot: &Status) {
@@ -274,9 +274,11 @@ impl WandApp {
 
     fn draw_status_pill(&self, ui: &mut Ui, status: &Status, palette: Palette) {
         let (pill_bg, dot_color, label) = match &status.connection {
-            ConnectionState::Disconnected => {
-                (palette.surface_2, palette.neutral_500, "Disconnected".to_owned())
-            }
+            ConnectionState::Disconnected => (
+                palette.surface_2,
+                palette.neutral_500,
+                "Disconnected".to_owned(),
+            ),
             ConnectionState::Scanning => {
                 (palette.accent_quiet, palette.accent, "Scanning…".to_owned())
             }
@@ -316,9 +318,7 @@ impl WandApp {
     }
 
     fn draw_battery_indicator(&self, ui: &mut Ui, status: &Status, palette: Palette) {
-        let bars = status
-            .battery_percent
-            .map_or(0, Status::battery_level_bars);
+        let bars = status.battery_percent.map_or(0, Status::battery_level_bars);
         let pct_text = status
             .battery_percent
             .map_or_else(|| "—%".to_owned(), |p| format!("{p}%"));
@@ -339,8 +339,7 @@ impl WandApp {
             let (icon_rect, _) = ui.allocate_exact_size(vec2(24.0, 12.0), Sense::hover());
             let painter = ui.painter();
             let body = Rect::from_min_size(icon_rect.min, vec2(20.0, 12.0));
-            let tip =
-                Rect::from_min_size(pos2(body.max.x, body.center().y - 3.0), vec2(3.0, 6.0));
+            let tip = Rect::from_min_size(pos2(body.max.x, body.center().y - 3.0), vec2(3.0, 6.0));
             painter.rect_stroke(
                 body,
                 CornerRadius::ZERO,
@@ -802,8 +801,7 @@ impl WandApp {
                         }
                     } else {
                         ui.label(
-                            RichText::new("Reset all controls to defaults?")
-                                .color(palette.warn),
+                            RichText::new("Reset all controls to defaults?").color(palette.warn),
                         );
                         if ui.button("Confirm reset").clicked() {
                             let def = Config::for_platform(Platform::Desktop);
@@ -907,8 +905,10 @@ impl WandApp {
         ui.heading("Radial menu");
         ui.add_space(spacing::S2);
         ui.label(
-            RichText::new("Configure the 8 radial slots (0 = Up, clockwise) and preview the wheel.")
-                .color(palette.text_dim),
+            RichText::new(
+                "Configure the 8 radial slots (0 = Up, clockwise) and preview the wheel.",
+            )
+            .color(palette.text_dim),
         );
         ui.add_space(spacing::S3);
 
@@ -986,7 +986,8 @@ impl WandApp {
                                         match act {
                                             Action::Key(chord) => {
                                                 let target = ChordCaptureTarget::RadialSlot(idx);
-                                                let is_capturing = self.capturing_chord == Some(target);
+                                                let is_capturing =
+                                                    self.capturing_chord == Some(target);
                                                 let btn_text = if is_capturing {
                                                     "Press key…".to_owned()
                                                 } else {
@@ -1085,8 +1086,7 @@ impl WandApp {
                     ui.vertical_centered(|ui| {
                         ui.label(RichText::new("Touchpad").strong().color(palette.text));
                         ui.add_space(spacing::S2);
-                        let (rect, _) =
-                            ui.allocate_exact_size(vec2(150.0, 150.0), Sense::hover());
+                        let (rect, _) = ui.allocate_exact_size(vec2(150.0, 150.0), Sense::hover());
                         let painter = ui.painter();
                         let center = rect.center();
                         let radius = 68.0;
@@ -1121,10 +1121,10 @@ impl WandApp {
                         ui.add_space(spacing::S3);
                         ui.label(RichText::new("Buttons").strong().color(palette.text));
                         ui.add_space(spacing::S2);
-                        let (click, home, app, vol_down, vol_up) = sample.map_or(
-                            (false, false, false, false, false),
-                            |s| (s.click, s.home, s.app, s.vol_down, s.vol_up),
-                        );
+                        let (click, home, app, vol_down, vol_up) = sample
+                            .map_or((false, false, false, false, false), |s| {
+                                (s.click, s.home, s.app, s.vol_down, s.vol_up)
+                            });
                         ui.horizontal_wrapped(|ui| {
                             for (name, down) in [
                                 ("Click", click),
@@ -1169,15 +1169,24 @@ impl WandApp {
                 .inner_margin(Margin::same(spacing::S4 as i8))
                 .show(ui, |ui| {
                     ui.vertical(|ui| {
-                        ui.label(RichText::new("Gyroscope (rad/s)").strong().color(palette.text));
+                        ui.label(
+                            RichText::new("Gyroscope (rad/s)")
+                                .strong()
+                                .color(palette.text),
+                        );
                         ui.add_space(spacing::S2);
-                        let gyro = sample.map_or([0.0, 0.0, 0.0], |s| [s.gyro.x, s.gyro.y, s.gyro.z]);
+                        let gyro =
+                            sample.map_or([0.0, 0.0, 0.0], |s| [s.gyro.x, s.gyro.y, s.gyro.z]);
                         for (axis, val) in [("X", gyro[0]), ("Y", gyro[1]), ("Z", gyro[2])] {
                             draw_sensor_bar(ui, axis, val, 10.0, palette.accent, palette);
                         }
 
                         ui.add_space(spacing::S4);
-                        ui.label(RichText::new("Accelerometer (m/s²)").strong().color(palette.text));
+                        ui.label(
+                            RichText::new("Accelerometer (m/s²)")
+                                .strong()
+                                .color(palette.text),
+                        );
                         ui.add_space(spacing::S2);
                         let accel =
                             sample.map_or([0.0, 0.0, 0.0], |s| [s.accel.x, s.accel.y, s.accel.z]);
@@ -1311,11 +1320,7 @@ impl eframe::App for WandApp {
             ctx.send_viewport_cmd(ViewportCommand::Visible(false));
         }
 
-        let status_snapshot = self
-            .status
-            .lock()
-            .map(|s| s.clone())
-            .unwrap_or_default();
+        let status_snapshot = self.status.lock().map(|s| s.clone()).unwrap_or_default();
 
         self.handle_tray_events(&ctx, &status_snapshot);
         let _ = self.saver.poll_save(&self.config, Instant::now());
@@ -1330,29 +1335,27 @@ impl eframe::App for WandApp {
             .fill(palette.bg)
             .inner_margin(Margin::same(spacing::S4 as i8));
 
-        CentralPanel::default()
-            .frame(central_frame)
-            .show(ui, |ui| {
-                ScrollArea::vertical()
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| match self.section {
-                        SidebarSection::Connection => {
-                            self.render_connection_section(ui, &status_snapshot, palette);
-                        }
-                        SidebarSection::Controls => {
-                            self.render_controls_section(ui, palette);
-                        }
-                        SidebarSection::Bindings => {
-                            self.render_bindings_section(ui, palette);
-                        }
-                        SidebarSection::RadialMenu => {
-                            self.render_radial_section(ui, palette);
-                        }
-                        SidebarSection::TestMode => {
-                            self.render_test_mode_section(ui, &status_snapshot, palette);
-                        }
-                    });
-            });
+        CentralPanel::default().frame(central_frame).show(ui, |ui| {
+            ScrollArea::vertical()
+                .auto_shrink([false, false])
+                .show(ui, |ui| match self.section {
+                    SidebarSection::Connection => {
+                        self.render_connection_section(ui, &status_snapshot, palette);
+                    }
+                    SidebarSection::Controls => {
+                        self.render_controls_section(ui, palette);
+                    }
+                    SidebarSection::Bindings => {
+                        self.render_bindings_section(ui, palette);
+                    }
+                    SidebarSection::RadialMenu => {
+                        self.render_radial_section(ui, palette);
+                    }
+                    SidebarSection::TestMode => {
+                        self.render_test_mode_section(ui, &status_snapshot, palette);
+                    }
+                });
+        });
 
         self.render_radial_overlay_viewport(&ctx, &status_snapshot, palette);
 
@@ -1529,17 +1532,15 @@ fn render_binding_cell(
                         format!("Chord: {}", format_chord(chord))
                     };
                     if ui
-                        .add(
-                            egui::Button::new(
-                                RichText::new(btn_text)
-                                    .size(type_scale::SMALL)
-                                    .color(if is_capturing {
-                                        palette.accent_text
-                                    } else {
-                                        palette.text_dim
-                                    }),
+                        .add(egui::Button::new(
+                            RichText::new(btn_text).size(type_scale::SMALL).color(
+                                if is_capturing {
+                                    palette.accent_text
+                                } else {
+                                    palette.text_dim
+                                },
                             ),
-                        )
+                        ))
                         .clicked()
                     {
                         *capturing_chord = Some(target);
@@ -1794,7 +1795,11 @@ fn draw_radial_wheel(
         let badge_radius = if is_hi { 20.0 } else { 15.0 };
         painter.circle_filled(badge_pos, badge_radius, slot_color);
         if is_hi {
-            painter.circle_stroke(badge_pos, badge_radius + 2.0, Stroke::new(2.0, palette.text));
+            painter.circle_stroke(
+                badge_pos,
+                badge_radius + 2.0,
+                Stroke::new(2.0, palette.text),
+            );
         }
 
         let label = slots.get(idx).map_or("", |s| s.label.as_str());

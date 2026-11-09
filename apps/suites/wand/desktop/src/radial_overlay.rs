@@ -20,7 +20,7 @@
 
 //! 8-slot radial menu overlay state machine and Wayland/cursor viewport positioning glue.
 
-use wand_core::{slot_for, Action, RadialSlot};
+use wand_core::{Action, RadialSlot, slot_for};
 
 /// Fixed width and height of the radial menu child viewport in points (`280×280`).
 pub const RADIAL_VIEWPORT_SIZE: f32 = 280.0;
@@ -58,13 +58,14 @@ pub fn compute_radial_viewport_origin(
     screen_size: (f32, f32),
 ) -> (f32, f32) {
     let half = RADIAL_VIEWPORT_SIZE * 0.5;
-    if !is_wayland
-        && let Some((cx, cy)) = cursor_pos
-    {
+    if !is_wayland && let Some((cx, cy)) = cursor_pos {
         return (cx - half, cy - half);
     }
     let (sw, sh) = screen_size;
-    ((sw - RADIAL_VIEWPORT_SIZE) * 0.5, (sh - RADIAL_VIEWPORT_SIZE) * 0.5)
+    (
+        (sw - RADIAL_VIEWPORT_SIZE) * 0.5,
+        (sh - RADIAL_VIEWPORT_SIZE) * 0.5,
+    )
 }
 
 /// Stateful controller for the desktop 8-slot radial menu overlay.

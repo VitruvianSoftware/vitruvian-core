@@ -74,8 +74,7 @@ pub fn run_gui() -> Result<(), String> {
         st.permission_message = perm_msg;
     }
 
-    let (input_tx, input_join) =
-        spawn_input_thread(config.clone(), injector, Arc::clone(&status));
+    let (input_tx, input_join) = spawn_input_thread(config.clone(), injector, Arc::clone(&status));
     let (ble_tx, _ble_join) = spawn_ble_thread(
         config.settings.auto_reconnect,
         input_tx.clone(),

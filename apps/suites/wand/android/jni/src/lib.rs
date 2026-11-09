@@ -5,16 +5,16 @@
 
 pub mod bridge;
 
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Once;
 
+use jni::EnvUnowned;
 use jni::errors::LogErrorAndDefault;
 use jni::objects::{JByteArray, JClass, JString, Reference as _};
-use jni::sys::{jboolean, jbyte, jint, jlong, JNI_FALSE, JNI_TRUE};
-use jni::EnvUnowned;
+use jni::sys::{JNI_FALSE, JNI_TRUE, jboolean, jbyte, jint, jlong};
 
 use crate::bridge::{
-    catch_to_json, create_handle, destroy_handle, error_json, with_bridge, Bridge,
+    Bridge, catch_to_json, create_handle, destroy_handle, error_json, with_bridge,
 };
 
 static LOGGER_INIT: Once = Once::new();

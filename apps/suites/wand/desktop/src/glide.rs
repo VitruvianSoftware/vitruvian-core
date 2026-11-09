@@ -176,11 +176,11 @@ impl Glide {
 
         if now_us > prev_us {
             let interval_us = (now_us - prev_us) as f32;
-            self.ewma_us =
-                (GLIDE_EWMA_ALPHA * interval_us + (1.0 - GLIDE_EWMA_ALPHA) * self.ewma_us)
-                    .clamp(GLIDE_MIN_DURATION_US as f32, GLIDE_MAX_DURATION_US as f32);
-            let ewma_dur = (self.ewma_us.round() as u64)
-                .clamp(GLIDE_MIN_DURATION_US, GLIDE_MAX_DURATION_US);
+            self.ewma_us = (GLIDE_EWMA_ALPHA * interval_us
+                + (1.0 - GLIDE_EWMA_ALPHA) * self.ewma_us)
+                .clamp(GLIDE_MIN_DURATION_US as f32, GLIDE_MAX_DURATION_US as f32);
+            let ewma_dur =
+                (self.ewma_us.round() as u64).clamp(GLIDE_MIN_DURATION_US, GLIDE_MAX_DURATION_US);
             self.duration_us = ewma_dur
                 .max(rem_us)
                 .clamp(GLIDE_MIN_DURATION_US, GLIDE_MAX_DURATION_US);

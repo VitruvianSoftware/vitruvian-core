@@ -26,7 +26,9 @@
 //! `sanguine`, `slate-400`, `slate-600`, `neutral-500`), so named radial slot
 //! colours map onto those exact tokens (or parse `#RRGGBB` hex when user-entered).
 
-use egui::{Color32, CornerRadius, FontFamily, FontId, Margin, Stroke, Style, TextStyle, Visuals, vec2};
+use egui::{
+    Color32, CornerRadius, FontFamily, FontId, Margin, Stroke, Style, TextStyle, Visuals, vec2,
+};
 
 use crate::config::ThemePreference;
 
@@ -228,7 +230,10 @@ pub fn style_for_palette(p: Palette, dark_mode: bool) -> Style {
 /// Apply the Vitruvian theme to `ctx` according to `pref`.
 pub fn apply_theme(ctx: &egui::Context, pref: ThemePreference) {
     ctx.set_style_of(egui::Theme::Dark, style_for_palette(dark_palette(), true));
-    ctx.set_style_of(egui::Theme::Light, style_for_palette(light_palette(), false));
+    ctx.set_style_of(
+        egui::Theme::Light,
+        style_for_palette(light_palette(), false),
+    );
     let egui_pref = match pref {
         ThemePreference::System => egui::ThemePreference::System,
         ThemePreference::Light => egui::ThemePreference::Light,

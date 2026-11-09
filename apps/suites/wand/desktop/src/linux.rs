@@ -504,7 +504,7 @@ impl LinuxPointToConverter {
 #[cfg(target_os = "linux")]
 mod imp {
     use super::*;
-    use crate::injector::{scale_move_delta, scale_scroll_pixels_accum, Injector, InjectorError};
+    use crate::injector::{Injector, InjectorError, scale_move_delta, scale_scroll_pixels_accum};
     use crate::launch::launch_app;
     use evdev::uinput::VirtualDevice;
     use evdev::{AttributeSet, EventType, InputEvent, KeyCode, RelativeAxisCode};

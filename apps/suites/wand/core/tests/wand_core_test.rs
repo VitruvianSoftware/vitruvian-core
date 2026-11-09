@@ -1310,14 +1310,7 @@ fn real_recording_absolute_mode_yaw_and_pitch_windows() {
                 }
             }
         }
-        (
-            start_x.unwrap_or(0.0),
-            end_x,
-            min_x,
-            max_x,
-            min_y,
-            max_y,
-        )
+        (start_x.unwrap_or(0.0), end_x, min_x, max_x, min_y, max_y)
     };
 
     // Yaw window (~17.5–23 s): x swings both ways, returns near its starting value, and |x| range dominates |y| range.
@@ -1368,9 +1361,13 @@ fn absolute_mode_overshoot_past_edge_and_return_realigns_to_zero() {
     let mut peak_x = 0.0f32;
     for _ in 0..45 {
         t_us += dt_us;
-        if let Some(Action::PointTo { x, .. }) =
-            ptr.update_at(&turn_right, PointerMode::Gyro, &settings, Vec3::default(), t_us)
-        {
+        if let Some(Action::PointTo { x, .. }) = ptr.update_at(
+            &turn_right,
+            PointerMode::Gyro,
+            &settings,
+            Vec3::default(),
+            t_us,
+        ) {
             peak_x = peak_x.max(x);
         }
     }
@@ -1387,9 +1384,13 @@ fn absolute_mode_overshoot_past_edge_and_return_realigns_to_zero() {
     let mut final_x = peak_x;
     for _ in 0..45 {
         t_us += dt_us;
-        if let Some(Action::PointTo { x, .. }) =
-            ptr.update_at(&turn_left, PointerMode::Gyro, &settings, Vec3::default(), t_us)
-        {
+        if let Some(Action::PointTo { x, .. }) = ptr.update_at(
+            &turn_left,
+            PointerMode::Gyro,
+            &settings,
+            Vec3::default(),
+            t_us,
+        ) {
             final_x = x;
         }
     }
@@ -1430,7 +1431,10 @@ fn absolute_mode_packet_rate_independence_30hz_vs_60hz() {
     };
     let x_60hz = final_x_at_rate(16_667, 61);
     let x_30hz = final_x_at_rate(33_333, 31);
-    assert!(x_60hz > 0.5, "expected positive x displacement, got {x_60hz}");
+    assert!(
+        x_60hz > 0.5,
+        "expected positive x displacement, got {x_60hz}"
+    );
     assert!(
         (x_60hz - x_30hz).abs() / x_60hz.abs() < 0.05,
         "expected 30 Hz ({x_30hz}) and 60 Hz ({x_60hz}) final x to match within ±5%"
@@ -1441,8 +1445,10 @@ fn absolute_mode_packet_rate_independence_30hz_vs_60hz() {
 fn entering_gyro_mode_and_recenter_action_reset_aim_to_zero_and_radial_uses_point_to_deltas() {
     let mut cfg = Config::for_platform(Platform::Desktop);
     cfg.settings.ema_smoothing = 0.0;
-    cfg.bindings
-        .insert((Button::Home, Press::Short), Binding::once(Action::Recenter));
+    cfg.bindings.insert(
+        (Button::Home, Press::Short),
+        Binding::once(Action::Recenter),
+    );
     cfg.bindings.insert(
         (Button::VolDown, Press::Short),
         Binding::hold(Action::RadialMenu),
@@ -1496,7 +1502,10 @@ fn entering_gyro_mode_and_recenter_action_reset_aim_to_zero_and_radial_uses_poin
         ..Default::default()
     }
     .build();
-    assert_eq!(engine.feed(&vol_down_hold, 100_000), vec![Action::RadialMenu]);
+    assert_eq!(
+        engine.feed(&vol_down_hold, 100_000),
+        vec![Action::RadialMenu]
+    );
     for step in 1..=5 {
         let _ = engine.feed(&vol_down_turn_right, 100_000 + step * 16_667);
     }
@@ -1508,16 +1517,26 @@ fn entering_gyro_mode_and_recenter_action_reset_aim_to_zero_and_radial_uses_poin
 fn config_v2_migration_defaults_new_fields_and_clamps_nan_span() {
     assert_eq!(CONFIG_VERSION, 4);
     assert_eq!(
-        Config::for_platform(Platform::Desktop).settings.pointing_mode,
+        Config::for_platform(Platform::Desktop)
+            .settings
+            .pointing_mode,
         PointingMode::Absolute
     );
-    assert!(Config::for_platform(Platform::Desktop).settings.motion_glide);
+    assert!(
+        Config::for_platform(Platform::Desktop)
+            .settings
+            .motion_glide
+    );
     assert_eq!(
-        Config::for_platform(Platform::Android).settings.pointing_mode,
+        Config::for_platform(Platform::Android)
+            .settings
+            .pointing_mode,
         PointingMode::Relative
     );
     assert_eq!(
-        Config::for_platform(Platform::AndroidTv).settings.pointing_mode,
+        Config::for_platform(Platform::AndroidTv)
+            .settings
+            .pointing_mode,
         PointingMode::Relative
     );
 
@@ -1534,7 +1553,10 @@ fn config_v2_migration_defaults_new_fields_and_clamps_nan_span() {
     }"#;
     let parsed_desktop: Config =
         serde_json::from_str(v2_desktop_json).expect("deserialize v2 desktop config");
-    assert_eq!(parsed_desktop.settings.pointing_mode, PointingMode::Absolute);
+    assert_eq!(
+        parsed_desktop.settings.pointing_mode,
+        PointingMode::Absolute
+    );
     assert_eq!(parsed_desktop.settings.pointing_span_deg, 50.0);
     assert_eq!(parsed_desktop.settings.screen_width_px, 1920);
     assert!(parsed_desktop.settings.motion_glide);
@@ -1551,7 +1573,10 @@ fn config_v2_migration_defaults_new_fields_and_clamps_nan_span() {
     }"#;
     let parsed_android: Config =
         serde_json::from_str(v2_android_json).expect("deserialize v2 android config");
-    assert_eq!(parsed_android.settings.pointing_mode, PointingMode::Relative);
+    assert_eq!(
+        parsed_android.settings.pointing_mode,
+        PointingMode::Relative
+    );
     assert_eq!(parsed_android.settings.pointing_span_deg, 50.0);
 
     // NaN and out-of-range pointing_span_deg / screen_width_px are clamped by sanitize().

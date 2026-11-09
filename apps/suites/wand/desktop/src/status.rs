@@ -21,7 +21,7 @@
 //! Shared [`Status`] between BLE, input, tray, and UI threads, including
 //! once-per-connection low-battery (`< 15%`) alert tracking.
 
-use wand_core::{battery_low, Sample};
+use wand_core::{Sample, battery_low};
 
 /// Current BLE connection lifecycle state displayed in the header status pill.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]

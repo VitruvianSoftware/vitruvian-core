@@ -30,35 +30,34 @@ use wand_core::{
     NavAction, Platform, PointingMode, Press, RadialSlot, SystemAction, VolumeAction,
 };
 
-use wand_desktop::ble::{matches_daydream_peripheral, next_backoff, INITIAL_BACKOFF};
-use wand_desktop::cli::{parse_cli_args, CliCommand};
+use wand_desktop::ble::{INITIAL_BACKOFF, matches_daydream_peripheral, next_backoff};
+use wand_desktop::cli::{CliCommand, parse_cli_args};
 use wand_desktop::config::{
-    backup_config_path, backup_config_paths, config_path_for, deserialize_config_toml,
-    get_gyro_touchpad_scroll, get_theme, load_config_from, save_config_to,
-    set_gyro_touchpad_scroll, set_theme, DebouncedSaver, ThemePreference, MAX_CONFIG_BACKUPS,
-    SAVE_DEBOUNCE,
+    DebouncedSaver, MAX_CONFIG_BACKUPS, SAVE_DEBOUNCE, ThemePreference, backup_config_path,
+    backup_config_paths, config_path_for, deserialize_config_toml, get_gyro_touchpad_scroll,
+    get_theme, load_config_from, save_config_to, set_gyro_touchpad_scroll, set_theme,
 };
 use wand_desktop::glide::{
-    Glide, GLIDE_DEFAULT_DURATION_US, GLIDE_MAX_DURATION_US, GLIDE_MIN_DURATION_US, GLIDE_TICK_US,
+    GLIDE_DEFAULT_DURATION_US, GLIDE_MAX_DURATION_US, GLIDE_MIN_DURATION_US, GLIDE_TICK_US, Glide,
 };
 use wand_desktop::injector::{
-    scale_move_delta, scale_scroll_pixels, scale_scroll_pixels_accum, FakeInjector, Injector,
-    InjectorError, PIXEL_SCALE, SCROLL_PIXEL_STEP,
+    FakeInjector, Injector, InjectorError, PIXEL_SCALE, SCROLL_PIXEL_STEP, scale_move_delta,
+    scale_scroll_pixels, scale_scroll_pixels_accum,
 };
 use wand_desktop::input::{
-    drive_replay_with_injector, spawn_input_thread, InputCmd, InputCommand, InputPipeline,
+    InputCmd, InputCommand, InputPipeline, drive_replay_with_injector, spawn_input_thread,
 };
 use wand_desktop::launch::build_launch_command;
 use wand_desktop::linux::{
-    linux_action_key_spec, linux_keycode_for_key, LinuxKeySpec, LinuxPointToConverter, KEY_C,
+    KEY_C, LinuxKeySpec, LinuxPointToConverter, linux_action_key_spec, linux_keycode_for_key,
 };
 use wand_desktop::macos::{
-    clamp_to_bounds, clamp_to_display_rects, display_containing_point, macos_action_key_spec,
-    macos_keycode_for_key, DisplayRect, MacosKeySpec, MacosPointToState, CANONICAL_KEY_NAMES,
-    NX_KEYTYPE_BRIGHTNESS_UP, NX_KEYTYPE_PLAY,
+    CANONICAL_KEY_NAMES, DisplayRect, MacosKeySpec, MacosPointToState, NX_KEYTYPE_BRIGHTNESS_UP,
+    NX_KEYTYPE_PLAY, clamp_to_bounds, clamp_to_display_rects, display_containing_point,
+    macos_action_key_spec, macos_keycode_for_key,
 };
 use wand_desktop::radial_overlay::{
-    compute_radial_viewport_origin, RadialOverlayController, RADIAL_VIEWPORT_SIZE,
+    RADIAL_VIEWPORT_SIZE, RadialOverlayController, compute_radial_viewport_origin,
 };
 use wand_desktop::status::Status;
 use wand_desktop::tray::format_tray_tooltip;
@@ -168,15 +167,19 @@ fn debounced_saver_waits_500ms_before_writing() {
     assert!(saver.is_dirty());
 
     // Before 500 ms: no flush.
-    assert!(!saver
-        .poll_save(&cfg, t0 + Duration::from_millis(250))
-        .expect("poll check"));
+    assert!(
+        !saver
+            .poll_save(&cfg, t0 + Duration::from_millis(250))
+            .expect("poll check")
+    );
     assert!(!cfg_path.exists());
 
     // At 500 ms: flushes to disk.
-    assert!(saver
-        .poll_save(&cfg, t0 + SAVE_DEBOUNCE)
-        .expect("flush due"));
+    assert!(
+        saver
+            .poll_save(&cfg, t0 + SAVE_DEBOUNCE)
+            .expect("flush due")
+    );
     assert!(!saver.is_dirty());
     assert!(cfg_path.exists());
     let on_disk = load_config_from(&cfg_path);
@@ -277,7 +280,10 @@ fn replay_session_drives_fake_injector_with_exact_expected_actions() {
     let unglided_point_to = match emitted[4] {
         Action::PointTo { x, y } => {
             assert_eq!(x, 0.0);
-            assert!(y < -0.01, "expected negative (upward) gyro PointTo.y, got {y}");
+            assert!(
+                y < -0.01,
+                "expected negative (upward) gyro PointTo.y, got {y}"
+            );
             (x, y)
         }
         ref other => panic!("expected PointTo at index 4, got {other:?}"),
@@ -1211,11 +1217,7 @@ fn glide_linear_interpolation_halfway_exact_target_and_never_overshoots() {
                 "overshoot at probe_t={probe_t}: pos=({px}, {py}) outside [{min_x}..={max_x}, {min_y}..={max_y}]"
             );
             if probe_t >= now_us + dur {
-                assert_eq!(
-                    (px, py),
-                    (gx, gy),
-                    "must hold exact target after duration"
-                );
+                assert_eq!((px, py), (gx, gy), "must hold exact target after duration");
             }
         }
 
@@ -1304,7 +1306,10 @@ fn glide_recenter_toggle_gyro_and_release_all_snap_immediately() {
     // Resetting Glide (as on Recenter / ToggleGyro / ReleaseAll) snaps the next PointTo immediately.
     glide.reset();
     assert!(!glide.is_active());
-    assert_eq!(glide.on_point_to((-0.25, 0.125), 50_000), Some((-0.25, 0.125)));
+    assert_eq!(
+        glide.on_point_to((-0.25, 0.125), 50_000),
+        Some((-0.25, 0.125))
+    );
     assert!(!glide.is_active());
     assert_eq!(glide.rendered(), (-0.25, 0.125));
     assert_eq!(glide.step(58_000), None);
@@ -1312,8 +1317,10 @@ fn glide_recenter_toggle_gyro_and_release_all_snap_immediately() {
     // End-to-end through InputPipeline: verify Recenter and ReleaseAll snap the next PointTo immediately.
     let mut cfg = Config::for_platform(Platform::Desktop);
     cfg.settings.ema_smoothing = 0.0;
-    cfg.bindings
-        .insert((Button::Home, Press::Short), Binding::once(Action::Recenter));
+    cfg.bindings.insert(
+        (Button::Home, Press::Short),
+        Binding::once(Action::Recenter),
+    );
     let (inj, fake_arc) = SharedFakeInjector::new();
     let status = Arc::new(Mutex::new(Status::default()));
     let mut pipeline = InputPipeline::new(cfg, Box::new(inj), status);

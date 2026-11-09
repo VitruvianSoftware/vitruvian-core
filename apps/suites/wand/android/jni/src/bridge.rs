@@ -6,7 +6,7 @@
 //! catching in this module allows full host-side unit testing via `wand_rust_test`
 //! without a JVM.
 
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Mutex;
 use wand_core::{Config, Engine, Platform};
 
@@ -438,20 +438,23 @@ mod tests {
             Ok("{\"ok\":true}".to_string())
         });
         let val: serde_json::Value = serde_json::from_str(&caught).expect("error json is valid");
-        assert!(val
-            .get("error")
-            .and_then(|v| v.as_str())
-            .is_some_and(|s| s.contains("invalid config JSON")));
+        assert!(
+            val.get("error")
+                .and_then(|v| v.as_str())
+                .is_some_and(|s| s.contains("invalid config JSON"))
+        );
 
         let panic_caught = catch_to_json(|| -> Result<String, String> {
             panic!("simulated panic in JNI bridge");
         });
         let panic_val: serde_json::Value =
             serde_json::from_str(&panic_caught).expect("panic json is valid");
-        assert!(panic_val
-            .get("error")
-            .and_then(|v| v.as_str())
-            .is_some_and(|s| s.contains("simulated panic")));
+        assert!(
+            panic_val
+                .get("error")
+                .and_then(|v| v.as_str())
+                .is_some_and(|s| s.contains("simulated panic"))
+        );
     }
 
     #[test]

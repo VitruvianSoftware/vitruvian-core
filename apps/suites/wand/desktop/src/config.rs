@@ -28,7 +28,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use wand_core::{
-    default_bindings, Binding, Button, Config, Platform, Press, RadialSlot, RADIAL_SLOT_COUNT,
+    Binding, Button, Config, Platform, Press, RADIAL_SLOT_COUNT, RadialSlot, default_bindings,
 };
 
 /// Maximum number of timestamped `.bak` files retained when corrupt configs are encountered.
@@ -127,11 +127,7 @@ pub fn set_gyro_touchpad_scroll(config: &mut Config, enabled: bool) {
 ///
 /// - macOS: `<HOME>/Library/Application Support/dev.vitruvian.wand/config.toml`
 /// - Linux: `<XDG_CONFIG_HOME>/wand/config.toml` (fallback `<HOME>/.config/wand/config.toml`)
-pub fn config_path_for(
-    os: &str,
-    home: Option<&Path>,
-    xdg_config_home: Option<&Path>,
-) -> PathBuf {
+pub fn config_path_for(os: &str, home: Option<&Path>, xdg_config_home: Option<&Path>) -> PathBuf {
     let home_dir = home
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from("."));
@@ -473,7 +469,10 @@ fn parse_settings_table(tbl: &toml::Table, settings: &mut wand_core::Settings) -
     had_bad_field
 }
 
-fn parse_bindings_table(tbl: &toml::Table, bindings: &mut BTreeMap<(Button, Press), Binding>) -> bool {
+fn parse_bindings_table(
+    tbl: &toml::Table,
+    bindings: &mut BTreeMap<(Button, Press), Binding>,
+) -> bool {
     let defaults = default_bindings(Platform::Desktop);
     let mut parsed = BTreeMap::new();
     let mut had_bad_field = false;

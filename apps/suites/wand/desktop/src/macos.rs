@@ -21,7 +21,7 @@
 //! macOS event injection (`CoreGraphics` + `AppKit` `NSSystemDefined` media/brightness keys),
 //! virtual keycode mapping table, per-display union clamping, and Accessibility permission helpers.
 
-use crate::injector::{scale_move_delta, scale_scroll_pixels_accum, Injector, InjectorError};
+use crate::injector::{Injector, InjectorError, scale_move_delta, scale_scroll_pixels_accum};
 use crate::launch::launch_app;
 use std::process::Command;
 use wand_core::{
@@ -944,7 +944,7 @@ mod imp {
 }
 
 #[cfg(target_os = "macos")]
-pub use imp::{active_display_rects, current_cursor_location, union_display_bounds, MacosInjector};
+pub use imp::{MacosInjector, active_display_rects, current_cursor_location, union_display_bounds};
 
 /// Helper constructing sample [`KeyChord`]s for testing macOS keycode completeness.
 pub fn sample_key_chord(key: &str) -> KeyChord {

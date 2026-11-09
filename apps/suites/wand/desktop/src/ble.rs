@@ -30,13 +30,13 @@ use crate::status::{ConnectionState, Status};
 use btleplug::api::{Central, Characteristic, Manager as _, Peripheral as _, ScanFilter};
 use btleplug::platform::{Adapter, Manager, Peripheral};
 use futures::StreamExt;
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc as tokio_mpsc;
 use uuid::Uuid;
-use wand_core::controller::{BATTERY_CHAR_UUID, BATTERY_SERVICE_UUID};
 use wand_core::Daydream;
+use wand_core::controller::{BATTERY_CHAR_UUID, BATTERY_SERVICE_UUID};
 
 /// Interval between BLE Battery Service (`0x180F` / `0x2A19`) reads (`60 s`).
 pub const BATTERY_POLL_INTERVAL: Duration = Duration::from_secs(60);
@@ -106,7 +106,9 @@ pub async fn probe_bluetooth_adapter() -> Result<String, String> {
                     .find_map(|l| l.trim().strip_prefix("State:"))
                     .map(str::trim)
                     .unwrap_or("On");
-                return Ok(format!("present (macOS CoreBluetooth controller, state: {state})"));
+                return Ok(format!(
+                    "present (macOS CoreBluetooth controller, state: {state})"
+                ));
             }
             return Err("no macOS Bluetooth controller reported".to_string());
         }
