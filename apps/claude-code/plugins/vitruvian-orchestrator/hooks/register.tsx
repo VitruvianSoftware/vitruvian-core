@@ -2127,6 +2127,9 @@ export const register: Register = (on) => {
   });
 
   on("turn.complete", async ($, e, next) => {
+    // Let the engine finish the turn first, so the agent's status below is
+    // where its loop stands after this turn, not during it.
+    const completed = await next(e);
     const at = await $.clock.now();
     const id = e.agentId ?? "lead";
     const hadSteps = seenStepTurns.delete(`${id}:${e.turnId}`);
@@ -2134,6 +2137,16 @@ export const register: Register = (on) => {
 
     if (e.agentId) {
       const status = e.reason === "answer" ? "done" : "error";
+      // A background subagent can end its turn while work it started keeps
+      // going (a specialist's driver waiting on its Gemini job). The engine
+      // lists it as "waiting" then, and wakes it when that work reports.
+      // Ending its run here would show it done, and its task ready for
+      // review, while the work is still running.
+      const agentStatus = await $.agent
+        .list()
+        .then((agents) => agents.find((a) => a.id === e.agentId)?.status)
+        .catch(() => undefined);
+      const isStillWorking = status === "done" && agentStatus === "waiting";
       await update($, flow, (prev) => {
         if (!prev) return prev;
         const existing = prev.runs.find((r) => r.id === e.agentId);
@@ -2151,6 +2164,11 @@ export const register: Register = (on) => {
                   (usage.cache_creation_input_tokens || 0),
               }
             : undefined;
+        if (isStillWorking) {
+          return tokens
+            ? reduce(prev, { type: "run.progress", at, id: e.agentId, tokens })
+            : prev;
+        }
         return reduce(prev, {
           type: "run.end",
           at,
@@ -2203,7 +2221,7 @@ export const register: Register = (on) => {
       await update($, now, () => at);
     }
 
-    return next(e);
+    return completed;
   });
 
   on("ui.render", { component: "Pane", requestId: PANE }, async ($, e) => {
