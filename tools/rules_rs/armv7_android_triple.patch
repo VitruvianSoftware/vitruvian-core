@@ -1,0 +1,77 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# Normalize 3-component Android triples (`armv7-linux-androideabi`,
+# `aarch64-linux-android`, etc.) and sub-architecture names (`armv7*`, `thumbv*`,
+# `i686`) in rules_rs's cfg evaluator. Without this, `armv7-linux-androideabi`
+# parses with `target_arch = "armv7"`, `target_os = "androideabi"`, and
+# `unix = False`, dropping `[target.'cfg(unix)'.dependencies]` (such as `libc`
+# in `mio`).
+
+--- a/rs/private/cfg_parser.bzl
++++ b/rs/private/cfg_parser.bzl
+@@ -144,9 +144,18 @@
+ # Triple → cfg attribute derivation
+ ############################################
+ 
++def _normalize_arch(arch_raw):
++    if arch_raw.startswith("armv") or arch_raw.startswith("thumbv"):
++        return "arm"
++    if arch_raw in ["i386", "i586", "i686"]:
++        return "x86"
++    return arch_raw
++
+ def _normalize_os(os_raw):
+     if os_raw == "darwin":
+         return "macos"
++    if os_raw == "androideabi":
++        return "android"
+     return os_raw
+ 
+ def _family_for_os(os_name):
+@@ -194,10 +203,16 @@
+ 
+ def triple_to_cfg_attrs(triple, features, target_features):
+     parts = triple.split("-")
+-    arch_part = _get(parts, 0, "")
+-    vendor_part = _get(parts, 1, "unknown")
+-    os_raw_part = _get(parts, 2, "none")
+-    env_part = "-".join(parts[3:])
++    arch_part = _normalize_arch(_get(parts, 0, ""))
++    if len(parts) == 3 and parts[1] == "linux" and parts[2] in ["android", "androideabi"]:
++        vendor_part = "unknown"
++        os_raw_part = "android"
++        env_part = parts[2] if parts[2] == "androideabi" else ""
++    else:
++        vendor_part = _get(parts, 1, "unknown")
++        os_raw_part = _get(parts, 2, "none")
++        env_part = "-".join(parts[3:])
+     os_norm = _normalize_os(os_raw_part)
+     fam = _family_for_os(os_norm)
+     width = _pointer_width_for_arch(arch_part)
+@@ -209,7 +224,7 @@
+         "target_arch": arch_part,
+         "target_vendor": vendor_part,
+         "target_os": os_norm,
+-        "target_env": env_part,
++        "target_env": "" if env_part == "androideabi" else env_part,
+         "target_family": fam,
+         "target_endian": endian,
+         "target_pointer_width": width,

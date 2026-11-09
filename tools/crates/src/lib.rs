@@ -40,6 +40,42 @@ pub fn toolchain_version(module_bazel: &str) -> Option<String> {
     first_quoted(versions)
 }
 
+/// Every version in `rust.repository_set(... versions = ["X"] ...)` in MODULE.bazel.
+pub fn repository_set_versions(module_bazel: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut rest = module_bazel;
+    while let Some(idx) = rest.find("rust.repository_set(") {
+        rest = &rest[idx + "rust.repository_set(".len()..];
+        let Some(end) = rest.find("\n)") else {
+            break;
+        };
+        let block = &rest[..end];
+        if let Some(v_idx) = block.find("versions") {
+            if let Some(v) = first_quoted(&block[v_idx..]) {
+                if !out.contains(&v) {
+                    out.push(v);
+                }
+            }
+        }
+        rest = &rest[end..];
+    }
+    out
+}
+
+/// A workspace's `rust-version`, read from its `[workspace.package]` table.
+pub fn workspace_rust_version(root_cargo_toml: &str) -> Option<String> {
+    let mut in_ws_package = false;
+    for line in root_cargo_toml.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            in_ws_package = line == "[workspace.package]";
+        } else if in_ws_package && line.starts_with("rust-version") {
+            return first_quoted(line);
+        }
+    }
+    None
+}
+
 /// The paths in the root Cargo.toml's `[workspace] members = [...]`.
 pub fn workspace_members(root_cargo_toml: &str) -> Vec<String> {
     let uncommented: String = root_cargo_toml
@@ -71,18 +107,32 @@ pub fn workspace_members(root_cargo_toml: &str) -> Vec<String> {
         .collect()
 }
 
-/// A member's `rust-version`, read from its `[package]` table.
-pub fn package_rust_version(cargo_toml: &str) -> Option<String> {
+/// A member's `rust-version`, read from its `[package]` table (or inherited from
+/// `ws_rust_version` when `rust-version.workspace = true`).
+pub fn package_rust_version_with_workspace(
+    cargo_toml: &str,
+    ws_rust_version: Option<&str>,
+) -> Option<String> {
     let mut in_package = false;
     for line in cargo_toml.lines() {
         let line = line.trim();
         if line.starts_with('[') {
             in_package = line == "[package]";
         } else if in_package && line.starts_with("rust-version") {
-            return first_quoted(line);
+            if let Some(v) = first_quoted(line) {
+                return Some(v);
+            }
+            if line.contains("workspace") && line.contains("true") {
+                return ws_rust_version.map(str::to_string);
+            }
         }
     }
     None
+}
+
+/// A member's `rust-version`, read from its `[package]` table.
+pub fn package_rust_version(cargo_toml: &str) -> Option<String> {
+    package_rust_version_with_workspace(cargo_toml, None)
 }
 
 /// Whether a declared `rust-version` names the toolchain's minor release:
@@ -101,6 +151,7 @@ fn first_quoted(s: &str) -> Option<String> {
 /// Every member whose `rust-version` is missing or names another release.
 pub fn msrv_problems(workspace: &Path, toolchain: &str) -> Result<Vec<String>, String> {
     let root = read(&workspace.join("Cargo.toml"))?;
+    let ws_rv = workspace_rust_version(&root);
     let mut members = workspace_members(&root);
     if members.is_empty() {
         // A single package that is its own workspace (an app with its own
@@ -113,7 +164,7 @@ pub fn msrv_problems(workspace: &Path, toolchain: &str) -> Result<Vec<String>, S
     let mut problems = Vec::new();
     for member in members {
         let manifest = read(&workspace.join(&member).join("Cargo.toml"))?;
-        match package_rust_version(&manifest) {
+        match package_rust_version_with_workspace(&manifest, ws_rv.as_deref()) {
             Some(v) if same_minor(&v, toolchain) => {}
             Some(v) => problems.push(format!("{member}: rust-version = \"{v}\"")),
             None => problems.push(format!("{member}: no rust-version")),
@@ -179,13 +230,25 @@ fn try_run(args: &[String]) -> Result<i32, String> {
     let cargo = std::fs::canonicalize(&cargo)
         .map_err(|e| format!("cargo not found at {}: {e}", Path::new(&cargo).display()))?;
 
-    let toolchain = toolchain_version(&read(&workspace.join("MODULE.bazel"))?)
+    let module_bazel = read(&workspace.join("MODULE.bazel"))?;
+    let default_toolchain = toolchain_version(&module_bazel)
         .ok_or("no rust.toolchain(versions = [...]) in MODULE.bazel")?;
+    let repo_set_toolchains = repository_set_versions(&module_bazel);
     let (dir, args) = split_dir_arg(args)?;
     let workspace = match dir {
         Some(dir) => workspace.join(dir),
         None => workspace,
     };
+    let root_toml = read(&workspace.join("Cargo.toml"))?;
+    let toolchain = workspace_rust_version(&root_toml)
+        .or_else(|| package_rust_version(&root_toml))
+        .and_then(|decl| {
+            repo_set_toolchains
+                .iter()
+                .find(|v| same_minor(&decl, v))
+                .cloned()
+        })
+        .unwrap_or(default_toolchain);
     let problems = msrv_problems(&workspace, &toolchain)?;
     if !problems.is_empty() {
         eprintln!(
