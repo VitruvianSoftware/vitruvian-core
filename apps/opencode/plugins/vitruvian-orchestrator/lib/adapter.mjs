@@ -20,15 +20,29 @@
 
 import {
   burnDown,
+  DEFAULT_QUIET_MS,
+  DEFAULT_STALL_MS,
   initialFlow,
   reduce,
   remaining,
   runCost,
   spend,
+  stalls,
   taskBoard,
 } from "./orchestrator-core.mjs";
 
-export { burnDown, initialFlow, reduce, remaining, runCost, spend, taskBoard };
+export {
+  burnDown,
+  DEFAULT_QUIET_MS,
+  DEFAULT_STALL_MS,
+  initialFlow,
+  reduce,
+  remaining,
+  runCost,
+  spend,
+  stalls,
+  taskBoard,
+};
 
 export const PHASES = Object.freeze([
   "plan",
@@ -571,6 +585,9 @@ export function formatSidebarData(flow, now = Date.now()) {
         : "",
   }));
 
+  const stallRows = stalls(flow, now);
+  const stallByRunId = new Map(stallRows.map((s) => [s.id, s]));
+
   const agents = flow.runs.map((r) => {
     const costUsd = runCost(r);
     const priced = costUsd !== null;
@@ -591,6 +608,20 @@ export function formatSidebarData(flow, now = Date.now()) {
     const modelLabel = delegateModel
       ? `${baseModel} → ${delegateModel}`
       : baseModel;
+    const stallRow = stallByRunId.get(r.id);
+    const stallState = stallRow?.state ?? null;
+    const idleMs = stallRow?.idleMs ?? 0;
+    const statusText =
+      r.status === "running" &&
+      (stallState === "quiet" || stallState === "stalled")
+        ? `${r.status} (${stallState})`
+        : r.status;
+    const color =
+      r.status === "running" && stallState === "stalled"
+        ? "error"
+        : r.status === "running" && stallState === "quiet"
+          ? "warning"
+          : statusColorToken(r.status);
     return {
       id: r.id,
       taskId:
@@ -608,8 +639,10 @@ export function formatSidebarData(flow, now = Date.now()) {
       costUsd: costUsd ?? 0,
       costText: priced ? `est. ${formatUsd(costUsd)}` : "unpriced",
       elapsedText: formatDuration(elapsedMs),
-      status: r.status,
-      color: statusColorToken(r.status),
+      status: statusText,
+      stallState,
+      idleMs,
+      color,
     };
   });
 

@@ -93,12 +93,28 @@
  * @property {string} title
  * @property {number | null} taskN
  * @property {number} startedAt
+ * @property {number} lastActivityAt
  * @property {number | null} endedAt
  * @property {RunStatus} status
  * @property {TokenCounts} tokens
  * @property {StepProgress | null} steps
  * @property {number | null} contextPct
  * @property {RunRole} role
+ */
+
+/**
+ * @typedef {"active" | "quiet" | "stalled"} StallState
+ */
+
+/**
+ * @typedef {Object} StallRow
+ * @property {string} id
+ * @property {string} agent
+ * @property {string} title
+ * @property {number | null} taskN
+ * @property {number} lastActivityAt
+ * @property {number} idleMs
+ * @property {StallState} state
  */
 
 /**
@@ -185,6 +201,9 @@
 
 const VALID_PHASES = new Set(["plan", "design", "delegate", "review", "close"]);
 
+export const DEFAULT_QUIET_MS = 5 * 60 * 1000;
+export const DEFAULT_STALL_MS = 15 * 60 * 1000;
+
 // rough estimate, not a bill; from savvy-progress PRICES
 // Per million tokens: [input, output, cacheRead, cacheWrite]
 const PRICES = [
@@ -239,6 +258,7 @@ function cloneRun(run) {
     title: run.title,
     taskN: run.taskN,
     startedAt: run.startedAt,
+    lastActivityAt: run.lastActivityAt ?? run.startedAt,
     endedAt: run.endedAt,
     status: run.status,
     tokens: {
@@ -453,16 +473,28 @@ export function reduce(flow, event) {
                   }
                 : cloneTask(t),
             ),
-            runs: flow.runs.map((r) =>
-              r.id === event.id && r.endedAt !== null
-                ? {
-                    ...cloneRun(r),
-                    taskN: resumedTaskN,
-                    endedAt: null,
-                    status: /** @type {RunStatus} */ ("running"),
-                  }
-                : cloneRun(r),
-            ),
+            runs: flow.runs.map((r) => {
+              if (r.id !== event.id) return cloneRun(r);
+              const nextActivityAt = Number.isFinite(event.at)
+                ? event.at
+                : (r.lastActivityAt ?? r.startedAt);
+              if (r.endedAt !== null) {
+                return {
+                  ...cloneRun(r),
+                  taskN: resumedTaskN,
+                  lastActivityAt: nextActivityAt,
+                  endedAt: null,
+                  status: /** @type {RunStatus} */ ("running"),
+                };
+              }
+              return {
+                ...cloneRun(r),
+                lastActivityAt: Math.max(
+                  r.lastActivityAt ?? r.startedAt,
+                  nextActivityAt,
+                ),
+              };
+            }),
           },
           event.at,
         );
@@ -485,6 +517,7 @@ export function reduce(flow, event) {
         title: event.title,
         taskN,
         startedAt: event.at,
+        lastActivityAt: event.at,
         endedAt: null,
         status: "running",
         tokens: {
@@ -551,8 +584,12 @@ export function reduce(flow, event) {
           typeof event.delegate === "string" && event.delegate.trim().length > 0
             ? event.delegate.trim()
             : (r.delegate ?? null);
+        const lastActivityAt = Number.isFinite(event.at)
+          ? Math.max(r.lastActivityAt ?? r.startedAt, event.at)
+          : (r.lastActivityAt ?? r.startedAt);
         return {
           ...cloneRun(r),
+          lastActivityAt,
           delegate,
           tokens,
           steps,
@@ -590,6 +627,9 @@ export function reduce(flow, event) {
           : { ...r.tokens };
         return {
           ...cloneRun(r),
+          lastActivityAt: Number.isFinite(event.at)
+            ? Math.max(r.lastActivityAt ?? r.startedAt, event.at)
+            : (r.lastActivityAt ?? r.startedAt),
           endedAt: event.at,
           status: event.status,
           tokens,
@@ -686,6 +726,9 @@ export function reduce(flow, event) {
             r.endedAt === null
               ? {
                   ...cloneRun(r),
+                  lastActivityAt: Number.isFinite(event.at)
+                    ? Math.max(r.lastActivityAt ?? r.startedAt, event.at)
+                    : (r.lastActivityAt ?? r.startedAt),
                   endedAt: event.at,
                   status: /** @type {RunStatus} */ ("done"),
                 }
@@ -880,4 +923,48 @@ export function spend(flow) {
       byModel: delegatedByModel,
     },
   };
+}
+
+/**
+ * Inspects running worker runs in `flow` and classifies their activity state
+ * (`"active"`, `"quiet"`, or `"stalled"`) relative to `now`.
+ *
+ * @param {Flow | null | undefined} flow
+ * @param {number} now
+ * @param {{ quietMs?: number, stallMs?: number }} [options]
+ * @returns {StallRow[]}
+ */
+export function stalls(
+  flow,
+  now,
+  { quietMs = DEFAULT_QUIET_MS, stallMs = DEFAULT_STALL_MS } = {},
+) {
+  if (!flow || flow.closedAt !== null || !Array.isArray(flow.runs)) {
+    return [];
+  }
+  const nowNum = Number(now) || 0;
+  /** @type {StallRow[]} */
+  const rows = [];
+  for (const run of flow.runs) {
+    if (run.status !== "running" || run.role === "lead") {
+      continue;
+    }
+    const lastAt = Number.isFinite(run.lastActivityAt)
+      ? run.lastActivityAt
+      : run.startedAt;
+    const idleMs = Math.max(0, nowNum - lastAt);
+    /** @type {StallState} */
+    const state =
+      idleMs >= stallMs ? "stalled" : idleMs >= quietMs ? "quiet" : "active";
+    rows.push({
+      id: run.id,
+      agent: run.agent,
+      title: run.title,
+      taskN: run.taskN,
+      lastActivityAt: lastAt,
+      idleMs,
+      state,
+    });
+  }
+  return rows;
 }

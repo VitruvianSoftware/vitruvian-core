@@ -24,12 +24,15 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  DEFAULT_QUIET_MS,
+  DEFAULT_STALL_MS,
   burnDown,
   initialFlow,
   reduce,
   remaining,
   runCost,
   spend,
+  stalls,
   taskBoard,
 } from "./core.mjs";
 
@@ -879,4 +882,237 @@ test("run.start with an id the flow already has never adds a second row", () => 
   assert.equal(flow.runs[0].endedAt, null);
   assert.equal(flow.runs[0].tokens.input, 500);
   assert.equal(flow.tasks[0].state, "running");
+});
+
+test("lastActivityAt tracks run.start, run.progress, reopened runs, run.end, and close", () => {
+  const start = (id, title, at, role = "worker") => ({
+    type: "run.start",
+    at,
+    id,
+    harness: "antigravity",
+    agent: "wren",
+    model: "gemini-3.8-flash-high",
+    effort: null,
+    title,
+    role,
+  });
+
+  let flow = reduce(null, {
+    type: "plan",
+    at: 1000,
+    title: "Activity Flow",
+    tasks: [
+      { title: "Task 1", specialist: "wren", tier: "core", after: [] },
+      { title: "Task 2", specialist: "wren", tier: "core", after: [] },
+    ],
+  });
+
+  // 1) Initial run.start sets lastActivityAt = startedAt = at
+  flow = reduce(flow, start("r1", "Task 1", 1100));
+  flow = reduce(flow, start("r2", "Task 2", 1150));
+  assert.equal(flow.runs[0].lastActivityAt, 1100);
+  assert.equal(flow.runs[1].lastActivityAt, 1150);
+
+  // 2) run.progress advances lastActivityAt when at is finite, never decreases it
+  flow = reduce(flow, {
+    type: "run.progress",
+    at: 1300,
+    id: "r1",
+    steps: { done: 1, total: 2, note: "step 1" },
+  });
+  assert.equal(flow.runs[0].lastActivityAt, 1300);
+
+  flow = reduce(flow, {
+    type: "run.progress",
+    at: 1200,
+    id: "r1",
+    steps: { done: 2, total: 2, note: "out-of-order timestamp" },
+  });
+  assert.equal(flow.runs[0].lastActivityAt, 1300);
+
+  flow = reduce(flow, {
+    type: "run.progress",
+    at: Number.NaN,
+    id: "r1",
+    contextPct: 40,
+  });
+  assert.equal(flow.runs[0].lastActivityAt, 1300);
+
+  // 3) run.end updates lastActivityAt
+  flow = reduce(flow, {
+    type: "run.end",
+    at: 1500,
+    id: "r1",
+    status: "done",
+  });
+  assert.equal(flow.runs[0].lastActivityAt, 1500);
+
+  // 4) Reopening an ended run on run.start updates lastActivityAt to new at
+  flow = reduce(flow, start("r1", "Task 1", 2000));
+  assert.equal(flow.runs[0].status, "running");
+  assert.equal(flow.runs[0].startedAt, 1100);
+  assert.equal(flow.runs[0].lastActivityAt, 2000);
+
+  // 5) close updates lastActivityAt on open runs
+  flow = reduce(flow, { type: "close", at: 2500 });
+  assert.equal(flow.runs[0].lastActivityAt, 2500);
+  assert.equal(flow.runs[1].lastActivityAt, 2500);
+});
+
+test("stalls classifies active, quiet, and stalled worker runs and excludes ended and lead runs", () => {
+  assert.equal(DEFAULT_QUIET_MS, 5 * 60 * 1000);
+  assert.equal(DEFAULT_STALL_MS, 15 * 60 * 1000);
+  assert.deepEqual(stalls(null, 10_000), []);
+
+  const t0 = 1_000_000;
+  let flow = reduce(null, {
+    type: "plan",
+    at: t0,
+    title: "Watchdog Flow",
+    tasks: [
+      { title: "Active task", specialist: "wren", tier: "core", after: [] },
+      { title: "Quiet task", specialist: "atlas", tier: "core", after: [] },
+      { title: "Stalled task", specialist: "forge", tier: "core", after: [] },
+      { title: "Done task", specialist: "scout", tier: "fast", after: [] },
+    ],
+  });
+
+  // Lead run (should be ignored even if idle past stallMs)
+  flow = reduce(flow, {
+    type: "run.start",
+    at: t0,
+    id: "run-lead",
+    harness: "antigravity",
+    agent: "beacon",
+    model: "claude-opus-5-5",
+    effort: "high",
+    title: "Orchestrate",
+    role: "lead",
+  });
+
+  // Stalled worker: started at t0, no progress since
+  flow = reduce(flow, {
+    type: "run.start",
+    at: t0,
+    id: "run-stalled",
+    harness: "antigravity",
+    agent: "forge",
+    model: "gemini-4-argon-high",
+    effort: null,
+    title: "Stalled task",
+    role: "worker",
+  });
+
+  // Quiet worker: started at t0, progressed at t0 + 9 min (idle 6 min at t0 + 15 min)
+  flow = reduce(flow, {
+    type: "run.start",
+    at: t0,
+    id: "run-quiet",
+    harness: "antigravity",
+    agent: "atlas",
+    model: "gemini-4-argon-high",
+    effort: null,
+    title: "Quiet task",
+    role: "worker",
+  });
+  flow = reduce(flow, {
+    type: "run.progress",
+    at: t0 + 9 * 60 * 1000,
+    id: "run-quiet",
+    steps: { done: 1, total: 3, note: "reading schema" },
+  });
+
+  // Active worker: started at t0, progressed at t0 + 13 min (idle 2 min at t0 + 15 min)
+  flow = reduce(flow, {
+    type: "run.start",
+    at: t0,
+    id: "run-active",
+    harness: "antigravity",
+    agent: "wren",
+    model: "gemini-4-argon-high",
+    effort: null,
+    title: "Active task",
+    role: "worker",
+  });
+  flow = reduce(flow, {
+    type: "run.progress",
+    at: t0 + 13 * 60 * 1000,
+    id: "run-active",
+    steps: { done: 2, total: 3, note: "running tests" },
+  });
+
+  // Ended worker: should be excluded from stalls()
+  flow = reduce(flow, {
+    type: "run.start",
+    at: t0,
+    id: "run-done",
+    harness: "antigravity",
+    agent: "scout",
+    model: "gemini-3.8-flash-high",
+    effort: null,
+    title: "Done task",
+    role: "worker",
+  });
+  flow = reduce(flow, {
+    type: "run.end",
+    at: t0 + 60 * 1000,
+    id: "run-done",
+    status: "done",
+  });
+
+  const now = t0 + 15 * 60 * 1000;
+  assert.deepEqual(stalls(flow, now), [
+    {
+      id: "run-stalled",
+      agent: "forge",
+      title: "Stalled task",
+      taskN: 3,
+      lastActivityAt: t0,
+      idleMs: 15 * 60 * 1000,
+      state: "stalled",
+    },
+    {
+      id: "run-quiet",
+      agent: "atlas",
+      title: "Quiet task",
+      taskN: 2,
+      lastActivityAt: t0 + 9 * 60 * 1000,
+      idleMs: 6 * 60 * 1000,
+      state: "quiet",
+    },
+    {
+      id: "run-active",
+      agent: "wren",
+      title: "Active task",
+      taskN: 1,
+      lastActivityAt: t0 + 13 * 60 * 1000,
+      idleMs: 2 * 60 * 1000,
+      state: "active",
+    },
+  ]);
+
+  // Custom thresholds and fallback to startedAt when lastActivityAt is missing
+  const customFlow = {
+    ...flow,
+    runs: [
+      {
+        ...flow.runs[1],
+        lastActivityAt: undefined,
+      },
+    ],
+  };
+  assert.deepEqual(
+    stalls(customFlow, t0 + 5000, { quietMs: 1000, stallMs: 10_000 }),
+    [
+      {
+        id: "run-stalled",
+        agent: "forge",
+        title: "Stalled task",
+        taskN: 3,
+        lastActivityAt: t0,
+        idleMs: 5000,
+        state: "quiet",
+      },
+    ],
+  );
 });

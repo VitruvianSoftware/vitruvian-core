@@ -409,6 +409,17 @@ function renderAgents(runs) {
       typeof run.cost === "number" ? `est. ${formatUsd(run.cost)}` : "unpriced";
     const tokensLabel = `${formatTokens(run.totalTokens ?? 0)} tkn`;
     const elapsedLabel = formatElapsed(run.elapsedMs ?? 0);
+    const stallBadge =
+      run.status === "running" &&
+      (run.stallState === "quiet" || run.stallState === "stalled")
+        ? el(
+            "span",
+            {
+              class: `status-badge stall-badge ${run.stallState === "stalled" ? "status-red" : "status-amber"}`,
+            },
+            run.stallState,
+          )
+        : null;
 
     const row = el(
       "div",
@@ -431,6 +442,7 @@ function renderAgents(runs) {
         el("span", { class: "meta-chip mono" }, costLabel),
         el("span", { class: "meta-chip mono muted" }, elapsedLabel),
         el("span", { class: `status-badge ${tone}` }, run.status),
+        stallBadge,
       ),
     );
     container.append(row);

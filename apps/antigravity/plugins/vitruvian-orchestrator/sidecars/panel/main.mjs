@@ -41,13 +41,18 @@ import { fileURLToPath } from "node:url";
 
 import {
   burnDown,
+  DEFAULT_QUIET_MS,
+  DEFAULT_STALL_MS,
   initialFlow,
   reduce,
   remaining,
   runCost,
   spend,
+  stalls,
   taskBoard,
 } from "./lib/orchestrator-core.mjs";
+
+export { DEFAULT_QUIET_MS, DEFAULT_STALL_MS, stalls };
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const PHASES = Object.freeze([
@@ -520,7 +525,7 @@ export function foldFlowEvents(flowEvents = [], transcriptEvents = []) {
  * Builds the `/api/state` payload from a folded `Flow | null`.
  *
  * @param {import("./lib/orchestrator-core.mjs").Flow | null} flow
- * @param {{ conversationId?: string, version?: string, now?: number }} [meta]
+ * @param {{ conversationId?: string, version?: string, now?: number, quietMs?: number, stallMs?: number }} [meta]
  */
 export function buildPanelState(flow, meta = {}) {
   const now =
@@ -536,6 +541,12 @@ export function buildPanelState(flow, meta = {}) {
   const spendSummary = spend(flow);
   const totalTasks = flow ? flow.tasks.length : 0;
   const accepted = totalTasks - rem;
+
+  const stallRows = stalls(flow, now, {
+    quietMs: meta.quietMs,
+    stallMs: meta.stallMs,
+  });
+  const stallMap = new Map(stallRows.map((row) => [row.id, row]));
 
   const runs = flow
     ? flow.runs.map((r) => {
@@ -553,6 +564,8 @@ export function buildPanelState(flow, meta = {}) {
           elapsedMs,
           elapsedFormatted: formatElapsed(elapsedMs),
           totalTokens,
+          stallState: stallMap.get(r.id)?.state ?? null,
+          idleMs: stallMap.get(r.id)?.idleMs ?? 0,
         };
       })
     : [];
@@ -571,6 +584,7 @@ export function buildPanelState(flow, meta = {}) {
     burnDown: burn,
     taskBoard: board,
     runs,
+    stalls: stallRows,
     spend: spendSummary,
     now,
   };
@@ -624,17 +638,20 @@ export function selectFlowFile(flowsDir, requestedCid = "") {
   return candidates[0] || null;
 }
 
-export function readTranscriptForConversation(conversationId) {
+export function readTranscriptForConversation(conversationId, customRoots) {
   const cleanCid = String(conversationId ?? "")
     .trim()
     .replace(/[^a-zA-Z0-9._-]/g, "");
   if (!cleanCid) return "";
 
-  const roots = [
-    process.env.ANTIGRAVITY_APP_DATA_DIR,
-    join(homedir(), ".gemini", "antigravity"),
-    join(homedir(), ".gemini", "antigravity-cli"),
-  ].filter(Boolean);
+  const roots =
+    Array.isArray(customRoots) && customRoots.length > 0
+      ? customRoots.filter(Boolean)
+      : [
+          process.env.ANTIGRAVITY_APP_DATA_DIR,
+          join(homedir(), ".gemini", "antigravity"),
+          join(homedir(), ".gemini", "antigravity-cli"),
+        ].filter(Boolean);
 
   for (const root of roots) {
     const candidate = join(
@@ -657,10 +674,82 @@ export function readTranscriptForConversation(conversationId) {
 }
 
 /**
+ * Reads the latest activity timestamp (in ms) from a child subagent's own
+ * `transcript.jsonl`, taking the max of the last JSONL entry timestamp and
+ * the file's `mtimeMs`.
+ *
+ * @param {string} childConversationId
+ * @param {string[]} [customRoots]
+ * @returns {number}
+ */
+export function readChildTranscriptActivityAt(
+  childConversationId,
+  customRoots,
+) {
+  const baseCid = String(childConversationId ?? "")
+    .split("#")[0]
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]/g, "");
+  if (!baseCid) return 0;
+
+  const roots =
+    Array.isArray(customRoots) && customRoots.length > 0
+      ? customRoots.filter(Boolean)
+      : [
+          process.env.ANTIGRAVITY_APP_DATA_DIR,
+          join(homedir(), ".gemini", "antigravity"),
+          join(homedir(), ".gemini", "antigravity-cli"),
+        ].filter(Boolean);
+
+  for (const root of roots) {
+    const candidate = join(
+      root,
+      "brain",
+      baseCid,
+      ".system_generated",
+      "logs",
+      "transcript.jsonl",
+    );
+    if (existsSync(candidate)) {
+      try {
+        const raw = readFileSync(candidate, "utf8");
+        const lines = raw.split("\n");
+        let lastEntryAt = 0;
+        for (let i = lines.length - 1; i >= 0; i -= 1) {
+          const trimmed = lines[i].trim();
+          if (!trimmed) continue;
+          try {
+            const parsed = JSON.parse(trimmed);
+            lastEntryAt = parseEntryTime(parsed, 0);
+            break;
+          } catch {
+            // Check preceding line if tail line is incomplete.
+          }
+        }
+        const mtimeMs = statSync(candidate).mtimeMs;
+        return Math.max(lastEntryAt, Math.floor(mtimeMs));
+      } catch {
+        // Try next candidate root.
+      }
+    }
+  }
+  return 0;
+}
+
+/**
  * Loads the newest flow file from `flowsDir` (and its matching conversation transcript),
  * folds them through `orchestrator-core`, and returns the `/api/state` object.
  *
- * @param {{ flowsDir?: string, cid?: string, transcriptText?: string, now?: number }} [options]
+ * @param {{
+ *   flowsDir?: string,
+ *   cid?: string,
+ *   transcriptText?: string,
+ *   brainRoots?: string[],
+ *   childActivityByRunId?: Record<string, number>,
+ *   now?: number,
+ *   quietMs?: number,
+ *   stallMs?: number
+ * }} [options]
  */
 export function loadLivePanelState(options = {}) {
   const flowsDir = resolveFlowsDir(options.flowsDir);
@@ -670,6 +759,8 @@ export function loadLivePanelState(options = {}) {
       conversationId: String(options.cid ?? ""),
       version: VERSION,
       now: options.now,
+      quietMs: options.quietMs,
+      stallMs: options.stallMs,
     });
   }
 
@@ -687,17 +778,156 @@ export function loadLivePanelState(options = {}) {
   const transcriptText =
     options.transcriptText !== undefined
       ? options.transcriptText
-      : readTranscriptForConversation(selected.conversationId);
+      : readTranscriptForConversation(
+          selected.conversationId,
+          options.brainRoots,
+        );
   const transcriptEvents = transcriptText
     ? extractTranscriptRunEvents(transcriptText, baseAt)
     : [];
 
-  const flow = foldFlowEvents(flowEvents, transcriptEvents);
+  let flow = foldFlowEvents(flowEvents, transcriptEvents);
+  if (flow && Array.isArray(flow.runs)) {
+    for (const run of flow.runs) {
+      if (run.status !== "running" || run.role === "lead") continue;
+      const overrideAt =
+        options.childActivityByRunId &&
+        typeof options.childActivityByRunId === "object"
+          ? options.childActivityByRunId[run.id]
+          : undefined;
+      const childAt =
+        typeof overrideAt === "number"
+          ? overrideAt
+          : readChildTranscriptActivityAt(run.id, options.brainRoots);
+      if (childAt > (run.lastActivityAt ?? run.startedAt)) {
+        flow = reduce(flow, {
+          type: "run.progress",
+          at: childAt,
+          id: run.id,
+        });
+      }
+    }
+  }
+
   return buildPanelState(flow, {
     conversationId: selected.conversationId,
     version: VERSION,
     now: options.now,
+    quietMs: options.quietMs,
+    stallMs: options.stallMs,
   });
+}
+
+const defaultNotifiedStalls = new Set();
+
+/**
+ * Scans active `.jsonl` flow files in `flowsDir`, evaluates worker stall states,
+ * and sends a one-shot wake-up message per stalled run/activity watermark to the
+ * root orchestrator conversation.
+ *
+ * @param {{
+ *   flowsDir?: string,
+ *   brainRoots?: string[],
+ *   childActivityByRunId?: Record<string, number>,
+ *   sendMessage?: (conversationId: string, message: string, opts?: { title?: string }) => Promise<any> | any,
+ *   now?: number,
+ *   quietMs?: number,
+ *   stallMs?: number,
+ *   notifiedStalls?: Set<string>
+ * }} [options]
+ */
+export async function checkAndWakeStalledRuns(options = {}) {
+  const flowsDir = resolveFlowsDir(options.flowsDir);
+  if (!flowsDir || !existsSync(flowsDir)) {
+    return [];
+  }
+  const notifiedStalls =
+    options.notifiedStalls instanceof Set
+      ? options.notifiedStalls
+      : defaultNotifiedStalls;
+
+  let flowFiles = [];
+  try {
+    flowFiles = readdirSync(flowsDir)
+      .filter((name) => name.endsWith(".jsonl"))
+      .map((name) => {
+        const filePath = join(flowsDir, name);
+        let mtimeMs = 0;
+        try {
+          mtimeMs = statSync(filePath).mtimeMs;
+        } catch {
+          mtimeMs = 0;
+        }
+        return {
+          name,
+          conversationId: basename(name, ".jsonl"),
+          mtimeMs,
+        };
+      })
+      .filter((c) => c.mtimeMs > 0)
+      .sort((a, b) => b.mtimeMs - a.mtimeMs || b.name.localeCompare(a.name));
+  } catch {
+    return [];
+  }
+
+  const notified = [];
+  for (const candidate of flowFiles) {
+    const state = loadLivePanelState({
+      flowsDir,
+      cid: candidate.conversationId,
+      brainRoots: options.brainRoots,
+      childActivityByRunId: options.childActivityByRunId,
+      now: options.now,
+      quietMs: options.quietMs,
+      stallMs: options.stallMs,
+    });
+    if (!state.hasFlow || state.flow?.closedAt) {
+      continue;
+    }
+
+    for (const row of state.stalls) {
+      if (row.state !== "stalled") {
+        continue;
+      }
+      const key = `${state.conversationId}:${row.id}:${row.lastActivityAt}`;
+      if (notifiedStalls.has(key)) {
+        continue;
+      }
+      const message = `[Orchestrator Watchdog] Subagent ${row.agent} (${row.id}) has had no transcript or step activity for ${formatElapsed(row.idleMs)}${row.taskN ? ` on task #${row.taskN} ("${row.title}")` : ""}. Check its status with manage_subagents, inspect its transcript, and nudge or restart it.`;
+      if (typeof options.sendMessage === "function") {
+        await options.sendMessage(state.conversationId, message, {
+          title: "Orchestrator Watchdog",
+        });
+      }
+      notifiedStalls.add(key);
+      notified.push({
+        conversationId: state.conversationId,
+        id: row.id,
+        key,
+        message,
+      });
+    }
+  }
+
+  return notified;
+}
+
+export class Watchdog {
+  constructor(options = {}) {
+    this.options = options;
+    this.notifiedStalls =
+      options.notifiedStalls instanceof Set
+        ? options.notifiedStalls
+        : new Set();
+  }
+
+  async tick(overrides = {}) {
+    return checkAndWakeStalledRuns({
+      ...this.options,
+      ...overrides,
+      notifiedStalls: this.notifiedStalls,
+    });
+  }
 }
 
 const readLocal = (name) => readFileSync(join(HERE, name), "utf8");
@@ -776,6 +1006,11 @@ async function startServer() {
         (data) => loadLivePanelState({ cid: data?.cid || "" }),
         "GET",
       );
+      setInterval(() => {
+        void checkAndWakeStalledRuns({
+          sendMessage: (cid, msg, opts) => app.sendMessage(cid, msg, opts),
+        }).catch(() => {});
+      }, 30_000).unref();
       await app.run();
       console.log(
         `http://127.0.0.1:${process.env.ANTIGRAVITY_SIDECAR_WEB_PORT}`,
