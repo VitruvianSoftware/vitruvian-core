@@ -51,6 +51,7 @@ use wand_desktop::launch::build_launch_command;
 use wand_desktop::linux::{
     KEY_C, LinuxKeySpec, LinuxPointToConverter, linux_action_key_spec, linux_keycode_for_key,
 };
+#[cfg(target_os = "macos")]
 use wand_desktop::macos::{
     CANONICAL_KEY_NAMES, DisplayRect, MacosKeySpec, MacosPointToState, NX_KEYTYPE_BRIGHTNESS_UP,
     NX_KEYTYPE_PLAY, clamp_to_bounds, clamp_to_display_rects, display_containing_point,
@@ -378,18 +379,98 @@ fn replay_session_drives_fake_injector_with_exact_expected_actions() {
 
 #[test]
 fn linux_and_macos_keycode_tables_cover_every_key_and_key_action() {
+    #[cfg(not(target_os = "macos"))]
+    const CANONICAL_KEY_NAMES: &[&str] = &[
+        "a",
+        "b",
+        "c",
+        "d",
+        "e",
+        "f",
+        "g",
+        "h",
+        "i",
+        "j",
+        "k",
+        "l",
+        "m",
+        "n",
+        "o",
+        "p",
+        "q",
+        "r",
+        "s",
+        "t",
+        "u",
+        "v",
+        "w",
+        "x",
+        "y",
+        "z",
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "Return",
+        "Space",
+        "Tab",
+        "Backspace",
+        "Delete",
+        "Escape",
+        "Up",
+        "Down",
+        "Left",
+        "Right",
+        "Home",
+        "End",
+        "PageUp",
+        "PageDown",
+        "F1",
+        "F2",
+        "F3",
+        "F4",
+        "F5",
+        "F6",
+        "F7",
+        "F8",
+        "F9",
+        "F10",
+        "F11",
+        "F12",
+        "-",
+        "=",
+        "[",
+        "]",
+        "\\",
+        ";",
+        "'",
+        ",",
+        ".",
+        "/",
+        "`",
+    ];
+    #[cfg(target_os = "macos")]
     let mut mac_codes = HashSet::new();
     let mut linux_codes = HashSet::new();
 
     for &key in CANONICAL_KEY_NAMES {
-        let mac = macos_keycode_for_key(key)
-            .unwrap_or_else(|| panic!("missing macOS keycode for canonical key '{key}'"));
+        #[cfg(target_os = "macos")]
+        {
+            let mac = macos_keycode_for_key(key)
+                .unwrap_or_else(|| panic!("missing macOS keycode for canonical key '{key}'"));
+            assert!(
+                mac_codes.insert(mac),
+                "duplicate macOS virtual keycode {mac:#x} for '{key}'"
+            );
+        }
         let lin = linux_keycode_for_key(key)
             .unwrap_or_else(|| panic!("missing Linux keycode for canonical key '{key}'"));
-        assert!(
-            mac_codes.insert(mac),
-            "duplicate macOS virtual keycode {mac:#x} for '{key}'"
-        );
         assert!(
             linux_codes.insert(lin),
             "duplicate Linux evdev keycode {lin} for '{key}'"
@@ -426,12 +507,15 @@ fn linux_and_macos_keycode_tables_cover_every_key_and_key_action() {
     ];
 
     for act in &key_actions {
-        let mac_spec = macos_action_key_spec(act);
+        #[cfg(target_os = "macos")]
+        {
+            let mac_spec = macos_action_key_spec(act);
+            assert!(
+                mac_spec.is_some(),
+                "macOS key spec missing for action {act:?}"
+            );
+        }
         let lin_spec = linux_action_key_spec(act);
-        assert!(
-            mac_spec.is_some(),
-            "macOS key spec missing for action {act:?}"
-        );
         assert!(
             lin_spec.is_some(),
             "Linux key spec missing for action {act:?}"
@@ -439,18 +523,21 @@ fn linux_and_macos_keycode_tables_cover_every_key_and_key_action() {
     }
 
     // Verify media/brightness map to NSSystemDefined on macOS and dedicated evdev keys on Linux.
-    assert_eq!(
-        macos_action_key_spec(&Action::Media(MediaAction::PlayPause)),
-        Some(MacosKeySpec::SystemDefined {
-            nx_key: NX_KEYTYPE_PLAY
-        })
-    );
-    assert_eq!(
-        macos_action_key_spec(&Action::Brightness(BrightnessAction::Up)),
-        Some(MacosKeySpec::SystemDefined {
-            nx_key: NX_KEYTYPE_BRIGHTNESS_UP
-        })
-    );
+    #[cfg(target_os = "macos")]
+    {
+        assert_eq!(
+            macos_action_key_spec(&Action::Media(MediaAction::PlayPause)),
+            Some(MacosKeySpec::SystemDefined {
+                nx_key: NX_KEYTYPE_PLAY
+            })
+        );
+        assert_eq!(
+            macos_action_key_spec(&Action::Brightness(BrightnessAction::Up)),
+            Some(MacosKeySpec::SystemDefined {
+                nx_key: NX_KEYTYPE_BRIGHTNESS_UP
+            })
+        );
+    }
     assert_eq!(
         linux_action_key_spec(&Action::System(SystemAction::Copy)),
         Some(LinuxKeySpec {
@@ -474,6 +561,7 @@ fn linux_and_macos_keycode_tables_cover_every_key_and_key_action() {
         Action::ToggleGyro,
         Action::LaunchApp("Safari".to_owned()),
     ] {
+        #[cfg(target_os = "macos")]
         assert!(macos_action_key_spec(&non_key).is_none());
         assert!(linux_action_key_spec(&non_key).is_none());
     }
@@ -565,6 +653,7 @@ fn low_battery_triggers_once_per_connection_and_updates_tooltip() {
 
 #[test]
 fn helpers_clamp_bounds_and_build_launch_commands() {
+    #[cfg(target_os = "macos")]
     assert_eq!(
         clamp_to_bounds(-50.0, 1200.0, 0.0, 0.0, 1440.0, 900.0),
         (0.0, 900.0)
@@ -954,6 +1043,7 @@ future_count = 42
     );
 }
 
+#[cfg(target_os = "macos")]
 #[test]
 fn macos_clamp_to_display_rects_handles_l_shaped_multi_monitor_layout() {
     // L-shaped display layout:
@@ -1023,6 +1113,7 @@ fn tick_after_release_all_does_not_repress_held_button() {
     );
 }
 
+#[cfg(target_os = "macos")]
 #[test]
 fn macos_point_to_maps_display_centre_clamps_and_captures_until_recenter() {
     let display_a = DisplayRect::new(0.0, 0.0, 1920.0, 1080.0);

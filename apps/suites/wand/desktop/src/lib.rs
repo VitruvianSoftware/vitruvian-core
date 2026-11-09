@@ -27,6 +27,7 @@ pub mod injector;
 pub mod input;
 pub mod launch;
 pub mod linux;
+#[cfg(target_os = "macos")]
 pub mod macos;
 pub mod radial_overlay;
 pub mod status;
