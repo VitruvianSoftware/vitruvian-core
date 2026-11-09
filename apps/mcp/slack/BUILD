@@ -47,6 +47,14 @@ rust_library(
     crate_name = "mcp_slack_rs_lib",
     crate_root = "rs/src/lib.rs",
     edition = "2021",
+    # One narrow exception to the inter-app boundary (#82): the relay P0 spike
+    # reuses this crate's token verifier instead of copying it. The relay spec
+    # (docs/superpowers/specs/2026-11-07-vitruvian-relay-design.md §5) moves
+    # the verifier into a shared crate before P1; this line goes with it.
+    visibility = [
+        "//apps/mcp/slack:__subpackages__",
+        "//apps/suites/relay/spike:__pkg__",
+    ],
     deps = _CRATES,
 )
 
