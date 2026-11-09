@@ -49,8 +49,9 @@ tokens, so the relay can check them locally against Zitadel's public keys.
 CI only, never from a workstation: the public edge blocks Zitadel's management
 API. Dispatch `.github/workflows/zitadel-apps-relay-apply.yaml` from `main`,
 `preview` first, then `up`. The job prints the client ids and checks every client
-issues JWTs. Agents can't dispatch it: it is deliberately not in
-`tools/agent-app/workflow-allowlist.txt`, because it changes live sign-in.
+issues JWTs. wren can dispatch it (`bazel run //tools/agent-app -- workflow-run
+zitadel-apps-relay-apply.yaml -f action=preview`); James allowed that on 2026-11-09.
+Read the preview's plan before running `up`.
 
 Never run the `:import` target here. The provider plans a replacement, which
 deletes the live client.
