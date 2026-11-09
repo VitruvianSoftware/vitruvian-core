@@ -95,7 +95,7 @@
         id="subdial_mode"
         displayName="config_subdial_mode"
         screenReaderText="config_subdial_mode"
-        defaultValue="subdials_smart"
+        defaultValue="subdials_chrono"
         icon="subdial_hand_expanded">
       <ListOption
           id="subdials_smart"
@@ -264,7 +264,7 @@
       </ListOption>
     </ListConfiguration>
 
-    <!-- 1b. Status Badges & Progress Rings (Selectable via status_badges) -->
+    <!-- 1b. Status Badges (Selectable via status_badges) -->
     <ListConfiguration id="status_badges">
       <ListOption id="badges_on">
         <ListConfiguration id="bezel_mode">
@@ -275,22 +275,6 @@
               <Transform target="alpha" value="[UNREAD_NOTIFICATION_COUNT] &gt; 0 ? 255 : 0" />
               <Image resource="unread_badge" />
             </PartImage>
-            <!-- 9h Subdial Power Reserve / Battery Arc -->
-            <PartDraw x="52" y="160" width="120" height="120" name="LeftPowerArcExp" alpha="255">
-              <Variant mode="AMBIENT" target="alpha" value="0" />
-              <Arc direction="CLOCKWISE" startAngle="-120" endAngle="120" centerX="60" centerY="60" width="84" height="84">
-                <Transform target="endAngle" value="-120 + (clamp([BATTERY_PERCENT] / 100.0, 0, 1) * 240)" />
-                <Stroke color="#FFC81D25" cap="ROUND" thickness="2.8" />
-              </Arc>
-            </PartDraw>
-            <!-- 6h Subdial Step Goal Progress Arc -->
-            <PartDraw x="165" y="266" width="120" height="120" name="BottomStepsArcExp" alpha="255">
-              <Variant mode="AMBIENT" target="alpha" value="0" />
-              <Arc direction="CLOCKWISE" startAngle="-120" endAngle="120" centerX="60" centerY="60" width="84" height="84">
-                <Transform target="endAngle" value="-120 + (clamp([STEP_COUNT] / 10000.0, 0, 1) * 240)" />
-                <Stroke color="#FFC81D25" cap="ROUND" thickness="2.8" />
-              </Arc>
-            </PartDraw>
           </ListOption>
           <ListOption id="bezel_full">
             <PartImage x="213" y="48" width="24" height="24" name="UnreadRubyFull" alpha="255">
@@ -298,20 +282,6 @@
               <Transform target="alpha" value="[UNREAD_NOTIFICATION_COUNT] &gt; 0 ? 255 : 0" />
               <Image resource="unread_badge" />
             </PartImage>
-            <PartDraw x="86" y="181" width="88" height="88" name="LeftPowerArcFull" alpha="255">
-              <Variant mode="AMBIENT" target="alpha" value="0" />
-              <Arc direction="CLOCKWISE" startAngle="-120" endAngle="120" centerX="44" centerY="44" width="60" height="60">
-                <Transform target="endAngle" value="-120 + (clamp([BATTERY_PERCENT] / 100.0, 0, 1) * 240)" />
-                <Stroke color="#FFC81D25" cap="ROUND" thickness="2.2" />
-              </Arc>
-            </PartDraw>
-            <PartDraw x="181" y="270" width="88" height="88" name="BottomStepsArcFull" alpha="255">
-              <Variant mode="AMBIENT" target="alpha" value="0" />
-              <Arc direction="CLOCKWISE" startAngle="-120" endAngle="120" centerX="44" centerY="44" width="60" height="60">
-                <Transform target="endAngle" value="-120 + (clamp([STEP_COUNT] / 10000.0, 0, 1) * 240)" />
-                <Stroke color="#FFC81D25" cap="ROUND" thickness="2.2" />
-              </Arc>
-            </PartDraw>
           </ListOption>
         </ListConfiguration>
       </ListOption>
@@ -503,96 +473,17 @@
       </Complication>
     </ComplicationSlot>
 
-    <!-- 3. Left 9 o'clock Chronograph Register: Heart Rate + Battery -->
-    <!-- Live Battery readout inside lower half of 9h subdial (shows ⚡ when charging) -->
-    <ListConfiguration id="bezel_mode">
-      <ListOption id="bezel_expanded">
-        <ListConfiguration id="font_scale">
-          <ListOption id="font_standard">
-            <PartText x="68" y="226" width="88" height="22" name="LeftSubdialBatteryExpStd" alpha="255">
-              <Variant mode="AMBIENT" target="alpha" value="0" />
-              <Text align="CENTER" ellipsis="FALSE">
-                <Font family="SYNC_TO_DEVICE" size="13" weight="BOLD" slant="NORMAL" color="#FFC81D25">
-                  <Template>%s %d%%<Parameter expression="[BATTERY_IS_CHARGING] == 1 ? &quot;⚡&quot; : &quot;♥&quot;" /><Parameter expression="[BATTERY_PERCENT]" /></Template>
-                </Font>
-              </Text>
-            </PartText>
-          </ListOption>
-          <ListOption id="font_large">
-            <PartText x="66" y="225" width="92" height="24" name="LeftSubdialBatteryExpLg" alpha="255">
-              <Variant mode="AMBIENT" target="alpha" value="0" />
-              <Text align="CENTER" ellipsis="FALSE">
-                <Font family="SYNC_TO_DEVICE" size="15" weight="BOLD" slant="NORMAL" color="#FFC81D25">
-                  <Template>%s %d%%<Parameter expression="[BATTERY_IS_CHARGING] == 1 ? &quot;⚡&quot; : &quot;♥&quot;" /><Parameter expression="[BATTERY_PERCENT]" /></Template>
-                </Font>
-              </Text>
-            </PartText>
-          </ListOption>
-          <ListOption id="font_xlarge">
-            <PartText x="64" y="224" width="96" height="26" name="LeftSubdialBatteryExpXL" alpha="255">
-              <Variant mode="AMBIENT" target="alpha" value="0" />
-              <Text align="CENTER" ellipsis="FALSE">
-                <Font family="SYNC_TO_DEVICE" size="17" weight="BOLD" slant="NORMAL" color="#FFC81D25">
-                  <Template>%s %d%%<Parameter expression="[BATTERY_IS_CHARGING] == 1 ? &quot;⚡&quot; : &quot;♥&quot;" /><Parameter expression="[BATTERY_PERCENT]" /></Template>
-                </Font>
-              </Text>
-            </PartText>
-          </ListOption>
-        </ListConfiguration>
-      </ListOption>
-      <ListOption id="bezel_full">
-        <ListConfiguration id="font_scale">
-          <ListOption id="font_standard">
-            <PartText x="96" y="229" width="68" height="16" name="LeftSubdialBatteryStd" alpha="255">
-              <Variant mode="AMBIENT" target="alpha" value="0" />
-              <Text align="CENTER" ellipsis="FALSE">
-                <Font family="SYNC_TO_DEVICE" size="10" weight="BOLD" slant="NORMAL" color="#FFC81D25">
-                  <Template>%s %d%%<Parameter expression="[BATTERY_IS_CHARGING] == 1 ? &quot;⚡&quot; : &quot;♥&quot;" /><Parameter expression="[BATTERY_PERCENT]" /></Template>
-                </Font>
-              </Text>
-            </PartText>
-          </ListOption>
-          <ListOption id="font_large">
-            <PartText x="94" y="229" width="72" height="18" name="LeftSubdialBatteryLg" alpha="255">
-              <Variant mode="AMBIENT" target="alpha" value="0" />
-              <Text align="CENTER" ellipsis="FALSE">
-                <Font family="SYNC_TO_DEVICE" size="12" weight="BOLD" slant="NORMAL" color="#FFC81D25">
-                  <Template>%s %d%%<Parameter expression="[BATTERY_IS_CHARGING] == 1 ? &quot;⚡&quot; : &quot;♥&quot;" /><Parameter expression="[BATTERY_PERCENT]" /></Template>
-                </Font>
-              </Text>
-            </PartText>
-          </ListOption>
-          <ListOption id="font_xlarge">
-            <PartText x="92" y="228" width="76" height="20" name="LeftSubdialBatteryXL" alpha="255">
-              <Variant mode="AMBIENT" target="alpha" value="0" />
-              <Text align="CENTER" ellipsis="FALSE">
-                <Font family="SYNC_TO_DEVICE" size="14" weight="BOLD" slant="NORMAL" color="#FFC81D25">
-                  <Template>%s %d%%<Parameter expression="[BATTERY_IS_CHARGING] == 1 ? &quot;⚡&quot; : &quot;♥&quot;" /><Parameter expression="[BATTERY_PERCENT]" /></Template>
-                </Font>
-              </Text>
-            </PartText>
-          </ListOption>
-        </ListConfiguration>
-      </ListOption>
-    </ListConfiguration>
-
-    <!-- Heart Rate Complication Slot (Tappable to open Fitbit Heart Rate) -->
+    <!-- 3. Left 9 o'clock Chronograph Register: Customizable Complication Slot -->
     <ComplicationSlot
         slotId="2"
         name="heart_rate_slot"
         displayName="slot_heart_rate"
         isCustomizable="TRUE"
-        supportedTypes="RANGED_VALUE SHORT_TEXT"
+        supportedTypes="RANGED_VALUE SHORT_TEXT EMPTY"
         x="52" y="160" width="124" height="120">
       <Variant mode="AMBIENT" target="alpha" value="0" />
-      <DefaultProviderPolicy
-          primaryProvider="com.fitbit.FitbitMobile/com.fitbit.complications.offloadable.heartrate.OffloadableHeartRateComplicationDataSourceService"
-          primaryProviderType="RANGED_VALUE"
-          secondaryProvider="com.fitbit.FitbitMobile/com.fitbit.complications.heartrate.HeartRateComplicationDataSourceService"
-          secondaryProviderType="SHORT_TEXT"
-          defaultSystemProvider="WATCH_BATTERY"
-          defaultSystemProviderType="RANGED_VALUE" />
       <BoundingOval x="0" y="0" width="124" height="120" />
+      <Complication type="EMPTY" />
       <Complication type="RANGED_VALUE">
         <ListConfiguration id="bezel_mode">
           <ListOption id="bezel_expanded">
@@ -601,7 +492,7 @@
                 <PartText x="16" y="30" width="88" height="32">
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="20" weight="BOLD" slant="NORMAL" color="#FF24140C">
-                      <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [HEART_RATE]" /></Template>
+                      <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
                     </Font>
                   </Text>
                 </PartText>
@@ -610,7 +501,7 @@
                 <PartText x="14" y="27" width="92" height="35">
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="24" weight="BOLD" slant="NORMAL" color="#FF24140C">
-                      <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [HEART_RATE]" /></Template>
+                      <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
                     </Font>
                   </Text>
                 </PartText>
@@ -619,7 +510,7 @@
                 <PartText x="12" y="24" width="96" height="38">
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="28" weight="BOLD" slant="NORMAL" color="#FF24140C">
-                      <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [HEART_RATE]" /></Template>
+                      <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
                     </Font>
                   </Text>
                 </PartText>
@@ -632,7 +523,7 @@
                 <PartText x="46" y="45" width="64" height="22">
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="15" weight="BOLD" slant="NORMAL" color="#FF24140C">
-                      <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [HEART_RATE]" /></Template>
+                      <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
                     </Font>
                   </Text>
                 </PartText>
@@ -641,7 +532,7 @@
                 <PartText x="44" y="42" width="68" height="25">
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="19" weight="BOLD" slant="NORMAL" color="#FF24140C">
-                      <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [HEART_RATE]" /></Template>
+                      <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
                     </Font>
                   </Text>
                 </PartText>
@@ -650,7 +541,7 @@
                 <PartText x="42" y="39" width="72" height="28">
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="22" weight="BOLD" slant="NORMAL" color="#FF24140C">
-                      <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [HEART_RATE]" /></Template>
+                      <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
                     </Font>
                   </Text>
                 </PartText>
@@ -667,7 +558,7 @@
                 <PartText x="16" y="30" width="88" height="32">
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="20" weight="BOLD" slant="NORMAL" color="#FF24140C">
-                      <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [HEART_RATE]" /></Template>
+                      <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
                     </Font>
                   </Text>
                 </PartText>
@@ -676,7 +567,7 @@
                 <PartText x="14" y="27" width="92" height="35">
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="24" weight="BOLD" slant="NORMAL" color="#FF24140C">
-                      <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [HEART_RATE]" /></Template>
+                      <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
                     </Font>
                   </Text>
                 </PartText>
@@ -685,7 +576,7 @@
                 <PartText x="12" y="24" width="96" height="38">
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="28" weight="BOLD" slant="NORMAL" color="#FF24140C">
-                      <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [HEART_RATE]" /></Template>
+                      <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
                     </Font>
                   </Text>
                 </PartText>
@@ -698,7 +589,7 @@
                 <PartText x="46" y="45" width="64" height="22">
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="15" weight="BOLD" slant="NORMAL" color="#FF24140C">
-                      <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [HEART_RATE]" /></Template>
+                      <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
                     </Font>
                   </Text>
                 </PartText>
@@ -707,7 +598,7 @@
                 <PartText x="44" y="42" width="68" height="25">
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="19" weight="BOLD" slant="NORMAL" color="#FF24140C">
-                      <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [HEART_RATE]" /></Template>
+                      <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
                     </Font>
                   </Text>
                 </PartText>
@@ -716,7 +607,7 @@
                 <PartText x="42" y="39" width="72" height="28">
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="22" weight="BOLD" slant="NORMAL" color="#FF24140C">
-                      <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [HEART_RATE]" /></Template>
+                      <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
                     </Font>
                   </Text>
                 </PartText>
@@ -727,23 +618,17 @@
       </Complication>
     </ComplicationSlot>
 
-    <!-- 4. Right 3 o'clock Chronograph Register: Current Weather -->
+    <!-- 4. Right 3 o'clock Chronograph Register: Customizable Complication Slot -->
     <ComplicationSlot
         slotId="3"
         name="weather_slot"
         displayName="slot_weather"
         isCustomizable="TRUE"
-        supportedTypes="RANGED_VALUE SHORT_TEXT"
+        supportedTypes="RANGED_VALUE SHORT_TEXT EMPTY"
         x="274" y="160" width="124" height="120">
       <Variant mode="AMBIENT" target="alpha" value="0" />
-      <DefaultProviderPolicy
-          primaryProvider="com.google.android.apps.weather/com.google.android.wearable.weather.pixel.ui.complications.currentweather.CWComplicationService"
-          primaryProviderType="RANGED_VALUE"
-          secondaryProvider="com.google.android.wearable.weather/com.google.android.wearable.weather.complications.WeatherProviderService"
-          secondaryProviderType="SHORT_TEXT"
-          defaultSystemProvider="SUNRISE_SUNSET"
-          defaultSystemProviderType="SHORT_TEXT" />
       <BoundingOval x="0" y="0" width="124" height="120" />
+      <Complication type="EMPTY" />
       <Complication type="RANGED_VALUE">
         <ListConfiguration id="bezel_mode">
           <ListOption id="bezel_expanded">
@@ -766,7 +651,7 @@
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="11" weight="BOLD" slant="NORMAL" color="#FF381F14">
                       <Upper>
-                        <Template>%s<Parameter expression="[COMPLICATION.TITLE] != null ? [COMPLICATION.TITLE] : &quot;WEATHER&quot;" /></Template>
+                        <Template>%s<Parameter expression="[COMPLICATION.TITLE]" /></Template>
                       </Upper>
                     </Font>
                   </Text>
@@ -784,7 +669,7 @@
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="13" weight="BOLD" slant="NORMAL" color="#FF381F14">
                       <Upper>
-                        <Template>%s<Parameter expression="[COMPLICATION.TITLE] != null ? [COMPLICATION.TITLE] : &quot;WEATHER&quot;" /></Template>
+                        <Template>%s<Parameter expression="[COMPLICATION.TITLE]" /></Template>
                       </Upper>
                     </Font>
                   </Text>
@@ -802,7 +687,7 @@
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="15" weight="BOLD" slant="NORMAL" color="#FF381F14">
                       <Upper>
-                        <Template>%s<Parameter expression="[COMPLICATION.TITLE] != null ? [COMPLICATION.TITLE] : &quot;WEATHER&quot;" /></Template>
+                        <Template>%s<Parameter expression="[COMPLICATION.TITLE]" /></Template>
                       </Upper>
                     </Font>
                   </Text>
@@ -830,7 +715,7 @@
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="9" weight="BOLD" slant="NORMAL" color="#FF381F14">
                       <Upper>
-                        <Template>%s<Parameter expression="[COMPLICATION.TITLE] != null ? [COMPLICATION.TITLE] : &quot;WEATHER&quot;" /></Template>
+                        <Template>%s<Parameter expression="[COMPLICATION.TITLE]" /></Template>
                       </Upper>
                     </Font>
                   </Text>
@@ -848,7 +733,7 @@
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="11" weight="BOLD" slant="NORMAL" color="#FF381F14">
                       <Upper>
-                        <Template>%s<Parameter expression="[COMPLICATION.TITLE] != null ? [COMPLICATION.TITLE] : &quot;WEATHER&quot;" /></Template>
+                        <Template>%s<Parameter expression="[COMPLICATION.TITLE]" /></Template>
                       </Upper>
                     </Font>
                   </Text>
@@ -866,7 +751,7 @@
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="12" weight="BOLD" slant="NORMAL" color="#FF381F14">
                       <Upper>
-                        <Template>%s<Parameter expression="[COMPLICATION.TITLE] != null ? [COMPLICATION.TITLE] : &quot;WEATHER&quot;" /></Template>
+                        <Template>%s<Parameter expression="[COMPLICATION.TITLE]" /></Template>
                       </Upper>
                     </Font>
                   </Text>
@@ -892,7 +777,7 @@
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="11" weight="BOLD" slant="NORMAL" color="#FF381F14">
                       <Upper>
-                        <Template>%s<Parameter expression="[COMPLICATION.TITLE] != null ? [COMPLICATION.TITLE] : &quot;WEATHER&quot;" /></Template>
+                        <Template>%s<Parameter expression="[COMPLICATION.TITLE]" /></Template>
                       </Upper>
                     </Font>
                   </Text>
@@ -910,7 +795,7 @@
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="13" weight="BOLD" slant="NORMAL" color="#FF381F14">
                       <Upper>
-                        <Template>%s<Parameter expression="[COMPLICATION.TITLE] != null ? [COMPLICATION.TITLE] : &quot;WEATHER&quot;" /></Template>
+                        <Template>%s<Parameter expression="[COMPLICATION.TITLE]" /></Template>
                       </Upper>
                     </Font>
                   </Text>
@@ -928,7 +813,7 @@
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="15" weight="BOLD" slant="NORMAL" color="#FF381F14">
                       <Upper>
-                        <Template>%s<Parameter expression="[COMPLICATION.TITLE] != null ? [COMPLICATION.TITLE] : &quot;WEATHER&quot;" /></Template>
+                        <Template>%s<Parameter expression="[COMPLICATION.TITLE]" /></Template>
                       </Upper>
                     </Font>
                   </Text>
@@ -950,7 +835,7 @@
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="9" weight="BOLD" slant="NORMAL" color="#FF381F14">
                       <Upper>
-                        <Template>%s<Parameter expression="[COMPLICATION.TITLE] != null ? [COMPLICATION.TITLE] : &quot;WEATHER&quot;" /></Template>
+                        <Template>%s<Parameter expression="[COMPLICATION.TITLE]" /></Template>
                       </Upper>
                     </Font>
                   </Text>
@@ -968,7 +853,7 @@
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="11" weight="BOLD" slant="NORMAL" color="#FF381F14">
                       <Upper>
-                        <Template>%s<Parameter expression="[COMPLICATION.TITLE] != null ? [COMPLICATION.TITLE] : &quot;WEATHER&quot;" /></Template>
+                        <Template>%s<Parameter expression="[COMPLICATION.TITLE]" /></Template>
                       </Upper>
                     </Font>
                   </Text>
@@ -986,7 +871,7 @@
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="12" weight="BOLD" slant="NORMAL" color="#FF381F14">
                       <Upper>
-                        <Template>%s<Parameter expression="[COMPLICATION.TITLE] != null ? [COMPLICATION.TITLE] : &quot;WEATHER&quot;" /></Template>
+                        <Template>%s<Parameter expression="[COMPLICATION.TITLE]" /></Template>
                       </Upper>
                     </Font>
                   </Text>
@@ -1004,17 +889,11 @@
         name="steps_slot"
         displayName="slot_steps"
         isCustomizable="TRUE"
-        supportedTypes="GOAL_PROGRESS RANGED_VALUE SHORT_TEXT"
+        supportedTypes="GOAL_PROGRESS RANGED_VALUE SHORT_TEXT EMPTY"
         x="165" y="266" width="120" height="120">
       <Variant mode="AMBIENT" target="alpha" value="0" />
-      <DefaultProviderPolicy
-          primaryProvider="com.fitbit.FitbitMobile/com.fitbit.complications.offloadable.steps.OffloadableStepsComplicationDataSourceService"
-          primaryProviderType="GOAL_PROGRESS"
-          secondaryProvider="com.fitbit.FitbitMobile/com.fitbit.complications.steps.StepsComplicationDataSourceService"
-          secondaryProviderType="GOAL_PROGRESS"
-          defaultSystemProvider="STEP_COUNT"
-          defaultSystemProviderType="SHORT_TEXT" />
       <BoundingOval x="0" y="0" width="120" height="120" />
+      <Complication type="EMPTY" />
       <Complication type="GOAL_PROGRESS">
         <ListConfiguration id="bezel_mode">
           <ListOption id="bezel_expanded">
@@ -1023,14 +902,16 @@
                 <PartText x="16" y="30" width="88" height="28">
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="18" weight="BOLD" slant="NORMAL" color="#FF24140C">
-                      <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [STEP_COUNT]" /></Template>
+                      <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
                     </Font>
                   </Text>
                 </PartText>
                 <PartText x="20" y="64" width="80" height="18">
                   <Text align="CENTER" ellipsis="FALSE">
                     <Font family="SYNC_TO_DEVICE" size="11" weight="BOLD" slant="NORMAL" color="#FF381F14">
-                      <Template>STEPS</Template>
+                      <Upper>
+                        <Template>%s<Parameter expression="[COMPLICATION.TITLE]" /></Template>
+                      </Upper>
                     </Font>
                   </Text>
                 </PartText>
@@ -1039,14 +920,16 @@
                 <PartText x="14" y="27" width="92" height="32">
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="22" weight="BOLD" slant="NORMAL" color="#FF24140C">
-                      <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [STEP_COUNT]" /></Template>
+                      <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
                     </Font>
                   </Text>
                 </PartText>
                 <PartText x="18" y="64" width="84" height="20">
                   <Text align="CENTER" ellipsis="FALSE">
                     <Font family="SYNC_TO_DEVICE" size="13" weight="BOLD" slant="NORMAL" color="#FF381F14">
-                      <Template>STEPS</Template>
+                      <Upper>
+                        <Template>%s<Parameter expression="[COMPLICATION.TITLE]" /></Template>
+                      </Upper>
                     </Font>
                   </Text>
                 </PartText>
@@ -1055,14 +938,16 @@
                 <PartText x="12" y="24" width="96" height="36">
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="26" weight="BOLD" slant="NORMAL" color="#FF24140C">
-                      <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [STEP_COUNT]" /></Template>
+                      <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
                     </Font>
                   </Text>
                 </PartText>
                 <PartText x="16" y="65" width="88" height="22">
                   <Text align="CENTER" ellipsis="FALSE">
                     <Font family="SYNC_TO_DEVICE" size="15" weight="BOLD" slant="NORMAL" color="#FF381F14">
-                      <Template>STEPS</Template>
+                      <Upper>
+                        <Template>%s<Parameter expression="[COMPLICATION.TITLE]" /></Template>
+                      </Upper>
                     </Font>
                   </Text>
                 </PartText>
@@ -1075,14 +960,16 @@
                 <PartText x="26" y="28" width="68" height="20">
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="14" weight="BOLD" slant="NORMAL" color="#FF24140C">
-                      <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [STEP_COUNT]" /></Template>
+                      <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
                     </Font>
                   </Text>
                 </PartText>
                 <PartText x="30" y="50" width="60" height="14">
                   <Text align="CENTER" ellipsis="FALSE">
                     <Font family="SYNC_TO_DEVICE" size="9" weight="BOLD" slant="NORMAL" color="#FF381F14">
-                      <Template>STEPS</Template>
+                      <Upper>
+                        <Template>%s<Parameter expression="[COMPLICATION.TITLE]" /></Template>
+                      </Upper>
                     </Font>
                   </Text>
                 </PartText>
@@ -1091,14 +978,16 @@
                 <PartText x="24" y="25" width="72" height="24">
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="17" weight="BOLD" slant="NORMAL" color="#FF24140C">
-                      <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [STEP_COUNT]" /></Template>
+                      <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
                     </Font>
                   </Text>
                 </PartText>
                 <PartText x="28" y="50" width="64" height="16">
                   <Text align="CENTER" ellipsis="FALSE">
                     <Font family="SYNC_TO_DEVICE" size="11" weight="BOLD" slant="NORMAL" color="#FF381F14">
-                      <Template>STEPS</Template>
+                      <Upper>
+                        <Template>%s<Parameter expression="[COMPLICATION.TITLE]" /></Template>
+                      </Upper>
                     </Font>
                   </Text>
                 </PartText>
@@ -1107,14 +996,16 @@
                 <PartText x="22" y="22" width="76" height="28">
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="20" weight="BOLD" slant="NORMAL" color="#FF24140C">
-                      <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [STEP_COUNT]" /></Template>
+                      <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
                     </Font>
                   </Text>
                 </PartText>
                 <PartText x="26" y="51" width="68" height="16">
                   <Text align="CENTER" ellipsis="FALSE">
                     <Font family="SYNC_TO_DEVICE" size="12" weight="BOLD" slant="NORMAL" color="#FF381F14">
-                      <Template>STEPS</Template>
+                      <Upper>
+                        <Template>%s<Parameter expression="[COMPLICATION.TITLE]" /></Template>
+                      </Upper>
                     </Font>
                   </Text>
                 </PartText>
@@ -1131,14 +1022,16 @@
                 <PartText x="16" y="30" width="88" height="28">
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="18" weight="BOLD" slant="NORMAL" color="#FF24140C">
-                      <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [STEP_COUNT]" /></Template>
+                      <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
                     </Font>
                   </Text>
                 </PartText>
                 <PartText x="20" y="64" width="80" height="18">
                   <Text align="CENTER" ellipsis="FALSE">
                     <Font family="SYNC_TO_DEVICE" size="11" weight="BOLD" slant="NORMAL" color="#FF381F14">
-                      <Template>STEPS</Template>
+                      <Upper>
+                        <Template>%s<Parameter expression="[COMPLICATION.TITLE]" /></Template>
+                      </Upper>
                     </Font>
                   </Text>
                 </PartText>
@@ -1147,14 +1040,16 @@
                 <PartText x="14" y="27" width="92" height="32">
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="22" weight="BOLD" slant="NORMAL" color="#FF24140C">
-                      <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [STEP_COUNT]" /></Template>
+                      <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
                     </Font>
                   </Text>
                 </PartText>
                 <PartText x="18" y="64" width="84" height="20">
                   <Text align="CENTER" ellipsis="FALSE">
                     <Font family="SYNC_TO_DEVICE" size="13" weight="BOLD" slant="NORMAL" color="#FF381F14">
-                      <Template>STEPS</Template>
+                      <Upper>
+                        <Template>%s<Parameter expression="[COMPLICATION.TITLE]" /></Template>
+                      </Upper>
                     </Font>
                   </Text>
                 </PartText>
@@ -1163,14 +1058,16 @@
                 <PartText x="12" y="24" width="96" height="36">
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="26" weight="BOLD" slant="NORMAL" color="#FF24140C">
-                      <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [STEP_COUNT]" /></Template>
+                      <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
                     </Font>
                   </Text>
                 </PartText>
                 <PartText x="16" y="65" width="88" height="22">
                   <Text align="CENTER" ellipsis="FALSE">
                     <Font family="SYNC_TO_DEVICE" size="15" weight="BOLD" slant="NORMAL" color="#FF381F14">
-                      <Template>STEPS</Template>
+                      <Upper>
+                        <Template>%s<Parameter expression="[COMPLICATION.TITLE]" /></Template>
+                      </Upper>
                     </Font>
                   </Text>
                 </PartText>
@@ -1183,14 +1080,16 @@
                 <PartText x="26" y="28" width="68" height="20">
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="14" weight="BOLD" slant="NORMAL" color="#FF24140C">
-                      <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [STEP_COUNT]" /></Template>
+                      <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
                     </Font>
                   </Text>
                 </PartText>
                 <PartText x="30" y="50" width="60" height="14">
                   <Text align="CENTER" ellipsis="FALSE">
                     <Font family="SYNC_TO_DEVICE" size="9" weight="BOLD" slant="NORMAL" color="#FF381F14">
-                      <Template>STEPS</Template>
+                      <Upper>
+                        <Template>%s<Parameter expression="[COMPLICATION.TITLE]" /></Template>
+                      </Upper>
                     </Font>
                   </Text>
                 </PartText>
@@ -1199,14 +1098,16 @@
                 <PartText x="24" y="25" width="72" height="24">
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="17" weight="BOLD" slant="NORMAL" color="#FF24140C">
-                      <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [STEP_COUNT]" /></Template>
+                      <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
                     </Font>
                   </Text>
                 </PartText>
                 <PartText x="28" y="50" width="64" height="16">
                   <Text align="CENTER" ellipsis="FALSE">
                     <Font family="SYNC_TO_DEVICE" size="11" weight="BOLD" slant="NORMAL" color="#FF381F14">
-                      <Template>STEPS</Template>
+                      <Upper>
+                        <Template>%s<Parameter expression="[COMPLICATION.TITLE]" /></Template>
+                      </Upper>
                     </Font>
                   </Text>
                 </PartText>
@@ -1215,14 +1116,16 @@
                 <PartText x="22" y="22" width="76" height="28">
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="20" weight="BOLD" slant="NORMAL" color="#FF24140C">
-                      <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [STEP_COUNT]" /></Template>
+                      <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
                     </Font>
                   </Text>
                 </PartText>
                 <PartText x="26" y="51" width="68" height="16">
                   <Text align="CENTER" ellipsis="FALSE">
                     <Font family="SYNC_TO_DEVICE" size="12" weight="BOLD" slant="NORMAL" color="#FF381F14">
-                      <Template>STEPS</Template>
+                      <Upper>
+                        <Template>%s<Parameter expression="[COMPLICATION.TITLE]" /></Template>
+                      </Upper>
                     </Font>
                   </Text>
                 </PartText>
@@ -1239,14 +1142,16 @@
                 <PartText x="16" y="30" width="88" height="28">
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="18" weight="BOLD" slant="NORMAL" color="#FF24140C">
-                      <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [STEP_COUNT]" /></Template>
+                      <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
                     </Font>
                   </Text>
                 </PartText>
                 <PartText x="20" y="64" width="80" height="18">
                   <Text align="CENTER" ellipsis="FALSE">
                     <Font family="SYNC_TO_DEVICE" size="11" weight="BOLD" slant="NORMAL" color="#FF381F14">
-                      <Template>STEPS</Template>
+                      <Upper>
+                        <Template>%s<Parameter expression="[COMPLICATION.TITLE]" /></Template>
+                      </Upper>
                     </Font>
                   </Text>
                 </PartText>
@@ -1255,14 +1160,16 @@
                 <PartText x="14" y="27" width="92" height="32">
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="22" weight="BOLD" slant="NORMAL" color="#FF24140C">
-                      <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [STEP_COUNT]" /></Template>
+                      <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
                     </Font>
                   </Text>
                 </PartText>
                 <PartText x="18" y="64" width="84" height="20">
                   <Text align="CENTER" ellipsis="FALSE">
                     <Font family="SYNC_TO_DEVICE" size="13" weight="BOLD" slant="NORMAL" color="#FF381F14">
-                      <Template>STEPS</Template>
+                      <Upper>
+                        <Template>%s<Parameter expression="[COMPLICATION.TITLE]" /></Template>
+                      </Upper>
                     </Font>
                   </Text>
                 </PartText>
@@ -1271,14 +1178,16 @@
                 <PartText x="12" y="24" width="96" height="36">
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="26" weight="BOLD" slant="NORMAL" color="#FF24140C">
-                      <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [STEP_COUNT]" /></Template>
+                      <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
                     </Font>
                   </Text>
                 </PartText>
                 <PartText x="16" y="65" width="88" height="22">
                   <Text align="CENTER" ellipsis="FALSE">
                     <Font family="SYNC_TO_DEVICE" size="15" weight="BOLD" slant="NORMAL" color="#FF381F14">
-                      <Template>STEPS</Template>
+                      <Upper>
+                        <Template>%s<Parameter expression="[COMPLICATION.TITLE]" /></Template>
+                      </Upper>
                     </Font>
                   </Text>
                 </PartText>
@@ -1291,14 +1200,16 @@
                 <PartText x="26" y="28" width="68" height="20">
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="14" weight="BOLD" slant="NORMAL" color="#FF24140C">
-                      <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [STEP_COUNT]" /></Template>
+                      <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
                     </Font>
                   </Text>
                 </PartText>
                 <PartText x="30" y="50" width="60" height="14">
                   <Text align="CENTER" ellipsis="FALSE">
                     <Font family="SYNC_TO_DEVICE" size="9" weight="BOLD" slant="NORMAL" color="#FF381F14">
-                      <Template>STEPS</Template>
+                      <Upper>
+                        <Template>%s<Parameter expression="[COMPLICATION.TITLE]" /></Template>
+                      </Upper>
                     </Font>
                   </Text>
                 </PartText>
@@ -1307,14 +1218,16 @@
                 <PartText x="24" y="25" width="72" height="24">
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="17" weight="BOLD" slant="NORMAL" color="#FF24140C">
-                      <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [STEP_COUNT]" /></Template>
+                      <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
                     </Font>
                   </Text>
                 </PartText>
                 <PartText x="28" y="50" width="64" height="16">
                   <Text align="CENTER" ellipsis="FALSE">
                     <Font family="SYNC_TO_DEVICE" size="11" weight="BOLD" slant="NORMAL" color="#FF381F14">
-                      <Template>STEPS</Template>
+                      <Upper>
+                        <Template>%s<Parameter expression="[COMPLICATION.TITLE]" /></Template>
+                      </Upper>
                     </Font>
                   </Text>
                 </PartText>
@@ -1323,14 +1236,16 @@
                 <PartText x="22" y="22" width="76" height="28">
                   <Text align="CENTER" ellipsis="TRUE">
                     <Font family="SYNC_TO_DEVICE" size="20" weight="BOLD" slant="NORMAL" color="#FF24140C">
-                      <Template>%s<Parameter expression="[COMPLICATION.TEXT] != null ? [COMPLICATION.TEXT] : [STEP_COUNT]" /></Template>
+                      <Template>%s<Parameter expression="[COMPLICATION.TEXT]" /></Template>
                     </Font>
                   </Text>
                 </PartText>
                 <PartText x="26" y="51" width="68" height="16">
                   <Text align="CENTER" ellipsis="FALSE">
                     <Font family="SYNC_TO_DEVICE" size="12" weight="BOLD" slant="NORMAL" color="#FF381F14">
-                      <Template>STEPS</Template>
+                      <Upper>
+                        <Template>%s<Parameter expression="[COMPLICATION.TITLE]" /></Template>
+                      </Upper>
                     </Font>
                   </Text>
                 </PartText>
@@ -1344,60 +1259,7 @@
     <!-- 5c. Chromalight Cyan AOD Readouts (Only visible in AMBIENT when aod_mode == aod_chromalight; 0% lit background pixels!) -->
     <ListConfiguration id="aod_mode">
       <ListOption id="aod_chromalight">
-        <ListConfiguration id="bezel_mode">
-          <ListOption id="bezel_expanded">
-            <PartText x="68" y="206" width="88" height="28" name="AodHeartRateExp" alpha="0">
-              <Variant mode="AMBIENT" target="alpha" value="210" />
-              <Text align="CENTER" ellipsis="TRUE">
-                <Font family="SYNC_TO_DEVICE" size="18" weight="BOLD" slant="NORMAL" color="#FF7CE8FF">
-                  <Template>♥ %d<Parameter expression="[HEART_RATE]" /></Template>
-                </Font>
-              </Text>
-            </PartText>
-            <PartText x="294" y="206" width="88" height="28" name="AodBatteryRightExp" alpha="0">
-              <Variant mode="AMBIENT" target="alpha" value="210" />
-              <Text align="CENTER" ellipsis="TRUE">
-                <Font family="SYNC_TO_DEVICE" size="18" weight="BOLD" slant="NORMAL" color="#FF7CE8FF">
-                  <Template>%d%%<Parameter expression="[BATTERY_PERCENT]" /></Template>
-                </Font>
-              </Text>
-            </PartText>
-            <PartText x="181" y="312" width="88" height="28" name="AodStepsBottomExp" alpha="0">
-              <Variant mode="AMBIENT" target="alpha" value="210" />
-              <Text align="CENTER" ellipsis="TRUE">
-                <Font family="SYNC_TO_DEVICE" size="17" weight="BOLD" slant="NORMAL" color="#FF7CE8FF">
-                  <Template>%d<Parameter expression="[STEP_COUNT]" /></Template>
-                </Font>
-              </Text>
-            </PartText>
-          </ListOption>
-          <ListOption id="bezel_full">
-            <PartText x="96" y="213" width="68" height="24" name="AodHeartRateFull" alpha="0">
-              <Variant mode="AMBIENT" target="alpha" value="210" />
-              <Text align="CENTER" ellipsis="TRUE">
-                <Font family="SYNC_TO_DEVICE" size="14" weight="BOLD" slant="NORMAL" color="#FF7CE8FF">
-                  <Template>♥ %d<Parameter expression="[HEART_RATE]" /></Template>
-                </Font>
-              </Text>
-            </PartText>
-            <PartText x="286" y="213" width="68" height="24" name="AodBatteryRightFull" alpha="0">
-              <Variant mode="AMBIENT" target="alpha" value="210" />
-              <Text align="CENTER" ellipsis="TRUE">
-                <Font family="SYNC_TO_DEVICE" size="14" weight="BOLD" slant="NORMAL" color="#FF7CE8FF">
-                  <Template>%d%%<Parameter expression="[BATTERY_PERCENT]" /></Template>
-                </Font>
-              </Text>
-            </PartText>
-            <PartText x="191" y="302" width="68" height="24" name="AodStepsBottomFull" alpha="0">
-              <Variant mode="AMBIENT" target="alpha" value="210" />
-              <Text align="CENTER" ellipsis="TRUE">
-                <Font family="SYNC_TO_DEVICE" size="14" weight="BOLD" slant="NORMAL" color="#FF7CE8FF">
-                  <Template>%d<Parameter expression="[STEP_COUNT]" /></Template>
-                </Font>
-              </Text>
-            </PartText>
-          </ListOption>
-        </ListConfiguration>
+        <PartDraw x="0" y="0" width="1" height="1" alpha="0" />
       </ListOption>
       <ListOption id="aod_ultra">
         <PartDraw x="0" y="0" width="1" height="1" alpha="0" />
