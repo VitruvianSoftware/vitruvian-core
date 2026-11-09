@@ -21,7 +21,13 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
@@ -29,11 +35,13 @@ import { fileURLToPath } from "node:url";
 
 import {
   buildPanelState,
+  checkAndWakeStalledRuns,
   extractTranscriptRunEvents,
   foldFlowEvents,
   formatElapsed,
   loadLivePanelState,
   parseFlowJsonl,
+  readChildTranscriptActivityAt,
 } from "./main.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -253,6 +261,203 @@ test("loadLivePanelState and buildPanelState produce contract /api/state shape f
     assert.equal(tmpState.hasFlow, true);
     assert.equal(tmpState.title, "Temp Flow");
     assert.equal(tmpState.totalTasks, 1);
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("buildPanelState exposes stallState, idleMs, and stalls, and child transcript activity advances lastActivityAt", () => {
+  const tmpDir = mkdtempSync(join(tmpdir(), "orch-stall-test-"));
+  try {
+    const flowsDir = join(tmpDir, "flows");
+    const brainRoot = join(tmpDir, "app-data");
+    mkdirSync(flowsDir, { recursive: true });
+
+    const startAt = Date.parse("2026-11-05T17:00:00Z");
+    const childStepAt = startAt + 14 * 60 * 1000; // 14m after start
+    const nowAt = startAt + 16 * 60 * 1000; // 16m after start (would be stalled without child transcript, active with child transcript)
+
+    writeFileSync(
+      join(flowsDir, "root-conv.jsonl"),
+      [
+        JSON.stringify({
+          type: "plan",
+          at: startAt,
+          title: "Watchdog Flow",
+          tasks: [
+            {
+              title: "Implement feature",
+              specialist: "wren",
+              tier: "core",
+              after: [],
+            },
+          ],
+        }),
+        JSON.stringify({
+          type: "phase",
+          at: startAt + 1000,
+          phase: "delegate",
+        }),
+        JSON.stringify({
+          type: "run.start",
+          at: startAt + 2000,
+          id: "child-conv-1#2",
+          harness: "antigravity",
+          agent: "wren",
+          model: "claude-sonnet-4-5",
+          title: "Implement feature",
+          role: "worker",
+        }),
+      ].join("\n") + "\n",
+      "utf8",
+    );
+
+    // Without child transcript activity, 16m idle is stalled (>= 15m default).
+    const stalledState = loadLivePanelState({
+      flowsDir,
+      brainRoots: [brainRoot],
+      now: nowAt,
+    });
+    assert.equal(stalledState.stalls.length, 1);
+    assert.equal(stalledState.stalls[0].state, "stalled");
+    assert.equal(stalledState.runs[0].stallState, "stalled");
+    assert.equal(stalledState.runs[0].idleMs, nowAt - (startAt + 2000));
+
+    // Write child transcript for base conversation ID "child-conv-1" (stripping "#2").
+    const childLogDir = join(
+      brainRoot,
+      "brain",
+      "child-conv-1",
+      ".system_generated",
+      "logs",
+    );
+    mkdirSync(childLogDir, { recursive: true });
+    const childTranscriptPath = join(childLogDir, "transcript.jsonl");
+    writeFileSync(
+      childTranscriptPath,
+      JSON.stringify({
+        step_index: 5,
+        type: "PLANNER_RESPONSE",
+        created_at: new Date(childStepAt).toISOString(),
+      }) + "\n",
+      "utf8",
+    );
+    const mtimeDate = new Date(childStepAt);
+    utimesSync(childTranscriptPath, mtimeDate, mtimeDate);
+
+    assert.equal(
+      readChildTranscriptActivityAt("child-conv-1#2", [brainRoot]),
+      childStepAt,
+    );
+
+    // Now loadLivePanelState sees the child activity 2m ago and keeps the worker active.
+    const activeState = loadLivePanelState({
+      flowsDir,
+      brainRoots: [brainRoot],
+      now: nowAt,
+    });
+    assert.equal(activeState.runs[0].lastActivityAt, childStepAt);
+    assert.equal(activeState.runs[0].stallState, "active");
+    assert.equal(activeState.runs[0].idleMs, 2 * 60 * 1000);
+    assert.equal(activeState.stalls[0].state, "active");
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("checkAndWakeStalledRuns calls sendMessage once per stall and re-alerts only when lastActivityAt advances and stalls again", async () => {
+  const tmpDir = mkdtempSync(join(tmpdir(), "orch-watchdog-test-"));
+  try {
+    const flowsDir = join(tmpDir, "flows");
+    const brainRoot = join(tmpDir, "app-data");
+    mkdirSync(flowsDir, { recursive: true });
+
+    const t0 = 1_000_000;
+    const flowPath = join(flowsDir, "lead-conv-42.jsonl");
+    writeFileSync(
+      flowPath,
+      [
+        JSON.stringify({
+          type: "plan",
+          at: t0,
+          title: "Stall Wakeup Test",
+          tasks: [
+            {
+              title: "Build watchdog",
+              specialist: "wren",
+              tier: "core",
+              after: [],
+            },
+          ],
+        }),
+        JSON.stringify({
+          type: "run.start",
+          at: t0 + 1000,
+          id: "worker-uuid-1",
+          harness: "antigravity",
+          agent: "wren",
+          model: "claude-sonnet-4-5",
+          title: "Build watchdog",
+          role: "worker",
+        }),
+      ].join("\n") + "\n",
+      "utf8",
+    );
+
+    const sent = [];
+    const notifiedStalls = new Set();
+    const sendMessage = async (cid, msg, opts) => {
+      sent.push({ cid, msg, opts });
+    };
+
+    // 1. Before stall threshold (10m idle < 15m): no wake-up sent.
+    await checkAndWakeStalledRuns({
+      flowsDir,
+      brainRoots: [brainRoot],
+      sendMessage,
+      notifiedStalls,
+      now: t0 + 1000 + 10 * 60 * 1000,
+    });
+    assert.equal(sent.length, 0);
+
+    // 2. At 16m idle: stalled -> sends exactly 1 wake-up message.
+    await checkAndWakeStalledRuns({
+      flowsDir,
+      brainRoots: [brainRoot],
+      sendMessage,
+      notifiedStalls,
+      now: t0 + 1000 + 16 * 60 * 1000,
+    });
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].cid, "lead-conv-42");
+    assert.equal(sent[0].opts.title, "Orchestrator Watchdog");
+    assert.match(
+      sent[0].msg,
+      /\[Orchestrator Watchdog\] Subagent wren \(worker-uuid-1\) has had no transcript or step activity for 16m 00s on task #1 \("Build watchdog"\)\./,
+    );
+
+    // 3. Subsequent tick at 20m idle with no new activity: deduplicated, does not spam.
+    await checkAndWakeStalledRuns({
+      flowsDir,
+      brainRoots: [brainRoot],
+      sendMessage,
+      notifiedStalls,
+      now: t0 + 1000 + 20 * 60 * 1000,
+    });
+    assert.equal(sent.length, 1);
+
+    // 4. Worker makes progress at +21m, then stalls again 15m later (+36m): alerts again.
+    const nextActivityAt = t0 + 1000 + 21 * 60 * 1000;
+    await checkAndWakeStalledRuns({
+      flowsDir,
+      brainRoots: [brainRoot],
+      childActivityByRunId: { "worker-uuid-1": nextActivityAt },
+      sendMessage,
+      notifiedStalls,
+      now: nextActivityAt + 15 * 60 * 1000,
+    });
+    assert.equal(sent.length, 2);
+    assert.match(sent[1].msg, /15m 00s on task #1 \("Build watchdog"\)/);
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
   }

@@ -381,5 +381,16 @@ describe("sidebar formatting", () => {
       joined,
       /delegated to Gemini: 1 run \(gemini-4-argon-high ×1\), not priced/,
     );
+
+    // Quiet (>= 5m) and stalled (>= 15m) indicators in formatSidebarData / formatSidebarLines
+    const quietData = formatSidebarData(stepRes.flow, 1200 + 6 * 60 * 1000);
+    assert.equal(quietData.agents[0].status, "running (quiet)");
+    assert.equal(quietData.agents[0].color, "warning");
+
+    const stalledLines = formatSidebarLines(
+      stepRes.flow,
+      1200 + 16 * 60 * 1000,
+    );
+    assert.match(stalledLines.join("\n"), /running \(stalled\)/);
   });
 });

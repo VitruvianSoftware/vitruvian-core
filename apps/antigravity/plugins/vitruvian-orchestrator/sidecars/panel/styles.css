@@ -297,6 +297,11 @@ p {
   white-space: nowrap;
 }
 
+.stall-badge {
+  font-size: 0.66rem;
+  padding: 0.08rem 0.42rem;
+}
+
 .status-green {
   color: var(--status-green);
   background: var(--status-green-bg);
