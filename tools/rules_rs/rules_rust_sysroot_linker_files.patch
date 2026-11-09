@@ -18,9 +18,13 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 #
-# Symlink `target_files` (rather than `target.files`) in `_symlink_sysroot_tree`
-# so `rust-lld`'s `data` files (`lib/rustlib/<triple>/bin/gcc-ld/*`) are
-# symlinked into the generated sysroot and included in `toolchain.all_files`.
+# Symlink both `target.files` and `target_files` in `_symlink_sysroot_tree`, so
+# the linker's `data` files (`lib/rustlib/<triple>/bin/gcc-ld/*`) AND
+# `rust-lld` itself land at their original relative paths in the generated
+# sysroot and in `toolchain.all_files`. `gcc-ld/ld.lld` is a wrapper that execs
+# `../rust-lld`; rules_rust only symlinks `rust-lld` into `<sysroot>/bin/`, so
+# with the data files alone remote execution fails with
+# "lld-wrapper: could not exec rust-lld: No such file or directory".
 # Since Rust 1.90, `x86_64-unknown-linux-gnu` defaults to the self-contained
 # lld linker (`gcc-ld/ld.lld`); dropping `target_files` omits `gcc-ld/*` from
 # remote execution inputs and fails with "the self-contained linker was
@@ -33,7 +37,7 @@
      if target_files == None:
          target_files = target.files
 -    for file in target.files.to_list():
-+    for file in target_files.to_list():
++    for file in depset(transitive = [target.files, target_files]).to_list():
          # Parse the path to the file relative to the workspace root so a
          # symlink matching this path can be created within the sysroot.
  
