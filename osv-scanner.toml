@@ -104,3 +104,19 @@ reason = "PERMANENT: no fixed version exists in any range ('paste - no longer ma
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0173"
 reason = "PERMANENT: no fixed version exists in any range ('proc-macro-error2 is unmaintained', a notice, not a flaw). crates.io proc-macro-error2 2.0.1, a build-time proc macro in Signal's libsignal crate graph (apps/desktop/courier/libsignal/Cargo.lock). Not time-boxed because no future date makes it actionable; revisit when libsignal drops it or apps/desktop/courier/libsignal is re-pinned."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0192"
+reason = "PERMANENT: no fixed version exists in any range ('ttf-parser is unmaintained', a notice, not a flaw). crates.io ttf-parser 0.25.1, reached via ab_glyph <- sctk-adwaita (Wayland window decorations) in eframe, Linux only (apps/suites/wand/Cargo.lock). Not time-boxed because no future date makes it actionable; revisit when eframe/winit drop it or apps/suites/wand is re-locked."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0370"
+reason = "PERMANENT: no fixed version exists in any range ('zvariant is unmaintained', a notice, not a flaw). crates.io zvariant 5.15.1, reached via zbus 5.19.0 (latest) <- accesskit_unix (eframe screen-reader support) and ksni (tray-icon's Linux tray), Linux only (apps/suites/wand/Cargo.lock). Not time-boxed because no future date makes it actionable; revisit when eframe/tray-icon move off zbus or apps/suites/wand is re-locked."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0371"
+reason = "PERMANENT: no fixed version exists in any range ('zbus_names is unmaintained', a notice, not a flaw). crates.io zbus_names 4.3.5, part of zbus 5.19.0 (latest) <- accesskit_unix (eframe screen-reader support) and ksni (tray-icon's Linux tray), Linux only (apps/suites/wand/Cargo.lock). Not time-boxed because no future date makes it actionable; revisit when eframe/tray-icon move off zbus or apps/suites/wand is re-locked."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0372"
+reason = "PERMANENT: no fixed version exists in any range ('zvariant_derive is unmaintained', a notice, not a flaw). crates.io zvariant_derive 5.15.1, proc macro of zvariant in zbus 5.19.0 (latest) <- accesskit_unix and ksni, Linux only (apps/suites/wand/Cargo.lock). Not time-boxed because no future date makes it actionable; revisit when eframe/tray-icon move off zbus or apps/suites/wand is re-locked."
