@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.6](https://github.com/VitruvianSoftware/vitruvian-core/compare/daytona-platinum-v0.1.5...daytona-platinum-v0.1.6) (2026-11-09)
+
+
+### Bug Fixes
+
+* **daytona-platinum:** unconstrain subdials and remove hardcoded complication data ([#4450](https://github.com/VitruvianSoftware/vitruvian-core/issues/4450)) ([a327dca](https://github.com/VitruvianSoftware/vitruvian-core/commit/a327dca80970781f80e7399263eb35b1bdd97f31))
+
 ## [0.1.5](https://github.com/VitruvianSoftware/vitruvian-core/compare/daytona-platinum-v0.1.4...daytona-platinum-v0.1.5) (2026-10-25)
 
 
