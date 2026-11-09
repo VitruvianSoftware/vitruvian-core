@@ -201,11 +201,12 @@ func main() {
 			return err
 		}
 
-		if _, err := zitadel.NewProjectRole(ctx, roleKey, &zitadel.ProjectRoleArgs{
+		role, err := zitadel.NewProjectRole(ctx, roleKey, &zitadel.ProjectRoleArgs{
 			ProjectId:   project.ID(),
 			RoleKey:     pulumi.String(roleKey),
 			DisplayName: pulumi.String("Relay user"),
-		}, ignoreOrg); err != nil {
+		}, ignoreOrg)
+		if err != nil {
 			return err
 		}
 
@@ -218,7 +219,11 @@ func main() {
 			if orgID != "" {
 				grantArgs.OrgId = pulumi.String(orgID)
 			}
-			if _, err := zitadel.NewUserGrant(ctx, "grant-"+userID, grantArgs, ignoreOrg); err != nil {
+			// The grant names the role by key, not by a resource output, so
+			// Pulumi sees no dependency and creates both at once. Zitadel then
+			// refuses the grant (Errors.Project.Role.NotFound, first apply
+			// 2026-11-09). DependsOn makes the grant wait for the role.
+			if _, err := zitadel.NewUserGrant(ctx, "grant-"+userID, grantArgs, ignoreOrg, pulumi.DependsOn([]pulumi.Resource{role})); err != nil {
 				return err
 			}
 		}

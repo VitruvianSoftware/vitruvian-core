@@ -194,7 +194,8 @@ func main() {
 		roleOpts := []pulumi.ResourceOption{
 			pulumi.IgnoreChanges([]string{"orgId"}),
 		}
-		if _, err := zitadel.NewProjectRole(ctx, roleKey, roleArgs, roleOpts...); err != nil {
+		role, err := zitadel.NewProjectRole(ctx, roleKey, roleArgs, roleOpts...)
+		if err != nil {
 			return err
 		}
 
@@ -222,6 +223,11 @@ func main() {
 			}
 			grantOpts := []pulumi.ResourceOption{
 				pulumi.IgnoreChanges([]string{"orgId"}),
+				// The grant names the role by key, so without this Pulumi
+				// creates both at once and Zitadel refuses the grant
+				// (Errors.Project.Role.NotFound). Seen on the sibling
+				// zitadel-apps-relay stack's first apply, 2026-11-09.
+				pulumi.DependsOn([]pulumi.Resource{role}),
 			}
 			if _, err := zitadel.NewUserGrant(ctx, "grant-"+userID, grantArgs, grantOpts...); err != nil {
 				return err
