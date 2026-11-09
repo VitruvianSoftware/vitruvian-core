@@ -30,54 +30,54 @@ vitruvian:
 courier:
   name: Courier
   repo: https://github.com/VitruvianSoftware/courier
-  url: ""
+  url: "https://donate.stripe.com/14A9ASaAlaRr7Yt9ijbwk08"
 
 home-speaker:
   name: HomeSpeaker
   repo: https://github.com/VitruvianSoftware/home-speaker
-  url: ""
+  url: "https://donate.stripe.com/aFa28qdMx2kVdiN2TVbwk02"
 
 vitruvian-remote:
   name: Vitruvian Remote
   repo: https://github.com/VitruvianSoftware/vitruvian-remote
-  url: ""
+  url: "https://donate.stripe.com/bJe7sK9whgbL1A52TVbwk0b"
 
 esp32-desk-companion:
   name: ESP32-S3 Desk Companion
   repo: https://github.com/VitruvianSoftware/esp32-desk-companion
-  url: ""
+  url: "https://donate.stripe.com/7sYbJ04bXaRr0w13XZbwk03"
 
 nexus-agent:
   name: NexusAgent
   repo: https://github.com/VitruvianSoftware/nexus-agent
-  url: ""
+  url: "https://donate.stripe.com/eVqdR8dMxf7Ha6B2TVbwk0c"
 
 oauth-user-inspector:
   name: OAuth User Inspector
   repo: https://github.com/VitruvianSoftware/oauth-user-inspector
-  url: ""
+  url: "https://donate.stripe.com/3cI28q4bXaRr2E91PRbwk05"
 
 mcp-slack:
   name: mcp-slack
   repo: https://github.com/VitruvianSoftware/mcp-slack
-  url: ""
+  url: "https://donate.stripe.com/dRm3cu4bXf7H3Idamnbwk09"
 
 mcp-roborock:
   name: mcp-roborock
   repo: https://github.com/VitruvianSoftware/mcp-roborock
-  url: ""
+  url: "https://donate.stripe.com/9B6bJ06k5aRr1A57abbwk04"
 
 gh-watch:
   name: gh-watch
   repo: https://github.com/VitruvianSoftware/gh-watch
-  url: ""
+  url: "https://donate.stripe.com/fZuaEWeQB1gRguZ2TVbwk0a"
 
 devx:
   name: devx
   repo: https://github.com/VitruvianSoftware/devx
-  url: ""
+  url: "https://donate.stripe.com/fZu5kC37T1gRguZdyzbwk06"
 
 homelab:
   name: homelab
   repo: https://github.com/VitruvianSoftware/homelab
-  url: ""
+  url: "https://donate.stripe.com/3cIfZgbEp9Nn4Mh3XZbwk07"
