@@ -18,9 +18,11 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-load("//tools/pulumi:defs.bzl", "pulumi_project")
+load("//tools/pulumi:defs.bzl", "pulumi_go_test", "pulumi_project")
 
 pulumi_project(
     name = "zitadel-apps-mcp-slack",
     dir = "infrastructure/pulumi/platform/zitadel-apps-mcp-slack",
 )
+
+pulumi_go_test()
