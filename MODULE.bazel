@@ -360,6 +360,20 @@ git_override(
 bazel_dep(name = "rules_rust", version = "0.68.1")
 bazel_dep(name = "rules_rs", version = "0.0.26")
 
+# Patched so _symlink_sysroot_tree in rust/toolchain.bzl iterates over
+# target_files rather than target.files when symlinking rust-lld's runfiles
+# (lib/rustlib/<triple>/bin/gcc-ld/*). Without this, gcc-ld/ld.lld is omitted
+# from the generated sysroot and toolchain.all_files, causing Rust >= 1.90 on
+# x86_64-unknown-linux-gnu (which defaults to the self-contained lld linker)
+# to fail on remote execution with "the self-contained linker was requested,
+# but it wasn't found in the target's sysroot, or in rustc's sysroot".
+single_version_override(
+    module_name = "rules_rust",
+    patch_strip = 1,
+    patches = ["//tools/rules_rs:rules_rust_sysroot_linker_files.patch"],
+    version = "0.69.0",
+)
+
 # Patched so triple_to_cfg_attrs normalizes 3-component Android triples
 # (`armv7-linux-androideabi`, `aarch64-linux-android`) and sub-architectures
 # (`armv7` -> `arm`, `i686` -> `x86`). Without this, `armv7-linux-androideabi`
@@ -763,16 +777,15 @@ crate.from_cargo(
     ],
 )
 
-# libdbus-sys (via dbus's `vendored` feature on Linux) compiles C with cc-rs,
-# which runs the compiler from the build script's working directory rather than
-# the Bazel execroot where -imacros relative paths resolve.
+# libdbus-sys (via dbus's `vendored` feature on Linux) compiles C with cc-rs
+# using paths relative to CARGO_MANIFEST_DIR (`./vendor/dbus/...`), while the
+# hermetic LLVM cc_toolchain passes `-resource-dir` / `-isystem` paths relative
+# to the Bazel execroot (`external/toolchains_llvm...`). Symlinking the execroot
+# entries into CARGO_MANIFEST_DIR lets both relative path roots resolve.
 crate.annotation(
     build_script_env = {
-        "CC_aarch64_unknown_linux_gnu": "$(execpath @@//apps/desktop/courier/libsignal:cc_in_execroot)",
-        "CC_x86_64_unknown_linux_gnu": "$(execpath @@//apps/desktop/courier/libsignal:cc_in_execroot)",
-        "COURIER_BAZEL_EXECROOT": "$${pwd}",
+        "RULES_RUST_SYMLINK_EXEC_ROOT": "1",
     },
-    build_script_tools = ["@@//apps/desktop/courier/libsignal:cc_in_execroot"],
     crate = "libdbus-sys",
     repositories = ["wand_crates"],
 )

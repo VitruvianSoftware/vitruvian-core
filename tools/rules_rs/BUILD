@@ -18,5 +18,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Patches carried against @rules_rs until upstreamed.
-exports_files(["armv7_android_triple.patch"])
+# Patches carried against @rules_rs and @rules_rust until upstreamed.
+exports_files([
+    "armv7_android_triple.patch",
+    "rules_rust_sysroot_linker_files.patch",
+])
