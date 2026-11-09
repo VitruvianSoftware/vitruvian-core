@@ -31,6 +31,11 @@
 # the LAN without downloading the 5.55 GB repository-cache tarball over WAN on
 # every job or contending on NFSv4 file locks. Pruned weekly by
 # cache-gc-cronjob.yaml.
+#
+# The size is the claim, not a quota: csi-driver-nfs enforces no limit, so the
+# real ceiling is free space on the NAS share. It still sets the GC's
+# high-watermark (70% of it), so keep the two in step. The StorageClass allows
+# expansion, so raising it resizes the bound claim in place; it cannot shrink.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -42,4 +47,4 @@ spec:
   storageClassName: nfs
   resources:
     requests:
-      storage: 50Gi
+      storage: 80Gi
