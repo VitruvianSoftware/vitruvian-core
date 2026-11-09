@@ -260,6 +260,28 @@ spec:
 apiVersion: backstage.io/v1alpha1
 kind: Resource
 metadata:
+  name: pulumi-zitadel-apps-relay
+  title: Zitadel Project & OAuth Clients (Relay)
+  description: As-code Zitadel project and public OIDC clients for the Vitruvian Relay (connector device sign-in, Claude and ChatGPT connectors)
+  annotations:
+    github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/techdocs-ref: dir:..
+  links:
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/infrastructure/pulumi/platform/zitadel-apps-relay
+      title: Source Code
+      icon: github
+    - url: https://auth.ipv1337.dev/ui/console
+      title: Zitadel Console
+      icon: cloud
+spec:
+  type: identity-provider
+  lifecycle: experimental
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
   name: pulumi-stripe
   title: Stripe (Products, Prices & Payment Links)
   description: As-code Stripe products, prices and Payment Links (donations for the free apps first, paid products later), through Stripe's own provider bridged into Pulumi Go

@@ -23,6 +23,8 @@ Pulumi.*.yaml
 # and secret it mints are stack OUTPUTS held in Pulumi Cloud state, not config, so
 # nothing sensitive is committed here either.
 !platform/zitadel-apps-mcp-slack/Pulumi.*.yaml
+# zitadel-apps-relay: same — non-secret Zitadel identifiers only.
+!platform/zitadel-apps-relay/Pulumi.*.yaml
 # platform/stripe commits its stack config: non-secret Stripe settings (mode,
 # currency, donation amounts, app list). The Stripe key is STRIPE_API_KEY in CI
 # or Pulumi ciphertext locally; a test rejects a plaintext key in the file.
@@ -76,6 +78,7 @@ Pulumi.*.yaml
 # binary got committed.)
 platform/zitadel-apps/zitadel-apps
 platform/zitadel-apps-mcp-slack/zitadel-apps-mcp-slack
+platform/zitadel-apps-relay/zitadel-apps-relay
 /foundation/gcp-bootstrap/foundation-0-bootstrap
 /foundation/org-folders/foundation-org-folders
 /foundation/gcp-org/envs/shared/foundation-org-shared
