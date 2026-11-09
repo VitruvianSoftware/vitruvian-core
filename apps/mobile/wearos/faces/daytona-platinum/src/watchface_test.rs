@@ -387,7 +387,7 @@ fn test_user_configurations_define_all_chronograph_options_and_launch_targets() 
         ),
         (
             "subdial_mode",
-            "subdials_smart",
+            "subdials_chrono",
             &["subdials_smart", "subdials_chrono", "subdials_minimal"],
         ),
         ("status_badges", "badges_on", &["badges_on", "badges_off"]),

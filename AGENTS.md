@@ -130,7 +130,8 @@ your checkout. Previews are always fine; applies are not.
 ## Repo and dev operations go through Bazel targets
 **Use these targets for every git write.** Raw git writes (`git commit`, `git push`,
 `git rebase`, `git worktree add/remove`, `git stash`, …) are blocked by agent-guard
-in agent sessions (below); reads (`git status`, `log`, `diff`, `show`, `fetch`) stay allowed.
+in agent sessions (below). Reading the local source with git (`git status`, `log`, `diff`,
+`show`, `fetch`) is allowed.
 Each target does the write plus the checks that belong with it, and every refusal
 prints the command to use instead. If no target fits, stop and say which one is missing.
 
@@ -161,9 +162,17 @@ more `//tools/agent-app` `pr-*` commands; until then, use `gh pr …` as below.
 The same goes for toolchains and `gh` writes: `bazel test //...` instead of `go test`,
 `swift test`, `pnpm test` or `cargo test`; `bazel run //tools/format` and `aspect lint`
 instead of running linters; `bazel run //tools/agent-app -- pr-create` instead of
-`gh pr create`. Read-only commands (`git status/log/diff`, `gh pr view`, `kubectl get`)
-stay fine. Where this guide still names a raw command, use the target if it exists; if it
-does not, stop and tell James which one is missing.
+`gh pr create`.
+
+**Reads of live systems go through targets too.** Anything that queries GitHub, the
+cluster, Helm releases or Pulumi state runs through a Bazel target, not the raw CLI:
+`bazel run //tools/agent-app -- read pr view <n>` (any `gh` read: PR, checks, runs,
+workflows, `api` GETs and GraphQL queries), `bazel run //tools/gitops:{get,describe,logs,events,status,helm}`,
+`bazel run //infrastructure/pulumi/<project>:stack`. Building or running a repo image with
+`docker` has no target yet. The same applies to **commands you hand to James**: give him
+the Bazel target, never a raw `gh`/`kubectl`/`gcloud`/`pulumi` line. Where this guide still
+names a raw command, use the target if it exists; if it does not, stop and tell James which
+one is missing.
 
 In Claude Code and Antigravity (agy) this is enforced by **agent-guard**, a hook that refuses the raw command and
 names the target ([tools/agent-guard](tools/agent-guard/README.md)). It reads command text,

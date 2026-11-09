@@ -441,6 +441,7 @@ another branch; until one lands, the refusal says so and points to James.
 | | `gh run delete`, `gh workflow enable/disable` | no target yet: tell James |
 | `gh-api` | `gh api` with a write method or fields, GraphQL mutations | no target: tell James |
 | `gh-other` | other `gh` writes: `release create`, `secret set`, `label create`, ... | no target: tell James |
+| `gh-read` | `gh` reads of this repo: `pr view/list/checks/diff/status`, `run list/view/watch/download`, `workflow list/view`, `issue view/list`, `repo/release view`, `search`, `status`, `gh api` GETs and GraphQL queries (other repos are not governed) | `bazel run //tools/agent-app -- read <the same gh arguments>` |
 | `go` | `go test/vet/build/run/install/mod/get/fmt` | `bazel test`, `bazel build`, `//tools/gomod:tidy`, `//tools/format` |
 | `swift` | `swift build/test/run/package`, `swiftc` | `bazel test //apps/desktop/<app>:<Tests>` |
 | `xcode` | `xcodebuild`, `xcrun notarytool/stapler/altool` | the app's `bazel build`/`test` and packaging targets |
@@ -454,7 +455,10 @@ another branch; until one lands, the refusal says so and points to James.
 | `iac` | `pulumi` (anything but read-only commands like `stack ls`), `terraform apply/destroy/import` | `bazel run //infrastructure/pulumi/<project>:preview` |
 | `kubectl` | `apply/delete/patch/create/replace` | `bazel run //tools/gitops:{apply,delete,patch}`, or change git |
 | | `edit/exec/rollout restart/scale/label/...` | no target: tell James |
+| `kubectl-read` | `get/describe/logs/events/top/explain/api-resources`, `rollout status/history`, and the Kubernetes MCP read tools | `bazel run //tools/gitops:{get,describe,logs,events,top,explain,api-resources,status}` |
 | `helm` | `install/upgrade/uninstall/rollback` | `bazel run //tools/gitops:helm`, or change git |
+| `helm-read` | `list/status/get/history` (the live cluster) and `template` | `bazel run //tools/gitops:helm -- <args>`; `bazel run //tools/ci:chart_render` for this repo's charts |
+| `docker` | `docker`/`podman`/`nerdctl` `build`, `buildx build/bake`, `run`, `push`, `exec`, `create`, `start`, `compose up/run/build/...` | no target: images build in their `*-image.yaml` workflow; tell James what you need |
 | `bazel-cache` | `rm -r` of `~/.cache/bazel`, `~/Library/Caches/bazel` or `_bazel_*`; `find -delete` there; `bazel clean --expunge`; `--output_user_root`/`--output_base` | `bazel run //tools/bazel-cache:gc` |
 | `guard-config` | agents writing, moving or deleting the hook files in any checkout (`.claude/settings.json`, `.claude/settings.local.json`, `.claude/*.sh`, `.agents/hooks.json`, and `tools/agent-guard/hook.sh`); changing agent-guard's entries in, or setting `"disableAllHooks": true` in, the backstop's user files (`~/.claude/settings.json`, `~/.gemini/config/hooks.json`), and any shell, Desktop Commander or agy write to them (other settings: Claude Code's Edit tools, see "Limits"); writing, moving or deleting the guard's log and cache (`~/.local/state/agent-guard`) or the old per-user copy (copying or reading FROM them is fine, in the shell or in `python -c`); `bazel run //tools/agent-guard:install` with anything but nothing, `--check` or `--dry-run` (so a real `--uninstall`, `--mode`, other flags, Bazel options), or from a checkout whose installer is not `origin/main`'s, and running `bazel-bin/.../install` or `install.py` directly for anything but `--check`/`--dry-run` (see "Who may do what"); hiding the agent session (`CLAUDECODE=`/`ANTIGRAVITY_*=`/`GEMINI_CLI=` prefixes, `env -u`, `env -i`, `unset`, `export -n`) in a command that runs anything agent-guard. Matched on the parsed commands, so `grep 'unset CLAUDECODE'` is just a grep | James does this from his own terminal; agents may run the plain install |
 | `oversize` | a command with more than 20,000 simple commands in it (the hook must answer inside its 10 s timeout, and command tools fail closed) | split it into smaller commands |
@@ -463,10 +467,12 @@ another branch; until one lands, the refusal says so and points to James.
 ls-files grep blame`, `branch` listing, `worktree list`, `merge-base`,
 `cat-file`, `config --get`, `remote -v`, `stash list`, `tag -l`, `restore`,
 `checkout -- <path>`, `apply <patch>` to the working tree, `clean -n`,
-`pull --ff-only` in the primary checkout); read-only gh (`view list checks diff status`, `gh api` GETs and
-GraphQL queries, `gh issue ...`); anything run by `bazel`, `bazelisk`,
+`pull --ff-only` in the primary checkout); `gh` commands about other repositories,
+`gh issue` writes, `gh auth status`, `gh config get/list`; `kubectl version`/`config`
+reads of the local kubeconfig; `docker` inspection of the local daemon (`ps`, `images`,
+`inspect`, `logs`, `version`, `compose ps/ls/config`); anything run by `bazel`, `bazelisk`,
 `aspect` or `ibazel`; `--version` and `--help` of every tool; and every program
-the guard does not govern (`cat`, `jq`, `ls`, `python3 -c`, `docker`, ...).
+the guard does not govern (`cat`, `jq`, `ls`, `python3 -c`, ...).
 
 **Half-finished operations are never stranded.** While a merge, rebase or
 cherry-pick is in progress (git's `MERGE_HEAD`, `REBASE_HEAD`/`rebase-merge`/

@@ -29,7 +29,8 @@ use shell_compat as sc;
 
 use super::common::*;
 
-const SUBCMDS: &str = "apply|delete|diff|get|patch|status|helm|kubeseal";
+const SUBCMDS: &str =
+    "apply|delete|diff|get|patch|status|helm|kubeseal|describe|logs|top|events|explain|api-resources";
 
 /// `exec CMD`: replace this process; bash's message and 126/127 when it
 /// cannot.
@@ -81,6 +82,11 @@ fn run_main(args: &[Vec<u8>]) -> Res<i32> {
     };
     Ok(match sub.as_slice() {
         b"apply" | b"delete" | b"diff" | b"get" | b"patch" => exec(43, plain(&sub)),
+        // Read-only cluster inspection: agent-guard sends raw `kubectl
+        // describe/logs/...` here, so each needs a sanctioned target.
+        b"describe" | b"logs" | b"top" | b"events" | b"explain" | b"api-resources" => {
+            exec(44, plain(&sub))
+        }
         b"status" => {
             say(b"=== ArgoCD projects / appsets / applications (sync \xc2\xb7 health) ===");
             let mut c = kubectl(

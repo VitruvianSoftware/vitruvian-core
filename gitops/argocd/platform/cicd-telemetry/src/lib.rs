@@ -107,6 +107,7 @@ pub const WORKFLOW_NAMES: &[&str] = &[
     "tabula-e2e",
     "tabula-release",
     "zitadel-apps-mcp-slack-apply",
+    "zitadel-apps-relay-apply",
 ];
 
 /// Load the `OpenTelemetryCollector` document from `collector.yaml`.

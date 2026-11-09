@@ -422,6 +422,22 @@ crate.from_cargo(
 )
 use_repo(crate, "mcp_slack_crates")
 
+# The relay P0 spike server's crates. A separate hub with its own Cargo.lock
+# because its image builds with cargo from apps/suites/relay/spike (plus the
+# mcp-slack crate it reuses). Re-lock: bazel run //tools/crates:lock -- --dir apps/suites/relay/spike
+crate.from_cargo(
+    name = "relay_spike_crates",
+    cargo_lock = "//apps/suites/relay/spike:Cargo.lock",
+    cargo_toml = "//apps/suites/relay/spike:Cargo.toml",
+    platform_triples = [
+        "aarch64-apple-darwin",
+        "aarch64-unknown-linux-gnu",
+        "x86_64-apple-darwin",
+        "x86_64-unknown-linux-gnu",
+    ],
+)
+use_repo(crate, "relay_spike_crates")
+
 # The Roborock daemon/CLI/MCP server's crates. A separate hub with its own
 # Cargo.lock because the mcp-roborock mirror builds from apps/mcp/roborock
 # alone (see apps/mcp/roborock/Cargo.toml).

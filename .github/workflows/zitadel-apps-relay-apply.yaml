@@ -1,0 +1,138 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: zitadel-apps-relay-apply
+
+# Manual apply of the zitadel-apps-relay stack: the Zitadel project and OIDC
+# clients for the Vitruvian Relay (spec:
+# docs/superpowers/specs/2026-11-07-vitruvian-relay-design.md §6).
+#
+# Same shape as zitadel-apps-mcp-slack-apply.yaml, which documents each step in
+# detail: tailnet tunnel to the internal Zitadel route, Pulumi over it, then a
+# report of the stack's outputs. No GCP resources, so no WIF step.
+#
+# DEFAULTS TO PREVIEW. `up` creates live Zitadel resources and has to be picked
+# on the dispatch. NEVER run the `:import` target against this stack: the
+# provider plans a replacement and deletes the live client.
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "preview (safe, default) | up (CREATES live Zitadel resources)"
+        required: true
+        default: preview
+        type: choice
+        options: [preview, up]
+
+# Serialize applies of this stack; never cancel an in-flight pulumi up.
+concurrency:
+  group: zitadel-apps-relay-apply
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    # Holds TS_OAUTH_CLIENT_ID, TS_OAUTH_SECRET and ZITADEL_MACHINE_KEY_JSON:
+    # instance-wide credentials first seeded under this environment's name.
+    environment: oauth-user-inspector-development
+    env:
+      DEPLOY_ENV: development
+      # Authenticates Pulumi's github:// plugin download (rate limits).
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up the Zitadel tunnel (tailnet join + TLS terminator prep)
+        uses: ./.github/actions/zitadel-tunnel-setup
+        with:
+          tailscale-oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          tailscale-oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+
+      - name: Install Pulumi
+        uses: pulumi/actions@96c7761824268174e0d2a4e8c7d75671eebd24a7 # v7.1.0
+
+      - name: "Run Pulumi (${{ inputs.action }})"
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          ZITADEL_MACHINE_KEY_JSON: ${{ secrets.ZITADEL_MACHINE_KEY_JSON }}
+          ACTION: ${{ inputs.action }}
+          GOWORK: off
+        working-directory: infrastructure/pulumi/platform/zitadel-apps-relay
+        run: |
+          set -euo pipefail
+          retry="${RUNNER_TEMP}/retry-concurrent-update"
+          rustc --edition 2021 -O "$GITHUB_WORKSPACE/tools/pulumi/src/bin/retry_concurrent_update.rs" -o "$retry"
+
+          # Internal route to Zitadel over tailnet (the public edge 403s the API).
+          sudo socat OPENSSL-LISTEN:443,reuseaddr,fork,cert=/etc/auth-internal-ck.pem,verify=0 \
+            TCP:nuc9i9.coati-koi.ts.net:30265 &
+          trap 'sudo pkill -f "OPENSSL-LISTEN:443" 2>/dev/null || true' EXIT
+          for _ in $(seq 1 15); do
+            curl -fsS --max-time 5 https://auth.ipv1337.dev/debug/healthz >/dev/null 2>&1 && break
+            sleep 2
+          done
+          curl -fsS --max-time 5 https://auth.ipv1337.dev/debug/healthz >/dev/null
+          echo "internal route to auth.ipv1337.dev is up"
+
+          pulumi stack select "$DEPLOY_ENV" --create
+          pulumi config set --secret zitadel:jwtProfileJson "$ZITADEL_MACHINE_KEY_JSON"
+          if [ "$ACTION" = "up" ]; then
+            "$retry" pulumi refresh --yes
+            "$retry" pulumi up --yes
+          else
+            pulumi preview --diff
+          fi
+
+          if [ "$ACTION" != "up" ] && ! pulumi stack output projectId >/dev/null 2>&1; then
+            echo "stack has no outputs yet — nothing applied, skipping the report"
+            exit 0
+          fi
+
+          # Report what is live. Refresh first so ignored fields show Zitadel's
+          # current values, not the last ones Pulumi wrote. Nothing printed here
+          # is secret: every client is public (no client secret exists).
+          "$retry" pulumi refresh --yes
+          for o in projectId projectRoleCheck scopes connectorClientId claudeClientId; do
+            v="$(pulumi stack output "$o")"
+            if [ -z "$v" ]; then
+              echo "::error::stack output $o read back empty — refusing to report a blank value" >&2
+              exit 1
+            fi
+            printf '%-26s %s\n' "$o" "$v"
+          done
+          if pulumi stack output chatgptClientId >/dev/null 2>&1; then
+            printf '%-26s %s\n' chatgptClientId "$(pulumi stack output chatgptClientId)"
+          fi
+          # The relay validates JWTs locally; an opaque token on any client would
+          # fail every request while the stack reports clean.
+          for c in connector claude chatgpt; do
+            att="$(pulumi stack output "${c}AccessTokenType" 2>/dev/null || true)"
+            [ -z "$att" ] && [ "$c" = chatgpt ] && continue
+            if [ "$att" != "OIDC_TOKEN_TYPE_JWT" ]; then
+              echo "::error::${c} access token type is '${att}', not OIDC_TOKEN_TYPE_JWT" >&2
+              exit 1
+            fi
+          done
