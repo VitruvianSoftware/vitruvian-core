@@ -129,6 +129,9 @@ is two clicks per agent; everything either side of them is here.
   bazel run //tools/agent-app -- issue-close [--agent <agent>] <issue> [--comment <s>] [--reason <r>]
   bazel run //tools/agent-app -- branch-delete [--agent <agent>] <branch>...
                                   # delete branches on GitHub, only ones already on main
+  bazel run //tools/agent-app -- read [--agent <agent>] <gh read command>
+                                  # GitHub reads (pr view/checks, run list/view, api GET, ...);
+                                  # agent-guard sends raw gh reads here
 
 Every pr-* and run command acts AS the agent app (default wren, or
 $AGENT_APP_AGENT): the token reaches gh through its environment only, and if
@@ -1470,6 +1473,20 @@ impl Tool {
         self.pass(&tok, &[b"run", verb], rest)
     }
 
+    /// `read`: a GitHub read (PR, run, workflow, issue, repo, release state,
+    /// or a GET/GraphQL query) as the agent app. agent-guard sends every raw
+    /// `gh` read in this repo here, so reads go through a Bazel target too.
+    /// Only read forms pass `read_args`; anything that could write is refused
+    /// before a token is minted.
+    fn gh_read(&self, args: &[Vec<u8>]) -> Res {
+        let (agent, rest) =
+            take_agent(args).ok_or_else(|| die(&cat(&[b"usage: ", READ_USAGE.as_bytes()])))?;
+        read_args(rest)?;
+        let tok = self.mint_token(&agent, b"nothing was read")?;
+        to_caller_dir()?;
+        self.pass(&tok, &[], rest)
+    }
+
     fn workflow_run(&self, args: &[Vec<u8>]) -> Res {
         let usage = "workflow-run [--agent <agent>] <workflow.yaml> [-f k=v ...] [--ref main]";
         let (agent, rest) =
@@ -1847,6 +1864,7 @@ impl Tool {
             b"issue-comment" => self.issue_comment(rest),
             b"issue-close" => self.issue_close(rest),
             b"branch-delete" => self.branch_delete(rest),
+            b"read" => self.gh_read(rest),
             b"-h" | b"--help" | b"help" => return usage(0),
             _ => Err(die(&cat(&[b"unknown command: ", &cmd, b" (try --help)"]))),
         };
@@ -2227,6 +2245,120 @@ pub fn issue_args_ok(usage: &str, args: &[Vec<u8>]) -> Result<(), Refusal> {
         }
     }
     Ok(())
+}
+
+pub const READ_USAGE: &str =
+    "read [--agent <agent>] <gh read command>   e.g. read pr view 4446 --json state";
+
+/// The gh commands `read` runs: (group, subcommands). An empty list means
+/// any subcommand of that group is a read.
+const READ_FORMS: &[(&str, &[&str])] = &[
+    ("pr", &["view", "list", "checks", "diff", "status"]),
+    ("run", &["view", "list", "watch", "download"]),
+    ("workflow", &["view", "list"]),
+    ("issue", &["view", "list", "status"]),
+    ("repo", &["view", "list"]),
+    ("release", &["view", "list", "download"]),
+    ("variable", &["list", "get"]),
+    ("secret", &["list"]),
+    ("label", &["list"]),
+    ("cache", &["list"]),
+    ("ruleset", &["list", "view", "check"]),
+    ("search", &[]),
+    ("status", &[]),
+];
+
+/// `read_args`: the arguments are one gh read. For `gh api`, the method must
+/// be GET or HEAD (fields only with an explicit `-X GET`, never `--input`),
+/// and a GraphQL call must be an inline `-f query=...` with no mutation.
+pub fn read_args(args: &[Vec<u8>]) -> Result<(), Refusal> {
+    let s: Vec<String> = args
+        .iter()
+        .map(|a| String::from_utf8_lossy(a).into_owned())
+        .collect();
+    let usage = || refuse(&[b"usage: ", READ_USAGE.as_bytes()]);
+    let group = s.first().ok_or_else(usage)?.as_str();
+    if group.starts_with('-') {
+        return Err(usage());
+    }
+    if group == "api" {
+        return api_read(&s[1..]);
+    }
+    let Some((_, subs)) = READ_FORMS.iter().find(|(g, _)| *g == group) else {
+        return Err(refuse(&[
+            b"refusing 'gh ",
+            group.as_bytes(),
+            b"': read runs only pr/run/workflow/issue/repo/release/variable/secret/label/cache/ruleset reads, search, status and api GET/GraphQL queries. Nothing was run",
+        ]));
+    };
+    if !subs.is_empty() {
+        let sub = s.get(1).map(String::as_str).unwrap_or("");
+        if !subs.contains(&sub) {
+            return Err(refuse(&[
+                b"refusing 'gh ",
+                group.as_bytes(),
+                b" ",
+                sub.as_bytes(),
+                b"': not a read. Nothing was run",
+            ]));
+        }
+    }
+    Ok(())
+}
+
+fn api_read(args: &[String]) -> Result<(), Refusal> {
+    let mut method: Option<String> = None;
+    let mut fields: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        let a = args[i].as_str();
+        let next = args.get(i + 1).cloned();
+        if a == "-X" || a == "--method" {
+            method = next.map(|m| m.to_ascii_uppercase());
+            i += 2;
+            continue;
+        }
+        if let Some(m) = a.strip_prefix("--method=") {
+            method = Some(m.to_ascii_uppercase());
+        } else if a.starts_with("-X") && a.len() > 2 {
+            method = Some(a[2..].to_ascii_uppercase());
+        } else if a == "--input" || a.starts_with("--input=") {
+            return Err(refuse(&[b"refusing --input: a body read from a file can't be checked as a read. Nothing was run"]));
+        } else if matches!(a, "-f" | "-F" | "--field" | "--raw-field") {
+            fields.push(next.unwrap_or_default());
+            i += 2;
+            continue;
+        } else if let Some(v) = a
+            .strip_prefix("--field=")
+            .or_else(|| a.strip_prefix("--raw-field="))
+        {
+            fields.push(v.to_string());
+        } else if (a.starts_with("-f") || a.starts_with("-F")) && a.len() > 2 {
+            fields.push(a[2..].to_string());
+        }
+        i += 1;
+    }
+    let endpoint = args
+        .iter()
+        .find(|a| !a.starts_with('-') && !fields.contains(a))
+        .map(String::as_str)
+        .unwrap_or("");
+    if endpoint == "graphql" {
+        let query = fields.iter().find_map(|f| f.strip_prefix("query="));
+        return match query {
+            None => Err(refuse(&[b"refusing gh api graphql without an inline -f query=...: it can't be checked as a read. Nothing was run"])),
+            Some(q) if q.to_ascii_lowercase().split(|c: char| !c.is_ascii_alphanumeric()).any(|w| w == "mutation") => {
+                Err(refuse(&[b"refusing a GraphQL mutation: read runs queries only. Nothing was run"]))
+            }
+            Some(_) => Ok(()),
+        };
+    }
+    match method.as_deref() {
+        None if fields.is_empty() => Ok(()),
+        None => Err(refuse(&[b"refusing gh api with fields and no -X GET: gh sends that as a POST. Add -X GET for a query string. Nothing was run"])),
+        Some("GET") | Some("HEAD") => Ok(()),
+        Some(m) => Err(refuse(&[b"refusing gh api -X ", m.as_bytes(), b": read runs GET and HEAD only. Nothing was run"])),
+    }
 }
 
 /// workflow-run's checks on what follows the workflow: inputs and --ref

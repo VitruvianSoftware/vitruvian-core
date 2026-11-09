@@ -196,6 +196,21 @@ pub const T_HELM: Target = t(
     "bazel run //tools/gitops:helm -- <args> (or change the chart values in git)",
     None,
 );
+pub const T_GH_READ: Target = t(
+    "bazel run //tools/agent-app -- read <the same gh arguments>",
+    None,
+);
+pub const T_KUBECTL_READ: Target = t(
+    "bazel run //tools/gitops:{get,describe,logs,events,top,explain,api-resources,status} -- <args>",
+    None,
+);
+pub const T_HELM_READ: Target = t(
+    "bazel run //tools/gitops:helm -- <args> (charts in this repo render with bazel run //tools/ci:chart_render)",
+    None,
+);
+pub const DOCKER_NOTE: &str =
+    "Repo images are built and pushed by their .github/workflows/*-image.yaml; \
+there is no Bazel target to build or run one locally. Stop and tell James which target you need.";
 
 /// `V(category, op, target, note)`.
 pub fn v(category: &str, op: &str, target: Option<Target>, note: &str) -> Verdict {
@@ -212,6 +227,11 @@ pub fn v(category: &str, op: &str, target: Option<Target>, note: &str) -> Verdic
 
 fn vn(category: &str, op: &str) -> Option<Verdict> {
     Some(v(category, op, None, ""))
+}
+
+/// A GitHub read in this repo: allowed only through `agent-app read`.
+fn gh_read(op: &str) -> Option<Verdict> {
+    vt("gh-read", op, T_GH_READ)
 }
 
 fn vt(category: &str, op: &str, target: Target) -> Option<Verdict> {
@@ -1174,7 +1194,7 @@ fn classify_gh_api(args: &[String], cwd: &str) -> Option<Verdict> {
 pass the query inline with -f query=... to run a read.",
             )),
             Some(q) if has_mutation(&q) => vn("gh-api", "gh api graphql mutation"),
-            Some(_) => None,
+            Some(_) => gh_read("gh api graphql (query)"),
         };
     }
     match method.as_deref() {
@@ -1183,11 +1203,59 @@ pass the query inline with -f query=... to run a read.",
             if fields || has_input {
                 return vn("gh-api", "gh api (POST)");
             }
-            None
+            gh_read("gh api (GET)")
         }
-        Some("GET") | Some("HEAD") => None,
+        Some("GET") | Some("HEAD") => gh_read("gh api (GET)"),
         Some(m) => vn("gh-api", &format!("gh api -X {}", m)),
     }
+}
+
+/// docker / podman: building, running, pushing or composing images is an
+/// operation on this repo's artifacts, and has no Bazel target. Inspecting
+/// the local daemon (ps, images, inspect, logs, version, info) is allowed.
+fn classify_docker(prog: &str, args: &[String]) -> Option<Verdict> {
+    let pos = positionals(
+        args,
+        &[
+            "-H",
+            "--host",
+            "--context",
+            "-c",
+            "--config",
+            "-l",
+            "--log-level",
+        ],
+    );
+    let sub = pos.first().map(|s| s.as_str()).unwrap_or("");
+    let sub2 = pos.get(1).map(|s| s.as_str()).unwrap_or("");
+    let op = match sub {
+        "build" | "run" | "push" | "exec" | "create" | "start" | "commit" | "load" | "import" => {
+            format!("{} {}", prog, sub)
+        }
+        "buildx" | "builder" if inl(&["build", "bake", "b"], sub2) => {
+            format!("{} {} {}", prog, sub, sub2)
+        }
+        "image" | "container"
+            if inl(
+                &[
+                    "build", "push", "run", "create", "start", "exec", "load", "import",
+                ],
+                sub2,
+            ) =>
+        {
+            format!("{} {} {}", prog, sub, sub2)
+        }
+        "compose"
+            if !inl(
+                &["version", "ls", "ps", "config", "logs", "images", ""],
+                sub2,
+            ) =>
+        {
+            format!("{} compose {}", prog, sub2)
+        }
+        _ => return None,
+    };
+    Some(v("docker", &op, None, DOCKER_NOTE))
 }
 
 pub fn classify_gh(inv: &Invocation) -> Option<Verdict> {
@@ -1204,8 +1272,11 @@ pub fn classify_gh(inv: &Invocation) -> Option<Verdict> {
         return classify_gh_api(&args[1..], &inv.cwd);
     }
     if group == "pr" {
-        if inl(&["view", "list", "checks", "diff", "status", ""], sub) {
+        if sub.is_empty() {
             return None;
+        }
+        if inl(&["view", "list", "checks", "diff", "status"], sub) {
+            return gh_read(&format!("gh pr {}", sub));
         }
         if sub == "create" {
             return vt("gh-pr", "gh pr create", T_PR_CREATE);
@@ -1239,11 +1310,17 @@ pub fn classify_gh(inv: &Invocation) -> Option<Verdict> {
         if sub == "delete" || sub == "transfer" {
             return vn("gh-other", &format!("gh issue {}", sub));
         }
+        if inl(&["view", "list", "status"], sub) {
+            return gh_read(&format!("gh issue {}", sub));
+        }
         return None;
     }
     if group == "run" {
-        if inl(&["view", "list", "watch", "download", ""], sub) {
+        if sub.is_empty() {
             return None;
+        }
+        if inl(&["view", "list", "watch", "download"], sub) {
+            return gh_read(&format!("gh run {}", sub));
         }
         if sub == "rerun" {
             return Some(v("gh-run", "gh run rerun", Some(T_RUN_RERUN), RUN_NOTE));
@@ -1259,8 +1336,11 @@ pub fn classify_gh(inv: &Invocation) -> Option<Verdict> {
         ));
     }
     if group == "workflow" {
-        if inl(&["view", "list", ""], sub) {
+        if sub.is_empty() {
             return None;
+        }
+        if inl(&["view", "list"], sub) {
+            return gh_read(&format!("gh workflow {}", sub));
         }
         if sub == "run" {
             return Some(v(
@@ -1280,7 +1360,10 @@ pub fn classify_gh(inv: &Invocation) -> Option<Verdict> {
             RUN_NO_TARGET_NOTE,
         ));
     }
-    if inl(&["search", "browse", "status", "completion"], group) {
+    if inl(&["search", "status"], group) {
+        return gh_read(&format!("gh {}", group));
+    }
+    if inl(&["browse", "completion"], group) {
         return None;
     }
     if group == "auth" {
@@ -1290,16 +1373,20 @@ pub fn classify_gh(inv: &Invocation) -> Option<Verdict> {
         return vn("gh-other", &format!("gh auth {}", sub));
     }
     if group == "repo" && (sub == "view" || sub == "list") {
-        return None;
+        return gh_read(&format!("gh repo {}", sub));
     }
     if group == "release" && inl(&["view", "list", "download"], sub) {
+        return gh_read(&format!("gh release {}", sub));
+    }
+    // gh's own local settings, not the repo.
+    if group == "config" && (sub == "get" || sub == "list") {
         return None;
     }
-    if (group == "config" || group == "variable") && (sub == "get" || sub == "list") {
+    if sub.is_empty() {
         return None;
     }
-    if inl(GH_READ_SUBS, sub) || sub.is_empty() {
-        return None;
+    if inl(GH_READ_SUBS, sub) {
+        return gh_read(&format!("gh {} {}", group, sub));
     }
     vn("gh-other", &format!("gh {} {}", group, sub))
 }
@@ -1927,13 +2014,24 @@ pub fn classify_tool(inv: &Invocation, ctx: &Context) -> (Option<Verdict>, Strin
             ],
         );
         let sub = sub.as_str();
-        if inl(KUBECTL_READ, sub) || version_only(args) {
+        if version_only(args) || sub == "version" {
             return here(None);
+        }
+        if inl(KUBECTL_READ, sub) {
+            return here(vt(
+                "kubectl-read",
+                &format!("kubectl {}", sub),
+                T_KUBECTL_READ,
+            ));
         }
         if sub == "rollout" {
             let pos = positionals(args, &["-n", "--namespace", "--context", "--kubeconfig"]);
             if pos.len() > 1 && (pos[1] == "status" || pos[1] == "history") {
-                return here(None);
+                return here(vt(
+                    "kubectl-read",
+                    &format!("kubectl rollout {}", pos[1]),
+                    T_KUBECTL_READ,
+                ));
             }
         }
         if sub == "config" {
@@ -1981,11 +2079,18 @@ pub fn classify_tool(inv: &Invocation, ctx: &Context) -> (Option<Verdict>, Strin
                     return here(vt("helm", &format!("helm {} {}", sub, pos[1]), T_HELM));
                 }
             }
+            // Reads of the live cluster, or a render of a chart in this repo.
+            if inl(&["list", "ls", "status", "get", "history", "template"], sub) {
+                return here(vt("helm-read", &format!("helm {}", sub), T_HELM_READ));
+            }
             return here(None);
         }
         return here(vt("helm", &format!("helm {}", sub), T_HELM));
     }
 
+    if inl(&["docker", "podman", "nerdctl"], prog) {
+        return here(classify_docker(prog, args));
+    }
     if prog == "rm" {
         return classify_rm(inv, ctx);
     }
@@ -2477,6 +2582,9 @@ mod tests {
         ("T_PULUMI", T_PULUMI),
         ("T_GITOPS", T_GITOPS),
         ("T_HELM", T_HELM),
+        ("T_GH_READ", T_GH_READ),
+        ("T_KUBECTL_READ", T_KUBECTL_READ),
+        ("T_HELM_READ", T_HELM_READ),
     ];
 
     #[test]

@@ -790,3 +790,49 @@ fn landed_gate_runs_the_binary_itself() {
     // Outside a repository it cannot prove anything, so it says no.
     assert_ne!(o.status.code(), Some(0), "{all}");
 }
+
+#[test]
+fn read_args_allows_reads() {
+    for ok in [
+        &["pr", "view", "4446", "--json", "state"][..],
+        &["pr", "checks", "4446"],
+        &["run", "list", "--workflow", "ci.yaml", "--limit", "5"],
+        &["run", "view", "123", "--log-failed"],
+        &["workflow", "list"],
+        &["issue", "view", "3418"],
+        &["search", "prs", "relay"],
+        &["status"],
+        &["api", "repos/VitruvianSoftware/vitruvian-core/rulesets"],
+        &["api", "-X", "GET", "search/issues", "-f", "q=repo:x"],
+        &["api", "--method=HEAD", "repos/o/r"],
+        &["api", "graphql", "-f", "query={ viewer { login } }"],
+    ] {
+        assert!(read_args(&v(ok)).is_ok(), "{:?}", ok);
+    }
+}
+
+#[test]
+fn read_args_refuses_writes() {
+    for bad in [
+        &[][..],
+        &["--repo", "x"],
+        &["pr", "merge", "1"],
+        &["pr", "create"],
+        &["pr"],
+        &["run", "rerun", "1"],
+        &["workflow", "run", "x.yaml"],
+        &["issue", "create", "--title", "x"],
+        &["secret", "set", "X"],
+        &["auth", "login"],
+        &["repo", "delete", "o/r"],
+        &["api", "-X", "POST", "repos/o/r/issues"],
+        &["api", "--method", "delete", "repos/o/r"],
+        &["api", "repos/o/r/issues", "-f", "title=x"],
+        &["api", "repos/o/r", "--input", "body.json"],
+        &["api", "graphql", "-f", "query=mutation { x }"],
+        &["api", "graphql", "-f", "query=Mutation{x}"],
+        &["api", "graphql"],
+    ] {
+        assert!(read_args(&v(bad)).is_err(), "{:?}", bad);
+    }
+}
