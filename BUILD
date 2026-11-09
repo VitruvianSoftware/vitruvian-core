@@ -355,3 +355,16 @@ doctor(
         "git",
     ],
 )
+
+# Sponsor buttons (FUNDING.yml) whose folder has no BUILD of its own: the
+# monorepo's, Courier's and pulumi-library's. The stripe stack's
+# donations_pages_test.go checks each opens a donate page that a Payment Link
+# backs.
+exports_files(
+    [
+        ".github/FUNDING.yml",
+        "apps/desktop/courier/.github/FUNDING.yml",
+        "packages/pulumi/library/.github/FUNDING.yml",
+    ],
+    visibility = ["//infrastructure/pulumi/platform/stripe:__pkg__"],
+)

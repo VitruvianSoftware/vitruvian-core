@@ -21,8 +21,10 @@
 package donations
 
 import (
+	"bufio"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -50,6 +52,12 @@ const (
 	// generalKey is the "support development" link: the site's /donate/
 	// (donate/index.html), not an app.
 	generalKey = "development"
+	// donateURL is the site's general donate page; each app's is
+	// donateURL + "<key>/".
+	donateURL = "https://vitruviansoftware.dev/donate/"
+	// sponsorRepoList names every repository with a Sponsor button and the
+	// FUNDING.yml it gets.
+	sponsorRepoList = repoRoot + "infrastructure/pulumi/platform/repo-config/sponsor-button-repos.txt"
 )
 
 func stackAppKeys(t *testing.T) []string {
@@ -150,5 +158,59 @@ func TestEveryLinkHasItsPage(t *testing.T) {
 		if !want[k] {
 			t.Errorf("donate/%s.html has no Payment Link: add %q to donations.apps in both stack configs, or remove the page", k, k)
 		}
+	}
+}
+
+var fundingCustom = regexp.MustCompile(`(?m)^custom:\s*\["([^"]+)"\]\s*$`)
+
+// Every Sponsor button opens the general page or one app's page that a link
+// backs.
+func TestSponsorButtonsOpenAPageWithALink(t *testing.T) {
+	keys := map[string]bool{}
+	for _, k := range stackAppKeys(t) {
+		keys[k] = true
+	}
+	f, err := os.Open(sponsorRepoList)
+	if err != nil {
+		t.Fatalf("read the Sponsor button list: %v", err)
+	}
+	defer f.Close()
+	n := 0
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			t.Fatalf("sponsor-button-repos.txt: want `<repository> <FUNDING.yml path>`, got %q", line)
+		}
+		repo, path := fields[0], fields[1]
+		n++
+		raw, err := os.ReadFile(repoRoot + path)
+		if err != nil {
+			t.Errorf("%s: %v", repo, err)
+			continue
+		}
+		m := fundingCustom.FindStringSubmatch(string(raw))
+		if m == nil {
+			t.Errorf("%s: %s has no single `custom: [\"...\"]` line", repo, path)
+			continue
+		}
+		u := m[1]
+		if u == donateURL {
+			continue // the general page
+		}
+		key := strings.TrimSuffix(strings.TrimPrefix(u, donateURL), "/")
+		if !strings.HasPrefix(u, donateURL) || !strings.HasSuffix(u, "/") || !keys[key] || key == generalKey {
+			t.Errorf("%s: its Sponsor button opens %q; want %s or %s<key>/ for a key in donations.apps", repo, u, donateURL, donateURL)
+		}
+	}
+	if err := sc.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if n == 0 {
+		t.Fatal("sponsor-button-repos.txt lists no repositories")
 	}
 }

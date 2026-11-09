@@ -174,12 +174,12 @@ flowchart LR
 | App | Where the button goes |
 |---|---|
 | Vitruvian (desktop) | Done: Settings > Support's Donate button opens `AppInfo.donateURL`, `https://vitruviansoftware.dev/donate/vitruvian/`. |
-| Courier, HomeSpeaker (desktop), Vitruvian Remote (Android), ESP32-S3 Desk Companion (firmware) | Each has its own link and page, `https://vitruviansoftware.dev/donate/<key>/` (`courier`, `home-speaker`, `vitruvian-remote`, `esp32-desk-companion`). Its mirror's Sponsor button moves there from the general `/donate/` once the live link is in `_data/donations.yml`. A "Support" item in each app is still to do. |
-| NexusAgent, OAuth User Inspector, mcp-slack, mcp-roborock, gh-watch, devx, homelab | Each has its own link and page the same way, under its mirror's name. Their mirrors' Sponsor buttons open those pages once the live links are in `_data/donations.yml`. |
-| vitruvian-tool-github, vitruvian-sdk | No link of their own: they only work with Vitruvian, so their Sponsor buttons open `/donate/vitruvian/`. |
-| pulumi-library, the Pulumi foundation examples, the site's repository, vitruvian-core | Not apps: their Sponsor buttons open the general `/donate/`. |
+| Courier, HomeSpeaker (desktop), Vitruvian Remote (Android), ESP32-S3 Desk Companion (firmware) | Done for the mirrors: each has its own live link and page, `https://vitruviansoftware.dev/donate/<key>/` (`courier`, `home-speaker`, `vitruvian-remote`, `esp32-desk-companion`), and its mirror's Sponsor button opens that page. A "Support" item in each app is still to do. |
+| NexusAgent, OAuth User Inspector, mcp-slack, mcp-roborock, gh-watch, devx, homelab | Done: each has its own live link and page the same way, under its mirror's name, and its mirror's Sponsor button opens that page. |
+| vitruvian-tool-github, vitruvian-sdk | Done: no link of their own. They only work with Vitruvian, so their Sponsor buttons open `/donate/vitruvian/`. |
+| pulumi-library, the Pulumi foundation examples, the site's repository, vitruvian-core | Done: not apps, so their Sponsor buttons open the general `/donate/`. |
 | vitruviansoftware.dev (general) | Done: the Donate item in the header, "Support development" in the footer and a line on About open `https://vitruviansoftware.dev/donate/`, the `development` key. |
-| vitruviansoftware.dev | The redirect pages, `donate/<key>.html` (each is `_includes/donate-app.html` for its key), read `_data/donations.yml`. `internal/donations/donations_pages_test.go` fails when the stacks' keys, that file and the pages disagree. Once production has applied, copy each `donationLinks` URL there under its key; until then the page says donations open soon. A Support link on Downloads is still to do. |
+| vitruviansoftware.dev | The redirect pages, `donate/<key>.html` (each is `_includes/donate-app.html` for its key), read `_data/donations.yml`. `internal/donations/donations_pages_test.go` fails when the stacks' keys, that file and the pages disagree, and when a Sponsor button in `repo-config/sponsor-button-repos.txt` opens anything but one of those pages. When a new key's production link exists, copy its `donationLinks` URL there under its key (`pulumi stack output donationLinks --stack ipv1337/vitruvian-stripe/production`, or the production job's step summary); until then the page says donations open soon. A Support link on Downloads is still to do. |
 
 ## Applying it
 

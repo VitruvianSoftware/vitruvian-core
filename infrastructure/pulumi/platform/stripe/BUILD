@@ -44,6 +44,27 @@ pulumi_go_test(
         # internal/donations/donations_pages_test.go: every app's link has its
         # page on the site.
         "//apps/web/vitruviansoftware-dev:donate_pages",
+        # ...and every Sponsor button opens one of those pages.
+        "//:.github/FUNDING.yml",
+        "//:apps/desktop/courier/.github/FUNDING.yml",
+        "//:packages/pulumi/library/.github/FUNDING.yml",
+        "//packages/pulumi/examples:go-foundation/.github/FUNDING.yml",
+        "//packages/pulumi/examples:ts-foundation/.github/FUNDING.yml",
+        "//apps/antigravity/plugins/gh-watch:.github/FUNDING.yml",
+        "//apps/cli/devx:.github/FUNDING.yml",
+        "//apps/cli/homelab:.github/FUNDING.yml",
+        "//apps/desktop/home-speaker:.github/FUNDING.yml",
+        "//apps/desktop/nexus-agent:.github/FUNDING.yml",
+        "//apps/desktop/vitruvian:.github/FUNDING.yml",
+        "//apps/desktop/vitruvian-tool-github:.github/FUNDING.yml",
+        "//apps/embedded/esp32-s3:.github/FUNDING.yml",
+        "//apps/mcp/roborock:.github/FUNDING.yml",
+        "//apps/mcp/slack:.github/FUNDING.yml",
+        "//apps/mobile/android-remote:.github/FUNDING.yml",
+        "//apps/web/oauth-user-inspector:.github/FUNDING.yml",
+        "//apps/web/vitruviansoftware-dev:.github/FUNDING.yml",
+        "//packages/vitruvian-sdk:.github/FUNDING.yml",
+        "//infrastructure/pulumi/platform/repo-config:sponsor-button-repos.txt",
     ],
 )
 

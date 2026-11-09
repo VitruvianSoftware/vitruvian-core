@@ -47,3 +47,13 @@ pipeline_unit(
     tier = "L1",
     timeout_minutes = 20,
 )
+
+# Which repositories show a Sponsor button, and from which FUNDING.yml. The
+# stripe stack's donations_pages_test.go reads it to check every button opens
+# a donate page that a Payment Link backs.
+exports_files(
+    [
+        "sponsor-button-repos.txt",
+    ],
+    visibility = ["//infrastructure/pulumi/platform/stripe:__pkg__"],
+)

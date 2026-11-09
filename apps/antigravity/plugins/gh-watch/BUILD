@@ -306,3 +306,12 @@ filegroup(
     ),
     visibility = ["//apps/antigravity:__pkg__"],
 )
+
+# The mirror's Sponsor button. The stripe stack's donations_pages_test.go
+# checks it opens a donate page that a Payment Link backs.
+exports_files(
+    [
+        ".github/FUNDING.yml",
+    ],
+    visibility = ["//infrastructure/pulumi/platform/stripe:__pkg__"],
+)

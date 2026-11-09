@@ -48,3 +48,14 @@ rust_test(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
 )
+
+# The two foundation mirrors' Sponsor buttons. The stripe stack's
+# donations_pages_test.go checks each opens a donate page that a Payment Link
+# backs.
+exports_files(
+    [
+        "go-foundation/.github/FUNDING.yml",
+        "ts-foundation/.github/FUNDING.yml",
+    ],
+    visibility = ["//infrastructure/pulumi/platform/stripe:__pkg__"],
+)
