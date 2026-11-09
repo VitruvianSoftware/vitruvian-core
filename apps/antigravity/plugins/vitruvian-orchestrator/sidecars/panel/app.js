@@ -411,11 +411,19 @@ function renderAgents(runs) {
     const elapsedLabel = formatElapsed(run.elapsedMs ?? 0);
     const stallBadge =
       run.status === "running" &&
-      (run.stallState === "quiet" || run.stallState === "stalled")
+      (run.stallState === "quiet" ||
+        run.stallState === "waiting" ||
+        run.stallState === "stalled")
         ? el(
             "span",
             {
-              class: `status-badge stall-badge ${run.stallState === "stalled" ? "status-red" : "status-amber"}`,
+              class: `status-badge stall-badge ${
+                run.stallState === "stalled"
+                  ? "status-red"
+                  : run.stallState === "waiting"
+                    ? "status-blue"
+                    : "status-amber"
+              }`,
             },
             run.stallState,
           )

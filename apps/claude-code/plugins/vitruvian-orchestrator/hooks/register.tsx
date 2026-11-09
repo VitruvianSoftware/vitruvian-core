@@ -35,6 +35,8 @@ import type {
   PlanTaskInput,
   Run,
   SpendSummary,
+  StallRow,
+  StallState,
   TaskBoardRow,
   TaskState,
   Tier,
@@ -46,6 +48,7 @@ import {
   remaining,
   runCost,
   spend,
+  stalls,
   taskBoard,
 } from "./lib/orchestrator-core.mjs";
 
@@ -1684,9 +1687,28 @@ ${idealLine}${replanMarks}${poly}${dots}
   );
 };
 
-const agentRowSvg = (W: number, r: Run, at: number): string => {
+// How a running worker's silence reads: shown after its status, and coloured
+// amber (quiet) or red (stalled). "waiting" is silence by design (a Gemini
+// job, a background command) and keeps the running colour.
+const stallLabel = (r: Run, stall: StallState | null): string =>
+  r.status === "running" && stall && stall !== "active"
+    ? `${r.status} (${stall})`
+    : r.status;
+const stallHex = (r: Run, stall: StallState | null): string =>
+  r.status === "running" && stall === "stalled"
+    ? RED
+    : r.status === "running" && stall === "quiet"
+      ? AMBER
+      : statusHex(r.status);
+
+const agentRowSvg = (
+  W: number,
+  r: Run,
+  at: number,
+  stall: StallState | null = null,
+): string => {
   const costume = costumeOf(r.agent);
-  const color = statusHex(r.status);
+  const color = stallHex(r, stall);
   const mascotColor = colorOf(costume);
   const textW = Math.max(80, W - 44 - 16);
   const cost = runCost(r);
@@ -1711,7 +1733,7 @@ const agentRowSvg = (W: number, r: Run, at: number): string => {
     modelLabel,
     ...(r.effort ? [r.effort] : []),
     ...(r.role === "lead" ? ["lead"] : []),
-    r.status,
+    stallLabel(r, stall),
   ].join(" · ");
   const stats = `${stepText} · ${tokLabel} · ${costLabel} · ${timeLabel}`;
 
@@ -1772,6 +1794,47 @@ const cleanTasks = (raw: ProgressInput["tasks"]): PlanTaskInput[] =>
 
 // Per-dispatch transient correlations (cleaned up in finally / turn.complete).
 const effortByToolUseId = new Map<string, string | null>();
+
+// The stall watch: every 30 s while a flow is open, redraw (so "quiet" and
+// "stalled" appear without waiting for another event) and tell the person,
+// once, about each helper that has stalled. Runs silent for over two hours
+// are abandoned, not stalled, and get no notice.
+const STALL_TICK_MS = 30_000;
+const STALL_NOTICE_MAX_IDLE_MS = 2 * 60 * 60 * 1000;
+const noticedStalls = new Set<string>();
+let stallTimer: { cancel: () => void } | null = null;
+
+// Started by the first plan rather than at session start, so a session that
+// never orchestrates runs no timer.
+function ensureStallTimer($: EngineInterface): void {
+  if (stallTimer) return;
+  stallTimer = $.clock.every(STALL_TICK_MS, () => {
+    void stallTick($).catch(() => {});
+  });
+}
+
+async function stallTick($: EngineInterface): Promise<void> {
+  const f = await read($, flow);
+  if (!f || f.closedAt !== null) {
+    stallTimer?.cancel();
+    stallTimer = null;
+    return;
+  }
+  if (!f.runs.some((r) => r.status === "running" && r.role !== "lead")) return;
+  const at = await $.clock.now();
+  await update($, now, () => at);
+  for (const row of stalls(f, at) as StallRow[]) {
+    if (row.state !== "stalled" || row.idleMs > STALL_NOTICE_MAX_IDLE_MS) {
+      continue;
+    }
+    const key = `${f.startedAt}:${row.id}:${row.lastActivityAt}`;
+    if (noticedStalls.has(key)) continue;
+    noticedStalls.add(key);
+    $.ui.toast(
+      `${row.agent} has been silent for ${fmtTime(row.idleMs)}${row.taskN ? ` on task #${row.taskN}` : ""}. Check it before restarting it: a long build can be this quiet.`,
+    );
+  }
+}
 const spawnedToolUseIds = new Set<string>();
 const seenStepTurns = new Set<string>();
 
@@ -1781,6 +1844,9 @@ export const register: Register = (on) => {
     effortByToolUseId.clear();
     spawnedToolUseIds.clear();
     seenStepTurns.clear();
+    noticedStalls.clear();
+    stallTimer?.cancel();
+    stallTimer = null;
 
     await $.tool.register({
       name: "progress",
@@ -1928,6 +1994,7 @@ export const register: Register = (on) => {
     });
 
     await update($, now, () => at);
+    if (nextFlow && nextFlow.closedAt === null) ensureStallTimer($);
     if (isFirstPlan && nextFlow) {
       await autoOpen($, `${nextFlow.startedAt}:${nextFlow.title || "flow"}`);
     }
@@ -2165,9 +2232,13 @@ export const register: Register = (on) => {
               }
             : undefined;
         if (isStillWorking) {
-          return tokens
-            ? reduce(prev, { type: "run.progress", at, id: e.agentId, tokens })
-            : prev;
+          return reduce(prev, {
+            type: "run.progress",
+            at,
+            id: e.agentId,
+            waiting: true,
+            ...(tokens ? { tokens } : {}),
+          });
         }
         return reduce(prev, {
           type: "run.end",
@@ -2402,7 +2473,11 @@ export const register: Register = (on) => {
       );
     };
 
+    const stallById = new Map(
+      (stalls(f, at) as StallRow[]).map((row) => [row.id, row.state]),
+    );
     const renderAgentRow = (r: Run) => {
+      const stall = stallById.get(r.id) ?? null;
       const cost = runCost(r);
       const costText = cost !== null ? `est. ${fmtCost(cost)}` : "unpriced";
       const stepOrCtx =
@@ -2435,8 +2510,8 @@ export const register: Register = (on) => {
         <Box key={`run-${r.id}`} flexDirection="column" marginBottom={1}>
           {hasDesktopSvg && "Svg" in ui ? (
             <ui.Svg
-              source={agentRowSvg(W, r, at)}
-              alt={`${agentName} (${modelLabel}): ${r.status}, ${costText}`}
+              source={agentRowSvg(W, r, at, stall)}
+              alt={`${agentName} (${modelLabel}): ${stallLabel(r, stall)}, ${costText}`}
               width={W}
               height={58}
             />
@@ -2454,7 +2529,17 @@ export const register: Register = (on) => {
                   {STATUS_GLYPH[r.status] ?? "●"}
                 </Text>{" "}
                 <Text bold>{agentName}</Text>{" "}
-                <Text color={statusTermColor(r.status)}>{r.status}</Text>
+                <Text
+                  color={
+                    r.status === "running" && stall === "stalled"
+                      ? "red"
+                      : r.status === "running" && stall === "quiet"
+                        ? "yellow"
+                        : statusTermColor(r.status)
+                  }
+                >
+                  {stallLabel(r, stall)}
+                </Text>
               </Text>
               {detailLines.map((line, i) => (
                 <Text key={`run-${r.id}-detail-${i}`} dimColor>

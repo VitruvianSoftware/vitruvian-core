@@ -26,6 +26,7 @@ import { test } from "node:test";
 import {
   DEFAULT_QUIET_MS,
   DEFAULT_STALL_MS,
+  DEFAULT_WAITING_STALL_MS,
   burnDown,
   initialFlow,
   reduce,
@@ -1115,4 +1116,55 @@ test("stalls classifies active, quiet, and stalled worker runs and excludes ende
       },
     ],
   );
+});
+
+test("a run waiting on its own work or on Gemini reads waiting, not stalled, until the longer limit", () => {
+  assert.equal(DEFAULT_WAITING_STALL_MS, 60 * 60 * 1000);
+  const min = 60 * 1000;
+  const start = (id, extra = {}) => ({
+    type: "run.start",
+    at: 0,
+    id,
+    harness: "claude-code",
+    agent: "wren",
+    model: "claude-haiku-5-5",
+    effort: null,
+    title: id,
+    role: "worker",
+    ...extra,
+  });
+  let flow = reduce(null, { type: "plan", at: 0, title: "F", tasks: [] });
+  flow = reduce(flow, start("plain"));
+  flow = reduce(flow, start("gemini", { delegate: "gemini-4-argon-high" }));
+  flow = reduce(flow, start("held"));
+  flow = reduce(flow, {
+    type: "run.progress",
+    at: 0,
+    id: "held",
+    waiting: true,
+  });
+
+  const stateAt = (t) =>
+    Object.fromEntries(stalls(flow, t).map((r) => [r.id, r.state]));
+
+  assert.deepEqual(stateAt(20 * min), {
+    plain: "stalled",
+    gemini: "waiting",
+    held: "waiting",
+  });
+  assert.deepEqual(stateAt(61 * min), {
+    plain: "stalled",
+    gemini: "stalled",
+    held: "stalled",
+  });
+
+  // Activity without the mark means the run is working again: normal limits.
+  flow = reduce(flow, {
+    type: "run.progress",
+    at: 30 * min,
+    id: "held",
+    tokens: { input: 10 },
+  });
+  assert.equal(flow.runs.find((r) => r.id === "held").waiting, false);
+  assert.equal(stateAt(46 * min).held, "stalled");
 });

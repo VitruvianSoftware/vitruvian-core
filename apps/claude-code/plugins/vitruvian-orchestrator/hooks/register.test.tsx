@@ -820,3 +820,73 @@ test("a helper whose turn ends while its own background work runs stays running 
   expect(f?.runs.find((r) => r.id === "wren-bg")?.status).toBe("done");
   expect(f?.tasks[0]?.state).toBe("review");
 });
+
+test("the panel marks a silent helper stalled and tells the person once, but a helper waiting on Gemini only reads waiting", async ($, on) => {
+  const min = 60 * 1000;
+  const clock = mock.clock(on, { now: 1000 });
+  const toasts: string[] = [];
+  on("ui.toast", (_, e) => {
+    toasts.push(String((e as { text?: string }).text ?? ""));
+    return { value: undefined };
+  });
+  on("ui.open", () => ({ value: { isPlaced: true } }));
+  let nextId = 0;
+  on("agent.spawn", async () => ({
+    model: "claude-haiku-5-5",
+    agentId: ["quiet-helper", "gemini-helper"][nextId++],
+  }));
+  on("agent.list", () => ({
+    value: [
+      {
+        id: "gemini-helper",
+        description: "B",
+        type: "wren",
+        status: "waiting",
+      },
+    ],
+  }));
+  on("turn.complete", (_, e) => ({
+    text: e.answer,
+    ...(e.usage ? { usage: e.usage } : {}),
+  }));
+
+  await $.tool.call({
+    tool: PROGRESS_TOOL,
+    title: "Stall watch",
+    phase: "delegate",
+    tasks: [
+      { title: "A", specialist: "forge", tier: "core", after: [] },
+      { title: "B", specialist: "wren", tier: "core", after: [] },
+    ],
+  } as never);
+  await $.agent.spawn({ subagentType: "forge", description: "A", prompt: "a" });
+  await $.agent.spawn({ subagentType: "wren", description: "B", prompt: "b" });
+  // B's driver hands off to Gemini and ends its turn while it waits.
+  await $.turn.complete({
+    turnId: "b-1",
+    agentId: "gemini-helper",
+    reason: "answer",
+    answer: "Gemini is working",
+    isAborted: false,
+    durationMs: 10,
+  } as never);
+
+  await clock.advance(20 * min);
+
+  expect(toasts).toHaveLength(1);
+  expect(toasts[0]).toContain("forge has been silent for");
+  expect(toasts[0]).toContain("task #1");
+
+  const ui = await $.ui.mount({ ...PANE_MOUNT, surface: "terminal" });
+  expect(
+    await ui.find({ type: "Text", text: /running \(stalled\)/ }),
+  ).toBeDefined();
+  expect(
+    await ui.find({ type: "Text", text: /running \(waiting\)/ }),
+  ).toBeDefined();
+  await ui.unmount();
+
+  // No repeat notice while nothing changes.
+  await clock.advance(10 * min);
+  expect(toasts).toHaveLength(1);
+});

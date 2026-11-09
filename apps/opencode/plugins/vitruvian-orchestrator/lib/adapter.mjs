@@ -613,7 +613,9 @@ export function formatSidebarData(flow, now = Date.now()) {
     const idleMs = stallRow?.idleMs ?? 0;
     const statusText =
       r.status === "running" &&
-      (stallState === "quiet" || stallState === "stalled")
+      (stallState === "quiet" ||
+        stallState === "waiting" ||
+        stallState === "stalled")
         ? `${r.status} (${stallState})`
         : r.status;
     const color =

@@ -76,6 +76,10 @@ export type Run = {
   title: string;
   taskN: number | null;
   startedAt: number;
+  /** When the run last did anything; absent on runs an older version stored. */
+  lastActivityAt?: number;
+  /** True while the run is held on work it started (a background job). */
+  waiting?: boolean;
   endedAt: number | null;
   status: RunStatus;
   tokens: TokenCounts;
@@ -156,6 +160,19 @@ export type FlowEvent = {
   contextPct?: number | null;
   status?: RunStatus;
   n?: number;
+  waiting?: boolean;
+};
+
+export type StallState = "active" | "quiet" | "waiting" | "stalled";
+
+export type StallRow = {
+  id: string;
+  agent: string;
+  title: string;
+  taskN: number | null;
+  lastActivityAt: number;
+  idleMs: number;
+  state: StallState;
 };
 
 export type Panel = {
