@@ -24,8 +24,8 @@
 # update mtime on cache hits (and the nfs StorageClass mounts with noatime).
 # An unconditional 14-day mtime sweep would therefore wipe active dependencies
 # every two weeks. Instead, this CronJob checks /cache/bazel-repo usage once a
-# week and prunes blobs older than 14 days ONLY when usage exceeds the 35 GiB
-# high-watermark (36700160 KiB out of the 50 GiB PVC). All find invocations
+# week and prunes blobs older than 14 days ONLY when usage exceeds the 56 GiB
+# high-watermark (58720256 KiB, 70% of the 80 GiB PVC). All find invocations
 # tolerate concurrent runner pod activity (`|| true`).
 #
 # It prunes ONLY bazel-repo/content_addressable/, the download blobs. Never
@@ -79,7 +79,7 @@ spec:
                 - |
                   set -euo pipefail
                   root="${CACHE_ROOT:-/cache}"
-                  watermark_kb="${WATERMARK_KB:-36700160}"
+                  watermark_kb="${WATERMARK_KB:-58720256}"
                   repo="${root}/bazel-repo"
                   blobs="${repo}/content_addressable"
                   if [ -d "${repo}" ]; then
