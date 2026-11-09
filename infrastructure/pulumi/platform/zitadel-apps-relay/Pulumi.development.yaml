@@ -1,0 +1,39 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+
+# Committed stack config: non-secret identifiers only. The Zitadel provider
+# credential comes from the ZITADEL_MACHINE_KEY_JSON pipeline secret at apply
+# time. One stack: during P0 the relay is a homelab spike.
+config:
+  zitadel:domain: auth.ipv1337.dev
+  # Own project (see main.go for why `aud` alone is not a boundary here).
+  zitadel-apps-relay:projectName: relay
+  zitadel-apps-relay:orgId: "378818267051001367" # the "Vitruvian" FirstInstance org
+  zitadel-apps-relay:roleKey: relay-user
+  # P0: only James may sign in through the relay's clients. The check and the
+  # grant land in the same apply (main.go refuses the check without a grant).
+  # 378818267051722263 is the account for james.nguyen@gmail.com, the one that
+  # can log in (see zitadel-apps-mcp-slack's config for how that was confirmed).
+  zitadel-apps-relay:projectRoleCheck: "true"
+  zitadel-apps-relay:grantUserIds: "378818267051722263"
+  # ChatGPT's per-connector callback, copied from ChatGPT's "Add custom MCP
+  # server" screen. Empty = no ChatGPT client yet (spike A, second half).
+  zitadel-apps-relay:chatgptRedirectUris: ""

@@ -48,6 +48,7 @@ const DELIVERY_LEGACY_FLOOR: &[&str] = &[
     ".github/workflows/tabula-data-stack.yaml",
     ".github/workflows/tabula-release.yaml",
     ".github/workflows/zitadel-apps-mcp-slack-apply.yaml",
+    ".github/workflows/zitadel-apps-relay-apply.yaml",
 ];
 
 /// Regex string for state-mutating invocations (used only in emit text).

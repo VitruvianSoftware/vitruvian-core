@@ -196,11 +196,18 @@ device in the dashboard deletes its key, and the next connect is refused.
 
 **Connecting an AI app.** ChatGPT or Claude acts as an OAuth client against Zitadel,
 and the relay is the resource server. This is the same arrangement as the hosted
-Slack MCP with Gemini Spark. The unknown is client registration: some AI apps expect
-to register themselves automatically (dynamic client registration), and as far as I
-know Zitadel does not offer that. This is **not verified**. Spike P0-a settles it.
-If it is missing, the relay gets a small registration endpoint that creates Zitadel
-clients through Zitadel's API.
+Slack MCP with Gemini Spark. What P0 research found (details in
+[the P0 plan](../plans/2026-11-09-relay-p0-spikes.md)):
+
+- **Claude** works with a client we register ourselves, on every plan. That's the
+  `relay-claude` client.
+- **ChatGPT** gives each connector its own callback URL, so one pre-registered
+  client can't serve many users. For a product, ChatGPT needs Zitadel's dynamic
+  client registration. Zitadel supports it, but it's off on our instance, and
+  turning it on in its open form lets anyone create clients. That's an open
+  decision (§11).
+- **The relay authorises on client id and subject, never on audience alone.** In
+  our Zitadel, any signed-in user can put any project in a token's audience.
 
 **Billing.** A second product line in the Stripe stack: a free tier with a monthly
 call allowance and one device, and a paid tier with a much larger allowance and
@@ -312,14 +319,18 @@ Each phase gets its own plan in `docs/superpowers/plans/`.
 ## 11. Open questions
 
 1. **Name and domain.** "Vitruvian Relay" and `vrelay` are placeholders.
-2. **Client registration** with Zitadel for ChatGPT and Claude (P0-a): add a
-   registration endpoint, or choose another sign-in provider for this product.
+2. **Which ChatGPT plans can add a custom MCP server.** Not confirmed. Some
+   sources say only Business, Enterprise and Edu workspaces can, which would shrink
+   the ChatGPT market a lot. Claude allows it on every plan.
 3. **Where Zitadel runs for a paid product**, and whether that cost is worth it now
    or only at launch.
 4. **Pricing** for the free and paid tiers.
 5. **Node.js**: keep requiring it, or bundle a runtime with the connector.
 6. **One URL per device or one per account**, after seeing how alpha users find it.
-7. **Scaling past one relay instance**: which message bus, and when.
-8. **Positioning**: a direct alternative to Desktop Commander's hosted service, or
+7. **Open client registration for ChatGPT**: turn on Zitadel's open dynamic
+   client registration (and live with anyone being able to create clients), put
+   a gate in front of it, or support Claude only at first.
+8. **Scaling past one relay instance**: which message bus, and when.
+9. **Positioning**: a direct alternative to Desktop Commander's hosted service, or
    "reach any local MCP server from any AI app" with Desktop Commander as one
    option. The spec assumes the second.
