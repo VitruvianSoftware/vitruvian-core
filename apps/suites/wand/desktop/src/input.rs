@@ -30,7 +30,7 @@ use crate::radial_overlay::RadialOverlayController;
 use crate::status::Status;
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use wand_core::replay::parse as parse_replay;
 use wand_core::{Action, Config, Engine, Platform, ReplayError, Sample};
 
@@ -39,6 +39,18 @@ pub const INPUT_TICK_INTERVAL: Duration = Duration::from_millis(20);
 
 /// Interval at which the input worker thread steps [`Glide`] interpolation (125 Hz = `8 ms`).
 pub const GLIDE_TICK_INTERVAL: Duration = Duration::from_micros(GLIDE_TICK_US);
+
+/// Engine time (µs) for a timer tick: the timestamp of the last timed command plus the real time
+/// elapsed since it arrived.
+///
+/// Packet timestamps come from a real clock, so ticks between packets must follow the same clock.
+/// Counting wake-ups instead (`+20 ms` per timeout) runs slow whenever the thread wakes late, as it
+/// does on a busy machine, which delays long presses and taps by however much was lost.
+#[must_use]
+pub fn tick_time_us(anchor_t_us: u64, since_anchor: Duration) -> u64 {
+    let elapsed_us = u64::try_from(since_anchor.as_micros()).unwrap_or(u64::MAX);
+    anchor_t_us.saturating_add(elapsed_us)
+}
 
 /// Commands sent from the BLE thread or UI thread to the input thread.
 #[derive(Debug, Clone)]
@@ -390,23 +402,31 @@ pub fn spawn_input_thread(
         .name("wand-input".to_string())
         .spawn(move || {
             let mut pipeline = InputPipeline::new(config, injector, status);
+            // The last timed command's timestamp and when it arrived; timer ticks follow real time
+            // from here (see `tick_time_us`).
+            let mut anchor: (u64, Instant) = (0, Instant::now());
             loop {
                 let tick_interval = if pipeline.is_gliding() {
                     GLIDE_TICK_INTERVAL
                 } else {
                     INPUT_TICK_INTERVAL
                 };
-                let step_us = tick_interval.as_micros() as u64;
                 match rx.recv_timeout(tick_interval) {
                     Ok(InputCommand::Shutdown) | Err(mpsc::RecvTimeoutError::Disconnected) => {
                         pipeline.handle_command(InputCommand::Shutdown);
                         break;
                     }
                     Ok(cmd) => {
+                        if let InputCommand::Packet { t_us, .. } | InputCommand::Tick { t_us } =
+                            &cmd
+                        {
+                            anchor = (*t_us, Instant::now());
+                        }
                         pipeline.handle_command(cmd);
                     }
                     Err(mpsc::RecvTimeoutError::Timeout) => {
-                        let next_t = pipeline.last_t_us().saturating_add(step_us);
+                        let next_t =
+                            tick_time_us(anchor.0, anchor.1.elapsed()).max(pipeline.last_t_us());
                         let _ = pipeline.tick(next_t);
                     }
                 }

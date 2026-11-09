@@ -47,6 +47,7 @@ use wand_desktop::injector::{
 };
 use wand_desktop::input::{
     InputCmd, InputCommand, InputPipeline, drive_replay_with_injector, spawn_input_thread,
+    tick_time_us,
 };
 use wand_desktop::launch::build_launch_command;
 use wand_desktop::linux::{
@@ -774,8 +775,9 @@ fn desktop_input_tick_fires_long_press_with_no_further_packets() {
     })
     .expect("send home press");
 
-    // Wait up to 350 ms for the 20 ms input thread timer loop to cross the 100 ms long-press threshold.
-    let deadline = Instant::now() + Duration::from_millis(350);
+    // Wait for the input thread's timer to cross the 100 ms long-press threshold. The loop exits as
+    // soon as it fires; the generous deadline only matters on a heavily loaded CI machine.
+    let deadline = Instant::now() + Duration::from_secs(3);
     while Instant::now() < deadline {
         if fake_arc
             .lock()
@@ -796,6 +798,18 @@ fn desktop_input_tick_fires_long_press_with_no_further_packets() {
         emitted.contains(&Action::Media(MediaAction::PlayPause)),
         "expected long press to fire via 20 ms tick without further packets, got {emitted:?}"
     );
+}
+
+#[test]
+fn tick_time_follows_real_time_after_a_late_wake_up() {
+    // A 20 ms timer that wakes 150 ms late (busy machine) must still see 150 ms pass, or long
+    // presses and taps fire late. Counting wake-ups would report 20 ms here.
+    assert_eq!(
+        tick_time_us(1_000_000, Duration::from_millis(150)),
+        1_150_000
+    );
+    assert_eq!(tick_time_us(0, Duration::ZERO), 0);
+    assert_eq!(tick_time_us(u64::MAX - 1, Duration::from_secs(1)), u64::MAX);
 }
 
 #[test]
