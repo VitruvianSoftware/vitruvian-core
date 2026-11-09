@@ -35,8 +35,14 @@ What it checks:
 
 * Bazelisk binaries (bazelisk/downloads/sha256/<sha>/bin/bazel). The
   directory name is the binary's SHA-256; a mismatch removes that download
-  so Bazelisk fetches it again. A read error only warns: on 2026-11-08 one
-  was a passing NFS error and the file was fine.
+  so Bazelisk fetches it again. A binary that cannot be read is moved aside
+  too (its directory renamed to <sha>.unreadable-<id>, which Bazelisk
+  ignores), so the next Bazelisk call downloads a fresh copy. On 2026-11-08 a
+  read error was a passing NFS error, so this used to only warn; on
+  2026-11-09 one file returned EIO to every job for over an hour and failed
+  each one ("Failed to open ... as a zip file: Input/output error"). A false
+  alarm costs one re-download; leaving it costs every job on that cache.
+  Moved-aside copies are deleted on later runs.
 
 The check never fails the job: every problem it hits is a warning.
 """
@@ -45,6 +51,7 @@ import argparse
 import hashlib
 import os
 import random
+import shutil
 import sys
 import time
 import uuid
@@ -53,6 +60,7 @@ STATE_DIR = "vitruvian-cache-check"
 MARKER_SUFFIX = ".recorded_inputs"
 BAZEL_TRASH = "_trash"
 MANIFEST_HEADER = "# runner_cache_check manifest v1"
+UNREADABLE = ".unreadable-"
 
 
 def warn(msg):
@@ -256,6 +264,11 @@ class Check:
         except FileNotFoundError:
             return
         for digest in digests:
+            if UNREADABLE in digest:
+                # An earlier run moved it aside; delete it now, best effort.
+                if not self.dry_run:
+                    shutil.rmtree(os.path.join(sha_dir, digest), ignore_errors=True)
+                continue
             binary = os.path.join(sha_dir, digest, "bin", "bazel")
             if not os.path.isfile(binary):
                 continue
@@ -265,9 +278,7 @@ class Check:
                     for chunk in iter(lambda: f.read(1 << 20), b""):
                         h.update(chunk)
             except OSError as e:
-                warn(
-                    f"could not read Bazelisk's {digest[:12]} binary ({e}); left it in place"
-                )
+                self.move_bazelisk_aside(sha_dir, digest, f"could not read it ({e})")
                 continue
             if h.hexdigest() != digest:
                 if not self.dry_run:
@@ -275,6 +286,27 @@ class Check:
                 warn(
                     f"{'would remove' if self.dry_run else 'removed'} Bazelisk's {digest[:12]} binary: its SHA-256 no longer matches; Bazelisk downloads it again"
                 )
+
+    def move_bazelisk_aside(self, sha_dir, digest, why):
+        """Rename a download's directory so Bazelisk stops using it.
+
+        A rename only touches the directory entry, so it works where reading
+        (or even unlinking) the broken file fails.
+        """
+        dst = os.path.join(sha_dir, f"{digest}{UNREADABLE}{uuid.uuid4().hex[:8]}")
+        if self.dry_run:
+            warn(f"would move Bazelisk's {digest[:12]} download aside: {why}")
+            return
+        try:
+            os.rename(os.path.join(sha_dir, digest), dst)
+        except OSError as e:
+            warn(
+                f"Bazelisk's {digest[:12]} download: {why}; could not move it aside ({e})"
+            )
+            return
+        warn(
+            f"moved Bazelisk's {digest[:12]} download aside: {why}; Bazelisk downloads it again"
+        )
 
     # --- our trash -------------------------------------------------------------
 

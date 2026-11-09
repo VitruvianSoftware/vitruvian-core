@@ -219,6 +219,46 @@ def test_a_corrupt_bazelisk_binary_is_removed(tmp_path):
     assert not os.path.exists(bad)
 
 
+def test_an_unreadable_bazelisk_binary_is_moved_aside(tmp_path, monkeypatch):
+    # 2026-11-09: one cached binary returned EIO to every job.
+    good_digest, good = bazelisk_binary(tmp_path, b"bazel 9.3.0")
+    bad_digest, bad = bazelisk_binary(tmp_path, b"bazel 9.2.0")
+    real_open = open
+
+    def flaky_open(path, *a, **kw):
+        if str(path) == bad:
+            raise OSError(5, "Input/output error")
+        return real_open(path, *a, **kw)
+
+    monkeypatch.setattr("builtins.open", flaky_open)
+    rcc.main(["--bazelisk-cache", str(tmp_path)])
+    sha_dir = os.path.join(tmp_path, "downloads", "sha256")
+    left = sorted(os.listdir(sha_dir))
+    assert os.path.isfile(good)
+    assert bad_digest not in left, "Bazelisk would keep using the unreadable binary"
+    assert any(d.startswith(bad_digest + rcc.UNREADABLE) for d in left)
+
+    # The next run deletes what was moved aside, and keeps the good binary.
+    monkeypatch.setattr("builtins.open", real_open)
+    rcc.main(["--bazelisk-cache", str(tmp_path)])
+    assert sorted(os.listdir(sha_dir)) == [good_digest]
+
+
+def test_a_dry_run_leaves_an_unreadable_binary(tmp_path, monkeypatch):
+    digest, bad = bazelisk_binary(tmp_path, b"bazel 9.2.0")
+    real_open = open
+    monkeypatch.setattr(
+        "builtins.open",
+        lambda p, *a, **kw: (
+            (_ for _ in ()).throw(OSError(5, "EIO"))
+            if str(p) == bad
+            else real_open(p, *a, **kw)
+        ),
+    )
+    rcc.main(["--bazelisk-cache", str(tmp_path), "--dry-run"])
+    assert os.path.isfile(bad)
+
+
 def test_a_dry_run_writes_and_clears_nothing(tmp_path):
     repo = cached_repo(tmp_path, "aa", "id1", RULES_PYTHON)
     run(tmp_path)
