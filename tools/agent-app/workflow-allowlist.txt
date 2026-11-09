@@ -51,3 +51,8 @@ foundation-app-deploy.yaml environment business-unit app-image-digests
 # production run for James's approval, and the sandbox job refuses a key that
 # is not test-mode.
 delivery-stripe.yaml unit environment
+# Applies the relay's Zitadel project and clients (zitadel-apps-relay). action
+# is preview (default) or up; run preview first and read its plan. Added
+# 2026-11-09 on James's go-ahead ("Let wren run it"). It changes live sign-in
+# for the relay's clients only; the stack refuses the role check without a grant.
+zitadel-apps-relay-apply.yaml action
