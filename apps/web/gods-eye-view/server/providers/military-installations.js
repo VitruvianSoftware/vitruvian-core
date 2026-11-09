@@ -21,6 +21,7 @@
  */
 
 import { makeRateLimiter, clientKey } from './common/rate-limit.js';
+import { admitSameSite } from './common/same-site.js';
 import {
   MILITARY_INSTALLATION_ELEMENT_CAP,
   MILITARY_INSTALLATION_MAX_RESPONSE_BYTES,
@@ -119,6 +120,7 @@ function militaryInstallationsProxy() {
         res.end(JSON.stringify({ error: 'Method Not Allowed' }));
         return;
       }
+      if (admitSameSite(req, res)) return;
       const url = new URL(req.url, 'http://localhost');
       const requested = validMilitaryInstallationBox(url.searchParams);
       if (!requested) {

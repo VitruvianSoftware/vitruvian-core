@@ -54,6 +54,7 @@ const LEFT_STACK_OBSTACLE_SELECTOR = [
   '#gev-voice-control',
   '#pp-toggles',
   '#param-slider-panel',
+  '#world-timeline',
 ].join(', ');
 /**
  * Fixed UI regions that can occupy the right control lane. Runtime rectangle
@@ -81,6 +82,7 @@ const RIGHT_STACK_OBSTACLE_SELECTOR = [
   '#cesium-credits .cesium-credit-textContainer',
   '#command-dock',
   '#gev-voice-control',
+  '#world-timeline',
 ].join(', ');
 export class PanelLayoutController {
   constructor({

@@ -48,6 +48,7 @@
     "build:panel": "node scripts/build-panel.mjs",
     "preview": "vite preview",
     "test": "node scripts/run-unit-tests.mjs",
+    "test:perf": "node scripts/run-perf-tests.mjs",
     "test:track": "node scripts/track-regression.mjs",
     "qa:map-source-tray": "node scripts/qa-map-source-tray.mjs",
     "qa:street-level": "node scripts/qa-street-level.mjs",
@@ -78,6 +79,7 @@
     "@happy-dom/global-registrator": "^21.0.4",
     "@vitejs/plugin-vue": "^6.0.0",
     "@vue/test-utils": "^2.5.1",
+    "flag-icons": "7.5.0",
     "happy-dom": "^21.0.4",
     "prettier": "3.9.10",
     "puppeteer": "^25.16.0",
@@ -91,6 +93,7 @@
     "./infrastructure/lod": "./src/data/localGeojsonLod.js",
     "./application": "./src/app/application.js",
     "./application/viewer": "./src/app/viewer.js",
+    "./time": "./src/time/worldClock.js",
     "./build/vite": {
       "node": "./build/vite.js"
     },
@@ -178,6 +181,7 @@
     "./layers/perimeters": "./src/layers/perimeters/index.js",
     "./layers/gnss": "./src/layers/gnss/index.js",
     "./layers/ghostmaps": "./src/layers/ghostMaps/index.js",
+    "./layers/drone-airspace": "./src/layers/droneAirspace/index.js",
     "./sources/firms-csv": "./src/data/firmsCsv.js",
     "./layers/firms": "./src/layers/firms/index.js",
     "./layers/satellites": "./src/layers/satellites/index.js",
@@ -257,6 +261,7 @@
     "./layers/perimeters/source": "./src/layers/perimeters/source.js",
     "./layers/gnss/source": "./src/layers/gnss/source.js",
     "./layers/ghostmaps/source": "./src/layers/ghostMaps/source.js",
+    "./layers/drone-airspace/source": "./src/layers/droneAirspace/source.js",
     "./layers/firms/source": "./src/layers/firms/source.js",
     "./layers/installations/source": "./src/layers/installations/source.js",
     "./layers/launches/source": "./src/layers/launches/source.js",
@@ -292,6 +297,8 @@
     "./tools/panel": "./src/tools/panel.js",
     "./tools/services": "./src/tools/services.js",
     "./view": "./src/view/index.js",
-    "./agent/world-packet": "./src/agent/worldPacket.js"
+    "./agent/world-packet": "./src/agent/worldPacket.js",
+    "./layers/wildlife-sightings": "./src/layers/wildlifeSightings/index.js",
+    "./layers/wildlife-sightings/source": "./src/layers/wildlifeSightings/source.js"
   }
 }

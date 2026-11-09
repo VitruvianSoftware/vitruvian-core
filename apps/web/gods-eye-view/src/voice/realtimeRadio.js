@@ -87,7 +87,7 @@ export class RealtimeRadio {
             : control || {};
         if (
           event.origin === 'user' &&
-          (event.action === 'pause' || event.action === 'stop')
+          ['pause', 'stop', 'select'].includes(event.action)
         ) {
           this.cancelRadioHandoff();
         } else if (

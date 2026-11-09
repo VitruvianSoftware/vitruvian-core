@@ -40,10 +40,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: [24.14.0, 26.x]
+        node: [24.22.2, 26.x]
     env:
       PUPPETEER_SKIP_DOWNLOAD: '1'
-      GEV_REQUIRE_ALLOCATION_GATE: ${{ matrix.node == '24.14.0' && '1' || '0' }}
+      GEV_REQUIRE_ALLOCATION_GATE: ${{ matrix.node == '24.22.2' && '1' || '0' }}
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -96,7 +96,7 @@ jobs:
       - name: Use Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 24.14.0
+          node-version: 24.22.2
           cache: npm
 
       - name: Install locked dependencies and headless Chrome
@@ -151,7 +151,7 @@ jobs:
       - name: Use Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24.14.0
+          node-version: 24.22.2
           cache: npm
 
       - name: Run the Pinokio install path

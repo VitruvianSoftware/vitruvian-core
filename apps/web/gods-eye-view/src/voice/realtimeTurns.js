@@ -645,6 +645,7 @@ export class RealtimeTurns {
           {
             signal: toolController.signal,
             callId: narrationId,
+            authorityGroup: toolResponseId || narrationId,
             progress: (update) => this.narration?.progress(narrationId, update),
             isCurrent: () =>
               this.activeToolAbortControllers.has(toolController) &&

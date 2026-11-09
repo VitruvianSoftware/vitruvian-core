@@ -30,6 +30,7 @@ import {
   t,
   translateKnown,
 } from '../../i18n/index.js';
+import { sourceStatusLabel } from '../../ui/layerNames.js';
 import { formatQuantity } from '../../ui/unitLabels.js';
 import { AWARENESS_PAGE_SIZE, AWARENESS_PAGE_ROTATE_MS } from './policy.js';
 import { distanceParts } from '../../data/distanceFormat.js';
@@ -172,7 +173,7 @@ export function createPanel({ state: layerState, parts }) {
       relationship: summary.relationship.toLowerCase(),
       label: cohort.label,
       count: `${presentAwarenessCount(summary)}${pageLabel}`,
-      detail: `${cohort.source}${coverage} · ${presentAwarenessReason(summary)}`,
+      detail: `${sourceStatusLabel(cohort.source, cohort.sourceStatus)}${coverage} · ${presentAwarenessReason(summary)}`,
       nearest,
     };
   }

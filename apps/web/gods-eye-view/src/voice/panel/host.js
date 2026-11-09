@@ -311,7 +311,9 @@ export function createVoicePanelHost({
       signal: session.signal,
       ...clock,
       onExpire: () => {
-        if (!owns()) return;
+        // Typed chat has no microphone or audio to time out, and stopping it
+        // would drop the conversation the chat log still shows.
+        if (!owns() || session.adapter?.getStartOptions?.().textOnly) return;
         const ticket = revision;
         session.stop();
         closeAfterStop(ticket);

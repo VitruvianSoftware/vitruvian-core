@@ -223,6 +223,7 @@
     .recent-imagery-panel-inner,
     .street-level-panel-inner,
     .scene-panel-inner,
+    .utilities-panel-inner,
     .global-context-panel-inner,
     .radio-panel-inner,
     #pp-toggles:not(.collapsed),
@@ -244,6 +245,7 @@
     .recent-imagery-panel-inner,
     .street-level-panel-inner,
     .scene-panel-inner,
+    .utilities-panel-inner,
     .global-context-panel-inner,
     .radio-panel-inner
   )
@@ -326,6 +328,7 @@
     .recent-imagery-panel-inner,
     .street-level-panel-inner,
     .scene-panel-inner,
+    .utilities-panel-inner,
     .global-context-panel-inner,
     .radio-panel-inner
   )
@@ -342,6 +345,7 @@
     .recent-imagery-panel-inner,
     .street-level-panel-inner,
     .scene-panel-inner,
+    .utilities-panel-inner,
     .global-context-panel-inner,
     .radio-panel-inner
   )
@@ -366,6 +370,7 @@
     .recent-imagery-panel-inner,
     .street-level-panel-inner,
     .scene-panel-inner,
+    .utilities-panel-inner,
     .global-context-panel-inner,
     .radio-panel-inner
   )
@@ -537,6 +542,14 @@
 :root[data-ui-theme='cyber'] .pp-mode-btn.active {
   background: var(--cyber-red);
   color: #f7f8f7;
+}
+
+:root[data-ui-theme='cyber']
+  #utilities-panel
+  .utilities-tools
+  .pp-toggle-btn:is([aria-pressed='true'], .active) {
+  background: rgba(64, 45, 46, 0.94);
+  box-shadow: 3px 0 0 var(--cyber-red) inset;
 }
 
 :root[data-ui-theme='cyber'] .pp-toggle-btn.active .pp-label {
@@ -724,6 +737,11 @@
   .data-toggle-row[data-layer-id='directions']
   .data-icon::before {
   content: '⌁';
+}
+:root[data-ui-theme='cyber']
+  .data-toggle-row[data-layer-id='wildlife-sightings']
+  .data-icon::before {
+  content: '✿';
 }
 :root[data-ui-theme='cyber']
   .data-toggle-row[data-layer-id='radio']
@@ -1594,7 +1612,7 @@
 }
 
 #intel-hud[data-variant='cyber'] .hud-bottom-bar {
-  bottom: calc(2vh + 9.8rem);
+  bottom: calc(2vh + 9.8rem + var(--world-timeline-lift, 0px));
   width: min(48vw, 680px);
 }
 
@@ -1605,13 +1623,13 @@
 
 #intel-hud[data-variant='cyber'] .hud-bottom-left,
 #intel-hud[data-variant='cyber'] .hud-bottom-right {
-  bottom: calc(2vh + 6.5rem);
+  bottom: calc(2vh + 6.5rem + var(--world-timeline-lift, 0px));
 }
 
 /* Attribution's logo row extends above its text baseline. Reserve the whole
    row plus a gap above the dock-relative 2vh + 5rem credit position. */
 #intel-hud[data-variant='cyber'] .hud-bottom-left {
-  bottom: calc(2vh + 7.75rem);
+  bottom: calc(2vh + 7.75rem + var(--world-timeline-lift, 0px));
 }
 
 #intel-hud[data-variant='cyber'] .hud-corner {
@@ -1656,7 +1674,7 @@
      below its 650px threshold. Keep the left rail inside the same telemetry
      and attribution-safe floor while its panel bodies take over scrolling. */
   :root[data-ui-theme='cyber'] #left-panel-stack {
-    bottom: calc(2vh + 13rem);
+    bottom: calc(2vh + 13rem + var(--world-timeline-lift, 0px));
   }
 }
 
@@ -1679,7 +1697,7 @@
     /* The stack holds still, so its rail needs no offset (leftPanelRail.js). */
     --panel-stack-top-pinned: 1;
     top: var(--cyber-left-rail-top) !important;
-    bottom: calc(2vh + 13rem);
+    bottom: calc(2vh + 13rem + var(--world-timeline-lift, 0px));
     inset-inline-start: calc(54px + var(--panel-rail-clearance));
     width: 300px;
     padding-inline-start: 10px;
@@ -1702,7 +1720,9 @@
   :root[data-ui-theme='cyber']
     body:not(.cockpit-mode)
     #left-panel-stack:has(> [data-panel-id]:not(.collapsed))
-    > :is(#data-panel, #cctv-panel, #scene-panel):not(.collapsed) {
+    > :is(#data-panel, #cctv-panel, #utilities-panel, #scene-panel):not(
+      .collapsed
+    ) {
     flex: 1 1 auto;
     height: auto;
     max-height: none;
@@ -1724,21 +1744,21 @@
 
   :root[data-ui-theme='cyber']
     #left-panel-stack
-    > :is(#data-panel, #scene-panel) {
+    > :is(#data-panel, #utilities-panel, #scene-panel) {
     --panel-expanded-width: var(--cyber-panel-width);
     width: var(--panel-expanded-width);
   }
 
   :root[data-ui-theme='cyber']
     #left-panel-stack
-    > :is(#data-panel, #scene-panel).collapsed {
+    > :is(#data-panel, #utilities-panel, #scene-panel).collapsed {
     width: var(--cyber-panel-collapsed-width);
   }
 
   :root[data-ui-theme='cyber']
     #left-panel-stack
-    > :is(#data-panel, #scene-panel).collapsed
-    :is(.data-panel-inner, .scene-panel-inner) {
+    > :is(#data-panel, #utilities-panel, #scene-panel).collapsed
+    :is(.data-panel-inner, .utilities-panel-inner, .scene-panel-inner) {
     box-sizing: border-box;
     height: 50px;
     min-height: 50px;
@@ -1765,7 +1785,7 @@
 
   :root[data-ui-theme='cyber']
     body:not(.cockpit-mode)
-    :is(#data-panel, #scene-panel)
+    :is(#data-panel, #utilities-panel, #scene-panel)
     .panel-collapse-btn {
     width: var(--cyber-panel-control-size);
     min-width: var(--cyber-panel-control-size);
@@ -2780,7 +2800,10 @@
   border-inline-start: 0;
 }
 
-:root[data-ui-theme='cyber'] body.cockpit-mode #left-panel-stack > #data-panel {
+:root[data-ui-theme='cyber']
+  body.cockpit-mode
+  #left-panel-stack
+  > :is(#data-panel, #utilities-panel) {
   --panel-expanded-width: var(--cyber-panel-width);
   width: var(--cyber-panel-width);
   max-height: min(64vh, 610px);
@@ -2789,7 +2812,7 @@
 :root[data-ui-theme='cyber']
   body.cockpit-mode
   #left-panel-stack
-  > #data-panel.collapsed {
+  > :is(#data-panel, #utilities-panel).collapsed {
   width: var(--cyber-panel-collapsed-width);
 }
 
@@ -2822,7 +2845,7 @@
   :root[data-ui-theme='cyber']
     body.cockpit-mode
     #left-panel-stack
-    > #data-panel:not(.collapsed) {
+    > :is(#data-panel, #utilities-panel):not(.collapsed) {
     flex: 0 0 var(--cyber-cockpit-panel-height, 40vh);
     height: var(--cyber-cockpit-panel-height, 40vh);
     max-height: var(--cyber-cockpit-panel-height, 40vh);

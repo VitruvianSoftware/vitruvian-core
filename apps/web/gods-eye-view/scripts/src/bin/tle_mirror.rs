@@ -82,7 +82,7 @@ mod tests {
         .unwrap();
         std::fs::write(
             tmp.join("src/tools/queries/space.js"),
-            "const GROUPS = ['visual', 'weather'];\n",
+            "const GROUPS = ['visual', 'molniya'];\n",
         )
         .unwrap();
         std::fs::write(
@@ -98,7 +98,7 @@ mod tests {
         .unwrap();
         let err = verify_client_groups_mirrored(&tmp).unwrap_err();
         let _ = std::fs::remove_dir_all(&tmp);
-        assert_eq!(err, "requested by the client but not mirrored: cubesat, weather");
+        assert_eq!(err, "requested by the client but not mirrored: cubesat, molniya");
     }
 
     /// mirror.test.mjs: "the mirror fetches the URL the server would".
