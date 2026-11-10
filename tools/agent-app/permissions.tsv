@@ -29,6 +29,10 @@
 #       auto-merge off, leave the queue) plus pull_requests write for the label.
 #   run-rerun, run-cancel, workflow-run       actions write -- wren only, so
 #       the tool refuses them for any other agent before calling GitHub.
+#   secret-alert-resolve                      secret_scanning_alerts write --
+#       aegis only.
+#   dependabot-alert-dismiss                  vulnerability_alerts write --
+#       aegis only.
 #
 # agent	permission	level
 beacon	checks	read
@@ -86,6 +90,8 @@ aegis	contents	write
 aegis	issues	write
 aegis	metadata	read
 aegis	pull_requests	write
+aegis	secret_scanning_alerts	write
+aegis	vulnerability_alerts	write
 aegis	workflows	write
 forge	checks	read
 forge	contents	write

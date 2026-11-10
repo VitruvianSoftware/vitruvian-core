@@ -76,7 +76,10 @@ cannot name a gate of its own.
 
 **Actions write is wren's only** ([`permissions.tsv`](permissions.tsv)). The
 three run commands check that file first and refuse for any other agent,
-naming wren, instead of letting GitHub answer with a bare 403.
+naming wren, instead of letting GitHub answer with a bare 403. Likewise,
+**Secret scanning alerts write and Dependabot alerts write are aegis's only**,
+and `secret-alert-resolve` / `dependabot-alert-dismiss` check `permissions.tsv`
+first and require an explicit resolution/reason and audit comment.
 
 `permissions.tsv` records what each App is meant to be allowed to do, and
 `bazel run //tools/agent-app:permission-drift` checks GitHub against it (below).
