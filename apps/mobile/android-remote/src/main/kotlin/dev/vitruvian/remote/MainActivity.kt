@@ -482,7 +482,9 @@ private class ShadeNotifier(
 
   override fun notifyAnnouncement(id: String, text: String) {
     if (!hasNotificationPermission()) return
-    val notificationId = id.hashCode()
+    // One notification slot: each announcement replaces the last, so the shade never fills up and
+    // turning mirroring off (one cancel) clears everything this feature posted.
+    val notificationId = HomeSpeakerNotificationReceiver.MIRROR_NOTIFICATION_ID
     val openIntent =
         Intent(
                 Intent.ACTION_VIEW,
@@ -534,7 +536,9 @@ private class ShadeNotifier(
   override fun cancelAnnouncement(id: String) {
     runCatching {
       NotificationManagerCompat.from(context)
-          .cancel(HomeSpeakerNotificationReceiver.NOTIFICATION_TAG, id.hashCode())
+          .cancel(
+              HomeSpeakerNotificationReceiver.NOTIFICATION_TAG,
+              HomeSpeakerNotificationReceiver.MIRROR_NOTIFICATION_ID)
     }
   }
 
@@ -576,7 +580,7 @@ public class HomeSpeakerNotificationReceiver : BroadcastReceiver() {
     val action = intent.action ?: return
     val announcementId = intent.getStringExtra(EXTRA_ANNOUNCEMENT_ID).orEmpty()
     val announcementText = intent.getStringExtra(EXTRA_ANNOUNCEMENT_TEXT).orEmpty()
-    val notificationId = intent.getIntExtra(EXTRA_NOTIFICATION_ID, announcementId.hashCode())
+    val notificationId = intent.getIntExtra(EXTRA_NOTIFICATION_ID, MIRROR_NOTIFICATION_ID)
     val pendingResult = goAsync()
     val appContext = context.applicationContext
     CoroutineScope(Dispatchers.IO).launch {
@@ -622,6 +626,8 @@ public class HomeSpeakerNotificationReceiver : BroadcastReceiver() {
     public const val EXTRA_ANNOUNCEMENT_TEXT: String = "announcement_text"
     public const val EXTRA_NOTIFICATION_ID: String = "notification_id"
     public const val NOTIFICATION_TAG: String = "homespeaker-announcement"
+    /** The single slot every mirrored announcement is posted in. */
+    public const val MIRROR_NOTIFICATION_ID: Int = 1
     private const val ACTION_TIMEOUT_MS = 3_000L
   }
 }
