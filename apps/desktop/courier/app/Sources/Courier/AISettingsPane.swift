@@ -555,10 +555,7 @@ public struct AISettingsPane: View {
     }
 
     private func privacySentence(for kind: AIProviderKind) -> String {
-        if kind.isLocal {
-            return String(localized: "Stays on this Mac. Your messages are not sent anywhere. Only the messages you use with AI, and your draft. Never your keys or other chats.")
-        }
-        return String(localized: "Messages you use with AI are sent to \(kind.label). Only the messages you use with AI, and your draft. Never your keys or other chats.")
+        kind.privacyNotice
     }
 
     // MARK: - Custom Instructions

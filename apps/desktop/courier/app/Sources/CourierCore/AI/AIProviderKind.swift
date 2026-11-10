@@ -183,10 +183,6 @@ public enum AIProviderKind: String, CaseIterable, Codable, Sendable {
         if isLocal {
             return String(localized: "Stays on this Mac.")
         }
-        return String(localized: "Messages you use with AI are sent to \(label).")
-    }
-
-    public static var privacyScopeNotice: String {
-        String(localized: "Only the messages you use with AI, and your draft. Never your keys or other chats.")
+        return String(localized: "Messages you use with AI, and your draft, are sent to \(label). Never your keys or other chats.")
     }
 }

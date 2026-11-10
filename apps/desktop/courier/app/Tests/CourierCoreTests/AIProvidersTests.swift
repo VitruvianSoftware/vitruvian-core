@@ -40,7 +40,10 @@ final class AIProvidersTests: XCTestCase {
         }
         for kind in AIProviderKind.cloudProviders {
             XCTAssertFalse(kind.isLocal, "\(kind) must be cloud")
-            XCTAssertTrue(kind.privacyNotice.contains(kind.label))
+            XCTAssertEqual(
+                kind.privacyNotice,
+                "Messages you use with AI, and your draft, are sent to \(kind.label). Never your keys or other chats."
+            )
         }
 
         XCTAssertTrue(AIProviderKind.anthropic.needsKey)
