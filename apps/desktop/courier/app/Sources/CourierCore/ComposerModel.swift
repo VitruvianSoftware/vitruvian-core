@@ -2770,20 +2770,26 @@ public final class ComposerModel: ObservableObject {
         let normalized = command.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         switch normalized {
         case let cmd where cmd.hasPrefix("/translate"):
-            let payload = Self.strippingSlashTrigger(from: text)
-            runAIAction(.translate(textOverride: payload.isEmpty ? text : payload))
+            let payload = consumeSlashTrigger()
+            guard !payload.isEmpty else { return }
+            runAIAction(.translate(textOverride: payload))
         case let cmd where cmd.hasPrefix("/summarize"):
-            if text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "/summarize" {
-                setContents("", [])
-            }
+            _ = consumeSlashTrigger()
             onSummarizeChat()
-        case let cmd where cmd.hasPrefix("/draft"):
-            let payload = Self.strippingSlashTrigger(from: text)
-            runAIAction(.draft(tone: nil, draftOverride: payload))
         default:
-            let payload = Self.strippingSlashTrigger(from: text)
+            let payload = consumeSlashTrigger()
             runAIAction(.draft(tone: nil, draftOverride: payload))
         }
+    }
+
+    /// Takes the slash command out of the composer and returns what the person typed after it, so Insert and
+    /// Discard work on their own words, never on "/draft". The text is untouched when it doesn't start with a command.
+    private func consumeSlashTrigger() -> String {
+        let payload = Self.strippingSlashTrigger(from: text)
+        if payload != text {
+            setContents(payload, [])
+        }
+        return payload
     }
 
     /// Re-runs the most recent AI draft, rewrite, or draft-translation request.

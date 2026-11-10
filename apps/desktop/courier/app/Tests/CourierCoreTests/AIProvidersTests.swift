@@ -1172,6 +1172,45 @@ final class AIProvidersTests: XCTestCase {
         await h.stop()
     }
 
+    func testSlashCommandIsTakenOutOfTheComposerBeforeTheResultLands() async {
+        let suiteName = "test.courier.ai.composer.slash.\(UUID().uuidString)"
+        let defaults = ScratchDefaults.suite(named: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let prefs = AIPreferences(defaults: defaults)
+        prefs.enableContextualAI = true
+        prefs.selectedEngine = .ollama
+        prefs.selectedModel = "llama3"
+
+        let composer = ComposerModel()
+        composer.aiPreferences = prefs
+        composer.open("!room1:courier.local")
+        composer.aiProvider = MockTestAIProvider(result: .text("Sounds good!"))
+
+        // A bare "/draft": the command leaves the box, so Insert gives just the reply.
+        composer.text = "/draft"
+        composer.executeSlashCommand("/draft")
+        XCTAssertEqual(composer.text, "")
+        await composer.waitForAI()
+        composer.insertAIResult()
+        XCTAssertEqual(composer.text, "Sounds good!")
+
+        // "/draft <words>": the person's words stay, without the command; Discard keeps them.
+        composer.text = "/draft thanks for the update"
+        composer.executeSlashCommand("/draft")
+        XCTAssertEqual(composer.text, "thanks for the update")
+        await composer.waitForAI()
+        composer.discardAIResult()
+        XCTAssertEqual(composer.text, "thanks for the update")
+
+        // A bare "/translate" has nothing to translate: no request, and the command leaves the box.
+        composer.text = "/translate"
+        composer.executeSlashCommand("/translate")
+        await composer.waitForAI()
+        XCTAssertEqual(composer.text, "")
+        XCTAssertNil(composer.aiResult)
+    }
+
     func testComposerAIResultStripReplaceInsertDiscardAndNeverChangesTextOnError() async {
         let suiteName = "test.courier.ai.composer.strip.\(UUID().uuidString)"
         let defaults = ScratchDefaults.suite(named: suiteName)!
