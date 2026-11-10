@@ -1819,18 +1819,9 @@ impl Tool {
             usage,
             rest,
             b"--resolution",
-            &[
-                b"false_positive",
-                b"wont_fix",
-                b"revoked",
-                b"used_in_tests",
-            ],
+            &[b"false_positive", b"wont_fix", b"revoked", b"used_in_tests"],
         )?;
-        self.need_perm_write(
-            &agent,
-            b"secret_scanning_alerts",
-            b"Secret scanning alerts",
-        )?;
+        self.need_perm_write(&agent, b"secret_scanning_alerts", b"Secret scanning alerts")?;
         let tok = self.mint_token(&agent, b"the secret scanning alert was NOT resolved")?;
         to_caller_dir()?;
         let path = cat(&[b"repos/{owner}/{repo}/secret-scanning/alerts/", &num]);
