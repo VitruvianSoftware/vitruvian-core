@@ -94,6 +94,8 @@
  * @property {number | null} taskN
  * @property {number} startedAt
  * @property {number} lastActivityAt
+ * @property {boolean} waiting True while the run is held on work it started
+ *   (a background command, a Gemini job), as its harness reports it.
  * @property {number | null} endedAt
  * @property {RunStatus} status
  * @property {TokenCounts} tokens
@@ -103,7 +105,7 @@
  */
 
 /**
- * @typedef {"active" | "quiet" | "stalled"} StallState
+ * @typedef {"active" | "quiet" | "waiting" | "stalled"} StallState
  */
 
 /**
@@ -203,6 +205,10 @@ const VALID_PHASES = new Set(["plan", "design", "delegate", "review", "close"]);
 
 export const DEFAULT_QUIET_MS = 5 * 60 * 1000;
 export const DEFAULT_STALL_MS = 15 * 60 * 1000;
+// A run waiting on work it started, or on Gemini, is silent by design.
+// agy-delegate's own limit is 45 minutes, so allow an hour before calling it
+// stalled.
+export const DEFAULT_WAITING_STALL_MS = 60 * 60 * 1000;
 
 // rough estimate, not a bill; from savvy-progress PRICES
 // Per million tokens: [input, output, cacheRead, cacheWrite]
@@ -259,6 +265,7 @@ function cloneRun(run) {
     taskN: run.taskN,
     startedAt: run.startedAt,
     lastActivityAt: run.lastActivityAt ?? run.startedAt,
+    waiting: run.waiting === true,
     endedAt: run.endedAt,
     status: run.status,
     tokens: {
@@ -483,12 +490,14 @@ export function reduce(flow, event) {
                   ...cloneRun(r),
                   taskN: resumedTaskN,
                   lastActivityAt: nextActivityAt,
+                  waiting: false,
                   endedAt: null,
                   status: /** @type {RunStatus} */ ("running"),
                 };
               }
               return {
                 ...cloneRun(r),
+                waiting: false,
                 lastActivityAt: Math.max(
                   r.lastActivityAt ?? r.startedAt,
                   nextActivityAt,
@@ -518,6 +527,7 @@ export function reduce(flow, event) {
         taskN,
         startedAt: event.at,
         lastActivityAt: event.at,
+        waiting: false,
         endedAt: null,
         status: "running",
         tokens: {
@@ -590,6 +600,8 @@ export function reduce(flow, event) {
         return {
           ...cloneRun(r),
           lastActivityAt,
+          // Any report that does not say "waiting" is the run doing something.
+          waiting: event.waiting === true,
           delegate,
           tokens,
           steps,
@@ -931,13 +943,17 @@ export function spend(flow) {
  *
  * @param {Flow | null | undefined} flow
  * @param {number} now
- * @param {{ quietMs?: number, stallMs?: number }} [options]
+ * @param {{ quietMs?: number, stallMs?: number, waitingStallMs?: number }} [options]
  * @returns {StallRow[]}
  */
 export function stalls(
   flow,
   now,
-  { quietMs = DEFAULT_QUIET_MS, stallMs = DEFAULT_STALL_MS } = {},
+  {
+    quietMs = DEFAULT_QUIET_MS,
+    stallMs = DEFAULT_STALL_MS,
+    waitingStallMs = DEFAULT_WAITING_STALL_MS,
+  } = {},
 ) {
   if (!flow || flow.closedAt !== null || !Array.isArray(flow.runs)) {
     return [];
@@ -953,9 +969,19 @@ export function stalls(
       ? run.lastActivityAt
       : run.startedAt;
     const idleMs = Math.max(0, nowNum - lastAt);
+    // Silence while waiting on its own work or on Gemini is expected, up to a
+    // longer limit; past it, the run is stalled like any other.
+    const isWaiting = run.waiting === true || Boolean(run.delegate);
+    const limit = isWaiting ? Math.max(stallMs, waitingStallMs) : stallMs;
     /** @type {StallState} */
     const state =
-      idleMs >= stallMs ? "stalled" : idleMs >= quietMs ? "quiet" : "active";
+      idleMs >= limit
+        ? "stalled"
+        : idleMs >= quietMs
+          ? isWaiting
+            ? "waiting"
+            : "quiet"
+          : "active";
     rows.push({
       id: run.id,
       agent: run.agent,

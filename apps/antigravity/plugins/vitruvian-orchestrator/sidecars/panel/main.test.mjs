@@ -42,6 +42,7 @@ import {
   loadLivePanelState,
   parseFlowJsonl,
   readChildTranscriptActivityAt,
+  readChildTranscriptState,
 } from "./main.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -458,6 +459,166 @@ test("checkAndWakeStalledRuns calls sendMessage once per stall and re-alerts onl
     });
     assert.equal(sent.length, 2);
     assert.match(sent[1].msg, /15m 00s on task #1 \("Build watchdog"\)/);
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+// One flow with a single worker run, written at `t0`, for the watchdog tests.
+function writeWatchdogFlow(flowsDir, cid, t0, runId = "worker-1") {
+  const flowPath = join(flowsDir, `${cid}.jsonl`);
+  writeFileSync(
+    flowPath,
+    [
+      {
+        type: "plan",
+        at: t0,
+        title: "Watchdog limits",
+        tasks: [
+          { title: "Long build", specialist: "forge", tier: "core", after: [] },
+        ],
+      },
+      {
+        type: "run.start",
+        at: t0,
+        id: runId,
+        harness: "antigravity",
+        agent: "forge",
+        model: "gemini-4-argon-high",
+        title: "Long build",
+        role: "worker",
+      },
+    ]
+      .map((e) => JSON.stringify(e))
+      .join("\n") + "\n",
+    "utf8",
+  );
+  return flowPath;
+}
+
+test("the watchdog leaves old flows and long-abandoned runs alone", async () => {
+  const tmpDir = mkdtempSync(join(tmpdir(), "orch-watchdog-age-"));
+  try {
+    const flowsDir = join(tmpDir, "flows");
+    mkdirSync(flowsDir, { recursive: true });
+    const min = 60 * 1000;
+    const now = Date.UTC(2026, 10, 9, 12, 0, 0);
+    const sent = [];
+    const sendMessage = async (cid, msg) => sent.push({ cid, msg });
+    const brainRoots = [join(tmpDir, "no-brain")];
+
+    // Written two days ago and never closed: an old conversation.
+    const old = writeWatchdogFlow(flowsDir, "old-conv", now - 48 * 60 * min);
+    utimesSync(old, (now - 48 * 60 * min) / 1000, (now - 48 * 60 * min) / 1000);
+    // Written today, but its run has been silent for three hours: abandoned.
+    const quiet = writeWatchdogFlow(
+      flowsDir,
+      "abandoned-conv",
+      now - 180 * min,
+    );
+    utimesSync(quiet, (now - 60 * min) / 1000, (now - 60 * min) / 1000);
+    // Written today and silent for 20 minutes: really stalled.
+    const live = writeWatchdogFlow(flowsDir, "live-conv", now - 20 * min);
+    utimesSync(live, (now - 20 * min) / 1000, (now - 20 * min) / 1000);
+
+    await checkAndWakeStalledRuns({
+      flowsDir,
+      brainRoots,
+      sendMessage,
+      notifiedStalls: new Set(),
+      now,
+    });
+    assert.deepEqual(
+      sent.map((m) => m.cid),
+      ["live-conv"],
+    );
+    // It asks the lead to check before restarting anything.
+    assert.match(sent[0].msg, /a long build or test can run this long/);
+    assert.doesNotMatch(sent[0].msg, /nudge or restart it\./);
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("a subagent waiting on its own background command is not woken until the longer limit", async () => {
+  const tmpDir = mkdtempSync(join(tmpdir(), "orch-watchdog-waiting-"));
+  try {
+    const flowsDir = join(tmpDir, "flows");
+    const brainRoot = join(tmpDir, "app-data");
+    mkdirSync(flowsDir, { recursive: true });
+    const min = 60 * 1000;
+    const t0 = Date.UTC(2026, 10, 9, 12, 0, 0);
+    writeWatchdogFlow(flowsDir, "lead-conv", t0, "child-conv");
+
+    // The child started a background build and has heard nothing back yet.
+    const logs = join(
+      brainRoot,
+      "brain",
+      "child-conv",
+      ".system_generated",
+      "logs",
+    );
+    mkdirSync(logs, { recursive: true });
+    const transcript = join(logs, "transcript.jsonl");
+    const iso = (t) => new Date(t).toISOString();
+    const started = {
+      step_index: 1,
+      type: "GENERIC",
+      status: "RUNNING",
+      created_at: iso(t0),
+      content:
+        "Tool is running as a background task with task id: child-conv/task-7",
+    };
+    writeFileSync(transcript, JSON.stringify(started) + "\n", "utf8");
+    utimesSync(transcript, t0 / 1000, t0 / 1000);
+    assert.deepEqual(readChildTranscriptState("child-conv", [brainRoot]), {
+      activityAt: t0,
+      waiting: true,
+    });
+
+    const sent = [];
+    const tick = (now) =>
+      checkAndWakeStalledRuns({
+        flowsDir,
+        brainRoots: [brainRoot],
+        sendMessage: async (cid, msg) => sent.push({ cid, msg }),
+        notifiedStalls: new Set(),
+        now,
+      });
+
+    const state = loadLivePanelState({
+      flowsDir,
+      cid: "lead-conv",
+      brainRoots: [brainRoot],
+      now: t0 + 20 * min,
+    });
+    assert.equal(state.runs[0].stallState, "waiting");
+    await tick(t0 + 20 * min);
+    assert.equal(sent.length, 0);
+
+    // Past the waiting limit it is stalled after all.
+    await tick(t0 + 61 * min);
+    assert.equal(sent.length, 1);
+
+    // Once the build reports back, the child is no longer waiting.
+    const finished = {
+      step_index: 2,
+      type: "SYSTEM_MESSAGE",
+      status: "DONE",
+      created_at: iso(t0 + 5 * min),
+      content:
+        "[Message] timestamp=x sender=child-conv/task-7 priority=HIGH content=done",
+    };
+    writeFileSync(
+      transcript,
+      [started, finished].map((r) => JSON.stringify(r)).join("\n") + "\n",
+      "utf8",
+    );
+    utimesSync(transcript, (t0 + 5 * min) / 1000, (t0 + 5 * min) / 1000);
+    assert.equal(
+      readChildTranscriptState("child-conv", [brainRoot]).waiting,
+      false,
+    );
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
   }

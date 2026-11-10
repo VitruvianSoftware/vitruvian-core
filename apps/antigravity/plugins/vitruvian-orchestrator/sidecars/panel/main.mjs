@@ -43,6 +43,7 @@ import {
   burnDown,
   DEFAULT_QUIET_MS,
   DEFAULT_STALL_MS,
+  DEFAULT_WAITING_STALL_MS,
   initialFlow,
   reduce,
   remaining,
@@ -52,7 +53,14 @@ import {
   taskBoard,
 } from "./lib/orchestrator-core.mjs";
 
-export { DEFAULT_QUIET_MS, DEFAULT_STALL_MS, stalls };
+export { DEFAULT_QUIET_MS, DEFAULT_STALL_MS, DEFAULT_WAITING_STALL_MS, stalls };
+
+// The watchdog only looks at recent work. A flow file nobody has written to
+// for a day is an old conversation, and a run silent for two hours is
+// abandoned, not stalled: waking either would message a conversation the
+// person has moved on from.
+export const WATCHDOG_MAX_FLOW_AGE_MS = 24 * 60 * 60 * 1000;
+export const WATCHDOG_MAX_IDLE_MS = 2 * 60 * 60 * 1000;
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const PHASES = Object.freeze([
@@ -674,23 +682,26 @@ export function readTranscriptForConversation(conversationId, customRoots) {
 }
 
 /**
- * Reads the latest activity timestamp (in ms) from a child subagent's own
- * `transcript.jsonl`, taking the max of the last JSONL entry timestamp and
- * the file's `mtimeMs`.
+ * Reads a child subagent's own `transcript.jsonl`: when it last did anything
+ * (the max of the last entry's timestamp and the file's `mtimeMs`), and
+ * whether it is waiting on a background command it started.
+ *
+ * A background command shows as a step "running as a background task with
+ * task id: <id>" and, when it ends, as a system message from `sender=<id>`.
+ * One started with no such message yet means the subagent is waiting on it:
+ * silent by design, not stuck.
  *
  * @param {string} childConversationId
  * @param {string[]} [customRoots]
- * @returns {number}
+ * @returns {{ activityAt: number, waiting: boolean }}
  */
-export function readChildTranscriptActivityAt(
-  childConversationId,
-  customRoots,
-) {
+export function readChildTranscriptState(childConversationId, customRoots) {
+  const none = { activityAt: 0, waiting: false };
   const baseCid = String(childConversationId ?? "")
     .split("#")[0]
     .trim()
     .replace(/[^a-zA-Z0-9._-]/g, "");
-  if (!baseCid) return 0;
+  if (!baseCid) return none;
 
   const roots =
     Array.isArray(customRoots) && customRoots.length > 0
@@ -710,30 +721,59 @@ export function readChildTranscriptActivityAt(
       "logs",
       "transcript.jsonl",
     );
-    if (existsSync(candidate)) {
-      try {
-        const raw = readFileSync(candidate, "utf8");
-        const lines = raw.split("\n");
-        let lastEntryAt = 0;
-        for (let i = lines.length - 1; i >= 0; i -= 1) {
-          const trimmed = lines[i].trim();
-          if (!trimmed) continue;
-          try {
-            const parsed = JSON.parse(trimmed);
-            lastEntryAt = parseEntryTime(parsed, 0);
-            break;
-          } catch {
-            // Check preceding line if tail line is incomplete.
-          }
+    if (!existsSync(candidate)) continue;
+    try {
+      const raw = readFileSync(candidate, "utf8");
+      const lines = raw.split("\n");
+      let lastEntryAt = 0;
+      const started = new Set();
+      const finished = new Set();
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        let parsed;
+        try {
+          parsed = JSON.parse(trimmed);
+        } catch {
+          continue; // a tail line still being written
         }
-        const mtimeMs = statSync(candidate).mtimeMs;
-        return Math.max(lastEntryAt, Math.floor(mtimeMs));
-      } catch {
-        // Try next candidate root.
+        lastEntryAt = parseEntryTime(parsed, lastEntryAt);
+        const content =
+          typeof parsed?.content === "string" ? parsed.content : "";
+        if (parsed?.status === "RUNNING") {
+          const m = /background task with task id: (\S+)/.exec(content);
+          if (m) started.add(m[1]);
+        }
+        if (parsed?.type === "SYSTEM_MESSAGE") {
+          for (const m of content.matchAll(/sender=(\S+)/g)) finished.add(m[1]);
+        }
       }
+      const mtimeMs = statSync(candidate).mtimeMs;
+      const waiting = [...started].some((id) => !finished.has(id));
+      return {
+        activityAt: Math.max(lastEntryAt, Math.floor(mtimeMs)),
+        waiting,
+      };
+    } catch {
+      // Try next candidate root.
     }
   }
-  return 0;
+  return none;
+}
+
+/**
+ * The latest activity timestamp (in ms) from a child subagent's own
+ * `transcript.jsonl`; see `readChildTranscriptState`.
+ *
+ * @param {string} childConversationId
+ * @param {string[]} [customRoots]
+ * @returns {number}
+ */
+export function readChildTranscriptActivityAt(
+  childConversationId,
+  customRoots,
+) {
+  return readChildTranscriptState(childConversationId, customRoots).activityAt;
 }
 
 /**
@@ -746,6 +786,7 @@ export function readChildTranscriptActivityAt(
  *   transcriptText?: string,
  *   brainRoots?: string[],
  *   childActivityByRunId?: Record<string, number>,
+ *   childWaitingByRunId?: Record<string, boolean>,
  *   now?: number,
  *   quietMs?: number,
  *   stallMs?: number
@@ -795,15 +836,22 @@ export function loadLivePanelState(options = {}) {
         typeof options.childActivityByRunId === "object"
           ? options.childActivityByRunId[run.id]
           : undefined;
-      const childAt =
+      const waitingOverride =
+        options.childWaitingByRunId &&
+        typeof options.childWaitingByRunId === "object"
+          ? options.childWaitingByRunId[run.id]
+          : undefined;
+      const child =
         typeof overrideAt === "number"
-          ? overrideAt
-          : readChildTranscriptActivityAt(run.id, options.brainRoots);
-      if (childAt > (run.lastActivityAt ?? run.startedAt)) {
+          ? { activityAt: overrideAt, waiting: waitingOverride === true }
+          : readChildTranscriptState(run.id, options.brainRoots);
+      const lastAt = run.lastActivityAt ?? run.startedAt;
+      if (child.activityAt > lastAt || child.waiting) {
         flow = reduce(flow, {
           type: "run.progress",
-          at: childAt,
+          at: Math.max(child.activityAt, lastAt),
           id: run.id,
+          ...(child.waiting ? { waiting: true } : {}),
         });
       }
     }
@@ -829,6 +877,9 @@ const defaultNotifiedStalls = new Set();
  *   flowsDir?: string,
  *   brainRoots?: string[],
  *   childActivityByRunId?: Record<string, number>,
+ *   childWaitingByRunId?: Record<string, boolean>,
+ *   maxFlowAgeMs?: number,
+ *   maxIdleMs?: number,
  *   sendMessage?: (conversationId: string, message: string, opts?: { title?: string }) => Promise<any> | any,
  *   now?: number,
  *   quietMs?: number,
@@ -870,6 +921,11 @@ export async function checkAndWakeStalledRuns(options = {}) {
     return [];
   }
 
+  const now = typeof options.now === "number" ? options.now : Date.now();
+  const maxFlowAgeMs = options.maxFlowAgeMs ?? WATCHDOG_MAX_FLOW_AGE_MS;
+  const maxIdleMs = options.maxIdleMs ?? WATCHDOG_MAX_IDLE_MS;
+  flowFiles = flowFiles.filter((c) => now - c.mtimeMs <= maxFlowAgeMs);
+
   const notified = [];
   for (const candidate of flowFiles) {
     const state = loadLivePanelState({
@@ -877,7 +933,8 @@ export async function checkAndWakeStalledRuns(options = {}) {
       cid: candidate.conversationId,
       brainRoots: options.brainRoots,
       childActivityByRunId: options.childActivityByRunId,
-      now: options.now,
+      childWaitingByRunId: options.childWaitingByRunId,
+      now,
       quietMs: options.quietMs,
       stallMs: options.stallMs,
     });
@@ -886,14 +943,14 @@ export async function checkAndWakeStalledRuns(options = {}) {
     }
 
     for (const row of state.stalls) {
-      if (row.state !== "stalled") {
+      if (row.state !== "stalled" || row.idleMs > maxIdleMs) {
         continue;
       }
       const key = `${state.conversationId}:${row.id}:${row.lastActivityAt}`;
       if (notifiedStalls.has(key)) {
         continue;
       }
-      const message = `[Orchestrator Watchdog] Subagent ${row.agent} (${row.id}) has had no transcript or step activity for ${formatElapsed(row.idleMs)}${row.taskN ? ` on task #${row.taskN} ("${row.title}")` : ""}. Check its status with manage_subagents, inspect its transcript, and nudge or restart it.`;
+      const message = `[Orchestrator Watchdog] Subagent ${row.agent} (${row.id}) has had no transcript or step activity for ${formatElapsed(row.idleMs)}${row.taskN ? ` on task #${row.taskN} ("${row.title}")` : ""}. Check its status with manage_subagents and read its transcript before acting: a long build or test can run this long with no output. Nudge it only if it is idle, and restart it only if it is stuck.`;
       if (typeof options.sendMessage === "function") {
         await options.sendMessage(state.conversationId, message, {
           title: "Orchestrator Watchdog",

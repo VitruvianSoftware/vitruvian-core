@@ -382,14 +382,15 @@ describe("sidebar formatting", () => {
       /delegated to Gemini: 1 run \(gemini-4-argon-high ×1\), not priced/,
     );
 
-    // Quiet (>= 5m) and stalled (>= 15m) indicators in formatSidebarData / formatSidebarLines
-    const quietData = formatSidebarData(stepRes.flow, 1200 + 6 * 60 * 1000);
-    assert.equal(quietData.agents[0].status, "running (quiet)");
-    assert.equal(quietData.agents[0].color, "warning");
+    // This run handed its work to Gemini, so silence is expected: it reads
+    // "waiting" (not "quiet"), and only "stalled" past the hour-long limit.
+    const waitingData = formatSidebarData(stepRes.flow, 1200 + 16 * 60 * 1000);
+    assert.equal(waitingData.agents[0].status, "running (waiting)");
+    assert.equal(waitingData.agents[0].color, "info");
 
     const stalledLines = formatSidebarLines(
       stepRes.flow,
-      1200 + 16 * 60 * 1000,
+      1200 + 61 * 60 * 1000,
     );
     assert.match(stalledLines.join("\n"), /running \(stalled\)/);
   });
