@@ -946,4 +946,29 @@ final class DoorPagesTests: XCTestCase {
             return XCTFail("expected step 3 offers after closing the other app")
         }
     }
+
+    func testChoosingStoppedAppOpensItSetsOpeningStepBeforeRefreshAndReportsNoChoiceChanged() async throws {
+        appRunning.value = false
+        let tool = tool()
+        _ = tool.islandPage()
+        _ = tool.settingsPage()
+        _ = tap(tool, Pages.Block.doorUseApp)
+        link.rendered = []
+        let openingPage = tap(tool, Pages.Block.doorKeep)
+
+        XCTAssertEqual(tool.doorStep, .opening)
+        let renderedWords = link.rendered.flatMap { words($0.tree) } + words(openingPage)
+        XCTAssertFalse(renderedWords.contains(Pages.DoorWords.choiceChanged),
+                       "choosing a stopped app must transition to .opening before refreshRole so choiceChanged is not reported")
+        XCTAssertTrue(words(openingPage).contains(Pages.DoorWords.opening))
+        for rendered in link.rendered {
+            XCTAssertTrue(words(rendered.tree).contains(Pages.DoorWords.opening),
+                          "refreshOpenPanels during refreshRole must see the .opening step")
+        }
+
+        await settle { tool.doorStep == nil }
+        XCTAssertEqual(order.all, ["open", "loginItemOn"])
+        XCTAssertFalse(tool.doorReport.contains(Pages.DoorWords.choiceChanged))
+        XCTAssertTrue(tool.doorReport.contains(Pages.DoorWords.loginItemOn))
+    }
 }
