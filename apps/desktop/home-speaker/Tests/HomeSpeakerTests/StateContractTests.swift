@@ -1182,6 +1182,44 @@ struct StateContractTests {
 
     // MARK: - 14. QA Probe Tests
 
+    @Test("agentHook combined with another op refuses with hook_must_be_alone and writes no settings, secrets or hook file")
+    func agentHookWithOtherOpWritesNothing() throws {
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+        try rig.seedGoldenFixture()
+        let seam = rig.makeSeam(program: .app)
+        let claudeSettings = rig.agentHome.appendingPathComponent(".claude/settings.json")
+        let snapshot: () -> [Data?] = {
+            [rig.configFile.url, rig.secrets.fileURL, claudeSettings].map { try? Data(contentsOf: $0) }
+        }
+        let before = snapshot()
+
+        // A hook writes another program's file, outside the settings
+        // transaction, so it cannot be undone if a later op fails: it goes alone.
+        let payloads = [
+            """
+            {"contract_version":1,"operations":[
+              {"op":"setSecret","name":"slack","value":"xoxp-hook-probe"},
+              {"op":"agentHook","agent":"claude_code","action":"remove"}
+            ]}
+            """,
+            """
+            {"contract_version":1,"operations":[
+              {"op":"agentHook","agent":"claude_code","action":"remove"},
+              {"op":"set","key":"speech_length","value":"full"}
+            ]}
+            """,
+        ]
+        for payload in payloads {
+            let out = HomeSpeakerCommandLine.apply(payload, seam: seam)
+            #expect(out.exitCode == 1)
+            let parsed = try #require(JSONSerialization.jsonObject(with: Data(out.stdout[0].utf8)) as? [String: Any])
+            let err = try #require(parsed["error"] as? [String: Any])
+            #expect(err["code"] as? String == "hook_must_be_alone")
+            #expect(snapshot() == before)
+        }
+    }
+
     @Test("Probe: switchTo combined with another op (before or after) refuses with switch_must_be_alone and leaves settings, secrets, and door bytes unchanged")
     func probeSwitchWithOtherOpWritesNothing() throws {
         let rig = try ScratchRig()
@@ -1684,18 +1722,18 @@ struct StateContractTests {
 
         // 1. With app chosen, install claude_code, antigravity, and opencode hooks + addInstruction
         let appSeam = rig.makeSeam(program: .app)
-        let installPayload = """
-        {
-          "contract_version": 1,
-          "operations": [
-            {"op": "agentHook", "agent": "claude_code", "action": "install"},
-            {"op": "agentHook", "agent": "antigravity", "action": "install"},
-            {"op": "agentHook", "agent": "opencode", "action": "install"},
-            {"op": "agentHook", "agent": "opencode", "action": "addInstruction"}
-          ]
+        // A hook goes alone in its batch, so each is its own --apply.
+        let installOps = [
+            #"{"op": "agentHook", "agent": "claude_code", "action": "install"}"#,
+            #"{"op": "agentHook", "agent": "antigravity", "action": "install"}"#,
+            #"{"op": "agentHook", "agent": "opencode", "action": "install"}"#,
+            #"{"op": "agentHook", "agent": "opencode", "action": "addInstruction"}"#,
+        ]
+        var outInstall = CLIOutput(stdout: [], exitCode: -1)
+        for op in installOps {
+            outInstall = HomeSpeakerCommandLine.apply(#"{"contract_version": 1, "operations": ["# + op + "]}", seam: appSeam)
+            #expect(outInstall.exitCode == 0, "install failed: \(op)")
         }
-        """
-        let outInstall = HomeSpeakerCommandLine.apply(installPayload, seam: appSeam)
         #expect(outInstall.exitCode == 0)
         let parsedInstall = try #require(JSONSerialization.jsonObject(with: Data(outInstall.stdout[0].utf8)) as? [String: Any])
         let stateAfterInstall = try #require(parsedInstall["state"] as? [String: Any])

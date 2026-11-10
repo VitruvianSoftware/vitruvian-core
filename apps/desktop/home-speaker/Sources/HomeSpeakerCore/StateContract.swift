@@ -1064,6 +1064,16 @@ public enum HomeSpeakerStateContract {
                         ])
 
                     case "agentHook":
+                        // A hook writes the coding agent's own file, outside
+                        // this transaction, so a later failure could not undo
+                        // it: like a switch, it is sent on its own.
+                        guard operations.count == 1 else {
+                            throw IndexedApplyError(
+                                opIndex: index,
+                                code: "hook_must_be_alone",
+                                message: "Send \"agentHook\" on its own in a single-operation --apply batch."
+                            )
+                        }
                         guard let rawAgent = opDict["agent"] as? String,
                               let agent = SettingsActions.codingAgent(for: rawAgent) else {
                             throw IndexedApplyError(
