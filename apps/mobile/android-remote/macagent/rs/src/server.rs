@@ -178,7 +178,13 @@ impl Server {
                 HttpResponse::json(200, &self.sampler.processes().to_json())
             }),
             "/v1/tools" => self.get_only(req, |_| {
-                HttpResponse::json(200, &self.sampler.tools().to_json())
+                let mut tools = self.sampler.tools();
+                // The sampler only sees /Applications/HomeSpeaker.app; HomeSpeaker also knows
+                // the Vitruvian extension door.
+                tools
+                    .tools
+                    .insert("homespeaker".to_string(), self.speaker.tool());
+                HttpResponse::json(200, &tools.to_json())
             }),
             "/v1/antigravity" => self.get_only(req, |_| {
                 HttpResponse::json(200, &self.sampler.antigravity().to_json())

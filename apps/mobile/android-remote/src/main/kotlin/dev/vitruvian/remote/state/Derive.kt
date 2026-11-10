@@ -675,17 +675,202 @@ public object Derive {
     }
   }
 
+  /** Shown under Google Home or Google Chat account after starting OAuth on the Mac. */
+  public const val FINISH_SIGN_IN_ON_MAC: String = "Finish signing in on your Mac"
+
+  /** How long [FINISH_SIGN_IN_ON_MAC] stays pending before timing out (5 minutes). */
+  public const val SIGN_IN_TIMEOUT_MS: Long = 5 * 60 * 1000L
+
+  /** Inline note shown when a Mac sign-in does not finish within [SIGN_IN_TIMEOUT_MS]. */
+  public const val SIGN_IN_TIMED_OUT_NOTE: String = "Sign-in didn't finish on the Mac. Try again."
+
+  /**
+   * Returned by the Mac agent (HTTP 409) when a second sign-in/grant/disconnect overlaps one in
+   * flight.
+   */
+  public const val SIGN_IN_ALREADY_RUNNING: String =
+      "A HomeSpeaker sign-in is already running on the Mac"
+
+  /**
+   * Pure result of evaluating a pending Mac sign-in or Chat grant against the latest poll and
+   * clock.
+   */
+  public data class PendingSignInState(
+      val pending: Boolean,
+      val timedOut: Boolean,
+      val pendingSinceMs: Long?,
+      val inlineNote: String?,
+  )
+
+  /**
+   * Resolves a pending Mac sign-in (or Chat grant) given [pendingSinceMs], whether the latest poll
+   * reports [signedIn], and the current timestamp [nowMs].
+   * - If [signedIn] is true, the pending state clears (`pending = false`, `pendingSinceMs = null`,
+   *   `inlineNote = null`).
+   * - If [pendingSinceMs] is non-null and at least [SIGN_IN_TIMEOUT_MS] (5 minutes) has elapsed at
+   *   [nowMs], the pending state times out (`pending = false`, `timedOut = true`, `pendingSinceMs =
+   *   null`, `inlineNote = SIGN_IN_TIMED_OUT_NOTE`).
+   * - If [pendingSinceMs] is non-null and less than [SIGN_IN_TIMEOUT_MS] has elapsed, it stays
+   *   pending (`pending = true`, `timedOut = false`, `pendingSinceMs = pendingSinceMs`, `inlineNote
+   *   = null`).
+   */
+  public fun resolvePendingSignIn(
+      pendingSinceMs: Long?,
+      signedIn: Boolean,
+      nowMs: Long,
+  ): PendingSignInState {
+    if (signedIn || pendingSinceMs == null) {
+      return PendingSignInState(
+          pending = false,
+          timedOut = false,
+          pendingSinceMs = null,
+          inlineNote = null,
+      )
+    }
+    if (nowMs - pendingSinceMs >= SIGN_IN_TIMEOUT_MS) {
+      return PendingSignInState(
+          pending = false,
+          timedOut = true,
+          pendingSinceMs = null,
+          inlineNote = SIGN_IN_TIMED_OUT_NOTE,
+      )
+    }
+    return PendingSignInState(
+        pending = true,
+        timedOut = false,
+        pendingSinceMs = pendingSinceMs,
+        inlineNote = null,
+    )
+  }
+
+  /** Pure poll transition for Google Home sign-in and Google Chat grant pending states. */
+  public data class PollPendingSignInUpdate(
+      val signIn: PendingSignInState,
+      val chatGrant: PendingSignInState,
+  )
+
+  /**
+   * Pure poll transition used when a `/v1/homespeaker` poll arrives: clears pending sign-in when
+   * [signedIn] is true, clears pending Chat grant when [hasChatAccess] or [hasGoogleChatToken] is
+   * true, and expires either after [SIGN_IN_TIMEOUT_MS] at [nowMs].
+   */
+  public fun updatePendingSignInOnPoll(
+      signInPendingSinceMs: Long?,
+      chatGrantPendingSinceMs: Long?,
+      signedIn: Boolean,
+      hasChatAccess: Boolean,
+      hasGoogleChatToken: Boolean = false,
+      nowMs: Long = 0L,
+  ): PollPendingSignInUpdate =
+      PollPendingSignInUpdate(
+          signIn = resolvePendingSignIn(signInPendingSinceMs, signedIn = signedIn, nowMs = nowMs),
+          chatGrant =
+              resolvePendingSignIn(
+                  chatGrantPendingSinceMs,
+                  signedIn = hasChatAccess || hasGoogleChatToken,
+                  nowMs = nowMs,
+              ),
+      )
+
+  /** Google Cloud Console URL opened by `HomeSpeakerTool` (`Block.openGoogleCloud`). */
+  public const val GOOGLE_CLOUD_CONSOLE_URL: String =
+      "https://console.cloud.google.com/apis/credentials"
+
+  /** Pure specification for the "Google Home account" row (`Block.signIn` / `Block.signOut`). */
+  public data class GoogleHomeAccountRowSpec(
+      val subtitle: String,
+      val trailing: String,
+      val healthy: Boolean,
+      val showSignIn: Boolean,
+      val signInEnabled: Boolean,
+      val showImportLogin: Boolean,
+      val importLoginEnabled: Boolean,
+      val showSignOut: Boolean,
+      val signOutEnabled: Boolean,
+      val inlineNote: String? = null,
+  )
+
+  /**
+   * Derives the "Google Home account" row state. When not signed in, offers "Sign in on Mac"
+   * (`HomeSpeaker --sign-in`) and, if Antigravity tokens exist, "Import login". After tapping "Sign
+   * in on Mac", [signInPending] (or [signInPendingSinceMs] before [SIGN_IN_TIMEOUT_MS]) shows
+   * [FINISH_SIGN_IN_ON_MAC] until the next poll reports [signedIn] or 5 minutes elapse.
+   */
+  public fun googleHomeAccountRow(
+      signedIn: Boolean,
+      accountEmail: String,
+      hasAntigravityTokens: Boolean,
+      signInPending: Boolean = false,
+      canAct: Boolean = true,
+      installed: Boolean = true,
+      signInPendingSinceMs: Long? = null,
+      nowMs: Long = 0L,
+  ): GoogleHomeAccountRowSpec {
+    val email = accountEmail.trim()
+    if (signedIn) {
+      return GoogleHomeAccountRowSpec(
+          subtitle = email.ifEmpty { "signed in" },
+          trailing = "signed in",
+          healthy = true,
+          showSignIn = false,
+          signInEnabled = false,
+          showImportLogin = false,
+          importLoginEnabled = false,
+          showSignOut = true,
+          signOutEnabled = canAct,
+          inlineNote = null,
+      )
+    }
+    val pendingState =
+        if (signInPendingSinceMs != null) {
+          resolvePendingSignIn(signInPendingSinceMs, signedIn = false, nowMs = nowMs)
+        } else {
+          PendingSignInState(
+              pending = signInPending,
+              timedOut = false,
+              pendingSinceMs = null,
+              inlineNote = null,
+          )
+        }
+    val sub =
+        when {
+          pendingState.pending -> FINISH_SIGN_IN_ON_MAC
+          email.isNotEmpty() -> email
+          else -> "not signed in"
+        }
+    return GoogleHomeAccountRowSpec(
+        subtitle = sub,
+        trailing = if (pendingState.pending) "signing in…" else "sign in",
+        healthy = false,
+        showSignIn = true,
+        signInEnabled = canAct && installed,
+        showImportLogin = hasAntigravityTokens,
+        importLoginEnabled = canAct,
+        showSignOut = false,
+        signOutEnabled = false,
+        inlineNote = pendingState.inlineNote,
+    )
+  }
+
   /** Signed-in Google Chat account and backend readiness diagnostic. */
   public data class GoogleChatAccountDiag(
       val account: String,
       val subtitle: String,
       val trailing: String,
       val healthy: Boolean,
+      val showGrant: Boolean = false,
+      val grantEnabled: Boolean = false,
+      val showDisconnect: Boolean = false,
+      val disconnectEnabled: Boolean = false,
+      val showGwsPrompt: Boolean = false,
+      val gwsPromptEnabled: Boolean = false,
+      val inlineNote: String? = null,
   )
 
   /**
    * Derives the Google Chat account and access status row from the fields reported by
-   * `/v1/homespeaker`.
+   * `/v1/homespeaker`, including the "Grant…" (`Block.grantChat`) and "Disconnect"
+   * (`Block.disconnectChat`) actions matching `Pages.swift`.
    */
   public fun googleChatAccountDiag(
       source: String,
@@ -694,10 +879,16 @@ public object Derive {
       gwsAccount: String,
       hasChatAccess: Boolean,
       gwsInstalled: Boolean,
+      grantPending: Boolean = false,
+      canAct: Boolean = true,
+      installed: Boolean = true,
+      grantPendingSinceMs: Long? = null,
+      nowMs: Long = 0L,
   ): GoogleChatAccountDiag {
+    val normalizedSource = source.trim().lowercase(Locale.ROOT)
     val effectiveSource =
         activeBackend.trim().lowercase(Locale.ROOT).takeIf { it == "api" || it == "gws" }
-            ?: source.trim().lowercase(Locale.ROOT)
+            ?: normalizedSource
     val apiEmail = accountEmail.trim()
     val cliEmail = gwsAccount.trim()
     val email =
@@ -706,104 +897,228 @@ public object Derive {
           "api" -> apiEmail.ifEmpty { cliEmail }
           else -> apiEmail.ifEmpty { cliEmail }
         }
-    return when (effectiveSource) {
-      "gws" ->
-          if (!gwsInstalled) {
-            GoogleChatAccountDiag(
-                account = email,
-                subtitle =
-                    if (email.isNotEmpty()) "$email · gws CLI not installed on Mac"
-                    else "gws CLI not installed on Mac",
-                trailing = "no gws",
-                healthy = false,
-            )
-          } else if (email.isNotEmpty()) {
-            GoogleChatAccountDiag(
-                account = email,
-                subtitle = "$email · via gws CLI",
-                trailing = "gws",
-                healthy = true,
-            )
-          } else {
-            GoogleChatAccountDiag(
-                account = "",
-                subtitle = "gws CLI installed · default account",
-                trailing = "gws",
-                healthy = true,
-            )
-          }
-      "api" ->
-          if (!hasChatAccess) {
-            GoogleChatAccountDiag(
-                account = email,
-                subtitle =
-                    if (email.isNotEmpty()) "$email · Chat access not granted on Mac"
-                    else "Chat access not granted on Mac",
-                trailing = "no access",
-                healthy = false,
-            )
-          } else if (email.isNotEmpty()) {
-            GoogleChatAccountDiag(
-                account = email,
-                subtitle = "$email · Chat access granted",
-                trailing = "signed in",
-                healthy = true,
-            )
-          } else {
-            GoogleChatAccountDiag(
-                account = "",
-                subtitle = "Chat access granted on Mac",
-                trailing = "signed in",
-                healthy = true,
-            )
-          }
-      else ->
-          when {
-            hasChatAccess && email.isNotEmpty() ->
+    val offersApiActions = normalizedSource != "gws"
+    val showGrant = offersApiActions && !hasChatAccess
+    val grantEnabled = showGrant && canAct && installed
+    val showDisconnect = offersApiActions && hasChatAccess
+    val disconnectEnabled = showDisconnect && canAct && installed
+    val showGwsPrompt = normalizedSource != "api"
+    val gwsPromptEnabled = showGwsPrompt && canAct
+    val base =
+        when (effectiveSource) {
+          "gws" ->
+              if (!gwsInstalled) {
                 GoogleChatAccountDiag(
                     account = email,
-                    subtitle = "$email · Chat access granted",
-                    trailing = "signed in",
-                    healthy = true,
+                    subtitle =
+                        if (email.isNotEmpty()) "$email · gws CLI not installed on Mac"
+                        else "gws CLI not installed on Mac",
+                    trailing = "no gws",
+                    healthy = false,
                 )
-            gwsInstalled && email.isNotEmpty() ->
+              } else if (email.isNotEmpty()) {
                 GoogleChatAccountDiag(
                     account = email,
                     subtitle = "$email · via gws CLI",
                     trailing = "gws",
                     healthy = true,
                 )
-            hasChatAccess ->
-                GoogleChatAccountDiag(
-                    account = "",
-                    subtitle = "Chat access granted on Mac",
-                    trailing = "signed in",
-                    healthy = true,
-                )
-            gwsInstalled ->
+              } else {
                 GoogleChatAccountDiag(
                     account = "",
                     subtitle = "gws CLI installed · default account",
                     trailing = "gws",
                     healthy = true,
                 )
-            email.isNotEmpty() ->
+              }
+          "api" ->
+              if (!hasChatAccess) {
                 GoogleChatAccountDiag(
                     account = email,
-                    subtitle = "$email · Chat access or gws CLI needed on Mac",
-                    trailing = "not ready",
+                    subtitle =
+                        if (email.isNotEmpty()) "$email · Chat access not granted on Mac"
+                        else "Chat access not granted on Mac",
+                    trailing = "no access",
                     healthy = false,
                 )
-            else ->
+              } else if (email.isNotEmpty()) {
+                GoogleChatAccountDiag(
+                    account = email,
+                    subtitle = "$email · Chat access granted",
+                    trailing = "signed in",
+                    healthy = true,
+                )
+              } else {
                 GoogleChatAccountDiag(
                     account = "",
-                    subtitle = "grant Chat access or install gws CLI on Mac",
-                    trailing = "not set up",
-                    healthy = false,
+                    subtitle = "Chat access granted on Mac",
+                    trailing = "signed in",
+                    healthy = true,
                 )
-          }
-    }
+              }
+          else ->
+              when {
+                hasChatAccess && email.isNotEmpty() ->
+                    GoogleChatAccountDiag(
+                        account = email,
+                        subtitle = "$email · Chat access granted",
+                        trailing = "signed in",
+                        healthy = true,
+                    )
+                gwsInstalled && email.isNotEmpty() ->
+                    GoogleChatAccountDiag(
+                        account = email,
+                        subtitle = "$email · via gws CLI",
+                        trailing = "gws",
+                        healthy = true,
+                    )
+                hasChatAccess ->
+                    GoogleChatAccountDiag(
+                        account = "",
+                        subtitle = "Chat access granted on Mac",
+                        trailing = "signed in",
+                        healthy = true,
+                    )
+                gwsInstalled ->
+                    GoogleChatAccountDiag(
+                        account = "",
+                        subtitle = "gws CLI installed · default account",
+                        trailing = "gws",
+                        healthy = true,
+                    )
+                email.isNotEmpty() ->
+                    GoogleChatAccountDiag(
+                        account = email,
+                        subtitle = "$email · Chat access or gws CLI needed on Mac",
+                        trailing = "not ready",
+                        healthy = false,
+                    )
+                else ->
+                    GoogleChatAccountDiag(
+                        account = "",
+                        subtitle = "grant Chat access or install gws CLI on Mac",
+                        trailing = "not set up",
+                        healthy = false,
+                    )
+              }
+        }
+    val pendingState =
+        if (grantPendingSinceMs != null) {
+          resolvePendingSignIn(grantPendingSinceMs, signedIn = hasChatAccess, nowMs = nowMs)
+        } else {
+          PendingSignInState(
+              pending = grantPending && !hasChatAccess,
+              timedOut = false,
+              pendingSinceMs = null,
+              inlineNote = null,
+          )
+        }
+    val sub = if (pendingState.pending) FINISH_SIGN_IN_ON_MAC else base.subtitle
+    val trail = if (pendingState.pending) "signing in…" else base.trailing
+    return base.copy(
+        subtitle = sub,
+        trailing = trail,
+        showGrant = showGrant,
+        grantEnabled = grantEnabled,
+        showDisconnect = showDisconnect,
+        disconnectEnabled = disconnectEnabled,
+        showGwsPrompt = showGwsPrompt,
+        gwsPromptEnabled = gwsPromptEnabled,
+        inlineNote = pendingState.inlineNote,
+    )
   }
+
+  /** Pure specification for the Google Cloud OAuth section (`Block.openGoogleCloud`). */
+  public data class GoogleCloudOAuthRowSpec(
+      val setupTitle: String,
+      val setupSubtitle: String,
+      val setupActionLabel: String,
+      val setupUrl: String,
+      val clientIdSubtitle: String,
+      val clientIdTrailing: String,
+      val clientIdHealthy: Boolean,
+      val clientSecretSubtitle: String,
+      val clientSecretTrailing: String,
+      val clientSecretHealthy: Boolean,
+      val promptsEnabled: Boolean,
+  )
+
+  public fun googleCloudOAuthSpec(
+      customClientId: String,
+      hasCustomSecret: Boolean,
+      canAct: Boolean = true,
+  ): GoogleCloudOAuthRowSpec {
+    val id = customClientId.trim()
+    return GoogleCloudOAuthRowSpec(
+        setupTitle = "Set up in Google Cloud",
+        setupSubtitle = "opens Google Cloud Console credentials page in browser",
+        setupActionLabel = "Set up…",
+        setupUrl = GOOGLE_CLOUD_CONSOLE_URL,
+        clientIdSubtitle = id.ifEmpty { "Tap to paste Google Cloud OAuth client ID" },
+        clientIdTrailing = if (id.isNotEmpty()) "configured" else "none",
+        clientIdHealthy = id.isNotEmpty(),
+        clientSecretSubtitle =
+            if (hasCustomSecret) "Client secret saved on Mac" else "Tap to paste client secret",
+        clientSecretTrailing = if (hasCustomSecret) "saved" else "missing",
+        clientSecretHealthy = hasCustomSecret,
+        promptsEnabled = canAct,
+    )
+  }
+
+  /**
+   * Pure specification for the "Courier token" row (`Block.saveCourierToken` /
+   * `Block.clearCourierToken`).
+   */
+  public data class CourierTokenRowSpec(
+      val title: String,
+      val subtitle: String,
+      val trailing: String,
+      val healthy: Boolean,
+      val promptTitle: String,
+      val placeholder: String,
+      val submitLabel: String,
+      val clearLabel: String?,
+      val promptEnabled: Boolean,
+  )
+
+  public fun courierTokenRow(
+      hasToken: Boolean,
+      canAct: Boolean = true,
+  ): CourierTokenRowSpec =
+      CourierTokenRowSpec(
+          title = "Courier token",
+          subtitle = if (hasToken) "Token saved on Mac" else "Tap to paste Courier access token",
+          trailing = if (hasToken) "saved" else "missing",
+          healthy = hasToken,
+          promptTitle = "Courier Token",
+          placeholder = "Paste access token",
+          submitLabel = "Save Token",
+          clearLabel = if (hasToken) "Clear Token" else null,
+          promptEnabled = canAct,
+      )
+
+  /**
+   * Pure specification for the "Legacy chat-monitor launch agent" row (`Block.removeLegacyAgent`).
+   */
+  public data class LegacyLaunchAgentRowSpec(
+      val title: String,
+      val subtitle: String,
+      val trailing: String,
+      val actionLabel: String,
+      val actionEnabled: Boolean,
+  )
+
+  public fun legacyLaunchAgentRow(
+      canAct: Boolean = true,
+      busy: Boolean = false,
+  ): LegacyLaunchAgentRowSpec =
+      LegacyLaunchAgentRowSpec(
+          title = "Legacy chat-monitor launch agent",
+          subtitle = "Installed by HomeSpeaker 1.x. Chat monitoring now runs inside the app.",
+          trailing = "legacy",
+          actionLabel = "Remove",
+          actionEnabled = canAct && !busy,
+      )
 
   public fun agentHookStatusLabel(
       hookState: String,
@@ -1541,6 +1856,11 @@ public object Derive {
             lower.contains("no route")
     if (unreachable) {
       return "Couldn't $action: the Mac didn't answer"
+    }
+    val strippedAgent =
+        if (lower.startsWith("agent:")) raw.substring("agent:".length).trim() else raw
+    if (strippedAgent.equals(SIGN_IN_ALREADY_RUNNING, ignoreCase = true)) {
+      return SIGN_IN_ALREADY_RUNNING
     }
     if (lower.startsWith("agent:") ||
         HTTP_CODE_REGEX.containsMatchIn(raw) ||
