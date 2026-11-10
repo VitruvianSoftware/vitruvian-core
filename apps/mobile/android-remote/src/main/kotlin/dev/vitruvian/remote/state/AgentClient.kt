@@ -418,6 +418,7 @@ public data class AgentHomeSpeaker(
     val quietHoursEnabled: Boolean,
     val quietHoursStart: String = HomeSpeakerWire.DEFAULT_QUIET_START,
     val quietHoursEnd: String = HomeSpeakerWire.DEFAULT_QUIET_END,
+    val snoozeUntil: String? = null,
     val targets: List<AgentSpeakerTarget>,
     val last: AgentLastBroadcast?,
     /**
@@ -778,6 +779,8 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
       quietHoursEnabled: Boolean? = null,
       quietHoursStart: String? = null,
       quietHoursEnd: String? = null,
+      snoozeUntil: String? = null,
+      snoozeMinutes: Int? = null,
       customStylePrompt: String? = null,
       localVoice: String? = null,
       previewVoice: Boolean = false,
@@ -877,6 +880,8 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
               if (quietHoursEnabled != null) put("quiet_hours_enabled", quietHoursEnabled)
               if (quietHoursStart != null) put("quiet_hours_start", quietHoursStart)
               if (quietHoursEnd != null) put("quiet_hours_end", quietHoursEnd)
+              if (snoozeUntil != null) put("snooze_until", snoozeUntil)
+              if (snoozeMinutes != null) put("snooze_minutes", snoozeMinutes)
               if (customStylePrompt != null) put("custom_style_prompt", customStylePrompt)
               if (localVoice != null) put("local_voice", localVoice)
               if (previewVoice) put("preview_voice", true)
@@ -968,6 +973,7 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
       text: String = "",
       replay: Boolean = false,
       replayId: String? = null,
+      readTimeoutMs: Int = LONG_ACTION_TIMEOUT_MS,
   ): AgentActionResult =
       withContext(Dispatchers.IO) {
         val body =
@@ -978,7 +984,7 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
                   if (!replayId.isNullOrBlank()) put("replay_id", replayId)
                 }
                 .toString()
-        parseAction(post("/v1/homespeaker/say", body, readTimeoutMs = LONG_ACTION_TIMEOUT_MS))
+        parseAction(post("/v1/homespeaker/say", body, readTimeoutMs = readTimeoutMs))
       }
 
   /**
@@ -1472,6 +1478,7 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
           quietHoursEnabled = quiet?.optBoolean("enabled", false) ?: false,
           quietHoursStart = sources.quietHoursStart,
           quietHoursEnd = sources.quietHoursEnd,
+          snoozeUntil = sources.snoozeUntil,
           targets =
               o.optJSONArray("targets").mapObjects {
                 AgentSpeakerTarget(

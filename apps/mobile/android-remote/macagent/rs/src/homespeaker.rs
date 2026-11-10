@@ -418,6 +418,7 @@ pub struct HomeSpeakerState {
     pub targets: Vec<HomeSpeakerTarget>,
     pub last: Option<HomeSpeakerLast>,
     pub quiet_hours_active: bool,
+    pub snooze_until: Option<String>,
     pub available_voices: Vec<HomeSpeakerVoice>,
     pub structure_id: String,
     pub homes: Vec<HomeSpeakerHome>,
@@ -505,6 +506,7 @@ impl Default for HomeSpeakerState {
             targets: Vec::new(),
             last: None,
             quiet_hours_active: false,
+            snooze_until: None,
             available_voices: Vec::new(),
             structure_id: String::new(),
             homes: Vec::new(),
@@ -665,6 +667,13 @@ impl HomeSpeakerState {
         m.insert(
             "quiet_hours_active".to_string(),
             JsonValue::Bool(self.quiet_hours_active),
+        );
+        m.insert(
+            "snooze_until".to_string(),
+            match self.snooze_until {
+                Some(ref s) => JsonValue::String(s.clone()),
+                None => JsonValue::Null,
+            },
         );
         if !self.available_voices.is_empty() {
             m.insert(
@@ -890,6 +899,8 @@ pub struct HomeSpeakerUpdate {
     pub quiet_hours_enabled: Option<bool>,
     pub quiet_hours_start: Option<String>,
     pub quiet_hours_end: Option<String>,
+    pub snooze_until: Option<String>,
+    pub snooze_minutes: Option<i64>,
     pub custom_style_prompt: Option<String>,
     pub local_voice: Option<String>,
     pub preview_voice: bool,
@@ -949,6 +960,8 @@ impl HomeSpeakerUpdate {
             && self.quiet_hours_enabled.is_none()
             && self.quiet_hours_start.is_none()
             && self.quiet_hours_end.is_none()
+            && self.snooze_until.is_none()
+            && self.snooze_minutes.is_none()
             && self.custom_style_prompt.is_none()
             && self.local_voice.is_none()
             && !self.preview_voice
@@ -1045,6 +1058,13 @@ impl HomeSpeakerUpdate {
         u.quiet_hours_enabled = opt_bool(obj, "quiet_hours_enabled")?;
         u.quiet_hours_start = opt_str(obj, "quiet_hours_start")?;
         u.quiet_hours_end = opt_str(obj, "quiet_hours_end")?;
+        u.snooze_until = match obj.get("snooze_until") {
+            None => None,
+            Some(JsonValue::Null) => Some(String::new()),
+            Some(JsonValue::String(s)) => Some(s.clone()),
+            Some(_) => return Err("cannot unmarshal snooze_until into string".to_string()),
+        };
+        u.snooze_minutes = opt_i64(obj, "snooze_minutes")?;
         u.custom_style_prompt = opt_str(obj, "custom_style_prompt")?;
         u.local_voice = opt_str(obj, "local_voice")?;
         u.preview_voice = opt_bool(obj, "preview_voice")?.unwrap_or(false);
@@ -1439,6 +1459,47 @@ pub fn is_quiet_hours_active(enabled: bool, start: &str, end: &str, now: Timesta
         return false;
     }
     is_quiet_hours_active_at_minutes(enabled, start, end, local_minutes_since_midnight(now))
+}
+
+pub fn parse_snooze_timestamp(s: &str) -> Result<Timestamp, ApplyError> {
+    let trimmed = s.trim();
+    if trimmed.len() < 20 || !trimmed.is_ascii() {
+        return Err(ApplyError::BadRequest(format!(
+            "invalid snooze_until {s:?}; must be ISO-8601 timestamp"
+        )));
+    }
+    let year: i32 = trimmed[0..4].parse().map_err(|_| {
+        ApplyError::BadRequest(format!(
+            "invalid snooze_until {s:?}; must be ISO-8601 timestamp"
+        ))
+    })?;
+    let month: u32 = trimmed[5..7].parse().map_err(|_| {
+        ApplyError::BadRequest(format!(
+            "invalid snooze_until {s:?}; must be ISO-8601 timestamp"
+        ))
+    })?;
+    let day: u32 = trimmed[8..10].parse().map_err(|_| {
+        ApplyError::BadRequest(format!(
+            "invalid snooze_until {s:?}; must be ISO-8601 timestamp"
+        ))
+    })?;
+    let (cy, cm, cd, _, _, _) = Timestamp::from_ymd_hms(year, month, day, 0, 0, 0).ymd_hms();
+    if (cy, cm, cd) != (year, month, day) {
+        return Err(ApplyError::BadRequest(format!(
+            "invalid snooze_until {s:?}; must be ISO-8601 timestamp"
+        )));
+    }
+    let ts = Timestamp::parse_rfc3339(trimmed).map_err(|_| {
+        ApplyError::BadRequest(format!(
+            "invalid snooze_until {s:?}; must be ISO-8601 timestamp"
+        ))
+    })?;
+    if ts.is_zero() {
+        return Err(ApplyError::BadRequest(format!(
+            "invalid snooze_until {s:?}; must be ISO-8601 timestamp"
+        )));
+    }
+    Ok(ts)
 }
 
 pub fn preview_say_args(voice: &str, text: &str) -> Vec<Vec<String>> {
@@ -2939,6 +3000,12 @@ impl HomeSpeaker {
             active: q_active,
         };
         st.quiet_hours_active = q_active;
+        st.snooze_until = cfg
+            .get("snooze_until")
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty() && parse_snooze_timestamp(s).is_ok())
+            .map(|s| s.to_string());
 
         st.available_voices = if let Some(ref lv) = self.list_voices {
             match self.voice_cache.get(lv) {
@@ -3670,6 +3737,31 @@ impl HomeSpeaker {
                 JsonValue::String(qhe.clone()),
             );
             changed.push(format!("quiet_hours_end={qhe}"));
+        }
+        if let Some(ref su) = u.snooze_until {
+            if su.is_empty() {
+                cfg.remove("snooze_until");
+                changed.push("snooze_until=cleared".to_string());
+            } else {
+                let ts = parse_snooze_timestamp(su)?;
+                let formatted = Timestamp::from_unix_secs(ts.unix_seconds()).to_rfc3339();
+                cfg.insert(
+                    "snooze_until".to_string(),
+                    JsonValue::String(formatted.clone()),
+                );
+                changed.push(format!("snooze_until={formatted}"));
+            }
+        }
+        if let Some(mins) = u.snooze_minutes {
+            if !(1..=240).contains(&mins) {
+                return Err(ApplyError::BadRequest(
+                    "snooze_minutes must be between 1 and 240".to_string(),
+                ));
+            }
+            let until =
+                Timestamp::from_unix_secs(Timestamp::now().unix_seconds() + mins * 60).to_rfc3339();
+            cfg.insert("snooze_until".to_string(), JsonValue::String(until.clone()));
+            changed.push(format!("snooze_until={until}"));
         }
         if let Some(ref csp) = u.custom_style_prompt {
             cfg.insert(
@@ -5415,6 +5507,184 @@ mod tests {
         assert_eq!(
             cfg_reset.get("quiet_hours_end").and_then(|v| v.as_str()),
             Some("07:00")
+        );
+    }
+
+    #[test]
+    fn test_home_speaker_snooze_set_via_minutes_clear_and_reject_invalid() {
+        let (h, _, phone, _) = new_test_home_speaker(true);
+        let raw0 = JsonValue::parse_bytes(&h.handle_get(&phone).body_bytes()).unwrap();
+        assert_eq!(
+            raw0.as_object().unwrap().get("snooze_until"),
+            Some(&JsonValue::Null)
+        );
+        assert!(h.state().snooze_until.is_none());
+
+        let before_secs = Timestamp::now().unix_seconds();
+        let r_set_mins = h.handle_set(
+            &post_req("/v1/homespeaker", r#"{"snooze_minutes":30}"#),
+            &phone,
+        );
+        let after_secs = Timestamp::now().unix_seconds();
+        assert_eq!(r_set_mins.status, 200);
+        let st_mins = h.state();
+        let until_str = st_mins.snooze_until.as_deref().expect("snooze_until set");
+        let parsed = Timestamp::parse_rfc3339(until_str).expect("valid RFC3339");
+        assert!(
+            parsed.unix_seconds() >= before_secs + 30 * 60
+                && parsed.unix_seconds() <= after_secs + 30 * 60
+        );
+        let raw_mins = JsonValue::parse_bytes(&h.handle_get(&phone).body_bytes()).unwrap();
+        assert_eq!(raw_mins.get_str("snooze_until"), until_str);
+        let cfg_mins = h.read_config().unwrap();
+        assert_eq!(
+            cfg_mins.get("snooze_until").and_then(|v| v.as_str()),
+            Some(until_str)
+        );
+        assert_eq!(
+            cfg_mins.get("structure_id").and_then(|v| v.as_str()),
+            Some("5219a9d7")
+        );
+
+        let r_clear_empty = h.handle_set(
+            &post_req("/v1/homespeaker", r#"{"snooze_until":""}"#),
+            &phone,
+        );
+        assert_eq!(r_clear_empty.status, 200);
+        assert!(h.state().snooze_until.is_none());
+        assert!(!h.read_config().unwrap().contains_key("snooze_until"));
+
+        let r_set_iso = h.handle_set(
+            &post_req(
+                "/v1/homespeaker",
+                r#"{"snooze_until":"2026-11-10T06:30:00Z"}"#,
+            ),
+            &phone,
+        );
+        assert_eq!(r_set_iso.status, 200);
+        assert_eq!(
+            h.state().snooze_until.as_deref(),
+            Some("2026-11-10T06:30:00Z")
+        );
+
+        let r_clear_null = h.handle_set(
+            &post_req("/v1/homespeaker", r#"{"snooze_until":null}"#),
+            &phone,
+        );
+        assert_eq!(r_clear_null.status, 200);
+        assert!(h.state().snooze_until.is_none());
+
+        for bad in [
+            r#"{"snooze_until":"not-a-timestamp"}"#,
+            r#"{"snooze_until":"2026-02-30T06:30:00Z"}"#,
+            r#"{"snooze_until":"   "}"#,
+            r#"{"snooze_until":123}"#,
+            r#"{"snooze_minutes":0}"#,
+            r#"{"snooze_minutes":-5}"#,
+            r#"{"snooze_minutes":241}"#,
+        ] {
+            let resp = h.handle_set(&post_req("/v1/homespeaker", bad), &phone);
+            assert_eq!(resp.status, 400, "bad={bad}");
+        }
+        assert!(h.state().snooze_until.is_none());
+    }
+
+    #[test]
+    fn test_home_speaker_snooze_preserves_other_config_keys_and_ignores_stored_garbage() {
+        let (h, _, phone, _) = new_test_home_speaker(true);
+        let mut cfg = h.read_config().unwrap();
+        cfg.insert(
+            "quiet_hours_start".to_string(),
+            JsonValue::String("21:45".to_string()),
+        );
+        cfg.insert(
+            "default_target".to_string(),
+            JsonValue::String("living_room".to_string()),
+        );
+        h.write_config(&cfg).unwrap();
+
+        let r_set = h.handle_set(
+            &post_req("/v1/homespeaker", r#"{"snooze_minutes":30}"#),
+            &phone,
+        );
+        assert_eq!(r_set.status, 200);
+        let cfg_after_set = h.read_config().unwrap();
+        assert_eq!(
+            cfg_after_set
+                .get("quiet_hours_start")
+                .and_then(|v| v.as_str()),
+            Some("21:45")
+        );
+        assert_eq!(
+            cfg_after_set.get("default_target").and_then(|v| v.as_str()),
+            Some("living_room")
+        );
+
+        let r_clear = h.handle_set(
+            &post_req("/v1/homespeaker", r#"{"snooze_until":""}"#),
+            &phone,
+        );
+        assert_eq!(r_clear.status, 200);
+        let cfg_after_clear = h.read_config().unwrap();
+        assert_eq!(
+            cfg_after_clear
+                .get("quiet_hours_start")
+                .and_then(|v| v.as_str()),
+            Some("21:45")
+        );
+        assert_eq!(
+            cfg_after_clear
+                .get("default_target")
+                .and_then(|v| v.as_str()),
+            Some("living_room")
+        );
+
+        let mut cfg_garbage = h.read_config().unwrap();
+        cfg_garbage.insert(
+            "snooze_until".to_string(),
+            JsonValue::String("garbage".to_string()),
+        );
+        h.write_config(&cfg_garbage).unwrap();
+        assert!(h.state().snooze_until.is_none());
+        let get_resp = h.handle_get(&phone);
+        assert_eq!(get_resp.status, 200);
+        let raw_get = JsonValue::parse_bytes(&get_resp.body_bytes()).unwrap();
+        assert_eq!(
+            raw_get.as_object().unwrap().get("snooze_until"),
+            Some(&JsonValue::Null)
+        );
+    }
+
+    #[test]
+    fn test_home_speaker_snooze_post_non_ascii_returns_400_without_panicking() {
+        let (h, _, phone, _) = new_test_home_speaker(true);
+        let resp = h.handle_set(
+            &post_req(
+                "/v1/homespeaker",
+                r#"{"snooze_until":"2026é0123456789012345"}"#,
+            ),
+            &phone,
+        );
+        assert_eq!(resp.status, 400);
+    }
+
+    #[test]
+    fn test_home_speaker_snooze_get_stored_non_ascii_returns_null_without_panicking() {
+        let (h, _, phone, _) = new_test_home_speaker(true);
+        let mut cfg = h.read_config().unwrap();
+        cfg.insert(
+            "snooze_until".to_string(),
+            JsonValue::String("2026é0123456789012345".to_string()),
+        );
+        h.write_config(&cfg).unwrap();
+
+        assert!(h.state().snooze_until.is_none());
+        let resp = h.handle_get(&phone);
+        assert_eq!(resp.status, 200);
+        let raw = JsonValue::parse_bytes(&resp.body_bytes()).unwrap();
+        assert_eq!(
+            raw.as_object().unwrap().get("snooze_until"),
+            Some(&JsonValue::Null)
         );
     }
 

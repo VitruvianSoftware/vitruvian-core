@@ -24,6 +24,7 @@ import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -47,6 +48,7 @@ import dev.vitruvian.remote.bridge.PhoneBridgeService
 import dev.vitruvian.remote.bridge.PhoneTools
 import dev.vitruvian.remote.hid.BluetoothHidTransport
 import dev.vitruvian.remote.hid.HidAction
+import dev.vitruvian.remote.state.AgentClient
 import dev.vitruvian.remote.state.BridgeControl
 import dev.vitruvian.remote.state.BridgePending
 import dev.vitruvian.remote.state.BridgePermissionState
@@ -59,6 +61,10 @@ import dev.vitruvian.remote.state.Persistence
 import dev.vitruvian.remote.state.PhoneClipboard
 import dev.vitruvian.remote.state.RemoteState
 import dev.vitruvian.remote.state.Screen
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 
 /**
  * The single activity.
@@ -74,6 +80,7 @@ public class MainActivity : ComponentActivity() {
   /** Ask once per launch, not on every focus change (returning from the dialog is one). */
   private var askedForBluetooth = false
   private var askedForNotifications = false
+  private var pendingNotificationPermissionCallback: ((Boolean) -> Unit)? = null
 
   /**
    * The bridge's runtime permissions, one row at a time.
@@ -96,10 +103,10 @@ public class MainActivity : ComponentActivity() {
   }
 
   private val requestNotifications =
-      registerForActivityResult(ActivityResultContracts.RequestPermission()) {
-        // Nothing to do either way. Denied means NotificationManagerCompat
-        // drops what we post, which is the user's decision; the app does not
-        // change behaviour and does not ask again.
+      registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val callback = pendingNotificationPermissionCallback
+        pendingNotificationPermissionCallback = null
+        callback?.invoke(granted)
       }
 
   // Registered unconditionally: a launcher must exist before onCreate returns,
@@ -138,7 +145,12 @@ public class MainActivity : ComponentActivity() {
             persistence = Persistence(this),
             hid = hid,
             phoneClipboard = SystemClipboard(this),
-            notifier = ShadeNotifier(this),
+            notifier =
+                ShadeNotifier(
+                    context = this,
+                    hasPermission = ::hasPostNotificationsPermission,
+                    ensurePermission = ::ensurePostNotificationsPermission,
+                ),
             bridge = ServiceBridge(),
             openUrl = { url -> PhoneTools.openUrl(this, url).isSuccess },
         )
@@ -355,6 +367,22 @@ public class MainActivity : ComponentActivity() {
     requestNotifications.launch(PERMISSION_POST_NOTIFICATIONS)
   }
 
+  private fun hasPostNotificationsPermission(): Boolean {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
+    return ContextCompat.checkSelfPermission(this, PERMISSION_POST_NOTIFICATIONS) ==
+        PackageManager.PERMISSION_GRANTED
+  }
+
+  private fun ensurePostNotificationsPermission(onResult: (Boolean) -> Unit) {
+    if (hasPostNotificationsPermission()) {
+      onResult(true)
+      return
+    }
+    askedForNotifications = true
+    pendingNotificationPermissionCallback = onResult
+    requestNotifications.launch(PERMISSION_POST_NOTIFICATIONS)
+  }
+
   override fun onDestroy() {
     // The hub outlives this activity -- the service keeps running -- so the
     // listener has to come off or it holds a dead window forever.
@@ -396,14 +424,34 @@ public class MainActivity : ComponentActivity() {
  * channel that exists changes nothing, and there is no other moment in this app's lifecycle that is
  * guaranteed to run before the first notification.
  */
-private class ShadeNotifier(private val context: Context) : Notifier {
+private class ShadeNotifier(
+    private val context: Context,
+    private val hasPermission: () -> Boolean = { true },
+    private val ensurePermission: ((Boolean) -> Unit) -> Unit = { it(true) },
+) : Notifier {
   init {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      val manager = context.getSystemService(NotificationManager::class.java)
       val channel =
           NotificationChannel(CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_DEFAULT)
       channel.description = "Your Mac going quiet, and commands that finish in the background."
-      context.getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
+      manager?.createNotificationChannel(channel)
+
+      val homeSpeakerChannel =
+          NotificationChannel(
+              CHANNEL_HOMESPEAKER_ID,
+              CHANNEL_HOMESPEAKER_NAME,
+              NotificationManager.IMPORTANCE_DEFAULT,
+          )
+      homeSpeakerChannel.description = "Announcements spoken by HomeSpeaker on your Mac."
+      manager?.createNotificationChannel(homeSpeakerChannel)
     }
+  }
+
+  override fun hasNotificationPermission(): Boolean = hasPermission()
+
+  override fun ensureNotificationPermission(onResult: (Boolean) -> Unit) {
+    ensurePermission(onResult)
   }
 
   override fun notify(id: String, title: String, body: String, deepLink: String) {
@@ -432,9 +480,155 @@ private class ShadeNotifier(private val context: Context) : Notifier {
     runCatching { NotificationManagerCompat.from(context).notify(id, id.hashCode(), notification) }
   }
 
+  override fun notifyAnnouncement(id: String, text: String) {
+    if (!hasNotificationPermission()) return
+    // One notification slot: each announcement replaces the last, so the shade never fills up and
+    // turning mirroring off (one cancel) clears everything this feature posted.
+    val notificationId = HomeSpeakerNotificationReceiver.MIRROR_NOTIFICATION_ID
+    val openIntent =
+        Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse("vitruvian-remote://apps/homespeaker"),
+                context,
+                MainActivity::class.java,
+            )
+            .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+    val openPending =
+        PendingIntent.getActivity(
+            context,
+            notificationId,
+            openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    val replayPending =
+        actionPendingIntent(
+            action = HomeSpeakerNotificationReceiver.ACTION_REPLAY,
+            requestCode = notificationId xor 0x101,
+            announcementId = id,
+            announcementText = text,
+            notificationId = notificationId,
+        )
+    val mutePending =
+        actionPendingIntent(
+            action = HomeSpeakerNotificationReceiver.ACTION_MUTE,
+            requestCode = notificationId xor 0x202,
+            announcementId = id,
+            announcementText = text,
+            notificationId = notificationId,
+        )
+    val notification =
+        NotificationCompat.Builder(context, CHANNEL_HOMESPEAKER_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("HomeSpeaker")
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setContentIntent(openPending)
+            .setAutoCancel(true)
+            .addAction(0, "Replay", replayPending)
+            .addAction(0, "Mute", mutePending)
+            .build()
+    runCatching {
+      NotificationManagerCompat.from(context)
+          .notify(HomeSpeakerNotificationReceiver.NOTIFICATION_TAG, notificationId, notification)
+    }
+  }
+
+  override fun cancelAnnouncement(id: String) {
+    runCatching {
+      NotificationManagerCompat.from(context)
+          .cancel(
+              HomeSpeakerNotificationReceiver.NOTIFICATION_TAG,
+              HomeSpeakerNotificationReceiver.MIRROR_NOTIFICATION_ID)
+    }
+  }
+
+  private fun actionPendingIntent(
+      action: String,
+      requestCode: Int,
+      announcementId: String,
+      announcementText: String,
+      notificationId: Int,
+  ): PendingIntent {
+    val intent =
+        Intent(context, HomeSpeakerNotificationReceiver::class.java)
+            .setAction(action)
+            .putExtra(HomeSpeakerNotificationReceiver.EXTRA_ANNOUNCEMENT_ID, announcementId)
+            .putExtra(HomeSpeakerNotificationReceiver.EXTRA_ANNOUNCEMENT_TEXT, announcementText)
+            .putExtra(HomeSpeakerNotificationReceiver.EXTRA_NOTIFICATION_ID, notificationId)
+    return PendingIntent.getBroadcast(
+        context,
+        requestCode,
+        intent,
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
+  }
+
   private companion object {
     const val CHANNEL_ID = "vitruvian-remote"
     const val CHANNEL_NAME = "Vitruvian Remote"
+    const val CHANNEL_HOMESPEAKER_ID = "vitruvian-homespeaker-announcements"
+    const val CHANNEL_HOMESPEAKER_NAME = "HomeSpeaker announcements"
+  }
+}
+
+/**
+ * Handles the "Replay" and "Mute" action buttons on a HomeSpeaker announcement notification off the
+ * main thread with a 3-second timeout, then cancels the notification.
+ */
+public class HomeSpeakerNotificationReceiver : BroadcastReceiver() {
+  override fun onReceive(context: Context, intent: Intent) {
+    val action = intent.action ?: return
+    val announcementId = intent.getStringExtra(EXTRA_ANNOUNCEMENT_ID).orEmpty()
+    val announcementText = intent.getStringExtra(EXTRA_ANNOUNCEMENT_TEXT).orEmpty()
+    val notificationId = intent.getIntExtra(EXTRA_NOTIFICATION_ID, MIRROR_NOTIFICATION_ID)
+    val pendingResult = goAsync()
+    val appContext = context.applicationContext
+    CoroutineScope(Dispatchers.IO).launch {
+      try {
+        val store = Persistence(appContext)
+        val hosts = store.hosts
+        val selectedId = store.selectedHostId
+        val host = hosts.firstOrNull { it.id == selectedId } ?: hosts.firstOrNull()
+        if (host != null && host.url.isNotBlank() && host.token.isNotBlank()) {
+          val client = AgentClient(host.url, host.token)
+          runCatching {
+            withTimeout(ACTION_TIMEOUT_MS) {
+              when (action) {
+                ACTION_REPLAY ->
+                    client.homeSpeakerSay(
+                        text = announcementText,
+                        replay = true,
+                        replayId = announcementId.ifBlank { null },
+                        readTimeoutMs = ACTION_TIMEOUT_MS.toInt(),
+                    )
+                ACTION_MUTE ->
+                    client.setHomeSpeakerVolume(
+                        muted = true,
+                        readTimeoutMs = ACTION_TIMEOUT_MS.toInt(),
+                    )
+              }
+            }
+          }
+        }
+        runCatching {
+          NotificationManagerCompat.from(appContext).cancel(NOTIFICATION_TAG, notificationId)
+        }
+      } finally {
+        pendingResult.finish()
+      }
+    }
+  }
+
+  public companion object {
+    public const val ACTION_REPLAY: String = "dev.vitruvian.remote.homespeaker.REPLAY"
+    public const val ACTION_MUTE: String = "dev.vitruvian.remote.homespeaker.MUTE"
+    public const val EXTRA_ANNOUNCEMENT_ID: String = "announcement_id"
+    public const val EXTRA_ANNOUNCEMENT_TEXT: String = "announcement_text"
+    public const val EXTRA_NOTIFICATION_ID: String = "notification_id"
+    public const val NOTIFICATION_TAG: String = "homespeaker-announcement"
+    /** The single slot every mirrored announcement is posted in. */
+    public const val MIRROR_NOTIFICATION_ID: Int = 1
+    private const val ACTION_TIMEOUT_MS = 3_000L
   }
 }
 

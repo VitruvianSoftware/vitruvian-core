@@ -11,10 +11,10 @@
     "@openfeature/web-sdk": "^1.1.0",
     "@tabula/shared": "workspace:*",
     "@vitruviansoftware/design-system": "workspace:*",
-    "framer-motion": "^14.9.0",
+    "framer-motion": "^14.10.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "zustand": "^5.0.16"
+    "zustand": "^5.1.0"
   },
   "devDependencies": {
     "@playwright/test": "1.57.0",
@@ -38,7 +38,7 @@
     "jest-environment-jsdom": "^30.4.1",
     "jest-junit": "^17.0.0",
     "jsonwebtoken": "^9.0.2",
-    "schema-utils": "^4.8.2",
+    "schema-utils": "^4.8.3",
     "style-loader": "^4.0.0",
     "ts-loader": "^9.6.2",
     "typescript": "^5.3.3",

@@ -125,6 +125,12 @@ public struct MenuBarView: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityLabel("Quiet hours active until \(until)")
+            } else if configManager.config.isSnoozed(), let until = configManager.config.snoozeUntil {
+                Label(SpeakerConfig.snoozedUntilLine(until), systemImage: "bell.slash.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityLabel(SpeakerConfig.snoozedUntilLine(until))
             }
 
             // The settings file did not read: say so, since nothing changed
@@ -139,6 +145,22 @@ public struct MenuBarView: View {
             }
 
             if configManager.config.enabled {
+                HStack {
+                    if configManager.config.isSnoozed(), let until = configManager.config.snoozeUntil {
+                        Button("Resume now (snoozed until \(SpeakerConfig.localTimeHHmm(until)))") {
+                            configManager.config.snoozeUntil = nil
+                            configManager.saveConfig()
+                        }
+                        .controlSize(.small)
+                    } else {
+                        Button("Snooze 30 min") {
+                            configManager.config.snoozeUntil = Date().addingTimeInterval(30 * 60)
+                            configManager.saveConfig()
+                        }
+                        .controlSize(.small)
+                    }
+                    Spacer()
+                }
                 broadcastingControls
             }
 
@@ -594,6 +616,8 @@ public struct MenuBarView: View {
                 viewModel.setFeedback("Broadcasting is switched off.", isError: true)
             case .quietHours(let until):
                 viewModel.setFeedback("Quiet hours until \(until).", isError: true)
+            case .snoozed(let until):
+                viewModel.setFeedback("\(SpeakerConfig.snoozedUntilLine(until)).", isError: true)
             case .noOutputs:
                 viewModel.setFeedback("All outputs are off. Turn one on in Settings.", isError: true)
             case .nothingToSay:

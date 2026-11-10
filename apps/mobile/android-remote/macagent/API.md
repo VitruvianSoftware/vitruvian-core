@@ -673,6 +673,7 @@ The following status and diagnostic fields bring `/v1/homespeaker` to full parit
 | Field | Type | Description |
 |---|---|---|
 | `quiet_hours.active` | bool | Whether quiet hours are currently silencing announcements |
+| `snooze_until` | string \| null | ISO-8601 UTC timestamp until which announcements are snoozed (`snooze_until` in config), or `null` when not snoozed (missing or unparseable values read as `null`) |
 | `available_voices` | `[{id, name, lang}]` | Installed macOS voices from `say -v '?'`, cached (see below) |
 | `structure_id` | string | Google Home structure ID (`structure_id` in config) |
 | `homes` | `[{id, name}]` | Available Google Home structures discovered from targets |
@@ -712,6 +713,8 @@ The update endpoint supports these additional configuration actions and secret u
 | Field | Type | Behavior |
 |---|---|---|
 | `quiet_hours_start`, `quiet_hours_end` | string (`HH:MM`) | Sets quiet hours interval; rejects invalid times with 400 |
+| `snooze_until` | string \| null | Sets the snooze deadline to an ISO-8601 timestamp (`snooze_until` in config), or clears snooze when `null` or `""`; invalid timestamps return 400 |
+| `snooze_minutes` | int (`1`–`240`) | Convenience that sets `snooze_until` to `now + N minutes` UTC; values outside `1..=240` return 400 |
 | `custom_style_prompt` | string | Updates or clears phrasing rewrite instruction |
 | `local_voice` | string | Sets macOS system voice identifier |
 | `preview_voice` | bool | Previews the Mac voice locally on the Mac via `say` (never broadcasts to speakers) |
