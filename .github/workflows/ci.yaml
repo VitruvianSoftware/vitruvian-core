@@ -456,7 +456,10 @@ jobs:
   detect-macos:
     needs: [queued, fast-lane]
     if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && needs.fast-lane.outputs.skip != 'true' }}
-    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
+    # Hosted Linux, not vitruvian-queue: path-only filter with no Bazel, and
+    # upstream of build-macos. Keeping it off the bounded 8-runner Bazel pool
+    # stops multi-wave priority inversion in the merge queue.
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     outputs:
       macos: ${{ steps.changes.outputs.macos }}
@@ -655,7 +658,10 @@ jobs:
     # ambiguity this repo avoids -- the required job itself always runs + reports.
     needs: [queued, fast-lane, detect-macos, macos-build]
     if: ${{ always() && needs.queued.outputs.hit != 'true' && needs.fast-lane.outputs.skip != 'true' }}
-    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
+    # Hosted Linux, not vitruvian-queue: a 1-second shell check with no checkout
+    # or Bazel that unlocks only after detect-macos/macos-build finish (same
+    # head-of-line blocking rationale as presubmit.yaml's gate job).
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
       - name: Reflect the macOS build result
@@ -820,7 +826,9 @@ jobs:
     # `bazel test //...` nightly.
     needs: [queued, fast-lane]
     if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && needs.fast-lane.outputs.skip != 'true' }}
-    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
+    # Hosted Linux, not vitruvian-queue: path-only filter with no Bazel that
+    # gates downstream jobs (go-race, go-lint-*, go-test-*).
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     outputs:
       go-lint-devx: ${{ steps.decide.outputs.go-lint-devx }}

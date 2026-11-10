@@ -32,6 +32,11 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.vector.PathParser
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
@@ -118,16 +123,32 @@ private const val VIEWPORT = 24f
 /** Lucide's stroke width, in viewport units. */
 private const val STROKE = 1.5f
 
-/** A 20 dp, 1.5-stroke outline glyph. */
+/**
+ * A 20 dp, 1.5-stroke outline glyph.
+ *
+ * When [contentDescription] is null (the default), the glyph is treated as decorative and its
+ * semantics are cleared; when non-null, TalkBack reads [contentDescription] with [Role.Image].
+ */
 @Composable
 public fun VIcon(
     path: String,
     modifier: Modifier = Modifier,
     iconSize: Dp = 20.dp,
     color: Color = LocalContentColor.current,
+    contentDescription: String? = null,
 ) {
   val parsed = remember(path) { PathParser().parsePathString(path).toPath() }
-  Canvas(modifier = modifier.size(iconSize)) {
+  val a11y = A11y.iconSemantics(contentDescription)
+  val semanticsModifier =
+      if (a11y.isDecorative) {
+        Modifier.clearAndSetSemantics {}
+      } else {
+        Modifier.semantics {
+          this.contentDescription = a11y.contentDescription!!
+          this.role = Role.Image
+        }
+      }
+  Canvas(modifier = modifier.size(iconSize).then(semanticsModifier)) {
     val scale = size.minDimension / VIEWPORT
     withTransform({ scale(scale, scale, pivot = Offset.Zero) }) {
       drawPath(

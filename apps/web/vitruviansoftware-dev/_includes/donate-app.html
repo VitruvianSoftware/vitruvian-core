@@ -27,9 +27,20 @@
     <h1>Taking you to Stripe...</h1>
     <p class="lead">Thank you for supporting {{ app.name }}. You choose the amount on Stripe's checkout page.</p>
     <div class="btn-row">
-      <a class="btn btn-primary" href="{{ link }}">Continue to checkout</a>
+      <a class="btn btn-primary" href="{{ link }}" data-umami-event="donate-checkout" data-umami-event-app="{{ include.key }}">Continue to checkout</a>
     </div>
-    <script>window.location.replace({{ link | jsonify }});</script>
+    <script>
+      window.addEventListener("load", function () {
+        try {
+          if (window.umami && typeof window.umami.track === "function") {
+            window.umami.track("donate-redirect", { app: {{ include.key | jsonify }} });
+          }
+        } catch (e) {}
+        setTimeout(function () {
+          window.location.replace({{ link | jsonify }});
+        }, 250);
+      });
+    </script>
     {%- else %}
     <h1>Donations for {{ app.name }} open soon.</h1>
     <p class="lead">Thank you for wanting to help. Until then, a star on GitHub helps more people find {{ app.name }}.</p>

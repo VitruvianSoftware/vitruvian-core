@@ -593,6 +593,7 @@ public fun Toast(
           label = "×",
           onClick = onDismiss,
           variant = ButtonVariant.Ghost,
+          contentDescription = "Dismiss",
       )
     }
   }

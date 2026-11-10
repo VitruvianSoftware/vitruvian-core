@@ -222,3 +222,49 @@ fn every_workflow_in_the_repo_passes() {
     let o = run(&[dir]);
     assert!(o.status.success(), "the repo's workflows: {}", text(&o));
 }
+
+#[test]
+fn non_bazel_gate_and_lint_workflows_stay_on_hosted_runners() {
+    let all = std::env::var("WORKFLOW_FILES").expect("set by Bazel");
+    let first = std::env::current_dir()
+        .unwrap()
+        .join(all.split_whitespace().next().unwrap());
+    let dir = first.parent().unwrap();
+
+    for wf in [
+        "actionlint.yaml",
+        "release-scope.yaml",
+        "migration-safety.yaml",
+    ] {
+        let raw = std::fs::read_to_string(dir.join(wf)).unwrap();
+        let active: String = raw
+            .lines()
+            .filter(|l| !l.trim_start().starts_with('#'))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            active.contains("runs-on: ubuntu-26.04")
+                && !active.contains("vitruvian-queue")
+                && !active.contains("QUEUE_RUNNER"),
+            "{wf} has no Bazel and must stay on ubuntu-26.04 so it does not consume the 8 Bazel queue runner slots"
+        );
+    }
+
+    let ci = std::fs::read_to_string(dir.join("ci.yaml")).unwrap();
+    for job in ["detect-macos:", "build-macos:", "changes:"] {
+        let start = ci.find(&format!("  {job}\n")).expect(job);
+        let active: String = ci[start..]
+            .lines()
+            .skip(1)
+            .take_while(|l| l.is_empty() || l.starts_with("    "))
+            .filter(|l| !l.trim_start().starts_with('#'))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            active.contains("runs-on: ubuntu-26.04")
+                && !active.contains("vitruvian-queue")
+                && !active.contains("QUEUE_RUNNER"),
+            "ci.yaml job {job} has no Bazel and must stay on ubuntu-26.04 to avoid merge-queue priority inversion"
+        );
+    }
+}
