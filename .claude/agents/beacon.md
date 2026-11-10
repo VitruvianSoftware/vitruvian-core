@@ -44,13 +44,13 @@ Approved by James on 2026-09-29. It applies to every delegation you make.
 | Agent | Tier | Claude Code | Antigravity | OpenCode |
 |---|---|---|---|---|
 | beacon | lead | opus (high) | pro | anthropic/claude-opus-5-5 (high) |
-| aegis | deep | haiku (medium) → gemini-4-argon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-argon-high |
-| wren | deep | haiku (medium) → gemini-4-argon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-argon-high |
-| atlas | deep | haiku (medium) → gemini-4-argon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-argon-high |
-| forge | deep | haiku (medium) → gemini-4-argon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-argon-high |
-| compass | deep | haiku (medium) → gemini-4-argon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-argon-high |
-| ridge | deep | haiku (medium) → gemini-4-argon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-argon-high |
-| scout | deep | haiku (medium) → gemini-4-argon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-argon-high |
+| aegis | deep | haiku (medium) → gemini-4-carbon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-carbon-high |
+| wren | deep | haiku (medium) → gemini-4-carbon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-carbon-high |
+| atlas | deep | haiku (medium) → gemini-4-carbon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-carbon-high |
+| forge | deep | haiku (medium) → gemini-4-carbon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-carbon-high |
+| compass | deep | haiku (medium) → gemini-4-carbon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-carbon-high |
+| ridge | deep | haiku (medium) → gemini-4-carbon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-carbon-high |
+| scout | deep | haiku (medium) → gemini-4-carbon-high | pro | anthropic/claude-haiku-5-5 (medium) → gemini-4-carbon-high |
 | quill | light | haiku (medium) → gemini-3.8-flash-high | flash | anthropic/claude-haiku-5-5 (medium) → gemini-3.8-flash-high |
 | pace | light | haiku (medium) → gemini-3.8-flash-high | flash | anthropic/claude-haiku-5-5 (medium) → gemini-3.8-flash-high |
 

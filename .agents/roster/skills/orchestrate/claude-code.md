@@ -130,7 +130,7 @@ Once all tasks are accepted, report concisely to the user:
   - `run_in_background`: set `true` for long work; you are notified on finish.
 - Follow up or answer a specialist's question with `SendMessage` to the agent's id. Each follow-up with defect feedback counts as a return round.
 - Prefer the lead doing all dispatch, so the task board and spend stay in one place.
-- For a long read-only investigation that only you need (no specialist owns it), you may call Gemini directly: `agy-delegate -m gemini-4-argon-high -d <repo> --mode plan --digest "<question>"`. Treat the digest as a claim.
+- For a long read-only investigation that only you need (no specialist owns it), you may call Gemini directly: `agy-delegate -m gemini-4-carbon-high -d <repo> --mode plan --digest "<question>"`. Treat the digest as a claim.
 
 ## 7. Report progress to the live panel
 
