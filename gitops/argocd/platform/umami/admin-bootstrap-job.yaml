@@ -1,0 +1,130 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# umami-admin-bootstrap — one-shot, idempotent PostSync job that:
+#   1. rotates Umami's seeded default login (admin/umami, inserted by the first
+#      prisma migration) to the sealed ADMIN_PASSWORD (umami-secrets), and
+#   2. makes sure the vitruviansoftware.dev website entry exists, printing its
+#      website ID (the `data-website-id` the site's tracker snippet needs).
+# Safe to re-run on every sync: if the sealed password already works it skips
+# the rotation, and it only creates the website when none has that domain. It
+# fails (and Argo shows the hook failed) only when NEITHER password logs in,
+# i.e. someone changed it by hand; reset it in the dashboard, not here.
+#
+# Talks to the in-cluster Service, never a public hostname. Runs the Umami
+# image itself (Node 22 has fetch), so there is no second image to pin.
+# Read the website ID with:
+#   bazel run //tools/gitops:logs -- -n umami job/umami-admin-bootstrap
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: umami-admin-bootstrap
+  namespace: umami
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 6
+  ttlSecondsAfterFinished: 604800
+  template:
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: bootstrap
+          image: ghcr.io/umami-software/umami:3.4.1@sha256:e69d1a7932e9dab0fc523edc7be1f3a53f3c261f57856fc2167ae74a8fc022e8
+          env:
+            - name: UMAMI_URL
+              value: http://umami.umami.svc.cluster.local
+            - name: SITE_DOMAIN
+              value: vitruviansoftware.dev
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: umami-secrets
+                  key: ADMIN_PASSWORD
+          command: ["node", "-e"]
+          args:
+            - |
+              const base = process.env.UMAMI_URL;
+              const target = process.env.ADMIN_PASSWORD;
+              const domain = process.env.SITE_DOMAIN;
+              const sleep = ms => new Promise(r => setTimeout(r, ms));
+              async function call(method, path, body, token) {
+                const headers = { 'Content-Type': 'application/json' };
+                if (token) headers.Authorization = `Bearer ${token}`;
+                const res = await fetch(base + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+                const text = await res.text();
+                let json = null;
+                try { json = JSON.parse(text); } catch {}
+                return { status: res.status, json };
+              }
+              async function login(password) {
+                const r = await call('POST', '/api/auth/login', { username: 'admin', password });
+                return r.status === 200 && r.json?.token ? r.json.token : null;
+              }
+              (async () => {
+                for (let i = 0; ; i++) {
+                  try { if ((await fetch(base + '/api/heartbeat')).ok) break; } catch {}
+                  if (i >= 60) throw new Error('umami never became ready');
+                  await sleep(5000);
+                }
+                let token = await login(target);
+                if (token) {
+                  console.log('admin password already rotated');
+                } else {
+                  const seeded = await login('umami');
+                  if (!seeded) throw new Error('neither the sealed nor the default admin password logs in');
+                  const r = await call('POST', '/api/me/password', { currentPassword: 'umami', newPassword: target }, seeded);
+                  if (r.status !== 200) throw new Error(`password change failed: HTTP ${r.status}`);
+                  token = await login(target);
+                  if (!token) throw new Error('sealed password does not log in after rotation');
+                  console.log('rotated default admin password to the sealed ADMIN_PASSWORD');
+                }
+                const list = await call('GET', `/api/websites?search=${encodeURIComponent(domain)}&pageSize=100`, null, token);
+                if (list.status !== 200) throw new Error(`listing websites failed: HTTP ${list.status}`);
+                const rows = Array.isArray(list.json) ? list.json : (list.json?.data ?? []);
+                let site = rows.find(w => w.domain === domain);
+                if (site) {
+                  console.log('website already exists');
+                } else {
+                  const c = await call('POST', '/api/websites', { name: domain, domain }, token);
+                  if (c.status !== 200 || !c.json?.id) throw new Error(`creating website failed: HTTP ${c.status}`);
+                  site = c.json;
+                  console.log('created website');
+                }
+                console.log(`WEBSITE_ID ${domain} ${site.id}`);
+              })().catch(e => { console.error(e.message); process.exit(1); });
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]

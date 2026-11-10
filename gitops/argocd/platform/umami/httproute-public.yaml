@@ -1,0 +1,61 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# PUBLIC umami route — stats.vitruviansoftware.dev, reached through the
+# Cloudflare Tunnel (dnsendpoint-public.yaml). cloudflared forwards EVERY tunnel
+# hostname to this Gateway with the Host header intact, so this route is the
+# only thing deciding what the internet can reach. It matches exactly the two
+# paths a browser running the tracker needs:
+#   - GET /script.js     the tracker itself (docker/proxy.ts TRACKER_PATH)
+#   - POST /api/send     the collector it posts to (COLLECT_PATH; OPTIONS
+#                        preflight hits the same path)
+# Nothing else is routed: /login, /api/auth/*, /api/websites, /websites/* etc.
+# get the Gateway's 404, so the dashboard and its API are not internet-facing.
+# The dashboard lives on umami.lab.ipv1337.dev (httproute-internal.yaml).
+# Exact matches on purpose: a PathPrefix /api/send would also admit
+# /api/send<anything>.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: umami-public
+  namespace: umami
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: platform
+      namespace: envoy-gateway-system
+      sectionName: http
+  hostnames:
+    - stats.vitruviansoftware.dev
+  rules:
+    - matches:
+        - path:
+            type: Exact
+            value: /script.js
+        - path:
+            type: Exact
+            value: /api/send
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: umami
+          port: 80
+          weight: 1
