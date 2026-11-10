@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-11-10T20:40:42Z",
+  "generated": "2026-11-10T21:17:15Z",
   "tools": [
     {
       "id": "dev.vitruvian.reference",
@@ -272,14 +272,14 @@
         "zh-TW": "為 Antigravity 代理程式執行你的 Telegram 機器人，並透過快速提問隨時隨地向代理程式提問",
         "zh-HK": "為 Antigravity 代理程式執行你的 Telegram 機械人，並透過快速提問隨時隨地向代理程式提問"
       },
-      "version": "1.32.6",
+      "version": "1.32.7",
       "protocol": "2",
       "minimumAppVersion": "3.72.1",
       "source": "https://github.com/VitruvianSoftware/nexus-agent",
       "download": {
-        "url": "https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.32.6/nexus-agent-tool-1.32.6.zip",
-        "sha256": "d62946baf1eec86c73b8f41cb17516fc0cbfdc30883fb77f170ff4a69bf586f2",
-        "size": 7253359
+        "url": "https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.32.7/nexus-agent-tool-1.32.7.zip",
+        "sha256": "aa3305422ebe3057299047f78bb0e588bb3d89b63aaedfe93a5c821f6c40ff81",
+        "size": 7272891
       },
       "uses": ["notify", "storage"],
       "commands": [
