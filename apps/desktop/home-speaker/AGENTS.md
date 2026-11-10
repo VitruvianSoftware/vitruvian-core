@@ -75,8 +75,8 @@ It is scriptable — `HomeSpeaker --say`, `--volume`, `--set-volume 0-100`, `--m
   "Whole Home" has no single volume; the slider waits for the speaker to confirm; "announce at
   a set volume" only restores the level if nobody changed it meanwhile.
 - **`testdata/` holds shared rulebook test cases and the golden state fixture.**
-  - **What is in it:** JSON test cases capturing choice lists and labels (`choices.json`), numeric limits and steps (`limits.json`), visibility rules (`visibility.json`), quiet hours parsing and windows (`quiet_hours.json`), speaker deduplication and ordering (`speakers.json`), outputs label summary (`outputs_label.json`), chat monitor status belief (`chat_monitor_status.json`), OAuth client override rules (`oauth_client_override.json`), and the golden contract v1 `--state --json` document (`state_v1.json`).
-  - **Who reads it:** Swift engine tests (`//apps/desktop/home-speaker:HomeSpeakerTests` via `SharedRulebookCasesTests.swift`), Rust Mac helper tests (`//apps/mobile/android-remote/macagent:macagent_test` reading `state_v1.json`), and Android remote Kotlin tests (`:derive_test`, `:wire_test`). A changed rule changes its case first.
+  - **What is in it:** It holds shared JSON cases for catalog rules and the golden `state_v1.json` fixture; see `apps/desktop/home-speaker/testdata/README.md` for the file list.
+  - **Who reads it:** Swift engine tests (`//apps/desktop/home-speaker:HomeSpeakerTests` via `SharedRulebookCasesTests.swift`) load every case file, while the Rust Mac helper tests (`//apps/mobile/android-remote/macagent:macagent_test`) read only `state_v1.json`. Having Android remote Kotlin tests (`//apps/mobile/android-remote:derive_test` and `//apps/mobile/android-remote:wire_test`) read testdata is follow-up work. A changed rule changes its case first.
 
 ## Distribution & Parity Touchpoints Checklist
 
