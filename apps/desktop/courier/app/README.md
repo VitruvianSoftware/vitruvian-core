@@ -43,6 +43,12 @@ Quit it from its menu, or `osascript -e 'tell application id "com.vitruviansoftw
 
 Courier can draft replies, rewrite text in different tones, translate messages inline, and summarize chats (including the `/draft`, `/translate`, `/summarize`, and `/ai` slash commands). AI is turned off by default. Nothing leaves your Mac until you turn it on, and Courier never sends AI output on your behalf—everything lands in the composer or AI pane for you to review, edit, or discard.
 
+Where each action lives:
+
+- **Draft a reply** and **Rewrite…** (tones): the **+** menu in the message box, or type `/draft`. The result shows above your text with **Replace**, **Insert** and **Discard**.
+- **Translate**: right-click a message. It uses *Preferred response language*; a submenu offers your other enabled languages.
+- **Summarize**: the chat's ⓘ menu or the command bar (⌘K). The summary opens in the AI pane.
+
 Voice transcription and Talk to Type are not available yet.
 
 ### Providers and setup
@@ -70,7 +76,7 @@ Pick a provider in **Settings ▸ AI**. Choosing one turns AI on; choosing **Off
 
 | Issue | What to check |
 |---|---|
-| **Not running** | Start the local app. Ollama listens on `127.0.0.1:11434`, LM Studio on port `1234` with its local server turned on, and Unsloth Studio on ports `8888`–`8908`. Click **Refresh** in Settings ▸ AI. |
+| **Not running** | Start the local app. Ollama listens on `127.0.0.1:11434`, LM Studio on port `1234` with its local server turned on, and Unsloth Studio on ports `8888`–`8908`. Courier only treats a port as Unsloth Studio when Studio's own file for it exists in `~/.unsloth/studio` (or `$UNSLOTH_STUDIO_HOME`), so start Studio normally rather than serving a model some other way. Click **Refresh** in Settings ▸ AI. |
 | **Needs key** | Enter and save your API key in Settings ▸ AI. Cloud providers and Unsloth Studio require a key before use. |
 | **Bad key** | Verify the API key pasted into Settings ▸ AI is correct, active, and has not expired or been revoked. |
 | **Rate limited** | You reached your provider's rate or quota limits. Wait a few moments or verify billing on your provider console. |
