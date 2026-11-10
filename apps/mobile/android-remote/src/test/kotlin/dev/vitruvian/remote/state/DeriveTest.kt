@@ -2714,6 +2714,19 @@ public class DeriveTest {
             what = "grant Google Chat",
             reason = "✗ homespeaker · grant Google Chat: error: access denied (HTTP 400)"),
     )
+    // UAT 2026-11-10: the agent's own "sign out failed:" prefix reached the row.
+    assertEquals(
+        "Couldn't sign out: the Mac returned an error",
+        Derive.homeSpeakerInlineError(what = "sign out", reason = "sign out failed: exit status 1"),
+    )
+    assertEquals(
+        "Couldn't sign in: browser closed",
+        Derive.homeSpeakerInlineError(what = "sign in", reason = "sign in failed: browser closed"),
+    )
+    assertEquals(
+        "Couldn't sign in: access denied",
+        Derive.homeSpeakerInlineError(what = "grant", reason = "grant chat failed: access denied"),
+    )
     assertEquals(
         "Couldn't sign out: token revoke failed",
         Derive.homeSpeakerInlineError(

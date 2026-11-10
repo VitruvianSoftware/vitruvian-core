@@ -1862,6 +1862,11 @@ public class RemoteState(
       return simulatedHomeSpeakerDashboard()
     }
     if (!isLive) {
+      // A paired Mac that is not answering keeps what it last said, marked offline; the demo
+      // numbers are only for a phone with no Mac at all (UAT 2026-11-10).
+      if (!isUnpaired && hosts.isNotEmpty() && id != "prs" && id != "tv") {
+        return offlineDashboard(liveDashboard(id) ?: unwiredDashboard(id), noMacStreamLine())
+      }
       return when (id) {
         "prs" -> simulatedPrsDashboard()
         "tv" -> simulatedTvDashboard()
@@ -1871,6 +1876,22 @@ public class RemoteState(
     }
     return liveDashboard(id) ?: unwiredDashboard(id)
   }
+
+  /**
+   * A module page for a paired Mac that is not answering: whatever the Mac last said, marked
+   * offline, with [line] (from [noMacLine]) as the only stream line, so nothing on it reads as a
+   * fresh answer. Demo data is never shown for a paired Mac.
+   */
+  private fun offlineDashboard(base: ModuleDashboard, line: String): ModuleDashboard =
+      base.copy(
+          status = "${hostShortName} isn't answering",
+          statusTone = StatusTone.Warn,
+          lines = listOf(TerminalLine(" ", line, TerminalTone.Warn)),
+          cursor = false,
+          prompts = false,
+          composer = null,
+          quick = emptyList(),
+      )
 
   /** The modules that have a real source on this machine. */
   private fun liveDashboard(id: String): ModuleDashboard? =
@@ -2170,9 +2191,12 @@ public class RemoteState(
         statusTone = if (offline) StatusTone.Warn else StatusTone.Neutral,
         metrics =
             listOf(
-                ModuleMetric("Open", "n/a", "needs a paired Mac"),
-                ModuleMetric("Green", "n/a", "needs a paired Mac"),
-                ModuleMetric("Red", "n/a", "needs a paired Mac"),
+                ModuleMetric(
+                    "Open", "n/a", if (hasMac) "waiting for the Mac" else "needs a paired Mac"),
+                ModuleMetric(
+                    "Green", "n/a", if (hasMac) "waiting for the Mac" else "needs a paired Mac"),
+                ModuleMetric(
+                    "Red", "n/a", if (hasMac) "waiting for the Mac" else "needs a paired Mac"),
             ),
         streamLabel = "gh",
         lines =

@@ -1821,7 +1821,7 @@ public object Derive {
   private val LEAKED_PATH_OR_CODE_REGEX = Regex("""(?:/v\d+/|https?://)""", RegexOption.IGNORE_CASE)
   private val TECHNICAL_PREFIX_REGEX =
       Regex(
-          """^(?:[✗✓!]\s*|(?:agent|homespeaker|google\s+home|google\s+chat|gws|oauth)\s*(?:·\s*[^:]+)?:\s*|(?:error|failed|failure)\s*:\s*|http\s+\d{3}(?:\s+[a-z][a-z ]*)?\s*:\s*)+""",
+          """^(?:[✗✓!]\s*|(?:agent|homespeaker|google\s+home|google\s+chat|gws|oauth)\s*(?:·\s*[^:]+)?:\s*|(?:error|failed|failure)\s*:\s*|(?:sign\s+(?:in|out)|disconnect|grant(?:\s+chat)?|import(?:\s+login)?)\s+(?:failed|error)\s*:\s*|http\s+\d{3}(?:\s+[a-z][a-z ]*)?\s*:\s*)+""",
           RegexOption.IGNORE_CASE,
       )
   private val TRAILING_HTTP_REGEX =
