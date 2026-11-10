@@ -232,6 +232,9 @@ usage: HomeSpeaker [flag]
                        the agent whose shell runs it, else a person)
   --volume             the default speaker's volume, as JSON
   --set-volume <0-100> set it; --mute / --unmute likewise
+  --state --json       the settings, speakers, sign-in, chat and hooks, as JSON
+  --apply --json <changes>
+                       apply settings changes and print the state, as JSON
   --sign-in [--chat]   sign in for Home (or Google Chat)
   --sign-out [--chat]  sign out of every Google login (or only Google Chat)
   --discover [--save] [--home <id>]
@@ -516,6 +519,13 @@ private func outcome(of arguments: [String]) throws -> CLIOutput {
             (["--set-volume", "-1"], .volume(.invalidLevel)),
             (["--mute"], .volume(.mute)),
             (["--unmute"], .volume(.unmute)),
+            (["--state", "--json"], .state(nil)),
+            (["--json", "--state"], .state(nil)),
+            (["--state"], .state(UsageError("--state requires --json"))),
+            (["--apply", "--json", #"{"contract_version":1,"operations":[]}"#],
+             .apply(.success(#"{"contract_version":1,"operations":[]}"#))),
+            (["--apply"], .apply(.failure(UsageError("--apply requires --json <changes>")))),
+            (["--say", "--state", "--json"], .say("--state --json")),
             (["--sign-in"], .signIn(.home)),
             (["--sign-in", "--chat"], .signIn(.chat)),
             (["--version", "--help"], .help),
@@ -690,6 +700,8 @@ private let unreadableSettings = "{ not json"
             (["--chat-monitor", "pause"], { $0.exitCode == 2 }),
             (["--login-item", "status"], { $0.stderr == ["error: \(HomeSpeakerCommandLine.Parts.extensionHasNoLoginItem)"] }),
             (["--chat", "--discover"], { $0.exitCode == 2 }),
+            (["--state"], { $0.exitCode == 2 }),
+            (["--apply"], { $0.exitCode == 2 }),
             (["--set-volume", "x"], { $0 == CLIOutput(stdout: [badLevel], exitCode: 1) }),
         ]
         for settings in [unreadableSettings, nil] {
@@ -761,6 +773,10 @@ private let unreadableSettings = "{ not json"
     @Test @MainActor func everyCommandKeepsItsTimeLimit() throws {
         let timedOut = CLIOutput(stderr: ["error: timed out"], exitCode: 1)
         let volumeTimedOut = CLIOutput(stdout: [#"{"available":false,"reason":"timed out"}"#], exitCode: 1)
+        let applyTimedOut = CLIOutput(
+            stdout: [HomeSpeakerStateContract.encodeJSON(["ok": false, "error": ["code": "timed_out", "message": "timed out"]])],
+            exitCode: 1
+        )
         let limits: [([String], TimeInterval, CLIOutput)] = [
             (["--say", "hi"], 20, timedOut),
             (["--announce", "hi"], 20, timedOut),
@@ -770,6 +786,7 @@ private let unreadableSettings = "{ not json"
             (["--volume"], 40, volumeTimedOut),
             (["--set-volume", "5"], 40, volumeTimedOut),
             (["--mute"], 40, volumeTimedOut),
+            (["--apply", "--json", #"{"contract_version":1,"operations":[]}"#], 60, applyTimedOut),
             (["--sign-in"], 300, timedOut),
             (["--sign-out"], 30, timedOut),
             (["--discover"], 60, timedOut),

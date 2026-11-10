@@ -460,6 +460,44 @@ final class DoorRoleTests: XCTestCase {
         XCTAssertNotEqual(marks.last?.text, "Broadcasting to Lounge", "broadcasting switched off on disk")
     }
 
+    func testOpenPanelsRedrawWhenSettingsChangeExternally() throws {
+        link.features = [.status]
+        let tool = tool()
+        tool.start()
+        _ = tool.islandPage()
+        _ = tool.settingsPage()
+        link.rendered.removeAll()
+
+        // An unchanged tick does not redraw open panels.
+        now += 5
+        tool.refreshMonitorStatus()
+        tool.refreshRole()
+        XCTAssertTrue(link.rendered.isEmpty, "nothing changed on disk")
+
+        // External writer (`--apply`) changes settings on disk while island and settings panels are open.
+        store.config?.targets["lounge"] = SpeakerDevice(id: "d2", type: "SpeakerDevice", name: "Lounge")
+        store.config?.defaultTarget = "lounge"
+        store.config?.effectiveSpeakLocal = true
+        now += 5
+        tool.refreshMonitorStatus()
+        tool.refreshRole()
+
+        XCTAssertEqual(
+            link.rendered.map(\.panel),
+            [HomeSpeakerTool.islandPanel, HomeSpeakerTool.settingsPanel],
+            "open panels must redraw when settings change externally"
+        )
+        XCTAssertTrue(texts(link.rendered[0].tree).contains("Speaking on Lounge + This Mac"))
+        XCTAssertEqual(marks.last?.text, "Broadcasting to Lounge")
+
+        // Subsequent tick with no further external change does not redraw again.
+        link.rendered.removeAll()
+        now += 5
+        tool.refreshMonitorStatus()
+        tool.refreshRole()
+        XCTAssertTrue(link.rendered.isEmpty, "drawn once per external change")
+    }
+
     func testNoStatusForAnAppWithoutTheFeature() throws {
         link.features = []
         let tool = tool()
@@ -873,6 +911,122 @@ final class ExtensionCommandLineTests: XCTestCase {
         XCTAssertEqual(lone, CLIOutput(stdout: ["signed out of Google (Home and Chat)"]))
         XCTAssertTrue(RevokeRecorder.revoked(alone.refreshToken),
                       "the stand-in never saw a revoke, so the check above proves nothing")
+    }
+
+    func testTheCommandLineApplySwitchToUsesARealSwitchSeamAndOpensTheAppWhenNotRunning() throws {
+        let root = try scratchDir()
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        let extData = root.appendingPathComponent("ToolData/dev.vitruvian.homespeaker", isDirectory: true)
+        let extTool = root.appendingPathComponent("Tools/dev.vitruvian.homespeaker", isDirectory: true)
+        let home = root.appendingPathComponent("home", isDirectory: true)
+        let geminiDir = home.appendingPathComponent(".gemini", isDirectory: true)
+        let appSupportDir = home.appendingPathComponent("Library/Application Support/HomeSpeaker", isDirectory: true)
+        for dir in [extData, extTool, geminiDir, appSupportDir] {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
+        let extProg = extTool.appendingPathComponent("bin/tool")
+        let appProg = root.appendingPathComponent("HomeSpeaker.app/Contents/MacOS/HomeSpeaker")
+        let profile = HomeSpeakerProfile.extension(
+            dataFolder: extData,
+            toolFolder: extTool,
+            messagePrefix: testPrefix()
+        )
+        let appProfile = HomeSpeakerProfile(
+            door: .app,
+            settingsURL: geminiDir.appendingPathComponent("speaker_broadcast.json"),
+            historyURL: appSupportDir.appendingPathComponent("speaker_history.json"),
+            secretsURL: geminiDir.appendingPathComponent("speaker_secrets.json"),
+            messagePrefix: testPrefix(),
+            liveLockURL: nil,
+            toolFolder: nil
+        )
+        try SpeakerConfigFile(url: profile.settingsURL).modify { $0 = SpeakerConfig(enabled: true) }
+        try SpeakerConfigFile(url: appProfile.settingsURL).modify { $0 = SpeakerConfig(enabled: true) }
+        // Seed a Claude Code hook pointing at the extension so switching to the app re-points it.
+        let extIntegration = AgentIntegration(home: home, executablePath: extProg.path, bootout: { _ in })
+        try extIntegration.installHook(for: .claudeCode)
+
+        let door = DoorFile(url: geminiDir.appendingPathComponent(DoorFile.fileName))
+        try door.update {
+            $0.chosen = .extension
+            $0.chosenAt = Date(timeIntervalSince1970: 1_700_000_000)
+            $0.chosenBy = "HomeSpeaker extension 0.1.0"
+            $0.installedExtension = DoorRecord.ExtensionEntry(
+                program: extProg.path,
+                dataFolder: extData.path,
+                version: "0.1.0",
+                door: DoorRecord.ExtensionEntry.runsAlone
+            )
+        }
+
+        final class SpyOtherApp: OtherAppControlling, @unchecked Sendable {
+            var isRunning = false
+            var version: String? = "1.19.1"
+            var openedCount = 0
+            var loginItemEnabledCount = 0
+            var quitCount = 0
+
+            func quit(timeout: Double) async -> Bool {
+                quitCount += 1
+                return true
+            }
+            func turnOffLoginItem() async -> Result<Void, OtherAppProblem> { .success(()) }
+            func turnOnLoginItem() async -> Result<Void, OtherAppProblem> {
+                loginItemEnabledCount += 1
+                return .success(())
+            }
+            func open() async -> Bool {
+                openedCount += 1
+                return true
+            }
+            func moveToTrash() throws -> URL { URL(fileURLWithPath: "/tmp") }
+        }
+        let spyOther = SpyOtherApp()
+        let check = DoorCheck(file: door, appInstalled: { true }, fileExists: { _ in true })
+        let parts = ExtensionSide.commandLineParts(
+            check: check,
+            appSecretsURL: appProfile.secretsURL,
+            appSettingsURL: appProfile.settingsURL,
+            appProfile: appProfile,
+            program: extProg,
+            appProgram: { appProg },
+            other: spyOther,
+            home: home,
+            launchctlBootout: { _ in }
+        )
+        let liveSeam = try XCTUnwrap(parts.stateSeam?(profile))
+        let switchSeam = try XCTUnwrap(
+            liveSeam.doorSwitchSeam(),
+            "ExtensionSide.commandLineParts must inject a real DoorSwitchSeam"
+        )
+        XCTAssertTrue(switchSeam is ExtensionSide.CommandLineSwitchSeam)
+        XCTAssertFalse(String(describing: type(of: switchSeam)).contains("Recording"))
+
+        let testSeam = HomeSpeakerStateContract.Seam(
+            program: .extension,
+            homeSpeakerVersion: { "1.19.1" },
+            configFile: SpeakerConfigFile(url: profile.settingsURL),
+            secrets: SecretStore(fileURL: profile.secretsURL),
+            history: BroadcastHistory(fileURL: profile.historyURL),
+            monitorStatusFile: ChatMonitorStatusFile(url: profile.monitorStatusURL),
+            doorFile: door,
+            otherInstalled: { _ in true },
+            appRunning: { spyOther.isRunning },
+            extensionRunning: { _ in true },
+            agentHome: home,
+            hookExecutablePath: extProg.path,
+            doorSwitchSeam: liveSeam.doorSwitchSeam
+        )
+        let out = HomeSpeakerCommandLine.apply(
+            #"{"contract_version":1,"operations":[{"op":"switchTo","side":"app"}]}"#,
+            seam: testSeam
+        )
+        XCTAssertEqual(out.exitCode, 0, "stderr/stdout: \(out.stdout)")
+        XCTAssertEqual(door.read()?.chosen, .app)
+        XCTAssertEqual(spyOther.openedCount, 1, "choosing the app when not running must open it")
+        XCTAssertEqual(spyOther.loginItemEnabledCount, 1, "choosing the app when not running must turn its login item on")
+        let appIntegration = AgentIntegration(home: home, executablePath: appProg.path, bootout: { _ in })
+        XCTAssertEqual(appIntegration.status(of: .claudeCode).hook, .installed)
     }
 }
 

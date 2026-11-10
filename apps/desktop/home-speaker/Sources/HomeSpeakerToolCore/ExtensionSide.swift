@@ -149,8 +149,11 @@ public enum ExtensionSide {
     /// settings manager and the listeners hold `monitor` weakly: keep it.
     /// Keep the tokens to stop listening.
     @MainActor
-    public static func watch(engine: HomeSpeakerEngine, monitor: GatedMonitor) -> [NSObjectProtocol] {
+    public static func watch(
+        engine: HomeSpeakerEngine, monitor: GatedMonitor, onFolderChange: (() -> Void)? = nil
+    ) -> [NSObjectProtocol] {
         engine.config.chatMonitor = monitor
+        engine.config.onFolderChange = onFolderChange
         engine.config.startWatchingConfigFile()
         return engine.listenForNotices(monitor: monitor) + [
             ChatMonitorControlNotice.listen(
@@ -188,6 +191,12 @@ public enum ExtensionSide {
     public static func commandLineParts(
         check: DoorCheck, appSecretsURL: URL, appSettingsURL: URL? = nil,
         appProfile: HomeSpeakerProfile? = nil,
+        program: URL = ExtensionLocation.ownProgram(),
+        appProgram: @escaping @Sendable () -> URL? = { nil },
+        other: (any OtherAppControlling)? = nil,
+        home: URL = FileManager.default.homeDirectoryForCurrentUser,
+        now: @escaping @Sendable () -> Date = { Date() },
+        launchctlBootout: @escaping @Sendable (String) -> Void = { _ in },
         makeInUseEngine: @escaping @MainActor @Sendable (HomeSpeakerProfile) -> HomeSpeakerEngine = {
             HomeSpeakerEngine(profile: $0)
         },
@@ -196,6 +205,16 @@ public enum ExtensionSide {
         }
     ) -> HomeSpeakerCommandLine.Parts {
         let settingsURL = appSettingsURL ?? appProfile?.settingsURL
+        let resolvedAppProfile = appProfile ?? HomeSpeakerProfile(
+            door: .app,
+            settingsURL: settingsURL ?? HomeSpeakerProfile.app(home: home).settingsURL,
+            historyURL: HomeSpeakerProfile.app(home: home).historyURL,
+            secretsURL: appSecretsURL,
+            messagePrefix: HomeSpeakerProfile.appMessagePrefix,
+            liveLockURL: nil,
+            toolFolder: nil
+        )
+        let resolvedOther: any OtherAppControlling = other ?? SystemOtherApp.onThisMac(locate: appProgram)
         return .extension(
             standsAside: { check.standsAside(me: .extension) },
             otherSecrets: appSecrets(check: check, appSecretsURL: appSecretsURL),
@@ -208,7 +227,172 @@ public enum ExtensionSide {
             inUseEngine: {
                 guard let appProfile, check.standsAside(me: .extension) else { return nil }
                 return makeInUseEngine(appProfile)
+            },
+            stateSeam: { profile in
+                .live(
+                    for: profile,
+                    doorFile: check.file,
+                    otherInstalled: { _ in check.appInstalled() },
+                    doorSwitchSeam: {
+                        CommandLineSwitchSeam(
+                            check: check,
+                            extensionProfile: profile,
+                            appProfile: resolvedAppProfile,
+                            program: program,
+                            appProgram: appProgram,
+                            other: resolvedOther,
+                            home: home,
+                            now: now,
+                            launchctlBootout: launchctlBootout
+                        )
+                    }
+                )
             })
+    }
+
+    /// Real `DoorSwitchSeam` for `--apply` on the extension's command line,
+    /// built from the same pieces as `HomeSpeakerTool`'s `ExtensionSwitchSeam`
+    /// (`DoorCheck`, profiles, programs, `SystemOtherApp`, `DoorCopy.copy`,
+    /// `CredentialsChangedNotice`, and `SettingsActions.repointStaleHooks`).
+    ///
+    /// A headless CLI run cannot present step-3 offers: choosing `.extension`
+    /// writes the choice and re-points hooks (a running 1.19+ app goes quiet
+    /// by itself when it reads the choice); choosing `.app` writes the choice,
+    /// re-points hooks, and opens the app and turns its login item on when it
+    /// is not running.
+    public struct CommandLineSwitchSeam: SettingsActions.DoorSwitchSeam, Sendable {
+        public let check: DoorCheck
+        public let extensionProfile: HomeSpeakerProfile
+        public let appProfile: HomeSpeakerProfile
+        public let program: URL
+        public let appProgram: @Sendable () -> URL?
+        public let other: any OtherAppControlling
+        public let home: URL
+        public let nowClosure: @Sendable () -> Date
+        public let launchctlBootout: @Sendable (String) -> Void
+        public let copyClosure: @Sendable (HomeSpeakerProfile, HomeSpeakerProfile) throws -> CopyReport
+        public let credentialsChangedIn: @Sendable (HomeSpeakerProfile) -> Void
+
+        public init(
+            check: DoorCheck,
+            extensionProfile: HomeSpeakerProfile,
+            appProfile: HomeSpeakerProfile,
+            program: URL,
+            appProgram: @escaping @Sendable () -> URL?,
+            other: any OtherAppControlling,
+            home: URL,
+            now: @escaping @Sendable () -> Date = { Date() },
+            launchctlBootout: @escaping @Sendable (String) -> Void = { _ in },
+            copy: @escaping @Sendable (HomeSpeakerProfile, HomeSpeakerProfile) throws -> CopyReport = {
+                try DoorCopy.copy(from: $0, to: $1)
+            },
+            credentialsChangedIn: @escaping @Sendable (HomeSpeakerProfile) -> Void = {
+                CredentialsChangedNotice.post(name: CredentialsChangedNotice.notificationName(for: $0))
+            }
+        ) {
+            self.check = check
+            self.extensionProfile = extensionProfile
+            self.appProfile = appProfile
+            self.program = program
+            self.appProgram = appProgram
+            self.other = other
+            self.home = home
+            self.nowClosure = now
+            self.launchctlBootout = launchctlBootout
+            self.copyClosure = copy
+            self.credentialsChangedIn = credentialsChangedIn
+        }
+
+        public var me: HomeSpeakerProfile.Door { .extension }
+        public var chosenBy: String { "HomeSpeaker extension \(ToolVersion.current)" }
+
+        public func now() -> Date { nowClosure() }
+
+        public func inTrash() -> Bool {
+            OtherDoorPresence.isInTrash(program.path)
+        }
+
+        public func readDoor() -> DoorRecord? {
+            check.file.read()
+        }
+
+        public func otherInstalled(record: DoorRecord?) -> Bool {
+            check.appInstalled()
+        }
+
+        public func profile(for side: HomeSpeakerProfile.Door, record: DoorRecord?) -> HomeSpeakerProfile? {
+            side == .extension ? extensionProfile : appProfile
+        }
+
+        public func program(for side: HomeSpeakerProfile.Door, record: DoorRecord?) -> String? {
+            switch side {
+            case .extension:
+                return program.path
+            case .app:
+                guard let found = appProgram(), !OtherDoorPresence.isInTrash(found.path) else { return nil }
+                return found.path
+            }
+        }
+
+        public func copy(from source: HomeSpeakerProfile, to destination: HomeSpeakerProfile) throws -> CopyReport {
+            try copyClosure(source, destination)
+        }
+
+        public func credentialsChanged(in destination: HomeSpeakerProfile) {
+            credentialsChangedIn(destination)
+        }
+
+        public func writeChoice(_ side: HomeSpeakerProfile.Door, at date: Date, chosenBy: String) throws {
+            try check.file.update {
+                $0.chosen = side
+                $0.chosenAt = date
+                $0.chosenBy = chosenBy
+            }
+        }
+
+        public func repointHooks(to side: HomeSpeakerProfile.Door, program: String) -> [String] {
+            SettingsActions.repointStaleHooks(home: home, to: program, bootout: launchctlBootout)
+        }
+
+        public func refreshRole() {}
+
+        public func quitOther() -> Bool { true }
+
+        public func isOtherRunning() -> Bool {
+            other.isRunning
+        }
+
+        public func openOtherAndEnableLoginItem() -> [String] {
+            final class Box: @unchecked Sendable {
+                var opened = false
+                var loginItem: Result<Void, OtherAppProblem> = .success(())
+            }
+            let box = Box()
+            let other = self.other
+            let sem = DispatchSemaphore(value: 0)
+            Task.detached {
+                box.opened = await other.open()
+                box.loginItem = await other.turnOnLoginItem()
+                sem.signal()
+            }
+            sem.wait()
+            var lines: [String] = []
+            if !box.opened {
+                lines.append(Pages.DoorWords.couldNotOpen)
+            }
+            switch box.loginItem {
+            case .success:
+                lines.append(Pages.DoorWords.loginItemOn)
+            case .failure(let problem):
+                lines.append(problem.sentence)
+            }
+            return lines
+        }
+
+        public func turnOffLoginItem() throws {}
+        public func moveToTrash() throws {}
+        public func quitSelf() {}
+        public func openVitruvian() -> Bool { false }
     }
 
     /// Runs `work` on the main actor, later: how the kit's thread reaches

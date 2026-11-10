@@ -110,6 +110,9 @@ public enum AppStartup {
     public static func commandLineParts(
         check: DoorCheck = DoorCheck(appInstalled: { false }),
         bundlePath: @escaping @Sendable () -> String = { Bundle.main.bundlePath },
+        appProgram: @escaping @Sendable () -> String = { AgentIntegration.runningExecutable() },
+        home: URL = FileManager.default.homeDirectoryForCurrentUser,
+        now: @escaping @Sendable () -> Date = { Date() },
         makeInUseEngine: @escaping @MainActor @Sendable (HomeSpeakerProfile) -> HomeSpeakerEngine = {
             HomeSpeakerEngine(profile: $0)
         },
@@ -126,7 +129,140 @@ public enum AppStartup {
             inUseEngine: {
                 guard let profile = inUseProfile(check: check, bundlePath: bundlePath()) else { return nil }
                 return makeInUseEngine(profile)
+            },
+            stateSeam: { profile in
+                .live(
+                    for: profile,
+                    doorFile: check.file,
+                    otherInstalled: { record in
+                        OtherDoorPresence.extensionInstalled(record: record, fileExists: check.fileExists)
+                    },
+                    doorSwitchSeam: {
+                        CommandLineSwitchSeam(
+                            check: check,
+                            appProfile: profile,
+                            bundlePath: bundlePath,
+                            appProgram: appProgram,
+                            home: home,
+                            now: now
+                        )
+                    }
+                )
             })
+    }
+
+    /// Real `DoorSwitchSeam` for `--apply` on the standalone app's command
+    /// line, built from the same pieces as `AppSwitch.SeamAdapter` (`DoorCheck`,
+    /// profiles, programs, `DoorCopy.copy`, `CredentialsChangedNotice`, and
+    /// `SettingsActions.repointStaleHooks`).
+    ///
+    /// A headless CLI run cannot present interactive step-3 offers: choosing
+    /// `.extension` writes the choice to `speaker_door.json` and re-points
+    /// hooks (a running 1.19+ app goes quiet by itself when it reads the
+    /// choice).
+    public struct CommandLineSwitchSeam: SettingsActions.DoorSwitchSeam, Sendable {
+        public let check: DoorCheck
+        public let appProfile: HomeSpeakerProfile
+        public let bundlePath: @Sendable () -> String
+        public let appProgram: @Sendable () -> String
+        public let home: URL
+        public let nowClosure: @Sendable () -> Date
+        public let copyClosure: @Sendable (HomeSpeakerProfile, HomeSpeakerProfile) throws -> CopyReport
+        public let credentialsChangedIn: @Sendable (HomeSpeakerProfile) -> Void
+
+        public init(
+            check: DoorCheck,
+            appProfile: HomeSpeakerProfile,
+            bundlePath: @escaping @Sendable () -> String = { Bundle.main.bundlePath },
+            appProgram: @escaping @Sendable () -> String = { AgentIntegration.runningExecutable() },
+            home: URL = FileManager.default.homeDirectoryForCurrentUser,
+            now: @escaping @Sendable () -> Date = { Date() },
+            copy: @escaping @Sendable (HomeSpeakerProfile, HomeSpeakerProfile) throws -> CopyReport = {
+                try DoorCopy.copy(from: $0, to: $1)
+            },
+            credentialsChangedIn: @escaping @Sendable (HomeSpeakerProfile) -> Void = {
+                CredentialsChangedNotice.post(name: CredentialsChangedNotice.notificationName(for: $0))
+            }
+        ) {
+            self.check = check
+            self.appProfile = appProfile
+            self.bundlePath = bundlePath
+            self.appProgram = appProgram
+            self.home = home
+            self.nowClosure = now
+            self.copyClosure = copy
+            self.credentialsChangedIn = credentialsChangedIn
+        }
+
+        public var me: HomeSpeakerProfile.Door { .app }
+        public var chosenBy: String { "HomeSpeaker app \(HomeSpeakerVersion.current)" }
+
+        public func now() -> Date { nowClosure() }
+
+        public func inTrash() -> Bool {
+            OtherDoorPresence.isInTrash(bundlePath() + "/")
+        }
+
+        public func readDoor() -> DoorRecord? {
+            check.file.read()
+        }
+
+        public func otherInstalled(record: DoorRecord?) -> Bool {
+            OtherDoorPresence.extensionInstalled(record: record, fileExists: check.fileExists)
+        }
+
+        public func profile(for side: HomeSpeakerProfile.Door, record: DoorRecord?) -> HomeSpeakerProfile? {
+            side == .app ? appProfile : AppStartup.extensionProfile(record: record)
+        }
+
+        public func program(for side: HomeSpeakerProfile.Door, record: DoorRecord?) -> String? {
+            switch side {
+            case .app:
+                let path = appProgram()
+                return path.isEmpty ? nil : path
+            case .extension:
+                guard OtherDoorPresence.extensionInstalled(record: record, fileExists: check.fileExists) else {
+                    return nil
+                }
+                return record?.installedExtension?.program
+            }
+        }
+
+        public func copy(from source: HomeSpeakerProfile, to destination: HomeSpeakerProfile) throws -> CopyReport {
+            try copyClosure(source, destination)
+        }
+
+        public func credentialsChanged(in destination: HomeSpeakerProfile) {
+            credentialsChangedIn(destination)
+        }
+
+        public func writeChoice(_ side: HomeSpeakerProfile.Door, at date: Date, chosenBy: String) throws {
+            try check.file.update {
+                $0.chosen = side
+                $0.chosenAt = date
+                $0.chosenBy = chosenBy
+            }
+        }
+
+        public func repointHooks(to side: HomeSpeakerProfile.Door, program: String) -> [String] {
+            SettingsActions.repointStaleHooks(home: home, to: program)
+        }
+
+        public func refreshRole() {}
+
+        public func quitOther() -> Bool { true }
+
+        public func isOtherRunning() -> Bool { true }
+
+        public func openOtherAndEnableLoginItem() -> [String] { [] }
+
+        public func turnOffLoginItem() throws {}
+
+        public func moveToTrash() throws {}
+
+        public func quitSelf() {}
+
+        public func openVitruvian() -> Bool { false }
     }
 
     /// The extension's profile while it is the HomeSpeaker in use (chosen

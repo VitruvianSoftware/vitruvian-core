@@ -161,6 +161,39 @@ public struct SpeakerConfigFile: Sendable {
         return try writeUnlocked(next)
     }
 
+    /// Runs `update` under `lockURL` against the current `SpeakerConfig` (or
+    /// defaults if missing). Writes the updated config back when `writeConfig`
+    /// is true; if `update` throws, nothing is written.
+    public func modifyTransaction<T>(
+        _ update: (_ config: inout SpeakerConfig, _ writeConfig: inout Bool) throws -> T
+    ) throws -> T {
+        if fileSystem is LocalConfigFileSystem {
+            return try FileLock.withExclusiveLock(at: lockURL) {
+                try modifyTransactionUnlocked(update)
+            }
+        } else {
+            return try modifyTransactionUnlocked(update)
+        }
+    }
+
+    private func modifyTransactionUnlocked<T>(
+        _ update: (_ config: inout SpeakerConfig, _ writeConfig: inout Bool) throws -> T
+    ) throws -> T {
+        let current: SpeakerConfig
+        switch read() {
+        case .loaded(let cfg): current = cfg
+        case .missing: current = SpeakerConfig()
+        case .unreadable(let err): throw err
+        }
+        var next = current
+        var writeConfig = true
+        let result = try update(&next, &writeConfig)
+        if writeConfig {
+            _ = try writeUnlocked(next)
+        }
+        return result
+    }
+
     /// `config` as JSON, laid over `existing`: pretty, keys sorted, as the
     /// app has always written it.
     public static func encode(_ config: SpeakerConfig, preserving existing: [String: Any]) throws -> Data {
@@ -172,18 +205,35 @@ public struct SpeakerConfigFile: Sendable {
     static let configKeys = Set(SpeakerConfig.CodingKeys.allCases.map(\.rawValue))
     static let chatMonitorKeys = Set(ChatMonitorConfig.CodingKeys.allCases.map(\.rawValue))
     static let deviceKeys = Set(SpeakerDevice.CodingKeys.allCases.map(\.rawValue))
+    static let customVoiceKeys = Set(CustomVoice.CodingKeys.allCases.map(\.rawValue))
 
     /// What is not ours in `old`, plus all of `new`. A key of ours that
     /// `new` leaves out (an optional set to nil) is removed: this app's view
     /// of its own keys wins, as it did when the whole file was rewritten.
     static func merge(_ new: [String: Any], over old: [String: Any]) -> [String: Any] {
         var out = layer(new, over: old, ours: configKeys)
-        if let newMonitor = new["chat_monitor"] as? [String: Any], let oldMonitor = old["chat_monitor"] as? [String: Any] {
-            out["chat_monitor"] = layer(newMonitor, over: oldMonitor, ours: chatMonitorKeys)
+        if let oldMonitor = old["chat_monitor"] as? [String: Any] {
+            if let newMonitor = new["chat_monitor"] as? [String: Any] {
+                out["chat_monitor"] = layer(newMonitor, over: oldMonitor, ours: chatMonitorKeys)
+            } else {
+                let foreign = layer([:], over: oldMonitor, ours: chatMonitorKeys)
+                if !foreign.isEmpty { out["chat_monitor"] = foreign }
+            }
         }
         // Cloned custom voices configured from the Android app or remote agent are
-        // preserved if this instance of the config did not specify any custom_voices.
-        if new["custom_voices"] == nil, let oldVoices = old["custom_voices"] {
+        // preserved if this instance of the config did not specify any custom_voices,
+        // and any foreign fields on individual custom_voices entries survive.
+        if let newVoices = new["custom_voices"] as? [[String: Any]],
+           let oldVoices = old["custom_voices"] as? [[String: Any]] {
+            var oldById: [String: [String: Any]] = [:]
+            for voice in oldVoices {
+                if let id = voice["id"] as? String { oldById[id] = voice }
+            }
+            out["custom_voices"] = newVoices.map { voice -> [String: Any] in
+                guard let id = voice["id"] as? String, let before = oldById[id] else { return voice }
+                return layer(voice, over: before, ours: customVoiceKeys)
+            }
+        } else if new["custom_voices"] == nil, let oldVoices = old["custom_voices"] {
             out["custom_voices"] = oldVoices
         }
         // `targets` is a map, not a record: an alias this app dropped stays

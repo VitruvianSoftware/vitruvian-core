@@ -1,0 +1,1106 @@
+{
+  "active_door": "app",
+  "app_installed": true,
+  "app_running": true,
+  "available_voices": [
+    {
+      "id": "com.apple.voice.premium.en-US.Ava",
+      "label": "Ava (en-US) · Premium",
+      "language": "en-US",
+      "name": "Ava",
+      "quality": "premium"
+    },
+    {
+      "id": "com.apple.voice.enhanced.en-GB.Daniel",
+      "label": "Daniel (en-GB) · Enhanced",
+      "language": "en-GB",
+      "name": "Daniel",
+      "quality": "enhanced"
+    }
+  ],
+  "chat": {
+    "beeper_networks": [
+      {
+        "key": "signal",
+        "name": "Signal",
+        "state": "muted"
+      },
+      {
+        "key": "whatsapp",
+        "name": "WhatsApp",
+        "state": "reading"
+      }
+    ],
+    "beeper_networks_listed": true,
+    "courier_networks": [
+      {
+        "key": "imessage",
+        "name": "iMessage",
+        "state": "reading"
+      },
+      {
+        "key": "slack",
+        "name": "Slack (Vitruvian)",
+        "read_anyway": true,
+        "state": "reading"
+      }
+    ],
+    "courier_networks_listed": true,
+    "gws_installed": true,
+    "has_beeper_token": true,
+    "has_chat_access": true,
+    "has_courier_token": true,
+    "has_google_chat_token": true,
+    "has_slack_token": true,
+    "monitor": {
+      "active_google_chat_backend": "gws (ops@example.com)",
+      "is_running": true,
+      "last_error": null,
+      "last_poll_at": "2026-11-10T23:14:50Z",
+      "pid": 4242,
+      "slack_identity": "owner (Vitruvian)"
+    },
+    "sources": {
+      "beeper": {
+        "address": "http://127.0.0.1:23373",
+        "announce": "direct_and_mentions",
+        "enabled": true,
+        "token_present": true
+      },
+      "courier": {
+        "address": "http://127.0.0.1:23390",
+        "announce": "all",
+        "enabled": true,
+        "token_present": true
+      },
+      "google_chat": {
+        "enabled": true,
+        "gws_account": "ops@example.com",
+        "gws_installed": true,
+        "has_chat_access": true,
+        "source": "gws",
+        "token_present": true
+      },
+      "slack": {
+        "enabled": true,
+        "token_present": true
+      }
+    }
+  },
+  "chosen": "app",
+  "chosen_running": true,
+  "config_initialized": true,
+  "config_problem": null,
+  "contract_version": 1,
+  "custom_voices": [
+    {
+      "id": "cloned-1",
+      "name": "Studio Narrator"
+    }
+  ],
+  "extension_installed": true,
+  "extension_running": false,
+  "home_speaker_version": "1.19.1",
+  "homes": [
+    {
+      "id": "home-structure-1",
+      "name": "Home"
+    }
+  ],
+  "hooks": {
+    "antigravity": {
+      "agent": "antigravity",
+      "configured_by_instruction": false,
+      "display_name": "Antigravity",
+      "hook_program": null,
+      "hook_state": "not_installed",
+      "is_installed": false,
+      "speaks_twice": false,
+      "speaks_twice_warning": null,
+      "stale_command": null
+    },
+    "claude_code": {
+      "agent": "claude-code",
+      "configured_by_instruction": false,
+      "display_name": "Claude Code",
+      "hook_program": "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker",
+      "hook_state": "installed",
+      "is_installed": true,
+      "speaks_twice": false,
+      "speaks_twice_warning": null,
+      "stale_command": null
+    },
+    "opencode": {
+      "agent": "opencode",
+      "configured_by_instruction": false,
+      "display_name": "OpenCode",
+      "hook_program": null,
+      "hook_state": "not_installed",
+      "is_installed": false,
+      "speaks_twice": false,
+      "speaks_twice_warning": null,
+      "stale_command": null
+    }
+  },
+  "last": {
+    "at": "2026-11-10T23:14:00Z",
+    "id": "00000000-0000-0000-0000-000000000001",
+    "source": "Claude Code",
+    "target": "Office Mini + this Mac",
+    "text": "All tests passed on main."
+  },
+  "legacy_launch_agent": false,
+  "local_voice_name": "Ava",
+  "other_installed": true,
+  "outputs_footer": "Gemini TTS sends what this Mac says to Google to be spoken; with no key, or when Gemini fails, the Mac voice speaks instead. The Home speakers play the Gemini voice over this Wi-Fi network, falling back to Google Assistant Broadcast when they can't. This Mac speaks at its own volume. More voices: System Settings › Accessibility › Read & Speak › System voice › ⓘ › Voice, then download an \"(Enhanced)\" voice. Your phone plays the Gemini voice (or Android's on-device voice when Gemini is unavailable) via Vitruvian Remote. Both speak at the same time. Quiet hours and pausing media cover both.",
+  "outputs_label": "Office Mini + This Mac + Your phone",
+  "owner_running": true,
+  "program": "app",
+  "quiet_hours": {
+    "active": true,
+    "enabled": true,
+    "end": "07:00",
+    "start": "22:30"
+  },
+  "recent": [
+    {
+      "at": "2026-11-10T23:14:00Z",
+      "id": "00000000-0000-0000-0000-000000000001",
+      "source": "Claude Code",
+      "target": "Office Mini + this Mac",
+      "text": "All tests passed on main."
+    }
+  ],
+  "settings": [
+    {
+      "key": "enabled",
+      "kind": "toggle",
+      "label": "Enable Voice Broadcasting",
+      "shown": true,
+      "value": true
+    },
+    {
+      "choices": [
+        {
+          "label": "Headline (1-2 sentences)",
+          "value": "headline"
+        },
+        {
+          "label": "Summary (about 4 lines)",
+          "value": "summary"
+        },
+        {
+          "label": "Full reply",
+          "value": "full"
+        }
+      ],
+      "key": "speech_length",
+      "kind": "choice",
+      "label": "Speak",
+      "shown": true,
+      "value": "summary"
+    },
+    {
+      "choices": [
+        {
+          "label": "As written",
+          "value": "verbatim"
+        },
+        {
+          "label": "Plain summary",
+          "value": "plain"
+        },
+        {
+          "label": "Status update",
+          "value": "briefing"
+        },
+        {
+          "label": "Conversational",
+          "value": "casual"
+        },
+        {
+          "label": "Custom…",
+          "value": "custom"
+        }
+      ],
+      "key": "announcement_style",
+      "kind": "choice",
+      "label": "Style",
+      "shown": true,
+      "value": "briefing"
+    },
+    {
+      "key": "custom_style_prompt",
+      "kind": "text",
+      "label": "Custom style",
+      "shown": false,
+      "value": ""
+    },
+    {
+      "choices": [
+        {
+          "label": "Apple (on this Mac)",
+          "value": "apple"
+        },
+        {
+          "label": "Gemini",
+          "value": "gemini"
+        }
+      ],
+      "key": "style_model",
+      "kind": "choice",
+      "label": "Style with",
+      "shown": true,
+      "value": "gemini"
+    },
+    {
+      "choices": [
+        {
+          "label": "0%",
+          "value": "0"
+        },
+        {
+          "label": "10%",
+          "value": "10"
+        },
+        {
+          "label": "20%",
+          "value": "20"
+        },
+        {
+          "label": "30%",
+          "value": "30"
+        },
+        {
+          "label": "40%",
+          "value": "40"
+        },
+        {
+          "label": "50%",
+          "value": "50"
+        },
+        {
+          "label": "60%",
+          "value": "60"
+        },
+        {
+          "label": "70%",
+          "value": "70"
+        },
+        {
+          "label": "80%",
+          "value": "80"
+        },
+        {
+          "label": "90%",
+          "value": "90"
+        },
+        {
+          "label": "100%",
+          "value": "100"
+        }
+      ],
+      "key": "speaker_volume",
+      "kind": "number",
+      "label": "Volume",
+      "limits": {
+        "default_value": 60,
+        "max": 100,
+        "min": 0,
+        "step": 10
+      },
+      "shown": true,
+      "value": 45
+    },
+    {
+      "key": "announce_volume_enabled",
+      "kind": "toggle",
+      "label": "Announce at a set volume",
+      "shown": true,
+      "value": true
+    },
+    {
+      "key": "announce_volume",
+      "kind": "number",
+      "label": "Announcement volume",
+      "limits": {
+        "default_value": 60,
+        "max": 100,
+        "min": 0,
+        "step": 5
+      },
+      "shown": true,
+      "value": 65
+    },
+    {
+      "key": "pause_media",
+      "kind": "toggle",
+      "label": "Pause media while announcing",
+      "shown": true,
+      "value": true
+    },
+    {
+      "key": "pause_media_extra_seconds",
+      "kind": "number",
+      "label": "Resume after",
+      "limits": {
+        "default_value": 1,
+        "max": 10,
+        "min": 0,
+        "step": 1
+      },
+      "shown": true,
+      "value": 3
+    },
+    {
+      "key": "quiet_hours_enabled",
+      "kind": "toggle",
+      "label": "Enable Quiet Hours",
+      "shown": true,
+      "value": true
+    },
+    {
+      "choices": [
+        {
+          "label": "00:00",
+          "value": "00:00"
+        },
+        {
+          "label": "00:30",
+          "value": "00:30"
+        },
+        {
+          "label": "01:00",
+          "value": "01:00"
+        },
+        {
+          "label": "01:30",
+          "value": "01:30"
+        },
+        {
+          "label": "02:00",
+          "value": "02:00"
+        },
+        {
+          "label": "02:30",
+          "value": "02:30"
+        },
+        {
+          "label": "03:00",
+          "value": "03:00"
+        },
+        {
+          "label": "03:30",
+          "value": "03:30"
+        },
+        {
+          "label": "04:00",
+          "value": "04:00"
+        },
+        {
+          "label": "04:30",
+          "value": "04:30"
+        },
+        {
+          "label": "05:00",
+          "value": "05:00"
+        },
+        {
+          "label": "05:30",
+          "value": "05:30"
+        },
+        {
+          "label": "06:00",
+          "value": "06:00"
+        },
+        {
+          "label": "06:30",
+          "value": "06:30"
+        },
+        {
+          "label": "07:00",
+          "value": "07:00"
+        },
+        {
+          "label": "07:30",
+          "value": "07:30"
+        },
+        {
+          "label": "08:00",
+          "value": "08:00"
+        },
+        {
+          "label": "08:30",
+          "value": "08:30"
+        },
+        {
+          "label": "09:00",
+          "value": "09:00"
+        },
+        {
+          "label": "09:30",
+          "value": "09:30"
+        },
+        {
+          "label": "10:00",
+          "value": "10:00"
+        },
+        {
+          "label": "10:30",
+          "value": "10:30"
+        },
+        {
+          "label": "11:00",
+          "value": "11:00"
+        },
+        {
+          "label": "11:30",
+          "value": "11:30"
+        },
+        {
+          "label": "12:00",
+          "value": "12:00"
+        },
+        {
+          "label": "12:30",
+          "value": "12:30"
+        },
+        {
+          "label": "13:00",
+          "value": "13:00"
+        },
+        {
+          "label": "13:30",
+          "value": "13:30"
+        },
+        {
+          "label": "14:00",
+          "value": "14:00"
+        },
+        {
+          "label": "14:30",
+          "value": "14:30"
+        },
+        {
+          "label": "15:00",
+          "value": "15:00"
+        },
+        {
+          "label": "15:30",
+          "value": "15:30"
+        },
+        {
+          "label": "16:00",
+          "value": "16:00"
+        },
+        {
+          "label": "16:30",
+          "value": "16:30"
+        },
+        {
+          "label": "17:00",
+          "value": "17:00"
+        },
+        {
+          "label": "17:30",
+          "value": "17:30"
+        },
+        {
+          "label": "18:00",
+          "value": "18:00"
+        },
+        {
+          "label": "18:30",
+          "value": "18:30"
+        },
+        {
+          "label": "19:00",
+          "value": "19:00"
+        },
+        {
+          "label": "19:30",
+          "value": "19:30"
+        },
+        {
+          "label": "20:00",
+          "value": "20:00"
+        },
+        {
+          "label": "20:30",
+          "value": "20:30"
+        },
+        {
+          "label": "21:00",
+          "value": "21:00"
+        },
+        {
+          "label": "21:30",
+          "value": "21:30"
+        },
+        {
+          "label": "22:00",
+          "value": "22:00"
+        },
+        {
+          "label": "22:30",
+          "value": "22:30"
+        },
+        {
+          "label": "23:00",
+          "value": "23:00"
+        },
+        {
+          "label": "23:30",
+          "value": "23:30"
+        }
+      ],
+      "key": "quiet_hours_start",
+      "kind": "time",
+      "label": "Start",
+      "shown": true,
+      "value": "22:30"
+    },
+    {
+      "choices": [
+        {
+          "label": "00:00",
+          "value": "00:00"
+        },
+        {
+          "label": "00:30",
+          "value": "00:30"
+        },
+        {
+          "label": "01:00",
+          "value": "01:00"
+        },
+        {
+          "label": "01:30",
+          "value": "01:30"
+        },
+        {
+          "label": "02:00",
+          "value": "02:00"
+        },
+        {
+          "label": "02:30",
+          "value": "02:30"
+        },
+        {
+          "label": "03:00",
+          "value": "03:00"
+        },
+        {
+          "label": "03:30",
+          "value": "03:30"
+        },
+        {
+          "label": "04:00",
+          "value": "04:00"
+        },
+        {
+          "label": "04:30",
+          "value": "04:30"
+        },
+        {
+          "label": "05:00",
+          "value": "05:00"
+        },
+        {
+          "label": "05:30",
+          "value": "05:30"
+        },
+        {
+          "label": "06:00",
+          "value": "06:00"
+        },
+        {
+          "label": "06:30",
+          "value": "06:30"
+        },
+        {
+          "label": "07:00",
+          "value": "07:00"
+        },
+        {
+          "label": "07:30",
+          "value": "07:30"
+        },
+        {
+          "label": "08:00",
+          "value": "08:00"
+        },
+        {
+          "label": "08:30",
+          "value": "08:30"
+        },
+        {
+          "label": "09:00",
+          "value": "09:00"
+        },
+        {
+          "label": "09:30",
+          "value": "09:30"
+        },
+        {
+          "label": "10:00",
+          "value": "10:00"
+        },
+        {
+          "label": "10:30",
+          "value": "10:30"
+        },
+        {
+          "label": "11:00",
+          "value": "11:00"
+        },
+        {
+          "label": "11:30",
+          "value": "11:30"
+        },
+        {
+          "label": "12:00",
+          "value": "12:00"
+        },
+        {
+          "label": "12:30",
+          "value": "12:30"
+        },
+        {
+          "label": "13:00",
+          "value": "13:00"
+        },
+        {
+          "label": "13:30",
+          "value": "13:30"
+        },
+        {
+          "label": "14:00",
+          "value": "14:00"
+        },
+        {
+          "label": "14:30",
+          "value": "14:30"
+        },
+        {
+          "label": "15:00",
+          "value": "15:00"
+        },
+        {
+          "label": "15:30",
+          "value": "15:30"
+        },
+        {
+          "label": "16:00",
+          "value": "16:00"
+        },
+        {
+          "label": "16:30",
+          "value": "16:30"
+        },
+        {
+          "label": "17:00",
+          "value": "17:00"
+        },
+        {
+          "label": "17:30",
+          "value": "17:30"
+        },
+        {
+          "label": "18:00",
+          "value": "18:00"
+        },
+        {
+          "label": "18:30",
+          "value": "18:30"
+        },
+        {
+          "label": "19:00",
+          "value": "19:00"
+        },
+        {
+          "label": "19:30",
+          "value": "19:30"
+        },
+        {
+          "label": "20:00",
+          "value": "20:00"
+        },
+        {
+          "label": "20:30",
+          "value": "20:30"
+        },
+        {
+          "label": "21:00",
+          "value": "21:00"
+        },
+        {
+          "label": "21:30",
+          "value": "21:30"
+        },
+        {
+          "label": "22:00",
+          "value": "22:00"
+        },
+        {
+          "label": "22:30",
+          "value": "22:30"
+        },
+        {
+          "label": "23:00",
+          "value": "23:00"
+        },
+        {
+          "label": "23:30",
+          "value": "23:30"
+        }
+      ],
+      "key": "quiet_hours_end",
+      "kind": "time",
+      "label": "End",
+      "shown": true,
+      "value": "07:00"
+    },
+    {
+      "key": "speak_home",
+      "kind": "toggle",
+      "label": "Home speakers",
+      "shown": true,
+      "value": true
+    },
+    {
+      "key": "home_cast_voice",
+      "kind": "toggle",
+      "label": "Use selected voice on Home speakers (Cast)",
+      "shown": true,
+      "value": true
+    },
+    {
+      "choices": [
+        {
+          "label": "Bedroom Hub",
+          "value": "bedroom"
+        },
+        {
+          "label": "Kitchen Speaker",
+          "value": "kitchen"
+        },
+        {
+          "label": "Office Mini",
+          "value": "office"
+        }
+      ],
+      "key": "default_target",
+      "kind": "choice",
+      "label": "Default speaker",
+      "shown": true,
+      "value": "office"
+    },
+    {
+      "key": "speak_local",
+      "kind": "toggle",
+      "label": "This Mac",
+      "shown": true,
+      "value": true
+    },
+    {
+      "key": "speak_phone",
+      "kind": "toggle",
+      "label": "Your phone",
+      "shown": true,
+      "value": true
+    },
+    {
+      "choices": [
+        {
+          "label": "Apple (System)",
+          "value": "apple"
+        },
+        {
+          "label": "Gemini TTS",
+          "value": "gemini"
+        }
+      ],
+      "key": "local_engine",
+      "kind": "choice",
+      "label": "Voice engine",
+      "shown": true,
+      "value": "gemini"
+    },
+    {
+      "choices": [
+        {
+          "label": "Kore · Warm & clear",
+          "value": "Kore"
+        },
+        {
+          "label": "Puck · Upbeat",
+          "value": "Puck"
+        },
+        {
+          "label": "Aoede · Natural",
+          "value": "Aoede"
+        },
+        {
+          "label": "Charon · Calm & steady",
+          "value": "Charon"
+        },
+        {
+          "label": "Zephyr · Bright",
+          "value": "Zephyr"
+        },
+        {
+          "label": "Fenrir · Deep",
+          "value": "Fenrir"
+        },
+        {
+          "label": "Leda · Composed",
+          "value": "Leda"
+        },
+        {
+          "label": "Orus · Crisp",
+          "value": "Orus"
+        },
+        {
+          "label": "Freeman · Custom",
+          "value": "voice_vaoo7ayczx69"
+        },
+        {
+          "label": "James · Custom",
+          "value": "voice_o1be80ujj8bb"
+        },
+        {
+          "label": "Studio Narrator (cloned)",
+          "value": "cloned-1"
+        }
+      ],
+      "key": "gemini_voice",
+      "kind": "choice",
+      "label": "Gemini voice",
+      "shown": true,
+      "value": "Kore"
+    },
+    {
+      "choices": [
+        {
+          "label": "Ava (en-US) · Premium",
+          "value": "com.apple.voice.premium.en-US.Ava"
+        },
+        {
+          "label": "Daniel (en-GB) · Enhanced",
+          "value": "com.apple.voice.enhanced.en-GB.Daniel"
+        }
+      ],
+      "key": "local_voice",
+      "kind": "choice",
+      "label": "Fallback Mac voice",
+      "shown": true,
+      "value": "com.apple.voice.premium.en-US.Ava"
+    },
+    {
+      "key": "phone_pause_media",
+      "kind": "toggle",
+      "label": "Pause phone media while announcing",
+      "shown": true,
+      "value": false
+    },
+    {
+      "key": "phone_headphones_only",
+      "kind": "toggle",
+      "label": "Only announce on phone when headphones are connected",
+      "shown": true,
+      "value": false
+    },
+    {
+      "key": "announce_claude_code",
+      "kind": "toggle",
+      "label": "Announce Claude Code replies",
+      "shown": true,
+      "value": true
+    },
+    {
+      "key": "announce_antigravity",
+      "kind": "toggle",
+      "label": "Announce Antigravity replies",
+      "shown": true,
+      "value": true
+    },
+    {
+      "key": "announce_opencode",
+      "kind": "toggle",
+      "label": "Announce OpenCode replies",
+      "shown": true,
+      "value": false
+    },
+    {
+      "key": "slack_enabled",
+      "kind": "toggle",
+      "label": "Announce Slack messages",
+      "shown": true,
+      "value": true
+    },
+    {
+      "key": "google_chat_enabled",
+      "kind": "toggle",
+      "label": "Announce Google Chat messages",
+      "shown": true,
+      "value": true
+    },
+    {
+      "choices": [
+        {
+          "label": "Automatic",
+          "value": "auto"
+        },
+        {
+          "label": "Google API (this app's login)",
+          "value": "api"
+        },
+        {
+          "label": "gws command-line tool",
+          "value": "gws"
+        }
+      ],
+      "key": "google_chat_source",
+      "kind": "choice",
+      "label": "Read Google Chat via",
+      "shown": true,
+      "value": "gws"
+    },
+    {
+      "key": "gws_account",
+      "kind": "text",
+      "label": "gws account (optional, e.g. you@gmail.com)",
+      "shown": true,
+      "value": "ops@example.com"
+    },
+    {
+      "key": "beeper_enabled",
+      "kind": "toggle",
+      "label": "Announce Beeper messages",
+      "shown": true,
+      "value": true
+    },
+    {
+      "choices": [
+        {
+          "label": "Direct messages and mentions",
+          "value": "direct_and_mentions"
+        },
+        {
+          "label": "Every message",
+          "value": "all"
+        }
+      ],
+      "key": "beeper_announce",
+      "kind": "choice",
+      "label": "Announce",
+      "shown": true,
+      "value": "direct_and_mentions"
+    },
+    {
+      "key": "beeper_address",
+      "kind": "text",
+      "label": "Address",
+      "shown": true,
+      "value": "http://127.0.0.1:23373"
+    },
+    {
+      "key": "courier_enabled",
+      "kind": "toggle",
+      "label": "Announce Courier messages",
+      "shown": true,
+      "value": true
+    },
+    {
+      "choices": [
+        {
+          "label": "Direct messages and mentions",
+          "value": "direct_and_mentions"
+        },
+        {
+          "label": "Every message",
+          "value": "all"
+        }
+      ],
+      "key": "courier_announce",
+      "kind": "choice",
+      "label": "Announce",
+      "shown": true,
+      "value": "all"
+    },
+    {
+      "key": "courier_address",
+      "kind": "text",
+      "label": "Address",
+      "shown": true,
+      "value": "http://127.0.0.1:23390"
+    },
+    {
+      "key": "mute_own_messages",
+      "kind": "toggle",
+      "label": "Skip messages I sent",
+      "shown": true,
+      "value": true
+    },
+    {
+      "key": "poll_interval_seconds",
+      "kind": "number",
+      "label": "Poll Interval",
+      "limits": {
+        "default_value": 15,
+        "max": 300,
+        "min": 5,
+        "step": 5
+      },
+      "shown": true,
+      "value": 30
+    }
+  ],
+  "sign_in": {
+    "client_override_present": true,
+    "custom_oauth_client_id": "custom-client-id.apps.googleusercontent.com",
+    "email": "owner@example.com",
+    "has_antigravity_tokens": true,
+    "has_custom_oauth_secret": true,
+    "has_gemini_key": true,
+    "has_oauth_client": true,
+    "signed_in": true
+  },
+  "snooze_until": null,
+  "speakers": [
+    {
+      "display_line": "Bedroom Hub",
+      "id": "dev-bedroom",
+      "is_default": false,
+      "key": "bedroom",
+      "name": "Bedroom Hub",
+      "online": false,
+      "room": "Bedroom",
+      "type": "sdm.devices.types.DISPLAY"
+    },
+    {
+      "display_line": "Kitchen Speaker",
+      "id": "dev-kitchen",
+      "is_default": false,
+      "key": "kitchen",
+      "name": "Kitchen Speaker",
+      "online": true,
+      "room": "Kitchen",
+      "type": "sdm.devices.types.SPEAKER"
+    },
+    {
+      "display_line": "Office Mini",
+      "id": "dev-office",
+      "is_default": true,
+      "key": "office",
+      "name": "Office Mini",
+      "online": true,
+      "room": "Office",
+      "type": "sdm.devices.types.SPEAKER"
+    }
+  ],
+  "structure_id": "home-structure-1",
+  "structure_name": "Home",
+  "warnings": []
+}

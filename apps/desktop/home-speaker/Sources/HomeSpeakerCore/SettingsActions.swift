@@ -358,6 +358,26 @@ public enum SettingsActions {
         return effectiveValue(for: key, in: config) != beforeEffective
     }
 
+    /// Returns the catalog value for `key` under `config`, filling in the
+    /// catalog's default quiet-hour times when unset and `speakerVolume` (or
+    /// the catalog's default volume) for `.speakerVolume`.
+    public static func catalogValue(
+        for key: SettingsCatalog.Key,
+        in config: SpeakerConfig,
+        speakerVolume: Int? = nil
+    ) -> Value {
+        switch key {
+        case .speakerVolume:
+            return .int(speakerVolume ?? SettingsCatalog.speakerVolumeLimits.defaultValue)
+        case .quietHoursStart:
+            return .string(config.quietHoursStart.flatMap { $0.isEmpty ? nil : $0 } ?? SettingsCatalog.defaultQuietHoursStart)
+        case .quietHoursEnd:
+            return .string(config.quietHoursEnd.flatMap { $0.isEmpty ? nil : $0 } ?? SettingsCatalog.defaultQuietHoursEnd)
+        default:
+            return effectiveValue(for: key, in: config)
+        }
+    }
+
     private static func effectiveValue(for key: SettingsCatalog.Key, in config: SpeakerConfig) -> Value {
         switch key {
         case .enabled: return .bool(config.enabled)
@@ -625,14 +645,7 @@ public enum SettingsActions {
         configFile: SpeakerConfigFile? = nil
     ) throws -> ClearChatTokenResult {
         try store.update { secrets in
-            switch token {
-            case .slack:
-                secrets.slackToken = nil
-            case .beeper:
-                secrets.beeperToken = nil
-            case .courier:
-                secrets.courierToken = nil
-            }
+            applyClearChatToken(token, to: &secrets)
         }
 
         var courierSwitchedOff = false
@@ -640,12 +653,33 @@ public enum SettingsActions {
            case .loaded(let existing) = configFile.read(),
            existing.effectiveChatMonitor.courierEnabled {
             try configFile.modify { config in
-                config.effectiveChatMonitor.courierEnabled = false
+                _ = applyClearChatToken(token, to: &config)
             }
             courierSwitchedOff = true
         }
 
         return ClearChatTokenResult(token: token, courierSwitchedOff: courierSwitchedOff)
+    }
+
+    /// Pure in-memory helper clearing `token` in `Secrets`.
+    public static func applyClearChatToken(_ token: ChatToken, to secrets: inout Secrets) {
+        switch token {
+        case .slack:
+            secrets.slackToken = nil
+        case .beeper:
+            secrets.beeperToken = nil
+        case .courier:
+            secrets.courierToken = nil
+        }
+    }
+
+    /// Pure in-memory helper updating `SpeakerConfig` when `token` is cleared
+    /// (switches `courierEnabled` off when `token == .courier` and Courier was enabled).
+    @discardableResult
+    public static func applyClearChatToken(_ token: ChatToken, to config: inout SpeakerConfig) -> Bool {
+        guard token == .courier, config.effectiveChatMonitor.courierEnabled else { return false }
+        config.effectiveChatMonitor.courierEnabled = false
+        return true
     }
 
     // MARK: - 5. Switch to the App or the Extension (Unified Path)
@@ -922,179 +956,6 @@ public enum SettingsActions {
             }
         }
         return problems
-    }
-
-    /// Recording fake implementation of `DoorSwitchSeam` for unit tests.
-    /// Records every step in exact order and never quits, opens, or trashes
-    /// any real application.
-    public final class RecordingDoorSwitchSeam: DoorSwitchSeam {
-        public let me: HomeSpeakerProfile.Door
-        public let chosenBy: String
-        public let doorFile: DoorFile
-        public let home: URL
-        public let appProfile: HomeSpeakerProfile
-        public let extensionProfile: HomeSpeakerProfile?
-        public var appProgram: String?
-        public var extensionProgram: String?
-        public var fixedNow: Date
-        public var callerInTrash: Bool
-        public var otherIsInstalled: Bool
-        public var otherRunning: Bool
-        public var quitOtherResult: Bool
-        public var openOtherSucceeded: Bool
-        public var enableLoginItemError: Error?
-        public var turnOffLoginItemError: Error?
-        public var moveToTrashError: Error?
-        public var openVitruvianSucceeded: Bool
-        public var copyOverride: ((HomeSpeakerProfile, HomeSpeakerProfile) throws -> CopyReport)?
-
-        /// Every effect recorded in order.
-        public private(set) var steps: [String] = []
-
-        public init(
-            me: HomeSpeakerProfile.Door = .app,
-            chosenBy: String = "HomeSpeaker test 1.0",
-            doorFile: DoorFile,
-            home: URL,
-            appProfile: HomeSpeakerProfile,
-            extensionProfile: HomeSpeakerProfile?,
-            appProgram: String? = nil,
-            extensionProgram: String? = nil,
-            now: Date = Date(timeIntervalSince1970: 1_900_000_000),
-            callerInTrash: Bool = false,
-            otherIsInstalled: Bool = true,
-            otherRunning: Bool = false,
-            quitOtherResult: Bool = true,
-            openOtherSucceeded: Bool = true,
-            enableLoginItemError: Error? = nil,
-            turnOffLoginItemError: Error? = nil,
-            moveToTrashError: Error? = nil,
-            openVitruvianSucceeded: Bool = true,
-            copyOverride: ((HomeSpeakerProfile, HomeSpeakerProfile) throws -> CopyReport)? = nil
-        ) {
-            self.me = me
-            self.chosenBy = chosenBy
-            self.doorFile = doorFile
-            self.home = home
-            self.appProfile = appProfile
-            self.extensionProfile = extensionProfile
-            self.appProgram = appProgram
-            self.extensionProgram = extensionProgram
-            self.fixedNow = now
-            self.callerInTrash = callerInTrash
-            self.otherIsInstalled = otherIsInstalled
-            self.otherRunning = otherRunning
-            self.quitOtherResult = quitOtherResult
-            self.openOtherSucceeded = openOtherSucceeded
-            self.enableLoginItemError = enableLoginItemError
-            self.turnOffLoginItemError = turnOffLoginItemError
-            self.moveToTrashError = moveToTrashError
-            self.openVitruvianSucceeded = openVitruvianSucceeded
-            self.copyOverride = copyOverride
-        }
-
-        public func resetSteps() {
-            steps.removeAll()
-        }
-
-        public func now() -> Date { fixedNow }
-
-        public func inTrash() -> Bool { callerInTrash }
-
-        public func readDoor() -> DoorRecord? {
-            steps.append("readDoor")
-            return doorFile.read()
-        }
-
-        public func otherInstalled(record: DoorRecord?) -> Bool {
-            otherIsInstalled
-        }
-
-        public func profile(for side: HomeSpeakerProfile.Door, record: DoorRecord?) -> HomeSpeakerProfile? {
-            side == .app ? appProfile : (extensionProfile ?? AppStartup.extensionProfile(record: record))
-        }
-
-        public func program(for side: HomeSpeakerProfile.Door, record: DoorRecord?) -> String? {
-            switch side {
-            case .app:
-                return appProgram
-            case .extension:
-                return extensionProgram ?? record?.installedExtension?.program
-            }
-        }
-
-        public func copy(from source: HomeSpeakerProfile, to destination: HomeSpeakerProfile) throws -> CopyReport {
-            steps.append("copy(\(source.door.rawValue)->\(destination.door.rawValue))")
-            if let copyOverride {
-                return try copyOverride(source, destination)
-            }
-            return try DoorCopy.copy(from: source, to: destination)
-        }
-
-        public func credentialsChanged(in destination: HomeSpeakerProfile) {
-            steps.append("credentialsChanged(\(destination.door.rawValue))")
-        }
-
-        public func writeChoice(_ side: HomeSpeakerProfile.Door, at date: Date, chosenBy: String) throws {
-            steps.append("writeChoice(\(side.rawValue))")
-            try doorFile.update {
-                $0.chosen = side
-                $0.chosenAt = date
-                $0.chosenBy = chosenBy
-            }
-        }
-
-        public func repointHooks(to side: HomeSpeakerProfile.Door, program: String) -> [String] {
-            steps.append("repointHooks(\(side.rawValue))")
-            return SettingsActions.repointStaleHooks(home: home, to: program)
-        }
-
-        public func refreshRole() {
-            steps.append("refreshRole")
-        }
-
-        public func quitOther() -> Bool {
-            steps.append("quitOther")
-            return quitOtherResult
-        }
-
-        public func isOtherRunning() -> Bool {
-            otherRunning
-        }
-
-        public func openOtherAndEnableLoginItem() -> [String] {
-            steps.append("openOther")
-            var lines: [String] = []
-            if !openOtherSucceeded {
-                lines.append(DoorWords.couldNotOpen)
-            }
-            steps.append("enableLoginItem")
-            if let enableLoginItemError {
-                lines.append(enableLoginItemError.localizedDescription)
-            } else {
-                lines.append(DoorWords.loginItemOn)
-            }
-            return lines
-        }
-
-        public func turnOffLoginItem() throws {
-            steps.append("turnOffLoginItem")
-            if let turnOffLoginItemError { throw turnOffLoginItemError }
-        }
-
-        public func moveToTrash() throws {
-            steps.append("moveToTrash")
-            if let moveToTrashError { throw moveToTrashError }
-        }
-
-        public func quitSelf() {
-            steps.append("quitSelf")
-        }
-
-        public func openVitruvian() -> Bool {
-            steps.append("openVitruvian")
-            return openVitruvianSucceeded
-        }
     }
 
     // MARK: - 6. Reset Settings

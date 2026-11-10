@@ -521,8 +521,16 @@ struct SettingsActionsTests {
             "speak_phone": true,
             "custom_style_prompt": "Pirate voice",
             "foreign_top_level_key": "keep-me",
+            "chat_monitor": [
+                "slack_enabled": true,
+                "foreign_chat_key": "keep-chat-meta",
+            ],
             "custom_voices": [
-                ["id": "voice_custom_1", "name": "Clone One"]
+                [
+                    "id": "voice_custom_1",
+                    "name": "Clone One",
+                    "foreign_voice_field": "keep-voice-meta",
+                ]
             ],
             "targets": [
                 "office": [
@@ -556,6 +564,10 @@ struct SettingsActionsTests {
             try JSONSerialization.jsonObject(with: Data(contentsOf: rig.configFile.url)) as? [String: Any]
         )
         #expect(rawAfter["foreign_top_level_key"] as? String == "keep-me")
+        let chatAfter = rawAfter["chat_monitor"] as? [String: Any]
+        #expect(chatAfter?["foreign_chat_key"] as? String == "keep-chat-meta")
+        let voicesAfter = rawAfter["custom_voices"] as? [[String: Any]]
+        #expect(voicesAfter?.first?["foreign_voice_field"] as? String == "keep-voice-meta")
         let targetsAfter = rawAfter["targets"] as? [String: [String: Any]]
         #expect(targetsAfter?["office"]?["foreign_device_field"] as? Int == 123)
     }
@@ -715,5 +727,180 @@ struct SettingsActionsTests {
         let applied = manager.applySetting(.speechLength, .string("minimal"))
         #expect(applied == false)
         #expect(manager.config.effectiveSpeechLength == .full)
+    }
+}
+
+extension SettingsActions {
+    /// Recording fake implementation of `DoorSwitchSeam` for unit tests.
+    /// Records every step in exact order and never quits, opens, or trashes
+    /// any real application.
+    final class RecordingDoorSwitchSeam: DoorSwitchSeam {
+        let me: HomeSpeakerProfile.Door
+        let chosenBy: String
+        let doorFile: DoorFile
+        let home: URL
+        let appProfile: HomeSpeakerProfile
+        let extensionProfile: HomeSpeakerProfile?
+        var appProgram: String?
+        var extensionProgram: String?
+        var fixedNow: Date
+        var callerInTrash: Bool
+        var otherIsInstalled: Bool
+        var otherRunning: Bool
+        var quitOtherResult: Bool
+        var openOtherSucceeded: Bool
+        var enableLoginItemError: Error?
+        var turnOffLoginItemError: Error?
+        var moveToTrashError: Error?
+        var openVitruvianSucceeded: Bool
+        var copyOverride: ((HomeSpeakerProfile, HomeSpeakerProfile) throws -> CopyReport)?
+
+        /// Every effect recorded in order.
+        private(set) var steps: [String] = []
+
+        init(
+            me: HomeSpeakerProfile.Door = .app,
+            chosenBy: String = "HomeSpeaker test 1.0",
+            doorFile: DoorFile,
+            home: URL,
+            appProfile: HomeSpeakerProfile,
+            extensionProfile: HomeSpeakerProfile?,
+            appProgram: String? = nil,
+            extensionProgram: String? = nil,
+            now: Date = Date(timeIntervalSince1970: 1_900_000_000),
+            callerInTrash: Bool = false,
+            otherIsInstalled: Bool = true,
+            otherRunning: Bool = false,
+            quitOtherResult: Bool = true,
+            openOtherSucceeded: Bool = true,
+            enableLoginItemError: Error? = nil,
+            turnOffLoginItemError: Error? = nil,
+            moveToTrashError: Error? = nil,
+            openVitruvianSucceeded: Bool = true,
+            copyOverride: ((HomeSpeakerProfile, HomeSpeakerProfile) throws -> CopyReport)? = nil
+        ) {
+            self.me = me
+            self.chosenBy = chosenBy
+            self.doorFile = doorFile
+            self.home = home
+            self.appProfile = appProfile
+            self.extensionProfile = extensionProfile
+            self.appProgram = appProgram
+            self.extensionProgram = extensionProgram
+            self.fixedNow = now
+            self.callerInTrash = callerInTrash
+            self.otherIsInstalled = otherIsInstalled
+            self.otherRunning = otherRunning
+            self.quitOtherResult = quitOtherResult
+            self.openOtherSucceeded = openOtherSucceeded
+            self.enableLoginItemError = enableLoginItemError
+            self.turnOffLoginItemError = turnOffLoginItemError
+            self.moveToTrashError = moveToTrashError
+            self.openVitruvianSucceeded = openVitruvianSucceeded
+            self.copyOverride = copyOverride
+        }
+
+        func resetSteps() {
+            steps.removeAll()
+        }
+
+        func now() -> Date { fixedNow }
+
+        func inTrash() -> Bool { callerInTrash }
+
+        func readDoor() -> DoorRecord? {
+            steps.append("readDoor")
+            return doorFile.read()
+        }
+
+        func otherInstalled(record: DoorRecord?) -> Bool {
+            otherIsInstalled
+        }
+
+        func profile(for side: HomeSpeakerProfile.Door, record: DoorRecord?) -> HomeSpeakerProfile? {
+            side == .app ? appProfile : (extensionProfile ?? AppStartup.extensionProfile(record: record))
+        }
+
+        func program(for side: HomeSpeakerProfile.Door, record: DoorRecord?) -> String? {
+            switch side {
+            case .app:
+                return appProgram
+            case .extension:
+                return extensionProgram ?? record?.installedExtension?.program
+            }
+        }
+
+        func copy(from source: HomeSpeakerProfile, to destination: HomeSpeakerProfile) throws -> CopyReport {
+            steps.append("copy(\(source.door.rawValue)->\(destination.door.rawValue))")
+            if let copyOverride {
+                return try copyOverride(source, destination)
+            }
+            return try DoorCopy.copy(from: source, to: destination)
+        }
+
+        func credentialsChanged(in destination: HomeSpeakerProfile) {
+            steps.append("credentialsChanged(\(destination.door.rawValue))")
+        }
+
+        func writeChoice(_ side: HomeSpeakerProfile.Door, at date: Date, chosenBy: String) throws {
+            steps.append("writeChoice(\(side.rawValue))")
+            try doorFile.update {
+                $0.chosen = side
+                $0.chosenAt = date
+                $0.chosenBy = chosenBy
+            }
+        }
+
+        func repointHooks(to side: HomeSpeakerProfile.Door, program: String) -> [String] {
+            steps.append("repointHooks(\(side.rawValue))")
+            return SettingsActions.repointStaleHooks(home: home, to: program)
+        }
+
+        func refreshRole() {
+            steps.append("refreshRole")
+        }
+
+        func quitOther() -> Bool {
+            steps.append("quitOther")
+            return quitOtherResult
+        }
+
+        func isOtherRunning() -> Bool {
+            otherRunning
+        }
+
+        func openOtherAndEnableLoginItem() -> [String] {
+            steps.append("openOther")
+            var lines: [String] = []
+            if !openOtherSucceeded {
+                lines.append(DoorWords.couldNotOpen)
+            }
+            steps.append("enableLoginItem")
+            if let enableLoginItemError {
+                lines.append(enableLoginItemError.localizedDescription)
+            } else {
+                lines.append(DoorWords.loginItemOn)
+            }
+            return lines
+        }
+
+        func turnOffLoginItem() throws {
+            steps.append("turnOffLoginItem")
+            if let turnOffLoginItemError { throw turnOffLoginItemError }
+        }
+
+        func moveToTrash() throws {
+            steps.append("moveToTrash")
+            if let moveToTrashError { throw moveToTrashError }
+        }
+
+        func quitSelf() {
+            steps.append("quitSelf")
+        }
+
+        func openVitruvian() -> Bool {
+            steps.append("openVitruvian")
+            return openVitruvianSucceeded
+        }
     }
 }

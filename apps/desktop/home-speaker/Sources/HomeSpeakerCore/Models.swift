@@ -214,7 +214,7 @@ public struct CustomVoice: Codable, Equatable, Sendable {
     public var transcript: String?
     public var createdAt: String?
 
-    enum CodingKeys: String, CodingKey {
+    enum CodingKeys: String, CodingKey, CaseIterable {
         case id
         case name
         case audioPath = "audio_path"

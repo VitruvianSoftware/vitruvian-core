@@ -48,6 +48,13 @@ public enum HomeSpeakerCommandLine {
         case say(String)
         /// `--volume`, `--set-volume N`, `--mute`, `--unmute`.
         case volume(VolumeRequest)
+        /// `--state --json`: the full settings, speakers, sign-in, chat and
+        /// hook state as one JSON document (nil when valid, or the usage
+        /// error when `--json` is missing or extra arguments are given).
+        case state(UsageError?)
+        /// `--apply --json <changes>`: applies settings changes through
+        /// `SettingsActions` and prints the resulting state as JSON.
+        case apply(Result<String, UsageError>)
         /// `--sign-in [--chat]`.
         case signIn(GoogleAuth.Purpose)
         /// `--help` or `-h`.
@@ -92,6 +99,7 @@ public enum HomeSpeakerCommandLine {
         if let i = arguments.firstIndex(of: "--say") {
             return .say(arguments[arguments.index(after: i)...].joined(separator: " "))
         }
+        if let parsed = parseStateOrApply(arguments) { return parsed }
         if let flag = volumeFlags.first(where: { arguments.contains($0) }) {
             switch flag {
             case "--set-volume":
@@ -109,6 +117,35 @@ public enum HomeSpeakerCommandLine {
         if arguments.contains("--help") || arguments.contains("-h") { return .help }
         if arguments.contains("--version") { return .version }
         if arguments.first == whereFlag { return .location }
+        return nil
+    }
+
+    static func parseStateOrApply(_ arguments: [String]) -> Command? {
+        if arguments.contains("--state") {
+            let flags = arguments.filter { $0 != "--state" }
+            guard flags.contains("--json") else {
+                return .state(UsageError("--state requires --json"))
+            }
+            let extra = flags.filter { $0 != "--json" }
+            if let unexpected = extra.first {
+                return .state(UsageError("unexpected argument \"\(unexpected)\" after --state"))
+            }
+            return .state(nil)
+        }
+        if arguments.contains("--apply") {
+            let remaining = arguments.filter { $0 != "--apply" }
+            guard remaining.contains("--json") else {
+                return .apply(.failure(UsageError("--apply requires --json <changes>")))
+            }
+            let payloadArgs = remaining.filter { $0 != "--json" }
+            guard let changes = payloadArgs.first else {
+                return .apply(.failure(UsageError("--apply requires --json <changes>")))
+            }
+            if payloadArgs.count > 1 {
+                return .apply(.failure(UsageError("unexpected argument \"\(payloadArgs[1])\" after --apply")))
+            }
+            return .apply(.success(changes))
+        }
         return nil
     }
 
@@ -156,6 +193,9 @@ public enum HomeSpeakerCommandLine {
         /// engine so the active door's Gemini API key, Google Home login and
         /// history file are used.
         public var inUseEngine: @MainActor @Sendable () -> HomeSpeakerEngine?
+        /// Seam for `--state --json` and `--apply --json <changes>`. When nil,
+        /// `HomeSpeakerStateContract.Seam.live(for: engine.profile)` is used.
+        public var stateSeam: (@Sendable (HomeSpeakerProfile) -> HomeSpeakerStateContract.Seam)?
 
         public init(
             openBrowser: @escaping @Sendable (URL) -> Void,
@@ -167,7 +207,8 @@ public enum HomeSpeakerCommandLine {
                 SignOutNotice.post(chatOnly: $0, name: $1)
             },
             inUseSettings: @escaping @Sendable () -> SpeakerConfig? = { nil },
-            inUseEngine: @escaping @MainActor @Sendable () -> HomeSpeakerEngine? = { nil }
+            inUseEngine: @escaping @MainActor @Sendable () -> HomeSpeakerEngine? = { nil },
+            stateSeam: (@Sendable (HomeSpeakerProfile) -> HomeSpeakerStateContract.Seam)? = nil
         ) {
             self.openBrowser = openBrowser
             self.loginItem = loginItem
@@ -177,6 +218,7 @@ public enum HomeSpeakerCommandLine {
             self.postSignedOut = postSignedOut
             self.inUseSettings = inUseSettings
             self.inUseEngine = inUseEngine
+            self.stateSeam = stateSeam
         }
 
         /// Why `--login-item` does nothing for the extension.
@@ -195,11 +237,12 @@ public enum HomeSpeakerCommandLine {
                 SignOutNotice.post(chatOnly: $0, name: $1)
             },
             inUseSettings: @escaping @Sendable () -> SpeakerConfig? = { nil },
-            inUseEngine: @escaping @MainActor @Sendable () -> HomeSpeakerEngine? = { nil }
+            inUseEngine: @escaping @MainActor @Sendable () -> HomeSpeakerEngine? = { nil },
+            stateSeam: (@Sendable (HomeSpeakerProfile) -> HomeSpeakerStateContract.Seam)? = nil
         ) -> Parts {
             Parts(openBrowser: browser, loginItem: .control(SystemLoginItem()), standsAside: standsAside,
                   asideNote: asideNote, otherSecrets: otherSecrets, postSignedOut: postSignedOut,
-                  inUseSettings: inUseSettings, inUseEngine: inUseEngine)
+                  inUseSettings: inUseSettings, inUseEngine: inUseEngine, stateSeam: stateSeam)
         }
 
         /// The extension's: no login item of its own. `otherSecrets` is the
@@ -211,11 +254,12 @@ public enum HomeSpeakerCommandLine {
                 SignOutNotice.post(chatOnly: $0, name: $1)
             },
             inUseSettings: @escaping @Sendable () -> SpeakerConfig? = { nil },
-            inUseEngine: @escaping @MainActor @Sendable () -> HomeSpeakerEngine? = { nil }
+            inUseEngine: @escaping @MainActor @Sendable () -> HomeSpeakerEngine? = { nil },
+            stateSeam: (@Sendable (HomeSpeakerProfile) -> HomeSpeakerStateContract.Seam)? = nil
         ) -> Parts {
             Parts(openBrowser: browser, loginItem: .none(reason: extensionHasNoLoginItem), standsAside: standsAside,
                   otherSecrets: otherSecrets, postSignedOut: postSignedOut, inUseSettings: inUseSettings,
-                  inUseEngine: inUseEngine)
+                  inUseEngine: inUseEngine, stateSeam: stateSeam)
         }
     }
 
@@ -362,6 +406,16 @@ public enum HomeSpeakerCommandLine {
                 let settings = await MainActor.run { engine.config.config }
                 return await volume(request, config: settings, speaker: home)
             }
+        case .state(.some(let usage)), .apply(.failure(let usage)):
+            return .now(usageError(usage))
+        case .state(nil):
+            let seam = parts.stateSeam?(profile) ?? .live(for: profile, doorSwitchSeam: { nil })
+            return .now(state(seam: seam))
+        case .apply(.success(let changes)):
+            let seam = parts.stateSeam?(profile) ?? .live(for: profile, doorSwitchSeam: { nil })
+            return headless {
+                apply(changes, seam: seam)
+            }
         case .signIn(let purpose):
             let openBrowser = parts.openBrowser
             return headless {
@@ -430,7 +484,9 @@ public enum HomeSpeakerCommandLine {
             return TimeLimit(seconds: 40, timedOut: volumeFailure("timed out"))
         case .signIn:
             return TimeLimit(seconds: 300, timedOut: timedOut)
-        case .app(.success(.loginItem)), .app(.failure), .chatMonitor, .help, .version, .location:
+        case .apply(.success):
+            return TimeLimit(seconds: 60, timedOut: HomeSpeakerStateContract.timedOutOutput())
+        case .app(.success(.loginItem)), .app(.failure), .chatMonitor, .state, .apply(.failure), .help, .version, .location:
             return nil
         }
     }
@@ -771,6 +827,17 @@ public enum HomeSpeakerCommandLine {
         return CLIOutput(stdout: [ChatMonitorControlNotice.askedLine(action)])
     }
 
+    /// `--state --json`: prints the full state document and exits 0.
+    public static func state(seam: HomeSpeakerStateContract.Seam) -> CLIOutput {
+        HomeSpeakerStateContract.stateOutput(seam: seam)
+    }
+
+    /// `--apply --json <changes>`: applies settings changes through
+    /// `SettingsActions` and prints the resulting state document as JSON.
+    public static func apply(_ changes: String, seam: HomeSpeakerStateContract.Seam) -> CLIOutput {
+        HomeSpeakerStateContract.applyOutput(changes, seam: seam)
+    }
+
     /// A flag used wrongly: the caller's mistake, exit 2.
     public static func usageError(_ usage: UsageError) -> CLIOutput {
         CLIOutput(stderr: ["error: \(usage.message)", "run HomeSpeaker --help for usage"],
@@ -792,6 +859,9 @@ public enum HomeSpeakerCommandLine {
                                the agent whose shell runs it, else a person)
           --volume             the default speaker's volume, as JSON
           --set-volume <0-100> set it; --mute / --unmute likewise
+          --state --json       the settings, speakers, sign-in, chat and hooks, as JSON
+          --apply --json <changes>
+                               apply settings changes and print the state, as JSON
           --sign-in [--chat]   sign in for Home (or Google Chat)
         \(AppCommandParser.usageLines)
           --chat-monitor start|stop

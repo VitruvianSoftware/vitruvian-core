@@ -1281,13 +1281,19 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 parts.controlChatMonitor(.stop)
             }
         }
-        if changed || drawnStarting != otherStarting { refreshOpenPanels() }
+        if changed || (!openPanels.isEmpty && (config != drawnConfig || configProblem != drawnConfigProblem)) || drawnStarting != otherStarting {
+            refreshOpenPanels()
+        }
         drawnStarting = otherStarting
         updateMark()
     }
 
     /// Whether the open pages last showed the app as starting.
     private var drawnStarting = false
+    /// The settings and config problem last drawn on an open panel, so an
+    /// external change on disk redraws open panels on the next tick or watch.
+    private var drawnConfig: SpeakerConfig?
+    private var drawnConfigProblem: String?
 
     /// An app that cannot hear the choice file: older than 1.19, or of a
     /// version that does not read.
@@ -1855,6 +1861,8 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         let islandOpen = openPanels.contains(Self.islandPanel)
         let usesGemini = config.effectiveLocalEngine == .gemini || config.effectiveStyleModel == .gemini
         if islandOpen || openPanels.contains(Self.settingsPanel) {
+            drawnConfig = config
+            drawnConfigProblem = configProblem
             // Whether a Gemini key is saved, whenever Gemini is chosen:
             // the chat status below reads it only while a chat source is on.
             if usesGemini { status.chat.hasGeminiKey = parts.chat.hasGeminiKey }
@@ -2276,6 +2284,8 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     private func save() throws {
         if let configProblem { throw CommandRefused("refusing to save: \(configProblem)") }
         try parts.store.save(config)
+        drawnConfig = config
+        drawnConfigProblem = configProblem
         updateMark()
     }
 
