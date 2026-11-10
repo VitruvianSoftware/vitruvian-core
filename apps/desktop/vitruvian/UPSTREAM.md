@@ -138,6 +138,11 @@ byte identical to upstream except `.gitignore` (listed below). Left out:
 GPL-3.0 §5(a) requires a notice that the work was modified, with a date. This log
 is that notice. Add an entry for every change to upstream files.
 
+- **2026-11-09**: The Claude telemetry card now shows the same limits as the Claude app ("Weekly · all models" and per-model weeklies like "Weekly · Fable"), read from the new `limits` list Claude Code reports. Upstream files changed:
+  - `Sources/Vitruvian/Services/AgentUsage/AgentClaudeServer.swift`: `limits(_:observed:)` reads the `rate_limits.limits` array when present (including inactive model-scoped weeklies) and merges any remaining legacy window keys in session, all-models weekly, and scoped weekly order.
+  - `Sources/Vitruvian/Core/AgentUsage/AgentUsageModels.swift`: `AgentLimitWindow.name` formats Claude weekly windows as `"Weekly · all models"` and `"Weekly · <Model>"`.
+  - `Sources/Vitruvian/UI/Notch/NotchAgentsView.swift`: the Claude card lists the session, then the all-models week, then each model's week in the order Claude reports them (`claudeWindows`); its pace forecast is measured against the all-models week, never one model's; and the Antigravity `3p` checks no longer match Claude rows.
+  - `Tests/AgentClaudeServerTests.swift` and `Tests/NotchAgentTests.swift`: cover the `limits` array, legacy fallback merging, invalid entry filtering, and the official Claude window names.
 - **2026-11-07**: Settings > Support now shows, for donations through Stripe. It was hidden because its Buy Me a Coffee link was upstream's. Upstream files changed:
   - `Core/AppInfo.swift`: `donateURL` is `https://vitruviansoftware.dev/donate/vitruvian/`, our own address that forwards to the current Stripe Payment Link (`infrastructure/pulumi/platform/stripe`), and `coffeeURL` is now that address. `hasCommunityChannels` stays false and now covers only the Discord and X channels.
   - `Services/Settings/SettingsDirectory.swift`: the sidebar lists the Support page, found by its Donate button and heading.

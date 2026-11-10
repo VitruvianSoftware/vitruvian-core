@@ -139,17 +139,23 @@ package struct AgentLimitWindow: Equatable, Identifiable, Sendable {
     package var usedFraction: Double { min(1, max(0, usedPercent / 100)) }
     package var remainingFraction: Double { 1 - usedFraction }
 
-    /// A human-readable display title for this window, matching CodexBar conventions.
+    /// A human-readable display title for this window, matching the provider's official wording.
     package var name: String {
-        if id.contains("gemini-5h") { return "Gemini 5-hour" }
-        if id.contains("gemini-weekly") { return "Gemini weekly" }
-        if id.contains("3p-5h") { return "Claude/GPT 5-hour" }
-        if id.contains("3p-weekly") { return "Claude/GPT weekly" }
-        if id.contains("fable") { return "Fable weekly" }
-        if id == "claude.fh" { return "Session" }
-        if id == "claude.sd" { return "Weekly" }
-        if id == "claude.sn" { return "Sonnet weekly" }
-        if id == "claude.so" { return "Opus weekly" }
+        if id.hasPrefix("claude") {
+            if id == "claude.fh" { return "Session" }
+            if id == "claude.sd" { return "Weekly · all models" }
+            if id == "claude.so" { return "Weekly · Opus" }
+            if id == "claude.sn" { return "Weekly · Sonnet" }
+            if kind == .weekly, let scope, !scope.isEmpty {
+                return "Weekly · \(scope)"
+            }
+        } else {
+            if id.contains("gemini-5h") { return "Gemini 5-hour" }
+            if id.contains("gemini-weekly") { return "Gemini weekly" }
+            if id.contains("3p-5h") { return "Claude/GPT 5-hour" }
+            if id.contains("3p-weekly") { return "Claude/GPT weekly" }
+            if id.contains("fable") { return "Fable weekly" }
+        }
         switch kind {
         case .session: return "Session"
         case .weekly: return scope.map { "\($0) weekly" } ?? "Weekly"

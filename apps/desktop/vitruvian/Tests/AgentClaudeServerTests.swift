@@ -4,6 +4,7 @@
 import Foundation
 import VitruvianCore
 import VitruvianServices
+import VitruvianUI
 
 enum AgentClaudeServerTests {
     static func run(_ suite: TestSuite) {
@@ -26,6 +27,151 @@ enum AgentClaudeServerTests {
                         && limits?.windows.first?.resetsAt == AgentTimestamp.parse("2026-10-15T10:39:59.973389Z")
                         && limits?.windows.first?.estimatedResetsAt == nil,
                      "structured CLI usage preserves account-wide percentages, model windows and exact resets")
+        let liveReply: [String: Any] = [
+            "rate_limits_available": true,
+            "rate_limits": [
+                "five_hour": NSNull(),
+                "seven_day": ["utilization": 28, "resets_at": "2026-11-12T05:59:59.963127+00:00"],
+                "seven_day_opus": NSNull(),
+                "seven_day_sonnet": NSNull(),
+                "limits": [
+                    ["kind": "weekly_all", "group": "weekly", "percent": 28,
+                     "resets_at": "2026-11-12T05:59:59.963127+00:00", "severity": "normal",
+                     "is_active": true, "scope": NSNull()],
+                    ["kind": "weekly_scoped", "group": "weekly", "percent": 1,
+                     "resets_at": "2026-11-12T05:59:59.963277+00:00", "severity": "normal",
+                     "is_active": false, "scope": ["model": ["display_name": "Fable", "id": NSNull()], "surface": NSNull()]]
+                ],
+                "model_scoped": [["display_name": "Fable", "utilization": 1, "resets_at": "2026-11-12T05:59:59.963277+00:00"]]
+            ]
+        ]
+        let live = AgentClaudeServer.limits(liveReply, observed: now)
+        suite.expect(live?.windows.map(\.id) == ["claude.sd", "claude-weekly-scoped-fable"]
+                        && live?.windows.map(\.usedPercent) == [28, 1]
+                        && live?.windows.map(\.scope) == [nil, "Fable"]
+                        && live?.windows.map(\.name) == ["Weekly · all models", "Weekly · Fable"],
+                     "the 2.1.318 limits list builds the official all-models and model-scoped weekly rows without a session")
+        let mixedReply: [String: Any] = [
+            "rate_limits_available": true,
+            "rate_limits": [
+                "five_hour": ["utilization": 45, "resets_at": "2026-10-15T10:39:59.973389+00:00"],
+                "seven_day": ["utilization": 99, "resets_at": "2026-11-12T05:59:59.963127+00:00"],
+                "limits": [
+                    ["kind": "weekly_all", "group": "weekly", "percent": 28,
+                     "resets_at": "2026-11-12T05:59:59.963127+00:00", "scope": NSNull()],
+                    ["kind": "weekly_scoped", "group": "weekly", "percent": 1,
+                     "resets_at": "2026-11-12T05:59:59.963277+00:00",
+                     "scope": ["model": ["display_name": "Fable", "id": NSNull()]]]
+                ]
+            ]
+        ]
+        let mixed = AgentClaudeServer.limits(mixedReply, observed: now)
+        suite.expect(mixed?.windows.map(\.id) == ["claude.fh", "claude.sd", "claude-weekly-scoped-fable"]
+                        && mixed?.windows.map(\.usedPercent) == [45, 28, 1],
+                     "a legacy five_hour window joins the limits list once at the front while seven_day does not duplicate claude.sd")
+        let filteredReply: [String: Any] = [
+            "rate_limits_available": true,
+            "rate_limits": [
+                "limits": [
+                    ["kind": "weekly_all", "group": "weekly", "percent": true, "resets_at": "2026-11-12T05:59:59Z", "scope": NSNull()],
+                    ["kind": "weekly_all", "group": "weekly", "percent": Double.nan, "resets_at": "2026-11-12T05:59:59Z", "scope": NSNull()],
+                    ["kind": "weekly_all", "group": "weekly", "percent": Double.infinity, "resets_at": "2026-11-12T05:59:59Z", "scope": NSNull()],
+                    ["kind": "weekly_all", "group": "weekly", "percent": 15, "resets_at": "2026-10-15T07:00:00Z", "scope": NSNull()],
+                    ["kind": "weekly_scoped", "group": "weekly", "percent": 10, "resets_at": "2026-11-12T05:59:59Z",
+                     "scope": ["model": ["id": "claude-fable"]]],
+                    ["kind": "weekly_scoped", "group": "weekly", "percent": 10, "resets_at": "2026-11-12T05:59:59Z",
+                     "scope": ["model": ["display_name": "   "]]],
+                    ["kind": "monthly_all", "group": "monthly", "percent": 10, "resets_at": "2026-11-12T05:59:59Z", "scope": NSNull()],
+                    ["kind": "five_hour", "group": "session", "percent": 12, "resets_at": "2026-10-15T10:39:59Z", "scope": NSNull()]
+                ]
+            ]
+        ]
+        let filtered = AgentClaudeServer.limits(filteredReply, observed: now)
+        suite.expect(filtered?.windows.map(\.id) == ["claude.fh"]
+                        && filtered?.windows.map(\.usedPercent) == [12],
+                     "bool or non-finite percents, past resets, nameless scoped windows and unknown groups are dropped")
+        suite.expect(limits?.windows.map(\.name) == ["Session", "Weekly · all models", "Weekly · Opus"]
+                        && AgentLimitWindow(id: "claude.sn", kind: .weekly, minutes: 10_080, scope: "Sonnet",
+                                            usedPercent: 10, resetsAt: nil).name == "Weekly · Sonnet"
+                        && AgentLimitWindow(id: "other-fable", kind: .weekly, minutes: 10_080, scope: nil,
+                                            usedPercent: 10, resetsAt: nil).name == "Fable weekly"
+                        && AgentLimitWindow(id: "gemini-weekly", kind: .weekly, minutes: 10_080, scope: nil,
+                                            usedPercent: 10, resetsAt: nil).name == "Gemini weekly"
+                        && AgentLimitWindow(id: "3p-weekly", kind: .weekly, minutes: 10_080, scope: nil,
+                                            usedPercent: 10, resetsAt: nil).name == "Claude/GPT weekly",
+                     "Claude windows use the official middle-dot names while non-Claude and Antigravity names stay unchanged")
+        let ordered = AgentClaudeServer.limits([
+            "rate_limits_available": true,
+            "rate_limits": [
+                "limits": [
+                    ["kind": "weekly_scoped", "group": "weekly", "percent": 4, "resets_at": "2026-11-12T05:59:59Z",
+                     "scope": ["model": ["display_name": "Fable"]]],
+                    ["kind": "weekly_all", "group": "weekly", "percent": 28, "resets_at": "2026-11-12T05:59:59Z", "scope": NSNull()],
+                    ["kind": "five_hour", "group": "session", "percent": 12, "resets_at": "2026-10-15T10:39:59Z", "scope": NSNull()]
+                ]
+            ]
+        ], observed: now)
+        suite.expect(ordered?.windows.map(\.id) == ["claude.fh", "claude.sd", "claude-weekly-scoped-fable"],
+                     "session comes first and model weeklies last, whatever order the limits list gives")
+        let renewed = AgentClaudeServer.limits([
+            "rate_limits_available": true,
+            "rate_limits": [
+                "seven_day": ["utilization": 50, "resets_at": "2026-11-12T05:59:59Z"],
+                "limits": [
+                    ["kind": "weekly_all", "group": "weekly", "percent": 90, "resets_at": "2026-10-15T06:00:00Z", "scope": NSNull()]
+                ]
+            ]
+        ], observed: now)
+        suite.expect(renewed?.windows.map(\.id) == ["claude.sd"] && renewed?.windows.map(\.usedPercent) == [50],
+                     "a listed weekly that renewed before the reading falls back to the legacy seven_day window")
+        let oddPercents = AgentClaudeServer.limits([
+            "rate_limits_available": true,
+            "rate_limits": [
+                "limits": [
+                    ["kind": "weekly_all", "group": "weekly", "percent": NSNull(), "resets_at": NSNull(), "scope": NSNull()],
+                    ["kind": "weekly_scoped", "group": "weekly", "percent": "12", "resets_at": NSNull(),
+                     "scope": ["model": ["display_name": "Fable"]]]
+                ]
+            ]
+        ], observed: now)
+        suite.expect(oddPercents == nil,
+                     "a null or text percent is never read as usage")
+        let clashing = AgentClaudeServer.limits([
+            "rate_limits_available": true,
+            "rate_limits": [
+                "limits": [
+                    ["kind": "weekly_scoped", "group": "weekly", "percent": 3, "resets_at": "2026-11-12T05:59:59Z",
+                     "scope": ["model": ["display_name": "Gemini 5h"]]]
+                ]
+            ]
+        ], observed: now)
+        suite.expect(clashing?.windows.map(\.name) == ["Weekly · Gemini 5h"],
+                     "a Claude model whose name contains an Antigravity label keeps its Claude name")
+        let deduplicatedScoped = AgentClaudeServer.limits([
+            "rate_limits_available": true,
+            "rate_limits": [
+                "seven_day_opus": ["utilization": 70, "resets_at": "2026-11-12T05:59:59Z"],
+                "seven_day_sonnet": ["utilization": 55, "resets_at": "2026-11-12T05:59:59Z"],
+                "limits": [
+                    ["kind": "weekly_all", "group": "weekly", "percent": 28, "resets_at": "2026-11-12T05:59:59Z", "scope": NSNull()],
+                    ["kind": "weekly_scoped", "group": "weekly", "percent": 14, "resets_at": "2026-11-12T05:59:59Z",
+                     "scope": ["model": ["display_name": "opus"]]],
+                    ["kind": "weekly_scoped", "group": "weekly", "percent": 8, "resets_at": "2026-11-12T05:59:59Z",
+                     "scope": ["model": ["display_name": "SONNET"]]]
+                ]
+            ]
+        ], observed: now)
+        suite.expect(deduplicatedScoped?.windows.map(\.id) == ["claude.sd", "claude-weekly-scoped-opus", "claude-weekly-scoped-sonnet"]
+                        && deduplicatedScoped?.windows.map(\.usedPercent) == [28, 14, 8],
+                     "legacy seven_day_opus and seven_day_sonnet do not duplicate scoped weeklies for the same model regardless of case")
+        let cardOrdered = NotchAgentsView.claudeWindows([
+            AgentLimitWindow(id: "claude-weekly-scoped-opus", kind: .weekly, minutes: 10_080, scope: "Opus", usedPercent: 14, resetsAt: nil),
+            AgentLimitWindow(id: "claude-weekly-scoped-fable", kind: .weekly, minutes: 10_080, scope: "Fable", usedPercent: 1, resetsAt: nil),
+            AgentLimitWindow(id: "claude.sd", kind: .weekly, minutes: 10_080, scope: nil, usedPercent: 28, resetsAt: nil),
+            AgentLimitWindow(id: "claude.fh", kind: .session, minutes: 300, scope: nil, usedPercent: 12, resetsAt: nil)
+        ])
+        suite.expect(cardOrdered.map(\.id) == ["claude.fh", "claude.sd", "claude-weekly-scoped-opus", "claude-weekly-scoped-fable"],
+                     "the Claude card orders session first, then all-models weekly, then scoped weeklies in their listed order")
         suite.expect(AgentClaudeServer.limits(["rate_limits_available": false], observed: now) == nil
                         && AgentClaudeServer.limits(["rate_limits_available": true, "rate_limits": NSNull()], observed: now) == nil,
                      "unsupported or unavailable accounts never produce invented limits")
