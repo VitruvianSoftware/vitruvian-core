@@ -653,6 +653,212 @@ final class AIProvidersTests: XCTestCase {
         XCTAssertEqual(store.statusBannerText, "Anthropic · claude-sonnet-4-20250514")
     }
 
+    // MARK: - UI Model Wiring Tests (Translation, Result Strip, Chat Switch Cancellation, Last Language Rule)
+
+    func testDisabledLastTranslationLanguageRule() {
+        let suiteName = "test.courier.ai.lastlang.\(UUID().uuidString)"
+        let defaults = ScratchDefaults.suite(named: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let prefs = AIPreferences(defaults: defaults)
+        prefs.translationLanguages = ["Spanish", "French"]
+        XCTAssertEqual(AIPreferences.lastTranslationLanguageHelp, "At least one language stays on")
+        XCTAssertFalse(prefs.isLastEnabledTranslationLanguage("Spanish"))
+        XCTAssertFalse(prefs.isLastEnabledTranslationLanguage("French"))
+
+        // Disabling Spanish leaves French as the sole enabled language
+        prefs.setTranslationLanguage("Spanish", enabled: false)
+        XCTAssertEqual(prefs.translationLanguages, ["French"])
+        XCTAssertTrue(prefs.isLastEnabledTranslationLanguage("French"))
+        XCTAssertFalse(prefs.isLastEnabledTranslationLanguage("Spanish"))
+
+        // Attempting to disable the last remaining language is refused
+        prefs.setTranslationLanguage("French", enabled: false)
+        XCTAssertEqual(prefs.translationLanguages, ["French"])
+    }
+
+    func testTranslateLanguageChoiceAndMessageMenuSubmenu() async throws {
+        let suiteName = "test.courier.ai.translatelang.\(UUID().uuidString)"
+        let defaults = ScratchDefaults.suite(named: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let prefs = AIPreferences(defaults: defaults)
+        prefs.translationLanguages = ["Spanish", "French", "Japanese"]
+        prefs.responseLanguage = "French"
+        prefs.enableContextualAI = true
+        prefs.selectedEngine = .ollama
+        prefs.selectedModel = "llama3.2"
+
+        let msg = makeTimelineMessage(
+            id: "$msg1",
+            senderName: "Alice",
+            mine: false,
+            kind: .text,
+            body: "Bonjour tout le monde"
+        )
+
+        // 1. MessageMenu when AI is unavailable: Translate is disabled with "Set up AI in Settings"
+        let unavailableSections = MessageMenu.sections(
+            for: msg,
+            available: (actions: [.reply, .copy], unavailable: []),
+            features: ChatFeatures(source: .stored),
+            disappearsIn: nil,
+            time: { _ in "12:00 PM" },
+            includeDiagnostics: true,
+            isAIAvailable: false,
+            responseLanguage: prefs.responseLanguage,
+            translationLanguages: prefs.translationLanguages
+        )
+        let unavailableTranslate = unavailableSections.flatMap { $0 }.first { $0.title == "Translate" }
+        XCTAssertNotNil(unavailableTranslate)
+        XCTAssertEqual(unavailableTranslate?.isEnabled, false)
+        XCTAssertEqual(unavailableTranslate?.help, "Set up AI in Settings")
+        XCTAssertTrue(unavailableTranslate?.children.isEmpty ?? false)
+
+        // 2. MessageMenu when AI is available: primary Translate + "Translate Into…" submenu for other enabled languages
+        let availableSections = MessageMenu.sections(
+            for: msg,
+            available: (actions: [.reply, .copy], unavailable: []),
+            features: ChatFeatures(source: .stored),
+            disappearsIn: nil,
+            time: { _ in "12:00 PM" },
+            includeDiagnostics: true,
+            isAIAvailable: true,
+            responseLanguage: prefs.responseLanguage,
+            translationLanguages: prefs.translationLanguages
+        )
+        let availableItems = availableSections.flatMap { $0 }
+        let primaryTranslate = availableItems.first { $0.title == "Translate" }
+        let submenu = availableItems.first { $0.title == "Translate Into…" }
+        XCTAssertEqual(primaryTranslate?.isEnabled, true)
+        XCTAssertEqual(primaryTranslate?.command, MessageMenuItem.Command.translate)
+        XCTAssertNotNil(submenu)
+        XCTAssertEqual(
+            submenu?.children.map { $0.command },
+            [MessageMenuItem.Command.translateTo("Spanish"), MessageMenuItem.Command.translateTo("Japanese")]
+        )
+
+        // 3. MessageActionsModel.translateMessage defaults to preferences.responseLanguage (not translationLanguages.first)
+        let h = try await startConversation(
+            ["!a": [textEvent(id: "$msg1", room: "!a", at: 1, body: "Bonjour tout le monde")]],
+            rows: ["!a": chatRow("!a", name: "Alice", network: "whatsapp")]
+        )
+        try await h.open("!a")
+        let actions = MessageActionsModel(
+            conversation: h.conversation,
+            appModel: h.app,
+            preferences: h.preferences,
+            pasteboard: FakePasteboard()
+        )
+        let mockProvider = MockTestAIProvider(result: .text("Hello everyone"))
+        actions.aiPreferences = prefs
+        actions.aiProvider = mockProvider
+
+        actions.translateMessage(eventID: "$msg1")
+        await actions.waitForTranslation(eventID: "$msg1")
+
+        XCTAssertEqual(actions.translationTargetLanguages["$msg1"], "French")
+        XCTAssertEqual(mockProvider.lastTranslateTargetLanguage, "French")
+        XCTAssertEqual(actions.translations["$msg1"], AIProviderDisposition.text("Hello everyone"))
+        XCTAssertEqual(actions.translationProvenance["$msg1"], "via llama3.2 · on this Mac")
+        await h.stop()
+    }
+
+    func testComposerAIResultStripReplaceInsertDiscardAndNeverChangesTextOnError() async {
+        let suiteName = "test.courier.ai.composer.strip.\(UUID().uuidString)"
+        let defaults = ScratchDefaults.suite(named: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let prefs = AIPreferences(defaults: defaults)
+        prefs.enableContextualAI = true
+        prefs.selectedEngine = .anthropic
+        prefs.selectedModel = "claude-sonnet-4-20250514"
+
+        let composer = ComposerModel()
+        composer.aiPreferences = prefs
+        composer.open("!room1:courier.local")
+
+        let mockProvider = MockTestAIProvider(result: .text("Polished reply"))
+        composer.aiProvider = mockProvider
+
+        // 1. Replace: result lands in aiResult first without touching composer.text; replaceWithAIResult replaces text
+        composer.text = "rough draft"
+        composer.draftWithAI(tone: .moreConcise)
+        await composer.waitForAI()
+
+        XCTAssertEqual(composer.text, "rough draft", "Drafting must not overwrite composer.text before Replace is chosen")
+        XCTAssertEqual(composer.aiResult?.text, "Polished reply")
+        XCTAssertEqual(composer.aiResult?.provenance, "via claude-sonnet-4-20250514 · sent to Anthropic")
+        composer.replaceWithAIResult()
+        XCTAssertEqual(composer.text, "Polished reply")
+        XCTAssertNil(composer.aiResult)
+
+        // 2. Insert: appends/inserts into existing composer.text
+        composer.text = "Hey team,"
+        composer.draftWithAI(tone: nil)
+        await composer.waitForAI()
+        XCTAssertEqual(composer.aiResult?.text, "Polished reply")
+        composer.insertAIResult()
+        XCTAssertEqual(composer.text, "Hey team,\n\nPolished reply")
+        XCTAssertNil(composer.aiResult)
+
+        // 3. Discard: clears aiResult without changing composer.text
+        composer.text = "Keep my words"
+        composer.draftWithAI(tone: nil)
+        await composer.waitForAI()
+        XCTAssertNotNil(composer.aiResult)
+        composer.discardAIResult()
+        XCTAssertNil(composer.aiResult)
+        XCTAssertEqual(composer.text, "Keep my words")
+
+        // 4. Error: sets aiError and NEVER changes composer.text
+        mockProvider.result = .unavailable(reason: AIClientError.badKey.message)
+        composer.text = "Never lose this draft"
+        composer.draftWithAI(tone: .moreProfessional)
+        await composer.waitForAI()
+
+        XCTAssertEqual(composer.text, "Never lose this draft")
+        XCTAssertNil(composer.aiResult)
+        XCTAssertEqual(composer.aiError, AIClientError.badKey.message)
+    }
+
+    func testComposerCancelsInFlightAIRequestOnChatSwitchAndNeverLandsInOtherChat() async throws {
+        let suiteName = "test.courier.ai.composer.cancel.\(UUID().uuidString)"
+        let defaults = ScratchDefaults.suite(named: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let prefs = AIPreferences(defaults: defaults)
+        prefs.enableContextualAI = true
+        prefs.selectedEngine = .ollama
+        prefs.selectedModel = "llama3.2"
+
+        let composer = ComposerModel()
+        composer.aiPreferences = prefs
+        let slowProvider = MockTestAIProvider(
+            result: .text("Reply for Room A"),
+            delay: .milliseconds(80)
+        )
+        composer.aiProvider = slowProvider
+
+        composer.open("!roomA:courier.local")
+        composer.text = "Draft in Room A"
+        composer.draftWithAI(tone: nil)
+        XCTAssertTrue(composer.isAIWriting)
+
+        // Switch chats while the request is in flight
+        composer.open("!roomB:courier.local")
+        XCTAssertEqual(composer.roomID, "!roomB:courier.local")
+        XCTAssertFalse(composer.isAIWriting)
+        XCTAssertNil(composer.aiResult)
+
+        // Wait longer than the provider's delay and verify the result never lands in Room B
+        try await Task.sleep(for: .milliseconds(140))
+        XCTAssertEqual(composer.roomID, "!roomB:courier.local")
+        XCTAssertNil(composer.aiResult, "In-flight AI result from previous chat must never land in the new chat")
+        XCTAssertNil(composer.aiError)
+        XCTAssertEqual(composer.text, "")
+    }
+
     // MARK: - Helpers
 
     private func assertThrowsClientError<T>(
@@ -713,5 +919,66 @@ final class AIProvidersTests: XCTestCase {
             reactions: [],
             startsGroup: true
         )
+    }
+}
+
+private final class MockTestAIProvider: AIProvider, @unchecked Sendable {
+    private let lock = NSLock()
+    let isAvailable: Bool = true
+    let unavailableReason: String = ""
+    let availableModels: [String] = ["test-model"]
+    private var _result: AIProviderDisposition
+    let delay: Duration?
+    private var _lastTranslateTargetLanguage: String?
+
+    var result: AIProviderDisposition {
+        get { lock.withLock { _result } }
+        set { lock.withLock { _result = newValue } }
+    }
+
+    var lastTranslateTargetLanguage: String? {
+        lock.withLock { _lastTranslateTargetLanguage }
+    }
+
+    init(result: AIProviderDisposition, delay: Duration? = nil) {
+        self._result = result
+        self.delay = delay
+    }
+
+    func summarize(context: AIChatContext) async -> AIProviderDisposition {
+        if let delay {
+            try? await Task.sleep(for: delay)
+        }
+        return result
+    }
+
+    func draftResponse(context: AIChatContext, draft: String, tone: AIRewriteTone?) async -> AIProviderDisposition {
+        if let delay {
+            try? await Task.sleep(for: delay)
+        }
+        return result
+    }
+
+    func translate(text: String, targetLanguage: String) async -> AIProviderDisposition {
+        lock.withLock { _lastTranslateTargetLanguage = targetLanguage }
+        if let delay {
+            try? await Task.sleep(for: delay)
+        }
+        return result
+    }
+
+    func ask(prompt: String, context: AIChatContext) async -> AIProviderDisposition {
+        if let delay {
+            try? await Task.sleep(for: delay)
+        }
+        return result
+    }
+
+    func transcribeVoiceNote(roomID: String, eventID: String) async -> AIProviderDisposition {
+        .unavailable(reason: "Not available")
+    }
+
+    func startTalkToType() async -> AIProviderDisposition {
+        .unavailable(reason: "Not available")
     }
 }

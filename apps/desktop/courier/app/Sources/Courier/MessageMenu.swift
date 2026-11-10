@@ -16,14 +16,30 @@ struct MessageMenuItems: View {
         ForEach(Array(sections.enumerated()), id: \.offset) { index, section in
             if index > 0 { Divider() }
             ForEach(section) { item in
-                button(item)
+                menuElement(item)
             }
         }
     }
 
-    @ViewBuilder
-    private func button(_ item: MessageMenuItem) -> some View {
+    private func menuElement(_ item: MessageMenuItem) -> AnyView {
         let locked = hotkeyDispatcher?.lifecycle.isLocked == true
+        let enabled = item.isEnabled && !locked
+        if !item.children.isEmpty {
+            return AnyView(
+                Menu(item.title) {
+                    ForEach(item.children) { child in
+                        leafButton(child, locked: locked)
+                    }
+                }
+                .disabled(!enabled)
+                .help(item.help ?? "")
+            )
+        }
+        return AnyView(leafButton(item, locked: locked))
+    }
+
+    @ViewBuilder
+    private func leafButton(_ item: MessageMenuItem, locked: Bool) -> some View {
         let enabled = item.isEnabled && !locked
         if let key = item.key {
             if let hotkeyID = key.hotkeyID {
@@ -65,31 +81,63 @@ struct MessageMenuList: View {
             ForEach(Array(sections.enumerated()), id: \.offset) { index, section in
                 if index > 0 { Divider().padding(.vertical, 4) }
                 ForEach(section) { item in
-                    Button { choose(item.command) } label: {
-                        HStack(spacing: 16) {
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(item.title)
-                                    .foregroundStyle(item.isEnabled ? .primary : .secondary)
-                                if let help = item.help {
-                                    Text(help).font(.caption).foregroundStyle(.secondary)
-                                }
-                            }
-                            Spacer(minLength: 0)
-                            if let key = item.key {
-                                Text(key.symbols).foregroundStyle(.secondary)
-                            }
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 3)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!item.isEnabled)
+                    rowView(item)
                 }
             }
         }
         .padding(.vertical, 6)
         .frame(minWidth: 240)
+    }
+
+    @ViewBuilder
+    private func rowView(_ item: MessageMenuItem) -> some View {
+        if !item.children.isEmpty {
+            Menu {
+                ForEach(item.children) { child in
+                    Button(child.title) {
+                        choose(child.command)
+                    }
+                    .disabled(!child.isEnabled)
+                }
+            } label: {
+                HStack(spacing: 16) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(item.title)
+                            .foregroundStyle(item.isEnabled ? .primary : .secondary)
+                        if let help = item.help {
+                            Text(help).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 3)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!item.isEnabled)
+        } else {
+            Button { choose(item.command) } label: {
+                HStack(spacing: 16) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(item.title)
+                            .foregroundStyle(item.isEnabled ? .primary : .secondary)
+                        if let help = item.help {
+                            Text(help).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                    if let key = item.key {
+                        Text(key.symbols).foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 3)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!item.isEnabled)
+        }
     }
 }
 
@@ -139,10 +187,17 @@ enum MessageRowActions {
             waitingHelp: { StatusLine.waitingHelp(network: conversation.network) },
             menu: { message in
                 guard dispatcher?.lifecycle.isLocked != true else { return [] }
-                return MessageMenu.sections(for: message, available: conversation.availableActions(for: message),
-                                            features: conversation.features, disappearsIn: conversation.disappearsIn(message),
-                                            time: { preferences.formatDateTime($0, dateStyle: .medium) },
-                                            includeDiagnostics: true)
+                return MessageMenu.sections(
+                    for: message,
+                    available: conversation.availableActions(for: message),
+                    features: conversation.features,
+                    disappearsIn: conversation.disappearsIn(message),
+                    time: { preferences.formatDateTime($0, dateStyle: .medium) },
+                    includeDiagnostics: true,
+                    isAIAvailable: composer.aiProvider.isAvailable,
+                    responseLanguage: composer.aiPreferences.responseLanguage,
+                    translationLanguages: composer.aiPreferences.translationLanguages
+                )
             },
             perform: { command, id in
                 guard dispatcher?.lifecycle.isLocked != true else { return }
@@ -152,8 +207,20 @@ enum MessageRowActions {
                 case .copyMessageDetails: messageActions.copyMessageDetails(id, from: source)
                 case .reportProblem: messageActions.reportProblem(for: id, from: source)
                 case .translate:
-                    let lang = composer.aiPreferences.translationLanguages.first ?? "English"
-                    messageActions.translateMessage(eventID: id, targetLanguage: lang)
+                    let lang = composer.aiPreferences.responseLanguage
+                    if composer.aiProvider.isAvailable {
+                        messageActions.translateMessage(eventID: id, targetLanguage: lang)
+                    } else {
+                        messageActions.translateMessage(eventID: id, targetLanguage: lang)
+                        messageActions.onOpenAISettings()
+                    }
+                case let .translateTo(lang):
+                    if composer.aiProvider.isAvailable {
+                        messageActions.translateMessage(eventID: id, targetLanguage: lang)
+                    } else {
+                        messageActions.translateMessage(eventID: id, targetLanguage: lang)
+                        messageActions.onOpenAISettings()
+                    }
                 case .info: break
                 }
             },
@@ -197,9 +264,24 @@ enum MessageRowActions {
             showMessageTimestamps: preferences.showMessageTimestamps,
             composerPreferences: preferences,
             translation: { id in
-                guard let disp = messageActions.translations[id] else { return nil }
-                let lang = messageActions.translationTargetLanguages[id] ?? "English"
+                let isTranslating = messageActions.translatingEventIDs.contains(id)
+                guard isTranslating || messageActions.translations[id] != nil else { return nil }
+                let lang = messageActions.translationTargetLanguages[id] ?? composer.aiPreferences.responseLanguage
+                let disp = messageActions.translations[id] ?? .text("")
                 return (lang, disp)
+            },
+            isTranslating: { id in
+                messageActions.translatingEventIDs.contains(id)
+            },
+            translationProvenance: { id in
+                messageActions.translationProvenance[id]
+            },
+            retryTranslation: { id in
+                let lang = messageActions.translationTargetLanguages[id] ?? composer.aiPreferences.responseLanguage
+                messageActions.translateMessage(eventID: id, targetLanguage: lang)
+            },
+            openAISettings: {
+                messageActions.onOpenAISettings()
             },
             dismissTranslation: { id in
                 messageActions.dismissTranslation(eventID: id)

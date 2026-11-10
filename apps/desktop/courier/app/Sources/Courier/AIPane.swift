@@ -1,30 +1,67 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import AppKit
 import CourierCore
 import SwiftUI
 
-/// `AIPane.tsx`, `AIMessageContent.tsx`, `AIMessageFooterActions.tsx`, `AIMessageParts.tsx`,
-/// `AIModelButton.tsx`, `AISpinnerVerb.tsx`, `AIToolCallsPanel.tsx` (`01` §13).
+/// `AIPane.tsx` (`01` §13, `docs/ai-providers.md`): header with active provider/model line, Summarize action with
+/// collapsible one-line summary card (`"Summary of N messages · on this Mac"`), selectable summary text and Copy button,
+/// or a single calm setup prompt with **Open AI Settings** when no provider is configured.
 public struct AIPane: View {
     public let chatTitle: String
     @ObservedObject public var preferences: AIPreferences
     public let provider: any AIProvider
-    public var onClose: () -> Void = {}
-
-    @State private var selectedTone: AIRewriteTone = .moreConcise
-    @State private var lastActionNotice: String?
+    public var isSummarizing: Bool
+    public var summarizingMessageCount: Int
+    public var summary: ChatAISummary?
+    public var summaryError: String?
+    public var isSummaryExpanded: Bool
+    public var onSummarize: () -> Void
+    public var onCancelSummarize: () -> Void
+    public var onToggleSummaryExpanded: () -> Void
+    public var onCopySummary: (String) -> Void
+    public var onOpenAISettings: () -> Void
+    public var onClose: () -> Void
 
     public init(
         chatTitle: String,
         preferences: AIPreferences,
         provider: any AIProvider = UnavailableAIProvider(),
+        isSummarizing: Bool = false,
+        summarizingMessageCount: Int = 0,
+        summary: ChatAISummary? = nil,
+        summaryError: String? = nil,
+        isSummaryExpanded: Bool = true,
+        onSummarize: @escaping () -> Void = {},
+        onCancelSummarize: @escaping () -> Void = {},
+        onToggleSummaryExpanded: @escaping () -> Void = {},
+        onCopySummary: @escaping (String) -> Void = { text in
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+        },
+        onOpenAISettings: @escaping () -> Void = {},
         onClose: @escaping () -> Void = {}
     ) {
         self.chatTitle = chatTitle
         self.preferences = preferences
         self.provider = provider
+        self.isSummarizing = isSummarizing
+        self.summarizingMessageCount = summarizingMessageCount
+        self.summary = summary
+        self.summaryError = summaryError
+        self.isSummaryExpanded = isSummaryExpanded
+        self.onSummarize = onSummarize
+        self.onCancelSummarize = onCancelSummarize
+        self.onToggleSummaryExpanded = onToggleSummaryExpanded
+        self.onCopySummary = onCopySummary
+        self.onOpenAISettings = onOpenAISettings
         self.onClose = onClose
+    }
+
+    private var activeProviderModelLine: String {
+        let model = preferences.model(for: preferences.selectedEngine) ?? preferences.selectedModel
+        return "\(preferences.selectedEngine.label) · \(model)"
     }
 
     public var body: some View {
@@ -33,31 +70,17 @@ public struct AIPane: View {
             Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    unavailableCard
-                    quickActionsSection
-                    rewriteToneSection
-                    if let lastActionNotice {
-                        HStack(alignment: .top, spacing: 8) {
-                            Image(systemName: "info.circle.fill")
-                                .foregroundStyle(.secondary)
-                            Text(lastActionNotice)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Spacer(minLength: 0)
-                        }
-                        .padding(10)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(Color.secondary.opacity(0.1))
-                        )
+                    if provider.isAvailable {
+                        providerStatusCard
+                        summarizeSection
+                    } else {
+                        unavailableCard
                     }
                 }
                 .padding(14)
             }
-            Divider()
-            footerComposerBar
         }
-        .frame(width: 300)
+        .frame(minWidth: 280, idealWidth: 300, maxWidth: 380)
         .background(Color(nsColor: .windowBackgroundColor))
     }
 
@@ -74,12 +97,15 @@ public struct AIPane: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
-            Text(preferences.selectedModel)
-                .font(.caption2.weight(.medium))
-                .padding(.horizontal, 7)
-                .padding(.vertical, 3)
-                .background(Capsule().fill(Color.secondary.opacity(0.14)))
-                .foregroundStyle(.secondary)
+            if provider.isAvailable {
+                Text(activeProviderModelLine)
+                    .font(.caption2.weight(.medium))
+                    .lineLimit(1)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(Color.secondary.opacity(0.14)))
+                    .foregroundStyle(.secondary)
+            }
             Button(action: onClose) {
                 Image(systemName: "xmark")
                     .font(.caption.weight(.semibold))
@@ -93,17 +119,35 @@ public struct AIPane: View {
         .padding(.vertical, 10)
     }
 
+    private var providerStatusCard: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(Color.green)
+                .frame(width: 7, height: 7)
+                .accessibilityHidden(true)
+            Text(activeProviderModelLine)
+                .font(.caption.weight(.semibold))
+            Spacer(minLength: 0)
+            Text(preferences.selectedEngine.summaryLocationNote())
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.secondary.opacity(0.08))
+        )
+    }
+
     private var unavailableCard: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Image(systemName: "lock.shield")
-                    .foregroundStyle(Color.accentColor)
-                Text(String(localized: "On this Mac only"))
-                    .font(.caption.weight(.semibold))
-            }
-            Text(provider.unavailableReason)
+        VStack(alignment: .leading, spacing: 10) {
+            Text(String(localized: "Set up a local or cloud AI provider in Settings to summarize chats, draft replies, and translate messages."))
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            Button(String(localized: "Open AI Settings"), action: onOpenAISettings)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -117,113 +161,212 @@ public struct AIPane: View {
         )
     }
 
-    private var quickActionsSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(String(localized: "Suggested Actions"))
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+    @ViewBuilder
+    private var summarizeSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Button(action: onSummarize) {
+                HStack(spacing: 8) {
+                    Image(systemName: "text.redaction")
+                        .font(.caption)
+                        .foregroundStyle(Color.accentColor)
+                        .frame(width: 18)
+                    Text(String(localized: "Summarize"))
+                        .font(.caption.weight(.medium))
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color.primary.opacity(0.05))
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(isSummarizing)
 
-            ForEach([
-                (String(localized: "Summarize recent messages"), "text.redaction"),
-                (String(localized: "Draft a reply"), "pencil.and.outline"),
-                (String(localized: "Translate conversation"), "globe"),
-            ], id: \.0) { title, icon in
-                Button {
-                    lastActionNotice = provider.unavailableReason
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: icon)
+            if isSummarizing {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(String(localized: "Summarizing \(summarizingMessageCount) messages…"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                    Button(String(localized: "Cancel"), action: onCancelSummarize)
+                        .buttonStyle(.borderless)
+                        .font(.caption)
+                }
+                .padding(10)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color.secondary.opacity(0.1))
+                )
+            }
+
+            if let summary {
+                summaryCard(summary)
+            }
+
+            if let summaryError {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
                             .font(.caption)
-                            .foregroundStyle(Color.accentColor)
-                            .frame(width: 18)
-                        Text(title)
-                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.orange)
+                        Text(summaryError)
+                            .font(.caption)
+                            .foregroundStyle(.primary)
                         Spacer(minLength: 0)
-                        Text(String(localized: "Not available yet"))
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.secondary)
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(Color.primary.opacity(0.05))
-                    )
+                    HStack(spacing: 10) {
+                        Button(String(localized: "Retry"), action: onSummarize)
+                            .buttonStyle(.borderless)
+                            .font(.caption.weight(.medium))
+                        Button(String(localized: "Open AI Settings"), action: onOpenAISettings)
+                            .buttonStyle(.borderless)
+                            .font(.caption)
+                    }
                 }
-                .buttonStyle(.plain)
+                .padding(10)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color.orange.opacity(0.12))
+                )
             }
         }
     }
 
-    private var rewriteToneSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(String(localized: "Draft Tone"))
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-            Picker(String(localized: "Tone"), selection: $selectedTone) {
-                ForEach(AIRewriteTone.allCases, id: \.self) { tone in
-                    Text(tone.label).tag(tone)
+    private func summaryCard(_ summary: ChatAISummary) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button(action: onToggleSummaryExpanded) {
+                HStack(spacing: 6) {
+                    Image(systemName: isSummaryExpanded ? "chevron.down" : "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 10)
+                    Text(summary.collapsedHeader)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if isSummaryExpanded {
+                Divider()
+                Text(summary.text)
+                    .font(.caption)
+                    .foregroundStyle(.primary)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                HStack(spacing: 8) {
+                    Text(summary.provenance)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    Button(String(localized: "Copy")) {
+                        onCopySummary(summary.text)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
                 }
             }
-            .labelsHidden()
         }
-    }
-
-    private var footerComposerBar: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "sparkles")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(String(localized: "AI assistant isn’t available yet in Courier."))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(Color.primary.opacity(0.03))
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.secondary.opacity(0.1))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Color.secondary.opacity(0.22), lineWidth: 0.5)
+        )
     }
 }
 
 /// `MessageTranslations.tsx` and `MessageTranslationRow.tsx` (`01` §8, §13): inline translation row shown under a message bubble.
 public struct MessageTranslationRowView: View {
     public let targetLanguage: String
-    public let disposition: AIProviderDisposition
-    public var onDismiss: () -> Void = {}
+    public let disposition: AIProviderDisposition?
+    public var isTranslating: Bool
+    public var provenance: String?
+    public var onRetry: (() -> Void)?
+    public var onOpenAISettings: (() -> Void)?
+    public var onDismiss: () -> Void
 
     public init(
         targetLanguage: String,
         disposition: AIProviderDisposition,
+        isTranslating: Bool = false,
+        provenance: String? = nil,
+        onRetry: (() -> Void)? = nil,
+        onOpenAISettings: (() -> Void)? = nil,
         onDismiss: @escaping () -> Void = {}
     ) {
         self.targetLanguage = targetLanguage
         self.disposition = disposition
+        self.isTranslating = isTranslating
+        self.provenance = provenance
+        self.onRetry = onRetry
+        self.onOpenAISettings = onOpenAISettings
         self.onDismiss = onDismiss
-    }
-
-    private var displayBody: String {
-        switch disposition {
-        case let .unavailable(reason):
-            reason
-        case let .text(translated):
-            translated
-        }
     }
 
     public var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "globe")
-                .font(.caption)
-                .foregroundStyle(Color.accentColor)
-                .padding(.top, 1)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(String(localized: "Translation (\(targetLanguage))"))
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Text(displayBody)
+            if isTranslating {
+                ProgressView()
+                    .controlSize(.small)
+                    .padding(.top, 1)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(String(localized: "Translating into \(targetLanguage)…"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else if let disposition {
+                Image(systemName: "globe")
                     .font(.caption)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(Color.accentColor)
+                    .padding(.top, 1)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(String(localized: "Translation (\(targetLanguage))"))
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    switch disposition {
+                    case let .text(translated):
+                        Text(translated)
+                            .font(.caption)
+                            .foregroundStyle(.primary)
+                            .textSelection(.enabled)
+                        if let provenance, !provenance.isEmpty {
+                            Text(provenance)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    case let .unavailable(reason):
+                        Text(reason)
+                            .font(.caption)
+                            .foregroundStyle(.primary)
+                        if onRetry != nil || onOpenAISettings != nil {
+                            HStack(spacing: 10) {
+                                if let onRetry {
+                                    Button(String(localized: "Retry"), action: onRetry)
+                                        .buttonStyle(.borderless)
+                                        .font(.caption2.weight(.semibold))
+                                }
+                                if let onOpenAISettings {
+                                    Button(String(localized: "Open AI Settings"), action: onOpenAISettings)
+                                        .buttonStyle(.borderless)
+                                        .font(.caption2)
+                                }
+                            }
+                        }
+                    }
+                }
             }
             Spacer(minLength: 0)
             Button(action: onDismiss) {

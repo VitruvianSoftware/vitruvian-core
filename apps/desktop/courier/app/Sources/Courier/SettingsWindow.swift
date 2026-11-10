@@ -26,6 +26,7 @@ struct SettingsWindow: View {
     @ObservedObject var problemReport: ProblemReportModel
     @ObservedObject var appearance: AppearancePreferences = AppearancePreferences()
     @ObservedObject var aiPreferences: AIPreferences = AIPreferences()
+    var aiProviderStore: AIProviderStore? = nil
     var storage: StorageModel? = nil
     var integrations: IntegrationsModel = IntegrationsModel(appModel: nil, enginePath: EngineLocation.enginePath())
     /// Settings ▸ About ▸ Updates. The app passes its own; the default one checks nothing until asked.
@@ -350,6 +351,7 @@ struct SettingsWindow: View {
         case .ai:
             AISettingsPane(
                 preferences: aiPreferences,
+                store: aiProviderStore,
                 lifecycle: lifecycle,
                 highlightedSettingID: navigation.highlightedSettingID
             )

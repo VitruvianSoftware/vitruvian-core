@@ -149,6 +149,7 @@ struct CourierApp: App {
                     problemReport: delegate.problemReport,
                     appearance: delegate.appearance,
                     aiPreferences: delegate.aiPreferences,
+                    aiProviderStore: delegate.aiProviderStore,
                     storage: delegate.storage,
                     integrations: delegate.integrations,
                     updates: delegate.updates,

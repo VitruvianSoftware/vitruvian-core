@@ -140,7 +140,7 @@ public enum MessageMenu {
                         command: .translate,
                         title: String(localized: "Translate"),
                         key: nil,
-                        isEnabled: true,
+                        isEnabled: isAIAvailable,
                         help: translateHelp
                     ),
                 ]
@@ -151,7 +151,7 @@ public enum MessageMenu {
                             command: .translateTo(language),
                             title: language,
                             key: nil,
-                            isEnabled: true,
+                            isEnabled: isAIAvailable,
                             help: translateHelp
                         )
                     }
@@ -160,7 +160,7 @@ public enum MessageMenu {
                             command: .translate,
                             title: String(localized: "Translate Into…"),
                             key: nil,
-                            isEnabled: true,
+                            isEnabled: isAIAvailable,
                             help: translateHelp,
                             children: children
                         )

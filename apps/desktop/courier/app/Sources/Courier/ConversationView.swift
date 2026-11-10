@@ -119,11 +119,40 @@ struct ConversationView: View {
                     onReportSpam: {
                         Task { await conversation.beginReportSpam(info: info) }
                     },
+                    isAIAvailable: composer.aiProvider.isAvailable,
+                    onSummarizeChat: {
+                        conversation.summarizeChat()
+                    },
+                    onOpenAISettings: {
+                        conversation.onOpenAISettings()
+                    },
                     onClose: conversation.toggleChatInfo,
                     headerInToolbar: drawsLiquidGlass
                 )
                 .frame(minWidth: 280, idealWidth: 320, maxWidth: 420)
                 .reportsSidePaneWidth(.chatInfo)
+            }
+            if conversation.isShowingAIPane {
+                AIPane(
+                    chatTitle: chatName ?? String(localized: "Chat"),
+                    preferences: composer.aiPreferences,
+                    provider: composer.aiProvider,
+                    isSummarizing: conversation.isSummarizingChat,
+                    summarizingMessageCount: conversation.summarizingMessageCount,
+                    summary: conversation.chatSummary,
+                    summaryError: conversation.chatSummaryError,
+                    isSummaryExpanded: conversation.isChatSummaryExpanded,
+                    onSummarize: { conversation.summarizeChat() },
+                    onCancelSummarize: { conversation.cancelSummarizeChat() },
+                    onToggleSummaryExpanded: { conversation.isChatSummaryExpanded.toggle() },
+                    onCopySummary: { text in
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(text, forType: .string)
+                        conversation.onToast(String(localized: "Copied summary"))
+                    },
+                    onOpenAISettings: { conversation.onOpenAISettings() },
+                    onClose: { conversation.isShowingAIPane = false }
+                )
             }
         }
         .onPreferenceChange(SidePaneWidthKey.self) { sidePaneWidths = $0 }
@@ -851,7 +880,7 @@ private struct ConversationComposerContainer: View {
     let upArrow: () -> Bool
 
     private var currentChromeSignature: String {
-        "\(composer.replyTarget?.eventID ?? "")|\(composer.attachments.count)|\(composer.notice == nil ? "" : "notice")"
+        "\(composer.replyTarget?.eventID ?? "")|\(composer.attachments.count)|\(composer.notice == nil ? "" : "notice")|\(composer.isAIWriting)|\(composer.aiResult != nil)|\(composer.aiError ?? "")"
     }
 
     var body: some View {
@@ -949,6 +978,21 @@ struct ConversationHeader: View {
         DisappearingMenu(conversation: conversation, inToolbar: inToolbar)
         let info = Button(action: conversation.toggleChatInfo) {
             Image(systemName: conversation.isShowingChatInfo ? "info.circle.fill" : "info.circle")
+        }
+        .contextMenu {
+            Button(String(localized: "Chat Info")) {
+                conversation.toggleChatInfo()
+            }
+            Divider()
+            Button(String(localized: "Summarize Chat")) {
+                if conversation.composer.aiProvider.isAvailable {
+                    conversation.summarizeChat()
+                } else {
+                    conversation.onOpenAISettings()
+                }
+            }
+            .disabled(!conversation.composer.aiProvider.isAvailable)
+            .help(conversation.composer.aiProvider.isAvailable ? "" : String(localized: "Set up AI in Settings"))
         }
         .help(String(localized: "Chat Info (⌘⇧I)"))
         .accessibilityLabel(String(localized: "Chat Info"))
