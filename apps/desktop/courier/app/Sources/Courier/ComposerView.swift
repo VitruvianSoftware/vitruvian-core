@@ -103,6 +103,7 @@ struct ComposerView: View {
     ]
 
     @Environment(\.drawsLiquidGlass) private var drawsLiquidGlass
+    @Environment(\.themeAccentColor) private var themeAccent
 
     /// The message box's height at one line, with glass: the text's height and the field's padding above and below.
     static let floatingFieldPadding: CGFloat = 4
@@ -213,17 +214,13 @@ struct ComposerView: View {
 
                 if showsIncognitoMark { IncognitoMark() }
 
+                primaryActionButton
+
                 if case .editing = composer.mode {
                     EmptyView()
                 } else {
                     secondaryActionButton
-                    if preferences.primaryComposerButton != .gifPicker && preferences.secondaryComposerButton != .gifPicker {
-                        gifToolbarButton
-                    }
-                    stickerToolbarButton
                 }
-
-                primaryActionButton
 
                 sendButton(floating: floating)
             }
@@ -281,8 +278,8 @@ struct ComposerView: View {
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
-                .background(Capsule().fill(Color.accentColor.opacity(0.14)))
-                .overlay(Capsule().strokeBorder(Color.accentColor.opacity(0.45), lineWidth: 1))
+                .background(Capsule().fill(themeAccent.opacity(0.14)))
+                .overlay(Capsule().strokeBorder(themeAccent.opacity(0.45), lineWidth: 1))
             }
             .buttonStyle(.plain)
             .help(String(localized: "Switch the network your reply is sent on"))
@@ -332,16 +329,18 @@ struct ComposerView: View {
                 }
             }
             .disabled(composer.roomID == nil)
-            Button(composer.addGIFMenuTitle) {
-                if let dispatcher = composer.hotkeyDispatcher {
-                    _ = dispatcher.perform("Message: Send GIF")
-                } else {
-                    _ = composer.openGIFPicker()
+            if preferences.showsGIFInPlusMenu {
+                Button(composer.addGIFMenuTitle) {
+                    if let dispatcher = composer.hotkeyDispatcher {
+                        _ = dispatcher.perform("Message: Send GIF")
+                    } else {
+                        _ = composer.openGIFPicker()
+                    }
                 }
+                .registryShortcut("Message: Send GIF", in: composer.hotkeyDispatcher?.hotkeys ?? HotkeyRegistry())
+                .disabled(!composer.canSendGIF || composer.hotkeyDispatcher?.lifecycle.isLocked == true)
+                .help(composer.canSendGIF ? "" : composer.sendGIFMenuTitle)
             }
-            .registryShortcut("Message: Send GIF", in: composer.hotkeyDispatcher?.hotkeys ?? HotkeyRegistry())
-            .disabled(!composer.canSendGIF || composer.hotkeyDispatcher?.lifecycle.isLocked == true)
-            .help(composer.canSendGIF ? "" : composer.sendGIFMenuTitle)
             Button(composer.addStickerMenuTitle) {
                 if let dispatcher = composer.hotkeyDispatcher {
                     _ = dispatcher.perform("Message: Send Sticker")
@@ -354,7 +353,17 @@ struct ComposerView: View {
             .help(composer.canSendSticker ? "" : composer.sendStickerMenuTitle)
             Divider()
             Button(String(localized: "Add Attachment…")) { AttachmentPicker.run(into: composer) }
-            if let sendLater = menus.sendLater { sendLaterItem(sendLater) }
+            if preferences.showsSendLaterInPlusMenu {
+                if let sendLater = menus.sendLater {
+                    sendLaterItem(sendLater)
+                } else if case .thread = composer.mode {
+                    EmptyView()
+                } else {
+                    sendLaterItem {
+                        _ = composer.hotkeyDispatcher?.perform("Message: Send Later")
+                    }
+                }
+            }
             if let createPoll = menus.createPoll {
                 Button(String(localized: "Create Poll…"), action: createPoll)
                     .disabled(menus.pollsUnavailable != nil || composer.roomID == nil)
@@ -393,6 +402,18 @@ struct ComposerView: View {
         .fixedSize()
         .help(String(localized: "Attach files, send later, or create a poll"))
         .accessibilityLabel(String(localized: "More"))
+        .popover(
+            isPresented: Binding(
+                get: { composer.isGIFPickerPresented && preferences.showsGIFInPlusMenu },
+                set: { composer.isGIFPickerPresented = $0 }
+            ),
+            arrowEdge: .top
+        ) {
+            GIFPickerPopover(composer: composer)
+        }
+        .popover(isPresented: $composer.isStickerPickerPresented, arrowEdge: .top) {
+            StickerPickerPopover(composer: composer)
+        }
     }
 
     /// Send Later…, or without a plan that has it, greyed with "Available with a plan".
@@ -423,7 +444,7 @@ struct ComposerView: View {
             } else {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 26))
-                    .foregroundStyle(composer.canSend ? Color.accentColor : Color.secondary.opacity(0.5))
+                    .foregroundStyle(composer.canSend ? themeAccent : Color.secondary.opacity(0.5))
                     .frame(width: 28, height: ComposerTextView.minimumHeight)
                     .contentShape(Rectangle())
             }

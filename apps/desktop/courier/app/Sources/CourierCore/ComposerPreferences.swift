@@ -454,12 +454,38 @@ public final class ComposerPreferences: ObservableObject {
         alwaysAskWhereToSaveFiles = defaults.object(forKey: Self.alwaysAskWhereToSaveFilesKey) as? Bool ?? false
         disableOutgoingLinkPreviews = defaults.object(forKey: Self.disableOutgoingLinkPreviewsKey) as? Bool ?? true
         loadExternalEmbedsAutomatically = defaults.object(forKey: Self.loadExternalEmbedsAutomaticallyKey) as? Bool ?? false
-        primaryComposerButton = value("primaryComposerButton", PrimaryComposerButton.emojiPicker)
-        secondaryComposerButton = value("secondaryComposerButton", SecondaryComposerButton.recordAudio)
+        primaryComposerButton = value("primaryComposerButton", Self.defaultPrimaryComposerButton)
+        secondaryComposerButton = value("secondaryComposerButton", Self.defaultSecondaryComposerButton)
         timeFormat = value("timeFormat", TimeFormatPreference.system)
         showMessageTimestamps = bool("showMessageTimestamps", true)
         enableSpellcheck = bool("enableSpellcheck", true)
         isInitializing = false
+    }
+
+    public static let defaultPrimaryComposerButton: PrimaryComposerButton = .emojiPicker
+    public static let defaultSecondaryComposerButton: SecondaryComposerButton = .recordAudio
+
+    /// Whether the GIF picker moves into the "+" menu because it is not chosen as a visible toolbar button.
+    public var showsGIFInPlusMenu: Bool {
+        primaryComposerButton != .gifPicker && secondaryComposerButton != .gifPicker
+    }
+
+    /// Whether Send Later moves into the "+" menu because it is not chosen as a visible toolbar button.
+    public var showsSendLaterInPlusMenu: Bool {
+        primaryComposerButton != .sendLater && secondaryComposerButton != .sendLater
+    }
+
+    /// The visible composer controls in left-to-right order: "+", primary button, secondary button, and "send".
+    public func visibleControlIDs(isEditing: Bool = false) -> [String] {
+        var controls = ["plus"]
+        if primaryComposerButton != .none {
+            controls.append(primaryComposerButton.rawValue)
+        }
+        if !isEditing, secondaryComposerButton != .none {
+            controls.append(secondaryComposerButton.rawValue)
+        }
+        controls.append("send")
+        return controls
     }
 
     private func set(_ value: Any, _ name: String) {
