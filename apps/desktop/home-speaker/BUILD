@@ -338,6 +338,10 @@ test_suite(
 exports_files(
     [
         ".github/FUNDING.yml",
+        "testdata/state_v1.json",
     ],
-    visibility = ["//infrastructure/pulumi/platform/stripe:__pkg__"],
+    visibility = [
+        "//apps/mobile/android-remote/macagent:__pkg__",
+        "//infrastructure/pulumi/platform/stripe:__pkg__",
+    ],
 )
