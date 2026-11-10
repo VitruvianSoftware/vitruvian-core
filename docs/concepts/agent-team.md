@@ -7,15 +7,15 @@ judgement matters most: designing the change and checking it.
 ```mermaid
 flowchart TD
     L1["Lead: architect and split the work<br/>Claude Opus 5.5"]
-    W["Implementer (wren, atlas, forge, ...)<br/>Gemini 4 Argon"]
-    Q["scout: QA, pushes back<br/>Gemini 4 Argon"]
+    W["Implementer (wren, atlas, forge, ...)<br/>Gemini 4 Carbon"]
+    Q["scout: QA, pushes back<br/>Gemini 4 Carbon"]
     D["quill: docs<br/>Gemini 3.8 Flash"]
     L2["Lead: final review<br/>Claude Opus 5.5"]
     L1 --> W
     L1 --> D
     W --> Q
     Q -- "push back (at most 2 rounds)" --> W
-    U["compass: UAT as the user<br/>Gemini 4 Argon"]
+    U["compass: UAT as the user<br/>Gemini 4 Carbon"]
     Q -- "pass" --> U
     U -- "reject" --> W
     U -- "accept" --> L2
@@ -41,8 +41,8 @@ reviewer the lead stops the loop and decides what to do next.
 
 | | Claude Code | OpenCode | Antigravity |
 |---|---|---|---|
-| Lead (and `beacon`) | Claude Opus 5.5 | Claude Opus 5.5 | Gemini 4 Argon (there is no Opus in Antigravity) |
-| `deep` specialists: wren, scout, atlas, forge, aegis, ridge, compass | Gemini 4 Argon, through a Haiku driver | Gemini 4 Argon, through a Haiku driver | Gemini 4 Argon, natively |
+| Lead (and `beacon`) | Claude Opus 5.5 | Claude Opus 5.5 | Antigravity's `pro` model (there is no Opus in Antigravity) |
+| `deep` specialists: wren, scout, atlas, forge, aegis, ridge, compass | Gemini 4 Carbon, through a Haiku driver | Gemini 4 Carbon, through a Haiku driver | Antigravity's `pro` model, natively |
 | `light` specialists: quill, pace | Gemini 3.8 Flash, through a Haiku driver | Gemini 3.8 Flash, through a Haiku driver | Gemini 3.8 Flash, natively |
 
 ### What a "driver" is
@@ -69,7 +69,7 @@ Sonnet with the same brief, and says so in its final report. Specialist work nev
 ## What you see in the panel
 
 The orchestrator panel lists each specialist run. For a driver it shows both models, for example
-`claude-haiku-5-5 → gemini-4-argon-high`. The dollar estimate covers only the Haiku driver's
+`claude-haiku-5-5 → gemini-4-carbon-high`. The dollar estimate covers only the Haiku driver's
 Claude usage. Gemini work is listed as "delegated to Gemini" with a run count and no price, because
 the panel has no Gemini prices.
 

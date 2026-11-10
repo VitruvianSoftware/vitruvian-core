@@ -130,7 +130,7 @@ Once all tasks are accepted, report concisely to the user:
   - `background`: set `true` for long work.
 - Follow up or return defects by calling `subagent` again, passing the earlier run's `sessionID`. Each follow-up with defect feedback counts as a return round.
 - Nesting is off by default (depth 1): specialists cannot start subagents, so the lead does all dispatch. Do not change `experimental.subagent_depth` unless the user asks.
-- For a long read-only investigation that only you need (no specialist owns it), you may call Gemini directly: `agy-delegate -m gemini-4-argon-high -d <repo> --mode plan --digest "<question>"`. Treat the digest as a claim.
+- For a long read-only investigation that only you need (no specialist owns it), you may call Gemini directly: `agy-delegate -m gemini-4-carbon-high -d <repo> --mode plan --digest "<question>"`. Treat the digest as a claim.
 
 ## 7. Report progress to the live panel
 

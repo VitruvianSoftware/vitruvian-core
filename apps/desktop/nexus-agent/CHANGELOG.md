@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.32.6](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.32.5...nexus-agent-v1.32.6) (2026-11-10)
+
+
+### Bug Fixes
+
+* **nexus-agent:** offer Gemini 4 Carbon before agy lists its models ([#4533](https://github.com/VitruvianSoftware/vitruvian-core/issues/4533)) ([33a274d](https://github.com/VitruvianSoftware/vitruvian-core/commit/33a274d3cf2112041c701d6e37e675d0abb32c8e))
+
 ## [1.32.5](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.32.4...nexus-agent-v1.32.5) (2026-11-10)
 
 
