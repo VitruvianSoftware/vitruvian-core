@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.32.4](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.32.3...nexus-agent-v1.32.4) (2026-11-10)
+
+
+### Bug Fixes
+
+* **nexus-agent:** the standalone app's chat has the notch's dark look ([#4466](https://github.com/VitruvianSoftware/vitruvian-core/issues/4466)) ([5b3f9b4](https://github.com/VitruvianSoftware/vitruvian-core/commit/5b3f9b4546b3331c08bea55af3a91ee0504e1924))
+
 ## [1.32.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.32.2...nexus-agent-v1.32.3) (2026-11-10)
 
 
