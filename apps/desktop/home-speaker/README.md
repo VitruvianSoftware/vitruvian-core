@@ -386,9 +386,8 @@ every update. An owner-only file is what `gcloud` and `gh` do.
 ```bash
 cd apps/desktop/home-speaker
 
-# Tests (wraps `swift test` with the swift-testing plugin path the
-# Command Line Tools toolchain needs; plain `swift test` fails without Xcode)
-./scripts/test.sh
+# Tests
+bazel test --config=macos-app //apps/desktop/home-speaker:HomeSpeakerTests //apps/desktop/home-speaker:HomeSpeakerToolTests //apps/desktop/home-speaker:HomeSpeakerViewTests //apps/desktop/home-speaker:tool_conformance_test //apps/desktop/home-speaker:tool_version_test
 
 # Debug build, run directly
 swift build && .build/debug/HomeSpeaker

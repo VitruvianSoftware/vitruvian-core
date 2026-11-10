@@ -47,9 +47,10 @@ It is scriptable — `HomeSpeaker --say`, `--volume`, `--set-volume 0-100`, `--m
   come from the environment locally and from repository secrets in CI; the Slack token lives
   only in the Bitwarden vault and in this Mac's secrets file.
 - **`~/.gemini/speaker_broadcast.json` is the app's settings, and a shared contract.** This app
-  watches it, the Android remote's HomeSpeaker module rewrites it through `macagent`, and local
-  tooling reads it. Changing its schema touches all of them; keep old keys readable. The Vitruvian
-  extension does not use it: it has its own `settings.json` with exactly the same schema.
+  watches it, the Android remote's Mac helper asks the chosen program via `--state`/`--apply` (and no
+  longer reads or writes this file directly), and local tooling reads it. Changing its schema touches
+  all of them; keep old keys readable. The Vitruvian extension does not use it: it has its own
+  `settings.json` with exactly the same schema.
 - **The extension's files are in its data folder**, not under `~/.gemini/`:
   `~/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/dev.vitruvian.homespeaker/`
   holds `settings.json`, `secrets.json` (0600), `history.json` and `speaker_monitor_status.json`,
@@ -73,8 +74,9 @@ It is scriptable — `HomeSpeaker --say`, `--volume`, `--set-volume 0-100`, `--m
 - **Honesty rules hold in code:** an offline speaker shows offline, not its last level;
   "Whole Home" has no single volume; the slider waits for the speaker to confirm; "announce at
   a set volume" only restores the level if nobody changed it meanwhile.
-- **`testdata/` holds shared rulebook test cases.** Shared JSON cases read by
-  `Tests/HomeSpeakerTests/SharedRulebookCasesTests.swift`; a changed rule changes its case first.
+- **`testdata/` holds shared rulebook test cases and the golden state fixture.**
+  - **What is in it:** It holds shared JSON cases for catalog rules and the golden `state_v1.json` fixture; see `apps/desktop/home-speaker/testdata/README.md` for the file list.
+  - **Who reads it:** Swift engine tests (`//apps/desktop/home-speaker:HomeSpeakerTests` via `SharedRulebookCasesTests.swift`) load every case file, while the Rust Mac helper tests (`//apps/mobile/android-remote/macagent:macagent_test`) read only `state_v1.json`. Having Android remote Kotlin tests (`//apps/mobile/android-remote:derive_test` and `//apps/mobile/android-remote:wire_test`) read testdata is follow-up work. A changed rule changes its case first.
 
 ## Distribution & Parity Touchpoints Checklist
 
@@ -84,8 +86,8 @@ HomeSpeaker spans both local macOS runtimes and remote clients. The rule now liv
 2. **Standalone macOS Menu-Bar App (`Sources/HomeSpeaker/`)** — The SwiftUI screens only lay out what `SettingsCatalog` defines; no rules live here. `App.swift`, `MenuBarView.swift`, `SettingsView.swift`, `DoorWindow.swift` (packaged via `bazel run //apps/desktop/home-speaker:publish` to `/Applications/HomeSpeaker.app`, data in `~/.gemini/` and `~/Library/Application Support/HomeSpeaker/secrets.json`).
 3. **Vitruvian Extension / Daemon (`Sources/HomeSpeakerToolCore/` & `Sources/HomeSpeakerTool/`)** — The extension's pages only lay out what `SettingsCatalog` defines; no rules live here. `HomeSpeakerTool.swift`, `Pages.swift`, `ExtensionSide.swift`, `main.swift`, `tool/vitruvian-tool.json` (packaged via `bazel run //apps/desktop/home-speaker:zip-tool` to `~/Library/Application Support/com.vitruviansoftware.vitruvian/Tools/dev.vitruvian.homespeaker/bin/tool`, data in `ToolData/dev.vitruvian.homespeaker/`).
 4. **Vitruvian Host External Tool Store (`apps/desktop/vitruvian/Sources/Vitruvian/Services/Platform/External/`)** — `ExternalToolStore.swift`, `ToolHost.swift`, `CatalogueWatch.swift`, and tool protocol (`packages/vitruvian-sdk/`).
-5. **Android Remote — Mac Daemon (`apps/mobile/android-remote/macagent/`)** — `rs/src/homespeaker.rs`, `macagent_test`, and `API.md` (resolves active door from `~/.gemini/speaker_door.json` and exposes `/v1/homespeaker`, `/v1/homespeaker/volume`, `/v1/homespeaker/say`, and `/v1/homespeaker/phone-say`). Being replaced: the helper and the phone will read the engine's `--state` (plan Tasks 3-5); until then, keep them in step and add a shared case in `testdata/`.
-6. **Android Remote — Mobile App (`apps/mobile/android-remote/src/main/kotlin/dev/vitruvian/remote/state/`)** — `Wire.kt` (`HomeSpeakerWire`), `AgentClient.kt` (`AgentHomeSpeaker`), `Derive.kt`, `RemoteState.kt` (`homeSpeakerRows`), `MockHost.kt`, `DeriveTest.kt`, and `WireTest.kt`. Being replaced: the helper and the phone will read the engine's `--state` (plan Tasks 3-5); until then, keep them in step and add a shared case in `testdata/`.
+5. **Android Remote — Mac Daemon (`apps/mobile/android-remote/macagent/`)** — `rs/src/homespeaker.rs`, `macagent_test`, and `API.md` (resolves active door from `~/.gemini/speaker_door.json` and exposes `/v1/homespeaker`, `/v1/homespeaker/volume`, `/v1/homespeaker/say`, and `/v1/homespeaker/phone-say`). The helper maps `--state` and `--apply` on the chosen program (minimum Home Speaker 1.41.0) and its tests check the mapping against `testdata/state_v1.json`. A new setting reaches the helper with no helper change when it is a catalog setting.
+6. **Android Remote — Mobile App (`apps/mobile/android-remote/src/main/kotlin/dev/vitruvian/remote/state/`)** — `Wire.kt` (`HomeSpeakerWire`), `AgentClient.kt` (`AgentHomeSpeaker`), `Derive.kt`, `RemoteState.kt` (`homeSpeakerRows`), `MockHost.kt`, `DeriveTest.kt`, and `WireTest.kt`. Takes every Home Speaker label, choice, limit and show/hide rule from the catalog the helper passes through (`settings[]` in `GET /v1/homespeaker`), so a new catalog setting needs no phone change. The phone's only rewording is "Your phone" → "This phone"; a guard test in `DeriveTest.kt` fails if a local copy of a Home Speaker list or label comes back. With no catalog (helper or Home Speaker too old) it shows one sentence and no settings.
 7. **Coding Agent Integrations, Packaging & Registries** — Claude Code (`~/.claude/settings.json`), Antigravity (`~/.gemini/antigravity/plugins/home-speaker/`), OpenCode (`~/.config/opencode/plugins/home-speaker.ts`), `bazel run //apps/desktop/home-speaker:sync-secrets`, version lockstep (`tool_version_test` across `Version.swift`, `Info.plist`, `tool/vitruvian-tool.json`, `release-please-config.json`), and external distribution (`vitruvian-extensions` & `homebrew-tap`).
 8. **Cross-component PR scope (`release-scope` CI check)** — `release-please` maps each directory to a separate component (`home-speaker`, `vitruvian`, `android-remote`, `vitruvian-sdk`). Split changes touching `apps/desktop/home-speaker/`, `apps/desktop/vitruvian/`, and `apps/mobile/android-remote/` into per-component PRs (or declare `Releases:`) so `release-scope` passes.
 
