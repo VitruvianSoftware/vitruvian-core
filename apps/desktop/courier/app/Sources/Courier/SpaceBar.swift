@@ -280,7 +280,7 @@ private struct SpaceIcon: View {
     private var mark: some View {
         switch space.kind {
         case .account:
-            NetworkBadge(network: space.network, name: SpaceLook.title(space), size: 26)
+            NetworkBadge(network: space.network, name: SpaceLook.title(space), size: 26, showsTooltip: false)
                 .accessibilityHidden(true)
         case .label:
             LabelIcon(color: space.color, icon: space.icon, size: 28)

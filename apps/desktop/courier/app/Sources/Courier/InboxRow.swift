@@ -448,16 +448,21 @@ struct NetworkBadge: View {
     let name: String
     let size: CGFloat
     var tinted = true
+    var showsTooltip = true
 
     var body: some View {
         let look = NetworkAppearance.of(network)
-        Image(systemName: look.symbol)
+        let image = Image(systemName: look.symbol)
             .resizable()
             .scaledToFit()
             .frame(width: size, height: size)
             .foregroundStyle(tinted ? Color(red: look.red, green: look.green, blue: look.blue) : Color.secondary)
-            .help(name)
             .accessibilityLabel(name)
+        if showsTooltip, !name.isEmpty {
+            image.help(name)
+        } else {
+            image
+        }
     }
 }
 

@@ -208,4 +208,11 @@ final class WindowLayoutTests: XCTestCase {
             "Open-chat views (New divider, thread unread marks) must use the room's effective theme accent"
         )
     }
+
+    func testSpaceLookTitleFallsBackToNetworkDisplayNameWhenAccountTitleIsEmpty() {
+        let untitledAccount = Space(spaceID: "account:wa", kind: .account, title: "", network: "whatsapp", chats: 4)
+        XCTAssertEqual(SpaceLook.title(untitledAccount), "WhatsApp")
+        let titledAccount = Space(spaceID: "account:wa2", kind: .account, title: "Work WhatsApp", network: "whatsapp", chats: 2)
+        XCTAssertEqual(SpaceLook.title(titledAccount), "Work WhatsApp")
+    }
 }
