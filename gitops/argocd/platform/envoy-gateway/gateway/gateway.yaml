@@ -92,6 +92,22 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
+    # Internal-only Umami dashboard (umami.lab.ipv1337.dev resolves to this
+    # Gateway's private LB IP; see gitops/argocd/platform/umami/).
+    - name: https-umami
+      protocol: HTTPS
+      port: 443
+      hostname: "umami.lab.ipv1337.dev"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - group: ""
+            kind: Secret
+            name: umami-tls
+            namespace: umami
+      allowedRoutes:
+        namespaces:
+          from: All
     - name: https-headscale
       protocol: HTTPS
       port: 443

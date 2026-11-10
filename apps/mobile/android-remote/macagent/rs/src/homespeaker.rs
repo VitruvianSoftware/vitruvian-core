@@ -4858,7 +4858,11 @@ mod tests {
         }
 
         let _restore = TzRestore(std::env::var_os("TZ"));
-        std::env::set_var("TZ", "America/Los_Angeles");
+        // A POSIX rule, not the zone name: Linux CI containers ship no tzdata,
+        // and an unknown zone name silently falls back to UTC. This rule is
+        // America/Los_Angeles's (second Sunday of March to first Sunday of
+        // November) and needs no zoneinfo files on either macOS or Linux.
+        std::env::set_var("TZ", "PST8PDT,M3.2.0,M11.1.0");
         // SAFETY: `tzset` updates libc's timezone globals from `TZ`.
         unsafe { tzset() };
 

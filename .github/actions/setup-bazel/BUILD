@@ -17,4 +17,5 @@ py_test(
     # pytest skips directories whose name starts with a dot (.github), so name
     # the file, or it collects nothing and fails with exit code 5.
     args = ["$(rootpath runner_cache_check_test.py)"],
+    data = ["action.yml"],
 )

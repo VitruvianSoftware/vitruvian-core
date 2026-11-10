@@ -7,7 +7,7 @@ It drives the host (trackpad, keys, media, volume and brightness, power, clipboa
 ## Status & Transports
 
 - **Bluetooth HID**: The phone pairs as a keyboard and mouse, so the Mac needs nothing installed. Pointer, click, drag, scroll, typing, media, volume and brightness keys, display sleep, lock, Spaces, Mission Control, Launchpad, Spotlight, screenshots, window controls and display mirror all work this way.
-- **The Agent**: A small Go daemon on the Mac reached over Tailscale. Answers telemetry questions (CPU, memory, battery, disk, network, thermals, processes, VMs, containers, K3s nodes) and runs paired actions (macros, console, Claude Code prompts, clipboard sync, volume control).
+- **The Agent**: A small Rust daemon on the Mac reached over Tailscale. Answers telemetry questions (CPU, memory, battery, disk, network, thermals, processes, VMs, containers, K3s nodes) and runs paired actions (macros, console, Claude Code prompts, clipboard sync, volume control).
 
 ## Documentation
 - [Phone Bridge Architecture](phone-bridge.md): Protocol, streaming architecture, and device connection management.

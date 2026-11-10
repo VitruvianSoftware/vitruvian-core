@@ -23,7 +23,7 @@ Two transports:
   volume and brightness keys, display sleep, lock, Spaces, Mission Control,
   Launchpad, Spotlight, screenshots, window controls and the display-mirror
   toggle (⌘F1) all work this way.
-- **The agent** — [`macagent/`](macagent/README.md), a small Go daemon on the
+- **The agent** — [`macagent/`](macagent/README.md), a small Rust daemon on the
   Mac, reached over Tailscale. It answers the questions HID cannot: CPU,
   memory, battery, disk, network, thermals, top processes, Lima VMs,
   containers, K3s nodes, Claude Code sessions, volume, and PromQL through
@@ -110,11 +110,12 @@ Releases are managed via release-please (`release-please-config.json`, `.release
 - **No screenshot tests.** The design system's definition of done asks for a
   preview per component in both themes, screenshot-tested; the previews are not
   written yet.
-- **Module gallery entries without a source** (Antigravity, Ollama, Xcode,
-  Grafana panel) render an honest "not wired to this Mac yet" dashboard.
-  **HomeSpeaker is fully wired** (`Apps → HomeSpeaker`, backed by
-  [`macagent/homespeaker.go`](macagent/homespeaker.go) and
-  [`HomeSpeaker`](../../desktop/home-speaker/README.md)): the agent resolves the
+- **Module gallery entries without a source:** Xcode builds still shows an
+  honest "not wired to this Mac yet" dashboard. Antigravity, Ollama, Grafana,
+  Docker, Lima, Sony TV, and HomeSpeaker are fully wired. **HomeSpeaker**
+  (`Apps → HomeSpeaker`, backed by
+  [`macagent/rs/src/homespeaker.rs`](macagent/rs/src/homespeaker.rs) and
+  [`HomeSpeaker`](../../desktop/home-speaker/README.md)) resolves the
   active door (standalone `.app` or Vitruvian extension), reads and rewrites its
   config file, and runs `--say` and `/v1/homespeaker/phone-say`. From the phone,
   the dashboard provides progressive-disclosure controls and single-select

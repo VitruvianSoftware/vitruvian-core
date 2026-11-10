@@ -1830,9 +1830,19 @@ async function stallTick($: EngineInterface): Promise<void> {
     const key = `${f.startedAt}:${row.id}:${row.lastActivityAt}`;
     if (noticedStalls.has(key)) continue;
     noticedStalls.add(key);
+    const where = row.taskN ? ` on task #${row.taskN} ("${row.title}")` : "";
     $.ui.toast(
       `${row.agent} has been silent for ${fmtTime(row.idleMs)}${row.taskN ? ` on task #${row.taskN}` : ""}. Check it before restarting it: a long build can be this quiet.`,
     );
+    // Wake the lead too, as Antigravity's watchdog does: a prompt from the
+    // plugin is a turn of its own once the session is idle, so a lead that
+    // stopped to wait on its helpers gets to look. Once per stall (the key
+    // above), worded so it inspects before it restarts anything.
+    void $.prompt
+      .submit({
+        text: `[Orchestrator watchdog] Subagent ${row.agent} (${row.id}) has had no activity for ${fmtTime(row.idleMs)}${where}. Check it before acting: read its latest output, or message it with SendMessage. A long build or test can be this quiet. Restart it only if it is stuck.`,
+      })
+      .catch(() => {});
   }
 }
 const spawnedToolUseIds = new Set<string>();

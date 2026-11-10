@@ -150,24 +150,72 @@ package enum AgentClaudeServer {
     package static func limits(_ result: [String: Any], observed: Date) -> AgentLimits? {
         guard result["rate_limits_available"] as? Bool == true,
               let limits = result["rate_limits"] as? [String: Any] else { return nil }
-        let windows: [AgentLimitWindow] = [
-            ("five_hour", AgentLimitWindow.Kind.session, 300, nil as String?),
-            ("seven_day", .weekly, 10_080, nil),
-            ("seven_day_opus", .weekly, 10_080, "Opus"),
-            ("seven_day_sonnet", .weekly, 10_080, "Sonnet")].compactMap { key, kind, minutes, scope in
-                guard let window = limits[key] as? [String: Any],
-                      let percent = window["utilization"] as? NSNumber,
-                      CFGetTypeID(percent) != CFBooleanGetTypeID(), percent.doubleValue.isFinite else { return nil }
-                // An idle window has no renewal yet and keeps its percentage,
-                // as in the Claude app's history; one that renewed before the
-                // reading says nothing about the window now.
-                let resets = window["resets_at"].flatMap { $0 is NSNull ? nil : $0 }
-                let end = (resets as? String).flatMap(AgentTimestamp.parse)
-                guard resets == nil || end.map({ $0 > observed }) == true else { return nil }
-                let id = ["five_hour": "fh", "seven_day": "sd", "seven_day_opus": "so", "seven_day_sonnet": "sn"][key]!
-                return AgentLimitWindow(id: "claude.\(id)", kind: kind, minutes: minutes, scope: scope,
-                                        usedPercent: min(100, max(0, percent.doubleValue)), resetsAt: end)
+        func makeWindow(id: String, kind: AgentLimitWindow.Kind, minutes: Int, scope: String?,
+                        from window: [String: Any], percentKey: String) -> AgentLimitWindow? {
+            guard let percent = window[percentKey] as? NSNumber,
+                  CFGetTypeID(percent) != CFBooleanGetTypeID(), percent.doubleValue.isFinite else { return nil }
+            // An idle window has no renewal yet and keeps its percentage,
+            // as in the Claude app's history; one that renewed before the
+            // reading says nothing about the window now.
+            let resets = window["resets_at"].flatMap { $0 is NSNull ? nil : $0 }
+            let end = (resets as? String).flatMap(AgentTimestamp.parse)
+            guard resets == nil || end.map({ $0 > observed }) == true else { return nil }
+            return AgentLimitWindow(id: id, kind: kind, minutes: minutes, scope: scope,
+                                    usedPercent: min(100, max(0, percent.doubleValue)), resetsAt: end)
+        }
+        // Claude Code 2.1.318+ lists the account's active and model-scoped
+        // windows under `limits` (matching the official Claude app, which shows
+        // inactive scoped models at 0%); older versions and fallback fields
+        // still populate the top-level keys alongside it.
+        var listed: [AgentLimitWindow] = []
+        var seen: Set<String> = []
+        var seenScopes: Set<String> = []
+        for entry in (limits["limits"] as? [Any] ?? []).compactMap({ $0 as? [String: Any] }) {
+            let group = entry["group"] as? String
+            let itemKind = entry["kind"] as? String ?? ""
+            let spec: (id: String, kind: AgentLimitWindow.Kind, minutes: Int, scope: String?)
+            if group == "session" || itemKind.contains("five_hour") || itemKind.contains("session") {
+                spec = ("claude.fh", .session, 300, nil)
+            } else if group == "weekly" {
+                if (entry["scope"] == nil || entry["scope"] is NSNull) && itemKind != "weekly_scoped" {
+                    spec = ("claude.sd", .weekly, 10_080, nil)
+                } else {
+                    guard let scope = entry["scope"] as? [String: Any],
+                          let model = scope["model"] as? [String: Any],
+                          let name = (model["display_name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                          !name.isEmpty else { continue }
+                    let slug = String(name.lowercased().map { $0.isLetter || $0.isNumber ? $0 : "-" })
+                    spec = ("claude-weekly-scoped-\(slug)", .weekly, 10_080, name)
+                }
+            } else {
+                continue
             }
+            if !seen.contains(spec.id),
+               let window = makeWindow(id: spec.id, kind: spec.kind, minutes: spec.minutes,
+                                       scope: spec.scope, from: entry, percentKey: "percent") {
+                seen.insert(spec.id)
+                if let scope = spec.scope { seenScopes.insert(scope.lowercased()) }
+                listed.append(window)
+            }
+        }
+        let legacy: [(String, String, AgentLimitWindow.Kind, Int, String?)] = [
+            ("five_hour", "claude.fh", .session, 300, nil),
+            ("seven_day", "claude.sd", .weekly, 10_080, nil),
+            ("seven_day_opus", "claude.so", .weekly, 10_080, "Opus"),
+            ("seven_day_sonnet", "claude.sn", .weekly, 10_080, "Sonnet")]
+        for (key, id, kind, minutes, scope) in legacy where !seen.contains(id) {
+            if let scope, seenScopes.contains(scope.lowercased()) { continue }
+            if let entry = limits[key] as? [String: Any],
+               let window = makeWindow(id: id, kind: kind, minutes: minutes, scope: scope,
+                                       from: entry, percentKey: "utilization") {
+                seen.insert(id)
+                if let scope { seenScopes.insert(scope.lowercased()) }
+                listed.append(window)
+            }
+        }
+        let windows = listed.filter { $0.kind == .session }
+            + listed.filter { $0.kind != .session && $0.scope == nil }
+            + listed.filter { $0.kind != .session && $0.scope != nil }
         guard !windows.isEmpty else { return nil }
         return AgentLimits(provider: .claude, windows: windows, observedAt: observed, source: .account)
     }

@@ -3219,8 +3219,8 @@ enum NotchAgentTests {
         let wClaudeFable = AgentLimitWindow(id: "claude-weekly-scoped-fable", kind: .weekly, minutes: 10080, scope: "Fable", usedPercent: 5.0, resetsAt: now.addingTimeInterval(60 * 3600))
 
         suite.expect(wClaudeSession.name == "Session", "Claude session window name is Session")
-        suite.expect(wClaudeWeekly.name == "Weekly", "Claude weekly window name is Weekly")
-        suite.expect(wClaudeFable.name == "Fable weekly", "Claude Fable window name is Fable weekly")
+        suite.expect(wClaudeWeekly.name == "Weekly · all models", "Claude weekly window name is Weekly · all models")
+        suite.expect(wClaudeFable.name == "Weekly · Fable", "Claude Fable window name is Weekly · Fable")
 
         // 3. Pacing & Reserve Forecasting Math
         // Window length = 300 min (5h = 18000s). Resets in 2.5h (9000s) -> elapsed = 9000s = 50% elapsed.

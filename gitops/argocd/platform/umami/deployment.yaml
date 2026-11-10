@@ -1,0 +1,122 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# umami — the Umami web analytics server (Next.js, stateless; all state is in
+# umami-db). Image: Umami v3.4.1, the current stable release. v3 dropped the
+# old `postgresql-vX.Y.Z` tag prefix (v3 is Postgres-only), so the tag is the
+# bare version. Pinned to the multi-arch index digest resolved from ghcr.io.
+#
+# On start the container runs `prisma migrate deploy` (scripts/check-db.js),
+# which on an EMPTY database also seeds the default admin/umami login. That
+# login is never reachable from the internet (only /script.js and /api/send
+# are routed on the public hostname, see httproute-public.yaml) and is rotated
+# to the sealed ADMIN_PASSWORD by the PostSync job in admin-bootstrap-job.yaml.
+#
+# Not readOnlyRootFilesystem: scripts/update-tracker.js rewrites
+# public/script.js at boot when COLLECT_API_ENDPOINT is set, and Next.js writes
+# its cache under .next/. Everything else is locked down (non-root uid 1001 =
+# the image's `nextjs` user, no privilege escalation, ALL caps dropped).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: umami
+  namespace: umami
+  labels:
+    app: umami
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: umami
+  template:
+    metadata:
+      labels:
+        app: umami
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      nodeSelector:
+        node.ipv1337.dev/link: wired
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: umami
+      containers:
+        - name: umami
+          image: ghcr.io/umami-software/umami:3.4.1@sha256:e69d1a7932e9dab0fc523edc7be1f3a53f3c261f57856fc2167ae74a8fc022e8
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: umami-db-credentials
+                  key: password
+            # The password is hex (URL-safe), so it needs no escaping here.
+            - name: DATABASE_URL
+              value: postgresql://umami:$(DB_PASSWORD)@umami-db-rw.umami.svc.cluster.local:5432/umami
+            - name: APP_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: umami-secrets
+                  key: APP_SECRET
+            - name: DISABLE_TELEMETRY
+              value: "1"
+          # /api/heartbeat returns {"ok":true} without touching the DB, so a
+          # Postgres failover does not restart the pods.
+          startupProbe:
+            httpGet:
+              path: /api/heartbeat
+              port: http
+            periodSeconds: 5
+            failureThreshold: 60
+          livenessProbe:
+            httpGet:
+              path: /api/heartbeat
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /api/heartbeat
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]

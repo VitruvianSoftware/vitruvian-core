@@ -1,6 +1,6 @@
 # vitruvian-remote-agent
 
-The Mac half of [Vitruvian Remote](../README.md): a small Go daemon that
+The Mac half of [Vitruvian Remote](../README.md): a small Rust daemon that
 serves the machine's vital signs over HTTP so the phone can show real numbers
 instead of `MockHost`, and — once you have paired a phone from this Mac's
 keyboard — runs commands for it.
@@ -140,7 +140,7 @@ can see from Activity Monitor.
 | `--exec-dir`        | *(empty = the agent's cwd, `~`)*   | working directory for console commands and macros; point it at the repo so `bazel run //:tidy` finds its workspace |
 | `--permission-wait` | `120s`                             | how long a Claude Code permission prompt waits for the phone before the Mac dialog shows; clamped to 5s–140s |
 
-`install.sh` passes every flag after `--` straight through into the
+`bazel run //apps/mobile/android-remote/macagent:install` passes every flag after `--` straight through into the
 LaunchAgent plist, so the v1.2 flags are installed the same way the older ones
 are (a leading `~` in a value is expanded, because launchd runs no shell):
 
@@ -182,7 +182,7 @@ Two details worth knowing:
   leave that `sleep` behind, and a phone that walked out of range would leak a
   process per cancelled command.
 - **stdout and stderr interleave** in the order they were produced, because
-  two goroutines feed one channel. Draining one pipe first would hold every
+  two threads feed one channel. Draining one pipe first would hold every
   error line back until the build finished, which is the moment you no longer
   need it.
 
@@ -438,10 +438,13 @@ agent reads the kernel's CPU tick counters itself (`host_statistics`, the same
 numbers `top` uses) instead of running `top`, which walked every process on the
 Mac and cost about two CPU-seconds each time.
 
-`exec.go` is the **only** file that executes anything, and the only one that
-imports `os/exec`. Sampling and acting both go through it; the difference is
-that sampling's argv are constants and acting's are not, which is why acting
-is behind the token.
+Several files start processes (`exec.rs`, `stream.rs`, `sampler.rs`,
+`homespeaker.rs`, `antigravity.rs`, `tailnet.rs`), all with
+`std::process::Command` and never through a shell unless the caller asked for
+`kind: "shell"`. The rule is about where the arguments come from: reading uses
+fixed argv the agent chooses itself, and any process that takes text from a
+request (exec, streamed exec, HomeSpeaker say, Antigravity resume) is on an act
+endpoint, behind the token.
 
 An optional tool that is absent or wedged returns `available: false` with a
 **reason** — never an empty list. "No containers running" and "the Docker
@@ -519,7 +522,7 @@ per-app consent that no install script can grant:
 
 Grant them to `~/.local/bin/vitruvian-remote-agent`. **They do not survive a
 reinstall on their own.** macOS keys a grant to the binary's code-signing
-requirement, and for an ad-hoc signed Go binary that is the build's hash: after
+requirement, and for an ad-hoc signed binary that is the build's hash: after
 `:install` the pane still shows the toggle ON while `/v1/screen` keeps answering
 503 (found the hard way -- a fresh grant against yesterday's build did nothing
 for today's). The installer therefore signs the binary with a self-signed
@@ -549,6 +552,6 @@ a real machine, so they run on the Linux CI runner. The pairing and
 authorisation tests run there too — they touch a temp directory, not
 `~/.config`.
 
-What CI cannot check is the macOS commands themselves. `runAct`'s shell test
-skips where there is no `/bin/zsh`, so that assertion is exercised on a Mac
-and nowhere else; `bazel run` on a Mac plus `curl` is the rest of that check.
+What CI cannot check is the macOS commands themselves. Shell commands that require
+`/bin/zsh` are exercised on a Mac and not on the Linux CI runner; `bazel run` on a Mac
+plus `curl` is the rest of that check.
