@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.40.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.39.0...home-speaker-v1.40.0) (2026-11-10)
+
+
+### Features
+
+* **home-speaker:** --state and --apply, so other programs ask Home Speaker instead of editing its files ([#4534](https://github.com/VitruvianSoftware/vitruvian-core/issues/4534)) ([f4ebc06](https://github.com/VitruvianSoftware/vitruvian-core/commit/f4ebc06f41d02615e232df7448d8b738fe171890))
+
 ## [1.39.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.38.0...home-speaker-v1.39.0) (2026-11-10)
 
 
