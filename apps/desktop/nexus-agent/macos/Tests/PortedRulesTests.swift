@@ -188,6 +188,10 @@ final class PortedRulesTests: XCTestCase {
                       && !NexusAgentSupport.defaultModels(for: .claude).isEmpty
                       && !NexusAgentSupport.defaultModels(for: .opencode).isEmpty,
                       "built-in coding agents have fallback model catalogs")
+        XCTAssertTrue(NexusAgentSupport.defaultModels(for: .antigravity).first?.id == "gemini-4-carbon-high",
+                      "the Antigravity fallback catalog leads with the newest Gemini, Gemini 4 Carbon")
+        XCTAssertTrue(NexusAgentCatalog.allPresets.first(where: { $0.id == "antigravity" })?.defaultModels.first == "gemini-4-carbon-high",
+                      "a new Antigravity provider starts on Gemini 4 Carbon")
     }
 
     func testStream() {
