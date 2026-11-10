@@ -219,6 +219,55 @@ public class ConfigManager: ObservableObject {
         }
     }
 
+    /// Applies one setting change through `SettingsActions.applySet`, saves
+    /// the file, and reconciles `chatMonitor` when chat-monitor settings change.
+    @discardableResult
+    public func setSetting(
+        _ key: SettingsCatalog.Key,
+        value: SettingsActions.Value,
+        clampNumbers: Bool = true,
+        secrets: Secrets? = nil,
+        systemVoices: [LocalVoice] = []
+    ) throws -> SettingsActions.SetResult {
+        let before = config
+        var draft = config
+        let result = try SettingsActions.applySet(
+            key: key,
+            value: value,
+            to: &draft,
+            secrets: secrets ?? self.secrets.load(),
+            systemVoices: systemVoices,
+            clampNumbers: clampNumbers
+        )
+        guard draft != before else { return result }
+        config = draft
+        guard saveConfig() else {
+            config = before
+            throw ConfigFileError.unreadable(path: configPath.path, reason: configProblem ?? "could not save")
+        }
+        if draft.effectiveChatMonitor != before.effectiveChatMonitor {
+            reconcileChatMonitor(from: before.effectiveChatMonitor, to: draft.effectiveChatMonitor)
+        }
+        return result
+    }
+
+    /// Applies one setting change through `SettingsActions.applySet` and saves;
+    /// returns `true` when the setting changed and was written to disk.
+    @discardableResult
+    public func applySetting(
+        _ key: SettingsCatalog.Key,
+        _ value: SettingsActions.Value,
+        clampNumbers: Bool = true,
+        secrets: Secrets? = nil,
+        systemVoices: [LocalVoice] = []
+    ) -> Bool {
+        let before = config
+        guard (try? setSetting(key, value: value, clampNumbers: clampNumbers, secrets: secrets, systemVoices: systemVoices)) != nil else {
+            return false
+        }
+        return config != before
+    }
+
     /// Switches one chat source here, saves, and brings `chatMonitor`
     /// along as an edit on disk would: on from all off starts it, the last
     /// one off stops it, any other change restarts it. A change this
@@ -228,15 +277,27 @@ public class ConfigManager: ObservableObject {
     /// the file would not take it.
     @discardableResult
     public func setChatSource(_ source: WritableKeyPath<ChatMonitorConfig, Bool>, _ isOn: Bool) -> Bool {
-        let before = config.effectiveChatMonitor
-        guard before[keyPath: source] != isOn else { return false }
-        config.effectiveChatMonitor[keyPath: source] = isOn
-        guard saveConfig() else {
-            config.effectiveChatMonitor = before
-            return false
+        guard config.effectiveChatMonitor[keyPath: source] != isOn else { return false }
+        switch source {
+        case \.slackEnabled:
+            return applySetting(.slackEnabled, .bool(isOn))
+        case \.googleChatEnabled:
+            return applySetting(.googleChatEnabled, .bool(isOn))
+        case \.beeperEnabled:
+            return applySetting(.beeperEnabled, .bool(isOn))
+        case \.courierEnabled:
+            return applySetting(.courierEnabled, .bool(isOn))
+        default:
+            let before = config.effectiveChatMonitor
+            guard before[keyPath: source] != isOn else { return false }
+            config.effectiveChatMonitor[keyPath: source] = isOn
+            guard saveConfig() else {
+                config.effectiveChatMonitor = before
+                return false
+            }
+            reconcileChatMonitor(from: before, to: config.effectiveChatMonitor)
+            return true
         }
-        reconcileChatMonitor(from: before, to: config.effectiveChatMonitor)
-        return true
     }
 
     /// Mutes one Beeper network (`reading` false) or reads it again, and
@@ -285,28 +346,24 @@ public class ConfigManager: ObservableObject {
     /// nothing changed, when it was already so or the file would not take it.
     @discardableResult
     public func setAnnounces(_ agent: CodingAgent, _ isOn: Bool) -> Bool {
-        let before = config
-        guard before.announces(agent) != isOn else { return false }
-        config.setAnnounces(agent, isOn)
-        guard saveConfig() else {
-            config = before
-            return false
-        }
-        return true
+        guard config.announces(agent) != isOn else { return false }
+        return applySetting(SettingsCatalog.Key.forAgent(agent), .bool(isOn))
     }
 
     public func toggleEnabled() {
-        config.enabled.toggle()
-        saveConfig()
+        _ = applySetting(.enabled, .bool(!config.enabled))
     }
 
     public func setTarget(_ targetKey: String) {
-        config.defaultTarget = targetKey
-        saveConfig()
+        if !applySetting(.defaultTarget, .string(targetKey)) {
+            guard config.defaultTarget != targetKey else { return }
+            config.defaultTarget = targetKey
+            saveConfig()
+        }
     }
 
     public func removeTarget(_ key: String) {
-        config.removeTarget(key)
+        SettingsActions.removeSpeaker(key, from: &config)
         saveConfig()
     }
 

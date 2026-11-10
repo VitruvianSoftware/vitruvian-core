@@ -64,9 +64,3 @@ public final class FileConfigStore: ConfigStore {
     }
 }
 
-extension SpeakerConfig {
-    /// "HH:mm", as the file keeps a quiet hour; nil for anything else.
-    public static func quietHour(_ text: String) -> String? {
-        Self.minutesSinceMidnight(text) == nil ? nil : text.trimmingCharacters(in: .whitespaces)
-    }
-}

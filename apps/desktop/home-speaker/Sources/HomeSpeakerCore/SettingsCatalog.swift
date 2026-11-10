@@ -66,6 +66,10 @@ public struct SettingsCatalog: Sendable, Equatable {
         public func clamp(_ value: Int) -> Int {
             Swift.min(Swift.max(value, min), max)
         }
+
+        public func contains(_ value: Int) -> Bool {
+            value >= min && value <= max
+        }
     }
 
     /// Canonical keys for every setting shown across the app's Settings window,
@@ -109,6 +113,25 @@ public struct SettingsCatalog: Sendable, Equatable {
         case courierAddress = "courier_address"
         case muteOwnMessages = "mute_own_messages"
         case pollIntervalSeconds = "poll_interval_seconds"
+
+        /// The catalog key for a coding agent's announcement toggle.
+        public static func forAgent(_ agent: CodingAgent) -> Key {
+            switch agent {
+            case .claudeCode: return .announceClaudeCode
+            case .antigravity: return .announceAntigravity
+            case .opencode: return .announceOpenCode
+            }
+        }
+
+        /// The catalog label for this setting under `config`.
+        public func label(config: SpeakerConfig = SpeakerConfig()) -> String {
+            SettingsCatalog(config: config).entry(self).label
+        }
+
+        /// Whether this setting is visible under `config`.
+        public func shown(config: SpeakerConfig) -> Bool {
+            SettingsCatalog(config: config).entry(self).shown
+        }
     }
 
     /// Description of one setting evaluated against a `SpeakerConfig`.
@@ -162,6 +185,21 @@ public struct SettingsCatalog: Sendable, Equatable {
 
     public static func geminiVoiceChoices(for config: SpeakerConfig) -> [Choice] {
         config.geminiVoiceOptions().map { Choice(value: $0.value, label: $0.label) }
+    }
+
+    public static func localVoiceChoices(config: SpeakerConfig, systemVoices: [LocalVoice]) -> [Choice] {
+        let saved = config.effectiveLocalVoice
+        var choices = systemVoices.map { Choice(value: $0.id, label: $0.pickerLabel) }
+        if !saved.isEmpty, !systemVoices.contains(where: { $0.id == saved }) {
+            choices.insert(Choice(value: saved, label: missingVoiceLabel(saved, voices: systemVoices)), at: 0)
+        }
+        return choices
+    }
+
+    public static func missingVoiceLabel(_ id: String, voices: [LocalVoice]) -> String {
+        let name = id.split(separator: ".").last.map(String.init) ?? id
+        let fallback = LocalSpeaker.chooseVoice(requested: id, from: voices).voice?.name ?? "the system voice"
+        return "\(name) (not installed; using \(fallback))"
     }
 
     public static var chatAnnounceChoices: [Choice] {
@@ -266,8 +304,12 @@ public struct SettingsCatalog: Sendable, Equatable {
         let volumeChoices = Self.volumeSteps.map {
             Choice(value: "\($0)", label: "\($0)%")
         }
-        let localVoiceChoices = [Choice(value: "", label: "Automatic (best English voice)")] + systemVoices.map {
+        let savedLocalVoice = config.effectiveLocalVoice
+        var localVoiceChoices = [Choice(value: "", label: "Automatic (best English voice)")] + systemVoices.map {
             Choice(value: $0.id, label: $0.pickerLabel)
+        }
+        if !savedLocalVoice.isEmpty, !localVoiceChoices.contains(where: { $0.value == savedLocalVoice }) {
+            localVoiceChoices.append(Choice(value: savedLocalVoice, label: savedLocalVoice))
         }
         let localVoiceLabel = config.effectiveLocalEngine == .gemini ? "Fallback Mac voice" : "Voice"
 

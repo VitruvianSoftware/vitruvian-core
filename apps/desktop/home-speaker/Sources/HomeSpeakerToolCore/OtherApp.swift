@@ -58,9 +58,10 @@ public struct ProgramRun: Equatable, Sendable {
 public typealias ProgramRunning = @Sendable (_ program: URL, _ arguments: [String]) async -> ProgramRun
 
 /// A sentence the person reads when a step did not work.
-public struct OtherAppProblem: Error, Equatable, Sendable {
+public struct OtherAppProblem: Error, Equatable, Sendable, LocalizedError {
     public let sentence: String
     public init(_ sentence: String) { self.sentence = sentence }
+    public var errorDescription: String? { sentence }
 }
 
 /// Why the app was not moved to the Trash.

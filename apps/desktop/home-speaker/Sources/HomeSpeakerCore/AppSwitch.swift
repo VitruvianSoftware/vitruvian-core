@@ -43,7 +43,10 @@ public final class AppSwitch: ObservableObject {
         public var loginItem = true
         /// Move HomeSpeaker.app to the Trash. Not ticked by default.
         public var trash = false
-        public init() {}
+        public init(loginItem: Bool = true, trash: Bool = false) {
+            self.loginItem = loginItem
+            self.trash = trash
+        }
     }
 
     public struct Parts {
@@ -130,14 +133,20 @@ public final class AppSwitch: ObservableObject {
 
     private func begin(from: HomeSpeakerProfile.Door, into: HomeSpeakerProfile.Door, purpose: DoorCompare.Purpose) {
         guard !door.plan.inTrash, canChooseExtension else { return }
-        guard let compare = try? SettingsActions.beginSwitch(
-            from: from,
-            into: into,
-            purpose: purpose,
-            seam: seam
-        ) else { return }
-        report = []
-        step = .compare(compare)
+        do {
+            guard let compare = try SettingsActions.beginSwitch(
+                from: from,
+                into: into,
+                purpose: purpose,
+                seam: seam
+            ) else { return }
+            report = []
+            step = .compare(compare)
+        } catch let refused as SettingsActions.SwitchRefused {
+            report = [refused.message]
+        } catch {
+            report = [error.localizedDescription]
+        }
     }
 
     /// Back: nothing is committed before Copy or Keep.
@@ -216,7 +225,9 @@ public final class AppSwitch: ObservableObject {
         func readDoor() -> DoorRecord? { door.check.file.read() }
 
         func otherInstalled(record: DoorRecord?) -> Bool {
-            OtherDoorPresence.extensionInstalled(record: record, fileExists: door.check.fileExists)
+            guard let entry = record?.installedExtension,
+                  let mark = entry.door, mark >= DoorRecord.ExtensionEntry.runsAlone else { return false }
+            return true
         }
 
         func profile(for side: HomeSpeakerProfile.Door, record: DoorRecord?) -> HomeSpeakerProfile? {
@@ -230,6 +241,9 @@ public final class AppSwitch: ObservableObject {
                 // `effects.repairHooks` using the app's own executable.
                 return nil
             case .extension:
+                guard OtherDoorPresence.extensionInstalled(record: record, fileExists: door.check.fileExists) else {
+                    return nil
+                }
                 return record?.installedExtension?.program
             }
         }

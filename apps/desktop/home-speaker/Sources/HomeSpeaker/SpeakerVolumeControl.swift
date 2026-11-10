@@ -60,6 +60,7 @@ struct SpeakerVolumeControl: View {
                 Text(why).font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             case .ready(let v):
+                let limits = SettingsCatalog.speakerVolumeLimits
                 Button { Task { await toggleMute(v) } } label: {
                     Image(systemName: v.muted ? "speaker.slash.fill" : icon(for: Int(model.level)))
                         .frame(width: 18)
@@ -67,7 +68,7 @@ struct SpeakerVolumeControl: View {
                 .buttonStyle(.plain)
                 .disabled(model.busy)
                 .accessibilityLabel(v.muted ? "Unmute \(target.name)" : "Mute \(target.name)")
-                Slider(value: $model.level, in: 0...100, step: 1) { editing in
+                Slider(value: $model.level, in: Double(limits.min)...Double(limits.max), step: 1) { editing in
                     if !editing { Task { await commit() } }
                 }
                 .disabled(model.busy || v.muted)

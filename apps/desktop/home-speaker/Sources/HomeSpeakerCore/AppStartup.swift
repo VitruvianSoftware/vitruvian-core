@@ -236,6 +236,8 @@ public final class AppDoor: ObservableObject {
     @Published public private(set) var plan: AppStartup.Plan
     /// The choice file as last read.
     @Published public private(set) var record: DoorRecord?
+    /// The extension, when it was installed and ran without the app at the last look.
+    @Published public private(set) var extensionInstalled: Bool
     /// The chat monitor, behind the role.
     public let monitor: GatedMonitor
     public let check: DoorCheck
@@ -272,6 +274,7 @@ public final class AppDoor: ObservableObject {
         self.monitor = GatedMonitor(monitor)
         let record = check.file.read()
         self.record = record
+        extensionInstalled = OtherDoorPresence.extensionInstalled(record: record, fileExists: check.fileExists)
         plan = AppStartup.plan(record: record, fileExists: check.fileExists, bundlePath: bundlePath())
     }
 
@@ -316,6 +319,8 @@ public final class AppDoor: ObservableObject {
                 self?.refresh()
             }
         }
+        let installed = OtherDoorPresence.extensionInstalled(record: record, fileExists: check.fileExists)
+        if installed != extensionInstalled { extensionInstalled = installed }
         if record != self.record { self.record = record }
         if new != plan { plan = new }
     }
@@ -324,11 +329,6 @@ public final class AppDoor: ObservableObject {
     private func extensionReading(_ record: DoorRecord?) -> Bool {
         guard let profile = AppStartup.extensionProfile(record: record) else { return false }
         return extensionReadsChat(profile)
-    }
-
-    /// The extension, when it is installed and runs without the app.
-    public var extensionInstalled: Bool {
-        OtherDoorPresence.extensionInstalled(record: record, fileExists: check.fileExists)
     }
 
     /// The extension's sign-ins, while it is installed: Sign Out never

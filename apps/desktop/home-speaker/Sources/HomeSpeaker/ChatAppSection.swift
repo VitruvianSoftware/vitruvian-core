@@ -54,17 +54,24 @@ struct ChatAppSection: View {
     /// Courier asks for its token before it can be switched on.
     private var needsTokenFirst: Bool { app == .courier && !hasToken }
 
+    private var toggleKey: SettingsCatalog.Key { app == .beeper ? .beeperEnabled : .courierEnabled }
+    private var announceKey: SettingsCatalog.Key { app == .beeper ? .beeperAnnounce : .courierAnnounce }
+    private var addressKey: SettingsCatalog.Key { app == .beeper ? .beeperAddress : .courierAddress }
+
     var body: some View {
         Section {
-            Toggle("Announce \(app.name) messages", isOn: isOn)
+            Toggle(toggleKey.label(), isOn: isOn)
                 .disabled(needsTokenFirst && !isOn.wrappedValue)
                 .accessibilityHint(needsTokenFirst
                     ? "Save a \(app.name) token below first"
                     : "Announces new messages from \(app.programName) aloud")
             if isOn.wrappedValue {
-                Picker("Announce", selection: announce) {
-                    ForEach(ChatMonitorConfig.BeeperAnnounce.allCases, id: \.self) { mode in
-                        Text(mode.title).tag(mode)
+                Picker(announceKey.label(), selection: Binding(
+                    get: { announce.wrappedValue.rawValue },
+                    set: { if let v = ChatMonitorConfig.BeeperAnnounce(rawValue: $0) { announce.wrappedValue = v } }
+                )) {
+                    ForEach(SettingsCatalog.chatAnnounceChoices, id: \.value) { mode in
+                        Text(mode.label).tag(mode.value)
                     }
                 }
                 networkSwitches
@@ -135,7 +142,7 @@ struct ChatAppSection: View {
     /// Return; one not on this Mac is refused and says why.
     @ViewBuilder
     private var addressRows: some View {
-        TextField("Address", text: addressDraft, prompt: Text(app.defaultBaseURL.absoluteString))
+        TextField(addressKey.label(), text: addressDraft, prompt: Text(app.defaultBaseURL.absoluteString))
             .onSubmit(saveAddress)
             .accessibilityHint("Where \(app.programName) answers on this Mac. Leave empty for the usual address.")
         if let problem = ChatAppClient.addressProblem(addressDraft.wrappedValue, app: app) {

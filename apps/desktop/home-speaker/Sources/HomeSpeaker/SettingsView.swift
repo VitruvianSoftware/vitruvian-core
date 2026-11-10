@@ -139,6 +139,7 @@ public struct SettingsView: View {
     /// Bridges a "HH:mm" config string to a DatePicker. Falls back to
     /// `fallback` when the stored text is missing or malformed.
     private func timeBinding(
+        _ key: SettingsCatalog.Key,
         _ keyPath: WritableKeyPath<SpeakerConfig, String?>,
         fallback: String
     ) -> Binding<Date> {
@@ -152,23 +153,17 @@ public struct SettingsView: View {
             },
             set: { date in
                 let comps = Calendar.current.dateComponents([.hour, .minute], from: date)
-                configManager.config[keyPath: keyPath] = String(
+                let formatted = String(
                     format: "%02d:%02d", comps.hour ?? 0, comps.minute ?? 0)
-                configManager.saveConfig()
+                configManager.applySetting(key, .string(formatted))
             }
         )
     }
 
-    private func monitorBinding<T: Equatable>(_ keyPath: WritableKeyPath<ChatMonitorConfig, T>) -> Binding<T> {
-        Binding(
-            get: { configManager.config.effectiveChatMonitor[keyPath: keyPath] },
-            set: { newValue in
-                guard configManager.config.effectiveChatMonitor[keyPath: keyPath] != newValue else { return }
-                configManager.config.effectiveChatMonitor[keyPath: keyPath] = newValue
-                configManager.saveConfig()
-                monitorService.restartIfRunning()
-            }
-        )
+    private func applyMonitorSetting(_ key: SettingsCatalog.Key, _ value: SettingsActions.Value) {
+        if configManager.applySetting(key, value), configManager.chatMonitor == nil {
+            monitorService.restartIfRunning()
+        }
     }
 
     /// A Beeper or Courier network's switch: on reads it, off mutes it.
@@ -193,10 +188,14 @@ public struct SettingsView: View {
 
     /// Settings › Chats for Beeper or Courier.
     private func chatAppSection(_ app: ChatApp) -> some View {
-        ChatAppSection(
+        let announceKey: SettingsCatalog.Key = app == .beeper ? .beeperAnnounce : .courierAnnounce
+        return ChatAppSection(
             app: app,
             isOn: sourceBinding(ChatMonitorConfig.enabledKey(app)),
-            announce: monitorBinding(ChatMonitorConfig.announceKey(app)),
+            announce: Binding(
+                get: { configManager.config.effectiveChatMonitor[keyPath: ChatMonitorConfig.announceKey(app)] },
+                set: { applyMonitorSetting(announceKey, .string($0.rawValue)) }
+            ),
             networks: networkList(app),
             networkSwitch: { networkBinding(app, $0) },
             hasToken: SecretStore.shared.load().token(for: app) != nil,
@@ -290,10 +289,10 @@ public struct SettingsView: View {
             }
 
             Section("Broadcast Controls") {
-                Toggle("Enable Voice Broadcasting", isOn: $configManager.config.enabled)
-                    .onChange(of: configManager.config.enabled) { _, _ in
-                        configManager.saveConfig()
-                    }
+                Toggle(SettingsCatalog.Key.enabled.label(), isOn: Binding(
+                    get: { configManager.config.enabled },
+                    set: { configManager.applySetting(.enabled, .bool($0)) }
+                ))
                     .accessibilityHint("Turns all spoken announcements on or off")
 
                 Toggle("Open HomeSpeaker at Login", isOn: Binding(
@@ -312,45 +311,47 @@ public struct SettingsView: View {
                 ))
                 .accessibilityHint("Starts the menu bar app when you log in")
 
-                Picker("Speak", selection: Binding(
-                    get: { configManager.config.effectiveSpeechLength },
-                    set: {
-                        configManager.config.effectiveSpeechLength = $0
-                        configManager.saveConfig()
-                    }
+                Picker(SettingsCatalog.Key.speechLength.label(), selection: Binding(
+                    get: { configManager.config.effectiveSpeechLength.rawValue },
+                    set: { configManager.applySetting(.speechLength, .string($0)) }
                 )) {
-                    ForEach(SpeechLength.allCases, id: \.self) { Text($0.label).tag($0) }
+                    ForEach(SettingsCatalog.speechLengthChoices, id: \.value) { Text($0.label).tag($0.value) }
                 }
                 .accessibilityHint("How much of each reply is read out")
 
                 // The style rewords coding agents' replies only, and the set
                 // volume is the Home speaker's: each while it can matter.
-                if configManager.config.showsAnnouncementStyle {
+                if SettingsCatalog.Key.announcementStyle.shown(config: configManager.config) {
                     styleControls
                 }
 
-                if configManager.config.showsHomeControls {
-                    Toggle("Announce at a set volume", isOn: Binding(
+                if SettingsCatalog.Key.announceVolumeEnabled.shown(config: configManager.config) {
+                    Toggle(SettingsCatalog.Key.announceVolumeEnabled.label(), isOn: Binding(
                         get: { configManager.config.effectiveAnnounceVolumeEnabled },
-                        set: {
-                            configManager.config.effectiveAnnounceVolumeEnabled = $0
-                            configManager.saveConfig()
-                        }
+                        set: { configManager.applySetting(.announceVolumeEnabled, .bool($0)) }
                     ))
                     .accessibilityHint("Sets the speaker to one volume for each announcement, then puts it back")
 
-                    if configManager.config.effectiveAnnounceVolumeEnabled {
+                    if SettingsCatalog.Key.announceVolume.shown(config: configManager.config) {
+                        let volLimits = SettingsCatalog.announceVolumeLimits
                         HStack {
                             Slider(
                                 value: Binding(
                                     get: { Double(configManager.config.effectiveAnnounceVolume) },
-                                    set: { configManager.config.effectiveAnnounceVolume = Int($0) }
+                                    set: { configManager.config.effectiveAnnounceVolume = volLimits.clamp(Int($0)) }
                                 ),
-                                in: 0...100, step: 5
+                                in: Double(volLimits.min)...Double(volLimits.max), step: Double(volLimits.step)
                             ) { editing in
-                                if !editing { configManager.saveConfig() }
+                                if !editing {
+                                    _ = try? SettingsActions.applySet(
+                                        key: .announceVolume,
+                                        value: .int(configManager.config.effectiveAnnounceVolume),
+                                        to: &configManager.config
+                                    )
+                                    configManager.saveConfig()
+                                }
                             }
-                            .accessibilityLabel("Announcement volume")
+                            .accessibilityLabel(SettingsCatalog.Key.announceVolume.label())
                             Text("\(configManager.config.effectiveAnnounceVolume)%")
                                 .font(.caption.monospacedDigit())
                                 .frame(width: 40, alignment: .trailing)
@@ -362,26 +363,21 @@ public struct SettingsView: View {
                     }
                 }
 
-                Toggle("Pause media while announcing", isOn: Binding(
+                Toggle(SettingsCatalog.Key.pauseMedia.label(), isOn: Binding(
                     get: { configManager.config.effectivePauseMedia },
-                    set: {
-                        configManager.config.effectivePauseMedia = $0
-                        configManager.saveConfig()
-                    }
+                    set: { configManager.applySetting(.pauseMedia, .bool($0)) }
                 ))
                 .accessibilityHint("Pauses YouTube, Music, Spotify or QuickTime on this Mac while the speaker talks, then resumes it")
 
-                if configManager.config.effectivePauseMedia {
+                if SettingsCatalog.Key.pauseMediaExtraSeconds.shown(config: configManager.config) {
+                    let pauseLimits = SettingsCatalog.pauseMarginLimits
                     Stepper(
                         "Resume \(Int(configManager.config.effectivePauseMediaExtraSeconds)) s after it finishes",
                         value: Binding(
                             get: { configManager.config.effectivePauseMediaExtraSeconds },
-                            set: {
-                                configManager.config.effectivePauseMediaExtraSeconds = $0
-                                configManager.saveConfig()
-                            }
+                            set: { configManager.applySetting(.pauseMediaExtraSeconds, .int(Int($0))) }
                         ),
-                        in: 0...10, step: 1)
+                        in: Double(pauseLimits.min)...Double(pauseLimits.max), step: Double(pauseLimits.step))
                     .font(.caption)
 
                     HStack(alignment: .firstTextBaseline) {
@@ -403,20 +399,25 @@ public struct SettingsView: View {
             }
 
             Section {
-                Toggle("Enable Quiet Hours", isOn: Binding(
+                Toggle(SettingsCatalog.Key.quietHoursEnabled.label(), isOn: Binding(
                     get: { configManager.config.quietHoursEnabled ?? false },
-                    set: {
-                        configManager.config.quietHoursEnabled = $0
-                        configManager.saveConfig()
-                    }
+                    set: { configManager.applySetting(.quietHoursEnabled, .bool($0)) }
                 ))
                 .accessibilityHint("Pauses automated announcements during the window below")
 
-                if configManager.config.quietHoursEnabled ?? false {
-                    DatePicker("Start", selection: timeBinding(\.quietHoursStart, fallback: "22:00"), displayedComponents: .hourAndMinute)
+                if SettingsCatalog.Key.quietHoursStart.shown(config: configManager.config) {
+                    DatePicker(
+                        SettingsCatalog.Key.quietHoursStart.label(),
+                        selection: timeBinding(.quietHoursStart, \.quietHoursStart, fallback: SettingsCatalog.defaultQuietHoursStart),
+                        displayedComponents: .hourAndMinute
+                    )
                         .accessibilityLabel("Quiet hours start time")
 
-                    DatePicker("End", selection: timeBinding(\.quietHoursEnd, fallback: "07:00"), displayedComponents: .hourAndMinute)
+                    DatePicker(
+                        SettingsCatalog.Key.quietHoursEnd.label(),
+                        selection: timeBinding(.quietHoursEnd, \.quietHoursEnd, fallback: SettingsCatalog.defaultQuietHoursEnd),
+                        displayedComponents: .hourAndMinute
+                    )
                         .accessibilityLabel("Quiet hours end time")
                 }
             } header: {
@@ -486,53 +487,38 @@ public struct SettingsView: View {
     /// controls as the extension's Settings › General.
     @ViewBuilder
     private var styleControls: some View {
-        Picker("Style", selection: Binding(
-            get: { configManager.config.effectiveAnnouncementStyle },
-            set: {
-                configManager.config.effectiveAnnouncementStyle = $0
-                configManager.saveConfig()
-            }
+        Picker(SettingsCatalog.Key.announcementStyle.label(), selection: Binding(
+            get: { configManager.config.effectiveAnnouncementStyle.rawValue },
+            set: { configManager.applySetting(.announcementStyle, .string($0)) }
         )) {
-            ForEach(AnnouncementStyle.allCases, id: \.self) { Text($0.label).tag($0) }
+            ForEach(SettingsCatalog.announcementStyleChoices, id: \.value) { Text($0.label).tag($0.value) }
         }
         .accessibilityHint("How a coding agent's reply is worded before it is spoken")
 
-        if configManager.config.effectiveAnnouncementStyle == .custom {
-            TextField("Custom style", text: Binding(
+        if SettingsCatalog.Key.customStylePrompt.shown(config: configManager.config) {
+            TextField(SettingsCatalog.Key.customStylePrompt.label(), text: Binding(
                 get: { configManager.config.customStylePrompt ?? "" },
-                set: {
-                    configManager.config.customStylePrompt = $0
-                    configManager.saveConfig()
-                }
+                set: { configManager.applySetting(.customStylePrompt, .string($0)) }
             ), prompt: Text("e.g. One short sentence, like a ship captain"))
             .accessibilityHint("The instruction the model follows")
         }
 
-        if configManager.config.effectiveAnnouncementStyle != .verbatim {
-            Picker("Style with", selection: Binding(
-                get: { configManager.config.effectiveStyleModel },
-                set: {
-                    configManager.config.effectiveStyleModel = $0
-                    configManager.saveConfig()
-                }
+        if SettingsCatalog.Key.styleModel.shown(config: configManager.config) {
+            Picker(SettingsCatalog.Key.styleModel.label(), selection: Binding(
+                get: { configManager.config.effectiveStyleModel.rawValue },
+                set: { configManager.applySetting(.styleModel, .string($0)) }
             )) {
-                ForEach(StyleModel.allCases, id: \.self) { Text($0.label).tag($0) }
+                ForEach(SettingsCatalog.styleModelChoices, id: \.value) { Text($0.label).tag($0.value) }
             }
             .accessibilityHint("Which model rewords the reply")
             // The key, here unless Speakers › This Mac shows it.
-            if configManager.config.effectiveStyleModel == .gemini && !geminiSpeaksHere {
+            if configManager.config.showsStyleGeminiKey {
                 geminiKeyControls
             }
             Text("Apple's model runs on this Mac (macOS 26 and Apple Intelligence). Gemini sends the reply to Google with your Gemini API key. If one fails, the next is used: Gemini, then Apple, then the reply as written. Chat messages and what you type are always read as written.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-    }
-
-    /// Gemini speaks on the Home speakers, this Mac or this phone: Speakers ›
-    /// Where to speak shows its key.
-    private var geminiSpeaksHere: Bool {
-        configManager.config.geminiSpeaks
     }
 
     /// The Gemini API key, as a token is shown: the field, Save Key, Clear.
@@ -590,25 +576,20 @@ public struct SettingsView: View {
 
     /// Where announcements play: the Google Home speaker, this Mac, this phone, or any combination.
     private var outputsSection: some View {
-        Section {
-            Toggle("Home speakers", isOn: Binding(
+        let catalog = SettingsCatalog(config: configManager.config, systemVoices: viewModel.macVoices)
+        return Section {
+            Toggle(SettingsCatalog.Key.speakHome.label(), isOn: Binding(
                 get: { configManager.config.effectiveSpeakHome },
-                set: {
-                    configManager.config.effectiveSpeakHome = $0
-                    configManager.saveConfig()
-                }
+                set: { configManager.applySetting(.speakHome, .bool($0)) }
             ))
             .accessibilityHint("Plays announcements on the default Google Home speaker")
 
             if configManager.config.effectiveSpeakHome {
                 // Casting needs the Gemini engine: offered once it is picked.
-                if configManager.config.showsHomeCastVoice {
-                    Toggle("Use selected voice on Home speakers (Cast)", isOn: Binding(
+                if SettingsCatalog.Key.homeCastVoice.shown(config: configManager.config) {
+                    Toggle(SettingsCatalog.Key.homeCastVoice.label(), isOn: Binding(
                         get: { configManager.config.effectiveHomeCastVoice },
-                        set: {
-                            configManager.config.effectiveHomeCastVoice = $0
-                            configManager.saveConfig()
-                        }
+                        set: { configManager.applySetting(.homeCastVoice, .bool($0)) }
                     ))
                     .accessibilityHint("Casts the Gemini voice to your Home speakers over this Wi-Fi network. When the speaker can't be found, is playing something else, or the cast fails, Google Assistant Broadcast says it instead.")
                     Text("Casts the Gemini voice to your Home speakers over this Wi-Fi network. When the speaker can't be found, is playing something else, or the cast fails, Google Assistant Broadcast says it instead.")
@@ -616,58 +597,46 @@ public struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                if !configManager.config.targets.isEmpty {
-                    Picker("Default speaker", selection: Binding(
+                if SettingsCatalog.Key.defaultTarget.shown(config: configManager.config) {
+                    Picker(SettingsCatalog.Key.defaultTarget.label(), selection: Binding(
                         get: { configManager.config.defaultTarget },
                         set: { configManager.setTarget($0) }
                     )) {
-                        ForEach(configManager.config.uniqueTargets(), id: \.key) { entry in
-                            Text(entry.device.displayLine).tag(entry.key)
+                        ForEach(catalog.entry(.defaultTarget).choices, id: \.value) { entry in
+                            Text(entry.label).tag(entry.value)
                         }
                     }
-                    .accessibilityLabel("Default speaker")
+                    .accessibilityLabel(SettingsCatalog.Key.defaultTarget.label())
                 }
             }
 
-            Toggle("This Mac", isOn: Binding(
+            Toggle(SettingsCatalog.Key.speakLocal.label(), isOn: Binding(
                 get: { configManager.config.effectiveSpeakLocal },
-                set: {
-                    configManager.config.effectiveSpeakLocal = $0
-                    configManager.saveConfig()
-                }
+                set: { configManager.applySetting(.speakLocal, .bool($0)) }
             ))
             .accessibilityHint("Also reads announcements aloud on this Mac")
 
-            Toggle("Your phone", isOn: Binding(
+            Toggle(SettingsCatalog.Key.speakPhone.label(), isOn: Binding(
                 get: { configManager.config.effectiveSpeakPhone },
-                set: {
-                    configManager.config.effectiveSpeakPhone = $0
-                    configManager.saveConfig()
-                }
+                set: { configManager.applySetting(.speakPhone, .bool($0)) }
             ))
             .accessibilityHint("Plays announcements on the paired Android phone")
 
-            if configManager.config.showsVoiceEngine {
-                Picker("Voice engine", selection: Binding(
-                    get: { configManager.config.effectiveLocalEngine },
-                    set: {
-                        configManager.config.effectiveLocalEngine = $0
-                        configManager.saveConfig()
-                    }
+            if SettingsCatalog.Key.localEngine.shown(config: configManager.config) {
+                Picker(SettingsCatalog.Key.localEngine.label(), selection: Binding(
+                    get: { configManager.config.effectiveLocalEngine.rawValue },
+                    set: { configManager.applySetting(.localEngine, .string($0)) }
                 )) {
-                    ForEach(LocalVoiceEngine.allCases, id: \.self) { Text($0.label).tag($0) }
+                    ForEach(SettingsCatalog.voiceEngineChoices, id: \.value) { Text($0.label).tag($0.value) }
                 }
                 .accessibilityHint("What speaks on this Mac, your phone, and the Home speakers when they use the selected voice")
 
-                if configManager.config.showsGeminiVoice {
-                    Picker("Gemini voice", selection: Binding(
+                if SettingsCatalog.Key.geminiVoice.shown(config: configManager.config) {
+                    Picker(SettingsCatalog.Key.geminiVoice.label(), selection: Binding(
                         get: { configManager.config.effectiveGeminiVoice },
-                        set: {
-                            configManager.config.effectiveGeminiVoice = $0
-                            configManager.saveConfig()
-                        }
+                        set: { configManager.applySetting(.geminiVoice, .string($0)) }
                     )) {
-                        ForEach(configManager.config.geminiVoiceOptions(), id: \.value) { opt in
+                        ForEach(SettingsCatalog.geminiVoiceChoices(for: configManager.config), id: \.value) { opt in
                             Text(opt.label).tag(opt.value)
                         }
                     }
@@ -676,21 +645,18 @@ public struct SettingsView: View {
                 }
             }
 
-            if configManager.config.effectiveSpeakLocal {
+            if SettingsCatalog.Key.localVoice.shown(config: configManager.config) {
                 HStack {
-                    Picker(configManager.config.effectiveLocalEngine == .gemini ? "Fallback Mac voice" : "Voice", selection: Binding(
+                    Picker(SettingsCatalog.Key.localVoice.label(config: configManager.config), selection: Binding(
                         get: { configManager.config.effectiveLocalVoice },
-                        set: {
-                            configManager.config.effectiveLocalVoice = $0
-                            configManager.saveConfig()
-                        }
+                        set: { configManager.applySetting(.localVoice, .string($0), systemVoices: viewModel.macVoices) }
                     )) {
-                        // The saved voice stays selectable even when it is not
-                        // installed, so the picker never silently changes it.
-                        if !viewModel.macVoices.contains(where: { $0.id == configManager.config.effectiveLocalVoice }) {
-                            Text(missingVoiceLabel).tag(configManager.config.effectiveLocalVoice)
+                        ForEach(
+                            SettingsCatalog.localVoiceChoices(config: configManager.config, systemVoices: viewModel.macVoices),
+                            id: \.value
+                        ) { opt in
+                            Text(opt.label).tag(opt.value)
                         }
-                        ForEach(viewModel.macVoices) { Text($0.pickerLabel).tag($0.id) }
                     }
                     .accessibilityHint("The voice this Mac speaks in")
                     Button(viewModel.isPreviewingVoice ? "Speaking…" : "Preview") { previewVoice() }
@@ -700,22 +666,16 @@ public struct SettingsView: View {
                 }
             }
 
-            if configManager.config.effectiveSpeakPhone {
-                Toggle("Pause phone media while announcing", isOn: Binding(
+            if SettingsCatalog.Key.phonePauseMedia.shown(config: configManager.config) {
+                Toggle(SettingsCatalog.Key.phonePauseMedia.label(), isOn: Binding(
                     get: { configManager.config.effectivePhonePauseMedia },
-                    set: {
-                        configManager.config.effectivePhonePauseMedia = $0
-                        configManager.saveConfig()
-                    }
+                    set: { configManager.applySetting(.phonePauseMedia, .bool($0)) }
                 ))
                 .accessibilityHint("Ducks or pauses media playing on the phone while the announcement plays")
 
-                Toggle("Only announce on phone when headphones are connected", isOn: Binding(
+                Toggle(SettingsCatalog.Key.phoneHeadphonesOnly.label(), isOn: Binding(
                     get: { configManager.config.effectivePhoneHeadphonesOnly },
-                    set: {
-                        configManager.config.effectivePhoneHeadphonesOnly = $0
-                        configManager.saveConfig()
-                    }
+                    set: { configManager.applySetting(.phoneHeadphonesOnly, .bool($0)) }
                 ))
                 .accessibilityHint("Skips the phone announcement when no Bluetooth or wired headphones are connected to the phone")
             }
@@ -724,13 +684,6 @@ public struct SettingsView: View {
         } footer: {
             Text(outputsFooter)
         }
-    }
-
-    private var missingVoiceLabel: String {
-        let id = configManager.config.effectiveLocalVoice
-        let name = id.split(separator: ".").last.map(String.init) ?? id
-        let fallback = LocalSpeaker.chooseVoice(requested: id, from: viewModel.macVoices).voice?.name ?? "the system voice"
-        return "\(name) (not installed; using \(fallback))"
     }
 
     private var outputsFooter: String {
@@ -831,7 +784,7 @@ public struct SettingsView: View {
             }
 
             Section("Slack") {
-                Toggle("Announce Slack messages", isOn: sourceBinding(\.slackEnabled))
+                Toggle(SettingsCatalog.Key.slackEnabled.label(), isOn: sourceBinding(\.slackEnabled))
                     .accessibilityHint("Announces new Slack messages aloud")
                 if monitor.slackEnabled {
                     let hasSlackToken = !(SecretStore.shared.load().slackToken ?? "").isEmpty
@@ -873,13 +826,16 @@ public struct SettingsView: View {
             }
 
             Section {
-                Toggle("Announce Google Chat messages", isOn: sourceBinding(\.googleChatEnabled))
+                Toggle(SettingsCatalog.Key.googleChatEnabled.label(), isOn: sourceBinding(\.googleChatEnabled))
                     .accessibilityHint("Announces new Google Chat messages aloud")
-                if monitor.googleChatEnabled {
-                    Picker("Read Google Chat via", selection: monitorBinding(\.googleChatSource)) {
-                        Text("Automatic").tag(ChatMonitorConfig.GoogleChatSource.auto)
-                        Text("Google API (this app's login)").tag(ChatMonitorConfig.GoogleChatSource.api)
-                        Text("gws command-line tool").tag(ChatMonitorConfig.GoogleChatSource.gws)
+                if SettingsCatalog.Key.googleChatSource.shown(config: configManager.config) {
+                    Picker(SettingsCatalog.Key.googleChatSource.label(), selection: Binding(
+                        get: { monitor.googleChatSource.rawValue },
+                        set: { applyMonitorSetting(.googleChatSource, .string($0)) }
+                    )) {
+                        ForEach(SettingsCatalog.googleChatSourceChoices, id: \.value) { choice in
+                            Text(choice.label).tag(choice.value)
+                        }
                     }
                     if monitor.googleChatSource != .gws {
                         HStack {
@@ -897,11 +853,14 @@ public struct SettingsView: View {
                             }
                         }
                     }
-                    if monitor.googleChatSource != .api {
+                    if SettingsCatalog.Key.gwsAccount.shown(config: configManager.config) {
                         if let path = GwsChatClient.locate() {
                             Label("gws found at \(path)", systemImage: "checkmark.circle.fill")
                                 .font(.caption).foregroundStyle(.green)
-                            TextField("gws account (optional, e.g. you@gmail.com)", text: monitorBinding(\.gwsAccount))
+                            TextField(SettingsCatalog.Key.gwsAccount.label(), text: Binding(
+                                get: { monitor.gwsAccount },
+                                set: { applyMonitorSetting(.gwsAccount, .string($0)) }
+                            ))
                         } else {
                             Text("gws is not installed. Install the Google Workspace CLI and run `gws auth login` to use it.")
                                 .font(.caption).foregroundStyle(.secondary)
@@ -924,13 +883,20 @@ public struct SettingsView: View {
             chatAppSection(.courier)
 
             Section("Options") {
-                Toggle("Skip messages I sent", isOn: monitorBinding(\.muteOwnMessages))
+                let pollLimits = SettingsCatalog.chatPollIntervalLimits
+                Toggle(SettingsCatalog.Key.muteOwnMessages.label(), isOn: Binding(
+                    get: { monitor.muteOwnMessages },
+                    set: { applyMonitorSetting(.muteOwnMessages, .bool($0)) }
+                ))
                 Stepper(
-                    value: monitorBinding(\.pollIntervalSeconds),
-                    in: ChatMonitorConfig.minPollInterval...ChatMonitorConfig.maxPollInterval,
-                    step: 5
+                    value: Binding(
+                        get: { monitor.pollIntervalSeconds },
+                        set: { applyMonitorSetting(.pollIntervalSeconds, .int($0)) }
+                    ),
+                    in: pollLimits.min...pollLimits.max,
+                    step: pollLimits.step
                 ) {
-                    LabeledContent("Poll Interval", value: "\(monitor.clampedPollInterval) s")
+                    LabeledContent(SettingsCatalog.Key.pollIntervalSeconds.label(), value: "\(monitor.clampedPollInterval) s")
                 }
                 .accessibilityLabel("Poll interval")
                 .accessibilityValue("\(monitor.clampedPollInterval) seconds")
@@ -951,7 +917,7 @@ public struct SettingsView: View {
             // menu bar and the extension have the same pair.
             Section {
                 ForEach(CodingAgent.allCases, id: \.self) { agent in
-                    Toggle("Announce \(agent.displayName) replies", isOn: Binding(
+                    Toggle(SettingsCatalog.Key.forAgent(agent).label(), isOn: Binding(
                         get: { configManager.config.announces(agent) },
                         set: { configManager.setAnnounces(agent, $0) }
                     ))
@@ -1231,7 +1197,11 @@ public struct SettingsView: View {
     private func saveSlackToken() {
         do {
             let token = viewModel.slackToken.trimmingCharacters(in: .whitespacesAndNewlines)
-            try SecretStore.shared.update { $0.slackToken = token.isEmpty ? nil : token }
+            if token.isEmpty {
+                try SettingsActions.clearChatToken(.slack, in: SecretStore.shared)
+            } else {
+                try SecretStore.shared.update { $0.slackToken = token }
+            }
             status(token.isEmpty ? "Slack token cleared." : "Slack token saved.")
             monitorService.restartIfRunning()
         } catch { status(error.localizedDescription, isError: true) }
@@ -1244,11 +1214,15 @@ public struct SettingsView: View {
         do {
             let typed = app == .beeper ? viewModel.beeperToken : viewModel.courierToken
             let token = typed.trimmingCharacters(in: .whitespacesAndNewlines)
-            try SecretStore.shared.update { $0[keyPath: Secrets.tokenKey(app)] = token.isEmpty ? nil : token }
-            status(token.isEmpty ? "\(app.name) token cleared." : "\(app.name) token saved.")
-            if app == .courier, token.isEmpty, configManager.config.effectiveChatMonitor.courierEnabled {
-                configManager.setChatSource(\.courierEnabled, false)
+            if token.isEmpty {
+                try SettingsActions.clearChatToken(SettingsActions.ChatToken(app), in: SecretStore.shared)
+                if app == .courier, configManager.config.effectiveChatMonitor.courierEnabled {
+                    configManager.setChatSource(\.courierEnabled, false)
+                }
+            } else {
+                try SecretStore.shared.update { $0[keyPath: Secrets.tokenKey(app)] = token }
             }
+            status(token.isEmpty ? "\(app.name) token cleared." : "\(app.name) token saved.")
             monitorService.restartIfRunning()
         } catch { status(error.localizedDescription, isError: true) }
     }
@@ -1256,25 +1230,30 @@ public struct SettingsView: View {
     /// Saves where Beeper's or Courier's API is, unless it is not an http
     /// address on this Mac; empty is the app's usual address.
     private func saveAddress(_ app: ChatApp) {
+        let key: SettingsCatalog.Key = app == .beeper ? .beeperAddress : .courierAddress
         let typed = (viewModel.chatAppAddresses[app] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        if let problem = ChatAppClient.addressProblem(typed, app: app) {
-            status(problem.localizedDescription, isError: true)
-            return
+        do {
+            let res = try configManager.setSetting(key, value: .string(typed))
+            if case .string(let applied) = res.appliedValue {
+                viewModel.chatAppAddresses[app] = applied
+            }
+            if configManager.chatMonitor == nil {
+                monitorService.restartIfRunning()
+            }
+            status(typed.isEmpty ? "\(app.name) address set to the usual one." : "\(app.name) address saved.")
+        } catch {
+            status(error.localizedDescription, isError: true)
         }
-        viewModel.chatAppAddresses[app] = typed
-        monitorBinding(ChatMonitorConfig.addressKey(app)).wrappedValue = typed
-        status(typed.isEmpty ? "\(app.name) address set to the usual one." : "\(app.name) address saved.")
     }
 
     private func saveOAuthClient() {
         do {
-            let id = viewModel.oauthClientId.trimmingCharacters(in: .whitespacesAndNewlines)
-            let secret = viewModel.oauthClientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
-            try SecretStore.shared.update {
-                $0.oauthClientIdOverride = id.isEmpty ? nil : id
-                $0.oauthClientSecretOverride = secret.isEmpty ? nil : secret
-            }
-            status(id.isEmpty ? "OAuth client cleared." : "OAuth client saved. Sign in from General to use it.")
+            let res = try SettingsActions.saveOAuthClientOverride(
+                id: viewModel.oauthClientId,
+                secret: viewModel.oauthClientSecret,
+                in: SecretStore.shared
+            )
+            status(res.cleared ? "OAuth client cleared." : "OAuth client saved. Sign in from General to use it.")
         } catch { status(error.localizedDescription, isError: true) }
     }
 

@@ -50,6 +50,7 @@ public enum SettingsActions {
         case unknownKey(String)
         case wrongKind(key: String, expected: SettingsCatalog.Kind, got: Value)
         case invalidChoice(key: String, value: String, allowed: [String])
+        case outOfRange(key: String, value: Int, min: Int, max: Int)
         case invalidTime(key: String, value: String)
         case invalidAddress(key: String, reason: String)
         case missingToken(key: String, reason: String)
@@ -63,6 +64,19 @@ public enum SettingsActions {
             case .invalidChoice(let key, let value, let allowed):
                 let list = allowed.isEmpty ? "none" : allowed.joined(separator: ", ")
                 return "Value \"\(value)\" is not a valid choice for \"\(key)\" (allowed: \(list))."
+            case .outOfRange(let key, _, let min, let max):
+                switch key {
+                case SettingsCatalog.Key.announceVolume.rawValue:
+                    return "The announcement volume is a whole number from \(min) to \(max)"
+                case SettingsCatalog.Key.pauseMediaExtraSeconds.rawValue:
+                    return "Resume after is a number of seconds from \(min) to \(max)"
+                case SettingsCatalog.Key.pollIntervalSeconds.rawValue:
+                    return "The poll interval is a whole number of seconds from \(min) to \(max)"
+                case SettingsCatalog.Key.speakerVolume.rawValue:
+                    return "A volume is a whole number from \(min) to \(max)"
+                default:
+                    return "Value must be between \(min) and \(max)"
+                }
             case .invalidTime(_, _):
                 return "Quiet hours take a time as HH:mm, such as 22:00"
             case .invalidAddress(_, let reason):
@@ -223,14 +237,16 @@ public enum SettingsActions {
         value: Value,
         to config: inout SpeakerConfig,
         secrets: Secrets? = nil,
-        systemVoices: [LocalVoice] = []
+        systemVoices: [LocalVoice] = [],
+        clampNumbers: Bool = true
     ) throws -> SetResult {
         let catalog = SettingsCatalog(config: config, systemVoices: systemVoices)
         let entry = catalog.entry(key)
 
         switch (entry.kind, value) {
         case (.toggle, .bool(let flag)):
-            if key == .courierEnabled, flag, let secrets, secrets.token(for: .courier) == nil {
+            if key == .courierEnabled, flag, !config.effectiveChatMonitor.courierEnabled,
+               let secrets, secrets.token(for: .courier) == nil {
                 throw Refusal.missingToken(key: key.rawValue, reason: "Save a Courier token first")
             }
             applyToggle(key, flag, to: &config)
@@ -238,7 +254,8 @@ public enum SettingsActions {
 
         case (.choice, .string(let choice)):
             let allowed = entry.choices.map(\.value)
-            guard allowed.contains(choice) else {
+            let isValidTargetAlias = (key == .defaultTarget && config.targets[choice] != nil)
+            guard isValidTargetAlias || allowed.contains(choice) else {
                 throw Refusal.invalidChoice(key: key.rawValue, value: choice, allowed: allowed)
             }
             applyChoice(key, choice, to: &config)
@@ -246,6 +263,9 @@ public enum SettingsActions {
 
         case (.number, .int(let rawNumber)):
             let limits = entry.limits!
+            if !clampNumbers, rawNumber < limits.min || rawNumber > limits.max {
+                throw Refusal.outOfRange(key: key.rawValue, value: rawNumber, min: limits.min, max: limits.max)
+            }
             let clampedValue = limits.clamp(rawNumber)
             let wasClamped = clampedValue != rawNumber
             let warning = wasClamped
@@ -266,18 +286,118 @@ public enum SettingsActions {
 
         case (.time, .string(let rawTime)):
             let trimmed = rawTime.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard SpeakerConfig.minutesSinceMidnight(trimmed) != nil else {
+            guard let normalized = SettingsCatalog.normalizedQuietHour(trimmed) else {
                 throw Refusal.invalidTime(key: key.rawValue, value: rawTime)
             }
             if key == .quietHoursStart {
-                config.quietHoursStart = trimmed
+                config.quietHoursStart = normalized
             } else if key == .quietHoursEnd {
-                config.quietHoursEnd = trimmed
+                config.quietHoursEnd = normalized
             }
-            return SetResult(key: key, appliedValue: .string(trimmed), config: config)
+            return SetResult(key: key, appliedValue: .string(normalized), config: config)
 
         default:
             throw Refusal.wrongKind(key: key.rawValue, expected: entry.kind, got: value)
+        }
+    }
+
+    /// Convenience in-memory `applySet` accepting a raw string representation
+    /// (as delivered by UI events), parsing booleans/numbers according to the
+    /// catalog entry's kind, checking `hasCourierToken`, and returning `true`
+    /// when the effective setting value in `config` changed.
+    @discardableResult
+    public static func applySet(
+        key: SettingsCatalog.Key,
+        value rawValue: String,
+        to config: inout SpeakerConfig,
+        clampNumbers: Bool = true,
+        hasCourierToken: Bool = true,
+        systemVoices: [LocalVoice] = []
+    ) throws -> Bool {
+        let catalog = SettingsCatalog(config: config, systemVoices: systemVoices)
+        let entry = catalog.entry(key)
+        let beforeEffective = effectiveValue(for: key, in: config)
+
+        let parsedValue: Value
+        switch entry.kind {
+        case .toggle:
+            guard let flag = Bool(rawValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) else {
+                throw Refusal.wrongKind(key: key.rawValue, expected: .toggle, got: .string(rawValue))
+            }
+            parsedValue = .bool(flag)
+        case .number:
+            let limits = entry.limits!
+            let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            if key == .pauseMediaExtraSeconds {
+                guard let seconds = Double(trimmed), seconds.isFinite else {
+                    throw Refusal.outOfRange(key: key.rawValue, value: limits.min - 1, min: limits.min, max: limits.max)
+                }
+                if !clampNumbers, seconds < Double(limits.min) || seconds > Double(limits.max) {
+                    throw Refusal.outOfRange(key: key.rawValue, value: limits.min - 1, min: limits.min, max: limits.max)
+                }
+                parsedValue = .int(Int(seconds.rounded()))
+            } else {
+                guard let number = Int(trimmed) else {
+                    throw Refusal.outOfRange(key: key.rawValue, value: limits.min - 1, min: limits.min, max: limits.max)
+                }
+                parsedValue = .int(number)
+            }
+        case .choice, .text, .time:
+            parsedValue = .string(rawValue)
+        }
+
+        let syntheticSecrets: Secrets? = hasCourierToken ? Secrets(courierToken: "present") : Secrets()
+        _ = try applySet(
+            key: key,
+            value: parsedValue,
+            to: &config,
+            secrets: syntheticSecrets,
+            systemVoices: systemVoices,
+            clampNumbers: clampNumbers
+        )
+        return effectiveValue(for: key, in: config) != beforeEffective
+    }
+
+    private static func effectiveValue(for key: SettingsCatalog.Key, in config: SpeakerConfig) -> Value {
+        switch key {
+        case .enabled: return .bool(config.enabled)
+        case .announceVolumeEnabled: return .bool(config.effectiveAnnounceVolumeEnabled)
+        case .pauseMedia: return .bool(config.effectivePauseMedia)
+        case .quietHoursEnabled: return .bool(config.quietHoursEnabled ?? false)
+        case .speakHome: return .bool(config.effectiveSpeakHome)
+        case .homeCastVoice: return .bool(config.effectiveHomeCastVoice)
+        case .speakLocal: return .bool(config.effectiveSpeakLocal)
+        case .speakPhone: return .bool(config.effectiveSpeakPhone)
+        case .phonePauseMedia: return .bool(config.effectivePhonePauseMedia)
+        case .phoneHeadphonesOnly: return .bool(config.effectivePhoneHeadphonesOnly)
+        case .announceClaudeCode: return .bool(config.announces(.claudeCode))
+        case .announceAntigravity: return .bool(config.announces(.antigravity))
+        case .announceOpenCode: return .bool(config.announces(.opencode))
+        case .slackEnabled: return .bool(config.effectiveChatMonitor.slackEnabled)
+        case .googleChatEnabled: return .bool(config.effectiveChatMonitor.googleChatEnabled)
+        case .beeperEnabled: return .bool(config.effectiveChatMonitor.beeperEnabled)
+        case .courierEnabled: return .bool(config.effectiveChatMonitor.courierEnabled)
+        case .muteOwnMessages: return .bool(config.effectiveChatMonitor.muteOwnMessages)
+        case .speechLength: return .string(config.effectiveSpeechLength.rawValue)
+        case .announcementStyle: return .string(config.effectiveAnnouncementStyle.rawValue)
+        case .styleModel: return .string(config.effectiveStyleModel.rawValue)
+        case .defaultTarget: return .string(config.defaultTarget)
+        case .localEngine: return .string(config.effectiveLocalEngine.rawValue)
+        case .geminiVoice: return .string(config.effectiveGeminiVoice)
+        case .localVoice: return .string(config.effectiveLocalVoice)
+        case .googleChatSource: return .string(config.effectiveChatMonitor.googleChatSource.rawValue)
+        case .beeperAnnounce: return .string(config.effectiveChatMonitor.beeperAnnounce.rawValue)
+        case .courierAnnounce: return .string(config.effectiveChatMonitor.courierAnnounce.rawValue)
+        case .speakerVolume: return .int(0)
+        case .announceVolume: return .int(config.effectiveAnnounceVolume)
+        case .pauseMediaExtraSeconds: return .int(Int(config.effectivePauseMediaExtraSeconds))
+        case .pollIntervalSeconds: return .int(config.effectiveChatMonitor.pollIntervalSeconds)
+        case .customStylePrompt: return .string(config.customStylePrompt ?? "")
+        case .gwsAccount: return .string(config.effectiveChatMonitor.gwsAccount)
+        case .beeperAddress: return .string(config.effectiveChatMonitor.beeperAddress)
+        case .courierAddress: return .string(config.effectiveChatMonitor.courierAddress)
+        case .quietHoursStart: return .string(config.quietHoursStart ?? "")
+        case .quietHoursEnd: return .string(config.quietHoursEnd ?? "")
         }
     }
 

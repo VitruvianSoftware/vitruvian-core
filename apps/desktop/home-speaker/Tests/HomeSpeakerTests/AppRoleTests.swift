@@ -779,6 +779,33 @@ private final class AppRig {
         #expect(side.step == nil)
     }
 
+    @Test func choosingTheExtensionWhenItsProgramIsGoneSaysSo() throws {
+        let rig = try AppRig()
+        try rig.installExtension(chosen: nil)
+        let door = rig.makeDoor()
+        door.refresh()
+        let side = rig.makeSwitch(door)
+        #expect(side.canChooseExtension)
+
+        try FileManager.default.removeItem(at: rig.extensionProgram)
+        side.choose(.extension)
+        #expect(side.step == nil)
+        #expect(side.report == [DoorWords.extensionNotFound])
+
+        // Found when step 2 began, gone by Keep: nothing changes and step 2 shows the problem.
+        try Data().write(to: rig.extensionProgram)
+        side.choose(.extension)
+        #expect(side.step != nil)
+        try FileManager.default.removeItem(at: rig.extensionProgram)
+        side.finish(copy: false)
+        guard case .compare(let compare)? = side.step else {
+            Issue.record("expected compare step with problem")
+            return
+        }
+        #expect(compare.problem == DoorWords.extensionNotFound)
+        #expect(rig.door.read()?.chosen == nil)
+    }
+
     // MARK: - Odds and ends
 
     @Test func aChangeInTheFolderReachesTheRole() throws {

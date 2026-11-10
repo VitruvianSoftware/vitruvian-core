@@ -57,9 +57,9 @@ final class ConfigTests: XCTestCase {
     }
 
     func testAQuietHourIsHHmm() {
-        XCTAssertEqual(SpeakerConfig.quietHour(" 22:30 "), "22:30")
-        XCTAssertEqual(SpeakerConfig.quietHour("7:05"), "7:05")
-        XCTAssertNil(SpeakerConfig.quietHour("25:00"))
-        XCTAssertNil(SpeakerConfig.quietHour("ten"))
+        XCTAssertEqual(SettingsCatalog.normalizedQuietHour(" 22:30 "), "22:30")
+        XCTAssertEqual(SettingsCatalog.normalizedQuietHour("7:05"), "07:05")
+        XCTAssertNil(SettingsCatalog.normalizedQuietHour("25:00"))
+        XCTAssertNil(SettingsCatalog.normalizedQuietHour("ten"))
     }
 }

@@ -198,7 +198,7 @@ public struct MenuBarView: View {
 
         // The style only rewords coding agents' replies: with every agent
         // off there is nothing for it to word.
-        if configManager.config.showsAnnouncementStyle {
+        if SettingsCatalog.Key.announcementStyle.shown(config: configManager.config) {
             stylePicker
         }
 
@@ -235,34 +235,26 @@ public struct MenuBarView: View {
     }
 
     private var speakerPicker: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        let catalog = SettingsCatalog(config: configManager.config)
+        return VStack(alignment: .leading, spacing: 4) {
             // Where to speak, one click away. Always available when broadcasting is on.
             Text("Speak on")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             HStack(spacing: 16) {
-                Toggle("Home speakers", isOn: Binding(
+                Toggle(SettingsCatalog.Key.speakHome.label(), isOn: Binding(
                     get: { configManager.config.effectiveSpeakHome },
-                    set: {
-                        configManager.config.effectiveSpeakHome = $0
-                        configManager.saveConfig()
-                    }
+                    set: { configManager.applySetting(.speakHome, .bool($0)) }
                 ))
                 .accessibilityHint("Plays announcements on the Google Home speaker below")
-                Toggle("This Mac", isOn: Binding(
+                Toggle(SettingsCatalog.Key.speakLocal.label(), isOn: Binding(
                     get: { configManager.config.effectiveSpeakLocal },
-                    set: {
-                        configManager.config.effectiveSpeakLocal = $0
-                        configManager.saveConfig()
-                    }
+                    set: { configManager.applySetting(.speakLocal, .bool($0)) }
                 ))
                 .accessibilityHint("Reads announcements aloud on this Mac")
-                Toggle("Your phone", isOn: Binding(
+                Toggle(SettingsCatalog.Key.speakPhone.label(), isOn: Binding(
                     get: { configManager.config.effectiveSpeakPhone },
-                    set: {
-                        configManager.config.effectiveSpeakPhone = $0
-                        configManager.saveConfig()
-                    }
+                    set: { configManager.applySetting(.speakPhone, .bool($0)) }
                 ))
                 .accessibilityHint("Plays announcements on the paired Android phone")
             }
@@ -293,8 +285,8 @@ public struct MenuBarView: View {
                         get: { configManager.config.defaultTarget },
                         set: { configManager.setTarget($0) }
                     )) {
-                        ForEach(configManager.config.uniqueTargets(), id: \.key) { entry in
-                            Text(entry.device.displayLine).tag(entry.key)
+                        ForEach(catalog.entry(.defaultTarget).choices, id: \.value) { entry in
+                            Text(entry.label).tag(entry.value)
                         }
                     }
                     .labelsHidden()
@@ -315,18 +307,15 @@ public struct MenuBarView: View {
     /// and a custom style are in Settings › General.
     private var stylePicker: some View {
         HStack {
-            Text("Style")
+            Text(SettingsCatalog.Key.announcementStyle.label())
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
-            Picker("Style", selection: Binding(
-                get: { configManager.config.effectiveAnnouncementStyle },
-                set: {
-                    configManager.config.effectiveAnnouncementStyle = $0
-                    configManager.saveConfig()
-                }
+            Picker(SettingsCatalog.Key.announcementStyle.label(), selection: Binding(
+                get: { configManager.config.effectiveAnnouncementStyle.rawValue },
+                set: { configManager.applySetting(.announcementStyle, .string($0)) }
             )) {
-                ForEach(AnnouncementStyle.allCases, id: \.self) { Text($0.label).tag($0) }
+                ForEach(SettingsCatalog.announcementStyleChoices, id: \.value) { Text($0.label).tag($0.value) }
             }
             .labelsHidden()
             .fixedSize()

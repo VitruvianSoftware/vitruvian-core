@@ -97,23 +97,11 @@ public final class SecretStoreAccount: GoogleAccount {
     /// for the same client: a different id never inherits another
     /// client's secret.
     public func saveOAuthClient(id: String, secret: String?) throws {
-        try store.update {
-            let newId = id.isEmpty ? nil : id
-            let sameClient = newId == $0.oauthClientIdOverride
-            $0.oauthClientIdOverride = newId
-            if let secret {
-                $0.oauthClientSecretOverride = secret.isEmpty ? nil : secret
-            } else if !sameClient {
-                $0.oauthClientSecretOverride = nil
-            }
-        }
+        _ = try SettingsActions.saveOAuthClientOverride(id: id, secret: secret, in: store)
     }
 
     public func clearOAuthClient() throws {
-        try store.update {
-            $0.oauthClientIdOverride = nil
-            $0.oauthClientSecretOverride = nil
-        }
+        _ = try SettingsActions.saveOAuthClientOverride(id: "", secret: nil, in: store)
     }
 }
 
@@ -179,7 +167,7 @@ public final class SecretStoreChatCredentials: ChatCredentials {
     }
 
     public func clearSlackToken() throws {
-        try store.update { $0.slackToken = nil }
+        _ = try SettingsActions.clearChatToken(.slack, in: store)
     }
 
     public var hasBeeperToken: Bool { !(store.load().beeperToken?.isEmpty ?? true) }
@@ -189,7 +177,7 @@ public final class SecretStoreChatCredentials: ChatCredentials {
     }
 
     public func clearBeeperToken() throws {
-        try store.update { $0.beeperToken = nil }
+        _ = try SettingsActions.clearChatToken(.beeper, in: store)
     }
 
     public var hasCourierToken: Bool { !(store.load().courierToken?.isEmpty ?? true) }
@@ -199,7 +187,7 @@ public final class SecretStoreChatCredentials: ChatCredentials {
     }
 
     public func clearCourierToken() throws {
-        try store.update { $0.courierToken = nil }
+        _ = try SettingsActions.clearChatToken(.courier, in: store)
     }
 
     public var hasGeminiKey: Bool { !(store.load().geminiApiKey?.isEmpty ?? true) }
