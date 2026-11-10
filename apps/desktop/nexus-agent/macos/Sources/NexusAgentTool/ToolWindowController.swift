@@ -32,47 +32,6 @@ private final class QuickPromptPanel: NSPanel {
     override var canBecomeKey: Bool { true }
 }
 
-/// What the floating chat is drawn on: the Vitruvian app's HUD backdrop
-/// (apps/desktop/vitruvian/Sources/Vitruvian/Design/HUDBackdrop.swift) in its
-/// classic form, a behind-window material with continuous corners and a
-/// hairline of white at 12% inside the edge. The radius is the layout's,
-/// which the Vitruvian app passes its backdrop too and the chat clips to,
-/// so the edge and the content agree.
-private struct ChatBackdrop: View {
-    static let cornerRadius = NexusAgentQuickPromptLayout.cornerRadius
-
-    var body: some View {
-        ChatBackdropMaterial(cornerRadius: Self.cornerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
-            )
-    }
-}
-
-/// The material itself. The corner radius rounds the effect view's own
-/// layer: SwiftUI's clip does not clip a behind-window blur, which would
-/// otherwise keep its rectangular bounds and show as a faint outline.
-private struct ChatBackdropMaterial: NSViewRepresentable {
-    var cornerRadius: CGFloat
-
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = .hudWindow
-        view.blendingMode = .behindWindow
-        view.state = .active
-        view.wantsLayer = true
-        view.layer?.cornerRadius = cornerRadius
-        view.layer?.cornerCurve = .continuous
-        view.layer?.masksToBounds = true
-        return view
-    }
-
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
-        nsView.layer?.cornerRadius = cornerRadius
-    }
-}
-
 /// The Quick Prompt's floating window: the shared chat view on the tool's
 /// engine, in a panel of the tool's own process. Esc and ⌘W close it, ⌘N
 /// starts a chat, a click outside closes it unless it is pinned. The
@@ -217,7 +176,7 @@ final class ToolWindowController: NSObject, NSWindowDelegate, QuickPromptWindow 
         let chrome: NexusAgentChatChrome
         if isDockedInSlot {
             chrome = NexusAgentChatChrome(
-                backdrop: AnyView(ChatBackdrop()),
+                backdrop: AnyView(NexusAgentNotchBackdrop()),
                 isEmbedded: true,
                 isPinned: nil,
                 showWindow: { [weak self] in self?.show() },
@@ -226,7 +185,7 @@ final class ToolWindowController: NSObject, NSWindowDelegate, QuickPromptWindow 
                 offersClearAll: false)
         } else {
             chrome = NexusAgentChatChrome(
-                backdrop: AnyView(ChatBackdrop()),
+                backdrop: AnyView(NexusAgentNotchBackdrop()),
                 isPinned: Binding(get: { [weak self] in self?.isPinned ?? false }, set: { [weak self] in self?.isPinned = $0 }),
                 showWindow: { [weak self] in self?.show() },
                 dockToNotch: onDockToNotch == nil ? nil : { [weak self] in self?.onDockToNotch?() },

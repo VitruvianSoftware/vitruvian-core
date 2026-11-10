@@ -18,6 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+import NexusAgentCore
 import SwiftUI
 
 /// What differs between the apps around the same chat: what is drawn behind
@@ -61,5 +62,28 @@ public struct NexusAgentChatChrome {
         self.dockToNotchHelp = dockToNotchHelp
         self.errorScheme = errorScheme
         self.offersClearAll = offersClearAll
+    }
+}
+
+/// The notch's look for a chat in a window of its own: black, as Vitruvian's
+/// island draws behind the docked chat, with a hairline of white at 12%
+/// inside the edge. Popping the chat out of the notch keeps the same dark
+/// surface instead of a frosted material that greys the bubbles.
+public struct NexusAgentNotchBackdrop: View {
+    /// The surface's colour, the island's black.
+    public static let fill = Color.black
+    public var cornerRadius: CGFloat
+
+    public init(cornerRadius: CGFloat = NexusAgentQuickPromptLayout.cornerRadius) {
+        self.cornerRadius = cornerRadius
+    }
+
+    public var body: some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(Self.fill)
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+            )
     }
 }
