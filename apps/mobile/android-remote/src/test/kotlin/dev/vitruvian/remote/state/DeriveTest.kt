@@ -2536,4 +2536,218 @@ public class DeriveTest {
     assertTrue(chatTimedOut.showGrant)
     assertEquals("Sign-in didn't finish on the Mac. Try again.", chatTimedOut.inlineNote)
   }
+
+  @Test
+  public fun `noMacLine distinguishes offline paired Macs from unpaired phones`() {
+    assertEquals(
+        "no Mac is configured, so nothing was asked",
+        Derive.noMacLine(paired = false, offline = false, hostName = "", lastSeenAgoSec = null),
+    )
+    assertEquals(
+        "no Mac is configured, so nothing ran",
+        Derive.noMacLine(
+            paired = false,
+            offline = false,
+            hostName = "",
+            lastSeenAgoSec = null,
+            nothingRan = true),
+    )
+    assertEquals(
+        "atlas isn't answering · last seen 2 min ago",
+        Derive.noMacLine(paired = true, offline = true, hostName = "atlas", lastSeenAgoSec = 125L),
+    )
+    assertEquals(
+        "10.0.2.2 isn't answering · last seen just now",
+        Derive.noMacLine(paired = true, offline = true, hostName = "10.0.2.2", lastSeenAgoSec = 3L),
+    )
+    assertEquals(
+        "atlas isn't answering",
+        Derive.noMacLine(paired = true, offline = true, hostName = "atlas", lastSeenAgoSec = null),
+    )
+    assertEquals(
+        "asking…",
+        Derive.noMacLine(paired = true, offline = false, hostName = "atlas", lastSeenAgoSec = null),
+    )
+  }
+
+  @Test
+  public fun `displayHostName prefers agent hostname over auto-derived alias but keeps user-typed alias`() {
+    // Auto-derived IPv4 alias yields to /v1/host hostname when reported.
+    assertEquals(
+        "atlas",
+        Derive.displayHostName(
+            alias = "10.0.2.2", url = "http://10.0.2.2:7411", agentHostname = "atlas.local"),
+    )
+    // Legacy cut IPv4 alias ("10") also yields to agent hostname or full IPv4 when offline.
+    assertEquals(
+        "atlas",
+        Derive.displayHostName(
+            alias = "10", url = "http://10.0.2.2:7411", agentHostname = "atlas.tailnet.ts.net"),
+    )
+    assertEquals(
+        "10.0.2.2",
+        Derive.displayHostName(alias = "10", url = "http://10.0.2.2:7411", agentHostname = null),
+    )
+    // Auto-derived DNS alias yields to reported hostname.
+    assertEquals(
+        "mac-studio",
+        Derive.displayHostName(
+            alias = "box", url = "http://box.example.com:7411", agentHostname = "mac-studio.local"),
+    )
+    // User-typed alias always wins, even when /v1/host reports a different hostname.
+    assertEquals(
+        "Desk Mac",
+        Derive.displayHostName(
+            alias = "Desk Mac", url = "http://10.0.2.2:7411", agentHostname = "atlas.local"),
+    )
+  }
+
+  @Test
+  public fun `mirrorRowSpec shows blocked notification error only when permanently denied`() {
+    assertTrue(Derive.isNotificationPermissionBlocked(granted = false, shouldShowRationale = false))
+    assertFalse(Derive.isNotificationPermissionBlocked(granted = false, shouldShowRationale = true))
+    assertFalse(Derive.isNotificationPermissionBlocked(granted = true, shouldShowRationale = false))
+
+    val permanentlyBlocked =
+        Derive.mirrorRowSpec(
+            mirrorEnabled = true,
+            permissionGranted = false,
+            permissionBlocked = true,
+            shouldShowRationale = false,
+        )
+    assertFalse(permanentlyBlocked.checked)
+    assertEquals("off", permanentlyBlocked.trailing)
+    assertEquals("Notifications are blocked for this app", permanentlyBlocked.error)
+    assertTrue(permanentlyBlocked.showOpenSettings)
+    assertEquals("Open settings", permanentlyBlocked.actionLabel)
+
+    val firstDenial =
+        Derive.mirrorRowSpec(
+            mirrorEnabled = false,
+            permissionGranted = false,
+            permissionBlocked =
+                Derive.isNotificationPermissionBlocked(granted = false, shouldShowRationale = true),
+            shouldShowRationale = true,
+        )
+    assertFalse(firstDenial.checked)
+    assertEquals("off", firstDenial.trailing)
+    assertNull(firstDenial.error)
+    assertFalse(firstDenial.showOpenSettings)
+
+    val active =
+        Derive.mirrorRowSpec(
+            mirrorEnabled = true, permissionGranted = true, permissionBlocked = false)
+    assertTrue(active.checked)
+    assertEquals("on", active.trailing)
+    assertNull(active.error)
+    assertFalse(active.showOpenSettings)
+
+    val off =
+        Derive.mirrorRowSpec(
+            mirrorEnabled = false, permissionGranted = true, permissionBlocked = false)
+    assertFalse(off.checked)
+    assertEquals("off", off.trailing)
+    assertNull(off.error)
+    assertFalse(off.showOpenSettings)
+  }
+
+  @Test
+  public fun `tapReset and resetHomeSpeakerRow enforce a 5 second two-tap confirmation window`() {
+    val t0 = 100_000L
+    val initialRow = Derive.resetHomeSpeakerRow(armedAtMs = null, nowMs = t0, canAct = true)
+    assertEquals("Reset HomeSpeaker", initialRow.title)
+    assertEquals("puts every HomeSpeaker setting back to default", initialRow.subtitle)
+    assertEquals("Reset settings", initialRow.actionLabel)
+    assertFalse(initialRow.danger)
+
+    // First tap arms for 5 s without resetting.
+    val firstTap = Derive.tapReset(armedAtMs = null, nowMs = t0)
+    assertFalse(firstTap.shouldReset)
+    assertEquals(t0, firstTap.nextArmedAtMs)
+
+    val armedRow =
+        Derive.resetHomeSpeakerRow(
+            armedAtMs = firstTap.nextArmedAtMs, nowMs = t0 + 2_000L, canAct = true)
+    assertEquals("Tap again to reset", armedRow.actionLabel)
+    assertTrue(armedRow.danger)
+
+    // Second tap within 5 s confirms and clears armed state.
+    val secondTap = Derive.tapReset(armedAtMs = firstTap.nextArmedAtMs, nowMs = t0 + 4_999L)
+    assertTrue(secondTap.shouldReset)
+    assertNull(secondTap.nextArmedAtMs)
+
+    // After 5 s have elapsed, the row reverts and tapping again re-arms instead of resetting.
+    val expiredRow =
+        Derive.resetHomeSpeakerRow(
+            armedAtMs = firstTap.nextArmedAtMs, nowMs = t0 + 5_000L, canAct = true)
+    assertEquals("Reset settings", expiredRow.actionLabel)
+    assertFalse(expiredRow.danger)
+
+    val tapAfterExpiry = Derive.tapReset(armedAtMs = firstTap.nextArmedAtMs, nowMs = t0 + 5_000L)
+    assertFalse(tapAfterExpiry.shouldReset)
+    assertEquals(t0 + 5_000L, tapAfterExpiry.nextArmedAtMs)
+  }
+
+  @Test
+  public fun `stripHomeSpeakerErrorPrefixes and homeSpeakerInlineError format sign-in errors cleanly`() {
+    assertEquals(
+        "token exchange failed",
+        Derive.stripHomeSpeakerErrorPrefixes("homespeaker: error: token exchange failed"),
+    )
+    assertEquals(
+        "invalid_grant",
+        Derive.stripHomeSpeakerErrorPrefixes("✗ homespeaker · sign in: HTTP 400: invalid_grant"),
+    )
+    assertEquals(
+        "browser closed",
+        Derive.stripHomeSpeakerErrorPrefixes(
+            "agent: homespeaker: error: browser closed (HTTP 400)"),
+    )
+    assertEquals(
+        "Couldn't sign in: token exchange failed",
+        Derive.homeSpeakerInlineError(
+            what = "sign in", reason = "homespeaker: error: token exchange failed"),
+    )
+    assertEquals(
+        "Couldn't sign in: access denied",
+        Derive.homeSpeakerInlineError(
+            what = "grant Google Chat",
+            reason = "✗ homespeaker · grant Google Chat: error: access denied (HTTP 400)"),
+    )
+    // UAT 2026-11-10: the agent's own "sign out failed:" prefix reached the row.
+    assertEquals(
+        "Couldn't sign out: the Mac returned an error",
+        Derive.homeSpeakerInlineError(what = "sign out", reason = "sign out failed: exit status 1"),
+    )
+    assertEquals(
+        "Couldn't sign in: browser closed",
+        Derive.homeSpeakerInlineError(what = "sign in", reason = "sign in failed: browser closed"),
+    )
+    assertEquals(
+        "Couldn't sign in: access denied",
+        Derive.homeSpeakerInlineError(what = "grant", reason = "grant chat failed: access denied"),
+    )
+    assertEquals(
+        "Couldn't sign out: token revoke failed",
+        Derive.homeSpeakerInlineError(
+            what = "sign out", reason = "homespeaker: error: token revoke failed"),
+    )
+    assertEquals(
+        "Couldn't disconnect: keychain locked",
+        Derive.homeSpeakerInlineError(
+            what = "disconnect Google Chat", reason = "homespeaker: error: keychain locked"),
+    )
+    assertEquals(
+        "Couldn't disconnect: token file busy",
+        Derive.homeSpeakerInlineError(
+            what = "disconnect", reason = "✗ homespeaker · disconnect: error: token file busy"),
+    )
+  }
+
+  @Test
+  public fun `showsCourierRow keeps Courier visible when off and hides it only when unsupported`() {
+    assertFalse(Derive.showsCourierRow(null))
+    assertTrue(Derive.showsCourierRow(false))
+    assertTrue(Derive.showsCourierRow(true))
+  }
 }

@@ -519,7 +519,16 @@ public class RemoteState(
 
   /** Whether HomeSpeaker controls that mutate Mac state should be enabled. */
   private val homeSpeakerCanAct: Boolean
-    get() = paired && !isOffline && !actsNeedPairing
+    get() = paired && isLive && !isOffline && !actsNeedPairing
+
+  /**
+   * True when the user tried to turn on announcement notifications and Android denied permission.
+   */
+  public var homeSpeakerMirrorPermissionBlocked: Boolean by mutableStateOf(false)
+    private set
+
+  /** Monotonic/wall timestamp when "Reset settings" was first tapped (5 s confirmation window). */
+  private var homeSpeakerResetArmedAtMs: Long? by mutableStateOf(null)
 
   private fun applyAgentHomeSpeaker(
       hs: AgentHomeSpeaker,
@@ -997,10 +1006,11 @@ public class RemoteState(
     val current = entry.id == selectedHost?.id
     val live = agentHost.takeIf { current }
     val address = AgentClient.normalize(entry.url).substringAfter("://")
+    val displayName =
+        Derive.displayHostName(entry.alias, entry.url, live?.hostname).ifBlank { address }
     return Host(
         id = entry.id,
-        name =
-            if (live != null) "${entry.alias} · ${live.chip}" else entry.alias.ifBlank { address },
+        name = if (live != null) "$displayName · ${live.chip}" else displayName,
         subtitle =
             if (live != null)
                 "$address · macOS ${live.osVersion} · ${Format.memoryBytes(live.memoryBytes)}"
@@ -1038,7 +1048,16 @@ public class RemoteState(
           // No Mac saved: the app is simulating, and the mock's own name is
           // what every other simulated figure on screen belongs to.
           hosts.isEmpty() -> MockHost.hosts.first().name.substringBefore(" · ")
-          else -> selectedHost?.alias?.ifBlank { null } ?: agentHost?.hostname ?: "no host"
+          else -> {
+            val host = selectedHost
+            if (host != null) {
+              Derive.displayHostName(host.alias, host.url, agentHost?.hostname).ifBlank {
+                "no host"
+              }
+            } else {
+              agentHost?.hostname?.let(Format::shortHost)?.ifBlank { null } ?: "no host"
+            }
+          }
         }
 
   /**
@@ -1048,11 +1067,35 @@ public class RemoteState(
    * for, and the capitals are Apple's, not the user's. Blank when no agent has answered yet, which
    * is what sends [hostShortName] to the host list for a name.
    */
-  private fun shortHostName(): String =
-      when {
-        !selectedHost?.alias.isNullOrBlank() -> selectedHost?.alias.orEmpty()
-        else -> agentHost?.hostname?.let(Format::shortHost).orEmpty()
-      }
+  private fun shortHostName(): String {
+    val host = selectedHost
+    if (host != null) {
+      return Derive.displayHostName(host.alias, host.url, agentHost?.hostname)
+    }
+    return agentHost?.hostname?.let(Format::shortHost).orEmpty()
+  }
+
+  /**
+   * True when a Mac is configured/paired and its agent is currently unreachable (either forced
+   * offline or after a poll has failed). Before the first poll after launch (`agentError` is
+   * blank), the Mac is not yet known to be unreachable.
+   */
+  private val isMacOffline: Boolean
+    get() =
+        connection == Connection.Offline ||
+            (!isUnpaired &&
+                hosts.isNotEmpty() &&
+                metricsSource == MetricsSource.Unreachable &&
+                agentError.isNotBlank())
+
+  private fun noMacStreamLine(nothingRan: Boolean = false): String =
+      Derive.noMacLine(
+          paired = !isUnpaired && hosts.isNotEmpty(),
+          offline = isMacOffline,
+          hostName = hostShortName,
+          lastSeenAgoSec = Format.secondsAgo(lastSampleAt, System.currentTimeMillis()),
+          nothingRan = nothingRan,
+      )
 
   /** The chip's text: the short name, suffixed when unreachable. */
   public val hostChipText: String
@@ -1809,24 +1852,46 @@ public class RemoteState(
       return rows
     }
 
-  public val moduleDashboards: Map<String, ModuleDashboard>
-    get() {
-      // MockHost has no pull-request mock and should not grow one: the module
-      // is about YOUR open PRs, and invented ones would be indistinguishable
-      // from real ones on the same plate.
-      val mocked =
-          MockHost.dashboards(agentTranscript.toList(), !agentPaused) +
-              ("prs" to simulatedPrsDashboard()) +
-              ("homespeaker" to simulatedHomeSpeakerDashboard()) +
-              ("tv" to simulatedTvDashboard())
-      val ids = MockHost.gallery.map { it.id }
-      if (!isLive) return ids.associateWith { id -> mocked[id] ?: unwiredDashboard(id) }
-      // Every installed module gets a dashboard in live mode, including the
-      // ones nothing on this Mac feeds. Dropping those would leave the chip
-      // row looking arbitrary; showing the mock would be a fabrication. They
-      // get an honest empty one instead.
-      return ids.associateWith { id -> liveDashboard(id) ?: unwiredDashboard(id) }
+  private val knownModuleIds: Set<String> = MockHost.gallery.map { it.id }.toSet()
+
+  private fun dashboardFor(id: String): ModuleDashboard {
+    if (id == "homespeaker") {
+      if (isLive || (!isUnpaired && hosts.isNotEmpty())) {
+        return homeSpeakerDashboard()
+      }
+      return simulatedHomeSpeakerDashboard()
     }
+    if (!isLive) {
+      // A paired Mac that is not answering keeps what it last said, marked offline; the demo
+      // numbers are only for a phone with no Mac at all (UAT 2026-11-10).
+      if (!isUnpaired && hosts.isNotEmpty() && id != "prs" && id != "tv") {
+        return offlineDashboard(liveDashboard(id) ?: unwiredDashboard(id), noMacStreamLine())
+      }
+      return when (id) {
+        "prs" -> simulatedPrsDashboard()
+        "tv" -> simulatedTvDashboard()
+        else ->
+            MockHost.dashboards(agentTranscript.toList(), !agentPaused)[id] ?: unwiredDashboard(id)
+      }
+    }
+    return liveDashboard(id) ?: unwiredDashboard(id)
+  }
+
+  /**
+   * A module page for a paired Mac that is not answering: whatever the Mac last said, marked
+   * offline, with [line] (from [noMacLine]) as the only stream line, so nothing on it reads as a
+   * fresh answer. Demo data is never shown for a paired Mac.
+   */
+  private fun offlineDashboard(base: ModuleDashboard, line: String): ModuleDashboard =
+      base.copy(
+          status = "${hostShortName} isn't answering",
+          statusTone = StatusTone.Warn,
+          lines = listOf(TerminalLine(" ", line, TerminalTone.Warn)),
+          cursor = false,
+          prompts = false,
+          composer = null,
+          quick = emptyList(),
+      )
 
   /** The modules that have a real source on this machine. */
   private fun liveDashboard(id: String): ModuleDashboard? =
@@ -2109,36 +2174,49 @@ public class RemoteState(
    * Two invented rows would be indistinguishable from two real ones, so there are none: the plate
    * says what the module needs and that nothing here is measuring it.
    */
-  private fun simulatedPrsDashboard(): ModuleDashboard =
-      ModuleDashboard(
-          id = "prs",
-          name = "Pull requests",
-          meta = "gh · on the Mac",
-          status = "simulated · no Mac",
-          statusTone = StatusTone.Neutral,
-          metrics =
-              listOf(
-                  ModuleMetric("Open", "n/a", "needs a paired Mac"),
-                  ModuleMetric("Green", "n/a", "needs a paired Mac"),
-                  ModuleMetric("Red", "n/a", "needs a paired Mac"),
-              ),
-          streamLabel = "gh",
-          lines =
-              listOf(
-                  TerminalLine("$", "gh search prs --author @me --state open", TerminalTone.Text),
-                  TerminalLine(" ", "no Mac is configured, so nothing ran", TerminalTone.Dim)),
-          cursor = false,
-          prompts = false,
-          listLabel = "Open pull requests",
-          rows =
-              listOf(
-                  ModuleRow(
-                      "Nothing to show without a Mac",
-                      "pair one and this lists your open PRs",
-                      "n/a",
-                      StatusTone.Neutral,
-                  )),
-      )
+  private fun simulatedPrsDashboard(): ModuleDashboard {
+    val offline = isMacOffline
+    val hasMac = !isUnpaired && hosts.isNotEmpty()
+    val line = noMacStreamLine(nothingRan = true)
+    return ModuleDashboard(
+        id = "prs",
+        name = "Pull requests",
+        meta = "gh · on the Mac",
+        status =
+            when {
+              offline -> "$hostShortName isn't answering"
+              hasMac -> "asking…"
+              else -> "simulated · no Mac"
+            },
+        statusTone = if (offline) StatusTone.Warn else StatusTone.Neutral,
+        metrics =
+            listOf(
+                ModuleMetric(
+                    "Open", "n/a", if (hasMac) "waiting for the Mac" else "needs a paired Mac"),
+                ModuleMetric(
+                    "Green", "n/a", if (hasMac) "waiting for the Mac" else "needs a paired Mac"),
+                ModuleMetric(
+                    "Red", "n/a", if (hasMac) "waiting for the Mac" else "needs a paired Mac"),
+            ),
+        streamLabel = "gh",
+        lines =
+            listOf(
+                TerminalLine("$", "gh search prs --author @me --state open", TerminalTone.Text),
+                TerminalLine(" ", line, if (offline) TerminalTone.Warn else TerminalTone.Dim)),
+        cursor = false,
+        prompts = false,
+        listLabel = "Open pull requests",
+        rows =
+            listOf(
+                ModuleRow(
+                    if (offline) "$hostShortName isn't answering"
+                    else "Nothing to show without a Mac",
+                    if (offline) line else "pair one and this lists your open PRs",
+                    "n/a",
+                    if (offline) StatusTone.Warn else StatusTone.Neutral,
+                )),
+    )
+  }
 
   private fun limaDashboard(): ModuleDashboard {
     val v = agentVms
@@ -2316,18 +2394,21 @@ public class RemoteState(
    * selection idiom and one button idiom in the app, not three.
    */
   private fun homeSpeakerDashboard(): ModuleDashboard {
+    val offline = isMacOffline
     val hs = agentHomeSpeaker
     val available = hs?.available == true
     val busy = homeSpeakerBusy
     val status =
         when {
           busy != null -> "Working · $busy…"
+          offline -> "$hostShortName isn't answering"
           hs == null -> "asking…"
           else -> speakerStatus(hs)
         }
     val tone =
         when {
           busy != null -> StatusTone.Warn
+          offline -> StatusTone.Warn
           hs == null -> StatusTone.Neutral
           else ->
               when (speakerHealth(hs)) {
@@ -2343,6 +2424,9 @@ public class RemoteState(
     val head = TerminalLine("$", "HomeSpeaker · last spoken", TerminalTone.Text)
     val lines = buildList {
       add(head)
+      if (offline) {
+        add(TerminalLine(" ", noMacStreamLine(nothingRan = false), TerminalTone.Warn))
+      }
       homeSpeakerNotice?.let { (msg, nTone) ->
         val lineTone =
             when (nTone) {
@@ -2354,9 +2438,10 @@ public class RemoteState(
         add(TerminalLine("!", msg, lineTone))
       }
       when {
-        hs == null -> add(TerminalLine(" ", "asking…", TerminalTone.Dim))
+        hs == null -> if (!offline) add(TerminalLine(" ", "asking…", TerminalTone.Dim))
         !hs.available -> add(TerminalLine(" ", hs.reason, TerminalTone.Warn))
-        hs.last == null -> add(TerminalLine(" ", "nothing spoken yet", TerminalTone.Dim))
+        hs.last == null ->
+            if (!offline) add(TerminalLine(" ", "nothing spoken yet", TerminalTone.Dim))
         else -> {
           add(
               TerminalLine(
@@ -2371,8 +2456,9 @@ public class RemoteState(
       }
     }
     val newest = Derive.newestBroadcast(hs?.recent.orEmpty(), hs?.last)
-    val canSpeak = paired && available && hs!!.installed
+    val canSpeak = homeSpeakerCanAct && available && hs!!.installed
     val canReplay = canSpeak && Derive.isReplayable(newest)
+    val showSettings = hs != null && hs.available
     return ModuleDashboard(
         id = "homespeaker",
         name = "HomeSpeaker",
@@ -2397,7 +2483,7 @@ public class RemoteState(
                       "Volume",
                       when {
                         speakerVolumeBusy -> "…"
-                        v == null -> if (available) "asking…" else "n/a"
+                        v == null -> if (available && !offline) "asking…" else "n/a"
                         else -> Derive.speakerVolumeLabel(v.available, v.online, v.muted, v.percent)
                       },
                       if (v != null && !v.available) Format.clip(v.reason, 40)
@@ -2426,20 +2512,23 @@ public class RemoteState(
         cursor = false,
         prompts = false,
         listLabel = "Controls and speakers",
-        rows = if (hs == null || !hs.available) emptyList() else homeSpeakerRows(hs),
+        rows = if (!showSettings) emptyList() else homeSpeakerRows(hs!!),
         extraLists =
-            if (hs == null || !hs.available) emptyList()
+            if (!showSettings) emptyList()
             else
-                homeSpeakerExtraLists(hs).map { list ->
+                homeSpeakerExtraLists(hs!!).map { list ->
                   list.copy(
-                      rows = list.rows.map { r -> r.copy(error = homeSpeakerErrors[r.title]) })
+                      rows =
+                          list.rows.map { r ->
+                            r.copy(error = homeSpeakerErrors[r.title] ?: r.error)
+                          })
                 },
         composer =
             ModuleComposer(
                 placeholder = "Announce on ${selected?.name ?: "the speaker"}…",
                 buttonLabel = "Say it",
                 value = announceDraft,
-                enabled = paired && available && announceDraft.isNotBlank(),
+                enabled = homeSpeakerCanAct && available && announceDraft.isNotBlank(),
                 onValueChange = ::updateAnnounceDraft,
                 onSubmit = ::announce,
             ),
@@ -2477,7 +2566,7 @@ public class RemoteState(
       hs.targets.map { t ->
         RowAction(
             Derive.speakerChoiceLabel(t.name, t.room, t.type),
-            enabled = paired && !t.selected,
+            enabled = homeSpeakerCanAct && !t.selected,
             selected = t.selected) {
               setHomeSpeaker("speaker ${t.name}", defaultTarget = t.key, controlId = controlId)
             }
@@ -2494,7 +2583,7 @@ public class RemoteState(
         else emptyList()
     val specs =
         Derive.homeSpeakerQuickActions(
-            paired = paired,
+            paired = homeSpeakerCanAct,
             available = available,
             installed = installed,
             volumeAvailable = v?.available == true,
@@ -2614,15 +2703,31 @@ public class RemoteState(
   }
 
   private fun homeSpeakerMirrorRow(): ModuleRow {
-    val mirrorOn =
-        Derive.isMirrorEnabled(homeSpeakerMirror, notifier?.hasNotificationPermission() != false)
+    val spec =
+        Derive.mirrorRowSpec(
+            mirrorEnabled = homeSpeakerMirror,
+            permissionGranted = notifier?.hasNotificationPermission() != false,
+            permissionBlocked = homeSpeakerMirrorPermissionBlocked,
+        )
     return ModuleRow(
         title = "Show announcements as notifications",
         subtitle = "While Vitruvian Remote is running",
-        trailing = if (mirrorOn) "on" else "off",
-        tone = if (mirrorOn) StatusTone.Ok else StatusTone.Neutral,
+        trailing = spec.trailing,
+        tone = if (spec.checked) StatusTone.Ok else StatusTone.Neutral,
+        error = spec.error,
         toggle =
-            RowToggle(checked = mirrorOn, enabled = true) { next -> updateHomeSpeakerMirror(next) },
+            RowToggle(checked = spec.checked, enabled = true) { next ->
+              updateHomeSpeakerMirror(next)
+            },
+        actions =
+            if (spec.showOpenSettings) {
+              listOf(
+                  RowAction(spec.actionLabel, enabled = true) {
+                    notifier?.openNotificationSettings()
+                  })
+            } else {
+              emptyList()
+            },
     )
   }
 
@@ -2637,7 +2742,7 @@ public class RemoteState(
               trailing = "off",
               tone = StatusTone.Neutral,
               toggle =
-                  RowToggle(checked = false, enabled = paired) {
+                  RowToggle(checked = false, enabled = homeSpeakerCanAct) {
                     setHomeSpeaker("broadcasting on", enabled = true)
                   },
           ))
@@ -2653,7 +2758,7 @@ public class RemoteState(
             trailing = "on",
             tone = StatusTone.Ok,
             toggle =
-                RowToggle(checked = true, enabled = paired) {
+                RowToggle(checked = true, enabled = homeSpeakerCanAct) {
                   setHomeSpeaker("broadcasting off", enabled = false)
                 },
         ))
@@ -2684,7 +2789,7 @@ public class RemoteState(
               actions =
                   if (current != null)
                       listOf(
-                          RowAction("Remove", enabled = paired) {
+                          RowAction("Remove", enabled = homeSpeakerCanAct) {
                             setHomeSpeaker(
                                 "remove speaker ${current.name}", removeTarget = current.key)
                           })
@@ -2719,6 +2824,7 @@ public class RemoteState(
                       secret = true,
                       submitLabel = "Save Key",
                       clearLabel = if (hasKey) "Clear Key" else null,
+                      enabled = homeSpeakerCanAct,
                       onClear =
                           if (hasKey) {
                             { setHomeSpeaker("clear Gemini API key", geminiApiKey = "") }
@@ -2744,7 +2850,7 @@ public class RemoteState(
                     else -> StatusTone.Neutral
                   },
               toggle =
-                  RowToggle(checked = speakHome, enabled = paired) { next ->
+                  RowToggle(checked = speakHome, enabled = homeSpeakerCanAct) { next ->
                     setHomeSpeaker("home speakers ${if (next) "on" else "off"}", speakHome = next)
                   },
           ))
@@ -2766,7 +2872,7 @@ public class RemoteState(
                 subtitle = accountSpec.subtitle,
                 trailing = accountSpec.trailing,
                 tone = if (accountSpec.healthy) StatusTone.Ok else StatusTone.Neutral,
-                error = accountSpec.inlineNote,
+                error = homeSpeakerErrors["Google Home account"] ?: accountSpec.inlineNote,
                 actions =
                     buildList {
                       if (accountSpec.showSignOut) {
@@ -2806,7 +2912,7 @@ public class RemoteState(
                 trailing = "",
                 actions =
                     listOf(
-                        RowAction("Find speakers", enabled = paired) {
+                        RowAction("Find speakers", enabled = homeSpeakerCanAct) {
                           setHomeSpeaker("discover", discover = true)
                         }),
             ))
@@ -2819,9 +2925,10 @@ public class RemoteState(
                   choices =
                       hs.homes.map { h ->
                         val current = h.id == hs.structureId
-                        RowAction(h.name, enabled = paired && !current, selected = current) {
-                          setHomeSpeaker("home ${h.name}", structureId = h.id)
-                        }
+                        RowAction(
+                            h.name, enabled = homeSpeakerCanAct && !current, selected = current) {
+                              setHomeSpeaker("home ${h.name}", structureId = h.id)
+                            }
                       },
               ))
         }
@@ -2837,7 +2944,7 @@ public class RemoteState(
                 trailing = if (hs.homeCastVoice) "on" else "off",
                 tone = if (hs.homeCastVoice) StatusTone.Ok else StatusTone.Neutral,
                 toggle =
-                    RowToggle(checked = hs.homeCastVoice, enabled = paired) { next ->
+                    RowToggle(checked = hs.homeCastVoice, enabled = homeSpeakerCanAct) { next ->
                       setHomeSpeaker(
                           "cast selected voice ${if (next) "on" else "off"}", homeCastVoice = next)
                     },
@@ -2862,7 +2969,7 @@ public class RemoteState(
                     else -> StatusTone.Neutral
                   },
               toggle =
-                  RowToggle(checked = speakLocal, enabled = paired) { next ->
+                  RowToggle(checked = speakLocal, enabled = homeSpeakerCanAct) { next ->
                     setHomeSpeaker("this Mac ${if (next) "on" else "off"}", speakLocal = next)
                   },
           ))
@@ -2876,7 +2983,7 @@ public class RemoteState(
                 trailing = hs.localVoiceName.ifBlank { "default" },
                 actions =
                     listOf(
-                        RowAction("Preview", enabled = paired) {
+                        RowAction("Preview", enabled = homeSpeakerCanAct) {
                           setHomeSpeaker("preview voice", previewVoice = true)
                         }),
                 choices =
@@ -2884,9 +2991,10 @@ public class RemoteState(
                     else
                         hs.availableVoices.map { v ->
                           val current = v.id == hs.localVoice
-                          RowAction(v.name, enabled = paired && !current, selected = current) {
-                            setHomeSpeaker("Mac voice ${v.name}", localVoice = v.id)
-                          }
+                          RowAction(
+                              v.name, enabled = homeSpeakerCanAct && !current, selected = current) {
+                                setHomeSpeaker("Mac voice ${v.name}", localVoice = v.id)
+                              }
                         },
             ))
       }
@@ -2912,7 +3020,7 @@ public class RemoteState(
                       else -> StatusTone.Neutral
                     },
                 toggle =
-                    RowToggle(checked = speakPhone, enabled = paired) { next ->
+                    RowToggle(checked = speakPhone, enabled = homeSpeakerCanAct) { next ->
                       setHomeSpeaker("this phone ${if (next) "on" else "off"}", speakPhone = next)
                     },
             ))
@@ -2926,7 +3034,7 @@ public class RemoteState(
                   trailing = if (hs.phonePauseMedia) "on" else "off",
                   tone = if (hs.phonePauseMedia) StatusTone.Ok else StatusTone.Neutral,
                   toggle =
-                      RowToggle(checked = hs.phonePauseMedia, enabled = paired) { next ->
+                      RowToggle(checked = hs.phonePauseMedia, enabled = homeSpeakerCanAct) { next ->
                         setHomeSpeaker(
                             "phone pause media ${if (next) "on" else "off"}",
                             phonePauseMedia = next)
@@ -2941,7 +3049,8 @@ public class RemoteState(
                   trailing = if (hs.phoneHeadphonesOnly) "on" else "off",
                   tone = if (hs.phoneHeadphonesOnly) StatusTone.Ok else StatusTone.Neutral,
                   toggle =
-                      RowToggle(checked = hs.phoneHeadphonesOnly, enabled = paired) { next ->
+                      RowToggle(checked = hs.phoneHeadphonesOnly, enabled = homeSpeakerCanAct) {
+                          next ->
                         setHomeSpeaker(
                             "phone headphones only ${if (next) "on" else "off"}",
                             phoneHeadphonesOnly = next)
@@ -2967,7 +3076,7 @@ public class RemoteState(
                       val current = wire == hs.localEngine
                       RowAction(
                           Derive.localEngineLabel(wire),
-                          enabled = paired && !current,
+                          enabled = homeSpeakerCanAct && !current,
                           selected = current) {
                             setHomeSpeaker(
                                 "local engine ${Derive.localEngineLabel(wire)}", localEngine = wire)
@@ -2989,9 +3098,10 @@ public class RemoteState(
                       Derive.geminiVoices.map { voice ->
                         val current = voice == hs.geminiVoice
                         val label = Derive.geminiVoiceDisplayName(voice, emptyList())
-                        RowAction(label, enabled = paired && !current, selected = current) {
-                          setHomeSpeaker("Gemini voice $label", geminiVoice = voice)
-                        }
+                        RowAction(
+                            label, enabled = homeSpeakerCanAct && !current, selected = current) {
+                              setHomeSpeaker("Gemini voice $label", geminiVoice = voice)
+                            }
                       } +
                           hs.customVoices
                               .filter { it.id !in Derive.geminiVoices }
@@ -2999,7 +3109,7 @@ public class RemoteState(
                                 val current = v.id == hs.geminiVoice
                                 RowAction(
                                     "${v.name} (cloned)",
-                                    enabled = paired && !current,
+                                    enabled = homeSpeakerCanAct && !current,
                                     selected = current) {
                                       setHomeSpeaker("Gemini voice ${v.name}", geminiVoice = v.id)
                                     }
@@ -3024,7 +3134,7 @@ public class RemoteState(
                   val current = wire == hs.speechLength
                   RowAction(
                       Derive.speechLengthLabel(wire),
-                      enabled = paired && !current,
+                      enabled = homeSpeakerCanAct && !current,
                       selected = current) {
                         setHomeSpeaker("say ${Derive.speechLengthLabel(wire)}", speechLength = wire)
                       }
@@ -3052,7 +3162,7 @@ public class RemoteState(
                     val current = wire == hs.announcementStyle
                     RowAction(
                         Derive.announcementStyleLabel(wire),
-                        enabled = paired && !current,
+                        enabled = homeSpeakerCanAct && !current,
                         selected = current) {
                           setHomeSpeaker(
                               "style ${Derive.announcementStyleLabel(wire)}",
@@ -3072,6 +3182,7 @@ public class RemoteState(
                         initialValue = hs.customStylePrompt,
                         placeholder = "e.g. Speak like a pirate.",
                         clearLabel = if (hs.customStylePrompt.isNotBlank()) "Clear" else null,
+                        enabled = homeSpeakerCanAct,
                         onClear =
                             if (hs.customStylePrompt.isNotBlank()) {
                               {
@@ -3102,7 +3213,7 @@ public class RemoteState(
                       val current = wire == hs.styleModel
                       RowAction(
                           Derive.styleModelLabel(wire),
-                          enabled = paired && !current,
+                          enabled = homeSpeakerCanAct && !current,
                           selected = current) {
                             setHomeSpeaker(
                                 "style model ${Derive.styleModelLabel(wire)}", styleModel = wire)
@@ -3124,7 +3235,7 @@ public class RemoteState(
       // The speaker's own volume. −10 / +10 rather than a slider: each change
       // is a round trip to Google that takes seconds to confirm.
       agentSpeakerVolume?.let { v ->
-        val usable = paired && v.available && v.online && !speakerVolumeBusy
+        val usable = homeSpeakerCanAct && v.available && v.online && !speakerVolumeBusy
         add(
             ModuleRow(
                 title = "Speaker volume",
@@ -3159,9 +3270,12 @@ public class RemoteState(
                     if (usable)
                         Derive.volumePercentChoices.map { pct ->
                           val current = pct == v.percent
-                          RowAction("$pct%", enabled = paired && !current, selected = current) {
-                            setSpeakerVolume(percent = pct)
-                          }
+                          RowAction(
+                              "$pct%",
+                              enabled = homeSpeakerCanAct && !current,
+                              selected = current) {
+                                setSpeakerVolume(percent = pct)
+                              }
                         }
                     else emptyList(),
             ))
@@ -3178,7 +3292,8 @@ public class RemoteState(
               trailing = if (hs.announceVolumeEnabled) "${hs.announceVolume}%" else "off",
               tone = if (hs.announceVolumeEnabled) StatusTone.Ok else StatusTone.Neutral,
               toggle =
-                  RowToggle(checked = hs.announceVolumeEnabled, enabled = paired) { next ->
+                  RowToggle(checked = hs.announceVolumeEnabled, enabled = homeSpeakerCanAct) { next
+                    ->
                     setHomeSpeaker(
                         "announce volume ${if (next) "on" else "off"}",
                         announceVolumeEnabled = next)
@@ -3187,12 +3302,12 @@ public class RemoteState(
                   buildList {
                     if (hs.announceVolumeEnabled) {
                       add(
-                          RowAction("−10", enabled = paired && hs.announceVolume > 0) {
+                          RowAction("−10", enabled = homeSpeakerCanAct && hs.announceVolume > 0) {
                             val next = Derive.nextVolume(hs.announceVolume, -10)
                             setHomeSpeaker("announce at $next%", announceVolume = next)
                           })
                       add(
-                          RowAction("+10", enabled = paired && hs.announceVolume < 100) {
+                          RowAction("+10", enabled = homeSpeakerCanAct && hs.announceVolume < 100) {
                             val next = Derive.nextVolume(hs.announceVolume, 10)
                             setHomeSpeaker("announce at $next%", announceVolume = next)
                           })
@@ -3202,9 +3317,10 @@ public class RemoteState(
                   if (hs.announceVolumeEnabled)
                       Derive.announceVolumePercentChoices.map { pct ->
                         val current = pct == hs.announceVolume
-                        RowAction("$pct%", enabled = paired && !current, selected = current) {
-                          setHomeSpeaker("announce volume $pct%", announceVolume = pct)
-                        }
+                        RowAction(
+                            "$pct%", enabled = homeSpeakerCanAct && !current, selected = current) {
+                              setHomeSpeaker("announce volume $pct%", announceVolume = pct)
+                            }
                       }
                   else emptyList(),
           ))
@@ -3224,7 +3340,7 @@ public class RemoteState(
             trailing = if (hs.pauseMedia) "on" else "off",
             tone = if (hs.pauseMedia) StatusTone.Ok else StatusTone.Neutral,
             toggle =
-                RowToggle(checked = hs.pauseMedia, enabled = paired) { next ->
+                RowToggle(checked = hs.pauseMedia, enabled = homeSpeakerCanAct) { next ->
                   setHomeSpeaker("pause media ${if (next) "on" else "off"}", pauseMedia = next)
                 },
             actions =
@@ -3232,19 +3348,21 @@ public class RemoteState(
                   if (hs.pauseMedia) {
                     val margin = hs.pauseMediaExtraSeconds
                     add(
-                        RowAction("−1 s", enabled = paired && margin > 0.0) {
+                        RowAction("−1 s", enabled = homeSpeakerCanAct && margin > 0.0) {
                           val next = Derive.nextPauseMargin(margin, -1.0)
                           setHomeSpeaker(
                               Derive.pauseMarginLabel(next), pauseMediaExtraSeconds = next)
                         })
                     add(
-                        RowAction("+1 s", enabled = paired && margin < Derive.PAUSE_MARGIN_MAX) {
-                          val next = Derive.nextPauseMargin(margin, 1.0)
-                          setHomeSpeaker(
-                              Derive.pauseMarginLabel(next), pauseMediaExtraSeconds = next)
-                        })
+                        RowAction(
+                            "+1 s",
+                            enabled = homeSpeakerCanAct && margin < Derive.PAUSE_MARGIN_MAX) {
+                              val next = Derive.nextPauseMargin(margin, 1.0)
+                              setHomeSpeaker(
+                                  Derive.pauseMarginLabel(next), pauseMediaExtraSeconds = next)
+                            })
                     add(
-                        RowAction("Test", enabled = paired) {
+                        RowAction("Test", enabled = homeSpeakerCanAct) {
                           setHomeSpeaker("test media pause", testMediaPause = true)
                         })
                   }
@@ -3254,7 +3372,9 @@ public class RemoteState(
                     Derive.pauseMarginSecondChoices.map { sec ->
                       val current = hs.pauseMediaExtraSeconds == sec
                       RowAction(
-                          "${sec.toInt()}s", enabled = paired && !current, selected = current) {
+                          "${sec.toInt()}s",
+                          enabled = homeSpeakerCanAct && !current,
+                          selected = current) {
                             setHomeSpeaker(
                                 "pause margin ${sec.toInt()}s", pauseMediaExtraSeconds = sec)
                           }
@@ -3275,7 +3395,7 @@ public class RemoteState(
                 if (hs.quietHoursEnabled && hs.quietHoursActive) StatusTone.Warn
                 else if (hs.quietHoursEnabled) StatusTone.Ok else StatusTone.Neutral,
             toggle =
-                RowToggle(checked = hs.quietHoursEnabled, enabled = paired) { next ->
+                RowToggle(checked = hs.quietHoursEnabled, enabled = homeSpeakerCanAct) { next ->
                   setHomeSpeaker(
                       "quiet hours ${if (next) "on" else "off"}", quietHoursEnabled = next)
                 },
@@ -3289,7 +3409,7 @@ public class RemoteState(
               choices =
                   Derive.quietHoursChoices(hs.quietHoursStart).map { t ->
                     val current = t == hs.quietHoursStart
-                    RowAction(t, enabled = paired && !current, selected = current) {
+                    RowAction(t, enabled = homeSpeakerCanAct && !current, selected = current) {
                       setHomeSpeaker("quiet hours from $t", quietHoursStart = t)
                     }
                   },
@@ -3302,7 +3422,7 @@ public class RemoteState(
               choices =
                   Derive.quietHoursChoices(hs.quietHoursEnd).map { t ->
                     val current = t == hs.quietHoursEnd
-                    RowAction(t, enabled = paired && !current, selected = current) {
+                    RowAction(t, enabled = homeSpeakerCanAct && !current, selected = current) {
                       setHomeSpeaker("quiet hours until $t", quietHoursEnd = t)
                     }
                   },
@@ -3315,7 +3435,7 @@ public class RemoteState(
             trailing = "",
             actions =
                 listOf(
-                    RowAction("Speak", enabled = paired) {
+                    RowAction("Speak", enabled = homeSpeakerCanAct) {
                       setHomeSpeaker("speak clipboard", speakClipboard = true)
                     }),
         ))
@@ -3333,7 +3453,7 @@ public class RemoteState(
                     val current = d == hs.activeDoor
                     RowAction(
                         if (d == "app") "App" else "Extension",
-                        enabled = paired && !current,
+                        enabled = homeSpeakerCanAct && !current,
                         selected = current) {
                           setHomeSpeaker("door $d", activeDoor = d)
                         }
@@ -3346,17 +3466,49 @@ public class RemoteState(
             subtitle =
                 if (hs.homeSpeakerVersion.isNotBlank()) "HomeSpeaker v${hs.homeSpeakerVersion}"
                 else "HomeSpeaker",
-            // The version is the subtitle already; the row's trailing slot holds the button.
             trailing = "",
-            actions =
-                listOf(
-                    RowAction(
-                        "Reset settings",
-                        enabled = paired && homeSpeakerBusy == null,
-                        danger = true) {
-                          setHomeSpeaker("reset settings", resetSettings = true)
-                        }),
         ))
+  }
+
+  public fun onTapResetHomeSpeaker(nowMs: Long = System.currentTimeMillis()) {
+    val result = Derive.tapReset(homeSpeakerResetArmedAtMs, nowMs)
+    homeSpeakerResetArmedAtMs = result.nextArmedAtMs
+    if (result.shouldReset) {
+      setHomeSpeaker("reset settings", resetSettings = true, controlId = "Reset HomeSpeaker")
+    } else {
+      val armedStamp = result.nextArmedAtMs
+      scope.launch {
+        delay(Derive.RESET_CONFIRM_WINDOW_MS)
+        if (homeSpeakerResetArmedAtMs == armedStamp) {
+          homeSpeakerResetArmedAtMs = null
+        }
+      }
+    }
+  }
+
+  private fun resetHomeSpeakerModuleRow(nowMs: Long = System.currentTimeMillis()): ModuleRow {
+    val spec =
+        Derive.resetHomeSpeakerRow(
+            armedAtMs = homeSpeakerResetArmedAtMs,
+            nowMs = nowMs,
+            canAct = homeSpeakerCanAct,
+            busy = homeSpeakerBusy != null,
+        )
+    return ModuleRow(
+        title = spec.title,
+        subtitle = spec.subtitle,
+        trailing = "",
+        tone = if (spec.armed) StatusTone.Warn else StatusTone.Neutral,
+        actions =
+            listOf(
+                RowAction(
+                    label = spec.actionLabel,
+                    enabled = spec.enabled,
+                    danger = spec.danger,
+                ) {
+                  onTapResetHomeSpeaker()
+                }),
+    )
   }
 
   /**
@@ -3389,7 +3541,7 @@ public class RemoteState(
                   when (row.switch) {
                     Derive.NetworkSwitch.None -> null
                     Derive.NetworkSwitch.Mute ->
-                        RowToggle(checked = row.on, enabled = paired) { next ->
+                        RowToggle(checked = row.on, enabled = homeSpeakerCanAct) { next ->
                           val what = "$app ${net.name} ${if (next) "on" else "muted"}"
                           if (app == "Courier")
                               setHomeSpeaker(
@@ -3399,7 +3551,7 @@ public class RemoteState(
                                   what, beeperNetworkKey = net.key, beeperNetworkReading = next)
                         }
                     Derive.NetworkSwitch.ReadAnyway ->
-                        RowToggle(checked = row.on, enabled = paired) { next ->
+                        RowToggle(checked = row.on, enabled = homeSpeakerCanAct) { next ->
                           setHomeSpeaker(
                               "Courier ${net.name} ${if (next) "also read here" else "read directly"}",
                               courierReadAnywayKey = net.key,
@@ -3428,7 +3580,7 @@ public class RemoteState(
             subtitle = if (on) onLine else offLine,
             trailing = if (on) "on" else "off",
             tone = if (on) StatusTone.Ok else StatusTone.Neutral,
-            toggle = RowToggle(checked = on, enabled = paired) { next -> set(next) },
+            toggle = RowToggle(checked = on, enabled = homeSpeakerCanAct) { next -> set(next) },
         )
 
     val claude = hs.announceClaudeCode
@@ -3487,7 +3639,8 @@ public class RemoteState(
                     if (a.speaksTwice) {
                       actions.add(
                           RowAction(
-                              "Turn off duplicate", enabled = paired && homeSpeakerBusy == null) {
+                              "Turn off duplicate",
+                              enabled = homeSpeakerCanAct && homeSpeakerBusy == null) {
                                 setHomeSpeaker(
                                     "turn off duplicate $agentName hook",
                                     agentHookAction = "disable-rival:claude-code")
@@ -3495,22 +3648,28 @@ public class RemoteState(
                     }
                     if (installed) {
                       actions.add(
-                          RowAction("Remove hook", enabled = paired && homeSpeakerBusy == null) {
-                            setHomeSpeaker(
-                                "remove $agentName hook", agentHookAction = "remove:$slug")
-                          })
+                          RowAction(
+                              "Remove hook",
+                              enabled = homeSpeakerCanAct && homeSpeakerBusy == null) {
+                                setHomeSpeaker(
+                                    "remove $agentName hook", agentHookAction = "remove:$slug")
+                              })
                     } else if (stale) {
                       actions.add(
-                          RowAction("Update hook", enabled = paired && homeSpeakerBusy == null) {
-                            setHomeSpeaker(
-                                "update $agentName hook", agentHookAction = "install:$slug")
-                          })
+                          RowAction(
+                              "Update hook",
+                              enabled = homeSpeakerCanAct && homeSpeakerBusy == null) {
+                                setHomeSpeaker(
+                                    "update $agentName hook", agentHookAction = "install:$slug")
+                              })
                     } else {
                       actions.add(
-                          RowAction("Install hook", enabled = paired && homeSpeakerBusy == null) {
-                            setHomeSpeaker(
-                                "install $agentName hook", agentHookAction = "install:$slug")
-                          })
+                          RowAction(
+                              "Install hook",
+                              enabled = homeSpeakerCanAct && homeSpeakerBusy == null) {
+                                setHomeSpeaker(
+                                    "install $agentName hook", agentHookAction = "install:$slug")
+                              })
                     }
                     val statusLabel =
                         Derive.agentHookStatusLabel(
@@ -3531,7 +3690,8 @@ public class RemoteState(
                     if (!a.configuredByInstruction) {
                       actions.add(
                           RowAction(
-                              "Add instruction", enabled = paired && homeSpeakerBusy == null) {
+                              "Add instruction",
+                              enabled = homeSpeakerCanAct && homeSpeakerBusy == null) {
                                 setHomeSpeaker(
                                     "add instruction to $agentName",
                                     agentHookAction = "add-instruction:$slug")
@@ -3602,7 +3762,8 @@ public class RemoteState(
                               else -> StatusTone.Neutral
                             },
                         toggle =
-                            RowToggle(checked = monitorRunning, enabled = paired) { next ->
+                            RowToggle(checked = monitorRunning, enabled = homeSpeakerCanAct) { next
+                              ->
                               setHomeSpeaker(
                                   "${if (next) "Start" else "Stop"} chat monitor",
                                   chatMonitorAction = if (next) "start" else "stop")
@@ -3637,6 +3798,7 @@ public class RemoteState(
                                   secret = true,
                                   submitLabel = "Save Token",
                                   clearLabel = if (hasToken) "Clear Token" else null,
+                                  enabled = homeSpeakerCanAct,
                                   onClear =
                                       if (hasToken) {
                                         { setHomeSpeaker("clear Slack token", slackToken = "") }
@@ -3668,7 +3830,7 @@ public class RemoteState(
                                 val current = src == currentSource
                                 RowAction(
                                     Derive.googleChatSourceLabel(src),
-                                    enabled = paired && !current,
+                                    enabled = homeSpeakerCanAct && !current,
                                     selected = current) {
                                       setHomeSpeaker(
                                           "Google Chat source ${Derive.googleChatSourceLabel(src)}",
@@ -3696,7 +3858,7 @@ public class RemoteState(
                           subtitle = chatDiag.subtitle,
                           trailing = chatDiag.trailing,
                           tone = if (chatDiag.healthy) StatusTone.Ok else StatusTone.Warn,
-                          error = chatDiag.inlineNote,
+                          error = homeSpeakerErrors["Google Chat account"] ?: chatDiag.inlineNote,
                           actions =
                               buildList {
                                 if (chatDiag.showGrant) {
@@ -3769,6 +3931,7 @@ public class RemoteState(
                                   secret = true,
                                   submitLabel = "Save Token",
                                   clearLabel = if (hasToken) "Clear Token" else null,
+                                  enabled = homeSpeakerCanAct,
                                   onClear =
                                       if (hasToken) {
                                         { setHomeSpeaker("clear Beeper token", beeperToken = "") }
@@ -3789,7 +3952,7 @@ public class RemoteState(
                                 val current = wire == hs.beeperAnnounce
                                 RowAction(
                                     Derive.beeperAnnounceLabel(wire),
-                                    enabled = paired && !current,
+                                    enabled = homeSpeakerCanAct && !current,
                                     selected = current) {
                                       setHomeSpeaker(
                                           "Beeper announce ${Derive.beeperAnnounceLabel(wire)}",
@@ -3800,29 +3963,31 @@ public class RemoteState(
                   addAll(chatNetworkRows("Beeper", hs.beeperNetworks, hs.beeperNetworksListed))
                 }
                 val courier = hs.courierEnabled
-                if (courier != null) {
+                if (Derive.showsCourierRow(courier)) {
+                  val courierOn = courier == true
                   val hasToken = hs.hasCourierToken
                   add(
                       ModuleRow(
                           title = "Courier",
                           subtitle =
                               when {
-                                courier -> "new messages are read aloud"
+                                courierOn -> "new messages are read aloud"
                                 hasToken -> "not watched"
                                 else -> "needs a token on the Mac first"
                               },
-                          trailing = if (courier) "on" else "off",
-                          tone = if (courier) StatusTone.Ok else StatusTone.Neutral,
+                          trailing = if (courierOn) "on" else "off",
+                          tone = if (courierOn) StatusTone.Ok else StatusTone.Neutral,
                           toggle =
                               RowToggle(
-                                  checked = courier,
+                                  checked = courierOn,
                                   enabled =
-                                      paired && Derive.courierSwitchEnabled(hasToken, courier)) {
+                                      homeSpeakerCanAct &&
+                                          Derive.courierSwitchEnabled(hasToken, courierOn)) {
                                     setHomeSpeaker(
                                         "Courier ${if (it) "on" else "off"}", courierEnabled = it)
                                   },
                       ))
-                  if (courier || !hasToken) {
+                  if (courierOn || !hasToken) {
                     val courierSpec =
                         Derive.courierTokenRow(hasToken = hasToken, canAct = homeSpeakerCanAct)
                     add(
@@ -3858,7 +4023,7 @@ public class RemoteState(
                                 ),
                         ))
                   }
-                  if (courier) {
+                  if (courierOn) {
                     add(
                         ModuleRow(
                             title = "Courier · Announce",
@@ -3870,7 +4035,7 @@ public class RemoteState(
                                   val current = wire == hs.courierAnnounce
                                   RowAction(
                                       Derive.beeperAnnounceLabel(wire),
-                                      enabled = paired && !current,
+                                      enabled = homeSpeakerCanAct && !current,
                                       selected = current) {
                                         setHomeSpeaker(
                                             "Courier announce ${Derive.beeperAnnounceLabel(wire)}",
@@ -3895,7 +4060,7 @@ public class RemoteState(
                                 val current = sec == interval
                                 RowAction(
                                     Derive.pollIntervalLabel(sec),
-                                    enabled = paired && !current,
+                                    enabled = homeSpeakerCanAct && !current,
                                     selected = current) {
                                       setHomeSpeaker("poll interval ${sec}s", pollInterval = sec)
                                     }
@@ -3954,7 +4119,7 @@ public class RemoteState(
                             placeholder = "...apps.googleusercontent.com",
                             submitLabel = "Save Client ID",
                             clearLabel = if (clientIdSpec.hasValue) "Clear" else null,
-                            enabled = clientIdSpec.enabled,
+                            enabled = homeSpeakerCanAct && clientIdSpec.enabled,
                             onClear =
                                 if (clientIdSpec.hasValue) {
                                   { setHomeSpeaker("clear OAuth client ID", oauthClientId = "") }
@@ -3977,7 +4142,7 @@ public class RemoteState(
                             secret = true,
                             submitLabel = "Save Secret",
                             clearLabel = if (secretSpec.hasValue) "Clear Secret" else null,
-                            enabled = secretSpec.enabled,
+                            enabled = homeSpeakerCanAct && secretSpec.enabled,
                             onClear =
                                 if (secretSpec.hasValue) {
                                   {
@@ -3995,7 +4160,7 @@ public class RemoteState(
     val recent = hs.recent.ifEmpty { listOfNotNull(hs.last) }
     if (recent.isNotEmpty()) {
       // Replay is `HomeSpeaker --say`, which needs the app on this Mac.
-      val canReplay = paired && hs.installed
+      val canReplay = homeSpeakerCanAct && hs.installed
       add(
           ModuleList(
               "Recent broadcasts",
@@ -4019,6 +4184,7 @@ public class RemoteState(
                 )
               }))
     }
+    add(ModuleList("Reset HomeSpeaker", listOf(resetHomeSpeakerModuleRow())))
   }
 
   // The same status, health and outputs line on Home's "Running now" row and
@@ -4056,42 +4222,52 @@ public class RemoteState(
       hs.speakHome == false && hs.speakLocal == false && hs.speakPhone != true
 
   /** The HomeSpeaker module with no Mac: says what it needs, invents no speakers. */
-  private fun simulatedHomeSpeakerDashboard(): ModuleDashboard =
-      ModuleDashboard(
-          id = "homespeaker",
-          name = "HomeSpeaker",
-          meta = "on the Mac",
-          status = "simulated · no Mac",
-          statusTone = StatusTone.Neutral,
-          metrics =
-              listOf(
-                  ModuleMetric("Speaker", "n/a", "needs a paired Mac"),
-                  ModuleMetric("Says", "n/a", "needs a paired Mac"),
-                  ModuleMetric("Quiet hours", "n/a", "needs a paired Mac"),
-              ),
-          streamLabel = "Last announcement",
-          lines =
-              listOf(
-                  TerminalLine("$", "GET /v1/homespeaker", TerminalTone.Text),
-                  TerminalLine(
-                      " ", "no Mac is configured, so nothing was asked", TerminalTone.Dim)),
-          cursor = false,
-          prompts = false,
-          listLabel = "Controls and speakers",
-          rows =
-              listOf(
-                  ModuleRow(
-                      "Nothing to show without a Mac",
-                      "pair one that has HomeSpeaker set up",
-                      "n/a",
-                      StatusTone.Neutral)),
-          quick = homeSpeakerQuick(null),
-          streamActions =
-              listOf(
-                  RowAction("Replay", enabled = false) {},
-                  RowAction("Test", enabled = false) {},
-              ),
-      )
+  private fun simulatedHomeSpeakerDashboard(): ModuleDashboard {
+    val offline = isMacOffline
+    val hasMac = !isUnpaired && hosts.isNotEmpty()
+    return ModuleDashboard(
+        id = "homespeaker",
+        name = "HomeSpeaker",
+        meta = "on the Mac",
+        status =
+            when {
+              offline -> "$hostShortName isn't answering"
+              hasMac -> "asking…"
+              else -> "simulated · no Mac"
+            },
+        statusTone = if (offline) StatusTone.Warn else StatusTone.Neutral,
+        metrics =
+            listOf(
+                ModuleMetric("Speaker", "n/a", "needs a paired Mac"),
+                ModuleMetric("Says", "n/a", "needs a paired Mac"),
+                ModuleMetric("Quiet hours", "n/a", "needs a paired Mac"),
+            ),
+        streamLabel = "Last announcement",
+        lines =
+            listOf(
+                TerminalLine("$", "GET /v1/homespeaker", TerminalTone.Text),
+                TerminalLine(
+                    " ",
+                    noMacStreamLine(nothingRan = false),
+                    if (offline) TerminalTone.Warn else TerminalTone.Dim)),
+        cursor = false,
+        prompts = false,
+        listLabel = "Controls and speakers",
+        rows =
+            listOf(
+                ModuleRow(
+                    "Nothing to show without a Mac",
+                    "pair one that has HomeSpeaker set up",
+                    "n/a",
+                    StatusTone.Neutral)),
+        quick = homeSpeakerQuick(null),
+        streamActions =
+            listOf(
+                RowAction("Replay", enabled = false) {},
+                RowAction("Test", enabled = false) {},
+            ),
+    )
+  }
 
   private fun clearHomeSpeakerError(controlId: String) {
     if (controlId in homeSpeakerErrors) {
@@ -4100,10 +4276,15 @@ public class RemoteState(
   }
 
   private fun recordHomeSpeakerError(controlId: String, what: String, error: Throwable) {
+    val detail =
+        when (error) {
+          is AgentRequestException -> error.detail.ifBlank { error.message }
+          else -> error.message
+        }
     val msg =
         Derive.homeSpeakerInlineError(
             what = what,
-            reason = error.message,
+            reason = detail,
             authFailed = error is AgentAuthException,
         )
     homeSpeakerErrors = homeSpeakerErrors + (controlId to msg)
@@ -4128,6 +4309,7 @@ public class RemoteState(
   public fun updateHomeSpeakerMirror(on: Boolean) {
     val currentHs = agentHomeSpeaker
     if (!on) {
+      homeSpeakerMirrorPermissionBlocked = false
       applyMirrorDecision(
           Derive.mirrorToggle(
               requestedOn = false,
@@ -4140,7 +4322,9 @@ public class RemoteState(
       )
       return
     }
-    val applyGranted: (Boolean) -> Unit = { granted ->
+    val applyGranted: (Boolean, Boolean) -> Unit = { granted, shouldShowRationale ->
+      homeSpeakerMirrorPermissionBlocked =
+          Derive.isNotificationPermissionBlocked(granted, shouldShowRationale)
       val hs = agentHomeSpeaker
       applyMirrorDecision(
           Derive.mirrorToggle(
@@ -4156,7 +4340,7 @@ public class RemoteState(
     }
     val n = notifier
     if (n == null) {
-      applyGranted(true)
+      applyGranted(true, false)
     } else {
       n.ensureNotificationPermission(applyGranted)
     }
@@ -4164,11 +4348,13 @@ public class RemoteState(
 
   /** Mirrors a new announcement to a phone notification when the setting is on. */
   private fun observeHomeSpeakerMirror(hs: AgentHomeSpeaker) {
+    val granted = notifier?.hasNotificationPermission() != false
+    if (granted) homeSpeakerMirrorPermissionBlocked = false
     applyMirrorDecision(
         Derive.observeMirrorAnnouncement(
             state = mirrorState,
             mirrorEnabled = homeSpeakerMirror,
-            permissionGranted = notifier?.hasNotificationPermission() != false,
+            permissionGranted = granted,
             available = hs.available,
             recent = hs.recent,
             last = hs.last,
@@ -4194,8 +4380,6 @@ public class RemoteState(
               reason = "could not open browser",
           )
       homeSpeakerErrors = homeSpeakerErrors + (controlId to msg)
-      homeSpeakerNotice =
-          "✗ homespeaker · open Google Cloud Console: could not open browser" to StatusTone.Crit
       log("warn", "homespeaker · could not open Google Cloud Console")
     }
   }
@@ -4306,7 +4490,7 @@ public class RemoteState(
               snoozeUntil != null || snoozeMinutes != null -> "snooze"
               speakClipboard -> "Speak clipboard"
               activeDoor != null -> "HomeSpeaker door"
-              resetSettings -> "Settings & diagnostics"
+              resetSettings -> "Reset HomeSpeaker"
               announceClaudeCode != null -> "Claude Code"
               announceAntigravity != null -> "Antigravity"
               announceOpenCode != null -> "OpenCode"
@@ -4416,7 +4600,16 @@ public class RemoteState(
               if (grantChat && !it.hasChatAccess) {
                 homeSpeakerChatGrantPendingSinceMs = nowMs
               }
-              homeSpeakerNotice = "✓ homespeaker · $what" to StatusTone.Ok
+              val isAccountAuthAction =
+                  signIn ||
+                      signOut ||
+                      importAntigravity ||
+                      grantChat ||
+                      disconnectChat ||
+                      gwsAccount != null
+              if (!isAccountAuthAction) {
+                homeSpeakerNotice = "✓ homespeaker · $what" to StatusTone.Ok
+              }
               log("info", "homespeaker · $what")
               // A different speaker has a different volume; show it now.
               if (defaultTarget != null && !speakerVolumeBusy) {
@@ -4425,11 +4618,15 @@ public class RemoteState(
             }
             .onFailure {
               recordHomeSpeakerError(key, what, it)
-              homeSpeakerNotice =
-                  "✗ homespeaker · $what: ${
-                    if (it is AgentAuthException) failureText(it) else it.message ?: "failed"
-                  }" to
-                      StatusTone.Crit
+              val isSignInGrantOrDisconnect =
+                  signIn || signOut || importAntigravity || grantChat || disconnectChat
+              if (!isSignInGrantOrDisconnect) {
+                homeSpeakerNotice =
+                    "✗ homespeaker · $what: ${
+                      if (it is AgentAuthException) failureText(it) else it.message ?: "failed"
+                    }" to
+                        StatusTone.Crit
+              }
               actFailed("homespeaker · $what", it)
             }
       } finally {
@@ -4874,36 +5071,46 @@ public class RemoteState(
   }
 
   /** The Sony TV module with no Mac configured. */
-  private fun simulatedTvDashboard(): ModuleDashboard =
-      ModuleDashboard(
-          id = "tv",
-          name = "Sony TV",
-          meta = "via ADB on the Mac",
-          status = "simulated · no Mac",
-          statusTone = StatusTone.Neutral,
-          metrics =
-              listOf(
-                  ModuleMetric("Status", "n/a", "needs a paired Mac"),
-                  ModuleMetric("Foreground", "n/a", "needs a paired Mac"),
-                  ModuleMetric("Memory", "n/a", "needs a paired Mac"),
-              ),
-          streamLabel = "ADB · ${TvWire.DEFAULT_ADDRESS}",
-          lines =
-              listOf(
-                  TerminalLine("$", "GET /v1/tv", TerminalTone.Text),
-                  TerminalLine(
-                      " ", "no Mac is configured, so nothing was asked", TerminalTone.Dim)),
-          cursor = false,
-          prompts = false,
-          listLabel = "Power & Quick Actions",
-          rows =
-              listOf(
-                  ModuleRow(
-                      "Nothing to show without a Mac",
-                      "pair one that has adb installed on the LAN",
-                      "n/a",
-                      StatusTone.Neutral)),
-      )
+  private fun simulatedTvDashboard(): ModuleDashboard {
+    val offline = isMacOffline
+    val hasMac = !isUnpaired && hosts.isNotEmpty()
+    return ModuleDashboard(
+        id = "tv",
+        name = "Sony TV",
+        meta = "via ADB on the Mac",
+        status =
+            when {
+              offline -> "$hostShortName isn't answering"
+              hasMac -> "asking…"
+              else -> "simulated · no Mac"
+            },
+        statusTone = if (offline) StatusTone.Warn else StatusTone.Neutral,
+        metrics =
+            listOf(
+                ModuleMetric("Status", "n/a", "needs a paired Mac"),
+                ModuleMetric("Foreground", "n/a", "needs a paired Mac"),
+                ModuleMetric("Memory", "n/a", "needs a paired Mac"),
+            ),
+        streamLabel = "ADB · ${TvWire.DEFAULT_ADDRESS}",
+        lines =
+            listOf(
+                TerminalLine("$", "GET /v1/tv", TerminalTone.Text),
+                TerminalLine(
+                    " ",
+                    noMacStreamLine(nothingRan = false),
+                    if (isMacOffline) TerminalTone.Warn else TerminalTone.Dim)),
+        cursor = false,
+        prompts = false,
+        listLabel = "Power & Quick Actions",
+        rows =
+            listOf(
+                ModuleRow(
+                    "Nothing to show without a Mac",
+                    "pair one that has adb installed on the LAN",
+                    "n/a",
+                    StatusTone.Neutral)),
+    )
+  }
 
   public fun updateTvCastDraft(value: String) {
     tvCastDraft = value
@@ -5444,14 +5651,13 @@ public class RemoteState(
   public val moduleChips: List<GalleryEntry>
     get() {
       val visible =
-          Derive.visibleModuleIds(
-                  MockHost.gallery.map { it.id }, installed.toSet(), moduleDashboards.keys)
+          Derive.visibleModuleIds(MockHost.gallery.map { it.id }, installed.toSet(), knownModuleIds)
               .toSet()
       return MockHost.gallery.filter { it.id in visible }
     }
 
   public val currentModule: ModuleDashboard
-    get() = moduleDashboards[module] ?: moduleDashboards.getValue("claude")
+    get() = dashboardFor(currentModuleId)
 
   /**
    * The id [currentModule] resolves to, without building every dashboard to find out: the poll
@@ -5665,6 +5871,23 @@ public class RemoteState(
     module = id
     appsView = AppsView.Dashboards
     screen = Screen.Apps
+  }
+
+  /**
+   * Opens a module's dashboard/settings page from the gallery (installing it first if needed and
+   * expanding HomeSpeaker's settings when configuring HomeSpeaker).
+   */
+  public fun configureModule(id: String) {
+    if (MockHost.gallery.none { it.id == id }) return
+    if (id !in installed) {
+      if (moduleUnavailableReason(id) != null) return
+      installed.add(id)
+      persistence.installed = installed.toList()
+    }
+    if (id == "homespeaker") {
+      expandHomeSpeakerSettings()
+    }
+    openModule(id)
   }
 
   /**
@@ -6296,6 +6519,8 @@ public class RemoteState(
     agentSpeakerVolume = null
     homeSpeakerNotice = null
     homeSpeakerErrors = emptyMap()
+    homeSpeakerMirrorPermissionBlocked = false
+    homeSpeakerResetArmedAtMs = null
     homeSpeakerSignInPendingSinceMs = null
     homeSpeakerChatGrantPendingSinceMs = null
     agentTv = null
@@ -7445,6 +7670,9 @@ public class RemoteState(
   /** Called by the activity: whether anyone is actually looking at this. */
   public fun onForeground(value: Boolean) {
     foreground = value
+    if (value && notifier?.hasNotificationPermission() == true) {
+      homeSpeakerMirrorPermissionBlocked = false
+    }
   }
 
   // --- the phone bridge -------------------------------------------------

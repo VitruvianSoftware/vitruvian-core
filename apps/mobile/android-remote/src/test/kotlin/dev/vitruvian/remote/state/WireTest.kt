@@ -205,6 +205,23 @@ public class WireTest {
     assertEquals(migrated, HostCodec.decode(HostCodec.encode(migrated)))
   }
 
+  @Test
+  public fun `aliasFor preserves IPv4 and bracketed IPv6 literals and shortens DNS names`() {
+    assertEquals("10.0.2.2", HostCodec.aliasFor("http://10.0.2.2:7411"))
+    assertEquals("100.64.0.12", HostCodec.aliasFor("100.64.0.12:7411/"))
+    assertEquals("[fd7a:115c:a1e0::1]", HostCodec.aliasFor("http://[fd7a:115c:a1e0::1]:7411"))
+    assertEquals("[::1]", HostCodec.aliasFor("http://[::1]:7411/"))
+    assertEquals("atlas", HostCodec.aliasFor("http://atlas.tailnet.ts.net:7411/"))
+    assertEquals("mac", HostCodec.aliasFor("https://mac.example.com"))
+    assertEquals("macbook", HostCodec.aliasFor("http://macbook.local:7411"))
+
+    // Legacy "10" alias saved by the old first-dot cut on an IPv4 URL is repaired on decode.
+    val repaired =
+        HostCodec.decode(
+            """[{"id":"h1","alias":"10","url":"http://10.0.2.2:7411","token":"t","mac":""}]""")
+    assertEquals("10.0.2.2", repaired.single().alias)
+  }
+
   // --- deep links --------------------------------------------------------
 
   @Test
@@ -409,6 +426,15 @@ public class WireTest {
     assertEquals(listOf(AgentBeeperNetwork("signal", "Signal", "reading")), s.beeperNetworks)
     assertEquals(true, s.beeperNetworksListed)
     assertEquals(false, s.courierNetworksListed)
+
+    // When the Mac agent supports Courier (`has_courier_token` / `courier_enabled` present in JSON)
+    // but `courier_enabled` is null (unconfigured/off), it decodes as false rather than null so the
+    // Courier row stays visible.
+    val offNull =
+        HomeSpeakerWire.sources(
+            """{"courier_enabled":null,"has_courier_token":false,"courier_announce":"direct_and_mentions"}""")
+    assertEquals(false, offNull.courierEnabled)
+    assertEquals(false, offNull.hasCourierToken)
   }
 
   @Test

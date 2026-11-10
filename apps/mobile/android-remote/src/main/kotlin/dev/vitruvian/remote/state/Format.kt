@@ -122,8 +122,18 @@ public object Format {
    * was given rather than printing a confident "just now" for something it failed to parse.
    */
   public fun relativeTime(iso: String, now: Long): String {
-    val instant = parseInstant(iso) ?: return ""
-    val seconds = (now - instant.toEpochMilli()) / 1000
+    val seconds = secondsAgo(iso, now) ?: return ""
+    return relativeSeconds(seconds)
+  }
+
+  /** Seconds elapsed between [iso] and [now], or null when [iso] is blank or unparseable. */
+  public fun secondsAgo(iso: String, now: Long): Long? {
+    val instant = parseInstant(iso) ?: return null
+    return ((now - instant.toEpochMilli()) / 1000).coerceAtLeast(0)
+  }
+
+  /** Relative time wording from an elapsed second count. */
+  public fun relativeSeconds(seconds: Long): String {
     // A clock skew of a few seconds between phone and Mac is ordinary and
     // must not print "in 4 seconds"; anything in the future reads as now.
     if (seconds < MINUTE) return "just now"

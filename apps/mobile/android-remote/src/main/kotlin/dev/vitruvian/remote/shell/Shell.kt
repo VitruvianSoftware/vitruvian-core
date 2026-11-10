@@ -28,6 +28,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -41,7 +42,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -50,6 +50,7 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -206,11 +207,16 @@ private fun ShellBody(
         },
         label = "screen",
     ) { target ->
+      val scrollState =
+          rememberSaveable(
+              target.name,
+              if (target == Screen.Apps) "${state.appsView.name}:${state.module}" else "",
+              saver = ScrollState.Saver,
+          ) {
+            ScrollState(0)
+          }
       Column(
-          modifier =
-              Modifier.fillMaxSize()
-                  .verticalScroll(rememberScrollState())
-                  .padding(bottom = Space.s5),
+          modifier = Modifier.fillMaxSize().verticalScroll(scrollState).padding(bottom = Space.s5),
       ) {
         content(target)
       }
