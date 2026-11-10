@@ -153,5 +153,67 @@
       },
       "expected_count": 12
     }
+  ],
+  "local_voice_option_cases": [
+    {
+      "name": "saved_voice_installed",
+      "local_voice": "com.apple.voice.premium.en-US.Ava",
+      "system_voices": [
+        {
+          "id": "com.apple.voice.premium.en-US.Ava",
+          "name": "Ava",
+          "language": "en-US",
+          "quality": "premium"
+        },
+        {
+          "id": "com.apple.voice.enhanced.en-GB.Daniel",
+          "name": "Daniel",
+          "language": "en-GB",
+          "quality": "enhanced"
+        }
+      ],
+      "expected_choices": [
+        {
+          "value": "com.apple.voice.premium.en-US.Ava",
+          "label": "Ava (en-US) · Premium"
+        },
+        {
+          "value": "com.apple.voice.enhanced.en-GB.Daniel",
+          "label": "Daniel (en-GB) · Enhanced"
+        }
+      ]
+    },
+    {
+      "name": "saved_voice_not_installed_prepended_first_with_fallback",
+      "local_voice": "com.apple.voice.premium.en-US.Zoe",
+      "system_voices": [
+        {
+          "id": "com.apple.voice.premium.en-US.Ava",
+          "name": "Ava",
+          "language": "en-US",
+          "quality": "premium"
+        },
+        {
+          "id": "com.apple.voice.enhanced.en-GB.Daniel",
+          "name": "Daniel",
+          "language": "en-GB",
+          "quality": "enhanced"
+        }
+      ],
+      "expected_choices": [
+        {
+          "value": "com.apple.voice.premium.en-US.Zoe",
+          "label": "Zoe (not installed; using Ava)"
+        },
+        {
+          "value": "com.apple.voice.premium.en-US.Ava",
+          "label": "Ava (en-US) · Premium"
+        },
+        {
+          "value": "com.apple.voice.enhanced.en-GB.Daniel",
+          "label": "Daniel (en-GB) · Enhanced"
+        }
+      ]
+    }
   ]
 }

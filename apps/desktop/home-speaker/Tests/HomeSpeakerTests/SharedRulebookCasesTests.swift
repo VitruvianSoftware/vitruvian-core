@@ -80,6 +80,24 @@ struct SharedRulebookCasesTests {
         let suite: String
         let lists: [ChoiceListSpec]
         let gemini_voice_option_cases: [GeminiVoiceOptionCase]
+        let local_voice_option_cases: [LocalVoiceOptionCase]
+    }
+
+    private struct LocalVoiceOptionCase: Decodable {
+        struct SystemVoiceInput: Decodable {
+            let id: String
+            let name: String
+            let language: String
+            let quality: String
+        }
+        struct ExpectedChoice: Decodable, Equatable {
+            let value: String
+            let label: String
+        }
+        let name: String
+        let local_voice: String?
+        let system_voices: [SystemVoiceInput]
+        let expected_choices: [ExpectedChoice]
     }
 
     private struct ChoiceListSpec: Decodable {
@@ -173,6 +191,24 @@ struct SharedRulebookCasesTests {
             #expect(choices.count == tc.expected_count, "Count mismatch in \(tc.name)")
             #expect(choices.first == SettingsCatalog.Choice(value: tc.expected_first.value, label: tc.expected_first.label), "First mismatch in \(tc.name)")
             #expect(choices.last == SettingsCatalog.Choice(value: tc.expected_last.value, label: tc.expected_last.label), "Last mismatch in \(tc.name)")
+        }
+
+        for tc in spec.local_voice_option_cases {
+            var config = SpeakerConfig()
+            config.localVoice = tc.local_voice
+            let systemVoices = tc.system_voices.map { voice -> LocalVoice in
+                let quality: LocalVoice.Quality = switch voice.quality {
+                case "premium": .premium
+                case "enhanced": .enhanced
+                default: .standard
+                }
+                return LocalVoice(id: voice.id, name: voice.name, language: voice.language, quality: quality)
+            }
+            let expected = tc.expected_choices.map { SettingsCatalog.Choice(value: $0.value, label: $0.label) }
+            let functionChoices = SettingsCatalog.localVoiceChoices(config: config, systemVoices: systemVoices)
+            let catalogChoices = SettingsCatalog(config: config, systemVoices: systemVoices).entry(.localVoice).choices
+            #expect(functionChoices == expected, "localVoiceChoices mismatch in \(tc.name)")
+            #expect(catalogChoices == functionChoices, "SettingsCatalog.entry(.localVoice).choices mismatch in \(tc.name)")
         }
     }
 

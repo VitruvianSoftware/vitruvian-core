@@ -139,7 +139,10 @@ public final class AppSwitch: ObservableObject {
                 into: into,
                 purpose: purpose,
                 seam: seam
-            ) else { return }
+            ) else {
+                report = [DoorWords.extensionNotFound]
+                return
+            }
             report = []
             step = .compare(compare)
         } catch let refused as SettingsActions.SwitchRefused {
@@ -225,9 +228,7 @@ public final class AppSwitch: ObservableObject {
         func readDoor() -> DoorRecord? { door.check.file.read() }
 
         func otherInstalled(record: DoorRecord?) -> Bool {
-            guard let entry = record?.installedExtension,
-                  let mark = entry.door, mark >= DoorRecord.ExtensionEntry.runsAlone else { return false }
-            return true
+            OtherDoorPresence.extensionInstalled(record: record, fileExists: door.check.fileExists)
         }
 
         func profile(for side: HomeSpeakerProfile.Door, record: DoorRecord?) -> HomeSpeakerProfile? {

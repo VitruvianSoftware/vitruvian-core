@@ -880,10 +880,14 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 return .keep
             }
         } catch {
-            setupNotice = Self.words(error)
+            let refusal = Self.words(error)
+            setupNotice = refusal
+            refusalNotice = refusal
         }
         return .page(settingsTree())
     }
+
+    private var refusalNotice: String?
 
     /// Starts or stops this side's monitor. The page says Running once the
     /// monitor has written that it is; the request alone changes nothing on
@@ -977,7 +981,10 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         guard try change(event, picked: picked) else { return false }
         do {
             try save()
-            if let notice = setupNotice, Invalid.all.contains(notice) { setupNotice = nil }
+            if let notice = setupNotice, notice == refusalNotice || Invalid.all.contains(notice) {
+                setupNotice = nil
+                refusalNotice = nil
+            }
         } catch {
             parts.link.log("the settings could not be saved: \(error)")
             reload()
@@ -1462,6 +1469,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         case .choiceChanged(let lines):
             doorStep = nil
             doorReport = lines
+            refreshRole()
         case .abortedInTrash:
             doorStep = nil
         case .stayOnCompare(var updatedCompare, let lines):
@@ -1475,11 +1483,16 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             doorStep = nil
         case .appChosen(let lines):
             doorReport = lines
-            if doorStep != .opening {
+            if let other = parts.other, !other.isRunning {
+                openTheOther(other)
+            } else {
                 doorStep = nil
             }
+            refreshRole()
         case .extensionChosen(_, let lines):
             doorReport = lines
+            closeTheOther()
+            refreshRole()
         }
     }
 
@@ -1641,12 +1654,12 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         }
 
         func refreshRole() {
-            tool.refreshRole()
+            // Deferred to `finishCompare` after `doorStep` and `doorReport` are settled.
         }
 
         func quitOther() -> Bool {
-            tool.closeTheOther()
-            return true
+            // Deferred to `finishCompare` (`closeTheOther()`) after `doorReport` is settled.
+            true
         }
 
         func isOtherRunning() -> Bool {
@@ -1654,10 +1667,8 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         }
 
         func openOtherAndEnableLoginItem() -> [String] {
-            if let other = tool.parts.other {
-                tool.openTheOther(other)
-            }
-            return []
+            // Deferred to `finishCompare` (`openTheOther(_:)`) after `doorReport` is settled.
+            []
         }
 
         func turnOffLoginItem() throws {}

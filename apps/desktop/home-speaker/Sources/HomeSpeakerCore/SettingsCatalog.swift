@@ -304,13 +304,7 @@ public struct SettingsCatalog: Sendable, Equatable {
         let volumeChoices = Self.volumeSteps.map {
             Choice(value: "\($0)", label: "\($0)%")
         }
-        let savedLocalVoice = config.effectiveLocalVoice
-        var localVoiceChoices = [Choice(value: "", label: "Automatic (best English voice)")] + systemVoices.map {
-            Choice(value: $0.id, label: $0.pickerLabel)
-        }
-        if !savedLocalVoice.isEmpty, !localVoiceChoices.contains(where: { $0.value == savedLocalVoice }) {
-            localVoiceChoices.append(Choice(value: savedLocalVoice, label: savedLocalVoice))
-        }
+        let localVoiceChoices = Self.localVoiceChoices(config: config, systemVoices: systemVoices)
         let localVoiceLabel = config.effectiveLocalEngine == .gemini ? "Fallback Mac voice" : "Voice"
 
         let built: [Entry] = [
