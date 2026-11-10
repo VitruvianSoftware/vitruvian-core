@@ -16,7 +16,10 @@ flowchart TD
     W --> Q
     Q -- "push back (at most 2 rounds)" --> W
     U["compass: UAT as the user<br/>Gemini 4 Carbon"]
-    Q -- "pass" --> U
+    S["aegis: security review, when it applies<br/>Gemini 4 Carbon"]
+    Q -- "pass" --> S
+    S -- "push back" --> W
+    S -- "pass" --> U
     U -- "reject" --> W
     U -- "accept" --> L2
     D --> L2
@@ -29,6 +32,7 @@ flowchart TD
 | Architect | the lead | Reads the request, designs the change, splits it into tasks, writes one self-contained brief per task. |
 | Implement | the specialist that owns the area: `wren` (app code), `atlas` (infrastructure), `forge` (build), `ridge` (cluster), `aegis` (security) | Makes the change and runs its tests. |
 | QA | `scout` | Runs after the implementer. Reads the real diff against the brief, tests edge cases, adds missing tests, and sends back a defect list when something is wrong. |
+| Security review | `aegis` | Runs after QA passes, only when the change touches sign-in, secrets, access rules, network policies, CI workflows or cloud permissions. Looks only for security risks in the real diff and sends back a defect list. |
 | UAT | `compass` (technical product owner) | Runs after QA passes. Uses the change the way the person who asked for it would, against acceptance criteria the lead wrote at the start, and says for each one whether it is met. Catches "works, but not what was asked". Skipped only for purely internal changes, with the reason stated. |
 | Docs | `quill` | Updates READMEs, `docs/`, `AGENTS.md` and runbooks when behaviour or setup changes. Runs alongside the implementer. |
 | Others | `pace` | Joins when the work touches release sequencing. |
@@ -36,6 +40,10 @@ flowchart TD
 
 When a reviewer and the implementer disagree, the lead decides. After two rounds from either
 reviewer the lead stops the loop and decides what to do next.
+
+The lead can also consult **Claude Fable**, once, as an adviser: when the design is unclear and spans
+several areas, when a task has failed two review rounds and is about to be re-planned, or when you ask.
+Fable costs about 2.5 times Opus, so it is never a standing role or an implementer.
 
 ## Which model each one uses
 
