@@ -44,8 +44,8 @@ Files (new unless noted), all under `apps/desktop/courier/app/Sources/CourierCor
 - `AIProviderKind.swift`: replaces `AIEngineChoice` (keep that name as a `typealias` so nothing else breaks).
   Cases and raw values (raw values are stored in UserDefaults; keep the three existing ones exactly):
   `appleIntelligence`, `ollama`, `lmStudio`, `unslothStudio`, `anthropic`, `googleAIStudio`, `openAI`,
-  `customOpenAICompatible`. Properties: `label`, `isLocal`, `needsKey` (cloud: yes; Unsloth: optional; Ollama,
-  LM Studio, Apple: no), `defaultBaseURL`.
+  `customOpenAICompatible`. Properties: `label`, `isLocal`, `needsKey` (cloud: yes; Unsloth Studio: yes, it
+  refuses requests without its API key; Ollama, LM Studio, Apple: no), `defaultBaseURL`.
 - `AIChatTurn.swift`: `struct AIChatTurn { role: .system/.user/.assistant; text: String }` and
   `struct AIChatContext { title: String; messages: [(senderName: String, mine: Bool, text: String)] }`.
 - `HTTPTransport.swift`: `protocol HTTPTransport { func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) }`,
@@ -121,6 +121,31 @@ Files (new unless noted), all under `apps/desktop/courier/app/Sources/CourierCor
   the summary (selectable text, Copy), quick actions (Draft reply, Translate last message). Loading and error
   states as above.
 - Follow the app's existing spacing, fonts and colours; no new colours. Every string through `String(localized:)`.
+
+### Revisions after the UX review (2026-11-09; these win where they differ from the above)
+
+- **No separate Enable toggle.** The provider list's first row is **Off**. Choosing any other row turns AI on;
+  choosing Off turns it off (`enableContextualAI` follows the selection, so existing settings keep working).
+- **Local rows have three states**: *Found · N models · Stays on this Mac*, *Installed · not running* with an
+  **Open <app>** button (when the app exists in /Applications: `Ollama.app`, `LM Studio.app`, `Unsloth.app`),
+  *Not found* with one "Get <app>" link. Not running is not an error: secondary text, no red.
+  Detection runs when the pane opens and every 30 s while it stays open.
+- **Keys**: `SecureField` with **Check** beside it; a "Get a key" link per provider. After saving show
+  "Stored in Keychain · …<last 4>" and **Remove**; never show the key again.
+- **Provenance on every result**: a footer line "via <model> · on this Mac" or "via <model> · sent to <Provider>".
+  The privacy sentence in Settings: "Only the messages you use with AI, and your draft. Never your keys or other chats."
+- **Where actions live**: no new composer button. "Draft a reply" and "Rewrite…" (tones) go in the composer's
+  **+** menu. AI results in the composer appear as a strip above the text with **Replace · Insert · Discard**
+  (the composer text is untouched until the person picks). Message menu: **Translate** (uses *Preferred response
+  language*; a submenu offers the other enabled languages) — this also fixes today's bug where it used
+  `translationLanguages.first`. **Summarize** goes in the chat's ⓘ menu and the command bar; the result shows in
+  the AI pane, collapsed to one line ("Summary of N messages · on this Mac"), expandable.
+- **AI pane**: remove the disabled "not available yet" rows. With no provider it shows one line and an
+  **Open AI Settings** button.
+- **No provider set**: AI actions stay visible but disabled with the tooltip "Set up AI in Settings"; choosing
+  one opens Settings ▸ AI.
+- **Loading / error**: in place, never modal. Loading: "Summarizing N messages…" / "Writing…" with **Cancel**.
+  Error: one plain line and **Retry**; the person's text is never changed by a failure.
 
 ## Tests (must exist and pass under Bazel)
 

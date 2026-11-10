@@ -47,7 +47,7 @@ Voice transcription and Talk to Type are not available yet.
 
 ### Providers and setup
 
-Turn AI on and pick a provider in **Settings ▸ AI**:
+Pick a provider in **Settings ▸ AI**. Choosing one turns AI on; choosing **Off** turns it off.
 
 - **On this Mac (stays local):**
   - **Apple Intelligence:** Built-in on macOS 26 or later on supported Macs.
