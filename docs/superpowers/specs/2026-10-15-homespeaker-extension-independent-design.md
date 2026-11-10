@@ -96,7 +96,7 @@ Each of these was read in the code at `6a72b0af7`.
 - **Other things read the app's files.** The Android remote's `macagent` reads and rewrites
   `~/.gemini/speaker_broadcast.json`, reads the history and `secrets.json`, and runs
   `/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker --say` and `--volume`
-  (`apps/mobile/android-remote/macagent/homespeaker.go:68-79, 547, 579`). James's own
+  (`apps/mobile/android-remote/macagent/homespeaker.go:68-79, 547, 579`). *(Note, 2026-11-10: the helper is now `rs/src/homespeaker.rs` and no longer touches these files; it asks the chosen program through `--state` and `--apply` instead.)* James's own
   `~/.local/bin/speaker-broadcast` script does the same, from outside the repo. They keep working
   with the app. Section 10, question 1, asks whether they should follow the extension.
 - **The vitruvian tool protocol has no secrets store and no "switch me off" message.**
