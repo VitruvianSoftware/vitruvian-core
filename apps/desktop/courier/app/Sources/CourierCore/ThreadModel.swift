@@ -55,6 +55,10 @@ public final class ThreadModel: ObservableObject {
     public var hideDeleted = false {
         didSet { if hideDeleted != oldValue { rebuild() } }
     }
+    /// The thread's chat is one-to-one: incoming replies hide their sender name and "Seen" names no one.
+    public var isDirect = false {
+        didSet { if isDirect != oldValue { rebuild() } }
+    }
 
     private let appModel: AppModel
     private let now: @MainActor () -> Date
@@ -402,7 +406,7 @@ public final class ThreadModel: ObservableObject {
         var all = Array(events.values)
         if let rootEvent, events[rootEvent.eventID] == nil { all.append(rootEvent) }
         items = Timeline.build(events: all, me: Timeline.meUserID, now: now(), hideDeleted: hideDeleted,
-                               calendar: calendar)
+                               isDirect: isDirect, calendar: calendar)
         // My held replies, as the thread has them now: the pane's ⌘Z takes back the newest.
         if let room = roomID, room == composer.roomID { composer.updateHeld(from: items) }
     }
