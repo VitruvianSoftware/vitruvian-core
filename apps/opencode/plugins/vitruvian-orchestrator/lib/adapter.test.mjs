@@ -19,7 +19,12 @@
 // SOFTWARE.
 
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, it } from "node:test";
+
+import serverPlugin from "../server.mjs";
 
 import {
   applyProgressCall,
@@ -393,5 +398,108 @@ describe("sidebar formatting", () => {
       1200 + 61 * 60 * 1000,
     );
     assert.match(stalledLines.join("\n"), /running \(stalled\)/);
+  });
+
+  it("accepts delegateUsage on server step tool and adapter, pricing Gemini and hiding not-priced notice", async () => {
+    const tmpDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "opencode-orch-test-"),
+    );
+    const prevDir = process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR;
+    process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR = tmpDir;
+    try {
+      const tools = new Map();
+      await serverPlugin.setup({
+        session: {
+          get: async ({ sessionID }) =>
+            sessionID === "ses_worker"
+              ? {
+                  id: "ses_worker",
+                  parentID: "ses_root",
+                  title: "Price Gemini",
+                  agent: "wren",
+                  model: "anthropic/claude-haiku-5-5",
+                }
+              : {
+                  id: "ses_root",
+                  title: "Root",
+                  agent: "beacon",
+                  model: "anthropic/claude-opus-5-5",
+                },
+        },
+        tool: {
+          transform: async (fn) => {
+            fn({
+              add: (def) => tools.set(def.name, def),
+            });
+          },
+        },
+      });
+
+      const stepTool = tools.get("step");
+      assert.ok(stepTool);
+      assert.match(
+        stepTool.input.properties.delegate.description,
+        /gemini-4-carbon-high/,
+      );
+      assert.deepEqual(
+        Object.keys(stepTool.input.properties.delegateUsage?.properties ?? {}),
+        ["input", "output", "thinking", "cacheRead"],
+      );
+
+      await tools.get("progress").execute(
+        {
+          title: "Server delegateUsage test",
+          phase: "delegate",
+          tasks: [
+            {
+              title: "Price Gemini",
+              specialist: "wren",
+              tier: "core",
+              after: [],
+            },
+          ],
+        },
+        { sessionID: "ses_root" },
+      );
+
+      await stepTool.execute(
+        {
+          done: 2,
+          total: 2,
+          note: "verified",
+          delegate: "gemini-4-carbon-high",
+          delegateUsage: {
+            input: 100_000,
+            output: 10_000,
+            thinking: 5_000,
+            cacheRead: 50_000,
+          },
+        },
+        { sessionID: "ses_worker", agent: "wren" },
+      );
+
+      const persisted = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, "state.json"), "utf8"),
+      );
+      const savedFlow = persisted.flows.ses_root;
+      const workerRun = savedFlow.runs.find((r) => r.id === "ses_worker");
+      assert.deepEqual(workerRun?.delegateTokens, {
+        input: 100_000,
+        output: 10_000,
+        thinking: 5_000,
+        cacheRead: 50_000,
+      });
+
+      const joined = formatSidebarLines(savedFlow, Date.now()).join("\n");
+      assert.match(joined, /est\. \$0\.36/);
+      assert.doesNotMatch(joined, /not priced/);
+    } finally {
+      if (prevDir === undefined) {
+        delete process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR;
+      } else {
+        process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR = prevDir;
+      }
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });

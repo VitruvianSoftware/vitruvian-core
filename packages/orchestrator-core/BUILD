@@ -29,11 +29,17 @@ load("@aspect_rules_js//js:defs.bzl", "js_library", "js_test")
 
 package(default_visibility = ["//:__subpackages__"])
 
-exports_files(["src/core.mjs"])
+exports_files([
+    "src/core.mjs",
+    "src/prices.mjs",
+])
 
 js_library(
     name = "lib",
-    srcs = ["src/core.mjs"],
+    srcs = [
+        "src/core.mjs",
+        "src/prices.mjs",
+    ],
 )
 
 js_test(

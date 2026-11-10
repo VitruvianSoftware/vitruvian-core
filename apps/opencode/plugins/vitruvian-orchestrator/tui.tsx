@@ -246,7 +246,7 @@ function OrchestratorSidebarContent(props: {
                 .join(" · ")}
             </text>
           </Show>
-          <Show when={(view().spend!.delegated?.runs ?? 0) > 0}>
+          <Show when={(view().spend!.delegated?.unpriced ?? 0) > 0}>
             <text fg={palette().muted}>
               {"  "}
               {view().spend!.delegatedText}

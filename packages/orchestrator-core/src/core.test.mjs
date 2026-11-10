@@ -23,6 +23,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import * as coreModule from "./core.mjs";
 import {
   DEFAULT_QUIET_MS,
   DEFAULT_STALL_MS,
@@ -36,6 +37,9 @@ import {
   stalls,
   taskBoard,
 } from "./core.mjs";
+import { PRICES, PRICES_UPDATED } from "./prices.mjs";
+
+const { delegateCost } = coreModule;
 
 function deepFreeze(obj) {
   if (obj === null || typeof obj !== "object") {
@@ -425,14 +429,14 @@ test("spend splits lead and workers, prices sonnet exactly, and puts gemini in u
   });
   assert.equal(runCost(flow.runs[1]), 0.3);
 
-  // 3) Unpriced Gemini run:
+  // 3) Unpriced model run:
   flow = reduce(flow, {
     type: "run.start",
     at: 1400,
-    id: "gemini-worker",
-    harness: "antigravity",
+    id: "gpt-worker",
+    harness: "opencode",
     agent: "scout",
-    model: "gemini-3.8-flash-high",
+    model: "gpt-5-mini",
     effort: null,
     title: "CI check",
     role: "worker",
@@ -440,7 +444,7 @@ test("spend splits lead and workers, prices sonnet exactly, and puts gemini in u
   flow = reduce(flow, {
     type: "run.end",
     at: 1500,
-    id: "gemini-worker",
+    id: "gpt-worker",
     status: "done",
     tokens: { input: 30_000, output: 4_000, cacheRead: 6_000, cacheWrite: 0 },
   });
@@ -461,6 +465,7 @@ test("spend splits lead and workers, prices sonnet exactly, and puts gemini in u
     },
     delegated: {
       runs: 0,
+      unpriced: 0,
       byModel: {},
     },
   });
@@ -556,12 +561,13 @@ test("delegate model on run.start, run.progress, and spend.delegated summary", (
   });
   assert.equal(flow.runs[2].delegate, "gemini-3.8-flash-high");
 
-  // Driver cost is still estimated from run.model (claude-haiku-5-5: [1, 5, 0.1, 1.25] per 1M)
-  // r1 tokens: 10_000 * 1 + 2_000 * 5 = 20_000 / 1_000_000 = 0.02 USD
+  // Driver cost is estimated from run.model (claude-haiku-5-5: [0.1, 0.5, 0.01, 0.125] per 1M)
+  // r1 tokens: 10_000 * 0.1 + 2_000 * 0.5 = 2_000 / 1_000_000 = 0.002 USD
   const summary = spend(flow);
-  assert.equal(summary.total, 0.02);
+  assert.equal(summary.total, 0.002);
   assert.deepEqual(summary.delegated, {
     runs: 3,
+    unpriced: 3,
     byModel: {
       "gemini-4-argon-high": 2,
       "gemini-3.8-flash-high": 1,
@@ -1167,4 +1173,329 @@ test("a run waiting on its own work or on Gemini reads waiting, not stalled, unt
   });
   assert.equal(flow.runs.find((r) => r.id === "held").waiting, false);
   assert.equal(stateAt(46 * min).held, "stalled");
+});
+
+test("prices.mjs lists opus-5-5 before opus and haiku-5-5 before haiku", () => {
+  assert.equal(PRICES_UPDATED, "2026-11-10");
+  assert.ok(Array.isArray(PRICES));
+  const matches = PRICES.map((p) => p.match);
+  const opus55Idx = matches.indexOf("opus-5-5");
+  const opusIdx = matches.indexOf("opus");
+  const haiku55Idx = matches.indexOf("haiku-5-5");
+  const haikuIdx = matches.indexOf("haiku");
+  assert.ok(opus55Idx !== -1 && opusIdx !== -1 && opus55Idx < opusIdx);
+  assert.ok(haiku55Idx !== -1 && haikuIdx !== -1 && haiku55Idx < haikuIdx);
+  assert.ok(matches.includes("gemini-4-(carbon|argon)"));
+  assert.ok(matches.includes("gemini-3\\.8-flash"));
+});
+
+test("Haiku 5.5 is priced at $0.10/$0.50 while older Haiku stays $1/$5", () => {
+  let flow = reduce(null, { type: "plan", at: 0, title: "Haiku", tasks: [] });
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 100,
+    id: "h55",
+    harness: "claude-code",
+    agent: "wren",
+    model: "claude-haiku-5-5",
+    effort: "medium",
+    title: "Driver",
+    role: "worker",
+    tokens: {
+      input: 1_000_000,
+      output: 1_000_000,
+      cacheRead: 1_000_000,
+      cacheWrite: 1_000_000,
+    },
+  });
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 200,
+    id: "h45",
+    harness: "claude-code",
+    agent: "pace",
+    model: "claude-haiku-4-5",
+    effort: "medium",
+    title: "Legacy",
+    role: "worker",
+    tokens: {
+      input: 1_000_000,
+      output: 1_000_000,
+      cacheRead: 1_000_000,
+      cacheWrite: 1_000_000,
+    },
+  });
+  // Haiku 5.5: 0.1 + 0.5 + 0.01 + 0.125 = 0.735 USD
+  assert.equal(runCost(flow.runs[0]), 0.735);
+  // Legacy Haiku: 1 + 5 + 0.1 + 1.25 = 7.35 USD
+  assert.equal(runCost(flow.runs[1]), 7.35);
+});
+
+test("delegated run with delegateTokens costs driver + Gemini with worked arithmetic", () => {
+  let flow = reduce(null, { type: "plan", at: 0, title: "Combo", tasks: [] });
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 100,
+    id: "r1",
+    harness: "claude-code",
+    agent: "wren",
+    model: "claude-haiku-5-5",
+    effort: "medium",
+    title: "Task",
+    role: "worker",
+    tokens: {
+      input: 100_000,
+      output: 10_000,
+      cacheRead: 200_000,
+      cacheWrite: 20_000,
+    },
+  });
+  flow = reduce(flow, {
+    type: "run.progress",
+    at: 200,
+    id: "r1",
+    delegate: "gemini-4-carbon-high",
+    delegateTokens: {
+      input: 50_000,
+      output: 4_000,
+      thinking: 3_000,
+      cacheRead: 100_000,
+    },
+  });
+
+  // Driver (Haiku 5.5): (100k*0.1 + 10k*0.5 + 200k*0.01 + 20k*0.125) / 1M
+  //   = (10_000 + 5_000 + 2_000 + 2_500) / 1M = 0.0195 USD
+  // Delegate (Gemini 4 Carbon [2, 10, 0.2, 0]): (50k*2 + (4k+3k)*10 + 100k*0.2) / 1M
+  //   = (100_000 + 70_000 + 20_000) / 1M = 0.19 USD
+  // Combined: 0.0195 + 0.19 = 0.2095 USD
+  assert.equal(delegateCost(flow.runs[0]), 0.19);
+  assert.equal(runCost(flow.runs[0]), 0.2095);
+});
+
+test("thinking tokens in delegateTokens are priced at the delegate output rate", () => {
+  let flow = reduce(null, { type: "plan", at: 0, title: "Think", tasks: [] });
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 100,
+    id: "r1",
+    harness: "claude-code",
+    agent: "wren",
+    model: "unknown-driver",
+    effort: null,
+    delegate: "gemini-4-carbon-high",
+    title: "Think only",
+    role: "worker",
+  });
+  flow = reduce(flow, {
+    type: "run.progress",
+    at: 200,
+    id: "r1",
+    delegateTokens: {
+      input: 0,
+      output: 0,
+      thinking: 100_000,
+      cacheRead: 0,
+    },
+  });
+  // Gemini 4 Carbon output rate = $10/1M -> 100k thinking = $1.00; driver is unpriced so runCost = $1.00
+  assert.equal(delegateCost(flow.runs[0]), 1);
+  assert.equal(runCost(flow.runs[0]), 1);
+});
+
+test("run.progress replaces delegateTokens instead of adding and ignores negative or non-numeric fields", () => {
+  let flow = reduce(null, { type: "plan", at: 0, title: "Replace", tasks: [] });
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 100,
+    id: "r1",
+    harness: "claude-code",
+    agent: "wren",
+    model: "claude-haiku-5-5",
+    effort: "medium",
+    delegate: "gemini-4-carbon-high",
+    title: "Replace test",
+    role: "worker",
+  });
+  flow = deepFreeze(
+    reduce(flow, {
+      type: "run.progress",
+      at: 200,
+      id: "r1",
+      delegateTokens: {
+        input: 40_000,
+        output: 3_000,
+        thinking: 2_000,
+        cacheRead: 80_000,
+      },
+    }),
+  );
+  assert.deepEqual(flow.runs[0].delegateTokens, {
+    input: 40_000,
+    output: 3_000,
+    thinking: 2_000,
+    cacheRead: 80_000,
+  });
+
+  // Second agy-delegate call reports running total (replaces, does NOT add to 40k):
+  flow = deepFreeze(
+    reduce(flow, {
+      type: "run.progress",
+      at: 300,
+      id: "r1",
+      delegateTokens: {
+        input: 65_000,
+        output: -50,
+        thinking: /** @type {any} */ ("bad"),
+        cacheRead: 120_000,
+      },
+    }),
+  );
+  assert.deepEqual(flow.runs[0].delegateTokens, {
+    input: 65_000,
+    output: 0,
+    thinking: 0,
+    cacheRead: 120_000,
+  });
+
+  // Subsequent progress without delegateTokens keeps existing delegateTokens:
+  flow = reduce(flow, {
+    type: "run.progress",
+    at: 400,
+    id: "r1",
+    steps: { done: 3, total: 3, note: "verified" },
+  });
+  assert.deepEqual(flow.runs[0].delegateTokens, {
+    input: 65_000,
+    output: 0,
+    thinking: 0,
+    cacheRead: 120_000,
+  });
+});
+
+test("spend attributes delegate cost to byModel[delegate] and workers/total, and counts delegated runs without usage in delegated.unpriced", () => {
+  let flow = reduce(null, { type: "plan", at: 0, title: "Spend", tasks: [] });
+  // Run 1: priced delegate (Haiku 5.5 driver + Gemini 4 Carbon usage)
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 100,
+    id: "r1",
+    harness: "claude-code",
+    agent: "wren",
+    model: "claude-haiku-5-5",
+    effort: "medium",
+    delegate: "gemini-4-carbon-high",
+    title: "Priced delegate",
+    role: "worker",
+    tokens: { input: 100_000, output: 10_000, cacheRead: 0, cacheWrite: 0 },
+  });
+  flow = reduce(flow, {
+    type: "run.progress",
+    at: 150,
+    id: "r1",
+    delegateTokens: {
+      input: 50_000,
+      output: 5_000,
+      thinking: 5_000,
+      cacheRead: 0,
+    },
+  });
+  // Run 2: delegated run WITHOUT delegateTokens -> counts in delegated.unpriced
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 200,
+    id: "r2",
+    harness: "claude-code",
+    agent: "scout",
+    model: "claude-haiku-5-5",
+    effort: "medium",
+    delegate: "gemini-3.8-flash-high",
+    title: "Unpriced delegate",
+    role: "worker",
+    tokens: { input: 100_000, output: 10_000, cacheRead: 0, cacheWrite: 0 },
+  });
+
+  // r1 driver: (100k*0.1 + 10k*0.5)/1M = 0.015; r2 driver: 0.015 -> haiku total = 0.03
+  // r1 delegate: (50k*2 + 10k*10)/1M = 0.2 -> gemini-4-carbon-high = 0.2
+  // total = workers = 0.23
+  const summary = spend(flow);
+  assert.ok(Math.abs(summary.total - 0.23) < 1e-9);
+  assert.ok(Math.abs(summary.workers - 0.23) < 1e-9);
+  assert.ok(Math.abs(summary.byModel["claude-haiku-5-5"] - 0.03) < 1e-9);
+  assert.ok(Math.abs(summary.byModel["gemini-4-carbon-high"] - 0.2) < 1e-9);
+  assert.deepEqual(summary.delegated, {
+    runs: 2,
+    unpriced: 1,
+    byModel: {
+      "gemini-4-carbon-high": 1,
+      "gemini-3.8-flash-high": 1,
+    },
+  });
+});
+
+test("unpriced delegate model with delegateTokens and all-invalid delegateTokens stay unpriced in spend.delegated", () => {
+  let flow = reduce(null, {
+    type: "plan",
+    at: 0,
+    title: "Unpriced delegate edge cases",
+    tasks: [],
+  });
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 100,
+    id: "r1",
+    harness: "claude-code",
+    agent: "wren",
+    model: "claude-haiku-5-5",
+    effort: "medium",
+    delegate: "gpt-5-unpriced",
+    title: "Unpriced delegate model",
+    role: "worker",
+    tokens: { input: 100_000, output: 10_000, cacheRead: 0, cacheWrite: 0 },
+    delegateTokens: {
+      input: 50_000,
+      output: 5_000,
+      thinking: 1_000,
+      cacheRead: 0,
+    },
+  });
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 200,
+    id: "r2",
+    harness: "claude-code",
+    agent: "scout",
+    model: "claude-haiku-5-5",
+    effort: "medium",
+    delegate: "gemini-4-carbon-high",
+    title: "All-invalid delegateTokens",
+    role: "worker",
+    tokens: { input: 100_000, output: 10_000, cacheRead: 0, cacheWrite: 0 },
+  });
+  flow = reduce(flow, {
+    type: "run.progress",
+    at: 250,
+    id: "r2",
+    delegateTokens: /** @type {any} */ ({
+      input: -10,
+      output: "bad",
+      thinking: Number.NaN,
+      cacheRead: null,
+    }),
+  });
+
+  assert.equal(delegateCost(flow.runs[0]), null);
+  assert.equal(runCost(flow.runs[0]), 0.015);
+  assert.equal(flow.runs[1].delegateTokens, null);
+  assert.equal(delegateCost(flow.runs[1]), null);
+  assert.equal(runCost(flow.runs[1]), 0.015);
+
+  const summary = spend(flow);
+  assert.deepEqual(summary.delegated, {
+    runs: 2,
+    unpriced: 2,
+    byModel: {
+      "gpt-5-unpriced": 1,
+      "gemini-4-carbon-high": 1,
+    },
+  });
 });

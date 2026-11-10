@@ -28,6 +28,7 @@ import type { EngineInterface, Register } from "claude-code";
 
 import type {
   BurnDown,
+  DelegateTokenCounts,
   Flow,
   FlowEvent,
   Panel,
@@ -43,6 +44,7 @@ import type {
 } from "../types";
 import {
   burnDown,
+  delegateCost,
   initialFlow,
   reduce,
   remaining,
@@ -98,6 +100,7 @@ type StepInput = {
   total?: number;
   note?: string;
   delegate?: string;
+  delegateUsage?: Partial<DelegateTokenCounts>;
 };
 
 // ---------------------------------------------------------------------------
@@ -1933,7 +1936,18 @@ export const register: Register = (on) => {
           delegate: {
             type: "string",
             description:
-              "Model that did the work when you handed it to another engine, e.g. gemini-4-argon-high.",
+              "Model that did the work when you handed it to another engine, e.g. gemini-4-carbon-high.",
+          },
+          delegateUsage: {
+            type: "object",
+            description:
+              "Gemini's token counts from agy-delegate's AGY_USAGE line, summed over every agy-delegate call in this task so far (cache_read -> cacheRead).",
+            properties: {
+              input: { type: "integer", minimum: 0 },
+              output: { type: "integer", minimum: 0 },
+              thinking: { type: "integer", minimum: 0 },
+              cacheRead: { type: "integer", minimum: 0 },
+            },
           },
         },
         required: ["done", "total"],
@@ -2052,6 +2066,9 @@ export const register: Register = (on) => {
         id: agentId,
         steps: { done, total, note },
         ...(delegate ? { delegate } : {}),
+        ...(input.delegateUsage !== undefined
+          ? { delegateTokens: input.delegateUsage }
+          : {}),
       });
     });
     await update($, now, () => at);
@@ -2679,15 +2696,25 @@ export const register: Register = (on) => {
                     {line}
                   </Text>
                 ))}
-              {sp.delegated.runs > 0 && (
-                <Text dimColor>
-                  {`  delegated to Gemini: ${sp.delegated.runs} ${sp.delegated.runs === 1 ? "run" : "runs"} (${Object.entries(
-                    sp.delegated.byModel,
-                  )
-                    .map(([m, n]) => `${m} ×${n}`)
-                    .join(", ")}), not priced`}
-                </Text>
-              )}
+              {sp.delegated.unpriced > 0 &&
+                (() => {
+                  const unpricedByModel: Record<string, number> = {};
+                  for (const r of f.runs) {
+                    if (r.delegate && delegateCost(r) === null) {
+                      unpricedByModel[r.delegate] =
+                        (unpricedByModel[r.delegate] ?? 0) + 1;
+                    }
+                  }
+                  return (
+                    <Text dimColor>
+                      {`  delegated to Gemini: ${sp.delegated.unpriced} ${sp.delegated.unpriced === 1 ? "run" : "runs"} (${Object.entries(
+                        unpricedByModel,
+                      )
+                        .map(([m, n]) => `${m} ×${n}`)
+                        .join(", ")}), not priced`}
+                    </Text>
+                  );
+                })()}
             </Box>
           </Box>
         )}
