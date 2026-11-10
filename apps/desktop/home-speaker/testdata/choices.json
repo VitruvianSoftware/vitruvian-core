@@ -84,7 +84,10 @@
       "kind": "choice",
       "default_value": "direct_and_mentions",
       "choices": [
-        { "value": "direct_and_mentions", "label": "Direct messages and mentions" },
+        {
+          "value": "direct_and_mentions",
+          "label": "Direct messages and mentions"
+        },
         { "value": "all", "label": "Every message" }
       ]
     },
@@ -94,7 +97,10 @@
       "kind": "choice",
       "default_value": "direct_and_mentions",
       "choices": [
-        { "value": "direct_and_mentions", "label": "Direct messages and mentions" },
+        {
+          "value": "direct_and_mentions",
+          "label": "Direct messages and mentions"
+        },
         { "value": "all", "label": "Every message" }
       ]
     },
@@ -116,7 +122,10 @@
       "gemini_voice": null,
       "custom_voices": [],
       "expected_first": { "value": "Kore", "label": "Kore · Warm & clear" },
-      "expected_last": { "value": "voice_o1be80ujj8bb", "label": "James · Custom" },
+      "expected_last": {
+        "value": "voice_o1be80ujj8bb",
+        "label": "James · Custom"
+      },
       "expected_count": 10
     },
     {
@@ -127,17 +136,21 @@
         { "id": "voice_vaoo7ayczx69", "name": "Duplicate Builtin" }
       ],
       "expected_first": { "value": "Kore", "label": "Kore · Warm & clear" },
-      "expected_last": { "value": "voice_clone_alpha", "label": "Alpha (cloned)" },
+      "expected_last": {
+        "value": "voice_clone_alpha",
+        "label": "Alpha (cloned)"
+      },
       "expected_count": 11
     },
     {
       "name": "unknown_active_voice_prepended_first",
       "gemini_voice": "Sulafat",
-      "custom_voices": [
-        { "id": "voice_clone_beta", "name": "Beta" }
-      ],
+      "custom_voices": [{ "id": "voice_clone_beta", "name": "Beta" }],
       "expected_first": { "value": "Sulafat", "label": "Sulafat" },
-      "expected_last": { "value": "voice_clone_beta", "label": "Beta (cloned)" },
+      "expected_last": {
+        "value": "voice_clone_beta",
+        "label": "Beta (cloned)"
+      },
       "expected_count": 12
     }
   ]

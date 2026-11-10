@@ -79,9 +79,24 @@
         }
       },
       "expected_order": [
-        { "key": "bedroom", "id": "id-bedroom", "name": "attiC speaker", "display_line": "attiC speaker" },
-        { "key": "kitchen", "id": "id-kitchen", "name": "Kitchen", "display_line": "Kitchen" },
-        { "key": "living_room_primary", "id": "id-living", "name": "Living Room", "display_line": "Living Room" }
+        {
+          "key": "bedroom",
+          "id": "id-bedroom",
+          "name": "attiC speaker",
+          "display_line": "attiC speaker"
+        },
+        {
+          "key": "kitchen",
+          "id": "id-kitchen",
+          "name": "Kitchen",
+          "display_line": "Kitchen"
+        },
+        {
+          "key": "living_room_primary",
+          "id": "id-living",
+          "name": "Living Room",
+          "display_line": "Living Room"
+        }
       ]
     }
   ],
@@ -91,9 +106,24 @@
       "default_target": "office",
       "remove_key": "office",
       "targets": {
-        "office": { "id": "id-office", "type": "SpeakerDevice", "name": "Office", "room": "Office" },
-        "zeta": { "id": "id-den", "type": "SpeakerDevice", "name": "Den", "room": "Den" },
-        "alpha": { "id": "id-patio", "type": "SpeakerDevice", "name": "Patio", "room": "Patio" }
+        "office": {
+          "id": "id-office",
+          "type": "SpeakerDevice",
+          "name": "Office",
+          "room": "Office"
+        },
+        "zeta": {
+          "id": "id-den",
+          "type": "SpeakerDevice",
+          "name": "Den",
+          "room": "Den"
+        },
+        "alpha": {
+          "id": "id-patio",
+          "type": "SpeakerDevice",
+          "name": "Patio",
+          "room": "Patio"
+        }
       },
       "expected_default_target": "zeta",
       "expected_remaining_keys": ["zeta", "alpha"]
@@ -103,8 +133,18 @@
       "default_target": "office",
       "remove_key": "zeta",
       "targets": {
-        "office": { "id": "id-office", "type": "SpeakerDevice", "name": "Office", "room": "Office" },
-        "zeta": { "id": "id-den", "type": "SpeakerDevice", "name": "Den", "room": "Den" }
+        "office": {
+          "id": "id-office",
+          "type": "SpeakerDevice",
+          "name": "Office",
+          "room": "Office"
+        },
+        "zeta": {
+          "id": "id-den",
+          "type": "SpeakerDevice",
+          "name": "Den",
+          "room": "Den"
+        }
       },
       "expected_default_target": "office",
       "expected_remaining_keys": ["office"]
@@ -114,7 +154,12 @@
       "default_target": "office",
       "remove_key": "office",
       "targets": {
-        "office": { "id": "id-office", "type": "SpeakerDevice", "name": "Office", "room": "Office" }
+        "office": {
+          "id": "id-office",
+          "type": "SpeakerDevice",
+          "name": "Office",
+          "room": "Office"
+        }
       },
       "expected_default_target": "",
       "expected_remaining_keys": []
