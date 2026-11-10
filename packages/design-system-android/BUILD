@@ -52,6 +52,7 @@ filegroup(
 # :lib depends on rather than compiling a second copy, and a plain JUnit test
 # pins them: no device, no emulator.
 OVERLAY_RULES = [
+    "src/main/kotlin/dev/vitruvian/design/A11y.kt",
     "src/main/kotlin/dev/vitruvian/design/OptionList.kt",
     "src/main/kotlin/dev/vitruvian/design/SafeArea.kt",
 ]
@@ -85,6 +86,7 @@ kt_android_library(
     manifest = "src/main/AndroidManifest.xml",
     plugins = [":compose_compiler"],
     resource_files = glob(["src/main/res/**"]),
+    exports = [":overlay_rules"],
     deps = [
         ":overlay_rules",
         "@maven//:androidx_annotation_annotation",
@@ -104,6 +106,19 @@ kt_android_library(
 kt_jvm_library(
     name = "overlay_rules",
     srcs = OVERLAY_RULES,
+)
+
+kt_jvm_test(
+    name = "a11y_test",
+    size = "small",
+    srcs = ["src/test/kotlin/dev/vitruvian/design/A11yTest.kt"],
+    test_class = "dev.vitruvian.design.A11yTest",
+    deps = [
+        ":lib",
+        ":overlay_rules",
+        "@maven//:androidx_compose_ui_ui_unit",
+        "@maven//:junit_junit",
+    ],
 )
 
 kt_jvm_test(
@@ -183,6 +198,7 @@ pipeline_unit(
     persona = "frontend",
     runner = "ubuntu-26.04",
     test_targets = [
+        ":a11y_test",
         ":lib",
         ":option_list_test",
         ":parity_test",

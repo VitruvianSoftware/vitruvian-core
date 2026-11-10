@@ -42,6 +42,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -49,15 +52,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-
-/** The status square's five states. */
-public enum class StatusTone {
-  Neutral,
-  Ok,
-  Warn,
-  Crit,
-  Run
-}
 
 private val STATUS_SQUARE = 7.dp
 private val METER_HEIGHT = 6.dp
@@ -77,7 +71,8 @@ private fun statusColor(tone: StatusTone): Color =
 /**
  * `.status` - a 7 dp square, optionally followed by a mono uppercase caption.
  *
- * Passing a null [text] gives the bare square that leads every list row.
+ * Passing a null [text] gives the bare square that leads every list row; [label] overrides the
+ * spoken description derived from [tone] ("OK", "Warning", "Error", "Idle", "Running").
  */
 @Composable
 public fun Status(
@@ -85,10 +80,12 @@ public fun Status(
     modifier: Modifier = Modifier,
     text: String? = null,
     color: Color = Vitruvian.textDim,
+    label: String? = null,
 ) {
   val square = statusColor(tone)
+  val spokenState = A11y.statusLabel(tone = tone, text = text, label = label)
   Row(
-      modifier = modifier,
+      modifier = modifier.semantics(mergeDescendants = true) { contentDescription = spokenState },
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(Space.s3),
   ) {
@@ -96,6 +93,7 @@ public fun Status(
     if (text != null) {
       VText(
           text = text.uppercase(),
+          modifier = Modifier.clearAndSetSemantics {},
           style = VitruvianType.status,
           color = color,
           maxLines = 1,

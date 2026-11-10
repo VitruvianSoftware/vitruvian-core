@@ -189,6 +189,7 @@ public fun Accordion(
               path = if (isOpen) VitruvianIcons.CHEVRON_DOWN else VitruvianIcons.CHEVRON_RIGHT,
               iconSize = 16.dp,
               color = if (isOpen) colors.accentText else colors.textDim,
+              contentDescription = if (isOpen) "Expanded" else "Collapsed",
           )
           VText(
               text = section.title,
