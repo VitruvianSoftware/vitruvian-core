@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.26](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.25...android-remote-v0.1.26) (2026-11-10)
+
+
+### Bug Fixes
+
+* **android-remote:** HomeSpeaker matches the Mac app, TV controls work, quiet hours use local time ([#4471](https://github.com/VitruvianSoftware/vitruvian-core/issues/4471)) ([d62c5f2](https://github.com/VitruvianSoftware/vitruvian-core/commit/d62c5f22abfa02054ac4756aac68f6a002b19285))
+
 ## [0.1.25](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.24...android-remote-v0.1.25) (2026-11-03)
 
 
