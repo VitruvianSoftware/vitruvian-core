@@ -4,20 +4,6 @@
 import Combine
 import Foundation
 
-public enum AIEngineChoice: String, CaseIterable, Codable, Sendable {
-    case appleIntelligence
-    case openAI
-    case customOpenAICompatible
-
-    public var label: String {
-        switch self {
-        case .appleIntelligence: String(localized: "Apple Intelligence (On-Device)")
-        case .openAI: String(localized: "OpenAI")
-        case .customOpenAICompatible: String(localized: "Custom OpenAI-Compatible Endpoint")
-        }
-    }
-}
-
 public enum AIRewriteTone: String, CaseIterable, Codable, Sendable {
     case fixGrammar
     case moreConcise
@@ -44,35 +30,40 @@ public enum AIProviderDisposition: Equatable, Sendable {
 }
 
 /// Spec §3 seam for AI features (Settings ▸ AI, AIPane, Talk to Type, Draft with AI, Translate, Whisper transcription).
-/// Iteration 1's `UnavailableAIProvider` is completely offline and never contacts any server.
+/// `UnavailableAIProvider` is completely offline and never contacts any server.
 public protocol AIProvider: Sendable {
     var isAvailable: Bool { get }
     var unavailableReason: String { get }
     var availableModels: [String] { get }
-    func draftResponse(roomID: String, prompt: String, tone: AIRewriteTone?) async -> AIProviderDisposition
+    func draftResponse(context: AIChatContext, draft: String, tone: AIRewriteTone?) async -> AIProviderDisposition
     func translate(text: String, targetLanguage: String) async -> AIProviderDisposition
-    func summarize(roomID: String, eventIDs: [String]) async -> AIProviderDisposition
+    func summarize(context: AIChatContext) async -> AIProviderDisposition
     func transcribeVoiceNote(roomID: String, eventID: String) async -> AIProviderDisposition
     func startTalkToType() async -> AIProviderDisposition
 }
 
 public struct UnavailableAIProvider: AIProvider {
-    public init() {}
+    private let customReason: String?
+
+    public init(reason: String? = nil) {
+        self.customReason = reason
+    }
+
     public var isAvailable: Bool { false }
     public var unavailableReason: String {
-        String(localized: "AI features aren’t available yet in Courier. Everything you write stays on this Mac.")
+        customReason ?? String(localized: "AI features aren’t available yet in Courier. Everything you write stays on this Mac.")
     }
     public var availableModels: [String] {
         [String(localized: "On-Device (Not available yet)")]
     }
-    public func draftResponse(roomID _: String, prompt _: String, tone _: AIRewriteTone?) async -> AIProviderDisposition {
-        .unavailable(reason: String(localized: "Drafting with AI isn’t available yet in Courier."))
+    public func draftResponse(context _: AIChatContext, draft _: String, tone _: AIRewriteTone?) async -> AIProviderDisposition {
+        .unavailable(reason: customReason ?? String(localized: "Drafting with AI isn’t available yet in Courier."))
     }
     public func translate(text _: String, targetLanguage _: String) async -> AIProviderDisposition {
-        .unavailable(reason: String(localized: "Message translation isn’t available yet in Courier."))
+        .unavailable(reason: customReason ?? String(localized: "Message translation isn’t available yet in Courier."))
     }
-    public func summarize(roomID _: String, eventIDs _: [String]) async -> AIProviderDisposition {
-        .unavailable(reason: String(localized: "AI chat summaries aren’t available yet in Courier."))
+    public func summarize(context _: AIChatContext) async -> AIProviderDisposition {
+        .unavailable(reason: customReason ?? String(localized: "AI chat summaries aren’t available yet in Courier."))
     }
     public func transcribeVoiceNote(roomID _: String, eventID _: String) async -> AIProviderDisposition {
         .unavailable(reason: String(localized: "Voice-note transcription isn’t available yet in Courier."))
@@ -100,6 +91,18 @@ public final class AIPreferences: ObservableObject {
         didSet {
             guard canMutate({ selectedModel = oldValue }) else { return }
             set(selectedModel, "selectedModel")
+        }
+    }
+    @Published public var customBaseURL: String {
+        didSet {
+            guard canMutate({ customBaseURL = oldValue }) else { return }
+            set(customBaseURL, "customBaseURL")
+        }
+    }
+    @Published public var selectedModelByProvider: [String: String] {
+        didSet {
+            guard canMutate({ selectedModelByProvider = oldValue }) else { return }
+            set(selectedModelByProvider, "selectedModelByProvider")
         }
     }
     @Published public var responseLanguage: String {
@@ -188,6 +191,8 @@ public final class AIPreferences: ObservableObject {
         selectedEngine = defaults.string(forKey: Self.key("selectedEngine"))
             .flatMap(AIEngineChoice.init(rawValue:)) ?? .appleIntelligence
         selectedModel = string("selectedModel", String(localized: "On-Device (Not available yet)"))
+        customBaseURL = defaults.string(forKey: Self.key("customBaseURL")) ?? ""
+        selectedModelByProvider = (defaults.dictionary(forKey: Self.key("selectedModelByProvider")) as? [String: String]) ?? [:]
         responseLanguage = string("responseLanguage", "English")
         if let storedLanguages = defaults.stringArray(forKey: Self.key("translationLanguages")), !storedLanguages.isEmpty {
             translationLanguages = storedLanguages
@@ -201,6 +206,25 @@ public final class AIPreferences: ObservableObject {
         transcriptionLanguage = string("transcriptionLanguage", "Auto-Detect")
         enableSlashCommands = bool("enableSlashCommands", true)
         isInitializing = false
+    }
+
+    public func model(for provider: AIProviderKind) -> String? {
+        let stored = selectedModelByProvider[provider.rawValue]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (stored?.isEmpty == false) ? stored : nil
+    }
+
+    public func setModel(_ model: String, for provider: AIProviderKind) {
+        var updated = selectedModelByProvider
+        let trimmed = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            updated.removeValue(forKey: provider.rawValue)
+        } else {
+            updated[provider.rawValue] = trimmed
+        }
+        selectedModelByProvider = updated
+        if selectedEngine == provider, !trimmed.isEmpty, selectedModel != trimmed {
+            selectedModel = trimmed
+        }
     }
 
     private func set(_ value: Any, _ name: String) {
