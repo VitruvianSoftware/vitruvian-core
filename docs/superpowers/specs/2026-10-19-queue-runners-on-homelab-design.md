@@ -162,8 +162,8 @@ events, so the controls are layered:
 | Phase | What | Moves when |
 |---|---|---|
 | 0 | Fork approval tightened. App created, controller and scale set deployed idle, image built, `QUEUE_RUNNER` `off`. | Merged; the runner shows as online and idle in the repo's runner settings |
-| 1 | Pilot: actionlint, release-scope, migration-safety, conformance-check, tidy-check, the small, setup-bazel-only workflows. `QUEUE_RUNNER` `on`. | A week of queue runs with no runner-caused failures |
-| 2 | Presubmit and CI Linux jobs, still no Docker. **Merge queue only** (§4), not pushes to main. Still hosted: Presubmit's `rdeps-map` (main-only, near its timeout), CI's `setup-go` jobs (their cache saves would upload from the homelab) and `validate-butane` (Docker). | Phase 1 clean (96/96 homelab jobs green on 2026-11-03) |
+| 1 | Pilot: conformance-check, tidy-check, the small `setup-bazel` workflows (`actionlint`, `release-scope` and `migration-safety` have no Bazel and stay on `ubuntu-26.04` so they do not contend for the 8 Bazel runner slots). `QUEUE_RUNNER` `on`. | A week of queue runs with no runner-caused failures |
+| 2 | Presubmit and CI Bazel Linux jobs, still no Docker. **Merge queue only** (§4), not pushes to main. Still hosted: Presubmit's `rdeps-map` (main-only, near its timeout) and `gate` (1s fan-in check), CI's non-Bazel path-filter/gate jobs (`detect-macos`, `build-macos`, `changes`), `setup-go` jobs (their cache saves would upload from the homelab) and `validate-butane` (Docker). | Phase 1 clean (96/96 homelab jobs green on 2026-11-03) |
 | 3 | Measure with `//tools/merge-queue-stats` against #3518's baseline | — |
 
 Rollback at any phase: set `QUEUE_RUNNER` to `off`.
