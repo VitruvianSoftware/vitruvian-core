@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.32.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.32.2...nexus-agent-v1.32.3) (2026-11-10)
+
+
+### Bug Fixes
+
+* **nexus-agent:** the popped-out chat keeps the notch's dark look ([#4460](https://github.com/VitruvianSoftware/vitruvian-core/issues/4460)) ([d696dee](https://github.com/VitruvianSoftware/vitruvian-core/commit/d696dee987805a6f4af8c1e47f909a143e51acf1))
+
 ## [1.32.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.32.1...nexus-agent-v1.32.2) (2026-11-07)
 
 
