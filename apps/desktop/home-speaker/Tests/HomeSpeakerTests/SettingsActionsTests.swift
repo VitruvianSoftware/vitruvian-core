@@ -521,8 +521,16 @@ struct SettingsActionsTests {
             "speak_phone": true,
             "custom_style_prompt": "Pirate voice",
             "foreign_top_level_key": "keep-me",
+            "chat_monitor": [
+                "slack_enabled": true,
+                "foreign_chat_key": "keep-chat-meta",
+            ],
             "custom_voices": [
-                ["id": "voice_custom_1", "name": "Clone One"]
+                [
+                    "id": "voice_custom_1",
+                    "name": "Clone One",
+                    "foreign_voice_field": "keep-voice-meta",
+                ]
             ],
             "targets": [
                 "office": [
@@ -556,6 +564,10 @@ struct SettingsActionsTests {
             try JSONSerialization.jsonObject(with: Data(contentsOf: rig.configFile.url)) as? [String: Any]
         )
         #expect(rawAfter["foreign_top_level_key"] as? String == "keep-me")
+        let chatAfter = rawAfter["chat_monitor"] as? [String: Any]
+        #expect(chatAfter?["foreign_chat_key"] as? String == "keep-chat-meta")
+        let voicesAfter = rawAfter["custom_voices"] as? [[String: Any]]
+        #expect(voicesAfter?.first?["foreign_voice_field"] as? String == "keep-voice-meta")
         let targetsAfter = rawAfter["targets"] as? [String: [String: Any]]
         #expect(targetsAfter?["office"]?["foreign_device_field"] as? Int == 123)
     }
