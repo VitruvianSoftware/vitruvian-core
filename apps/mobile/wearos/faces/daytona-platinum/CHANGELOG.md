@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.7](https://github.com/VitruvianSoftware/vitruvian-core/compare/daytona-platinum-v0.1.6...daytona-platinum-v0.1.7) (2026-11-10)
+
+
+### Features
+
+* **daytona-platinum:** default AOD to Ultra OLED Battery Saver ([#4502](https://github.com/VitruvianSoftware/vitruvian-core/issues/4502)) ([b15654b](https://github.com/VitruvianSoftware/vitruvian-core/commit/b15654b5619ca5a79fa3b73cbfa81b63b7a903cb))
+
 ## [0.1.6](https://github.com/VitruvianSoftware/vitruvian-core/compare/daytona-platinum-v0.1.5...daytona-platinum-v0.1.6) (2026-11-09)
 
 
