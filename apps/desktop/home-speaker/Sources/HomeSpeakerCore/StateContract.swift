@@ -141,7 +141,9 @@ public enum HomeSpeakerStateContract {
             now: @escaping @Sendable () -> Date = { Date() },
             doorSwitchSeam: @escaping @Sendable () -> (any SettingsActions.DoorSwitchSeam)?
         ) -> Seam {
-            let antigravityURL = SecretStore.antigravityTokensURL
+            // From `agentHome`, as `init` does, so a seam built for another
+            // home never reads this account's Antigravity tokens.
+            let antigravityURL = agentHome.appendingPathComponent(".gemini/antigravity/mcp_oauth_tokens.json")
             return Seam(
                 program: profile.door,
                 homeSpeakerVersion: { HomeSpeakerVersion.current },
@@ -1163,7 +1165,9 @@ public enum HomeSpeakerStateContract {
                     do {
                         try performHook()
                     } catch {
+                        // An agentHook is alone in its batch, so it is op 0.
                         throw IndexedApplyError(
+                            opIndex: 0,
                             code: "agent_hook_failed",
                             message: error.localizedDescription
                         )

@@ -369,15 +369,13 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         case "snooze", "toggleSnooze":
             reload()
             let now = parts.now()
-            if config.isSnoozed(at: now) {
-                config.snoozeUntil = nil
-                try save()
-                parts.link.showMessage("Broadcasting resumed", icon: "hifispeaker.2")
-            } else {
-                let until = now.addingTimeInterval(30 * 60)
-                config.snoozeUntil = until
+            if let until = try SettingsActions.applySnooze(
+                minutes: config.isSnoozed(at: now) ? nil : 30, now: now, to: &config) {
                 try save()
                 parts.link.showMessage(SpeakerConfig.snoozedUntilLine(until), icon: "bell.slash")
+            } else {
+                try save()
+                parts.link.showMessage("Broadcasting resumed", icon: "hifispeaker.2")
             }
         case Command.mute: try speakerJob(.mute)
         case Command.unmute: try speakerJob(.unmute)

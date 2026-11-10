@@ -1182,6 +1182,15 @@ struct StateContractTests {
 
     // MARK: - 14. QA Probe Tests
 
+    @Test("A live seam built for another home reads that home's Antigravity tokens, never this account's")
+    func liveSeamTakesAntigravityTokensFromItsAgentHome() throws {
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+        let seam = HomeSpeakerStateContract.Seam.live(
+            for: rig.appProfile, agentHome: rig.agentHome, doorSwitchSeam: { nil })
+        #expect(seam.antigravityTokensURL.path.hasPrefix(rig.agentHome.path))
+    }
+
     @Test("agentHook combined with another op refuses with hook_must_be_alone and writes no settings, secrets or hook file")
     func agentHookWithOtherOpWritesNothing() throws {
         let rig = try ScratchRig()
@@ -1913,5 +1922,139 @@ struct StateContractTests {
             #expect(results[0]["op"] as? String == row.op)
             #expect(parsed["state"] as? [String: Any] != nil)
         }
+    }
+
+    @Test("Probe: setSecret distinctive values never appear in output/state/error and clearing non-courier secrets leaves config bytes identical")
+    func probeSetSecretDistinctiveValuesNeverLeakAndNonCourierClearLeavesConfigBytesIdentical() throws {
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+        try rig.seedGoldenFixture()
+        let seam = rig.makeSeam(program: .app)
+
+        let needles: [(name: String, value: String)] = [
+            ("slack", "DISTINCTIVE-SLACK-CANARY-9911"), // gitleaks:allow
+            ("beeper", "DISTINCTIVE-BEEPER-CANARY-9922"), // gitleaks:allow
+            ("courier", "DISTINCTIVE-COURIER-CANARY-9933"), // gitleaks:allow
+            ("geminiKey", "DISTINCTIVE-GEMINI-CANARY-9944"), // gitleaks:allow
+        ]
+
+        let setBatch = """
+        {"contract_version":1,"operations":[
+            {"op":"setSecret","name":"slack","value":"\(needles[0].value)"},
+            {"op":"setSecret","name":"beeper","value":"\(needles[1].value)"},
+            {"op":"setSecret","name":"courier","value":"\(needles[2].value)"},
+            {"op":"setSecret","name":"geminiKey","value":"\(needles[3].value)"}
+        ]}
+        """
+        let setOut = HomeSpeakerCommandLine.apply(setBatch, seam: seam)
+        #expect(setOut.exitCode == 0)
+        let stateOut = HomeSpeakerCommandLine.state(seam: seam)
+        #expect(stateOut.exitCode == 0)
+
+        let errorBatch = """
+        {"contract_version":1,"operations":[
+            {"op":"setSecret","name":"slack","value":"\(needles[0].value)"},
+            {"op":"setSecret","name":"unknown","value":"\(needles[1].value)"}
+        ]}
+        """
+        let errOut = HomeSpeakerCommandLine.apply(errorBatch, seam: seam)
+        #expect(errOut.exitCode == 1)
+
+        let allOutputs = (setOut.stdout + setOut.stderr + stateOut.stdout + stateOut.stderr + errOut.stdout + errOut.stderr)
+            .joined(separator: "\n")
+        for needle in needles {
+            #expect(!allOutputs.contains(needle.value), "Secret for \(needle.name) leaked into CLI output")
+        }
+
+        // Clearing slack, beeper, and geminiKey must NOT modify config.json bytes
+        let configBeforeNonCourierClear = try Data(contentsOf: rig.configFile.url)
+        let clearNonCourier = """
+        {"contract_version":1,"operations":[
+            {"op":"setSecret","name":"slack","value":""},
+            {"op":"setSecret","name":"beeper","value":""},
+            {"op":"setSecret","name":"geminiKey","value":""}
+        ]}
+        """
+        let clearNonCourierOut = HomeSpeakerCommandLine.apply(clearNonCourier, seam: seam)
+        #expect(clearNonCourierOut.exitCode == 0)
+        let configAfterNonCourierClear = try Data(contentsOf: rig.configFile.url)
+        #expect(configAfterNonCourierClear == configBeforeNonCourierClear)
+    }
+
+    @Test("Probe: batch with valid set + setSecret + snooze followed by invalid op leaves config and secrets byte-identical")
+    func probeBatchWithSetSetSecretAndSnoozeFollowedByInvalidOpLeavesFilesByteIdentical() throws {
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+        try rig.seedGoldenFixture()
+        let seam = rig.makeSeam(program: .app)
+
+        let configBefore = try Data(contentsOf: rig.configFile.url)
+        let secretsBefore = try Data(contentsOf: rig.secrets.fileURL)
+        let canary = "DISTINCTIVE-BATCH-ROLLBACK-SECRET-7788" // gitleaks:allow
+
+        let payload = """
+        {"contract_version":1,"operations":[
+            {"op":"set","key":"speech_length","value":"full"},
+            {"op":"setSecret","name":"slack","value":"\(canary)"},
+            {"op":"snooze","minutes":30},
+            {"op":"snooze","minutes":241}
+        ]}
+        """
+        let out = HomeSpeakerCommandLine.apply(payload, seam: seam)
+        #expect(out.exitCode == 1)
+        let joined = (out.stdout + out.stderr).joined(separator: "\n")
+        #expect(!joined.contains(canary))
+
+        let parsed = try #require(JSONSerialization.jsonObject(with: Data(out.stdout[0].utf8)) as? [String: Any])
+        #expect(parsed["ok"] as? Bool == false)
+        let error = try #require(parsed["error"] as? [String: Any])
+        #expect(error["code"] as? String == "out_of_range")
+        #expect(error["op_index"] as? Int == 3)
+
+        let configAfter = try Data(contentsOf: rig.configFile.url)
+        let secretsAfter = try Data(contentsOf: rig.secrets.fileURL)
+        #expect(configAfter == configBefore)
+        #expect(secretsAfter == secretsBefore)
+    }
+
+    @Test("Probe: snooze accepts exact boundaries 1 and 240 in --state and importAntigravity refuses unparseable files")
+    func probeSnoozeBoundariesOneAndTwoFortyAndImportAntigravityUnparseable() throws {
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+        try rig.seedGoldenFixture()
+
+        let tokensURL = rig.agentHome.appendingPathComponent(".gemini/antigravity/mcp_oauth_tokens.json")
+        try FileManager.default.createDirectory(at: tokensURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        var seam = rig.makeSeam(program: .app)
+        seam.antigravityTokensURL = tokensURL
+
+        // Boundary 1 minute -> 2026-11-10T23:16:00Z
+        let s1 = HomeSpeakerCommandLine.apply(#"{"contract_version":1,"operations":[{"op":"snooze","minutes":1}]}"#, seam: seam)
+        #expect(s1.exitCode == 0)
+        let st1 = try #require(JSONSerialization.jsonObject(with: Data(HomeSpeakerCommandLine.state(seam: seam).stdout[0].utf8)) as? [String: Any])
+        #expect(st1["snooze_until"] as? String == "2026-11-10T23:16:00Z")
+
+        // Boundary 240 minutes -> 2026-11-11T03:15:00Z
+        let s240 = HomeSpeakerCommandLine.apply(#"{"contract_version":1,"operations":[{"op":"snooze","minutes":240}]}"#, seam: seam)
+        #expect(s240.exitCode == 0)
+        let st240 = try #require(JSONSerialization.jsonObject(with: Data(HomeSpeakerCommandLine.state(seam: seam).stdout[0].utf8)) as? [String: Any])
+        #expect(st240["snooze_until"] as? String == "2026-11-11T03:15:00Z")
+
+        // Corrupt JSON token file -> no_antigravity_tokens, secrets.json untouched
+        try Data("{not valid json".utf8).write(to: tokensURL)
+        let secretsBefore = try Data(contentsOf: rig.secrets.fileURL)
+        let badJSONOut = HomeSpeakerCommandLine.apply(#"{"contract_version":1,"operations":[{"op":"importAntigravity"}]}"#, seam: seam)
+        #expect(badJSONOut.exitCode == 1)
+        let badErr = try #require((JSONSerialization.jsonObject(with: Data(badJSONOut.stdout[0].utf8)) as? [String: Any])?["error"] as? [String: Any])
+        #expect(badErr["code"] as? String == "no_antigravity_tokens")
+        #expect(try Data(contentsOf: rig.secrets.fileURL) == secretsBefore)
+
+        // Valid JSON missing Google Home MCP entry -> no_antigravity_tokens
+        try Data(#"{"https://other.example.com/mcp":{}}"#.utf8).write(to: tokensURL)
+        let missingKeyOut = HomeSpeakerCommandLine.apply(#"{"contract_version":1,"operations":[{"op":"importAntigravity"}]}"#, seam: seam)
+        #expect(missingKeyOut.exitCode == 1)
+        let missingErr = try #require((JSONSerialization.jsonObject(with: Data(missingKeyOut.stdout[0].utf8)) as? [String: Any])?["error"] as? [String: Any])
+        #expect(missingErr["code"] as? String == "no_antigravity_tokens")
+        #expect(try Data(contentsOf: rig.secrets.fileURL) == secretsBefore)
     }
 }
