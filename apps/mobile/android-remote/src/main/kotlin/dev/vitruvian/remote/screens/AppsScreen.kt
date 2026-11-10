@@ -191,6 +191,7 @@ private fun ColumnScope.DashboardsPane(state: RemoteState) {
           text = entry.name,
           tone = if (state.module == entry.id) TagTone.Accent else TagTone.Outline,
           onClick = { state.selectModule(entry.id) },
+          selected = state.module == entry.id,
           minHeight = CHIP_HEIGHT,
           contentPadding = PaddingValues(horizontal = Space.s4),
       )

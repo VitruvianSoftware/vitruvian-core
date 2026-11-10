@@ -320,6 +320,10 @@ private fun SettingsButton(onClick: () -> Unit) {
           },
       contentAlignment = Alignment.Center,
   ) {
-    VIcon(path = VitruvianIcons.SETTINGS, color = Vitruvian.textDim)
+    VIcon(
+        path = VitruvianIcons.SETTINGS,
+        color = Vitruvian.textDim,
+        contentDescription = null,
+    )
   }
 }

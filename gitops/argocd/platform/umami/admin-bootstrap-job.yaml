@@ -115,6 +115,16 @@ spec:
                   site = c.json;
                   console.log('created website');
                 }
+                const rec = await call('POST', `/api/websites/${site.id}/recorder`, {
+                  replayEnabled: true,
+                  heatmapEnabled: true,
+                  sampleRate: 1,
+                  heatmapSampleRate: 1,
+                  maskLevel: 'moderate',
+                  maxDuration: 300000,
+                  blockSelector: '',
+                }, token);
+                if (rec.status === 200) console.log('enabled replays and heatmaps at 100% sample rate');
                 console.log(`WEBSITE_ID ${domain} ${site.id}`);
               })().catch(e => { console.error(e.message); process.exit(1); });
           resources:

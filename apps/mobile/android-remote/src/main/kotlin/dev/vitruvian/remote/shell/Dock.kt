@@ -104,26 +104,47 @@ private fun TrackpadDock(state: RemoteState, modifier: Modifier = Modifier) {
       )
       Box(modifier = Modifier.weight(1f))
       Row(horizontalArrangement = Arrangement.spacedBy(Space.s2)) {
-        VButton("⏮", state::previousTrack, modifier = Modifier.weight(1f))
+        VButton(
+            label = "⏮",
+            onClick = state::previousTrack,
+            modifier = Modifier.weight(1f),
+            contentDescription = "Previous track",
+        )
         VButton(
             label = if (state.playing) "⏸" else "▶",
             onClick = state::togglePlay,
             modifier = Modifier.weight(1f),
             variant = ButtonVariant.Primary,
+            contentDescription = if (state.playing) "Pause" else "Play",
         )
-        VButton("⏭", state::nextTrack, modifier = Modifier.weight(1f))
+        VButton(
+            label = "⏭",
+            onClick = state::nextTrack,
+            modifier = Modifier.weight(1f),
+            contentDescription = "Next track",
+        )
       }
       Row(
           horizontalArrangement = Arrangement.spacedBy(Space.s2),
           verticalAlignment = Alignment.CenterVertically,
       ) {
-        VButton("−", { state.nudgeVolume(-VOLUME_STEP) }, modifier = Modifier.width(44.dp))
+        VButton(
+            label = "−",
+            onClick = { state.nudgeVolume(-VOLUME_STEP) },
+            modifier = Modifier.width(44.dp),
+            contentDescription = "Volume down",
+        )
         Meter(
             fraction = state.volume / 100f,
             modifier = Modifier.weight(1f),
             height = 8.dp,
         )
-        VButton("+", { state.nudgeVolume(VOLUME_STEP) }, modifier = Modifier.width(44.dp))
+        VButton(
+            label = "+",
+            onClick = { state.nudgeVolume(VOLUME_STEP) },
+            modifier = Modifier.width(44.dp),
+            contentDescription = "Volume up",
+        )
       }
     }
   }
