@@ -44,6 +44,7 @@ import androidx.core.content.ContextCompat
 import dev.vitruvian.remote.bridge.BridgeHub
 import dev.vitruvian.remote.bridge.BridgePermissions
 import dev.vitruvian.remote.bridge.PhoneBridgeService
+import dev.vitruvian.remote.bridge.PhoneTools
 import dev.vitruvian.remote.hid.BluetoothHidTransport
 import dev.vitruvian.remote.hid.HidAction
 import dev.vitruvian.remote.state.BridgeControl
@@ -139,6 +140,7 @@ public class MainActivity : ComponentActivity() {
             phoneClipboard = SystemClipboard(this),
             notifier = ShadeNotifier(this),
             bridge = ServiceBridge(),
+            openUrl = { url -> PhoneTools.openUrl(this, url).isSuccess },
         )
     BridgeHub.addListener(bridgeListener)
     pushBridgeStatus()

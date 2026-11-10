@@ -628,13 +628,15 @@ public object PhoneTools {
         }
       }
 
+  /** Opens a URI on the phone via [Intent.ACTION_VIEW]. */
+  public fun openUrl(context: Context, target: String): Result<Unit> = runCatching {
+    context.startActivity(
+        Intent(Intent.ACTION_VIEW, Uri.parse(target)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+  }
+
   private fun openUri(context: Context, target: String): ToolResult =
-      runCatching {
-            context.startActivity(
-                Intent(Intent.ACTION_VIEW, Uri.parse(target))
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            ToolResult(JSONObject().put("opened", target).toString())
-          }
+      openUrl(context, target)
+          .map { ToolResult(JSONObject().put("opened", target).toString()) }
           .getOrElse { ToolResult("nothing on this phone opens $target: ${it.message}", true) }
 
   private fun openPackage(context: Context, target: String): ToolResult {

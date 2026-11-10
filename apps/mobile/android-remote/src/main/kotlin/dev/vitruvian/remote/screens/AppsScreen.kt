@@ -747,6 +747,7 @@ private fun ModuleListRow(row: ModuleRow) {
               label = promptLabel(row),
               onClick = { promptOpen = true },
               modifier = inline,
+              enabled = row.textPrompt?.enabled != false,
               variant = ButtonVariant.Secondary,
               contentPadding = PaddingValues(horizontal = Space.s4),
           )
@@ -776,7 +777,8 @@ private fun ModuleListRow(row: ModuleRow) {
   val onRowClick: (() -> Unit)? =
       when {
         toggle != null && toggle.enabled -> ({ toggle.onToggle(!toggle.checked) })
-        placement == Derive.RowControl.InlinePrompt -> ({ promptOpen = true })
+        placement == Derive.RowControl.InlinePrompt ->
+            row.textPrompt?.takeIf { it.enabled }?.let { { promptOpen = true } }
         placement == Derive.RowControl.InlineAction && row.actions.size == 1 ->
             row.actions.single().takeIf { it.enabled }?.onClick
         else -> row.onSelect
@@ -819,6 +821,7 @@ private fun ModuleListRow(row: ModuleRow) {
         VButton(
             label = promptLabel(row),
             onClick = { promptOpen = true },
+            enabled = row.textPrompt.enabled,
             variant = ButtonVariant.Secondary,
         )
       }
@@ -835,7 +838,7 @@ private fun ModuleListRow(row: ModuleRow) {
     )
   }
   val prompt = row.textPrompt
-  if (promptOpen && prompt != null) {
+  if (promptOpen && prompt != null && prompt.enabled) {
     RowPromptDialog(prompt = prompt, onDismiss = { promptOpen = false })
   }
 }
@@ -998,28 +1001,6 @@ private fun ColumnScope.GalleryPane(state: RemoteState) {
           variant = if (installed) ButtonVariant.Secondary else ButtonVariant.Primary,
           enabled = installed || why == null,
       )
-    }
-  }
-  Box(modifier = Modifier.sectionPadding()) {
-    Plate(modifier = Modifier.fillMaxWidth(), dashed = true) {
-      Row(
-          modifier = Modifier.padding(Space.s4).fillMaxWidth(),
-          verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.spacedBy(Space.s4),
-      ) {
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(Space.s2),
-        ) {
-          Label("Sideload a module")
-          VText(
-              text = "Paste a manifest URL or a Grafana panel link.",
-              style = VitruvianType.body.copy(fontSize = VitruvianType.mono.fontSize),
-              color = colors.textDim,
-          )
-        }
-        VButton("Add by URL", { state.sideload() })
-      }
     }
   }
 }
