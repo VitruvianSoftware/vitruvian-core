@@ -72,6 +72,7 @@ struct InboxRowView<HoverMenu: View>: View {
     @ViewBuilder let hoverMenu: () -> HoverMenu
     @State private var localHovered = false
     @Environment(\.appearancePreferences) private var appearanceEnv
+    @Environment(\.themeAccentColor) private var themeAccent
     @Environment(\.redactNamesAndPictures) private var redactsNamesAndPictures
 
     @Environment(\.courierZoomMultiplier) private var zoom
@@ -105,7 +106,7 @@ struct InboxRowView<HoverMenu: View>: View {
             if isSelecting {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.title3)
-                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                    .foregroundStyle(isSelected ? themeAccent : Color.secondary)
                     .accessibilityLabel(isSelected ? String(localized: "Selected") : String(localized: "Not selected"))
             }
             avatar
@@ -135,7 +136,7 @@ struct InboxRowView<HoverMenu: View>: View {
                     secondLine
                         .font(.system(size: previewPointSize))
                         .foregroundStyle(.secondary)
-                        .lineLimit(style.compact ? 1 : 2)
+                        .lineLimit(1)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     HStack(alignment: .center, spacing: 5) {
                         marks
@@ -214,10 +215,10 @@ struct InboxRowView<HoverMenu: View>: View {
                     .symbolEffect(.variableColor.iterative, options: .repeating)
                 Text(typing)
             }
-            .foregroundStyle(Color.accentColor)
+            .foregroundStyle(themeAccent)
         } else if row.request {
             Text(String(localized: "Message request"))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(themeAccent)
         } else if !row.draft.isEmpty {
             Text(String(localized: "Draft:")).foregroundStyle(.red) + Text(verbatim: " " + row.draft)
         } else if style.showPreviews {
@@ -235,7 +236,7 @@ struct InboxRowView<HoverMenu: View>: View {
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.white)
                 .frame(width: 18, height: 18)
-                .background(Circle().fill(Color.accentColor))
+                .background(Circle().fill(themeAccent))
                 .help(String(localized: "You were mentioned"))
                 .accessibilityLabel(String(localized: "You were mentioned"))
         }
@@ -262,11 +263,11 @@ struct InboxRowView<HoverMenu: View>: View {
                 .foregroundStyle(.white)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 1)
-                .background(Capsule().fill(row.muted || row.mutedBy != .none ? Color.gray.opacity(0.55) : Color.accentColor))
+                .background(Capsule().fill(row.muted || row.mutedBy != .none ? Color.gray.opacity(0.55) : themeAccent))
                 .accessibilityLabel(String(localized: "\(row.unread) unread"))
         } else if row.showsUnreadDot || (!style.showUnreadCounts && row.isUnread) {
             Circle()
-                .fill(row.muted || row.mutedBy != .none ? Color.gray.opacity(0.55) : Color.accentColor)
+                .fill(row.muted || row.mutedBy != .none ? Color.gray.opacity(0.55) : themeAccent)
                 .frame(width: 9, height: 9)
                 .help(row.markedUnread ? String(localized: "Marked as unread") : String(localized: "Unread"))
                 .accessibilityLabel(String(localized: "Unread"))
@@ -331,6 +332,7 @@ private struct AccountTag: View {
 /// delivered, two in the accent colour for seen.
 struct PreviewTickMark: View {
     let tick: PreviewTick
+    @Environment(\.themeAccentColor) private var themeAccent
 
     var body: some View {
         ZStack(alignment: .leading) {
@@ -340,7 +342,7 @@ struct PreviewTickMark: View {
             }
         }
         .font(.system(size: 9, weight: tick == .seen ? .heavy : .semibold))
-        .foregroundStyle(tick == .seen ? Color.accentColor : Color.secondary)
+        .foregroundStyle(tick == .seen ? themeAccent : Color.secondary)
         .frame(width: tick.marks == 1 ? 10 : 14, alignment: .leading)
         .help(tick.label)
         .accessibilityElement()
@@ -350,15 +352,19 @@ struct PreviewTickMark: View {
 
 /// A chat's newest message as its row shows it; search's chat rows show it the same way.
 enum ChatPreview {
-    /// "↳ in thread: " when the newest message stays in its thread, "You: " when it is mine, then the kind's label
-    /// if it is not text, then the text.
+    /// "You, in a thread: " (or "<Name>, in a thread: ") when the newest message stays in its thread, "You: " when it
+    /// is mine outside a thread, then the kind's label if it is not text, then the text.
     static func text(_ row: InboxRow) -> Text {
         var text = Text(verbatim: "")
-        if let prefix = row.previewThreadPrefix { text = text + Text(prefix) }
-        if row.previewMine { text = text + Text(String(localized: "You: ")) }
+        if let prefix = row.previewThreadPrefix {
+            text = text + Text(prefix)
+        } else if row.previewMine {
+            text = text + Text(String(localized: "You: "))
+        }
         if let label = row.previewLabel { text = text + Text(label.title).italic() }
-        if !row.preview.isEmpty {
-            text = text + Text(verbatim: row.previewLabel == nil ? row.preview : " " + row.preview)
+        let body = row.previewBody
+        if !body.isEmpty {
+            text = text + Text(verbatim: row.previewLabel == nil ? body : " " + body)
         }
         return text
     }
