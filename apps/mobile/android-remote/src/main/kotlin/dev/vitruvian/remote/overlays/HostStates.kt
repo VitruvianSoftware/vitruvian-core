@@ -25,6 +25,8 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import dev.vitruvian.design.Banner
@@ -34,9 +36,13 @@ import dev.vitruvian.design.EmptyState
 import dev.vitruvian.design.Space
 import dev.vitruvian.design.VButton
 import dev.vitruvian.remote.state.Derive
+import dev.vitruvian.remote.state.Format
 import dev.vitruvian.remote.state.RemoteState
 import dev.vitruvian.remote.state.Screen
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+private const val OFFLINE_BANNER_TICK_MS = 30_000L
 
 /**
  * The unreachable-host banner.
@@ -48,12 +54,17 @@ import kotlinx.coroutines.launch
 public fun ColumnScope.OfflineBanner(state: RemoteState) {
   if (!state.isOffline) return
   val scope = rememberCoroutineScope()
+  val now by
+      produceState(initialValue = System.currentTimeMillis()) {
+        while (true) {
+          delay(OFFLINE_BANNER_TICK_MS)
+          value = System.currentTimeMillis()
+        }
+      }
   Banner(
       tone = BannerTone.Warn,
       label = "${state.hostShortName} unreachable",
-      body =
-          "Last seen 4 m ago via Tailscale. Controls are disabled; " +
-              "dashboards show the last sample.",
+      body = Format.offlineBannerBody(state.lastSampleAt, now),
       modifier = Modifier.padding(start = Space.s4, end = Space.s4, top = Space.s4),
   ) {
     VButton("Wake on LAN", { scope.launch { state.wakeHost() } })

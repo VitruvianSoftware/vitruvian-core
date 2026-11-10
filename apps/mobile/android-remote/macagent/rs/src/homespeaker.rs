@@ -1161,8 +1161,24 @@ pub fn derive_extension_data_folder(program: &str) -> String {
         .into_owned()
 }
 
+#[repr(C)]
+struct LibcTm {
+    tm_sec: i32,
+    tm_min: i32,
+    tm_hour: i32,
+    tm_mday: i32,
+    tm_mon: i32,
+    tm_year: i32,
+    tm_wday: i32,
+    tm_yday: i32,
+    tm_isdst: i32,
+    tm_gmtoff: isize,
+    tm_zone: *const std::ffi::c_char,
+}
+
 extern "C" {
     fn flock(fd: i32, operation: i32) -> i32;
+    fn localtime_r(timep: *const i64, result: *mut LibcTm) -> *mut LibcTm;
 }
 
 const LOCK_EX: i32 = 2;
@@ -1310,7 +1326,31 @@ fn parse_loose_hhmm(s: &str) -> Option<(u32, u32)> {
     Some((h, m))
 }
 
-pub fn is_quiet_hours_active(enabled: bool, start: &str, end: &str, now: Timestamp) -> bool {
+pub fn local_minutes_since_midnight(now: Timestamp) -> u32 {
+    let secs: i64 = now.unix_seconds();
+    let mut tm = LibcTm {
+        tm_sec: 0,
+        tm_min: 0,
+        tm_hour: 0,
+        tm_mday: 0,
+        tm_mon: 0,
+        tm_year: 0,
+        tm_wday: 0,
+        tm_yday: 0,
+        tm_isdst: 0,
+        tm_gmtoff: 0,
+        tm_zone: std::ptr::null(),
+    };
+    // SAFETY: `secs` and `tm` are valid pointers for the duration of the call.
+    let ptr = unsafe { localtime_r(&secs, &mut tm) };
+    if !ptr.is_null() && (0..=23).contains(&tm.tm_hour) && (0..=59).contains(&tm.tm_min) {
+        return (tm.tm_hour as u32) * 60 + (tm.tm_min as u32);
+    }
+    let day_secs = secs.rem_euclid(86_400) as u32;
+    day_secs / 60
+}
+
+pub fn is_quiet_hours_active_at_minutes(enabled: bool, start: &str, end: &str, now_m: u32) -> bool {
     if !enabled {
         return false;
     }
@@ -1322,8 +1362,6 @@ pub fn is_quiet_hours_active(enabled: bool, start: &str, end: &str, now: Timesta
     };
     let start_m = sh * 60 + sm;
     let end_m = eh * 60 + em;
-    let day_secs = now.unix_secs().rem_euclid(86_400) as u32;
-    let now_m = (day_secs / 3600) * 60 + ((day_secs % 3600) / 60);
     if start_m == end_m {
         return false;
     }
@@ -1332,6 +1370,36 @@ pub fn is_quiet_hours_active(enabled: bool, start: &str, end: &str, now: Timesta
     } else {
         now_m >= start_m || now_m < end_m
     }
+}
+
+pub fn is_quiet_hours_active(enabled: bool, start: &str, end: &str, now: Timestamp) -> bool {
+    if !enabled {
+        return false;
+    }
+    is_quiet_hours_active_at_minutes(enabled, start, end, local_minutes_since_midnight(now))
+}
+
+pub fn preview_say_args(voice: &str, text: &str) -> Vec<Vec<String>> {
+    let mut candidates = Vec::new();
+    let trimmed = voice.trim();
+    if !trimmed.is_empty() && trimmed != "default" && trimmed != DEFAULT_LOCAL_VOICE {
+        let name = voice_name(trimmed);
+        if !name.is_empty() && name != trimmed {
+            candidates.push(vec!["-v".to_string(), name, text.to_string()]);
+        }
+        candidates.push(vec![
+            "-v".to_string(),
+            trimmed.to_string(),
+            text.to_string(),
+        ]);
+    } else if trimmed == DEFAULT_LOCAL_VOICE {
+        let name = voice_name(trimmed);
+        if !name.is_empty() {
+            candidates.push(vec!["-v".to_string(), name, text.to_string()]);
+        }
+    }
+    candidates.push(vec![text.to_string()]);
+    candidates
 }
 
 pub fn default_voice_list() -> Vec<HomeSpeakerVoice> {
@@ -2472,13 +2540,13 @@ impl HomeSpeaker {
             .get("quiet_hours_start")
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty())
-            .unwrap_or("00:00")
+            .unwrap_or("22:00")
             .to_string();
         let q_end = cfg
             .get("quiet_hours_end")
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty())
-            .unwrap_or("06:00")
+            .unwrap_or("07:00")
             .to_string();
         let q_active = is_quiet_hours_active(q_enabled, &q_start, &q_end, Timestamp::now());
         st.quiet_hours = HomeSpeakerQuiet {
@@ -2608,9 +2676,8 @@ impl HomeSpeaker {
         st.poll_interval = monitor
             .and_then(|m| m.get("poll_interval_seconds"))
             .and_then(|v| v.as_f64())
-            .filter(|&pi| pi >= 5.0)
-            .map(|pi| pi as i64)
-            .unwrap_or(30);
+            .map(|pi| (pi as i64).clamp(5, 300))
+            .unwrap_or(15);
 
         st.agents = self.inspect_agents(&p);
         st.legacy_launch_agent = file_exists(&self.legacy_plist_path);
@@ -2620,46 +2687,18 @@ impl HomeSpeaker {
         st
     }
 
-    fn say_preview_voice(
-        &self,
-        p: &HomeSpeakerProfile,
-        engine: &str,
-        voice: &str,
-    ) -> Result<(), ApplyError> {
+    fn say_preview_voice(&self, voice: &str) -> Result<(), ApplyError> {
         const PREVIEW_TEXT: &str = "This is how announcements will sound.";
-        let run_say = self.say.as_ref().unwrap_or(&self.run);
-        let bin_str = p.binary.to_string_lossy().into_owned();
-        let args = vec!["--say".to_string(), PREVIEW_TEXT.to_string()];
-        if engine == "gemini" {
-            let history_before = fs::read(&p.history_path).ok();
-            let res = run_say(SAY_LIMIT, &bin_str, &args);
-            if let Some(hb) = history_before {
-                let _ = fs::write(&p.history_path, hb);
-            }
-            return res
-                .map(|_| ())
-                .map_err(|e| ApplyError::Internal(format!("preview voice failed: {e}")));
-        }
-        let name = voice_name(voice);
-        if !name.is_empty() && name != voice {
-            let say_args = vec!["-v".to_string(), name, PREVIEW_TEXT.to_string()];
-            if (self.run)(Duration::from_secs(10), "say", &say_args).is_ok() {
-                return Ok(());
+        let mut last_err = String::new();
+        for say_args in preview_say_args(voice, PREVIEW_TEXT) {
+            match (self.run)(Duration::from_secs(10), "say", &say_args) {
+                Ok(_) => return Ok(()),
+                Err(e) => last_err = e,
             }
         }
-        if !voice.is_empty() {
-            let say_args = vec![
-                "-v".to_string(),
-                voice.to_string(),
-                PREVIEW_TEXT.to_string(),
-            ];
-            if (self.run)(Duration::from_secs(10), "say", &say_args).is_ok() {
-                return Ok(());
-            }
-        }
-        run_say(SAY_LIMIT, &bin_str, &args)
-            .map(|_| ())
-            .map_err(|e| ApplyError::Internal(format!("preview voice failed: {e}")))
+        Err(ApplyError::Internal(format!(
+            "preview voice failed: {last_err}"
+        )))
     }
 
     fn write_active_door(&self, door: &str) -> Result<(), ApplyError> {
@@ -3029,11 +3068,11 @@ impl HomeSpeaker {
             fresh.insert("quiet_hours_enabled".to_string(), JsonValue::Bool(false));
             fresh.insert(
                 "quiet_hours_start".to_string(),
-                JsonValue::String("00:00".to_string()),
+                JsonValue::String("22:00".to_string()),
             );
             fresh.insert(
                 "quiet_hours_end".to_string(),
-                JsonValue::String("06:00".to_string()),
+                JsonValue::String("07:00".to_string()),
             );
             fresh.insert("announce_claude_code".to_string(), JsonValue::Bool(true));
             fresh.insert("announce_antigravity".to_string(), JsonValue::Bool(true));
@@ -3151,13 +3190,7 @@ impl HomeSpeaker {
                 .filter(|s| !s.trim().is_empty())
                 .unwrap_or(DEFAULT_LOCAL_VOICE)
                 .to_string();
-            let engine = cfg
-                .get("local_engine")
-                .and_then(|v| v.as_str())
-                .filter(|s| !s.is_empty())
-                .unwrap_or("apple")
-                .to_string();
-            self.say_preview_voice(&p, &engine, &voice)?;
+            self.say_preview_voice(&voice)?;
             changed.push("preview_voice".to_string());
         }
         if let Some(pm) = u.pause_media {
@@ -3360,9 +3393,9 @@ impl HomeSpeaker {
             changed.push(format!("chat_monitor.gws_account={}", ga.trim()));
         }
         if let Some(pi) = u.poll_interval {
-            if pi < 5 {
+            if !(5..=300).contains(&pi) {
                 return Err(ApplyError::BadRequest(
-                    "poll_interval must be at least 5 seconds".to_string(),
+                    "poll_interval must be between 5 and 300 seconds".to_string(),
                 ));
             }
             let monitor = ensure_chat_monitor(&mut cfg);
@@ -4753,14 +4786,233 @@ mod tests {
 
     #[test]
     fn test_home_speaker_is_quiet_hours_active() {
-        let now_late = Timestamp::parse_rfc3339("2026-01-01T23:30:00Z").unwrap();
-        let now_early = Timestamp::parse_rfc3339("2026-01-01T04:30:00Z").unwrap();
-        let now_day = Timestamp::parse_rfc3339("2026-01-01T14:00:00Z").unwrap();
-        assert!(!is_quiet_hours_active(false, "22:00", "06:00", now_late));
-        assert!(is_quiet_hours_active(true, "22:00", "06:00", now_late));
-        assert!(is_quiet_hours_active(true, "22:00", "06:00", now_early));
-        assert!(!is_quiet_hours_active(true, "22:00", "06:00", now_day));
-        assert!(is_quiet_hours_active(true, "13:00", "15:00", now_day));
+        // Pure minute-of-day tests: overnight window (22:00-07:00) and same-day window (13:00-15:00).
+        assert!(!is_quiet_hours_active_at_minutes(
+            false,
+            "22:00",
+            "07:00",
+            23 * 60 + 30
+        ));
+        assert!(is_quiet_hours_active_at_minutes(
+            true,
+            "22:00",
+            "07:00",
+            23 * 60 + 30
+        ));
+        assert!(is_quiet_hours_active_at_minutes(
+            true,
+            "22:00",
+            "07:00",
+            4 * 60 + 30
+        ));
+        assert!(!is_quiet_hours_active_at_minutes(
+            true,
+            "22:00",
+            "07:00",
+            12 * 60
+        ));
+        assert!(is_quiet_hours_active_at_minutes(
+            true,
+            "22:00",
+            "07:00",
+            22 * 60
+        ));
+        assert!(!is_quiet_hours_active_at_minutes(
+            true,
+            "22:00",
+            "07:00",
+            7 * 60
+        ));
+        assert!(is_quiet_hours_active_at_minutes(
+            true,
+            "13:00",
+            "15:00",
+            14 * 60
+        ));
+        assert!(!is_quiet_hours_active_at_minutes(
+            true,
+            "13:00",
+            "15:00",
+            12 * 60
+        ));
+    }
+
+    #[test]
+    fn test_home_speaker_local_minutes_since_midnight_dst_in_los_angeles() {
+        extern "C" {
+            fn tzset();
+        }
+        static TZ_LOCK: Mutex<()> = Mutex::new(());
+        let _guard = TZ_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+        struct TzRestore(Option<std::ffi::OsString>);
+        impl Drop for TzRestore {
+            fn drop(&mut self) {
+                match &self.0 {
+                    Some(prev) => std::env::set_var("TZ", prev),
+                    None => std::env::remove_var("TZ"),
+                }
+                // SAFETY: `tzset` updates libc's timezone globals from `TZ`.
+                unsafe { tzset() };
+            }
+        }
+
+        let _restore = TzRestore(std::env::var_os("TZ"));
+        // A POSIX rule, not the zone name: Linux CI containers ship no tzdata,
+        // and an unknown zone name silently falls back to UTC. This rule is
+        // America/Los_Angeles's (second Sunday of March to first Sunday of
+        // November) and needs no zoneinfo files on either macOS or Linux.
+        std::env::set_var("TZ", "PST8PDT,M3.2.0,M11.1.0");
+        // SAFETY: `tzset` updates libc's timezone globals from `TZ`.
+        unsafe { tzset() };
+
+        // One day before the 2026-03-08 spring-forward in America/Los_Angeles:
+        // 2026-03-07T14:30:00Z = 06:30 PST (UTC-8), 390 minutes since midnight.
+        let before_dst = Timestamp::from_unix_secs(1_772_893_800);
+        assert_eq!(local_minutes_since_midnight(before_dst), 6 * 60 + 30);
+        assert!(is_quiet_hours_active(true, "22:00", "07:00", before_dst));
+
+        // One day after the 2026-03-08 spring-forward in America/Los_Angeles:
+        // 2026-03-09T14:30:00Z = 07:30 PDT (UTC-7), 450 minutes since midnight.
+        let after_dst = Timestamp::from_unix_secs(1_773_066_600);
+        assert_eq!(local_minutes_since_midnight(after_dst), 7 * 60 + 30);
+        assert!(!is_quiet_hours_active(true, "22:00", "07:00", after_dst));
+    }
+
+    #[test]
+    fn test_home_speaker_quiet_hours_defaults_and_reset() {
+        let (h, _, phone, _) = new_test_home_speaker(true);
+        let mut cfg = h.read_config().unwrap();
+        cfg.remove("quiet_hours_start");
+        cfg.remove("quiet_hours_end");
+        h.write_config(&cfg).unwrap();
+
+        let st = h.state();
+        assert_eq!(st.quiet_hours.start, "22:00");
+        assert_eq!(st.quiet_hours.end, "07:00");
+
+        let r = h.handle_set(
+            &post_req("/v1/homespeaker", r#"{"reset_settings":true}"#),
+            &phone,
+        );
+        assert_eq!(r.status, 200);
+        let st_reset = h.state();
+        assert_eq!(st_reset.quiet_hours.start, "22:00");
+        assert_eq!(st_reset.quiet_hours.end, "07:00");
+        let cfg_reset = h.read_config().unwrap();
+        assert_eq!(
+            cfg_reset.get("quiet_hours_start").and_then(|v| v.as_str()),
+            Some("22:00")
+        );
+        assert_eq!(
+            cfg_reset.get("quiet_hours_end").and_then(|v| v.as_str()),
+            Some("07:00")
+        );
+    }
+
+    #[test]
+    fn test_home_speaker_poll_interval_default_and_clamp() {
+        let (h, _, phone, _) = new_test_home_speaker(true);
+        assert_eq!(h.state().poll_interval, 15);
+
+        let mut cfg = h.read_config().unwrap();
+        cfg.insert(
+            "chat_monitor".to_string(),
+            JsonValue::parse(r#"{"poll_interval_seconds":999}"#).unwrap(),
+        );
+        h.write_config(&cfg).unwrap();
+        assert_eq!(h.state().poll_interval, 300);
+
+        cfg.insert(
+            "chat_monitor".to_string(),
+            JsonValue::parse(r#"{"poll_interval_seconds":1}"#).unwrap(),
+        );
+        h.write_config(&cfg).unwrap();
+        assert_eq!(h.state().poll_interval, 5);
+
+        let r_ok = h.handle_set(
+            &post_req("/v1/homespeaker", r#"{"poll_interval":300}"#),
+            &phone,
+        );
+        assert_eq!(r_ok.status, 200);
+        assert_eq!(h.state().poll_interval, 300);
+
+        for bad in [
+            r#"{"poll_interval":4}"#,
+            r#"{"poll_interval":301}"#,
+            r#"{"poll_interval":0}"#,
+        ] {
+            let r_bad = h.handle_set(&post_req("/v1/homespeaker", bad), &phone);
+            assert_eq!(r_bad.status, 400, "body={bad}");
+        }
+    }
+
+    #[test]
+    fn test_home_speaker_preview_voice_plays_locally_only() {
+        assert_eq!(
+            preview_say_args(DEFAULT_LOCAL_VOICE, "Hi"),
+            vec![
+                vec!["-v".to_string(), "Aaron".to_string(), "Hi".to_string()],
+                vec!["Hi".to_string()],
+            ]
+        );
+        assert_eq!(
+            preview_say_args("default", "Hi"),
+            vec![vec!["Hi".to_string()]]
+        );
+        assert_eq!(
+            preview_say_args("com.apple.voice.premium.en-US.Zoe", "Hi"),
+            vec![
+                vec!["-v".to_string(), "Zoe".to_string(), "Hi".to_string()],
+                vec![
+                    "-v".to_string(),
+                    "com.apple.voice.premium.en-US.Zoe".to_string(),
+                    "Hi".to_string()
+                ],
+                vec!["Hi".to_string()],
+            ]
+        );
+
+        let (mut h, _, phone, _) = new_test_home_speaker(true);
+        let calls: Arc<Mutex<Vec<(String, Vec<String>)>>> = Arc::new(Mutex::new(Vec::new()));
+        let calls_c = calls.clone();
+        // Simulate macOS `say` rejecting `-v Aaron` for the Siri bundle voice, succeeding on default `say`.
+        h.run = Arc::new(move |_limit, name, args| {
+            calls_c
+                .lock()
+                .unwrap()
+                .push((name.to_string(), args.to_vec()));
+            if name == "say" && args.first().map(|s| s.as_str()) == Some("-v") {
+                return Err("Voice `Aaron' not found.".to_string());
+            }
+            Ok((String::new(), String::new()))
+        });
+        let say_broadcast_called = Arc::new(AtomicU64::new(0));
+        let say_c = say_broadcast_called.clone();
+        h.say = Some(Arc::new(move |_limit, _name, _args| {
+            say_c.fetch_add(1, Ordering::SeqCst);
+            Ok((String::new(), String::new()))
+        }));
+
+        let r = h.handle_set(
+            &post_req("/v1/homespeaker", r#"{"preview_voice":true}"#),
+            &phone,
+        );
+        assert_eq!(r.status, 200);
+        assert_eq!(
+            say_broadcast_called.load(Ordering::SeqCst),
+            0,
+            "preview must never invoke HomeSpeaker --say broadcast"
+        );
+        let recorded = calls.lock().unwrap().clone();
+        assert!(recorded.iter().all(|(bin, _)| bin == "say"));
+        assert_eq!(
+            recorded.last().unwrap(),
+            &(
+                "say".to_string(),
+                vec!["This is how announcements will sound.".to_string()]
+            )
+        );
     }
 
     #[test]

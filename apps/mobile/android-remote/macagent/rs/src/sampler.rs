@@ -1817,9 +1817,16 @@ mod tests {
     #[test]
     fn read_cpu_ticks_reads_advancing_counters() {
         let a = read_cpu_ticks().expect("host_statistics(HOST_CPU_LOAD_INFO) failed");
-        thread::sleep(Duration::from_millis(50));
-        let b = read_cpu_ticks().expect("host_statistics(HOST_CPU_LOAD_INFO) failed");
-        let (u, s, i) = cpu_percent_from_ticks(a, b).expect("no ticks elapsed in 50 ms");
+        let mut pct = None;
+        for _ in 0..40 {
+            thread::sleep(Duration::from_millis(50));
+            let b = read_cpu_ticks().expect("host_statistics(HOST_CPU_LOAD_INFO) failed");
+            if let Some(res) = cpu_percent_from_ticks(a, b) {
+                pct = Some(res);
+                break;
+            }
+        }
+        let (u, s, i) = pct.expect("no ticks elapsed in 2 s");
         assert!(
             (99.9..=100.1).contains(&(u + s + i)),
             "{u} + {s} + {i} != 100"

@@ -68,6 +68,7 @@ public data class AgentMetrics(
     val cpuSpeedLimitPercent: Int,
     val uptimeSeconds: Long,
     val unavailable: Set<String>,
+    val sampledAt: String = "",
 )
 
 /** `GET /v1/host`: the slow-changing identity of the machine. */
@@ -415,8 +416,8 @@ public data class AgentHomeSpeaker(
     val localVoiceName: String,
     val structureName: String,
     val quietHoursEnabled: Boolean,
-    val quietHoursStart: String,
-    val quietHoursEnd: String,
+    val quietHoursStart: String = HomeSpeakerWire.DEFAULT_QUIET_START,
+    val quietHoursEnd: String = HomeSpeakerWire.DEFAULT_QUIET_END,
     val targets: List<AgentSpeakerTarget>,
     val last: AgentLastBroadcast?,
     /**
@@ -482,7 +483,7 @@ public data class AgentHomeSpeaker(
     val gwsInstalled: Boolean = false,
     val gwsAccount: String = "",
     val googleChatSource: String = "auto",
-    val pollInterval: Int = 30,
+    val pollInterval: Int = HomeSpeakerWire.DEFAULT_POLL_INTERVAL,
     val agents: List<AgentHookStatus> = emptyList(),
     val legacyLaunchAgent: Boolean = false,
     val customOAuthClientId: String = "",
@@ -935,9 +936,13 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
 
   /** `GET /v1/tv`: Sony Google TV state over wireless ADB. */
   public suspend fun tv(): AgentTv =
-      withContext(Dispatchers.IO) { parseTv(get("/v1/tv", readTimeoutMs = ACTION_TIMEOUT_MS)) }
+      withContext(Dispatchers.IO) {
+        parseTv(get(TvWire.STATE_PATH, readTimeoutMs = ACTION_TIMEOUT_MS))
+      }
 
-  /** `POST /v1/tv`: executes an ADB action on the Sony Google TV and returns refreshed state. */
+  /**
+   * `POST /v1/tv/act`: executes an ADB action on the Sony Google TV and returns refreshed state.
+   */
   public suspend fun actTv(
       action: String,
       target: String = "",
@@ -952,7 +957,7 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
               if (url.isNotEmpty()) put("url", url)
               if (address.isNotEmpty()) put("address", address)
             }
-        parseTv(post("/v1/tv", body.toString(), readTimeoutMs = ACTION_TIMEOUT_MS))
+        parseTv(post(TvWire.ACT_PATH, body.toString(), readTimeoutMs = ACTION_TIMEOUT_MS))
       }
 
   /** `HomeSpeaker --say` on the Mac: deliberate speech, so it overrides quiet hours. */
@@ -1369,6 +1374,7 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
           cpuSpeedLimitPercent = th.optInt("cpu_speed_limit_percent", 100),
           uptimeSeconds = o.optLong("uptime_seconds", 0L),
           unavailable = un?.keys()?.asSequence()?.toSet() ?: emptySet(),
+          sampledAt = o.optString("sampled_at"),
       )
     }
 
@@ -1461,8 +1467,8 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
           localVoiceName = o.optString("local_voice_name"),
           structureName = o.optString("structure_name"),
           quietHoursEnabled = quiet?.optBoolean("enabled", false) ?: false,
-          quietHoursStart = quiet?.optString("start").orEmpty(),
-          quietHoursEnd = quiet?.optString("end").orEmpty(),
+          quietHoursStart = sources.quietHoursStart,
+          quietHoursEnd = sources.quietHoursEnd,
           targets =
               o.optJSONArray("targets").mapObjects {
                 AgentSpeakerTarget(
@@ -1884,7 +1890,7 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
       )
     }
 
-    /** `GET /v1/tv` and `POST /v1/tv` response parser. */
+    /** `GET /v1/tv` and `POST /v1/tv/act` response parser. */
     public fun parseTv(json: String): AgentTv = TvWire.parse(json)
 
     /** `JSONArray` predates the collections API by two decades and iterates like it. */

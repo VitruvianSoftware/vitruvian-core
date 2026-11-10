@@ -527,10 +527,9 @@ private fun StreamPlate(state: RemoteState, module: ModuleDashboard) {
               modifier = Modifier.weight(1f),
           )
           VButton(
-              label = "Halt",
+              label = "Pause updates",
               onClick = { state.openDialog(DialogKind.Halt) },
               modifier = Modifier.weight(1f),
-              variant = ButtonVariant.Danger,
           )
         }
       }

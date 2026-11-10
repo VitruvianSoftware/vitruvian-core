@@ -842,6 +842,7 @@ mod tests {
             "/v1/containers",
             "/v1/k8s",
             "/v1/sessions",
+            "/v1/tv",
             "/healthz",
         ] {
             for method in ["POST", "PUT", "DELETE", "PATCH"] {
@@ -857,6 +858,32 @@ mod tests {
                 );
             }
         }
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_tv_get_only_and_act_route() {
+        let (_, store, srv, dir) = new_test_agent("tv-act-route");
+        let post_tv = HttpRequest::new_test("POST", "/v1/tv", r#"{"action":"toggle_power"}"#);
+        let resp_tv = srv.handle(&post_tv);
+        assert_eq!(resp_tv.status, 405);
+        assert_eq!(resp_tv.header("Allow"), Some("GET, HEAD"));
+
+        let post_act_unpaired =
+            HttpRequest::new_test("POST", "/v1/tv/act", r#"{"action":"toggle_power"}"#);
+        assert_eq!(srv.handle(&post_act_unpaired).status, 401);
+
+        let tok = paired_token(&store);
+        let post_act_paired = HttpRequest::new_test("POST", "/v1/tv/act", r#"{"action":""}"#)
+            .with_header("Authorization", &format!("Bearer {tok}"));
+        // The route exists and accepts a paired caller. What it answers next
+        // depends on the host: 400 for the empty action where adb is installed,
+        // 503 on a CI runner with no adb. Either proves the act route is wired.
+        let status = srv.handle(&post_act_paired).status;
+        assert!(
+            ![401, 404, 405].contains(&status),
+            "POST /v1/tv/act with a token should reach the TV handler, got {status}"
+        );
         let _ = fs::remove_dir_all(&dir);
     }
 

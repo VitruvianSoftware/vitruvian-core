@@ -578,6 +578,10 @@ public class RemoteState(
   public var agentPrs: AgentList<AgentPr>? by mutableStateOf(null)
     private set
 
+  /** ISO-8601 timestamp of the last successful metrics sample from the active Mac. */
+  public var lastSampleAt: String by mutableStateOf("")
+    private set
+
   public var agentArgo: AgentList<AgentArgoApp>? by mutableStateOf(null)
     private set
 
@@ -1696,12 +1700,12 @@ public class RemoteState(
               ("prs" to simulatedPrsDashboard()) +
               ("homespeaker" to simulatedHomeSpeakerDashboard()) +
               ("tv" to simulatedTvDashboard())
-      if (!isLive) return mocked
+      val ids = MockHost.gallery.map { it.id }
+      if (!isLive) return ids.associateWith { id -> mocked[id] ?: unwiredDashboard(id) }
       // Every installed module gets a dashboard in live mode, including the
       // ones nothing on this Mac feeds. Dropping those would leave the chip
       // row looking arbitrary; showing the mock would be a fabrication. They
       // get an honest empty one instead.
-      val ids = MockHost.gallery.map { it.id }
       return ids.associateWith { id -> liveDashboard(id) ?: unwiredDashboard(id) }
     }
 
@@ -2287,8 +2291,10 @@ public class RemoteState(
                       hs!!.quietHoursEnabled -> "${hs.quietHoursStart}–${hs.quietHoursEnd}"
                       else -> "off"
                     },
-                    if (available && hs!!.quietHoursEnabled) "no automatic speech"
-                    else "always speaks"),
+                    Derive.quietHoursMetricSub(
+                        enabled = available && hs!!.quietHoursEnabled,
+                        active = available && hs!!.quietHoursActive,
+                        start = hs?.quietHoursStart.orEmpty())),
             ),
         streamLabel = "Last announcement",
         lines = lines,
@@ -2346,7 +2352,7 @@ public class RemoteState(
             ModuleRow(
                 "No speakers found yet",
                 "open HomeSpeaker on the Mac and run Find speakers",
-                "0",
+                "",
                 StatusTone.Warn))
         return
       }
@@ -2386,6 +2392,37 @@ public class RemoteState(
     // nothing will be spoken.
     val speakHome = hs.speakHome
     val speakLocal = hs.speakLocal
+    val geminiSpeaks =
+        speakHome != null &&
+            speakLocal != null &&
+            Derive.geminiSpeaks(
+                speakLocal, hs.speakPhone, speakHome, hs.homeCastVoice, hs.localEngine)
+    fun addGeminiApiKeyRow() {
+      val hasKey = hs.hasGeminiKey
+      add(
+          ModuleRow(
+              title = "Gemini API key",
+              subtitle = if (hasKey) "API key saved on Mac" else "Tap to paste Gemini API key",
+              trailing = if (hasKey) "saved" else "missing",
+              tone = if (hasKey) StatusTone.Ok else StatusTone.Warn,
+              textPrompt =
+                  RowTextPrompt(
+                      title = "Gemini API key",
+                      hasValue = hasKey,
+                      placeholder = "AIzaSy...",
+                      secret = true,
+                      submitLabel = "Save Key",
+                      clearLabel = if (hasKey) "Clear Key" else null,
+                      onClear =
+                          if (hasKey) {
+                            { setHomeSpeaker("clear Gemini API key", geminiApiKey = "") }
+                          } else null,
+                      onSubmit = { key ->
+                        setHomeSpeaker("save Gemini API key", geminiApiKey = key)
+                      },
+                  ),
+          ))
+    }
     if (speakHome != null && speakLocal != null) {
       val silent = !speakHome && !speakLocal && hs.speakPhone != true
       add(
@@ -2500,10 +2537,12 @@ public class RemoteState(
                     setHomeSpeaker("this Mac ${if (next) "on" else "off"}", speakLocal = next)
                   },
           ))
-      if (speakLocal) {
+      if (Derive.showsMacVoice(speakLocal, hs.localEngine)) {
         add(
             ModuleRow(
-                title = "Mac voice",
+                title =
+                    if (hs.localEngine.equals("gemini", ignoreCase = true)) "Fallback Mac voice"
+                    else "Mac voice",
                 subtitle = hs.localVoiceName.ifBlank { "System default" },
                 trailing = hs.localVoiceName.ifBlank { "default" },
                 actions =
@@ -2606,7 +2645,7 @@ public class RemoteState(
                           }
                     },
             ))
-        if (hs.localEngine == "gemini") {
+        if (geminiSpeaks) {
           val custom =
               hs.geminiVoice == "voice_vaoo7ayczx69" ||
                   hs.geminiVoice == "voice_o1be80ujj8bb" ||
@@ -2637,30 +2676,7 @@ public class RemoteState(
                                     }
                               },
               ))
-          val hasKey = hs.hasGeminiKey
-          add(
-              ModuleRow(
-                  title = "Gemini API key",
-                  subtitle = if (hasKey) "API key saved on Mac" else "Tap to paste Gemini API key",
-                  trailing = if (hasKey) "saved" else "missing",
-                  tone = if (hasKey) StatusTone.Ok else StatusTone.Warn,
-                  textPrompt =
-                      RowTextPrompt(
-                          title = "Gemini API Key",
-                          hasValue = hasKey,
-                          placeholder = "AIzaSy...",
-                          secret = true,
-                          submitLabel = "Save Key",
-                          clearLabel = if (hasKey) "Clear Key" else null,
-                          onClear =
-                              if (hasKey) {
-                                { setHomeSpeaker("clear Gemini API key", geminiApiKey = "") }
-                              } else null,
-                          onSubmit = { key ->
-                            setHomeSpeaker("save Gemini API key", geminiApiKey = key)
-                          },
-                      ),
-              ))
+          addGeminiApiKeyRow()
         }
       }
     } else {
@@ -2764,6 +2780,15 @@ public class RemoteState(
                           }
                     },
             ))
+        if (Derive.showsStyleGeminiKey(
+            allCodingAgentsOff =
+                Derive.allCodingAgentsOff(
+                    hs.announceClaudeCode, hs.announceAntigravity, hs.announceOpenCode),
+            announcementStyle = hs.announcementStyle,
+            styleModel = hs.styleModel,
+            geminiSpeaks = geminiSpeaks)) {
+          addGeminiApiKeyRow()
+        }
       }
     }
     if (homeRelevant) {
@@ -3226,14 +3251,19 @@ public class RemoteState(
               "Chat apps",
               buildList {
                 val monitorRunning = hs.monitorRunning
+                val runtimeError = Derive.chatDiagnosticError(hs.chatRuntimeError)
+                val pollRel = Format.relativeTime(hs.lastPollAt, System.currentTimeMillis())
                 add(
                     ModuleRow(
                         title = "Chat monitor",
-                        subtitle =
-                            if (monitorRunning) "Monitoring chat apps in background"
-                            else "Stopped · background monitor is not running",
+                        subtitle = Derive.chatMonitorSubtitle(monitorRunning, pollRel),
                         trailing = if (monitorRunning) "running" else "stopped",
-                        tone = if (monitorRunning) StatusTone.Ok else StatusTone.Neutral,
+                        tone =
+                            when {
+                              runtimeError != null -> StatusTone.Warn
+                              monitorRunning -> StatusTone.Ok
+                              else -> StatusTone.Neutral
+                            },
                         toggle =
                             RowToggle(checked = monitorRunning, enabled = paired) { next ->
                               setHomeSpeaker(
@@ -3241,6 +3271,15 @@ public class RemoteState(
                                   chatMonitorAction = if (next) "start" else "stop")
                             },
                     ))
+                if (runtimeError != null) {
+                  add(
+                      ModuleRow(
+                          title = "Chat monitor error",
+                          subtitle = runtimeError,
+                          trailing = "error",
+                          tone = StatusTone.Warn,
+                      ))
+                }
                 add(
                     sourceRow("Slack", slack, "new messages are read aloud", "not watched") {
                       setHomeSpeaker("Slack ${if (it) "on" else "off"}", slackEnabled = it)
@@ -3250,9 +3289,7 @@ public class RemoteState(
                   add(
                       ModuleRow(
                           title = "Slack user token",
-                          subtitle =
-                              if (hasToken) "Token saved on Mac"
-                              else "Tap to paste user token (xoxp-...)",
+                          subtitle = Derive.slackTokenSubtitle(hasToken, hs.slackIdentity),
                           trailing = if (hasToken) "saved" else "missing",
                           tone = if (hasToken) StatusTone.Ok else StatusTone.Warn,
                           textPrompt =
@@ -3284,7 +3321,9 @@ public class RemoteState(
                   add(
                       ModuleRow(
                           title = "Google Chat source",
-                          subtitle = "which backend reads Google Chat",
+                          subtitle =
+                              Derive.googleChatSourceSubtitle(
+                                  hs.activeGoogleChatBackend, monitorRunning),
                           trailing = Derive.googleChatSourceLabel(currentSource),
                           tone = StatusTone.Neutral,
                           choices =
@@ -3299,6 +3338,39 @@ public class RemoteState(
                                           googleChatSource = src)
                                     }
                               },
+                      ))
+                  val chatDiag =
+                      Derive.googleChatAccountDiag(
+                          source = currentSource,
+                          activeBackend = hs.activeGoogleChatBackend,
+                          accountEmail = hs.accountEmail,
+                          gwsAccount = hs.gwsAccount,
+                          hasChatAccess = hs.hasChatAccess,
+                          gwsInstalled = hs.gwsInstalled,
+                      )
+                  add(
+                      ModuleRow(
+                          title = "Google Chat account",
+                          subtitle = chatDiag.subtitle,
+                          trailing = chatDiag.trailing,
+                          tone = if (chatDiag.healthy) StatusTone.Ok else StatusTone.Warn,
+                          textPrompt =
+                              if (currentSource != "api") {
+                                RowTextPrompt(
+                                    title = "gws account",
+                                    initialValue = hs.gwsAccount,
+                                    placeholder = "you@gmail.com",
+                                    submitLabel = "Save account",
+                                    clearLabel = if (hs.gwsAccount.isNotBlank()) "Clear" else null,
+                                    onClear =
+                                        if (hs.gwsAccount.isNotBlank()) {
+                                          { setHomeSpeaker("clear gws account", gwsAccount = "") }
+                                        } else null,
+                                    onSubmit = { acct ->
+                                      setHomeSpeaker("gws account $acct", gwsAccount = acct)
+                                    },
+                                )
+                              } else null,
                       ))
                 }
                 add(
@@ -3835,7 +3907,7 @@ public class RemoteState(
 
   // --- Sony Google TV ------------------------------------------------------
 
-  /** Sony Google TV dashboard driven over wireless ADB (`GET/POST /v1/tv`). */
+  /** Sony Google TV dashboard driven over wireless ADB (`GET /v1/tv`, `POST /v1/tv/act`). */
   private fun tvDashboard(): ModuleDashboard {
     val tv = agentTv
     val address = tv?.address?.ifBlank { TvWire.DEFAULT_ADDRESS } ?: TvWire.DEFAULT_ADDRESS
@@ -4706,7 +4778,13 @@ public class RemoteState(
 
   /** Only installed modules that actually ship a dashboard get a chip. */
   public val moduleChips: List<GalleryEntry>
-    get() = MockHost.gallery.filter { it.id in installed && it.id in moduleDashboards }
+    get() {
+      val visible =
+          Derive.visibleModuleIds(
+                  MockHost.gallery.map { it.id }, installed.toSet(), moduleDashboards.keys)
+              .toSet()
+      return MockHost.gallery.filter { it.id in visible }
+    }
 
   public val currentModule: ModuleDashboard
     get() = moduleDashboards[module] ?: moduleDashboards.getValue("claude")
@@ -5514,6 +5592,7 @@ public class RemoteState(
     // A refusal belongs to the Mac that made it.
     pairRejected = false
     agentMetrics = null
+    lastSampleAt = ""
     agentHost = null
     agentError = ""
     agentProcesses = null
@@ -5655,6 +5734,9 @@ public class RemoteState(
 
   private fun applyAgentMetrics(m: AgentMetrics) {
     agentMetrics = m
+    lastSampleAt =
+        m.sampledAt.takeIf { Format.relativeTime(it, System.currentTimeMillis()).isNotBlank() }
+            ?: java.time.Instant.now().toString()
     if (m.cpuReady) {
       cpu.removeAt(0)
       cpu.add(m.cpuBusyPercent.roundToInt().coerceIn(0, 100))
@@ -6288,7 +6370,7 @@ public class RemoteState(
       }
       DialogKind.Halt -> {
         agentPaused = true
-        log("warn", "claude code · halted")
+        log("info", "claude code · updates paused on this phone")
       }
       // Merging is the one PR action that cannot be undone from a phone, so
       // it is the one that comes through here.
@@ -7084,14 +7166,12 @@ public data class DialogSpec(
               )
           DialogKind.Halt ->
               DialogSpec(
-                  kicker = "Destructive · agent",
-                  destructive = true,
-                  title = "Halt Claude Code?",
-                  body =
-                      "Kills the running CLI process. Uncommitted edits in " +
-                          "worktree/auth stay on disk.",
-                  action = "Halt",
-                  word = "halt".takeIf { confirmDestructive },
+                  kicker = "Claude Code · this phone",
+                  destructive = false,
+                  title = "Pause updates?",
+                  body = "Stops this phone refreshing Claude Code; nothing on the Mac is stopped.",
+                  action = "Pause updates",
+                  word = null,
               )
           // Typed like Restart, for the same reason: a merge lands on a
           // branch other people are working from and no button on this phone

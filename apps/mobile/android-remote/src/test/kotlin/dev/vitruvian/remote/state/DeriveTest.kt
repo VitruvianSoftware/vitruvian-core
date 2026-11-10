@@ -1284,4 +1284,190 @@ public class DeriveTest {
     val away = simulate(view(PollPage.Home, foreground = false))
     assertEquals(mapOf(PollSource.Metrics to 2, PollSource.Host to 1), away)
   }
+
+  @Test
+  public fun `quiet hours metric sub-line distinguishes disabled, active and scheduled`() {
+    assertEquals(
+        "always speaks",
+        Derive.quietHoursMetricSub(enabled = false, active = false, start = "22:00"))
+    assertEquals(
+        "always speaks",
+        Derive.quietHoursMetricSub(enabled = false, active = true, start = "22:00"))
+    assertEquals(
+        "quiet now", Derive.quietHoursMetricSub(enabled = true, active = true, start = "22:00"))
+    assertEquals(
+        "quiet from 22:00",
+        Derive.quietHoursMetricSub(enabled = true, active = false, start = "22:00"))
+    assertEquals(
+        "quiet from 22:00", Derive.quietHoursMetricSub(enabled = true, active = false, start = ""))
+  }
+
+  @Test
+  public fun `voice row show-hide rules match HomeSpeaker SettingsView`() {
+    // Mac voice shows whenever This Mac is on (labelled "Fallback Mac voice" under Gemini).
+    assertTrue(Derive.showsMacVoice(speakLocal = true, localEngine = "apple"))
+    assertTrue(Derive.showsMacVoice(speakLocal = true, localEngine = "gemini"))
+    assertFalse(Derive.showsMacVoice(speakLocal = false, localEngine = "apple"))
+    assertFalse(Derive.showsMacVoice(speakLocal = false, localEngine = "gemini"))
+
+    // usesVoiceEngine: local, phone, or home when casting.
+    assertTrue(Derive.usesVoiceEngine(speakLocal = true, speakPhone = false, speakHome = false))
+    assertTrue(Derive.usesVoiceEngine(speakLocal = false, speakPhone = true, speakHome = false))
+    assertFalse(
+        Derive.usesVoiceEngine(
+            speakLocal = false, speakPhone = false, speakHome = true, homeCastVoice = false))
+    assertTrue(
+        Derive.usesVoiceEngine(
+            speakLocal = false, speakPhone = false, speakHome = true, homeCastVoice = true))
+
+    // geminiSpeaks: usesVoiceEngine && localEngine == "gemini".
+    assertTrue(
+        Derive.geminiSpeaks(
+            speakLocal = true,
+            speakPhone = false,
+            speakHome = false,
+            homeCastVoice = false,
+            localEngine = "gemini"))
+    assertFalse(
+        Derive.geminiSpeaks(
+            speakLocal = true,
+            speakPhone = false,
+            speakHome = false,
+            homeCastVoice = false,
+            localEngine = "apple"))
+    assertFalse(
+        Derive.geminiSpeaks(
+            speakLocal = false,
+            speakPhone = false,
+            speakHome = true,
+            homeCastVoice = false,
+            localEngine = "gemini"))
+
+    // showsStyleGeminiKey: Apple TTS + Gemini rewrites shows the Gemini API key under Style model,
+    // while Gemini TTS shows it under Speakers instead (not duplicated).
+    assertTrue(
+        Derive.showsStyleGeminiKey(
+            allCodingAgentsOff = false,
+            announcementStyle = "briefing",
+            styleModel = "gemini",
+            geminiSpeaks = false))
+    assertFalse(
+        Derive.showsStyleGeminiKey(
+            allCodingAgentsOff = false,
+            announcementStyle = "briefing",
+            styleModel = "gemini",
+            geminiSpeaks = true))
+    assertFalse(
+        Derive.showsStyleGeminiKey(
+            allCodingAgentsOff = false,
+            announcementStyle = "verbatim",
+            styleModel = "gemini",
+            geminiSpeaks = false))
+    assertFalse(
+        Derive.showsStyleGeminiKey(
+            allCodingAgentsOff = true,
+            announcementStyle = "briefing",
+            styleModel = "gemini",
+            geminiSpeaks = false))
+    assertFalse(
+        Derive.showsStyleGeminiKey(
+            allCodingAgentsOff = false,
+            announcementStyle = "briefing",
+            styleModel = "apple",
+            geminiSpeaks = false))
+  }
+
+  @Test
+  public fun `chat monitor diagnostics and Google Chat account row surface errors and accounts`() {
+    assertEquals(
+        "Monitoring chat apps · last checked 2 min ago",
+        Derive.chatMonitorSubtitle(running = true, lastPollRelative = "2 min ago"))
+    assertEquals(
+        "Monitoring chat apps in background",
+        Derive.chatMonitorSubtitle(running = true, lastPollRelative = ""))
+    assertEquals(
+        "Stopped · background monitor is not running",
+        Derive.chatMonitorSubtitle(running = false, lastPollRelative = "2 min ago"))
+
+    assertEquals(null, Derive.chatDiagnosticError("   "))
+    assertEquals("Slack auth_revoked", Derive.chatDiagnosticError(" Slack auth_revoked "))
+
+    assertEquals(
+        "Token saved on Mac · signed in as @james",
+        Derive.slackTokenSubtitle(hasToken = true, slackIdentity = "@james"))
+    assertEquals(
+        "Token saved on Mac", Derive.slackTokenSubtitle(hasToken = true, slackIdentity = ""))
+    assertEquals(
+        "Tap to paste user token (xoxp-...)",
+        Derive.slackTokenSubtitle(hasToken = false, slackIdentity = "@james"))
+
+    assertEquals(
+        "currently reading via the Google API",
+        Derive.googleChatSourceSubtitle(activeBackend = "api", monitorRunning = true))
+    assertEquals(
+        "currently reading via gws CLI",
+        Derive.googleChatSourceSubtitle(activeBackend = "gws", monitorRunning = true))
+    assertEquals(
+        "which backend reads Google Chat",
+        Derive.googleChatSourceSubtitle(activeBackend = "api", monitorRunning = false))
+
+    val apiOk =
+        Derive.googleChatAccountDiag(
+            source = "api",
+            activeBackend = "api",
+            accountEmail = "james@abrial.ai",
+            gwsAccount = "",
+            hasChatAccess = true,
+            gwsInstalled = false)
+    assertTrue(apiOk.healthy)
+    assertEquals("james@abrial.ai", apiOk.account)
+    assertEquals("james@abrial.ai · Chat access granted", apiOk.subtitle)
+    assertEquals("signed in", apiOk.trailing)
+
+    val apiMissing =
+        Derive.googleChatAccountDiag(
+            source = "api",
+            activeBackend = "",
+            accountEmail = "james@abrial.ai",
+            gwsAccount = "",
+            hasChatAccess = false,
+            gwsInstalled = true)
+    assertFalse(apiMissing.healthy)
+    assertEquals("james@abrial.ai · Chat access not granted on Mac", apiMissing.subtitle)
+
+    val gwsOk =
+        Derive.googleChatAccountDiag(
+            source = "gws",
+            activeBackend = "gws",
+            accountEmail = "james@gmail.com",
+            gwsAccount = "james@work.com",
+            hasChatAccess = false,
+            gwsInstalled = true)
+    assertTrue(gwsOk.healthy)
+    assertEquals("james@work.com", gwsOk.account)
+    assertEquals("james@work.com · via gws CLI", gwsOk.subtitle)
+    assertEquals("gws", gwsOk.trailing)
+  }
+
+  @Test
+  public fun `visible module ids retain installed modules including unwired ones in simulated mode`() {
+    val galleryIds =
+        listOf(
+            "claude",
+            "antigravity",
+            "prs",
+            "homelab",
+            "lima",
+            "docker",
+            "grafana",
+            "ollama",
+            "homespeaker",
+            "tv",
+            "xcode")
+    val installed = setOf("claude", "docker", "ollama", "grafana", "xcode")
+    val availableDashboards = galleryIds.toSet()
+    assertEquals(
+        listOf("claude", "docker", "grafana", "ollama", "xcode"),
+        Derive.visibleModuleIds(galleryIds, installed, availableDashboards))
+  }
 }

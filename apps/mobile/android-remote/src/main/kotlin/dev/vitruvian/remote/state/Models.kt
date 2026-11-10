@@ -236,9 +236,9 @@ public data class RowAction(
 /**
  * A one-line input with a button, under a module's stream.
  *
- * The Claude module's prompt box is wired to `sendModulePrompt` and carries Pause / Halt with it,
- * which is right for a coding agent and wrong for anything else. A module that wants to SAY
- * something -- HomeSpeaker's announce box -- supplies this instead. Null means no box.
+ * The Claude module's prompt box is wired to `sendModulePrompt` and carries Pause / Pause updates
+ * with it, which is right for a coding agent and wrong for anything else. A module that wants to
+ * SAY something -- HomeSpeaker's announce box -- supplies this instead. Null means no box.
  */
 public data class ModuleComposer(
     val placeholder: String,

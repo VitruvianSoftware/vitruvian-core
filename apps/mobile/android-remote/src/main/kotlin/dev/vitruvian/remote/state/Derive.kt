@@ -462,6 +462,54 @@ public object Derive {
       homeCastVoice: Boolean = false,
   ): Boolean = speakLocal || speakPhone == true || speakHome == true
 
+  /**
+   * Whether any active output actually synthesizes with the local voice engine: This Mac, This
+   * phone, or Google Home when casting the selected voice. Matches Models.swift `usesVoiceEngine`.
+   */
+  public fun usesVoiceEngine(
+      speakLocal: Boolean,
+      speakPhone: Boolean?,
+      speakHome: Boolean?,
+      homeCastVoice: Boolean = false,
+  ): Boolean = speakLocal || speakPhone == true || (speakHome == true && homeCastVoice)
+
+  /**
+   * Whether the Mac voice picker is shown: whenever This Mac is enabled (labelled "Fallback Mac
+   * voice" when Gemini TTS is the engine, and "Mac voice" otherwise). Matches SettingsView.swift
+   * (`if configManager.config.effectiveSpeakLocal`).
+   */
+  public fun showsMacVoice(speakLocal: Boolean, localEngine: String = ""): Boolean = speakLocal
+
+  /**
+   * Whether Gemini TTS is actively used by an output, so the Gemini voice picker and Gemini API key
+   * appear in the Speakers section. Matches Models.swift `showsGeminiVoice` / `geminiSpeaks`.
+   */
+  public fun geminiSpeaks(
+      speakLocal: Boolean,
+      speakPhone: Boolean?,
+      speakHome: Boolean?,
+      homeCastVoice: Boolean = false,
+      localEngine: String,
+  ): Boolean =
+      usesVoiceEngine(speakLocal, speakPhone, speakHome, homeCastVoice) &&
+          localEngine.equals("gemini", ignoreCase = true)
+
+  /**
+   * Whether the Gemini API key row appears under Style model: when at least one coding agent is on,
+   * the style is not verbatim, the rewrite model is Gemini, and the key is not already shown under
+   * the Speakers section (`!geminiSpeaks`). Matches SettingsView.swift:511-525.
+   */
+  public fun showsStyleGeminiKey(
+      allCodingAgentsOff: Boolean,
+      announcementStyle: String,
+      styleModel: String,
+      geminiSpeaks: Boolean,
+  ): Boolean =
+      !allCodingAgentsOff &&
+          !announcementStyle.equals("verbatim", ignoreCase = true) &&
+          styleModel.equals("gemini", ignoreCase = true) &&
+          !geminiSpeaks
+
   /** The 48 half-hour slots for quiet hours dropdowns ("00:00" to "23:30"). */
   public val quietHoursSlots: List<String> =
       (0..23).flatMap { h ->
@@ -491,6 +539,18 @@ public object Derive {
         !enabled -> "off · plays at any hour"
         active -> "active until $end · what you type still plays"
         else -> "quiet from $start to $end"
+      }
+
+  /** Sub-line for the Quiet hours top metric card on the HomeSpeaker dashboard. */
+  public fun quietHoursMetricSub(
+      enabled: Boolean,
+      active: Boolean,
+      start: String,
+  ): String =
+      when {
+        !enabled -> "always speaks"
+        active -> "quiet now"
+        else -> "quiet from ${start.ifBlank { HomeSpeakerWire.DEFAULT_QUIET_START }}"
       }
 
   /** Volume dropdown choices from 0% to 100% in 10% steps. */
@@ -524,6 +584,175 @@ public object Derive {
         "gws" -> "gws CLI"
         else -> "Automatic"
       }
+
+  /** Subtitle for the Chat monitor row, surfacing the last poll relative time when running. */
+  public fun chatMonitorSubtitle(running: Boolean, lastPollRelative: String = ""): String =
+      when {
+        running && lastPollRelative.isNotBlank() ->
+            "Monitoring chat apps · last checked $lastPollRelative"
+        running -> "Monitoring chat apps in background"
+        else -> "Stopped · background monitor is not running"
+      }
+
+  /** Trimmed runtime error from the chat monitor, or null when healthy. */
+  public fun chatDiagnosticError(runtimeError: String): String? =
+      runtimeError.trim().takeIf { it.isNotEmpty() }
+
+  /** Subtitle for the Slack token row, surfacing the signed-in Slack identity when known. */
+  public fun slackTokenSubtitle(hasToken: Boolean, slackIdentity: String = ""): String {
+    if (!hasToken) return "Tap to paste user token (xoxp-...)"
+    val user = slackIdentity.trim()
+    return if (user.isNotEmpty()) "Token saved on Mac · signed in as $user"
+    else "Token saved on Mac"
+  }
+
+  /** Subtitle for the Google Chat source row, showing the active backend when running. */
+  public fun googleChatSourceSubtitle(
+      activeBackend: String,
+      monitorRunning: Boolean,
+  ): String {
+    val via =
+        when (activeBackend.trim().lowercase(Locale.ROOT)) {
+          "api" -> "the Google API"
+          "gws" -> "gws CLI"
+          else -> ""
+        }
+    return if (monitorRunning && via.isNotEmpty()) {
+      "currently reading via $via"
+    } else {
+      "which backend reads Google Chat"
+    }
+  }
+
+  /** Signed-in Google Chat account and backend readiness diagnostic. */
+  public data class GoogleChatAccountDiag(
+      val account: String,
+      val subtitle: String,
+      val trailing: String,
+      val healthy: Boolean,
+  )
+
+  /**
+   * Derives the Google Chat account and access status row from the fields reported by
+   * `/v1/homespeaker`.
+   */
+  public fun googleChatAccountDiag(
+      source: String,
+      activeBackend: String,
+      accountEmail: String,
+      gwsAccount: String,
+      hasChatAccess: Boolean,
+      gwsInstalled: Boolean,
+  ): GoogleChatAccountDiag {
+    val effectiveSource =
+        activeBackend.trim().lowercase(Locale.ROOT).takeIf { it == "api" || it == "gws" }
+            ?: source.trim().lowercase(Locale.ROOT)
+    val apiEmail = accountEmail.trim()
+    val cliEmail = gwsAccount.trim()
+    val email =
+        when (effectiveSource) {
+          "gws" -> cliEmail.ifEmpty { apiEmail }
+          "api" -> apiEmail.ifEmpty { cliEmail }
+          else -> apiEmail.ifEmpty { cliEmail }
+        }
+    return when (effectiveSource) {
+      "gws" ->
+          if (!gwsInstalled) {
+            GoogleChatAccountDiag(
+                account = email,
+                subtitle =
+                    if (email.isNotEmpty()) "$email · gws CLI not installed on Mac"
+                    else "gws CLI not installed on Mac",
+                trailing = "no gws",
+                healthy = false,
+            )
+          } else if (email.isNotEmpty()) {
+            GoogleChatAccountDiag(
+                account = email,
+                subtitle = "$email · via gws CLI",
+                trailing = "gws",
+                healthy = true,
+            )
+          } else {
+            GoogleChatAccountDiag(
+                account = "",
+                subtitle = "gws CLI installed · default account",
+                trailing = "gws",
+                healthy = true,
+            )
+          }
+      "api" ->
+          if (!hasChatAccess) {
+            GoogleChatAccountDiag(
+                account = email,
+                subtitle =
+                    if (email.isNotEmpty()) "$email · Chat access not granted on Mac"
+                    else "Chat access not granted on Mac",
+                trailing = "no access",
+                healthy = false,
+            )
+          } else if (email.isNotEmpty()) {
+            GoogleChatAccountDiag(
+                account = email,
+                subtitle = "$email · Chat access granted",
+                trailing = "signed in",
+                healthy = true,
+            )
+          } else {
+            GoogleChatAccountDiag(
+                account = "",
+                subtitle = "Chat access granted on Mac",
+                trailing = "signed in",
+                healthy = true,
+            )
+          }
+      else ->
+          when {
+            hasChatAccess && email.isNotEmpty() ->
+                GoogleChatAccountDiag(
+                    account = email,
+                    subtitle = "$email · Chat access granted",
+                    trailing = "signed in",
+                    healthy = true,
+                )
+            gwsInstalled && email.isNotEmpty() ->
+                GoogleChatAccountDiag(
+                    account = email,
+                    subtitle = "$email · via gws CLI",
+                    trailing = "gws",
+                    healthy = true,
+                )
+            hasChatAccess ->
+                GoogleChatAccountDiag(
+                    account = "",
+                    subtitle = "Chat access granted on Mac",
+                    trailing = "signed in",
+                    healthy = true,
+                )
+            gwsInstalled ->
+                GoogleChatAccountDiag(
+                    account = "",
+                    subtitle = "gws CLI installed · default account",
+                    trailing = "gws",
+                    healthy = true,
+                )
+            email.isNotEmpty() ->
+                GoogleChatAccountDiag(
+                    account = email,
+                    subtitle = "$email · Chat access or gws CLI needed on Mac",
+                    trailing = "not ready",
+                    healthy = false,
+                )
+            else ->
+                GoogleChatAccountDiag(
+                    account = "",
+                    subtitle = "grant Chat access or install gws CLI on Mac",
+                    trailing = "not set up",
+                    healthy = false,
+                )
+          }
+    }
+  }
 
   public fun agentHookStatusLabel(
       hookState: String,
@@ -1403,6 +1632,18 @@ public object Derive {
     val next = untilDue.minOrNull() ?: tickMs
     return next.coerceIn(MIN_POLL_WAIT_MS, maxOf(tickMs, MIN_POLL_WAIT_MS))
   }
+
+  /**
+   * Gallery module ids that appear in the Dashboards chip bar: every gallery module in [installed]
+   * that is present in [availableDashboards]. Both live and simulated modes populate
+   * [availableDashboards] for every gallery id (falling back to an unwired placeholder), so
+   * installing Docker, Ollama, Grafana, or Xcode in simulated mode keeps its tab visible.
+   */
+  public fun visibleModuleIds(
+      galleryIds: List<String>,
+      installed: Set<String>,
+      availableDashboards: Set<String>,
+  ): List<String> = galleryIds.filter { it in installed && it in availableDashboards }
 
   /** `0`, `6.4`, `31.6` -- `Format.decimal`'s shape; this library cannot depend on :format. */
   private fun decimal(value: Double): String {

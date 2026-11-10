@@ -351,7 +351,7 @@ public class PhoneBridgeService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
     return NotificationCompat.Builder(this, BridgeHub.CHANNEL_LINK)
-        .setSmallIcon(R.drawable.ic_tile_display_sleep)
+        .setSmallIcon(R.drawable.ic_notification)
         .setContentTitle(
             if (BridgeHub.linked) "Phone bridge · linked"
             else "Phone bridge · ${BridgeHub.linkStatus}")

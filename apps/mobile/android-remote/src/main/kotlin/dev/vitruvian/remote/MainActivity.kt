@@ -417,7 +417,7 @@ private class ShadeNotifier(private val context: Context) : Notifier {
         )
     val notification =
         NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_tile_display_sleep)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
