@@ -295,10 +295,10 @@ live in one place, HomeSpeaker, and the agent only carries them.
   (`/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker`) or the Vitruvian extension's
   `bin/tool` (same flags). The choice file is read on every request, never written.
 - **Minimum version.** Before the first `--state` or `--apply` of a request the agent runs
-  `<program> --version` (15 s bound). Below `1.40.0` (`MIN_HOME_SPEAKER_VERSION`) it never runs
+  `<program> --version` (15 s bound). Below `1.41.0` (`MIN_HOME_SPEAKER_VERSION`) it never runs
   `--state` or `--apply` (an older program would take them for unknown arguments and start its
   menu-bar app) and answers the **update sentence**:
-  `Update Home Speaker on <this Mac's name> (have X, need 1.40.0)`. `GET` returns it as
+  `Update Home Speaker on <this Mac's name> (have X, need 1.41.0)`. `GET` returns it as
   `{available:false, installed:true, reason:<sentence>}`; `POST` returns it as `409`.
 - **Not installed.** When the chosen program is missing, `GET` answers `installed:false,
   available:false` with `reason:"HomeSpeaker is not installed at <path>"` and nothing is run;
@@ -358,9 +358,9 @@ failure stops the rest and is reported. The program's flag commands (`--sign-in 
 A refusal from `--apply` (`{"ok":false,"error":{code,message,…}}`) returns `400 {"error":"<the
 program's message>"}`; `timed_out`, `apply_failed` and `config_unreadable` return `500`. A
 `not_chosen` refusal means the choice file the agent read was stale: it reads the file again and
-retries once on the program the refusal names (a second `not_chosen` is `409`). Two actions the
-phone offers have no `--apply` operation yet and are `400` (do them in Home Speaker on the Mac):
-`agent_hook_action` `disable-rival:…` and `remove-legacy-agent`.
+retries once on the program the refusal names (a second `not_chosen` is `409`). `agent_hook_action`
+`disable-rival…` is `agentHook` `disableRival` (agent `claude_code`) and `remove-legacy-agent` is
+`removeLegacyAgent`; both go alone, in the hook slot.
 
 Helper actions that do not touch Home Speaker's files run as before: clipboard speech
 (`speak_clipboard` → `--say`) and the voice preview (`preview_voice`, macOS `say` with the Mac voice
@@ -589,8 +589,8 @@ with none of the recognised fields is 400.
   from a coding agent's shell would otherwise have a replay held by that agent's switch. Removing
   them works on every HomeSpeaker version; passing `--source user` would be refused by one older
   than 1.23.
-- HomeSpeaker's CLI has no flag that leaves its history alone, so a replay is listed again, as
-  "Say". The agent no longer snapshots and restores a history file (it does not touch that file).
+- A replay runs `--say <text> --no-history` (Home Speaker 1.41+), so it is not listed again. The
+  agent no longer snapshots and restores a history file.
 
 The phone reads a reply without the five switches as an agent older than v1.10 and hides them. With
 no `recent` it falls back to `last` as a one-row list.
@@ -733,7 +733,7 @@ The update endpoint supports these additional configuration actions and secret u
 | `beeper_token` | string | `setSecret` `beeper` (empty string clears) |
 | `gemini_api_key` | string | `setSecret` `geminiKey` (empty string clears) |
 | `oauth_client_id`, `oauth_client_secret` | string | one `saveOAuthClient` (a secret needs an id in the same update) |
-| `agent_hook_action` | string | `agentHook` for `"install:<agent>"`, `"remove:<agent>"`, `"add-instruction:<agent>"` (`claude-code`, `antigravity`, `opencode`), sent alone after the plain batch. `"disable-rival:…"` and `"remove-legacy-agent"` have no operation yet and are 400 |
+| `agent_hook_action` | string | `agentHook` for `"install:<agent>"`, `"remove:<agent>"`, `"add-instruction:<agent>"` (`claude-code`, `antigravity`, `opencode`), sent alone after the plain batch. `"disable-rival…"` is `agentHook` `disableRival` and `"remove-legacy-agent"` is `removeLegacyAgent`, each alone |
 | `chat_monitor_action` | `"start"` \| `"stop"` | Starts or stops the chat monitor daemon |
 | `reset_settings` | bool | `reset` |
 
@@ -763,8 +763,9 @@ listed that app's networks; until it has, only the saved mutes are known) and `h
 ### `POST /v1/homespeaker/say` replay support
 
 Accepts `replay: true` or `replay_id: "<id>"`. A `replay_id` is looked up in the `recent` list of
-the program's `--state` (the agent reads no history file) and its text is said with `--say`; an id
-that is no longer there is 400. As noted in v1.10, a replay is listed again as "Say".
+the program's `--state` (the agent reads no history file) and its text is said with
+`--say <text> --no-history`, so a replay is not recorded again; an id that is no longer there is
+400. Plain `POST /v1/homespeaker/say` stays plain `--say <text>`.
 
 ---
 

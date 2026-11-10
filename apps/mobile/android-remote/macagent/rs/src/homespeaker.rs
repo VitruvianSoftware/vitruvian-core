@@ -44,7 +44,7 @@ pub const SAY_LIMIT: Duration = Duration::from_secs(90);
 pub const VOLUME_LIMIT: Duration = Duration::from_secs(45);
 /// The oldest Home Speaker that answers `--state` and `--apply`. Older programs would take them
 /// for unknown arguments and start their menu-bar app.
-pub const MIN_HOME_SPEAKER_VERSION: &str = "1.40.0";
+pub const MIN_HOME_SPEAKER_VERSION: &str = "1.41.0";
 /// Bounds on `--version` and `--state`.
 pub const VERSION_LIMIT: Duration = Duration::from_secs(15);
 pub const STATE_LIMIT: Duration = Duration::from_secs(15);
@@ -1918,7 +1918,11 @@ impl HomeSpeaker {
 
         let run = self.say.as_ref().unwrap_or(&self.run);
         let bin_str = p.binary.to_string_lossy().into_owned();
-        let args = vec!["--say".to_string(), text];
+        let mut args = vec!["--say".to_string(), text];
+        if is_replay {
+            // A replay is not a new announcement: keep it out of the history.
+            args.push("--no-history".to_string());
+        }
         let res = run(SAY_LIMIT, &bin_str, &args);
         let mut resp = JsonObject::new();
         match res {
@@ -2151,7 +2155,7 @@ enum VersionProblem {
     Unreadable(String),
 }
 
-/// The version in `HomeSpeaker --version`'s answer ("HomeSpeaker 1.40.0").
+/// The version in `HomeSpeaker --version`'s answer ("HomeSpeaker 1.41.0").
 fn parse_version_output(out: &str) -> Option<String> {
     let line = out.lines().map(str::trim).find(|l| !l.is_empty())?;
     let token = line.split_whitespace().last()?.trim_start_matches('v');
@@ -2496,14 +2500,26 @@ fn op_summary(op: &JsonValue) -> String {
     }
 }
 
-/// `install:claude-code`, `remove:opencode`, `add-instruction:antigravity` as an `agentHook` op.
+/// `install:claude-code`, `remove:opencode`, `add-instruction:antigravity`, `disable-rival[:claude-code]`
+/// as an `agentHook` op; `remove-legacy-agent` as `removeLegacyAgent`.
 fn agent_hook_op(action: &str) -> Result<JsonValue, ApplyError> {
     let act = action.trim();
     let unsupported = || {
         ApplyError::BadRequest(format!(
-            "{act:?} is not something Home Speaker's --apply can do; do it in Home Speaker on the Mac"
+            "{act:?} is not an agent_hook_action Home Speaker knows"
         ))
     };
+    let norm = act.to_lowercase().replace('_', "-");
+    if norm == "remove-legacy-agent" {
+        return Ok(JsonValue::Object(op_object("removeLegacyAgent")));
+    }
+    if norm == "disable-rival" || norm == "disable-rival-hook" || norm.starts_with("disable-rival:")
+    {
+        let mut o = op_object("agentHook");
+        o.insert("agent", JsonValue::String("claude_code".to_string()));
+        o.insert("action", JsonValue::String("disableRival".to_string()));
+        return Ok(JsonValue::Object(o));
+    }
     let Some((verb, slug)) = act.split_once(':') else {
         return Err(unsupported());
     };
@@ -2820,7 +2836,7 @@ mod tests {
     #[test]
     fn test_golden_state_v1_maps_every_phone_field_and_records_exact_args() {
         let (h, _dir, calls) =
-            relay_speaker("golden_get", state_answering("1.40.0", golden_state()));
+            relay_speaker("golden_get", state_answering("1.41.0", golden_state()));
         let resp = h.handle_get(&PhoneBridge::new());
         assert_eq!(resp.status, 200);
         assert_eq!(
@@ -2965,13 +2981,13 @@ mod tests {
 
     #[test]
     fn test_get_too_old_answers_the_update_sentence_and_never_runs_state() {
-        let (h, _dir, calls) = relay_speaker("too_old", state_answering("1.39.0", golden_state()));
+        let (h, _dir, calls) = relay_speaker("too_old", state_answering("1.40.0", golden_state()));
         let b = body_of(&h.handle_get(&PhoneBridge::new()));
         assert!(!b.get_bool("available"));
         assert!(b.get_bool("installed"));
         let reason = b.get_str("reason");
         assert!(reason.starts_with("Update Home Speaker on "), "{reason}");
-        assert!(reason.ends_with("(have 1.39.0, need 1.40.0)"), "{reason}");
+        assert!(reason.ends_with("(have 1.40.0, need 1.41.0)"), "{reason}");
         assert_eq!(
             calls.lock().unwrap().clone(),
             vec![vec!["--version".to_string()]],
@@ -2981,15 +2997,15 @@ mod tests {
 
     #[test]
     fn test_version_comparison_is_numeric_not_textual() {
-        assert!(version_at_least("1.40.0", "1.40.0"));
-        assert!(version_at_least("1.100.0", "1.40.0"));
-        assert!(version_at_least("2.0", "1.40.0"));
-        assert!(version_at_least("1.40.1-beta", "1.40.0"));
-        assert!(!version_at_least("1.9.9", "1.40.0"));
-        assert!(!version_at_least("1.39.99", "1.40.0"));
+        assert!(version_at_least("1.41.0", "1.41.0"));
+        assert!(version_at_least("1.100.0", "1.41.0"));
+        assert!(version_at_least("2.0", "1.41.0"));
+        assert!(version_at_least("1.41.1-beta", "1.41.0"));
+        assert!(!version_at_least("1.9.9", "1.41.0"));
+        assert!(!version_at_least("1.39.99", "1.41.0"));
         assert_eq!(
-            parse_version_output("HomeSpeaker 1.40.0\n").as_deref(),
-            Some("1.40.0")
+            parse_version_output("HomeSpeaker 1.41.0\n").as_deref(),
+            Some("1.41.0")
         );
         assert_eq!(parse_version_output("v1.41.2").as_deref(), Some("1.41.2"));
         assert_eq!(parse_version_output("garbage"), None);
@@ -2998,7 +3014,7 @@ mod tests {
 
     #[test]
     fn test_get_missing_program_keeps_the_not_installed_answer() {
-        let (h, dir, calls) = relay_speaker("missing", state_answering("1.40.0", golden_state()));
+        let (h, dir, calls) = relay_speaker("missing", state_answering("1.41.0", golden_state()));
         fs::remove_file(dir.join("HomeSpeaker")).unwrap();
         let b = body_of(&h.handle_get(&PhoneBridge::new()));
         assert!(!b.get_bool("available") && !b.get_bool("installed"));
@@ -3016,7 +3032,7 @@ mod tests {
     #[test]
     fn test_get_state_timeout_and_bad_json_are_clear_errors_not_crashes() {
         let (h, _d, _c) = relay_speaker("state_timeout", |_n, args| match args {
-            [f] if f == "--version" => Ok(("HomeSpeaker 1.40.0".to_string(), String::new())),
+            [f] if f == "--version" => Ok(("HomeSpeaker 1.41.0".to_string(), String::new())),
             _ => Err("HomeSpeaker: no answer within 15s".to_string()),
         });
         let b = body_of(&h.handle_get(&PhoneBridge::new()));
@@ -3036,7 +3052,7 @@ mod tests {
             "{}",
         ] {
             let junk = junk.to_string();
-            let (h, _d, _c) = relay_speaker("state_junk", state_answering("1.40.0", junk.clone()));
+            let (h, _d, _c) = relay_speaker("state_junk", state_answering("1.41.0", junk.clone()));
             let resp = h.handle_get(&PhoneBridge::new());
             assert_eq!(resp.status, 200, "{junk:?}");
             let b = body_of(&resp);
@@ -3060,7 +3076,7 @@ mod tests {
             "\"config_initialized\": true",
             "\"config_initialized\": false",
         );
-        let (h, _d, _c) = relay_speaker("uninit", state_answering("1.40.0", state));
+        let (h, _d, _c) = relay_speaker("uninit", state_answering("1.41.0", state));
         let b = body_of(&h.handle_get(&PhoneBridge::new()));
         assert!(!b.get_bool("available") && b.get_bool("installed"));
         assert!(b.get_str("reason").contains("not been set up"));
@@ -3276,20 +3292,34 @@ mod tests {
             assert_eq!(plan.hook.unwrap().to_json_string(), want, "{action}");
             assert!(plan.plain.is_empty() && plan.switch.is_none());
         }
-        // The phone offers two actions Home Speaker's --apply has no operation for.
+        // The two actions that used to be refused now have operations, and go alone as well.
         for action in [
             "disable-rival:claude-code",
-            "remove-legacy-agent",
-            "install:emacs",
+            "disable-rival:Claude Code",
+            "disable_rival_hook",
+            "disable-rival",
         ] {
-            assert!(
-                matches!(
-                    plan_for(&format!("{{\"agent_hook_action\":\"{action}\"}}")),
-                    Err(ApplyError::BadRequest(_))
-                ),
+            let plan = plan_for(&format!("{{\"agent_hook_action\":\"{action}\"}}")).unwrap();
+            assert_eq!(
+                plan.hook.unwrap().to_json_string(),
+                r#"{"op":"agentHook","agent":"claude_code","action":"disableRival"}"#,
                 "{action}"
             );
+            assert!(plan.plain.is_empty() && plan.switch.is_none());
         }
+        for action in ["remove-legacy-agent", "remove_legacy_agent"] {
+            let plan = plan_for(&format!("{{\"agent_hook_action\":\"{action}\"}}")).unwrap();
+            assert_eq!(
+                plan.hook.unwrap().to_json_string(),
+                r#"{"op":"removeLegacyAgent"}"#,
+                "{action}"
+            );
+            assert!(plan.plain.is_empty() && plan.switch.is_none());
+        }
+        assert!(matches!(
+            plan_for(r#"{"agent_hook_action":"install:emacs"}"#),
+            Err(ApplyError::BadRequest(_))
+        ));
     }
 
     fn apply_ok() -> Result<(String, String), String> {
@@ -3334,7 +3364,7 @@ mod tests {
     fn state_and_apply(
         state: String,
     ) -> impl Fn(&str, &[String]) -> Result<(String, String), String> {
-        let answer = state_answering("1.40.0", state);
+        let answer = state_answering("1.41.0", state);
         move |name, args| match args.first().map(String::as_str) {
             Some("--apply") => apply_ok(),
             _ => answer(name, args),
@@ -3385,7 +3415,7 @@ mod tests {
         );
 
         // The hook is refused: the switch is never sent, and the refusal comes back as a 400.
-        let seen = state_answering("1.40.0", golden_state());
+        let seen = state_answering("1.41.0", golden_state());
         let (h, _d, calls) = relay_speaker("post_hook_fails", move |name, args| {
             match args.first().map(String::as_str) {
                 Some("--apply") if args[2].contains("agentHook") => refusal(
@@ -3413,7 +3443,7 @@ mod tests {
         // The plain batch is refused: neither the hook nor the switch is sent.
         let (h, _d, calls) = relay_speaker("post_plain_fails", |_n, args| {
             match args.first().map(String::as_str) {
-                Some("--version") => Ok(("HomeSpeaker 1.40.0".to_string(), String::new())),
+                Some("--version") => Ok(("HomeSpeaker 1.41.0".to_string(), String::new())),
                 _ => refusal(
                     "invalid_choice",
                     "speech_length must be one of headline, summary, full",
@@ -3430,7 +3460,7 @@ mod tests {
     #[test]
     fn test_apply_errors_map_to_400_409_and_500() {
         let post = |answer: Result<(String, String), String>| {
-            let seen = state_answering("1.40.0", golden_state());
+            let seen = state_answering("1.41.0", golden_state());
             let (h, _d, _c) = relay_speaker("post_errors", move |name, args| {
                 match args.first().map(String::as_str) {
                     Some("--apply") => answer.clone(),
@@ -3467,20 +3497,20 @@ mod tests {
 
     #[test]
     fn test_post_to_an_old_program_answers_the_update_sentence_and_never_runs_apply() {
-        let (h, _d, calls) = relay_speaker("post_old", state_answering("1.39.0", golden_state()));
+        let (h, _d, calls) = relay_speaker("post_old", state_answering("1.40.0", golden_state()));
         let resp = h.handle_set(
             &post_req("/v1/homespeaker", r#"{"enabled":true}"#),
             &PhoneBridge::new(),
         );
         assert_eq!(resp.status, 409);
-        assert!(resp.body_string().contains("(have 1.39.0, need 1.40.0)"));
+        assert!(resp.body_string().contains("(have 1.40.0, need 1.41.0)"));
         assert_eq!(
             calls.lock().unwrap().clone(),
             vec![vec!["--version".to_string()]]
         );
 
         let (h, dir, calls) =
-            relay_speaker("post_missing", state_answering("1.40.0", golden_state()));
+            relay_speaker("post_missing", state_answering("1.41.0", golden_state()));
         fs::remove_file(dir.join("HomeSpeaker")).unwrap();
         let resp = h.handle_set(
             &post_req("/v1/homespeaker", r#"{"enabled":true}"#),
@@ -3497,7 +3527,7 @@ mod tests {
             fs::write(
                 dir.join("speaker_door.json"),
                 format!(
-                    r#"{{"version":1,"chosen":"{chosen}","extension":{{"program":"{}","version":"1.40.0","door":1}}}}"#,
+                    r#"{{"version":1,"chosen":"{chosen}","extension":{{"program":"{}","version":"1.41.0","door":1}}}}"#,
                     ext.display()
                 ),
             )
@@ -3508,7 +3538,7 @@ mod tests {
         let ext = ext_root.join("tool");
         fs::write(&ext, b"#!/bin/sh\n").unwrap();
         let ext_name = ext.to_string_lossy().into_owned();
-        let seen = state_answering("1.40.0", golden_state());
+        let seen = state_answering("1.41.0", golden_state());
         let ext_name_c = ext_name.clone();
         let (h, dir, calls) = relay_speaker("retry_named", move |name, args| {
             match args.first().map(String::as_str) {
@@ -3543,7 +3573,7 @@ mod tests {
         );
 
         // Refused again: no second retry, the refusal is a 409.
-        let seen = state_answering("1.40.0", golden_state());
+        let seen = state_answering("1.41.0", golden_state());
         let (h, dir, calls) = relay_speaker("retry_once", move |name, args| {
             match args.first().map(String::as_str) {
                 Some("--apply") => {
@@ -3619,7 +3649,7 @@ mod tests {
             preview_say_args("default", "Hi"),
             vec![vec!["Hi".to_string()]]
         );
-        let seen = state_answering("1.40.0", golden_state());
+        let seen = state_answering("1.41.0", golden_state());
         let (h, _d, calls) = relay_speaker("preview", move |name, args| {
             if name == "say" {
                 return Ok((String::new(), String::new()));
@@ -3650,7 +3680,7 @@ mod tests {
 
     #[test]
     fn test_replay_looks_the_announcement_up_in_the_programs_history() {
-        let seen = state_answering("1.40.0", golden_state());
+        let seen = state_answering("1.41.0", golden_state());
         let (h, _d, calls) = relay_speaker("replay", move |name, args| {
             match args.first().map(String::as_str) {
                 Some("--say") => Ok(("spoken".to_string(), String::new())),
@@ -3662,11 +3692,37 @@ mod tests {
             r#"{"replay_id":"00000000-0000-0000-0000-000000000001"}"#,
         ));
         assert_eq!(r.status, 200, "{}", r.body_string());
-        assert!(calls
-            .lock()
-            .unwrap()
-            .iter()
-            .any(|c| c == &vec!["--say".to_string(), "All tests passed on main.".to_string()]));
+        let said = |calls: &CallLog| {
+            calls
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|c| c.first().map(String::as_str) == Some("--say"))
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            said(&calls),
+            vec![vec![
+                "--say".to_string(),
+                "All tests passed on main.".to_string(),
+                "--no-history".to_string()
+            ]],
+            "a replay is kept out of the history"
+        );
+        let r = h.handle_say(&post_req(
+            "/v1/homespeaker/say",
+            r#"{"text":"again","replay":true}"#,
+        ));
+        assert_eq!(r.status, 200);
+        assert_eq!(
+            said(&calls)[1],
+            vec![
+                "--say".to_string(),
+                "again".to_string(),
+                "--no-history".to_string()
+            ]
+        );
         let r = h.handle_say(&post_req("/v1/homespeaker/say", r#"{"replay_id":"nope"}"#));
         assert_eq!(r.status, 400);
         assert!(r.body_string().contains("no longer in the history"));
@@ -3862,7 +3918,7 @@ mod tests {
         fs::write(
             dir.join("speaker_door.json"),
             format!(
-                r#"{{"version":1,"chosen":"{chosen}","extension":{{"program":"{}","version":"1.40.0","door":1}}}}"#,
+                r#"{{"version":1,"chosen":"{chosen}","extension":{{"program":"{}","version":"1.41.0","door":1}}}}"#,
                 ext.display()
             ),
         )
