@@ -256,7 +256,9 @@ struct MainWindow: View {
                         onClose: { hotkeys.isShortcutsSheetPresented = false }
                     )
                 }
-                .navigationTitle(lifecycle.isLocked ? "Courier" : "")
+                // Always named, so the Window menu, Mission Control and VoiceOver say "Courier"; the empty-chat
+                // toolbar (courierEmptyChatToolbar) hides the visible caption instead.
+                .navigationTitle("Courier")
                 .navigationSubtitle(lifecycle.isLocked ? "" : StatusText.subtitle(for: model.engineState))
         }
     }
