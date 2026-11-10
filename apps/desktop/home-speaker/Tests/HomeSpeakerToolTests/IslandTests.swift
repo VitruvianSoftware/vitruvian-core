@@ -1076,6 +1076,27 @@ final class IslandTests: XCTestCase {
         XCTAssertEqual(choice(page, Pages.Block.quietEnd)?.title?.text(for: "en"), "Until")
     }
 
+    func testSnoozeButtonSetsAndClearsSnoozeUntil() throws {
+        let tool = tool()
+        let initialPage = tool.islandPage()
+        XCTAssertEqual(button(initialPage, Pages.Block.snooze)?.title.text(for: "en"), "Snooze 30 min")
+
+        let snoozedPage = try XCTUnwrap(page(tool.islandEvent(PanelEvent(block: Pages.Block.snooze, kind: .tap))))
+        let expectedUntil = now.addingTimeInterval(30 * 60)
+        XCTAssertEqual(store.config?.snoozeUntil, expectedUntil)
+        let hhmm = SpeakerConfig.localTimeHHmm(expectedUntil)
+        XCTAssertEqual(button(snoozedPage, Pages.Block.snooze)?.title.text(for: "en"), "Resume now (snoozed until \(hhmm))")
+
+        // Tapping while snoozed clears snoozeUntil.
+        let resumedPage = try XCTUnwrap(page(tool.islandEvent(PanelEvent(block: Pages.Block.snooze, kind: .tap))))
+        XCTAssertNil(store.config?.snoozeUntil)
+        XCTAssertEqual(button(resumedPage, Pages.Block.snooze)?.title.text(for: "en"), "Snooze 30 min")
+
+        // An expired snoozeUntil shows "Snooze 30 min" without needing cleanup.
+        store.config?.snoozeUntil = now.addingTimeInterval(-60)
+        XCTAssertEqual(button(tool.islandPage(), Pages.Block.snooze)?.title.text(for: "en"), "Snooze 30 min")
+    }
+
     func testAnOffGridQuietTimeStaysPicked() throws {
         var status = ready()
         status.offersChoice = true

@@ -366,6 +366,19 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             config.quietHoursEnabled = !(config.quietHoursEnabled ?? false)
             try save()
             parts.link.showMessage(config.quietHoursEnabled == true ? "Quiet hours on" : "Quiet hours off", icon: "moon.zzz")
+        case "snooze", "toggleSnooze":
+            reload()
+            let now = parts.now()
+            if config.isSnoozed(at: now) {
+                config.snoozeUntil = nil
+                try save()
+                parts.link.showMessage("Broadcasting resumed", icon: "hifispeaker.2")
+            } else {
+                let until = now.addingTimeInterval(30 * 60)
+                config.snoozeUntil = until
+                try save()
+                parts.link.showMessage(SpeakerConfig.snoozedUntilLine(until), icon: "bell.slash")
+            }
         case Command.mute: try speakerJob(.mute)
         case Command.unmute: try speakerJob(.unmute)
         default: throw CommandRefused("no such command")
@@ -495,6 +508,16 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 guard let isOn = event.isOn else { return .keep }
                 reload()
                 config.quietHoursEnabled = isOn
+                try save()
+            case Pages.Block.snooze?:
+                guard event.kind == .tap else { return .keep }
+                reload()
+                let now = parts.now()
+                if config.isSnoozed(at: now) {
+                    config.snoozeUntil = nil
+                } else {
+                    config.snoozeUntil = now.addingTimeInterval(30 * 60)
+                }
                 try save()
             case Pages.Block.mute?:
                 guard let isOn = event.isOn else { return .keep }
@@ -1730,6 +1753,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         status.volume = volume
         status.busy = waiting ?? busy
         status.notice = notice
+        status.now = parts.now()
         status.quietNow = config.isInQuietHours(at: parts.now())
         status.offersChoice = parts.link.supports(.choice)
         status.offersChips = parts.link.supports(.chips)

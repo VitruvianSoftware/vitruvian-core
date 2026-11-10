@@ -194,6 +194,41 @@ private struct Rig {
         #expect(config(home: false, local: false, phone: true).activeOutputsLabel == "Your phone")
         #expect(config(home: false, local: false).activeOutputsLabel == "")
     }
+
+    @Test func snoozeUntilRoundTripsAsISO8601UTC() throws {
+        var c = config()
+        let until = try #require(SpeakerConfig.parseISO8601("2026-11-10T06:30:00Z"))
+        c.snoozeUntil = until
+        let data = try JSONEncoder().encode(c)
+        let obj = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(obj["snooze_until"] as? String == "2026-11-10T06:30:00Z")
+        let decoded = try JSONDecoder().decode(SpeakerConfig.self, from: data)
+        #expect(decoded.snoozeUntil == until)
+        #expect(decoded == c)
+    }
+
+    @Test func snoozeUntilMissingOrGarbageDecodesToNil() throws {
+        let missing = #"{"enabled":true,"default_target":"lake","structure_id":"s","targets":{}}"#
+        #expect(try JSONDecoder().decode(SpeakerConfig.self, from: Data(missing.utf8)).snoozeUntil == nil)
+
+        for garbage in [#""not-a-timestamp""#, #""""#, "null", "12345", "true"] {
+            let json = #"{"enabled":true,"default_target":"lake","structure_id":"s","targets":{},"snooze_until":\#(garbage)}"#
+            let decoded = try JSONDecoder().decode(SpeakerConfig.self, from: Data(json.utf8))
+            #expect(decoded.snoozeUntil == nil, "garbage \(garbage) must decode to nil")
+        }
+    }
+
+    @Test func isSnoozedBoundaries() throws {
+        let base = try #require(SpeakerConfig.parseISO8601("2026-11-10T06:00:00Z"))
+        let until = try #require(SpeakerConfig.parseISO8601("2026-11-10T06:30:00Z"))
+        var c = config()
+        #expect(!c.isSnoozed(at: base))
+        c.snoozeUntil = until
+        #expect(c.isSnoozed(at: base))
+        #expect(c.isSnoozed(at: until.addingTimeInterval(-1)))
+        #expect(!c.isSnoozed(at: until), "exact boundary is not snoozed")
+        #expect(!c.isSnoozed(at: until.addingTimeInterval(1)))
+    }
 }
 
 // MARK: - The rules, in order
@@ -218,6 +253,20 @@ private struct Rig {
         #expect(rig.log.events.isEmpty, "neither output, and no media paused")
         // A deliberate announcement still overrides quiet hours, as before.
         #expect(await rig.announcer.announce("hello", config: c, force: true, at: noon).anySpoke)
+    }
+
+    @Test func snoozeSuppressesUnlessForced() async {
+        let rig = Rig()
+        var c = config(local: true, pause: true)
+        let now = Date(timeIntervalSince1970: 1_762_754_400)
+        let until = now.addingTimeInterval(30 * 60)
+        c.snoozeUntil = until
+        #expect(await rig.announcer.announce("hello", config: c, force: false, at: now) == .snoozed(until: until))
+        #expect(rig.log.events.isEmpty, "snoozed: neither output speaks and no media paused")
+        // Force (human-initiated) still speaks while snoozed.
+        #expect(await rig.announcer.announce("hello", config: c, force: true, at: now).anySpoke)
+        // Once snoozeUntil is reached, unforced announcements speak again.
+        #expect(await rig.announcer.announce("hello", config: c, force: false, at: until).anySpoke)
     }
 
     @Test func neitherOutputSpeaksNowhere() async {

@@ -164,6 +164,7 @@ public enum Pages {
         public var busy: Job?
         /// The last thing worth saying: where a text was spoken, or why not.
         public var notice: String?
+        public var now: Date?
         public var quietNow = false
         /// The app draws a `choice` block; without it, a list stands in.
         public var offersChoice = false
@@ -222,6 +223,8 @@ public enum Pages {
         /// Not signed in, or signed in with no speakers yet: the island
         /// offers the first-run steps where the speaker picker would be.
         public var needsSetup: Bool { !account.isSignedIn || config.targets.isEmpty }
+
+        public var effectiveNow: Date { now ?? Date() }
     }
 
     public static let releases = "https://github.com/VitruvianSoftware/vitruvian-core/releases?q=home-speaker"
@@ -286,6 +289,12 @@ public enum Pages {
     public static let moreSettingsButton = "More settings…"
     /// The island's button that speaks what is on the clipboard.
     public static let sayClipboardButton = "Speak clipboard"
+    /// The island's button that pauses automated announcements for 30 minutes.
+    public static let snoozeButton = "Snooze 30 min"
+    /// The island's button while snoozed, showing local end time and clearing snooze.
+    public static func resumeSnoozeButton(until: Date, calendar: Calendar = .current) -> String {
+        "Resume now (snoozed until \(SpeakerConfig.localTimeHHmm(until, calendar: calendar)))"
+    }
     /// What Preview says, in the voice picked.
     public static let previewText = "This is how announcements will sound on this Mac."
 
@@ -296,6 +305,7 @@ public enum Pages {
         public static let sayClipboard = "sayClipboard"
         public static let broadcasting = "broadcasting"
         public static let quiet = "quiet"
+        public static let snooze = "snooze"
         /// The island's Mute switch: on mutes, off unmutes.
         public static let mute = "mute"
         public static let volume = "volume"
@@ -646,6 +656,12 @@ public enum Pages {
             }
             if status.quietNow, let until = config.quietHoursEnd {
                 text(UIText.plain("Quiet hours until \(until): what you type still plays"), style: .caption)
+            }
+            let now = status.effectiveNow
+            if config.isSnoozed(at: now), let until = config.snoozeUntil {
+                button(Block.snooze, UIText.plain(resumeSnoozeButton(until: until)))
+            } else {
+                button(Block.snooze, UIText.plain(snoozeButton))
             }
             divider()
             if config.effectiveSpeakHome {
