@@ -93,7 +93,9 @@ pub struct HomeSpeaker {
     pub monitor_status_path: PathBuf,
     pub claude_settings_path: PathBuf,
     pub claude_md_path: PathBuf,
+    pub antigravity_plugin_dir: PathBuf,
     pub antigravity_md_path: PathBuf,
+    pub opencode_plugin_path: PathBuf,
     pub opencode_md_path: PathBuf,
     pub legacy_plist_path: PathBuf,
     pub oauth_client_path: PathBuf,
@@ -387,6 +389,7 @@ pub struct HomeSpeakerState {
     pub app_running: bool,
     pub signed_in: bool,
     pub active_door: String,
+    pub extension_installed: bool,
     pub enabled: bool,
     pub default_target: String,
     pub speech_length: String,
@@ -429,6 +432,7 @@ pub struct HomeSpeakerState {
     pub has_slack_token: bool,
     pub has_beeper_token: bool,
     pub has_courier_token: bool,
+    pub has_google_chat_token: bool,
     pub has_chat_access: bool,
     pub gws_installed: bool,
     pub gws_account: String,
@@ -467,6 +471,7 @@ impl Default for HomeSpeakerState {
             app_running: false,
             signed_in: false,
             active_door: String::new(),
+            extension_installed: false,
             enabled: false,
             default_target: String::new(),
             speech_length: String::new(),
@@ -514,6 +519,7 @@ impl Default for HomeSpeakerState {
             has_slack_token: false,
             has_beeper_token: false,
             has_courier_token: false,
+            has_google_chat_token: false,
             has_chat_access: false,
             gws_installed: false,
             gws_account: String::new(),
@@ -556,6 +562,10 @@ impl HomeSpeakerState {
         m.insert(
             "active_door".to_string(),
             JsonValue::String(self.active_door.clone()),
+        );
+        m.insert(
+            "extension_installed".to_string(),
+            JsonValue::Bool(self.extension_installed),
         );
         m.insert("enabled".to_string(), JsonValue::Bool(self.enabled));
         m.insert(
@@ -727,6 +737,10 @@ impl HomeSpeakerState {
         m.insert(
             "has_courier_token".to_string(),
             JsonValue::Bool(self.has_courier_token),
+        );
+        m.insert(
+            "has_google_chat_token".to_string(),
+            JsonValue::Bool(self.has_google_chat_token),
         );
         m.insert(
             "has_chat_access".to_string(),
@@ -1124,7 +1138,7 @@ impl ApplyError {
 }
 
 pub fn is_in_trash(path: &str) -> bool {
-    path.contains("/.Trash/") || path.contains("/.Trashes/")
+    path.split('/').any(|p| p == ".Trash" || p == ".Trashes")
 }
 
 pub fn derive_extension_data_folder(program: &str) -> String {
@@ -1586,6 +1600,198 @@ fn write_atomic_json(path: &Path, obj: &JsonObject) -> Result<(), ApplyError> {
     fs::rename(&tmp, path).map_err(|e| ApplyError::Internal(e.to_string()))
 }
 
+fn write_atomic_text(path: &Path, text: &str) -> Result<(), ApplyError> {
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let tmp = PathBuf::from(format!("{}.agent-tmp", path.display()));
+    fs::write(&tmp, text.as_bytes()).map_err(|e| ApplyError::Internal(e.to_string()))?;
+    let _ = fs::set_permissions(&tmp, fs::Permissions::from_mode(0o600));
+    fs::rename(&tmp, path).map_err(|e| ApplyError::Internal(e.to_string()))
+}
+
+const GOOGLE_CHAT_SCOPES: &[&str] = &[
+    "https://www.googleapis.com/auth/chat.spaces.readonly",
+    "https://www.googleapis.com/auth/chat.messages.readonly",
+];
+
+fn is_ours_hook_command(cmd: &str) -> bool {
+    cmd.contains("--claude-stop-hook")
+        || cmd.contains("--antigravity-hook")
+        || cmd.contains("--opencode-hook")
+        || cmd.contains("stop_broadcast.py")
+}
+
+fn expected_antigravity_manifest() -> JsonObject {
+    let mut author = JsonObject::new();
+    author.insert(
+        "name".to_string(),
+        JsonValue::String("VitruvianSoftware".to_string()),
+    );
+    author.insert(
+        "url".to_string(),
+        JsonValue::String("https://github.com/VitruvianSoftware".to_string()),
+    );
+    let mut m = JsonObject::new();
+    m.insert("author".to_string(), JsonValue::Object(author));
+    m.insert(
+        "description".to_string(),
+        JsonValue::String(
+            "Speaks each finished Antigravity reply on your Google Home speakers or this Mac, through HomeSpeaker."
+                .to_string(),
+        ),
+    );
+    m.insert("license".to_string(), JsonValue::String("MIT".to_string()));
+    m.insert(
+        "name".to_string(),
+        JsonValue::String("home-speaker".to_string()),
+    );
+    m.insert(
+        "version".to_string(),
+        JsonValue::String("1.0.0".to_string()),
+    );
+    m
+}
+
+fn expected_antigravity_hooks(command: &str) -> JsonObject {
+    let mut handler = JsonObject::new();
+    handler.insert(
+        "command".to_string(),
+        JsonValue::String(command.to_string()),
+    );
+    handler.insert("timeout".to_string(), JsonValue::from_i64(10));
+    handler.insert("type".to_string(), JsonValue::String("command".to_string()));
+    let mut group = JsonObject::new();
+    group.insert(
+        "hooks".to_string(),
+        JsonValue::Array(vec![JsonValue::Object(handler)]),
+    );
+    let mut hooks = JsonObject::new();
+    hooks.insert(
+        "Stop".to_string(),
+        JsonValue::Array(vec![JsonValue::Object(group)]),
+    );
+    let mut root = JsonObject::new();
+    root.insert(
+        "description".to_string(),
+        JsonValue::String("HomeSpeaker stop hook for Antigravity.".to_string()),
+    );
+    root.insert("hooks".to_string(), JsonValue::Object(hooks));
+    root
+}
+
+fn antigravity_command_in_hooks(root: &JsonObject) -> Option<String> {
+    let mut specs = Vec::with_capacity(2);
+    if let Some(inner) = root.get("hooks").and_then(|v| v.as_object()) {
+        specs.push(inner);
+    }
+    specs.push(root);
+    for spec in specs {
+        let Some(stop_arr) = spec.get("Stop").and_then(|v| v.as_array()) else {
+            continue;
+        };
+        for item_val in stop_arr {
+            let Some(item) = item_val.as_object() else {
+                continue;
+            };
+            if let Some(handlers) = item.get("hooks").and_then(|v| v.as_array()) {
+                for h_val in handlers {
+                    let Some(handler) = h_val.as_object() else {
+                        continue;
+                    };
+                    if let Some(cmd) = handler.get("command").and_then(|v| v.as_str()) {
+                        if is_ours_hook_command(cmd) {
+                            return Some(cmd.to_string());
+                        }
+                    }
+                }
+            } else if let Some(cmd) = item.get("command").and_then(|v| v.as_str()) {
+                if is_ours_hook_command(cmd) {
+                    return Some(cmd.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+fn js_string_literal(s: &str) -> String {
+    let mut escaped = String::with_capacity(s.len() + 2);
+    escaped.push('"');
+    for ch in s.chars() {
+        match ch {
+            '\\' => escaped.push_str("\\\\"),
+            '"' => escaped.push_str("\\\""),
+            '\n' => escaped.push_str("\\n"),
+            _ => escaped.push(ch),
+        }
+    }
+    escaped.push('"');
+    escaped
+}
+
+fn opencode_plugin(program: &str) -> String {
+    let escaped = js_string_literal(program);
+    let cmd = format!("\"{program}\" --opencode-hook");
+    format!(
+        "// Installed by HomeSpeaker. Do not edit by hand; HomeSpeaker rewrites this file.\n\
+// Command: {cmd}\n\
+import {{ spawn }} from \"node:child_process\"\n\
+\n\
+const PROGRAM = {escaped}\n\
+const TIMEOUT_MS = 10000\n\
+\n\
+function runHook(payload) {{\n\
+  return new Promise((resolve) => {{\n\
+    let settled = false\n\
+    const done = () => {{ if (!settled) {{ settled = true; resolve() }} }}\n\
+    let child\n\
+    try {{\n\
+      child = spawn(PROGRAM, [\"--opencode-hook\"], {{ stdio: [\"pipe\", \"ignore\", \"ignore\"] }})\n\
+    }} catch {{\n\
+      return done()\n\
+    }}\n\
+    const timer = setTimeout(() => {{ try {{ child.kill() }} catch {{}} done() }}, TIMEOUT_MS)\n\
+    child.on(\"error\", () => {{ clearTimeout(timer); done() }})\n\
+    child.on(\"close\", () => {{ clearTimeout(timer); done() }})\n\
+    try {{\n\
+      child.stdin.end(JSON.stringify(payload))\n\
+    }} catch {{\n\
+      clearTimeout(timer)\n\
+      done()\n\
+    }}\n\
+  }})\n\
+}}\n\
+\n\
+export const HomeSpeakerPlugin = async ({{ client, directory }}) => {{\n\
+  const prefix = \"// Command: \"\n\
+  void prefix\n\
+  return {{\n\
+    event: async ({{ event }}) => {{\n\
+      if (!event || event.type !== \"session.idle\") return\n\
+      const sessionID = event.properties?.sessionID ?? event.sessionID\n\
+      await runHook({{ type: event.type, sessionID, directory, hasClient: Boolean(client) }})\n\
+    }},\n\
+  }}\n\
+}}\n\
+\n\
+export default HomeSpeakerPlugin\n"
+    )
+}
+
+fn opencode_command_in_plugin(text: &str) -> Option<String> {
+    let prefix = "// Command: ";
+    for line in text.lines().filter(|l| !l.is_empty()).take(10) {
+        if let Some(rest) = line.strip_prefix(prefix) {
+            let cmd = rest.trim();
+            if is_ours_hook_command(cmd) {
+                return Some(cmd.to_string());
+            }
+        }
+    }
+    None
+}
+
 fn ensure_chat_monitor(cfg: &mut JsonObject) -> &mut JsonObject {
     let needs_init = !matches!(cfg.get("chat_monitor"), Some(JsonValue::Object(_)));
     if needs_init {
@@ -1633,6 +1839,7 @@ struct SecretsData {
     slack_token: String,
     beeper_token: String,
     courier_token: String,
+    has_google_chat_token: bool,
     oauth_client_id_override: String,
     oauth_client_secret_override: String,
 }
@@ -1672,7 +1879,17 @@ impl HomeSpeaker {
             monitor_status_path: home.join(".gemini").join("speaker_monitor_status.json"),
             claude_settings_path: home.join(".claude").join("settings.json"),
             claude_md_path: home.join(".claude").join("CLAUDE.md"),
+            antigravity_plugin_dir: home
+                .join(".gemini")
+                .join("config")
+                .join("plugins")
+                .join("home-speaker"),
             antigravity_md_path: home.join(".gemini").join("AGENTS.md"),
+            opencode_plugin_path: home
+                .join(".config")
+                .join("opencode")
+                .join("plugins")
+                .join("home-speaker.ts"),
             opencode_md_path: home.join(".config").join("opencode").join("AGENTS.md"),
             legacy_plist_path: home
                 .join("Library")
@@ -1712,8 +1929,36 @@ impl HomeSpeaker {
         }
     }
 
-    pub fn active_profile(&self) -> HomeSpeakerProfile {
-        let app_profile = HomeSpeakerProfile {
+    pub fn extension_installed(&self) -> bool {
+        if self.door_path.as_os_str().is_empty() {
+            return false;
+        }
+        let Ok(data) = fs::read_to_string(&self.door_path) else {
+            return false;
+        };
+        let Ok(door_val) = JsonValue::parse(&data) else {
+            return false;
+        };
+        let Some(door_obj) = door_val.as_object() else {
+            return false;
+        };
+        let Some(ext_obj) = door_obj.get("extension").and_then(|v| v.as_object()) else {
+            return false;
+        };
+        let door_ver = ext_obj.get("door").and_then(|v| v.as_i64()).unwrap_or(0);
+        if door_ver < 1 {
+            return false;
+        }
+        let prog = ext_obj
+            .get("program")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim();
+        !prog.is_empty() && !is_in_trash(prog) && Path::new(prog).exists()
+    }
+
+    fn app_profile(&self) -> HomeSpeakerProfile {
+        HomeSpeakerProfile {
             active_door: "app".to_string(),
             config_path: self.config_path.clone(),
             history_path: self.history_path.clone(),
@@ -1721,7 +1966,11 @@ impl HomeSpeaker {
             monitor_status_path: self.monitor_status_path.clone(),
             binary: self.binary.clone(),
             lock_path: PathBuf::new(),
-        };
+        }
+    }
+
+    pub fn active_profile(&self) -> HomeSpeakerProfile {
+        let app_profile = self.app_profile();
         if self.door_path.as_os_str().is_empty() {
             return app_profile;
         }
@@ -1737,6 +1986,10 @@ impl HomeSpeaker {
         let Some(ext_obj) = door_obj.get("extension").and_then(|v| v.as_object()) else {
             return app_profile;
         };
+        let door_ver = ext_obj.get("door").and_then(|v| v.as_i64()).unwrap_or(0);
+        if door_ver < 1 {
+            return app_profile;
+        }
         let prog = ext_obj
             .get("program")
             .and_then(|v| v.as_str())
@@ -2087,6 +2340,23 @@ impl HomeSpeaker {
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
+        if let Some(gc) = obj.get("googleChat").and_then(|v| v.as_object()) {
+            let refresh_ok = match gc.get("refreshToken").and_then(|v| v.as_str()) {
+                Some(rt) => !rt.trim().is_empty(),
+                None => true,
+            };
+            let scopes_ok = gc
+                .get("scopes")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    GOOGLE_CHAT_SCOPES.iter().all(|req| {
+                        arr.iter()
+                            .any(|item| item.as_str().map(|s| s == *req).unwrap_or(false))
+                    })
+                })
+                .unwrap_or(false);
+            sec.has_google_chat_token = refresh_ok && scopes_ok;
+        }
         sec.oauth_client_id_override = obj
             .get("oauthClientIdOverride")
             .and_then(|v| v.as_str())
@@ -2307,6 +2577,32 @@ impl HomeSpeaker {
             configured_by_instruction: claude_by_instruction,
         });
 
+        let mut agy_hook_state = "not_installed".to_string();
+        if !self.antigravity_plugin_dir.as_os_str().is_empty() {
+            let hooks_path = self.antigravity_plugin_dir.join("hooks").join("hooks.json");
+            let manifest_path = self.antigravity_plugin_dir.join("plugin.json");
+            if let Ok(hooks_str) = fs::read_to_string(&hooks_path) {
+                if let Ok(hooks_val) = JsonValue::parse(&hooks_str) {
+                    if let Some(hooks_obj) = hooks_val.as_object() {
+                        if let Some(cmd) = antigravity_command_in_hooks(hooks_obj) {
+                            let expected_cmd = format!("\"{bin_str}\" --antigravity-hook");
+                            let manifest_ok = fs::read_to_string(&manifest_path)
+                                .ok()
+                                .and_then(|s| JsonValue::parse(&s).ok())
+                                .and_then(|v| v.as_object().cloned())
+                                .map(|m| m == expected_antigravity_manifest())
+                                .unwrap_or(false);
+                            let hooks_ok = *hooks_obj == expected_antigravity_hooks(&expected_cmd);
+                            if cmd.trim() == expected_cmd && manifest_ok && hooks_ok {
+                                agy_hook_state = "installed".to_string();
+                            } else {
+                                agy_hook_state = "stale".to_string();
+                            }
+                        }
+                    }
+                }
+            }
+        }
         let mut agy_by_instruction = false;
         if file_exists(&self.antigravity_md_path) {
             if let Ok(s) = fs::read_to_string(&self.antigravity_md_path) {
@@ -2330,11 +2626,25 @@ impl HomeSpeaker {
         out.push(HomeSpeakerAgentHook {
             agent: "Antigravity".to_string(),
             agent_slug: "antigravity".to_string(),
-            hook_state: "not_installed".to_string(),
+            hook_state: agy_hook_state,
             speaks_twice: false,
             configured_by_instruction: agy_by_instruction,
         });
 
+        let mut opencode_hook_state = "not_installed".to_string();
+        if !self.opencode_plugin_path.as_os_str().is_empty() {
+            if let Ok(text) = fs::read_to_string(&self.opencode_plugin_path) {
+                if let Some(cmd) = opencode_command_in_plugin(&text) {
+                    let expected_cmd = format!("\"{bin_str}\" --opencode-hook");
+                    let expected_plugin = opencode_plugin(&bin_str);
+                    if cmd.trim() == expected_cmd && text == expected_plugin {
+                        opencode_hook_state = "installed".to_string();
+                    } else {
+                        opencode_hook_state = "stale".to_string();
+                    }
+                }
+            }
+        }
         let mut opencode_by_instruction = false;
         if file_exists(&self.opencode_md_path) {
             if let Ok(s) = fs::read_to_string(&self.opencode_md_path) {
@@ -2346,7 +2656,7 @@ impl HomeSpeaker {
         out.push(HomeSpeakerAgentHook {
             agent: "OpenCode".to_string(),
             agent_slug: "opencode".to_string(),
-            hook_state: "not_installed".to_string(),
+            hook_state: opencode_hook_state,
             speaks_twice: false,
             configured_by_instruction: opencode_by_instruction,
         });
@@ -2398,6 +2708,7 @@ impl HomeSpeaker {
         let p = self.active_profile();
         let mut st = HomeSpeakerState {
             active_door: p.active_door.clone(),
+            extension_installed: self.extension_installed(),
             ..Default::default()
         };
         if file_exists(&p.binary) {
@@ -2585,7 +2896,8 @@ impl HomeSpeaker {
         st.has_slack_token = !sec.slack_token.is_empty() || !cred.slack_token.is_empty();
         st.has_beeper_token = !sec.beeper_token.is_empty() || !cred.beeper_token.is_empty();
         st.has_courier_token = !sec.courier_token.is_empty();
-        st.has_chat_access = st.has_slack_token || st.has_beeper_token;
+        st.has_google_chat_token = sec.has_google_chat_token;
+        st.has_chat_access = st.has_slack_token || st.has_beeper_token || st.has_google_chat_token;
 
         if let Some(targets) = cfg.get("targets").and_then(|v| v.as_object()) {
             for key in dedupe_target_keys(targets, &st.default_target) {
@@ -2702,16 +3014,171 @@ impl HomeSpeaker {
     }
 
     fn write_active_door(&self, door: &str) -> Result<(), ApplyError> {
+        if door == "extension" && !self.extension_installed() {
+            return Err(ApplyError::BadRequest(
+                "HomeSpeaker extension is not installed".to_string(),
+            ));
+        }
         if self.door_path.as_os_str().is_empty() {
             return Ok(());
         }
+        let prev_profile = self.active_profile();
         let mut doc = fs::read_to_string(&self.door_path)
             .ok()
             .and_then(|s| JsonValue::parse(&s).ok())
             .and_then(|v| v.as_object().cloned())
             .unwrap_or_default();
+        doc.insert("version".to_string(), JsonValue::from_i64(1));
         doc.insert("chosen".to_string(), JsonValue::String(door.to_string()));
-        write_atomic_json(&self.door_path, &doc)
+        doc.insert(
+            "chosen_at".to_string(),
+            JsonValue::String(Timestamp::now().to_rfc3339()),
+        );
+        doc.insert(
+            "chosen_by".to_string(),
+            JsonValue::String(format!("Vitruvian Remote {}", crate::server::VERSION)),
+        );
+        write_atomic_json(&self.door_path, &doc)?;
+
+        let next_profile = self.active_profile();
+        if prev_profile.config_path != next_profile.config_path {
+            self.copy_door_settings(&prev_profile, &next_profile);
+            self.copy_door_secrets(&prev_profile, &next_profile);
+            self.repoint_hooks(&next_profile);
+        }
+        Ok(())
+    }
+
+    fn copy_door_settings(&self, src: &HomeSpeakerProfile, dst: &HomeSpeakerProfile) {
+        if src.config_path.as_os_str().is_empty() || dst.config_path.as_os_str().is_empty() {
+            return;
+        }
+        let Ok(src_str) = fs::read_to_string(&src.config_path) else {
+            return;
+        };
+        let Some(mut merged) = JsonValue::parse(&src_str)
+            .ok()
+            .and_then(|v| v.as_object().cloned())
+        else {
+            return;
+        };
+        let dst_obj = fs::read_to_string(&dst.config_path)
+            .ok()
+            .and_then(|s| JsonValue::parse(&s).ok())
+            .and_then(|v| v.as_object().cloned());
+        if let Some(ref d) = dst_obj {
+            let src_gws = merged
+                .get("chat_monitor")
+                .and_then(|v| v.as_object())
+                .and_then(|m| m.get("gws_account"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim();
+            let dst_gws = d
+                .get("chat_monitor")
+                .and_then(|v| v.as_object())
+                .and_then(|m| m.get("gws_account"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            if src_gws.is_empty() && !dst_gws.is_empty() {
+                let mon = ensure_chat_monitor(&mut merged);
+                mon.insert("gws_account".to_string(), JsonValue::String(dst_gws));
+            }
+        }
+        let _ = write_atomic_json(&dst.config_path, &merged);
+    }
+
+    fn copy_door_secrets(&self, src: &HomeSpeakerProfile, dst: &HomeSpeakerProfile) {
+        if src.secrets_path.as_os_str().is_empty() || dst.secrets_path.as_os_str().is_empty() {
+            return;
+        }
+        let Ok(src_str) = fs::read_to_string(&src.secrets_path) else {
+            return;
+        };
+        let Some(src_obj) = JsonValue::parse(&src_str)
+            .ok()
+            .and_then(|v| v.as_object().cloned())
+        else {
+            return;
+        };
+        let mut dst_obj = fs::read_to_string(&dst.secrets_path)
+            .ok()
+            .and_then(|s| JsonValue::parse(&s).ok())
+            .and_then(|v| v.as_object().cloned())
+            .unwrap_or_default();
+        let mut changed = false;
+        for oauth_key in ["google", "googleChat"] {
+            let dst_has = dst_obj
+                .get(oauth_key)
+                .and_then(|v| v.as_object())
+                .and_then(|o| o.get("refreshToken"))
+                .and_then(|v| v.as_str())
+                .map(|s| !s.trim().is_empty())
+                .unwrap_or(false);
+            let src_val = src_obj.get(oauth_key).and_then(|v| v.as_object());
+            let src_has = src_val
+                .and_then(|o| o.get("refreshToken"))
+                .and_then(|v| v.as_str())
+                .map(|s| !s.trim().is_empty())
+                .unwrap_or(false);
+            if !dst_has && src_has {
+                if let Some(sv) = src_obj.get(oauth_key) {
+                    dst_obj.insert(oauth_key.to_string(), sv.clone());
+                    changed = true;
+                }
+            }
+        }
+        for (key, alt_key) in [
+            ("slackToken", ""),
+            ("beeperToken", ""),
+            ("courierToken", ""),
+            ("geminiApiKey", "geminiAPIKey"),
+            ("oauthClientIdOverride", "oauthClientIDOverride"),
+            ("oauthClientSecretOverride", "oauthClientSecret"),
+        ] {
+            let dst_has = dst_obj
+                .get(key)
+                .and_then(|v| v.as_str())
+                .or_else(|| {
+                    if !alt_key.is_empty() {
+                        dst_obj.get(alt_key).and_then(|v| v.as_str())
+                    } else {
+                        None
+                    }
+                })
+                .map(|s| !s.trim().is_empty())
+                .unwrap_or(false);
+            let src_val = src_obj
+                .get(key)
+                .and_then(|v| v.as_str())
+                .or_else(|| {
+                    if !alt_key.is_empty() {
+                        src_obj.get(alt_key).and_then(|v| v.as_str())
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or("")
+                .trim();
+            if !dst_has && !src_val.is_empty() {
+                dst_obj.insert(key.to_string(), JsonValue::String(src_val.to_string()));
+                changed = true;
+            }
+        }
+        if changed || (!dst_obj.is_empty() && !file_exists(&dst.secrets_path)) {
+            let _ = write_atomic_json(&dst.secrets_path, &dst_obj);
+        }
+    }
+
+    fn repoint_hooks(&self, p: &HomeSpeakerProfile) {
+        for agent in self.inspect_agents(p) {
+            if agent.hook_state == "installed" || agent.hook_state == "stale" {
+                let action = format!("install:{}", agent.agent_slug);
+                let _ = self.execute_agent_hook_action(&action, p);
+            }
+        }
     }
 
     fn update_secret(
@@ -2962,6 +3429,60 @@ impl HomeSpeaker {
                 }
                 Ok(())
             }
+            "install:antigravity" | "install:Antigravity" | "install_antigravity_hook" => {
+                if self.antigravity_plugin_dir.as_os_str().is_empty() {
+                    return Ok(());
+                }
+                let hook_cmd = format!("\"{}\" --antigravity-hook", p.binary.display());
+                let manifest = expected_antigravity_manifest();
+                let hooks = expected_antigravity_hooks(&hook_cmd);
+                let manifest_path = self.antigravity_plugin_dir.join("plugin.json");
+                let hooks_path = self.antigravity_plugin_dir.join("hooks").join("hooks.json");
+                write_atomic_json(&manifest_path, &manifest)?;
+                write_atomic_json(&hooks_path, &hooks)
+            }
+            "remove:antigravity" | "remove:Antigravity" | "remove_antigravity_hook" => {
+                if self.antigravity_plugin_dir.as_os_str().is_empty()
+                    || !file_exists(&self.antigravity_plugin_dir)
+                {
+                    return Ok(());
+                }
+                let hooks_path = self.antigravity_plugin_dir.join("hooks").join("hooks.json");
+                let is_ours = fs::read_to_string(&hooks_path)
+                    .ok()
+                    .and_then(|s| JsonValue::parse(&s).ok())
+                    .and_then(|v| v.as_object().and_then(antigravity_command_in_hooks))
+                    .is_some();
+                if is_ours {
+                    fs::remove_dir_all(&self.antigravity_plugin_dir)
+                        .map_err(|e| ApplyError::Internal(e.to_string()))?;
+                }
+                Ok(())
+            }
+            "install:opencode" | "install:OpenCode" | "install_opencode_hook" => {
+                if self.opencode_plugin_path.as_os_str().is_empty() {
+                    return Ok(());
+                }
+                let bin_str = p.binary.to_string_lossy();
+                let content = opencode_plugin(&bin_str);
+                write_atomic_text(&self.opencode_plugin_path, &content)
+            }
+            "remove:opencode" | "remove:OpenCode" | "remove_opencode_hook" => {
+                if self.opencode_plugin_path.as_os_str().is_empty()
+                    || !file_exists(&self.opencode_plugin_path)
+                {
+                    return Ok(());
+                }
+                let is_ours = fs::read_to_string(&self.opencode_plugin_path)
+                    .ok()
+                    .and_then(|s| opencode_command_in_plugin(&s))
+                    .is_some();
+                if is_ours {
+                    fs::remove_file(&self.opencode_plugin_path)
+                        .map_err(|e| ApplyError::Internal(e.to_string()))?;
+                }
+                Ok(())
+            }
             "add-instruction:claude-code"
             | "add-instruction:Claude Code"
             | "add_claude_instruction" => append_instruction(&self.claude_md_path),
@@ -3096,8 +3617,19 @@ impl HomeSpeaker {
             return Ok("reset_settings".to_string());
         }
 
-        let mut cfg = self.read_config()?;
         let mut changed = Vec::new();
+        if let Some(ref ad) = u.active_door {
+            let door = ad.trim().to_lowercase();
+            if door != "app" && door != "extension" {
+                return Err(ApplyError::BadRequest(
+                    "active_door must be 'app' or 'extension'".to_string(),
+                ));
+            }
+            self.write_active_door(&door)?;
+            changed.push(format!("active_door={door}"));
+        }
+        let p = self.active_profile();
+        let mut cfg = self.read_config()?;
         let bin_str = p.binary.to_string_lossy().into_owned();
 
         // Courier stays off until a token is saved, as in HomeSpeaker's own
@@ -3285,16 +3817,6 @@ impl HomeSpeaker {
         if let Some(hcv) = u.home_cast_voice {
             cfg.insert("home_cast_voice".to_string(), JsonValue::Bool(hcv));
             changed.push(format!("home_cast_voice={hcv}"));
-        }
-        if let Some(ref ad) = u.active_door {
-            let door = ad.trim().to_lowercase();
-            if door != "app" && door != "extension" {
-                return Err(ApplyError::BadRequest(
-                    "active_door must be 'app' or 'extension'".to_string(),
-                ));
-            }
-            self.write_active_door(&door)?;
-            changed.push(format!("active_door={door}"));
         }
         if u.discover {
             let args = vec!["--discover".to_string(), "--save".to_string()];
@@ -4009,7 +4531,17 @@ mod tests {
             monitor_status_path: dir.join("speaker_monitor_status.json"),
             claude_settings_path: dir.join(".claude").join("settings.json"),
             claude_md_path: dir.join(".claude").join("CLAUDE.md"),
+            antigravity_plugin_dir: dir
+                .join(".gemini")
+                .join("config")
+                .join("plugins")
+                .join("home-speaker"),
             antigravity_md_path: dir.join(".gemini").join("AGENTS.md"),
+            opencode_plugin_path: dir
+                .join(".config")
+                .join("opencode")
+                .join("plugins")
+                .join("home-speaker.ts"),
             opencode_md_path: dir.join(".config").join("opencode").join("AGENTS.md"),
             legacy_plist_path: dir
                 .join("LaunchAgents")
@@ -5060,5 +5592,298 @@ mod tests {
         ));
         assert_eq!(r_rep.status, 200);
         assert!(last.args().contains(&"First announcement".to_string()));
+    }
+
+    #[test]
+    fn test_home_speaker_antigravity_and_opencode_hooks_status_install_and_remove() {
+        let (h, _, phone, _) = new_test_home_speaker(true);
+
+        // Unrelated user settings/files in parent directories that must be preserved.
+        let gemini_config_json = h
+            .antigravity_plugin_dir
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("config.json");
+        let other_agy_plugin = h
+            .antigravity_plugin_dir
+            .parent()
+            .unwrap()
+            .join("other-plugin")
+            .join("plugin.json");
+        fs::create_dir_all(other_agy_plugin.parent().unwrap()).unwrap();
+        fs::write(&gemini_config_json, r#"{"userSetting":"keep-me"}"#).unwrap();
+        fs::write(&other_agy_plugin, r#"{"name":"other-plugin"}"#).unwrap();
+
+        let opencode_config_json = h
+            .opencode_plugin_path
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("opencode.json");
+        let other_opencode_plugin = h
+            .opencode_plugin_path
+            .parent()
+            .unwrap()
+            .join("other-plugin.ts");
+        fs::create_dir_all(other_opencode_plugin.parent().unwrap()).unwrap();
+        fs::write(&opencode_config_json, r#"{"theme":"dark"}"#).unwrap();
+        fs::write(&other_opencode_plugin, "export default {}\n").unwrap();
+
+        let hook_state_of = |h: &HomeSpeaker, slug: &str| -> String {
+            h.state()
+                .agents
+                .into_iter()
+                .find(|a| a.agent_slug == slug)
+                .unwrap()
+                .hook_state
+        };
+
+        // Initially not_installed for both.
+        assert_eq!(hook_state_of(&h, "antigravity"), "not_installed");
+        assert_eq!(hook_state_of(&h, "opencode"), "not_installed");
+
+        // Install Antigravity hook -> installed.
+        let r = h.handle_set(
+            &post_req(
+                "/v1/homespeaker",
+                r#"{"agent_hook_action":"install:antigravity"}"#,
+            ),
+            &phone,
+        );
+        assert_eq!(r.status, 200);
+        assert_eq!(hook_state_of(&h, "antigravity"), "installed");
+
+        // Stale when command points to a different binary path or manifest differs.
+        let hooks_path = h.antigravity_plugin_dir.join("hooks").join("hooks.json");
+        fs::write(
+            &hooks_path,
+            r#"{"description":"HomeSpeaker stop hook for Antigravity.","hooks":{"Stop":[{"hooks":[{"command":"\"/old/HomeSpeaker\" --antigravity-hook","timeout":10,"type":"command"}]}]}}"#,
+        )
+        .unwrap();
+        assert_eq!(hook_state_of(&h, "antigravity"), "stale");
+
+        // Re-install updates stale hook back to installed.
+        let r = h.handle_set(
+            &post_req(
+                "/v1/homespeaker",
+                r#"{"agent_hook_action":"install:antigravity"}"#,
+            ),
+            &phone,
+        );
+        assert_eq!(r.status, 200);
+        assert_eq!(hook_state_of(&h, "antigravity"), "installed");
+
+        // Remove Antigravity hook -> not_installed, preserving unrelated user files.
+        let r = h.handle_set(
+            &post_req(
+                "/v1/homespeaker",
+                r#"{"agent_hook_action":"remove:antigravity"}"#,
+            ),
+            &phone,
+        );
+        assert_eq!(r.status, 200);
+        assert_eq!(hook_state_of(&h, "antigravity"), "not_installed");
+        assert!(!h.antigravity_plugin_dir.exists());
+        assert_eq!(
+            fs::read_to_string(&gemini_config_json).unwrap(),
+            r#"{"userSetting":"keep-me"}"#
+        );
+        assert_eq!(
+            fs::read_to_string(&other_agy_plugin).unwrap(),
+            r#"{"name":"other-plugin"}"#
+        );
+
+        // Install OpenCode hook -> installed.
+        let r = h.handle_set(
+            &post_req(
+                "/v1/homespeaker",
+                r#"{"agent_hook_action":"install:opencode"}"#,
+            ),
+            &phone,
+        );
+        assert_eq!(r.status, 200);
+        assert_eq!(hook_state_of(&h, "opencode"), "installed");
+
+        // Stale when plugin command points to an old path or file body was modified.
+        fs::write(
+            &h.opencode_plugin_path,
+            "// Installed by HomeSpeaker.\n// Command: \"/old/HomeSpeaker\" --opencode-hook\nexport default {}\n",
+        )
+        .unwrap();
+        assert_eq!(hook_state_of(&h, "opencode"), "stale");
+
+        // Re-install -> installed.
+        let r = h.handle_set(
+            &post_req(
+                "/v1/homespeaker",
+                r#"{"agent_hook_action":"install:opencode"}"#,
+            ),
+            &phone,
+        );
+        assert_eq!(r.status, 200);
+        assert_eq!(hook_state_of(&h, "opencode"), "installed");
+
+        // Remove OpenCode hook -> not_installed, preserving unrelated user files.
+        let r = h.handle_set(
+            &post_req(
+                "/v1/homespeaker",
+                r#"{"agent_hook_action":"remove:opencode"}"#,
+            ),
+            &phone,
+        );
+        assert_eq!(r.status, 200);
+        assert_eq!(hook_state_of(&h, "opencode"), "not_installed");
+        assert!(!h.opencode_plugin_path.exists());
+        assert_eq!(
+            fs::read_to_string(&opencode_config_json).unwrap(),
+            r#"{"theme":"dark"}"#
+        );
+        assert_eq!(
+            fs::read_to_string(&other_opencode_plugin).unwrap(),
+            "export default {}\n"
+        );
+    }
+
+    #[test]
+    fn test_home_speaker_has_chat_access_counts_google_chat_oauth() {
+        let (h, _, phone, _) = new_test_home_speaker(true);
+        let st0 = h.state();
+        assert!(!st0.has_google_chat_token);
+        assert!(!st0.has_chat_access);
+
+        // Missing messages.readonly scope -> false.
+        fs::write(
+            &h.secrets_path,
+            r#"{"googleChat":{"refreshToken":"1//GCHAT-SECRET","scopes":["https://www.googleapis.com/auth/chat.spaces.readonly"]}}"#,
+        )
+        .unwrap();
+        let st1 = h.state();
+        assert!(!st1.has_google_chat_token);
+        assert!(!st1.has_chat_access);
+
+        // Both required Google Chat scopes present (and no Slack/Beeper tokens) -> true.
+        fs::write(
+            &h.secrets_path,
+            r#"{"googleChat":{"accessToken":"ya29.gchat","refreshToken":"1//GCHAT-SECRET","scopes":["https://www.googleapis.com/auth/chat.spaces.readonly","https://www.googleapis.com/auth/chat.messages.readonly"]}}"#,
+        )
+        .unwrap();
+        let st2 = h.state();
+        assert!(!st2.has_slack_token && !st2.has_beeper_token);
+        assert!(st2.has_google_chat_token);
+        assert!(st2.has_chat_access);
+
+        let resp = h.handle_get(&phone);
+        let body = resp.body_string();
+        assert!(!body.contains("GCHAT-SECRET") && !body.contains("ya29.gchat"));
+        let raw = JsonValue::parse(&body).unwrap();
+        assert_eq!(raw.get_opt_bool("has_google_chat_token"), Some(true));
+        assert_eq!(raw.get_opt_bool("has_chat_access"), Some(true));
+    }
+
+    #[test]
+    fn test_home_speaker_extension_installed_and_door_choice() {
+        let (h, _, phone, _) = new_test_home_speaker(true);
+
+        // No door file -> extension_installed is false, setting door=extension refused with 400.
+        assert!(!h.state().extension_installed);
+        let r_refused = h.handle_set(
+            &post_req("/v1/homespeaker", r#"{"active_door":"extension"}"#),
+            &phone,
+        );
+        assert_eq!(r_refused.status, 400);
+        assert!(r_refused.body_string().contains("not installed"));
+
+        let root = temp_dir("ext_check");
+        let ext_bin = root
+            .join("Tools")
+            .join("dev.vitruvian.homespeaker")
+            .join("bin")
+            .join("tool");
+        fs::create_dir_all(ext_bin.parent().unwrap()).unwrap();
+
+        // 1. Missing program binary on disk -> false, setting door=extension refused.
+        fs::write(
+            &h.door_path,
+            format!(
+                r#"{{"version":1,"chosen":"app","extension":{{"program":"{}","version":"1.24.0","door":1}}}}"#,
+                ext_bin.display()
+            ),
+        )
+        .unwrap();
+        assert!(!h.state().extension_installed);
+        let r_missing = h.handle_set(
+            &post_req("/v1/homespeaker", r#"{"active_door":"extension"}"#),
+            &phone,
+        );
+        assert_eq!(r_missing.status, 400);
+
+        // Create binary on disk, but door < 1 (below runsAlone) -> false, refused.
+        fs::write(&ext_bin, b"#!/bin/sh\n").unwrap();
+        fs::write(
+            &h.door_path,
+            format!(
+                r#"{{"version":1,"chosen":"app","extension":{{"program":"{}","version":"1.24.0","door":0}}}}"#,
+                ext_bin.display()
+            ),
+        )
+        .unwrap();
+        assert!(!h.state().extension_installed);
+        let r_old_door = h.handle_set(
+            &post_req("/v1/homespeaker", r#"{"active_door":"extension"}"#),
+            &phone,
+        );
+        assert_eq!(r_old_door.status, 400);
+
+        // Program inside .Trash -> false, refused.
+        let trash_bin = root.join(".Trash").join("tool");
+        fs::create_dir_all(trash_bin.parent().unwrap()).unwrap();
+        fs::write(&trash_bin, b"#!/bin/sh\n").unwrap();
+        fs::write(
+            &h.door_path,
+            format!(
+                r#"{{"version":1,"chosen":"app","extension":{{"program":"{}","version":"1.24.0","door":1}}}}"#,
+                trash_bin.display()
+            ),
+        )
+        .unwrap();
+        assert!(!h.state().extension_installed);
+        let r_trash = h.handle_set(
+            &post_req("/v1/homespeaker", r#"{"active_door":"extension"}"#),
+            &phone,
+        );
+        assert_eq!(r_trash.status, 400);
+
+        // Valid standalone extension (door >= 1, exists, not in Trash) -> true.
+        fs::write(
+            &h.door_path,
+            format!(
+                r#"{{"version":1,"chosen":"app","extension":{{"program":"{}","version":"1.24.0","door":1}}}}"#,
+                ext_bin.display()
+            ),
+        )
+        .unwrap();
+        fs::write(&h.secrets_path, r#"{"slackToken":"xoxp-copied-secret"}"#).unwrap();
+        let st_ok = h.state();
+        assert!(st_ok.extension_installed);
+        assert_eq!(st_ok.active_door, "app");
+
+        // Switching to extension succeeds, copies settings & secrets across, and records chosen_at / chosen_by.
+        let r_switch = h.handle_set(
+            &post_req("/v1/homespeaker", r#"{"active_door":"extension"}"#),
+            &phone,
+        );
+        assert_eq!(r_switch.status, 200);
+        let st_ext = h.state();
+        assert_eq!(st_ext.active_door, "extension");
+        assert!(st_ext.extension_installed);
+        assert!(st_ext.available);
+        assert!(st_ext.has_slack_token);
+        let door_doc = JsonValue::parse(&fs::read_to_string(&h.door_path).unwrap()).unwrap();
+        assert_eq!(door_doc.get_str("chosen"), "extension");
+        assert!(!door_doc.get_str("chosen_at").is_empty());
+        assert!(!door_doc.get_str("chosen_by").is_empty());
     }
 }

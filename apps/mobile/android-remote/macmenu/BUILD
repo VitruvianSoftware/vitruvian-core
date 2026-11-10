@@ -162,6 +162,11 @@ rust_test(
     deps = [":tool_conformance_lib"],
 )
 
+exports_files(
+    ["tool/vitruvian-tool.json"],
+    visibility = ["//apps/mobile/android-remote:__subpackages__"],
+)
+
 # Verifies that the tool's version matches Version.swift, Info.plist, and
 # android-remote's BUILD version, and that release-please-config.json updates
 # all of them.
@@ -175,6 +180,7 @@ rust_test(
         "tool/vitruvian-tool.json",
         "//apps/mobile/android-remote:BUILD",
         "//apps/mobile/android-remote:release-please-config.json",
+        "//apps/mobile/android-remote/macagent:rs/src/server.rs",
     ],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],

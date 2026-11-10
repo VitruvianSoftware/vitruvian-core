@@ -3160,24 +3160,26 @@ public class RemoteState(
                       setHomeSpeaker("speak clipboard", speakClipboard = true)
                     }),
         ))
-    add(
-        ModuleRow(
-            title = "HomeSpeaker door",
-            subtitle =
-                if (hs.activeDoor == "extension") "running as Vitruvian extension"
-                else "running as standalone app",
-            trailing = hs.activeDoor,
-            choices =
-                listOf("app", "extension").map { d ->
-                  val current = d == hs.activeDoor
-                  RowAction(
-                      if (d == "app") "App" else "Extension",
-                      enabled = paired && !current,
-                      selected = current) {
-                        setHomeSpeaker("door $d", activeDoor = d)
-                      }
-                },
-        ))
+    if (hs.extensionInstalled || hs.activeDoor == "extension") {
+      add(
+          ModuleRow(
+              title = "HomeSpeaker door",
+              subtitle =
+                  if (hs.activeDoor == "extension") "running as Vitruvian extension"
+                  else "running as standalone app",
+              trailing = hs.activeDoor,
+              choices =
+                  listOf("app", "extension").map { d ->
+                    val current = d == hs.activeDoor
+                    RowAction(
+                        if (d == "app") "App" else "Extension",
+                        enabled = paired && !current,
+                        selected = current) {
+                          setHomeSpeaker("door $d", activeDoor = d)
+                        }
+                  },
+          ))
+    }
     add(
         ModuleRow(
             title = "Settings & diagnostics",
