@@ -24,12 +24,13 @@ Two transports:
   Launchpad, Spotlight, screenshots, window controls and the display-mirror
   toggle (⌘F1) all work this way.
 - **The agent** — [`macagent/`](macagent/README.md), a small Rust daemon on the
-  Mac, reached over Tailscale. It answers the questions HID cannot: CPU,
+  Mac, reached over Tailscale. It reports its real version, tracking the
+  `android-remote` release. It answers the questions HID cannot: CPU,
   memory, battery, disk, network, thermals, top processes, Lima VMs,
   containers, K3s nodes, Claude Code sessions, volume, and PromQL through
   Grafana for GPU / Neural Engine / SoC *power*. Once **paired** with the
-  six-digit code, it also runs the macros, the console, prompts to Claude
-  Code, clipboard push/pull, volume set, and restart. The contract is
+  six-digit code or QR code, it also runs the macros, the console, prompts to
+  Claude Code, clipboard push/pull, volume set, and restart. The contract is
   [`macagent/API.md`](macagent/API.md).
 - **The menu bar app** — [`macmenu/`](macmenu/README.md), a small macOS app
   that shows whether the agent is up and a phone is linked, and pairs,
@@ -110,21 +111,27 @@ Releases are managed via release-please (`release-please-config.json`, `.release
 - **No screenshot tests.** The design system's definition of done asks for a
   preview per component in both themes, screenshot-tested; the previews are not
   written yet.
-- **Module gallery entries without a source:** Xcode builds still shows an
-  honest "not wired to this Mac yet" dashboard. Antigravity, Ollama, Grafana,
-  Docker, Lima, Sony TV, and HomeSpeaker are fully wired. **HomeSpeaker**
-  (`Apps → HomeSpeaker`, backed by
+- **Module gallery.** The "Xcode builds" module was removed (it was never wired).
+  "Add by URL" was removed from the module gallery. "Install guide" opens
+  `apps/mobile/android-remote/macagent/README.md` on GitHub. Antigravity, Ollama,
+  Grafana, Docker, Lima, Sony TV, and HomeSpeaker are fully wired.
+- **HomeSpeaker.** (`Apps → HomeSpeaker`, backed by
   [`macagent/rs/src/homespeaker.rs`](macagent/rs/src/homespeaker.rs) and
-  [`HomeSpeaker`](../../desktop/home-speaker/README.md)) resolves the
-  active door (standalone `.app` or Vitruvian extension), reads and rewrites its
-  config file, and runs `--say` and `/v1/homespeaker/phone-say`. From the phone,
-  the dashboard provides progressive-disclosure controls and single-select
-  dropdown sheets for outputs (`Home speakers`, `This Mac`, `Your phone`),
-  `Cast selected voice` (`home_cast_voice`), `Speaker` target selection,
-  `Local voice engine` (`Apple` / `Gemini`), `Gemini voice` (prebuilt + custom
-  cloned voices), `How much to say`, `Announcement style` (`Verbatim`, `Plain`,
-  `Briefing`, `Casual`, `Custom`), `Style model`, volume, quiet hours, coding
-  agent & chat app toggles, and live phone-bridge audio playback.
+  [`HomeSpeaker`](../../desktop/home-speaker/README.md)) resolves the active door
+  (standalone `.app` or Vitruvian extension), reads and rewrites its config file,
+  and runs `--say` and `/v1/homespeaker/phone-say`. The HomeSpeaker "door" (app
+  vs Vitruvian extension) is offered on the phone only when the extension is
+  installed. Google Cloud OAuth setup is reachable from the phone on first use.
+  Google Chat sign-in now counts as chat access for HomeSpeaker. The phone can
+  now see and install/remove the HomeSpeaker hooks for Antigravity and OpenCode,
+  not only Claude Code. From the phone, the dashboard provides
+  progressive-disclosure controls and single-select dropdown sheets for outputs
+  (`Home speakers`, `This Mac`, `Your phone`), `Cast selected voice`
+  (`home_cast_voice`), `Speaker` target selection, `Local voice engine`
+  (`Apple` / `Gemini`), `Gemini voice` (prebuilt + custom cloned voices), `How
+  much to say`, `Announcement style` (`Verbatim`, `Plain`, `Briefing`, `Casual`,
+  `Custom`), `Style model`, volume, quiet hours, coding agent & chat app
+  toggles, and live phone-bridge audio playback.
 
 ## Design source
 

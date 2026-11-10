@@ -23,8 +23,8 @@ the first 80 characters, so the Mac has a record of what the phone did.
 
 | Method | Path | Body / query | Response |
 |---|---|---|---|
-| GET | `/healthz` | – | `{ok, sample_age_ms, agent_version, read_only:false, paired:bool, sampled_at}` |
-| GET | `/v1/host` | – | `{hostname, model, chip, cores, memory_bytes, os_version, agent_version, mac_address, wake_on_lan:bool}` — `mac_address` is en0's, for the phone to send a Wake-on-LAN packet; `wake_on_lan` is `pmset womp` |
+| GET | `/healthz` | – | `{ok, sample_age_ms, agent_version, read_only:false, paired:bool, sampled_at}` — `agent_version` reports the real version tracking the `android-remote` release |
+| GET | `/v1/host` | – | `{hostname, model, chip, cores, memory_bytes, os_version, agent_version, mac_address, wake_on_lan:bool}` — `agent_version` reports the real version tracking the `android-remote` release; `mac_address` is en0's, for the phone to send a Wake-on-LAN packet; `wake_on_lan` is `pmset womp` |
 | GET | `/v1/metrics` | – | unchanged from v1.0 (cpu/memory/battery/disk/network/thermal/uptime/unavailable) |
 | GET | `/v1/processes` | – | `{sampled_at, processes:[{name, cpu_percent:float, memory_bytes:int}]}` — top 8 by CPU from `ps -Aceo pcpu,rss,comm -r` |
 | GET | `/v1/vms` | – | `{available:bool, reason:string, vms:[{name, status, vm_type, cpus:int, memory_bytes:int, disk_bytes:int, arch}]}` — `limactl list --json` (one object per line). `available:false` with a reason when limactl is absent or fails |
@@ -336,3 +336,10 @@ and a body with none of the recognised fields is 400.
 
 The phone reads a reply without the five switches as an agent older than v1.10 and hides them. With
 no `recent` it falls back to `last` as a one-row list.
+
+## HomeSpeaker parity additions
+
+- **Door routing.** The HomeSpeaker "door" (`active_door`: `"app"` vs `"extension"`) is offered on the phone only when the Vitruvian extension is installed.
+- **Google Cloud OAuth.** Google Cloud OAuth setup is reachable from the phone on first use, allowing custom client ID and secret to be configured.
+- **Chat access.** Google Chat sign-in now counts as chat access (`has_chat_access`) for HomeSpeaker.
+- **Agent hooks.** The phone can now see and install/remove HomeSpeaker hooks for Antigravity and OpenCode, not only Claude Code (`agent_hook_action`: `"install:<agent>"`, `"remove:<agent>"`).
