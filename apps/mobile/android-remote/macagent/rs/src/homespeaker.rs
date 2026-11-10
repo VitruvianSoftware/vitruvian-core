@@ -33,6 +33,7 @@ use std::time::{Duration, Instant};
 
 use vitruvian_remote_macagent_metrics::json::{escape_json_str, JsonObject, JsonValue};
 use vitruvian_remote_macagent_metrics::time_util::Timestamp;
+use vitruvian_remote_macagent_metrics::Tool;
 
 use crate::http_util::{log_act, HttpRequest, HttpResponse};
 use crate::phone::{first_text_content, PhoneBridge};
@@ -2200,6 +2201,42 @@ impl HomeSpeaker {
     ) -> Result<(String, String), String> {
         let runner = self.launch.as_ref().unwrap_or(&self.run);
         runner(limit, name, args)
+    }
+
+    /// HomeSpeaker as a `/v1/tools` entry: present when the active door's program exists, or when
+    /// only the Vitruvian extension is installed (no `/Applications/HomeSpeaker.app`). Checking the
+    /// app bundle alone hid HomeSpeaker on extension-only Macs.
+    pub fn tool(&self) -> Tool {
+        let p = self.active_profile();
+        if file_exists(&p.binary) {
+            return Tool {
+                available: true,
+                path: p.binary.to_string_lossy().into_owned(),
+            };
+        }
+        if self.extension_installed() {
+            if let Some(program) = self.extension_program() {
+                return Tool {
+                    available: true,
+                    path: program,
+                };
+            }
+        }
+        Tool {
+            available: false,
+            path: p.binary.to_string_lossy().into_owned(),
+        }
+    }
+
+    fn extension_program(&self) -> Option<String> {
+        let data = fs::read_to_string(&self.door_path).ok()?;
+        let door = JsonValue::parse(&data).ok()?;
+        door.as_object()?
+            .get("extension")?
+            .as_object()?
+            .get("program")?
+            .as_str()
+            .map(str::to_string)
     }
 
     pub fn extension_installed(&self) -> bool {
@@ -6425,6 +6462,32 @@ mod tests {
         let raw = JsonValue::parse(&body).unwrap();
         assert_eq!(raw.get_opt_bool("has_google_chat_token"), Some(true));
         assert_eq!(raw.get_opt_bool("has_chat_access"), Some(true));
+    }
+
+    #[test]
+    fn test_home_speaker_tool_counts_an_extension_only_mac() {
+        // No HomeSpeaker.app at the app profile's path.
+        let (h, _, _, _) = new_test_home_speaker(false);
+        fs::remove_file(&h.binary).unwrap();
+        assert!(!h.tool().available);
+
+        let ext_dir = temp_dir("hs_tool_ext");
+        let ext_bin = ext_dir.join("tool");
+        fs::write(&ext_bin, b"#!/bin/sh\n").unwrap();
+        fs::write(
+            &h.door_path,
+            format!(
+                r#"{{"version":1,"chosen":"extension","extension":{{"program":"{}","version":"1.24.0","door":1}}}}"#,
+                ext_bin.display()
+            ),
+        )
+        .unwrap();
+        let tool = h.tool();
+        assert!(
+            tool.available,
+            "an installed extension must make HomeSpeaker a present tool"
+        );
+        assert_eq!(tool.path, ext_bin.to_string_lossy());
     }
 
     #[test]
