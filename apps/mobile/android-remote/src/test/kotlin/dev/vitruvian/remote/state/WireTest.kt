@@ -676,4 +676,13 @@ public class WireTest {
     assertEquals(
         true, HomeSpeakerWire.sources("""{"extension_installed":true}""").extensionInstalled)
   }
+
+  @Test
+  public fun `homespeaker has_google_chat_token defaults to false and parses true`() {
+    assertEquals(false, HomeSpeakerWire.sources("{}").hasGoogleChatToken)
+    assertEquals(
+        false, HomeSpeakerWire.sources("""{"has_google_chat_token":false}""").hasGoogleChatToken)
+    assertEquals(
+        true, HomeSpeakerWire.sources("""{"has_google_chat_token":true}""").hasGoogleChatToken)
+  }
 }
