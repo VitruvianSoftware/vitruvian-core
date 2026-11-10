@@ -13,9 +13,9 @@
     "lint": "backstage-cli package lint"
   },
   "dependencies": {
-    "@backstage-community/plugin-github-actions": "^1.5.1",
+    "@backstage-community/plugin-github-actions": "^1.6.0",
     "@backstage-community/plugin-grafana": "^1.2.0",
-    "@backstage-community/plugin-jaeger": "^0.19.1",
+    "@backstage-community/plugin-jaeger": "^0.20.0",
     "@backstage/app-defaults": "^1.7.12",
     "@backstage/catalog-model": "^1.10.1",
     "@backstage/core-app-api": "^1.20.5",
@@ -49,7 +49,7 @@
     "@roadiehq/backstage-plugin-argo-cd": "^2.13.1",
     "@roadiehq/backstage-plugin-github-pull-requests": "^3.9.1",
     "@roadiehq/backstage-plugin-prometheus": "^3.4.1",
-    "backstage-plugin-techdocs-addon-mermaid": "^0.29.0",
+    "backstage-plugin-techdocs-addon-mermaid": "^0.30.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router": "catalog:backstage",

@@ -12,11 +12,11 @@
   "dependencies": {
     "@tabula/shared": "workspace:*",
     "@vitruviansoftware/design-system": "workspace:*",
-    "geist": "^1.9.0",
-    "next": "16.4.4",
+    "geist": "^1.9.2",
+    "next": "16.4.5",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "zustand": "^5.0.16"
+    "zustand": "^5.1.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
