@@ -261,6 +261,20 @@ connected computer, within what each computer allows. The design starts from tha
 | Alpha (James, then a few invitees) | Homelab k3s behind the Cloudflare Tunnel, Postgres on CNPG, the same pattern as the hosted Slack MCP | No new cost. Fine for dogfooding |
 | Paid launch | GCP through the OSS application stage: Cloud Run plus Cloud SQL Postgres | Homelab availability (Wi-Fi nodes, a single database instance) is not good enough for people paying us |
 
+**Domains (decided 2026-11-09).** The spikes and the alpha run under `ipv1337.dev`
+(`relay-spike.ipv1337.dev`). **Production runs under `vitruviansoftware.dev`**, the
+zone for commercial products (`docs/engineering/domain-zone-conventions.md`). The
+relay URL, the dashboard and the connector's download page all move there. Two
+consequences to plan for:
+
+- The resource URL is baked into the protected-resource metadata and into each
+  AI app's connector, so moving domains means every alpha user re-adds their
+  connector. Do the move before inviting anyone outside the team.
+- Sign-in runs on `auth.ipv1337.dev` today, and the domain convention keeps Zitadel
+  on `ipv1337.dev` as platform infrastructure. Paying users would see that
+  name on the sign-in page. Whether production sign-in gets a
+  `vitruviansoftware.dev` name is open (§11).
+
 Two things to know about the paid setup:
 
 - Cloud Run ends a WebSocket after at most 60 minutes. The connector therefore
@@ -318,19 +332,23 @@ Each phase gets its own plan in `docs/superpowers/plans/`.
 
 ## 11. Open questions
 
-1. **Name and domain.** "Vitruvian Relay" and `vrelay` are placeholders.
-2. **Which ChatGPT plans can add a custom MCP server.** Not confirmed. Some
+1. **Name.** "Vitruvian Relay" and `vrelay` are placeholders. The domain is
+   decided: production on `vitruviansoftware.dev` (§8).
+2. **Sign-in domain for production.** Keep `auth.ipv1337.dev`, or give Zitadel a
+   `vitruviansoftware.dev` name for this product. That changes the issuer every
+   token carries, so it happens before launch, not after.
+3. **Which ChatGPT plans can add a custom MCP server.** Not confirmed. Some
    sources say only Business, Enterprise and Edu workspaces can, which would shrink
    the ChatGPT market a lot. Claude allows it on every plan.
-3. **Where Zitadel runs for a paid product**, and whether that cost is worth it now
+4. **Where Zitadel runs for a paid product**, and whether that cost is worth it now
    or only at launch.
-4. **Pricing** for the free and paid tiers.
-5. **Node.js**: keep requiring it, or bundle a runtime with the connector.
-6. **One URL per device or one per account**, after seeing how alpha users find it.
-7. **Open client registration for ChatGPT**: turn on Zitadel's open dynamic
+5. **Pricing** for the free and paid tiers.
+6. **Node.js**: keep requiring it, or bundle a runtime with the connector.
+7. **One URL per device or one per account**, after seeing how alpha users find it.
+8. **Open client registration for ChatGPT**: turn on Zitadel's open dynamic
    client registration (and live with anyone being able to create clients), put
    a gate in front of it, or support Claude only at first.
-8. **Scaling past one relay instance**: which message bus, and when.
-9. **Positioning**: a direct alternative to Desktop Commander's hosted service, or
+9. **Scaling past one relay instance**: which message bus, and when.
+10. **Positioning**: a direct alternative to Desktop Commander's hosted service, or
    "reach any local MCP server from any AI app" with Desktop Commander as one
    option. The spec assumes the second.
