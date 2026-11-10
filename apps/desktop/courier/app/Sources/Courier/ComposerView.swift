@@ -321,11 +321,11 @@ struct ComposerView: View {
         .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.accentColor.opacity(0.09))
+                .fill(Color.secondary.opacity(0.11))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(Color.accentColor.opacity(0.24), lineWidth: 0.5)
+                .strokeBorder(Color.secondary.opacity(0.22), lineWidth: 0.5)
         )
     }
 
@@ -747,7 +747,7 @@ struct ComposerView: View {
                 composer.dismissEmojiAutocomplete()
                 presentCustomEmojiImportPanel(shortcode: shortcode)
             }
-        } else if !composer.slashCommandSuggestions.isEmpty {
+        } else if !composer.isAIWriting, composer.aiResult == nil, !composer.slashCommandSuggestions.isEmpty {
             HStack(spacing: 8) {
                 ForEach(composer.slashCommandSuggestions) { cmd in
                     Button {

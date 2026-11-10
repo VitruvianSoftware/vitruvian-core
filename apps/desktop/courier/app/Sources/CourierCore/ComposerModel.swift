@@ -2723,9 +2723,9 @@ public final class ComposerModel: ObservableObject {
             }
     }
 
-    /// Matching `/` slash commands when `aiPreferences.enableSlashCommands` is enabled and `text` begins with `/`.
+    /// Matching `/` slash commands when `aiPreferences.enableSlashCommands` is enabled, no AI writing or result strip is active, and `text` begins with `/`.
     public var slashCommandSuggestions: [ComposerSlashCommand] {
-        guard aiPreferences.enableSlashCommands else { return [] }
+        guard aiPreferences.enableSlashCommands, !isAIWriting, aiResult == nil else { return [] }
         let trimmed = text.trimmingCharacters(in: .whitespaces)
         guard trimmed.hasPrefix("/") else { return [] }
         let token = String(trimmed.prefix(while: { !$0.isWhitespace })).lowercased()
