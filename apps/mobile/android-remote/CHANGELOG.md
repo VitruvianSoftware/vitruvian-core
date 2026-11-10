@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.34](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.33...android-remote-v0.1.34) (2026-11-10)
+
+
+### Features
+
+* **android-remote:** the phone shows Home Speaker's own wording, choices and limits ([#4565](https://github.com/VitruvianSoftware/vitruvian-core/issues/4565)) ([4e7b499](https://github.com/VitruvianSoftware/vitruvian-core/commit/4e7b499f4bce53f735471200ec20384b3fb28d80))
+
 ## [0.1.33](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.32...android-remote-v0.1.33) (2026-11-10)
 
 
