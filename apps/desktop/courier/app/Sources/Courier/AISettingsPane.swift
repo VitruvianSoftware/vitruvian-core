@@ -150,7 +150,9 @@ public struct AISettingsPane: View {
             Form {
                 statusBannerSection
                 providerListSection
-                selectedProviderSection
+                if preferences.enableContextualAI {
+                    selectedProviderSection
+                }
                 customInstructionsSection
                 translationLanguagesSection
                 talkToTypeSection
@@ -327,8 +329,7 @@ public struct AISettingsPane: View {
         let rowAction = store.localRowAction(for: kind)
         return HStack(spacing: 10) {
             Button {
-                preferences.selectedEngine = kind
-                preferences.enableContextualAI = true
+                store.selectProvider(kind)
             } label: {
                 HStack(spacing: 10) {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
@@ -363,8 +364,7 @@ public struct AISettingsPane: View {
     private func cloudProviderRow(_ kind: AIProviderKind) -> some View {
         let isSelected = preferences.enableContextualAI && preferences.selectedEngine == kind
         return Button {
-            preferences.selectedEngine = kind
-            preferences.enableContextualAI = true
+            store.selectProvider(kind)
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
@@ -385,6 +385,7 @@ public struct AISettingsPane: View {
 
     private var selectedProviderSection: some View {
         let kind = preferences.selectedEngine
+        let choices = modelChoices(for: kind)
         return Section(kind.label) {
             VStack(alignment: .leading, spacing: 10) {
                 if kind.acceptsKey {
@@ -405,18 +406,26 @@ public struct AISettingsPane: View {
                         String(localized: "Model"),
                         selection: Binding(
                             get: {
-                                preferences.model(for: kind) ?? preferences.selectedModel
+                                if let remembered = preferences.model(for: kind), choices.contains(remembered) {
+                                    return remembered
+                                }
+                                if choices.contains(preferences.selectedModel) {
+                                    return preferences.selectedModel
+                                }
+                                return choices.first ?? ""
                             },
                             set: { newModel in
+                                guard choices.contains(newModel) else { return }
                                 preferences.setModel(newModel, for: kind)
                                 preferences.selectedModel = newModel
                             }
                         )
                     ) {
-                        ForEach(modelChoices(for: kind), id: \.self) { modelName in
+                        ForEach(choices, id: \.self) { modelName in
                             Text(modelName).tag(modelName)
                         }
                     }
+                    .disabled(choices.isEmpty)
 
                     Button {
                         Task { await store.refreshModelsForSelectedProvider() }
@@ -535,19 +544,14 @@ public struct AISettingsPane: View {
         }
     }
 
-    private func modelChoices(for kind: AIProviderKind) -> [String] {
-        var choices = store.availableModels
-        if choices.isEmpty {
-            choices = effectiveProvider.availableModels
+    public func modelChoices(for kind: AIProviderKind) -> [String] {
+        guard preferences.enableContextualAI, preferences.selectedEngine == kind else {
+            return []
         }
-        let current = preferences.model(for: kind) ?? preferences.selectedModel
-        if !current.isEmpty, !choices.contains(current) {
-            choices.insert(current, at: 0)
+        if !store.availableModels.isEmpty {
+            return store.availableModels
         }
-        if choices.isEmpty {
-            choices = [String(localized: "Default")]
-        }
-        return choices
+        return explicitProvider?.availableModels ?? []
     }
 
     private func privacySentence(for kind: AIProviderKind) -> String {

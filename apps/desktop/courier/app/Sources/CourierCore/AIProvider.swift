@@ -56,7 +56,7 @@ public struct UnavailableAIProvider: AIProvider {
         customReason ?? String(localized: "AI features aren’t available yet in Courier. Everything you write stays on this Mac.")
     }
     public var availableModels: [String] {
-        [String(localized: "On-Device (Not available yet)")]
+        []
     }
     public func draftResponse(context _: AIChatContext, draft _: String, tone _: AIRewriteTone?) async -> AIProviderDisposition {
         .unavailable(reason: customReason ?? String(localized: "Drafting with AI isn’t available yet in Courier."))
@@ -192,7 +192,8 @@ public final class AIPreferences: ObservableObject {
         enableContextualAI = bool("enableContextualAI", false)
         selectedEngine = defaults.string(forKey: Self.key("selectedEngine"))
             .flatMap(AIEngineChoice.init(rawValue:)) ?? .appleIntelligence
-        selectedModel = string("selectedModel", String(localized: "On-Device (Not available yet)"))
+        let storedModel = defaults.string(forKey: Self.key("selectedModel")) ?? ""
+        selectedModel = storedModel == "On-Device (Not available yet)" ? "" : storedModel
         customBaseURL = defaults.string(forKey: Self.key("customBaseURL")) ?? ""
         selectedModelByProvider = (defaults.dictionary(forKey: Self.key("selectedModelByProvider")) as? [String: String]) ?? [:]
         responseLanguage = string("responseLanguage", "English")

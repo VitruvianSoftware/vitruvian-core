@@ -41,7 +41,7 @@ final class ProviderStubsTests: XCTestCase {
         XCTAssertFalse(ai.isAvailable)
         XCTAssertTrue(ai.unavailableReason.contains("Courier"))
         XCTAssertFalse(ai.unavailableReason.localizedCaseInsensitiveContains("Beeper"))
-        XCTAssertFalse(ai.availableModels.isEmpty)
+        XCTAssertTrue(ai.availableModels.isEmpty)
 
         let context = AIChatContext(
             title: "Trail Crew",
@@ -127,7 +127,7 @@ final class ProviderStubsTests: XCTestCase {
         let prefs = AIPreferences(defaults: defaults)
         XCTAssertFalse(prefs.enableContextualAI)
         XCTAssertEqual(prefs.selectedEngine, .appleIntelligence)
-        XCTAssertFalse(prefs.selectedModel.isEmpty)
+        XCTAssertEqual(prefs.selectedModel, "")
         XCTAssertEqual(prefs.customBaseURL, "")
         XCTAssertEqual(prefs.selectedModelByProvider, [:])
         XCTAssertEqual(prefs.responseLanguage, "English")

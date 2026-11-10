@@ -753,6 +753,54 @@ final class AIProvidersTests: XCTestCase {
         XCTAssertEqual(store.statusBannerText, "Anthropic · claude-sonnet-4-20250514")
     }
 
+    func testChoosingProviderLoadsModelsAtOnceSelectsRememberedOrFirstAndNeverShowsUnlistedModel() async throws {
+        let suiteName = "test.courier.ai.store.select.\(UUID().uuidString)"
+        let defaults = ScratchDefaults.suite(named: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let prefs = AIPreferences(defaults: defaults)
+        // Default selectedModel is unset ("") and never the stale "On-Device (Not available yet)" string
+        XCTAssertEqual(prefs.selectedModel, "")
+
+        // Pre-populate a remembered model for OpenAI (listed) and an unlisted stale model for Ollama
+        prefs.setModel("gpt-4.1-mini", for: .openAI)
+        prefs.setModel("unlisted-stale-model", for: .ollama)
+
+        let transport = StubHTTPTransport { request in
+            guard let url = request.url else { throw URLError(.badURL) }
+            switch url.absoluteString {
+            case "http://127.0.0.1:11434/v1/models":
+                let body = Data(#"{"data":[{"id":"llama3.2:latest"},{"id":"qwen2.5:7b"}]}"#.utf8)
+                return (body, StubHTTPTransport.makeResponse(url: url, status: 200))
+            case "https://api.openai.com/v1/models":
+                let body = Data(#"{"data":[{"id":"gpt-4o"},{"id":"gpt-4.1-mini"}]}"#.utf8)
+                return (body, StubHTTPTransport.makeResponse(url: url, status: 200))
+            default:
+                throw URLError(.cannotConnectToHost)
+            }
+        }
+        let keyStore = AIKeyStore(store: InMemoryCredentialStore(["openAI": "test-openai-key"]))
+        let store = AIProviderStore(preferences: prefs, keyStore: keyStore, transport: transport)
+
+        // 1. Choosing Ollama loads its model list at once; because "unlisted-stale-model" is not listed, selects the first listed model
+        store.selectProvider(.ollama)
+        try await waitUntil { store.availableModels == ["llama3.2:latest", "qwen2.5:7b"] }
+        XCTAssertEqual(store.availableModels, ["llama3.2:latest", "qwen2.5:7b"])
+        XCTAssertFalse(store.availableModels.contains("unlisted-stale-model"))
+        XCTAssertEqual(prefs.model(for: .ollama), "llama3.2:latest")
+        XCTAssertEqual(prefs.selectedModel, "llama3.2:latest")
+        XCTAssertEqual((store.provider as? ConfiguredAIProvider)?.model, "llama3.2:latest")
+
+        // 2. Choosing OpenAI clears Ollama's models immediately, loads OpenAI's models at once, and selects the remembered "gpt-4.1-mini"
+        store.selectProvider(.openAI)
+        try await waitUntil { store.availableModels == ["gpt-4o", "gpt-4.1-mini"] }
+        XCTAssertEqual(store.availableModels, ["gpt-4o", "gpt-4.1-mini"])
+        XCTAssertFalse(store.availableModels.contains("llama3.2:latest"))
+        XCTAssertEqual(prefs.model(for: .openAI), "gpt-4.1-mini")
+        XCTAssertEqual(prefs.selectedModel, "gpt-4.1-mini")
+        XCTAssertEqual((store.provider as? ConfiguredAIProvider)?.model, "gpt-4.1-mini")
+    }
+
     // MARK: - UI Model Wiring Tests (Translation, Result Strip, Chat Switch Cancellation, Last Language Rule)
 
     func testDisabledLastTranslationLanguageRule() {

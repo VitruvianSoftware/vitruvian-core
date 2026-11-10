@@ -52,6 +52,9 @@ public final class AIProviderStore: ObservableObject {
     public var isAppInstalled: @Sendable (AIProviderKind) -> Bool
     public var openLocalApp: @MainActor (AIProviderKind) -> Void
     private var settingsDetectionTask: Task<Void, Never>?
+    private var modelRefreshTask: Task<Void, Never>?
+    private var currentEngineForModels: AIProviderKind?
+    private var wasEnabled: Bool = false
     private var cancellables: Set<AnyCancellable> = []
     private let appleClientFactory: @Sendable () -> AppleOnDeviceClient
 
@@ -80,12 +83,15 @@ public final class AIProviderStore: ObservableObject {
         self.openLocalApp = openLocalApp
         self.appleClientFactory = appleClientFactory
 
+        self.wasEnabled = preferences.enableContextualAI
+        self.currentEngineForModels = preferences.enableContextualAI ? preferences.selectedEngine : nil
         observePreferences()
         rebuildProvider()
     }
 
     deinit {
         settingsDetectionTask?.cancel()
+        modelRefreshTask?.cancel()
     }
 
     private func observePreferences() {
@@ -98,10 +104,52 @@ public final class AIProviderStore: ObservableObject {
             .store(in: &cancellables)
     }
 
-    private func handlePreferencesChanged() {
+    /// Selects `kind`, turns AI on, clears any stale models from a previous provider, and loads `kind`'s model list at once.
+    public func selectProvider(_ kind: AIProviderKind) {
+        let changedProvider = preferences.selectedEngine != kind || !preferences.enableContextualAI
+        preferences.selectedEngine = kind
+        preferences.enableContextualAI = true
+        if changedProvider {
+            availableModels = []
+        }
+        currentEngineForModels = kind
+        wasEnabled = true
         lastTestResult = nil
         syncAvailableModelsForCurrentSelection()
         rebuildProvider()
+        if availableModels.isEmpty, makeClient(for: kind) != nil {
+            modelRefreshTask?.cancel()
+            modelRefreshTask = Task { @MainActor [weak self] in
+                await self?.refreshModelsForSelectedProvider()
+            }
+        }
+    }
+
+    private func handlePreferencesChanged() {
+        lastTestResult = nil
+        guard preferences.enableContextualAI else {
+            modelRefreshTask?.cancel()
+            availableModels = []
+            currentEngineForModels = nil
+            wasEnabled = false
+            rebuildProvider()
+            return
+        }
+        let kind = preferences.selectedEngine
+        let providerChanged = currentEngineForModels != kind || !wasEnabled
+        currentEngineForModels = kind
+        wasEnabled = true
+        if providerChanged {
+            availableModels = []
+        }
+        syncAvailableModelsForCurrentSelection()
+        rebuildProvider()
+        if providerChanged, availableModels.isEmpty, makeClient(for: kind) != nil {
+            modelRefreshTask?.cancel()
+            modelRefreshTask = Task { @MainActor [weak self] in
+                await self?.refreshModelsForSelectedProvider()
+            }
+        }
     }
 
     // MARK: - Keys
@@ -454,23 +502,34 @@ public final class AIProviderStore: ObservableObject {
         let kind = preferences.selectedEngine
         if kind == .appleIntelligence {
             let status = appleClientFactory().availability
-            availableModels = status.isAvailable ? [AppleOnDeviceClient.modelName] : []
+            let models = status.isAvailable ? [AppleOnDeviceClient.modelName] : []
+            applyDiscoveredModels(models, for: .appleIntelligence)
             return
         }
         if case let .running(models) = detections[kind] {
-            availableModels = models
+            applyDiscoveredModels(models, for: kind)
+        } else if kind.isLocal {
+            availableModels = []
         }
     }
 
     private func applyDiscoveredModels(_ models: [String], for kind: AIProviderKind) {
         availableModels = models
-        guard !models.isEmpty else { return }
+        guard !models.isEmpty else {
+            if preferences.selectedEngine == kind, !preferences.selectedModel.isEmpty {
+                preferences.selectedModel = ""
+            }
+            return
+        }
         if let existing = preferences.model(for: kind), models.contains(existing) {
             if preferences.selectedEngine == kind, preferences.selectedModel != existing {
                 preferences.selectedModel = existing
             }
         } else if let first = models.first {
             preferences.setModel(first, for: kind)
+            if preferences.selectedEngine == kind, preferences.selectedModel != first {
+                preferences.selectedModel = first
+            }
         }
     }
 
@@ -537,23 +596,27 @@ public final class AIProviderStore: ObservableObject {
             return
         }
 
-        let modelsList = availableModels.isEmpty ? [resolvedModel] : availableModels
         provider = ConfiguredAIProvider(
             kind: kind,
             client: client,
             model: resolvedModel,
-            availableModels: modelsList,
+            availableModels: availableModels,
             responseLanguage: preferences.responseLanguage,
             customInstructions: preferences.aiMentionsSystemPrompt
         )
     }
 
     private func resolveModel(for kind: AIProviderKind) -> String {
-        if let perProvider = preferences.model(for: kind) {
-            return perProvider
+        if !availableModels.isEmpty {
+            if let perProvider = preferences.model(for: kind), availableModels.contains(perProvider) {
+                return perProvider
+            }
+            if let firstAvailable = availableModels.first {
+                return firstAvailable
+            }
         }
-        if let firstAvailable = availableModels.first, !firstAvailable.isEmpty {
-            return firstAvailable
+        if let perProvider = preferences.model(for: kind), !perProvider.isEmpty {
+            return perProvider
         }
         let legacyPlaceholder = String(localized: "On-Device (Not available yet)")
         let trimmedSelected = preferences.selectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
