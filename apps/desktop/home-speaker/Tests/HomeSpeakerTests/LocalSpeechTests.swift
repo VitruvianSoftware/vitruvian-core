@@ -229,6 +229,23 @@ private struct Rig {
         #expect(!c.isSnoozed(at: until), "exact boundary is not snoozed")
         #expect(!c.isSnoozed(at: until.addingTimeInterval(1)))
     }
+
+    @Test func snoozeISO8601FractionalAndTimezoneAndLocalWording() throws {
+        let whole = try #require(SpeakerConfig.parseISO8601("2026-11-10T06:30:00Z"))
+        let frac = try #require(SpeakerConfig.parseISO8601("2026-11-10T06:30:00.500Z"))
+        #expect(frac == whole.addingTimeInterval(0.5))
+        #expect(SpeakerConfig.parseISO8601("2026-11-10T06:30:00") == nil)
+        #expect(
+            SpeakerConfig.formatISO8601UTC(Date(timeIntervalSince1970: 1_762_754_400.75))
+                == "2025-11-10T06:00:00Z")
+        #expect(
+            SpeakerConfig.formatISO8601UTC(Date(timeIntervalSince1970: 1_794_290_400.75))
+                == "2026-11-10T06:00:00Z")
+
+        var laCalendar = Calendar(identifier: .gregorian)
+        laCalendar.timeZone = try #require(TimeZone(identifier: "America/Los_Angeles"))
+        #expect(SpeakerConfig.snoozedUntilLine(whole, calendar: laCalendar) == "Snoozed until 22:30")
+    }
 }
 
 // MARK: - The rules, in order
