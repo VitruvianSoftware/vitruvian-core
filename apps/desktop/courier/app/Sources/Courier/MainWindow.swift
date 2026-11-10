@@ -159,10 +159,10 @@ struct MainWindow: View {
             .environment(\.searchInChat, { search.show(in: $0) })
             .environment(\.openDetachedWindow, { target in detachedWindows?.open(target) })
             .environment(\.appearancePreferences, appearance)
-            .environment(\.themeAccentHex, appearance.effectiveTheme(for: conversation.roomID).accentColorHex)
+            .environment(\.themeAccentHex, appearance.effectiveTheme(for: nil).accentColorHex)
             .environment(\.redactNamesAndPictures, appearance.redactNamesAndPictures)
             .environment(\.liquidGlass, appearance.liquidGlassIsActive)
-            .tint(Color(hex: appearance.effectiveTheme(for: conversation.roomID).accentColorHex) ?? .accentColor)
+            .tint(Color(hex: appearance.effectiveTheme(for: nil).accentColorHex) ?? .accentColor)
             .courierTextZoom(appearance)
             .preferredColorScheme(preferredColorScheme)
     }
@@ -523,6 +523,10 @@ private struct ThemeAccentHexEnvironmentKey: EnvironmentKey {
     static let defaultValue: String = CourierThemePreset.classicTeal.defaultAccentHex
 }
 
+private struct ThemeRoomIDEnvironmentKey: EnvironmentKey {
+    static let defaultValue: String? = nil
+}
+
 private struct RedactNamesAndPicturesKey: EnvironmentKey {
     static let defaultValue = false
 }
@@ -538,12 +542,19 @@ extension EnvironmentValues {
         set { self[ThemeAccentHexEnvironmentKey.self] = newValue }
     }
 
+    var themeRoomID: String? {
+        get { self[ThemeRoomIDEnvironmentKey.self] }
+        set { self[ThemeRoomIDEnvironmentKey.self] = newValue }
+    }
+
     /// The theme preset's accent colour, shared across bubbles, unread badges, the New divider, and selection.
+    /// Inbox-level views (where `themeRoomID` is nil) keep the global theme accent; views inside an open chat use that
+    /// room's effective theme.
     var themeAccentColor: Color {
         let hex: String
         if Thread.isMainThread {
             hex = MainActor.assumeIsolated {
-                appearancePreferences?.effectiveTheme(for: nil).accentColorHex ?? themeAccentHex
+                appearancePreferences?.effectiveTheme(for: themeRoomID).accentColorHex ?? themeAccentHex
             }
         } else {
             hex = themeAccentHex

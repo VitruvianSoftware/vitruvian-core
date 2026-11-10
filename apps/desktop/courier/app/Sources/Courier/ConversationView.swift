@@ -23,6 +23,7 @@ struct ConversationView: View {
     var appearance: AppearancePreferences? = nil
     @Environment(\.controlActiveState) private var controlActiveState
     @Environment(\.appearancePreferences) private var appearanceEnv
+    @Environment(\.themeAccentHex) private var themeAccentHex
     @Environment(\.drawsLiquidGlass) private var drawsLiquidGlass
     @StateObject private var ui = MessageUI()
     @State private var isDropTargeted = false
@@ -126,6 +127,17 @@ struct ConversationView: View {
             }
         }
         .onPreferenceChange(SidePaneWidthKey.self) { sidePaneWidths = $0 }
+        .environment(\.appearancePreferences, resolvedAppearance)
+        .environment(\.themeRoomID, conversation.roomID)
+        .environment(
+            \.themeAccentHex,
+            resolvedAppearance?.effectiveTheme(for: conversation.roomID).accentColorHex ?? themeAccentHex
+        )
+        .tint(
+            Color(
+                hex: resolvedAppearance?.effectiveTheme(for: conversation.roomID).accentColorHex ?? themeAccentHex
+            ) ?? .accentColor
+        )
         .courierChatToolbar {
             ConversationHeaderContainer(inbox: inbox, conversation: conversation, redactNamesAndPictures: redact,
                                         part: .identity)

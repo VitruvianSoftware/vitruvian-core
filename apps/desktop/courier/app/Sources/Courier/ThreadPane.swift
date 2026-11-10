@@ -46,6 +46,7 @@ struct ThreadPane: View {
                 }
         }
         .courierSurface(.sidePane)
+        .environment(\.themeRoomID, thread.roomID ?? conversation.roomID)
         .onAppear {
             ui.history = { await messageActions.history(of: $0) }
             // Return in the pane's empty composer edits or replies to the message selected in the pane.
@@ -147,6 +148,7 @@ struct ThreadPane: View {
 struct ThreadSummaryLine: View {
     let summary: ThreadSummary
     let open: () -> Void
+    @Environment(\.themeAccentColor) private var themeAccent
 
     var body: some View {
         Button(action: open) {
@@ -154,7 +156,7 @@ struct ThreadSummaryLine: View {
                 Image(systemName: "bubble.left.and.bubble.right")
                 Text(MessageLines.replies(summary))
                     .fontWeight(.semibold)
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(themeAccent)
                 if let new = MessageLines.newReplies(summary) {
                     NewRepliesMark(text: new, mentionsMe: summary.unreadMentionsMe)
                 }

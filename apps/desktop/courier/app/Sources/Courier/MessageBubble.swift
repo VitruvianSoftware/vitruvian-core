@@ -160,7 +160,7 @@ struct TimelineItemView: View {
         case let .dateSeparator(day):
             DaySeparator(day: day)
         case .newDivider:
-            NewDivider()
+            NewDivider(appearance: actions.appearance)
         case let .membershipRun(_, _, summary):
             MembershipRunRow(summary: summary, isSelected: isSelected)
         case let .message(message):
@@ -204,7 +204,18 @@ private struct DaySeparator: View {
 }
 
 private struct NewDivider: View {
-    @Environment(\.themeAccentColor) private var themeAccent
+    var appearance: AppearancePreferences? = nil
+    @Environment(\.appearancePreferences) private var appearanceEnv
+    @Environment(\.themeRoomID) private var themeRoomID
+    @Environment(\.themeAccentColor) private var envThemeAccent
+
+    private var themeAccent: Color {
+        if let resolved = appearance ?? appearanceEnv,
+           let color = Color(hex: resolved.effectiveTheme(for: themeRoomID).accentColorHex) {
+            return color
+        }
+        return envThemeAccent
+    }
 
     var body: some View {
         HStack(spacing: 8) {
