@@ -294,7 +294,7 @@ the app's own binary so it uses HomeSpeaker's sign-in, target resolution and spe
 ## HomeSpeaker (read + act)
 
 `GET /v1/homespeaker` → `{available, reason, installed, app_running, signed_in, enabled,
-default_target, speech_length, structure_name, quiet_hours:{enabled,start,end},
+default_target, speech_length, structure_name, quiet_hours:{enabled,start,end,active},
 targets:[{key, name, room, type, selected}], last?:{text, target, source, at}}`
 
 - `available:false` with `reason` when the config file does not exist (HomeSpeaker was never set
@@ -304,6 +304,9 @@ targets:[{key, name, room, type, selected}], last?:{text, target, source, at}}`
   response or a log.
 - `speech_length` is `headline` | `summary` | `full`; absent in the file means `summary` (the
   app's own default).
+- `quiet_hours.start` and `quiet_hours.end` default to `"22:00"` and `"07:00"` when absent (and
+  after `reset_settings`). `quiet_hours.active` (`quiet_hours_active`) is evaluated against the
+  Mac's local wall-clock time.
 - `targets` is the file's map as a list: `Structure` (whole home) first, then by room; exactly one
   has `selected:true` when `default_target` names a real key. One entry per DEVICE, not per alias —
   discovery writes some speakers under two keys (`lake_office` and `lake_office_display` are one
@@ -684,7 +687,7 @@ The following status and diagnostic fields bring `/v1/homespeaker` to full parit
 | `gws_installed` | bool | Whether `gws` CLI executable is installed on the Mac |
 | `gws_account` | string | Google Workspace account email configured for chat monitor |
 | `google_chat_source` | string | Backend for Google Chat (`"auto"`, `"api"`, or `"gws"`) |
-| `poll_interval` | int | Polling frequency in seconds (default `30`, min `5`) |
+| `poll_interval` | int | Polling frequency in seconds (default `15`, clamped to `5`–`300`) |
 | `agents` | `[{agent, hook_state, speaks_twice, configured_by_instruction}]` | Integration status for `claude-code`, `antigravity`, and `opencode` |
 | `legacy_launch_agent` | bool | Whether legacy `com.james.chat-monitor.plist` is present |
 | `custom_oauth_client_id` | string | Saved Google Cloud OAuth client ID |
@@ -707,7 +710,7 @@ The update endpoint supports these additional configuration actions and secret u
 | `quiet_hours_start`, `quiet_hours_end` | string (`HH:MM`) | Sets quiet hours interval; rejects invalid times with 400 |
 | `custom_style_prompt` | string | Updates or clears phrasing rewrite instruction |
 | `local_voice` | string | Sets macOS system voice identifier |
-| `preview_voice` | bool | Executes voice preview via `HomeSpeaker --voice <id> --say ...` |
+| `preview_voice` | bool | Previews the Mac voice locally on the Mac via `say` (never broadcasts to speakers) |
 | `test_media_pause` | bool | Executes `HomeSpeaker --test-media-pause` |
 | `active_door` | `"app"` \| `"extension"` | Updates `~/.gemini/speaker_door.json` |
 | `discover` | bool | Executes `HomeSpeaker --discover` to refresh targets |
@@ -718,7 +721,7 @@ The update endpoint supports these additional configuration actions and secret u
 | `speak_clipboard` | bool | Reads text from the macOS clipboard and announces it |
 | `google_chat_source` | `"auto"` \| `"api"` \| `"gws"` | Configures chat monitor Google Chat backend |
 | `gws_account` | string | Configures GWS account email for chat monitor |
-| `poll_interval` | int | Sets chat poll interval (>= 5 seconds) |
+| `poll_interval` | int | Sets chat poll interval (`5`–`300` seconds; out of range is 400) |
 | `slack_token` | string | Updates Slack user token (empty string clears token) |
 | `beeper_token` | string | Updates Beeper access token (empty string clears token) |
 | `gemini_api_key` | string | Updates Gemini API key in `secrets.json` |
@@ -787,7 +790,7 @@ Connects to the configured TV (`adb connect <address>`) and runs a single combin
 - `foreground`: one of `"Projectivy Home"`, `"SmartTube 4K"`, `"AerialViews 4K"`, `"Disney+"`, `"Netflix"`, `"Awake"`, or `"Standby"`.
 - `address`: read from `~/.config/vitruvian/tv.json` (`address` or `tvAddress`), falling back to `~/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/dev.vitruvian.tv/storage.json`, then `"192.168.86.31:5555"`.
 
-### `POST /v1/tv` (act — Bearer token)
+### `POST /v1/tv/act` (act — Bearer token)
 
 Accepts `{"action": "<action>", "target": "<target>", "url": "<url>", "address": "<address>"}` and replies with the refreshed `GET /v1/tv` state JSON.
 

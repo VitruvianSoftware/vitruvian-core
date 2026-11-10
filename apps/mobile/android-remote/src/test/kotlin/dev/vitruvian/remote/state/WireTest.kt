@@ -641,5 +641,30 @@ public class WireTest {
     assertEquals(false, fallback.connected)
     assertEquals("Standby", fallback.foreground)
     assertEquals(TvWire.DEFAULT_ADDRESS, fallback.address)
+    assertEquals("/v1/tv", TvWire.STATE_PATH)
+    assertEquals("/v1/tv/act", TvWire.ACT_PATH)
+  }
+
+  @Test
+  public fun `homespeaker defaults quiet hours to 22_00 to 07_00 and clamps poll interval to 5 through 300 with default 15`() {
+    val defaults = HomeSpeakerWire.sources("{}")
+    assertEquals("22:00", defaults.quietHoursStart)
+    assertEquals("07:00", defaults.quietHoursEnd)
+    assertEquals(15, defaults.pollInterval)
+
+    val blankQuiet =
+        HomeSpeakerWire.sources("""{"quiet_hours":{"enabled":true,"start":"","end":"  "}}""")
+    assertEquals("22:00", blankQuiet.quietHoursStart)
+    assertEquals("07:00", blankQuiet.quietHoursEnd)
+
+    val customQuiet =
+        HomeSpeakerWire.sources(
+            """{"quiet_hours":{"enabled":true,"start":"23:30","end":"06:30"}}""")
+    assertEquals("23:30", customQuiet.quietHoursStart)
+    assertEquals("06:30", customQuiet.quietHoursEnd)
+
+    assertEquals(5, HomeSpeakerWire.sources("""{"poll_interval":1}""").pollInterval)
+    assertEquals(300, HomeSpeakerWire.sources("""{"poll_interval":900}""").pollInterval)
+    assertEquals(45, HomeSpeakerWire.sources("""{"poll_interval":45}""").pollInterval)
   }
 }

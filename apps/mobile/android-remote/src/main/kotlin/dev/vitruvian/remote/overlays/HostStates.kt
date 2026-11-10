@@ -34,6 +34,7 @@ import dev.vitruvian.design.EmptyState
 import dev.vitruvian.design.Space
 import dev.vitruvian.design.VButton
 import dev.vitruvian.remote.state.Derive
+import dev.vitruvian.remote.state.Format
 import dev.vitruvian.remote.state.RemoteState
 import dev.vitruvian.remote.state.Screen
 import kotlinx.coroutines.launch
@@ -51,9 +52,7 @@ public fun ColumnScope.OfflineBanner(state: RemoteState) {
   Banner(
       tone = BannerTone.Warn,
       label = "${state.hostShortName} unreachable",
-      body =
-          "Last seen 4 m ago via Tailscale. Controls are disabled; " +
-              "dashboards show the last sample.",
+      body = Format.offlineBannerBody(state.lastSampleAt, System.currentTimeMillis()),
       modifier = Modifier.padding(start = Space.s4, end = Space.s4, top = Space.s4),
   ) {
     VButton("Wake on LAN", { scope.launch { state.wakeHost() } })
