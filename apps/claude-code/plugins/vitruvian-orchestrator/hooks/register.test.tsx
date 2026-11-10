@@ -903,3 +903,144 @@ test("the panel marks a silent helper stalled and tells the person once, but a h
   expect(toasts).toHaveLength(1);
   expect(wakes).toHaveLength(1);
 });
+
+test("step call with delegateUsage lands delegateTokens on the run, includes Gemini in cost labels, and hides not-priced notice", async ($, on) => {
+  mock.clock(on, { now: 20_000 });
+  let f: Flow | null = null;
+  let nextId = 0;
+  on("ui.open", () => ({ value: { isPlaced: true } }));
+  on("state.set", { plugin: PLUGIN, key: "flow" }, (_, e, next) => {
+    f = e.value as Flow | null;
+    return next(e);
+  });
+  on("agent.spawn", async (_, e) => ({
+    model: e.model ?? "claude-haiku-5-5",
+    agentId: `wren-priced-${++nextId}`,
+  }));
+  on("turn.complete", (_, e) => ({
+    text: e.answer,
+    ...(e.usage ? { usage: e.usage } : {}),
+  }));
+
+  await $.tool.call({
+    tool: PROGRESS_TOOL,
+    title: "Priced Gemini delegation",
+    phase: "delegate",
+    tasks: [
+      {
+        title: "Price Gemini tokens",
+        specialist: "wren",
+        tier: "core",
+        after: [],
+      },
+      {
+        title: "Pending Gemini run",
+        specialist: "scout",
+        tier: "fast",
+        after: [],
+      },
+    ],
+  } as never);
+
+  await $.agent.spawn({
+    subagentType: "wren",
+    description: "Price Gemini tokens",
+    prompt: "Delegate to Gemini",
+    model: "claude-haiku-5-5",
+  });
+
+  // Report Gemini usage from AGY_USAGE:
+  // Gemini 4 Carbon [2, 10, 0.2, 0]: (100k*2 + (10k+5k)*10 + 50k*0.2) / 1M = 0.36 USD
+  await $.tool.call({
+    tool: STEP_TOOL,
+    done: 2,
+    total: 3,
+    note: "Gemini returned",
+    delegate: "gemini-4-carbon-high",
+    delegateUsage: {
+      input: 100_000,
+      output: 10_000,
+      thinking: 5_000,
+      cacheRead: 50_000,
+    },
+    agentId: "wren-priced-1",
+  } as never);
+
+  // Driver tokens on Haiku 5.5 [0.1, 0.5, 0.01, 0.125]: (100k*0.1 + 10k*0.5)/1M = 0.015 USD
+  // Combined run cost = 0.015 + 0.36 = 0.375 -> fmtCost = "$0.38"
+  await $.turn.complete({
+    turnId: "wren-turn-done",
+    agentId: "wren-priced-1",
+    reason: "answer",
+    answer: "DONE",
+    isAborted: false,
+    durationMs: 500,
+    usage: {
+      model: "claude-haiku-5-5",
+      input_tokens: 100_000,
+      output_tokens: 10_000,
+      cache_read_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+    },
+  } as never);
+
+  expect(
+    (f?.runs[0] as unknown as { delegateTokens?: unknown })?.delegateTokens,
+  ).toEqual({
+    input: 100_000,
+    output: 10_000,
+    thinking: 5_000,
+    cacheRead: 50_000,
+  });
+
+  // With 0 unpriced delegated runs, "delegated to Gemini ... not priced" disappears
+  for (const surface of ["terminal", "desktop"] as const) {
+    const ui = await $.ui.mount({ ...PANE_MOUNT, surface });
+    expect(
+      await ui.find({
+        type: "Text",
+        text: /gemini-4-carbon-high: est\. \$0\.36/,
+      }),
+    ).toBeDefined();
+    expect(
+      await ui.find({ type: "Text", text: /delegated to Gemini:.*not priced/ }),
+    ).toBeUndefined();
+    if (surface === "terminal") {
+      expect(
+        await ui.find({ type: "Text", text: /est\. \$0\.38/ }),
+      ).toBeDefined();
+    } else {
+      const svgs = await ui.findAll({ type: "Svg" });
+      const agentSvg = svgs.find((s) =>
+        String((s.props as { alt?: string }).alt).includes("est. $0.38"),
+      );
+      expect(agentSvg).toBeDefined();
+    }
+    await ui.unmount();
+  }
+
+  // Add a second delegated run WITHOUT delegateUsage -> only the 1 unpriced run is listed
+  await $.agent.spawn({
+    subagentType: "scout",
+    description: "Pending Gemini run",
+    prompt: "Check CI",
+    model: "claude-haiku-5-5",
+  });
+  await $.tool.call({
+    tool: STEP_TOOL,
+    done: 1,
+    total: 2,
+    note: "handed off",
+    delegate: "gemini-3.8-flash-high",
+    agentId: "wren-priced-2",
+  } as never);
+
+  const ui = await $.ui.mount({ ...PANE_MOUNT, surface: "terminal" });
+  expect(
+    await ui.find({
+      type: "Text",
+      text: /delegated to Gemini: 1 run \(gemini-3\.8-flash-high ×1\), not priced/,
+    }),
+  ).toBeDefined();
+  await ui.unmount();
+});

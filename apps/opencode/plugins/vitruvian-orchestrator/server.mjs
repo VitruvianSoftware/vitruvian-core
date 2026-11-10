@@ -139,7 +139,19 @@ const STEP_INPUT_SCHEMA = {
     delegate: {
       type: "string",
       description:
-        "Model that did the work when you handed it to another engine, e.g. gemini-4-argon-high.",
+        "Model that did the work when you handed it to another engine, e.g. gemini-4-carbon-high.",
+    },
+    delegateUsage: {
+      type: "object",
+      description:
+        "Gemini's token counts from agy-delegate's AGY_USAGE line, summed over every agy-delegate call in this task so far (cache_read -> cacheRead).",
+      properties: {
+        input: { type: "integer", minimum: 0 },
+        output: { type: "integer", minimum: 0 },
+        thinking: { type: "integer", minimum: 0 },
+        cacheRead: { type: "integer", minimum: 0 },
+      },
+      additionalProperties: false,
     },
   },
   required: ["done", "total"],

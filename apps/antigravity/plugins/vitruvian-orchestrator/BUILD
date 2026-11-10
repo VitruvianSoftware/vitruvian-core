@@ -30,7 +30,10 @@ package(default_visibility = ["//apps/antigravity/plugins/vitruvian-orchestrator
 
 js_library(
     name = "orchestrator_core_lib",
-    srcs = ["sidecars/panel/lib/orchestrator-core.mjs"],
+    srcs = [
+        "sidecars/panel/lib/orchestrator-core.mjs",
+        "sidecars/panel/lib/prices.mjs",
+    ],
 )
 
 js_library(
