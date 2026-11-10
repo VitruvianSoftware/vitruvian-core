@@ -2977,7 +2977,7 @@ extension ComposerModelTests {
             composer.executeSlashCommand(slash)
             XCTAssertEqual(composer.text, "Hello team", "draft must never be lost or cleared by \(slash)")
             let noticeText = composer.notice?.displayText ?? ""
-            XCTAssertTrue(noticeText.contains("Courier"), "expected Courier calm stub notice for \(slash), got '\(noticeText)'")
+            XCTAssertEqual(noticeText, "Set up AI in Settings", "expected 'Set up AI in Settings' notice for \(slash), got '\(noticeText)'")
             XCTAssertFalse(noticeText.localizedCaseInsensitiveContains("Beeper"))
             XCTAssertTrue(sender.calls.isEmpty)
         }

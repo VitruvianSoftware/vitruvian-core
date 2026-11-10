@@ -18,8 +18,8 @@ Status: design, 2026-11-09. Owner: the lead. Builders follow this; change it onl
 
 ## Acceptance criteria (UAT tests these)
 
-1. With AI off, every AI action shows the calm "turn on AI in Settings ▸ AI" notice, and Courier makes **no
-   network request** to any AI host.
+1. With AI off (or no provider set), AI actions are disabled with the tooltip "Set up AI in Settings" (and slash
+   commands show the "Set up AI in Settings" notice), and Courier makes **no network request** to any AI host.
 2. Settings ▸ AI lists the providers in two groups, **On this Mac** and **Cloud**. A local server that is running
    shows as found with its model count; one that is not shows "Not running". A **Refresh** button re-checks.
 3. With Ollama running (this Mac has it on 127.0.0.1:11434), choosing Ollama fills the Model menu with its

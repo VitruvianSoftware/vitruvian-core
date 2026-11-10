@@ -2750,50 +2750,26 @@ public final class ComposerModel: ObservableObject {
     /// Runs a slash command (`/ai`, `/translate`, `/summarize`, `/draft`) without clearing or sending `text`.
     public func executeSlashCommand(_ command: String) {
         guard !isLocked else { return }
+        guard aiProvider.isAvailable else {
+            let reason = String(localized: "Set up AI in Settings")
+            aiError = reason
+            notices = [.calmStub(reason: reason)]
+            return
+        }
         let normalized = command.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         switch normalized {
         case let cmd where cmd.hasPrefix("/translate"):
-            guard aiProvider.isAvailable else {
-                let reason = (aiProvider as? UnavailableAIProvider)?.hasCustomReason == true
-                    ? aiProvider.unavailableReason
-                    : String(localized: "Message translation isn’t available yet in Courier.")
-                aiError = reason
-                notices = [.calmStub(reason: reason)]
-                return
-            }
             let payload = Self.strippingSlashTrigger(from: text)
             runAIAction(.translate(textOverride: payload.isEmpty ? text : payload))
         case let cmd where cmd.hasPrefix("/summarize"):
-            guard aiProvider.isAvailable else {
-                let reason = (aiProvider as? UnavailableAIProvider)?.hasCustomReason == true
-                    ? aiProvider.unavailableReason
-                    : String(localized: "AI chat summaries aren’t available yet in Courier.")
-                aiError = reason
-                notices = [.calmStub(reason: reason)]
-                return
-            }
             if text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "/summarize" {
                 setContents("", [])
             }
             onSummarizeChat()
         case let cmd where cmd.hasPrefix("/draft"):
-            guard aiProvider.isAvailable else {
-                let reason = (aiProvider as? UnavailableAIProvider)?.hasCustomReason == true
-                    ? aiProvider.unavailableReason
-                    : String(localized: "Drafting with AI isn’t available yet in Courier.")
-                aiError = reason
-                notices = [.calmStub(reason: reason)]
-                return
-            }
             let payload = Self.strippingSlashTrigger(from: text)
             runAIAction(.draft(tone: nil, draftOverride: payload))
         default:
-            guard aiProvider.isAvailable else {
-                let reason = aiProvider.unavailableReason
-                aiError = reason
-                notices = [.calmStub(reason: reason)]
-                return
-            }
             let payload = Self.strippingSlashTrigger(from: text)
             runAIAction(.draft(tone: nil, draftOverride: payload))
         }
