@@ -133,7 +133,7 @@ public enum MessageMenu {
             [item(.showHistory)].compactMap { $0 },
         ]
         if includeDiagnostics, !message.isNote, message.statusLine != .queued, !(message.statusLine?.isWaiting ?? false) {
-            if !message.rich.text.isEmpty, message.kind != .deleted {
+            if !message.rich.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, message.kind != .deleted {
                 let translateHelp = isAIAvailable ? nil : String(localized: "Set up AI in Settings")
                 var translateItems: [MessageMenuItem] = [
                     MessageMenuItem(

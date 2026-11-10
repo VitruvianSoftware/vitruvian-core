@@ -192,6 +192,8 @@ public final class MessageActionsModel: ObservableObject {
     /// Requests inline translation for `eventID` into `targetLanguage` (defaulting to `aiPreferences.responseLanguage`) using `aiProvider`.
     public func translateMessage(eventID: String, targetLanguage: String? = nil) {
         guard !isLocked else { return }
+        let messageText = (conversation.message(eventID, from: .chat) ?? conversation.message(eventID, from: .thread))?.rich.text ?? ""
+        guard !messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         let trimmedTarget = targetLanguage?.trimmingCharacters(in: .whitespacesAndNewlines)
         let resolvedLanguage = (trimmedTarget?.isEmpty == false ? trimmedTarget : nil) ?? aiPreferences.responseLanguage
         translationTargetLanguages[eventID] = resolvedLanguage
@@ -208,7 +210,6 @@ public final class MessageActionsModel: ObservableObject {
             return
         }
 
-        let messageText = (conversation.message(eventID, from: .chat) ?? conversation.message(eventID, from: .thread))?.rich.text ?? ""
         let provider = aiProvider
         let provenance = provider.provenanceFooter(preferences: aiPreferences)
         let startedRoom = conversation.roomID

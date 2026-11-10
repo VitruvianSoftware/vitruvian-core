@@ -1541,7 +1541,11 @@ public enum CommandSet {
                 icon: "character.bubble",
                 shortcut: nil
             ) {
-                if let actions, actions.aiProvider.isAvailable, let selected = conversation?.selectedMessage {
+                if let actions, actions.aiProvider.isAvailable {
+                    guard let selected = conversation?.selectedMessage,
+                          !selected.rich.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                        return
+                    }
                     actions.translateMessage(eventID: selected.id)
                 } else {
                     inbox?.announce(String(localized: "Set up AI in Settings"))

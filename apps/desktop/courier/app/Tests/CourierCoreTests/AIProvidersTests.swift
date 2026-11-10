@@ -864,6 +864,50 @@ final class AIProvidersTests: XCTestCase {
         await h.stop()
     }
 
+    func testTranslateMessageWithEmptyTextSkipsRequestAndShowsNothing() async throws {
+        let suiteName = "test.courier.ai.translate.empty.\(UUID().uuidString)"
+        let defaults = ScratchDefaults.suite(named: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let prefs = AIPreferences(defaults: defaults)
+        prefs.enableContextualAI = true
+        prefs.selectedEngine = .ollama
+        prefs.selectedModel = "llama3.2"
+        prefs.responseLanguage = "Spanish"
+
+        let h = try await startConversation(
+            ["!a": [
+                textEvent(id: "$empty", room: "!a", at: 1, body: ""),
+                textEvent(id: "$whitespace", room: "!a", at: 2, body: "   \n  "),
+            ]],
+            rows: ["!a": chatRow("!a", name: "Alice", network: "whatsapp")]
+        )
+        try await h.open("!a")
+        let actions = MessageActionsModel(
+            conversation: h.conversation,
+            appModel: h.app,
+            preferences: h.preferences,
+            pasteboard: FakePasteboard()
+        )
+        let mockProvider = MockTestAIProvider(result: .text("Should never be called"))
+        actions.aiPreferences = prefs
+        actions.aiProvider = mockProvider
+
+        actions.translateMessage(eventID: "$empty")
+        actions.translateMessage(eventID: "$whitespace")
+        await actions.waitForTranslation(eventID: "$empty")
+        await actions.waitForTranslation(eventID: "$whitespace")
+
+        XCTAssertNil(mockProvider.lastTranslateTargetLanguage, "Empty or whitespace message must not trigger a translate request")
+        XCTAssertNil(actions.translations["$empty"])
+        XCTAssertNil(actions.translations["$whitespace"])
+        XCTAssertNil(actions.translationTargetLanguages["$empty"])
+        XCTAssertNil(actions.translationTargetLanguages["$whitespace"])
+        XCTAssertFalse(actions.translatingEventIDs.contains("$empty"))
+        XCTAssertFalse(actions.translatingEventIDs.contains("$whitespace"))
+        await h.stop()
+    }
+
     func testComposerAIResultStripReplaceInsertDiscardAndNeverChangesTextOnError() async {
         let suiteName = "test.courier.ai.composer.strip.\(UUID().uuidString)"
         let defaults = ScratchDefaults.suite(named: suiteName)!
