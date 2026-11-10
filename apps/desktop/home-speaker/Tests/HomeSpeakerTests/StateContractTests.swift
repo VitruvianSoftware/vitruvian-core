@@ -847,26 +847,38 @@ struct StateContractTests {
                 """,
             ]
 
-            let startGate = DispatchSemaphore(value: 0)
-            let readyCount = NSLock()
+            // One thread per writer, not `concurrentPerform`: that runs at
+            // most one iteration per core, so on a 3-core CI Mac the fourth
+            // writer never starts and the other three wait for it forever.
+            // Every wait is bounded, so a broken barrier fails the test
+            // instead of hanging the whole suite.
+            let lock = NSLock()
             nonisolated(unsafe) var ready = 0
             nonisolated(unsafe) var exitCodes = [Int32](repeating: -1, count: payloads.count)
-
-            DispatchQueue.concurrentPerform(iterations: payloads.count) { idx in
-                readyCount.lock()
-                ready += 1
-                let allReady = (ready == payloads.count)
-                readyCount.unlock()
-                if allReady {
-                    for _ in 0..<payloads.count {
-                        startGate.signal()
+            let startGate = DispatchSemaphore(value: 0)
+            let finished = DispatchGroup()
+            for idx in payloads.indices {
+                finished.enter()
+                let writer = Thread {
+                    defer { finished.leave() }
+                    lock.lock()
+                    ready += 1
+                    let allReady = (ready == payloads.count)
+                    lock.unlock()
+                    if allReady {
+                        for _ in payloads.indices { startGate.signal() }
                     }
+                    guard startGate.wait(timeout: .now() + 10) == .success else { return }
+                    let out = HomeSpeakerCommandLine.apply(payloads[idx], seam: seam)
+                    lock.lock()
+                    exitCodes[idx] = out.exitCode
+                    lock.unlock()
                 }
-                startGate.wait()
-                let out = HomeSpeakerCommandLine.apply(payloads[idx], seam: seam)
-                readyCount.lock()
-                exitCodes[idx] = out.exitCode
-                readyCount.unlock()
+                writer.start()
+            }
+            guard finished.wait(timeout: .now() + 30) == .success else {
+                Issue.record("Writers did not finish within 30 s in round \(round)")
+                return
             }
 
             for code in exitCodes {
