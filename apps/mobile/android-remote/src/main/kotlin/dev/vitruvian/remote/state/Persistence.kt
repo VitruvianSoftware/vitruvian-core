@@ -47,6 +47,7 @@ private const val KEY_BRIDGE_ENABLED = "bridgeEnabled"
 private const val KEY_BRIDGE_TRUST_UNTIL = "bridgeTrustUntil"
 private const val KEY_BRIDGE_AUDIT = "bridgeAudit"
 private const val KEY_HOMESPEAKER_SETTINGS_EXPANDED = "homeSpeakerSettingsExpanded"
+private const val KEY_HOMESPEAKER_MIRROR = "homeSpeakerMirror"
 
 /** How many console commands are remembered. Beyond this the oldest fall off. */
 private const val RECENT_COMMAND_LIMIT = 20
@@ -281,6 +282,10 @@ public class Persistence(context: Context) {
           }
       prefs.edit().putString(KEY_MACROS, encoded).apply()
     }
+
+  public var homeSpeakerMirror: Boolean
+    get() = prefs.getBoolean(KEY_HOMESPEAKER_MIRROR, false)
+    set(value) = prefs.edit().putBoolean(KEY_HOMESPEAKER_MIRROR, value).apply()
 
   private companion object {
     const val FIELD_COUNT = 5

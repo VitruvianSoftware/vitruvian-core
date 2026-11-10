@@ -563,6 +563,8 @@ public enum HomeSpeakerCommandLine {
             return CLIOutput(stderr: ["broadcasting is switched off"], exitCode: 1)
         case .quietHours(let until):
             out.stderr.append("Quiet hours active until \(until). Nothing spoken.")
+        case .snoozed(let until):
+            out.stderr.append("\(SpeakerConfig.snoozedUntilLine(until)). Nothing spoken.")
         case .noOutputs:
             out.stdout.append(AnnounceOutcome.noOutputsMessage)
         case .nothingToSay:

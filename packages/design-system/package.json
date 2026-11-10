@@ -39,9 +39,9 @@
     "react-dom": "^19"
   },
   "devDependencies": {
-    "@storybook/addon-a11y": "^10.6.5",
-    "@storybook/addon-docs": "^10.6.5",
-    "@storybook/react-vite": "^10.6.5",
+    "@storybook/addon-a11y": "^10.6.6",
+    "@storybook/addon-docs": "^10.6.6",
+    "@storybook/react-vite": "^10.6.6",
     "@tailwindcss/vite": "^4",
     "@types/react": "^19",
     "@types/react-dom": "^19",

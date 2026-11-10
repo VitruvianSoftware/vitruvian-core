@@ -129,6 +129,8 @@ is two clicks per agent; everything either side of them is here.
   bazel run //tools/agent-app -- issue-close [--agent <agent>] <issue> [--comment <s>] [--reason <r>]
   bazel run //tools/agent-app -- branch-delete [--agent <agent>] <branch>...
                                   # delete branches on GitHub, only ones already on main
+  bazel run //tools/agent-app -- secret-alert-resolve [--agent <agent>] <alert> --resolution <r> --comment <s>
+  bazel run //tools/agent-app -- dependabot-alert-dismiss [--agent <agent>] <alert> --reason <r> --comment <s>
   bazel run //tools/agent-app -- read [--agent <agent>] <gh read command>
                                   # GitHub reads (pr view/checks, run list/view, api GET, ...);
                                   # agent-guard sends raw gh reads here
@@ -1405,7 +1407,7 @@ impl Tool {
 
     // --- Actions ------------------------------------------------------------
 
-    fn need_actions_write(&self, agent: &[u8]) -> Res {
+    fn need_perm_write(&self, agent: &[u8], perm: &[u8], label: &[u8]) -> Res {
         if !sh::is_readable(&self.permissions) {
             return Err(die(&cat(&[
                 b"cannot read ",
@@ -1417,7 +1419,7 @@ impl Tool {
         let rows = table(&self.permissions).unwrap_or_default();
         let mut level = Vec::new();
         for r in &rows {
-            if field(r, 1) == a.as_slice() && field(r, 2) == b"actions" {
+            if field(r, 1) == a.as_slice() && field(r, 2) == perm {
                 level.extend_from_slice(field(r, 3));
                 level.push(b'\n');
             }
@@ -1428,7 +1430,7 @@ impl Tool {
         }
         let mut who = Vec::new();
         for r in &rows {
-            if field(r, 2) == b"actions" && (field(r, 3) == b"write" || field(r, 3) == b"admin") {
+            if field(r, 2) == perm && (field(r, 3) == b"write" || field(r, 3) == b"admin") {
                 who.extend_from_slice(field(r, 1));
                 who.push(b' ');
             }
@@ -1437,7 +1439,9 @@ impl Tool {
             return Err(die(&cat(&[
                 b"the ",
                 agent,
-                b" app has no Actions write, and no agent App does (permissions.tsv); nothing was run",
+                b" app has no ",
+                label,
+                b" write, and no agent App does (permissions.tsv); nothing was run",
             ])));
         }
         let first = match who.iter().position(|&c| c == b' ') {
@@ -1448,12 +1452,18 @@ impl Tool {
         Err(die(&cat(&[
             b"the ",
             agent,
-            b" app has no Actions write (permissions.tsv), so GitHub would refuse; use --agent ",
+            b" app has no ",
+            label,
+            b" write (permissions.tsv), so GitHub would refuse; use --agent ",
             first,
             b" (has it: ",
             all,
             b")",
         ])))
+    }
+
+    fn need_actions_write(&self, agent: &[u8]) -> Res {
+        self.need_perm_write(agent, b"actions", b"Actions")
     }
 
     fn run_passthrough(&self, verb: &[u8], usage: &str, not_done: &[u8], args: &[Vec<u8>]) -> Res {
@@ -1799,6 +1809,74 @@ impl Tool {
         self.pass(&tok, &[b"issue", b"close"], rest)
     }
 
+    // --- security alerts (aegis) -------------------------------------------
+
+    fn secret_alert_resolve(&self, args: &[Vec<u8>]) -> Res {
+        let usage = "secret-alert-resolve [--agent <agent>] <alert> --resolution false_positive|wont_fix|revoked|used_in_tests --comment <s>";
+        let (agent, rest) =
+            take_agent(args).ok_or_else(|| die(&cat(&[b"usage: ", usage.as_bytes()])))?;
+        let (num, resolution, comment) = parse_alert_dismiss(
+            usage,
+            rest,
+            b"--resolution",
+            &[b"false_positive", b"wont_fix", b"revoked", b"used_in_tests"],
+        )?;
+        self.need_perm_write(&agent, b"secret_scanning_alerts", b"Secret scanning alerts")?;
+        let tok = self.mint_token(&agent, b"the secret scanning alert was NOT resolved")?;
+        to_caller_dir()?;
+        let path = cat(&[b"repos/{owner}/{repo}/secret-scanning/alerts/", &num]);
+        let res_f = cat(&[b"resolution=", &resolution]);
+        let com_f = cat(&[b"resolution_comment=", &comment]);
+        let api_args = vec![
+            path,
+            b"-f".to_vec(),
+            b"state=resolved".to_vec(),
+            b"-f".to_vec(),
+            res_f,
+            b"-f".to_vec(),
+            com_f,
+            b"--jq".to_vec(),
+            b"{number, state, resolution, resolution_comment}".to_vec(),
+        ];
+        self.pass(&tok, &[b"api", b"-X", b"PATCH"], &api_args)
+    }
+
+    fn dependabot_alert_dismiss(&self, args: &[Vec<u8>]) -> Res {
+        let usage = "dependabot-alert-dismiss [--agent <agent>] <alert> --reason fix_started|inaccurate|no_bandwidth|not_used|tolerable_risk --comment <s>";
+        let (agent, rest) =
+            take_agent(args).ok_or_else(|| die(&cat(&[b"usage: ", usage.as_bytes()])))?;
+        let (num, reason, comment) = parse_alert_dismiss(
+            usage,
+            rest,
+            b"--reason",
+            &[
+                b"fix_started",
+                b"inaccurate",
+                b"no_bandwidth",
+                b"not_used",
+                b"tolerable_risk",
+            ],
+        )?;
+        self.need_perm_write(&agent, b"vulnerability_alerts", b"Dependabot alerts")?;
+        let tok = self.mint_token(&agent, b"the Dependabot alert was NOT dismissed")?;
+        to_caller_dir()?;
+        let path = cat(&[b"repos/{owner}/{repo}/dependabot/alerts/", &num]);
+        let rsn_f = cat(&[b"dismissed_reason=", &reason]);
+        let com_f = cat(&[b"dismissed_comment=", &comment]);
+        let api_args = vec![
+            path,
+            b"-f".to_vec(),
+            b"state=dismissed".to_vec(),
+            b"-f".to_vec(),
+            rsn_f,
+            b"-f".to_vec(),
+            com_f,
+            b"--jq".to_vec(),
+            b"{number, state, dismissed_reason, dismissed_comment}".to_vec(),
+        ];
+        self.pass(&tok, &[b"api", b"-X", b"PATCH"], &api_args)
+    }
+
     /// `main`: the exit status.
     pub fn main(&self, args: &[Vec<u8>]) -> i32 {
         let cmd = arg(args, 0).to_vec();
@@ -1864,6 +1942,8 @@ impl Tool {
             b"issue-comment" => self.issue_comment(rest),
             b"issue-close" => self.issue_close(rest),
             b"branch-delete" => self.branch_delete(rest),
+            b"secret-alert-resolve" => self.secret_alert_resolve(rest),
+            b"dependabot-alert-dismiss" => self.dependabot_alert_dismiss(rest),
             b"read" => self.gh_read(rest),
             b"-h" | b"--help" | b"help" => return usage(0),
             _ => Err(die(&cat(&[b"unknown command: ", &cmd, b" (try --help)"]))),
@@ -2628,6 +2708,96 @@ pub fn queue_pr(br: &[u8]) -> Option<Vec<u8>> {
         return None;
     }
     Some(r[..n].to_vec())
+}
+
+/// Parse `<alert> --resolution|--reason <val> --comment <text>` for
+/// `secret-alert-resolve` and `dependabot-alert-dismiss`.
+pub fn parse_alert_dismiss(
+    usage: &str,
+    args: &[Vec<u8>],
+    kind_flag: &[u8],
+    valid_kinds: &[&[u8]],
+) -> Result<(Vec<u8>, Vec<u8>, Vec<u8>), Refusal> {
+    let num = arg(args, 0);
+    if num.is_empty() || num[0] == b'0' || !num.iter().all(u8::is_ascii_digit) {
+        return Err(refuse(&[
+            b"usage: ",
+            usage.as_bytes(),
+            b"   (<alert> is a positive alert number)",
+        ]));
+    }
+    let eq_prefix = cat(&[kind_flag, b"="]);
+    let mut kind: Option<Vec<u8>> = None;
+    let mut comment: Option<Vec<u8>> = None;
+    let mut i = 1;
+    while i < args.len() {
+        let a = args[i].as_slice();
+        if a == kind_flag {
+            let Some(v) = args.get(i + 1) else {
+                return Err(refuse(&[
+                    b"usage: ",
+                    usage.as_bytes(),
+                    b"   (missing value after ",
+                    kind_flag,
+                    b")",
+                ]));
+            };
+            kind = Some(v.clone());
+            i += 2;
+        } else if let Some(v) = a.strip_prefix(eq_prefix.as_slice()) {
+            kind = Some(v.to_vec());
+            i += 1;
+        } else if a == b"--comment" {
+            let Some(v) = args.get(i + 1) else {
+                return Err(refuse(&[
+                    b"usage: ",
+                    usage.as_bytes(),
+                    b"   (missing value after --comment)",
+                ]));
+            };
+            comment = Some(v.clone());
+            i += 2;
+        } else if let Some(v) = a.strip_prefix(b"--comment=") {
+            comment = Some(v.to_vec());
+            i += 1;
+        } else {
+            return Err(refuse(&[
+                b"refusing argument '",
+                a,
+                b"'; usage: ",
+                usage.as_bytes(),
+            ]));
+        }
+    }
+    let Some(k) = kind.filter(|v| !v.is_empty()) else {
+        return Err(refuse(&[
+            b"usage: ",
+            usage.as_bytes(),
+            b"   (pass ",
+            kind_flag,
+            b")",
+        ]));
+    };
+    if !valid_kinds.iter().any(|&ok| ok == k.as_slice()) {
+        let joined = valid_kinds.join(&b", "[..]);
+        return Err(refuse(&[
+            b"refusing ",
+            kind_flag,
+            b" '",
+            &k,
+            b"' (accepted: ",
+            &joined,
+            b")",
+        ]));
+    }
+    let Some(c) = comment.filter(|v| !v.iter().all(u8::is_ascii_whitespace)) else {
+        return Err(refuse(&[
+            b"usage: ",
+            usage.as_bytes(),
+            b"   (pass a non-empty --comment explaining why)",
+        ]));
+    };
+    Ok((num.to_vec(), k, c))
 }
 
 /// `to_caller_dir`.

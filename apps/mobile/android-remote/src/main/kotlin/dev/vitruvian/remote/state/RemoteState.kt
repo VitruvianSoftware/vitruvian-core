@@ -461,6 +461,16 @@ public class RemoteState(
       mutableStateOf(persistence.homeSpeakerSettingsExpanded)
     private set
 
+  /**
+   * Whether new HomeSpeaker announcements are mirrored as phone notifications; persisted per
+   * device.
+   */
+  public var homeSpeakerMirror: Boolean by mutableStateOf(persistence.homeSpeakerMirror)
+    private set
+
+  /** Pure state for HomeSpeaker announcement notification mirroring on the selected host. */
+  private var mirrorState: Derive.MirrorState = Derive.MirrorState()
+
   /** Inline errors keyed by HomeSpeaker control id ("mute", "quiet_hours", or row title). */
   public var homeSpeakerErrors: Map<String, String> by mutableStateOf(emptyMap())
     private set
@@ -516,6 +526,7 @@ public class RemoteState(
       nowMs: Long = System.currentTimeMillis(),
   ) {
     agentHomeSpeaker = hs
+    observeHomeSpeakerMirror(hs)
     val next =
         Derive.updatePendingSignInOnPoll(
             signInPendingSinceMs = homeSpeakerSignInPendingSinceMs,
@@ -2501,6 +2512,7 @@ public class RemoteState(
             hasRoomChoices = roomChoices.any { it.enabled },
             hasReplay = Derive.isReplayable(newest),
             replayTarget = newest?.target,
+            snoozeUntil = hs?.snoozeUntil,
         )
     return specs.map { spec ->
       when (spec.id) {
@@ -2556,6 +2568,22 @@ public class RemoteState(
                 contentDescription = spec.contentDescription,
                 error = homeSpeakerErrors["replay"],
             )
+        "snooze" ->
+            QuickAction(
+                label = spec.label,
+                secondary = spec.secondary,
+                enabled = spec.enabled,
+                active = spec.active,
+                onClick = {
+                  if (spec.active) {
+                    setHomeSpeaker("resume announcements", snoozeUntil = "", controlId = "snooze")
+                  } else {
+                    setHomeSpeaker("snooze 30m", snoozeMinutes = 30, controlId = "snooze")
+                  }
+                },
+                contentDescription = spec.contentDescription,
+                error = homeSpeakerErrors["snooze"],
+            )
         else ->
             QuickAction(
                 label = spec.label,
@@ -2585,6 +2613,19 @@ public class RemoteState(
         }
   }
 
+  private fun homeSpeakerMirrorRow(): ModuleRow {
+    val mirrorOn =
+        Derive.isMirrorEnabled(homeSpeakerMirror, notifier?.hasNotificationPermission() != false)
+    return ModuleRow(
+        title = "Show announcements as notifications",
+        subtitle = "While Vitruvian Remote is running",
+        trailing = if (mirrorOn) "on" else "off",
+        tone = if (mirrorOn) StatusTone.Ok else StatusTone.Neutral,
+        toggle =
+            RowToggle(checked = mirrorOn, enabled = true) { next -> updateHomeSpeakerMirror(next) },
+    )
+  }
+
   private fun homeSpeakerSettingsRows(hs: AgentHomeSpeaker): List<ModuleRow> = buildList {
     // Broadcasting off: nothing else on this plate changes what is heard, so
     // the master switch is the whole plate.
@@ -2600,6 +2641,9 @@ public class RemoteState(
                     setHomeSpeaker("broadcasting on", enabled = true)
                   },
           ))
+      // A phone-side setting: it shows announcements made with broadcasting back on, so it stays
+      // reachable while broadcasting is off.
+      add(homeSpeakerMirrorRow())
       return@buildList
     }
     add(
@@ -3275,6 +3319,7 @@ public class RemoteState(
                       setHomeSpeaker("speak clipboard", speakClipboard = true)
                     }),
         ))
+    add(homeSpeakerMirrorRow())
     if (hs.extensionInstalled || hs.activeDoor == "extension") {
       add(
           ModuleRow(
@@ -4064,6 +4109,74 @@ public class RemoteState(
     homeSpeakerErrors = homeSpeakerErrors + (controlId to msg)
   }
 
+  private fun applyMirrorDecision(decision: Derive.MirrorDecision, persistToggle: Boolean) {
+    mirrorState = decision.state
+    if (persistToggle) {
+      homeSpeakerMirror = decision.enabled
+      persistence.homeSpeakerMirror = decision.enabled
+    }
+    when (val action = decision.action) {
+      Derive.MirrorNotificationAction.None -> Unit
+      is Derive.MirrorNotificationAction.Post ->
+          notifier?.notifyAnnouncement(action.id, action.text)
+      is Derive.MirrorNotificationAction.Update ->
+          notifier?.notifyAnnouncement(action.id, action.text)
+      is Derive.MirrorNotificationAction.Cancel -> notifier?.cancelAnnouncement(action.id)
+    }
+  }
+
+  public fun updateHomeSpeakerMirror(on: Boolean) {
+    val currentHs = agentHomeSpeaker
+    if (!on) {
+      applyMirrorDecision(
+          Derive.mirrorToggle(
+              requestedOn = false,
+              state = mirrorState,
+              available = currentHs?.available == true,
+              recent = currentHs?.recent.orEmpty(),
+              last = currentHs?.last,
+          ),
+          persistToggle = true,
+      )
+      return
+    }
+    val applyGranted: (Boolean) -> Unit = { granted ->
+      val hs = agentHomeSpeaker
+      applyMirrorDecision(
+          Derive.mirrorToggle(
+              requestedOn = true,
+              permissionGranted = granted,
+              state = mirrorState,
+              available = hs?.available == true,
+              recent = hs?.recent.orEmpty(),
+              last = hs?.last,
+          ),
+          persistToggle = true,
+      )
+    }
+    val n = notifier
+    if (n == null) {
+      applyGranted(true)
+    } else {
+      n.ensureNotificationPermission(applyGranted)
+    }
+  }
+
+  /** Mirrors a new announcement to a phone notification when the setting is on. */
+  private fun observeHomeSpeakerMirror(hs: AgentHomeSpeaker) {
+    applyMirrorDecision(
+        Derive.observeMirrorAnnouncement(
+            state = mirrorState,
+            mirrorEnabled = homeSpeakerMirror,
+            permissionGranted = notifier?.hasNotificationPermission() != false,
+            available = hs.available,
+            recent = hs.recent,
+            last = hs.last,
+        ),
+        persistToggle = false,
+    )
+  }
+
   /**
    * Opens the Google Cloud Credentials console in the phone's browser so custom OAuth desktop
    * client credentials can be created and pasted into the OAuth Client ID / Secret rows.
@@ -4100,6 +4213,8 @@ public class RemoteState(
       quietHoursEnabled: Boolean? = null,
       quietHoursStart: String? = null,
       quietHoursEnd: String? = null,
+      snoozeUntil: String? = null,
+      snoozeMinutes: Int? = null,
       customStylePrompt: String? = null,
       localVoice: String? = null,
       previewVoice: Boolean = false,
@@ -4188,6 +4303,7 @@ public class RemoteState(
               quietHoursEnabled != null -> "Quiet hours"
               quietHoursStart != null -> "Quiet hours · From"
               quietHoursEnd != null -> "Quiet hours · Until"
+              snoozeUntil != null || snoozeMinutes != null -> "snooze"
               speakClipboard -> "Speak clipboard"
               activeDoor != null -> "HomeSpeaker door"
               resetSettings -> "Settings & diagnostics"
@@ -4223,6 +4339,8 @@ public class RemoteState(
                   quietHoursEnabled = quietHoursEnabled,
                   quietHoursStart = quietHoursStart,
                   quietHoursEnd = quietHoursEnd,
+                  snoozeUntil = snoozeUntil,
+                  snoozeMinutes = snoozeMinutes,
                   customStylePrompt = customStylePrompt,
                   localVoice = localVoice,
                   previewVoice = previewVoice,
@@ -6174,6 +6292,7 @@ public class RemoteState(
     selectedAntigravityId = null
     agentArgo = null
     agentHomeSpeaker = null
+    mirrorState = Derive.MirrorState()
     agentSpeakerVolume = null
     homeSpeakerNotice = null
     homeSpeakerErrors = emptyMap()

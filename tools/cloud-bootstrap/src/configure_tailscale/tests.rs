@@ -444,7 +444,7 @@ fn tskey_without_login_server_omits_login_server() {
             hook,
             &[
                 ("CLAUDE_CODE_REMOTE", "true"),
-                ("TS_AUTHKEY", "tskey-auth-k123456CNTRL-abcdef"),
+                ("TS_AUTHKEY", "tskey-test-placeholder"),
             ],
         );
         assert_eq!(rc, 0, "{which}: hook must exit 0");
@@ -469,7 +469,7 @@ fn explicit_login_server_overrides() {
             hook,
             &[
                 ("CLAUDE_CODE_REMOTE", "true"),
-                ("TS_AUTHKEY", "tskey-auth-k123456CNTRL-abcdef"),
+                ("TS_AUTHKEY", "tskey-test-placeholder"),
                 ("TS_LOGIN_SERVER", "https://custom.headscale.example"),
             ],
         );
@@ -485,7 +485,7 @@ fn explicit_login_server_overrides() {
 fn hook_is_a_no_op_outside_cloud_sessions() {
     let h = Hooks::new();
     for (which, hook) in &h.hooks {
-        let (rc, up) = h.run(hook, &[("TS_AUTHKEY", "tskey-auth-k123456CNTRL-abcdef")]);
+        let (rc, up) = h.run(hook, &[("TS_AUTHKEY", "tskey-test-placeholder")]);
         assert_eq!(rc, 0, "{which}");
         assert!(
             up.is_empty(),

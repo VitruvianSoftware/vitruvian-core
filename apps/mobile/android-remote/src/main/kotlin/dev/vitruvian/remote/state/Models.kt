@@ -380,6 +380,26 @@ public interface Notifier {
    * history of every time the tailnet blinked. [deepLink] is a `vitruvian-remote://<screen>` URL.
    */
   public fun notify(id: String, title: String, body: String, deepLink: String)
+
+  /**
+   * Posts a HomeSpeaker announcement notification on the "HomeSpeaker announcements" channel with
+   * "Replay" and "Mute" actions.
+   */
+  public fun notifyAnnouncement(id: String, text: String) {}
+
+  /** Cancels a previously posted HomeSpeaker announcement notification. */
+  public fun cancelAnnouncement(id: String) {}
+
+  /** Whether `POST_NOTIFICATIONS` is granted (always true below API 33). */
+  public fun hasNotificationPermission(): Boolean = true
+
+  /**
+   * Ensures `POST_NOTIFICATIONS` is granted, prompting on Android 13+ when needed and invoking
+   * [onResult] with the outcome.
+   */
+  public fun ensureNotificationPermission(onResult: (Boolean) -> Unit) {
+    onResult(true)
+  }
 }
 
 /**
