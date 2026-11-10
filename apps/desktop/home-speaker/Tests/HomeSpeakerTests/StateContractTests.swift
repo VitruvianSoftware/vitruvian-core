@@ -833,4 +833,94 @@ struct StateContractTests {
         #expect(finalConfig.effectiveChatMonitor.clampedPollInterval == 95)
         #expect(finalConfig.quietHoursStart == "20:45")
     }
+
+    // MARK: - 9. Cleared Keys Are Not Resurrected on `--apply`
+
+    @Test("Cleared keys are not resurrected on --apply while foreign keys survive")
+    func clearedKeysAreNotResurrectedOnApply() throws {
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+        try rig.seedGoldenFixture()
+
+        let seededJSON: [String: Any] = [
+            "enabled": true,
+            "default_target": "office",
+            "structure_id": "home-structure-1",
+            "structure_name": "Home",
+            "custom_style_prompt": "Pirate voice",
+            "future_top_level_key": "keep",
+            "targets": [
+                "office": [
+                    "id": "dev-office",
+                    "type": "sdm.devices.types.SPEAKER",
+                    "name": "Office Mini",
+                    "room": "Office",
+                ],
+            ],
+            "chat_monitor": [
+                "slack_enabled": true,
+                "future_chat_key": "keep",
+            ],
+        ]
+        let seededData = try JSONSerialization.data(withJSONObject: seededJSON, options: [.prettyPrinted, .sortedKeys])
+        try seededData.write(to: rig.configFile.url)
+
+        let seam = rig.makeSeam()
+
+        // (a) Apply {"op":"set","key":"custom_style_prompt","value":""}
+        let clearPromptOut = HomeSpeakerCommandLine.apply(
+            #"{"contract_version":1,"operations":[{"op":"set","key":"custom_style_prompt","value":""}]}"#,
+            seam: seam
+        )
+        #expect(clearPromptOut.exitCode == 0)
+
+        let afterClearPrompt = try #require(
+            JSONSerialization.jsonObject(with: Data(contentsOf: rig.configFile.url)) as? [String: Any]
+        )
+        let promptOnDisk = afterClearPrompt["custom_style_prompt"] as? String
+        #expect(promptOnDisk == nil || promptOnDisk == "")
+        #expect(promptOnDisk != "Pirate voice")
+
+        // (b) Apply {"op":"reset"}
+        let resetOut = HomeSpeakerCommandLine.apply(
+            #"{"contract_version":1,"operations":[{"op":"reset"}]}"#,
+            seam: seam
+        )
+        #expect(resetOut.exitCode == 0)
+
+        let afterReset = try #require(
+            JSONSerialization.jsonObject(with: Data(contentsOf: rig.configFile.url)) as? [String: Any]
+        )
+        let chatAfterReset = try #require(afterReset["chat_monitor"] as? [String: Any])
+        #expect(chatAfterReset["slack_enabled"] == nil, "ours key cleared by reset must not be resurrected")
+        #expect(chatAfterReset["future_chat_key"] as? String == "keep")
+        #expect(afterReset["future_top_level_key"] as? String == "keep")
+        #expect(afterReset["custom_style_prompt"] == nil)
+    }
+
+    // MARK: - 10. Huge Numbers Do Not Crash `--apply`
+
+    @Test("Huge numbers in --apply do not crash and return valid JSON with exit 0 or 1")
+    func hugeNumbersDoNotCrashApply() throws {
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+        try rig.seedGoldenFixture()
+
+        let seam = rig.makeSeam()
+        let keys = ["poll_interval_seconds", "announce_volume"]
+        let rawValues = ["1e300", "-1e300", "9223372036854775808"]
+
+        for key in keys {
+            for rawVal in rawValues {
+                let payload = #"{"contract_version":1,"operations":[{"op":"set","key":"\#(key)","value":\#(rawVal)}]}"#
+                let out = HomeSpeakerCommandLine.apply(payload, seam: seam)
+                #expect(out.exitCode == 0 || out.exitCode == 1)
+                #expect(!out.stdout.isEmpty)
+                let parsed = try #require(
+                    JSONSerialization.jsonObject(with: Data(out.stdout[0].utf8)) as? [String: Any]
+                )
+                #expect(parsed["ok"] is Bool)
+            }
+        }
+    }
 }
