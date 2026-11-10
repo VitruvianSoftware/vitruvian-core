@@ -1,6 +1,6 @@
 # Written by tools/sync-site-tools from catalog/tools.json. Do not edit:
 #   bazel run //tools/sync-site-tools:sync
-generated: "2026-11-10T20:40:42Z"
+generated: "2026-11-10T21:17:15Z"
 public_key: "ysvqcMifelrOyxEx01sOS4B5VN585nBLKkdaaT0xyWY="
 tools:
   - id: "dev.vitruvian.reference"
@@ -69,11 +69,11 @@ tools:
     name: "Nexus Agent"
     publisher: "VitruvianSoftware"
     summary: "Run your Telegram bot for the Antigravity agent and ask the agent from anywhere with a Quick Prompt"
-    version: "1.32.6"
+    version: "1.32.7"
     source: "https://github.com/VitruvianSoftware/nexus-agent"
-    download: "https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.32.6/nexus-agent-tool-1.32.6.zip"
+    download: "https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.32.7/nexus-agent-tool-1.32.7.zip"
     size: "6.9 MB"
-    sha256: "d62946baf1eec86c73b8f41cb17516fc0cbfdc30883fb77f170ff4a69bf586f2"
+    sha256: "aa3305422ebe3057299047f78bb0e588bb3d89b63aaedfe93a5c821f6c40ff81"
     uses:
       - "Show messages and play the alert sound"
       - "Save its own settings"
