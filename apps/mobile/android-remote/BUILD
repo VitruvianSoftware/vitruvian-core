@@ -215,7 +215,7 @@ kt_jvm_test(
         "src/main/kotlin/dev/vitruvian/remote/state/RemoteState.kt",
         "src/main/kotlin/dev/vitruvian/remote/state/Wire.kt",
         "//apps/mobile/android-remote/macagent:golden_homespeaker_v1",
-    ],
+    ] + glob(["src/main/kotlin/dev/vitruvian/remote/screens/*.kt"]),
     test_class = "dev.vitruvian.remote.state.DeriveTest",
     deps = [
         ":derive",

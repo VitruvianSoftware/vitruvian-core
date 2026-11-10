@@ -948,7 +948,7 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
       withContext(Dispatchers.IO) {
         val body =
             JSONObject().apply {
-              if (percent != null) put("percent", percent)
+              if (percent != null) put("percent", Derive.clampSpeakerVolume(percent))
               if (muted != null) put("muted", muted)
             }
         parseSpeakerVolume(

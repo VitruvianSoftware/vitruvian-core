@@ -849,4 +849,56 @@ public class WireTest {
     assertEquals(1, HomeSpeakerWire.sources("""{"poll_interval":1}""").pollInterval)
     assertEquals(900, HomeSpeakerWire.sources("""{"poll_interval":900}""").pollInterval)
   }
+
+  @Test
+  public fun `probe unknown catalog setting keys unknown kinds and partial limits parse without crashing`() {
+    val json =
+        """
+        {
+          "available": true,
+          "settings": [
+            42,
+            {"key": "", "kind": "toggle", "label": "Blank key"},
+            {"key": "no_kind", "kind": "   ", "label": "Blank kind"},
+            {
+              "key": "future_quantum_chime",
+              "kind": "toggle",
+              "label": "Quantum chime",
+              "value": true
+            },
+            {
+              "key": "future_curve_setting",
+              "kind": "curve",
+              "label": "Voice curve on Your phone",
+              "value": 2.5,
+              "shown": false,
+              "choices": [
+                {"value": "soft"},
+                {"label": "missing value"}
+              ],
+              "limits": {"min": 0, "max": 10}
+            }
+          ]
+        }
+        """
+            .trimIndent()
+
+    val s = HomeSpeakerWire.sources(json)
+    assertEquals(2, s.settings.size)
+
+    val chime = s.catalog["future_quantum_chime"]!!
+    assertEquals("toggle", chime.kind)
+    assertEquals("Quantum chime", chime.label)
+    assertEquals(true, chime.boolValue)
+    assertEquals("true", chime.stringValue)
+    assertTrue(chime.shown)
+
+    val curve = s.catalog["future_curve_setting"]!!
+    assertEquals("curve", curve.kind)
+    assertEquals(2.5, curve.numberValue!!, 0.0)
+    assertEquals("2.5", curve.stringValue)
+    assertFalse(curve.shown)
+    assertEquals(listOf(HomeSpeakerChoice("soft", "soft")), curve.choices)
+    assertNull(curve.limits)
+  }
 }

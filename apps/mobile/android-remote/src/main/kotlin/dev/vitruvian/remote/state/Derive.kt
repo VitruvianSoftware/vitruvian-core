@@ -337,8 +337,8 @@ public object Derive {
   )
 
   /**
-   * Builds − / + stepper buttons from [limits] without clamping on the phone: the Mac owns bounds
-   * enforcement and replies with the saved value.
+   * Builds − / + stepper buttons from [limits]. The next value stops at Home Speaker's own min and
+   * max, so the phone never sends one outside them.
    */
   public fun catalogStepper(
       current: Double,
@@ -351,12 +351,21 @@ public object Derive {
     return StepperSpec(
         minusLabel = "−$stepText$unitSuffix",
         minusEnabled = canAct && current > limits.min,
-        minusNext = current - limits.step,
+        minusNext = maxOf(limits.min, current - limits.step),
         plusLabel = "+$stepText$unitSuffix",
         plusEnabled = canAct && current < limits.max,
-        plusNext = current + limits.step,
+        plusNext = minOf(limits.max, current + limits.step),
     )
   }
+
+  /**
+   * The speaker's live volume is the device's 0-100 range, not a Home Speaker setting, so the phone
+   * keeps it inside that range before sending.
+   */
+  public fun clampSpeakerVolume(percent: Int): Int = percent.coerceIn(0, 100)
+
+  /** The inline error recorded under catalog [key], or null. Rows look their error up by key. */
+  public fun settingError(errors: Map<String, String>, key: String): String? = errors[key]
 
   /**
    * Android `AudioDeviceInfo.TYPE_*` constants that count as headphones or personal audio outputs
@@ -440,7 +449,8 @@ public object Derive {
       when {
         !enabled -> "always speaks"
         active -> "quiet now"
-        else -> "quiet from ${start.ifBlank { HomeSpeakerWire.DEFAULT_QUIET_START }}"
+        start.isBlank() -> "quiet hours on"
+        else -> "quiet from $start"
       }
 
   /** Coding agents HomeSpeaker installs a hook for (Swift `CodingAgent.supportsHook`). */
@@ -514,15 +524,11 @@ public object Derive {
 
   /** Subtitle for the Google Chat source row, showing the active backend when running. */
   public fun googleChatSourceSubtitle(
-      activeBackend: String,
+      activeBackendLabel: String,
       monitorRunning: Boolean,
   ): String {
-    val via =
-        when (activeBackend.trim().lowercase(Locale.ROOT)) {
-          "api" -> "the Google API"
-          "gws" -> "gws CLI"
-          else -> ""
-        }
+    // The backend is named the way Home Speaker's own catalog names it.
+    val via = activeBackendLabel.trim()
     return if (monitorRunning && via.isNotEmpty()) {
       "currently reading via $via"
     } else {
@@ -1171,7 +1177,8 @@ public object Derive {
       end: String,
   ): QuickActionSpec {
     val label = if (enabled) "Quiet on" else "Quiet off"
-    val window = if (!available) null else "${start.ifBlank { "22:00" }}–${end.ifBlank { "07:00" }}"
+    // The window is whatever the Mac reported; with none reported there is nothing to show.
+    val window = if (!available || start.isBlank() || end.isBlank()) null else "$start–$end"
     val sub =
         when {
           window == null -> null
@@ -1568,6 +1575,7 @@ public object Derive {
 
   /** Builds all five controls for HomeSpeaker's Now strip in display order. */
   public fun homeSpeakerQuickActions(
+      hasCatalog: Boolean = true,
       paired: Boolean,
       available: Boolean,
       installed: Boolean = true,
@@ -1589,47 +1597,53 @@ public object Derive {
       snoozeUntil: String? = null,
       nowMs: Long = System.currentTimeMillis(),
       zoneId: ZoneId = ZoneId.systemDefault(),
-  ): List<QuickActionSpec> =
-      listOf(
-          muteQuickAction(
-              paired = paired,
-              volumeAvailable = volumeAvailable,
-              volumeOnline = volumeOnline,
-              muted = muted,
-              percent = percent,
-              busy = volumeBusy,
-          ),
-          quietHoursQuickAction(
-              paired = paired,
-              available = available,
-              enabled = quietEnabled,
-              active = quietActive,
-              start = quietStart,
-              end = quietEnd,
-          ),
-          roomQuickAction(
-              paired = paired,
-              available = available,
-              targetName = targetName,
-              targetRoom = targetRoom,
-              targetType = targetType,
-              hasChoices = hasRoomChoices,
-          ),
-          replayQuickAction(
-              paired = paired,
-              available = available,
-              installed = installed,
-              hasReplay = hasReplay,
-              target = replayTarget,
-          ),
-          snoozeQuickAction(
-              paired = paired,
-              available = available,
-              snoozeUntil = snoozeUntil,
-              nowMs = nowMs,
-              zoneId = zoneId,
-          ),
-      )
+  ): List<QuickActionSpec> {
+    val replay =
+        replayQuickAction(
+            paired = paired,
+            available = available,
+            installed = installed,
+            hasReplay = hasReplay,
+            target = replayTarget,
+        )
+    // Without Home Speaker's catalog every control that changes a setting is hidden; replaying
+    // speaks, it does not change a setting.
+    if (!hasCatalog) return listOf(replay)
+    return listOf(
+        muteQuickAction(
+            paired = paired,
+            volumeAvailable = volumeAvailable,
+            volumeOnline = volumeOnline,
+            muted = muted,
+            percent = percent,
+            busy = volumeBusy,
+        ),
+        quietHoursQuickAction(
+            paired = paired,
+            available = available,
+            enabled = quietEnabled,
+            active = quietActive,
+            start = quietStart,
+            end = quietEnd,
+        ),
+        roomQuickAction(
+            paired = paired,
+            available = available,
+            targetName = targetName,
+            targetRoom = targetRoom,
+            targetType = targetType,
+            hasChoices = hasRoomChoices,
+        ),
+        replay,
+        snoozeQuickAction(
+            paired = paired,
+            available = available,
+            snoozeUntil = snoozeUntil,
+            nowMs = nowMs,
+            zoneId = zoneId,
+        ),
+    )
+  }
 
   private val HTTP_CODE_REGEX = Regex("""\bHTTP\s+\d{3}\b""", RegexOption.IGNORE_CASE)
   private val AUTH_CODE_REGEX = Regex("""\bHTTP\s+40[13]\b""", RegexOption.IGNORE_CASE)

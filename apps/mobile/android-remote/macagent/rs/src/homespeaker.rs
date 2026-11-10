@@ -4610,6 +4610,32 @@ mod tests {
         assert!(old_b.get("outputs_footer").is_none());
     }
 
+    #[test]
+    fn test_probe_post_set_relays_catalog_and_empty_settings_array_omits_field() {
+        let (h, _d, _calls) = relay_speaker("probe_post_catalog", state_and_apply(golden_state()));
+        let resp = h.handle_set(
+            &post_req("/v1/homespeaker", r#"{"speech_length":"headline"}"#),
+            &PhoneBridge::new(),
+        );
+        assert_eq!(resp.status, 200, "{}", resp.body_string());
+        let b = body_of(&resp);
+        assert_eq!(b.get_array("settings").unwrap().len(), 38);
+        assert_eq!(
+            b.get_str("outputs_label"),
+            "Office Mini + This Mac + Your phone"
+        );
+        assert!(!b.get_str("outputs_footer").is_empty());
+
+        // If a `--state` document carries `"settings": []`, the helper omits `settings` so the
+        // phone treats the catalog as absent rather than rendering empty choices.
+        let empty_doc = r#"{"contract_version":1,"config_initialized":true,"program":{"version":"1.41.0","door":"app","active_door":"app","extension_installed":false},"settings":[],"speakers":[],"available_voices":[],"homes":[],"recent":[],"warnings":[]}"#;
+        let mapped = JsonValue::parse(&state_from_doc_json(empty_doc).unwrap()).unwrap();
+        assert!(mapped.get("available").unwrap().as_bool().unwrap());
+        assert!(mapped.get("settings").is_none());
+        assert!(mapped.get("outputs_label").is_none());
+        assert!(mapped.get("outputs_footer").is_none());
+    }
+
     // ---- The helper no longer reads or writes Home Speaker's files. ----
 
     #[test]

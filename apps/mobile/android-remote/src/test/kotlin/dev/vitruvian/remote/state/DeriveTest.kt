@@ -1100,8 +1100,9 @@ public class DeriveTest {
     assertEquals(
         "quiet from 22:00",
         Derive.quietHoursMetricSub(enabled = true, active = false, start = "22:00"))
+    // No start reported: the phone invents none.
     assertEquals(
-        "quiet from 22:00", Derive.quietHoursMetricSub(enabled = true, active = false, start = ""))
+        "quiet hours on", Derive.quietHoursMetricSub(enabled = true, active = false, start = ""))
   }
 
   @Test
@@ -1129,14 +1130,16 @@ public class DeriveTest {
         Derive.slackTokenSubtitle(hasToken = false, slackIdentity = "@james"))
 
     assertEquals(
-        "currently reading via the Google API",
-        Derive.googleChatSourceSubtitle(activeBackend = "api", monitorRunning = true))
+        "currently reading via Google API (this app's login)",
+        Derive.googleChatSourceSubtitle(
+            activeBackendLabel = "Google API (this app's login)", monitorRunning = true))
     assertEquals(
-        "currently reading via gws CLI",
-        Derive.googleChatSourceSubtitle(activeBackend = "gws", monitorRunning = true))
+        "currently reading via gws command-line tool",
+        Derive.googleChatSourceSubtitle(
+            activeBackendLabel = "gws command-line tool", monitorRunning = true))
     assertEquals(
         "which backend reads Google Chat",
-        Derive.googleChatSourceSubtitle(activeBackend = "api", monitorRunning = false))
+        Derive.googleChatSourceSubtitle(activeBackendLabel = "Google API", monitorRunning = false))
 
     val apiOk =
         Derive.googleChatAccountDiag(
@@ -2477,6 +2480,21 @@ public class DeriveTest {
     assertTrue(Derive.showsCourierRow(true))
   }
 
+  private fun runfileKotlinFiles(relDir: String): List<String> {
+    val roots = mutableListOf(java.io.File("."))
+    System.getenv("TEST_SRCDIR")
+        ?.takeIf { it.isNotBlank() }
+        ?.let { src ->
+          for (w in listOf("_main", "vitruvian_core", "")) {
+            roots += if (w.isEmpty()) java.io.File(src) else java.io.File(src, w)
+          }
+        }
+    val dir = roots.map { java.io.File(it, relDir) }.firstOrNull { it.isDirectory }
+    val names = dir?.listFiles { f -> f.name.endsWith(".kt") }?.map { it.name }.orEmpty().sorted()
+    assertTrue("no screens/*.kt found in runfiles under $relDir", names.isNotEmpty())
+    return names.map { "$relDir/$it" }
+  }
+
   private fun readRunfile(relPath: String): String {
     val direct = java.io.File(relPath)
     if (direct.exists()) return direct.readText()
@@ -2560,8 +2578,8 @@ public class DeriveTest {
     assertEquals("+5", stepper.plusLabel)
     assertTrue(stepper.minusEnabled)
     assertTrue(stepper.plusEnabled)
-    // Un-clamped on the phone: 98 + 5 = 103; the Mac clamps and replies with 100.
-    assertEquals(103.0, stepper.plusNext, 0.0)
+    // The stepper stops at Home Speaker's max: 98 + 5 is sent as 100, never 103.
+    assertEquals(100.0, stepper.plusNext, 0.0)
   }
 
   @Test
@@ -2598,7 +2616,9 @@ public class DeriveTest {
             "apps/mobile/android-remote/src/main/kotlin/dev/vitruvian/remote/state/Derive.kt",
             "apps/mobile/android-remote/src/main/kotlin/dev/vitruvian/remote/state/RemoteState.kt",
             "apps/mobile/android-remote/src/main/kotlin/dev/vitruvian/remote/state/Wire.kt",
-        )
+        ) +
+            runfileKotlinFiles(
+                "apps/mobile/android-remote/src/main/kotlin/dev/vitruvian/remote/screens")
     val deletedSymbols =
         listOf(
             "speechLengths",
@@ -2652,6 +2672,16 @@ public class DeriveTest {
             "Kore · Warm & clear",
             "Enable Voice Broadcasting",
             "Enable Quiet Hours",
+            "Plain spoken",
+            "Gemini Flash",
+            "Direct & mentions",
+            "gws CLI",
+            "Apple (on Mac)",
+            // Old inline-error keys: errors are keyed by catalog key, not by a label.
+            "What to say",
+            "Style model",
+            "Poll interval",
+            "Speaker volume",
         )
     val hits = mutableListOf<String>()
     for (path in files) {
@@ -2669,5 +2699,164 @@ public class DeriveTest {
     }
     assertTrue(
         "Local Home Speaker rulebook copies found:\n${hits.joinToString("\n")}", hits.isEmpty())
+  }
+
+  @Test
+  public fun `probe catalog helpers handle shown false unknown keys choice phone substitution and stepper boundaries`() {
+    val catalog =
+        HomeSpeakerCatalog(
+            listOf(
+                HomeSpeakerSetting(
+                    key = "hidden_toggle",
+                    kind = "toggle",
+                    label = "Hidden on Your phone",
+                    boolValue = true,
+                    shown = false,
+                ),
+                HomeSpeakerSetting(
+                    key = "route_mode",
+                    kind = "choice",
+                    label = "Your phone routing",
+                    stringValue = "phone_only",
+                    shown = true,
+                    choices =
+                        listOf(
+                            HomeSpeakerChoice("phone_only", "Your phone only"),
+                            HomeSpeakerChoice("both", "Your phone + Mac"),
+                        ),
+                ),
+                HomeSpeakerSetting(
+                    key = "pause_media_extra_seconds",
+                    kind = "number",
+                    label = "Resume after",
+                    numberValue = 0.0,
+                    shown = true,
+                    limits =
+                        HomeSpeakerLimits(min = 0.0, max = 10.0, step = 0.5, defaultValue = 1.0),
+                ),
+            ))
+
+    assertFalse(Derive.catalogShown(catalog, "hidden_toggle"))
+    assertFalse(Derive.catalogShown(catalog, "future_unknown_key"))
+    assertEquals("", Derive.catalogLabel(catalog, "future_unknown_key"))
+    assertEquals("unlisted_raw", Derive.catalogChoiceLabel(catalog, "route_mode", "unlisted_raw"))
+
+    assertEquals("This phone routing", Derive.catalogLabel(catalog, "route_mode"))
+    assertEquals(
+        listOf(
+            HomeSpeakerChoice("phone_only", "This phone only"),
+            HomeSpeakerChoice("both", "This phone + Mac"),
+        ),
+        Derive.catalogChoices(catalog, "route_mode"),
+    )
+    assertEquals("This phone only", Derive.catalogChoiceLabel(catalog, "route_mode", "phone_only"))
+    assertEquals(
+        "This phone then This phone",
+        Derive.outputsSummary("  Your phone then Your phone  "),
+    )
+    assertEquals(null, Derive.outputsSummary("   "))
+
+    val limits = Derive.catalogLimits(catalog, "pause_media_extra_seconds")!!
+    val atMin =
+        Derive.catalogStepper(current = 0.0, limits = limits, canAct = true, unitSuffix = "s")
+    assertEquals("−0.5s", atMin.minusLabel)
+    assertEquals("+0.5s", atMin.plusLabel)
+    assertFalse(atMin.minusEnabled)
+    assertTrue(atMin.plusEnabled)
+
+    val atMax =
+        Derive.catalogStepper(current = 10.0, limits = limits, canAct = true, unitSuffix = "s")
+    assertTrue(atMax.minusEnabled)
+    assertFalse(atMax.plusEnabled)
+
+    val unpaired = Derive.catalogStepper(current = 5.0, limits = limits, canAct = false)
+    assertFalse(unpaired.minusEnabled)
+    assertFalse(unpaired.plusEnabled)
+  }
+
+  @Test
+  public fun `catalog steppers stop at the limits and never send a value outside them`() {
+    val volume = HomeSpeakerLimits(min = 0.0, max = 100.0, step = 10.0, defaultValue = 60.0)
+    val nearMax = Derive.catalogStepper(current = 95.0, limits = volume, canAct = true)
+    assertEquals(100.0, nearMax.plusNext, 0.0)
+    val atMax = Derive.catalogStepper(current = 100.0, limits = volume, canAct = true)
+    assertFalse(atMax.plusEnabled)
+    assertEquals(100.0, atMax.plusNext, 0.0)
+    val nearMin = Derive.catalogStepper(current = 5.0, limits = volume, canAct = true)
+    assertEquals(0.0, nearMin.minusNext, 0.0)
+    val poll = HomeSpeakerLimits(min = 5.0, max = 300.0, step = 5.0, defaultValue = 15.0)
+    assertEquals(5.0, Derive.catalogStepper(7.0, poll, true).minusNext, 0.0)
+    assertEquals(300.0, Derive.catalogStepper(298.0, poll, true).plusNext, 0.0)
+  }
+
+  @Test
+  public fun `the speaker's live volume is kept inside the device's 0 to 100 before sending`() {
+    assertEquals(100, Derive.clampSpeakerVolume(105))
+    assertEquals(0, Derive.clampSpeakerVolume(-10))
+    assertEquals(60, Derive.clampSpeakerVolume(60))
+  }
+
+  @Test
+  public fun `quiet hours quick action shows no window the Mac did not report`() {
+    val spec =
+        Derive.quietHoursQuickAction(
+            true, true, enabled = true, active = false, start = "", end = "")
+    assertNull(spec.secondary)
+    assertFalse(spec.contentDescription.contains("22:00"))
+    val reported =
+        Derive.quietHoursQuickAction(
+            true, true, enabled = true, active = false, start = "21:00", end = "06:30")
+    assertEquals("21:00–06:30", reported.secondary)
+  }
+
+  @Test
+  public fun `without a catalog the Now strip keeps only replay, no setting controls`() {
+    fun ids(hasCatalog: Boolean) =
+        Derive.homeSpeakerQuickActions(
+                hasCatalog = hasCatalog,
+                paired = true,
+                available = true,
+                volumeAvailable = true,
+                volumeOnline = true,
+                muted = false,
+                percent = 40,
+                quietEnabled = false,
+                quietActive = false,
+                quietStart = "",
+                quietEnd = "",
+                targetName = "Office Mini",
+                hasReplay = true,
+            )
+            .map { it.id }
+    assertEquals(listOf("replay"), ids(false))
+    assertEquals(listOf("mute", "quiet_hours", "room", "replay", "snooze"), ids(true))
+  }
+
+  @Test
+  public fun `a refusal recorded under a catalog key shows on that row, an old label does not`() {
+    val errors = mapOf("speech_length" to "Home Speaker refused that")
+    assertEquals("Home Speaker refused that", Derive.settingError(errors, "speech_length"))
+    assertNull(Derive.settingError(errors, "What to say"))
+  }
+
+  @Test
+  public fun `setHomeSpeaker files its errors under real catalog keys`() {
+    val catalogKeys =
+        HomeSpeakerWire.sources(
+                readRunfile("apps/mobile/android-remote/macagent/golden_homespeaker_v1.json"))
+            .catalog
+            .settings
+            .map { it.key }
+            .toSet()
+    val text =
+        readRunfile(
+            "apps/mobile/android-remote/src/main/kotlin/dev/vitruvian/remote/state/RemoteState.kt")
+    val block =
+        text.substringAfter("    val key =\n        controlId").substringBefore("else -> what")
+    val keys = Regex("""-> "([a-z][a-z_]+)"""").findAll(block).map { it.groupValues[1] }.toList()
+    assertTrue("no catalog-key error keys found in setHomeSpeaker", keys.size >= 30)
+    // "snooze" is the phone's own Now-strip control, not a Home Speaker field.
+    val notInCatalog = keys.filter { it !in catalogKeys && it != "snooze" }
+    assertTrue("error keys that are not catalog keys: $notInCatalog", notInCatalog.isEmpty())
   }
 }
