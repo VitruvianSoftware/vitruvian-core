@@ -1,0 +1,43 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# Symlink both `target.files` and `target_files` in `_symlink_sysroot_tree`, so
+# the linker's `data` files (`lib/rustlib/<triple>/bin/gcc-ld/*`) AND
+# `rust-lld` itself land at their original relative paths in the generated
+# sysroot and in `toolchain.all_files`. `gcc-ld/ld.lld` is a wrapper that execs
+# `../rust-lld`; rules_rust only symlinks `rust-lld` into `<sysroot>/bin/`, so
+# with the data files alone remote execution fails with
+# "lld-wrapper: could not exec rust-lld: No such file or directory".
+# Since Rust 1.90, `x86_64-unknown-linux-gnu` defaults to the self-contained
+# lld linker (`gcc-ld/ld.lld`); dropping `target_files` omits `gcc-ld/*` from
+# remote execution inputs and fails with "the self-contained linker was
+# requested, but it wasn't found in the target's sysroot, or in rustc's sysroot".
+
+--- a/rust/toolchain.bzl
++++ b/rust/toolchain.bzl
+@@ -152,7 +152,7 @@ def _symlink_sysroot_tree(ctx, name, target, target_files = None):
+     tree_files = []
+     if target_files == None:
+         target_files = target.files
+-    for file in target.files.to_list():
++    for file in depset(transitive = [target.files, target_files]).to_list():
+         # Parse the path to the file relative to the workspace root so a
+         # symlink matching this path can be created within the sysroot.
+ 
