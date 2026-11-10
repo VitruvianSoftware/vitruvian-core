@@ -17,7 +17,7 @@
   "dependencies": {
     "@pulumi/command": "^1.3.0",
     "@pulumi/gcp": "^10.2.2",
-    "@pulumi/pulumi": "^3.273.0",
+    "@pulumi/pulumi": "^3.274.1",
     "@pulumi/random": "^4.21.6",
     "@pulumiverse/time": "^0.1.1",
     "@vitruviansoftware/foundation-bootstrap": "workspace:*",
