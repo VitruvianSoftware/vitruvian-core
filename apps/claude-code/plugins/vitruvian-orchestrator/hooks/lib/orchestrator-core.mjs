@@ -20,6 +20,8 @@
  * SOFTWARE.
  */
 
+import { PRICES } from "./prices.mjs";
+
 /**
  * @typedef {"plan" | "design" | "delegate" | "review" | "close"} Phase
  */
@@ -50,6 +52,14 @@
  * @property {number} output
  * @property {number} cacheRead
  * @property {number} cacheWrite
+ */
+
+/**
+ * @typedef {Object} DelegateTokenCounts
+ * @property {number} input
+ * @property {number} output
+ * @property {number} thinking
+ * @property {number} cacheRead
  */
 
 /**
@@ -99,6 +109,7 @@
  * @property {number | null} endedAt
  * @property {RunStatus} status
  * @property {TokenCounts} tokens
+ * @property {DelegateTokenCounts | null} [delegateTokens]
  * @property {StepProgress | null} steps
  * @property {number | null} contextPct
  * @property {RunRole} role
@@ -167,6 +178,7 @@
 /**
  * @typedef {Object} DelegatedSummary
  * @property {number} runs
+ * @property {number} unpriced
  * @property {Record<string, number>} byModel
  */
 
@@ -195,10 +207,12 @@
  * @property {string | null} [delegate]
  * @property {RunRole} [role]
  * @property {Partial<TokenCounts>} [tokens]
+ * @property {Partial<DelegateTokenCounts> | null} [delegateTokens]
  * @property {Partial<StepProgress> | null} [steps]
  * @property {number | null} [contextPct]
  * @property {RunStatus} [status]
  * @property {number} [n]
+ * @property {boolean} [waiting]
  */
 
 const VALID_PHASES = new Set(["plan", "design", "delegate", "review", "close"]);
@@ -210,15 +224,13 @@ export const DEFAULT_STALL_MS = 15 * 60 * 1000;
 // stalled.
 export const DEFAULT_WAITING_STALL_MS = 60 * 60 * 1000;
 
-// rough estimate, not a bill; from savvy-progress PRICES
-// Per million tokens: [input, output, cacheRead, cacheWrite]
-const PRICES = [
-  [/fable|mythos/i, [10, 50, 0.25, 12.5]],
-  [/opus-5-5/i, [4, 20, 0.2, 5]],
-  [/opus/i, [5, 25, 0.5, 6.25]],
-  [/sonnet/i, [2, 10, 0.2, 2.5]],
-  [/haiku/i, [1, 5, 0.1, 1.25]],
-];
+const PRICE_RULES = PRICES.map((entry) => ({
+  re: new RegExp(entry.match, "i"),
+  input: entry.input,
+  output: entry.output,
+  cacheRead: entry.cacheRead,
+  cacheWrite: entry.cacheWrite,
+}));
 
 /**
  * Returns the initial empty flow state (`null`).
@@ -274,6 +286,14 @@ function cloneRun(run) {
       cacheRead: run.tokens.cacheRead,
       cacheWrite: run.tokens.cacheWrite,
     },
+    delegateTokens: run.delegateTokens
+      ? {
+          input: run.delegateTokens.input,
+          output: run.delegateTokens.output,
+          thinking: run.delegateTokens.thinking,
+          cacheRead: run.delegateTokens.cacheRead,
+        }
+      : null,
     steps: run.steps
       ? {
           done: run.steps.done,
@@ -284,6 +304,34 @@ function cloneRun(run) {
     contextPct: run.contextPct,
     role: run.role,
   };
+}
+
+/**
+ * Normalizes an incoming `delegateTokens` snapshot. Replaces the whole object
+ * when at least one known field is a finite non-negative number, ignoring
+ * negative or non-numeric fields (treated as 0); otherwise returns `fallback`.
+ *
+ * @param {unknown} raw
+ * @param {DelegateTokenCounts | null} fallback
+ * @returns {DelegateTokenCounts | null}
+ */
+function parseDelegateTokens(raw, fallback) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return fallback;
+  }
+  const obj = /** @type {Record<string, unknown>} */ (raw);
+  const keys = ["input", "output", "thinking", "cacheRead"];
+  let hasValid = false;
+  /** @type {Record<string, number>} */
+  const next = { input: 0, output: 0, thinking: 0, cacheRead: 0 };
+  for (const k of keys) {
+    const v = obj[k];
+    if (typeof v === "number" && Number.isFinite(v) && v >= 0) {
+      next[k] = v;
+      hasValid = true;
+    }
+  }
+  return hasValid ? /** @type {DelegateTokenCounts} */ (next) : fallback;
 }
 
 /**
@@ -536,6 +584,7 @@ export function reduce(flow, event) {
           cacheRead: event.tokens?.cacheRead ?? 0,
           cacheWrite: event.tokens?.cacheWrite ?? 0,
         },
+        delegateTokens: parseDelegateTokens(event.delegateTokens, null),
         steps: event.steps
           ? {
               done: event.steps.done ?? 0,
@@ -594,6 +643,18 @@ export function reduce(flow, event) {
           typeof event.delegate === "string" && event.delegate.trim().length > 0
             ? event.delegate.trim()
             : (r.delegate ?? null);
+        const prevDelegateTokens = r.delegateTokens
+          ? {
+              input: r.delegateTokens.input,
+              output: r.delegateTokens.output,
+              thinking: r.delegateTokens.thinking,
+              cacheRead: r.delegateTokens.cacheRead,
+            }
+          : null;
+        const delegateTokens =
+          event.delegateTokens !== undefined
+            ? parseDelegateTokens(event.delegateTokens, prevDelegateTokens)
+            : prevDelegateTokens;
         const lastActivityAt = Number.isFinite(event.at)
           ? Math.max(r.lastActivityAt ?? r.startedAt, event.at)
           : (r.lastActivityAt ?? r.startedAt);
@@ -604,6 +665,7 @@ export function reduce(flow, event) {
           waiting: event.waiting === true,
           delegate,
           tokens,
+          delegateTokens,
           steps,
           contextPct,
         };
@@ -825,21 +887,33 @@ export function taskBoard(flow) {
 }
 
 /**
- * Estimates USD cost for a single run, or returns `null` if the model is unpriced
- * (e.g. Gemini, GPT, or local models).
+ * Finds the first matching price entry for `model`, or `null` if unpriced.
+ *
+ * @param {unknown} model
+ * @returns {{ re: RegExp, input: number, output: number, cacheRead: number, cacheWrite: number } | null}
+ */
+function findPrice(model) {
+  if (typeof model !== "string" || model.trim().length === 0) {
+    return null;
+  }
+  return PRICE_RULES.find((rule) => rule.re.test(model)) ?? null;
+}
+
+/**
+ * Estimates USD cost for the driver model (`run.model` + `run.tokens`),
+ * or returns `null` if the driver model has no price entry.
  *
  * @param {Run | null | undefined} run
  * @returns {number | null}
  */
-export function runCost(run) {
-  if (!run || typeof run.model !== "string") {
+function driverCost(run) {
+  if (!run) {
     return null;
   }
-  const match = PRICES.find(([re]) => re.test(run.model));
-  if (!match) {
+  const price = findPrice(run.model);
+  if (!price) {
     return null;
   }
-  const [inRate, outRate, cacheReadRate, cacheWriteRate] = match[1];
   const tokens = run.tokens ?? {
     input: 0,
     output: 0,
@@ -852,17 +926,75 @@ export function runCost(run) {
   const cacheWrite = tokens.cacheWrite ?? 0;
 
   return (
-    (input * inRate +
-      output * outRate +
-      cacheRead * cacheReadRate +
-      cacheWrite * cacheWriteRate) /
+    (input * price.input +
+      output * price.output +
+      cacheRead * price.cacheRead +
+      cacheWrite * price.cacheWrite) /
     1_000_000
   );
 }
 
 /**
+ * Estimates USD cost for the delegated model (`run.delegate` + `run.delegateTokens`),
+ * or returns `null` unless `run.delegate` and `run.delegateTokens` are set and
+ * the delegate model has a price entry.
+ *
+ * Assumption: `thinking` tokens are priced as `output` tokens at the delegate
+ * model's output rate.
+ *
+ * @param {Run | null | undefined} run
+ * @returns {number | null}
+ */
+export function delegateCost(run) {
+  if (
+    !run ||
+    typeof run.delegate !== "string" ||
+    run.delegate.trim().length === 0
+  ) {
+    return null;
+  }
+  if (!run.delegateTokens || typeof run.delegateTokens !== "object") {
+    return null;
+  }
+  const price = findPrice(run.delegate);
+  if (!price) {
+    return null;
+  }
+  const dt = parseDelegateTokens(run.delegateTokens, null);
+  if (!dt) {
+    return null;
+  }
+  // Assumption: price `thinking` tokens as `output` tokens.
+  return (
+    (dt.input * price.input +
+      (dt.output + dt.thinking) * price.output +
+      dt.cacheRead * price.cacheRead) /
+    1_000_000
+  );
+}
+
+/**
+ * Estimates USD cost for a single run (driver cost + delegate cost), or returns
+ * `null` only when neither part is priced.
+ *
+ * @param {Run | null | undefined} run
+ * @returns {number | null}
+ */
+export function runCost(run) {
+  if (!run) {
+    return null;
+  }
+  const drv = driverCost(run);
+  const del = delegateCost(run);
+  if (drv === null && del === null) {
+    return null;
+  }
+  return (drv ?? 0) + (del ?? 0);
+}
+
+/**
  * Summarizes spend across all runs in `flow`, broken down by model, role (lead vs workers),
- * and unpriced run/token totals.
+ * unpriced run/token totals, and delegated run counts (including `unpriced` delegated runs).
  *
  * @param {Flow | null} flow
  * @returns {SpendSummary}
@@ -878,6 +1010,7 @@ export function spend(flow) {
   let unpricedRuns = 0;
   let unpricedTokens = 0;
   let delegatedRuns = 0;
+  let delegatedUnpriced = 0;
 
   if (!flow) {
     return {
@@ -886,18 +1019,36 @@ export function spend(flow) {
       lead: 0,
       workers: 0,
       unpriced: { runs: 0, tokens: 0 },
-      delegated: { runs: 0, byModel: delegatedByModel },
+      delegated: { runs: 0, unpriced: 0, byModel: delegatedByModel },
     };
   }
 
   for (const run of flow.runs) {
-    if (typeof run.delegate === "string" && run.delegate.length > 0) {
+    const drvCost = driverCost(run);
+    const delCost = delegateCost(run);
+
+    if (typeof run.delegate === "string" && run.delegate.trim().length > 0) {
+      const delModel = run.delegate.trim();
       delegatedRuns += 1;
-      delegatedByModel[run.delegate] =
-        (delegatedByModel[run.delegate] ?? 0) + 1;
+      delegatedByModel[delModel] = (delegatedByModel[delModel] ?? 0) + 1;
+      if (delCost === null) {
+        delegatedUnpriced += 1;
+      } else {
+        total += delCost;
+        workers += delCost;
+        byModel[delModel] = (byModel[delModel] ?? 0) + delCost;
+      }
     }
-    const cost = runCost(run);
-    if (cost === null) {
+
+    if (drvCost !== null) {
+      total += drvCost;
+      byModel[run.model] = (byModel[run.model] ?? 0) + drvCost;
+      if (run.role === "lead") {
+        lead += drvCost;
+      } else {
+        workers += drvCost;
+      }
+    } else if (delCost === null) {
       unpricedRuns += 1;
       const t = run.tokens ?? {
         input: 0,
@@ -910,14 +1061,6 @@ export function spend(flow) {
         (t.output ?? 0) +
         (t.cacheRead ?? 0) +
         (t.cacheWrite ?? 0);
-    } else {
-      total += cost;
-      byModel[run.model] = (byModel[run.model] ?? 0) + cost;
-      if (run.role === "lead") {
-        lead += cost;
-      } else {
-        workers += cost;
-      }
     }
   }
 
@@ -932,6 +1075,7 @@ export function spend(flow) {
     },
     delegated: {
       runs: delegatedRuns,
+      unpriced: delegatedUnpriced,
       byModel: delegatedByModel,
     },
   };

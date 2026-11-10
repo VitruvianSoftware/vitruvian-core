@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.32](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.31...android-remote-v0.1.32) (2026-11-10)
+
+
+### Bug Fixes
+
+* **android-remote:** usability fixes from acceptance testing ([#4542](https://github.com/VitruvianSoftware/vitruvian-core/issues/4542)) ([b5c83a6](https://github.com/VitruvianSoftware/vitruvian-core/commit/b5c83a6b2a6a480f07b87c6c7994565198b833cd))
+
 ## [0.1.31](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.30...android-remote-v0.1.31) (2026-11-10)
 
 

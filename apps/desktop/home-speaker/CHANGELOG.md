@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.41.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.40.0...home-speaker-v1.41.0) (2026-11-10)
+
+
+### Features
+
+* **home-speaker:** --apply covers secrets, snooze, chat networks, Antigravity import and coding-agent hooks; --say --no-history ([#4544](https://github.com/VitruvianSoftware/vitruvian-core/issues/4544)) ([5fb24a4](https://github.com/VitruvianSoftware/vitruvian-core/commit/5fb24a4b3fb1793dbe48ed4942d231d0f87d057e))
+
 ## [1.40.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.39.0...home-speaker-v1.40.0) (2026-11-10)
 
 

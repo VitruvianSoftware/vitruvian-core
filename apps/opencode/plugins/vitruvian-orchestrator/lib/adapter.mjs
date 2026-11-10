@@ -22,6 +22,7 @@ import {
   burnDown,
   DEFAULT_QUIET_MS,
   DEFAULT_STALL_MS,
+  delegateCost,
   initialFlow,
   reduce,
   remaining,
@@ -35,6 +36,7 @@ export {
   burnDown,
   DEFAULT_QUIET_MS,
   DEFAULT_STALL_MS,
+  delegateCost,
   initialFlow,
   reduce,
   remaining,
@@ -426,6 +428,14 @@ export function applyStepCall(flow, callerRunId, input, at = Date.now()) {
       note,
     },
     ...(delegate ? { delegate } : {}),
+    ...(input?.delegateUsage !== undefined
+      ? {
+          delegateTokens:
+            /** @type {Partial<import('./orchestrator-core.mjs').DelegateTokenCounts> | null} */ (
+              input.delegateUsage
+            ),
+        }
+      : {}),
   });
 
   return {
@@ -670,10 +680,18 @@ export function formatSidebarData(flow, now = Date.now()) {
       };
     });
 
+  /** @type {Record<string, number>} */
+  const unpricedDelegatedByModel = {};
+  for (const r of flow.runs) {
+    if (r.delegate && delegateCost(r) === null) {
+      unpricedDelegatedByModel[r.delegate] =
+        (unpricedDelegatedByModel[r.delegate] ?? 0) + 1;
+    }
+  }
   const delegatedText =
-    sp.delegated.runs > 0
-      ? `delegated to Gemini: ${sp.delegated.runs} ${sp.delegated.runs === 1 ? "run" : "runs"} (${Object.entries(
-          sp.delegated.byModel,
+    sp.delegated.unpriced > 0
+      ? `delegated to Gemini: ${sp.delegated.unpriced} ${sp.delegated.unpriced === 1 ? "run" : "runs"} (${Object.entries(
+          unpricedDelegatedByModel,
         )
           .map(([m, n]) => `${m} ×${n}`)
           .join(", ")}), not priced`
@@ -797,7 +815,7 @@ export function formatSidebarLines(flow, now = Date.now()) {
       .join(", ");
     lines.push(`Unpriced: ${unpricedParts}`);
   }
-  if (data.spend.delegated.runs > 0) {
+  if (data.spend.delegated.unpriced > 0) {
     lines.push(`  ${data.spend.delegatedText}`);
   }
 

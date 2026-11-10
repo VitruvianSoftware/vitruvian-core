@@ -237,8 +237,9 @@ test("loadLivePanelState and buildPanelState produce contract /api/state shape f
   assert.deepEqual(liveState.taskBoard[3].waitingOn, [2, 3]);
   assert.equal(liveState.runs.length, 3);
   assert.ok(liveState.spend.total > 0);
-  assert.equal(liveState.spend.unpriced.runs, 1);
-  assert.ok(liveState.spend.unpriced.tokens > 0);
+  assert.ok(liveState.spend.byModel["gemini-4-argon-high"] > 0);
+  assert.equal(liveState.spend.unpriced.runs, 0);
+  assert.equal(liveState.spend.unpriced.tokens, 0);
 
   // Also verify selecting the newest flow file in a temp directory
   const tmpDir = mkdtempSync(join(tmpdir(), "orch-panel-test-"));

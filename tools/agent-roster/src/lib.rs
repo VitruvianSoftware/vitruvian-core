@@ -45,9 +45,23 @@ pub const CORE_COPIES: [&str; 3] = [
     "apps/opencode/plugins/vitruvian-orchestrator/lib/orchestrator-core.mjs",
 ];
 
+pub const PRICES_SOURCE: &str = "packages/orchestrator-core/src/prices.mjs";
+pub const PRICES_COPIES: [&str; 3] = [
+    "apps/claude-code/plugins/vitruvian-orchestrator/hooks/lib/prices.mjs",
+    "apps/antigravity/plugins/vitruvian-orchestrator/sidecars/panel/lib/prices.mjs",
+    "apps/opencode/plugins/vitruvian-orchestrator/lib/prices.mjs",
+];
+
 /// Adds the vendored core copies to `expected`, each identical to `source`.
 pub fn add_core_copies(expected: &mut BTreeMap<String, String>, source: &str) {
     for path in CORE_COPIES {
+        expected.insert(path.to_string(), source.to_string());
+    }
+}
+
+/// Adds the vendored prices copies to `expected`, each identical to `source`.
+pub fn add_prices_copies(expected: &mut BTreeMap<String, String>, source: &str) {
+    for path in PRICES_COPIES {
         expected.insert(path.to_string(), source.to_string());
     }
 }
@@ -770,7 +784,7 @@ pub fn render_driver_body(agent: &AgentRow, gemini: &str, step_tool: &str, role:
    - If the brief asks only for a review or an answer and must not change files, use `--mode plan` instead of `--yolo`.
    - Run it in the background for long work; it prints Gemini's digest when it finishes.
    - Exit codes: 0 ok, 2 agy failed, 3 empty answer, 10 quota, 11 auth, 12 timeout.
-3. **Report progress** with the {step_tool}: `done`, `total`, a short `note`, and `delegate: "{gemini}"`. Call it when you hand off, when Gemini returns, and after you verify. If the tool is missing, skip it silently.
+3. **Report progress** with the {step_tool}: `done`, `total`, a short `note`, and `delegate: "{gemini}"`. Call it when you hand off, when Gemini returns, and after you verify. After each `agy-delegate` run, read its `AGY_USAGE` line and pass the running totals across all calls so far as `delegateUsage` (`input`, `output`, `thinking`, and `cache_read` as `cacheRead`) in the next {step_tool} call alongside `delegate`. If the tool is missing, skip it silently.
 4. **Check the work yourself.** Gemini has been seen claiming passes it did not get, and changing its environment to force them. Never pass on its "done" unchecked.
    - Run `git status --short` and `git diff --stat`, and confirm the change stays inside the brief's scope.
    - Read the changed files that matter.
@@ -944,7 +958,12 @@ fn read_existing_outputs(repo_root: &Path) -> Result<BTreeMap<String, String>, S
             }
         }
     }
-    for rel_path in SKILL_OUTPUTS.iter().map(|&(_, p)| p).chain(CORE_COPIES) {
+    for rel_path in SKILL_OUTPUTS
+        .iter()
+        .map(|&(_, p)| p)
+        .chain(CORE_COPIES)
+        .chain(PRICES_COPIES)
+    {
         let path = repo_root.join(rel_path);
         if path.is_file() {
             let content =
@@ -1013,6 +1032,13 @@ pub fn run_in_workspace(repo_root: &Path, mode: Mode) -> i32 {
         Ok(core) => add_core_copies(&mut expected, &core),
         Err(e) => {
             eprintln!("error reading {CORE_SOURCE}: {e}");
+            return 1;
+        }
+    }
+    match fs::read_to_string(repo_root.join(PRICES_SOURCE)) {
+        Ok(prices) => add_prices_copies(&mut expected, &prices),
+        Err(e) => {
+            eprintln!("error reading {PRICES_SOURCE}: {e}");
             return 1;
         }
     }
@@ -1857,5 +1883,82 @@ scout\tcore\tSecond scout.
         );
         let diff = diff_outputs(&expected, &actual);
         assert_eq!(diff.different, vec![CORE_COPIES[1].to_string()]);
+    }
+
+    #[test]
+    fn driver_body_mentions_agy_usage_and_delegate_usage() {
+        let roster = load_and_validate(GEMINI_TIERS, GEMINI_AGENTS, &gemini_prompts())
+            .expect("gemini roster should be valid");
+        let files = render_all(&roster);
+        let cc = &files[".claude/agents/wren.md"];
+        assert!(
+            cc.contains("AGY_USAGE"),
+            "claude driver must mention AGY_USAGE"
+        );
+        assert!(
+            cc.contains("delegateUsage"),
+            "claude driver must mention delegateUsage"
+        );
+        let oc = &files[".opencode/agents/wren.md"];
+        assert!(
+            oc.contains("AGY_USAGE"),
+            "opencode driver must mention AGY_USAGE"
+        );
+        assert!(
+            oc.contains("delegateUsage"),
+            "opencode driver must mention delegateUsage"
+        );
+        assert!(!oc.contains("mcp__vitruvian-orchestrator__step"));
+    }
+
+    #[test]
+    fn drift_check_fails_when_vendored_prices_mjs_differs() {
+        let tmp =
+            std::env::temp_dir().join(format!("agent-roster-prices-drift-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(tmp.join(".agents/roster/prompts")).unwrap();
+        fs::create_dir_all(tmp.join(".agents/roster/skills/orchestrate")).unwrap();
+        fs::create_dir_all(tmp.join("packages/orchestrator-core/src")).unwrap();
+
+        fs::write(tmp.join(".agents/roster/tiers.tsv"), SAMPLE_TIERS).unwrap();
+        fs::write(tmp.join(".agents/roster/agents.tsv"), SAMPLE_AGENTS).unwrap();
+        for (name, body) in sample_prompts() {
+            fs::write(tmp.join(format!(".agents/roster/prompts/{name}.md")), body).unwrap();
+        }
+        for (harness, body) in sample_skills() {
+            fs::write(
+                tmp.join(format!(".agents/roster/skills/orchestrate/{harness}.md")),
+                body,
+            )
+            .unwrap();
+        }
+        fs::write(
+            tmp.join("packages/orchestrator-core/src/core.mjs"),
+            "export const core = 1;\n",
+        )
+        .unwrap();
+        fs::write(
+            tmp.join("packages/orchestrator-core/src/prices.mjs"),
+            "export const PRICES = [];\n",
+        )
+        .unwrap();
+
+        assert_eq!(run_in_workspace(&tmp, Mode::Write), 0);
+        assert_eq!(run_in_workspace(&tmp, Mode::Check), 0);
+
+        let drifted_copy = tmp.join("apps/opencode/plugins/vitruvian-orchestrator/lib/prices.mjs");
+        fs::create_dir_all(drifted_copy.parent().unwrap()).unwrap();
+        fs::write(
+            &drifted_copy,
+            "export const PRICES = [{ drifted: true }];\n",
+        )
+        .unwrap();
+
+        let check_code = run_in_workspace(&tmp, Mode::Check);
+        let _ = fs::remove_dir_all(&tmp);
+        assert_eq!(
+            check_code, 1,
+            "check must fail when a vendored prices.mjs differs"
+        );
     }
 }
