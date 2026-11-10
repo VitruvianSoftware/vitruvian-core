@@ -77,8 +77,8 @@
         id="aod_mode"
         displayName="config_aod_mode"
         screenReaderText="config_aod_mode"
-        defaultValue="aod_chromalight"
-        icon="dial_expanded_ambient">
+        defaultValue="aod_ultra"
+        icon="dial_expanded_ultra_ambient">
       <ListOption
           id="aod_chromalight"
           displayName="config_aod_chromalight"

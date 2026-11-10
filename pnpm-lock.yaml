@@ -42,6 +42,7 @@ catalogs:
       version: 5.1.0
 
 overrides:
+  '@azure/msal-node@6': ^7.1.0
   '@backstage/backend-plugin-api': 1.10.1
   '@backstage/plugin-catalog-backend@4': ^4.0.2
   '@cesium/widgets': 14.3.0
@@ -106,6 +107,7 @@ overrides:
   uuid@9: ^11.1.1
   webpack-dev-middleware@7: ^7.4.6
   yeoman-doctor>twig: ^3.0.0
+  zod@3: ^4.6.7
 
 packageExtensionsChecksum: sha256-q0uOQjt3qnvLwlUOi9Gf9lgJCohi0qIz/t4ywkcmPew=
 
@@ -1815,16 +1817,16 @@ packages:
     resolution: {integrity: sha512-7GyXzDUrdLG5zPDCYJbQdJqbl9a2U9SWUSC4lxr7cXjkBq6diTfWcJsi0UjdGWlqy+EevQg9dSC4g3s3BEp19g==}
     engines: {node: '>=0.8.0'}
 
-  '@azure/msal-common@16.14.1':
-    resolution: {integrity: sha512-Or6xhPNyi4zHW25158yxBoyxuCqNSPa5YBVqfF1J5Ks4MJWBo/USXdp05DQIPu1Zli00YZu6t0+h6KvHJealxQ==}
-    engines: {node: '>=0.8.0'}
-
   '@azure/msal-common@16.14.2':
     resolution: {integrity: sha512-HOBR0Gfo39TMrkxNG8k6cfjRkrRjXZc3JQs3ebMWQc9S4cihuknMYra3sgmzbZB752oQBqBN9+WF7c826p2vIQ==}
     engines: {node: '>=0.8.0'}
 
-  '@azure/msal-node@6.0.1':
-    resolution: {integrity: sha512-ixSO1Y/kCVRthRs+hSx/5qkwaunX1/RAePhlMN0wIpIQ4WEZ6AREGGnGd1AP0qspHVsAwzWQKGubpjh50JyJIQ==}
+  '@azure/msal-common@16.16.1':
+    resolution: {integrity: sha512-dSKdL9h/iercb4GumsKFh+wVvLe1ohuDPiviklgnQVHnY2FYNUlbQJ3E1Qd37vkof9CfraK9BQpCW1hoOg0znQ==}
+    engines: {node: '>=0.8.0'}
+
+  '@azure/msal-node@7.2.1':
+    resolution: {integrity: sha512-6mntsfCNq7H1eAPSZik74jT3C5at4nRqiVk7OC+D5Hy3Pe3s76uwE4+J0xvDvlVPmoX2kasf3mSwUmzeq9rW/A==}
     engines: {node: '>=20'}
 
   '@azure/storage-blob@12.34.0':
@@ -4566,7 +4568,7 @@ packages:
     engines: {node: '>=18'}
     peerDependencies:
       '@cfworker/json-schema': ^4.1.1
-      zod: ^3.25 || ^4.0
+      zod: ^4.6.7
     peerDependenciesMeta:
       '@cfworker/json-schema':
         optional: true
@@ -19485,16 +19487,13 @@ packages:
   zod-to-json-schema@3.25.2:
     resolution: {integrity: sha512-O/PgfnpT1xKSDeQYSCfRI5Gy3hPf91mKVDuYLUHZJMiDFptvP41MSnWofm8dnCm0256ZNfZIM7DSzuSMAFnjHA==}
     peerDependencies:
-      zod: ^3.25.28 || ^4
+      zod: ^4.6.7
 
   zod-validation-error@5.0.0:
     resolution: {integrity: sha512-hmk+pkyKq7Q71PiWVSDUc3VfpzpvcRHZ3QPw9yEMVvmtCekaMeOHnbr3WbxfrgEnQTv6haGP4cmv0Ojmihzsxw==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
-      zod: ^3.25.0 || ^4.0.0
-
-  zod@3.25.76:
-    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
+      zod: ^4.6.7
 
   zod@4.6.7:
     resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
@@ -20098,7 +20097,7 @@ snapshots:
       '@azure/core-util': 1.14.0
       '@azure/logger': 1.4.0
       '@azure/msal-browser': 5.25.0
-      '@azure/msal-node': 6.0.1
+      '@azure/msal-node': 7.2.1
       open: 10.2.0
       tslib: 2.9.1
     transitivePeerDependencies:
@@ -20115,13 +20114,13 @@ snapshots:
     dependencies:
       '@azure/msal-common': 16.14.2
 
-  '@azure/msal-common@16.14.1': {}
-
   '@azure/msal-common@16.14.2': {}
 
-  '@azure/msal-node@6.0.1':
+  '@azure/msal-common@16.16.1': {}
+
+  '@azure/msal-node@7.2.1':
     dependencies:
-      '@azure/msal-common': 16.14.1
+      '@azure/msal-common': 16.16.1
       jsonwebtoken: 9.0.3
 
   '@azure/storage-blob@12.34.0':
@@ -20797,7 +20796,7 @@ snapshots:
       ajv: 8.20.0
       ajv-errors: 3.0.0(ajv@8.20.0)
       lodash: 4.18.1
-      zod: 3.25.76
+      zod: 4.6.7
 
   '@backstage/catalog-model@1.10.2':
     dependencies:
@@ -20966,7 +20965,7 @@ snapshots:
       inquirer: 8.2.7(@types/node@26.6.6)
       proper-lockfile: 4.1.2
       yaml: 2.9.1
-      zod: 3.25.76
+      zod: 4.6.7
     optionalDependencies:
       keytar: 7.9.0
     transitivePeerDependencies:
@@ -21331,8 +21330,8 @@ snapshots:
       recursive-readdir: 2.2.3
       semver: 7.8.5
       yaml: 2.9.1
-      zod: 3.25.76
-      zod-validation-error: 5.0.0(zod@3.25.76)
+      zod: 4.6.7
+      zod-validation-error: 5.0.0(zod@4.6.7)
     transitivePeerDependencies:
       - '@swc/core'
       - '@types/node'
@@ -45409,15 +45408,9 @@ snapshots:
     dependencies:
       zod: 4.6.7
 
-  zod-validation-error@5.0.0(zod@3.25.76):
-    dependencies:
-      zod: 3.25.76
-
   zod-validation-error@5.0.0(zod@4.6.7):
     dependencies:
       zod: 4.6.7
-
-  zod@3.25.76: {}
 
   zod@4.6.7: {}
 
