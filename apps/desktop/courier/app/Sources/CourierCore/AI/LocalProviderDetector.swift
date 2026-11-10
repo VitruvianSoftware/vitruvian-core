@@ -28,9 +28,10 @@ public final class LocalProviderDetector: @unchecked Sendable {
         lock.withLock { _detectedUnslothPort }
     }
 
-    public var unslothBaseURL: URL {
-        let port = detectedUnslothPort ?? 8888
-        return URL(string: "http://127.0.0.1:\(port)/v1")!
+    /// Base URL for Unsloth Studio when a running or key-protected instance was detected; `nil` when none was detected.
+    public var unslothBaseURL: URL? {
+        guard let port = detectedUnslothPort else { return nil }
+        return URL(string: "http://127.0.0.1:\(port)/v1")
     }
 
     public func detect(unslothKey: String? = nil) async -> [AIProviderKind: LocalDetection] {

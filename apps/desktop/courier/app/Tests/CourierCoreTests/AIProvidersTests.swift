@@ -354,7 +354,7 @@ final class AIProvidersTests: XCTestCase {
         XCTAssertEqual(firstResults[.lmStudio], .notRunning)
         XCTAssertEqual(firstResults[.unslothStudio], .needsKey)
         XCTAssertEqual(detector.detectedUnslothPort, 8891)
-        XCTAssertEqual(detector.unslothBaseURL.absoluteString, "http://127.0.0.1:8891/v1")
+        XCTAssertEqual(detector.unslothBaseURL?.absoluteString, "http://127.0.0.1:8891/v1")
 
         // Every request probed only 127.0.0.1 with 0.4s timeout
         XCTAssertFalse(transport.requests.isEmpty)
@@ -392,7 +392,7 @@ final class AIProvidersTests: XCTestCase {
         let results = await detector.detect(unslothKey: secretKey)
 
         XCTAssertEqual(detector.detectedUnslothPort, 8890)
-        XCTAssertEqual(detector.unslothBaseURL.absoluteString, "http://127.0.0.1:8890/v1")
+        XCTAssertEqual(detector.unslothBaseURL?.absoluteString, "http://127.0.0.1:8890/v1")
         XCTAssertEqual(results[.unslothStudio], .running(models: ["unsloth/Llama-3.2-3B"]))
 
         let keyedRequests = transport.requests.filter {
@@ -401,6 +401,73 @@ final class AIProvidersTests: XCTestCase {
         XCTAssertEqual(keyedRequests.count, 1, "Saved Unsloth key must only be sent once, to the chosen 401 port")
         XCTAssertEqual(keyedRequests.first?.url?.absoluteString, "http://127.0.0.1:8890/v1/models")
         XCTAssertEqual(keyedRequests.first?.value(forHTTPHeaderField: "Authorization"), "Bearer \(secretKey)")
+    }
+
+    func testUnslothKeyNeverSentWhenNoPortDetectedEvenWithStubOn8888() async {
+        let suiteName = "test.courier.ai.unsloth.noleak.\(UUID().uuidString)"
+        let defaults = ScratchDefaults.suite(named: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let secretKey = "unsloth-top-secret-key"
+        let transport = StubHTTPTransport { request in
+            guard let url = request.url else { throw URLError(.badURL) }
+            // Stub a non-Unsloth service on port 8888 (e.g. Jupyter / local dev server returning 404 or 200 HTML)
+            if url.host == "127.0.0.1", url.port == 8888 {
+                let body = Data(#"{"error":"not unsloth"}"#.utf8)
+                return (body, StubHTTPTransport.makeResponse(url: url, status: 404))
+            }
+            throw URLError(.cannotConnectToHost)
+        }
+
+        let detector = LocalProviderDetector(transport: transport)
+        XCTAssertNil(detector.detectedUnslothPort)
+        XCTAssertNil(detector.unslothBaseURL)
+
+        let prefs = AIPreferences(defaults: defaults)
+        prefs.selectedEngine = .unslothStudio
+        prefs.enableContextualAI = true
+
+        let keyStore = AIKeyStore(store: InMemoryCredentialStore(["unslothStudio": secretKey]))
+        let store = AIProviderStore(
+            preferences: prefs,
+            keyStore: keyStore,
+            transport: transport,
+            detector: detector
+        )
+
+        // 1. Before any detection: no port detected -> no client built, provider unavailable with "Unsloth Studio is not running"
+        XCTAssertNil(store.makeClient(for: .unslothStudio))
+        XCTAssertFalse(store.provider.isAvailable)
+        XCTAssertTrue(store.provider.unavailableReason.contains("Unsloth Studio is not running"))
+
+        await store.refreshModelsForSelectedProvider()
+        let testResult = await store.test()
+        XCTAssertFalse(testResult.isConnected)
+        XCTAssertTrue(testResult.displayText.contains("Unsloth Studio is not running"))
+
+        let context = AIChatContext(title: "Test", messages: [("Alice", false, "Hi")])
+        let draftDisp = await store.provider.draftResponse(context: context, draft: "", tone: nil)
+        if case let .unavailable(reason) = draftDisp {
+            XCTAssertTrue(reason.contains("Unsloth Studio is not running"))
+        } else {
+            XCTFail("Expected unavailable disposition")
+        }
+
+        // 2. Run refresh/detection where port 8888 is a non-Unsloth server (404)
+        await store.refresh()
+        XCTAssertNil(detector.detectedUnslothPort)
+        XCTAssertNil(detector.unslothBaseURL)
+        XCTAssertNil(store.makeClient(for: .unslothStudio))
+        XCTAssertFalse(store.provider.isAvailable)
+        XCTAssertTrue(store.provider.unavailableReason.contains("Unsloth Studio is not running"))
+
+        // Zero requests across the entire session may carry the saved Unsloth key
+        let requestsCarryingKey = transport.requests.filter { req in
+            let auth = req.value(forHTTPHeaderField: "Authorization") ?? ""
+            let urlString = req.url?.absoluteString ?? ""
+            return auth.contains(secretKey) || urlString.contains(secretKey) || !auth.isEmpty
+        }
+        XCTAssertTrue(requestsCarryingKey.isEmpty, "Zero requests may carry the Unsloth key when no Unsloth port was detected")
     }
 
     // MARK: - AIKeyStore

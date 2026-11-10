@@ -167,7 +167,7 @@ public enum AIProviderKind: String, CaseIterable, Codable, Sendable {
         case .lmStudio:
             URL(string: "http://127.0.0.1:1234/v1")
         case .unslothStudio:
-            URL(string: "http://127.0.0.1:8888/v1")
+            nil
         case .anthropic:
             URL(string: "https://api.anthropic.com")
         case .googleAIStudio:

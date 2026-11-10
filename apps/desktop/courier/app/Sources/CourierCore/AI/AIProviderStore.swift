@@ -250,6 +250,13 @@ public final class AIProviderStore: ObservableObject {
         }
 
         let kind = preferences.selectedEngine
+        if kind == .unslothStudio, detector.unslothBaseURL == nil {
+            let result = TestResult.failure(
+                String(localized: "Unsloth Studio is not running on this Mac. Start it and click Refresh in Settings ▸ AI.")
+            )
+            lastTestResult = result
+            return result
+        }
         guard let client = makeClient(for: kind) else {
             let result = TestResult.failure(AIClientError.notConfigured.message)
             lastTestResult = result
@@ -412,9 +419,11 @@ public final class AIProviderStore: ObservableObject {
             guard let baseURL = kind.defaultBaseURL else { return nil }
             return OpenAICompatibleClient(baseURL: baseURL, key: nil, isLocal: true, transport: transport)
         case .unslothStudio:
-            guard let key = keyStore.key(for: .unslothStudio) else { return nil }
+            guard let key = keyStore.key(for: .unslothStudio),
+                  let baseURL = detector.unslothBaseURL
+            else { return nil }
             return OpenAICompatibleClient(
-                baseURL: detector.unslothBaseURL,
+                baseURL: baseURL,
                 key: key,
                 isLocal: true,
                 transport: transport
@@ -495,6 +504,12 @@ public final class AIProviderStore: ObservableObject {
         }
 
         if kind.isLocal {
+            if kind == .unslothStudio, detector.unslothBaseURL == nil {
+                provider = UnavailableAIProvider(
+                    reason: String(localized: "Unsloth Studio is not running on this Mac. Start it and click Refresh in Settings ▸ AI.")
+                )
+                return
+            }
             switch detections[kind] {
             case .notRunning:
                 provider = UnavailableAIProvider(
