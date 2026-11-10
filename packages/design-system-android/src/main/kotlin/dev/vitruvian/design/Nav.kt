@@ -43,12 +43,15 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -59,6 +62,7 @@ public data class NavItem(
     val label: String,
     val iconPath: String,
     val onSelect: () -> Unit,
+    val iconOnly: Boolean = false,
 )
 
 private val RAIL_WIDTH = 89.dp
@@ -124,9 +128,9 @@ public fun HostChip(
   Box(
       modifier =
           modifier
-              .defaultMinSize(minHeight = 32.dp)
+              .defaultMinSize(minHeight = Hit.h1)
               .border(1.dp, Vitruvian.divider)
-              .clickable(onClick = onClick)
+              .clickable(role = Role.Button, onClick = onClick)
               .padding(horizontal = Space.s3, vertical = 6.dp),
       contentAlignment = Alignment.Center,
   ) {
@@ -151,6 +155,7 @@ public fun TabBar(
       modifier =
           modifier
               .fillMaxWidth()
+              .selectableGroup()
               // No blur here. The shell stacks this bar BELOW the body in a Column, so there is
               // nothing behind it to frost -- and a self-blur would only smudge the bar's own five
               // icons and labels, which is exactly what it used to do. See Glass.kt.
@@ -184,11 +189,16 @@ private fun NavCell(
 ) {
   val colors = Vitruvian
   val content = if (selected) colors.accentText else colors.textDim
+  val iconDescription = A11y.navIconDescription(label = item.label, iconOnly = item.iconOnly)
   Column(
       modifier =
           modifier
               .defaultMinSize(minHeight = Hit.h2)
-              .clickable(onClick = item.onSelect)
+              .selectable(
+                  selected = selected,
+                  role = Role.Tab,
+                  onClick = item.onSelect,
+              )
               .drawBehind {
                 if (!selected) return@drawBehind
                 when (rule) {
@@ -209,14 +219,16 @@ private fun NavCell(
       horizontalAlignment = Alignment.CenterHorizontally,
       verticalArrangement = Arrangement.spacedBy(Space.s1, Alignment.CenterVertically),
   ) {
-    VIcon(path = item.iconPath, color = content)
-    VText(
-        text = item.label.uppercase(),
-        style = VitruvianType.tabLabel,
-        color = content,
-        maxLines = 1,
-        softWrap = false,
-    )
+    VIcon(path = item.iconPath, color = content, contentDescription = iconDescription)
+    if (!item.iconOnly) {
+      VText(
+          text = item.label.uppercase(),
+          style = VitruvianType.tabLabel,
+          color = content,
+          maxLines = 1,
+          softWrap = false,
+      )
+    }
   }
 }
 
@@ -382,7 +394,7 @@ public fun Tabs(
 ) {
   val colors = Vitruvian
   Row(
-      modifier = modifier.fillMaxWidth().bottomHairline(colors.divider),
+      modifier = modifier.fillMaxWidth().selectableGroup().bottomHairline(colors.divider),
       horizontalArrangement = Arrangement.spacedBy(Space.s4),
   ) {
     tabs.forEach { tab ->
@@ -390,7 +402,11 @@ public fun Tabs(
       Row(
           modifier =
               Modifier.defaultMinSize(minHeight = Hit.h1)
-                  .clickable { onSelect(tab.id) }
+                  .selectable(
+                      selected = active,
+                      role = Role.Tab,
+                      onClick = { onSelect(tab.id) },
+                  )
                   .drawBehind {
                     if (active) {
                       drawRect(

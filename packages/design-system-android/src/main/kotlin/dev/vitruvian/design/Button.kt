@@ -39,6 +39,10 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -59,6 +63,7 @@ private val DISABLED_ALPHA = 0.4f
  * Height floors at [Hit.h1] because every clickable in this language does; the press state is the
  * flat `accentQuiet` fill supplied by [FlatIndication], never a ripple. [trailingIcon] (an icon
  * path, e.g. [VitruvianIcons.CHEVRON_DOWN]) sits after the label and never ellipsises with it.
+ * [contentDescription] supplies the spoken name when [label] is a single glyph (e.g. `"⏮"`, `"×"`).
  */
 @Composable
 public fun VButton(
@@ -72,6 +77,7 @@ public fun VButton(
     contentColor: Color? = null,
     contentPadding: PaddingValues = PaddingValues(horizontal = Space.s5),
     trailingIcon: String? = null,
+    contentDescription: String? = null,
 ) {
   val colors = Vitruvian
   val border =
@@ -90,6 +96,8 @@ public fun VButton(
             ButtonVariant.Danger -> colors.sanguineText
             else -> colors.text
           }
+  val resolvedDescription =
+      A11y.buttonContentDescription(label = label, contentDescription = contentDescription)
   val interactionSource = remember { MutableInteractionSource() }
   Box(
       modifier =
@@ -101,8 +109,15 @@ public fun VButton(
                   enabled = enabled,
                   interactionSource = interactionSource,
                   indication = LocalIndication.current,
+                  role = Role.Button,
                   onClick = onClick,
               )
+              .then(
+                  if (resolvedDescription != null) {
+                    Modifier.semantics { this.contentDescription = resolvedDescription }
+                  } else {
+                    Modifier
+                  })
               .drawBehind {
                 val width = 1.dp.toPx()
                 drawRect(
@@ -127,6 +142,8 @@ public fun VButton(
     if (trailingIcon == null) {
       VText(
           text = label.uppercase(),
+          modifier =
+              if (resolvedDescription != null) Modifier.clearAndSetSemantics {} else Modifier,
           style = VitruvianType.buttonTouch.copy(textAlign = TextAlign.Center),
           color = text,
           maxLines = 1,
@@ -141,7 +158,11 @@ public fun VButton(
       ) {
         VText(
             text = label.uppercase(),
-            modifier = Modifier.weight(1f, fill = false),
+            modifier =
+                Modifier.weight(1f, fill = false)
+                    .then(
+                        if (resolvedDescription != null) Modifier.clearAndSetSemantics {}
+                        else Modifier),
             style = VitruvianType.buttonTouch,
             color = text,
             maxLines = 1,
