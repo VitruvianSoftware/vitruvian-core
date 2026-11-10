@@ -84,6 +84,9 @@ pub const WORKTREE_SH: &str = r#"#!/usr/bin/env bash
 #   bazel run //tools/worktree -- --remove <branch|name>             # remove that worktree (or scratch tree)
 #   bazel run //tools/worktree -- --remove <branch> --force          # ...with its uncommitted files
 #   bazel run //tools/worktree -- --remove <branch> --delete-branch  # ...and its branch, if clean AND landed
+#   bazel run //tools/worktree -- --remove <branch> --delete-branch --landed-as <PR,PR>
+#                                     # a branch with no worktree whose work landed changed (landed can't match it):
+#                                     # deleted once those PRs are on main and nothing on it is newer than them
 #   bazel run //tools/worktree -- --lock [reason]       # keep the worktree you run it from safe from every pruner
 #   bazel run //tools/worktree -- --unlock              # ...and let it go again
 #                                     (both take --on <branch|name> to act on another worktree)
@@ -1338,6 +1341,60 @@ fn eval_scratch_ttl_hours(raw: &[u8], argv0: &[u8]) -> Result<i64, ()> {
     Err(())
 }
 
+/// The squash commit of PR `pr` among `log` lines `<sha>\t<committer unix time>\t<subject>` (newest first): GitHub
+/// ends a squash title with ` (#N)`, so only a subject that ends that way counts, not a body or a revert's mention.
+fn squash_merge_time(log: &str, pr: u64) -> Option<i64> {
+    let suffix = format!("(#{pr})");
+    log.lines().find_map(|line| {
+        let mut parts = line.splitn(3, '\t');
+        let (_sha, time, subject) = (parts.next()?, parts.next()?, parts.next()?);
+        if subject.trim_end().ends_with(&suffix) {
+            time.trim().parse().ok()
+        } else {
+            None
+        }
+    })
+}
+
+/// Whether `--landed-as` may delete a branch: every named PR must be on main (its merge time is `Some`), and no commit
+/// of the branch's own may be newer than the newest of those merges, since a commit made after the last named PR
+/// landed cannot be in any of them. `commits` are the branch's own commits (sha, committer unix time). Returns the
+/// newest merge time, or the reason to keep the branch.
+fn landed_as_verdict(commits: &[(String, i64)], prs: &[(u64, Option<i64>)]) -> Result<i64, String> {
+    if prs.is_empty() {
+        return Err("--landed-as needs the PR numbers the branch's work landed in, e.g. --landed-as 3425,3431".into());
+    }
+    let mut newest: Option<(u64, i64)> = None;
+    for &(pr, merged) in prs {
+        let Some(at) = merged else {
+            return Err(format!(
+                "PR #{pr} is not on main (no squash commit ending in \"(#{pr})\")"
+            ));
+        };
+        if newest.map_or(true, |(_, t)| at > t) {
+            newest = Some((pr, at));
+        }
+    }
+    let (pr, at) = newest.expect("prs is not empty");
+    if let Some((sha, t)) = commits.iter().find(|(_, t)| *t > at) {
+        return Err(format!(
+            "commit {sha} was made after the newest named PR (#{pr}) landed ({t} > {at}), so it can be in none of them; \
+             name the PR it landed in too, or keep the branch"
+        ));
+    }
+    Ok(at)
+}
+
+/// Parses `3425,3431` (commas or spaces, an optional leading `#`) into PR numbers.
+fn parse_pr_list(spec: &str) -> Option<Vec<u64>> {
+    let prs: Option<Vec<u64>> = spec
+        .split(|c: char| c == ',' || c.is_whitespace())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.trim_start_matches('#').parse().ok())
+        .collect();
+    prs.filter(|v| !v.is_empty())
+}
+
 struct Context {
     argv0: Vec<u8>,
     start_pwd: Vec<u8>,
@@ -1758,6 +1815,95 @@ impl Context {
             return r;
         }
         Ok(())
+    }
+
+    /// `--remove <branch> --delete-branch --landed-as <PRs>` for a local branch with no worktree, whose work reached
+    /// main changed (so `landed` cannot match it line for line): deletes it once every named PR is on main, nothing on
+    /// the branch is newer than them, and GitHub has no copy. Prints the tip so the branch can be brought back.
+    fn delete_branch_landed_as(&mut self, br: &[u8], prs: &[u64]) -> bool {
+        let name = String::from_utf8_lossy(br).into_owned();
+        let base = String::from_utf8_lossy(&self.base_ref).into_owned();
+        let git = |args: &[&str]| -> Option<String> {
+            let out = Command::new("git")
+                .args(args)
+                .stdin(Stdio::null())
+                .stderr(Stdio::null())
+                .output()
+                .ok()?;
+            out.status
+                .success()
+                .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+        };
+        let refuse = |why: &str| {
+            let _ = echo_err_ln!(&self.argv0, 900, "worktree: ", br, " is kept: ", why);
+            false
+        };
+
+        let Some(tip) = git(&[
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            &format!("refs/heads/{name}"),
+        ]) else {
+            return refuse("there is no local branch by that name");
+        };
+        let tip = tip.trim().to_string();
+        match git(&["ls-remote", "--heads", "origin", &name]) {
+            None => return refuse("could not ask GitHub whether it still has a copy"),
+            Some(out) if !out.trim().is_empty() => {
+                return refuse(
+                    "GitHub still has a copy; delete that first: bazel run //tools/agent-app -- branch-delete --agent <you> <branch>",
+                )
+            }
+            Some(_) => {}
+        }
+
+        let mut merges = Vec::new();
+        for &pr in prs {
+            let log = git(&[
+                "log",
+                &base,
+                "-F",
+                &format!("--grep=(#{pr})"),
+                "--format=%H%x09%ct%x09%s",
+            ])
+            .unwrap_or_default();
+            merges.push((pr, squash_merge_time(&log, pr)));
+        }
+        let commits: Vec<(String, i64)> =
+            git(&["log", "--format=%h%x09%ct", &name, "--not", &base])
+                .unwrap_or_default()
+                .lines()
+                .filter_map(|l| {
+                    let (sha, t) = l.split_once('\t')?;
+                    Some((sha.to_string(), t.trim().parse().ok()?))
+                })
+                .collect();
+
+        if let Err(why) = landed_as_verdict(&commits, &merges) {
+            return refuse(&why);
+        }
+        if git(&["branch", "-D", &name]).is_none() {
+            return refuse("git branch -D failed");
+        }
+        let list = prs
+            .iter()
+            .map(|p| format!("#{p}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let own = match commits.len() {
+            0 => format!("no commits of its own; {list} on {base}"),
+            1 => format!("1 commit of its own, older than {list} on {base}"),
+            n => format!("{n} commits of its own, all older than {list} on {base}"),
+        };
+        let _ = echo_ln!(
+            &self.argv0,
+            901,
+            "worktree: deleted branch ",
+            br,
+            format!(" ({own}); to bring it back: git branch {name} {tip}")
+        );
+        true
     }
 
     fn remove_one(
@@ -3019,16 +3165,41 @@ pub fn run_os(args: &[OsString]) -> i32 {
             }
             let mut force = false;
             let mut delete_branch = false;
-            for a in &rest_args[2..] {
+            let mut landed_as: Option<Vec<u64>> = None;
+            let mut args = rest_args[2..].iter();
+            while let Some(a) = args.next() {
                 match a.as_slice() {
                     b"--force" => force = true,
                     b"--delete-branch" => delete_branch = true,
+                    b"--landed-as" => {
+                        let spec = args
+                            .next()
+                            .map(|v| String::from_utf8_lossy(v).into_owned())
+                            .unwrap_or_default();
+                        let Some(prs) = parse_pr_list(&spec) else {
+                            let _ = echo_err_ln!(
+                                &ctx.argv0,
+                                902,
+                                "worktree: --landed-as needs PR numbers, e.g. --landed-as 3425,3431"
+                            );
+                            return 2;
+                        };
+                        landed_as = Some(prs);
+                    }
                     _ => {
                         let _ =
                             echo_err_ln!(&ctx.argv0, 619, "worktree: unknown --remove flag: ", a);
                         return 2;
                     }
                 }
+            }
+            if landed_as.is_some() && (!delete_branch || force) {
+                let _ = echo_err_ln!(
+                    &ctx.argv0,
+                    903,
+                    "worktree: --landed-as goes with --delete-branch (and not --force): --remove <branch> --delete-branch --landed-as <PRs>"
+                );
+                return 2;
             }
             if delete_branch {
                 let _ = Command::new("git")
@@ -3037,6 +3208,32 @@ pub fn run_os(args: &[OsString]) -> i32 {
                     .stdout(Stdio::inherit())
                     .stderr(Stdio::null())
                     .status();
+            }
+            if let Some(prs) = landed_as {
+                // Only for a branch no worktree has: one with a worktree goes through the normal clean-and-landed
+                // removal, so its files are checked first.
+                return match ctx.find_worktree(br) {
+                    Ok(None) => {
+                        if ctx.delete_branch_landed_as(br, &prs) {
+                            0
+                        } else {
+                            1
+                        }
+                    }
+                    Ok(Some(_)) => {
+                        let _ = echo_err_ln!(
+                            &ctx.argv0,
+                            904,
+                            "worktree: ",
+                            br,
+                            " has a worktree; --landed-as is only for a branch with none. Remove it with --remove ",
+                            br,
+                            " --delete-branch"
+                        );
+                        1
+                    }
+                    Err(code) => code,
+                };
             }
             return match ctx.remove_one(br, force, delete_branch, true) {
                 Ok(true) => 0,
@@ -3344,6 +3541,48 @@ pub fn run_os(args: &[OsString]) -> i32 {
 mod tests {
     use super::*;
     use std::ffi::CString;
+
+    #[test]
+    fn test_squash_merge_time_matches_only_the_title_suffix() {
+        let log = "aaa\t200\tRevert \"feat: x (#12)\"\nbbb\t150\tfeat: y\n\nfixes (#12)\nccc\t100\tfeat: x (#12)\n";
+        // The revert's title ends in `")`, not `(#12)`; the body line is not a log line: only ccc counts.
+        assert_eq!(squash_merge_time(log, 12), Some(100));
+        assert_eq!(
+            squash_merge_time("ddd\t5\tfeat: x (#123)", 12),
+            None,
+            "#12 is not #123"
+        );
+        assert_eq!(squash_merge_time("", 12), None);
+    }
+
+    #[test]
+    fn test_landed_as_verdict() {
+        let c = |sha: &str, t: i64| (sha.to_string(), t);
+        // The courier-m3 case: commits before #3425 merged (t=100) and one after it, landed later as #3431 (t=200).
+        let commits = vec![c("a", 50), c("b", 90), c("late", 150)];
+        assert_eq!(
+            landed_as_verdict(&commits, &[(3425, Some(100)), (3431, Some(200))]),
+            Ok(200)
+        );
+        // Naming only #3425 keeps it: "late" was made after #3425 landed.
+        let err = landed_as_verdict(&commits, &[(3425, Some(100))]).unwrap_err();
+        assert!(err.contains("late") && err.contains("#3425"), "{err}");
+        // A named PR that is not on main keeps it.
+        let err = landed_as_verdict(&commits, &[(3425, Some(100)), (9999, None)]).unwrap_err();
+        assert!(err.contains("#9999"), "{err}");
+        // No PRs named keeps it.
+        assert!(landed_as_verdict(&commits, &[]).is_err());
+        // A branch with no commits of its own is fine to delete.
+        assert_eq!(landed_as_verdict(&[], &[(1, Some(10))]), Ok(10));
+    }
+
+    #[test]
+    fn test_parse_pr_list() {
+        assert_eq!(parse_pr_list("3425,3431"), Some(vec![3425, 3431]));
+        assert_eq!(parse_pr_list("#3425, #3431"), Some(vec![3425, 3431]));
+        assert_eq!(parse_pr_list(""), None);
+        assert_eq!(parse_pr_list("3425,abc"), None);
+    }
 
     #[test]
     fn test_slug() {

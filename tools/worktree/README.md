@@ -20,6 +20,7 @@ bazel run //tools/worktree -- --list                # list worktrees
 bazel run //tools/worktree -- --remove <branch|name> # remove that worktree or scratch tree (branch kept)
 bazel run //tools/worktree -- --remove <branch> --force          # ...with its uncommitted files
 bazel run //tools/worktree -- --remove <branch> --delete-branch  # ...and its branch, if clean AND landed
+bazel run //tools/worktree -- --remove <branch> --delete-branch --landed-as 3425,3431  # a branch with no worktree whose work landed changed
 bazel run //tools/worktree -- --prune               # dry run: what would go, what stays and why
 bazel run //tools/worktree -- --prune --execute     # remove them, with their branches, and landed branches with no worktree
 bazel run //tools/worktree -- --lock [reason]       # keep the worktree you run it from safe from every pruner
@@ -117,3 +118,12 @@ just before deleting it.
   does: it needs a clean worktree. A locked worktree is kept either way: unlock
   it first.
 - Without `--delete-branch`, `--remove` keeps the branch.
+- `--landed-as <PR,PR>` is for a local branch with **no worktree** whose work
+  reached `main` in a changed form (a follow-up PR reworked its last commit, say),
+  so `landed` can't match it line for line and `--prune` keeps it. You name the
+  PRs the work went into, after checking; the tool then deletes the branch only if
+  every named PR is on `main` (a squash commit whose title ends in `(#N)`), no
+  commit of the branch's own is newer than the newest of them (a later commit can
+  be in none of them), and GitHub has no copy of the branch. It prints the old tip,
+  so `git branch <name> <sha>` brings it back. A branch that has a worktree goes
+  through the normal `--delete-branch` instead.
