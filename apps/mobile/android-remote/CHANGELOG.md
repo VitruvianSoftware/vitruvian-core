@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.31](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.30...android-remote-v0.1.31) (2026-11-10)
+
+
+### Features
+
+* **android-remote:** finish HomeSpeaker setup from the phone, and show HomeSpeaker on extension-only Macs ([#4520](https://github.com/VitruvianSoftware/vitruvian-core/issues/4520)) ([e0e9e72](https://github.com/VitruvianSoftware/vitruvian-core/commit/e0e9e729cd4a866ebcc23faa521ea4c6b4bb8777))
+
 ## [0.1.30](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.29...android-remote-v0.1.30) (2026-11-10)
 
 
