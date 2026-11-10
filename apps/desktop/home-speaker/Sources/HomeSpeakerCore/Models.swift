@@ -267,6 +267,7 @@ public struct SpeakerConfig: Codable, Equatable {
     public var quietHoursEnabled: Bool?
     public var quietHoursStart: String?
     public var quietHoursEnd: String?
+    public var snoozeUntil: Date?
     /// Chat/Slack monitor settings. Optional so configs written before this
     /// key existed still decode; read through `effectiveChatMonitor`.
     public var chatMonitor: ChatMonitorConfig?
@@ -318,6 +319,7 @@ public struct SpeakerConfig: Codable, Equatable {
         case quietHoursEnabled = "quiet_hours_enabled"
         case quietHoursStart = "quiet_hours_start"
         case quietHoursEnd = "quiet_hours_end"
+        case snoozeUntil = "snooze_until"
         case chatMonitor = "chat_monitor"
         case speakHome = "speak_home"
         case speakLocal = "speak_local"
@@ -353,6 +355,7 @@ public struct SpeakerConfig: Codable, Equatable {
         quietHoursEnabled: Bool? = false,
         quietHoursStart: String? = "22:00",
         quietHoursEnd: String? = "07:00",
+        snoozeUntil: Date? = nil,
         chatMonitor: ChatMonitorConfig? = nil
     ) {
         self.enabled = enabled
@@ -364,7 +367,84 @@ public struct SpeakerConfig: Codable, Equatable {
         self.quietHoursEnabled = quietHoursEnabled
         self.quietHoursStart = quietHoursStart
         self.quietHoursEnd = quietHoursEnd
+        self.snoozeUntil = snoozeUntil
         self.chatMonitor = chatMonitor
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.enabled = try container.decode(Bool.self, forKey: .enabled)
+        self.defaultTarget = try container.decode(String.self, forKey: .defaultTarget)
+        self.structureId = try container.decode(String.self, forKey: .structureId)
+        self.structureName = try container.decodeIfPresent(String.self, forKey: .structureName)
+        self.targets = try container.decode([String: SpeakerDevice].self, forKey: .targets)
+        self.speechLength = try container.decodeIfPresent(SpeechLength.self, forKey: .speechLength)
+        self.pauseMedia = try container.decodeIfPresent(Bool.self, forKey: .pauseMedia)
+        self.pauseMediaExtraSeconds = try container.decodeIfPresent(Double.self, forKey: .pauseMediaExtraSeconds)
+        self.announceVolumeEnabled = try container.decodeIfPresent(Bool.self, forKey: .announceVolumeEnabled)
+        self.announceVolume = try container.decodeIfPresent(Int.self, forKey: .announceVolume)
+        self.quietHoursEnabled = try container.decodeIfPresent(Bool.self, forKey: .quietHoursEnabled)
+        self.quietHoursStart = try container.decodeIfPresent(String.self, forKey: .quietHoursStart)
+        self.quietHoursEnd = try container.decodeIfPresent(String.self, forKey: .quietHoursEnd)
+        if let raw = try? container.decodeIfPresent(String.self, forKey: .snoozeUntil) {
+            self.snoozeUntil = Self.parseISO8601(raw)
+        } else {
+            self.snoozeUntil = nil
+        }
+        self.chatMonitor = try container.decodeIfPresent(ChatMonitorConfig.self, forKey: .chatMonitor)
+        self.speakHome = try container.decodeIfPresent(Bool.self, forKey: .speakHome)
+        self.speakLocal = try container.decodeIfPresent(Bool.self, forKey: .speakLocal)
+        self.speakPhone = try container.decodeIfPresent(Bool.self, forKey: .speakPhone)
+        self.phonePauseMedia = try container.decodeIfPresent(Bool.self, forKey: .phonePauseMedia)
+        self.phoneHeadphonesOnly = try container.decodeIfPresent(Bool.self, forKey: .phoneHeadphonesOnly)
+        self.localVoice = try container.decodeIfPresent(String.self, forKey: .localVoice)
+        self.announceClaudeCode = try container.decodeIfPresent(Bool.self, forKey: .announceClaudeCode)
+        self.announceAntigravity = try container.decodeIfPresent(Bool.self, forKey: .announceAntigravity)
+        self.announceOpenCode = try container.decodeIfPresent(Bool.self, forKey: .announceOpenCode)
+        self.announcementStyle = try container.decodeIfPresent(AnnouncementStyle.self, forKey: .announcementStyle)
+        self.customStylePrompt = try container.decodeIfPresent(String.self, forKey: .customStylePrompt)
+        self.styleModel = try container.decodeIfPresent(StyleModel.self, forKey: .styleModel)
+        self.localEngine = try container.decodeIfPresent(LocalVoiceEngine.self, forKey: .localEngine)
+        self.geminiVoice = try container.decodeIfPresent(String.self, forKey: .geminiVoice)
+        self.customVoices = try container.decodeIfPresent([CustomVoice].self, forKey: .customVoices)
+        self.homeCastVoice = try container.decodeIfPresent(Bool.self, forKey: .homeCastVoice)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(enabled, forKey: .enabled)
+        try container.encode(defaultTarget, forKey: .defaultTarget)
+        try container.encode(structureId, forKey: .structureId)
+        try container.encodeIfPresent(structureName, forKey: .structureName)
+        try container.encode(targets, forKey: .targets)
+        try container.encodeIfPresent(speechLength, forKey: .speechLength)
+        try container.encodeIfPresent(pauseMedia, forKey: .pauseMedia)
+        try container.encodeIfPresent(pauseMediaExtraSeconds, forKey: .pauseMediaExtraSeconds)
+        try container.encodeIfPresent(announceVolumeEnabled, forKey: .announceVolumeEnabled)
+        try container.encodeIfPresent(announceVolume, forKey: .announceVolume)
+        try container.encodeIfPresent(quietHoursEnabled, forKey: .quietHoursEnabled)
+        try container.encodeIfPresent(quietHoursStart, forKey: .quietHoursStart)
+        try container.encodeIfPresent(quietHoursEnd, forKey: .quietHoursEnd)
+        if let snoozeUntil {
+            try container.encode(Self.formatISO8601UTC(snoozeUntil), forKey: .snoozeUntil)
+        }
+        try container.encodeIfPresent(chatMonitor, forKey: .chatMonitor)
+        try container.encodeIfPresent(speakHome, forKey: .speakHome)
+        try container.encodeIfPresent(speakLocal, forKey: .speakLocal)
+        try container.encodeIfPresent(speakPhone, forKey: .speakPhone)
+        try container.encodeIfPresent(phonePauseMedia, forKey: .phonePauseMedia)
+        try container.encodeIfPresent(phoneHeadphonesOnly, forKey: .phoneHeadphonesOnly)
+        try container.encodeIfPresent(localVoice, forKey: .localVoice)
+        try container.encodeIfPresent(announceClaudeCode, forKey: .announceClaudeCode)
+        try container.encodeIfPresent(announceAntigravity, forKey: .announceAntigravity)
+        try container.encodeIfPresent(announceOpenCode, forKey: .announceOpenCode)
+        try container.encodeIfPresent(announcementStyle, forKey: .announcementStyle)
+        try container.encodeIfPresent(customStylePrompt, forKey: .customStylePrompt)
+        try container.encodeIfPresent(styleModel, forKey: .styleModel)
+        try container.encodeIfPresent(localEngine, forKey: .localEngine)
+        try container.encodeIfPresent(geminiVoice, forKey: .geminiVoice)
+        try container.encodeIfPresent(customVoices, forKey: .customVoices)
+        try container.encodeIfPresent(homeCastVoice, forKey: .homeCastVoice)
     }
 
     /// Summary, not headline: a config written before this key existed was
@@ -729,6 +809,43 @@ public struct SpeakerConfig: Codable, Equatable {
             return now >= start && now < end
         }
         return now >= start || now < end
+    }
+
+    /// True when `snoozeUntil` is set and lies strictly after `date`.
+    public func isSnoozed(at date: Date = Date()) -> Bool {
+        guard let snoozeUntil else { return false }
+        return snoozeUntil > date
+    }
+
+    /// Encodes `date` as an ISO-8601 UTC string (`"2026-11-10T06:30:00Z"`).
+    public static func formatISO8601UTC(_ date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.string(from: date)
+    }
+
+    /// Parses an ISO-8601 timestamp string (with or without fractional seconds).
+    public static func parseISO8601(_ raw: String) -> Date? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let frac = ISO8601DateFormatter()
+        frac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = frac.date(from: trimmed) { return d }
+        let plain = ISO8601DateFormatter()
+        plain.formatOptions = [.withInternetDateTime]
+        return plain.date(from: trimmed)
+    }
+
+    /// Local time `"HH:mm"` (24h) for `date` in `calendar`.
+    public static func localTimeHHmm(_ date: Date, calendar: Calendar = .current) -> String {
+        let comps = calendar.dateComponents([.hour, .minute], from: date)
+        return String(format: "%02d:%02d", comps.hour ?? 0, comps.minute ?? 0)
+    }
+
+    /// `"Snoozed until HH:mm"` in local time.
+    public static func snoozedUntilLine(_ date: Date, calendar: Calendar = .current) -> String {
+        "Snoozed until \(localTimeHHmm(date, calendar: calendar))"
     }
 
     // MARK: Targets

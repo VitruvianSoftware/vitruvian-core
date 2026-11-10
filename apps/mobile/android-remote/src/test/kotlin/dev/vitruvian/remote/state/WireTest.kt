@@ -676,4 +676,14 @@ public class WireTest {
     assertEquals(
         true, HomeSpeakerWire.sources("""{"extension_installed":true}""").extensionInstalled)
   }
+
+  @Test
+  public fun `homespeaker snooze_until defaults to null and parses non-blank ISO-8601 string`() {
+    assertEquals(null, HomeSpeakerWire.sources("{}").snoozeUntil)
+    assertEquals(null, HomeSpeakerWire.sources("""{"snooze_until":null}""").snoozeUntil)
+    assertEquals(null, HomeSpeakerWire.sources("""{"snooze_until":"   "}""").snoozeUntil)
+    assertEquals(
+        "2026-11-10T06:30:00Z",
+        HomeSpeakerWire.sources("""{"snooze_until":"2026-11-10T06:30:00Z"}""").snoozeUntil)
+  }
 }

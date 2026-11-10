@@ -47,6 +47,8 @@ public enum AnnounceOutcome: Equatable, Sendable {
     case disabled
     /// Rule 2: quiet hours; `until` is the configured end ("07:00").
     case quietHours(until: String)
+    /// Rule 2b: snoozed until `until`.
+    case snoozed(until: Date)
     /// Rule 3: both outputs are off.
     case noOutputs
     /// The text cleaned down to nothing.
@@ -258,6 +260,10 @@ public struct Announcer: Sendable {
         // 2. Quiet hours hold both outputs.
         if GoogleHomeClient.isSuppressedByQuietHours(config: config, force: force, at: date) {
             return (.quietHours(until: config.quietHoursEnd ?? ""), nil)
+        }
+        // 2b. Snooze holds all outputs unless forced.
+        if !force, config.isSnoozed(at: date), let until = config.snoozeUntil {
+            return (.snoozed(until: until), nil)
         }
         // 3. Nowhere to speak.
         let wantHome = config.effectiveSpeakHome
