@@ -158,5 +158,28 @@ final class InboxPresentationTests: XCTestCase {
         XCTAssertEqual(directReply.previewThreadPrefix, "Ann, in a thread: ")
         XCTAssertEqual(directReply.previewBody, "See you at 8")
         XCTAssertEqual(directReply.formattedPreviewText, "Ann, in a thread: See you at 8")
+
+        let nonThread = InboxRow(
+            roomID: "!b", network: "signal", name: "Ann", avatarPath: "",
+            isDirect: true, lastTS: 1, preview: "See you at 8", previewKind: .text,
+            previewMine: false, unread: 1, muted: false, previewInThread: false
+        )
+        XCTAssertNil(nonThread.previewThreadPrefix)
+        XCTAssertEqual(nonThread.formattedPreviewText, "See you at 8")
+
+        let unnamedRoomReply = InboxRow(
+            roomID: "!c", network: "signal", name: "", avatarPath: "",
+            isDirect: false, lastTS: 1, preview: "Pinned map", previewKind: .text,
+            previewMine: false, unread: 1, muted: false, previewInThread: true
+        )
+        XCTAssertEqual(unnamedRoomReply.previewThreadPrefix, "In a thread: ")
+        XCTAssertEqual(unnamedRoomReply.formattedPreviewText, "In a thread: Pinned map")
+
+        let mediaReply = InboxRow(
+            roomID: "!d", network: "signal", name: "Ann", avatarPath: "",
+            isDirect: true, lastTS: 1, preview: "", previewKind: .image,
+            previewMine: false, unread: 1, muted: false, previewInThread: true
+        )
+        XCTAssertEqual(mediaReply.formattedPreviewText, "Ann, in a thread: Image")
     }
 }
