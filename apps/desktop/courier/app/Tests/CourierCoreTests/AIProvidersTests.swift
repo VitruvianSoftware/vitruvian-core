@@ -293,6 +293,39 @@ final class AIProvidersTests: XCTestCase {
         await assertThrowsClientError(try await localClient.complete(turns, model: "llama3.2"), expected: .unreachable)
     }
 
+    func testHTTP403MapsToBadKeyForEveryCloudClient() async throws {
+        let transport = StubHTTPTransport()
+        let turns = [
+            AIChatTurn(role: .system, text: "You are helpful."),
+            AIChatTurn(role: .user, text: "Hello"),
+        ]
+
+        let anthropic = AnthropicClient(apiKey: "test-anthropic-token", transport: transport)
+        transport.enqueue(status: 403, json: #"{"error":{"message":"forbidden"}}"#)
+        await assertThrowsClientError(
+            try await anthropic.complete(turns, model: "claude-sonnet-4-20250514"),
+            expected: .badKey
+        )
+
+        let gemini = GeminiClient(apiKey: "test-gemini-token", transport: transport)
+        transport.enqueue(status: 403, json: #"{"error":{"message":"permission denied"}}"#)
+        await assertThrowsClientError(
+            try await gemini.complete(turns, model: "gemini-2.5-flash"),
+            expected: .badKey
+        )
+
+        let openAI = OpenAICompatibleClient(
+            baseURL: URL(string: "https://api.openai.com/v1")!,
+            key: "test-openai-token",
+            transport: transport
+        )
+        transport.enqueue(status: 403, json: #"{"error":{"message":"forbidden"}}"#)
+        await assertThrowsClientError(
+            try await openAI.complete(turns, model: "gpt-4o-mini"),
+            expected: .badKey
+        )
+    }
+
     // MARK: - LocalProviderDetector
 
     func testLocalProviderDetectorRunningNeedsKeyNotRunningAndNon8888UnslothPort() async {
