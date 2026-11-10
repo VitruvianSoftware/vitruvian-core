@@ -746,6 +746,7 @@ private fun ModuleListRow(row: ModuleRow) {
               label = promptLabel(row),
               onClick = { promptOpen = true },
               modifier = inline,
+              enabled = row.textPrompt?.enabled == true,
               variant = ButtonVariant.Secondary,
               contentPadding = PaddingValues(horizontal = Space.s4),
           )
@@ -775,7 +776,9 @@ private fun ModuleListRow(row: ModuleRow) {
   val onRowClick: (() -> Unit)? =
       when {
         toggle != null && toggle.enabled -> ({ toggle.onToggle(!toggle.checked) })
-        placement == Derive.RowControl.InlinePrompt -> ({ promptOpen = true })
+        placement == Derive.RowControl.InlinePrompt && row.textPrompt?.enabled == true -> ({
+              promptOpen = true
+            })
         placement == Derive.RowControl.InlineAction && row.actions.size == 1 ->
             row.actions.single().takeIf { it.enabled }?.onClick
         else -> row.onSelect
@@ -818,6 +821,7 @@ private fun ModuleListRow(row: ModuleRow) {
         VButton(
             label = promptLabel(row),
             onClick = { promptOpen = true },
+            enabled = row.textPrompt.enabled,
             variant = ButtonVariant.Secondary,
         )
       }

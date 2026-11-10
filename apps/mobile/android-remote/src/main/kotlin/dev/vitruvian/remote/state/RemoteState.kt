@@ -121,6 +121,11 @@ public class RemoteState(
      */
     private val bridge: BridgeControl? = null,
     /**
+     * Opens an `https://` URL on the phone via `Intent.ACTION_VIEW` (`PhoneTools.openUri`). Null in
+     * previews and JVM tests.
+     */
+    private val openBrowserUrl: ((String) -> Boolean)? = null,
+    /**
      * Where fire-and-forget actions run.
      *
      * Everything that reaches the Mac over HTTP is a round trip, and none of it may block the frame
@@ -452,6 +457,26 @@ public class RemoteState(
   /** Inline errors keyed by HomeSpeaker control id ("mute", "quiet_hours", or row title). */
   public var homeSpeakerErrors: Map<String, String> by mutableStateOf(emptyMap())
     private set
+
+  /**
+   * True after tapping "Sign in on Mac" until the next poll reports [AgentHomeSpeaker.signedIn].
+   */
+  public var homeSpeakerSignInPending: Boolean by mutableStateOf(false)
+    private set
+
+  /** True after tapping "Grant…" until the next poll reports [AgentHomeSpeaker.hasChatAccess]. */
+  public var homeSpeakerChatGrantPending: Boolean by mutableStateOf(false)
+    private set
+
+  /** Whether HomeSpeaker controls that mutate Mac state should be enabled. */
+  private val homeSpeakerCanAct: Boolean
+    get() = paired && !isOffline && !actsNeedPairing
+
+  private fun applyAgentHomeSpeaker(hs: AgentHomeSpeaker) {
+    agentHomeSpeaker = hs
+    if (hs.signedIn) homeSpeakerSignInPending = false
+    if (hs.hasChatAccess || hs.hasGoogleChatToken) homeSpeakerChatGrantPending = false
+  }
 
   /** The announce box on the HomeSpeaker dashboard. Cleared once the Mac has spoken it. */
   public var announceDraft: String by mutableStateOf("")
@@ -2613,26 +2638,46 @@ public class RemoteState(
                   },
           ))
       if (speakHome) {
+        val accountSpec =
+            Derive.googleHomeAccountRow(
+                signedIn = hs.signedIn,
+                accountEmail = hs.accountEmail,
+                hasAntigravityTokens = hs.hasAntigravityTokens,
+                signInPending = homeSpeakerSignInPending,
+                canAct = homeSpeakerCanAct,
+                installed = hs.installed,
+            )
         add(
             ModuleRow(
                 title = "Google Home account",
-                subtitle =
-                    if (hs.accountEmail.isNotBlank()) hs.accountEmail
-                    else if (hs.signedIn) "signed in" else "not signed in",
-                trailing = if (hs.signedIn) "signed in" else "sign in",
-                tone = if (hs.signedIn) StatusTone.Ok else StatusTone.Neutral,
+                subtitle = accountSpec.subtitle,
+                trailing = accountSpec.trailing,
+                tone = if (accountSpec.healthy) StatusTone.Ok else StatusTone.Neutral,
                 actions =
                     buildList {
-                      if (hs.signedIn) {
+                      if (accountSpec.showSignOut) {
                         add(
-                            RowAction("Sign out", enabled = paired) {
-                              setHomeSpeaker("sign out", signOut = true)
+                            RowAction("Sign out", enabled = accountSpec.signOutEnabled) {
+                              setHomeSpeaker(
+                                  "sign out", signOut = true, controlId = "Google Home account")
                             })
                       }
-                      if (!hs.signedIn && hs.hasAntigravityTokens) {
+                      if (accountSpec.showSignIn) {
                         add(
-                            RowAction("Import login", enabled = paired) {
-                              setHomeSpeaker("import antigravity", importAntigravity = true)
+                            RowAction("Sign in on Mac", enabled = accountSpec.signInEnabled) {
+                              setHomeSpeaker(
+                                  "sign in on Mac",
+                                  signIn = true,
+                                  controlId = "Google Home account")
+                            })
+                      }
+                      if (accountSpec.showImportLogin) {
+                        add(
+                            RowAction("Import login", enabled = accountSpec.importLoginEnabled) {
+                              setHomeSpeaker(
+                                  "import antigravity",
+                                  importAntigravity = true,
+                                  controlId = "Google Home account")
                             })
                       }
                     },
@@ -3396,20 +3441,24 @@ public class RemoteState(
                   }
                 }
                 if (hs.legacyLaunchAgent) {
+                  val legacySpec =
+                      Derive.legacyLaunchAgentRow(
+                          canAct = homeSpeakerCanAct, busy = homeSpeakerBusy != null)
                   add(
                       ModuleRow(
-                          title = "Legacy chat-monitor launch agent",
-                          subtitle =
-                              "Installed by HomeSpeaker 1.x. Chat monitoring now runs inside the app.",
-                          trailing = "legacy",
+                          title = legacySpec.title,
+                          subtitle = legacySpec.subtitle,
+                          trailing = legacySpec.trailing,
                           tone = StatusTone.Warn,
                           actions =
                               listOf(
-                                  RowAction("Remove", enabled = paired) {
-                                    setHomeSpeaker(
-                                        "remove legacy agent",
-                                        agentHookAction = "remove-legacy-agent")
-                                  }),
+                                  RowAction(
+                                      legacySpec.actionLabel, enabled = legacySpec.actionEnabled) {
+                                        setHomeSpeaker(
+                                            "remove legacy agent",
+                                            agentHookAction = "remove-legacy-agent",
+                                            controlId = legacySpec.title)
+                                      }),
                       ))
                 }
               }))
@@ -3519,6 +3568,9 @@ public class RemoteState(
                           gwsAccount = hs.gwsAccount,
                           hasChatAccess = hs.hasChatAccess,
                           gwsInstalled = hs.gwsInstalled,
+                          grantPending = homeSpeakerChatGrantPending,
+                          canAct = homeSpeakerCanAct,
+                          installed = hs.installed,
                       )
                   add(
                       ModuleRow(
@@ -3526,20 +3578,51 @@ public class RemoteState(
                           subtitle = chatDiag.subtitle,
                           trailing = chatDiag.trailing,
                           tone = if (chatDiag.healthy) StatusTone.Ok else StatusTone.Warn,
+                          actions =
+                              buildList {
+                                if (chatDiag.showGrant) {
+                                  add(
+                                      RowAction("Grant…", enabled = chatDiag.grantEnabled) {
+                                        setHomeSpeaker(
+                                            "grant Google Chat",
+                                            grantChat = true,
+                                            controlId = "Google Chat account")
+                                      })
+                                }
+                                if (chatDiag.showDisconnect) {
+                                  add(
+                                      RowAction(
+                                          "Disconnect", enabled = chatDiag.disconnectEnabled) {
+                                            setHomeSpeaker(
+                                                "disconnect Google Chat",
+                                                disconnectChat = true,
+                                                controlId = "Google Chat account")
+                                          })
+                                }
+                              },
                           textPrompt =
-                              if (currentSource != "api") {
+                              if (chatDiag.showGwsPrompt) {
                                 RowTextPrompt(
                                     title = "gws account",
                                     initialValue = hs.gwsAccount,
                                     placeholder = "you@gmail.com",
                                     submitLabel = "Save account",
                                     clearLabel = if (hs.gwsAccount.isNotBlank()) "Clear" else null,
+                                    enabled = chatDiag.gwsPromptEnabled,
                                     onClear =
                                         if (hs.gwsAccount.isNotBlank()) {
-                                          { setHomeSpeaker("clear gws account", gwsAccount = "") }
+                                          {
+                                            setHomeSpeaker(
+                                                "clear gws account",
+                                                gwsAccount = "",
+                                                controlId = "Google Chat account")
+                                          }
                                         } else null,
                                     onSubmit = { acct ->
-                                      setHomeSpeaker("gws account $acct", gwsAccount = acct)
+                                      setHomeSpeaker(
+                                          "gws account $acct",
+                                          gwsAccount = acct,
+                                          controlId = "Google Chat account")
                                     },
                                 )
                               } else null,
@@ -3620,16 +3703,40 @@ public class RemoteState(
                                         "Courier ${if (it) "on" else "off"}", courierEnabled = it)
                                   },
                       ))
-                  // No token field: the token is pasted into HomeSpeaker on the Mac and never
-                  // travels to or from the phone.
                   if (courier || !hasToken) {
+                    val courierSpec =
+                        Derive.courierTokenRow(hasToken = hasToken, canAct = homeSpeakerCanAct)
                     add(
                         ModuleRow(
-                            title = "Courier access token",
-                            subtitle =
-                                if (hasToken) "Token saved on Mac" else Derive.courierTokenSteps,
-                            trailing = if (hasToken) "saved" else "missing",
-                            tone = if (hasToken) StatusTone.Ok else StatusTone.Warn,
+                            title = courierSpec.title,
+                            subtitle = courierSpec.subtitle,
+                            trailing = courierSpec.trailing,
+                            tone = if (courierSpec.healthy) StatusTone.Ok else StatusTone.Warn,
+                            textPrompt =
+                                RowTextPrompt(
+                                    title = courierSpec.promptTitle,
+                                    hasValue = hasToken,
+                                    placeholder = courierSpec.placeholder,
+                                    secret = true,
+                                    submitLabel = courierSpec.submitLabel,
+                                    clearLabel = courierSpec.clearLabel,
+                                    enabled = courierSpec.promptEnabled,
+                                    onClear =
+                                        if (hasToken) {
+                                          {
+                                            setHomeSpeaker(
+                                                "clear Courier token",
+                                                courierToken = "",
+                                                controlId = courierSpec.title)
+                                          }
+                                        } else null,
+                                    onSubmit = { token ->
+                                      setHomeSpeaker(
+                                          "save Courier token",
+                                          courierToken = token,
+                                          controlId = courierSpec.title)
+                                    },
+                                ),
                         ))
                   }
                   if (courier) {
@@ -3691,19 +3798,39 @@ public class RemoteState(
                 }
               }))
     }
-    if (hs.customOAuthClientId.isNotBlank() || hs.hasCustomOAuthSecret) {
+    if (hs.enabled || hs.customOAuthClientId.isNotBlank() || hs.hasCustomOAuthSecret) {
       val clientId = hs.customOAuthClientId
       val hasSecret = hs.hasCustomOAuthSecret
+      val oauthSpec =
+          Derive.googleCloudOAuthSpec(
+              customClientId = clientId,
+              hasCustomSecret = hasSecret,
+              canAct = homeSpeakerCanAct,
+          )
       add(
           ModuleList(
               "Google Cloud OAuth",
               buildList {
                 add(
                     ModuleRow(
+                        title = oauthSpec.setupTitle,
+                        subtitle = oauthSpec.setupSubtitle,
+                        trailing = "",
+                        tone = StatusTone.Neutral,
+                        actions =
+                            listOf(
+                                RowAction(
+                                    oauthSpec.setupActionLabel,
+                                    enabled = oauthSpec.promptsEnabled) {
+                                      openGoogleCloudConsole(controlId = oauthSpec.setupTitle)
+                                    }),
+                    ))
+                add(
+                    ModuleRow(
                         title = "OAuth Client ID",
-                        subtitle = clientId.ifBlank { "Tap to paste Google Cloud OAuth client ID" },
-                        trailing = if (clientId.isNotBlank()) "configured" else "none",
-                        tone = if (clientId.isNotBlank()) StatusTone.Ok else StatusTone.Neutral,
+                        subtitle = oauthSpec.clientIdSubtitle,
+                        trailing = oauthSpec.clientIdTrailing,
+                        tone = if (oauthSpec.clientIdHealthy) StatusTone.Ok else StatusTone.Neutral,
                         textPrompt =
                             RowTextPrompt(
                                 title = "OAuth Client ID",
@@ -3711,25 +3838,32 @@ public class RemoteState(
                                 placeholder = "...apps.googleusercontent.com",
                                 submitLabel = "Save Client ID",
                                 clearLabel = if (clientId.isNotBlank()) "Clear" else null,
+                                enabled = oauthSpec.promptsEnabled,
                                 onClear =
                                     if (clientId.isNotBlank()) {
                                       {
-                                        setHomeSpeaker("clear OAuth client ID", oauthClientId = "")
+                                        setHomeSpeaker(
+                                            "clear OAuth client ID",
+                                            oauthClientId = "",
+                                            controlId = "OAuth Client ID")
                                       }
                                     } else null,
                                 onSubmit = { text ->
-                                  setHomeSpeaker("save OAuth client ID", oauthClientId = text)
+                                  setHomeSpeaker(
+                                      "save OAuth client ID",
+                                      oauthClientId = text,
+                                      controlId = "OAuth Client ID")
                                 },
                             ),
                     ))
                 add(
                     ModuleRow(
                         title = "OAuth Client Secret",
-                        subtitle =
-                            if (hasSecret) "Client secret saved on Mac"
-                            else "Tap to paste client secret",
-                        trailing = if (hasSecret) "saved" else "missing",
-                        tone = if (hasSecret) StatusTone.Ok else StatusTone.Neutral,
+                        subtitle = oauthSpec.clientSecretSubtitle,
+                        trailing = oauthSpec.clientSecretTrailing,
+                        tone =
+                            if (oauthSpec.clientSecretHealthy) StatusTone.Ok
+                            else StatusTone.Neutral,
                         textPrompt =
                             RowTextPrompt(
                                 title = "OAuth Client Secret",
@@ -3738,16 +3872,21 @@ public class RemoteState(
                                 secret = true,
                                 submitLabel = "Save Secret",
                                 clearLabel = if (hasSecret) "Clear Secret" else null,
+                                enabled = oauthSpec.promptsEnabled,
                                 onClear =
                                     if (hasSecret) {
                                       {
                                         setHomeSpeaker(
-                                            "clear OAuth client secret", oauthClientSecret = "")
+                                            "clear OAuth client secret",
+                                            oauthClientSecret = "",
+                                            controlId = "OAuth Client Secret")
                                       }
                                     } else null,
                                 onSubmit = { secret ->
                                   setHomeSpeaker(
-                                      "save OAuth client secret", oauthClientSecret = secret)
+                                      "save OAuth client secret",
+                                      oauthClientSecret = secret,
+                                      controlId = "OAuth Client Secret")
                                 },
                             ),
                     ))
@@ -3872,6 +4011,29 @@ public class RemoteState(
   }
 
   /**
+   * Opens the Google Cloud Credentials console in the phone's browser so custom OAuth desktop
+   * client credentials can be created and pasted into the OAuth Client ID / Secret rows.
+   */
+  private fun openGoogleCloudConsole(controlId: String = "Set up in Google Cloud") {
+    val opened = openBrowserUrl?.invoke(Derive.GOOGLE_CLOUD_CONSOLE_URL) == true
+    if (opened) {
+      clearHomeSpeakerError(controlId)
+      homeSpeakerNotice = "✓ homespeaker · opened Google Cloud Console" to StatusTone.Ok
+      log("info", "homespeaker · opened Google Cloud Console")
+    } else {
+      val msg =
+          Derive.homeSpeakerInlineError(
+              what = "open Google Cloud Console",
+              reason = "could not open browser",
+          )
+      homeSpeakerErrors = homeSpeakerErrors + (controlId to msg)
+      homeSpeakerNotice =
+          "✗ homespeaker · open Google Cloud Console: could not open browser" to StatusTone.Crit
+      log("warn", "homespeaker · could not open Google Cloud Console")
+    }
+  }
+
+  /**
    * One change to HomeSpeaker's settings. The reply is the Mac's state read back, so the dashboard
    * shows what the file now says; a refused change (an unknown speaker, say) surfaces as a log line
    * and leaves the plate as it was.
@@ -3903,14 +4065,18 @@ public class RemoteState(
       discover: Boolean = false,
       structureId: String? = null,
       removeTarget: String? = null,
+      signIn: Boolean = false,
       signOut: Boolean = false,
       importAntigravity: Boolean = false,
+      grantChat: Boolean = false,
+      disconnectChat: Boolean = false,
       speakClipboard: Boolean = false,
       googleChatSource: String? = null,
       gwsAccount: String? = null,
       pollInterval: Int? = null,
       slackToken: String? = null,
       beeperToken: String? = null,
+      courierToken: String? = null,
       geminiApiKey: String? = null,
       chatMonitorAction: String? = null,
       agentHookAction: String? = null,
@@ -3945,7 +4111,8 @@ public class RemoteState(
               defaultTarget != null || removeTarget != null -> "Speaker"
               discover -> "Find speakers"
               structureId != null -> "Google Home"
-              signOut || importAntigravity -> "Google account"
+              signIn || signOut || importAntigravity -> "Google Home account"
+              grantChat || disconnectChat -> "Google Chat account"
               oauthClientId != null || oauthClientSecret != null -> "OAuth client"
               speakHome != null -> "Google Home speaker"
               speakLocal != null -> "Mac speakers"
@@ -3983,6 +4150,7 @@ public class RemoteState(
               beeperToken != null -> "Beeper access token"
               beeperAnnounce != null -> "Beeper · Announce"
               courierEnabled != null -> "Courier"
+              courierToken != null -> "Courier token"
               courierAnnounce != null -> "Courier · Announce"
               muteOwnMessages != null -> "Mute your own messages"
               pollInterval != null -> "Poll interval"
@@ -4020,14 +4188,18 @@ public class RemoteState(
                   discover = discover,
                   structureId = structureId,
                   removeTarget = removeTarget,
+                  signIn = signIn,
                   signOut = signOut,
                   importAntigravity = importAntigravity,
+                  grantChat = grantChat,
+                  disconnectChat = disconnectChat,
                   speakClipboard = speakClipboard,
                   googleChatSource = googleChatSource,
                   gwsAccount = gwsAccount,
                   pollInterval = pollInterval,
                   slackToken = slackToken,
                   beeperToken = beeperToken,
+                  courierToken = courierToken,
                   geminiApiKey = geminiApiKey,
                   chatMonitorAction = chatMonitorAction,
                   agentHookAction = agentHookAction,
@@ -4056,7 +4228,20 @@ public class RemoteState(
               )
             }
             .onSuccess {
-              agentHomeSpeaker = it
+              if (signOut) {
+                homeSpeakerSignInPending = false
+                homeSpeakerChatGrantPending = false
+              }
+              if (disconnectChat) {
+                homeSpeakerChatGrantPending = false
+              }
+              applyAgentHomeSpeaker(it)
+              if (signIn && !it.signedIn) {
+                homeSpeakerSignInPending = true
+              }
+              if (grantChat && !it.hasChatAccess) {
+                homeSpeakerChatGrantPending = true
+              }
               clearHomeSpeakerError(key)
               homeSpeakerNotice = "✓ homespeaker · $what" to StatusTone.Ok
               log("info", "homespeaker · $what")
@@ -4134,7 +4319,7 @@ public class RemoteState(
               log("info", "homespeaker · said \"${Format.clip(text, 60)}\"")
               // The history file now has this at the top; show it without
               // waiting for the slow poll.
-              runCatching { client.homeSpeaker() }.onSuccess { agentHomeSpeaker = it }
+              runCatching { client.homeSpeaker() }.onSuccess { applyAgentHomeSpeaker(it) }
             } else {
               log(
                   "warn",
@@ -4155,7 +4340,7 @@ public class RemoteState(
             if (result.ok) {
               clearHomeSpeakerError(controlId)
               log("info", "homespeaker · said \"$text\"")
-              runCatching { client.homeSpeaker() }.onSuccess { agentHomeSpeaker = it }
+              runCatching { client.homeSpeaker() }.onSuccess { applyAgentHomeSpeaker(it) }
             } else {
               val err =
                   Derive.homeSpeakerInlineError(
@@ -4193,7 +4378,7 @@ public class RemoteState(
             if (result.ok) {
               clearHomeSpeakerError(controlId)
               log("info", "homespeaker · replayed \"${Format.clip(line, 60)}\"")
-              runCatching { client.homeSpeaker() }.onSuccess { agentHomeSpeaker = it }
+              runCatching { client.homeSpeaker() }.onSuccess { applyAgentHomeSpeaker(it) }
             } else {
               val err =
                   Derive.homeSpeakerInlineError(
@@ -5934,6 +6119,8 @@ public class RemoteState(
     agentSpeakerVolume = null
     homeSpeakerNotice = null
     homeSpeakerErrors = emptyMap()
+    homeSpeakerSignInPending = false
+    homeSpeakerChatGrantPending = false
     agentTv = null
     tvCastDraft = ""
     tvBusyAction = null
@@ -6097,7 +6284,7 @@ public class RemoteState(
             runCatching { client.containers() }.onSuccess { agentContainers = it }
         Derive.PollSource.Ollama -> runCatching { client.ollama() }.onSuccess { agentOllama = it }
         Derive.PollSource.HomeSpeaker ->
-            runCatching { client.homeSpeaker() }.onSuccess { agentHomeSpeaker = it }
+            runCatching { client.homeSpeaker() }.onSuccess { applyAgentHomeSpeaker(it) }
         Derive.PollSource.SpeakerVolume ->
             runCatching { client.homeSpeakerVolume() }.onSuccess { agentSpeakerVolume = it }
         Derive.PollSource.Tv -> runCatching { client.tv() }.onSuccess { agentTv = it }

@@ -222,6 +222,7 @@ public data class RowTextPrompt(
      * empty even when one is stored: the row says so here, and the button reads Replace… not Set….
      */
     val hasValue: Boolean = initialValue.isNotBlank(),
+    val enabled: Boolean = true,
 )
 
 /**

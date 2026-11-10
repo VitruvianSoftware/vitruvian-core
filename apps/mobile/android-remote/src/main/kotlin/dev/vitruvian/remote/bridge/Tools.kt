@@ -628,7 +628,7 @@ public object PhoneTools {
         }
       }
 
-  private fun openUri(context: Context, target: String): ToolResult =
+  public fun openUri(context: Context, target: String): ToolResult =
       runCatching {
             context.startActivity(
                 Intent(Intent.ACTION_VIEW, Uri.parse(target))
