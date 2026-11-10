@@ -170,33 +170,6 @@ public enum CommandSet {
     public static func inbox(_ inbox: InboxModel, _ spaces: SpacesModel) -> [CourierCommand] {
         let sweepable: @MainActor () -> Bool = { inbox.isLoaded && inbox.canArchiveAll }
         return [
-            CourierCommand(id: "Archive all chats", title: String(localized: "Archive all chats"), keys: nil,
-                           category: .inbox, icon: "archivebox",
-                           confirmation: String(localized: "Archive every chat in this space? Pinned chats stay where they are. You can undo this."),
-                           isEnabled: sweepable) {
-                Task { _ = await inbox.archiveAll(readOnly: false) }
-            },
-            CourierCommand(id: "Archive all chats older than a week",
-                           title: String(localized: "Archive all chats older than a week"), keys: nil,
-                           category: .inbox, icon: "archivebox",
-                           confirmation: String(localized: "Archive every chat in this space whose last message is over a week old? Pinned chats stay where they are. You can undo this."),
-                           isEnabled: sweepable) {
-                Task { _ = await inbox.archiveAll(readOnly: false, olderThanDays: 7) }
-            },
-            CourierCommand(id: "Archive all read chats", title: String(localized: "Archive all read chats"),
-                           keys: "⌘⇧E",
-                           category: .inbox, icon: "archivebox",
-                           confirmation: String(localized: "Archive every chat in this space that has nothing unread? Pinned chats stay where they are. You can undo this."),
-                           isEnabled: sweepable) {
-                Task { _ = await inbox.archiveAllRead() }
-            },
-            CourierCommand(id: "Mark all chats as read", title: String(localized: "Mark all chats as read"),
-                           keys: nil,
-                           category: .inbox, icon: "envelope.open",
-                           confirmation: String(localized: "Mark every unread chat in this space as read? Your networks are told too, so this can’t be undone."),
-                           isEnabled: { hasUnread(inbox, spaces) }) {
-                Task { await inbox.markAllRead() }
-            },
             CourierCommand(id: "Next Chat", title: String(localized: "Next Chat"), keys: "⌘]",
                            category: .inbox, icon: "arrow.down", confirmation: nil,
                            isEnabled: { !inbox.rows.isEmpty }) {
@@ -246,6 +219,33 @@ public enum CommandSet {
             CourierCommand(id: "Toggle chat selection mode", title: String(localized: "Toggle chat selection mode"),
                            keys: nil, category: .inbox, icon: "checkmark.circle", confirmation: nil, isEnabled: { inbox.isSelecting || !inbox.rows.isEmpty }) {
                 if inbox.isSelecting { inbox.endSelecting() } else { inbox.beginSelecting() }
+            },
+            CourierCommand(id: "Archive all chats", title: String(localized: "Archive all chats"), keys: nil,
+                           category: .inbox, icon: "archivebox",
+                           confirmation: String(localized: "Archive every chat in this space? Pinned chats stay where they are. You can undo this."),
+                           isEnabled: sweepable) {
+                Task { _ = await inbox.archiveAll(readOnly: false) }
+            },
+            CourierCommand(id: "Archive all chats older than a week",
+                           title: String(localized: "Archive all chats older than a week"), keys: nil,
+                           category: .inbox, icon: "archivebox",
+                           confirmation: String(localized: "Archive every chat in this space whose last message is over a week old? Pinned chats stay where they are. You can undo this."),
+                           isEnabled: sweepable) {
+                Task { _ = await inbox.archiveAll(readOnly: false, olderThanDays: 7) }
+            },
+            CourierCommand(id: "Archive all read chats", title: String(localized: "Archive all read chats"),
+                           keys: "⌘⇧E",
+                           category: .inbox, icon: "archivebox",
+                           confirmation: String(localized: "Archive every chat in this space that has nothing unread? Pinned chats stay where they are. You can undo this."),
+                           isEnabled: sweepable) {
+                Task { _ = await inbox.archiveAllRead() }
+            },
+            CourierCommand(id: "Mark all chats as read", title: String(localized: "Mark all chats as read"),
+                           keys: nil,
+                           category: .inbox, icon: "envelope.open",
+                           confirmation: String(localized: "Mark every unread chat in this space as read? Your networks are told too, so this can’t be undone."),
+                           isEnabled: { hasUnread(inbox, spaces) }) {
+                Task { await inbox.markAllRead() }
             },
         ]
     }
@@ -880,12 +880,11 @@ public enum CommandSet {
             }
         }
 
-        // 1. Recent
+        // 1. Recent & Navigation first
         appendAll([
             CourierCommand(
                 id: "recent.openRecentlyViewedChats",
                 title: String(localized: "Open recently viewed chats"),
-                subtitle: String(localized: "Jump to a chat you viewed recently"),
                 category: .recent,
                 keywords: ["recent", "history", "viewed", "chats", "switch"],
                 icon: "clock.arrow.circlepath",
@@ -894,38 +893,76 @@ public enum CommandSet {
             ),
         ])
 
-        // 2. Existing CommandSet.inbox group (13 ledger commands, including Filter Chats with nested children) + inbox-level actions
-        if let inbox, let spaces {
-            appendAll(Self.inbox(inbox, spaces))
-        }
-        appendAll([
-            CourierCommand(
-                id: "inbox.createNewChat",
-                title: String(localized: "Create new chat"),
-                category: .inbox,
-                keywords: ["new chat", "compose", "start", "direct message"],
-                icon: "square.and.pencil",
-                shortcut: "⌘N"
-            ) {
-                inbox?.openStartNewChat(multiSelect: false)
-            },
-            CourierCommand(
-                id: "inbox.mergeChats",
-                title: String(localized: "Merge chats"),
-                category: .inbox,
-                keywords: ["merge", "combine", "unify", "person"],
-                icon: "arrow.triangle.merge",
-                shortcut: nil,
-                isEnabled: { (inbox?.selectedRow ?? inbox?.rows.first) != nil }
-            ) {
-                guard let inbox, let target = inbox.selectedRow ?? inbox.rows.first else { return }
-                inbox.openMergeEditor(for: target)
-            },
-        ])
-
-        // 3. Direct chat actions
         let hasTargets: @MainActor () -> Bool = { !(inbox?.targets.isEmpty ?? true) }
         let hasOpenRoom: @MainActor () -> Bool = { (conversation?.roomID ?? inbox?.selectedRoomID) != nil }
+
+        appendAll([
+            CourierCommand(
+                id: "nav.goToSpace",
+                title: String(localized: "Go to Space…"),
+                category: .navigation,
+                keywords: ["space", "inbox", "switch space", "label", "account"],
+                icon: "square.grid.2x2",
+                shortcut: nil,
+                children: goToSpaceSubCommands(spaces: spaces, inbox: inbox)
+            ) {},
+            CourierCommand(
+                id: "nav.previousChat",
+                title: String(localized: "Previous Chat"),
+                category: .navigation,
+                keywords: ["previous", "chat", "up"],
+                icon: "arrow.up",
+                shortcut: "⌘[",
+                isEnabled: { !(inbox?.rows.isEmpty ?? true) }
+            ) {
+                inbox?.selectPrevious()
+            },
+            CourierCommand(
+                id: "nav.nextUnreadChat",
+                title: String(localized: "Next Unread Chat"),
+                category: .navigation,
+                keywords: ["next", "unread", "chat"],
+                icon: "envelope.badge",
+                shortcut: "⌥⌘↓",
+                isEnabled: { !(inbox?.rows.isEmpty ?? true) }
+            ) {
+                inbox?.selectNextUnread()
+            },
+            CourierCommand(
+                id: "nav.jumpToBottom",
+                title: String(localized: "Jump to Latest Message"),
+                category: .navigation,
+                keywords: ["bottom", "latest", "newest", "scroll"],
+                icon: "arrow.down.to.line",
+                shortcut: "⌘↓",
+                isEnabled: hasOpenRoom
+            ) {
+                conversation?.jumpToBottom()
+            },
+            CourierCommand(
+                id: "nav.toggleSidebar",
+                title: String(localized: "Toggle sidebar"),
+                category: .navigation,
+                keywords: ["sidebar", "space bar", "hide", "show"],
+                icon: "sidebar.left",
+                shortcut: "⌘S"
+            ) {
+                inbox?.preferences.showSpaceBar.toggle()
+                toggleSidebar()
+            },
+            CourierCommand(
+                id: "nav.focusCourier",
+                title: String(localized: "Focus Courier"),
+                category: .navigation,
+                keywords: ["focus", "bring to front", "activate", "window"],
+                icon: "macwindow",
+                // The Focus App hotkey has no default: show its keys only once one is set.
+                shortcut: resolvedHotkeys.primaryChord(for: "Focus App")?.symbols,
+                run: focusApp
+            ),
+        ])
+
+        // 2. Direct chat actions
         appendAll([
             CourierCommand(
                 id: "chat.archive",
@@ -1092,6 +1129,41 @@ public enum CommandSet {
             },
         ])
 
+        // 3. Existing CommandSet.inbox group (navigation + chat/inbox actions + bulk actions at bottom)
+        let inboxList = (inbox != nil && spaces != nil) ? Self.inbox(inbox!, spaces!) : []
+        let bulkInboxIDs: Set<String> = [
+            "Archive all chats",
+            "Archive all chats older than a week",
+            "Archive all read chats",
+            "Mark all chats as read",
+        ]
+        appendAll(inboxList.filter { !bulkInboxIDs.contains($0.id) })
+        appendAll([
+            CourierCommand(
+                id: "inbox.createNewChat",
+                title: String(localized: "Create new chat"),
+                category: .inbox,
+                keywords: ["new chat", "compose", "start", "direct message"],
+                icon: "square.and.pencil",
+                shortcut: "⌘N"
+            ) {
+                inbox?.openStartNewChat(multiSelect: false)
+            },
+            CourierCommand(
+                id: "inbox.mergeChats",
+                title: String(localized: "Merge chats"),
+                category: .inbox,
+                keywords: ["merge", "combine", "unify", "person"],
+                icon: "arrow.triangle.merge",
+                shortcut: nil,
+                isEnabled: { (inbox?.selectedRow ?? inbox?.rows.first) != nil }
+            ) {
+                guard let inbox, let target = inbox.selectedRow ?? inbox.rows.first else { return }
+                inbox.openMergeEditor(for: target)
+            },
+        ])
+        appendAll(inboxList.filter { bulkInboxIDs.contains($0.id) })
+
         // 4. Existing CommandSet.search group (3 ledger commands)
         if let search {
             appendAll(Self.search(search, openRoomID: { inbox?.selectedRoomID ?? conversation?.roomID }))
@@ -1212,74 +1284,7 @@ public enum CommandSet {
             appendAll(Self.chatInfo(openMediaViewer: openMediaViewer))
         }
 
-        // 8. Navigation commands
-        appendAll([
-            CourierCommand(
-                id: "nav.goToSpace",
-                title: String(localized: "Go to Space…"),
-                category: .navigation,
-                keywords: ["space", "inbox", "switch space", "label", "account"],
-                icon: "square.grid.2x2",
-                shortcut: nil,
-                children: goToSpaceSubCommands(spaces: spaces, inbox: inbox)
-            ) {},
-            CourierCommand(
-                id: "nav.previousChat",
-                title: String(localized: "Previous Chat"),
-                category: .navigation,
-                keywords: ["previous", "chat", "up"],
-                icon: "arrow.up",
-                shortcut: "⌘[",
-                isEnabled: { !(inbox?.rows.isEmpty ?? true) }
-            ) {
-                inbox?.selectPrevious()
-            },
-            CourierCommand(
-                id: "nav.nextUnreadChat",
-                title: String(localized: "Next Unread Chat"),
-                category: .navigation,
-                keywords: ["next", "unread", "chat"],
-                icon: "envelope.badge",
-                shortcut: "⌥⌘↓",
-                isEnabled: { !(inbox?.rows.isEmpty ?? true) }
-            ) {
-                inbox?.selectNextUnread()
-            },
-            CourierCommand(
-                id: "nav.jumpToBottom",
-                title: String(localized: "Jump to Latest Message"),
-                category: .navigation,
-                keywords: ["bottom", "latest", "newest", "scroll"],
-                icon: "arrow.down.to.line",
-                shortcut: "⌘↓",
-                isEnabled: hasOpenRoom
-            ) {
-                conversation?.jumpToBottom()
-            },
-            CourierCommand(
-                id: "nav.toggleSidebar",
-                title: String(localized: "Toggle sidebar"),
-                category: .navigation,
-                keywords: ["sidebar", "space bar", "hide", "show"],
-                icon: "sidebar.left",
-                shortcut: "⌘S"
-            ) {
-                inbox?.preferences.showSpaceBar.toggle()
-                toggleSidebar()
-            },
-            CourierCommand(
-                id: "nav.focusCourier",
-                title: String(localized: "Focus Courier"),
-                category: .navigation,
-                keywords: ["focus", "bring to front", "activate", "window"],
-                icon: "macwindow",
-                // The Focus App hotkey has no default: show its keys only once one is set.
-                shortcut: resolvedHotkeys.primaryChord(for: "Focus App")?.symbols,
-                run: focusApp
-            ),
-        ])
-
-        // 9. Appearance commands (4.7)
+        // 8. Appearance commands (4.7)
         appendAll([
             CourierCommand(
                 id: "appearance.setTheme",
@@ -1293,7 +1298,6 @@ public enum CommandSet {
             CourierCommand(
                 id: "appearance.loadCustomTheme",
                 title: String(localized: "Load Custom Theme"),
-                subtitle: String(localized: "Select a custom theme file"),
                 category: .appearance,
                 keywords: ["custom theme", "css", "load theme"],
                 icon: "doc.badge.gearshape",

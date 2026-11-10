@@ -28,12 +28,13 @@ final class CommandSetTests: XCTestCase {
     }
 
     /// The ledger's names (docs/superpowers/specs/2026-10-15-beeper-desktop-inventory/ledger.tsv, "command"
-    /// rows), in the order they are registered.
+    /// rows), ordered with navigation first, then chat/filter actions, then bulk actions at the bottom.
     private let ledger = [
-        "Archive all chats", "Archive all chats older than a week", "Archive all read chats",
-        "Mark all chats as read", "Next Chat", "Show message requests", "Toggle space bar", "Edit spaces",
+        "Next Chat", "Show message requests", "Toggle space bar", "Edit spaces",
         "Filter Chats", "Filter by folder type", "Filter by type", "Filter by account",
         "Toggle chat selection mode",
+        "Archive all chats", "Archive all chats older than a week", "Archive all read chats",
+        "Mark all chats as read",
     ]
 
     private func start(rooms: [[String: Any]]? = nil) async throws -> (InboxHarness, SpacesModel, [CourierCommand]) {
