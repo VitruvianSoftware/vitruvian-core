@@ -461,6 +461,16 @@ public class RemoteState(
       mutableStateOf(persistence.homeSpeakerSettingsExpanded)
     private set
 
+  /**
+   * Whether new HomeSpeaker announcements are mirrored as phone notifications; persisted per
+   * device.
+   */
+  public var homeSpeakerMirror: Boolean by mutableStateOf(persistence.homeSpeakerMirror)
+    private set
+
+  /** Last observed announcement id on the selected host (or null before first load). */
+  private var lastMirroredAnnouncementId: String? = null
+
   /** Inline errors keyed by HomeSpeaker control id ("mute", "quiet_hours", or row title). */
   public var homeSpeakerErrors: Map<String, String> by mutableStateOf(emptyMap())
     private set
@@ -2423,6 +2433,7 @@ public class RemoteState(
             hasRoomChoices = roomChoices.any { it.enabled },
             hasReplay = Derive.isReplayable(newest),
             replayTarget = newest?.target,
+            snoozeUntil = hs?.snoozeUntil,
         )
     return specs.map { spec ->
       when (spec.id) {
@@ -2477,6 +2488,22 @@ public class RemoteState(
                 },
                 contentDescription = spec.contentDescription,
                 error = homeSpeakerErrors["replay"],
+            )
+        "snooze" ->
+            QuickAction(
+                label = spec.label,
+                secondary = spec.secondary,
+                enabled = spec.enabled,
+                active = spec.active,
+                onClick = {
+                  if (spec.active) {
+                    setHomeSpeaker("resume announcements", snoozeUntil = "", controlId = "snooze")
+                  } else {
+                    setHomeSpeaker("snooze 30m", snoozeMinutes = 30, controlId = "snooze")
+                  }
+                },
+                contentDescription = spec.contentDescription,
+                error = homeSpeakerErrors["snooze"],
             )
         else ->
             QuickAction(
@@ -3171,6 +3198,18 @@ public class RemoteState(
                     RowAction("Speak", enabled = paired) {
                       setHomeSpeaker("speak clipboard", speakClipboard = true)
                     }),
+        ))
+    val mirrorOn = homeSpeakerMirror && (notifier?.hasNotificationPermission() != false)
+    add(
+        ModuleRow(
+            title = "Show announcements as notifications",
+            subtitle = "While Vitruvian Remote is running",
+            trailing = if (mirrorOn) "on" else "off",
+            tone = if (mirrorOn) StatusTone.Ok else StatusTone.Neutral,
+            toggle =
+                RowToggle(checked = mirrorOn, enabled = true) { next ->
+                  updateHomeSpeakerMirror(next)
+                },
         ))
     if (hs.extensionInstalled || hs.activeDoor == "extension") {
       add(
@@ -3878,6 +3917,55 @@ public class RemoteState(
     homeSpeakerErrors = homeSpeakerErrors + (controlId to msg)
   }
 
+  public fun updateHomeSpeakerMirror(on: Boolean) {
+    if (!on) {
+      homeSpeakerMirror = false
+      persistence.homeSpeakerMirror = false
+      return
+    }
+    val applyGranted: (Boolean) -> Unit = { granted ->
+      if (granted) {
+        val currentHs = agentHomeSpeaker
+        if (currentHs != null && currentHs.available) {
+          val newest = Derive.newestBroadcast(currentHs.recent, currentHs.last)
+          lastMirroredAnnouncementId =
+              newest?.id?.trim()?.takeIf { it.isNotEmpty() } ?: Derive.NO_ANNOUNCEMENT_ID
+        } else {
+          lastMirroredAnnouncementId = null
+        }
+        homeSpeakerMirror = true
+        persistence.homeSpeakerMirror = true
+      } else {
+        homeSpeakerMirror = false
+        persistence.homeSpeakerMirror = false
+      }
+    }
+    val n = notifier
+    if (n == null) {
+      applyGranted(true)
+    } else {
+      n.ensureNotificationPermission(applyGranted)
+    }
+  }
+
+  private fun observeHomeSpeaker(hs: AgentHomeSpeaker) {
+    agentHomeSpeaker = hs
+    if (!hs.available) return
+    val newest = Derive.newestBroadcast(hs.recent, hs.last)
+    val newId = newest?.id?.trim()?.takeIf { it.isNotEmpty() }
+    val enabled = homeSpeakerMirror && (notifier?.hasNotificationPermission() != false)
+    val shouldNotify =
+        Derive.shouldNotifyAnnouncement(
+            previousId = lastMirroredAnnouncementId,
+            newId = newId,
+            enabled = enabled,
+        )
+    lastMirroredAnnouncementId = newId ?: Derive.NO_ANNOUNCEMENT_ID
+    if (shouldNotify && newId != null && newest != null && newest.text.isNotBlank()) {
+      notifier?.notifyAnnouncement(newId, newest.text)
+    }
+  }
+
   /**
    * One change to HomeSpeaker's settings. The reply is the Mac's state read back, so the dashboard
    * shows what the file now says; a refused change (an unknown speaker, say) surfaces as a log line
@@ -3891,6 +3979,8 @@ public class RemoteState(
       quietHoursEnabled: Boolean? = null,
       quietHoursStart: String? = null,
       quietHoursEnd: String? = null,
+      snoozeUntil: String? = null,
+      snoozeMinutes: Int? = null,
       customStylePrompt: String? = null,
       localVoice: String? = null,
       previewVoice: Boolean = false,
@@ -3974,6 +4064,7 @@ public class RemoteState(
               quietHoursEnabled != null -> "Quiet hours"
               quietHoursStart != null -> "Quiet hours · From"
               quietHoursEnd != null -> "Quiet hours · Until"
+              snoozeUntil != null || snoozeMinutes != null -> "snooze"
               speakClipboard -> "Speak clipboard"
               activeDoor != null -> "HomeSpeaker door"
               resetSettings -> "Settings & diagnostics"
@@ -4008,6 +4099,8 @@ public class RemoteState(
                   quietHoursEnabled = quietHoursEnabled,
                   quietHoursStart = quietHoursStart,
                   quietHoursEnd = quietHoursEnd,
+                  snoozeUntil = snoozeUntil,
+                  snoozeMinutes = snoozeMinutes,
                   customStylePrompt = customStylePrompt,
                   localVoice = localVoice,
                   previewVoice = previewVoice,
@@ -4063,7 +4156,7 @@ public class RemoteState(
               )
             }
             .onSuccess {
-              agentHomeSpeaker = it
+              observeHomeSpeaker(it)
               clearHomeSpeakerError(key)
               homeSpeakerNotice = "✓ homespeaker · $what" to StatusTone.Ok
               log("info", "homespeaker · $what")
@@ -4141,7 +4234,7 @@ public class RemoteState(
               log("info", "homespeaker · said \"${Format.clip(text, 60)}\"")
               // The history file now has this at the top; show it without
               // waiting for the slow poll.
-              runCatching { client.homeSpeaker() }.onSuccess { agentHomeSpeaker = it }
+              runCatching { client.homeSpeaker() }.onSuccess { observeHomeSpeaker(it) }
             } else {
               log(
                   "warn",
@@ -4162,7 +4255,7 @@ public class RemoteState(
             if (result.ok) {
               clearHomeSpeakerError(controlId)
               log("info", "homespeaker · said \"$text\"")
-              runCatching { client.homeSpeaker() }.onSuccess { agentHomeSpeaker = it }
+              runCatching { client.homeSpeaker() }.onSuccess { observeHomeSpeaker(it) }
             } else {
               val err =
                   Derive.homeSpeakerInlineError(
@@ -4200,7 +4293,7 @@ public class RemoteState(
             if (result.ok) {
               clearHomeSpeakerError(controlId)
               log("info", "homespeaker · replayed \"${Format.clip(line, 60)}\"")
-              runCatching { client.homeSpeaker() }.onSuccess { agentHomeSpeaker = it }
+              runCatching { client.homeSpeaker() }.onSuccess { observeHomeSpeaker(it) }
             } else {
               val err =
                   Derive.homeSpeakerInlineError(
@@ -5941,6 +6034,7 @@ public class RemoteState(
     selectedAntigravityId = null
     agentArgo = null
     agentHomeSpeaker = null
+    lastMirroredAnnouncementId = null
     agentSpeakerVolume = null
     homeSpeakerNotice = null
     homeSpeakerErrors = emptyMap()
@@ -6107,7 +6201,7 @@ public class RemoteState(
             runCatching { client.containers() }.onSuccess { agentContainers = it }
         Derive.PollSource.Ollama -> runCatching { client.ollama() }.onSuccess { agentOllama = it }
         Derive.PollSource.HomeSpeaker ->
-            runCatching { client.homeSpeaker() }.onSuccess { agentHomeSpeaker = it }
+            runCatching { client.homeSpeaker() }.onSuccess { observeHomeSpeaker(it) }
         Derive.PollSource.SpeakerVolume ->
             runCatching { client.homeSpeakerVolume() }.onSuccess { agentSpeakerVolume = it }
         Derive.PollSource.Tv -> runCatching { client.tv() }.onSuccess { agentTv = it }

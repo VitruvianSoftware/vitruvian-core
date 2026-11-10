@@ -20,6 +20,9 @@
 
 package dev.vitruvian.remote.state
 
+import java.time.Instant
+import java.time.OffsetDateTime
+import java.time.ZoneId
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -1123,6 +1126,76 @@ public object Derive {
   }
 
   /**
+   * Now strip Snooze control:
+   * - While not snoozed (or when `snoozeUntil` is missing, unparseable, or in the past): reads
+   *   "Snooze 30m" with no secondary text and `active = false`.
+   * - While snoozed (`snoozeUntil > nowMs`): reads "Snoozed" with secondary "until HH:mm" in phone
+   *   local time (`zoneId`) and `active = true`.
+   * - Disabled when offline (`!available`) or unpaired (`!paired`).
+   */
+  public fun snoozeQuickAction(
+      paired: Boolean,
+      available: Boolean,
+      snoozeUntil: String? = null,
+      nowMs: Long = System.currentTimeMillis(),
+      zoneId: ZoneId = ZoneId.systemDefault(),
+  ): QuickActionSpec {
+    val raw = snoozeUntil?.trim().orEmpty()
+    val instant =
+        if (raw.isEmpty()) null
+        else
+            runCatching { OffsetDateTime.parse(raw).toInstant() }.getOrNull()
+                ?: runCatching { Instant.parse(raw) }.getOrNull()
+    val snoozed = available && instant != null && instant.toEpochMilli() > nowMs
+    val untilTime =
+        if (snoozed && instant != null) {
+          val local = instant.atZone(zoneId)
+          String.format(Locale.US, "%02d:%02d", local.hour, local.minute)
+        } else null
+    val label = if (snoozed) "Snoozed" else "Snooze 30m"
+    val secondary = untilTime?.let { "until $it" }
+    val desc =
+        if (snoozed && untilTime != null) "Snoozed until $untilTime, tap to resume"
+        else "Snooze announcements for 30 minutes"
+    return QuickActionSpec(
+        id = "snooze",
+        label = label,
+        secondary = secondary,
+        enabled = paired && available,
+        active = snoozed,
+        contentDescription = desc,
+    )
+  }
+
+  /**
+   * Sentinel stored as the previously observed announcement id when HomeSpeaker is reachable and
+   * has no latest announcement yet (`recent` and `last` both empty), so that the very next real
+   * announcement triggers a notification.
+   */
+  public const val NO_ANNOUNCEMENT_ID: String = "__none__"
+
+  /**
+   * Pure decision for whether to post a phone notification when HomeSpeaker state is observed:
+   * - Never notifies when `enabled` is false.
+   * - Never notifies on first load or when the setting was just turned on (`previousId == null` or
+   *   blank).
+   * - Never notifies when `newId` is null, blank, or [NO_ANNOUNCEMENT_ID].
+   * - Notifies only when `newId` differs from `previousId`.
+   */
+  public fun shouldNotifyAnnouncement(
+      previousId: String?,
+      newId: String?,
+      enabled: Boolean,
+  ): Boolean {
+    if (!enabled) return false
+    val prev = previousId?.trim().orEmpty()
+    val next = newId?.trim().orEmpty()
+    if (prev.isEmpty()) return false
+    if (next.isEmpty() || next == NO_ANNOUNCEMENT_ID) return false
+    return next != prev
+  }
+
+  /**
    * The broadcast that Now strip Replay and the Last announcement plate Replay both replay:
    * `recent.firstOrNull()` (falling back to `last` on an older agent), matching the newest row in
    * Recent broadcasts verbatim.
@@ -1136,7 +1209,7 @@ public object Derive {
       last: AgentLastBroadcast? = null,
   ): AgentLastBroadcast? = (recent.ifEmpty { listOfNotNull(last) }).firstOrNull()
 
-  /** Builds all four controls for HomeSpeaker's Now strip in display order. */
+  /** Builds all five controls for HomeSpeaker's Now strip in display order. */
   public fun homeSpeakerQuickActions(
       paired: Boolean,
       available: Boolean,
@@ -1156,6 +1229,9 @@ public object Derive {
       hasRoomChoices: Boolean = true,
       hasReplay: Boolean,
       replayTarget: String? = null,
+      snoozeUntil: String? = null,
+      nowMs: Long = System.currentTimeMillis(),
+      zoneId: ZoneId = ZoneId.systemDefault(),
   ): List<QuickActionSpec> =
       listOf(
           muteQuickAction(
@@ -1188,6 +1264,13 @@ public object Derive {
               installed = installed,
               hasReplay = hasReplay,
               target = replayTarget,
+          ),
+          snoozeQuickAction(
+              paired = paired,
+              available = available,
+              snoozeUntil = snoozeUntil,
+              nowMs = nowMs,
+              zoneId = zoneId,
           ),
       )
 

@@ -1677,7 +1677,7 @@ public class DeriveTest {
     assertEquals(secondText, Derive.newestBroadcast(emptyList(), last = secondText))
     assertNull(Derive.newestBroadcast(emptyList(), last = null))
 
-    // Full strip order: mute, quiet_hours, room, replay
+    // Full strip order: mute, quiet_hours, room, replay, snooze
     val strip =
         Derive.homeSpeakerQuickActions(
             paired = true,
@@ -1697,7 +1697,127 @@ public class DeriveTest {
             hasReplay = true,
             replayTarget = "Kitchen",
         )
-    assertEquals(listOf("mute", "quiet_hours", "room", "replay"), strip.map { it.id })
+    assertEquals(listOf("mute", "quiet_hours", "room", "replay", "snooze"), strip.map { it.id })
+  }
+
+  @Test
+  public fun `snoozeQuickAction covers ready, active snooze in local time, expired, garbage, unpaired and offline states`() {
+    val zone = java.time.ZoneId.of("America/Los_Angeles")
+    // 2026-11-10T06:00:00Z -> 1762754400000L
+    val nowMs = java.time.Instant.parse("2026-11-10T06:00:00Z").toEpochMilli()
+
+    // 1. Not snoozed (null)
+    val idle =
+        Derive.snoozeQuickAction(
+            paired = true, available = true, snoozeUntil = null, nowMs = nowMs, zoneId = zone)
+    assertEquals("snooze", idle.id)
+    assertEquals("Snooze 30m", idle.label)
+    assertNull(idle.secondary)
+    assertTrue(idle.enabled)
+    assertFalse(idle.active)
+    assertEquals("Snooze announcements for 30 minutes", idle.contentDescription)
+
+    // 2. Actively snoozed (2026-11-10T06:30:00Z is 22:30 on 2026-11-09 in America/Los_Angeles PST)
+    val active =
+        Derive.snoozeQuickAction(
+            paired = true,
+            available = true,
+            snoozeUntil = "2026-11-10T06:30:00Z",
+            nowMs = nowMs,
+            zoneId = zone)
+    assertEquals("Snoozed", active.label)
+    assertEquals("until 22:30", active.secondary)
+    assertTrue(active.enabled)
+    assertTrue(active.active)
+    assertEquals("Snoozed until 22:30, tap to resume", active.contentDescription)
+
+    // 3. Expired snooze (equal to or before nowMs)
+    val exactBoundary =
+        Derive.snoozeQuickAction(
+            paired = true,
+            available = true,
+            snoozeUntil = "2026-11-10T06:00:00Z",
+            nowMs = nowMs,
+            zoneId = zone)
+    assertEquals("Snooze 30m", exactBoundary.label)
+    assertNull(exactBoundary.secondary)
+    assertFalse(exactBoundary.active)
+
+    val expired =
+        Derive.snoozeQuickAction(
+            paired = true,
+            available = true,
+            snoozeUntil = "2026-11-10T05:30:00Z",
+            nowMs = nowMs,
+            zoneId = zone)
+    assertEquals("Snooze 30m", expired.label)
+    assertNull(expired.secondary)
+    assertFalse(expired.active)
+
+    // 4. Unparseable / garbage value treated as not snoozed
+    val garbage =
+        Derive.snoozeQuickAction(
+            paired = true,
+            available = true,
+            snoozeUntil = "not-a-date",
+            nowMs = nowMs,
+            zoneId = zone)
+    assertEquals("Snooze 30m", garbage.label)
+    assertNull(garbage.secondary)
+    assertFalse(garbage.active)
+
+    // 5. Unpaired or offline disables the control
+    val unpaired =
+        Derive.snoozeQuickAction(
+            paired = false,
+            available = true,
+            snoozeUntil = "2026-11-10T06:30:00Z",
+            nowMs = nowMs,
+            zoneId = zone)
+    assertEquals("Snoozed", unpaired.label)
+    assertEquals("until 22:30", unpaired.secondary)
+    assertFalse(unpaired.enabled)
+    assertTrue(unpaired.active)
+
+    val offline =
+        Derive.snoozeQuickAction(
+            paired = true,
+            available = false,
+            snoozeUntil = "2026-11-10T06:30:00Z",
+            nowMs = nowMs,
+            zoneId = zone)
+    assertEquals("Snooze 30m", offline.label)
+    assertNull(offline.secondary)
+    assertFalse(offline.enabled)
+    assertFalse(offline.active)
+  }
+
+  @Test
+  public fun `shouldNotifyAnnouncement suppresses first load, same id, disabled setting and notifies on new id`() {
+    // Disabled setting never notifies
+    assertFalse(Derive.shouldNotifyAnnouncement(previousId = "b-1", newId = "b-2", enabled = false))
+
+    // First load (previousId == null or blank) never notifies
+    assertFalse(Derive.shouldNotifyAnnouncement(previousId = null, newId = "b-1", enabled = true))
+    assertFalse(Derive.shouldNotifyAnnouncement(previousId = "  ", newId = "b-1", enabled = true))
+
+    // Same id as already observed when setting was turned on or on previous poll never notifies
+    assertFalse(Derive.shouldNotifyAnnouncement(previousId = "b-1", newId = "b-1", enabled = true))
+    assertFalse(
+        Derive.shouldNotifyAnnouncement(previousId = " b-1 ", newId = "b-1", enabled = true))
+
+    // Missing or sentinel new id never notifies
+    assertFalse(Derive.shouldNotifyAnnouncement(previousId = "b-1", newId = null, enabled = true))
+    assertFalse(Derive.shouldNotifyAnnouncement(previousId = "b-1", newId = "", enabled = true))
+    assertFalse(
+        Derive.shouldNotifyAnnouncement(
+            previousId = "b-1", newId = Derive.NO_ANNOUNCEMENT_ID, enabled = true))
+
+    // New announcement after an earlier one (or after NO_ANNOUNCEMENT_ID baseline) notifies
+    assertTrue(Derive.shouldNotifyAnnouncement(previousId = "b-1", newId = "b-2", enabled = true))
+    assertTrue(
+        Derive.shouldNotifyAnnouncement(
+            previousId = Derive.NO_ANNOUNCEMENT_ID, newId = "b-1", enabled = true))
   }
 
   @Test
