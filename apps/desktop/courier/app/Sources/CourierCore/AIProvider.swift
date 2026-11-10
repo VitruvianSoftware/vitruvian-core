@@ -164,6 +164,8 @@ public final class AIPreferences: ObservableObject {
 
     public static func key(_ name: String) -> String { "courier.ai." + name }
 
+    let didChange = PassthroughSubject<Void, Never>()
+
     private let defaults: UserDefaults
     private var isInitializing = true
     private var isRevertingLockedSetting = false
@@ -261,6 +263,7 @@ public final class AIPreferences: ObservableObject {
 
     private func set(_ value: Any, _ name: String) {
         defaults.set(value, forKey: Self.key(name))
+        didChange.send()
     }
 }
 

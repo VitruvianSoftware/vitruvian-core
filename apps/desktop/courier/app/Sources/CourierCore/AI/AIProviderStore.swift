@@ -52,9 +52,11 @@ public final class AIProviderStore: ObservableObject {
     public var isAppInstalled: @Sendable (AIProviderKind) -> Bool
     public var openLocalApp: @MainActor (AIProviderKind) -> Void
     private var settingsDetectionTask: Task<Void, Never>?
-    private var modelRefreshTask: Task<Void, Never>?
+    private var modelLoadTask: Task<Void, Never>?
+    private var modelLoadToken: UInt64 = 0
     private var currentEngineForModels: AIProviderKind?
     private var wasEnabled: Bool = false
+    private var isApplyingInternalPreferenceUpdate: Bool = false
     private var cancellables: Set<AnyCancellable> = []
     private let appleClientFactory: @Sendable () -> AppleOnDeviceClient
 
@@ -91,24 +93,86 @@ public final class AIProviderStore: ObservableObject {
 
     deinit {
         settingsDetectionTask?.cancel()
-        modelRefreshTask?.cancel()
+        modelLoadTask?.cancel()
     }
 
     private func observePreferences() {
-        preferences.objectWillChange
+        preferences.didChange
             .sink { [weak self] _ in
-                Task { @MainActor [weak self] in
-                    self?.handlePreferencesChanged()
-                }
+                guard let self, !self.isApplyingInternalPreferenceUpdate else { return }
+                self.handlePreferencesChanged()
             }
             .store(in: &cancellables)
+    }
+
+    private func withInternalPreferenceUpdate(_ body: () -> Void) {
+        let previous = isApplyingInternalPreferenceUpdate
+        isApplyingInternalPreferenceUpdate = true
+        defer { isApplyingInternalPreferenceUpdate = previous }
+        body()
+    }
+
+    private func cancelModelLoad() {
+        modelLoadToken &+= 1
+        modelLoadTask?.cancel()
+        modelLoadTask = nil
+        isLoadingModels = false
+    }
+
+    private func startModelLoadTask(for kind: AIProviderKind) -> Task<Void, Never>? {
+        cancelModelLoad()
+        guard preferences.enableContextualAI,
+              preferences.selectedEngine == kind,
+              kind != .appleIntelligence,
+              let client = makeClient(for: kind)
+        else {
+            return nil
+        }
+        modelLoadToken &+= 1
+        let token = modelLoadToken
+        isLoadingModels = true
+        let task = Task { @MainActor [weak self] in
+            guard let self, !Task.isCancelled else { return }
+            defer {
+                if self.modelLoadToken == token {
+                    self.isLoadingModels = false
+                    self.modelLoadTask = nil
+                }
+            }
+            let fetchedModels: [String]?
+            do {
+                fetchedModels = try await client.listModels()
+            } catch {
+                fetchedModels = nil
+            }
+            guard !Task.isCancelled,
+                  self.modelLoadToken == token,
+                  self.preferences.enableContextualAI,
+                  self.preferences.selectedEngine == kind
+            else {
+                return
+            }
+            if let models = fetchedModels {
+                self.applyDiscoveredModels(models, for: kind)
+                if kind.isLocal, kind != .appleIntelligence {
+                    self.detections[kind] = .running(models: models)
+                }
+            } else {
+                self.availableModels = []
+            }
+            self.rebuildProvider()
+        }
+        modelLoadTask = task
+        return task
     }
 
     /// Selects `kind`, turns AI on, clears any stale models from a previous provider, and loads `kind`'s model list at once.
     public func selectProvider(_ kind: AIProviderKind) {
         let changedProvider = preferences.selectedEngine != kind || !preferences.enableContextualAI
-        preferences.selectedEngine = kind
-        preferences.enableContextualAI = true
+        withInternalPreferenceUpdate {
+            preferences.selectedEngine = kind
+            preferences.enableContextualAI = true
+        }
         if changedProvider {
             availableModels = []
         }
@@ -117,18 +181,17 @@ public final class AIProviderStore: ObservableObject {
         lastTestResult = nil
         syncAvailableModelsForCurrentSelection()
         rebuildProvider()
-        if availableModels.isEmpty, makeClient(for: kind) != nil {
-            modelRefreshTask?.cancel()
-            modelRefreshTask = Task { @MainActor [weak self] in
-                await self?.refreshModelsForSelectedProvider()
-            }
+        if availableModels.isEmpty {
+            _ = startModelLoadTask(for: kind)
+        } else {
+            cancelModelLoad()
         }
     }
 
     private func handlePreferencesChanged() {
         lastTestResult = nil
         guard preferences.enableContextualAI else {
-            modelRefreshTask?.cancel()
+            cancelModelLoad()
             availableModels = []
             currentEngineForModels = nil
             wasEnabled = false
@@ -140,15 +203,13 @@ public final class AIProviderStore: ObservableObject {
         currentEngineForModels = kind
         wasEnabled = true
         if providerChanged {
+            cancelModelLoad()
             availableModels = []
         }
         syncAvailableModelsForCurrentSelection()
         rebuildProvider()
-        if providerChanged, availableModels.isEmpty, makeClient(for: kind) != nil {
-            modelRefreshTask?.cancel()
-            modelRefreshTask = Task { @MainActor [weak self] in
-                await self?.refreshModelsForSelectedProvider()
-            }
+        if providerChanged, availableModels.isEmpty {
+            _ = startModelLoadTask(for: kind)
         }
     }
 
@@ -179,7 +240,7 @@ public final class AIProviderStore: ObservableObject {
         settingsDetectionTask?.cancel()
         let interval = settingsDetectionInterval
         settingsDetectionTask = Task { @MainActor [weak self] in
-            guard let self else { return }
+            guard let self, !Task.isCancelled, self.isSettingsDetectionActive else { return }
             await self.refresh()
             while !Task.isCancelled, self.isSettingsDetectionActive {
                 try? await Task.sleep(for: interval)
@@ -194,24 +255,31 @@ public final class AIProviderStore: ObservableObject {
         isSettingsDetectionActive = false
         settingsDetectionTask?.cancel()
         settingsDetectionTask = nil
+        cancelModelLoad()
+        isDetecting = false
     }
 
     /// Probes local servers (`127.0.0.1` only). Safe to run while Settings ▸ AI is open even when AI is Off.
     public func refreshLocalDetections() async {
-        guard preferences.enableContextualAI || isSettingsDetectionActive else {
+        guard !Task.isCancelled, preferences.enableContextualAI || isSettingsDetectionActive else {
             return
         }
         isDetecting = true
         let unslothKey = keyStore.key(for: .unslothStudio)
         let detected = await detector.detect(unslothKey: unslothKey)
+        guard !Task.isCancelled, preferences.enableContextualAI || isSettingsDetectionActive else {
+            isDetecting = false
+            return
+        }
         detections = detected
         isDetecting = false
 
         if preferences.enableContextualAI {
-            if let localDetection = detected[preferences.selectedEngine],
+            let selected = preferences.selectedEngine
+            if let localDetection = detected[selected],
                case let .running(models) = localDetection
             {
-                applyDiscoveredModels(models, for: preferences.selectedEngine)
+                applyDiscoveredModels(models, for: selected)
             }
             rebuildProvider()
         }
@@ -221,10 +289,13 @@ public final class AIProviderStore: ObservableObject {
     /// When AI is off (`enableContextualAI == false`) and Settings ▸ AI is closed, makes zero network requests.
     /// While Settings ▸ AI is open (`isSettingsDetectionActive == true`), probes localhost only.
     public func refresh() async {
+        cancelModelLoad()
+        guard !Task.isCancelled else { return }
         guard preferences.enableContextualAI else {
             if isSettingsDetectionActive {
                 await refreshLocalDetections()
             }
+            guard !Task.isCancelled else { return }
             availableModels = []
             lastTestResult = nil
             rebuildProvider()
@@ -234,15 +305,22 @@ public final class AIProviderStore: ObservableObject {
         isDetecting = true
         let unslothKey = keyStore.key(for: .unslothStudio)
         let detected = await detector.detect(unslothKey: unslothKey)
+        guard !Task.isCancelled else {
+            isDetecting = false
+            return
+        }
         detections = detected
         isDetecting = false
 
         await refreshModelsForSelectedProvider()
+        guard !Task.isCancelled else { return }
         rebuildProvider()
     }
 
     /// Refreshes the model list for the currently selected provider when AI is enabled.
     public func refreshModelsForSelectedProvider() async {
+        cancelModelLoad()
+        guard !Task.isCancelled else { return }
         guard preferences.enableContextualAI else {
             availableModels = []
             rebuildProvider()
@@ -250,6 +328,12 @@ public final class AIProviderStore: ObservableObject {
         }
 
         let kind = preferences.selectedEngine
+        if kind == .appleIntelligence {
+            syncAvailableModelsForCurrentSelection()
+            rebuildProvider()
+            return
+        }
+
         if let localDetection = detections[kind] {
             switch localDetection {
             case let .running(models):
@@ -269,28 +353,20 @@ public final class AIProviderStore: ObservableObject {
             }
         }
 
-        guard let client = makeClient(for: kind) else {
-            availableModels = []
-            rebuildProvider()
+        guard let task = startModelLoadTask(for: kind) else {
+            if preferences.selectedEngine == kind {
+                availableModels = []
+                rebuildProvider()
+            }
             return
         }
-
-        isLoadingModels = true
-        defer { isLoadingModels = false }
-        if let models = try? await client.listModels() {
-            applyDiscoveredModels(models, for: kind)
-            if kind.isLocal, kind != .appleIntelligence {
-                detections[kind] = .running(models: models)
-            }
-        } else {
-            availableModels = []
-        }
-        rebuildProvider()
+        await task.value
     }
 
     /// Tests connectivity and model listing for the currently selected provider.
     @discardableResult
     public func test() async -> TestResult {
+        cancelModelLoad()
         guard preferences.enableContextualAI else {
             let result = TestResult.failure(AIClientError.notConfigured.message)
             lastTestResult = result
@@ -316,25 +392,43 @@ public final class AIProviderStore: ObservableObject {
 
         do {
             let models = try await client.listModels()
+            let result = TestResult.connected(modelCount: models.count)
+            guard !Task.isCancelled,
+                  preferences.enableContextualAI,
+                  preferences.selectedEngine == kind
+            else {
+                return result
+            }
             applyDiscoveredModels(models, for: kind)
             if kind.isLocal, kind != .appleIntelligence {
                 detections[kind] = .running(models: models)
             }
             rebuildProvider()
-            let result = TestResult.connected(modelCount: models.count)
             lastTestResult = result
             return result
         } catch let error as AIClientError {
+            let result = TestResult.failure(error.message)
+            guard !Task.isCancelled,
+                  preferences.enableContextualAI,
+                  preferences.selectedEngine == kind
+            else {
+                return result
+            }
             if kind == .unslothStudio, error == .badKey {
                 detections[.unslothStudio] = .needsKey
             }
             rebuildProvider()
-            let result = TestResult.failure(error.message)
             lastTestResult = result
             return result
         } catch {
-            rebuildProvider()
             let result = TestResult.failure(AIClientError.unreachable.message)
+            guard !Task.isCancelled,
+                  preferences.enableContextualAI,
+                  preferences.selectedEngine == kind
+            else {
+                return result
+            }
+            rebuildProvider()
             lastTestResult = result
             return result
         }
@@ -514,21 +608,29 @@ public final class AIProviderStore: ObservableObject {
     }
 
     private func applyDiscoveredModels(_ models: [String], for kind: AIProviderKind) {
-        availableModels = models
-        guard !models.isEmpty else {
-            if preferences.selectedEngine == kind, !preferences.selectedModel.isEmpty {
-                preferences.selectedModel = ""
-            }
+        guard !Task.isCancelled,
+              preferences.enableContextualAI,
+              preferences.selectedEngine == kind
+        else {
             return
         }
-        if let existing = preferences.model(for: kind), models.contains(existing) {
-            if preferences.selectedEngine == kind, preferences.selectedModel != existing {
-                preferences.selectedModel = existing
+        availableModels = models
+        withInternalPreferenceUpdate {
+            guard !models.isEmpty else {
+                if preferences.selectedEngine == kind, !preferences.selectedModel.isEmpty {
+                    preferences.selectedModel = ""
+                }
+                return
             }
-        } else if let first = models.first {
-            preferences.setModel(first, for: kind)
-            if preferences.selectedEngine == kind, preferences.selectedModel != first {
-                preferences.selectedModel = first
+            if let existing = preferences.model(for: kind), models.contains(existing) {
+                if preferences.selectedEngine == kind, preferences.selectedModel != existing {
+                    preferences.selectedModel = existing
+                }
+            } else if let first = models.first {
+                preferences.setModel(first, for: kind)
+                if preferences.selectedEngine == kind, preferences.selectedModel != first {
+                    preferences.selectedModel = first
+                }
             }
         }
     }

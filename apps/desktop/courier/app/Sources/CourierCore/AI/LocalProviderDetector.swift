@@ -35,6 +35,13 @@ public final class LocalProviderDetector: @unchecked Sendable {
     }
 
     public func detect(unslothKey: String? = nil) async -> [AIProviderKind: LocalDetection] {
+        guard !Task.isCancelled else {
+            return [
+                .ollama: .notRunning,
+                .lmStudio: .notRunning,
+                .unslothStudio: .notRunning,
+            ]
+        }
         let transport = self.transport
         let trimmedKey = unslothKey?.trimmingCharacters(in: .whitespacesAndNewlines)
         let activeKey = (trimmedKey?.isEmpty == false) ? trimmedKey : nil
@@ -51,10 +58,12 @@ public final class LocalProviderDetector: @unchecked Sendable {
 
         await withTaskGroup(of: ProbeKind.self) { group in
             group.addTask {
+                guard !Task.isCancelled else { return .ollama(.notRunning) }
                 let detection = await Self.probeOllama(using: transport)
                 return .ollama(detection)
             }
             group.addTask {
+                guard !Task.isCancelled else { return .lmStudio(.notRunning) }
                 let detection = await Self.probeOpenAIModels(
                     url: Self.lmStudioModelsURL,
                     apiKey: nil,
@@ -64,6 +73,7 @@ public final class LocalProviderDetector: @unchecked Sendable {
             }
             for port in Self.unslothPorts {
                 group.addTask {
+                    guard !Task.isCancelled else { return .unsloth(port: port, detection: .notRunning) }
                     let url = URL(string: "http://127.0.0.1:\(port)/v1/models")!
                     let detection = await Self.probeOpenAIModels(
                         url: url,

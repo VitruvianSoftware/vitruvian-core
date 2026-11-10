@@ -804,6 +804,101 @@ final class AIProvidersTests: XCTestCase {
         XCTAssertEqual((store.provider as? ConfiguredAIProvider)?.model, "gpt-4.1-mini")
     }
 
+    func testSwitchingProviderMidLoadNeverWritesOldProvidersModelsAndTestIsDeterministic() async throws {
+        let suiteName = "test.courier.ai.store.midload.\(UUID().uuidString)"
+        let defaults = ScratchDefaults.suite(named: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let prefs = AIPreferences(defaults: defaults)
+        let transport = StubHTTPTransport { request in
+            guard let url = request.url else { throw URLError(.badURL) }
+            switch url.absoluteString {
+            case "http://127.0.0.1:11434/v1/models":
+                try await Task.sleep(for: .milliseconds(70))
+                let body = Data(#"{"data":[{"id":"ollama-slow-model"}]}"#.utf8)
+                return (body, StubHTTPTransport.makeResponse(url: url, status: 200))
+            case "https://api.openai.com/v1/models":
+                let body = Data(#"{"data":[{"id":"gpt-4o"},{"id":"gpt-4.1-mini"}]}"#.utf8)
+                return (body, StubHTTPTransport.makeResponse(url: url, status: 200))
+            case "https://api.anthropic.com/v1/models":
+                let body = Data(#"{"data":[{"id":"claude-sonnet-4-20250514"}]}"#.utf8)
+                return (body, StubHTTPTransport.makeResponse(url: url, status: 200))
+            default:
+                throw URLError(.cannotConnectToHost)
+            }
+        }
+        let keyStore = AIKeyStore(
+            store: InMemoryCredentialStore([
+                "openAI": "test-openai-key",
+                "anthropic": "test-anthropic-key",
+            ])
+        )
+        let store = AIProviderStore(preferences: prefs, keyStore: keyStore, transport: transport)
+
+        // Start loading Ollama (slow), then immediately switch to OpenAI (fast) before Ollama finishes
+        store.selectProvider(.ollama)
+        store.selectProvider(.openAI)
+
+        try await waitUntil { store.availableModels == ["gpt-4o", "gpt-4.1-mini"] }
+        // Wait past Ollama's slow response time and verify Ollama's models never overwrite OpenAI's
+        try await Task.sleep(for: .milliseconds(110))
+        XCTAssertEqual(prefs.selectedEngine, .openAI)
+        XCTAssertEqual(store.availableModels, ["gpt-4o", "gpt-4.1-mini"])
+        XCTAssertFalse(store.availableModels.contains("ollama-slow-model"))
+        XCTAssertEqual(prefs.selectedModel, "gpt-4o")
+        XCTAssertEqual((store.provider as? ConfiguredAIProvider)?.kind, .openAI)
+        XCTAssertEqual((store.provider as? ConfiguredAIProvider)?.model, "gpt-4o")
+
+        // Selecting a provider and immediately calling test() cancels the background model load rather than racing it
+        transport.reset()
+        transport.enqueue(
+            status: 200,
+            json: #"{"data":[{"id":"claude-sonnet-4-20250514"},{"id":"claude-3-5-haiku-latest"}]}"#
+        )
+        store.selectProvider(.anthropic)
+        let result = await store.test()
+        XCTAssertEqual(result, .connected(modelCount: 2))
+        XCTAssertEqual(store.lastTestResult, .connected(modelCount: 2))
+        XCTAssertEqual(store.availableModels, ["claude-sonnet-4-20250514", "claude-3-5-haiku-latest"])
+        XCTAssertEqual(transport.requests.count, 1, "test() must cancel any pending automatic model load rather than racing it")
+    }
+
+    func testStartAndImmediatelyStopSettingsDetectionMakesZeroRequests() async throws {
+        let suiteName = "test.courier.ai.store.stopimmediate.\(UUID().uuidString)"
+        let defaults = ScratchDefaults.suite(named: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let prefs = AIPreferences(defaults: defaults)
+        let transport = StubHTTPTransport { request in
+            guard let url = request.url else { throw URLError(.badURL) }
+            let body = Data(#"{"data":[{"id":"llama3.2:latest"}]}"#.utf8)
+            return (body, StubHTTPTransport.makeResponse(url: url, status: 200))
+        }
+        let store = AIProviderStore(
+            preferences: prefs,
+            keyStore: AIKeyStore(store: InMemoryCredentialStore(["openAI": "test-openai-key"])),
+            transport: transport,
+            settingsDetectionInterval: .milliseconds(20)
+        )
+
+        // 1. AI off: start then immediately stop -> zero requests
+        store.startSettingsDetection()
+        store.stopSettingsDetection()
+        XCTAssertFalse(store.isSettingsDetectionActive)
+        try await Task.sleep(for: .milliseconds(60))
+        XCTAssertTrue(transport.requests.isEmpty, "Starting then immediately stopping settings detection must make zero requests")
+
+        // 2. AI on: start then immediately stop -> zero requests
+        prefs.selectedEngine = .appleIntelligence
+        prefs.enableContextualAI = true
+        transport.reset()
+        store.startSettingsDetection()
+        store.stopSettingsDetection()
+        XCTAssertFalse(store.isSettingsDetectionActive)
+        try await Task.sleep(for: .milliseconds(60))
+        XCTAssertTrue(transport.requests.isEmpty, "Starting then immediately stopping settings detection with AI enabled must make zero requests")
+    }
+
     // MARK: - UI Model Wiring Tests (Translation, Result Strip, Chat Switch Cancellation, Last Language Rule)
 
     func testDisabledLastTranslationLanguageRule() {
