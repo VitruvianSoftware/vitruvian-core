@@ -302,7 +302,6 @@ struct ConversationView: View {
                 if let banner = conversation.unreadThreadsBanner {
                     ThreadRepliesBanner(text: banner, mentionsMe: conversation.unreadThreadsMentionMe,
                                         show: conversation.showNextUnreadThread)
-                    if !drawsLiquidGlass { Divider() }
                 }
             }
             // With glass the messages run under the composer, which floats over their bottom.
@@ -696,8 +695,10 @@ struct ConversationView: View {
                         Text(String(localized: "Jump to latest"))
                             .font(.callout.weight(.medium))
                         if conversation.hasNewerWhileAway {
+                            let accentHex = resolvedAppearance?.effectiveTheme(for: conversation.roomID).accentColorHex
+                                ?? CourierThemePreset.classicTeal.defaultAccentHex
                             Circle()
-                                .fill(Color.accentColor)
+                                .fill(Color(hex: accentHex) ?? Color.accentColor)
                                 .frame(width: 7, height: 7)
                                 .accessibilityLabel(String(localized: "New messages"))
                         }
@@ -873,7 +874,7 @@ private struct ConversationComposerContainer: View {
 /// The chat's picture, name and network, and with a disappearing timer running, "Messages disappear after 7 days",
 /// with the timer's menu. Without glass it is a strip over the messages; with glass its two parts go in the window's
 /// toolbar, the identity where the title was and the buttons as toolbar buttons.
-private struct ConversationHeader: View {
+struct ConversationHeader: View {
     enum Part { case strip, identity, actions }
 
     let row: InboxRow?
@@ -912,16 +913,13 @@ private struct ConversationHeader: View {
                 .clipShape(Circle())
                 .frame(width: 32, height: 32)
             VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 6) {
-                    Text(
-                        redactNamesAndPictures
-                            ? AppearancePreferences.redactedText(row.name, kind: .chatTitle)
-                            : row.name
-                    )
-                        .font(.headline)
-                        .lineLimit(1)
-                    NetworkBadge(network: row.network, name: networkName ?? row.network, size: 14)
-                }
+                Text(
+                    redactNamesAndPictures
+                        ? AppearancePreferences.redactedText(row.name, kind: .chatTitle)
+                        : row.name
+                )
+                    .font(.headline)
+                    .lineLimit(1)
                 if let timer = conversation.timerLine {
                     Label(timer, systemImage: "timer")
                         .font(.caption)

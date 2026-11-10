@@ -8,6 +8,12 @@ import Foundation
 /// one chat of it becomes the events the engine would send for it, with Fixture.now as "now". Format: the seed
 /// folder's README.md.
 struct SeedScenario: Decodable {
+    struct Account: Decodable {
+        let network: String
+        let login: String
+        let name: String?
+    }
+
     struct Person: Decodable {
         let id: String
         let name: String
@@ -33,9 +39,13 @@ struct SeedScenario: Decodable {
         let id: String
         let name: String?
         let direct: Bool?
+        let pinned: Bool?
+        let muted: Bool?
+        let unread: Bool?
         let messages: [Message]
     }
 
+    let accounts: [Account]?
     let people: [Person]
     let chats: [Chat]
 
@@ -132,5 +142,51 @@ struct SeedScenario: Decodable {
             }
         }
         return events
+    }
+
+    /// The scenario's chats as inbox rows, ordered with pinned chats first and then newest first.
+    func inboxRows() -> [InboxRow] {
+        let rows = chats.map { chat -> InboxRow in
+            let network = accounts?.first { $0.login == chat.account }?.network ?? "whatsapp"
+            let isDirect = chat.direct ?? true
+            let ordered = chat.messages.enumerated().sorted {
+                ($0.element.minutesAgo, -$0.offset) > ($1.element.minutesAgo, -$1.offset)
+            }.map(\.element)
+            let last = ordered.last
+            let lastTS = last.map { Fixture.millis($0.minutesAgo) } ?? 0
+            let mine = last?.from == "me"
+            let inThread = last?.thread != nil
+            let preview: String
+            if let last {
+                if !isDirect && !mine {
+                    preview = "\(name(of: last.from)): \(last.text)"
+                } else {
+                    preview = last.text
+                }
+            } else {
+                preview = ""
+            }
+            let trailingIncoming = ordered.reversed().prefix { $0.from != "me" }.count
+            let unread = (chat.unread ?? false) ? max(1, trailingIncoming) : 0
+            return InboxRow(
+                roomID: chat.id,
+                network: network,
+                name: chat.name ?? chat.id,
+                avatarPath: "",
+                isDirect: isDirect,
+                lastTS: lastTS,
+                preview: preview,
+                previewKind: .text,
+                previewMine: mine,
+                unread: unread,
+                muted: chat.muted ?? false,
+                pinned: chat.pinned ?? false,
+                previewStatus: mine ? .seen : .none,
+                previewInThread: inThread
+            )
+        }
+        return rows.sorted {
+            (($0.pinned ? 1 : 0), $0.lastTS) > (($1.pinned ? 1 : 0), $1.lastTS)
+        }
     }
 }
