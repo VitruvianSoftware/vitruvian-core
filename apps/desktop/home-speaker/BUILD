@@ -31,9 +31,12 @@ swift_test(
             "Tests/HomeSpeakerViewTests/**",
         ],
     ),
-    # ProductionReadinessTests reads these: no source ships a home-directory
-    # path, and Info.plist tracks Version.swift.
-    data = glob(["Sources/**/*.swift"]) + ["Resources/Info.plist"],
+    # ProductionReadinessTests reads Sources/Info.plist; SharedRulebookCasesTests
+    # reads every JSON case under testdata/.
+    data = glob([
+        "Sources/**/*.swift",
+        "testdata/**",
+    ]) + ["Resources/Info.plist"],
     # Never the real Beeper Desktop (23373) or Courier (23390).
     env = {
         "HOMESPEAKER_BEEPER_URL": "http://localhost:9",

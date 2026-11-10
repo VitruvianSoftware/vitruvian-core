@@ -133,7 +133,7 @@ private let reply = """
 
     @Test func theLabelsAreTheOnesSettingsShows() {
         #expect(AnnouncementStyle.allCases.map(\.label) == ["As written", "Plain summary", "Status update", "Conversational", "Custom…"])
-        #expect(StyleModel.allCases.map(\.label) == ["Apple (On-device)", "Gemini"])
+        #expect(StyleModel.allCases.map(\.label) == ["Apple (on this Mac)", "Gemini"])
         #expect(LocalVoiceEngine.allCases.map(\.label) == ["Apple (System)", "Gemini TTS"])
         #expect(GeminiVoice.allCases.map(\.rawValue) == ["Kore", "Puck", "Aoede", "Charon", "Zephyr", "Fenrir", "Leda", "Orus", "voice_vaoo7ayczx69", "voice_o1be80ujj8bb"])
         #expect(GeminiVoice.kore.label == "Kore · Warm & clear")

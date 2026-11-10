@@ -141,7 +141,7 @@ public enum StyleModel: String, Codable, CaseIterable, Sendable {
 
     public var label: String {
         switch self {
-        case .apple: return "Apple (On-device)"
+        case .apple: return "Apple (on this Mac)"
         case .gemini: return "Gemini"
         }
     }
@@ -367,6 +367,17 @@ public struct SpeakerConfig: Codable, Equatable {
         self.chatMonitor = chatMonitor
     }
 
+    public static let minVolume = 0
+    public static let maxVolume = 100
+    public static let speakerVolumeStep = 10
+    public static let announceVolumeStep = 5
+    public static let defaultAnnounceVolume = 60
+
+    public static let minPauseMediaExtraSeconds = 0
+    public static let maxPauseMediaExtraSeconds = 10
+    public static let pauseMediaExtraSecondsStep = 1
+    public static let defaultPauseMediaExtraSeconds = 1
+
     /// Summary, not headline: a config written before this key existed was
     /// silently cutting replies after two sentences.
     public var effectiveAnnounceVolumeEnabled: Bool {
@@ -376,8 +387,8 @@ public struct SpeakerConfig: Codable, Equatable {
 
     /// 60 % unless chosen: audible across a room without startling anyone.
     public var effectiveAnnounceVolume: Int {
-        get { min(max(announceVolume ?? 60, 0), 100) }
-        set { announceVolume = min(max(newValue, 0), 100) }
+        get { min(max(announceVolume ?? Self.defaultAnnounceVolume, Self.minVolume), Self.maxVolume) }
+        set { announceVolume = min(max(newValue, Self.minVolume), Self.maxVolume) }
     }
 
     public var effectivePauseMedia: Bool {
@@ -386,8 +397,8 @@ public struct SpeakerConfig: Codable, Equatable {
     }
 
     public var effectivePauseMediaExtraSeconds: Double {
-        get { pauseMediaExtraSeconds ?? 1 }
-        set { pauseMediaExtraSeconds = min(max(newValue, 0), 10) }
+        get { pauseMediaExtraSeconds ?? Double(Self.defaultPauseMediaExtraSeconds) }
+        set { pauseMediaExtraSeconds = min(max(newValue, Double(Self.minPauseMediaExtraSeconds)), Double(Self.maxPauseMediaExtraSeconds)) }
     }
 
     public var effectiveSpeechLength: SpeechLength {
@@ -559,6 +570,13 @@ public struct SpeakerConfig: Codable, Equatable {
     /// every announcement, chat and typed text too.
     public var showsAnnouncementStyle: Bool { CodingAgent.allCases.contains(where: announces) }
 
+    /// Whether the Gemini API key field belongs under the style controls:
+    /// a coding agent announces, the style rewords with Gemini, and the key is
+    /// not already shown under the Gemini voice controls (`!geminiSpeaks`).
+    public var showsStyleGeminiKey: Bool {
+        showsAnnouncementStyle && effectiveAnnouncementStyle != .verbatim && effectiveStyleModel == .gemini && !geminiSpeaks
+    }
+
     /// What the Home speakers' Cast voice adds up to, for both Settings'
     /// "Where to speak" footer; nil when it is off.
     public static func homeCastFooter(_ c: SpeakerConfig) -> String? {
@@ -642,10 +660,16 @@ public struct SpeakerConfig: Codable, Equatable {
     /// Where announcements go, for the menu bar: "Lake Office + This Mac + Your phone";
     /// empty when all outputs are off.
     public var activeOutputsLabel: String {
+        activeOutputsLabel(phoneLabel: "Your phone")
+    }
+
+    /// Where announcements go, using `phoneLabel` for the phone output
+    /// (`"Your phone"` on the Mac, `"This phone"` on the phone).
+    public func activeOutputsLabel(phoneLabel: String) -> String {
         var parts: [String] = []
         if effectiveSpeakHome { parts.append(defaultDevice?.name ?? "No speaker picked") }
         if effectiveSpeakLocal { parts.append("This Mac") }
-        if effectiveSpeakPhone { parts.append("Your phone") }
+        if effectiveSpeakPhone { parts.append(phoneLabel) }
         return parts.joined(separator: " + ")
     }
 
@@ -779,13 +803,23 @@ public struct BroadcastLogItem: Identifiable, Codable, Equatable {
 public struct ChatMonitorConfig: Codable, Equatable {
     public static let minPollInterval = 5
     public static let maxPollInterval = 300
+    public static let defaultPollInterval = 15
+    public static let pollIntervalStep = 5
 
     /// How Google Chat is read. `api` uses the app's own Google login (needs
     /// Chat permission granted once); `gws` shells out to the Google Workspace
     /// CLI when the user already has it installed and signed in; `auto` picks
     /// the API when its permission is present, otherwise gws when installed.
-    public enum GoogleChatSource: String, Codable, CaseIterable {
+    public enum GoogleChatSource: String, Codable, CaseIterable, Sendable {
         case auto, api, gws
+
+        public var label: String {
+            switch self {
+            case .auto: return "Automatic"
+            case .api: return "Google API (this app's login)"
+            case .gws: return "gws command-line tool"
+            }
+        }
     }
 
     /// Which Beeper (or Courier) messages are spoken: direct messages and
@@ -801,6 +835,8 @@ public struct ChatMonitorConfig: Codable, Equatable {
             case .all: return "Every message"
             }
         }
+
+        public var label: String { title }
     }
 
     public var slackEnabled: Bool

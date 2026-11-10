@@ -998,7 +998,7 @@ final class ChatSlackTests: XCTestCase {
         XCTAssertEqual(saved.effectiveAnnouncementStyle, .briefing)
         XCTAssertEqual(ids(tree)[at + 2], Pages.Block.styleModel)
         guard case .list(let models)? = content(tree, Pages.Block.styleModel) else { return XCTFail("no model picker") }
-        XCTAssertEqual(models.rows.map { $0.title.text(for: "en") }, ["Apple (On-device)", "Gemini"])
+        XCTAssertEqual(models.rows.map { $0.title.text(for: "en") }, ["Apple (on this Mac)", "Gemini"])
         XCTAssertNil(content(tree, Pages.Block.geminiApiKey), "Apple needs no key")
 
         tree = event(tool, Pages.Block.styleModel, .change, .string("gemini"))
