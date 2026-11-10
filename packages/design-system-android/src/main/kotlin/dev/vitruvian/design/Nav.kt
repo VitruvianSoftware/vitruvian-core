@@ -134,7 +134,8 @@ public fun HostChip(
   ) {
     Box(
         modifier =
-            Modifier.border(1.dp, Vitruvian.divider)
+            Modifier.defaultMinSize(minHeight = 32.dp)
+                .border(1.dp, Vitruvian.divider)
                 .padding(horizontal = Space.s3, vertical = 6.dp),
         contentAlignment = Alignment.Center,
     ) {
