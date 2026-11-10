@@ -184,6 +184,11 @@ extension View {
         modifier(CourierSidebarList())
     }
 
+    /// With no chat open and the engine connected, hide the window's own title ("Courier", "Connected").
+    func courierEmptyChatToolbar(isConnected: Bool = true) -> some View {
+        modifier(CourierEmptyChatToolbar(isConnected: isConnected))
+    }
+
     /// The send button: the prominent glass style tinted with the accent colour, with glass; plain without.
     func courierSendButtonStyle() -> some View {
         modifier(CourierSendButtonStyle())
@@ -275,15 +280,29 @@ private struct CourierSidebarList: ViewModifier {
     }
 }
 
+private struct CourierEmptyChatToolbar: ViewModifier {
+    let isConnected: Bool
+    @Environment(\.liquidGlass) private var liquidGlass
+
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *), liquidGlass, isConnected {
+            content.toolbar(removing: .title)
+        } else {
+            content
+        }
+    }
+}
+
 private struct CourierSendButtonStyle: ViewModifier {
     @Environment(\.liquidGlass) private var liquidGlass
+    @Environment(\.themeAccentColor) private var themeAccent
 
     func body(content: Content) -> some View {
         if #available(macOS 26.0, *), liquidGlass {
             content
                 .buttonStyle(.glassProminent)
                 .buttonBorderShape(.circle)
-                .tint(.accentColor)
+                .tint(themeAccent)
         } else {
             content.buttonStyle(.plain)
         }
