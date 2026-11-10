@@ -283,45 +283,88 @@ so a tailnet peer learns nothing about whether it guessed one.
 # v1.4 additions
 
 Same rules as above. One new module: **HomeSpeaker** (`apps/desktop/home-speaker`), the menu bar
-app that reads coding-agent replies aloud on Google Home speakers.
+app (or Vitruvian extension) that reads coding-agent replies aloud on Google Home speakers.
 
-The agent never imports HomeSpeaker's code (the inter-app boundary forbids it). The two apps share
-one contract already — the config file `~/.gemini/speaker_broadcast.json`, which HomeSpeaker, its
-Claude Code hook and the `speaker-broadcast` CLI all read — so the agent reads and atomically
-rewrites that file, and HomeSpeaker (1.6+) watches the directory and reloads. Speaking goes through
-the app's own binary so it uses HomeSpeaker's sign-in, target resolution and speech cleaning.
+The agent never imports HomeSpeaker's code (the inter-app boundary forbids it) and **never reads or
+writes HomeSpeaker's settings, secrets, history, monitor-status, door or coding-agent hook files**.
+It asks the HomeSpeaker program instead, so the rules for a value (its choices, ranges and clamps)
+live in one place, HomeSpeaker, and the agent only carries them.
 
-## HomeSpeaker (read + act)
+- **Which program.** The only file the agent still reads is the choice file
+  `~/.gemini/speaker_door.json`, to learn which program is chosen: the app
+  (`/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker`) or the Vitruvian extension's
+  `bin/tool` (same flags). The choice file is read on every request, never written.
+- **Minimum version.** `--version` counts only on exit 0 with a `major.minor[.patch]` version; `--state` only on exit 0 with valid JSON; an `--apply` refusal (exit 1, JSON error) is a valid answer, a non-zero exit without JSON is an error. A replay is gated too (`--no-history` needs 1.41.0); plain say is not. Before the first `--state` or `--apply` of a request the agent runs
+  `<program> --version` (15 s bound). Below `1.41.0` (`MIN_HOME_SPEAKER_VERSION`) it never runs
+  `--state` or `--apply` (an older program would take them for unknown arguments and start its
+  menu-bar app) and answers the **update sentence**:
+  `Update Home Speaker on <this Mac's name> (have X, need 1.41.0)`. `GET` returns it as
+  `{available:false, installed:true, reason:<sentence>}`; `POST` returns it as `409`.
+- **Not installed.** When the chosen program is missing, `GET` answers `installed:false,
+  available:false` with `reason:"HomeSpeaker is not installed at <path>"` and nothing is run;
+  `POST` returns `409` with the same sentence.
 
 `GET /v1/homespeaker` → `{available, reason, installed, app_running, signed_in, enabled,
 default_target, speech_length, structure_name, quiet_hours:{enabled,start,end,active},
-targets:[{key, name, room, type, selected}], last?:{text, target, source, at}}`
+targets:[{key, name, room, type, selected}], last?:{text, target, source, at}, …}`
 
-- `available:false` with `reason` when the config file does not exist (HomeSpeaker was never set
-  up on this Mac). `installed` is independent: the bundle at
-  `/Applications/HomeSpeaker.app` exists. `app_running` is `pgrep -x HomeSpeaker`. `signed_in` is
-  "a Google Home refresh token is present" and nothing about it — the value is never read into a
-  response or a log.
-- `speech_length` is `headline` | `summary` | `full`; absent in the file means `summary` (the
-  app's own default).
-- `quiet_hours.start` and `quiet_hours.end` default to `"22:00"` and `"07:00"` when absent (and
-  after `reset_settings`). `quiet_hours.active` (`quiet_hours_active`) is evaluated against the
-  Mac's local wall-clock time.
-- `targets` is the file's map as a list: `Structure` (whole home) first, then by room; exactly one
-  has `selected:true` when `default_target` names a real key. One entry per DEVICE, not per alias —
-  discovery writes some speakers under two keys (`lake_office` and `lake_office_display` are one
-  display), and the same rule the app's own picker uses applies here: the default alias wins,
-  otherwise the shortest. The file keeps every alias; only the list is deduped.
-- `last` is the newest entry of `~/.gemini/speaker_history.json`, if any. Its timestamp is
-  converted from Foundation's default Date encoding (seconds since 2001-01-01).
-- `/v1/tools` gains `homespeaker`, resolved by the bundle path rather than PATH, so the gallery
-  can say "not on this Mac".
+The answer is the program's `--state --json` document (contract version 1, 15 s bound), mapped onto
+the fields below and the ones in the sections that follow; every field the phone reads keeps its
+name and meaning. A `--state` that times out, prints something that is not JSON, or has another
+contract version answers `{available:false, reason:"…"}` with the cause, not an error status.
 
-`POST /v1/homespeaker` (act) `{enabled?:bool, default_target?:string, speech_length?:string,
-quiet_hours_enabled?:bool}` — every field optional; an omitted field is left alone, an empty body
-is 400. `default_target` must be a key of `targets` and `speech_length` one of the three values;
-anything else is 400 and the file is untouched. The rewrite keeps every key the agent does not
-know about. 409 when HomeSpeaker was never set up. Reply: the `GET` shape, read back from the file.
+- `available` is the document's `config_initialized`; `false` carries Home Speaker's own
+  `config_problem`, or "has not been set up on this Mac". `installed` means the chosen program is
+  there. `app_running` is `chosen_running`. `signed_in` is `sign_in.signed_in`; no token or key is
+  ever in the document, only whether one is saved.
+- Every setting comes from `settings[]` by its key (`enabled`, `speech_length`,
+  `announce_volume`, `speak_phone`, …; the phone's `poll_interval` is the program's
+  `poll_interval_seconds`). `targets` is `speakers` (`selected` is `is_default`); `quiet_hours`,
+  `snooze_until`, `structure_*`, `homes`, `available_voices` (`language` → `lang`),
+  `custom_voices`, `local_voice_name`, `agents` (from `hooks`), `legacy_launch_agent`,
+  `home_speaker_version`, the `has_*` flags and monitor fields (from `sign_in` and `chat`) and
+  `recent` (the newest 5) / `last` come from the document under the same names.
+- `warnings` (`[string]`) is the program's own list of setup problems. It is new; older phones
+  ignore it.
+- `/v1/tools` gains `homespeaker`, resolved by the bundle path (or the chosen extension) rather
+  than PATH, so the gallery can say "not on this Mac".
+
+`POST /v1/homespeaker` (act) turns the requested fields into `--apply --json` operations
+(`{"contract_version":1,"operations":[…]}`) on the chosen program. The agent does no checking of
+its own: Home Speaker's rules are the one rule, so a value outside a range is clamped or refused
+by HomeSpeaker, not by the agent, and the reply is the `GET` shape read back afterwards.
+
+| Request field | Operation |
+|---|---|
+| any setting (`enabled`, `speech_length`, `quiet_hours_*`, `pause_media*`, `announce_volume*`, `speak_*`, `phone_*`, `local_*`, `gemini_voice`, `announcement_style`, `style_model`, `home_cast_voice`, `announce_*`, `*_enabled`, `*_announce`, `google_chat_source`, `gws_account`, `mute_own_messages`, `custom_style_prompt`, `poll_interval`) | `set` with the program's key (`poll_interval` → `poll_interval_seconds`) |
+| `default_target` / `remove_target` | `setDefaultSpeaker` / `removeSpeaker` |
+| `reset_settings` | `reset` |
+| `oauth_client_id` (+ `oauth_client_secret`) | one `saveOAuthClient`; a secret without an id uses the custom client id from `--state` (none saved: 400 "Enter the client ID first.") |
+| `slack_token`, `beeper_token`, `courier_token`, `gemini_api_key` | `setSecret` `slack` / `beeper` / `courier` / `geminiKey` (empty clears) |
+| `snooze_minutes`, `snooze_until` | `snooze` (`minutes`, or `clear` for `""`; a future `snooze_until` is counted in minutes) |
+| `beeper_network`, `courier_network` | `setNetwork` |
+| `courier_read_anyway` | `setReadAnyway` |
+| `import_antigravity` | `importAntigravity` |
+| `agent_hook_action` `install:` / `remove:` / `add-instruction:` + agent | `agentHook` (`install`, `remove`, `addInstruction`) |
+| `active_door` | `switchTo` |
+
+The program refuses a batch that mixes `switchTo` or `agentHook` with anything else, so an update
+that carries several kinds is sent as **separate `--apply` calls, in this order: the plain batch,
+then `agentHook`, then `switchTo` last** (a switch changes which program is chosen). The first
+failure stops the rest and is reported. The program's flag commands (`--sign-in [--chat]`,
+`--sign-out [--chat]`, `--discover --save [--home <id>]`, `--chat-monitor start|stop`,
+`--test-media-pause`) run after the plain batch, before the hook and the switch.
+
+A refusal from `--apply` (`{"ok":false,"error":{code,message,…}}`) returns `400 {"error":"<the
+program's message>"}`; `timed_out`, `apply_failed` and `config_unreadable` return `500`. A
+`not_chosen` refusal means the choice file the agent read was stale: it reads the file again and
+retries once on the program the refusal names (a second `not_chosen` is `409`). `agent_hook_action`
+`disable-rival…` is `agentHook` `disableRival` (agent `claude_code`) and `remove-legacy-agent` is
+`removeLegacyAgent`; both go alone, in the hook slot.
+
+Helper actions that do not touch Home Speaker's files run as before: clipboard speech
+(`speak_clipboard` → `--say`) and the voice preview (`preview_voice`, macOS `say` with the Mac voice
+`--state` reports).
 
 `POST /v1/homespeaker/say` (act) `{text}` → runs `HomeSpeaker --say <text>` (30 s bound) and
 replies `{ok, output}` in the `/v1/argocd/sync` shape. `--say` is deliberate speech: it overrides
@@ -332,14 +375,9 @@ Act log lines: `act homespeaker: enabled=false default_target=kitchen` and `act 
 
 ## v1.4.1: pause media while announcing
 
-`GET /v1/homespeaker` gains `pause_media` (bool) and `pause_media_extra_seconds` (number). When
-on, HomeSpeaker 1.8+ pauses what the Mac is playing while it announces and resumes it
-`pause_media_extra_seconds` after the estimated end. Absent from the file means the app's own
-defaults: `false` and `1`.
-
-`POST /v1/homespeaker` accepts both. `pause_media_extra_seconds` must be 0-10 (the app's own
-stepper range); anything else is 400 and the file is untouched -- refused rather than clamped,
-because the app would clamp silently and the phone would show a value the Mac is not using.
+`GET /v1/homespeaker` maps `pause_media` (bool) and `pause_media_extra_seconds` (number) from
+`--state --json`. `POST /v1/homespeaker` forwards both as `set` operations in `--apply --json`;
+HomeSpeaker validates the range and returns a refusal (400) if out of range.
 
 ## v1.5: speaker volume and announce at a set volume
 
@@ -354,10 +392,8 @@ or neither, or a percent out of range, is 400 and nothing runs. Runs `--set-volu
 `--unmute` (45 s bound) and answers in the `GET` shape with the level Google reports afterwards.
 Google reports a change ~3 s late and HomeSpeaker waits for it, so this takes several seconds.
 
-`GET /v1/homespeaker` gains `announce_volume_enabled` (bool) and `announce_volume` (0-100): when on,
-HomeSpeaker sets the speaker to that level for each announcement and puts it back after. Absent from
-the file means the app's defaults, `false` and `60`. `POST /v1/homespeaker` accepts both;
-`announce_volume` outside 0-100 is 400 with the file untouched.
+`GET /v1/homespeaker` maps `announce_volume_enabled` (bool) and `announce_volume` (0-100) from
+`--state --json`, and `POST /v1/homespeaker` forwards both as `set` operations in `--apply --json`.
 
 # v1.5.1 corrections
 
@@ -538,27 +574,13 @@ HomeSpeaker 1.23 can switch each sender on and off under its master switch (`ena
 coding agents, and the chat apps it watches. The phone gets the same switches, and a list of recent
 broadcasts it can replay with a tap.
 
-`GET /v1/homespeaker` gains:
+`GET /v1/homespeaker` gains `announce_claude_code`, `announce_antigravity`, `announce_opencode`,
+`slack_enabled`, `google_chat_enabled` and `beeper_enabled` (bool; the program's setting of the same
+name) and `recent` (`[{text, target, source, at}]`, the newest 5 of the program's history, newest
+first). `last` stays, and is `recent[0]` whenever both are present.
 
-| Field | Read from the config file | When the key is absent |
-|---|---|---|
-| `announce_claude_code` (bool) | top-level `announce_claude_code` | `true` |
-| `announce_antigravity` (bool) | top-level `announce_antigravity` | `true` |
-| `announce_opencode` (bool) | top-level `announce_opencode` | `true` |
-| `slack_enabled` (bool) | `chat_monitor.slack_enabled` | `false` |
-| `google_chat_enabled` (bool) | `chat_monitor.google_chat_enabled` | `false` |
-| `beeper_enabled` (bool) | `chat_monitor.beeper_enabled` | `false` |
-| `recent` (`[{text, target, source, at}]`) | the newest 5 of `~/.gemini/speaker_history.json`, newest first | `[]` |
-
-The defaults are HomeSpeaker's own: a config written before the agent switches existed still speaks
-for both agents, and no chat app is read until someone turns it on. All six fields are always
-present from a v1.10 agent. `last` stays, and is `recent[0]` whenever both are present.
-
-`POST /v1/homespeaker` accepts the five switches as optional bools. The two agent switches are
-written at the top level; the three chat switches are written **inside** `chat_monitor`, editing
-that object in place so every other key HomeSpeaker keeps there (poll interval, Beeper's URL and
-token, …) survives. A missing `chat_monitor` is created. As before, only the keys sent are written,
-and a body with none of the recognised fields is 400.
+`POST /v1/homespeaker` accepts the six switches as optional bools; each is a `set` operation. A body
+with none of the recognised fields is 400.
 
 **Replay** is `POST /v1/homespeaker/say` with the broadcast's `text`; no new endpoint. Two notes:
 
@@ -567,8 +589,8 @@ and a body with none of the recognised fields is 400.
   from a coding agent's shell would otherwise have a replay held by that agent's switch. Removing
   them works on every HomeSpeaker version; passing `--source user` would be refused by one older
   than 1.23.
-- HomeSpeaker's CLI has no flag that leaves its history alone, so a replay is listed again, as
-  "Say".
+- A replay runs `--say <text> --no-history` (Home Speaker 1.41+), so it is not listed again. The
+  agent no longer snapshots and restores a history file.
 
 The phone reads a reply without the five switches as an agent older than v1.10 and hides them. With
 no `recent` it falls back to `last` as a one-row list.
@@ -580,36 +602,24 @@ no `recent` it falls back to `last` as a one-row list.
 HomeSpeaker ships through two doors (`apps/desktop/home-speaker/Sources/HomeSpeakerCore/Door.swift`):
 the standalone `/Applications/HomeSpeaker.app` bundle (`"app"`) and the Vitruvian extension under
 `~/Library/Application Support/Vitruvian/Tools/dev.vitruvian.homespeaker` (`"extension"`). Which
-door is active is recorded in `~/.gemini/speaker_door.json`. The HomeSpeaker door (app vs Vitruvian
-extension) is offered on the phone only when the extension is installed. Choosing `"extension"` without
-the extension installed returns 400. Switching doors copies nothing and repoints only stale hooks when
-choosing the extension.
+door is chosen is recorded in `~/.gemini/speaker_door.json`, which the agent reads (and never writes)
+to pick the program. `active_door` is the document's `active_door`; `active_door` in a POST is a
+`switchTo` operation, which Home Speaker refuses if that side is not installed (400).
 
-When `speaker_door.json` chooses `"extension"` (or has no choice recorded and the standalone `.app`
-is absent) and the extension binary exists outside `.Trash`, `/v1/homespeaker` reads and writes the
-extension's `ToolData/dev.vitruvian.homespeaker/{settings.json,history.json,secrets.json}`, checks
-liveness via `flock(LOCK_EX|LOCK_NB)` on `running.lock` (falling back to `pgrep -f`), and runs the
-extension's `bin/tool` for `--say` (90 s timeout) and `--volume`.
+When the choice file chooses `"extension"` (or records no choice and the standalone `.app` is
+absent) and the extension's `bin/tool` exists outside `.Trash`, every request goes to that program
+(`--version`, `--state`, `--apply`, `--say`, `--volume`, ...).
 
-`GET /v1/homespeaker` adds nine fields:
-
-| Field | Read from | Default when absent |
-|---|---|---|
-| `active_door` (`"app"` \| `"extension"`) | resolved from `~/.gemini/speaker_door.json` | `"app"` |
-| `local_engine` (`"apple"` \| `"gemini"`) | `local_engine` | `"apple"` |
-| `gemini_voice` (`"Kore"` \| `"Puck"` \| `"Aoede"` \| `"Charon"` \| `"Zephyr"` \| `"Fenrir"` \| `"Leda"` \| `"Orus"` \| `"voice_vaoo7ayczx69"` \| `"voice_o1be80ujj8bb"`) | `gemini_voice` | `"Kore"` |
-| `has_gemini_key` (bool) | `secrets.json` `geminiAPIKey` non-empty (value never leaves the Mac) | `false` |
-| `announcement_style` (`"verbatim"` \| `"plain"` \| `"briefing"` \| `"casual"`) | `announcement_style` | `"verbatim"` |
-| `style_model` (`"apple"` \| `"gemini"`) | `style_model` | `"apple"` |
-| `beeper_announce` (`"direct_and_mentions"` \| `"all"`) | `chat_monitor.beeper_announce` | `"direct_and_mentions"` |
-| `beeper_networks` (`[{key, name, state}]`) | `speaker_monitor_status.json` (`beeper_network_states` when `app_running && is_running`) merged with `chat_monitor.beeper_muted_networks`, sorted case-insensitively by `name`; `state` is `"reading"`, `"muted"`, or `"skipped"` | `[]` |
-| `mute_own_messages` (bool) | `chat_monitor.mute_own_messages` | `true` |
+`GET /v1/homespeaker` adds nine fields: `active_door` (`"app"` \| `"extension"`), `local_engine`,
+`gemini_voice`, `has_gemini_key` (bool, the value never leaves the Mac), `announcement_style`,
+`style_model`, `beeper_announce`, `beeper_networks` (`[{key, name, state}]`; `state` is `"reading"`,
+`"muted"` or `"skipped"`, from `chat.beeper_networks`) and `mute_own_messages`. Each is the
+program's setting of that name (or its `sign_in` / `chat` entry).
 
 `POST /v1/homespeaker` accepts `local_engine`, `gemini_voice`, `announcement_style`, `style_model`
-and `beeper_announce` as optional strings (returning 400 for unknown values), `mute_own_messages`
-as an optional bool (written to `chat_monitor.mute_own_messages`), and `beeper_network` as an
-optional `{"key": string, "reading": bool}` object (muting or unmuting `key` in
-`chat_monitor.beeper_muted_networks`; keys outside `^[a-z0-9_-]{1,64}$` return 400).
+and `beeper_announce` as optional strings and `mute_own_messages` as an optional bool (each a `set`;
+Home Speaker refuses an unknown value with 400), and `beeper_network` as an optional
+`{"key": string, "reading": bool}` object (`setNetwork`).
 
 ---
 
@@ -618,25 +628,19 @@ optional `{"key": string, "reading": bool}` object (muting or unmuting `key` in
 HomeSpeaker can speak announcements on the paired Android phone over the phone bridge in addition to
 (or instead of) the Google Home speakers and the Mac itself.
 
-`GET /v1/homespeaker` adds four fields:
-
-| Field | Read from | Default when absent |
-|---|---|---|
-| `speak_phone` (bool) | top-level `speak_phone` | `false` |
-| `phone_pause_media` (bool) | top-level `phone_pause_media` | `false` |
-| `phone_headphones_only` (bool) | top-level `phone_headphones_only` | `false` |
-| `phone_connected` (bool) | whether the phone bridge currently holds an open `/v1/phone/link` stream | `false` |
+`GET /v1/homespeaker` adds `speak_phone`, `phone_pause_media` and `phone_headphones_only` (the
+program's settings) and `phone_connected` (bool): whether the phone bridge currently holds an open
+`/v1/phone/link` stream.
 
 `POST /v1/homespeaker` accepts `speak_phone`, `phone_pause_media` and `phone_headphones_only` as
-optional bools and writes them at the top level of `speaker_broadcast.json` (or `settings.json` for
-the extension door).
+optional bools; each is a `set` operation.
 
 `POST /v1/homespeaker/phone-say` — loopback (no bearer required from local processes on the Mac) or
 act tier (pairing bearer token required from non-loopback peers), body up to 8 MiB:
 `{"text": string, "wav_base64"?: string, "pause_media"?: bool, "headphones_only"?: bool}`.
 - Blank `text` returns `400`.
-- When `pause_media` or `headphones_only` is omitted, defaults are read from `phone_pause_media` and
-  `phone_headphones_only` in the active HomeSpeaker config.
+- When `pause_media` or `headphones_only` is omitted, defaults are the `phone_pause_media` and
+  `phone_headphones_only` settings in the chosen program's `--state`.
 - Loopback requests without a bearer token must send `Content-Type: application/json` (`415` otherwise).
 - When no phone link is open, replies `200 {"ok": false, "spoken": false, "reason": "no phone connected"}`.
 - Otherwise dispatches `phone.speak` (`read` tier, 60 s timeout) over the phone bridge and returns
@@ -646,21 +650,18 @@ act tier (pairing bearer token required from non-loopback peers), body up to 8 M
 
 ## Cast voice, cloned voices and a custom announcement style
 
-`GET /v1/homespeaker` adds three fields:
-
-| Field | Read from | Default when absent |
-|---|---|---|
-| `home_cast_voice` (bool) | top-level `home_cast_voice`: Google Home plays the selected local (Gemini) voice cast to it instead of its own cloud voice | `false` |
-| `custom_voices` (`[{id, name}]`) | top-level `custom_voices`; entries without an `id` are skipped, a missing `name` reads as the `id` | omitted |
-| `custom_style_prompt` (string) | top-level `custom_style_prompt`, the instruction used when `announcement_style` is `"custom"` (set on the Mac) | omitted |
+`GET /v1/homespeaker` adds `home_cast_voice` (bool: Google Home plays the selected local (Gemini)
+voice cast to it instead of its own cloud voice), `custom_voices` (`[{id, name}]`, from the
+document's `custom_voices`) and `custom_style_prompt` (the instruction used when `announcement_style`
+is `"custom"`, omitted when empty).
 
 `announcement_style` also accepts `"custom"`. `gemini_voice` is one of the prebuilt voices **or**
 the `id` of any entry in `custom_voices`; a stored value that is neither reads as `"Kore"`.
 
-`POST /v1/homespeaker` accepts `home_cast_voice` as an optional bool (written at the top level),
-`announcement_style: "custom"`, and a `gemini_voice` matching a custom voice `id`. An unknown
-`gemini_voice` returns 400 listing the prebuilt names and the custom ids. `custom_voices` is
-read-only here; `custom_style_prompt` can be set or cleared via POST.
+`POST /v1/homespeaker` accepts `home_cast_voice` as an optional bool, `announcement_style:
+"custom"`, and a `gemini_voice` matching a custom voice `id`; an unknown `gemini_voice` is refused by
+Home Speaker (400). `custom_voices` is read-only here; `custom_style_prompt` can be set or cleared
+via POST.
 
 ---
 
@@ -673,11 +674,11 @@ The following status and diagnostic fields bring `/v1/homespeaker` to full parit
 | Field | Type | Description |
 |---|---|---|
 | `quiet_hours.active` | bool | Whether quiet hours are currently silencing announcements |
-| `snooze_until` | string \| null | ISO-8601 UTC timestamp until which announcements are snoozed (`snooze_until` in config), or `null` when not snoozed (missing or unparseable values read as `null`) |
-| `available_voices` | `[{id, name, lang}]` | Installed macOS voices from `say -v '?'`, cached (see below) |
-| `structure_id` | string | Google Home structure ID (`structure_id` in config) |
+| `snooze_until` | string \| null | ISO-8601 UTC timestamp until which announcements are snoozed, or `null` when not snoozed |
+| `available_voices` | `[{id, name, lang}]` | Installed macOS voices, as Home Speaker lists them (`language` → `lang`) |
+| `structure_id` | string | Google Home structure ID |
 | `homes` | `[{id, name}]` | Available Google Home structures discovered from targets |
-| `account_email` | string | Google account email address stored in `secrets.json` |
+| `account_email` | string | Google account email address (`sign_in.email`) |
 | `has_oauth_client` | bool | Whether custom Google Cloud OAuth client credentials exist |
 | `has_antigravity_tokens` | bool | Whether local Antigravity OAuth tokens file is available to import |
 | `monitor_running` | bool | Whether the chat-monitor background monitoring process is active |
@@ -692,19 +693,15 @@ The following status and diagnostic fields bring `/v1/homespeaker` to full parit
 | `gws_installed` | bool | Whether `gws` CLI executable is installed on the Mac |
 | `gws_account` | string | Google Workspace account email configured for chat monitor |
 | `google_chat_source` | string | Backend for Google Chat (`"auto"`, `"api"`, or `"gws"`) |
-| `poll_interval` | int | Polling frequency in seconds (default `15`, clamped to `5`–`300`) |
+| `poll_interval` | int | Polling frequency in seconds (`poll_interval_seconds`; Home Speaker owns the default and range) |
 | `agents` | `[{agent, hook_state, speaks_twice, configured_by_instruction}]` | Integration status for `claude-code`, `antigravity`, and `opencode` (phone can install, update, or remove hooks for all three) |
-| `legacy_launch_agent` | bool | Whether legacy `com.james.chat-monitor.plist` is present |
+| `legacy_launch_agent` | bool | Whether Home Speaker reports the legacy chat-monitor launch agent |
 | `custom_oauth_client_id` | string | Saved Google Cloud OAuth client ID (always shown on phone) |
 | `has_custom_oauth_secret` | bool | Whether custom OAuth client secret is saved |
 | `home_speaker_version` | string | Version of the installed HomeSpeaker application |
 
-`available_voices` is cached by the agent, because `say -v '?'` takes seconds (about 13 s with ~200
-voices installed) and this endpoint is polled. A good, non-empty list is reused for 10 minutes; a
-failed or empty listing is remembered for 30 s, during which the response carries the last good list
-or, if there is none, a built-in fallback of five common voices. Only one `say -v '?'` runs at a time:
-requests that arrive during a refresh wait for it. So a voice installed on the Mac can take up to
-10 minutes to appear, or an agent restart.
+`available_voices` comes from Home Speaker's `--state` (the agent no longer runs `say -v '?'` or caches a
+listing), so it follows whatever Home Speaker lists.
 
 ### `POST /v1/homespeaker` parity updates
 
@@ -712,33 +709,33 @@ The update endpoint supports these additional configuration actions and secret u
 
 | Field | Type | Behavior |
 |---|---|---|
-| `quiet_hours_start`, `quiet_hours_end` | string (`HH:MM`) | Sets quiet hours interval; rejects invalid times with 400 |
-| `snooze_until` | string \| null | Sets the snooze deadline to an ISO-8601 timestamp (`snooze_until` in config), or clears snooze when `null` or `""`; invalid timestamps return 400 |
-| `snooze_minutes` | int (`1`–`240`) | Convenience that sets `snooze_until` to `now + N minutes` UTC; values outside `1..=240` return 400 |
+| `quiet_hours_start`, `quiet_hours_end` | string (`HH:MM`) | `set`; Home Speaker refuses invalid times (400) |
+| `snooze_until` | string \| null | `""` or `null` clears the snooze (`snooze` with `clear`); a future ISO-8601 time is sent as the minutes to it (the program snoozes for `1`–`240` minutes); a time in the past or an unparseable one is 400 |
+| `snooze_minutes` | int | `snooze` with `minutes`; Home Speaker refuses values outside `1`–`240` (400) |
 | `custom_style_prompt` | string | Updates or clears phrasing rewrite instruction |
-| `local_voice` | string | Sets macOS system voice identifier |
-| `preview_voice` | bool | Previews the Mac voice locally on the Mac via `say` (never broadcasts to speakers) |
+| `local_voice` | string | `set` the macOS system voice identifier |
+| `preview_voice` | bool | Previews the Mac voice (the program's `local_voice`) locally via macOS `say` (never broadcasts to speakers) |
 | `test_media_pause` | bool | Executes `HomeSpeaker --test-media-pause` |
-| `active_door` | `"app"` \| `"extension"` | Updates `~/.gemini/speaker_door.json` (returns 400 if extension is not installed; copies nothing and repoints only stale hooks when choosing extension) |
+| `active_door` | `"app"` \| `"extension"` | `switchTo`, sent last and alone; Home Speaker changes the choice file, not the agent |
 | `discover` | bool | Executes `HomeSpeaker --discover` to refresh targets |
-| `structure_id` | string | Updates structure ID or switches active home via `HomeSpeaker --home <id>` |
-| `remove_target` | string | Removes specified target alias from `targets` in config |
+| `structure_id` | string | Switches the active home via `HomeSpeaker --discover --save --home <id>` |
+| `remove_target` | string | `removeSpeaker` |
 | `sign_in` | bool | Launches `HomeSpeaker --sign-in` detached on the Mac so the user can complete Google Home OAuth in the Mac browser |
-| `sign_out` | bool | Runs `HomeSpeaker --sign-out` and clears Google tokens in `secrets.json` |
-| `import_antigravity` | bool | Imports tokens from `~/.gemini/antigravity/mcp_oauth_tokens.json` |
+| `sign_out` | bool | Runs `HomeSpeaker --sign-out` (the program clears its own tokens) |
+| `import_antigravity` | bool | `importAntigravity` |
 | `grant_chat` | bool | Launches `HomeSpeaker --sign-in --chat` detached on the Mac so the user can grant Google Chat OAuth consent |
-| `disconnect_chat` | bool | Runs `HomeSpeaker --sign-out --chat` and removes `googleChat` from `secrets.json` while preserving `google` |
+| `disconnect_chat` | bool | Runs `HomeSpeaker --sign-out --chat` |
 | `speak_clipboard` | bool | Reads text from the macOS clipboard and announces it |
-| `google_chat_source` | `"auto"` \| `"api"` \| `"gws"` | Configures chat monitor Google Chat backend |
+| `google_chat_source` | `"auto"` \| `"api"` \| `"gws"` | `set` |
 | `gws_account` | string | Configures GWS account email for chat monitor |
-| `poll_interval` | int | Sets chat poll interval (`5`–`300` seconds; out of range is 400) |
-| `slack_token` | string | Updates Slack user token (empty string clears token) |
-| `beeper_token` | string | Updates Beeper access token (empty string clears token) |
-| `gemini_api_key` | string | Updates Gemini API key in `secrets.json` |
-| `oauth_client_id`, `oauth_client_secret` | string | Updates custom OAuth client credentials |
-| `agent_hook_action` | string | Performs hook actions (`"install:<agent>"`, `"remove:<agent>"`, `"add-instruction:<agent>"`, `"remove-legacy-agent"`; phone can install, update, or remove hooks for `claude-code`, `antigravity`, and `opencode`) |
+| `poll_interval` | int | `set` `poll_interval_seconds` (Home Speaker clamps or refuses out-of-range values) |
+| `slack_token` | string | `setSecret` `slack` (empty string clears) |
+| `beeper_token` | string | `setSecret` `beeper` (empty string clears) |
+| `gemini_api_key` | string | `setSecret` `geminiKey` (empty string clears) |
+| `oauth_client_id`, `oauth_client_secret` | string | one `saveOAuthClient` (a secret alone uses the saved custom client id; none saved is 400 "Enter the client ID first.") |
+| `agent_hook_action` | string | `agentHook` for `"install:<agent>"`, `"remove:<agent>"`, `"add-instruction:<agent>"` (`claude-code`, `antigravity`, `opencode`), sent alone after the plain batch. `"disable-rival…"` is `agentHook` `disableRival` and `"remove-legacy-agent"` is `removeLegacyAgent`, each alone |
 | `chat_monitor_action` | `"start"` \| `"stop"` | Starts or stops the chat monitor daemon |
-| `reset_settings` | bool | Backs up current settings and resets HomeSpeaker configuration |
+| `reset_settings` | bool | `reset` |
 
 ### Courier beside Beeper
 
@@ -746,31 +743,29 @@ HomeSpeaker 1.37 reads chats from Courier as well as Beeper: the same local API 
 with its own token and its own switch, Announce choice and network list. The agent mirrors them the
 way it mirrors Beeper's.
 
-`GET /v1/homespeaker` adds:
-
-| Field | Read from | Default when absent |
-|---|---|---|
-| `courier_enabled` (bool) | `chat_monitor.courier_enabled` | `false` |
-| `courier_announce` (`"direct_and_mentions"` \| `"all"`) | `chat_monitor.courier_announce` | `"direct_and_mentions"` |
-| `courier_networks` (`[{key, name, state, read_anyway?}]`) | `speaker_monitor_status.json` (`courier_network_states` when `app_running && is_running`) merged with `chat_monitor.courier_muted_networks`, sorted as Beeper's; `read_anyway: true` (sent only when true) marks a network in `chat_monitor.courier_read_anyway` | `[]` |
-| `courier_networks_listed`, `beeper_networks_listed` (bool) | whether the running monitor reported that app's network states; until it has, only the saved mutes are known | `false` |
-| `has_courier_token` (bool) | `secrets.json` `courierToken` non-empty (the value never leaves the Mac) | `false` |
+`GET /v1/homespeaker` adds `courier_enabled`, `courier_announce` (`"direct_and_mentions"` \| `"all"`),
+`courier_networks` (`[{key, name, state, read_anyway?}]`; `read_anyway: true`, sent only when true,
+marks a network read through Courier although Home Speaker's own Slack or Google Chat reader covers
+it), `courier_networks_listed` / `beeper_networks_listed` (bool: whether the running monitor has
+listed that app's networks; until it has, only the saved mutes are known) and `has_courier_token`
+(bool, the value never leaves the Mac). All come from the document's settings and `chat` entry.
 
 `POST /v1/homespeaker` accepts:
 
-| Field | Type | Effect |
+| Field | Type | Operation |
 |---|---|---|
-| `courier_enabled` | bool | `chat_monitor.courier_enabled`. Turning it on while it is off and no Courier token is saved is 400, as HomeSpeaker's own Settings keeps the switch off until a token is saved |
-| `courier_announce` | `"direct_and_mentions"` \| `"all"` | `chat_monitor.courier_announce`; anything else is 400 |
-| `courier_network` | `{"key": string, "reading": bool}` | mutes or unmutes `key` in `chat_monitor.courier_muted_networks`, as `beeper_network` does Beeper's |
-| `courier_read_anyway` | `{"key": string, "on": bool}` | adds or removes `key` in `chat_monitor.courier_read_anyway`: a network HomeSpeaker's own Slack or Google Chat reader covers is read through Courier as well. Courier cannot say which Slack workspace an account is, so this is how a second workspace is heard |
-| `courier_token` | string | writes trimmed `courierToken` to `secrets.json` (never logged or echoed); an empty string removes `courierToken` and sets `chat_monitor.courier_enabled = false` |
-
-Keys outside `^[a-z0-9_-]{1,64}$` are 400.
+| `courier_enabled` | bool | `set`. Home Speaker refuses turning it on while no Courier token is saved (400) |
+| `courier_announce` | `"direct_and_mentions"` \| `"all"` | `set` |
+| `courier_network` | `{"key": string, "reading": bool}` | `setNetwork` (app `courier`), as `beeper_network` does Beeper's |
+| `courier_read_anyway` | `{"key": string, "on": bool}` | `setReadAnyway`: a network Home Speaker's own reader covers is read through Courier as well, which is how a second Slack workspace is heard |
+| `courier_token` | string | `setSecret` `courier` (never logged or echoed); an empty string clears it, and Home Speaker turns Courier off |
 
 ### `POST /v1/homespeaker/say` replay support
 
-Accepts `replay: true` or `replay_id: "<id>"`. When replaying an announcement, the Mac agent snapshots history before invoking `HomeSpeaker --say`, then restores the history file so that replaying does not duplicate entries or displace earlier history.
+Accepts `replay: true` or `replay_id: "<id>"`. A `replay_id` is looked up in the `recent` list of
+the program's `--state` (the agent reads no history file) and its text is said with
+`--say <text> --no-history`, so a replay is not recorded again; an id that is no longer there is
+400. Plain `POST /v1/homespeaker/say` stays plain `--say <text>`.
 
 ---
 

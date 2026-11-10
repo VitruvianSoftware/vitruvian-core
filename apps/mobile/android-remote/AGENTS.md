@@ -56,10 +56,11 @@ no design value of its own.
   (`# gazelle:ignore`), so a new `.kt` file must be added to the right target yourself. The
   package defaults to app-private visibility (inter-app boundary); keep it that way.
 - **Cross-workspace contracts.** A change to `macagent/API.md` is a change to the app and the
-  daemon in one PR. The HomeSpeaker module reads and rewrites `~/.gemini/speaker_broadcast.json`
-  (or `ToolData/dev.vitruvian.homespeaker/settings.json` when `~/.gemini/speaker_door.json`
-  selects the Vitruvian extension door) through the daemon, the same file `apps/desktop/home-speaker`
-  watches — keep old keys readable.
+  daemon in one PR. The HomeSpeaker module asks the chosen
+  HomeSpeaker program (`--state --json`, `--apply --json`, after `--version` against
+  `MIN_HOME_SPEAKER_VERSION`) and never reads or writes its settings, secrets, history, status or
+  hook files; the one file it reads is `~/.gemini/speaker_door.json`, to learn which program (app or
+  Vitruvian extension) is chosen. Its test is the golden `apps/desktop/home-speaker/testdata/state_v1.json`.
 - **Not mirrored.** Unlike `devx`, `mcp-slack` and `nexus-agent` there is no Copybara export;
   this directory is the only place the app is edited.
 
@@ -75,8 +76,8 @@ update `android-remote` in lockstep across these files:
     `ToolData/dev.vitruvian.homespeaker/{settings.json,history.json,secrets.json,running.lock}`)
   - `SecretStore.swift` (`secrets.json` `google.refreshToken` and `geminiAPIKey`)
 - **Counterparts in `apps/mobile/android-remote/`:**
-  1. `macagent/rs/src/homespeaker.rs` & `macagent_test` (`active_profile()`, `state()`,
-     `apply()`, `handle_say`, `handle_phone_say`, `run_volume`, `speak_phone`,
+  1. `macagent/rs/src/homespeaker.rs` & `macagent_test` (`active_program()`, `state()`,
+     `plan_ops()`, `apply()`, `handle_say`, `handle_phone_say`, `run_volume`, `speak_phone`,
      `phone_pause_media`, `phone_headphones_only`)
   2. `macagent/API.md` (contract documentation for `/v1/homespeaker` and
      `/v1/homespeaker/phone-say`)
