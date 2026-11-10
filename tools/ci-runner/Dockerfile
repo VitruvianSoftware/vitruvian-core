@@ -114,13 +114,17 @@ RUN curl -fsSL -o /tmp/rust.tar.xz \
 # apps/mobile/android-remote/BUILD), each zip pinned by SHA-256 rather than
 # fetched through sdkmanager, which would resolve "latest" at build time.
 # Bump platform and build-tools together with targetSdkVersion.
+# Pin platform-tools to a channel-0 (stable, android-sdk-license) release in
+# https://dl.google.com/android/repository/repository2-3.xml — never channel-2
+# (preview/canary, android-sdk-preview-license, e.g. r37.0.2 / r37.0.3), which
+# Google deletes from dl.google.com as soon as the next preview ships.
 ARG ANDROID_PLATFORM_ZIP=platform-35_r02.zip
 ARG ANDROID_PLATFORM_SHA256=0988cacad01b38a18a47bac14a0695f246bc76c1b06c0eeb8eb0dc825ab0c8e0
 ARG ANDROID_BUILD_TOOLS_VERSION=35.0.0
 ARG ANDROID_BUILD_TOOLS_ZIP=build-tools_r35_linux.zip
 ARG ANDROID_BUILD_TOOLS_SHA256=bd3a4966912eb8b30ed0d00b0cda6b6543b949d5ffe00bea54c04c81e1561d88
-ARG ANDROID_PLATFORM_TOOLS_ZIP=platform-tools_r37.0.2-linux.zip
-ARG ANDROID_PLATFORM_TOOLS_SHA256=dfc80a84a6710e5674415d4b55ae599c01aa4961822f53097d747472f410f157
+ARG ANDROID_PLATFORM_TOOLS_ZIP=platform-tools_r37.0.1-linux.zip
+ARG ANDROID_PLATFORM_TOOLS_SHA256=d230f13842f60f782a8645f9c813f8f845bf36089ea7289f28c48f17979313f1
 ENV ANDROID_HOME=/usr/local/lib/android/sdk \
     ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
 RUN set -eux; \

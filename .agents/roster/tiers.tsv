@@ -2,9 +2,9 @@
 #
 # Only the lead thinks on Claude. Every specialist's work runs on Gemini:
 # - lead:  the lead and beacon. Claude Opus in Claude Code and OpenCode; Antigravity has
-#          no Opus, so there it is Gemini 4 Argon (pro).
+#          no Opus, so there it is Antigravity's `pro` model.
 # - deep:  specialists whose work needs judgement (implementation, QA, infrastructure, security).
-#          Gemini 4 Argon.
+#          Gemini 4 Carbon.
 # - light: specialists whose work is lighter (docs, release tracking). Gemini 3.8 Flash.
 #
 # A tier with a `gemini` row does its work on that Gemini model. Antigravity runs it natively
@@ -14,8 +14,8 @@
 # opencode columns are the driver's model, not the model doing the work.
 #
 # Format rules:
-# - Antigravity agent files accept only model inherit|flash|pro (pro = Gemini 4 Argon,
-#   flash = Gemini 3.8 Flash) and have no effort field (use "-").
+# - Antigravity agent files accept only model inherit|flash|pro (Antigravity's own aliases; it picks
+#   which Gemini model each means) and have no effort field (use "-").
 # - OpenCode needs full provider/model ids (e.g. anthropic/claude-opus-5-5).
 # - Claude Code accepts opus|sonnet|haiku|fable|inherit or a full claude-* id,
 #   plus effort medium|high|xhigh|max.
@@ -28,7 +28,7 @@ lead	opencode	anthropic/claude-opus-5-5	high
 deep	claude-code	haiku	medium
 deep	antigravity	pro	-
 deep	opencode	anthropic/claude-haiku-5-5	medium
-deep	gemini	gemini-4-argon-high	-
+deep	gemini	gemini-4-carbon-high	-
 light	claude-code	haiku	medium
 light	antigravity	flash	-
 light	opencode	anthropic/claude-haiku-5-5	medium

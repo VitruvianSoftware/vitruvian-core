@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.40.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.39.0...home-speaker-v1.40.0) (2026-11-10)
+
+
+### Features
+
+* **home-speaker:** --state and --apply, so other programs ask Home Speaker instead of editing its files ([#4534](https://github.com/VitruvianSoftware/vitruvian-core/issues/4534)) ([f4ebc06](https://github.com/VitruvianSoftware/vitruvian-core/commit/f4ebc06f41d02615e232df7448d8b738fe171890))
+
+## [1.39.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.38.0...home-speaker-v1.39.0) (2026-11-10)
+
+
+### Features
+
+* **home-speaker,android-remote:** snooze 30 min, and announcements as phone notifications ([#4515](https://github.com/VitruvianSoftware/vitruvian-core/issues/4515)) ([eae9b23](https://github.com/VitruvianSoftware/vitruvian-core/commit/eae9b230b4c42b056ff1897e16853706d8fa672d))
+* **home-speaker:** one rulebook for settings in the engine, used by the app and the extension ([#4527](https://github.com/VitruvianSoftware/vitruvian-core/issues/4527)) ([b9e691e](https://github.com/VitruvianSoftware/vitruvian-core/commit/b9e691e3519cae7e8ac4c7f77a3fcc465c1bb394))
+
 ## [1.38.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.37.0...home-speaker-v1.38.0) (2026-11-03)
 
 

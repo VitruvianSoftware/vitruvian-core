@@ -1612,6 +1612,12 @@ extension NexusAgentEngine {
     /// message from it (`sender=<conversation>` or its type name) arrives.
     /// Text that merely says "Completed" finishes nothing: every agy tool
     /// result begins "Completed At:".
+    ///
+    /// An agy subagent can also end without a word back, and three things
+    /// say so: a `manage_subagents` kill (its result names the killed
+    /// roles), agy's notice that a restart stopped every subagent, and
+    /// agy's own list of the subagents still active, which is believed over
+    /// what came before it.
     public nonisolated static func parseActiveSubagents(from transcriptContent: String) -> [NexusAgentActiveSubagent] {
         var spawned: [NexusAgentActiveSubagent] = []
         var completed: Set<String> = []
@@ -1647,6 +1653,24 @@ extension NexusAgentEngine {
                     if names.contains(where: { content.contains("sender=\($0) ") || content.contains("sender=\($0)\n")
                         || content.hasSuffix("sender=\($0)") }) {
                         completed.insert(s.id)
+                    }
+                }
+            }
+
+            // agy: subagents that ended without sending a message back.
+            if type == "GENERIC" || type == "SYSTEM_MESSAGE", let content = json["content"] as? String {
+                let agyRunning = spawned.filter { $0.model != "claude" && !completed.contains($0.id) }
+                if let killed = Self.line(after: "Killed roles:", in: content), content.contains("Successfully killed") {
+                    for s in agyRunning where killed.contains(s.role) { completed.insert(s.id) }
+                }
+                if content.contains("All your subagents and background tasks have been stopped") {
+                    for s in agyRunning { completed.insert(s.id) }
+                }
+                if let still = Self.activeSubagentList(in: content) {
+                    for s in agyRunning {
+                        let listed = conversationOf[s.id].map { still.conversations.contains($0) }
+                            ?? still.roles.contains(s.role)
+                        if !listed { completed.insert(s.id) }
                     }
                 }
             }
@@ -1711,6 +1735,25 @@ extension NexusAgentEngine {
         }
 
         return spawned.filter { !completed.contains($0.id) }
+    }
+
+    /// The rest of the line that begins with `prefix`, trimmed.
+    nonisolated static func line(after prefix: String, in text: String) -> String? {
+        guard let start = text.range(of: prefix) else { return nil }
+        let rest = text[start.upperBound...]
+        return String(rest.prefix { $0 != "\n" }).trimmingCharacters(in: .whitespaces)
+    }
+
+    /// agy's answer to `manage_subagents list`: "You have N active
+    /// subagent(s)", then the active ones as JSON. Nil for any other text.
+    nonisolated static func activeSubagentList(in text: String) -> (conversations: Set<String>, roles: Set<String>)? {
+        guard let header = text.range(of: #"You have \d+ active subagent\(s\)"#, options: .regularExpression) else { return nil }
+        let rest = text[header.upperBound...]
+        guard let open = rest.firstIndex(of: "["), let close = rest.lastIndex(of: "]"), open < close,
+              let entries = try? JSONSerialization.jsonObject(with: Data(rest[open...close].utf8)) as? [[String: Any]]
+        else { return ([], []) }
+        return (Set(entries.compactMap { $0["conversationId"] as? String }),
+                Set(entries.compactMap { $0["role"] as? String }))
     }
 
     /// The `conversationId` values in agy's "Created the following

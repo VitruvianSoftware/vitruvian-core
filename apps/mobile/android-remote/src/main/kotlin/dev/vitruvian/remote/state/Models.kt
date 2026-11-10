@@ -395,11 +395,16 @@ public interface Notifier {
 
   /**
    * Ensures `POST_NOTIFICATIONS` is granted, prompting on Android 13+ when needed and invoking
-   * [onResult] with the outcome.
+   * [onResult] with `(granted, shouldShowRationale)`.
    */
-  public fun ensureNotificationPermission(onResult: (Boolean) -> Unit) {
-    onResult(true)
+  public fun ensureNotificationPermission(
+      onResult: (granted: Boolean, shouldShowRationale: Boolean) -> Unit,
+  ) {
+    onResult(true, false)
   }
+
+  /** Opens the system notification settings screen for this app. */
+  public fun openNotificationSettings() {}
 }
 
 /**

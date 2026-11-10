@@ -396,4 +396,44 @@ mod tests {
     fn test_is_executable_false_missing() {
         assert!(!is_executable("/nonexistent/file"));
     }
+
+    #[test]
+    fn dockerfile_pins_stable_android_sdk_archives_by_sha256() {
+        let df_path = ["tools/ci-runner/Dockerfile", "Dockerfile"]
+            .into_iter()
+            .find(|p| Path::new(p).is_file())
+            .expect("Dockerfile must be present in test data");
+        let df = fs::read_to_string(df_path).unwrap();
+        let mut args = std::collections::HashMap::new();
+        for line in df.lines() {
+            if let Some(rest) = line.trim().strip_prefix("ARG ") {
+                if let Some((k, v)) = rest.split_once('=') {
+                    args.insert(k.trim().to_string(), v.trim().to_string());
+                }
+            }
+        }
+        for sha_key in [
+            "ANDROID_PLATFORM_SHA256",
+            "ANDROID_BUILD_TOOLS_SHA256",
+            "ANDROID_PLATFORM_TOOLS_SHA256",
+        ] {
+            let val = args
+                .get(sha_key)
+                .unwrap_or_else(|| panic!("missing ARG {sha_key} in Dockerfile"));
+            assert!(
+                val.len() == 64 && val.chars().all(|c| c.is_ascii_hexdigit()),
+                "ARG {sha_key} must be a 64-char hex SHA-256, got {val:?}"
+            );
+        }
+        // r37.0.2 and r37.0.3 are channel-2 (preview/canary) in Google's
+        // repository2-3.xml; Google deletes channel-2 zips when the next preview
+        // lands, breaking image builds with 404.
+        let pt_zip = args
+            .get("ANDROID_PLATFORM_TOOLS_ZIP")
+            .expect("missing ARG ANDROID_PLATFORM_TOOLS_ZIP");
+        assert_eq!(
+            pt_zip, "platform-tools_r37.0.1-linux.zip",
+            "ANDROID_PLATFORM_TOOLS_ZIP must be pinned to the channel-0 stable release"
+        );
+    }
 }

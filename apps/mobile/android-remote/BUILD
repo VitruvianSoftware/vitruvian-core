@@ -200,7 +200,10 @@ kt_jvm_test(
 kt_jvm_library(
     name = "derive",
     srcs = ["src/main/kotlin/dev/vitruvian/remote/state/Derive.kt"],
-    deps = [":wire"],
+    deps = [
+        ":format",
+        ":wire",
+    ],
 )
 
 kt_jvm_test(
@@ -209,6 +212,7 @@ kt_jvm_test(
     test_class = "dev.vitruvian.remote.state.DeriveTest",
     deps = [
         ":derive",
+        ":format",
         ":wire",
         "@maven//:junit_junit",
     ],

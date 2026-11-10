@@ -1,6 +1,6 @@
 name	tier	description
 beacon	lead	Use this agent as the single entry point to triage multi-domain requests, decompose cross-functional initiatives, delegate subtasks across specialist roles, or execute deep refactors via Claude Code CLI (Opus 5.5) in vitruvian-core.
-aegis	deep	Use this agent for security audits, supply-chain and dependency CVE reviews, Kubernetes RBAC, NetworkPolicies, and secret management across every workspace in vitruvian-core.
+aegis	deep	Use this agent for security audits, supply-chain and dependency CVE reviews, Kubernetes RBAC, NetworkPolicies, and secret management across every workspace in vitruvian-core, and for reviewing another specialist's change for security risks.
 wren	deep	Use this agent for feature development, refactoring, and bug fixes across every application workspace in vitruvian-core - TypeScript and Go (CLI tools, web apps, MCP servers, suites), Kotlin/Compose Android apps, Swift macOS apps, and C++ ESP32-S3 firmware - plus the shared packages they build on.
 atlas	deep	Use this agent for core infrastructure architecture, Pulumi (Go) IaC, Envoy Gateway routing, Cilium eBPF networking, and homelab k3s cluster topology in vitruvian-core.
 forge	deep	Use this agent for the Bazel build system and toolchains in vitruvian-core - MODULE.bazel and bzlmod dependencies, rules_* upgrades, hermetic toolchains and the Android SDK, gazelle and BUILD generation, .bazelrc configs, the build cache and remote execution, and the presubmit planner and delivery generator.

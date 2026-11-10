@@ -1233,6 +1233,9 @@ public enum NexusAgentSupport {
         switch route {
         case .antigravity:
             return [
+                NexusAgentModelOption(id: "gemini-4-carbon-high", name: "Gemini 4 Carbon (High)", group: "Gemini"),
+                NexusAgentModelOption(id: "gemini-4-carbon-medium", name: "Gemini 4 Carbon (Medium)", group: "Gemini"),
+                NexusAgentModelOption(id: "gemini-4-carbon-low", name: "Gemini 4 Carbon (Low)", group: "Gemini"),
                 NexusAgentModelOption(id: "gemini-4-argon-high", name: "Gemini 4 Argon (High)", group: "Gemini"),
                 NexusAgentModelOption(id: "gemini-4-argon-medium", name: "Gemini 4 Argon (Medium)", group: "Gemini"),
                 NexusAgentModelOption(id: "gemini-4-argon-low", name: "Gemini 4 Argon (Low)", group: "Gemini"),

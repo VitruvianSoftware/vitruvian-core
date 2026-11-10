@@ -20,6 +20,7 @@
 
 package dev.vitruvian.remote.screens
 
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -52,6 +53,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -250,7 +252,9 @@ private fun ColumnScope.DashboardsPane(state: RemoteState) {
     AutoGrid(minItemWidth = TWO_UP_MIN, gap = Space.s4) {
       item { StreamPlate(state = state, module = module) }
       item { ModuleListPlate(module.listLabel, module.rows) }
-      module.extraLists.forEach { list -> item { ModuleListPlate(list.label, list.rows) } }
+      module.extraLists.forEach { list ->
+        item { key(list.label) { ModuleListPlate(list.label, list.rows) } }
+      }
     }
   }
 }
@@ -621,8 +625,10 @@ private fun StreamPlate(state: RemoteState, module: ModuleDashboard) {
       // second prompt was invisible under the first one's output, and the
       // page scrolled instead of the box. Scrolling to the end whenever the
       // line count changes keeps the latest exchange in view.
-      val streamScroll = rememberScrollState()
-      LaunchedEffect(module.lines.size) { streamScroll.animateScrollTo(streamScroll.maxValue) }
+      val streamScroll = rememberSaveable(module.id, saver = ScrollState.Saver) { ScrollState(0) }
+      LaunchedEffect(module.id, module.lines.size) {
+        streamScroll.animateScrollTo(streamScroll.maxValue)
+      }
       val streamModifier = Modifier.heightIn(max = STREAM_MAX_HEIGHT).verticalScroll(streamScroll)
       if (module.markdown) {
         MarkdownStream(lines = module.lines, modifier = streamModifier, cursor = module.cursor)
@@ -988,7 +994,17 @@ private fun ColumnScope.GalleryPane(state: RemoteState) {
               else -> StatusTone.Neutral
             },
     ) {
-      Tag(text = entry.source, tone = TagTone.Outline)
+      if (entry.source == "config") {
+        VButton(
+            label = "Config",
+            onClick = { state.configureModule(entry.id) },
+            variant = ButtonVariant.Secondary,
+            enabled = installed || why == null,
+            contentPadding = PaddingValues(horizontal = Space.s3),
+        )
+      } else {
+        Tag(text = entry.source, tone = TagTone.Outline)
+      }
       VButton(
           label =
               when {
@@ -1084,43 +1100,47 @@ private fun MarkdownStream(lines: List<TerminalLine>, modifier: Modifier, cursor
               .padding(horizontal = Space.s4, vertical = Space.s3),
       verticalArrangement = Arrangement.spacedBy(Space.s1),
   ) {
-    val roles = Markdown.lineRoles(lines.map { it.text })
+    val roles = remember(lines) { Markdown.lineRoles(lines.map { it.text }) }
     lines.forEachIndexed { lineIndex, line ->
       val role = roles[lineIndex]
       if (role == Markdown.LineRole.Fence) return@forEachIndexed
-      val blocks =
-          when (role) {
-            Markdown.LineRole.Heading ->
-                listOf(
-                    Markdown.Block(
-                        Markdown.Kind.Paragraph,
-                        listOf(Markdown.Span(Markdown.headingText(line.text), bold = true)),
-                    ))
-            Markdown.LineRole.Code ->
-                listOf(
-                    Markdown.Block(
-                        Markdown.Kind.Paragraph, listOf(Markdown.Span(line.text, code = true))))
-            else -> Markdown.parse(line.text)
+      key(lineIndex) {
+        val blocks =
+            remember(role, line.text) {
+              when (role) {
+                Markdown.LineRole.Heading ->
+                    listOf(
+                        Markdown.Block(
+                            Markdown.Kind.Paragraph,
+                            listOf(Markdown.Span(Markdown.headingText(line.text), bold = true)),
+                        ))
+                Markdown.LineRole.Code ->
+                    listOf(
+                        Markdown.Block(
+                            Markdown.Kind.Paragraph, listOf(Markdown.Span(line.text, code = true))))
+                else -> Markdown.parse(line.text)
+              }
+            }
+        val color =
+            when (line.tone) {
+              TerminalTone.Text -> colors.text
+              TerminalTone.Dim -> colors.textDim
+              TerminalTone.Ok -> colors.ok
+              TerminalTone.Warn -> colors.warn
+              TerminalTone.Err -> colors.sanguineText
+            }
+        val rows = blocks.ifEmpty { listOf(Markdown.Block(Markdown.Kind.Paragraph, emptyList())) }
+        rows.forEachIndexed { index, block ->
+          Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
+            VText(
+                // Mono, so spaces of the prefix's length hold the column.
+                text = if (index == 0) line.prefix else " ".repeat(line.prefix.length),
+                style = style,
+                color = colors.accent400,
+                softWrap = false,
+            )
+            VText(text = styled(block, code), style = style, color = color)
           }
-      val color =
-          when (line.tone) {
-            TerminalTone.Text -> colors.text
-            TerminalTone.Dim -> colors.textDim
-            TerminalTone.Ok -> colors.ok
-            TerminalTone.Warn -> colors.warn
-            TerminalTone.Err -> colors.sanguineText
-          }
-      val rows = blocks.ifEmpty { listOf(Markdown.Block(Markdown.Kind.Paragraph, emptyList())) }
-      rows.forEachIndexed { index, block ->
-        Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
-          VText(
-              // Mono, so spaces of the prefix's length hold the column.
-              text = if (index == 0) line.prefix else " ".repeat(line.prefix.length),
-              style = style,
-              color = colors.accent400,
-              softWrap = false,
-          )
-          VText(text = styled(block, code), style = style, color = color)
         }
       }
     }
