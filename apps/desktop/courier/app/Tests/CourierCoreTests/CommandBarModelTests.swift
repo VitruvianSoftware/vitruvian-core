@@ -218,7 +218,8 @@ final class CommandBarModelTests: XCTestCase {
         let spaces = SpacesModel(appModel: h.app, inbox: h.inbox, sleep: { _ in })
         try await waitUntil { !spaces.spaces.isEmpty }
 
-        let all = CommandSet.all(inbox: h.inbox, spaces: spaces)
+        let search = SearchModel(appModel: h.app, sleep: { _ in })
+        let all = CommandSet.all(inbox: h.inbox, spaces: spaces, search: search)
         let model = CommandBarModel(defaults: defaults, commandsProvider: { all })
         let bulkIDs = [
             "Archive all chats",
@@ -226,6 +227,18 @@ final class CommandBarModelTests: XCTestCase {
             "Archive all read chats",
             "Mark all chats as read",
         ]
+        XCTAssertEqual(
+            Array(all.suffix(bulkIDs.count).map(\.id)),
+            bulkIDs,
+            "Bulk inbox commands must be the last group in CommandSet.all, after search, message, and settings groups"
+        )
+        let firstBulkIndex = try XCTUnwrap(all.firstIndex { bulkIDs.contains($0.id) })
+        let lastSearchIndex = try XCTUnwrap(all.lastIndex { $0.category == .search })
+        let lastMessageIndex = try XCTUnwrap(all.lastIndex { $0.category == .message })
+        let lastSettingsIndex = try XCTUnwrap(all.lastIndex { $0.category == .settings })
+        XCTAssertGreaterThan(firstBulkIndex, lastSearchIndex)
+        XCTAssertGreaterThan(firstBulkIndex, lastMessageIndex)
+        XCTAssertGreaterThan(firstBulkIndex, lastSettingsIndex)
 
         for id in bulkIDs {
             model.open()

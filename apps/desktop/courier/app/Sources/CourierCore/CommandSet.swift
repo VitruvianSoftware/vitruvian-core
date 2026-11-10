@@ -1162,7 +1162,6 @@ public enum CommandSet {
                 inbox.openMergeEditor(for: target)
             },
         ])
-        appendAll(inboxList.filter { bulkInboxIDs.contains($0.id) })
 
         // 4. Existing CommandSet.search group (3 ledger commands)
         if let search {
@@ -1556,6 +1555,9 @@ public enum CommandSet {
                 openSettingsWindow()
             },
         ])
+
+        // 12. Bulk inbox commands last, after search, message, settings, and all other groups
+        appendAll(inboxList.filter { bulkInboxIDs.contains($0.id) })
 
         return result
     }
