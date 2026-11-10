@@ -460,6 +460,44 @@ final class DoorRoleTests: XCTestCase {
         XCTAssertNotEqual(marks.last?.text, "Broadcasting to Lounge", "broadcasting switched off on disk")
     }
 
+    func testOpenPanelsRedrawWhenSettingsChangeExternally() throws {
+        link.features = [.status]
+        let tool = tool()
+        tool.start()
+        _ = tool.islandPage()
+        _ = tool.settingsPage()
+        link.rendered.removeAll()
+
+        // An unchanged tick does not redraw open panels.
+        now += 5
+        tool.refreshMonitorStatus()
+        tool.refreshRole()
+        XCTAssertTrue(link.rendered.isEmpty, "nothing changed on disk")
+
+        // External writer (`--apply`) changes settings on disk while island and settings panels are open.
+        store.config?.targets["lounge"] = SpeakerDevice(id: "d2", type: "SpeakerDevice", name: "Lounge")
+        store.config?.defaultTarget = "lounge"
+        store.config?.effectiveSpeakLocal = true
+        now += 5
+        tool.refreshMonitorStatus()
+        tool.refreshRole()
+
+        XCTAssertEqual(
+            link.rendered.map(\.panel),
+            [HomeSpeakerTool.islandPanel, HomeSpeakerTool.settingsPanel],
+            "open panels must redraw when settings change externally"
+        )
+        XCTAssertTrue(texts(link.rendered[0].tree).contains("Speaking on Lounge + This Mac"))
+        XCTAssertEqual(marks.last?.text, "Broadcasting to Lounge")
+
+        // Subsequent tick with no further external change does not redraw again.
+        link.rendered.removeAll()
+        now += 5
+        tool.refreshMonitorStatus()
+        tool.refreshRole()
+        XCTAssertTrue(link.rendered.isEmpty, "drawn once per external change")
+    }
+
     func testNoStatusForAnAppWithoutTheFeature() throws {
         link.features = []
         let tool = tool()

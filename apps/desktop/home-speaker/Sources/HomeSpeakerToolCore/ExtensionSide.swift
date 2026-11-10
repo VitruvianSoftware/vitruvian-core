@@ -149,8 +149,11 @@ public enum ExtensionSide {
     /// settings manager and the listeners hold `monitor` weakly: keep it.
     /// Keep the tokens to stop listening.
     @MainActor
-    public static func watch(engine: HomeSpeakerEngine, monitor: GatedMonitor) -> [NSObjectProtocol] {
+    public static func watch(
+        engine: HomeSpeakerEngine, monitor: GatedMonitor, onFolderChange: (() -> Void)? = nil
+    ) -> [NSObjectProtocol] {
         engine.config.chatMonitor = monitor
+        engine.config.onFolderChange = onFolderChange
         engine.config.startWatchingConfigFile()
         return engine.listenForNotices(monitor: monitor) + [
             ChatMonitorControlNotice.listen(
@@ -208,6 +211,13 @@ public enum ExtensionSide {
             inUseEngine: {
                 guard let appProfile, check.standsAside(me: .extension) else { return nil }
                 return makeInUseEngine(appProfile)
+            },
+            stateSeam: { profile in
+                .live(
+                    for: profile,
+                    doorFile: check.file,
+                    otherInstalled: { _ in check.appInstalled() }
+                )
             })
     }
 

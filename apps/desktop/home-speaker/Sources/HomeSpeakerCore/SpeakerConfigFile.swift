@@ -161,6 +161,39 @@ public struct SpeakerConfigFile: Sendable {
         return try writeUnlocked(next)
     }
 
+    /// Runs `update` under `lockURL` against the current `SpeakerConfig` (or
+    /// defaults if missing). Writes the updated config back when `writeConfig`
+    /// is true; if `update` throws, nothing is written.
+    public func modifyTransaction<T>(
+        _ update: (_ config: inout SpeakerConfig, _ writeConfig: inout Bool) throws -> T
+    ) throws -> T {
+        if fileSystem is LocalConfigFileSystem {
+            return try FileLock.withExclusiveLock(at: lockURL) {
+                try modifyTransactionUnlocked(update)
+            }
+        } else {
+            return try modifyTransactionUnlocked(update)
+        }
+    }
+
+    private func modifyTransactionUnlocked<T>(
+        _ update: (_ config: inout SpeakerConfig, _ writeConfig: inout Bool) throws -> T
+    ) throws -> T {
+        let current: SpeakerConfig
+        switch read() {
+        case .loaded(let cfg): current = cfg
+        case .missing: current = SpeakerConfig()
+        case .unreadable(let err): throw err
+        }
+        var next = current
+        var writeConfig = true
+        let result = try update(&next, &writeConfig)
+        if writeConfig {
+            _ = try writeUnlocked(next)
+        }
+        return result
+    }
+
     /// `config` as JSON, laid over `existing`: pretty, keys sorted, as the
     /// app has always written it.
     public static func encode(_ config: SpeakerConfig, preserving existing: [String: Any]) throws -> Data {

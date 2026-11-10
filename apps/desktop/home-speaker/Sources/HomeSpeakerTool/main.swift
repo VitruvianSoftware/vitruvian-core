@@ -210,7 +210,6 @@ func runProgram() -> Never {
     // in a process that does not hold the lock above.
     let monitor = ExtensionSide.chatMonitor(engine: engine)
     let gate = GatedMonitor(monitor)
-    tokens += ExtensionSide.watch(engine: engine, monitor: gate)
 
     let tool = Tool(version: ToolVersion.current)
     let link = KitLink()
@@ -237,6 +236,17 @@ func runProgram() -> Never {
         previewVoice: { voice in try await LocalSpeaker.shared.speak(Pages.previewText, voiceID: voice) },
         gwsLocation: { GwsChatClient.locate() },
         sendStatus: { link.sendStatus($0) }))
+
+    tokens += ExtensionSide.watch(
+        engine: engine,
+        monitor: gate,
+        onFolderChange: {
+            waker.later { _ in
+                speaker.refreshMonitorStatus()
+                speaker.refreshRole()
+            }
+        }
+    )
 
     KitThread(tool: tool, link: link, speaker: speaker, located: located, program: program, door: door).start()
     // The kit's thread exits the process when the app says goodbye.

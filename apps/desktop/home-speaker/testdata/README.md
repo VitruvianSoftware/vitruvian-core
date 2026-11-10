@@ -19,3 +19,4 @@ These JSON files capture the single rulebook for Home Speaker's settings catalog
 - `outputs_label.json` — `SpeakerConfig.activeOutputsLabel` across output combinations and the phone's `"Your phone"` → `"This phone"` substitution.
 - `chat_monitor_status.json` — `ChatMonitorStatus.believed(ownerRunning:)` clearing `isRunning` and `lastError` when the owning process is no longer running.
 - `oauth_client_override.json` — Google sign-in client override rule: a blank secret with an unchanged client ID keeps the stored secret; a blank secret with a changed client ID clears it; a blank client ID clears both.
+- `state_v1.json` — Golden `--state --json` contract v1 document produced from a fixed scratch configuration (multiple speakers, quiet hours, chat sources, Gemini voice engine, and installed Claude Code hook) with all secret values redacted.

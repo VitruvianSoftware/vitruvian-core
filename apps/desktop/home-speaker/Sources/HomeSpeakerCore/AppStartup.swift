@@ -126,6 +126,15 @@ public enum AppStartup {
             inUseEngine: {
                 guard let profile = inUseProfile(check: check, bundlePath: bundlePath()) else { return nil }
                 return makeInUseEngine(profile)
+            },
+            stateSeam: { profile in
+                .live(
+                    for: profile,
+                    doorFile: check.file,
+                    otherInstalled: { record in
+                        OtherDoorPresence.extensionInstalled(record: record, fileExists: check.fileExists)
+                    }
+                )
             })
     }
 

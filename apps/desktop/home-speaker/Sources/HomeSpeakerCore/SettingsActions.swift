@@ -358,6 +358,26 @@ public enum SettingsActions {
         return effectiveValue(for: key, in: config) != beforeEffective
     }
 
+    /// Returns the catalog value for `key` under `config`, filling in the
+    /// catalog's default quiet-hour times when unset and `speakerVolume` (or
+    /// the catalog's default volume) for `.speakerVolume`.
+    public static func catalogValue(
+        for key: SettingsCatalog.Key,
+        in config: SpeakerConfig,
+        speakerVolume: Int? = nil
+    ) -> Value {
+        switch key {
+        case .speakerVolume:
+            return .int(speakerVolume ?? SettingsCatalog.speakerVolumeLimits.defaultValue)
+        case .quietHoursStart:
+            return .string(config.quietHoursStart.flatMap { $0.isEmpty ? nil : $0 } ?? SettingsCatalog.defaultQuietHoursStart)
+        case .quietHoursEnd:
+            return .string(config.quietHoursEnd.flatMap { $0.isEmpty ? nil : $0 } ?? SettingsCatalog.defaultQuietHoursEnd)
+        default:
+            return effectiveValue(for: key, in: config)
+        }
+    }
+
     private static func effectiveValue(for key: SettingsCatalog.Key, in config: SpeakerConfig) -> Value {
         switch key {
         case .enabled: return .bool(config.enabled)
@@ -625,14 +645,7 @@ public enum SettingsActions {
         configFile: SpeakerConfigFile? = nil
     ) throws -> ClearChatTokenResult {
         try store.update { secrets in
-            switch token {
-            case .slack:
-                secrets.slackToken = nil
-            case .beeper:
-                secrets.beeperToken = nil
-            case .courier:
-                secrets.courierToken = nil
-            }
+            applyClearChatToken(token, to: &secrets)
         }
 
         var courierSwitchedOff = false
@@ -640,12 +653,33 @@ public enum SettingsActions {
            case .loaded(let existing) = configFile.read(),
            existing.effectiveChatMonitor.courierEnabled {
             try configFile.modify { config in
-                config.effectiveChatMonitor.courierEnabled = false
+                _ = applyClearChatToken(token, to: &config)
             }
             courierSwitchedOff = true
         }
 
         return ClearChatTokenResult(token: token, courierSwitchedOff: courierSwitchedOff)
+    }
+
+    /// Pure in-memory helper clearing `token` in `Secrets`.
+    public static func applyClearChatToken(_ token: ChatToken, to secrets: inout Secrets) {
+        switch token {
+        case .slack:
+            secrets.slackToken = nil
+        case .beeper:
+            secrets.beeperToken = nil
+        case .courier:
+            secrets.courierToken = nil
+        }
+    }
+
+    /// Pure in-memory helper updating `SpeakerConfig` when `token` is cleared
+    /// (switches `courierEnabled` off when `token == .courier` and Courier was enabled).
+    @discardableResult
+    public static func applyClearChatToken(_ token: ChatToken, to config: inout SpeakerConfig) -> Bool {
+        guard token == .courier, config.effectiveChatMonitor.courierEnabled else { return false }
+        config.effectiveChatMonitor.courierEnabled = false
+        return true
     }
 
     // MARK: - 5. Switch to the App or the Extension (Unified Path)
