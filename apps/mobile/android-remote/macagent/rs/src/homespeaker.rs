@@ -22,10 +22,12 @@
 
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::io::Write;
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -73,6 +75,8 @@ pub const BEEPER_ANNOUNCE_MODES: &[&str] = &["direct_and_mentions", "all"];
 
 /// Why Courier cannot be switched on yet, and what to do.
 pub const COURIER_TOKEN_FIRST: &str = "Courier has no token yet: in Courier, open Settings › Integrations › New connection…, then paste the token into HomeSpeaker on the Mac";
+/// Returned with HTTP 409 when a sign-in, grant-chat, or disconnect-chat job is already running (`HomeSpeakerTool.swift:2116`).
+pub const SIGN_IN_ALREADY_RUNNING: &str = "A HomeSpeaker sign-in is already running on the Mac";
 pub const AGENT_MARKERS: &[&str] = &["CLAUDECODE", "ANTIGRAVITY_AGENT", "OPENCODE", "AI_AGENT"];
 
 const BROADCAST_INSTRUCTION: &str = "- Follow the `home-speaker-broadcast` skill: Accompany top-level conversational responses to the user with a concise spoken broadcast (1-2 sentences) by executing the CLI tool `speaker-broadcast \"<summary>\"` (never run `speaker-broadcast` from a background subagent or a delegated `claude -p` helper call). Always use the CLI rather than manual `home_mcp` calls with device IDs, because `speaker-broadcast` dynamically resolves the live `default_target` from `~/.gemini/speaker_broadcast.json`, checks quiet hours, and verifies enabled status on every execution without caching state. When the user asks to turn speaker broadcasts on/off or change the target room, update `~/.gemini/speaker_broadcast.json` (or run `speaker-broadcast --set-target <room>`) and confirm.";
@@ -82,6 +86,7 @@ pub type RunnerFn =
 pub type RunningFn = Arc<dyn Fn() -> bool + Send + Sync>;
 pub type ReadClipboardFn = Arc<dyn Fn() -> Result<String, String> + Send + Sync>;
 pub type ListVoicesFn = Arc<dyn Fn() -> Result<Vec<HomeSpeakerVoice>, String> + Send + Sync>;
+pub type NotifyCredentialsChangedFn = Arc<dyn Fn(&str) + Send + Sync>;
 
 #[derive(Clone)]
 pub struct HomeSpeaker {
@@ -109,6 +114,10 @@ pub struct HomeSpeaker {
     /// Caches what `list_voices` returns; `new()` shares one process-wide.
     pub voice_cache: Arc<VoiceCache>,
     pub read_clipboard: Option<ReadClipboardFn>,
+    /// Posts `CredentialsChangedNotice` (`<messagePrefix>.credentials-changed`) after a token save or clear.
+    pub notify_credentials_changed: NotifyCredentialsChangedFn,
+    /// Single-flight counter for sign-in / grant-chat / disconnect-chat jobs (`HomeSpeakerTool.swift:2116`).
+    pub sign_in_busy: Arc<AtomicUsize>,
     pub uid: u32,
 }
 
@@ -121,6 +130,18 @@ pub struct HomeSpeakerProfile {
     pub monitor_status_path: PathBuf,
     pub binary: PathBuf,
     pub lock_path: PathBuf,
+}
+
+impl HomeSpeakerProfile {
+    /// Distributed notification name posted by `CredentialsChangedNotice.post(for:)`
+    /// (`SignOutNotice.swift:87`, `Profile.swift:50-52, 194-196`).
+    pub fn credentials_changed_notification_name(&self) -> &'static str {
+        if self.active_door == "extension" {
+            "dev.vitruvian.homespeaker.credentials-changed"
+        } else {
+            "com.vitruviansoftware.homespeaker.credentials-changed"
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1139,6 +1160,7 @@ impl HomeSpeakerUpdate {
 #[derive(Clone, Debug)]
 pub enum ApplyError {
     BadRequest(String),
+    Conflict(String),
     NotFound(String),
     Internal(String),
 }
@@ -1146,7 +1168,10 @@ pub enum ApplyError {
 impl ApplyError {
     pub fn message(&self) -> &str {
         match self {
-            ApplyError::BadRequest(s) | ApplyError::NotFound(s) | ApplyError::Internal(s) => s,
+            ApplyError::BadRequest(s)
+            | ApplyError::Conflict(s)
+            | ApplyError::NotFound(s)
+            | ApplyError::Internal(s) => s,
         }
     }
 }
@@ -1245,6 +1270,20 @@ impl Drop for ExclusiveFlockGuard {
     }
 }
 
+/// Creates `dir` with mode `0o700` only when it does not already exist, matching
+/// `FileLock.withExclusiveLock(at:directoryPermissions: 0o700)` (`SecretStore.swift:211`,
+/// `FileLock.swift:25-28`) without re-chmoding an existing directory.
+fn ensure_secrets_dir(dir: &Path) -> Result<(), ApplyError> {
+    if !dir.exists() {
+        fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(dir)
+            .map_err(|e| ApplyError::Internal(e.to_string()))?;
+    }
+    Ok(())
+}
+
 /// Acquires an exclusive BSD `flock(LOCK_EX)` on `lock_path` (matching Swift's
 /// `FileLock.withExclusiveLock(at:)`), runs `body`, and releases the lock on return.
 fn with_exclusive_file_lock<T, F>(lock_path: &Path, body: F) -> Result<T, ApplyError>
@@ -1279,6 +1318,16 @@ where
     }
     let _guard = ExclusiveFlockGuard(file);
     body()
+}
+
+fn with_exclusive_secrets_lock<T, F>(lock_path: &Path, body: F) -> Result<T, ApplyError>
+where
+    F: FnOnce() -> Result<T, ApplyError>,
+{
+    if let Some(parent) = lock_path.parent() {
+        ensure_secrets_dir(parent)?;
+    }
+    with_exclusive_file_lock(lock_path, body)
 }
 
 pub fn custom_voices(cfg: &JsonObject) -> Vec<HomeSpeakerCustomVoice> {
@@ -1590,6 +1639,14 @@ pub fn run_as_person_within(
 }
 
 pub fn spawn_as_person_detached(name: &str, args: &[String]) -> Result<(String, String), String> {
+    spawn_as_person_detached_with_busy(name, args, None)
+}
+
+fn spawn_as_person_detached_with_busy(
+    name: &str,
+    args: &[String],
+    busy: Option<Arc<AtomicUsize>>,
+) -> Result<(String, String), String> {
     let mut cmd = Command::new(name);
     cmd.args(args)
         .stdin(Stdio::null())
@@ -1599,11 +1656,69 @@ pub fn spawn_as_person_detached(name: &str, args: &[String]) -> Result<(String, 
         cmd.env_remove(marker);
     }
     let mut child = cmd.spawn().map_err(|e| e.to_string())?;
+    if let Some(ref b) = busy {
+        b.fetch_add(1, Ordering::SeqCst);
+    }
     std::thread::spawn(move || {
         let _ = child.wait();
+        if let Some(b) = busy {
+            b.fetch_sub(1, Ordering::SeqCst);
+        }
     });
     Ok((String::new(), String::new()))
 }
+
+#[cfg(target_os = "macos")]
+fn post_distributed_notification(name: &str) {
+    #[link(name = "CoreFoundation", kind = "framework")]
+    extern "C" {
+        fn CFNotificationCenterGetDistributedCenter() -> *const std::ffi::c_void;
+        fn CFNotificationCenterPostNotification(
+            center: *const std::ffi::c_void,
+            name: *const std::ffi::c_void,
+            object: *const std::ffi::c_void,
+            user_info: *const std::ffi::c_void,
+            deliver_immediately: u8,
+        );
+        fn CFStringCreateWithBytes(
+            alloc: *const std::ffi::c_void,
+            bytes: *const u8,
+            num_bytes: isize,
+            encoding: u32,
+            is_external_representation: u8,
+        ) -> *const std::ffi::c_void;
+        fn CFRelease(cf: *const std::ffi::c_void);
+    }
+    const K_CF_STRING_ENCODING_UTF8: u32 = 0x0800_0100;
+    // SAFETY: CoreFoundation distributed notification center and CFString APIs are called with valid UTF-8 bytes and released after posting.
+    unsafe {
+        let center = CFNotificationCenterGetDistributedCenter();
+        if center.is_null() {
+            return;
+        }
+        let cf_name = CFStringCreateWithBytes(
+            std::ptr::null(),
+            name.as_ptr(),
+            name.len() as isize,
+            K_CF_STRING_ENCODING_UTF8,
+            0,
+        );
+        if cf_name.is_null() {
+            return;
+        }
+        CFNotificationCenterPostNotification(
+            center,
+            cf_name,
+            std::ptr::null(),
+            std::ptr::null(),
+            1,
+        );
+        CFRelease(cf_name);
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn post_distributed_notification(_name: &str) {}
 
 fn is_valid_beeper_network_key(key: &str) -> bool {
     !key.is_empty()
@@ -1674,8 +1789,16 @@ fn write_atomic_json(path: &Path, obj: &JsonObject) -> Result<(), ApplyError> {
     let mut data = JsonValue::Object(obj.clone()).to_json_string_swift_pretty();
     data.push('\n');
     let tmp = PathBuf::from(format!("{}.agent-tmp", path.display()));
-    fs::write(&tmp, data.as_bytes()).map_err(|e| ApplyError::Internal(e.to_string()))?;
-    let _ = fs::set_permissions(&tmp, fs::Permissions::from_mode(0o600));
+    let _ = fs::remove_file(&tmp);
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&tmp)
+        .map_err(|e| ApplyError::Internal(e.to_string()))?;
+    file.write_all(data.as_bytes())
+        .map_err(|e| ApplyError::Internal(e.to_string()))?;
+    drop(file);
     fs::rename(&tmp, path).map_err(|e| ApplyError::Internal(e.to_string()))
 }
 
@@ -1717,13 +1840,20 @@ fn swift_secrets_bytes(obj: &JsonObject) -> String {
 
 fn write_atomic_secrets_json(path: &Path, obj: &JsonObject) -> Result<(), ApplyError> {
     if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
-        let _ = fs::set_permissions(parent, fs::Permissions::from_mode(0o700));
+        ensure_secrets_dir(parent)?;
     }
     let data = swift_secrets_bytes(obj);
     let tmp = PathBuf::from(format!("{}.agent-tmp", path.display()));
-    fs::write(&tmp, data.as_bytes()).map_err(|e| ApplyError::Internal(e.to_string()))?;
-    let _ = fs::set_permissions(&tmp, fs::Permissions::from_mode(0o600));
+    let _ = fs::remove_file(&tmp);
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&tmp)
+        .map_err(|e| ApplyError::Internal(e.to_string()))?;
+    file.write_all(data.as_bytes())
+        .map_err(|e| ApplyError::Internal(e.to_string()))?;
+    drop(file);
     fs::rename(&tmp, path).map_err(|e| ApplyError::Internal(e.to_string()))
 }
 
@@ -1966,11 +2096,23 @@ struct MonitorStatusData {
     last_error: String,
 }
 
+struct SignInBusyGuard {
+    busy: Arc<AtomicUsize>,
+}
+
+impl Drop for SignInBusyGuard {
+    fn drop(&mut self) {
+        self.busy.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
 impl HomeSpeaker {
     pub fn new() -> Self {
         let home = std::env::var("HOME")
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from("/tmp"));
+        let sign_in_busy = Arc::new(AtomicUsize::new(0));
+        let launch_busy = sign_in_busy.clone();
         Self {
             config_path: home.join(".gemini").join("speaker_broadcast.json"),
             history_path: home.join(".gemini").join("speaker_history.json"),
@@ -2013,8 +2155,8 @@ impl HomeSpeaker {
                     None => Ok((out, err_s)),
                 }
             }),
-            launch: Some(Arc::new(|_limit, name, args| {
-                spawn_as_person_detached(name, args)
+            launch: Some(Arc::new(move |_limit, name, args| {
+                spawn_as_person_detached_with_busy(name, args, Some(launch_busy.clone()))
             })),
             say: Some(Arc::new(|limit, name, args| {
                 run_as_person_within(limit, name, args)
@@ -2034,9 +2176,20 @@ impl HomeSpeaker {
             })),
             list_voices: Some(Arc::new(list_macos_voices)),
             voice_cache: shared_voice_cache(),
+            notify_credentials_changed: Arc::new(post_distributed_notification),
+            sign_in_busy,
             // SAFETY: `getuid()` is a thread-safe POSIX query with no preconditions.
             uid: unsafe { getuid() },
         }
+    }
+
+    fn acquire_sign_in_busy(&self) -> Result<SignInBusyGuard, ApplyError> {
+        self.sign_in_busy
+            .compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst)
+            .map(|_| SignInBusyGuard {
+                busy: self.sign_in_busy.clone(),
+            })
+            .map_err(|_| ApplyError::Conflict(SIGN_IN_ALREADY_RUNNING.to_string()))
     }
 
     fn launch_or_run(
@@ -3230,7 +3383,7 @@ impl HomeSpeaker {
         };
         if !secrets_path.as_os_str().is_empty() {
             let lock_path = PathBuf::from(format!("{}.lock", secrets_path.display()));
-            with_exclusive_file_lock(&lock_path, || {
+            with_exclusive_secrets_lock(&lock_path, || {
                 let mut doc = if file_exists(secrets_path) {
                     let data = fs::read_to_string(secrets_path)
                         .map_err(|e| ApplyError::Internal(e.to_string()))?;
@@ -3282,7 +3435,7 @@ impl HomeSpeaker {
             return;
         }
         let lock_path = PathBuf::from(format!("{}.lock", secrets_path.display()));
-        let _ = with_exclusive_file_lock(&lock_path, || {
+        let _ = with_exclusive_secrets_lock(&lock_path, || {
             let Ok(data) = fs::read_to_string(secrets_path) else {
                 return Ok(());
             };
@@ -3302,7 +3455,7 @@ impl HomeSpeaker {
             return Ok(());
         }
         let lock_path = PathBuf::from(format!("{}.lock", secrets_path.display()));
-        with_exclusive_file_lock(&lock_path, || {
+        with_exclusive_secrets_lock(&lock_path, || {
             let data = fs::read_to_string(secrets_path)
                 .map_err(|e| ApplyError::Internal(e.to_string()))?;
             let mut doc = JsonValue::parse(&data)
@@ -3360,7 +3513,7 @@ impl HomeSpeaker {
             .unwrap_or("");
 
         let lock_path = PathBuf::from(format!("{}.lock", secrets_path.display()));
-        with_exclusive_file_lock(&lock_path, || {
+        with_exclusive_secrets_lock(&lock_path, || {
             let mut sec_doc = fs::read_to_string(secrets_path)
                 .ok()
                 .and_then(|s| JsonValue::parse(&s).ok())
@@ -3706,6 +3859,7 @@ impl HomeSpeaker {
         let p = self.active_profile();
         let mut cfg_res: Option<Result<JsonObject, ApplyError>> = None;
         let mut cfg_dirty = false;
+        let mut notify_creds = false;
         let bin_str = p.binary.to_string_lossy().into_owned();
 
         macro_rules! need_cfg {
@@ -3723,6 +3877,7 @@ impl HomeSpeaker {
         if let Some(ref ct) = u.courier_token {
             let clean = ct.trim();
             self.update_secret(&p.secrets_path, "courierToken", "", clean)?;
+            notify_creds = true;
             if clean.is_empty() {
                 if cfg_res.is_none() {
                     cfg_res = Some(self.read_config());
@@ -4038,6 +4193,7 @@ impl HomeSpeaker {
                     p.binary.display()
                 )));
             }
+            let _busy = self.acquire_sign_in_busy()?;
             // ProcessDriver.arguments(for: .signIn(chatOnly: false)) -> ["--sign-in"]
             // (Speaker.swift:181, CommandLine.swift:108, GoogleAuth.swift:161).
             let args = vec!["--sign-in".to_string()];
@@ -4066,6 +4222,7 @@ impl HomeSpeaker {
                     p.binary.display()
                 )));
             }
+            let _busy = self.acquire_sign_in_busy()?;
             // ProcessDriver.arguments(for: .signIn(chatOnly: true)) -> ["--sign-in", "--chat"]
             // (Speaker.swift:181, HomeSpeakerTool.swift:676).
             let args = vec!["--sign-in".to_string(), "--chat".to_string()];
@@ -4074,12 +4231,14 @@ impl HomeSpeaker {
             changed.push("grant_chat".to_string());
         }
         if u.disconnect_chat {
+            let _busy = self.acquire_sign_in_busy()?;
             // HomeSpeakerTool.swift:684 (.signOut(chatOnly: true)) -> ["--sign-out", "--chat"]
             // and GoogleAuth.signOut(purpose: .chat) -> SecretStore.clearGoogleChat().
             let args = vec!["--sign-out".to_string(), "--chat".to_string()];
             (self.run)(Duration::from_secs(30), &bin_str, &args)
                 .map_err(|e| ApplyError::Internal(format!("disconnect chat failed: {e}")))?;
             self.clear_google_chat_secrets(&p.secrets_path)?;
+            notify_creds = true;
             changed.push("disconnect_chat".to_string());
         }
         if u.speak_clipboard {
@@ -4132,6 +4291,7 @@ impl HomeSpeaker {
         }
         if let Some(ref st) = u.slack_token {
             self.update_secret(&p.secrets_path, "slackToken", "slack_token", st)?;
+            notify_creds = true;
             changed.push(if st.is_empty() {
                 "slack_token=cleared".to_string()
             } else {
@@ -4140,6 +4300,7 @@ impl HomeSpeaker {
         }
         if let Some(ref bt) = u.beeper_token {
             self.update_secret(&p.secrets_path, "beeperToken", "beeper_token", bt)?;
+            notify_creds = true;
             changed.push(if bt.is_empty() {
                 "beeper_token=cleared".to_string()
             } else {
@@ -4303,6 +4464,9 @@ impl HomeSpeaker {
                 self.write_config(cfg)?;
             }
         }
+        if notify_creds {
+            (self.notify_credentials_changed)(p.credentials_changed_notification_name());
+        }
         Ok(changed.join(" "))
     }
 
@@ -4375,6 +4539,7 @@ impl HomeSpeaker {
                 HttpResponse::json(200, &st.to_json())
             }
             Err(ApplyError::BadRequest(msg)) => HttpResponse::error(400, &msg),
+            Err(ApplyError::Conflict(msg)) => HttpResponse::error(409, &msg),
             Err(ApplyError::NotFound(_)) => {
                 HttpResponse::error(409, "HomeSpeaker has not been set up on this Mac")
             }
@@ -4684,6 +4849,7 @@ mod tests {
     use super::*;
     use crate::pair::Store;
     use crate::sampler::KNOWN_TOOLS;
+    use std::os::unix::fs::PermissionsExt;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::Mutex;
 
@@ -4785,6 +4951,8 @@ mod tests {
                 crate::voice_cache::VOICE_FAILURE_TTL,
                 Arc::new(Instant::now),
             )),
+            notify_credentials_changed: Arc::new(|_| {}),
+            sign_in_busy: Arc::new(AtomicUsize::new(0)),
             uid: 501,
         };
         if with_config {
@@ -6639,8 +6807,9 @@ export default {
         assert_eq!(last.name(), h.binary.to_string_lossy());
         assert_eq!(last.args(), vec!["--sign-out", "--chat"]);
 
-        // Expected bytes copied from Swift SecretStore.encoder ([.prettyPrinted, .sortedKeys]):
-        // escaped slashes, no trailing newline, googleChat removed, google and other tokens intact.
+        // Golden bytes follow JSONSerialization's [.prettyPrinted, .sortedKeys] rules as encoded
+        // in SecretStore.swift:252-257 (Swift not runnable here): escaped slashes, no trailing
+        // newline, googleChat removed, google and other tokens intact.
         const SWIFT_SECRETS_AFTER_DISCONNECT_GOLDEN: &str = "{\n  \"courierToken\" : \"crr-keep-me\",\n  \"google\" : {\n    \"accessToken\" : \"ya29.home\",\n    \"clientId\" : \"cid\",\n    \"clientSecret\" : \"csec\",\n    \"email\" : \"user@example.com\",\n    \"expiry\" : \"2026-12-01T00:00:00Z\",\n    \"refreshToken\" : \"1\\/\\/home-refresh\",\n    \"scopes\" : [\n      \"https:\\/\\/www.googleapis.com\\/auth\\/home.graph\"\n    ]\n  },\n  \"slackToken\" : \"xoxp-keep-me\"\n}";
         assert_eq!(
             fs::read_to_string(&h.secrets_path).unwrap(),
@@ -6781,7 +6950,7 @@ export default {
     }
 
     #[test]
-    fn scout_t1_disconnect_chat_runner_err_preserves_secrets_byte_for_byte() {
+    fn test_home_speaker_disconnect_chat_runner_err_preserves_secrets_byte_for_byte() {
         let (mut h, _, phone, _) = new_test_home_speaker(true);
         h.run = Arc::new(|_limit, _name, _args| Err("exit status 1".to_string()));
         let secrets_before = "{\n  \"googleChat\" : {\n    \"accessToken\" : \"ya29.fake-chat\",\n    \"refreshToken\" : \"1\\/\\/fake-chat-refresh\",\n    \"scopes\" : [\n      \"https:\\/\\/www.googleapis.com\\/auth\\/chat.spaces.readonly\",\n      \"https:\\/\\/www.googleapis.com\\/auth\\/chat.messages.readonly\"\n    ]\n  }\n}";
@@ -6797,7 +6966,7 @@ export default {
     }
 
     #[test]
-    fn scout_t2_courier_token_save_cleans_tmp_and_sets_0600_modes() {
+    fn test_home_speaker_courier_token_save_cleans_tmp_and_sets_0600_modes() {
         let (h, _, _, _) = new_test_home_speaker(true);
         let u = HomeSpeakerUpdate::from_json(
             &JsonValue::parse(r#"{"courier_token":"crr_fake_token"}"#).unwrap(),
@@ -6808,6 +6977,17 @@ export default {
         let tmp_path = PathBuf::from(format!("{}.agent-tmp", h.secrets_path.display()));
         let lock_path = PathBuf::from(format!("{}.lock", h.secrets_path.display()));
         assert!(!tmp_path.exists());
+        let parent = h.secrets_path.parent().unwrap();
+        let leftover_tmps: Vec<String> = fs::read_dir(parent)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.ends_with(".agent-tmp"))
+            .collect();
+        assert!(
+            leftover_tmps.is_empty(),
+            "unexpected *.agent-tmp files: {leftover_tmps:?}"
+        );
         assert_eq!(
             fs::metadata(&lock_path).unwrap().permissions().mode() & 0o777,
             0o600
@@ -6819,7 +6999,7 @@ export default {
     }
 
     #[test]
-    fn scout_t3_courier_token_clear_when_already_disabled_leaves_config_bytes_unchanged() {
+    fn test_home_speaker_courier_token_clear_when_already_disabled_leaves_config_bytes_unchanged() {
         let (h, _, _, _) = new_test_home_speaker(true);
         let cfg_bytes = "{\n  \"chat_monitor\" : {\n    \"courier_enabled\" : false\n  },\n  \"enabled\" : true\n}\n";
         fs::write(&h.config_path, cfg_bytes).unwrap();
@@ -6835,5 +7015,171 @@ export default {
 
         assert_eq!(fs::read_to_string(&h.config_path).unwrap(), cfg_bytes);
         assert!(!h.state().has_courier_token);
+    }
+
+    #[test]
+    fn test_home_speaker_secrets_dir_chmod_0700_only_when_created() {
+        let (mut h, _, _, _) = new_test_home_speaker(true);
+        let base = h.secrets_path.parent().unwrap().to_path_buf();
+
+        // 1. Brand-new secrets directory gets mode 0700 on creation, and file gets 0600.
+        let fresh_dir = base.join("fresh_secrets_dir");
+        h.secrets_path = fresh_dir.join("secrets.json");
+        assert!(!fresh_dir.exists());
+        let u = HomeSpeakerUpdate::from_json(
+            &JsonValue::parse(r#"{"courier_token":"crr_new_dir"}"#).unwrap(),
+        )
+        .unwrap();
+        h.apply(u).unwrap();
+        assert_eq!(
+            fs::metadata(&fresh_dir).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        assert_eq!(
+            fs::metadata(&h.secrets_path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+
+        // 2. Existing secrets directory keeps its permissions (not re-chmoded on write).
+        let existing_dir = base.join("existing_secrets_dir");
+        fs::create_dir_all(&existing_dir).unwrap();
+        fs::set_permissions(&existing_dir, fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(
+            fs::metadata(&existing_dir).unwrap().permissions().mode() & 0o777,
+            0o755
+        );
+        h.secrets_path = existing_dir.join("secrets.json");
+        let u2 = HomeSpeakerUpdate::from_json(
+            &JsonValue::parse(r#"{"courier_token":"crr_existing_dir"}"#).unwrap(),
+        )
+        .unwrap();
+        h.apply(u2).unwrap();
+        assert_eq!(
+            fs::metadata(&existing_dir).unwrap().permissions().mode() & 0o777,
+            0o755
+        );
+        assert_eq!(
+            fs::metadata(&h.secrets_path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
+
+    #[test]
+    fn test_home_speaker_sign_in_single_flight_guard_returns_409_while_busy() {
+        let (mut h, _, phone, _) = new_test_home_speaker(true);
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let release_rx = Arc::new(Mutex::new(release_rx));
+        let r_rx = release_rx.clone();
+
+        h.launch = Some(Arc::new(move |_limit, _name, _args| {
+            let _ = started_tx.send(());
+            let _ = r_rx.lock().unwrap().recv();
+            Ok((String::new(), String::new()))
+        }));
+        let h = Arc::new(h);
+
+        let h_bg = h.clone();
+        let bg = std::thread::spawn(move || {
+            let pb = PhoneBridge::new();
+            h_bg.handle_set(&post_req("/v1/homespeaker", r#"{"sign_in":true}"#), &pb)
+        });
+
+        started_rx.recv().unwrap();
+
+        // While the first sign-in is running, sign_in, grant_chat, and disconnect_chat all return 409.
+        for payload in [
+            r#"{"sign_in":true}"#,
+            r#"{"grant_chat":true}"#,
+            r#"{"disconnect_chat":true}"#,
+        ] {
+            let r_conflict = h.handle_set(&post_req("/v1/homespeaker", payload), &phone);
+            assert_eq!(r_conflict.status, 409);
+            let err_val = JsonValue::parse(&r_conflict.body_string()).unwrap();
+            assert_eq!(
+                err_val
+                    .as_object()
+                    .unwrap()
+                    .get("error")
+                    .unwrap()
+                    .as_str()
+                    .unwrap(),
+                "A HomeSpeaker sign-in is already running on the Mac"
+            );
+        }
+
+        // Release the first sign-in; it finishes with 200, and the next request succeeds.
+        release_tx.send(()).unwrap();
+        let r_first = bg.join().unwrap();
+        assert_eq!(r_first.status, 200);
+
+        release_tx.send(()).unwrap();
+        let r_next = h.handle_set(
+            &post_req("/v1/homespeaker", r#"{"grant_chat":true}"#),
+            &phone,
+        );
+        assert_eq!(r_next.status, 200);
+    }
+
+    #[test]
+    fn test_home_speaker_notifies_credentials_changed_on_token_save_clear_and_disconnect() {
+        let (mut h, _, phone, _) = new_test_home_speaker(true);
+        let notices: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let notices_c = notices.clone();
+        h.notify_credentials_changed = Arc::new(move |name| {
+            notices_c.lock().unwrap().push(name.to_string());
+        });
+
+        // Default door is "app" -> com.vitruviansoftware.homespeaker.credentials-changed
+        for body in [
+            r#"{"courier_token":"crr_tok"}"#,
+            r#"{"courier_token":""}"#,
+            r#"{"slack_token":"xoxp-tok"}"#,
+            r#"{"slack_token":""}"#,
+            r#"{"beeper_token":"bp_tok"}"#,
+            r#"{"beeper_token":""}"#,
+            r#"{"disconnect_chat":true}"#,
+        ] {
+            let r = h.handle_set(&post_req("/v1/homespeaker", body), &phone);
+            assert_eq!(r.status, 200, "failed for {body}");
+        }
+        assert_eq!(
+            notices.lock().unwrap().as_slice(),
+            &[
+                "com.vitruviansoftware.homespeaker.credentials-changed",
+                "com.vitruviansoftware.homespeaker.credentials-changed",
+                "com.vitruviansoftware.homespeaker.credentials-changed",
+                "com.vitruviansoftware.homespeaker.credentials-changed",
+                "com.vitruviansoftware.homespeaker.credentials-changed",
+                "com.vitruviansoftware.homespeaker.credentials-changed",
+                "com.vitruviansoftware.homespeaker.credentials-changed",
+            ]
+        );
+
+        // Unrelated setting changes do not post credentials-changed.
+        notices.lock().unwrap().clear();
+        let r_unrelated =
+            h.handle_set(&post_req("/v1/homespeaker", r#"{"enabled":false}"#), &phone);
+        assert_eq!(r_unrelated.status, 200);
+        assert!(notices.lock().unwrap().is_empty());
+
+        // Switching to the extension door posts dev.vitruvian.homespeaker.credentials-changed.
+        let ext_dir = h.door_path.parent().unwrap().join("ext_data");
+        fs::create_dir_all(&ext_dir).unwrap();
+        let door_json = format!(
+            r#"{{"chosen":"extension","extension":{{"door":1,"program":"{}","data_folder":"{}"}}}}"#,
+            h.binary.display(),
+            ext_dir.display()
+        );
+        fs::write(&h.door_path, door_json).unwrap();
+        let r_ext = h.handle_set(
+            &post_req("/v1/homespeaker", r#"{"courier_token":"crr_ext"}"#),
+            &phone,
+        );
+        assert_eq!(r_ext.status, 200);
+        assert_eq!(
+            notices.lock().unwrap().as_slice(),
+            &["dev.vitruvian.homespeaker.credentials-changed"]
+        );
     }
 }

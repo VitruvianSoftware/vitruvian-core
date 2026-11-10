@@ -466,23 +466,81 @@ public class RemoteState(
     private set
 
   /**
-   * True after tapping "Sign in on Mac" until the next poll reports [AgentHomeSpeaker.signedIn].
+   * Epoch ms when "Sign in on Mac" was tapped; cleared once a poll reports
+   * [AgentHomeSpeaker.signedIn] or after [Derive.SIGN_IN_TIMEOUT_MS].
    */
-  public var homeSpeakerSignInPending: Boolean by mutableStateOf(false)
+  public var homeSpeakerSignInPendingSinceMs: Long? by mutableStateOf(null)
     private set
 
-  /** True after tapping "Grant…" until the next poll reports [AgentHomeSpeaker.hasChatAccess]. */
-  public var homeSpeakerChatGrantPending: Boolean by mutableStateOf(false)
+  /**
+   * Epoch ms when "Grant…" was tapped; cleared once a poll reports [AgentHomeSpeaker.hasChatAccess]
+   * or after [Derive.SIGN_IN_TIMEOUT_MS].
+   */
+  public var homeSpeakerChatGrantPendingSinceMs: Long? by mutableStateOf(null)
     private set
+
+  /**
+   * True after tapping "Sign in on Mac" until the next poll reports [AgentHomeSpeaker.signedIn] or
+   * the 5-minute timeout elapses.
+   */
+  public val homeSpeakerSignInPending: Boolean
+    get() =
+        Derive.resolvePendingSignIn(
+                homeSpeakerSignInPendingSinceMs,
+                signedIn = agentHomeSpeaker?.signedIn == true,
+                nowMs = System.currentTimeMillis(),
+            )
+            .pending
+
+  /**
+   * True after tapping "Grant…" until the next poll reports [AgentHomeSpeaker.hasChatAccess] or the
+   * 5-minute timeout elapses.
+   */
+  public val homeSpeakerChatGrantPending: Boolean
+    get() =
+        Derive.resolvePendingSignIn(
+                homeSpeakerChatGrantPendingSinceMs,
+                signedIn =
+                    agentHomeSpeaker?.hasChatAccess == true ||
+                        agentHomeSpeaker?.hasGoogleChatToken == true,
+                nowMs = System.currentTimeMillis(),
+            )
+            .pending
 
   /** Whether HomeSpeaker controls that mutate Mac state should be enabled. */
   private val homeSpeakerCanAct: Boolean
     get() = paired && !isOffline && !actsNeedPairing
 
-  private fun applyAgentHomeSpeaker(hs: AgentHomeSpeaker) {
+  private fun applyAgentHomeSpeaker(
+      hs: AgentHomeSpeaker,
+      nowMs: Long = System.currentTimeMillis(),
+  ) {
     agentHomeSpeaker = hs
-    if (hs.signedIn) homeSpeakerSignInPending = false
-    if (hs.hasChatAccess || hs.hasGoogleChatToken) homeSpeakerChatGrantPending = false
+    val next =
+        Derive.updatePendingSignInOnPoll(
+            signInPendingSinceMs = homeSpeakerSignInPendingSinceMs,
+            chatGrantPendingSinceMs = homeSpeakerChatGrantPendingSinceMs,
+            signedIn = hs.signedIn,
+            hasChatAccess = hs.hasChatAccess,
+            hasGoogleChatToken = hs.hasGoogleChatToken,
+            nowMs = nowMs,
+        )
+    homeSpeakerSignInPendingSinceMs = next.signIn.pendingSinceMs
+    if (next.signIn.timedOut) {
+      homeSpeakerErrors =
+          homeSpeakerErrors + ("Google Home account" to Derive.SIGN_IN_TIMED_OUT_NOTE)
+    } else if (hs.signedIn &&
+        homeSpeakerErrors["Google Home account"] == Derive.SIGN_IN_TIMED_OUT_NOTE) {
+      clearHomeSpeakerError("Google Home account")
+    }
+    homeSpeakerChatGrantPendingSinceMs = next.chatGrant.pendingSinceMs
+    if (next.chatGrant.timedOut) {
+      homeSpeakerErrors =
+          homeSpeakerErrors + ("Google Chat account" to Derive.SIGN_IN_TIMED_OUT_NOTE)
+    } else if ((hs.hasChatAccess || hs.hasGoogleChatToken) &&
+        homeSpeakerErrors["Google Chat account"] == Derive.SIGN_IN_TIMED_OUT_NOTE) {
+      clearHomeSpeakerError("Google Chat account")
+    }
   }
 
   /** The announce box on the HomeSpeaker dashboard. Cleared once the Mac has spoken it. */
@@ -2522,7 +2580,9 @@ public class RemoteState(
         )
     if (!homeSpeakerSettingsExpanded) return listOf(disclosure)
     return listOf(disclosure) +
-        homeSpeakerSettingsRows(hs).map { row -> row.copy(error = homeSpeakerErrors[row.title]) }
+        homeSpeakerSettingsRows(hs).map { row ->
+          row.copy(error = homeSpeakerErrors[row.title] ?: row.error)
+        }
   }
 
   private fun homeSpeakerSettingsRows(hs: AgentHomeSpeaker): List<ModuleRow> = buildList {
@@ -2653,6 +2713,8 @@ public class RemoteState(
                 signInPending = homeSpeakerSignInPending,
                 canAct = homeSpeakerCanAct,
                 installed = hs.installed,
+                signInPendingSinceMs = homeSpeakerSignInPendingSinceMs,
+                nowMs = System.currentTimeMillis(),
             )
         add(
             ModuleRow(
@@ -2660,6 +2722,7 @@ public class RemoteState(
                 subtitle = accountSpec.subtitle,
                 trailing = accountSpec.trailing,
                 tone = if (accountSpec.healthy) StatusTone.Ok else StatusTone.Neutral,
+                error = accountSpec.inlineNote,
                 actions =
                     buildList {
                       if (accountSpec.showSignOut) {
@@ -3579,6 +3642,8 @@ public class RemoteState(
                           grantPending = homeSpeakerChatGrantPending,
                           canAct = homeSpeakerCanAct,
                           installed = hs.installed,
+                          grantPendingSinceMs = homeSpeakerChatGrantPendingSinceMs,
+                          nowMs = System.currentTimeMillis(),
                       )
                   add(
                       ModuleRow(
@@ -3586,6 +3651,7 @@ public class RemoteState(
                           subtitle = chatDiag.subtitle,
                           trailing = chatDiag.trailing,
                           tone = if (chatDiag.healthy) StatusTone.Ok else StatusTone.Warn,
+                          error = chatDiag.inlineNote,
                           actions =
                               buildList {
                                 if (chatDiag.showGrant) {
@@ -4216,21 +4282,22 @@ public class RemoteState(
               )
             }
             .onSuccess {
+              clearHomeSpeakerError(key)
               if (signOut) {
-                homeSpeakerSignInPending = false
-                homeSpeakerChatGrantPending = false
+                homeSpeakerSignInPendingSinceMs = null
+                homeSpeakerChatGrantPendingSinceMs = null
               }
               if (disconnectChat) {
-                homeSpeakerChatGrantPending = false
+                homeSpeakerChatGrantPendingSinceMs = null
               }
-              applyAgentHomeSpeaker(it)
+              val nowMs = System.currentTimeMillis()
+              applyAgentHomeSpeaker(it, nowMs)
               if (signIn && !it.signedIn) {
-                homeSpeakerSignInPending = true
+                homeSpeakerSignInPendingSinceMs = nowMs
               }
               if (grantChat && !it.hasChatAccess) {
-                homeSpeakerChatGrantPending = true
+                homeSpeakerChatGrantPendingSinceMs = nowMs
               }
-              clearHomeSpeakerError(key)
               homeSpeakerNotice = "✓ homespeaker · $what" to StatusTone.Ok
               log("info", "homespeaker · $what")
               // A different speaker has a different volume; show it now.
@@ -6110,8 +6177,8 @@ public class RemoteState(
     agentSpeakerVolume = null
     homeSpeakerNotice = null
     homeSpeakerErrors = emptyMap()
-    homeSpeakerSignInPending = false
-    homeSpeakerChatGrantPending = false
+    homeSpeakerSignInPendingSinceMs = null
+    homeSpeakerChatGrantPendingSinceMs = null
     agentTv = null
     tvCastDraft = ""
     tvBusyAction = null

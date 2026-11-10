@@ -675,6 +675,100 @@ public object Derive {
   /** Shown under Google Home or Google Chat account after starting OAuth on the Mac. */
   public const val FINISH_SIGN_IN_ON_MAC: String = "Finish signing in on your Mac"
 
+  /** How long [FINISH_SIGN_IN_ON_MAC] stays pending before timing out (5 minutes). */
+  public const val SIGN_IN_TIMEOUT_MS: Long = 5 * 60 * 1000L
+
+  /** Inline note shown when a Mac sign-in does not finish within [SIGN_IN_TIMEOUT_MS]. */
+  public const val SIGN_IN_TIMED_OUT_NOTE: String = "Sign-in didn't finish on the Mac. Try again."
+
+  /**
+   * Returned by the Mac agent (HTTP 409) when a second sign-in/grant/disconnect overlaps one in
+   * flight.
+   */
+  public const val SIGN_IN_ALREADY_RUNNING: String =
+      "A HomeSpeaker sign-in is already running on the Mac"
+
+  /**
+   * Pure result of evaluating a pending Mac sign-in or Chat grant against the latest poll and
+   * clock.
+   */
+  public data class PendingSignInState(
+      val pending: Boolean,
+      val timedOut: Boolean,
+      val pendingSinceMs: Long?,
+      val inlineNote: String?,
+  )
+
+  /**
+   * Resolves a pending Mac sign-in (or Chat grant) given [pendingSinceMs], whether the latest poll
+   * reports [signedIn], and the current timestamp [nowMs].
+   * - If [signedIn] is true, the pending state clears (`pending = false`, `pendingSinceMs = null`,
+   *   `inlineNote = null`).
+   * - If [pendingSinceMs] is non-null and at least [SIGN_IN_TIMEOUT_MS] (5 minutes) has elapsed at
+   *   [nowMs], the pending state times out (`pending = false`, `timedOut = true`, `pendingSinceMs =
+   *   null`, `inlineNote = SIGN_IN_TIMED_OUT_NOTE`).
+   * - If [pendingSinceMs] is non-null and less than [SIGN_IN_TIMEOUT_MS] has elapsed, it stays
+   *   pending (`pending = true`, `timedOut = false`, `pendingSinceMs = pendingSinceMs`, `inlineNote
+   *   = null`).
+   */
+  public fun resolvePendingSignIn(
+      pendingSinceMs: Long?,
+      signedIn: Boolean,
+      nowMs: Long,
+  ): PendingSignInState {
+    if (signedIn || pendingSinceMs == null) {
+      return PendingSignInState(
+          pending = false,
+          timedOut = false,
+          pendingSinceMs = null,
+          inlineNote = null,
+      )
+    }
+    if (nowMs - pendingSinceMs >= SIGN_IN_TIMEOUT_MS) {
+      return PendingSignInState(
+          pending = false,
+          timedOut = true,
+          pendingSinceMs = null,
+          inlineNote = SIGN_IN_TIMED_OUT_NOTE,
+      )
+    }
+    return PendingSignInState(
+        pending = true,
+        timedOut = false,
+        pendingSinceMs = pendingSinceMs,
+        inlineNote = null,
+    )
+  }
+
+  /** Pure poll transition for Google Home sign-in and Google Chat grant pending states. */
+  public data class PollPendingSignInUpdate(
+      val signIn: PendingSignInState,
+      val chatGrant: PendingSignInState,
+  )
+
+  /**
+   * Pure poll transition used when a `/v1/homespeaker` poll arrives: clears pending sign-in when
+   * [signedIn] is true, clears pending Chat grant when [hasChatAccess] or [hasGoogleChatToken] is
+   * true, and expires either after [SIGN_IN_TIMEOUT_MS] at [nowMs].
+   */
+  public fun updatePendingSignInOnPoll(
+      signInPendingSinceMs: Long?,
+      chatGrantPendingSinceMs: Long?,
+      signedIn: Boolean,
+      hasChatAccess: Boolean,
+      hasGoogleChatToken: Boolean = false,
+      nowMs: Long = 0L,
+  ): PollPendingSignInUpdate =
+      PollPendingSignInUpdate(
+          signIn = resolvePendingSignIn(signInPendingSinceMs, signedIn = signedIn, nowMs = nowMs),
+          chatGrant =
+              resolvePendingSignIn(
+                  chatGrantPendingSinceMs,
+                  signedIn = hasChatAccess || hasGoogleChatToken,
+                  nowMs = nowMs,
+              ),
+      )
+
   /** Google Cloud Console URL opened by `HomeSpeakerTool` (`Block.openGoogleCloud`). */
   public const val GOOGLE_CLOUD_CONSOLE_URL: String =
       "https://console.cloud.google.com/apis/credentials"
@@ -690,13 +784,14 @@ public object Derive {
       val importLoginEnabled: Boolean,
       val showSignOut: Boolean,
       val signOutEnabled: Boolean,
+      val inlineNote: String? = null,
   )
 
   /**
    * Derives the "Google Home account" row state. When not signed in, offers "Sign in on Mac"
    * (`HomeSpeaker --sign-in`) and, if Antigravity tokens exist, "Import login". After tapping "Sign
-   * in on Mac", [signInPending] shows [FINISH_SIGN_IN_ON_MAC] until the next poll reports
-   * [signedIn].
+   * in on Mac", [signInPending] (or [signInPendingSinceMs] before [SIGN_IN_TIMEOUT_MS]) shows
+   * [FINISH_SIGN_IN_ON_MAC] until the next poll reports [signedIn] or 5 minutes elapse.
    */
   public fun googleHomeAccountRow(
       signedIn: Boolean,
@@ -705,6 +800,8 @@ public object Derive {
       signInPending: Boolean = false,
       canAct: Boolean = true,
       installed: Boolean = true,
+      signInPendingSinceMs: Long? = null,
+      nowMs: Long = 0L,
   ): GoogleHomeAccountRowSpec {
     val email = accountEmail.trim()
     if (signedIn) {
@@ -718,17 +815,29 @@ public object Derive {
           importLoginEnabled = false,
           showSignOut = true,
           signOutEnabled = canAct,
+          inlineNote = null,
       )
     }
+    val pendingState =
+        if (signInPendingSinceMs != null) {
+          resolvePendingSignIn(signInPendingSinceMs, signedIn = false, nowMs = nowMs)
+        } else {
+          PendingSignInState(
+              pending = signInPending,
+              timedOut = false,
+              pendingSinceMs = null,
+              inlineNote = null,
+          )
+        }
     val sub =
         when {
-          signInPending -> FINISH_SIGN_IN_ON_MAC
+          pendingState.pending -> FINISH_SIGN_IN_ON_MAC
           email.isNotEmpty() -> email
           else -> "not signed in"
         }
     return GoogleHomeAccountRowSpec(
         subtitle = sub,
-        trailing = if (signInPending) "signing in…" else "sign in",
+        trailing = if (pendingState.pending) "signing in…" else "sign in",
         healthy = false,
         showSignIn = true,
         signInEnabled = canAct && installed,
@@ -736,6 +845,7 @@ public object Derive {
         importLoginEnabled = canAct,
         showSignOut = false,
         signOutEnabled = false,
+        inlineNote = pendingState.inlineNote,
     )
   }
 
@@ -751,6 +861,7 @@ public object Derive {
       val disconnectEnabled: Boolean = false,
       val showGwsPrompt: Boolean = false,
       val gwsPromptEnabled: Boolean = false,
+      val inlineNote: String? = null,
   )
 
   /**
@@ -768,6 +879,8 @@ public object Derive {
       grantPending: Boolean = false,
       canAct: Boolean = true,
       installed: Boolean = true,
+      grantPendingSinceMs: Long? = null,
+      nowMs: Long = 0L,
   ): GoogleChatAccountDiag {
     val normalizedSource = source.trim().lowercase(Locale.ROOT)
     val effectiveSource =
@@ -785,7 +898,7 @@ public object Derive {
     val showGrant = offersApiActions && !hasChatAccess
     val grantEnabled = showGrant && canAct && installed
     val showDisconnect = offersApiActions && hasChatAccess
-    val disconnectEnabled = showDisconnect && canAct
+    val disconnectEnabled = showDisconnect && canAct && installed
     val showGwsPrompt = normalizedSource != "api"
     val gwsPromptEnabled = showGwsPrompt && canAct
     val base =
@@ -886,8 +999,19 @@ public object Derive {
                     )
               }
         }
-    val sub = if (grantPending && !hasChatAccess) FINISH_SIGN_IN_ON_MAC else base.subtitle
-    val trail = if (grantPending && !hasChatAccess) "signing in…" else base.trailing
+    val pendingState =
+        if (grantPendingSinceMs != null) {
+          resolvePendingSignIn(grantPendingSinceMs, signedIn = hasChatAccess, nowMs = nowMs)
+        } else {
+          PendingSignInState(
+              pending = grantPending && !hasChatAccess,
+              timedOut = false,
+              pendingSinceMs = null,
+              inlineNote = null,
+          )
+        }
+    val sub = if (pendingState.pending) FINISH_SIGN_IN_ON_MAC else base.subtitle
+    val trail = if (pendingState.pending) "signing in…" else base.trailing
     return base.copy(
         subtitle = sub,
         trailing = trail,
@@ -897,6 +1021,7 @@ public object Derive {
         disconnectEnabled = disconnectEnabled,
         showGwsPrompt = showGwsPrompt,
         gwsPromptEnabled = gwsPromptEnabled,
+        inlineNote = pendingState.inlineNote,
     )
   }
 
@@ -1421,6 +1546,11 @@ public object Derive {
             lower.contains("no route")
     if (unreachable) {
       return "Couldn't $action: the Mac didn't answer"
+    }
+    val strippedAgent =
+        if (lower.startsWith("agent:")) raw.substring("agent:".length).trim() else raw
+    if (strippedAgent.equals(SIGN_IN_ALREADY_RUNNING, ignoreCase = true)) {
+      return SIGN_IN_ALREADY_RUNNING
     }
     if (lower.startsWith("agent:") ||
         HTTP_CODE_REGEX.containsMatchIn(raw) ||

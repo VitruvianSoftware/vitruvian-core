@@ -683,7 +683,7 @@ The following status and diagnostic fields bring `/v1/homespeaker` to full parit
 | `chat_runtime_error` | string | Recent runtime error reported by chat monitor |
 | `has_slack_token` | bool | Whether Slack token is stored in secrets |
 | `has_beeper_token` | bool | Whether Beeper access token is stored in secrets |
-| `has_chat_access` | bool | Whether Google Chat access is active (API OAuth token or `gws` CLI) |
+| `has_chat_access` | bool | Whether Google Chat OAuth consent is stored in `secrets.json` (`googleChat` with the required Chat scopes) |
 | `has_google_chat_token` | bool | Whether a dedicated Google Chat OAuth refresh token (`googleChat.refreshToken`) is stored in `secrets.json` |
 | `gws_installed` | bool | Whether `gws` CLI executable is installed on the Mac |
 | `gws_account` | string | Google Workspace account email configured for chat monitor |
