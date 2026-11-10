@@ -147,6 +147,7 @@ private struct FilterChip<Choices: View>: View {
     let choice: String?
     let clear: () -> Void
     @ViewBuilder let choices: () -> Choices
+    @Environment(\.themeAccentColor) private var themeAccent
 
     var body: some View {
         HStack(spacing: 2) {
@@ -170,7 +171,7 @@ private struct FilterChip<Choices: View>: View {
         .font(.callout)
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
-        .background(Capsule().fill(choice == nil ? Color.primary.opacity(0.06) : Color.accentColor.opacity(0.18)))
-        .overlay(Capsule().strokeBorder(choice == nil ? Color.primary.opacity(0.10) : Color.accentColor.opacity(0.45)))
+        .background(Capsule().fill(choice == nil ? Color.primary.opacity(0.06) : themeAccent.opacity(0.18)))
+        .overlay(Capsule().strokeBorder(choice == nil ? Color.primary.opacity(0.10) : themeAccent.opacity(0.45)))
     }
 }

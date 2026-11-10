@@ -159,8 +159,10 @@ struct MainWindow: View {
             .environment(\.searchInChat, { search.show(in: $0) })
             .environment(\.openDetachedWindow, { target in detachedWindows?.open(target) })
             .environment(\.appearancePreferences, appearance)
+            .environment(\.themeAccentHex, appearance.effectiveTheme(for: nil).accentColorHex)
             .environment(\.redactNamesAndPictures, appearance.redactNamesAndPictures)
             .environment(\.liquidGlass, appearance.liquidGlassIsActive)
+            .tint(Color(hex: appearance.effectiveTheme(for: nil).accentColorHex) ?? .accentColor)
             .courierTextZoom(appearance)
             .preferredColorScheme(preferredColorScheme)
     }
@@ -254,6 +256,8 @@ struct MainWindow: View {
                         onClose: { hotkeys.isShortcutsSheetPresented = false }
                     )
                 }
+                // Always named, so the Window menu, Mission Control and VoiceOver say "Courier"; the empty-chat
+                // toolbar (courierEmptyChatToolbar) hides the visible caption instead.
                 .navigationTitle("Courier")
                 .navigationSubtitle(lifecycle.isLocked ? "" : StatusText.subtitle(for: model.engineState))
         }
@@ -343,9 +347,11 @@ struct MainWindow: View {
                         } else {
                             NoChatSelected(
                                 appearance: appearance,
+                                hotkeys: hotkeys,
                                 rows: inbox.rows,
                                 onSelectRoom: { roomID in inbox.select(roomID) }
                             )
+                            .courierEmptyChatToolbar(isConnected: model.engineState == .connected)
                         }
                     }
                     if conversation.isShowingCalendar {
@@ -471,6 +477,7 @@ struct SidebarSplitView<Sidebar: View, Detail: View>: View {
 /// The right-hand pane while no chat is open.
 struct NoChatSelected: View {
     @ObservedObject var appearance: AppearancePreferences
+    var hotkeys: HotkeyRegistry? = nil
     var rows: [InboxRow] = []
     var onSelectRoom: (String) -> Void = { _ in }
 
@@ -492,8 +499,18 @@ struct NoChatSelected: View {
                     onSelectRoom: onSelectRoom
                 )
             } else {
-                Text(String(localized: "Select a chat"))
-                    .foregroundStyle(.secondary)
+                let registry = hotkeys ?? HotkeyRegistry()
+                let goMod = registry.primaryChord(for: "Switch First 9 Chats Modifier")?.symbols ?? "⌃"
+                let searchShortcut = registry.primaryChord(for: "Search")?.symbols ?? "⌘K"
+                VStack(spacing: 6) {
+                    Text(String(localized: "No chat open"))
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                    Text(String(localized: "Go to Chat (\(goMod)1–9) or Search (\(searchShortcut))"))
+                        .font(.subheadline)
+                        .foregroundStyle(.tertiary)
+                }
+                .multilineTextAlignment(.center)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -504,6 +521,14 @@ private struct AppearancePreferencesEnvironmentKey: EnvironmentKey {
     static let defaultValue: AppearancePreferences? = nil
 }
 
+private struct ThemeAccentHexEnvironmentKey: EnvironmentKey {
+    static let defaultValue: String = CourierThemePreset.classicTeal.defaultAccentHex
+}
+
+private struct ThemeRoomIDEnvironmentKey: EnvironmentKey {
+    static let defaultValue: String? = nil
+}
+
 private struct RedactNamesAndPicturesKey: EnvironmentKey {
     static let defaultValue = false
 }
@@ -512,6 +537,38 @@ extension EnvironmentValues {
     var appearancePreferences: AppearancePreferences? {
         get { self[AppearancePreferencesEnvironmentKey.self] }
         set { self[AppearancePreferencesEnvironmentKey.self] = newValue }
+    }
+
+    var themeAccentHex: String {
+        get { self[ThemeAccentHexEnvironmentKey.self] }
+        set { self[ThemeAccentHexEnvironmentKey.self] = newValue }
+    }
+
+    var themeRoomID: String? {
+        get { self[ThemeRoomIDEnvironmentKey.self] }
+        set { self[ThemeRoomIDEnvironmentKey.self] = newValue }
+    }
+
+    /// The theme preset's accent colour, shared across bubbles, unread badges, the New divider, and selection.
+    /// Inbox-level views (where `themeRoomID` is nil) keep the global theme accent; views inside an open chat use that
+    /// room's effective theme.
+    var themeAccentColor: Color {
+        let hex: String
+        if Thread.isMainThread {
+            hex = MainActor.assumeIsolated {
+                appearancePreferences?.effectiveTheme(for: themeRoomID).accentColorHex ?? themeAccentHex
+            }
+        } else {
+            hex = themeAccentHex
+        }
+        return Color(hex: hex) ?? Color(hex: CourierThemePreset.classicTeal.defaultAccentHex) ?? .accentColor
+    }
+
+    @MainActor
+    func themeAccentColor(for roomID: String?, appearance: AppearancePreferences? = nil) -> Color {
+        let resolved = appearance ?? appearancePreferences
+        let hex = resolved?.effectiveTheme(for: roomID).accentColorHex ?? themeAccentHex
+        return Color(hex: hex) ?? Color(hex: CourierThemePreset.classicTeal.defaultAccentHex) ?? .accentColor
     }
 
     /// "Redact names and pictures", as a value: a view that reads it redraws when it changes, which reading it off
@@ -552,7 +609,7 @@ enum StatusText {
         case .starting: String(localized: "Connecting…")
         case .reconnecting: String(localized: "Reconnecting…")
         case .updateNeeded: String(localized: "Update needed")
-        case .connected: String(localized: "Connected")
+        case .connected: ""
         case .stopped: String(localized: "Stopped")
         }
     }

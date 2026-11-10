@@ -205,6 +205,61 @@ final class CommandBarModelTests: XCTestCase {
         XCTAssertFalse(model.isPresented)
     }
 
+    func testBulkInboxCommandsGateOnConfirmationAndCancelLeavesActionUnrun() async throws {
+        let h = try await startInbox(
+            rooms: [room("!a", ts: 200, unread: 1)],
+            autoRelease: true
+        )
+        defer {
+            Task { await h.app.stop() }
+            h.cleanUp()
+        }
+        h.script.spaces = [spaceJSON("inbox", chats: 1, unread: 1)]
+        let spaces = SpacesModel(appModel: h.app, inbox: h.inbox, sleep: { _ in })
+        try await waitUntil { !spaces.spaces.isEmpty }
+
+        let search = SearchModel(
+            appModel: h.app,
+            recents: RecentSearches(defaults: defaults),
+            open: { _ in },
+            sleep: { _ in }
+        )
+        let all = CommandSet.all(inbox: h.inbox, spaces: spaces, search: search)
+        let model = CommandBarModel(defaults: defaults, commandsProvider: { all })
+        let bulkIDs = [
+            "Archive all chats",
+            "Archive all chats older than a week",
+            "Archive all read chats",
+            "Mark all chats as read",
+        ]
+        XCTAssertEqual(
+            Array(all.suffix(bulkIDs.count).map(\.id)),
+            bulkIDs,
+            "Bulk inbox commands must be the last group in CommandSet.all, after search, message, and settings groups"
+        )
+        let firstBulkIndex = try XCTUnwrap(all.firstIndex { bulkIDs.contains($0.id) })
+        let lastSearchIndex = try XCTUnwrap(all.lastIndex { $0.category == .search })
+        let lastMessageIndex = try XCTUnwrap(all.lastIndex { $0.category == .message })
+        let lastSettingsIndex = try XCTUnwrap(all.lastIndex { $0.category == .settings })
+        XCTAssertGreaterThan(firstBulkIndex, lastSearchIndex)
+        XCTAssertGreaterThan(firstBulkIndex, lastMessageIndex)
+        XCTAssertGreaterThan(firstBulkIndex, lastSettingsIndex)
+
+        for id in bulkIDs {
+            model.open()
+            let cmd = try XCTUnwrap(all.first { $0.id == id }, "Missing bulk command \(id)")
+            XCTAssertNotNil(cmd.confirmation, "\(id) must require confirmation")
+            model.execute(cmd)
+            XCTAssertEqual(model.pendingConfirmation?.id, id, "\(id) must enter pendingConfirmation before running")
+            XCTAssertTrue(model.isPresented, "Command bar stays open while awaiting confirmation for \(id)")
+            model.cancelPendingConfirmation()
+            XCTAssertNil(model.pendingConfirmation)
+            XCTAssertTrue(model.isPresented)
+        }
+        XCTAssertEqual(h.count("inbox.archiveMatching"), 0, "Canceled bulk archive commands must not invoke RPC")
+        XCTAssertEqual(h.count("inbox.markAllRead"), 0, "Canceled mark-all-read command must not invoke RPC")
+    }
+
     func testAppLockDismissesCommandBarAndRefusesOpenOrExecute() {
         let lifecycle = SystemLifecycleModel(
             defaults: defaults,

@@ -130,4 +130,65 @@ final class InboxPresentationTests: XCTestCase {
         XCTAssertEqual(seen.count, networks.count, "each network is told apart")
         XCTAssertEqual(NetworkAppearance.of("a-network-added-later"), NetworkAppearance.fallback)
     }
+
+    func testThreadPreviewWording() {
+        let myReply = InboxRow(
+            roomID: "!a", network: "signal", name: "Weekend Trail Crew", avatarPath: "",
+            isDirect: false, lastTS: 1, preview: "On my way", previewKind: .text,
+            previewMine: true, unread: 0, muted: false, previewInThread: true
+        )
+        XCTAssertEqual(myReply.previewThreadPrefix, "You, in a thread: ")
+        XCTAssertEqual(myReply.previewBody, "On my way")
+        XCTAssertEqual(myReply.formattedPreviewText, "You, in a thread: On my way")
+
+        let groupReply = InboxRow(
+            roomID: "!a", network: "signal", name: "Weekend Trail Crew", avatarPath: "",
+            isDirect: false, lastTS: 1, preview: "Sounds good", previewKind: .text,
+            previewMine: false, unread: 1, muted: false, previewInThread: true
+        )
+        XCTAssertEqual(groupReply.previewThreadPrefix, "In a thread: ")
+        XCTAssertEqual(groupReply.previewBody, "Sounds good")
+        XCTAssertEqual(groupReply.formattedPreviewText, "In a thread: Sounds good")
+
+        let groupReplyWithColon = InboxRow(
+            roomID: "!a", network: "signal", name: "Weekend Trail Crew", avatarPath: "",
+            isDirect: false, lastTS: 1, preview: "Note: bring water", previewKind: .text,
+            previewMine: false, unread: 1, muted: false, previewInThread: true
+        )
+        XCTAssertEqual(groupReplyWithColon.previewThreadPrefix, "In a thread: ")
+        XCTAssertEqual(groupReplyWithColon.previewBody, "Note: bring water")
+        XCTAssertEqual(groupReplyWithColon.formattedPreviewText, "In a thread: Note: bring water")
+
+        let directReply = InboxRow(
+            roomID: "!b", network: "signal", name: "Ann", avatarPath: "",
+            isDirect: true, lastTS: 1, preview: "See you at 8", previewKind: .text,
+            previewMine: false, unread: 1, muted: false, previewInThread: true
+        )
+        XCTAssertEqual(directReply.previewThreadPrefix, "Ann, in a thread: ")
+        XCTAssertEqual(directReply.previewBody, "See you at 8")
+        XCTAssertEqual(directReply.formattedPreviewText, "Ann, in a thread: See you at 8")
+
+        let nonThread = InboxRow(
+            roomID: "!b", network: "signal", name: "Ann", avatarPath: "",
+            isDirect: true, lastTS: 1, preview: "See you at 8", previewKind: .text,
+            previewMine: false, unread: 1, muted: false, previewInThread: false
+        )
+        XCTAssertNil(nonThread.previewThreadPrefix)
+        XCTAssertEqual(nonThread.formattedPreviewText, "See you at 8")
+
+        let unnamedRoomReply = InboxRow(
+            roomID: "!c", network: "signal", name: "", avatarPath: "",
+            isDirect: false, lastTS: 1, preview: "Pinned map", previewKind: .text,
+            previewMine: false, unread: 1, muted: false, previewInThread: true
+        )
+        XCTAssertEqual(unnamedRoomReply.previewThreadPrefix, "In a thread: ")
+        XCTAssertEqual(unnamedRoomReply.formattedPreviewText, "In a thread: Pinned map")
+
+        let mediaReply = InboxRow(
+            roomID: "!d", network: "signal", name: "Ann", avatarPath: "",
+            isDirect: true, lastTS: 1, preview: "", previewKind: .image,
+            previewMine: false, unread: 1, muted: false, previewInThread: true
+        )
+        XCTAssertEqual(mediaReply.formattedPreviewText, "Ann, in a thread: Image")
+    }
 }

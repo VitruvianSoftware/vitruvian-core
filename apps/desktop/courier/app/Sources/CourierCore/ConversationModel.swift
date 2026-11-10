@@ -825,7 +825,10 @@ public final class ConversationModel: ObservableObject {
             target.network = activeReplyNetwork ?? network
             target.otherPerson = otherPerson
         }
-        if thread.roomID == room || thread.roomID == targetRoom { thread.hideDeleted = hidesDeleted }
+        thread.isDirect = isDirectChat ?? false
+        if thread.roomID == room || thread.roomID == targetRoom {
+            thread.hideDeleted = hidesDeleted
+        }
     }
 
     /// Deleted messages leave no placeholder: the person's setting, or a network that leaves none (Telegram).
