@@ -23,8 +23,8 @@ the first 80 characters, so the Mac has a record of what the phone did.
 
 | Method | Path | Body / query | Response |
 |---|---|---|---|
-| GET | `/healthz` | – | `{ok, sample_age_ms, agent_version, read_only:false, paired:bool, sampled_at}` |
-| GET | `/v1/host` | – | `{hostname, model, chip, cores, memory_bytes, os_version, agent_version, mac_address, wake_on_lan:bool}` — `mac_address` is en0's, for the phone to send a Wake-on-LAN packet; `wake_on_lan` is `pmset womp` |
+| GET | `/healthz` | – | `{ok, sample_age_ms, agent_version, read_only:false, paired:bool, sampled_at}` — `agent_version` reports the version of the installed release |
+| GET | `/v1/host` | – | `{hostname, model, chip, cores, memory_bytes, os_version, agent_version, mac_address, wake_on_lan:bool}` — `agent_version` reports the version of the installed release; `mac_address` is en0's, for the phone to send a Wake-on-LAN packet; `wake_on_lan` is `pmset womp` |
 | GET | `/v1/metrics` | – | unchanged from v1.0 (cpu/memory/battery/disk/network/thermal/uptime/unavailable) |
 | GET | `/v1/processes` | – | `{sampled_at, processes:[{name, cpu_percent:float, memory_bytes:int}]}` — top 8 by CPU from `ps -Aceo pcpu,rss,comm -r` |
 | GET | `/v1/vms` | – | `{available:bool, reason:string, vms:[{name, status, vm_type, cpus:int, memory_bytes:int, disk_bytes:int, arch}]}` — `limactl list --json` (one object per line). `available:false` with a reason when limactl is absent or fails |
@@ -580,7 +580,10 @@ no `recent` it falls back to `last` as a one-row list.
 HomeSpeaker ships through two doors (`apps/desktop/home-speaker/Sources/HomeSpeakerCore/Door.swift`):
 the standalone `/Applications/HomeSpeaker.app` bundle (`"app"`) and the Vitruvian extension under
 `~/Library/Application Support/Vitruvian/Tools/dev.vitruvian.homespeaker` (`"extension"`). Which
-door is active is recorded in `~/.gemini/speaker_door.json`.
+door is active is recorded in `~/.gemini/speaker_door.json`. The HomeSpeaker door (app vs Vitruvian
+extension) is offered on the phone only when the extension is installed. Choosing `"extension"` without
+the extension installed returns 400. Switching doors copies nothing and repoints only stale hooks when
+choosing the extension.
 
 When `speaker_door.json` chooses `"extension"` (or has no choice recorded and the standalone `.app`
 is absent) and the extension binary exists outside `.Trash`, `/v1/homespeaker` reads and writes the
@@ -683,14 +686,15 @@ The following status and diagnostic fields bring `/v1/homespeaker` to full parit
 | `chat_runtime_error` | string | Recent runtime error reported by chat monitor |
 | `has_slack_token` | bool | Whether Slack token is stored in secrets |
 | `has_beeper_token` | bool | Whether Beeper access token is stored in secrets |
-| `has_chat_access` | bool | Whether chat credentials file exists |
+| `has_google_chat_token` | bool | Whether Google Chat OAuth refresh token is stored in secrets |
+| `has_chat_access` | bool | Whether Google Chat consent has been granted (Google Chat only; equal to `has_google_chat_token`) |
 | `gws_installed` | bool | Whether `gws` CLI executable is installed on the Mac |
 | `gws_account` | string | Google Workspace account email configured for chat monitor |
 | `google_chat_source` | string | Backend for Google Chat (`"auto"`, `"api"`, or `"gws"`) |
 | `poll_interval` | int | Polling frequency in seconds (default `15`, clamped to `5`–`300`) |
-| `agents` | `[{agent, hook_state, speaks_twice, configured_by_instruction}]` | Integration status for `claude-code`, `antigravity`, and `opencode` |
+| `agents` | `[{agent, hook_state, speaks_twice, configured_by_instruction}]` | Integration status for `claude-code`, `antigravity`, and `opencode` (phone can install, update, or remove hooks for all three) |
 | `legacy_launch_agent` | bool | Whether legacy `com.james.chat-monitor.plist` is present |
-| `custom_oauth_client_id` | string | Saved Google Cloud OAuth client ID |
+| `custom_oauth_client_id` | string | Saved Google Cloud OAuth client ID (always shown on phone) |
 | `has_custom_oauth_secret` | bool | Whether custom OAuth client secret is saved |
 | `home_speaker_version` | string | Version of the installed HomeSpeaker application |
 
@@ -712,7 +716,7 @@ The update endpoint supports these additional configuration actions and secret u
 | `local_voice` | string | Sets macOS system voice identifier |
 | `preview_voice` | bool | Previews the Mac voice locally on the Mac via `say` (never broadcasts to speakers) |
 | `test_media_pause` | bool | Executes `HomeSpeaker --test-media-pause` |
-| `active_door` | `"app"` \| `"extension"` | Updates `~/.gemini/speaker_door.json` |
+| `active_door` | `"app"` \| `"extension"` | Updates `~/.gemini/speaker_door.json` (returns 400 if extension is not installed; copies nothing and repoints only stale hooks when choosing extension) |
 | `discover` | bool | Executes `HomeSpeaker --discover` to refresh targets |
 | `structure_id` | string | Updates structure ID or switches active home via `HomeSpeaker --home <id>` |
 | `remove_target` | string | Removes specified target alias from `targets` in config |
@@ -726,7 +730,7 @@ The update endpoint supports these additional configuration actions and secret u
 | `beeper_token` | string | Updates Beeper access token (empty string clears token) |
 | `gemini_api_key` | string | Updates Gemini API key in `secrets.json` |
 | `oauth_client_id`, `oauth_client_secret` | string | Updates custom OAuth client credentials |
-| `agent_hook_action` | string | Performs hook actions (`"install:<agent>"`, `"remove:<agent>"`, `"add-instruction:<agent>"`, `"remove-legacy-agent"`) |
+| `agent_hook_action` | string | Performs hook actions (`"install:<agent>"`, `"remove:<agent>"`, `"add-instruction:<agent>"`, `"remove-legacy-agent"`; phone can install, update, or remove hooks for `claude-code`, `antigravity`, and `opencode`) |
 | `chat_monitor_action` | `"start"` \| `"stop"` | Starts or stops the chat monitor daemon |
 | `reset_settings` | bool | Backs up current settings and resets HomeSpeaker configuration |
 

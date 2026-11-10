@@ -23,8 +23,8 @@ the first 80 characters, so the Mac has a record of what the phone did.
 
 | Method | Path | Body / query | Response |
 |---|---|---|---|
-| GET | `/healthz` | – | `{ok, sample_age_ms, agent_version, read_only:false, paired:bool, sampled_at}` |
-| GET | `/v1/host` | – | `{hostname, model, chip, cores, memory_bytes, os_version, agent_version, mac_address, wake_on_lan:bool}` — `mac_address` is en0's, for the phone to send a Wake-on-LAN packet; `wake_on_lan` is `pmset womp` |
+| GET | `/healthz` | – | `{ok, sample_age_ms, agent_version, read_only:false, paired:bool, sampled_at}` — `agent_version` reports the version of the installed release |
+| GET | `/v1/host` | – | `{hostname, model, chip, cores, memory_bytes, os_version, agent_version, mac_address, wake_on_lan:bool}` — `agent_version` reports the version of the installed release; `mac_address` is en0's, for the phone to send a Wake-on-LAN packet; `wake_on_lan` is `pmset womp` |
 | GET | `/v1/metrics` | – | unchanged from v1.0 (cpu/memory/battery/disk/network/thermal/uptime/unavailable) |
 | GET | `/v1/processes` | – | `{sampled_at, processes:[{name, cpu_percent:float, memory_bytes:int}]}` — top 8 by CPU from `ps -Aceo pcpu,rss,comm -r` |
 | GET | `/v1/vms` | – | `{available:bool, reason:string, vms:[{name, status, vm_type, cpus:int, memory_bytes:int, disk_bytes:int, arch}]}` — `limactl list --json` (one object per line). `available:false` with a reason when limactl is absent or fails |
@@ -336,3 +336,10 @@ and a body with none of the recognised fields is 400.
 
 The phone reads a reply without the five switches as an agent older than v1.10 and hides them. With
 no `recent` it falls back to `last` as a one-row list.
+
+## HomeSpeaker parity additions
+
+- **Door routing.** The HomeSpeaker door (`active_door`: `"app"` vs `"extension"`) is offered on the phone only when the extension is installed. Choosing `"extension"` without the extension installed returns 400. Switching doors copies nothing and repoints only stale hooks when choosing the extension.
+- **Google Cloud OAuth.** Google Cloud OAuth setup is always shown on the phone so custom client ID and secret can be configured directly.
+- **Chat access.** Chat access (`has_chat_access`) reflects Google Chat consent only (backed by `has_google_chat_token`). Slack and Beeper tokens have their own flags and do not grant Google Chat access.
+- **Agent hooks.** The phone can view and install, update, or remove HomeSpeaker hooks for Antigravity and OpenCode in addition to Claude Code (`agent_hook_action`: `"install:<agent>"`, `"remove:<agent>"`).

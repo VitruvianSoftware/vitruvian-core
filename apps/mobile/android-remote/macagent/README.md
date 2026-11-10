@@ -38,37 +38,45 @@ What bounds it:
 
 v1.0 of this agent was read-only and said so everywhere. v1.1 is not, and
 `/healthz` reports `read_only: false` so a client can tell which one it is
-talking to.
+talking to. Both `/healthz` and `/v1/host` report `agent_version`, which reports the version
+of the installed release.
 
-## Pair a phone
+## Install and pair
 
-1. Open the app on the phone. It shows a six-digit code with a five-minute
-   life.
-2. On the Mac:
+The agent runs on your Mac and connects to your phone over your local network or Tailscale.
 
-   ```sh
-   bazel run //apps/mobile/android-remote/macagent:pair -- 482917
-   ```
+### 1. Install the agent on your Mac
 
-   That writes `~/.config/vitruvian-remote-agent/pair.json`. A running agent
-   picks it up on its next request — nothing to restart.
+There are two ways to install and run the agent:
 
-3. The phone polls `POST /v1/pair` until it gets a token, then keeps it.
+- **As a Vitruvian desktop-app tool:** The agent ships as a built-in Vitruvian tool. In the Vitruvian desktop app (`Vitruvian.app`), open the Tools catalog and enable **Vitruvian Remote**. This runs the background daemon and provides a menu bar status app.
+- **From source with Bazel (development):** Install the agent as a user LaunchAgent:
 
-The window is one-shot: the first phone through it closes it, so a second
-device that overheard the code gets nothing.
+  ```sh
+  bazel run //apps/mobile/android-remote/macagent:install
+  ```
 
-The agent listens on this Mac's Tailscale address whenever there is one. It
-checks every five seconds, so an agent that started at login before Tailscale
-was up starts serving the phone as soon as Tailscale connects (v1.9.1).
+  This builds the daemon, copies the binary to `~/.local/bin/vitruvian-remote-agent`, and starts the background service.
 
-**Or scan a QR code (v1.9).** In the Vitruvian Remote menu bar app, choose
-**Pair with QR Code…**. It opens a pairing window for a code the Mac picks
-and shows a QR code for `http://<Tailscale IP>:7411/pair?code=NNNNNN`. The
-phone's camera opens that page, the page's button opens the app, and the app
-asks you to confirm before it pairs. The QR holds a web link rather than a
-`vitruvian-remote://` one because Pixel's camera shows custom-scheme links as
-text instead of opening them.
+### 2. Pair your phone
+
+You can pair your phone using a QR code or a six-digit code:
+
+- **Pair with QR code:** In the Vitruvian Remote menu bar app, choose **Pair with QR Code…**. A window opens showing a QR code for `http://<Tailscale IP>:7411/pair?code=NNNNNN`. Scan the code with your phone's camera, tap the link to open Vitruvian Remote, and confirm pairing.
+- **Pair with six-digit code:**
+  1. Open the Vitruvian Remote app on your phone. When unpaired, the app displays a six-digit code with a five-minute life.
+  2. On your Mac, enter the code in the Vitruvian Remote menu bar app, or run:
+
+     ```sh
+     bazel run //apps/mobile/android-remote/macagent:pair -- 482917
+     ```
+
+     That writes `~/.config/vitruvian-remote-agent/pair.json`. A running agent picks it up on its next request — nothing to restart.
+  3. The phone polls `POST /v1/pair` until it gets a token, then keeps it.
+
+The window is one-shot: the first phone through it closes it, so a second device that overheard the code gets nothing.
+
+The agent listens on `127.0.0.1:7411` and this Mac's Tailscale address whenever there is one. It checks every five seconds, so an agent that started at login before Tailscale was up starts serving the phone as soon as Tailscale connects. It reports the version of the installed release.
 
 ## Endpoints
 
@@ -77,7 +85,7 @@ Read (no auth):
 | Method | Path             | What                                                                          |
 | ------ | ---------------- | ----------------------------------------------------------------------------- |
 | GET    | `/v1/metrics`    | CPU, memory, battery, disk, network, thermal, uptime                          |
-| GET    | `/v1/host`       | hostname, model, chip, cores, memory, OS, MAC address, Wake-on-LAN            |
+| GET    | `/v1/host`       | hostname, model, chip, cores, memory, OS, agent version, MAC address, Wake-on-LAN |
 | GET    | `/v1/processes`  | top 8 by CPU                                                                   |
 | GET    | `/v1/vms`        | Lima instances                                                                 |
 | GET    | `/v1/containers` | Docker, falling back to podman                                                 |
@@ -90,7 +98,7 @@ Read (no auth):
 | GET    | `/v1/prs`        | your open pull requests and their check counts (v1.2)                         |
 | GET    | `/v1/argocd`     | ArgoCD Applications, sync and health (v1.2)                                   |
 | GET    | `/v1/phone`      | whether a phone is linked, its tools and its trust window (v1.3)              |
-| GET    | `/healthz`       | 200 while readings are fresh (<30 s), 503 otherwise                            |
+| GET    | `/healthz`       | 200 while readings are fresh (<30 s), 503 otherwise (reports agent version, sample age, and pairing status) |
 | GET    | `/pair?code=N`   | the page a pairing QR code opens: one button into the phone app (v1.9)         |
 
 Act (`Authorization: Bearer <token>`):
