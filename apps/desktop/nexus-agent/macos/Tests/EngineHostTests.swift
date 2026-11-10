@@ -212,6 +212,13 @@ final class EngineHostTests: XCTestCase {
                     return NexusAgentSessionSummary.parseClaudeSessions(home: home, directory: directory,
                                                                         appHidden: hidden)
                 },
+                transcriptPath: { [unowned self] id, provider in
+                    NexusAgentEngine.transcriptPath(home: home, conversationID: id, provider: provider)
+                },
+                readTranscriptRaw: { [unowned self] id, provider in
+                    NexusAgentEngine.transcriptPath(home: home, conversationID: id, provider: provider)
+                        .flatMap { try? String(contentsOfFile: $0, encoding: .utf8) }
+                },
                 runProgram: { @MainActor [unowned self] name, arguments in
                     programRuns.append((name, arguments))
                     if holdsProgram {
@@ -232,6 +239,13 @@ final class EngineHostTests: XCTestCase {
                     return sqliteAnswer(sql, readsRows)
                 },
                 runSqliteOffMain: hasOffMainSqlite ? offMainSqlite : nil)
+        }
+
+        /// Writes agy's transcript of a conversation under `home`, as a real file.
+        func writeAgyTranscript(_ id: String, lines: [String]) {
+            let folder = home + "/.gemini/antigravity/brain/\(id)/.system_generated/logs"
+            try? FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+            try? (lines.joined(separator: "\n") + "\n").write(toFile: folder + "/transcript.jsonl", atomically: true, encoding: .utf8)
         }
 
         private var offMainSqlite: @Sendable (String, String, Bool) async -> Data? {
@@ -2084,6 +2098,33 @@ final class EngineHostTests: XCTestCase {
         let nothing = await clearAll(session, in: NexusAgentConfiguration())
         XCTAssertEqual(nothing, 0)
         XCTAssertFalse(session.isClearingSessions)
+    }
+
+    func testOpeningAnotherConversationShowsItsOwnSubagents() {
+        let rig = Rig(realHome: true)
+        defer { rig.tearDown() }
+        rig.writeAgyTranscript("busy", lines: [
+            #"{"type":"PLANNER_RESPONSE","tool_calls":[{"name":"invoke_subagent","args":{"Prompt":"\"Watch CI\"","Role":"\"CI watch\"","TypeName":"\"self\""}}]}"#,
+        ])
+        rig.writeAgyTranscript("quiet", lines: [#"{"type":"USER_INPUT","content":"hello"}"#])
+        let session = NexusAgentQuickPromptSession(environment: rig.environment, host: RecordingHost())
+        defer { session.stopTranscriptFollower() }
+
+        session.resume(conversation("busy"))
+        XCTAssertEqual(session.activeSubagents.map(\.role), ["CI watch"])
+        // The file grows while it is open, as a live transcript does.
+        rig.writeAgyTranscript("busy", lines: [
+            #"{"type":"PLANNER_RESPONSE","tool_calls":[{"name":"invoke_subagent","args":{"Prompt":"\"Watch CI\"","Role":"\"CI watch\"","TypeName":"\"self\""}}]}"#,
+            #"{"type":"GENERIC","content":"Created At: x\nCompleted At: y\nstill going"}"#,
+        ])
+        session.checkTranscriptUpdates()
+        XCTAssertEqual(session.activeSubagents.map(\.role), ["CI watch"])
+
+        session.resume(conversation("quiet"))
+        XCTAssertEqual(session.activeSubagents, [], "the other conversation's subagents are not this one's")
+
+        session.resume(conversation("busy"))
+        XCTAssertEqual(session.activeSubagents.map(\.role), ["CI watch"], "read at once, not when the file next changes")
     }
 
     func testClearAllOffTheMainThreadStartsANewChatIfTheOpenConversationWent() async {

@@ -487,12 +487,23 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         if !messages.isEmpty {
             recordCurrentTranscriptState()
         }
+        // Read at once: the file may not change again while it is open.
+        refreshActiveSubagents()
         checkTranscriptUpdates()
         followerTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.checkTranscriptUpdates()
             }
         }
+    }
+
+    /// The subagents the open conversation's transcript says are at work.
+    private func refreshActiveSubagents() {
+        guard let convID = conversationID, !convID.isEmpty else { return }
+        let provider = activeProvider ?? .antigravity
+        let parsed = environment.readTranscriptRaw(convID, provider)
+            .map(NexusAgentEngine.parseActiveSubagents(from:)) ?? []
+        if activeSubagents != parsed { activeSubagents = parsed }
     }
 
     /// Stops watching the transcript file.
@@ -575,6 +586,8 @@ public final class NexusAgentQuickPromptSession: ObservableObject {
         replyID = nil
         sessionAllowedTools = []
         lastFailedPrompt = nil
+        // The last conversation's subagents are not this one's.
+        activeSubagents = []
         conversationID = summary.id
         let effectiveTitle = summary.title.isEmpty
             ? (summary.preview.split(separator: "\n").first.map(String.init) ?? "")
