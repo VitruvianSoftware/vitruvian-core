@@ -175,7 +175,7 @@ func runProgram() -> Never {
             arguments, engine: HomeSpeakerEngine(profile: located.profile),
             parts: ExtensionSide.commandLineParts(
                 check: check, appSecretsURL: appSecrets, appSettingsURL: appProfile.settingsURL,
-                appProfile: appProfile))
+                appProfile: appProfile, program: program, appProgram: { locateApp() }, home: home))
     }
 
     // The tool. Vitruvian starts it in its data folder, which the hello

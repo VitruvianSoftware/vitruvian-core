@@ -409,10 +409,10 @@ public enum HomeSpeakerCommandLine {
         case .state(.some(let usage)), .apply(.failure(let usage)):
             return .now(usageError(usage))
         case .state(nil):
-            let seam = parts.stateSeam?(profile) ?? .live(for: profile)
+            let seam = parts.stateSeam?(profile) ?? .live(for: profile, doorSwitchSeam: { nil })
             return .now(state(seam: seam))
         case .apply(.success(let changes)):
-            let seam = parts.stateSeam?(profile) ?? .live(for: profile)
+            let seam = parts.stateSeam?(profile) ?? .live(for: profile, doorSwitchSeam: { nil })
             return .now(apply(changes, seam: seam))
         case .signIn(let purpose):
             let openBrowser = parts.openBrowser

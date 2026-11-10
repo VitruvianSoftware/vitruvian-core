@@ -113,7 +113,7 @@ public enum HomeSpeakerStateContract {
                     fileExists: { FileManager.default.fileExists(atPath: $0) }
                 )
             },
-            doorSwitchSeam: @escaping @Sendable () -> (any SettingsActions.DoorSwitchSeam)? = { nil }
+            doorSwitchSeam: @escaping @Sendable () -> (any SettingsActions.DoorSwitchSeam)?
         ) -> Seam {
             let home = FileManager.default.homeDirectoryForCurrentUser
             let antigravityURL = SecretStore.antigravityTokensURL
@@ -165,6 +165,9 @@ public enum HomeSpeakerStateContract {
         let now = seam.now()
         let doorRecord = seam.doorFile.read()
         let otherInstalled = seam.otherInstalled(doorRecord)
+        let selfInstalled = !OtherDoorPresence.isInTrash(seam.hookExecutablePath)
+        let appInstalled = seam.program == .app ? selfInstalled : otherInstalled
+        let extensionInstalled = seam.program == .extension ? selfInstalled : otherInstalled
         let chosen = doorRecord?.chosen
         let role = DoorRole.decide(me: seam.program, otherInstalled: otherInstalled, chosen: chosen)
         let activeDoor: HomeSpeakerProfile.Door
@@ -480,6 +483,8 @@ public enum HomeSpeakerStateContract {
             "program": seam.program.rawValue,
             "chosen": chosen?.rawValue ?? NSNull(),
             "chosen_running": chosenRunning,
+            "app_installed": appInstalled,
+            "extension_installed": extensionInstalled,
             "other_installed": otherInstalled,
             "active_door": activeDoor.rawValue,
             "app_running": appRunning,
@@ -596,9 +601,9 @@ public enum HomeSpeakerStateContract {
             let voices = seam.systemVoices()
             let results: [[String: Any]] = try seam.configFile.modifyTransaction { config, writeConfig in
                 var workingSecrets = seam.secrets.load()
-                var secretsDirty = false
+                var secretMutations: [(inout Secrets, inout [[String: Any]]) -> Void] = []
                 var configDirty = false
-                var pendingSwitches: [PendingSwitch] = []
+                var pendingSwitch: PendingSwitch?
                 var opResults: [[String: Any]] = []
 
                 for (index, opDict) in operations.enumerated() {
@@ -724,7 +729,9 @@ public enum HomeSpeakerStateContract {
                         }
                         SettingsActions.applyClearChatToken(token, to: &workingSecrets)
                         let courierSwitchedOff = SettingsActions.applyClearChatToken(token, to: &config)
-                        secretsDirty = true
+                        secretMutations.append { lockedSecrets, _ in
+                            SettingsActions.applyClearChatToken(token, to: &lockedSecrets)
+                        }
                         if courierSwitchedOff {
                             configDirty = true
                         }
@@ -748,7 +755,20 @@ public enum HomeSpeakerStateContract {
                             secret: clientSecret,
                             to: &workingSecrets
                         )
-                        secretsDirty = true
+                        secretMutations.append { lockedSecrets, results in
+                            let lockedRes = SettingsActions.applyOAuthClientOverride(
+                                id: clientId,
+                                secret: clientSecret,
+                                to: &lockedSecrets
+                            )
+                            results[index] = [
+                                "op": "saveOAuthClient",
+                                "client_id": lockedRes.clientId ?? NSNull(),
+                                "has_client_secret": lockedRes.hasClientSecret,
+                                "cleared": lockedRes.cleared,
+                                "kept_existing_secret": lockedRes.keptExistingSecret,
+                            ]
+                        }
                         opResults.append([
                             "op": "saveOAuthClient",
                             "client_id": res.clientId ?? NSNull(),
@@ -758,6 +778,13 @@ public enum HomeSpeakerStateContract {
                         ])
 
                     case "switchTo":
+                        guard pendingSwitch == nil else {
+                            throw IndexedApplyError(
+                                opIndex: index,
+                                code: "one_switch_per_batch",
+                                message: "At most one \"switchTo\" operation is allowed per --apply batch."
+                            )
+                        }
                         guard let sideRaw = opDict["side"] as? String,
                               let targetSide = HomeSpeakerProfile.Door(rawValue: sideRaw) else {
                             throw IndexedApplyError(
@@ -767,7 +794,13 @@ public enum HomeSpeakerStateContract {
                             )
                         }
                         let copyFlag = (opDict["copy"] as? Bool) ?? false
-                        let switchSeam = seam.doorSwitchSeam() ?? defaultSwitchSeam(for: seam)
+                        guard let switchSeam = seam.doorSwitchSeam() else {
+                            throw IndexedApplyError(
+                                opIndex: index,
+                                code: "switch_refused",
+                                message: "Door switching is not configured on this command-line seam."
+                            )
+                        }
                         let sourceSide: HomeSpeakerProfile.Door = targetSide == .app ? .extension : .app
                         do {
                             guard let compare = try SettingsActions.beginSwitch(
@@ -785,14 +818,12 @@ public enum HomeSpeakerStateContract {
                                         : notFound
                                 )
                             }
-                            pendingSwitches.append(
-                                PendingSwitch(
-                                    opIndex: index,
-                                    side: targetSide,
-                                    copy: copyFlag,
-                                    compare: compare,
-                                    switchSeam: switchSeam
-                                )
+                            pendingSwitch = PendingSwitch(
+                                opIndex: index,
+                                side: targetSide,
+                                copy: copyFlag,
+                                compare: compare,
+                                switchSeam: switchSeam
                             )
                             opResults.append([
                                 "op": "switchTo",
@@ -815,9 +846,9 @@ public enum HomeSpeakerStateContract {
                     }
                 }
 
-                // All operations in the batch passed validation. Execute any
-                // pending door switch before committing config/secrets writes.
-                for pending in pendingSwitches {
+                // All operations in the batch passed validation. Execute the
+                // single pending door switch first; if it fails, write nothing.
+                if let pending = pendingSwitch {
                     let outcome = SettingsActions.finishSwitch(
                         compare: pending.compare,
                         copy: pending.copy,
@@ -847,8 +878,12 @@ public enum HomeSpeakerStateContract {
                     }
                 }
 
-                if secretsDirty {
-                    try seam.secrets.save(workingSecrets)
+                if !secretMutations.isEmpty {
+                    try seam.secrets.update { lockedSecrets in
+                        for mutate in secretMutations {
+                            mutate(&lockedSecrets, &opResults)
+                        }
+                    }
                 }
                 writeConfig = configDirty
                 return opResults
@@ -874,50 +909,6 @@ public enum HomeSpeakerStateContract {
     }
 
     // MARK: - Helpers
-
-    private static func defaultSwitchSeam(for seam: Seam) -> any SettingsActions.DoorSwitchSeam {
-        let record = seam.doorFile.read()
-        let appProfile = seam.program == .app
-            ? HomeSpeakerProfile(
-                door: .app,
-                settingsURL: seam.configFile.url,
-                historyURL: seam.history.fileURL,
-                secretsURL: seam.secrets.fileURL,
-                messagePrefix: HomeSpeakerProfile.appMessagePrefix,
-                liveLockURL: nil,
-                toolFolder: nil
-            )
-            : HomeSpeakerProfile.app(home: seam.agentHome)
-        let extProfile = seam.program == .extension
-            ? HomeSpeakerProfile(
-                door: .extension,
-                settingsURL: seam.configFile.url,
-                historyURL: seam.history.fileURL,
-                secretsURL: seam.secrets.fileURL,
-                messagePrefix: HomeSpeakerProfile.extensionMessagePrefix,
-                liveLockURL: seam.configFile.url.deletingLastPathComponent().appendingPathComponent("running.lock"),
-                toolFolder: nil
-            )
-            : AppStartup.extensionProfile(record: record)
-        let appProg = seam.program == .app
-            ? seam.hookExecutablePath
-            : "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
-        let extProg = seam.program == .extension ? seam.hookExecutablePath : record?.installedExtension?.program
-        return SettingsActions.RecordingDoorSwitchSeam(
-            me: seam.program,
-            chosenBy: "HomeSpeaker \(seam.program.rawValue) \(seam.homeSpeakerVersion())",
-            doorFile: seam.doorFile,
-            home: seam.agentHome,
-            appProfile: appProfile,
-            extensionProfile: extProfile,
-            appProgram: appProg,
-            extensionProgram: extProg,
-            now: seam.now(),
-            callerInTrash: OtherDoorPresence.isInTrash(seam.hookExecutablePath),
-            otherIsInstalled: seam.otherInstalled(record),
-            otherRunning: seam.program == .app ? seam.extensionRunning(record) : seam.appRunning()
-        )
-    }
 
     private static func indexedError(from refusal: SettingsActions.Refusal, at index: Int) -> IndexedApplyError {
         let code: String

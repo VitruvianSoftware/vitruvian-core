@@ -381,6 +381,9 @@ struct StateContractTests {
                 )
                 #expect(parsed["contract_version"] as? Int == 1)
                 #expect(parsed["program"] as? String == program.rawValue)
+                #expect(parsed["app_installed"] as? Bool == true)
+                #expect(parsed["extension_installed"] as? Bool == true)
+                #expect(parsed["other_installed"] as? Bool == true)
                 if let chosen {
                     #expect(parsed["chosen"] as? String == chosen.rawValue)
                 } else {
@@ -760,78 +763,93 @@ struct StateContractTests {
         #expect(chatAfterReset?["future_chat_key"] as? String == "keep-chat-field")
     }
 
-    // MARK: - 8. Two Concurrent Writers Under the Lock
+    // MARK: - 8. Concurrent Writers Under the Lock
 
-    @Test("Two concurrent threads calling --apply on the same scratch files lose no updates")
-    func twoConcurrentWritersUnderLockLoseNoUpdates() async throws {
+    @Test("Concurrent threads calling --apply on the same scratch files lose no updates across barriered rounds")
+    func twoConcurrentWritersUnderLockLoseNoUpdates() throws {
         let rig = try ScratchRig()
         defer { rig.cleanup() }
         try rig.seedGoldenFixture()
 
         let seam = rig.makeSeam()
-        let iterations = 20
+        let rounds = 25
 
-        await withTaskGroup(of: Int32.self) { group in
-            // Thread A repeatedly updates announce_volume and speak_local
-            group.addTask {
-                for i in 1...iterations {
-                    let vol = 30 + (i % 50)
-                    let payload = """
-                    {"contract_version":1,"operations":[
-                      {"op":"set","key":"announce_volume","value":\(vol)},
-                      {"op":"set","key":"speak_local","value":false}
-                    ]}
-                    """
-                    let out = HomeSpeakerCommandLine.apply(payload, seam: seam)
-                    if out.exitCode != 0 { return out.exitCode }
-                }
-                // Final write from Thread A sets announce_volume = 77 and speak_local = false
-                let finalA = """
-                {"contract_version":1,"operations":[
-                  {"op":"set","key":"announce_volume","value":77},
-                  {"op":"set","key":"speak_local","value":false}
-                ]}
+        for round in 1...rounds {
+            let expectedVolume = 10 + round
+            let expectedSpeakLocal = (round % 2 == 0)
+            let expectedPoll = 20 + round
+            let expectedQuietStart = String(format: "%02d:%02d", round % 24, round % 60)
+            let expectedGws = "round-\(round)@example.com"
+            let expectedSpeakPhone = (round % 2 == 1)
+            let expectedPrompt = "Prompt round \(round)"
+            let expectedExtraSeconds = round % 11
+
+            let payloads = [
                 """
-                return HomeSpeakerCommandLine.apply(finalA, seam: seam).exitCode
+                {"contract_version":1,"operations":[
+                  {"op":"set","key":"announce_volume","value":\(expectedVolume)},
+                  {"op":"set","key":"speak_local","value":\(expectedSpeakLocal)}
+                ]}
+                """,
+                """
+                {"contract_version":1,"operations":[
+                  {"op":"set","key":"poll_interval_seconds","value":\(expectedPoll)},
+                  {"op":"set","key":"quiet_hours_start","value":"\(expectedQuietStart)"}
+                ]}
+                """,
+                """
+                {"contract_version":1,"operations":[
+                  {"op":"set","key":"gws_account","value":"\(expectedGws)"},
+                  {"op":"set","key":"speak_phone","value":\(expectedSpeakPhone)}
+                ]}
+                """,
+                """
+                {"contract_version":1,"operations":[
+                  {"op":"set","key":"custom_style_prompt","value":"\(expectedPrompt)"},
+                  {"op":"set","key":"pause_media_extra_seconds","value":\(expectedExtraSeconds)}
+                ]}
+                """,
+            ]
+
+            let startGate = DispatchSemaphore(value: 0)
+            let readyCount = NSLock()
+            nonisolated(unsafe) var ready = 0
+            nonisolated(unsafe) var exitCodes = [Int32](repeating: -1, count: payloads.count)
+
+            DispatchQueue.concurrentPerform(iterations: payloads.count) { idx in
+                readyCount.lock()
+                ready += 1
+                let allReady = (ready == payloads.count)
+                readyCount.unlock()
+                if allReady {
+                    for _ in 0..<payloads.count {
+                        startGate.signal()
+                    }
+                }
+                startGate.wait()
+                let out = HomeSpeakerCommandLine.apply(payloads[idx], seam: seam)
+                readyCount.lock()
+                exitCodes[idx] = out.exitCode
+                readyCount.unlock()
             }
 
-            // Thread B repeatedly updates poll_interval_seconds and quiet_hours_start
-            group.addTask {
-                for i in 1...iterations {
-                    let poll = 15 + (i % 60)
-                    let payload = """
-                    {"contract_version":1,"operations":[
-                      {"op":"set","key":"poll_interval_seconds","value":\(poll)},
-                      {"op":"set","key":"quiet_hours_start","value":"21:15"}
-                    ]}
-                    """
-                    let out = HomeSpeakerCommandLine.apply(payload, seam: seam)
-                    if out.exitCode != 0 { return out.exitCode }
-                }
-                // Final write from Thread B sets poll_interval_seconds = 95 and quiet_hours_start = "20:45"
-                let finalB = """
-                {"contract_version":1,"operations":[
-                  {"op":"set","key":"poll_interval_seconds","value":95},
-                  {"op":"set","key":"quiet_hours_start","value":"20:45"}
-                ]}
-                """
-                return HomeSpeakerCommandLine.apply(finalB, seam: seam).exitCode
-            }
-
-            for await code in group {
+            for code in exitCodes {
                 #expect(code == 0)
             }
-        }
 
-        // Verify both Thread A's and Thread B's final updates are preserved on disk.
-        guard case .loaded(let finalConfig) = rig.configFile.read() else {
-            Issue.record("Config file failed to load after concurrent writes")
-            return
+            guard case .loaded(let cfg) = rig.configFile.read() else {
+                Issue.record("Config file unreadable after round \(round)")
+                return
+            }
+            #expect(cfg.effectiveAnnounceVolume == expectedVolume, "Lost announce_volume in round \(round)")
+            #expect(cfg.effectiveSpeakLocal == expectedSpeakLocal, "Lost speak_local in round \(round)")
+            #expect(cfg.effectiveChatMonitor.clampedPollInterval == expectedPoll, "Lost poll_interval_seconds in round \(round)")
+            #expect(cfg.quietHoursStart == expectedQuietStart, "Lost quiet_hours_start in round \(round)")
+            #expect(cfg.effectiveChatMonitor.gwsAccount == expectedGws, "Lost gws_account in round \(round)")
+            #expect(cfg.effectiveSpeakPhone == expectedSpeakPhone, "Lost speak_phone in round \(round)")
+            #expect(cfg.customStylePrompt == expectedPrompt, "Lost custom_style_prompt in round \(round)")
+            #expect(cfg.effectivePauseMediaExtraSeconds == Double(expectedExtraSeconds), "Lost pause_media_extra_seconds in round \(round)")
         }
-        #expect(finalConfig.effectiveAnnounceVolume == 77)
-        #expect(finalConfig.effectiveSpeakLocal == false)
-        #expect(finalConfig.effectiveChatMonitor.clampedPollInterval == 95)
-        #expect(finalConfig.quietHoursStart == "20:45")
     }
 
     // MARK: - 9. Cleared Keys Are Not Resurrected on `--apply`
@@ -922,5 +940,156 @@ struct StateContractTests {
                 #expect(parsed["ok"] is Bool)
             }
         }
+    }
+
+    // MARK: - 11. Live Command-Line Parts Inject Real DoorSwitchSeam
+
+    @Test("AppStartup.commandLineParts injects a real DoorSwitchSeam that switches and re-points hooks")
+    func liveAppCommandLinePartsInjectRealDoorSwitchSeam() throws {
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+        try rig.seedGoldenFixture()
+
+        let check = DoorCheck(
+            file: rig.doorFile,
+            appInstalled: { true },
+            fileExists: { path in path == rig.extExecutablePath }
+        )
+        let bundleDir = rig.root.appendingPathComponent("HomeSpeaker.app", isDirectory: true)
+        try FileManager.default.createDirectory(at: bundleDir, withIntermediateDirectories: true)
+
+        let parts = AppStartup.commandLineParts(
+            check: check,
+            bundlePath: { bundleDir.path },
+            appProgram: { rig.hookExecutablePath },
+            home: rig.agentHome,
+            now: { ScratchRig.fixedDate }
+        )
+        let liveSeam = try #require(parts.stateSeam?(rig.appProfile))
+        let switchSeam = try #require(
+            liveSeam.doorSwitchSeam(),
+            "AppStartup.commandLineParts must inject a real DoorSwitchSeam"
+        )
+        #expect(switchSeam is AppStartup.CommandLineSwitchSeam)
+        #expect(!String(describing: type(of: switchSeam)).contains("Recording"))
+
+        // Run --apply switchTo extension with copy: true using the real CommandLineSwitchSeam.
+        var testSeam = rig.makeSeam()
+        testSeam.doorSwitchSeam = liveSeam.doorSwitchSeam
+        let out = HomeSpeakerCommandLine.apply(
+            #"{"contract_version":1,"operations":[{"op":"switchTo","side":"extension","copy":true}]}"#,
+            seam: testSeam
+        )
+        #expect(out.exitCode == 0)
+        #expect(rig.doorFile.read()?.chosen == .extension)
+        #expect(rig.doorFile.read()?.chosenBy == "HomeSpeaker app \(HomeSpeakerVersion.current)")
+        let extIntegration = AgentIntegration(home: rig.agentHome, executablePath: rig.extExecutablePath, bootout: { _ in })
+        #expect(extIntegration.status(of: .claudeCode).hook == .installed)
+    }
+
+    // MARK: - 12. At Most One switchTo Per Batch & Failed Switch Writes Nothing
+
+    @Test("At most one switchTo is allowed per batch (one_switch_per_batch) and a failed switch writes nothing")
+    func atMostOneSwitchPerBatchAndFailedSwitchWritesNothing() throws {
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+        try rig.seedGoldenFixture()
+
+        let switchSeam = SettingsActions.RecordingDoorSwitchSeam(
+            me: .app,
+            chosenBy: "HomeSpeaker app 1.19.1",
+            doorFile: rig.doorFile,
+            home: rig.agentHome,
+            appProfile: rig.appProfile,
+            extensionProfile: rig.extProfile,
+            appProgram: rig.hookExecutablePath,
+            extensionProgram: rig.extExecutablePath,
+            now: ScratchRig.fixedDate,
+            otherIsInstalled: true,
+            otherRunning: true
+        )
+        let seam = rig.makeSeam(program: .app, doorSwitchSeam: switchSeam)
+        let beforeDoorBytes = try Data(contentsOf: rig.doorFile.url)
+        let beforeConfigBytes = try Data(contentsOf: rig.configFile.url)
+
+        // (a) Two switchTo ops in one batch must refuse at op_index 1 with one_switch_per_batch and leave speaker_door.json untouched.
+        let twoSwitches = """
+        {
+          "contract_version": 1,
+          "operations": [
+            {"op": "switchTo", "side": "extension"},
+            {"op": "switchTo", "side": "app"}
+          ]
+        }
+        """
+        let outTwo = HomeSpeakerCommandLine.apply(twoSwitches, seam: seam)
+        #expect(outTwo.exitCode == 1)
+        let parsedTwo = try #require(JSONSerialization.jsonObject(with: Data(outTwo.stdout[0].utf8)) as? [String: Any])
+        #expect(parsedTwo["ok"] as? Bool == false)
+        let errTwo = try #require(parsedTwo["error"] as? [String: Any])
+        #expect(errTwo["op_index"] as? Int == 1)
+        #expect(errTwo["code"] as? String == "one_switch_per_batch")
+        #expect(rig.doorFile.read()?.chosen == .app)
+        #expect(try Data(contentsOf: rig.doorFile.url) == beforeDoorBytes)
+
+        // (b) A failing switch with a pending config change writes neither door file nor config file.
+        struct CopyBoom: LocalizedError {
+            var errorDescription: String? { "copy failed on purpose" }
+        }
+        switchSeam.copyOverride = { _, _ in throw CopyBoom() }
+        let failingSwitchWithConfig = """
+        {
+          "contract_version": 1,
+          "operations": [
+            {"op": "set", "key": "enabled", "value": false},
+            {"op": "switchTo", "side": "extension", "copy": true}
+          ]
+        }
+        """
+        let outFail = HomeSpeakerCommandLine.apply(failingSwitchWithConfig, seam: seam)
+        #expect(outFail.exitCode == 1)
+        let parsedFail = try #require(JSONSerialization.jsonObject(with: Data(outFail.stdout[0].utf8)) as? [String: Any])
+        #expect(parsedFail["ok"] as? Bool == false)
+        let errFail = try #require(parsedFail["error"] as? [String: Any])
+        #expect(errFail["op_index"] as? Int == 1)
+        #expect(errFail["code"] as? String == "switch_refused")
+        #expect(rig.doorFile.read()?.chosen == .app)
+        #expect(try Data(contentsOf: rig.doorFile.url) == beforeDoorBytes)
+        #expect(try Data(contentsOf: rig.configFile.url) == beforeConfigBytes)
+    }
+
+    // MARK: - 13. Concurrent Secrets Writer Is Not Lost
+
+    @Test("A concurrent SecretStore.update writer is not lost when --apply updates secrets")
+    func concurrentSecretsWriterIsNotLost() throws {
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+        try rig.seedGoldenFixture()
+
+        let seam = rig.makeSeam()
+        let appSecretsStore = SecretStore(fileURL: rig.secrets.fileURL)
+        let enteredLock = DispatchSemaphore(value: 0)
+        let writerDone = DispatchSemaphore(value: 0)
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            try? appSecretsStore.update { secrets in
+                enteredLock.signal()
+                Thread.sleep(forTimeInterval: 0.05)
+                secrets.slackToken = "concurrent-app-slack-token" // gitleaks:allow
+            }
+            writerDone.signal()
+        }
+
+        enteredLock.wait()
+        let applyOut = HomeSpeakerCommandLine.apply(
+            #"{"contract_version":1,"operations":[{"op":"saveOAuthClient","client_id":"cli-client-id.apps.googleusercontent.com","client_secret":"cli-secret"}]}"#,
+            seam: seam
+        )
+        writerDone.wait()
+
+        #expect(applyOut.exitCode == 0)
+        let finalSecrets = rig.secrets.load()
+        #expect(finalSecrets.oauthClientIdOverride == "cli-client-id.apps.googleusercontent.com")
+        #expect(finalSecrets.slackToken == "concurrent-app-slack-token")
     }
 }

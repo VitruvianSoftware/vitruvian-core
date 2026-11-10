@@ -1,5 +1,6 @@
 {
   "active_door": "app",
+  "app_installed": true,
   "app_running": true,
   "available_voices": [
     {
@@ -97,6 +98,7 @@
       "name": "Studio Narrator"
     }
   ],
+  "extension_installed": true,
   "extension_running": false,
   "home_speaker_version": "1.19.1",
   "homes": [
