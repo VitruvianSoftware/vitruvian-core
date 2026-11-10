@@ -829,6 +829,12 @@ test("the panel marks a silent helper stalled and tells the person once, but a h
     toasts.push(String((e as { text?: string }).text ?? ""));
     return { value: undefined };
   });
+  const wakes: string[] = [];
+  on("prompt.submit", (_, e) => {
+    const text = String((e as { text?: string }).text ?? "");
+    wakes.push(text);
+    return { text };
+  });
   on("ui.open", () => ({ value: { isPlaced: true } }));
   let nextId = 0;
   on("agent.spawn", async () => ({
@@ -876,6 +882,12 @@ test("the panel marks a silent helper stalled and tells the person once, but a h
   expect(toasts).toHaveLength(1);
   expect(toasts[0]).toContain("forge has been silent for");
   expect(toasts[0]).toContain("task #1");
+  // The lead is woken once, for the stalled helper only, and told to look
+  // before it restarts anything.
+  expect(wakes).toHaveLength(1);
+  expect(wakes[0]).toContain("Subagent forge (quiet-helper)");
+  expect(wakes[0]).toContain('task #1 ("A")');
+  expect(wakes[0]).toContain("Restart it only if it is stuck");
 
   const ui = await $.ui.mount({ ...PANE_MOUNT, surface: "terminal" });
   expect(
@@ -886,7 +898,8 @@ test("the panel marks a silent helper stalled and tells the person once, but a h
   ).toBeDefined();
   await ui.unmount();
 
-  // No repeat notice while nothing changes.
+  // No repeat notice or wake while nothing changes.
   await clock.advance(10 * min);
   expect(toasts).toHaveLength(1);
+  expect(wakes).toHaveLength(1);
 });
