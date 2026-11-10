@@ -129,12 +129,17 @@ public fun HostChip(
       modifier =
           modifier
               .defaultMinSize(minHeight = Hit.h1)
-              .border(1.dp, Vitruvian.divider)
-              .clickable(role = Role.Button, onClick = onClick)
-              .padding(horizontal = Space.s3, vertical = 6.dp),
+              .clickable(role = Role.Button, onClick = onClick),
       contentAlignment = Alignment.Center,
   ) {
-    Status(tone = tone, text = text)
+    Box(
+        modifier =
+            Modifier.border(1.dp, Vitruvian.divider)
+                .padding(horizontal = Space.s3, vertical = 6.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+      Status(tone = tone, text = text)
+    }
   }
 }
 

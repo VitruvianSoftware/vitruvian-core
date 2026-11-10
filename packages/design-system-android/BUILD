@@ -114,7 +114,9 @@ kt_jvm_test(
     srcs = ["src/test/kotlin/dev/vitruvian/design/A11yTest.kt"],
     test_class = "dev.vitruvian.design.A11yTest",
     deps = [
+        ":lib",
         ":overlay_rules",
+        "@maven//:androidx_compose_ui_ui_unit",
         "@maven//:junit_junit",
     ],
 )

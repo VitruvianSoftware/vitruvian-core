@@ -42,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -82,9 +83,9 @@ public fun Status(
     label: String? = null,
 ) {
   val square = statusColor(tone)
-  val spokenState = A11y.statusLabel(tone = tone, label = label)
+  val spokenState = A11y.statusLabel(tone = tone, text = text, label = label)
   Row(
-      modifier = modifier.semantics { contentDescription = spokenState },
+      modifier = modifier.semantics(mergeDescendants = true) { contentDescription = spokenState },
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(Space.s3),
   ) {
@@ -92,6 +93,7 @@ public fun Status(
     if (text != null) {
       VText(
           text = text.uppercase(),
+          modifier = Modifier.clearAndSetSemantics {},
           style = VitruvianType.status,
           color = color,
           maxLines = 1,

@@ -35,8 +35,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -62,9 +60,9 @@ private const val TAG_BORDER_ALPHA = 0.40f
  * `.tag` - a mono, tracked, uppercase chip.
  *
  * Made clickable only when [onClick] is supplied, which is how the Apps screen's module chips work;
- * everywhere else a Tag is a static status marker. When clickable or [selected] is non-null, an
- * outer [Hit.h1] (44 dp) touch target wraps the chip without changing its visual height, and
- * [Role.Button] / `selected` semantics are applied.
+ * everywhere else a Tag is a static status marker. When [onClick] is non-null, an outer [Hit.h1]
+ * (44 dp) touch target wraps the chip without changing its visual height, and [Role.Button] (plus
+ * `selected` semantics when [selected] is non-null) is applied.
  */
 @Composable
 public fun Tag(
@@ -114,26 +112,21 @@ public fun Tag(
           .background(fill)
           .border(1.dp, border)
           .padding(contentPadding)
-  if (a11y.interactive) {
+  if (a11y.interactive && onClick != null) {
+    val role = if (a11y.hasButtonRole) Role.Button else null
+    val selectedState = a11y.selected
     val interactionModifier =
-        when {
-          onClick != null && selected != null ->
-              Modifier.selectable(
-                  selected = selected,
-                  role = Role.Button,
-                  onClick = onClick,
-              )
-          onClick != null ->
-              Modifier.clickable(
-                  role = Role.Button,
-                  onClick = onClick,
-              )
-          selected != null ->
-              Modifier.semantics {
-                this.role = Role.Button
-                this.selected = selected
-              }
-          else -> Modifier
+        if (selectedState != null) {
+          Modifier.selectable(
+              selected = selectedState,
+              role = role,
+              onClick = onClick,
+          )
+        } else {
+          Modifier.clickable(
+              role = role,
+              onClick = onClick,
+          )
         }
     Box(
         modifier = modifier.defaultMinSize(minHeight = Hit.h1).then(interactionModifier),
@@ -172,8 +165,7 @@ public fun Tag(
 
 /**
  * `.kbd` - a mono chip with a doubled bottom border, used for modifier keys and for the console's
- * recent-command chips. When [onClick] is supplied, an outer [Hit.h1] (44 dp) touch target wraps
- * the 32 dp visual chip.
+ * recent-command chips.
  */
 @Composable
 public fun Kbd(
@@ -183,57 +175,33 @@ public fun Kbd(
     contentDescription: String? = null,
 ) {
   val colors = Vitruvian
-  val chipModifier =
-      Modifier.then(if (onClick != null) Modifier.defaultMinSize(minHeight = 32.dp) else Modifier)
-          .border(1.dp, colors.divider)
-          .padding(horizontal = 6.dp, vertical = 2.dp)
-  if (onClick != null) {
-    Box(
-        modifier =
-            modifier
-                .defaultMinSize(minHeight = Hit.h1)
-                .clickable(role = Role.Button, onClick = onClick)
-                .then(
-                    if (contentDescription != null) {
-                      Modifier.semantics { this.contentDescription = contentDescription }
-                    } else {
-                      Modifier
-                    }),
-        contentAlignment = Alignment.Center,
-    ) {
-      Box(modifier = chipModifier, contentAlignment = Alignment.Center) {
-        VText(
-            text = text,
-            modifier =
-                if (contentDescription != null) Modifier.clearAndSetSemantics {} else Modifier,
-            style = VitruvianType.listSub,
-            color = colors.textDim,
-            maxLines = 1,
-            softWrap = false,
-        )
-      }
-    }
-  } else {
-    Box(
-        modifier =
-            modifier
-                .then(chipModifier)
-                .then(
-                    if (contentDescription != null) {
-                      Modifier.semantics { this.contentDescription = contentDescription }
-                    } else {
-                      Modifier
-                    }),
-        contentAlignment = Alignment.Center,
-    ) {
-      VText(
-          text = text,
-          modifier = if (contentDescription != null) Modifier.clearAndSetSemantics {} else Modifier,
-          style = VitruvianType.listSub,
-          color = colors.textDim,
-          maxLines = 1,
-          softWrap = false,
-      )
-    }
+  Box(
+      modifier =
+          modifier
+              .then(if (onClick != null) Modifier.defaultMinSize(minHeight = 32.dp) else Modifier)
+              .border(1.dp, colors.divider)
+              .then(
+                  if (onClick != null) {
+                    Modifier.clickable(role = Role.Button, onClick = onClick)
+                  } else {
+                    Modifier
+                  })
+              .then(
+                  if (contentDescription != null) {
+                    Modifier.semantics { this.contentDescription = contentDescription }
+                  } else {
+                    Modifier
+                  })
+              .padding(horizontal = 6.dp, vertical = 2.dp),
+      contentAlignment = Alignment.Center,
+  ) {
+    VText(
+        text = text,
+        modifier = if (contentDescription != null) Modifier.clearAndSetSemantics {} else Modifier,
+        style = VitruvianType.listSub,
+        color = colors.textDim,
+        maxLines = 1,
+        softWrap = false,
+    )
   }
 }

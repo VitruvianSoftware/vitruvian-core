@@ -34,12 +34,6 @@ public enum class StatusTone {
  * them alongside [OptionList] and [SafeArea].
  */
 public object A11y {
-  /** Minimum interactive touch target floor in dp ([Hit.h1]). */
-  public const val MIN_TOUCH_TARGET_DP: Int = 44
-
-  /** Default visual height of a compact tag/chip in dp. */
-  public const val TAG_VISUAL_HEIGHT_DP: Int = 32
-
   /**
    * How [VIcon] exposes itself to TalkBack: decorative when [contentDescription] is null or blank
    * (its semantics are cleared so a sibling label is not read twice), and an `Image` with that
@@ -58,29 +52,35 @@ public object A11y {
       }
 
   /**
-   * Spoken state word for a [Status] indicator so TalkBack never relies on colour alone. An
-   * explicit [label] overrides the default derived from [tone].
+   * Spoken description for a [Status] indicator so TalkBack never relies on colour alone. An
+   * explicit [label] overrides the default state word derived from [tone]; when [text] is present,
+   * the state word and caption are combined into a single spoken description.
    */
-  public fun statusLabel(tone: StatusTone, label: String? = null): String {
-    if (!label.isNullOrBlank()) return label
-    return when (tone) {
-      StatusTone.Ok -> "OK"
-      StatusTone.Warn -> "Warning"
-      StatusTone.Crit -> "Error"
-      StatusTone.Neutral -> "Idle"
-      StatusTone.Run -> "Running"
-    }
+  public fun statusLabel(
+      tone: StatusTone,
+      text: String? = null,
+      label: String? = null,
+  ): String {
+    val stateWord =
+        label?.takeIf { it.isNotBlank() }
+            ?: when (tone) {
+              StatusTone.Ok -> "OK"
+              StatusTone.Warn -> "Warning"
+              StatusTone.Crit -> "Error"
+              StatusTone.Neutral -> "Idle"
+              StatusTone.Run -> "Running"
+            }
+    val caption = text?.trim()?.takeIf { it.isNotEmpty() }
+    return if (caption != null) "$stateWord, $caption" else stateWord
   }
 
   /**
-   * Touch-target and semantics contract for a [Tag]: static tags keep their visual height, while
-   * clickable or selectable tags expand their touch target floor to [MIN_TOUCH_TARGET_DP] (44 dp,
-   * [Hit.h1]) without changing their visual height.
+   * Semantics contract for a [Tag]: only clickable tags are interactive (expanding their touch
+   * target floor to [Hit.h1] without changing their visual height and exposing [Role.Button] plus
+   * optional [selected] state). A non-clickable tag is static even if [selected] is passed.
    */
   public data class TagSemantics(
       val interactive: Boolean,
-      val minTouchHeightDp: Int,
-      val visualHeightDp: Int,
       val hasButtonRole: Boolean,
       val selected: Boolean?,
   )
@@ -88,18 +88,20 @@ public object A11y {
   public fun tagSemantics(
       clickable: Boolean,
       selected: Boolean? = null,
-      visualHeightDp: Int = TAG_VISUAL_HEIGHT_DP,
-  ): TagSemantics {
-    val interactive = clickable || selected != null
-    return TagSemantics(
-        interactive = interactive,
-        minTouchHeightDp =
-            if (interactive) maxOf(visualHeightDp, MIN_TOUCH_TARGET_DP) else visualHeightDp,
-        visualHeightDp = visualHeightDp,
-        hasButtonRole = interactive,
-        selected = selected,
-    )
-  }
+  ): TagSemantics =
+      if (clickable) {
+        TagSemantics(
+            interactive = true,
+            hasButtonRole = true,
+            selected = selected,
+        )
+      } else {
+        TagSemantics(
+            interactive = false,
+            hasButtonRole = false,
+            selected = null,
+        )
+      }
 
   /**
    * Spoken description for a navigation item's icon: null when the text label is rendered beside
@@ -109,9 +111,9 @@ public object A11y {
       if (iconOnly) label.takeIf { it.isNotBlank() } else null
 
   /**
-   * Spoken description for a [VButton]: an explicit [contentDescription] wins; known single-glyph
-   * labels fall back to their spoken names; ordinary text labels return null so the button's text
-   * is read directly.
+   * Spoken description for a [VButton]: an explicit [contentDescription] wins; unambiguous media
+   * transport glyphs fall back to their spoken names; ordinary text labels return null so the
+   * button's text is read directly.
    */
   public fun buttonContentDescription(label: String, contentDescription: String? = null): String? =
       contentDescription?.takeIf { it.isNotBlank() }
@@ -120,10 +122,6 @@ public object A11y {
             "▶" -> "Play"
             "⏸" -> "Pause"
             "⏭" -> "Next track"
-            "−",
-            "-" -> "Volume down"
-            "+" -> "Volume up"
-            "×" -> "Remove widget"
             else -> null
           }
 }

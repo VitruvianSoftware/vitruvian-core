@@ -323,7 +323,7 @@ private fun SettingsButton(onClick: () -> Unit) {
     VIcon(
         path = VitruvianIcons.SETTINGS,
         color = Vitruvian.textDim,
-        contentDescription = "Settings and hosts",
+        contentDescription = null,
     )
   }
 }

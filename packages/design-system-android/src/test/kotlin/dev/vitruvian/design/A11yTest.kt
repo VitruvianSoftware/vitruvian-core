@@ -20,6 +20,7 @@
 
 package dev.vitruvian.design
 
+import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -27,6 +28,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class A11yTest {
+  @Test
+  fun hitH1TokenIs44dp() {
+    assertEquals(44.dp, Hit.h1)
+  }
+
   @Test
   fun vIconWithNullDescriptionIsDecorativeAndClearsSemantics() {
     val semantics = A11y.iconSemantics(null)
@@ -42,35 +48,38 @@ class A11yTest {
   }
 
   @Test
-  fun statusToneMapsToSpokenWordsAndRespectsCustomLabel() {
+  fun statusToneMapsToSpokenWordsIncludesCaptionAndRespectsCustomLabel() {
     assertEquals("OK", A11y.statusLabel(StatusTone.Ok))
     assertEquals("Warning", A11y.statusLabel(StatusTone.Warn))
     assertEquals("Error", A11y.statusLabel(StatusTone.Crit))
     assertEquals("Idle", A11y.statusLabel(StatusTone.Neutral))
     assertEquals("Running", A11y.statusLabel(StatusTone.Run))
+    assertEquals("OK, paired", A11y.statusLabel(StatusTone.Ok, text = "paired"))
     assertEquals("Degraded", A11y.statusLabel(StatusTone.Warn, label = "Degraded"))
+    assertEquals(
+        "Degraded, 2 nodes",
+        A11y.statusLabel(StatusTone.Warn, text = "2 nodes", label = "Degraded"))
   }
 
   @Test
-  fun clickableAndSelectableTagsGuarantee44dpTouchTargetWithoutChanging32dpVisualHeight() {
+  fun tagSemanticsAppliesInteractiveRoleAndSelectedOnlyWhenClickable() {
     val staticTag = A11y.tagSemantics(clickable = false, selected = null)
     assertFalse(staticTag.interactive)
-    assertEquals(32, staticTag.minTouchHeightDp)
-    assertEquals(32, staticTag.visualHeightDp)
     assertFalse(staticTag.hasButtonRole)
     assertNull(staticTag.selected)
 
+    val nonClickableWithSelected = A11y.tagSemantics(clickable = false, selected = true)
+    assertFalse(nonClickableWithSelected.interactive)
+    assertFalse(nonClickableWithSelected.hasButtonRole)
+    assertNull(nonClickableWithSelected.selected)
+
     val clickableTag = A11y.tagSemantics(clickable = true, selected = null)
     assertTrue(clickableTag.interactive)
-    assertEquals(44, clickableTag.minTouchHeightDp)
-    assertEquals(32, clickableTag.visualHeightDp)
     assertTrue(clickableTag.hasButtonRole)
     assertNull(clickableTag.selected)
 
     val selectedTag = A11y.tagSemantics(clickable = true, selected = true)
     assertTrue(selectedTag.interactive)
-    assertEquals(44, selectedTag.minTouchHeightDp)
-    assertEquals(32, selectedTag.visualHeightDp)
     assertTrue(selectedTag.hasButtonRole)
     assertEquals(true, selectedTag.selected)
   }
@@ -87,9 +96,9 @@ class A11yTest {
     assertEquals("Play", A11y.buttonContentDescription("▶"))
     assertEquals("Pause", A11y.buttonContentDescription("⏸"))
     assertEquals("Next track", A11y.buttonContentDescription("⏭"))
-    assertEquals("Volume down", A11y.buttonContentDescription("−"))
-    assertEquals("Volume up", A11y.buttonContentDescription("+"))
-    assertEquals("Remove widget", A11y.buttonContentDescription("×"))
+    assertNull(A11y.buttonContentDescription("−"))
+    assertNull(A11y.buttonContentDescription("+"))
+    assertNull(A11y.buttonContentDescription("×"))
     assertEquals(
         "Brightness down",
         A11y.buttonContentDescription("−", contentDescription = "Brightness down"),
