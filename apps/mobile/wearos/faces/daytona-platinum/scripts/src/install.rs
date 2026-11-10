@@ -131,24 +131,45 @@ pub fn run(args: &[String]) -> i32 {
         }
     };
 
-    println!("Installing onto {}...", watch_serial);
+    println!(
+        "Installing onto {} (preserving user configurations)...",
+        watch_serial
+    );
 
-    // Uninstall (ignore failure)
-    let _ = Command::new("adb")
-        .args(["-s", &watch_serial, "uninstall", WATCH_FACE_PKG])
-        .output();
-
-    // Install with market installer
-    let install_status = Command::new("adb")
+    // Try in-place install first (-r -d) to preserve user style preferences and complications
+    let mut install_status = Command::new("adb")
         .args([
             "-s",
             &watch_serial,
             "install",
+            "-r",
+            "-d",
             "-i",
             "com.android.vending",
             work_apk.to_str().unwrap_or("out.apk"),
         ])
         .status();
+
+    if let Ok(s) = install_status {
+        if !s.success() {
+            println!(
+                "In-place install failed; falling back to clean reinstall (signature mismatch)..."
+            );
+            let _ = Command::new("adb")
+                .args(["-s", &watch_serial, "uninstall", WATCH_FACE_PKG])
+                .output();
+            install_status = Command::new("adb")
+                .args([
+                    "-s",
+                    &watch_serial,
+                    "install",
+                    "-i",
+                    "com.android.vending",
+                    work_apk.to_str().unwrap_or("out.apk"),
+                ])
+                .status();
+        }
+    }
     match install_status {
         Ok(s) if s.success() => {}
         Ok(s) => {
