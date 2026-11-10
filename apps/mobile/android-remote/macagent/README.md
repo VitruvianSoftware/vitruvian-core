@@ -38,8 +38,8 @@ What bounds it:
 
 v1.0 of this agent was read-only and said so everywhere. v1.1 is not, and
 `/healthz` reports `read_only: false` so a client can tell which one it is
-talking to. Both `/healthz` and `/v1/host` report `agent_version`, which tracks
-the real `android-remote` release.
+talking to. Both `/healthz` and `/v1/host` report `agent_version`, which reports the version
+of the installed release.
 
 ## Install and pair
 
@@ -76,7 +76,7 @@ You can pair your phone using a QR code or a six-digit code:
 
 The window is one-shot: the first phone through it closes it, so a second device that overheard the code gets nothing.
 
-The agent listens on `127.0.0.1:7411` and this Mac's Tailscale address whenever there is one. It checks every five seconds, so an agent that started at login before Tailscale was up starts serving the phone as soon as Tailscale connects.
+The agent listens on `127.0.0.1:7411` and this Mac's Tailscale address whenever there is one. It checks every five seconds, so an agent that started at login before Tailscale was up starts serving the phone as soon as Tailscale connects. It reports the version of the installed release.
 
 ## Endpoints
 

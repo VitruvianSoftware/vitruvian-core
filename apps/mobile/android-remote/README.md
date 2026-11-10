@@ -24,8 +24,8 @@ Two transports:
   Launchpad, Spotlight, screenshots, window controls and the display-mirror
   toggle (⌘F1) all work this way.
 - **The agent** — [`macagent/`](macagent/README.md), a small Rust daemon on the
-  Mac, reached over Tailscale. It reports its real version, tracking the
-  `android-remote` release. It answers the questions HID cannot: CPU,
+  Mac, reached over Tailscale. It reports the version of the installed release.
+  It answers the questions HID cannot: CPU,
   memory, battery, disk, network, thermals, top processes, Lima VMs,
   containers, K3s nodes, Claude Code sessions, volume, and PromQL through
   Grafana for GPU / Neural Engine / SoC *power*. Once **paired** with the
@@ -117,21 +117,15 @@ Releases are managed via release-please (`release-please-config.json`, `.release
   Grafana, Docker, Lima, Sony TV, and HomeSpeaker are fully wired.
 - **HomeSpeaker.** (`Apps → HomeSpeaker`, backed by
   [`macagent/rs/src/homespeaker.rs`](macagent/rs/src/homespeaker.rs) and
-  [`HomeSpeaker`](../../desktop/home-speaker/README.md)) resolves the active door
-  (standalone `.app` or Vitruvian extension), reads and rewrites its config file,
-  and runs `--say` and `/v1/homespeaker/phone-say`. The HomeSpeaker "door" (app
-  vs Vitruvian extension) is offered on the phone only when the extension is
-  installed. Google Cloud OAuth setup is reachable from the phone on first use.
-  Google Chat sign-in now counts as chat access for HomeSpeaker. The phone can
-  now see and install/remove the HomeSpeaker hooks for Antigravity and OpenCode,
-  not only Claude Code. From the phone, the dashboard provides
-  progressive-disclosure controls and single-select dropdown sheets for outputs
-  (`Home speakers`, `This Mac`, `Your phone`), `Cast selected voice`
-  (`home_cast_voice`), `Speaker` target selection, `Local voice engine`
-  (`Apple` / `Gemini`), `Gemini voice` (prebuilt + custom cloned voices), `How
-  much to say`, `Announcement style` (`Verbatim`, `Plain`, `Briefing`, `Casual`,
-  `Custom`), `Style model`, volume, quiet hours, coding agent & chat app
-  toggles, and live phone-bridge audio playback.
+  [`HomeSpeaker`](../../desktop/home-speaker/README.md)). The door row (app vs
+  Vitruvian extension) is offered on the phone only when the extension is
+  installed. Choosing the extension without it returns 400; switching doors
+  copies nothing and repoints only stale hooks when choosing the extension.
+  Google Cloud OAuth setup is always shown on the phone so credentials can be
+  configured directly. Chat access (`has_chat_access`) reflects Google Chat
+  consent only. The phone can install, update, and remove HomeSpeaker hooks for
+  Antigravity and OpenCode as well as Claude Code. See the
+  [HomeSpeaker docs](../../desktop/home-speaker/README.md) for available controls.
 
 ## Design source
 
