@@ -2969,7 +2969,9 @@ impl HomeSpeaker {
         st.has_beeper_token = !sec.beeper_token.is_empty() || !cred.beeper_token.is_empty();
         st.has_courier_token = !sec.courier_token.is_empty();
         st.has_google_chat_token = sec.has_google_chat_token;
-        st.has_chat_access = st.has_slack_token || st.has_beeper_token || st.has_google_chat_token;
+        // As HomeSpeaker's `hasChatAccess` (GoogleAuth.swift): Google Chat consent only; Slack and
+        // Beeper tokens have their own flags.
+        st.has_chat_access = st.has_google_chat_token;
 
         if let Some(targets) = cfg.get("targets").and_then(|v| v.as_object()) {
             for key in dedupe_target_keys(targets, &st.default_target) {
@@ -5970,6 +5972,12 @@ mod tests {
         let st0 = h.state();
         assert!(!st0.has_google_chat_token);
         assert!(!st0.has_chat_access);
+
+        // A Slack token alone is not Google Chat access (HomeSpeaker's hasChatAccess is Google Chat only).
+        fs::write(&h.secrets_path, r#"{"slackToken":"xoxp-SLACK"}"#).unwrap();
+        let st_slack = h.state();
+        assert!(st_slack.has_slack_token);
+        assert!(!st_slack.has_chat_access);
 
         // Missing messages.readonly scope -> false.
         fs::write(

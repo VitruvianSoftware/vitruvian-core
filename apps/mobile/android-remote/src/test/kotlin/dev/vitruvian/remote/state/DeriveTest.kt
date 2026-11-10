@@ -1732,4 +1732,10 @@ public class DeriveTest {
         Derive.homeSpeakerInlineError(
             what = "mute", reason = "agent: HTTP 500 for /v1/homespeaker/volume"))
   }
+
+  @Test
+  fun hookAgentSlugsMatchHomeSpeakerHookAgents() {
+    // HomeSpeaker's CodingAgent.supportsHook is true for every agent it knows.
+    assertEquals(setOf("claude-code", "antigravity", "opencode"), Derive.hookAgentSlugs)
+  }
 }
