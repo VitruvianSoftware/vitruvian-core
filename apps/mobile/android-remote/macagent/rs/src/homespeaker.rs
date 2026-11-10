@@ -4238,7 +4238,9 @@ impl HomeSpeaker {
             (self.run)(Duration::from_secs(30), &bin_str, &args)
                 .map_err(|e| ApplyError::Internal(format!("disconnect chat failed: {e}")))?;
             self.clear_google_chat_secrets(&p.secrets_path)?;
-            notify_creds = true;
+            // No credentials-changed here: `--sign-out --chat` posts HomeSpeaker's own
+            // `signed-out` notice with chatOnly: true (SignOutNotice.swift, EngineDriver.swift:104),
+            // which is what the running app listens for.
             changed.push("disconnect_chat".to_string());
         }
         if u.speak_clipboard {
@@ -7138,7 +7140,6 @@ export default {
             r#"{"slack_token":""}"#,
             r#"{"beeper_token":"bp_tok"}"#,
             r#"{"beeper_token":""}"#,
-            r#"{"disconnect_chat":true}"#,
         ] {
             let r = h.handle_set(&post_req("/v1/homespeaker", body), &phone);
             assert_eq!(r.status, 200, "failed for {body}");
@@ -7152,9 +7153,18 @@ export default {
                 "com.vitruviansoftware.homespeaker.credentials-changed",
                 "com.vitruviansoftware.homespeaker.credentials-changed",
                 "com.vitruviansoftware.homespeaker.credentials-changed",
-                "com.vitruviansoftware.homespeaker.credentials-changed",
             ]
         );
+
+        // Disconnecting Google Chat leaves the notice to `--sign-out --chat` itself (HomeSpeaker
+        // posts `signed-out` with chatOnly: true), so the agent posts nothing extra.
+        notices.lock().unwrap().clear();
+        let r = h.handle_set(
+            &post_req("/v1/homespeaker", r#"{"disconnect_chat":true}"#),
+            &phone,
+        );
+        assert_eq!(r.status, 200);
+        assert!(notices.lock().unwrap().is_empty());
 
         // Unrelated setting changes do not post credentials-changed.
         notices.lock().unwrap().clear();
