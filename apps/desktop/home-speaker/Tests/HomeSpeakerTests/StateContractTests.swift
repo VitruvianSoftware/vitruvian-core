@@ -103,6 +103,11 @@ struct StateContractTests {
             try? FileManager.default.removeItem(at: root)
         }
 
+        func readConfig() -> SpeakerConfig? {
+            if case .loaded(let cfg) = configFile.read() { return cfg }
+            return nil
+        }
+
         func makeSeam(
             program: HomeSpeakerProfile.Door = .app,
             otherInstalled: Bool = true,
@@ -1302,6 +1307,545 @@ struct StateContractTests {
             #expect(try Data(contentsOf: rig.configFile.url) == beforeConfigBytes)
             #expect(try Data(contentsOf: rig.secrets.fileURL) == beforeSecretsBytes)
             #expect(try Data(contentsOf: rig.doorFile.url) == beforeDoorBytes)
+        }
+    }
+
+    // MARK: - 15. PR C1 Operations: setSecret, snooze, setNetwork, setReadAnyway, importAntigravity, agentHook
+
+    @Test("setSecret sets and clears slack, beeper, courier, and geminiKey, switches Courier off when cleared, and never leaks secret values")
+    func applySetSecretSuccessClearAndRedaction() throws {
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+        try rig.seedGoldenFixture()
+
+        let seam = rig.makeSeam(program: .app)
+        let slackCanary = "xoxp-SECRET-SLACK-APPLY-CANARY" // gitleaks:allow
+        let beeperCanary = "beeper-SECRET-BEEPER-APPLY-CANARY" // gitleaks:allow
+        let courierCanary = "courier-SECRET-COURIER-APPLY-CANARY" // gitleaks:allow
+        let geminiCanary = "AIza-SECRET-GEMINI-APPLY-CANARY" // gitleaks:allow
+        let canaries = ScratchRig.secretCanaries + [slackCanary, beeperCanary, courierCanary, geminiCanary]
+
+        let setPayload = """
+        {
+          "contract_version": 1,
+          "operations": [
+            {"op": "setSecret", "name": "slack", "value": "  \(slackCanary)  "},
+            {"op": "setSecret", "name": "beeper", "value": "  \(beeperCanary)\\n"},
+            {"op": "setSecret", "name": "courier", "value": "\(courierCanary)"},
+            {"op": "setSecret", "name": "geminiKey", "value": "  \(geminiCanary)  "},
+            {"op": "set", "key": "courier_enabled", "value": true}
+          ]
+        }
+        """
+        let outSet = HomeSpeakerCommandLine.apply(setPayload, seam: seam)
+        #expect(outSet.exitCode == 0)
+        let combinedSet = (outSet.stdout + outSet.stderr).joined(separator: "\n")
+        for canary in canaries {
+            #expect(!combinedSet.contains(canary), "Secret canary \(canary) leaked in setSecret output")
+        }
+
+        let savedSecrets = rig.secrets.load()
+        #expect(savedSecrets.slackToken == slackCanary)
+        #expect(savedSecrets.beeperToken == beeperCanary)
+        #expect(savedSecrets.courierToken == courierCanary)
+        #expect(savedSecrets.geminiApiKey == geminiCanary)
+        #expect(rig.readConfig()?.effectiveChatMonitor.courierEnabled == true)
+
+        let parsedSet = try #require(JSONSerialization.jsonObject(with: Data(outSet.stdout[0].utf8)) as? [String: Any])
+        let stateAfterSet = try #require(parsedSet["state"] as? [String: Any])
+        let chatState = try #require(stateAfterSet["chat"] as? [String: Any])
+        let signInState = try #require(stateAfterSet["sign_in"] as? [String: Any])
+        #expect(chatState["has_slack_token"] as? Bool == true)
+        #expect(chatState["has_beeper_token"] as? Bool == true)
+        #expect(chatState["has_courier_token"] as? Bool == true)
+        #expect(signInState["has_gemini_key"] as? Bool == true)
+
+        // Clearing courier via empty/whitespace string also switches courier_enabled off
+        let clearPayload = """
+        {
+          "contract_version": 1,
+          "operations": [
+            {"op": "setSecret", "name": "courier", "value": "   "},
+            {"op": "setSecret", "name": "geminiKey", "value": ""}
+          ]
+        }
+        """
+        let outClear = HomeSpeakerCommandLine.apply(clearPayload, seam: seam)
+        #expect(outClear.exitCode == 0)
+        let combinedClear = (outClear.stdout + outClear.stderr).joined(separator: "\n")
+        for canary in canaries {
+            #expect(!combinedClear.contains(canary), "Secret canary \(canary) leaked in setSecret clear output")
+        }
+        #expect(rig.secrets.load().courierToken == nil)
+        #expect(rig.secrets.load().geminiApiKey == nil)
+        #expect(rig.readConfig()?.effectiveChatMonitor.courierEnabled == false)
+
+        let parsedClear = try #require(JSONSerialization.jsonObject(with: Data(outClear.stdout[0].utf8)) as? [String: Any])
+        let clearResults = try #require(parsedClear["results"] as? [[String: Any]])
+        #expect(clearResults.count == 2)
+        #expect(clearResults[0]["op"] as? String == "setSecret")
+        #expect(clearResults[0]["name"] as? String == "courier")
+        #expect(clearResults[0]["cleared"] as? Bool == true)
+        #expect(clearResults[0]["courier_switched_off"] as? Bool == true)
+
+        // Refusals: unknown secret name and missing/non-string value, ensuring secret value never appears in error
+        let refusalCases: [(payload: String, expectedCode: String)] = [
+            (#"{"contract_version":1,"operations":[{"op":"setSecret","name":"unknown","value":"\#(slackCanary)"}]}"#, "invalid_secret_name"),
+            (#"{"contract_version":1,"operations":[{"op":"setSecret","value":"\#(slackCanary)"}]}"#, "invalid_secret_name"),
+            (#"{"contract_version":1,"operations":[{"op":"setSecret","name":"slack"}]}"#, "missing_value"),
+            (#"{"contract_version":1,"operations":[{"op":"setSecret","name":"slack","value":123}]}"#, "missing_value"),
+        ]
+        for (payload, expectedCode) in refusalCases {
+            let out = HomeSpeakerCommandLine.apply(payload, seam: seam)
+            #expect(out.exitCode == 1)
+            let combined = (out.stdout + out.stderr).joined(separator: "\n")
+            for canary in canaries {
+                #expect(!combined.contains(canary), "Secret canary \(canary) leaked in error output")
+            }
+            let parsed = try #require(JSONSerialization.jsonObject(with: Data(out.stdout[0].utf8)) as? [String: Any])
+            let err = try #require(parsed["error"] as? [String: Any])
+            #expect(err["code"] as? String == expectedCode)
+        }
+    }
+
+    @Test("setSecret + set in one batch lands both when valid, or neither when either fails")
+    func applySetSecretAndSetBatchAtomicity() throws {
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+        try rig.seedGoldenFixture()
+        // Start with no courier token and courier_enabled == false
+        try rig.secrets.update { $0.courierToken = nil }
+        try rig.configFile.modify { $0.effectiveChatMonitor.courierEnabled = false }
+
+        let seam = rig.makeSeam(program: .app)
+        let beforeConfigBytes = try Data(contentsOf: rig.configFile.url)
+        let beforeSecretsBytes = try Data(contentsOf: rig.secrets.fileURL)
+
+        // 1. Valid setSecret followed by invalid set -> neither lands
+        let failSecond = """
+        {
+          "contract_version": 1,
+          "operations": [
+            {"op": "setSecret", "name": "courier", "value": "SECRET-BATCH-COURIER-1"},
+            {"op": "set", "key": "speech_length", "value": "not-a-valid-length"}
+          ]
+        }
+        """
+        let outFailSecond = HomeSpeakerCommandLine.apply(failSecond, seam: seam)
+        #expect(outFailSecond.exitCode == 1)
+        #expect(!(outFailSecond.stdout + outFailSecond.stderr).joined(separator: "\n").contains("SECRET-BATCH-COURIER-1"))
+        #expect(try Data(contentsOf: rig.configFile.url) == beforeConfigBytes)
+        #expect(try Data(contentsOf: rig.secrets.fileURL) == beforeSecretsBytes)
+
+        // 2. Valid set followed by invalid setSecret -> neither lands
+        let failSecret = """
+        {
+          "contract_version": 1,
+          "operations": [
+            {"op": "set", "key": "speech_length", "value": "full"},
+            {"op": "setSecret", "name": "not_a_secret", "value": "SECRET-BATCH-COURIER-2"}
+          ]
+        }
+        """
+        let outFailSecret = HomeSpeakerCommandLine.apply(failSecret, seam: seam)
+        #expect(outFailSecret.exitCode == 1)
+        #expect(!(outFailSecret.stdout + outFailSecret.stderr).joined(separator: "\n").contains("SECRET-BATCH-COURIER-2"))
+        #expect(try Data(contentsOf: rig.configFile.url) == beforeConfigBytes)
+        #expect(try Data(contentsOf: rig.secrets.fileURL) == beforeSecretsBytes)
+
+        // 3. Both valid (setSecret sets courier token, then set enables courier in same batch) -> both land!
+        let succeedBoth = """
+        {
+          "contract_version": 1,
+          "operations": [
+            {"op": "setSecret", "name": "courier", "value": "SECRET-BATCH-COURIER-OK"},
+            {"op": "set", "key": "courier_enabled", "value": true}
+          ]
+        }
+        """
+        let outBoth = HomeSpeakerCommandLine.apply(succeedBoth, seam: seam)
+        #expect(outBoth.exitCode == 0)
+        #expect(!(outBoth.stdout + outBoth.stderr).joined(separator: "\n").contains("SECRET-BATCH-COURIER-OK"))
+        #expect(rig.secrets.load().courierToken == "SECRET-BATCH-COURIER-OK")
+        #expect(rig.readConfig()?.effectiveChatMonitor.courierEnabled == true)
+    }
+
+    @Test("snooze sets snooze_until for 1...240 minutes, clears with clear:true, and refuses out_of_range or malformed inputs")
+    func applySnoozeSuccessClearAndRefusals() throws {
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+        try rig.seedGoldenFixture()
+
+        let seam = rig.makeSeam(program: .app)
+
+        // Set snooze for 45 minutes from fixedDate (2026-11-10T23:15:00Z -> 2026-11-11T00:00:00Z)
+        let outSnooze = HomeSpeakerCommandLine.apply(
+            #"{"contract_version":1,"operations":[{"op":"snooze","minutes":45}]}"#,
+            seam: seam
+        )
+        #expect(outSnooze.exitCode == 0)
+        let parsedSnooze = try #require(JSONSerialization.jsonObject(with: Data(outSnooze.stdout[0].utf8)) as? [String: Any])
+        let stateSnooze = try #require(parsedSnooze["state"] as? [String: Any])
+        #expect(stateSnooze["snooze_until"] as? String == "2026-11-11T00:00:00Z")
+        #expect(rig.readConfig()?.snoozeUntil == ScratchRig.fixedDate.addingTimeInterval(45 * 60))
+
+        // Clear snooze
+        let outClear = HomeSpeakerCommandLine.apply(
+            #"{"contract_version":1,"operations":[{"op":"snooze","clear":true}]}"#,
+            seam: seam
+        )
+        #expect(outClear.exitCode == 0)
+        let parsedClear = try #require(JSONSerialization.jsonObject(with: Data(outClear.stdout[0].utf8)) as? [String: Any])
+        let stateClear = try #require(parsedClear["state"] as? [String: Any])
+        #expect(stateClear["snooze_until"] is NSNull)
+        #expect(rig.readConfig()?.snoozeUntil == nil)
+
+        // Out of range & malformed refusals
+        let refusalCases: [(payload: String, expectedCode: String)] = [
+            (#"{"contract_version":1,"operations":[{"op":"snooze","minutes":0}]}"#, "out_of_range"),
+            (#"{"contract_version":1,"operations":[{"op":"snooze","minutes":-5}]}"#, "out_of_range"),
+            (#"{"contract_version":1,"operations":[{"op":"snooze","minutes":241}]}"#, "out_of_range"),
+            (#"{"contract_version":1,"operations":[{"op":"snooze","minutes":true}]}"#, "wrong_kind"),
+            (#"{"contract_version":1,"operations":[{"op":"snooze","minutes":15.5}]}"#, "wrong_kind"),
+            (#"{"contract_version":1,"operations":[{"op":"snooze"}]}"#, "invalid_snooze"),
+            (#"{"contract_version":1,"operations":[{"op":"snooze","clear":false}]}"#, "invalid_snooze"),
+            (#"{"contract_version":1,"operations":[{"op":"snooze","clear":true,"minutes":30}]}"#, "invalid_snooze"),
+        ]
+        for (payload, expectedCode) in refusalCases {
+            let out = HomeSpeakerCommandLine.apply(payload, seam: seam)
+            #expect(out.exitCode == 1, "Expected exit 1 for \(payload)")
+            let parsed = try #require(JSONSerialization.jsonObject(with: Data(out.stdout[0].utf8)) as? [String: Any])
+            let err = try #require(parsed["error"] as? [String: Any])
+            #expect(err["code"] as? String == expectedCode, "Expected \(expectedCode) for \(payload), got \(err)")
+        }
+    }
+
+    @Test("setNetwork and setReadAnyway update Beeper/Courier muted networks and Courier read-anyway lists and refuse invalid inputs")
+    func applySetNetworkAndSetReadAnyway() throws {
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+        try rig.seedGoldenFixture()
+
+        let seam = rig.makeSeam(program: .app)
+        let payload = """
+        {
+          "contract_version": 1,
+          "operations": [
+            {"op": "setNetwork", "app": "beeper", "key": "signal", "reading": true},
+            {"op": "setNetwork", "app": "beeper", "key": "whatsapp", "reading": false},
+            {"op": "setNetwork", "app": "courier", "key": "imessage", "reading": false},
+            {"op": "setReadAnyway", "key": "imessage", "on": true},
+            {"op": "setReadAnyway", "key": "slack", "on": false}
+          ]
+        }
+        """
+        let out = HomeSpeakerCommandLine.apply(payload, seam: seam)
+        #expect(out.exitCode == 0)
+        let cfg = try #require(rig.readConfig())
+        #expect(cfg.effectiveChatMonitor.beeperMutedNetworks == ["whatsapp"])
+        #expect(cfg.effectiveChatMonitor.courierMutedNetworks == ["imessage"])
+        #expect(cfg.effectiveChatMonitor.courierReadAnyway == ["imessage"])
+
+        let parsed = try #require(JSONSerialization.jsonObject(with: Data(out.stdout[0].utf8)) as? [String: Any])
+        let state = try #require(parsed["state"] as? [String: Any])
+        let chat = try #require(state["chat"] as? [String: Any])
+        let beeperNets = try #require(chat["beeper_networks"] as? [[String: Any]])
+        let courierNets = try #require(chat["courier_networks"] as? [[String: Any]])
+        #expect(beeperNets.first(where: { $0["key"] as? String == "signal" })?["state"] as? String == "reading")
+        #expect(beeperNets.first(where: { $0["key"] as? String == "whatsapp" })?["state"] as? String == "muted")
+        #expect(courierNets.first(where: { $0["key"] as? String == "imessage" })?["state"] as? String == "muted")
+        #expect(courierNets.first(where: { $0["key"] as? String == "imessage" })?["read_anyway"] as? Bool == true)
+        #expect(courierNets.first(where: { $0["key"] as? String == "slack" })?["read_anyway"] == nil)
+
+        let refusalCases: [(payload: String, expectedCode: String)] = [
+            (#"{"contract_version":1,"operations":[{"op":"setNetwork","app":"slack","key":"whatsapp","reading":true}]}"#, "invalid_app"),
+            (#"{"contract_version":1,"operations":[{"op":"setNetwork","app":"beeper","key":"  ","reading":true}]}"#, "missing_key"),
+            (#"{"contract_version":1,"operations":[{"op":"setNetwork","app":"beeper","key":"whatsapp","reading":"yes"}]}"#, "wrong_kind"),
+            (#"{"contract_version":1,"operations":[{"op":"setReadAnyway","key":"","on":true}]}"#, "missing_key"),
+            (#"{"contract_version":1,"operations":[{"op":"setReadAnyway","key":"slack","on":1}]}"#, "wrong_kind"),
+        ]
+        for (payload, expectedCode) in refusalCases {
+            let outRefusal = HomeSpeakerCommandLine.apply(payload, seam: seam)
+            #expect(outRefusal.exitCode == 1)
+            let parsedRefusal = try #require(JSONSerialization.jsonObject(with: Data(outRefusal.stdout[0].utf8)) as? [String: Any])
+            let err = try #require(parsedRefusal["error"] as? [String: Any])
+            #expect(err["code"] as? String == expectedCode)
+        }
+    }
+
+    @Test("importAntigravity imports tokens from injectable seam path without leaking secrets, and refuses with no_antigravity_tokens when absent")
+    func applyImportAntigravitySuccessAndRefusal() throws {
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+        try rig.seedGoldenFixture()
+        try rig.secrets.update { $0.google = nil }
+
+        var seam = rig.makeSeam(program: .app)
+        let tokensURL = rig.agentHome.appendingPathComponent(".gemini/antigravity/mcp_oauth_tokens.json")
+        seam.antigravityTokensURL = tokensURL
+
+        // 1. Missing token file -> refuse with no_antigravity_tokens
+        let outMissing = HomeSpeakerCommandLine.apply(
+            #"{"contract_version":1,"operations":[{"op":"importAntigravity"}]}"#,
+            seam: seam
+        )
+        #expect(outMissing.exitCode == 1)
+        let parsedMissing = try #require(JSONSerialization.jsonObject(with: Data(outMissing.stdout[0].utf8)) as? [String: Any])
+        let errMissing = try #require(parsedMissing["error"] as? [String: Any])
+        #expect(errMissing["code"] as? String == "no_antigravity_tokens")
+
+        // 2. Write valid Antigravity token file in scratch folder -> import succeeds & secrets never leak
+        let clientSecretCanary = "SECRET-AG-IMPORT-CLIENT-SECRET" // gitleaks:allow
+        let accessTokenCanary = "SECRET-AG-IMPORT-ACCESS-TOKEN" // gitleaks:allow
+        let refreshTokenCanary = "SECRET-AG-IMPORT-REFRESH-TOKEN" // gitleaks:allow
+        try FileManager.default.createDirectory(at: tokensURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let tokenJSON: [String: Any] = [
+            GoogleHomeClient.mcpEndpointString: [
+                "client_id": "ag-imported.apps.googleusercontent.com",
+                "client_secret": clientSecretCanary,
+                "token": [
+                    "access_token": accessTokenCanary,
+                    "refresh_token": refreshTokenCanary,
+                    "expiry": "2026-12-01T00:00:00Z",
+                ],
+            ],
+        ]
+        try JSONSerialization.data(withJSONObject: tokenJSON, options: [.prettyPrinted, .sortedKeys]).write(to: tokensURL)
+
+        let outImport = HomeSpeakerCommandLine.apply(
+            #"{"contract_version":1,"operations":[{"op":"importAntigravity"}]}"#,
+            seam: seam
+        )
+        #expect(outImport.exitCode == 0)
+        let combined = (outImport.stdout + outImport.stderr).joined(separator: "\n")
+        for canary in ScratchRig.secretCanaries + [clientSecretCanary, accessTokenCanary, refreshTokenCanary] {
+            #expect(!combined.contains(canary), "Secret canary \(canary) leaked in importAntigravity output")
+        }
+
+        #expect(rig.secrets.load().google?.refreshToken == refreshTokenCanary)
+        let parsedImport = try #require(JSONSerialization.jsonObject(with: Data(outImport.stdout[0].utf8)) as? [String: Any])
+        let stateImport = try #require(parsedImport["state"] as? [String: Any])
+        let signIn = try #require(stateImport["sign_in"] as? [String: Any])
+        #expect(signIn["signed_in"] as? Bool == true)
+    }
+
+    @Test("agentHook install then remove leaves scratch settings.json byte-for-byte as before for unrelated keys and installs the chosen program's command")
+    func applyAgentHookInstallRemoveByteForByteAndChosenProgram() throws {
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+        try rig.seedGoldenFixture()
+
+        // Seed scratch ~/.claude/settings.json with unrelated keys and an unrelated Stop hook
+        let claudeDir = rig.agentHome.appendingPathComponent(".claude", isDirectory: true)
+        try FileManager.default.createDirectory(at: claudeDir, withIntermediateDirectories: true)
+        let claudeSettingsURL = claudeDir.appendingPathComponent("settings.json")
+        let initialClaudeSettings: [String: Any] = [
+            "env": ["CLAUDE_CUSTOM": "keep-me"],
+            "hooks": [
+                "PreToolUse": [
+                    ["hooks": [["command": "/usr/local/bin/other-pre-hook", "type": "command"]]]
+                ],
+                "Stop": [
+                    ["hooks": [["command": "/usr/local/bin/other-stop-hook", "type": "command"]]]
+                ],
+            ],
+            "model": "claude-sonnet-4-6",
+        ]
+        let beforeBytes = try JSONSerialization.data(withJSONObject: initialClaudeSettings, options: [.prettyPrinted, .sortedKeys])
+        try beforeBytes.write(to: claudeSettingsURL, options: .atomic)
+
+        // 1. With app chosen, install claude_code, antigravity, and opencode hooks + addInstruction
+        let appSeam = rig.makeSeam(program: .app)
+        let installPayload = """
+        {
+          "contract_version": 1,
+          "operations": [
+            {"op": "agentHook", "agent": "claude_code", "action": "install"},
+            {"op": "agentHook", "agent": "antigravity", "action": "install"},
+            {"op": "agentHook", "agent": "opencode", "action": "install"},
+            {"op": "agentHook", "agent": "opencode", "action": "addInstruction"}
+          ]
+        }
+        """
+        let outInstall = HomeSpeakerCommandLine.apply(installPayload, seam: appSeam)
+        #expect(outInstall.exitCode == 0)
+        let parsedInstall = try #require(JSONSerialization.jsonObject(with: Data(outInstall.stdout[0].utf8)) as? [String: Any])
+        let stateAfterInstall = try #require(parsedInstall["state"] as? [String: Any])
+        let hooksAfterInstall = try #require(stateAfterInstall["hooks"] as? [String: Any])
+        let ccAfterInstall = try #require(hooksAfterInstall["claude_code"] as? [String: Any])
+        let agAfterInstall = try #require(hooksAfterInstall["antigravity"] as? [String: Any])
+        let ocAfterInstall = try #require(hooksAfterInstall["opencode"] as? [String: Any])
+        #expect(ccAfterInstall["hook_state"] as? String == "installed")
+        #expect(ccAfterInstall["hook_program"] as? String == rig.hookExecutablePath)
+        #expect(agAfterInstall["hook_state"] as? String == "installed")
+        #expect(agAfterInstall["hook_program"] as? String == rig.hookExecutablePath)
+        #expect(ocAfterInstall["hook_state"] as? String == "installed")
+        #expect(ocAfterInstall["hook_program"] as? String == rig.hookExecutablePath)
+        #expect(ocAfterInstall["configured_by_instruction"] as? Bool == true)
+
+        // 2. Remove claude_code hook and verify settings.json is byte-for-byte identical to beforeBytes!
+        let outRemove = HomeSpeakerCommandLine.apply(
+            #"{"contract_version":1,"operations":[{"op":"agentHook","agent":"claude_code","action":"remove"}]}"#,
+            seam: appSeam
+        )
+        #expect(outRemove.exitCode == 0)
+        let afterRemoveBytes = try Data(contentsOf: claudeSettingsURL)
+        #expect(afterRemoveBytes == beforeBytes)
+
+        // 3. Switch chosen door to extension and verify agentHook install writes the extension's command
+        try rig.doorFile.update {
+            $0.chosen = .extension
+            $0.chosenAt = ScratchRig.fixedDate
+            $0.chosenBy = "test"
+        }
+        let extSeam = rig.makeSeam(program: .extension)
+        let outExtInstall = HomeSpeakerCommandLine.apply(
+            #"{"contract_version":1,"operations":[{"op":"agentHook","agent":"claude_code","action":"install"}]}"#,
+            seam: extSeam
+        )
+        #expect(outExtInstall.exitCode == 0)
+        let parsedExt = try #require(JSONSerialization.jsonObject(with: Data(outExtInstall.stdout[0].utf8)) as? [String: Any])
+        let stateExt = try #require(parsedExt["state"] as? [String: Any])
+        let hooksExt = try #require(stateExt["hooks"] as? [String: Any])
+        let ccExt = try #require(hooksExt["claude_code"] as? [String: Any])
+        #expect(ccExt["hook_state"] as? String == "installed")
+        #expect(ccExt["hook_program"] as? String == rig.extExecutablePath)
+
+        // Remove again -> still byte-for-byte identical to beforeBytes
+        let outExtRemove = HomeSpeakerCommandLine.apply(
+            #"{"contract_version":1,"operations":[{"op":"agentHook","agent":"claude_code","action":"remove"}]}"#,
+            seam: extSeam
+        )
+        #expect(outExtRemove.exitCode == 0)
+        #expect(try Data(contentsOf: claudeSettingsURL) == beforeBytes)
+
+        // 4. Refusals: invalid agent, invalid action, non-HomeSpeaker executable
+        let refusalCases: [(payload: String, expectedCode: String)] = [
+            (#"{"contract_version":1,"operations":[{"op":"agentHook","agent":"cursor","action":"install"}]}"#, "invalid_agent"),
+            (#"{"contract_version":1,"operations":[{"op":"agentHook","agent":"claude_code","action":"toggle"}]}"#, "invalid_action"),
+        ]
+        for (payload, expectedCode) in refusalCases {
+            let outRef = HomeSpeakerCommandLine.apply(payload, seam: extSeam)
+            #expect(outRef.exitCode == 1)
+            let parsedRef = try #require(JSONSerialization.jsonObject(with: Data(outRef.stdout[0].utf8)) as? [String: Any])
+            let errRef = try #require(parsedRef["error"] as? [String: Any])
+            #expect(errRef["code"] as? String == expectedCode)
+        }
+
+        var badExeSeam = extSeam
+        badExeSeam.hookExecutablePath = "/usr/bin/true"
+        let outBadExe = HomeSpeakerCommandLine.apply(
+            #"{"contract_version":1,"operations":[{"op":"agentHook","agent":"claude_code","action":"install"}]}"#,
+            seam: badExeSeam
+        )
+        #expect(outBadExe.exitCode == 1)
+        let parsedBadExe = try #require(JSONSerialization.jsonObject(with: Data(outBadExe.stdout[0].utf8)) as? [String: Any])
+        let errBadExe = try #require(parsedBadExe["error"] as? [String: Any])
+        #expect(errBadExe["code"] as? String == "invalid_hook_program")
+    }
+
+    @Test("Every new op is refused with not_chosen on the program that is not the chosen one")
+    func applyNewOpsRefusedWhenNotChosen() throws {
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+        try rig.seedGoldenFixture()
+
+        // Fixture has chosen == .app; run on .extension
+        let unchosenSeam = rig.makeSeam(program: .extension)
+        let ops: [String] = [
+            #"{"op":"setSecret","name":"slack","value":"xoxp-test"}"#,
+            #"{"op":"snooze","minutes":30}"#,
+            #"{"op":"setNetwork","app":"beeper","key":"whatsapp","reading":false}"#,
+            #"{"op":"setReadAnyway","key":"slack","on":true}"#,
+            #"{"op":"importAntigravity"}"#,
+            #"{"op":"agentHook","agent":"claude_code","action":"install"}"#,
+        ]
+        for op in ops {
+            let out = HomeSpeakerCommandLine.apply(
+                #"{"contract_version":1,"operations":[\#(op)]}"#,
+                seam: unchosenSeam
+            )
+            #expect(out.exitCode == 1)
+            let parsed = try #require(JSONSerialization.jsonObject(with: Data(out.stdout[0].utf8)) as? [String: Any])
+            #expect(parsed["ok"] as? Bool == false)
+            let err = try #require(parsed["error"] as? [String: Any])
+            #expect(err["code"] as? String == "not_chosen")
+            #expect(err["chosen"] as? String == "app")
+        }
+    }
+
+    @Test("Table of every operation --apply accepts matches HomeSpeakerStateContract.supportedOperations and each row executes")
+    func applySupportedOperationsTableCompleteness() throws {
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+        try rig.seedGoldenFixture()
+
+        // Seed Antigravity token file in scratch home for the importAntigravity row
+        let tokensURL = rig.agentHome.appendingPathComponent(".gemini/antigravity/mcp_oauth_tokens.json")
+        try FileManager.default.createDirectory(at: tokensURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let tokenJSON: [String: Any] = [
+            GoogleHomeClient.mcpEndpointString: [
+                "client_id": "table-client.apps.googleusercontent.com",
+                "client_secret": "SECRET-TABLE-AG-CLIENT", // gitleaks:allow
+                "token": [
+                    "access_token": "SECRET-TABLE-AG-ACCESS", // gitleaks:allow
+                    "refresh_token": "SECRET-TABLE-AG-REFRESH", // gitleaks:allow
+                ],
+            ],
+        ]
+        try JSONSerialization.data(withJSONObject: tokenJSON, options: [.prettyPrinted, .sortedKeys]).write(to: tokensURL)
+
+        let switchSeam = SettingsActions.RecordingDoorSwitchSeam(
+            me: .app,
+            chosenBy: "HomeSpeaker app 1.19.1",
+            doorFile: rig.doorFile,
+            home: rig.agentHome,
+            appProfile: rig.appProfile,
+            extensionProfile: rig.extProfile,
+            appProgram: rig.hookExecutablePath,
+            extensionProgram: rig.extExecutablePath,
+            now: ScratchRig.fixedDate,
+            otherIsInstalled: true,
+            otherRunning: false
+        )
+        var seam = rig.makeSeam(program: .app, doorSwitchSeam: switchSeam)
+        seam.antigravityTokensURL = tokensURL
+
+        // Every op `--apply` accepts must have a row in this table; adding an op to
+        // HomeSpeakerStateContract.supportedOperations without a row here fails the test.
+        let rows: [(op: String, payload: String)] = [
+            ("set", #"{"op":"set","key":"speech_length","value":"full"}"#),
+            ("setDefaultSpeaker", #"{"op":"setDefaultSpeaker","key":"kitchen"}"#),
+            ("removeSpeaker", #"{"op":"removeSpeaker","key":"bedroom"}"#),
+            ("setSecret", #"{"op":"setSecret","name":"slack","value":"xoxp-table-secret"}"#),
+            ("snooze", #"{"op":"snooze","minutes":15}"#),
+            ("setNetwork", #"{"op":"setNetwork","app":"beeper","key":"whatsapp","reading":false}"#),
+            ("setReadAnyway", #"{"op":"setReadAnyway","key":"slack","on":true}"#),
+            ("importAntigravity", #"{"op":"importAntigravity"}"#),
+            ("agentHook", #"{"op":"agentHook","agent":"claude_code","action":"install"}"#),
+            ("clearChatToken", #"{"op":"clearChatToken","token":"slack"}"#),
+            ("saveOAuthClient", #"{"op":"saveOAuthClient","client_id":"table.apps.googleusercontent.com","client_secret":"table-secret"}"#),
+            ("reset", #"{"op":"reset"}"#),
+            ("switchTo", #"{"op":"switchTo","side":"app","copy":false}"#),
+        ]
+
+        let testedOps = Set(rows.map(\.op))
+        let declaredOps = Set(HomeSpeakerStateContract.supportedOperations)
+        #expect(testedOps == declaredOps, "Every op in HomeSpeakerStateContract.supportedOperations must have a test row")
+        #expect(rows.count == HomeSpeakerStateContract.supportedOperations.count)
+
+        for row in rows {
+            let out = HomeSpeakerCommandLine.apply(
+                #"{"contract_version":1,"operations":[\#(row.payload)]}"#,
+                seam: seam
+            )
+            #expect(out.exitCode == 0, "Expected op \(row.op) to succeed, got \(out.stdout)")
+            let parsed = try #require(JSONSerialization.jsonObject(with: Data(out.stdout[0].utf8)) as? [String: Any])
+            #expect(parsed["ok"] as? Bool == true)
+            let results = try #require(parsed["results"] as? [[String: Any]])
+            #expect(results.count == 1)
+            #expect(results[0]["op"] as? String == row.op)
+            #expect(parsed["state"] as? [String: Any] != nil)
         }
     }
 }
