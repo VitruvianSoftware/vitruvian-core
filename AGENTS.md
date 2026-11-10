@@ -147,6 +147,7 @@ prints the command to use instead. If no target fits, stop and say which one is 
 | Scan for secrets | `bazel run //tools/secret-scan` (`--staged`, `--range a..b`) |
 | Lint workflows | `bazel run //tools/ci:actionlint` |
 | Remove a worktree | `bazel run //tools/worktree -- --remove <branch\|name> [--delete-branch]` |
+| Delete a local branch with no worktree whose work landed changed | `bazel run //tools/worktree -- --remove <branch> --delete-branch --landed-as <PR,PR>` (after checking which PRs it went into) |
 | Delete a branch on GitHub | `bazel run //tools/agent-app -- branch-delete --agent <you> <branch>...` (only branches already on `main`) |
 | Open, comment on or close an issue | `bazel run //tools/agent-app -- issue-create --agent <you> --title "…" --body-file <f>` (`issue-comment <n>`, `issue-close <n>`) |
 

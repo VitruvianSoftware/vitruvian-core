@@ -27,10 +27,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -55,7 +60,9 @@ private const val TAG_BORDER_ALPHA = 0.40f
  * `.tag` - a mono, tracked, uppercase chip.
  *
  * Made clickable only when [onClick] is supplied, which is how the Apps screen's module chips work;
- * everywhere else a Tag is a static status marker.
+ * everywhere else a Tag is a static status marker. When [onClick] is non-null, an outer [Hit.h1]
+ * (44 dp) touch target wraps the chip without changing its visual height, and [Role.Button] (plus
+ * `selected` semantics when [selected] is non-null) is applied.
  */
 @Composable
 public fun Tag(
@@ -63,6 +70,7 @@ public fun Tag(
     modifier: Modifier = Modifier,
     tone: TagTone = TagTone.Outline,
     onClick: (() -> Unit)? = null,
+    selected: Boolean? = null,
     minHeight: Dp = Dp.Unspecified,
     contentPadding: PaddingValues = PaddingValues(horizontal = Space.s3, vertical = 3.dp),
 ) {
@@ -93,29 +101,65 @@ public fun Tag(
         TagTone.Neutral -> Triple(colors.surface2, colors.textDim, colors.divider)
         TagTone.Outline -> Triple(Color.Transparent, colors.textDim, colors.divider)
       }
-  Box(
-      modifier =
-          modifier
-              .then(
-                  if (minHeight != Dp.Unspecified) {
-                    Modifier.defaultMinSize(minHeight = minHeight)
-                  } else {
-                    Modifier
-                  })
-              .background(fill)
-              .border(1.dp, border)
-              .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-              .padding(contentPadding),
-      contentAlignment = Alignment.Center,
-  ) {
-    VText(
-        text = text.uppercase(),
-        style = VitruvianType.tag,
-        color = content,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        softWrap = false,
-    )
+  val a11y = A11y.tagSemantics(clickable = onClick != null, selected = selected)
+  val chipModifier =
+      Modifier.then(
+              if (minHeight != Dp.Unspecified) {
+                Modifier.defaultMinSize(minHeight = minHeight)
+              } else {
+                Modifier
+              })
+          .background(fill)
+          .border(1.dp, border)
+          .padding(contentPadding)
+  if (a11y.interactive && onClick != null) {
+    val role = if (a11y.hasButtonRole) Role.Button else null
+    val selectedState = a11y.selected
+    val interactionModifier =
+        if (selectedState != null) {
+          Modifier.selectable(
+              selected = selectedState,
+              role = role,
+              onClick = onClick,
+          )
+        } else {
+          Modifier.clickable(
+              role = role,
+              onClick = onClick,
+          )
+        }
+    Box(
+        modifier = modifier.defaultMinSize(minHeight = Hit.h1).then(interactionModifier),
+        contentAlignment = Alignment.Center,
+    ) {
+      Box(
+          modifier = chipModifier,
+          contentAlignment = Alignment.Center,
+      ) {
+        VText(
+            text = text.uppercase(),
+            style = VitruvianType.tag,
+            color = content,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            softWrap = false,
+        )
+      }
+    }
+  } else {
+    Box(
+        modifier = modifier.then(chipModifier),
+        contentAlignment = Alignment.Center,
+    ) {
+      VText(
+          text = text.uppercase(),
+          style = VitruvianType.tag,
+          color = content,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+          softWrap = false,
+      )
+    }
   }
 }
 
@@ -128,6 +172,7 @@ public fun Kbd(
     text: String,
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
+    contentDescription: String? = null,
 ) {
   val colors = Vitruvian
   Box(
@@ -135,12 +180,24 @@ public fun Kbd(
           modifier
               .then(if (onClick != null) Modifier.defaultMinSize(minHeight = 32.dp) else Modifier)
               .border(1.dp, colors.divider)
-              .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+              .then(
+                  if (onClick != null) {
+                    Modifier.clickable(role = Role.Button, onClick = onClick)
+                  } else {
+                    Modifier
+                  })
+              .then(
+                  if (contentDescription != null) {
+                    Modifier.semantics { this.contentDescription = contentDescription }
+                  } else {
+                    Modifier
+                  })
               .padding(horizontal = 6.dp, vertical = 2.dp),
       contentAlignment = Alignment.Center,
   ) {
     VText(
         text = text,
+        modifier = if (contentDescription != null) Modifier.clearAndSetSemantics {} else Modifier,
         style = VitruvianType.listSub,
         color = colors.textDim,
         maxLines = 1,

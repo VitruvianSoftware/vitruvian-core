@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.15](https://github.com/VitruvianSoftware/vitruvian-core/compare/courier-v0.3.14...courier-v0.3.15) (2026-11-10)
+
+
+### Features
+
+* **courier:** bring your own AI — local models found automatically, or your own cloud key ([#4482](https://github.com/VitruvianSoftware/vitruvian-core/issues/4482)) ([8f871f2](https://github.com/VitruvianSoftware/vitruvian-core/commit/8f871f24aaaebdaacbd8630e74495221a28301ba))
+
 ## [0.3.14](https://github.com/VitruvianSoftware/vitruvian-core/compare/courier-v0.3.13...courier-v0.3.14) (2026-11-10)
 
 

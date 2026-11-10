@@ -68,10 +68,10 @@ concurrency:
 
 jobs:
   migration-safety:
-    # Homelab runner for merge-queue and main jobs when QUEUE_RUNNER is on and the
-    # fallback is off; GitHub-hosted otherwise, and always for pull requests
-    # (//tools/ci:queue_runner_routing_test holds this line exact).
-    runs-on: ${{ (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
+    # Hosted Linux, not vitruvian-queue: no Bazel (std-only rustc + squawk in a
+    # few seconds), so it does not use the vitruvian-queue-cache PVC and should
+    # not contend for the 8 Bazel merge-queue runner slots.
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

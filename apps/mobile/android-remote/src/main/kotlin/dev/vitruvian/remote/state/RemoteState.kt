@@ -121,6 +121,13 @@ public class RemoteState(
      */
     private val bridge: BridgeControl? = null,
     /**
+     * Opens a browser URL on the phone via an `ACTION_VIEW` intent.
+     *
+     * A port for the same reason as [notifier]: this class has no `Context` and must not acquire
+     * one. Null in previews and tests.
+     */
+    private val openUrl: ((String) -> Boolean)? = null,
+    /**
      * Where fire-and-forget actions run.
      *
      * Everything that reaches the Mac over HTTP is a round trip, and none of it may block the frame
@@ -215,7 +222,12 @@ public class RemoteState(
   public var appsView: AppsView by mutableStateOf(AppsView.Dashboards)
     private set
 
-  public val installed: SnapshotStateList<String> = persistence.installed.toMutableStateList()
+  public val installed: SnapshotStateList<String> =
+      Derive.filterInstalledModules(
+              persistence.installed,
+              MockHost.gallery.map { it.id }.toSet(),
+          )
+          .toMutableStateList()
 
   /**
    * The pull request whose buttons are showing, as `repo#number`; null when none is.
@@ -3160,24 +3172,26 @@ public class RemoteState(
                       setHomeSpeaker("speak clipboard", speakClipboard = true)
                     }),
         ))
-    add(
-        ModuleRow(
-            title = "HomeSpeaker door",
-            subtitle =
-                if (hs.activeDoor == "extension") "running as Vitruvian extension"
-                else "running as standalone app",
-            trailing = hs.activeDoor,
-            choices =
-                listOf("app", "extension").map { d ->
-                  val current = d == hs.activeDoor
-                  RowAction(
-                      if (d == "app") "App" else "Extension",
-                      enabled = paired && !current,
-                      selected = current) {
-                        setHomeSpeaker("door $d", activeDoor = d)
-                      }
-                },
-        ))
+    if (hs.extensionInstalled || hs.activeDoor == "extension") {
+      add(
+          ModuleRow(
+              title = "HomeSpeaker door",
+              subtitle =
+                  if (hs.activeDoor == "extension") "running as Vitruvian extension"
+                  else "running as standalone app",
+              trailing = hs.activeDoor,
+              choices =
+                  listOf("app", "extension").map { d ->
+                    val current = d == hs.activeDoor
+                    RowAction(
+                        if (d == "app") "App" else "Extension",
+                        enabled = paired && !current,
+                        selected = current) {
+                          setHomeSpeaker("door $d", activeDoor = d)
+                        }
+                  },
+          ))
+    }
     add(
         ModuleRow(
             title = "Settings & diagnostics",
@@ -3309,7 +3323,8 @@ public class RemoteState(
                 }
                 hs.agents.forEach { a ->
                   val slug = a.canonicalSlug
-                  val isClaude = slug == "claude-code"
+                  // HomeSpeaker installs a hook for each of these (CodingAgent.supportsHook).
+                  val supportsHook = slug in Derive.hookAgentSlugs
                   val agentName =
                       when (slug) {
                         "claude-code" -> "Claude Code"
@@ -3318,7 +3333,7 @@ public class RemoteState(
                         else -> a.agent
                       }
                   val actions = mutableListOf<RowAction>()
-                  if (isClaude) {
+                  if (supportsHook) {
                     val installed = a.hookState == "installed"
                     val stale = a.hookState == "stale"
                     if (a.speaksTwice) {
@@ -3334,19 +3349,19 @@ public class RemoteState(
                       actions.add(
                           RowAction("Remove hook", enabled = paired && homeSpeakerBusy == null) {
                             setHomeSpeaker(
-                                "remove $agentName hook", agentHookAction = "remove:claude-code")
+                                "remove $agentName hook", agentHookAction = "remove:$slug")
                           })
                     } else if (stale) {
                       actions.add(
                           RowAction("Update hook", enabled = paired && homeSpeakerBusy == null) {
                             setHomeSpeaker(
-                                "update $agentName hook", agentHookAction = "install:claude-code")
+                                "update $agentName hook", agentHookAction = "install:$slug")
                           })
                     } else {
                       actions.add(
                           RowAction("Install hook", enabled = paired && homeSpeakerBusy == null) {
                             setHomeSpeaker(
-                                "install $agentName hook", agentHookAction = "install:claude-code")
+                                "install $agentName hook", agentHookAction = "install:$slug")
                           })
                     }
                     val statusLabel =
@@ -3689,68 +3704,62 @@ public class RemoteState(
                 }
               }))
     }
-    if (hs.customOAuthClientId.isNotBlank() || hs.hasCustomOAuthSecret) {
-      val clientId = hs.customOAuthClientId
-      val hasSecret = hs.hasCustomOAuthSecret
-      add(
-          ModuleList(
-              "Google Cloud OAuth",
-              buildList {
-                add(
-                    ModuleRow(
-                        title = "OAuth Client ID",
-                        subtitle = clientId.ifBlank { "Tap to paste Google Cloud OAuth client ID" },
-                        trailing = if (clientId.isNotBlank()) "configured" else "none",
-                        tone = if (clientId.isNotBlank()) StatusTone.Ok else StatusTone.Neutral,
-                        textPrompt =
-                            RowTextPrompt(
-                                title = "OAuth Client ID",
-                                initialValue = clientId,
-                                placeholder = "...apps.googleusercontent.com",
-                                submitLabel = "Save Client ID",
-                                clearLabel = if (clientId.isNotBlank()) "Clear" else null,
-                                onClear =
-                                    if (clientId.isNotBlank()) {
-                                      {
-                                        setHomeSpeaker("clear OAuth client ID", oauthClientId = "")
-                                      }
-                                    } else null,
-                                onSubmit = { text ->
-                                  setHomeSpeaker("save OAuth client ID", oauthClientId = text)
-                                },
-                            ),
-                    ))
-                add(
-                    ModuleRow(
-                        title = "OAuth Client Secret",
-                        subtitle =
-                            if (hasSecret) "Client secret saved on Mac"
-                            else "Tap to paste client secret",
-                        trailing = if (hasSecret) "saved" else "missing",
-                        tone = if (hasSecret) StatusTone.Ok else StatusTone.Neutral,
-                        textPrompt =
-                            RowTextPrompt(
-                                title = "OAuth Client Secret",
-                                hasValue = hasSecret,
-                                placeholder = "Paste client secret",
-                                secret = true,
-                                submitLabel = "Save Secret",
-                                clearLabel = if (hasSecret) "Clear Secret" else null,
-                                onClear =
-                                    if (hasSecret) {
-                                      {
-                                        setHomeSpeaker(
-                                            "clear OAuth client secret", oauthClientSecret = "")
-                                      }
-                                    } else null,
-                                onSubmit = { secret ->
-                                  setHomeSpeaker(
-                                      "save OAuth client secret", oauthClientSecret = secret)
-                                },
-                            ),
-                    ))
-              }))
-    }
+    val (clientIdSpec, secretSpec) =
+        Derive.oauthSectionRows(hs.customOAuthClientId, hs.hasCustomOAuthSecret)
+    val clientId = hs.customOAuthClientId.trim()
+    add(
+        ModuleList(
+            "Google Cloud OAuth",
+            listOf(
+                ModuleRow(
+                    title = clientIdSpec.title,
+                    subtitle = clientIdSpec.subtitle,
+                    trailing = clientIdSpec.trailing,
+                    tone = if (clientIdSpec.healthy) StatusTone.Ok else StatusTone.Neutral,
+                    textPrompt =
+                        RowTextPrompt(
+                            title = clientIdSpec.title,
+                            initialValue = clientId,
+                            placeholder = "...apps.googleusercontent.com",
+                            submitLabel = "Save Client ID",
+                            clearLabel = if (clientIdSpec.hasValue) "Clear" else null,
+                            enabled = clientIdSpec.enabled,
+                            onClear =
+                                if (clientIdSpec.hasValue) {
+                                  { setHomeSpeaker("clear OAuth client ID", oauthClientId = "") }
+                                } else null,
+                            onSubmit = { text ->
+                              setHomeSpeaker("save OAuth client ID", oauthClientId = text)
+                            },
+                        ),
+                ),
+                ModuleRow(
+                    title = secretSpec.title,
+                    subtitle = secretSpec.subtitle,
+                    trailing = secretSpec.trailing,
+                    tone = if (secretSpec.healthy) StatusTone.Ok else StatusTone.Neutral,
+                    textPrompt =
+                        RowTextPrompt(
+                            title = secretSpec.title,
+                            hasValue = secretSpec.hasValue,
+                            placeholder = "Paste client secret",
+                            secret = true,
+                            submitLabel = "Save Secret",
+                            clearLabel = if (secretSpec.hasValue) "Clear Secret" else null,
+                            enabled = secretSpec.enabled,
+                            onClear =
+                                if (secretSpec.hasValue) {
+                                  {
+                                    setHomeSpeaker(
+                                        "clear OAuth client secret", oauthClientSecret = "")
+                                  }
+                                } else null,
+                            onSubmit = { secret ->
+                              setHomeSpeaker("save OAuth client secret", oauthClientSecret = secret)
+                            },
+                        ),
+                ),
+            )))
     // An agent older than v1.10 sends only `last`: a one-row list, still replayable.
     val recent = hs.recent.ifEmpty { listOfNotNull(hs.last) }
     if (recent.isNotEmpty()) {
@@ -5487,7 +5496,7 @@ public class RemoteState(
   }
 
   public fun toggleModule(id: String) {
-    val name = MockHost.gallery.first { it.id == id }.name
+    val name = MockHost.gallery.firstOrNull { it.id == id }?.name ?: return
     moduleUnavailableReason(id)?.let { why ->
       if (id !in installed) {
         log("warn", "module · $name · $why")
@@ -5504,12 +5513,15 @@ public class RemoteState(
     persistence.installed = installed.toList()
   }
 
-  public fun sideload(): Unit = log("warn", "module · sideload by URL is not implemented yet")
-
-  public fun openInstallGuide(): Unit =
+  public fun openInstallGuide() {
+    if (openUrl?.invoke(INSTALL_GUIDE_URL) == true) {
+      log("info", "pairing · opened install guide (apps/mobile/android-remote/macagent/README.md)")
+    } else {
       log(
           "warn",
-          "pairing · install guide not written yet; see mobile/android/remote/macagent/README.md")
+          "pairing · could not open browser; see apps/mobile/android-remote/macagent/README.md")
+    }
+  }
 
   /**
    * Runs a macro on the Mac.
@@ -7347,6 +7359,9 @@ public class RemoteState(
   private companion object {
     /** How `AgentAuthException` words a refusal, and so how the bridge's link status reads one. */
     const val LINK_REFUSED_PREFIX = "not paired (HTTP"
+
+    const val INSTALL_GUIDE_URL =
+        "https://github.com/VitruvianSoftware/vitruvian-core/blob/main/apps/mobile/android-remote/macagent/README.md"
 
     const val POINTER_HINT = "drag · tap · 2-finger scroll · hold to drag · 3-finger swipe"
 

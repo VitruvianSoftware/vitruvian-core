@@ -169,7 +169,11 @@ public class Persistence(context: Context) {
     set(value) = prefs.edit().putString(KEY_BRIDGE_AUDIT, BridgePolicy.encodeAudit(value)).apply()
 
   public var installed: List<String>
-    get() = prefs.getStringSet(KEY_INSTALLED, null)?.toList() ?: MockHost.defaultInstalled.toList()
+    get() =
+        Derive.filterInstalledModules(
+            prefs.getStringSet(KEY_INSTALLED, null)?.toList() ?: MockHost.defaultInstalled.toList(),
+            MockHost.gallery.map { it.id }.toSet(),
+        )
     set(value) = prefs.edit().putStringSet(KEY_INSTALLED, value.toSet()).apply()
 
   public var hiddenWidgets: List<String>

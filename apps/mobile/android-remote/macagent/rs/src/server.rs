@@ -58,7 +58,7 @@ use crate::sampler::{
 use crate::stream::handle_exec_stream;
 use crate::tv::{handle_tv_get, handle_tv_post, TVController};
 
-pub const VERSION: &str = "1.9.1";
+pub const VERSION: &str = "0.1.28"; // x-release-please-version
 pub const DEFAULT_PORT: &str = "7411";
 pub const SCREEN_CACHE_TTL: Duration = Duration::from_secs(2);
 
@@ -1613,5 +1613,19 @@ mod tests {
             parse_sips_pixels("/tmp/x/screen.jpg\n  pixelWidth: 7680\n  pixelHeight: 2160\n");
         assert_eq!((w, h), (7680, 2160));
         assert_eq!(parse_sips_pixels("garbage"), (0, 0));
+    }
+
+    #[test]
+    fn test_version_matches_vitruvian_tool_json() {
+        let manifest_raw = include_str!("../../../macmenu/tool/vitruvian-tool.json");
+        let parsed = JsonValue::parse(manifest_raw).expect("parse vitruvian-tool.json");
+        let tool_version = parsed
+            .get("version")
+            .and_then(|v| v.as_str())
+            .expect("vitruvian-tool.json version field");
+        assert_eq!(
+            VERSION, tool_version,
+            "server::VERSION ({VERSION}) drifted from vitruvian-tool.json ({tool_version})"
+        );
     }
 }

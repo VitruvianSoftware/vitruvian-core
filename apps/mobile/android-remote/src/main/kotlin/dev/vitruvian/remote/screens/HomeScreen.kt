@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import dev.vitruvian.design.AutoGrid
 import dev.vitruvian.design.ButtonVariant
+import dev.vitruvian.design.Hit
 import dev.vitruvian.design.Label
 import dev.vitruvian.design.ListItem
 import dev.vitruvian.design.LogStream
@@ -70,7 +71,7 @@ private val ACTION_MIN = 160.dp
 
 private const val RECENT_ROWS = 4
 private val ADD_WIDGET_HEIGHT = 96.dp
-private val CLOSE_BUTTON = 32.dp
+private val CLOSE_BUTTON = Hit.h1
 
 /**
  * Home: the composable board.
@@ -265,6 +266,7 @@ private fun WidgetPlate(state: RemoteState, widget: Widget) {
           onClick = { state.hideWidget(widget.id) },
           modifier = Modifier.align(Alignment.TopEnd).size(CLOSE_BUTTON),
           contentPadding = PaddingValues(0.dp),
+          contentDescription = "Remove widget",
       )
     }
   }

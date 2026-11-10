@@ -1912,6 +1912,12 @@ const queueRunner = "on"
 // GitHub-hosted gate job (#4415), entries build in parallel in 6-11 minutes,
 // so ALLGREEN keeps every commit on main 100% green without head-of-line
 // stalls.
+//
+// MaxEntriesToBuild and MaxEntriesToMerge are capped at 3 to match the
+// 8-runner homelab vitruvian-queue pool: building 10 entries at once queued
+// 60+ first-wave Bazel jobs ahead of position 1's second-wave unit-* jobs
+// (priority inversion), and discarded up to 9 speculative runs on any single
+// queue eviction.
 func mergeQueueRule() *github.RepositoryRulesetRulesMergeQueueArgs {
 	return &github.RepositoryRulesetRulesMergeQueueArgs{
 		MergeMethod:                  pulumi.String("SQUASH"),
@@ -1919,8 +1925,8 @@ func mergeQueueRule() *github.RepositoryRulesetRulesMergeQueueArgs {
 		CheckResponseTimeoutMinutes:  pulumi.Int(60),
 		MinEntriesToMerge:            pulumi.Int(1),
 		MinEntriesToMergeWaitMinutes: pulumi.Int(5),
-		MaxEntriesToBuild:            pulumi.Int(10),
-		MaxEntriesToMerge:            pulumi.Int(10),
+		MaxEntriesToBuild:            pulumi.Int(3),
+		MaxEntriesToMerge:            pulumi.Int(3),
 	}
 }
 

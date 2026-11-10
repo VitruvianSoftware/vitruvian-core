@@ -21,11 +21,15 @@
 # PUBLIC umami route — stats.vitruviansoftware.dev, reached through the
 # Cloudflare Tunnel (dnsendpoint-public.yaml). cloudflared forwards EVERY tunnel
 # hostname to this Gateway with the Host header intact, so this route is the
-# only thing deciding what the internet can reach. It matches exactly the two
-# paths a browser running the tracker needs:
+# only thing deciding what the internet can reach. It matches only the exact
+# paths a browser running the tracker and session/heatmap recorder needs:
 #   - GET /script.js     the tracker itself (docker/proxy.ts TRACKER_PATH)
 #   - POST /api/send     the collector it posts to (COLLECT_PATH; OPTIONS
 #                        preflight hits the same path)
+#   - GET /recorder.js   the session replay & heatmap recorder script
+#   - GET /api/websites/<id>/recorder
+#                        the unauthenticated public recorder config endpoint
+#   - POST /api/record   the collector for session replays & heatmaps
 # Nothing else is routed: /login, /api/auth/*, /api/websites, /websites/* etc.
 # get the Gateway's 404, so the dashboard and its API are not internet-facing.
 # The dashboard lives on umami.lab.ipv1337.dev (httproute-internal.yaml).
@@ -53,6 +57,15 @@ spec:
         - path:
             type: Exact
             value: /api/send
+        - path:
+            type: Exact
+            value: /recorder.js
+        - path:
+            type: Exact
+            value: /api/record
+        - path:
+            type: Exact
+            value: /api/websites/cb8f197e-5f28-4cca-8e2e-012ed0351971/recorder
       backendRefs:
         - group: ""
           kind: Service

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.28](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.27...android-remote-v0.1.28) (2026-11-10)
+
+
+### Bug Fixes
+
+* **design-system-android:** screen-reader labels and 44 dp touch targets ([#4469](https://github.com/VitruvianSoftware/vitruvian-core/issues/4469)) ([5e2590c](https://github.com/VitruvianSoftware/vitruvian-core/commit/5e2590cff5ee59a7ebbd82c893556c32d3d80208))
+
 ## [0.1.27](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.26...android-remote-v0.1.27) (2026-11-10)
 
 

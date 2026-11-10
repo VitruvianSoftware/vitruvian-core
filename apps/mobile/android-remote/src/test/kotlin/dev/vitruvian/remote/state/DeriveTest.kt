@@ -1451,7 +1451,7 @@ public class DeriveTest {
   }
 
   @Test
-  public fun `visible module ids retain installed modules including unwired ones in simulated mode`() {
+  public fun `visible module ids retain installed modules and drop unknown ids like xcode`() {
     val galleryIds =
         listOf(
             "claude",
@@ -1464,12 +1464,72 @@ public class DeriveTest {
             "ollama",
             "homespeaker",
             "tv",
-            "xcode")
+        )
     val installed = setOf("claude", "docker", "ollama", "grafana", "xcode")
     val availableDashboards = galleryIds.toSet()
     assertEquals(
-        listOf("claude", "docker", "grafana", "ollama", "xcode"),
+        listOf("claude", "docker", "grafana", "ollama"),
         Derive.visibleModuleIds(galleryIds, installed, availableDashboards))
+    assertEquals(
+        listOf("claude", "docker", "ollama", "grafana"),
+        Derive.filterInstalledModules(
+            listOf("claude", "xcode", "docker", "ollama", "grafana", "unknown"),
+            galleryIds.toSet()))
+  }
+
+  @Test
+  public fun `Google Cloud OAuth section rows cover empty, client ID only, and both set`() {
+    // 1. Empty: Client ID shows "Not set · needed for Google Chat" and is enabled; Secret shows
+    // "Not set" and is disabled until a client ID exists.
+    val (emptyId, emptySecret) = Derive.oauthSectionRows(clientId = "", hasSecret = false)
+    assertEquals("OAuth Client ID", emptyId.title)
+    assertEquals("Not set · needed for Google Chat", emptyId.subtitle)
+    assertEquals("none", emptyId.trailing)
+    assertFalse(emptyId.healthy)
+    assertFalse(emptyId.hasValue)
+    assertTrue(emptyId.enabled)
+    assertEquals("Set…", Derive.promptButtonLabel(secret = false, hasValue = emptyId.hasValue))
+
+    assertEquals("OAuth Client Secret", emptySecret.title)
+    assertEquals("Not set", emptySecret.subtitle)
+    assertEquals("missing", emptySecret.trailing)
+    assertFalse(emptySecret.healthy)
+    assertFalse(emptySecret.hasValue)
+    assertFalse(emptySecret.enabled)
+
+    // 2. Client ID only: Client ID is configured and editable; Secret becomes enabled for pasting.
+    val (idOnlyId, idOnlySecret) =
+        Derive.oauthSectionRows(clientId = "12345.apps.googleusercontent.com", hasSecret = false)
+    assertEquals("12345.apps.googleusercontent.com", idOnlyId.subtitle)
+    assertEquals("configured", idOnlyId.trailing)
+    assertTrue(idOnlyId.healthy)
+    assertTrue(idOnlyId.hasValue)
+    assertTrue(idOnlyId.enabled)
+    assertEquals("Edit…", Derive.promptButtonLabel(secret = false, hasValue = idOnlyId.hasValue))
+
+    assertEquals("Tap to paste client secret", idOnlySecret.subtitle)
+    assertEquals("missing", idOnlySecret.trailing)
+    assertFalse(idOnlySecret.healthy)
+    assertFalse(idOnlySecret.hasValue)
+    assertTrue(idOnlySecret.enabled)
+    assertEquals("Set…", Derive.promptButtonLabel(secret = true, hasValue = idOnlySecret.hasValue))
+
+    // 3. Both set: both rows are healthy, enabled, and carry values.
+    val (bothId, bothSecret) =
+        Derive.oauthSectionRows(clientId = "12345.apps.googleusercontent.com", hasSecret = true)
+    assertEquals("12345.apps.googleusercontent.com", bothId.subtitle)
+    assertEquals("configured", bothId.trailing)
+    assertTrue(bothId.healthy)
+    assertTrue(bothId.hasValue)
+    assertTrue(bothId.enabled)
+
+    assertEquals("Client secret saved on Mac", bothSecret.subtitle)
+    assertEquals("saved", bothSecret.trailing)
+    assertTrue(bothSecret.healthy)
+    assertTrue(bothSecret.hasValue)
+    assertTrue(bothSecret.enabled)
+    assertEquals(
+        "Replace…", Derive.promptButtonLabel(secret = true, hasValue = bothSecret.hasValue))
   }
 
   @Test
@@ -1731,5 +1791,11 @@ public class DeriveTest {
         "Couldn't mute: the Mac returned an error",
         Derive.homeSpeakerInlineError(
             what = "mute", reason = "agent: HTTP 500 for /v1/homespeaker/volume"))
+  }
+
+  @Test
+  fun hookAgentSlugsMatchHomeSpeakerHookAgents() {
+    // HomeSpeaker's CodingAgent.supportsHook is true for every agent it knows.
+    assertEquals(setOf("claude-code", "antigravity", "opencode"), Derive.hookAgentSlugs)
   }
 }

@@ -576,6 +576,9 @@ public object Derive {
   public fun pollIntervalLabel(seconds: Int): String =
       if (seconds >= 60 && seconds % 60 == 0) "${seconds / 60} min" else "$seconds s"
 
+  /** Coding agents HomeSpeaker installs a hook for (Swift `CodingAgent.supportsHook`). */
+  public val hookAgentSlugs: Set<String> = setOf("claude-code", "antigravity", "opencode")
+
   public val googleChatSources: List<String> = listOf("auto", "api", "gws")
 
   public fun googleChatSourceLabel(source: String): String =
@@ -604,6 +607,51 @@ public object Derive {
     val user = slackIdentity.trim()
     return if (user.isNotEmpty()) "Token saved on Mac · signed in as $user"
     else "Token saved on Mac"
+  }
+
+  /** Pure specification for a row in the HomeSpeaker "Google Cloud OAuth" section. */
+  public data class OAuthRowSpec(
+      val title: String,
+      val subtitle: String,
+      val trailing: String,
+      val healthy: Boolean,
+      val hasValue: Boolean,
+      val enabled: Boolean,
+  )
+
+  /**
+   * Builds the Client ID and Client Secret row specs for the Google Cloud OAuth section.
+   *
+   * Always shown so first-time setup is reachable from the phone. When empty, the Client ID row
+   * reads "Not set · needed for Google Chat" and the Secret row reads "Not set" and stays disabled
+   * until a client ID exists.
+   */
+  public fun oauthSectionRows(clientId: String, hasSecret: Boolean): List<OAuthRowSpec> {
+    val id = clientId.trim()
+    val hasClientId = id.isNotEmpty()
+    return listOf(
+        OAuthRowSpec(
+            title = "OAuth Client ID",
+            subtitle = id.ifEmpty { "Not set · needed for Google Chat" },
+            trailing = if (hasClientId) "configured" else "none",
+            healthy = hasClientId,
+            hasValue = hasClientId,
+            enabled = true,
+        ),
+        OAuthRowSpec(
+            title = "OAuth Client Secret",
+            subtitle =
+                when {
+                  hasSecret -> "Client secret saved on Mac"
+                  hasClientId -> "Tap to paste client secret"
+                  else -> "Not set"
+                },
+            trailing = if (hasSecret) "saved" else "missing",
+            healthy = hasSecret,
+            hasValue = hasSecret,
+            enabled = hasClientId || hasSecret,
+        ),
+    )
   }
 
   /** Subtitle for the Google Chat source row, showing the active backend when running. */
@@ -1943,10 +1991,19 @@ public object Derive {
   }
 
   /**
+   * Filters a saved installed-module list down to known [galleryIds], preserving order and dropping
+   * unknown or retired module ids silently.
+   */
+  public fun filterInstalledModules(
+      saved: Iterable<String>,
+      galleryIds: Set<String>,
+  ): List<String> = saved.filter { it in galleryIds }
+
+  /**
    * Gallery module ids that appear in the Dashboards chip bar: every gallery module in [installed]
    * that is present in [availableDashboards]. Both live and simulated modes populate
-   * [availableDashboards] for every gallery id (falling back to an unwired placeholder), so
-   * installing Docker, Ollama, Grafana, or Xcode in simulated mode keeps its tab visible.
+   * [availableDashboards] for every gallery id, so installing Docker, Ollama, or Grafana in
+   * simulated mode keeps its tab visible.
    */
   public fun visibleModuleIds(
       galleryIds: List<String>,

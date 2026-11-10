@@ -64,10 +64,10 @@ concurrency:
 
 jobs:
   release-scope:
-    # Homelab runner for merge-queue and main jobs when QUEUE_RUNNER is on and the
-    # fallback is off; GitHub-hosted otherwise, and always for pull requests
-    # (//tools/ci:queue_runner_routing_test holds this line exact).
-    runs-on: ${{ (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
+    # Hosted Linux, not vitruvian-queue: no Bazel (merge_group only prints a
+    # one-line notice; the real test runs in presubmit), so it should not claim
+    # one of the 8 Bazel merge-queue runner slots.
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     permissions:
       contents: read

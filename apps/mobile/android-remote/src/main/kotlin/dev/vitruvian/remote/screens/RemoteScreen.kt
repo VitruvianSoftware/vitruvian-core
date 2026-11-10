@@ -141,17 +141,17 @@ private const val BRIGHTNESS_STEP = 10
  * exists as part of a report that also carries a key, and there is nowhere to "hold" it between two
  * taps. The old palette showed ⌘ ⌥ ⌃ ⇧ as if they were buttons and none of them did anything.
  */
-private val PALETTE_KEYS: List<Pair<String, HidAction>> =
+private val PALETTE_KEYS: List<Triple<String, String?, HidAction>> =
     listOf(
-        "esc" to HidAction.Escape,
-        "tab" to HidAction.Tab,
-        "↩" to HidAction.Return,
-        "⌫" to HidAction.Backspace,
-        "↑" to HidAction.ArrowUp,
-        "↓" to HidAction.ArrowDown,
-        "←" to HidAction.ArrowLeft,
-        "→" to HidAction.ArrowRight,
-        "⌘ space" to HidAction.Spotlight,
+        Triple("esc", "Escape", HidAction.Escape),
+        Triple("tab", "Tab", HidAction.Tab),
+        Triple("↩", "Return", HidAction.Return),
+        Triple("⌫", "Backspace", HidAction.Backspace),
+        Triple("↑", "Up arrow", HidAction.ArrowUp),
+        Triple("↓", "Down arrow", HidAction.ArrowDown),
+        Triple("←", "Left arrow", HidAction.ArrowLeft),
+        Triple("→", "Right arrow", HidAction.ArrowRight),
+        Triple("⌘ space", "Command Space (Spotlight)", HidAction.Spotlight),
     )
 
 /**
@@ -254,8 +254,12 @@ public fun ColumnScope.RemoteScreen(state: RemoteState) {
                 horizontalArrangement = Arrangement.spacedBy(Space.s2),
                 verticalArrangement = Arrangement.spacedBy(Space.s2),
             ) {
-              PALETTE_KEYS.forEach { (glyph, action) ->
-                Kbd(text = glyph, onClick = { state.sendMacChord(action) })
+              PALETTE_KEYS.forEach { (glyph, description, action) ->
+                Kbd(
+                    text = glyph,
+                    onClick = { state.sendMacChord(action) },
+                    contentDescription = description,
+                )
               }
             }
           }
@@ -767,17 +771,19 @@ private fun TuneRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
       VButton(
-          "−",
-          onDown,
+          label = "−",
+          onClick = onDown,
           modifier = Modifier.width(NUDGE_SIZE),
           contentPadding = NUDGE_PADDING,
+          contentDescription = "$label down",
       )
       Meter(fraction = fraction, modifier = Modifier.weight(1f), height = METER_HEIGHT)
       VButton(
-          "+",
-          onUp,
+          label = "+",
+          onClick = onUp,
           modifier = Modifier.width(NUDGE_SIZE),
           contentPadding = NUDGE_PADDING,
+          contentDescription = "$label up",
       )
     }
   }
@@ -893,7 +899,12 @@ private fun MediaPlate(state: RemoteState) {
       Meter(fraction = TRACK_PERCENT / 100f)
     }
     Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
-      VButton("⏮", state::previousTrack, modifier = Modifier.weight(1f))
+      VButton(
+          label = "⏮",
+          onClick = state::previousTrack,
+          modifier = Modifier.weight(1f),
+          contentDescription = "Previous track",
+      )
       if (state.isLive) {
         VButton(
             label = "Play/Pause",
@@ -909,7 +920,12 @@ private fun MediaPlate(state: RemoteState) {
             variant = ButtonVariant.Primary,
         )
       }
-      VButton("⏭", state::nextTrack, modifier = Modifier.weight(1f))
+      VButton(
+          label = "⏭",
+          onClick = state::nextTrack,
+          modifier = Modifier.weight(1f),
+          contentDescription = "Next track",
+      )
     }
   }
 }
@@ -923,6 +939,8 @@ private fun OutputPlate(state: RemoteState) {
           label = "Volume",
           value = state.volumeValue,
           fraction = state.volumeFraction,
+          downDescription = "Volume down",
+          upDescription = "Volume up",
           onDown = { state.nudgeVolume(-VOLUME_STEP) },
           onUp = { state.nudgeVolume(VOLUME_STEP) },
       )
@@ -930,6 +948,8 @@ private fun OutputPlate(state: RemoteState) {
           label = "Brightness",
           value = state.brightnessValue,
           fraction = state.brightnessFraction,
+          downDescription = "Brightness down",
+          upDescription = "Brightness up",
           onDown = { state.nudgeBrightness(-BRIGHTNESS_STEP) },
           onUp = { state.nudgeBrightness(BRIGHTNESS_STEP) },
       )
@@ -957,6 +977,8 @@ private fun NudgeRow(
     fraction: Float?,
     onDown: () -> Unit,
     onUp: () -> Unit,
+    downDescription: String = "$label down",
+    upDescription: String = "$label up",
 ) {
   Column(verticalArrangement = Arrangement.spacedBy(Space.s3)) {
     Row(modifier = Modifier.fillMaxWidth()) {
@@ -968,10 +990,11 @@ private fun NudgeRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
       VButton(
-          "−",
-          onDown,
+          label = "−",
+          onClick = onDown,
           modifier = Modifier.width(NUDGE_SIZE),
           contentPadding = NUDGE_PADDING,
+          contentDescription = downDescription,
       )
       if (fraction == null) {
         VText(
@@ -984,10 +1007,11 @@ private fun NudgeRow(
         Meter(fraction = fraction, modifier = Modifier.weight(1f), height = METER_HEIGHT)
       }
       VButton(
-          "+",
-          onUp,
+          label = "+",
+          onClick = onUp,
           modifier = Modifier.width(NUDGE_SIZE),
           contentPadding = NUDGE_PADDING,
+          contentDescription = upDescription,
       )
     }
   }

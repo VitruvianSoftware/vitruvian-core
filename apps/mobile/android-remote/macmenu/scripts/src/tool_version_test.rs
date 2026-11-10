@@ -34,6 +34,7 @@ use std::path::{Path, PathBuf};
 pub const REQUIRED_EXTRA_FILES: &[&str] = &[
     "BUILD",
     "macmenu/Sources/RemoteMenuCore/Version.swift",
+    "macagent/rs/src/server.rs",
     "macmenu/tool/vitruvian-tool.json",
     "macmenu/Resources/Info.plist",
 ];
@@ -168,6 +169,7 @@ pub fn release_please_layout(text: &str) -> Result<String, String> {
 pub fn check_all_versions(
     manifest_text: &str,
     swift_text: &str,
+    server_rs_text: &str,
     build_text: &str,
     plist_text: &str,
     rp_config_text: &str,
@@ -208,6 +210,14 @@ pub fn check_all_versions(
         problems.push(format!(
             "RemoteMenuCore/Version.swift says {:?}, vitruvian-tool.json says {manifest_version}",
             swift_ver
+        ));
+    }
+
+    let rust_ver = swift_version_line(server_rs_text);
+    if rust_ver.as_deref() != Some(manifest_version) {
+        problems.push(format!(
+            "macagent/rs/src/server.rs says {:?}, vitruvian-tool.json says {manifest_version}",
+            rust_ver
         ));
     }
 
@@ -284,6 +294,10 @@ fn live_tool_versions_and_release_please_config_in_sync() {
         "apps/mobile/android-remote/macmenu/Sources/RemoteMenuCore/Version.swift",
     ))
     .unwrap();
+    let server_rs = fs::read_to_string(find_runfile(
+        "apps/mobile/android-remote/macagent/rs/src/server.rs",
+    ))
+    .unwrap();
     let build = fs::read_to_string(find_runfile("apps/mobile/android-remote/BUILD")).unwrap();
     let plist = fs::read_to_string(find_runfile(
         "apps/mobile/android-remote/macmenu/Resources/Info.plist",
@@ -294,7 +308,7 @@ fn live_tool_versions_and_release_please_config_in_sync() {
     ))
     .unwrap();
 
-    let problems = check_all_versions(&manifest, &swift, &build, &plist, &rp_config);
+    let problems = check_all_versions(&manifest, &swift, &server_rs, &build, &plist, &rp_config);
     assert!(
         problems.is_empty(),
         "version check failed:\n{}",
@@ -316,12 +330,16 @@ fn semver_parsing_accepts_only_three_numeric_components() {
 fn detects_mismatch_across_files() {
     let manifest = "{\n  \"version\": \"0.1.21\"\n}\n";
     let swift = "public static let current = \"0.1.20\" // x-release-please-version\n";
+    let server_rs = "pub const VERSION: &str = \"0.1.17\"; // x-release-please-version\n";
     let build = "        \"versionName\": \"0.1.19\",  # x-release-please-version\n";
     let plist = "<plist><dict><key>CFBundleShortVersionString</key><string>0.1.18</string><key>CFBundleVersion</key><string>0.1.21</string></dict></plist>";
     let rp = "{\"packages\": {\"apps/mobile/android-remote\": {\"extra-files\": []}}}";
 
-    let problems = check_all_versions(manifest, swift, build, plist, rp);
+    let problems = check_all_versions(manifest, swift, server_rs, build, plist, rp);
     assert!(problems.iter().any(|p| p.contains("Version.swift")));
+    assert!(problems
+        .iter()
+        .any(|p| p.contains("macagent/rs/src/server.rs")));
     assert!(problems.iter().any(|p| p.contains("android-remote/BUILD")));
     assert!(problems
         .iter()
