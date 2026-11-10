@@ -101,7 +101,7 @@ public fun ColumnScope.HostsScreen(state: RemoteState) {
               .fillMaxWidth(),
       verticalAlignment = Alignment.Bottom,
   ) {
-    Label(text = "Settings · ${state.hostRows.size}", modifier = Modifier.weight(1f))
+    Label(text = "Macs · ${state.hostRows.size}", modifier = Modifier.weight(1f))
     Status(tone = state.hostTone, text = state.connectionWord)
   }
 

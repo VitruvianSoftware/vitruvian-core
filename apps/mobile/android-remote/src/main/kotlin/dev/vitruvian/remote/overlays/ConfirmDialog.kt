@@ -42,7 +42,8 @@ import dev.vitruvian.design.VitruvianType
 import dev.vitruvian.remote.state.RemoteState
 
 /**
- * The confirmation dialogs: Sleep, Restart and Pause updates.
+ * The confirmation dialogs: Sleep, Restart, merging a pull request, syncing an app, turning on
+ * Claude prompts and pairing from a QR code.
  *
  * A destructive one asks for its word to be typed before its button unlocks - never a swipe, which
  * this language does not use for destruction at all. Whether the word is required is a host

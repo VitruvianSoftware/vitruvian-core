@@ -1602,7 +1602,8 @@ public class DeriveTest {
         Derive.replayQuickAction(
             paired = true, available = true, installed = true, hasReplay = true, target = "Kitchen")
     assertEquals("Replay", withReplay.label)
-    assertEquals("Kitchen", withReplay.secondary)
+    // No helper line: the room name described nothing about what is replayed.
+    assertNull(withReplay.secondary)
     assertTrue(withReplay.enabled)
 
     // 5. newestBroadcast picks recent.firstOrNull() verbatim (same item as Recent broadcasts row 0)
@@ -1708,5 +1709,27 @@ public class DeriveTest {
     assertEquals(
         "Couldn't replay: speaker is offline",
         Derive.homeSpeakerInlineError(what = "replay", reason = "speaker is offline"))
+  }
+
+  @Test
+  public fun `a blank broadcast with no id is not replayable`() {
+    val blank = AgentLastBroadcast(text = "  ", target = "Kitchen", source = "claude", at = "")
+    val withId = blank.copy(id = "b-7")
+    val withText = blank.copy(text = "Build finished")
+    assertFalse(Derive.isReplayable(blank))
+    assertFalse(Derive.isReplayable(null))
+    assertTrue(Derive.isReplayable(withId))
+    assertTrue(Derive.isReplayable(withText))
+  }
+
+  @Test
+  public fun `inline errors keep plain reasons that merely contain a number`() {
+    assertEquals(
+        "Couldn't mute: speaker 100 not found",
+        Derive.homeSpeakerInlineError(what = "mute", reason = "speaker 100 not found"))
+    assertEquals(
+        "Couldn't mute: the Mac returned an error",
+        Derive.homeSpeakerInlineError(
+            what = "mute", reason = "agent: HTTP 500 for /v1/homespeaker/volume"))
   }
 }

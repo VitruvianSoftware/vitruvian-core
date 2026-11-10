@@ -1059,9 +1059,9 @@ public object Derive {
       target: String? = null,
   ): QuickActionSpec {
     val ready = paired && available && installed && hasReplay
-    val sub =
-        if (!available || !installed || !hasReplay) null
-        else target?.trim()?.takeIf { it.isNotEmpty() } ?: "last"
+    // No helper line: the room name it used to show described nothing about
+    // what would be replayed.
+    val sub: String? = null
     val desc =
         if (hasReplay) "Replay last announcement" else "Replay last announcement, nothing to replay"
     return QuickActionSpec(
@@ -1079,6 +1079,10 @@ public object Derive {
    * `recent.firstOrNull()` (falling back to `last` on an older agent), matching the newest row in
    * Recent broadcasts verbatim.
    */
+  /** A broadcast can be replayed only if it has words or an id the Mac can look up. */
+  public fun isReplayable(b: AgentLastBroadcast?): Boolean =
+      b != null && (b.text.isNotBlank() || b.id.isNotBlank())
+
   public fun newestBroadcast(
       recent: List<AgentLastBroadcast>,
       last: AgentLastBroadcast? = null,
@@ -1140,9 +1144,8 @@ public object Derive {
       )
 
   private val HTTP_CODE_REGEX = Regex("""\bHTTP\s+\d{3}\b""", RegexOption.IGNORE_CASE)
-  private val AUTH_CODE_REGEX = Regex("""\b40[13]\b""")
-  private val LEAKED_PATH_OR_CODE_REGEX =
-      Regex("""(?:/v\d+/|https?://|\b\d{3}\b)""", RegexOption.IGNORE_CASE)
+  private val AUTH_CODE_REGEX = Regex("""\bHTTP\s+40[13]\b""", RegexOption.IGNORE_CASE)
+  private val LEAKED_PATH_OR_CODE_REGEX = Regex("""(?:/v\d+/|https?://)""", RegexOption.IGNORE_CASE)
 
   /**
    * One-line inline error shown directly under a HomeSpeaker Now strip control, stream plate, or

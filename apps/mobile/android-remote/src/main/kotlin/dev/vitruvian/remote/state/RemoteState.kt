@@ -2262,7 +2262,7 @@ public class RemoteState(
     }
     val newest = Derive.newestBroadcast(hs?.recent.orEmpty(), hs?.last)
     val canSpeak = paired && available && hs!!.installed
-    val canReplay = canSpeak && newest != null
+    val canReplay = canSpeak && Derive.isReplayable(newest)
     return ModuleDashboard(
         id = "homespeaker",
         name = "HomeSpeaker",
@@ -2400,7 +2400,7 @@ public class RemoteState(
             targetRoom = selected?.room.orEmpty(),
             targetType = selected?.type.orEmpty(),
             hasRoomChoices = roomChoices.any { it.enabled },
-            hasReplay = newest != null,
+            hasReplay = Derive.isReplayable(newest),
             replayTarget = newest?.target,
         )
     return specs.map { spec ->
@@ -4172,6 +4172,9 @@ public class RemoteState(
       controlId: String = "replay",
   ) {
     val line = text.trim()
+    // A blank broadcast with no id has nothing to replay; sending it would
+    // ask the Mac to speak an empty line.
+    if (line.isEmpty() && id.isNullOrBlank()) return
     val client = actClient("homespeaker · replay") ?: return
     scope.launch {
       runCatching { client.homeSpeakerSay(line, replay = true, replayId = id) }
@@ -6639,9 +6642,8 @@ public class RemoteState(
     // cannot be smart-cast, and the branches below need the target the dialog
     // was opened for.
     when (val open = dialog) {
-      // The one power action a keyboard can actually perform. Restart and
-      // Halt below stay mocked: HID cannot express them, and pretending
-      // otherwise would be worse than an honest no-op.
+      // The one power action a keyboard can actually perform. Restart below
+      // goes through the agent, because HID cannot express it.
       DialogKind.Sleep -> {
         log("info", "power · $hostShortName sleeping")
         // Ctrl+Shift+Power on the KEYBOARD page. Consumer 0x30 -- what the
