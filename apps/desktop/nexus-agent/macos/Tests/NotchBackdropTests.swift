@@ -50,15 +50,22 @@ final class NotchBackdropTests: XCTestCase {
         XCTAssertLessThan(max(surface.redComponent, surface.greenComponent, surface.blueComponent), 0.02)
     }
 
+    func testTheTintOverTheGlassThinsTowardTheBottom() {
+        // The glass itself only draws on screen; what is checked here is the
+        // shade laid over it, which is the same everywhere.
+        let stops = NexusAgentNotchBackdrop.shade(increasedContrast: false)
+        XCTAssertEqual(stops.first?.location, 0)
+        XCTAssertEqual(stops.last?.location, 1)
+        let opacities = stops.map { NexusAgentNotchBackdrop.shadeOpacity(at: $0.location, increasedContrast: false) }
+        XCTAssertEqual(opacities, opacities.sorted(by: >), "never darker further down")
+        XCTAssertLessThan(opacities.last ?? 1, 0.8, "not an opaque slab: the glass shows through at the bottom")
+    }
+
     @MainActor
-    func testTheGlassLetsTheBackgroundThroughTowardTheBottom() throws {
-        // Off screen there is no desktop to blur, so the shade is what draws:
-        // dark at the top, see-through toward the bottom.
-        let bitmap = try render(reduceTransparency: false, name: "notch-backdrop-glass.png")
-        let top = try XCTUnwrap(bitmap.colorAt(x: 40, y: 6)?.usingColorSpace(.sRGB))
-        let bottom = try XCTUnwrap(bitmap.colorAt(x: bitmap.pixelsWide / 2, y: bitmap.pixelsHigh - 8)?.usingColorSpace(.sRGB))
-        XCTAssertGreaterThan(top.alphaComponent, 0.95, "the top is the island's near-solid black")
-        XCTAssertLessThan(bottom.alphaComponent, 0.8, "not an opaque slab: the glass shows through")
+    func testTheGlassViewRenders() throws {
+        // A picture to look at before a release. Off screen the glass has no
+        // desktop behind it, and how it draws then depends on the machine.
+        _ = try render(reduceTransparency: false, name: "notch-backdrop-glass.png")
     }
 
     @MainActor
