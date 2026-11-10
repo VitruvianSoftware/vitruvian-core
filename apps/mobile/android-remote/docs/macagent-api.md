@@ -1,6 +1,6 @@
 # vitruvian-remote-agent · HTTP API (v1.1 contract)
 
-Both halves of Vitruvian Remote are built against this document: the Go agent
+Both halves of Vitruvian Remote are built against this document: the Rust agent
 (`macagent/`) serves it, the Android app (`state/AgentClient.kt`) consumes it.
 Change it here first.
 
@@ -30,7 +30,7 @@ the first 80 characters, so the Mac has a record of what the phone did.
 | GET | `/v1/vms` | – | `{available:bool, reason:string, vms:[{name, status, vm_type, cpus:int, memory_bytes:int, disk_bytes:int, arch}]}` — `limactl list --json` (one object per line). `available:false` with a reason when limactl is absent or fails |
 | GET | `/v1/containers` | – | `{available, reason, runtime:"docker"|"podman"|"", containers:[{name, image, status}]}` — `docker ps --format '{{json .}}'`, then `podman ps --format json`; daemon down ⇒ `available:false`, reason = the tool's first stderr line |
 | GET | `/v1/k8s` | – | `{available, reason, context, nodes:[{name, ready:bool, version, roles:[string]}]}` — only when the agent was started with `--kube-context` (and optionally `--kubeconfig <file>`, since the lab cluster's config is not `~/.kube/config`); else `available:false, reason:"not configured (--kube-context)"`. Uses `kubectl [--kubeconfig F] --context X get nodes -o json` with a 5 s bound |
-| GET | `/v1/tools` | – | `{tools:{<name>:{available:bool, path}}}` for agy, claude, docker, kubectl, limactl, ollama, osascript, podman, shortcuts, xcodebuild — `exec.LookPath` on the agent's PATH, so "present" means "the exec endpoint can run it". The gallery uses it to say "not on this Mac" instead of offering Install |
+| GET | `/v1/tools` | – | `{tools:{<name>:{available:bool, path}}}` for agy, claude, docker, kubectl, limactl, ollama, osascript, podman, shortcuts, xcodebuild — PATH lookup on the agent's PATH, so "present" means "the exec endpoint can run it". The gallery uses it to say "not on this Mac" instead of offering Install |
 | GET | `/v1/antigravity` | – | `{available, reason, version, models:[{id,label}], agents:[string]}` — `agy --version`, `agy models`, `agy agents`, refreshed every 10 min (models is a network call). agy has no build/eval/queue query; this is what it can honestly report |
 | GET | `/v1/ollama` | – | `{available, reason, models:[{name, id, size_bytes, modified}], running:[{name, id, size_bytes, processor, context, until}]}` — `ollama list` + `ollama ps`; daemon down ⇒ `available:false` with ollama's message. An idle daemon has `running:[]`, which is not an error |
 | GET | `/v1/audio` | – | `{volume_percent:int, muted:bool}` — `osascript -e 'get volume settings'` |
@@ -213,7 +213,7 @@ cannot contradict the switch.
 ## New flags
 
 `--ntfy-url`, `--ntfy-topic`, `--ntfy-token-file`, `--gh-extra-repos`, `--exec-dir` (the cwd for
-`/v1/exec` and `/v1/exec/stream`; under launchd it is otherwise `~`, where `bazel run` has no workspace). `install.sh` passes them
+`/v1/exec` and `/v1/exec/stream`; under launchd it is otherwise `~`, where `bazel run` has no workspace). `bazel run //apps/mobile/android-remote/macagent:install` passes them
 through like the others.
 
 ## Phone-only (no agent change)
