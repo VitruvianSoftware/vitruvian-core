@@ -90,6 +90,7 @@ pub const INERT_TOOLS: &[&str] = &[
     "lint/",
     "lint-naming/",
     "merge-queue-stats/",
+    "model-prices/",
     "npm-publish-audit/",
     "npm-trusted-publisher/",
     "ops/",

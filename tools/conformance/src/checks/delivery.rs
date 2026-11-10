@@ -92,12 +92,30 @@ fn matches_side_effect(line: &str) -> bool {
     if line.contains("tools/charts/publish.sh") {
         return true;
     }
-    // `bazel run .*:(deploy|up|apply)` — the `bazel run` part followed
-    // somewhere by `:<verb>`.
+    // `bazel run .*:(deploy|up|apply)` — keep prefix matching for `:deploy`,
+    // `:up` and `:apply`, exempting only the exact `:update` and `:upload`
+    // suffixes so a future `:deployProd` or `:deploy2` is still caught.
     if line.contains("bazel run ") {
-        if line.contains(":deploy") || line.contains(":up") || line.contains(":apply") {
+        if line.contains(":deploy") || line.contains(":apply") || has_up_side_effect(line) {
             return true;
         }
+    }
+    false
+}
+
+fn has_up_side_effect(line: &str) -> bool {
+    let mut rest = line;
+    while let Some(idx) = rest.find(":up") {
+        let from_colon = &rest[idx..];
+        let end = from_colon[1..]
+            .find(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | '+')))
+            .map(|off| 1 + off)
+            .unwrap_or(from_colon.len());
+        let target_suffix = &from_colon[..end];
+        if target_suffix != ":update" && target_suffix != ":upload" {
+            return true;
+        }
+        rest = &from_colon[end..];
     }
     false
 }
@@ -1274,5 +1292,40 @@ fn walk_md_files(dir: &str, out: &mut Vec<String>, root: &str) {
                 out.push(p.to_string());
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::matches_side_effect;
+
+    #[test]
+    fn side_effect_matcher_distinguishes_up_verb_from_update() {
+        assert!(!matches_side_effect(
+            "bazel run //tools/model-prices:update -- --markdown-out \"$table\""
+        ));
+        assert!(!matches_side_effect(
+            "bazel run //tools/model-prices:update"
+        ));
+        assert!(!matches_side_effect("bazel run //tools/foo:upload"));
+        assert!(!matches_side_effect(
+            "bazel run //tools/foo:upload -- --dry-run"
+        ));
+
+        assert!(matches_side_effect(
+            "bazel run //infrastructure/pulumi/platform/dev-local:up"
+        ));
+        assert!(matches_side_effect("bazel run //apps/foo:up -- --yes"));
+        assert!(matches_side_effect("bazel run //apps/foo:deploy"));
+        assert!(matches_side_effect("bazel run //apps/foo:deploy-prod"));
+        assert!(matches_side_effect("bazel run //apps/foo:deployProd"));
+        assert!(matches_side_effect("bazel run //apps/foo:deploy2"));
+        assert!(matches_side_effect("bazel run //apps/foo:apply "));
+        assert!(matches_side_effect("bazel run //apps/foo:applyProd"));
+        assert!(matches_side_effect("bazel run //apps/foo:updateProd"));
+        assert!(matches_side_effect("bazel run //apps/foo:upload2"));
+        assert!(matches_side_effect(
+            "bazel run //tools/model-prices:update && bazel run //apps/foo:up"
+        ));
     }
 }
