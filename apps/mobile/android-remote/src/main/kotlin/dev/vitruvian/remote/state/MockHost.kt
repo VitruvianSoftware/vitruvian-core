@@ -122,8 +122,6 @@ public object MockHost {
           GalleryEntry(
               "homespeaker", "HomeSpeaker", "On / off, speaker, announce", "config", "homespeaker"),
           GalleryEntry("tv", "Sony TV", "Power, 4K Aerials, apps, HDMI, cast URL", "adb", "adb"),
-          GalleryEntry(
-              "xcode", "Xcode builds", "Schemes, last build, warnings", "xcodebuild", "xcodebuild"),
       )
 
   public val defaultInstalled: Set<String> =
