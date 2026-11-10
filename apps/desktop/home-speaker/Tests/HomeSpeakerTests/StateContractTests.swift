@@ -852,26 +852,54 @@ struct StateContractTests {
                 """,
             ]
 
+            let readyGate = DispatchSemaphore(value: 0)
             let startGate = DispatchSemaphore(value: 0)
-            let readyCount = NSLock()
-            nonisolated(unsafe) var ready = 0
+            let group = DispatchGroup()
+            let lock = NSLock()
             nonisolated(unsafe) var exitCodes = [Int32](repeating: -1, count: payloads.count)
+            nonisolated(unsafe) var workerTimedOut = false
 
-            DispatchQueue.concurrentPerform(iterations: payloads.count) { idx in
-                readyCount.lock()
-                ready += 1
-                let allReady = (ready == payloads.count)
-                readyCount.unlock()
-                if allReady {
-                    for _ in 0..<payloads.count {
-                        startGate.signal()
+            for idx in 0..<payloads.count {
+                let payload = payloads[idx]
+                group.enter()
+                Thread {
+                    defer { group.leave() }
+                    readyGate.signal()
+                    if startGate.wait(timeout: .now() + .seconds(5)) == .timedOut {
+                        lock.lock()
+                        workerTimedOut = true
+                        lock.unlock()
+                        return
                     }
+                    let out = HomeSpeakerCommandLine.apply(payload, seam: seam)
+                    lock.lock()
+                    exitCodes[idx] = out.exitCode
+                    lock.unlock()
+                }.start()
+            }
+
+            var readyTimedOut = false
+            for _ in 0..<payloads.count {
+                if readyGate.wait(timeout: .now() + .seconds(5)) == .timedOut {
+                    readyTimedOut = true
+                    break
                 }
-                startGate.wait()
-                let out = HomeSpeakerCommandLine.apply(payloads[idx], seam: seam)
-                readyCount.lock()
-                exitCodes[idx] = out.exitCode
-                readyCount.unlock()
+            }
+            for _ in 0..<payloads.count {
+                startGate.signal()
+            }
+            if readyTimedOut {
+                Issue.record("Timed out waiting for workers to become ready in round \(round)")
+                _ = group.wait(timeout: .now() + .seconds(5))
+                return
+            }
+            if group.wait(timeout: .now() + .seconds(10)) == .timedOut {
+                Issue.record("Timed out waiting for concurrent --apply workers to finish in round \(round)")
+                return
+            }
+            if workerTimedOut {
+                Issue.record("Worker timed out waiting for startGate in round \(round)")
+                return
             }
 
             for code in exitCodes {
