@@ -110,7 +110,7 @@ Releases are managed via release-please (`release-please-config.json`, `.release
 - **No screenshot tests.** The design system's definition of done asks for a
   preview per component in both themes, screenshot-tested; the previews are not
   written yet.
-- **Module gallery entries without a source:** Xcode builds still renders an
+- **Module gallery entries without a source:** Xcode builds still shows an
   honest "not wired to this Mac yet" dashboard. Antigravity, Ollama, Grafana,
   Docker, Lima, Sony TV, and HomeSpeaker are fully wired. **HomeSpeaker**
   (`Apps → HomeSpeaker`, backed by
