@@ -2161,6 +2161,16 @@ public class DeriveTest {
     assertEquals(
         "Couldn't replay: speaker is offline",
         Derive.homeSpeakerInlineError(what = "replay", reason = "speaker is offline"))
+    assertEquals(
+        "A HomeSpeaker sign-in is already running on the Mac",
+        Derive.homeSpeakerInlineError(
+            what = "sign in on Mac",
+            reason = "agent: A HomeSpeaker sign-in is already running on the Mac"))
+    assertEquals(
+        "A HomeSpeaker sign-in is already running on the Mac",
+        Derive.homeSpeakerInlineError(
+            what = "grant Google Chat",
+            reason = "A HomeSpeaker sign-in is already running on the Mac"))
   }
 
   @Test
@@ -2189,5 +2199,341 @@ public class DeriveTest {
   fun hookAgentSlugsMatchHomeSpeakerHookAgents() {
     // HomeSpeaker's CodingAgent.supportsHook is true for every agent it knows.
     assertEquals(setOf("claude-code", "antigravity", "opencode"), Derive.hookAgentSlugs)
+  }
+
+  @Test
+  public fun `googleHomeAccountRow covers sign in, pending on Mac, signed in, import login and disabled states`() {
+    val signedOut =
+        Derive.googleHomeAccountRow(
+            signedIn = false,
+            accountEmail = "",
+            hasAntigravityTokens = true,
+            signInPending = false,
+            canAct = true,
+            installed = true,
+        )
+    assertEquals("not signed in", signedOut.subtitle)
+    assertEquals("sign in", signedOut.trailing)
+    assertFalse(signedOut.healthy)
+    assertTrue(signedOut.showSignIn)
+    assertTrue(signedOut.signInEnabled)
+    assertTrue(signedOut.showImportLogin)
+    assertTrue(signedOut.importLoginEnabled)
+    assertFalse(signedOut.showSignOut)
+
+    val pending =
+        Derive.googleHomeAccountRow(
+            signedIn = false,
+            accountEmail = "",
+            hasAntigravityTokens = true,
+            signInPending = true,
+            canAct = true,
+            installed = true,
+        )
+    assertEquals(Derive.FINISH_SIGN_IN_ON_MAC, pending.subtitle)
+    assertEquals("signing in…", pending.trailing)
+    assertFalse(pending.healthy)
+    assertTrue(pending.showSignIn)
+    assertTrue(pending.signInEnabled)
+
+    val signedIn =
+        Derive.googleHomeAccountRow(
+            signedIn = true,
+            accountEmail = "james@example.com",
+            hasAntigravityTokens = true,
+            signInPending = true,
+            canAct = true,
+            installed = true,
+        )
+    assertEquals("james@example.com", signedIn.subtitle)
+    assertEquals("signed in", signedIn.trailing)
+    assertTrue(signedIn.healthy)
+    assertTrue(signedIn.showSignOut)
+    assertTrue(signedIn.signOutEnabled)
+    assertFalse(signedIn.showSignIn)
+    assertFalse(signedIn.showImportLogin)
+
+    val unpaired =
+        Derive.googleHomeAccountRow(
+            signedIn = false,
+            accountEmail = "",
+            hasAntigravityTokens = true,
+            signInPending = false,
+            canAct = false,
+            installed = true,
+        )
+    assertFalse(unpaired.signInEnabled)
+    assertFalse(unpaired.importLoginEnabled)
+
+    val uninstalled =
+        Derive.googleHomeAccountRow(
+            signedIn = false,
+            accountEmail = "",
+            hasAntigravityTokens = false,
+            signInPending = false,
+            canAct = true,
+            installed = false,
+        )
+    assertFalse(uninstalled.signInEnabled)
+    assertFalse(uninstalled.showImportLogin)
+  }
+
+  @Test
+  public fun `googleChatAccountDiag covers grant, pending on Mac, disconnect, gws prompt and disabled states`() {
+    val needsGrant =
+        Derive.googleChatAccountDiag(
+            source = "api",
+            activeBackend = "",
+            accountEmail = "james@example.com",
+            gwsAccount = "",
+            hasChatAccess = false,
+            gwsInstalled = false,
+            grantPending = false,
+            canAct = true,
+            installed = true,
+        )
+    assertEquals("james@example.com · Chat access not granted on Mac", needsGrant.subtitle)
+    assertEquals("no access", needsGrant.trailing)
+    assertFalse(needsGrant.healthy)
+    assertTrue(needsGrant.showGrant)
+    assertTrue(needsGrant.grantEnabled)
+    assertFalse(needsGrant.showDisconnect)
+    assertFalse(needsGrant.showGwsPrompt)
+
+    val grantPending =
+        Derive.googleChatAccountDiag(
+            source = "auto",
+            activeBackend = "",
+            accountEmail = "james@example.com",
+            gwsAccount = "",
+            hasChatAccess = false,
+            gwsInstalled = false,
+            grantPending = true,
+            canAct = true,
+            installed = true,
+        )
+    assertEquals(Derive.FINISH_SIGN_IN_ON_MAC, grantPending.subtitle)
+    assertEquals("signing in…", grantPending.trailing)
+    assertFalse(grantPending.healthy)
+    assertTrue(grantPending.showGrant)
+    assertTrue(grantPending.grantEnabled)
+    assertFalse(grantPending.showDisconnect)
+
+    val connected =
+        Derive.googleChatAccountDiag(
+            source = "api",
+            activeBackend = "api",
+            accountEmail = "james@example.com",
+            gwsAccount = "",
+            hasChatAccess = true,
+            gwsInstalled = false,
+            grantPending = false,
+            canAct = true,
+            installed = true,
+        )
+    assertEquals("james@example.com · Chat access granted", connected.subtitle)
+    assertEquals("signed in", connected.trailing)
+    assertTrue(connected.healthy)
+    assertFalse(connected.showGrant)
+    assertTrue(connected.showDisconnect)
+    assertTrue(connected.disconnectEnabled)
+
+    val uninstalledGrant =
+        Derive.googleChatAccountDiag(
+            source = "api",
+            activeBackend = "api",
+            accountEmail = "james@example.com",
+            gwsAccount = "",
+            hasChatAccess = false,
+            gwsInstalled = false,
+            grantPending = false,
+            canAct = true,
+            installed = false,
+        )
+    assertTrue(uninstalledGrant.showGrant)
+    assertFalse(uninstalledGrant.grantEnabled)
+
+    val uninstalledDisconnect =
+        Derive.googleChatAccountDiag(
+            source = "api",
+            activeBackend = "api",
+            accountEmail = "james@example.com",
+            gwsAccount = "",
+            hasChatAccess = true,
+            gwsInstalled = false,
+            grantPending = false,
+            canAct = true,
+            installed = false,
+        )
+    assertTrue(uninstalledDisconnect.showDisconnect)
+    assertFalse(uninstalledDisconnect.disconnectEnabled)
+
+    val gwsMode =
+        Derive.googleChatAccountDiag(
+            source = "gws",
+            activeBackend = "gws",
+            accountEmail = "james@example.com",
+            gwsAccount = "work@example.com",
+            hasChatAccess = false,
+            gwsInstalled = true,
+            grantPending = false,
+            canAct = false,
+            installed = true,
+        )
+    assertFalse(gwsMode.showGrant)
+    assertFalse(gwsMode.showDisconnect)
+    assertTrue(gwsMode.showGwsPrompt)
+    assertFalse(gwsMode.gwsPromptEnabled)
+  }
+
+  @Test
+  public fun `googleCloudOAuthSpec, courierTokenRow and legacyLaunchAgentRow respect pairing and state`() {
+    val oauthDefault =
+        Derive.googleCloudOAuthSpec(
+            customClientId = "",
+            hasCustomSecret = false,
+            canAct = true,
+        )
+    assertEquals("Set up in Google Cloud", oauthDefault.setupTitle)
+    assertEquals(Derive.GOOGLE_CLOUD_CONSOLE_URL, oauthDefault.setupUrl)
+    assertEquals("none", oauthDefault.clientIdTrailing)
+    assertEquals("missing", oauthDefault.clientSecretTrailing)
+    assertFalse(oauthDefault.clientIdHealthy)
+    assertFalse(oauthDefault.clientSecretHealthy)
+    assertTrue(oauthDefault.promptsEnabled)
+
+    val oauthCustomUnpaired =
+        Derive.googleCloudOAuthSpec(
+            customClientId = "123.apps.googleusercontent.com",
+            hasCustomSecret = true,
+            canAct = false,
+        )
+    assertEquals("configured", oauthCustomUnpaired.clientIdTrailing)
+    assertEquals("saved", oauthCustomUnpaired.clientSecretTrailing)
+    assertTrue(oauthCustomUnpaired.clientIdHealthy)
+    assertTrue(oauthCustomUnpaired.clientSecretHealthy)
+    assertFalse(oauthCustomUnpaired.promptsEnabled)
+
+    val courierMissing = Derive.courierTokenRow(hasToken = false, canAct = true)
+    assertEquals("Courier token", courierMissing.title)
+    assertEquals("missing", courierMissing.trailing)
+    assertFalse(courierMissing.healthy)
+    assertNull(courierMissing.clearLabel)
+    assertTrue(courierMissing.promptEnabled)
+
+    val courierSavedUnpaired = Derive.courierTokenRow(hasToken = true, canAct = false)
+    assertEquals("saved", courierSavedUnpaired.trailing)
+    assertTrue(courierSavedUnpaired.healthy)
+    assertEquals("Clear Token", courierSavedUnpaired.clearLabel)
+    assertFalse(courierSavedUnpaired.promptEnabled)
+
+    val legacyReady = Derive.legacyLaunchAgentRow(canAct = true, busy = false)
+    assertEquals("Legacy chat-monitor launch agent", legacyReady.title)
+    assertEquals("Remove", legacyReady.actionLabel)
+    assertTrue(legacyReady.actionEnabled)
+
+    assertFalse(Derive.legacyLaunchAgentRow(canAct = false, busy = false).actionEnabled)
+    assertFalse(Derive.legacyLaunchAgentRow(canAct = true, busy = true).actionEnabled)
+  }
+
+  @Test
+  public fun `googleCloudConsoleUrl matches Pages swift cloudConsole literal`() {
+    assertEquals(
+        "https://console.cloud.google.com/apis/credentials", Derive.GOOGLE_CLOUD_CONSOLE_URL)
+    val spec =
+        Derive.googleCloudOAuthSpec(customClientId = "", hasCustomSecret = false, canAct = true)
+    assertEquals("https://console.cloud.google.com/apis/credentials", spec.setupUrl)
+  }
+
+  @Test
+  public fun `pending sign-in clears on the next poll that shows signed in and times out after 5 minutes`() {
+    val startMs = 1_000_000L
+    val fiveMinMs = Derive.SIGN_IN_TIMEOUT_MS
+    assertEquals(5 * 60 * 1000L, fiveMinMs)
+
+    // Still pending before 5 minutes when not yet signed in.
+    val stillPending =
+        Derive.resolvePendingSignIn(
+            pendingSinceMs = startMs,
+            signedIn = false,
+            nowMs = startMs + fiveMinMs - 1L,
+        )
+    assertTrue(stillPending.pending)
+    assertFalse(stillPending.timedOut)
+    assertEquals(startMs, stillPending.pendingSinceMs)
+    assertNull(stillPending.inlineNote)
+
+    val rowWhilePending =
+        Derive.googleHomeAccountRow(
+            signedIn = false,
+            accountEmail = "",
+            hasAntigravityTokens = false,
+            signInPendingSinceMs = startMs,
+            nowMs = startMs + 60_000L,
+        )
+    assertEquals("Finish signing in on your Mac", rowWhilePending.subtitle)
+    assertEquals("signing in…", rowWhilePending.trailing)
+    assertTrue(rowWhilePending.showSignIn)
+    assertNull(rowWhilePending.inlineNote)
+
+    // Clears on the next poll that shows signedIn = true (or hasChatAccess = true).
+    val pollSignedIn =
+        Derive.updatePendingSignInOnPoll(
+            signInPendingSinceMs = startMs,
+            chatGrantPendingSinceMs = startMs,
+            signedIn = true,
+            hasChatAccess = true,
+            nowMs = startMs + 10_000L,
+        )
+    assertFalse(pollSignedIn.signIn.pending)
+    assertFalse(pollSignedIn.signIn.timedOut)
+    assertNull(pollSignedIn.signIn.pendingSinceMs)
+    assertNull(pollSignedIn.signIn.inlineNote)
+    assertFalse(pollSignedIn.chatGrant.pending)
+    assertFalse(pollSignedIn.chatGrant.timedOut)
+    assertNull(pollSignedIn.chatGrant.pendingSinceMs)
+    assertNull(pollSignedIn.chatGrant.inlineNote)
+
+    // Times out at 5 minutes: returns to "Sign in on Mac" with inline note.
+    val timedOut =
+        Derive.resolvePendingSignIn(
+            pendingSinceMs = startMs,
+            signedIn = false,
+            nowMs = startMs + fiveMinMs,
+        )
+    assertFalse(timedOut.pending)
+    assertTrue(timedOut.timedOut)
+    assertNull(timedOut.pendingSinceMs)
+    assertEquals("Sign-in didn't finish on the Mac. Try again.", timedOut.inlineNote)
+
+    val rowTimedOut =
+        Derive.googleHomeAccountRow(
+            signedIn = false,
+            accountEmail = "",
+            hasAntigravityTokens = false,
+            signInPendingSinceMs = startMs,
+            nowMs = startMs + fiveMinMs,
+        )
+    assertEquals("not signed in", rowTimedOut.subtitle)
+    assertEquals("sign in", rowTimedOut.trailing)
+    assertTrue(rowTimedOut.showSignIn)
+    assertTrue(rowTimedOut.signInEnabled)
+    assertEquals("Sign-in didn't finish on the Mac. Try again.", rowTimedOut.inlineNote)
+
+    val chatTimedOut =
+        Derive.googleChatAccountDiag(
+            source = "api",
+            activeBackend = "api",
+            accountEmail = "james@example.com",
+            gwsAccount = "",
+            hasChatAccess = false,
+            gwsInstalled = false,
+            grantPendingSinceMs = startMs,
+            nowMs = startMs + fiveMinMs + 5_000L,
+        )
+    assertEquals("james@example.com · Chat access not granted on Mac", chatTimedOut.subtitle)
+    assertEquals("no access", chatTimedOut.trailing)
+    assertTrue(chatTimedOut.showGrant)
+    assertEquals("Sign-in didn't finish on the Mac. Try again.", chatTimedOut.inlineNote)
   }
 }

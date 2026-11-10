@@ -723,8 +723,11 @@ The update endpoint supports these additional configuration actions and secret u
 | `discover` | bool | Executes `HomeSpeaker --discover` to refresh targets |
 | `structure_id` | string | Updates structure ID or switches active home via `HomeSpeaker --home <id>` |
 | `remove_target` | string | Removes specified target alias from `targets` in config |
+| `sign_in` | bool | Launches `HomeSpeaker --sign-in` detached on the Mac so the user can complete Google Home OAuth in the Mac browser |
 | `sign_out` | bool | Runs `HomeSpeaker --sign-out` and clears Google tokens in `secrets.json` |
 | `import_antigravity` | bool | Imports tokens from `~/.gemini/antigravity/mcp_oauth_tokens.json` |
+| `grant_chat` | bool | Launches `HomeSpeaker --sign-in --chat` detached on the Mac so the user can grant Google Chat OAuth consent |
+| `disconnect_chat` | bool | Runs `HomeSpeaker --sign-out --chat` and removes `googleChat` from `secrets.json` while preserving `google` |
 | `speak_clipboard` | bool | Reads text from the macOS clipboard and announces it |
 | `google_chat_source` | `"auto"` \| `"api"` \| `"gws"` | Configures chat monitor Google Chat backend |
 | `gws_account` | string | Configures GWS account email for chat monitor |
@@ -761,10 +764,9 @@ way it mirrors Beeper's.
 | `courier_announce` | `"direct_and_mentions"` \| `"all"` | `chat_monitor.courier_announce`; anything else is 400 |
 | `courier_network` | `{"key": string, "reading": bool}` | mutes or unmutes `key` in `chat_monitor.courier_muted_networks`, as `beeper_network` does Beeper's |
 | `courier_read_anyway` | `{"key": string, "on": bool}` | adds or removes `key` in `chat_monitor.courier_read_anyway`: a network HomeSpeaker's own Slack or Google Chat reader covers is read through Courier as well. Courier cannot say which Slack workspace an account is, so this is how a second workspace is heard |
+| `courier_token` | string | writes trimmed `courierToken` to `secrets.json` (never logged or echoed); an empty string removes `courierToken` and sets `chat_monitor.courier_enabled = false` |
 
-There is no `courier_token`: the token is pasted into HomeSpeaker on the Mac (Courier › Settings ›
-Integrations › New connection…) and never travels to or from the phone. Keys outside
-`^[a-z0-9_-]{1,64}$` are 400.
+Keys outside `^[a-z0-9_-]{1,64}$` are 400.
 
 ### `POST /v1/homespeaker/say` replay support
 

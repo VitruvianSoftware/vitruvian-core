@@ -483,6 +483,7 @@ public data class AgentHomeSpeaker(
     val hasSlackToken: Boolean = false,
     val hasBeeperToken: Boolean = false,
     val hasChatAccess: Boolean = false,
+    val hasGoogleChatToken: Boolean = hasChatAccess,
     val gwsInstalled: Boolean = false,
     val gwsAccount: String = "",
     val googleChatSource: String = "auto",
@@ -800,14 +801,18 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
       discover: Boolean = false,
       structureId: String? = null,
       removeTarget: String? = null,
+      signIn: Boolean = false,
       signOut: Boolean = false,
       importAntigravity: Boolean = false,
+      grantChat: Boolean = false,
+      disconnectChat: Boolean = false,
       speakClipboard: Boolean = false,
       googleChatSource: String? = null,
       gwsAccount: String? = null,
       pollInterval: Int? = null,
       slackToken: String? = null,
       beeperToken: String? = null,
+      courierToken: String? = null,
       geminiApiKey: String? = null,
       chatMonitorAction: String? = null,
       agentHookAction: String? = null,
@@ -896,14 +901,18 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
               if (discover) put("discover", true)
               if (structureId != null) put("structure_id", structureId)
               if (removeTarget != null) put("remove_target", removeTarget)
+              if (signIn) put("sign_in", true)
               if (signOut) put("sign_out", true)
               if (importAntigravity) put("import_antigravity", true)
+              if (grantChat) put("grant_chat", true)
+              if (disconnectChat) put("disconnect_chat", true)
               if (speakClipboard) put("speak_clipboard", true)
               if (googleChatSource != null) put("google_chat_source", googleChatSource)
               if (gwsAccount != null) put("gws_account", gwsAccount)
               if (pollInterval != null) put("poll_interval", pollInterval)
               if (slackToken != null) put("slack_token", slackToken)
               if (beeperToken != null) put("beeper_token", beeperToken)
+              if (courierToken != null) put("courier_token", courierToken)
               if (geminiApiKey != null) put("gemini_api_key", geminiApiKey)
               if (chatMonitorAction != null) put("chat_monitor_action", chatMonitorAction)
               if (agentHookAction != null) put("agent_hook_action", agentHookAction)
@@ -1538,6 +1547,7 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
           hasSlackToken = sources.hasSlackToken,
           hasBeeperToken = sources.hasBeeperToken,
           hasChatAccess = sources.hasChatAccess,
+          hasGoogleChatToken = sources.hasGoogleChatToken,
           gwsInstalled = sources.gwsInstalled,
           gwsAccount = sources.gwsAccount,
           googleChatSource = sources.googleChatSource,

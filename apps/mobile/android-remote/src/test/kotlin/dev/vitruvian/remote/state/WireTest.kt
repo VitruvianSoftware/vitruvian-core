@@ -678,6 +678,15 @@ public class WireTest {
   }
 
   @Test
+  public fun `homespeaker has_google_chat_token defaults to false and parses true`() {
+    assertEquals(false, HomeSpeakerWire.sources("{}").hasGoogleChatToken)
+    assertEquals(
+        false, HomeSpeakerWire.sources("""{"has_google_chat_token":false}""").hasGoogleChatToken)
+    assertEquals(
+        true, HomeSpeakerWire.sources("""{"has_google_chat_token":true}""").hasGoogleChatToken)
+  }
+
+  @Test
   public fun `homespeaker snooze_until defaults to null and parses non-blank ISO-8601 string`() {
     assertEquals(null, HomeSpeakerWire.sources("{}").snoozeUntil)
     assertEquals(null, HomeSpeakerWire.sources("""{"snooze_until":null}""").snoozeUntil)

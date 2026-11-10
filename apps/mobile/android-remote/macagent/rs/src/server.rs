@@ -58,7 +58,7 @@ use crate::sampler::{
 use crate::stream::handle_exec_stream;
 use crate::tv::{handle_tv_get, handle_tv_post, TVController};
 
-pub const VERSION: &str = "0.1.29"; // x-release-please-version
+pub const VERSION: &str = "0.1.31"; // x-release-please-version
 pub const DEFAULT_PORT: &str = "7411";
 pub const SCREEN_CACHE_TTL: Duration = Duration::from_secs(2);
 
@@ -178,7 +178,13 @@ impl Server {
                 HttpResponse::json(200, &self.sampler.processes().to_json())
             }),
             "/v1/tools" => self.get_only(req, |_| {
-                HttpResponse::json(200, &self.sampler.tools().to_json())
+                let mut tools = self.sampler.tools();
+                // The sampler only sees /Applications/HomeSpeaker.app; HomeSpeaker also knows
+                // the Vitruvian extension door.
+                tools
+                    .tools
+                    .insert("homespeaker".to_string(), self.speaker.tool());
+                HttpResponse::json(200, &tools.to_json())
             }),
             "/v1/antigravity" => self.get_only(req, |_| {
                 HttpResponse::json(200, &self.sampler.antigravity().to_json())

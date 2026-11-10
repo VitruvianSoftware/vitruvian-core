@@ -247,7 +247,11 @@ private let reply = """
         let out = await stylist(gemini: FakeModel(.stall), apple: FakeModel(.stall), timeout: 0.2)
             .style(reply, config: styled(.plain, model: .gemini))
         #expect(out == GoogleHomeClient.cleanForSpeech(reply, length: .summary))
-        #expect(Date().timeIntervalSince(start) < 3)
+        // Each stalled model would take 30 s; giving up at 0.2 s each finishes
+        // far sooner. The bound is loose because a busy CI Mac can delay this
+        // test's start by seconds (it took 4.8 s in a merge-queue run): any
+        // bound well under 30 s still proves the stall was given up on.
+        #expect(Date().timeIntervalSince(start) < 15)
     }
 
     @Test func anAnswerThatCleansToNothingFallsThrough() async {
