@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.29](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.28...android-remote-v0.1.29) (2026-11-10)
+
+
+### Bug Fixes
+
+* **android-remote:** Mac agent matches HomeSpeaker — real version, Antigravity/OpenCode hooks, Google Chat access, door ([#4495](https://github.com/VitruvianSoftware/vitruvian-core/issues/4495)) ([9dbc605](https://github.com/VitruvianSoftware/vitruvian-core/commit/9dbc605483603ab3a2678753f472ccca1d033df7))
+* **android-remote:** reach OAuth setup, wire install guide, drop dead modules ([#4494](https://github.com/VitruvianSoftware/vitruvian-core/issues/4494)) ([3c372f4](https://github.com/VitruvianSoftware/vitruvian-core/commit/3c372f4d77f3ddf04fc1104f30c7dff6160a23a7))
+
 ## [0.1.28](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.27...android-remote-v0.1.28) (2026-11-10)
 
 
