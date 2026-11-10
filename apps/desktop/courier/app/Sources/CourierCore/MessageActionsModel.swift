@@ -107,8 +107,16 @@ public final class MessageActionsModel: ObservableObject {
     @Published public private(set) var translations: [String: AIProviderDisposition] = [:]
     /// Per-event requested translation target language names.
     @Published public private(set) var translationTargetLanguages: [String: String] = [:]
-    /// Offline AI provider used for message translation stubs.
+    /// Per-event active translation requests in flight.
+    @Published public private(set) var translatingEventIDs: Set<String> = []
+    /// Per-event provenance footers (`via <model> · on this Mac` or `via <model> · sent to <Provider>`).
+    @Published public private(set) var translationProvenance: [String: String] = [:]
+    /// AI provider used for message translation.
     public var aiProvider: any AIProvider = UnavailableAIProvider()
+    /// AI preferences (`AIPreferences`) used to resolve `responseLanguage` and provenance.
+    public var aiPreferences: AIPreferences = AIPreferences()
+    /// Opens Settings ▸ AI.
+    public var onOpenAISettings: @MainActor () -> Void = {}
     /// Where toasts go: the inbox's (`InboxModel.announce`).
     public var onToast: @MainActor (String) -> Void = { _ in }
     /// Opens a link in the browser (NSWorkspace in the app).
@@ -128,6 +136,8 @@ public final class MessageActionsModel: ObservableObject {
     private let pasteboard: TextPasteboard
     private weak var observedLifecycle: SystemLifecycleModel?
     private var subscriptions: [AnyCancellable] = []
+    private var aiStoreCancellable: AnyCancellable?
+    private var translationTasks: [String: Task<Void, Never>] = [:]
     /// Unsends the engine took, by their redaction's event ID, with the chat's network for the toast: the network
     /// may still refuse them.
     private var pendingUnsends: [String: String] = [:]
@@ -153,6 +163,7 @@ public final class MessageActionsModel: ObservableObject {
         subscriptions.append(conversation.$roomID.removeDuplicates().sink { [weak self] _ in
             self?.changedStatuses = []
             self?.request = nil
+            self?.cancelAllTranslations()
         })
         subscriptions.append(
             NotificationCenter.default
@@ -168,19 +179,78 @@ public final class MessageActionsModel: ObservableObject {
         request = nil
     }
 
-    /// Requests inline translation for `eventID` into `targetLanguage` using `aiProvider`.
-    public func translateMessage(eventID: String, targetLanguage: String = "English") {
+    /// Binds this model to a shared `AIProviderStore` so `aiPreferences` and live `aiProvider` updates stay in sync.
+    public func bindAIProviderStore(_ store: AIProviderStore) {
+        aiPreferences = store.preferences
+        aiProvider = store.provider
+        aiStoreCancellable = store.$provider
+            .sink { [weak self] nextProvider in
+                self?.aiProvider = nextProvider
+            }
+    }
+
+    /// Requests inline translation for `eventID` into `targetLanguage` (defaulting to `aiPreferences.responseLanguage`) using `aiProvider`.
+    public func translateMessage(eventID: String, targetLanguage: String? = nil) {
         guard !isLocked else { return }
-        translationTargetLanguages[eventID] = targetLanguage
-        translations[eventID] = .unavailable(
-            reason: String(localized: "Message translation isn’t available yet in Courier.")
-        )
+        let messageText = (conversation.message(eventID, from: .chat) ?? conversation.message(eventID, from: .thread))?.rich.text ?? ""
+        guard !messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        let trimmedTarget = targetLanguage?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedLanguage = (trimmedTarget?.isEmpty == false ? trimmedTarget : nil) ?? aiPreferences.responseLanguage
+        translationTargetLanguages[eventID] = resolvedLanguage
+        translationTasks[eventID]?.cancel()
+        translationTasks[eventID] = nil
+
+        guard aiProvider.isAvailable else {
+            translatingEventIDs.remove(eventID)
+            translationProvenance.removeValue(forKey: eventID)
+            let reason = (aiProvider as? UnavailableAIProvider)?.hasCustomReason == true
+                ? aiProvider.unavailableReason
+                : String(localized: "Message translation isn’t available yet in Courier.")
+            translations[eventID] = .unavailable(reason: reason)
+            return
+        }
+
+        let provider = aiProvider
+        let provenance = provider.provenanceFooter(preferences: aiPreferences)
+        let startedRoom = conversation.roomID
+        translatingEventIDs.insert(eventID)
+        translations.removeValue(forKey: eventID)
+
+        translationTasks[eventID] = Task { @MainActor [weak self] in
+            let disposition = await provider.translate(text: messageText, targetLanguage: resolvedLanguage)
+            guard !Task.isCancelled, let self, self.conversation.roomID == startedRoom else { return }
+            self.translatingEventIDs.remove(eventID)
+            self.translationTasks[eventID] = nil
+            self.translations[eventID] = disposition
+            if case .text = disposition {
+                self.translationProvenance[eventID] = provenance
+            } else {
+                self.translationProvenance.removeValue(forKey: eventID)
+            }
+        }
+    }
+
+    /// Waits for an in-flight translation of `eventID` to finish (for deterministic tests).
+    public func waitForTranslation(eventID: String) async {
+        await translationTasks[eventID]?.value
+    }
+
+    private func cancelAllTranslations() {
+        for task in translationTasks.values {
+            task.cancel()
+        }
+        translationTasks.removeAll()
+        translatingEventIDs.removeAll()
     }
 
     /// Dismisses the inline translation row for `eventID`.
     public func dismissTranslation(eventID: String) {
+        translationTasks[eventID]?.cancel()
+        translationTasks.removeValue(forKey: eventID)
+        translatingEventIDs.remove(eventID)
         translations.removeValue(forKey: eventID)
         translationTargetLanguages.removeValue(forKey: eventID)
+        translationProvenance.removeValue(forKey: eventID)
     }
 
     public var lifecycle: SystemLifecycleModel {

@@ -22,9 +22,12 @@ final class AudioPlayerModelTests: XCTestCase {
     }
 
     private func makeLocalAudioFile(name: String = "voice-\(UUID().uuidString).ogg") throws -> String {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(name)
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("courier-audio-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent(name)
         try Data("OggS-synthetic-audio".utf8).write(to: url, options: .atomic)
-        tempFiles.append(url)
+        tempFiles.append(dir)
         return url.path
     }
 

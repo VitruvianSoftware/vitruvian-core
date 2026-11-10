@@ -41,11 +41,15 @@ final class ProviderStubsTests: XCTestCase {
         XCTAssertFalse(ai.isAvailable)
         XCTAssertTrue(ai.unavailableReason.contains("Courier"))
         XCTAssertFalse(ai.unavailableReason.localizedCaseInsensitiveContains("Beeper"))
-        XCTAssertFalse(ai.availableModels.isEmpty)
+        XCTAssertTrue(ai.availableModels.isEmpty)
 
-        let draftDisp = await ai.draftResponse(roomID: "!r1:courier.local", prompt: "Summarize", tone: .moreConcise)
+        let context = AIChatContext(
+            title: "Trail Crew",
+            messages: [(senderName: "Alice", mine: false, text: "Are we meeting at 9?")]
+        )
+        let draftDisp = await ai.draftResponse(context: context, draft: "Summarize", tone: .moreConcise)
         let translateDisp = await ai.translate(text: "Bonjour", targetLanguage: "English")
-        let summarizeDisp = await ai.summarize(roomID: "!r1:courier.local", eventIDs: ["$e1"])
+        let summarizeDisp = await ai.summarize(context: context)
         let transcribeDisp = await ai.transcribeVoiceNote(roomID: "!r1:courier.local", eventID: "$e1")
         let talkDisp = await ai.startTalkToType()
 
@@ -123,7 +127,9 @@ final class ProviderStubsTests: XCTestCase {
         let prefs = AIPreferences(defaults: defaults)
         XCTAssertFalse(prefs.enableContextualAI)
         XCTAssertEqual(prefs.selectedEngine, .appleIntelligence)
-        XCTAssertFalse(prefs.selectedModel.isEmpty)
+        XCTAssertEqual(prefs.selectedModel, "")
+        XCTAssertEqual(prefs.customBaseURL, "")
+        XCTAssertEqual(prefs.selectedModelByProvider, [:])
         XCTAssertEqual(prefs.responseLanguage, "English")
         XCTAssertEqual(prefs.translationLanguages, ["English"])
         XCTAssertFalse(prefs.mentionAIInChats)
@@ -138,6 +144,8 @@ final class ProviderStubsTests: XCTestCase {
         prefs.enableContextualAI = true
         prefs.selectedEngine = .openAI
         prefs.selectedModel = "gpt-4o-mini"
+        prefs.customBaseURL = "https://llm.example.com/v1"
+        prefs.selectedModelByProvider = ["openAI": "gpt-4o-mini", "ollama": "llama3.2"]
         prefs.responseLanguage = "Spanish"
         prefs.translationLanguages = ["English", "Arabic", "Spanish"]
         prefs.mentionAIInChats = true
@@ -151,6 +159,8 @@ final class ProviderStubsTests: XCTestCase {
         XCTAssertTrue(reloaded.enableContextualAI)
         XCTAssertEqual(reloaded.selectedEngine, .openAI)
         XCTAssertEqual(reloaded.selectedModel, "gpt-4o-mini")
+        XCTAssertEqual(reloaded.customBaseURL, "https://llm.example.com/v1")
+        XCTAssertEqual(reloaded.selectedModelByProvider, ["openAI": "gpt-4o-mini", "ollama": "llama3.2"])
         XCTAssertEqual(reloaded.responseLanguage, "Spanish")
         XCTAssertEqual(reloaded.translationLanguages, ["English", "Arabic", "Spanish"])
         XCTAssertTrue(reloaded.mentionAIInChats)
@@ -171,11 +181,15 @@ final class ProviderStubsTests: XCTestCase {
 
         reloaded.enableContextualAI = false
         reloaded.selectedEngine = .customOpenAICompatible
+        reloaded.customBaseURL = "https://locked.example.com/v1"
+        reloaded.selectedModelByProvider = [:]
         reloaded.useWhisperForTalkToType = false
         reloaded.translationLanguages = ["French"]
 
         XCTAssertTrue(reloaded.enableContextualAI, "Locked mutation must revert")
         XCTAssertEqual(reloaded.selectedEngine, .openAI, "Locked mutation must revert")
+        XCTAssertEqual(reloaded.customBaseURL, "https://llm.example.com/v1", "Locked mutation must revert")
+        XCTAssertEqual(reloaded.selectedModelByProvider, ["openAI": "gpt-4o-mini", "ollama": "llama3.2"], "Locked mutation must revert")
         XCTAssertTrue(reloaded.useWhisperForTalkToType, "Locked mutation must revert")
         XCTAssertEqual(reloaded.translationLanguages, ["English", "Arabic", "Spanish"], "Locked mutation must revert")
     }

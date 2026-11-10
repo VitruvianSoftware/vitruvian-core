@@ -78,6 +78,10 @@ struct MessageActions {
     var appearance: AppearancePreferences? = nil
     /// Per-message inline translation disposition (`MessageTranslationRowView`).
     var translation: (String) -> (targetLanguage: String, disposition: AIProviderDisposition)? = { _ in nil }
+    var isTranslating: (String) -> Bool = { _ in false }
+    var translationProvenance: (String) -> String? = { _ in nil }
+    var retryTranslation: ((String) -> Void)? = nil
+    var openAISettings: (() -> Void)? = nil
     /// Dismisses an inline translation row for a message ID.
     var dismissTranslation: (String) -> Void = { _ in }
     /// Pops a video message out into the floating Picture-in-Picture window.
@@ -400,6 +404,10 @@ struct MessageRowView: View {
                     MessageTranslationRowView(
                         targetLanguage: translated.targetLanguage,
                         disposition: translated.disposition,
+                        isTranslating: actions.isTranslating(message.id),
+                        provenance: actions.translationProvenance(message.id),
+                        onRetry: actions.retryTranslation.map { retry in { retry(message.id) } },
+                        onOpenAISettings: actions.openAISettings,
                         onDismiss: { actions.dismissTranslation(message.id) }
                     )
                     .takesOwnClick()

@@ -42,8 +42,10 @@ public struct MessageMenuItem: Equatable, Sendable, Identifiable {
         case copyMessageDetails
         /// Opens the Report a Problem sheet pre-filled with this message's room and event ID.
         case reportProblem
-        /// Translates the message inline (`MessageTranslations.tsx`).
+        /// Translates the message inline into the default response language (`MessageTranslations.tsx`).
         case translate
+        /// Translates the message inline into a specific target language.
+        case translateTo(String)
         /// A line that only says something ("Sent at 14:02"), always greyed.
         case info
     }
@@ -54,6 +56,23 @@ public struct MessageMenuItem: Equatable, Sendable, Identifiable {
     public let isEnabled: Bool
     /// Why it is greyed, for an action the chat shows greyed; for Mark as Unread, what it does.
     public let help: String?
+    public let children: [MessageMenuItem]
+
+    public init(
+        command: Command,
+        title: String,
+        key: MenuKey? = nil,
+        isEnabled: Bool,
+        help: String? = nil,
+        children: [MessageMenuItem] = []
+    ) {
+        self.command = command
+        self.title = title
+        self.key = key
+        self.isEnabled = isEnabled
+        self.help = help
+        self.children = children
+    }
 
     public var id: String { "\(command)|\(title)" }
 }
@@ -79,7 +98,10 @@ public enum MessageMenu {
                                 available: (actions: [MessageAction], unavailable: [Unavailable]),
                                 features: ChatFeatures, disappearsIn: String?,
                                 time: (Date) -> String,
-                                includeDiagnostics: Bool = false) -> [[MessageMenuItem]] {
+                                includeDiagnostics: Bool = false,
+                                isAIAvailable: Bool = false,
+                                responseLanguage: String = "English",
+                                translationLanguages: [String] = []) -> [[MessageMenuItem]] {
         let offered = Set(available.actions)
         let greyed = Dictionary(available.unavailable.map { ($0.action, $0.reason) }, uniquingKeysWith: { a, _ in a })
 
@@ -111,16 +133,40 @@ public enum MessageMenu {
             [item(.showHistory)].compactMap { $0 },
         ]
         if includeDiagnostics, !message.isNote, message.statusLine != .queued, !(message.statusLine?.isWaiting ?? false) {
-            if !message.rich.text.isEmpty, message.kind != .deleted {
-                sections.append([
+            if !message.rich.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, message.kind != .deleted {
+                let translateHelp = isAIAvailable ? nil : String(localized: "Set up AI in Settings")
+                var translateItems: [MessageMenuItem] = [
                     MessageMenuItem(
                         command: .translate,
                         title: String(localized: "Translate"),
                         key: nil,
-                        isEnabled: true,
-                        help: String(localized: "Message translation isn’t available yet in Courier.")
+                        isEnabled: isAIAvailable,
+                        help: translateHelp
                     ),
-                ])
+                ]
+                let otherLanguages = translationLanguages.filter { $0 != responseLanguage }
+                if !otherLanguages.isEmpty {
+                    let children = otherLanguages.map { language in
+                        MessageMenuItem(
+                            command: .translateTo(language),
+                            title: language,
+                            key: nil,
+                            isEnabled: isAIAvailable,
+                            help: translateHelp
+                        )
+                    }
+                    translateItems.append(
+                        MessageMenuItem(
+                            command: .translate,
+                            title: String(localized: "Translate Into…"),
+                            key: nil,
+                            isEnabled: isAIAvailable,
+                            help: translateHelp,
+                            children: children
+                        )
+                    )
+                }
+                sections.append(translateItems)
             }
             sections.append([
                 MessageMenuItem(command: .copyMessageDetails, title: String(localized: "Copy Message Details"),
