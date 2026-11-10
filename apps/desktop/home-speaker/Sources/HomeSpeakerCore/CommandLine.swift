@@ -44,8 +44,12 @@ public enum HomeSpeakerCommandLine {
         case app(Result<AppCommand, UsageError>)
         /// `--chat-monitor start|stop`.
         case chatMonitor(Result<ChatMonitorAction, UsageError>)
-        /// `--say <text>`.
-        case say(String)
+        /// `--say <text>`; with `--no-history`, `records` is false: it speaks
+        /// exactly the same but is not added to the history (a replay).
+        case say(String, records: Bool = true)
+        /// A flag used where it does not belong (`--no-history` without
+        /// `--say`): a usage error, never the menu bar app.
+        case usage(UsageError)
         /// `--volume`, `--set-volume N`, `--mute`, `--unmute`.
         case volume(VolumeRequest)
         /// `--state --json`: the full settings, speakers, sign-in, chat and
@@ -77,6 +81,8 @@ public enum HomeSpeakerCommandLine {
     }
 
     public static let whereFlag = "--where"
+    /// `--say <text> --no-history`: speak without recording in the history.
+    public static let noHistoryFlag = "--no-history"
     static let volumeFlags = ["--volume", "--set-volume", "--mute", "--unmute"]
 
     /// The command in `arguments` (the program's, without its own path), in
@@ -93,11 +99,21 @@ public enum HomeSpeakerCommandLine {
                 return .announce(arguments[1], agent)
             }
         }
+        // `--no-history` belongs to `--say` alone; anywhere else it is a
+        // usage error, not a command that falls through to the menu bar app.
+        if arguments.contains(noHistoryFlag), !arguments.contains("--say") {
+            return .usage(UsageError("\(noHistoryFlag) is only valid with --say"))
+        }
         if let agent = CodingAgent.allCases.first(where: { arguments.contains($0.hookArgument) }) { return .stopHook(agent) }
         if let parsed = AppCommandParser.parse(arguments) { return .app(parsed) }
         if let parsed = ChatMonitorControlNotice.parse(arguments) { return .chatMonitor(parsed) }
         if let i = arguments.firstIndex(of: "--say") {
-            return .say(arguments[arguments.index(after: i)...].joined(separator: " "))
+            var text = Array(arguments[arguments.index(after: i)...])
+            // The flag is last (`--say <text> --no-history`) or ahead of
+            // `--say`; in the middle of the text it is just text.
+            let records = !(arguments[..<i].contains(noHistoryFlag) || text.last == noHistoryFlag)
+            if text.last == noHistoryFlag { text.removeLast() }
+            return .say(text.joined(separator: " "), records: records)
         }
         if let parsed = parseStateOrApply(arguments) { return parsed }
         if let flag = volumeFlags.first(where: { arguments.contains($0) }) {
@@ -378,7 +394,9 @@ public enum HomeSpeakerCommandLine {
             }
         case .chatMonitor(.success(let action)):
             return .now(chatMonitor(action, profile: profile) { ChatMonitorControlNotice.post($0, name: $1) })
-        case .say(let text):
+        case .usage(let usage):
+            return .now(usageError(usage))
+        case .say(let text, let records):
             // Deliberate, like Quick Announce: it overrides quiet hours but
             // still honours the master switch. An agent's also needs its
             // own switch on, in the settings of the HomeSpeaker in use.
@@ -397,7 +415,7 @@ public enum HomeSpeakerCommandLine {
                 return await say(
                     text, config: settings, announcer: activeAnnouncer, history: activeHistory,
                     standsAside: standsAside(), door: profile.door, note: asideNote(),
-                    source: source, inUse: inUseSettings())
+                    source: source, inUse: inUseSettings(), records: records)
             }
         case .volume(.invalidLevel):
             return .now(volumeFailure(badLevelReason))
@@ -463,7 +481,7 @@ public enum HomeSpeakerCommandLine {
             return TimeLimit(
                 seconds: announceTimeout(text, config: settings(), restyle: true),
                 timedOut: timedOut, extendsForSpeechQueue: true)
-        case .say(let text):
+        case .say(let text, _):
             return TimeLimit(
                 seconds: announceTimeout(text, config: settings()),
                 timedOut: timedOut, extendsForSpeechQueue: true)
@@ -486,7 +504,7 @@ public enum HomeSpeakerCommandLine {
             return TimeLimit(seconds: 300, timedOut: timedOut)
         case .apply(.success):
             return TimeLimit(seconds: 60, timedOut: HomeSpeakerStateContract.timedOutOutput())
-        case .app(.success(.loginItem)), .app(.failure), .chatMonitor, .state, .apply(.failure), .help, .version, .location:
+        case .app(.success(.loginItem)), .app(.failure), .chatMonitor, .state, .apply(.failure), .help, .version, .location, .usage:
             return nil
         }
     }
@@ -853,6 +871,8 @@ public enum HomeSpeakerCommandLine {
         usage: HomeSpeaker [flag]
           (no flag)            run the menu bar app
           --say <text>         announce text on the default speaker and/or this Mac
+          --say <text> --no-history
+                               the same, without adding it to the history (a replay)
           --source <name> --say <text>
                                the same, for claude-code, antigravity or opencode:
                                spoken only while that agent's switch is on (default:

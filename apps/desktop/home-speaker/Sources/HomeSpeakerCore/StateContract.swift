@@ -45,6 +45,7 @@ public enum HomeSpeakerStateContract {
         "setReadAnyway",
         "importAntigravity",
         "agentHook",
+        "removeLegacyAgent",
     ]
 
     /// Injectable seam for every file, process check, and environment lookup
@@ -75,6 +76,15 @@ public enum HomeSpeakerStateContract {
         public var doorSwitchSeam: @Sendable () -> (any SettingsActions.DoorSwitchSeam)?
         public var now: @Sendable () -> Date
         public var calendar: Calendar
+        /// Tells a running HomeSpeaker of this program that secrets changed,
+        /// so it re-reads its login and restarts its chat monitor. Called once
+        /// after a successful `--apply` that changed any secret. Silent unless
+        /// the live seam sets it, so tests never post a real notification.
+        public var credentialsChanged: @Sendable () -> Void
+        /// Stops a launchd job (`launchctl bootout <target>`) for
+        /// `removeLegacyAgent`. A no-op unless the live seam sets it, so tests
+        /// never call the real `launchctl`.
+        public var launchctlBootout: @Sendable (String) -> Void
 
         public init(
             program: HomeSpeakerProfile.Door,
@@ -98,7 +108,9 @@ public enum HomeSpeakerStateContract {
             hookExecutablePath: String,
             doorSwitchSeam: @escaping @Sendable () -> (any SettingsActions.DoorSwitchSeam)? = { nil },
             now: @escaping @Sendable () -> Date = { Date() },
-            calendar: Calendar = .current
+            calendar: Calendar = .current,
+            credentialsChanged: @escaping @Sendable () -> Void = {},
+            launchctlBootout: @escaping @Sendable (String) -> Void = { _ in }
         ) {
             self.program = program
             self.homeSpeakerVersion = homeSpeakerVersion
@@ -123,6 +135,8 @@ public enum HomeSpeakerStateContract {
             self.doorSwitchSeam = doorSwitchSeam
             self.now = now
             self.calendar = calendar
+            self.credentialsChanged = credentialsChanged
+            self.launchctlBootout = launchctlBootout
         }
 
         /// Builds the default seam for `engine` on the standalone app or the
@@ -139,6 +153,7 @@ public enum HomeSpeakerStateContract {
             agentHome: URL = FileManager.default.homeDirectoryForCurrentUser,
             hookExecutablePath: String = AgentIntegration.runningExecutable(),
             now: @escaping @Sendable () -> Date = { Date() },
+            launchctlBootout: @escaping @Sendable (String) -> Void = AgentIntegration.launchctlBootout,
             doorSwitchSeam: @escaping @Sendable () -> (any SettingsActions.DoorSwitchSeam)?
         ) -> Seam {
             // From `agentHome`, as `init` does, so a seam built for another
@@ -172,7 +187,11 @@ public enum HomeSpeakerStateContract {
                 agentHome: agentHome,
                 hookExecutablePath: hookExecutablePath,
                 doorSwitchSeam: doorSwitchSeam,
-                now: now
+                now: now,
+                credentialsChanged: {
+                    CredentialsChangedNotice.post(name: CredentialsChangedNotice.notificationName(for: profile))
+                },
+                launchctlBootout: launchctlBootout
             )
         }
     }
@@ -636,6 +655,7 @@ public enum HomeSpeakerStateContract {
         }
 
         // 3. Execute the batch transactionally under configFile's lock.
+        var secretsChanged = false
         do {
             let results: [[String: Any]] = try seam.configFile.modifyTransaction { config, writeConfig in
                 var workingSecrets = seam.secrets.load()
@@ -1089,7 +1109,7 @@ public enum HomeSpeakerStateContract {
                             throw IndexedApplyError(
                                 opIndex: index,
                                 code: "invalid_action",
-                                message: "\"agentHook\" requires \"action\" to be one of: install, remove, addInstruction."
+                                message: "\"agentHook\" requires \"action\" to be one of: install, remove, addInstruction, disableRival."
                             )
                         }
                         if action == .install, !AgentIntegration.isHomeSpeakerProgram(seam.hookExecutablePath) {
@@ -1111,6 +1131,31 @@ public enum HomeSpeakerStateContract {
                             "op": "agentHook",
                             "agent": SettingsActions.wireName(for: agent),
                             "action": action.rawValue,
+                        ])
+
+                    case "removeLegacyAgent":
+                        // Like a hook, it acts outside this transaction (a
+                        // launchd job and a file in LaunchAgents), so it is
+                        // sent on its own.
+                        guard operations.count == 1 else {
+                            throw IndexedApplyError(
+                                opIndex: index,
+                                code: "legacy_must_be_alone",
+                                message: "Send \"removeLegacyAgent\" on its own in a single-operation --apply batch."
+                            )
+                        }
+                        let integration = AgentIntegration(
+                            home: seam.agentHome,
+                            executablePath: seam.hookExecutablePath,
+                            bootout: seam.launchctlBootout
+                        )
+                        let wasInstalled = integration.isLegacyLaunchAgentInstalled()
+                        if wasInstalled {
+                            hookMutations.append { try integration.removeLegacyLaunchAgent() }
+                        }
+                        opResults.append([
+                            "op": "removeLegacyAgent",
+                            "removed": wasInstalled,
                         ])
 
                     default:
@@ -1174,8 +1219,13 @@ public enum HomeSpeakerStateContract {
                     }
                 }
                 writeConfig = configDirty
+                secretsChanged = !secretMutations.isEmpty
                 return opResults
             }
+
+            // A running HomeSpeaker of this program learns of new secrets
+            // only after the batch has succeeded.
+            if secretsChanged { seam.credentialsChanged() }
 
             let response: [String: Any] = [
                 "ok": true,

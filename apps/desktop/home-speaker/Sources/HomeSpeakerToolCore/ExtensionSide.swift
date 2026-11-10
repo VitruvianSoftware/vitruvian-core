@@ -236,6 +236,7 @@ public enum ExtensionSide {
                     agentHome: home,
                     hookExecutablePath: program.path,
                     now: now,
+                    launchctlBootout: launchctlBootout,
                     doorSwitchSeam: {
                         CommandLineSwitchSeam(
                             check: check,

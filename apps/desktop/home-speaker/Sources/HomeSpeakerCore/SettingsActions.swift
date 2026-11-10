@@ -1208,6 +1208,8 @@ public enum SettingsActions {
         case install
         case remove
         case addInstruction
+        /// Renames a rival hook file so a reply is not spoken twice.
+        case disableRival
     }
 
     /// Resolves the wire agent name (`"claude_code"`, `"antigravity"`,
@@ -1237,7 +1239,7 @@ public enum SettingsActions {
         }
     }
 
-    /// Runs `action` (`install`, `remove`, or `addInstruction`) for `agent`
+    /// Runs `action` (`install`, `remove`, `addInstruction`, or `disableRival`) for `agent`
     /// through `AgentIntegration(home: home, executablePath: executablePath)`.
     public static func performAgentHook(
         agent: CodingAgent,
@@ -1257,6 +1259,8 @@ public enum SettingsActions {
             try integration.removeHook(for: agent)
         case .addInstruction:
             try integration.addBroadcastInstruction(for: agent)
+        case .disableRival:
+            try integration.disableRivalHook(for: agent)
         }
     }
 }

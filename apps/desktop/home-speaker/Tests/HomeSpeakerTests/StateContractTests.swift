@@ -117,7 +117,9 @@ struct StateContractTests {
             speakerOnline: [String: Bool] = ["bedroom": false, "kitchen": true, "office": true],
             gwsInstalled: Bool = true,
             antigravityTokensAvailable: Bool = true,
-            doorSwitchSeam: (any SettingsActions.DoorSwitchSeam)? = nil
+            doorSwitchSeam: (any SettingsActions.DoorSwitchSeam)? = nil,
+            credentialsChanged: @escaping @Sendable () -> Void = {},
+            launchctlBootout: @escaping @Sendable (String) -> Void = { _ in }
         ) -> HomeSpeakerStateContract.Seam {
             HomeSpeakerStateContract.Seam(
                 program: program,
@@ -142,7 +144,9 @@ struct StateContractTests {
                 hookExecutablePath: program == .app ? hookExecutablePath : extExecutablePath,
                 doorSwitchSeam: { doorSwitchSeam },
                 now: { Self.fixedDate },
-                calendar: Self.utcCalendar
+                calendar: Self.utcCalendar,
+                credentialsChanged: credentialsChanged,
+                launchctlBootout: launchctlBootout
             )
         }
 
@@ -1834,6 +1838,8 @@ struct StateContractTests {
             #"{"op":"setReadAnyway","key":"slack","on":true}"#,
             #"{"op":"importAntigravity"}"#,
             #"{"op":"agentHook","agent":"claude_code","action":"install"}"#,
+            #"{"op":"agentHook","agent":"claude_code","action":"disableRival"}"#,
+            #"{"op":"removeLegacyAgent"}"#,
         ]
         for op in ops {
             let out = HomeSpeakerCommandLine.apply(
@@ -1847,6 +1853,159 @@ struct StateContractTests {
             #expect(err["code"] as? String == "not_chosen")
             #expect(err["chosen"] as? String == "app")
         }
+    }
+
+    // MARK: - Running Home Speaker notices secret changes; rival hook; legacy agent
+
+    private final class Recorder: @unchecked Sendable {
+        private let lock = NSLock()
+        private var items: [String] = []
+        func add(_ item: String = "") { lock.lock(); items.append(item); lock.unlock() }
+        var all: [String] { lock.lock(); defer { lock.unlock() }; return items }
+    }
+
+    private func applyJSON(_ ops: [String], seam: HomeSpeakerStateContract.Seam) -> CLIOutput {
+        HomeSpeakerCommandLine.apply(#"{"contract_version":1,"operations":[\#(ops.joined(separator: ","))]}"#, seam: seam)
+    }
+
+    @Test("A successful batch that changed a secret tells the running app once; failed or secret-free batches stay silent")
+    func credentialsChangedFiresOnceOnlyAfterASuccessfulSecretBatch() throws {
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+        try rig.seedGoldenFixture()
+        let tokensURL = rig.agentHome.appendingPathComponent(".gemini/antigravity/mcp_oauth_tokens.json")
+        try FileManager.default.createDirectory(at: tokensURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let tokenJSON: [String: Any] = [
+            GoogleHomeClient.mcpEndpointString: [
+                "client_id": "n-client.apps.googleusercontent.com",
+                "client_secret": "SECRET-N-CLIENT", // gitleaks:allow
+                "token": ["access_token": "SECRET-N-ACCESS", "refresh_token": "SECRET-N-REFRESH"], // gitleaks:allow
+            ],
+        ]
+        try JSONSerialization.data(withJSONObject: tokenJSON).write(to: tokensURL)
+
+        let rec = Recorder()
+        var seam = rig.makeSeam(program: .app, credentialsChanged: { rec.add() })
+        seam.antigravityTokensURL = tokensURL
+
+        // Secret-free batch: silent.
+        #expect(applyJSON([#"{"op":"snooze","minutes":15}"#], seam: seam).exitCode == 0)
+        #expect(rec.all.isEmpty, "a secret-free batch told the app")
+
+        // A failed batch (secret first, bad op after): silent, nothing written.
+        let failed = applyJSON([#"{"op":"setSecret","name":"slack","value":"xoxp-n"}"#, #"{"op":"nope"}"#], seam: seam)
+        #expect(failed.exitCode == 1)
+        #expect(rec.all.isEmpty, "a failed batch told the app")
+
+        // Each secret-changing op, in a batch of several: once per batch.
+        let batch = applyJSON([
+            #"{"op":"setSecret","name":"slack","value":"xoxp-n"}"#,
+            #"{"op":"setSecret","name":"beeper","value":"b-n"}"#,
+            #"{"op":"clearChatToken","token":"courier"}"#,
+            #"{"op":"saveOAuthClient","client_id":"n.apps.googleusercontent.com","client_secret":"n-secret"}"#,
+            #"{"op":"importAntigravity"}"#,
+        ], seam: seam)
+        #expect(batch.exitCode == 0, "\(batch.stdout)")
+        #expect(rec.all.count == 1, "expected exactly one notice per batch, got \(rec.all.count)")
+
+        for op in [#"{"op":"clearChatToken","token":"slack"}"#,
+                   #"{"op":"saveOAuthClient","client_id":"m.apps.googleusercontent.com"}"#,
+                   #"{"op":"importAntigravity"}"#] {
+            let before = rec.all.count
+            #expect(applyJSON([op], seam: seam).exitCode == 0)
+            #expect(rec.all.count == before + 1, "\(op) did not tell the app")
+        }
+
+        // A config-only batch afterwards still stays silent.
+        let before = rec.all.count
+        #expect(applyJSON([#"{"op":"set","key":"speech_length","value":"full"}"#], seam: seam).exitCode == 0)
+        #expect(rec.all.count == before)
+    }
+
+    @Test("A Seam built without credentialsChanged or launchctlBootout is silent: tests never post or call launchctl")
+    func seamDefaultsAreNoOps() throws {
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+        try rig.seedGoldenFixture()
+        let seam = HomeSpeakerStateContract.Seam(
+            program: .app, configFile: rig.configFile, secrets: rig.secrets, history: rig.history,
+            monitorStatusFile: rig.monitorStatusFile, doorFile: rig.doorFile,
+            otherInstalled: { _ in true }, appRunning: { true }, extensionRunning: { _ in false },
+            agentHome: rig.agentHome, hookExecutablePath: rig.hookExecutablePath)
+        seam.credentialsChanged()
+        seam.launchctlBootout("gui/0/never")
+        #expect(applyJSON([#"{"op":"setSecret","name":"slack","value":"x"}"#], seam: seam).exitCode == 0)
+    }
+
+    @Test("agentHook disableRival renames the rival hook file; with no rival it succeeds; it must be alone")
+    func agentHookDisableRival() throws {
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+        try rig.seedGoldenFixture()
+        let seam = rig.makeSeam(program: .app)
+        let disableRival = #"{"op":"agentHook","agent":"claude_code","action":"disableRival"}"#
+
+        let hooksDir = rig.agentHome.appendingPathComponent(".claude/skills/google-home/hooks", isDirectory: true)
+        try FileManager.default.createDirectory(at: hooksDir, withIntermediateDirectories: true)
+        let rival = hooksDir.appendingPathComponent("hooks.json")
+        try #"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"python3 stop_broadcast.py"}]}]}}"#
+            .write(to: rival, atomically: true, encoding: .utf8)
+
+        // Not alone: refused, and the file stays.
+        let together = applyJSON([disableRival, #"{"op":"snooze","minutes":5}"#], seam: seam)
+        #expect(together.exitCode == 1)
+        #expect(FileManager.default.fileExists(atPath: rival.path))
+        let togetherErr = try #require((try JSONSerialization.jsonObject(with: Data(together.stdout[0].utf8)) as? [String: Any])?["error"] as? [String: Any])
+        #expect(togetherErr["code"] as? String == "hook_must_be_alone")
+
+        let out = applyJSON([disableRival], seam: seam)
+        #expect(out.exitCode == 0, "\(out.stdout)")
+        #expect(!FileManager.default.fileExists(atPath: rival.path))
+        #expect(FileManager.default.fileExists(atPath: rival.path + ".disabled-by-homespeaker"))
+        let parsed = try #require(JSONSerialization.jsonObject(with: Data(out.stdout[0].utf8)) as? [String: Any])
+        let results = try #require(parsed["results"] as? [[String: Any]])
+        #expect(results[0]["action"] as? String == "disableRival")
+
+        // Nothing to disable now: still ok.
+        #expect(applyJSON([disableRival], seam: seam).exitCode == 0)
+    }
+
+    @Test("removeLegacyAgent removes the old launch agent, boots it out by gui/<uid>/<label>, turns --state's legacy_launch_agent false, and is alone")
+    func removeLegacyAgentRemovesPlistAndBootsOut() throws {
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+        try rig.seedGoldenFixture()
+        let boots = Recorder()
+        let seam = rig.makeSeam(program: .app, launchctlBootout: { boots.add($0) })
+
+        let plist = rig.agentHome.appendingPathComponent("Library/LaunchAgents/\(AgentIntegration.legacyLaunchAgentLabel).plist")
+        try FileManager.default.createDirectory(at: plist.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "<plist/>".write(to: plist, atomically: true, encoding: .utf8)
+        func legacyFlag() throws -> Bool? {
+            let state = HomeSpeakerStateContract.stateObject(seam: seam)
+            return (state["hooks"] as? [String: Any])?["legacy_launch_agent"] as? Bool
+                ?? (state["legacy_launch_agent"] as? Bool)
+        }
+        #expect(try legacyFlag() == true)
+
+        // Not alone: refused, nothing removed, nothing booted out.
+        let together = applyJSON([#"{"op":"removeLegacyAgent"}"#, #"{"op":"snooze","minutes":5}"#], seam: seam)
+        #expect(together.exitCode == 1)
+        let err = try #require((try JSONSerialization.jsonObject(with: Data(together.stdout[0].utf8)) as? [String: Any])?["error"] as? [String: Any])
+        #expect(err["code"] as? String == "legacy_must_be_alone")
+        #expect(FileManager.default.fileExists(atPath: plist.path))
+        #expect(boots.all.isEmpty)
+
+        let out = applyJSON([#"{"op":"removeLegacyAgent"}"#], seam: seam)
+        #expect(out.exitCode == 0, "\(out.stdout)")
+        #expect(!FileManager.default.fileExists(atPath: plist.path))
+        #expect(boots.all == ["gui/\(getuid())/\(AgentIntegration.legacyLaunchAgentLabel)"])
+        #expect(try legacyFlag() == false)
+
+        // No legacy agent installed any more: succeeds and does nothing.
+        let again = applyJSON([#"{"op":"removeLegacyAgent"}"#], seam: seam)
+        #expect(again.exitCode == 0, "\(again.stdout)")
+        #expect(boots.all.count == 1, "bootout ran with no legacy agent installed")
     }
 
     @Test("Table of every operation --apply accepts matches HomeSpeakerStateContract.supportedOperations and each row executes")
@@ -1898,6 +2057,7 @@ struct StateContractTests {
             ("setReadAnyway", #"{"op":"setReadAnyway","key":"slack","on":true}"#),
             ("importAntigravity", #"{"op":"importAntigravity"}"#),
             ("agentHook", #"{"op":"agentHook","agent":"claude_code","action":"install"}"#),
+            ("removeLegacyAgent", #"{"op":"removeLegacyAgent"}"#),
             ("clearChatToken", #"{"op":"clearChatToken","token":"slack"}"#),
             ("saveOAuthClient", #"{"op":"saveOAuthClient","client_id":"table.apps.googleusercontent.com","client_secret":"table-secret"}"#),
             ("reset", #"{"op":"reset"}"#),
