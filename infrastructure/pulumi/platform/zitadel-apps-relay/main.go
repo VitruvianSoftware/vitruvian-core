@@ -255,7 +255,11 @@ func main() {
 			if err != nil {
 				return err
 			}
-			ctx.Export(s.Key+"ClientId", app.ClientId)
+			// The provider marks clientId secret, so it would print as
+			// [secret]. These are public clients with no secret: the id goes
+			// into the relay's config and the AI apps' connector settings, so
+			// it is reported in plain text.
+			ctx.Export(s.Key+"ClientId", pulumi.Unsecret(app.ClientId))
 			// Exported because it is ignored above, so Pulumi never reconciles
 			// it; the relay's local JWT validation depends on it being JWT.
 			ctx.Export(s.Key+"AccessTokenType", app.AccessTokenType)
