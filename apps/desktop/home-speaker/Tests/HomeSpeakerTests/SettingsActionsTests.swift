@@ -559,4 +559,161 @@ struct SettingsActionsTests {
         let targetsAfter = rawAfter["targets"] as? [String: [String: Any]]
         #expect(targetsAfter?["office"]?["foreign_device_field"] as? Int == 123)
     }
+
+    // MARK: - 7. Edge Cases: OAuth Client, Unclamped Numbers & ConfigManager Rollback
+
+    @Test("saveOAuthClientOverride handles whitespace-only ID and ID change with or without a new secret")
+    func oauthClientOverrideEdgeCases() throws {
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+
+        // Initial client ID + secret
+        let first = try SettingsActions.saveOAuthClientOverride(
+            id: "  client-a.apps.googleusercontent.com  ",
+            secret: "  secret-a-\(UUID().uuidString)  ", // gitleaks:allow
+            in: rig.secretStore
+        )
+        #expect(!first.cleared)
+        #expect(first.clientId == "client-a.apps.googleusercontent.com")
+        #expect(first.hasClientSecret == true)
+        #expect(first.keptExistingSecret == false)
+
+        // Same ID with empty secret keeps the existing secret
+        let kept = try SettingsActions.saveOAuthClientOverride(
+            id: "client-a.apps.googleusercontent.com",
+            secret: "   ",
+            in: rig.secretStore
+        )
+        #expect(!kept.cleared)
+        #expect(kept.hasClientSecret == true)
+        #expect(kept.keptExistingSecret == true)
+        #expect(rig.secretStore.load().oauthClientSecretOverride != nil)
+
+        // Different ID with a new secret saves the new secret
+        let newSecret = "secret-b-\(UUID().uuidString)" // gitleaks:allow
+        let replacedWithSecret = try SettingsActions.saveOAuthClientOverride(
+            id: "client-b.apps.googleusercontent.com",
+            secret: newSecret,
+            in: rig.secretStore
+        )
+        #expect(!replacedWithSecret.cleared)
+        #expect(replacedWithSecret.clientId == "client-b.apps.googleusercontent.com")
+        #expect(replacedWithSecret.hasClientSecret == true)
+        #expect(replacedWithSecret.keptExistingSecret == false)
+        #expect(rig.secretStore.load().oauthClientSecretOverride == newSecret)
+
+        // Different ID with empty secret drops the previous client's secret
+        let replacedWithoutSecret = try SettingsActions.saveOAuthClientOverride(
+            id: "client-c.apps.googleusercontent.com",
+            secret: "",
+            in: rig.secretStore
+        )
+        #expect(!replacedWithoutSecret.cleared)
+        #expect(replacedWithoutSecret.clientId == "client-c.apps.googleusercontent.com")
+        #expect(replacedWithoutSecret.hasClientSecret == false)
+        #expect(replacedWithoutSecret.keptExistingSecret == false)
+        #expect(rig.secretStore.load().oauthClientSecretOverride == nil)
+
+        // Whitespace-only ID clears both ID and secret
+        _ = try SettingsActions.saveOAuthClientOverride(
+            id: "client-c.apps.googleusercontent.com",
+            secret: newSecret,
+            in: rig.secretStore
+        )
+        let cleared = try SettingsActions.saveOAuthClientOverride(
+            id: "   \n\t  ",
+            secret: newSecret,
+            in: rig.secretStore
+        )
+        #expect(cleared.cleared == true)
+        #expect(cleared.clientId == nil)
+        #expect(cleared.hasClientSecret == false)
+        #expect(rig.secretStore.load().oauthClientIdOverride == nil)
+        #expect(rig.secretStore.load().oauthClientSecretOverride == nil)
+    }
+
+    @Test("applySet with clampNumbers false refuses out-of-range numbers with extension messages and normalizes quiet hours")
+    func unclampedNumbersAndQuietHourNormalization() throws {
+        var config = SpeakerConfig()
+
+        let normalized = try SettingsActions.applySet(
+            key: .quietHoursStart,
+            value: .string("7:05"),
+            to: &config,
+            clampNumbers: false
+        )
+        #expect(normalized.appliedValue == .string("07:05"))
+        #expect(config.quietHoursStart == "07:05")
+        #expect(SpeakerConfig.minutesSinceMidnight("07:05") == 7 * 60 + 5)
+
+        do {
+            _ = try SettingsActions.applySet(key: .announceVolume, value: .int(105), to: &config, clampNumbers: false)
+            Issue.record("Expected out-of-range announceVolume to throw")
+        } catch let error as SettingsActions.Refusal {
+            #expect(error == SettingsActions.Refusal.outOfRange(key: "announce_volume", value: 105, min: 0, max: 100))
+            #expect(error.errorDescription == "The announcement volume is a whole number from 0 to 100")
+        }
+
+        do {
+            _ = try SettingsActions.applySet(key: .pauseMediaExtraSeconds, value: .int(11), to: &config, clampNumbers: false)
+            Issue.record("Expected out-of-range pauseMediaExtraSeconds to throw")
+        } catch let error as SettingsActions.Refusal {
+            #expect(error == SettingsActions.Refusal.outOfRange(key: "pause_media_extra_seconds", value: 11, min: 0, max: 10))
+            #expect(error.errorDescription == "Resume after is a number of seconds from 0 to 10")
+        }
+
+        do {
+            _ = try SettingsActions.applySet(key: .pollIntervalSeconds, value: .int(4), to: &config, clampNumbers: false)
+            Issue.record("Expected out-of-range pollIntervalSeconds to throw")
+        } catch let error as SettingsActions.Refusal {
+            #expect(error == SettingsActions.Refusal.outOfRange(key: "poll_interval_seconds", value: 4, min: 5, max: 300))
+            #expect(error.errorDescription == "The poll interval is a whole number of seconds from 5 to 300")
+        }
+    }
+
+    @MainActor
+    @Test("ConfigManager.setSetting rolls back in-memory config when save fails and reconciles chat monitor only on monitor changes")
+    func configManagerSetSettingRollbackAndMonitorReconciliation() throws {
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+
+        final class SpyMonitor: ChatMonitorControlling {
+            var isRunning = false
+            var calls: [String] = []
+            func start() { isRunning = true; calls.append("start") }
+            func stop() { isRunning = false; calls.append("stop") }
+            func restartIfRunning() { if isRunning { calls.append("restart") } }
+        }
+
+        try rig.secretStore.save(Secrets(slackToken: "xoxp-cm-\(UUID().uuidString)")) // gitleaks:allow
+        let manager = ConfigManager(
+            configPath: rig.appProfile.settingsURL,
+            historyPath: rig.appProfile.historyURL,
+            secrets: rig.secretStore
+        )
+        let spy = SpyMonitor()
+        manager.chatMonitor = spy
+
+        // Non-chat setting does not touch the chat monitor
+        _ = try manager.setSetting(.speechLength, value: .string("full"))
+        #expect(manager.config.effectiveSpeechLength == .full)
+        #expect(spy.calls.isEmpty)
+
+        // Enabling Slack starts the chat monitor; setting it to the same value does not restart
+        _ = try manager.setSetting(.slackEnabled, value: .bool(true))
+        #expect(spy.calls == ["start"])
+        _ = try manager.setSetting(.slackEnabled, value: .bool(true))
+        #expect(spy.calls == ["start"])
+
+        // Make the settings directory read-only so atomic write fails, and verify rollback
+        let dirPath = rig.appProfile.settingsURL.deletingLastPathComponent().path
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: dirPath)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dirPath)
+        }
+
+        let applied = manager.applySetting(.speechLength, .string("minimal"))
+        #expect(applied == false)
+        #expect(manager.config.effectiveSpeechLength == .full)
+    }
 }
