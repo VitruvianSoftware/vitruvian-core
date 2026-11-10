@@ -70,6 +70,16 @@ Images inside a link, tiny icons, and anything marked `data-no-lightbox` are lef
 alone. Prefer SVG for diagrams. The full standard, including `<figure>` and how
 to opt in outside a post, is in [`AGENTS.md`](AGENTS.md#images-the-standard).
 
+## Analytics
+
+Visits are counted by two cookieless services, so the site needs no consent
+banner: Cloudflare Web Analytics and a self-hosted Umami at
+`stats.vitruviansoftware.dev`. Both show the most-visited pages and the sites
+that referred visitors. The scripts live in
+[`_includes/analytics.html`](_includes/analytics.html) and only run in
+production builds, and only once their public ids are set in `_config.yml`
+under `analytics` (`cloudflare_token`, `umami_website_id`).
+
 ## Constraints
 
 Production builds with `actions/jekyll-build-pages`, which uses the
