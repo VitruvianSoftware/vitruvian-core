@@ -59,6 +59,9 @@ pub const AGENT_MARKERS: &[&str] = &["CLAUDECODE", "ANTIGRAVITY_AGENT", "OPENCOD
 
 pub type RunnerFn =
     Arc<dyn Fn(Duration, &str, &[String]) -> Result<(String, String), String> + Send + Sync>;
+/// Output of a program run: stdout, stderr and the exit status.
+pub type CaptureFn =
+    Arc<dyn Fn(Duration, &str, &[String]) -> Result<(String, String, i32), String> + Send + Sync>;
 pub type ReadClipboardFn = Arc<dyn Fn() -> Result<String, String> + Send + Sync>;
 
 #[derive(Clone)]
@@ -69,7 +72,7 @@ pub struct HomeSpeaker {
     pub door_path: PathBuf,
     pub run: RunnerFn,
     /// Like `run`, but keeps stdout when the program exits non-zero (`--apply` explains a refusal there).
-    pub run_capture: Option<RunnerFn>,
+    pub run_capture: Option<CaptureFn>,
     pub launch: Option<RunnerFn>,
     pub say: Option<RunnerFn>,
     pub read_clipboard: Option<ReadClipboardFn>,
@@ -1434,9 +1437,22 @@ impl HomeSpeaker {
         limit: Duration,
         program: &HomeSpeakerProgram,
         args: &[String],
-    ) -> Result<(String, String), String> {
-        let runner = self.run_capture.as_ref().unwrap_or(&self.run);
-        runner(limit, &program.binary.to_string_lossy(), args)
+    ) -> Result<(String, String, i32), String> {
+        let name = program.binary.to_string_lossy();
+        if let Some(capture) = self.run_capture.as_ref() {
+            return capture(limit, &name, args);
+        }
+        // A plain runner reports a non-zero exit as "exit status N", without the output.
+        match (self.run)(limit, &name, args) {
+            Ok((out, err)) => Ok((out, err, 0)),
+            Err(e) => match e
+                .strip_prefix("exit status ")
+                .and_then(|n| n.trim().parse().ok())
+            {
+                Some(code) => Ok((String::new(), String::new(), code)),
+                None => Err(e),
+            },
+        }
     }
 
     /// Asks `program` for its version, once per request (`verified` remembers who has answered).
@@ -1451,9 +1467,14 @@ impl HomeSpeaker {
             return Ok(());
         }
         let args = vec!["--version".to_string()];
-        let (stdout, _) = self
+        let (stdout, _, code) = self
             .call_program(VERSION_LIMIT, program, &args)
             .map_err(VersionProblem::Unreadable)?;
+        if code != 0 {
+            return Err(VersionProblem::Unreadable(format!(
+                "--version exited with status {code}"
+            )));
+        }
         let Some(have) = parse_version_output(&stdout) else {
             return Err(VersionProblem::Unreadable(
                 "it did not print a version".to_string(),
@@ -1483,9 +1504,12 @@ impl HomeSpeaker {
             }
         }
         let args = vec!["--state".to_string(), "--json".to_string()];
-        let (stdout, _) = self
+        let (stdout, _, code) = self
             .call_program(STATE_LIMIT, program, &args)
             .map_err(|e| format!("Home Speaker did not answer --state: {e}"))?;
+        if code != 0 {
+            return Err(format!("Home Speaker's --state exited with status {code}"));
+        }
         let doc = JsonValue::parse(stdout.trim())
             .map_err(|_| "Home Speaker's --state answer was not JSON".to_string())?;
         let Some(obj) = doc.as_object() else {
@@ -1566,7 +1590,16 @@ impl HomeSpeaker {
         u: HomeSpeakerUpdate,
         verified: &mut Vec<PathBuf>,
     ) -> Result<String, ApplyError> {
-        let plan = plan_ops(&u)?;
+        let current_id = if u.oauth_client_id.is_none() && u.oauth_client_secret.is_some() {
+            let doc = self
+                .fetch_state_doc(&self.active_program(), verified)
+                .map_err(ApplyError::Conflict)?;
+            doc.get("sign_in")
+                .map(|s| s.get_str("custom_oauth_client_id").to_string())
+        } else {
+            None
+        };
+        let plan = plan_ops_with(&u, current_id.as_deref())?;
         let mut changed = Vec::new();
         if !plan.plain.is_empty() {
             self.run_apply(&plan.plain, verified)?;
@@ -1729,16 +1762,28 @@ impl HomeSpeaker {
                 "--json".to_string(),
                 JsonValue::Object(envelope).to_json_string(),
             ];
-            let (stdout, _) = self
-                .call_program(APPLY_LIMIT, &program, &args)
-                .map_err(|e| {
-                    ApplyError::Internal(format!("Home Speaker did not answer --apply: {e}"))
-                })?;
+            let (stdout, _, exit) =
+                self.call_program(APPLY_LIMIT, &program, &args)
+                    .map_err(|e| {
+                        ApplyError::Internal(format!("Home Speaker did not answer --apply: {e}"))
+                    })?;
+            // A refusal exits 1 with a JSON error: a valid answer. A non-zero exit without
+            // JSON, or "ok" with a failing exit, is an error.
             let answer = JsonValue::parse(stdout.trim()).map_err(|_| {
-                ApplyError::Internal("Home Speaker's --apply answer was not JSON".to_string())
+                ApplyError::Internal(if exit != 0 {
+                    format!("Home Speaker's --apply exited with status {exit}")
+                } else {
+                    "Home Speaker's --apply answer was not JSON".to_string()
+                })
             })?;
             if answer.get_opt_bool("ok") == Some(true) {
-                return Ok(());
+                return if exit == 0 {
+                    Ok(())
+                } else {
+                    Err(ApplyError::Internal(format!(
+                        "Home Speaker's --apply exited with status {exit}"
+                    )))
+                };
             }
             let err = answer.get("error");
             let code = err.map(|e| e.get_str("code")).unwrap_or("");
@@ -1883,6 +1928,22 @@ impl HomeSpeaker {
                 &format!("HomeSpeaker is not installed at {}", p.binary.display()),
             );
         }
+        let is_replay = replay || !replay_id.is_empty();
+        if is_replay {
+            // `--no-history` arrives with the minimum version: gate it. Plain say is not gated.
+            match self.check_version(&p, &mut Vec::new()) {
+                Ok(()) => {}
+                Err(VersionProblem::TooOld(sentence)) => {
+                    return HttpResponse::error(409, &sentence)
+                }
+                Err(VersionProblem::Unreadable(e)) => {
+                    return HttpResponse::error(
+                        409,
+                        &format!("Could not read the Home Speaker version: {e}"),
+                    )
+                }
+            }
+        }
         if !replay_id.is_empty() {
             // The history is Home Speaker's: ask it, do not read its file.
             let doc = match self.fetch_state_doc(&p, &mut Vec::new()) {
@@ -1908,7 +1969,6 @@ impl HomeSpeaker {
         if text.is_empty() {
             return HttpResponse::error(400, "text is required");
         }
-        let is_replay = replay || !replay_id.is_empty();
         let log_label = if is_replay {
             format!("replay {text}")
         } else {
@@ -2134,11 +2194,17 @@ pub fn run_capturing_exit(
     limit: Duration,
     name: &str,
     args: &[String],
-) -> Result<(String, String), String> {
+) -> Result<(String, String, i32), String> {
     let (out, err, failure) = run_tool_within(limit, name, args, None);
     match failure {
-        Some(e) if !e.starts_with("exit status") => Err(e),
-        _ => Ok((out, err)),
+        None => Ok((out, err, 0)),
+        Some(e) => match e
+            .strip_prefix("exit status ")
+            .and_then(|n| n.trim().parse().ok())
+        {
+            Some(code) => Ok((out, err, code)),
+            None => Err(e),
+        },
     }
 }
 
@@ -2159,12 +2225,8 @@ enum VersionProblem {
 fn parse_version_output(out: &str) -> Option<String> {
     let line = out.lines().map(str::trim).find(|l| !l.is_empty())?;
     let token = line.split_whitespace().last()?.trim_start_matches('v');
-    if token
-        .split(['-', '+'])
-        .next()?
-        .split('.')
-        .all(|p| p.parse::<u64>().is_ok())
-    {
+    let numbers: Vec<&str> = token.split(['-', '+']).next()?.split('.').collect();
+    if (2..=3).contains(&numbers.len()) && numbers.iter().all(|p| p.parse::<u64>().is_ok()) {
         Some(token.to_string())
     } else {
         None
@@ -2500,7 +2562,17 @@ fn op_summary(op: &JsonValue) -> String {
     }
 }
 
-/// `install:claude-code`, `remove:opencode`, `add-instruction:antigravity`, `disable-rival[:claude-code]`
+/// `claude-code` / `Claude Code`, `antigravity`, `opencode` as the program's agent names.
+fn agent_for_slug(slug: &str) -> Option<&'static str> {
+    match slug.trim().to_lowercase().replace([' ', '-'], "_").as_str() {
+        "claude_code" => Some("claude_code"),
+        "antigravity" => Some("antigravity"),
+        "opencode" => Some("opencode"),
+        _ => None,
+    }
+}
+
+/// `install:claude-code`, `remove:opencode`, `add-instruction:antigravity`, `disable-rival[:slug]`
 /// as an `agentHook` op; `remove-legacy-agent` as `removeLegacyAgent`.
 fn agent_hook_op(action: &str) -> Result<JsonValue, ApplyError> {
     let act = action.trim();
@@ -2515,8 +2587,13 @@ fn agent_hook_op(action: &str) -> Result<JsonValue, ApplyError> {
     }
     if norm == "disable-rival" || norm == "disable-rival-hook" || norm.starts_with("disable-rival:")
     {
+        // No slug means Claude Code, the one hook with a rival.
+        let agent = match act.split_once(':') {
+            Some((_, slug)) => agent_for_slug(slug).ok_or_else(unsupported)?,
+            None => "claude_code",
+        };
         let mut o = op_object("agentHook");
-        o.insert("agent", JsonValue::String("claude_code".to_string()));
+        o.insert("agent", JsonValue::String(agent.to_string()));
         o.insert("action", JsonValue::String("disableRival".to_string()));
         return Ok(JsonValue::Object(o));
     }
@@ -2529,12 +2606,7 @@ fn agent_hook_op(action: &str) -> Result<JsonValue, ApplyError> {
         "add-instruction" => "addInstruction",
         _ => return Err(unsupported()),
     };
-    let agent = match slug.trim().to_lowercase().replace([' ', '-'], "_").as_str() {
-        "claude_code" => "claude_code",
-        "antigravity" => "antigravity",
-        "opencode" => "opencode",
-        _ => return Err(unsupported()),
-    };
+    let agent = agent_for_slug(slug).ok_or_else(unsupported)?;
     let mut o = op_object("agentHook");
     o.insert("agent", JsonValue::String(agent.to_string()));
     o.insert("action", JsonValue::String(verb.to_string()));
@@ -2544,19 +2616,32 @@ fn agent_hook_op(action: &str) -> Result<JsonValue, ApplyError> {
 /// Turns the phone's update into `--apply` operations. No checking of values here: Home
 /// Speaker's own rules are the one rule, and it answers a refusal.
 pub fn plan_ops(u: &HomeSpeakerUpdate) -> Result<OpPlan, ApplyError> {
+    plan_ops_with(u, None)
+}
+
+/// `plan_ops`, given the custom OAuth client id Home Speaker has now, for an update that
+/// carries a secret without an id (the phone does).
+pub fn plan_ops_with(
+    u: &HomeSpeakerUpdate,
+    current_oauth_id: Option<&str>,
+) -> Result<OpPlan, ApplyError> {
     let mut plain = Vec::new();
     if u.reset_settings {
         plain.push(JsonValue::Object(op_object("reset")));
     }
     // Secrets first, so a token and "turn Courier on" can travel in one update.
     if u.oauth_client_id.is_some() || u.oauth_client_secret.is_some() {
-        let Some(ref id) = u.oauth_client_id else {
-            return Err(ApplyError::BadRequest(
-                "oauth_client_secret needs oauth_client_id in the same update".to_string(),
-            ));
+        let id: &str = match (u.oauth_client_id.as_deref(), current_oauth_id) {
+            (Some(id), _) => id,
+            (None, Some(current)) if !current.is_empty() => current,
+            _ => {
+                return Err(ApplyError::BadRequest(
+                    "Enter the client ID first.".to_string(),
+                ))
+            }
         };
         let mut o = op_object("saveOAuthClient");
-        o.insert("client_id", JsonValue::String(id.clone()));
+        o.insert("client_id", JsonValue::String(id.to_string()));
         if let Some(ref secret) = u.oauth_client_secret {
             o.insert("client_secret", JsonValue::String(secret.clone()));
         }
@@ -2621,7 +2706,11 @@ pub fn plan_ops(u: &HomeSpeakerUpdate) -> Result<OpPlan, ApplyError> {
         }
     }
     if let Some(n) = u.pause_media_extra_seconds {
-        plain.push(set_op("pause_media_extra_seconds", JsonValue::from_f64(n)));
+        // The catalog's kind is a whole number.
+        plain.push(set_op(
+            "pause_media_extra_seconds",
+            JsonValue::from_i64(n.round() as i64),
+        ));
     }
     if let Some(n) = u.announce_volume {
         plain.push(set_op("announce_volume", JsonValue::from_i64(n)));
@@ -3089,7 +3178,8 @@ mod tests {
             "-c".to_string(),
             "echo '{\"ok\":false}'; exit 1".to_string(),
         ];
-        let (out, _) = run_capturing_exit(Duration::from_secs(10), "/bin/sh", &args).unwrap();
+        let (out, _, code) = run_capturing_exit(Duration::from_secs(10), "/bin/sh", &args).unwrap();
+        assert_eq!(code, 1);
         assert_eq!(out.trim(), "{\"ok\":false}");
         let slow = vec!["-c".to_string(), "sleep 5".to_string()];
         let err = run_capturing_exit(Duration::from_millis(200), "/bin/sh", &slow).unwrap_err();
@@ -3169,7 +3259,7 @@ mod tests {
         );
         assert_eq!(
             plain_json(r#"{"pause_media_extra_seconds":2.5}"#),
-            r#"[{"op":"set","key":"pause_media_extra_seconds","value":2.5}]"#
+            r#"[{"op":"set","key":"pause_media_extra_seconds","value":3}]"#
         );
     }
 
@@ -3976,6 +4066,422 @@ mod tests {
             "an installed extension must make HomeSpeaker a present tool"
         );
         assert_eq!(tool.path, ext_bin.to_string_lossy());
+    }
+
+    #[test]
+    fn test_probe_mixed_update_runs_plain_then_flag_then_hook_then_switch_and_stops_on_flag_failure(
+    ) {
+        let body = r#"{"enabled":false,"discover":true,"agent_hook_action":"remove-legacy-agent","active_door":"extension"}"#;
+        let seen = state_and_apply(golden_state());
+        let (h, _d, calls) = relay_speaker("probe_four_stage", move |name, args| {
+            if args
+                .iter()
+                .map(String::as_str)
+                .eq(["--discover", "--save"].into_iter())
+            {
+                return Ok(("saved".to_string(), String::new()));
+            }
+            seen(name, args)
+        });
+        let resp = h.handle_set(&post_req("/v1/homespeaker", body), &PhoneBridge::new());
+        assert_eq!(resp.status, 200, "{}", resp.body_string());
+        assert_eq!(
+            calls.lock().unwrap().clone(),
+            vec![
+                vec!["--version".to_string()],
+                vec![
+                    "--apply".to_string(),
+                    "--json".to_string(),
+                    r#"{"contract_version":1,"operations":[{"op":"set","key":"enabled","value":false}]}"#.to_string(),
+                ],
+                vec!["--discover".to_string(), "--save".to_string()],
+                vec![
+                    "--apply".to_string(),
+                    "--json".to_string(),
+                    r#"{"contract_version":1,"operations":[{"op":"removeLegacyAgent"}]}"#.to_string(),
+                ],
+                vec![
+                    "--apply".to_string(),
+                    "--json".to_string(),
+                    r#"{"contract_version":1,"operations":[{"op":"switchTo","side":"extension"}]}"#.to_string(),
+                ],
+                vec!["--state".to_string(), "--json".to_string()],
+            ]
+        );
+
+        let seen = state_and_apply(golden_state());
+        let (h, _d, calls) = relay_speaker("probe_flag_fails", move |name, args| {
+            if args.first().map(String::as_str) == Some("--discover") {
+                return Err("cast discovery timed out".to_string());
+            }
+            seen(name, args)
+        });
+        let resp = h.handle_set(&post_req("/v1/homespeaker", body), &PhoneBridge::new());
+        assert_eq!(resp.status, 500);
+        assert_eq!(
+            applies(&calls),
+            vec![
+                r#"{"contract_version":1,"operations":[{"op":"set","key":"enabled","value":false}]}"#
+            ],
+            "flag failure must stop before removeLegacyAgent and switchTo"
+        );
+    }
+
+    #[test]
+    fn test_probe_secrets_never_appear_in_act_logs_or_http_responses() {
+        let cases = [
+            (
+                r#"{"oauth_client_id":"probe-id.apps.googleusercontent.com","oauth_client_secret":"GOCSPX-PROBE-OAUTH-SECRET"}"#,
+                "GOCSPX-PROBE-OAUTH-SECRET",
+                "saveOAuthClient",
+            ),
+            (
+                r#"{"slack_token":"xoxp-PROBE-SLACK-SECRET"}"#,
+                "xoxp-PROBE-SLACK-SECRET",
+                "setSecret:slack",
+            ),
+            (
+                r#"{"beeper_token":"bp-PROBE-BEEPER-SECRET"}"#,
+                "bp-PROBE-BEEPER-SECRET",
+                "setSecret:beeper",
+            ),
+            (
+                r#"{"courier_token":"cr-PROBE-COURIER-SECRET"}"#,
+                "cr-PROBE-COURIER-SECRET",
+                "setSecret:courier",
+            ),
+            (
+                r#"{"gemini_api_key":"AIza-PROBE-GEMINI-SECRET"}"#,
+                "AIza-PROBE-GEMINI-SECRET",
+                "setSecret:geminiKey",
+            ),
+        ];
+        let capture = crate::http_util::LogCapture::start();
+        let (h, _d, _calls) = relay_speaker("probe_secrets_ok", state_and_apply(golden_state()));
+        let seen = state_answering("1.41.0", golden_state());
+        let (h_err, _d2, _c2) = relay_speaker("probe_secrets_err", move |name, args| {
+            match args.first().map(String::as_str) {
+                Some("--apply") => refusal("invalid_value", "Invalid token format", None),
+                _ => seen(name, args),
+            }
+        });
+        for (body, secret, want_summary) in cases {
+            let u = HomeSpeakerUpdate::from_json(&JsonValue::parse(body).unwrap()).unwrap();
+            let summary = h.apply(u).unwrap();
+            assert_eq!(summary, want_summary);
+            assert!(!summary.contains(secret));
+
+            let ok_resp = h.handle_set(&post_req("/v1/homespeaker", body), &PhoneBridge::new());
+            assert_eq!(ok_resp.status, 200);
+            assert!(
+                !ok_resp.body_string().contains(secret),
+                "secret leaked to 200 response: {secret}"
+            );
+
+            let err_resp =
+                h_err.handle_set(&post_req("/v1/homespeaker", body), &PhoneBridge::new());
+            assert_eq!(err_resp.status, 400);
+            assert!(
+                !err_resp.body_string().contains(secret),
+                "secret leaked to error response: {secret}"
+            );
+        }
+        let logged = capture.contents();
+        for (_, secret, _) in cases {
+            assert!(
+                !logged.contains(secret),
+                "secret leaked to act log: {secret}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_probe_not_chosen_retry_verifies_named_program_version_and_missing_target_returns_409() {
+        let ext_dir = temp_dir("probe_retry_old_ext");
+        let ext = ext_dir.join("tool");
+        fs::write(&ext, b"#!/bin/sh\n").unwrap();
+        let ext_name = ext.to_string_lossy().into_owned();
+        let ext_name_c = ext_name.clone();
+        let (h, dir, calls) = relay_speaker("probe_retry_old", move |name, args| {
+            match args.first().map(String::as_str) {
+                Some("--version") if name == ext_name_c => {
+                    Ok(("HomeSpeaker 1.40.0\n".to_string(), String::new()))
+                }
+                Some("--version") => Ok(("HomeSpeaker 1.41.0\n".to_string(), String::new())),
+                Some("--apply") if name != ext_name_c => {
+                    refusal("not_chosen", "The extension is chosen", Some("extension"))
+                }
+                Some("--apply") => panic!("must never run --apply on <1.41.0 extension"),
+                _ => Err("unexpected".to_string()),
+            }
+        });
+        door_file_naming(&dir, "app", &ext);
+        let resp = h.handle_set(
+            &post_req("/v1/homespeaker", r#"{"enabled":false}"#),
+            &PhoneBridge::new(),
+        );
+        assert_eq!(resp.status, 409);
+        assert!(resp.body_string().contains("(have 1.40.0, need 1.41.0)"));
+        assert_eq!(applies(&calls).len(), 1, "only the first door got --apply");
+        assert!(calls
+            .lock()
+            .unwrap()
+            .contains(&vec![ext_name, "--version".to_string()]));
+
+        // Missing target binary on not_chosen returns 409 without retrying.
+        fs::remove_file(&ext).unwrap();
+        let (h2, dir2, calls2) = relay_speaker("probe_retry_gone", move |_name, args| {
+            match args.first().map(String::as_str) {
+                Some("--version") => Ok(("HomeSpeaker 1.41.0\n".to_string(), String::new())),
+                Some("--apply") => {
+                    refusal("not_chosen", "The extension is chosen", Some("extension"))
+                }
+                _ => Err("unexpected".to_string()),
+            }
+        });
+        door_file_naming(&dir2, "app", &ext);
+        let resp2 = h2.handle_set(
+            &post_req("/v1/homespeaker", r#"{"enabled":false}"#),
+            &PhoneBridge::new(),
+        );
+        assert_eq!(resp2.status, 409);
+        assert_eq!(applies(&calls2).len(), 1);
+    }
+
+    #[test]
+    fn test_probe_v1_tools_endpoint_reports_homespeaker_from_scratch_door_without_voice_cache() {
+        let (h, dir, _c) = relay_speaker("probe_v1_tools", |_n, _a| {
+            Ok((String::new(), String::new()))
+        });
+        let store_dir = temp_dir("probe_srv_store");
+        let sampler =
+            crate::sampler::Sampler::new(Duration::from_secs(60), "", "", Vec::new(), None);
+        let store = Arc::new(crate::pair::Store::new(store_dir));
+        store.ensure_token().unwrap();
+        let mut srv = crate::server::Server::new(sampler, store, "", "");
+        Arc::get_mut(&mut srv).unwrap().speaker = Arc::new(h);
+
+        let get_hs_tool = |srv: &crate::server::Server| -> JsonValue {
+            let resp = srv.handle(&HttpRequest::new_test("GET", "/v1/tools", ""));
+            assert_eq!(resp.status, 200);
+            body_of(&resp)
+                .get("tools")
+                .unwrap()
+                .get("homespeaker")
+                .unwrap()
+                .clone()
+        };
+
+        let app_path = dir.join("HomeSpeaker").to_string_lossy().into_owned();
+        let t1 = get_hs_tool(&srv);
+        assert!(t1.get_bool("available"));
+        assert_eq!(t1.get_str("path"), app_path);
+
+        fs::remove_file(dir.join("HomeSpeaker")).unwrap();
+        let t2 = get_hs_tool(&srv);
+        assert!(!t2.get_bool("available"));
+
+        let ext_bin = temp_dir("probe_v1_tools_ext").join("tool");
+        fs::write(&ext_bin, b"#!/bin/sh\n").unwrap();
+        door_file_naming(&dir, "extension", &ext_bin);
+        let t3 = get_hs_tool(&srv);
+        assert!(t3.get_bool("available"));
+        assert_eq!(t3.get_str("path"), ext_bin.to_string_lossy());
+    }
+
+    // ---- QA round 1 ----
+
+    /// Makes the scratch program answer with an exit status, too: `(stdout, exit code)` per call.
+    fn with_exit_codes(
+        h: &mut HomeSpeaker,
+        f: impl Fn(&[String]) -> (String, i32) + Send + Sync + 'static,
+    ) {
+        h.run_capture = Some(Arc::new(move |_limit, _name, args| {
+            let (out, code) = f(args);
+            Ok((out, String::new(), code))
+        }));
+    }
+
+    #[test]
+    fn test_oauth_secret_alone_uses_the_current_custom_client_id() {
+        let (h, _d, calls) = relay_speaker("oauth_alone", state_and_apply(golden_state()));
+        let resp = h.handle_set(
+            &post_req("/v1/homespeaker", r#"{"oauth_client_secret":"new-secret"}"#),
+            &PhoneBridge::new(),
+        );
+        assert_eq!(resp.status, 200, "{}", resp.body_string());
+        assert_eq!(
+            applies(&calls),
+            vec![
+                r#"{"contract_version":1,"operations":[{"op":"saveOAuthClient","client_id":"custom-client-id.apps.googleusercontent.com","client_secret":"new-secret"}]}"#
+            ]
+        );
+        // Clearing the secret is the same thing with a blank one.
+        let resp = h.handle_set(
+            &post_req("/v1/homespeaker", r#"{"oauth_client_secret":""}"#),
+            &PhoneBridge::new(),
+        );
+        assert_eq!(resp.status, 200);
+        assert!(applies(&calls)[1].contains(r#""client_secret":"""#));
+
+        // No custom id saved: say so, and send nothing.
+        let none = golden_state().replace(
+            "\"custom_oauth_client_id\": \"custom-client-id.apps.googleusercontent.com\"",
+            "\"custom_oauth_client_id\": \"\"",
+        );
+        let (h, _d, calls) = relay_speaker("oauth_no_id", state_and_apply(none));
+        let resp = h.handle_set(
+            &post_req("/v1/homespeaker", r#"{"oauth_client_secret":"s"}"#),
+            &PhoneBridge::new(),
+        );
+        assert_eq!(resp.status, 400);
+        assert!(resp.body_string().contains("Enter the client ID first."));
+        assert!(applies(&calls).is_empty());
+    }
+
+    #[test]
+    fn test_version_must_exit_zero_and_look_like_a_version() {
+        for (out, code) in [
+            ("HomeSpeaker 1.41.0\n", 1),
+            ("HomeSpeaker 41\n", 0),
+            ("HomeSpeaker 1.41.0.1\n", 0),
+            ("usage: HomeSpeaker [options]\n", 0),
+            ("", 0),
+        ] {
+            let (mut h, _d, calls) =
+                relay_speaker("ver_strict", |_n, _a| Ok((String::new(), String::new())));
+            let out = out.to_string();
+            with_exit_codes(&mut h, move |_a| (out.clone(), code));
+            let b = body_of(&h.handle_get(&PhoneBridge::new()));
+            assert!(!b.get_bool("available"));
+            assert!(
+                b.get_str("reason")
+                    .contains("Could not read the Home Speaker version"),
+                "{code} {}",
+                b.get_str("reason")
+            );
+            let resp = h.handle_set(
+                &post_req("/v1/homespeaker", r#"{"enabled":true}"#),
+                &PhoneBridge::new(),
+            );
+            assert_eq!(resp.status, 500);
+            assert!(
+                calls.lock().unwrap().is_empty(),
+                "run_capture is the only runner here"
+            );
+        }
+    }
+
+    #[test]
+    fn test_state_needs_exit_zero_and_apply_refusals_with_json_stay_refusals() {
+        let golden = golden_state();
+        let g = golden.clone();
+        let (mut h, _d, _c) =
+            relay_speaker("state_exit", |_n, _a| Ok((String::new(), String::new())));
+        with_exit_codes(&mut h, move |a| match a[0].as_str() {
+            "--version" => ("HomeSpeaker 1.41.0".to_string(), 0),
+            _ => (g.clone(), 1),
+        });
+        let b = body_of(&h.handle_get(&PhoneBridge::new()));
+        assert!(!b.get_bool("available"));
+        assert!(
+            b.get_str("reason").contains("--state"),
+            "{}",
+            b.get_str("reason")
+        );
+
+        let post = |apply_out: &'static str, code: i32| {
+            let g = golden.clone();
+            let (mut h, _d, _c) =
+                relay_speaker("apply_exit", |_n, _a| Ok((String::new(), String::new())));
+            with_exit_codes(&mut h, move |a| match a[0].as_str() {
+                "--version" => ("HomeSpeaker 1.41.0".to_string(), 0),
+                "--apply" => (apply_out.to_string(), code),
+                _ => (g.clone(), 0),
+            });
+            h.handle_set(
+                &post_req("/v1/homespeaker", r#"{"enabled":true}"#),
+                &PhoneBridge::new(),
+            )
+        };
+        let refused =
+            r#"{"ok":false,"error":{"code":"invalid_choice","message":"Pick a real choice"}}"#;
+        let r = post(refused, 1);
+        assert_eq!(r.status, 400);
+        assert!(r.body_string().contains("Pick a real choice"));
+        assert_eq!(
+            post("boom", 1).status,
+            500,
+            "non-zero without JSON is an error"
+        );
+        assert_eq!(
+            post(r#"{"ok":true}"#, 1).status,
+            500,
+            "ok:true with a failing exit is an error"
+        );
+        assert_eq!(
+            post(r#"{"ok":true,"results":[],"state":{}}"#, 0).status,
+            200
+        );
+    }
+
+    #[test]
+    fn test_replay_is_gated_by_version_but_plain_say_is_not() {
+        let seen = state_answering("1.40.0", golden_state());
+        let (h, _d, calls) = relay_speaker("replay_gate", move |name, args| {
+            match args.first().map(String::as_str) {
+                Some("--say") => Ok(("spoken".to_string(), String::new())),
+                _ => seen(name, args),
+            }
+        });
+        for body in [r#"{"text":"again","replay":true}"#, r#"{"replay_id":"x"}"#] {
+            let r = h.handle_say(&post_req("/v1/homespeaker/say", body));
+            assert_eq!(r.status, 409, "{body}");
+            assert!(r.body_string().contains("(have 1.40.0, need 1.41.0)"));
+        }
+        assert!(!calls.lock().unwrap().iter().any(|c| c[0] == "--say"));
+        let r = h.handle_say(&post_req("/v1/homespeaker/say", r#"{"text":"hello"}"#));
+        assert_eq!(r.status, 200);
+        assert_eq!(
+            calls.lock().unwrap().last().unwrap(),
+            &vec!["--say".to_string(), "hello".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_disable_rival_takes_its_agent_from_the_slug() {
+        for (action, agent) in [
+            ("disable-rival:claude-code", "claude_code"),
+            ("disable-rival:Claude Code", "claude_code"),
+            ("disable-rival:antigravity", "antigravity"),
+            ("disable-rival:OpenCode", "opencode"),
+            ("disable-rival", "claude_code"),
+        ] {
+            let plan = plan_for(&format!("{{\"agent_hook_action\":\"{action}\"}}")).unwrap();
+            assert_eq!(
+                plan.hook.unwrap().to_json_string(),
+                format!(
+                    "{{\"op\":\"agentHook\",\"agent\":\"{agent}\",\"action\":\"disableRival\"}}"
+                ),
+                "{action}"
+            );
+        }
+        assert!(matches!(
+            plan_for(r#"{"agent_hook_action":"disable-rival:emacs"}"#),
+            Err(ApplyError::BadRequest(_))
+        ));
+    }
+
+    #[test]
+    fn test_pause_margin_is_sent_as_a_whole_number() {
+        assert_eq!(
+            plain_json(r#"{"pause_media_extra_seconds":2.6}"#),
+            r#"[{"op":"set","key":"pause_media_extra_seconds","value":3}]"#
+        );
+        assert_eq!(
+            plain_json(r#"{"pause_media_extra_seconds":3}"#),
+            r#"[{"op":"set","key":"pause_media_extra_seconds","value":3}]"#
+        );
     }
 
     // ---- The helper no longer reads or writes Home Speaker's files. ----

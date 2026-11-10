@@ -721,4 +721,55 @@ public class WireTest {
         "2026-11-10T06:30:00Z",
         HomeSpeakerWire.sources("""{"snooze_until":"2026-11-10T06:30:00Z"}""").snoozeUntil)
   }
+
+  @Test
+  public fun `probe relay payload preserves courier read_anyway chat_runtime_error and active_door`() {
+    val v =
+        HomeSpeakerWire.sources(
+            """
+            {
+              "enabled": true,
+              "app_running": true,
+              "active_door": "extension",
+              "extension_installed": true,
+              "local_engine": "gemini",
+              "gemini_voice": "Kore",
+              "announcement_style": "custom",
+              "style_model": "gemini",
+              "custom_style_prompt": "Keep it crisp.",
+              "home_cast_voice": true,
+              "has_gemini_key": true,
+              "courier_enabled": true,
+              "courier_announce": "all",
+              "courier_networks_listed": true,
+              "has_courier_token": true,
+              "courier_networks": [
+                {"key": "telegram", "name": "Telegram", "state": "reading"},
+                {"key": "slack", "name": "Slack", "state": "reading", "read_anyway": true}
+              ],
+              "chat_runtime_error": "Slack token expired",
+              "snooze_until": "2026-11-10T23:45:00Z",
+              "agents": [
+                {"agent": "Claude Code", "agent_slug": "claude-code", "hook_state": "installed", "speaks_twice": false, "configured_by_instruction": false}
+              ]
+            }
+            """
+                .trimIndent())
+    assertEquals("extension", v.activeDoor)
+    assertEquals(true, v.extensionInstalled)
+    assertEquals("Keep it crisp.", v.customStylePrompt)
+    assertEquals("Slack token expired", v.chatRuntimeError)
+    assertEquals("2026-11-10T23:45:00Z", v.snoozeUntil)
+    assertEquals(true, v.courierEnabled)
+    assertEquals("all", v.courierAnnounce)
+    assertEquals(true, v.courierNetworksListed)
+    assertEquals(true, v.hasCourierToken)
+    assertEquals(
+        listOf(
+            AgentBeeperNetwork("telegram", "Telegram", "reading", readAnyway = false),
+            AgentBeeperNetwork("slack", "Slack", "reading", readAnyway = true),
+        ),
+        v.courierNetworks)
+    assertEquals("claude-code", v.agents.single().canonicalSlug)
+  }
 }

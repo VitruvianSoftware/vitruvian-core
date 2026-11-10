@@ -294,7 +294,7 @@ live in one place, HomeSpeaker, and the agent only carries them.
   `~/.gemini/speaker_door.json`, to learn which program is chosen: the app
   (`/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker`) or the Vitruvian extension's
   `bin/tool` (same flags). The choice file is read on every request, never written.
-- **Minimum version.** Before the first `--state` or `--apply` of a request the agent runs
+- **Minimum version.** `--version` counts only on exit 0 with a `major.minor[.patch]` version; `--state` only on exit 0 with valid JSON; an `--apply` refusal (exit 1, JSON error) is a valid answer, a non-zero exit without JSON is an error. A replay is gated too (`--no-history` needs 1.41.0); plain say is not. Before the first `--state` or `--apply` of a request the agent runs
   `<program> --version` (15 s bound). Below `1.41.0` (`MIN_HOME_SPEAKER_VERSION`) it never runs
   `--state` or `--apply` (an older program would take them for unknown arguments and start its
   menu-bar app) and answers the **update sentence**:
@@ -339,7 +339,7 @@ by HomeSpeaker, not by the agent, and the reply is the `GET` shape read back aft
 | any setting (`enabled`, `speech_length`, `quiet_hours_*`, `pause_media*`, `announce_volume*`, `speak_*`, `phone_*`, `local_*`, `gemini_voice`, `announcement_style`, `style_model`, `home_cast_voice`, `announce_*`, `*_enabled`, `*_announce`, `google_chat_source`, `gws_account`, `mute_own_messages`, `custom_style_prompt`, `poll_interval`) | `set` with the program's key (`poll_interval` → `poll_interval_seconds`) |
 | `default_target` / `remove_target` | `setDefaultSpeaker` / `removeSpeaker` |
 | `reset_settings` | `reset` |
-| `oauth_client_id` (+ `oauth_client_secret`) | one `saveOAuthClient` (a secret without an id is 400) |
+| `oauth_client_id` (+ `oauth_client_secret`) | one `saveOAuthClient`; a secret without an id uses the custom client id from `--state` (none saved: 400 "Enter the client ID first.") |
 | `slack_token`, `beeper_token`, `courier_token`, `gemini_api_key` | `setSecret` `slack` / `beeper` / `courier` / `geminiKey` (empty clears) |
 | `snooze_minutes`, `snooze_until` | `snooze` (`minutes`, or `clear` for `""`; a future `snooze_until` is counted in minutes) |
 | `beeper_network`, `courier_network` | `setNetwork` |
@@ -732,7 +732,7 @@ The update endpoint supports these additional configuration actions and secret u
 | `slack_token` | string | `setSecret` `slack` (empty string clears) |
 | `beeper_token` | string | `setSecret` `beeper` (empty string clears) |
 | `gemini_api_key` | string | `setSecret` `geminiKey` (empty string clears) |
-| `oauth_client_id`, `oauth_client_secret` | string | one `saveOAuthClient` (a secret needs an id in the same update) |
+| `oauth_client_id`, `oauth_client_secret` | string | one `saveOAuthClient` (a secret alone uses the saved custom client id; none saved is 400 "Enter the client ID first.") |
 | `agent_hook_action` | string | `agentHook` for `"install:<agent>"`, `"remove:<agent>"`, `"add-instruction:<agent>"` (`claude-code`, `antigravity`, `opencode`), sent alone after the plain batch. `"disable-rival…"` is `agentHook` `disableRival` and `"remove-legacy-agent"` is `removeLegacyAgent`, each alone |
 | `chat_monitor_action` | `"start"` \| `"stop"` | Starts or stops the chat monitor daemon |
 | `reset_settings` | bool | `reset` |
