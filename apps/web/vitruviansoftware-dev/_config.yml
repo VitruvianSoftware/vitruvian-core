@@ -73,6 +73,16 @@ plugins:
 feed:
   path: feed.xml
 
+# Visitor analytics (_includes/analytics.html). Both are cookieless and both
+# ids are public, not secrets. Each beacon stays off until its id is set, and
+# only runs in production builds.
+analytics:
+  # Cloudflare Web Analytics site token, from the Web Analytics site for
+  # vitruviansoftware.dev in the Cloudflare dashboard.
+  cloudflare_token: "160f8384c88a474583f3f270e209ef9a" # gitleaks:allow — public client-side Web Analytics site token
+  # Umami website id, from Settings > Websites on the self-hosted Umami.
+  umami_website_id: ""
+
 # Publish the Claude Code marketplace catalog at /.claude-plugin/marketplace.json.
 include:
   - .claude-plugin
