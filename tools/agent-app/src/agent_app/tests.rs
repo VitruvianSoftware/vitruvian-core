@@ -839,20 +839,24 @@ fn read_args_refuses_writes() {
 
 #[test]
 fn parse_alert_dismiss_validates_alert_number_kind_and_comment() {
-    let valid_sec: &[&[u8]] = &[
-        b"false_positive",
-        b"wont_fix",
-        b"revoked",
-        b"used_in_tests",
-    ];
+    let valid_sec: &[&[u8]] = &[b"false_positive", b"wont_fix", b"revoked", b"used_in_tests"];
     let (n, r, c) = parse_alert_dismiss(
         "U",
-        &v(&["6", "--resolution", "false_positive", "--comment", "public web key"]),
+        &v(&[
+            "6",
+            "--resolution",
+            "false_positive",
+            "--comment",
+            "public web key",
+        ]),
         b"--resolution",
         valid_sec,
     )
     .unwrap();
-    assert_eq!((&n[..], &r[..], &c[..]), (&b"6"[..], &b"false_positive"[..], &b"public web key"[..]));
+    assert_eq!(
+        (&n[..], &r[..], &c[..]),
+        (&b"6"[..], &b"false_positive"[..], &b"public web key"[..])
+    );
 
     let (n2, r2, c2) = parse_alert_dismiss(
         "U",
@@ -861,7 +865,10 @@ fn parse_alert_dismiss_validates_alert_number_kind_and_comment() {
         &[b"tolerable_risk", b"not_used"],
     )
     .unwrap();
-    assert_eq!((&n2[..], &r2[..], &c2[..]), (&b"1455"[..], &b"tolerable_risk"[..], &b"build only"[..]));
+    assert_eq!(
+        (&n2[..], &r2[..], &c2[..]),
+        (&b"1455"[..], &b"tolerable_risk"[..], &b"build only"[..])
+    );
 
     for bad in [
         &[][..],
@@ -871,7 +878,14 @@ fn parse_alert_dismiss_validates_alert_number_kind_and_comment() {
         &["6", "--resolution", "false_positive"],
         &["6", "--resolution", "false_positive", "--comment", "   "],
         &["6", "--comment", "x"],
-        &["6", "--resolution", "false_positive", "--comment", "x", "--extra"],
+        &[
+            "6",
+            "--resolution",
+            "false_positive",
+            "--comment",
+            "x",
+            "--extra",
+        ],
     ] {
         assert!(
             parse_alert_dismiss("U", &v(bad), b"--resolution", valid_sec).is_err(),
