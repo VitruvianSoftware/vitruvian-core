@@ -1714,16 +1714,23 @@ public object Derive {
         rawLower.contains("forbidden")) {
       return "Couldn't $action: this phone isn't paired"
     }
+    // Network failures only, by the phrases Java and OkHttp use for them. Home Speaker's own
+    // refusals reach the phone verbatim and may say "refused" or "reset"; those must keep
+    // their words, so no bare "refused" / "reset" / "connect" here.
     val unreachable =
         raw.isEmpty() ||
             lower.contains("timeout") ||
             lower.contains("timed out") ||
-            lower.contains("connection ") ||
-            lower.contains("connect ") ||
+            lower.contains("connection refused") ||
+            lower.contains("connection reset") ||
+            lower.contains("connection closed") ||
+            lower.contains("connection abort") ||
+            lower.contains("econnrefused") ||
+            lower.contains("econnreset") ||
+            lower.contains("failed to connect") ||
             lower.contains("connectexception") ||
+            lower.contains("socketexception") ||
             lower.contains("unreachable") ||
-            lower.contains("refused") ||
-            lower.contains("reset") ||
             lower.contains("eof") ||
             lower.contains("broken pipe") ||
             lower.contains("unable to resolve") ||

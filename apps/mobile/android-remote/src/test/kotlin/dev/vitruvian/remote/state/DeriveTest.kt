@@ -1859,6 +1859,32 @@ public class DeriveTest {
   }
 
   @Test
+  public fun `a Home Speaker refusal keeps its own words even when it says refused or reset`() {
+    // Home Speaker's --apply messages now reach the phone verbatim; only real network
+    // failures may read as "the Mac didn't answer".
+    assertEquals(
+        "Couldn't change Speak: Home Speaker refused this change: not a choice",
+        Derive.homeSpeakerInlineError(
+            what = "change Speak", reason = "Home Speaker refused this change: not a choice"))
+    assertEquals(
+        "Couldn't reset: Reset settings is not available while signing in",
+        Derive.homeSpeakerInlineError(
+            what = "reset", reason = "Reset settings is not available while signing in"))
+    assertEquals(
+        "Couldn't mute: the Mac didn't answer",
+        Derive.homeSpeakerInlineError(
+            what = "mute", reason = "java.net.ConnectException: Connection refused"))
+    assertEquals(
+        "Couldn't mute: the Mac didn't answer",
+        Derive.homeSpeakerInlineError(
+            what = "mute", reason = "java.net.SocketException: Connection reset"))
+    assertEquals(
+        "Couldn't mute: the Mac didn't answer",
+        Derive.homeSpeakerInlineError(
+            what = "mute", reason = "failed to connect to /10.0.2.2 (port 8765)"))
+  }
+
+  @Test
   public fun `HomeSpeaker inline errors use plain words for unreachable, auth, agent HTTP errors and explicit reasons`() {
     assertEquals(
         "Couldn't mute: the Mac didn't answer",
