@@ -196,6 +196,44 @@ final class StreamParityTests: XCTestCase {
         XCTAssertEqual(NexusAgentEngine.parseActiveSubagents(from: done.joined(separator: "\n")), [])
     }
 
+    /// Two agy subagents, PR monitor (conv-1) and CI watch (conv-2), still at work.
+    private static let twoAgySubagents = [
+        #"{"type":"PLANNER_RESPONSE","tool_calls":[{"name":"invoke_subagent","args":{"Model":"\"flash\"","Prompt":"\"Watch PR\"","Role":"\"PR monitor\"","TypeName":"\"self\""}}]}"#,
+        #"{"type":"GENERIC","source":"MODEL","content":"Created At: x\nCompleted At: y\nCreated the following subagent:\n{\n  \"conversationId\":  \"conv-1\"\n}"}"#,
+        #"{"type":"PLANNER_RESPONSE","tool_calls":[{"name":"invoke_subagent","args":{"Model":"\"flash\"","Prompt":"\"Watch CI\"","Role":"\"CI watch\"","TypeName":"\"self\""}}]}"#,
+        #"{"type":"GENERIC","source":"MODEL","content":"Created At: x\nCompleted At: y\nCreated the following subagent:\n{\n  \"conversationId\":  \"conv-2\"\n}"}"#,
+    ]
+
+    private func running(after lines: [String]) -> [String] {
+        NexusAgentEngine.parseActiveSubagents(from: (Self.twoAgySubagents + lines).joined(separator: "\n")).map(\.role)
+    }
+
+    func testAgySubagentsThatWereKilledAreNoLongerRunning() {
+        XCTAssertEqual(running(after: []), ["PR monitor", "CI watch"])
+        // What agy's manage_subagents kill_all gives back, as in a real transcript.
+        XCTAssertEqual(running(after: [
+            #"{"type":"GENERIC","source":"MODEL","content":"Created At: x\nCompleted At: y\nSuccessfully killed 2 subagent(s) and their descendants.\nKilled roles: PR monitor, CI watch"}"#,
+        ]), [], "a killed subagent never sends a message back")
+        XCTAssertEqual(running(after: [
+            #"{"type":"GENERIC","source":"MODEL","content":"Created At: x\nCompleted At: y\nSuccessfully killed 1 subagent(s) and their descendants.\nKilled roles: CI watch"}"#,
+        ]), ["PR monitor"], "only the roles it names")
+    }
+
+    func testAgySubagentsStopWhenAgyRestarts() {
+        XCTAssertEqual(running(after: [
+            #"{"type":"SYSTEM_MESSAGE","content":"<SYSTEM_MESSAGE>\n[Message] timestamp=t sender=system priority=MESSAGE_PRIORITY_LOW content=[Notice] All your subagents and background tasks have been stopped due to server restart.\n</SYSTEM_MESSAGE>"}"#,
+        ]), [])
+    }
+
+    func testAgysOwnListOfActiveSubagentsIsBelieved() {
+        XCTAssertEqual(running(after: [
+            #"{"type":"GENERIC","source":"MODEL","content":"Created At: x\nCompleted At: y\nYou have 1 active subagent(s):\n[{\"role\":\"CI watch\",\"type\":\"self\",\"conversationId\":\"conv-2\",\"state\":\"running\"}]"}"#,
+        ]), ["CI watch"], "one agy no longer lists has finished")
+        XCTAssertEqual(running(after: [
+            #"{"type":"GENERIC","source":"MODEL","content":"Created At: x\nCompleted At: y\nYou have 0 active subagent(s)."}"#,
+        ]), [])
+    }
+
     func testAClaudeTranscriptStepCarriesItsResult() throws {
         let transcript = [
             #"{"type":"user","message":{"content":"read it"}}"#,

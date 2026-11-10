@@ -30,6 +30,7 @@ rust_test(
     name = "parity_lib_test",
     size = "small",
     crate = ":parity_lib",
+    data = ["Dockerfile"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
 )

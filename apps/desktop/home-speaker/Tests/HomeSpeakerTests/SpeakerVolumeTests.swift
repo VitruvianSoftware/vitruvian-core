@@ -146,8 +146,11 @@ private let wholeHome = SpeakerDevice(id: "structure@s", type: "Structure", name
 
 /// Waits for an outcome rather than a fixed time: a slow CI Mac finishes
 /// later than a laptop, and a fixed sleep read the result before it existed.
+/// The limit is generous because it costs nothing when the outcome comes
+/// early: in a merge-queue run on the 3-core CI Mac every main-actor suite
+/// took just over 5 s, and a 5 s limit gave up mid-restore.
 @MainActor
-func eventually(within seconds: Double = 5, _ done: () -> Bool) async throws {
+func eventually(within seconds: Double = 30, _ done: () -> Bool) async throws {
     let deadline = Date().addingTimeInterval(seconds)
     while !done(), Date() < deadline { try await Task.sleep(for: .milliseconds(20)) }
 }
