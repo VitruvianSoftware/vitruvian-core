@@ -45,7 +45,7 @@ export const Fields: StoryObj = {
   render: () => (
     <div className="grid grid-cols-2 gap-5 max-w-[720px]">
       <Field label="Project name">
-        <Input defaultValue="nexus-agent" />
+        <Input defaultValue="vitruvian-code" />
       </Field>
       <Field label="Region">
         <Select defaultValue="us-central1">

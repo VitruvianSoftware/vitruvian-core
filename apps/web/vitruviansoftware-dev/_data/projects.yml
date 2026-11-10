@@ -278,7 +278,7 @@ projects:
       from your phone.
     tags: [TypeScript, Swift, Telegram]
     repo: https://github.com/VitruvianSoftware/nexus-agent
-    source: apps/desktop/nexus-agent
+    source: apps/desktop/vitruvian-code
     extension:
       kind: plugin
       needs: Node.js and a Telegram account

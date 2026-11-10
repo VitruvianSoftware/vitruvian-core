@@ -59,7 +59,7 @@ pub const REQUIRED_SUBTREES: &[&str] = &[
     "apps",
     "apps/cli/devx",
     "apps/cli/homelab",
-    "apps/desktop/nexus-agent",
+    "apps/desktop/vitruvian-code",
     "apps/embedded/esp32-s3",
     "apps/mcp/slack",
     "apps/mobile/android-remote",

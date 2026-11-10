@@ -131,7 +131,7 @@ importers:
         specifier: ^8
         version: 8.72.1(eslint@10.14.0(jiti@2.7.0))(typescript@6.0.3)
 
-  apps/desktop/nexus-agent:
+  apps/desktop/vitruvian-code:
     dependencies:
       dotenv:
         specifier: ^18.0.9

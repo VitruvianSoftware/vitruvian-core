@@ -57,7 +57,7 @@ version: 0.1.0
 # version on any line carrying that marker, so appVersion now moves with the
 # release instead of waiting for someone to notice. Wired via `extra-files` in
 # mcp-slack/release-please-config.json; same mechanism as the precedent at
-# nexus-agent/macos/Sources/NexusAgent/Version.swift.
+# apps/desktop/vitruvian-code/macos/Sources/VitruvianCode/Version.swift.
 #
 # Deliberately NOT spelling the marker out anywhere in this comment block. The
 # updater matches any line containing it and rewrites a version found there, so

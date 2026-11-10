@@ -37,7 +37,7 @@ body:
         - apps/cli/homelab
         - apps/suites/tabula
         - apps/mcp/slack
-        - apps/desktop/nexus-agent
+        - apps/desktop/vitruvian-code
         - apps/web/oauth-user-inspector
         - apps/web/backstage
         - infrastructure/pulumi

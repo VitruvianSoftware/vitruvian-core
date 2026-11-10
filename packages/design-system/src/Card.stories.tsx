@@ -55,7 +55,7 @@ export const Grid: Story = {
         Automated provisioning for multi-node K3s edge clusters over bare metal
         via Lima VZ.
       </Card>
-      <Card kicker="03 · project" title="NexusAgent" meta="swift · MIT">
+      <Card kicker="03 · project" title="Vitruvian Code" meta="swift · MIT">
         Local-first macOS assistant executing infrastructure commands over a
         secured gateway.
       </Card>

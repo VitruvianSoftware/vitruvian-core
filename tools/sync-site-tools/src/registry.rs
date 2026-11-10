@@ -708,7 +708,7 @@ fn additional() -> Vec<Ext> {
             summary: s("A macOS menu bar app and Telegram bot that forwards your messages to a locally installed AI coding CLI, so a full agent session is reachable from your phone."),
             repo: s("https://github.com/VitruvianSoftware/nexus-agent"),
             mirror_repo: s("https://github.com/VitruvianSoftware/nexus-agent"),
-            source: s("apps/desktop/nexus-agent"),
+            source: s("apps/desktop/vitruvian-code"),
             ecosystems: ecos(&["antigravity", "claude-code", "vitruvian-desktop"]),
             capabilities: caps(&["2 Skills", "macOS Menu Bar", "Telegram Bridge"]),
             skills: caps(&["configure", "access"]),

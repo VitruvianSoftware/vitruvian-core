@@ -1,6 +1,6 @@
 # Desktop Applications Agent Guide (`apps/desktop/`)
 
-This guide is the single authoritative reference for developing, packaging, and releasing native macOS desktop and menu-bar applications in `apps/desktop/` (including [HomeSpeaker](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/apps/desktop/home-speaker), [Vitruvian](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/apps/desktop/vitruvian), [NexusAgent](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/apps/desktop/nexus-agent), and future desktop apps).
+This guide is the single authoritative reference for developing, packaging, and releasing native macOS desktop and menu-bar applications in `apps/desktop/` (including [HomeSpeaker](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/apps/desktop/home-speaker), [Vitruvian](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/apps/desktop/vitruvian), [VitruvianCode](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/apps/desktop/vitruvian-code), and future desktop apps).
 
 All desktop applications adhere to a **standardized 6-point release artifact contract** so that coding agents and human contributors have a uniform, predictable distribution pattern across the monorepo.
 

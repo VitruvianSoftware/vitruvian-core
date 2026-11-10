@@ -25,7 +25,7 @@ app type).
 | [`devx`](apps/cli/devx/) | CLI / developer tool | Local-dev orchestrator: provisions Lima VMs & devcontainers, ephemeral DBs/emulators, K3s clusters, and tunnel ingress. |
 | [`homelab`](apps/cli/homelab/) | CLI / developer tool | Declarative multi-node K3s homelab manager for macOS (Lima VZ). |
 | [`mcp-slack`](apps/mcp/slack/) | Agent / MCP service | Slack MCP server (dual-token; ~22 tools including Canvas CRUD). |
-| [`nexus-agent`](apps/desktop/nexus-agent/) | Agent / MCP service | Telegram bot + macOS menu-bar app that bridges chats to a local AI coding CLI. |
+| [`vitruvian-code`](apps/desktop/vitruvian-code/) | Agent / MCP service | Telegram bot + macOS menu-bar app that bridges chats to a local AI coding CLI. |
 | [`vitruvian`](apps/desktop/vitruvian/) | Desktop app | macOS menu-bar utility hub (volume mixer, system monitor, app switcher, notch, capture). GPL-3.0-or-later fork, being renamed and refactored; not yet distributed. |
 
 Each application type has its own conventions — see the
@@ -49,7 +49,7 @@ Each application type has its own conventions — see the
 │   ├── web/                         # Containerized web apps (oauth-user-inspector, backstage, gods-eye-view)
 │   ├── cli/                         # Developer & platform CLIs (devx, homelab)
 │   ├── mcp/                         # Model Context Protocol servers (slack)
-│   ├── desktop/                     # Native desktop applications (nexus-agent, home-speaker, vitruvian)
+│   ├── desktop/                     # Native desktop applications (vitruvian-code, home-speaker, vitruvian)
 │   ├── mobile/                      # Mobile apps (android-remote)
 │   └── embedded/                    # Embedded firmware (esp32-s3)
 ├── packages/                        # Shared packages (packages/pulumi, design-system)

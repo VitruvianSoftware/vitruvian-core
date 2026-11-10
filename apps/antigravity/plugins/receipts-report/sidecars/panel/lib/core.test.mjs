@@ -143,12 +143,12 @@ test("aggregateProjectReceipts groups sessions by project and merges external co
     }),
     {
       conversationId: "conv-2",
-      project: "nexus-agent",
+      project: "vitruvian-code",
     },
   );
 
   const report = aggregateProjectReceipts([s1, s2], {
-    "nexus-agent": { commits: ["a1b2c3d"], prs: ["#99"] },
+    "vitruvian-code": { commits: ["a1b2c3d"], prs: ["#99"] },
   });
 
   assert.equal(report.totals.projects, 2);
@@ -159,10 +159,10 @@ test("aggregateProjectReceipts groups sessions by project and merges external co
   assert.equal(report.totals.commits, 3);
   assert.equal(report.totals.prs, 3);
 
-  const nexus = report.projects.find((p) => p.project === "nexus-agent");
-  assert.ok(nexus);
-  assert.equal(nexus.commits, 1);
-  assert.equal(nexus.prs, 1);
+  const vc = report.projects.find((p) => p.project === "vitruvian-code");
+  assert.ok(vc);
+  assert.equal(vc.commits, 1);
+  assert.equal(vc.prs, 1);
 });
 
 test("detectTokenHotspots flags truncated steps, error bursts, and tool loops", () => {

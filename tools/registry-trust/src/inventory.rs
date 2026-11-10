@@ -793,7 +793,7 @@ pub mod tests {
             "pulumi-library"
         ));
         assert!(has(
-            "apps/desktop/nexus-agent",
+            "apps/desktop/vitruvian-code",
             "VitruvianSoftware",
             "nexus-agent"
         ));

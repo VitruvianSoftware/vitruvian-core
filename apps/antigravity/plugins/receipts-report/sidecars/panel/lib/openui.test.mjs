@@ -71,7 +71,7 @@ const SAMPLE = {
         errors: 0,
       },
       {
-        project: "nexus-agent",
+        project: "vitruvian-code",
         conversations: 1,
         userPrompts: 2,
         plannerTurns: 4,
@@ -197,6 +197,6 @@ test("toOpenUILang summarises a populated receipts state", () => {
     "3 truncated · 1 errors",
     "warning",
   ]);
-  assert.deepEqual(columns.Project, ["vitruvian-core", "nexus-agent"]);
+  assert.deepEqual(columns.Project, ["vitruvian-core", "vitruvian-code"]);
   assert.deepEqual(columns.Status, ["• 3 truncated", "✗ 1 error"]);
 });

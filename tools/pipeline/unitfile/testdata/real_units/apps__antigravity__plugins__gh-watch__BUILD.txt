@@ -38,7 +38,7 @@ js_library(
     ],
 )
 
-# Run with Node's built-in `node:test` runner, as nexus-agent's tests are.
+# Run with Node's built-in `node:test` runner, as vitruvian-code's tests are.
 js_test(
     name = "actions_test",
     size = "small",

@@ -48,7 +48,7 @@ spec:
     - ./apps/embedded/esp32-s3/catalog-info.yaml
     - ./apps/mcp/slack/catalog-info.yaml
     - ./apps/mcp/roborock/catalog-info.yaml
-    - ./apps/desktop/nexus-agent/catalog-info.yaml
+    - ./apps/desktop/vitruvian-code/catalog-info.yaml
     - ./apps/desktop/vitruvian-tool-github/catalog-info.yaml
     - ./apps/antigravity/plugins/ext-marketplace/catalog-info.yaml
     - ./apps/antigravity/plugins/gh-watch/catalog-info.yaml
@@ -251,8 +251,8 @@ spec:
 apiVersion: backstage.io/v1alpha1
 kind: System
 metadata:
-  name: nexus-agent
-  title: Nexus Agent
+  name: vitruvian-code
+  title: Vitruvian Code
   description: AI desktop assistant (macOS menu bar app in Swift and Telegram bot bridge in Node.js)
 spec:
   owner: nexus-agent-team

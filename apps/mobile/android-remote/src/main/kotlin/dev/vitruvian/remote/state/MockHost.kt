@@ -221,7 +221,7 @@ public object MockHost {
               ModuleDashboard(
                   id = "claude",
                   name = "Claude Code",
-                  meta = "nexus-agent bridge · ~/code/vitruvian-core",
+                  meta = "vitruvian-code bridge · ~/code/vitruvian-core",
                   status = "running",
                   statusTone = StatusTone.Run,
                   metrics =

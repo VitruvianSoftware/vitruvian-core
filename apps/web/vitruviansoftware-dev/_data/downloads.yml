@@ -53,7 +53,7 @@ categories:
             size: 8.5 MB
             arch: Universal
         releases_url: https://github.com/VitruvianSoftware/nexus-agent/releases
-        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/nexus-agent
+        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-code
         extensions_url: /ai/#nexus-agent
         extensions_label: MCP & Agent Setup
 

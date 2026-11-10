@@ -679,7 +679,7 @@
       "summary": "A macOS menu bar app and Telegram bot that forwards your messages to a locally installed AI coding CLI, so a full agent session is reachable from your phone.",
       "repo": "https://github.com/VitruvianSoftware/nexus-agent",
       "mirrorRepo": "https://github.com/VitruvianSoftware/nexus-agent",
-      "source": "apps/desktop/nexus-agent",
+      "source": "apps/desktop/vitruvian-code",
       "ecosystems": [
         "antigravity",
         "claude-code",

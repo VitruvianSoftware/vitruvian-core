@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "name": "vitruvian-code-macos",
+  "package": "apps/desktop/vitruvian-code/macos",
+  "test_targets": ["//apps/desktop/vitruvian-code/macos:VitruvianCodeTests"],
+  "tier": "L1",
+  "runner": "xcode-27",
+  "persona": "frontend",
+  "concurrency_group": "pipeline-vitruvian-code-macos",
+  "timeout_minutes": 30,
+  "depends_on": ["vitruvian-code-src"]
+}

@@ -24,8 +24,8 @@
 # Swift has no Gazelle extension here, so this file is hand-written.
 # gazelle:ignore
 #
-# MUST MIRROR Package.swift target for target (the nexus-agent mirror-breakage
-# incident, apps/desktop/nexus-agent/macos/Package.swift). Every target is
+# MUST MIRROR Package.swift target for target (the vitruvian-code mirror-breakage
+# incident, apps/desktop/vitruvian-code/macos/Package.swift). Every target is
 # constrained to macOS so a Linux `bazel build //...` skips it rather than
 # failing to find an Apple toolchain.
 

@@ -77,7 +77,7 @@ updates:
       - "/apps/antigravity/plugins/savvy-fleet/.github/workflows"
       - "/apps/antigravity/plugins/security-guidance/.github/workflows"
       - "/apps/antigravity/plugins/worktree-band/.github/workflows"
-      - "/apps/desktop/nexus-agent/.github/workflows"
+      - "/apps/desktop/vitruvian-code/.github/workflows"
       - "/apps/mcp/roborock/.github/workflows"
       - "/apps/mcp/slack/.github/workflows"
       - "/apps/web/gods-eye-view/.github/workflows"
@@ -117,7 +117,7 @@ updates:
   #     per-app blocks produced manifest-only PRs that never touched the root
   #     lock, which caused every lock-skew incident (#531) and which the
   #     tidy-check lockfile-sync guard now rightly rejects. Root scope covers
-  #     every member of pnpm-workspace.yaml (tabula/*, nexus-agent,
+  #     every member of pnpm-workspace.yaml (tabula/*, vitruvian-code,
   #     oauth-user-inspector, tools, packages/*) with coherent lock updates.
   #     Group name *-minor-patch so dependabot-auto-merge enqueues them like
   #     the gomod groups. ───

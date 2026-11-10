@@ -32,7 +32,7 @@
 /tools/agent-guard/ @VitruvianSoftware/platform-team
 /apps/cli/devx/ @VitruvianSoftware/devx-team @VitruvianSoftware/platform-team
 /apps/cli/homelab/ @VitruvianSoftware/homelab-team @VitruvianSoftware/platform-team
-/apps/desktop/nexus-agent/ @VitruvianSoftware/nexus-agent-team @VitruvianSoftware/platform-team
+/apps/desktop/vitruvian-code/ @VitruvianSoftware/nexus-agent-team @VitruvianSoftware/platform-team
 /apps/desktop/vitruvian-tool-github/ @VitruvianSoftware/platform-team
 /apps/embedded/esp32-s3/ @VitruvianSoftware/platform-team
 /apps/mcp/roborock/ @VitruvianSoftware/platform-team

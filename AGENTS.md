@@ -125,7 +125,7 @@ your checkout. Previews are always fine; applies are not.
 - Lint / format: `aspect lint //...` and `format`.
 - Watch loop: `ibazel run //<target>`.
 - Regenerate `BUILD` files after adding/moving code: `bazel run //:gazelle`.
-- macOS app (nexus-agent): `bazel build --config=macos-app //apps/desktop/nexus-agent/macos:NexusAgent`.
+- macOS app (vitruvian-code): `bazel build --config=macos-app //apps/desktop/vitruvian-code/macos:VitruvianCode`.
 
 ## Repo and dev operations go through Bazel targets
 **Use these targets for every git write.** Raw git writes (`git commit`, `git push`,

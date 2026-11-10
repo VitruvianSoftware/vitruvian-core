@@ -88,12 +88,12 @@ describe("release target reader", () => {
     });
   });
 
-  it("detects macOS DMG release model for nexus-agent", () => {
-    const nexusAgent: Entity = {
+  it("detects macOS DMG release model for vitruvian-code", () => {
+    const vitruvianCode: Entity = {
       apiVersion: "backstage.io/v1alpha1",
       kind: "Component",
       metadata: {
-        name: "nexus-agent",
+        name: "vitruvian-code",
         annotations: {
           "vitruvian.dev/release-model": "dmg-github-releases npm-publish",
           "vitruvian.dev/mirror": "VitruvianSoftware/nexus-agent",
@@ -108,8 +108,8 @@ describe("release target reader", () => {
       spec: {},
     };
 
-    expect(isReleaseAvailable(nexusAgent)).toBe(true);
-    const target = readReleaseTarget(nexusAgent);
+    expect(isReleaseAvailable(vitruvianCode)).toBe(true);
+    const target = readReleaseTarget(vitruvianCode);
     expect(target).toEqual({
       type: "github",
       repoSlug: "VitruvianSoftware/nexus-agent",

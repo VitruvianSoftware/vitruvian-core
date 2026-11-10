@@ -224,7 +224,7 @@ jobs:
           QUEUED: ${{ steps.queued.outputs.verdict }}
           QUEUED_RUN: ${{ steps.queued.outputs.run }}
           FAST_LANE: ${{ steps.fastlane.outputs.verdict }}
-          ALL_UNITS: '["backstage-backend","design-system","backstage-app","devx-cli","homelab","mcp-slack-service","nexus-agent-src","nexus-agent-macos","oauth-user-inspector","pulumi-repo-config","tabula-shared","tabula-api","tabula-cli","tabula-extension","tabula-web"]'
+          ALL_UNITS: '["backstage-backend","design-system","backstage-app","devx-cli","homelab","mcp-slack-service","vitruvian-code-src","vitruvian-code-macos","oauth-user-inspector","pulumi-repo-config","tabula-shared","tabula-api","tabula-cli","tabula-extension","tabula-web"]'
         run: |
           set +e -u -o pipefail
           if [ "$RELEASE_SKIP" = "true" ]; then
@@ -563,12 +563,12 @@ jobs:
           pre-count: ${{ steps.llvm-contents.outputs.pre-count }}
           pin-path: ${{ steps.llvm-contents.outputs.pin-path }}
 
-  unit-nexus-agent-src:
-    name: nexus-agent-src
+  unit-vitruvian-code-src:
+    name: vitruvian-code-src
     runs-on: ubuntu-26.04
     timeout-minutes: 15
     needs: [plan]
-    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'nexus-agent-src')) }}
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'vitruvian-code-src')) }}
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
@@ -587,7 +587,7 @@ jobs:
         id: llvm-contents
         uses: ./.github/actions/llvm-cache-restore
 
-      - name: Build & Test Unit nexus-agent-src
+      - name: Build & Test Unit vitruvian-code-src
         run: |
           set -euo pipefail
           cache_flags=()
@@ -595,7 +595,7 @@ jobs:
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/desktop/nexus-agent/src:formatter_test //apps/desktop/nexus-agent/src:sessions_test || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/desktop/nexus-agent/src:formatter_test //apps/desktop/nexus-agent/src:sessions_test; else exit $rc; fi; }
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/desktop/vitruvian-code/src:formatter_test //apps/desktop/vitruvian-code/src:sessions_test || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/desktop/vitruvian-code/src:formatter_test //apps/desktop/vitruvian-code/src:sessions_test; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -606,12 +606,12 @@ jobs:
           pre-count: ${{ steps.llvm-contents.outputs.pre-count }}
           pin-path: ${{ steps.llvm-contents.outputs.pin-path }}
 
-  unit-nexus-agent-macos:
-    name: nexus-agent-macos
+  unit-vitruvian-code-macos:
+    name: vitruvian-code-macos
     runs-on: xcode-27
     timeout-minutes: 30
-    needs: [plan, unit-nexus-agent-src]
-    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'nexus-agent-macos')) }}
+    needs: [plan, unit-vitruvian-code-src]
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'vitruvian-code-macos')) }}
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
@@ -626,7 +626,7 @@ jobs:
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
 
-      - name: Build & Test Unit nexus-agent-macos
+      - name: Build & Test Unit vitruvian-code-macos
         run: |
           set -euo pipefail
           cache_flags=()
@@ -635,7 +635,7 @@ jobs:
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/desktop/nexus-agent/macos:NexusAgentTests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/desktop/nexus-agent/macos:NexusAgentTests; else exit $rc; fi; }
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/desktop/vitruvian-code/macos:VitruvianCodeTests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/desktop/vitruvian-code/macos:VitruvianCodeTests; else exit $rc; fi; }
 
   unit-oauth-user-inspector:
     name: oauth-user-inspector
@@ -992,7 +992,7 @@ jobs:
 
   gate:
     name: gate/all-required-passed
-    needs: [plan, unit-backstage-backend, unit-design-system, unit-backstage-app, unit-devx-cli, unit-homelab, unit-mcp-slack-service, unit-nexus-agent-src, unit-nexus-agent-macos, unit-oauth-user-inspector, unit-pulumi-repo-config, unit-tabula-shared, unit-tabula-api, unit-tabula-cli, unit-tabula-extension, unit-tabula-web]
+    needs: [plan, unit-backstage-backend, unit-design-system, unit-backstage-app, unit-devx-cli, unit-homelab, unit-mcp-slack-service, unit-vitruvian-code-src, unit-vitruvian-code-macos, unit-oauth-user-inspector, unit-pulumi-repo-config, unit-tabula-shared, unit-tabula-api, unit-tabula-cli, unit-tabula-extension, unit-tabula-web]
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 5

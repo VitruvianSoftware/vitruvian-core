@@ -297,9 +297,9 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
 
 ## Features that were also standalone apps
 
-Nexus Agent shipped twice, as its own app (`apps/desktop/nexus-agent`) and
+Nexus Agent shipped twice, as its own app (`apps/desktop/vitruvian-code`) and
 as a feature here, until tools for everyone, stage F, made it the Nexus
-Agent tool from the catalog (`apps/desktop/nexus-agent/macos`, id
+Agent tool from the catalog (`apps/desktop/vitruvian-code/macos`, id
 `dev.vitruvian.nexus-agent`): the shared code stays in the standalone's
 folder, this app links none of it, and the one thing of the feature left
 here is `Services/NexusAgent/NexusAgentHandoff.swift`, which hands a person
