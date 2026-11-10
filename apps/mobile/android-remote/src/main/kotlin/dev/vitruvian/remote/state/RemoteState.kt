@@ -468,8 +468,8 @@ public class RemoteState(
   public var homeSpeakerMirror: Boolean by mutableStateOf(persistence.homeSpeakerMirror)
     private set
 
-  /** Last observed announcement id on the selected host (or null before first load). */
-  private var lastMirroredAnnouncementId: String? = null
+  /** Pure state for HomeSpeaker announcement notification mirroring on the selected host. */
+  private var mirrorState: Derive.MirrorState = Derive.MirrorState()
 
   /** Inline errors keyed by HomeSpeaker control id ("mute", "quiet_hours", or row title). */
   public var homeSpeakerErrors: Map<String, String> by mutableStateOf(emptyMap())
@@ -3199,7 +3199,8 @@ public class RemoteState(
                       setHomeSpeaker("speak clipboard", speakClipboard = true)
                     }),
         ))
-    val mirrorOn = homeSpeakerMirror && (notifier?.hasNotificationPermission() != false)
+    val mirrorOn =
+        Derive.isMirrorEnabled(homeSpeakerMirror, notifier?.hasNotificationPermission() != false)
     add(
         ModuleRow(
             title = "Show announcements as notifications",
@@ -3917,28 +3918,50 @@ public class RemoteState(
     homeSpeakerErrors = homeSpeakerErrors + (controlId to msg)
   }
 
+  private fun applyMirrorDecision(decision: Derive.MirrorDecision, persistToggle: Boolean) {
+    mirrorState = decision.state
+    if (persistToggle) {
+      homeSpeakerMirror = decision.enabled
+      persistence.homeSpeakerMirror = decision.enabled
+    }
+    when (val action = decision.action) {
+      Derive.MirrorNotificationAction.None -> Unit
+      is Derive.MirrorNotificationAction.Post ->
+          notifier?.notifyAnnouncement(action.id, action.text)
+      is Derive.MirrorNotificationAction.Update ->
+          notifier?.notifyAnnouncement(action.id, action.text)
+      is Derive.MirrorNotificationAction.Cancel -> notifier?.cancelAnnouncement(action.id)
+    }
+  }
+
   public fun updateHomeSpeakerMirror(on: Boolean) {
+    val currentHs = agentHomeSpeaker
     if (!on) {
-      homeSpeakerMirror = false
-      persistence.homeSpeakerMirror = false
+      applyMirrorDecision(
+          Derive.mirrorToggle(
+              requestedOn = false,
+              state = mirrorState,
+              available = currentHs?.available == true,
+              recent = currentHs?.recent.orEmpty(),
+              last = currentHs?.last,
+          ),
+          persistToggle = true,
+      )
       return
     }
     val applyGranted: (Boolean) -> Unit = { granted ->
-      if (granted) {
-        val currentHs = agentHomeSpeaker
-        if (currentHs != null && currentHs.available) {
-          val newest = Derive.newestBroadcast(currentHs.recent, currentHs.last)
-          lastMirroredAnnouncementId =
-              newest?.id?.trim()?.takeIf { it.isNotEmpty() } ?: Derive.NO_ANNOUNCEMENT_ID
-        } else {
-          lastMirroredAnnouncementId = null
-        }
-        homeSpeakerMirror = true
-        persistence.homeSpeakerMirror = true
-      } else {
-        homeSpeakerMirror = false
-        persistence.homeSpeakerMirror = false
-      }
+      val hs = agentHomeSpeaker
+      applyMirrorDecision(
+          Derive.mirrorToggle(
+              requestedOn = true,
+              permissionGranted = granted,
+              state = mirrorState,
+              available = hs?.available == true,
+              recent = hs?.recent.orEmpty(),
+              last = hs?.last,
+          ),
+          persistToggle = true,
+      )
     }
     val n = notifier
     if (n == null) {
@@ -3950,20 +3973,17 @@ public class RemoteState(
 
   private fun observeHomeSpeaker(hs: AgentHomeSpeaker) {
     agentHomeSpeaker = hs
-    if (!hs.available) return
-    val newest = Derive.newestBroadcast(hs.recent, hs.last)
-    val newId = newest?.id?.trim()?.takeIf { it.isNotEmpty() }
-    val enabled = homeSpeakerMirror && (notifier?.hasNotificationPermission() != false)
-    val shouldNotify =
-        Derive.shouldNotifyAnnouncement(
-            previousId = lastMirroredAnnouncementId,
-            newId = newId,
-            enabled = enabled,
-        )
-    lastMirroredAnnouncementId = newId ?: Derive.NO_ANNOUNCEMENT_ID
-    if (shouldNotify && newId != null && newest != null && newest.text.isNotBlank()) {
-      notifier?.notifyAnnouncement(newId, newest.text)
-    }
+    applyMirrorDecision(
+        Derive.observeMirrorAnnouncement(
+            state = mirrorState,
+            mirrorEnabled = homeSpeakerMirror,
+            permissionGranted = notifier?.hasNotificationPermission() != false,
+            available = hs.available,
+            recent = hs.recent,
+            last = hs.last,
+        ),
+        persistToggle = false,
+    )
   }
 
   /**
@@ -6034,7 +6054,7 @@ public class RemoteState(
     selectedAntigravityId = null
     agentArgo = null
     agentHomeSpeaker = null
-    lastMirroredAnnouncementId = null
+    mirrorState = Derive.MirrorState()
     agentSpeakerVolume = null
     homeSpeakerNotice = null
     homeSpeakerErrors = emptyMap()

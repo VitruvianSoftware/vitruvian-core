@@ -1174,6 +1174,56 @@ public object Derive {
    */
   public const val NO_ANNOUNCEMENT_ID: String = "__none__"
 
+  /** Pure tracking state for HomeSpeaker announcement notification mirroring. */
+  public data class MirrorState(
+      val baselineId: String? = null,
+      val activeNotificationId: String? = null,
+      val activeNotificationText: String? = null,
+  )
+
+  /** Notification side-effect decided by pure HomeSpeaker mirror functions. */
+  public sealed interface MirrorNotificationAction {
+    public data object None : MirrorNotificationAction
+
+    public data class Post(val id: String, val text: String) : MirrorNotificationAction
+
+    public data class Update(val id: String, val text: String) : MirrorNotificationAction
+
+    public data class Cancel(val id: String) : MirrorNotificationAction
+  }
+
+  /** Pure outcome of toggling the mirror setting or observing a HomeSpeaker poll. */
+  public data class MirrorDecision(
+      val enabled: Boolean,
+      val state: MirrorState,
+      val action: MirrorNotificationAction,
+  )
+
+  /**
+   * Whether announcement mirroring is effectively active given the persisted toggle and OS
+   * permission.
+   */
+  public fun isMirrorEnabled(mirrorEnabled: Boolean, permissionGranted: Boolean = true): Boolean =
+      mirrorEnabled && permissionGranted
+
+  /**
+   * Resolves the announcement id to record as the baseline for future comparisons:
+   * - `null` when HomeSpeaker is not available yet (so the first reachable poll still counts as
+   *   first load and does not notify).
+   * - The newest broadcast's trimmed `id` when non-blank.
+   * - [NO_ANNOUNCEMENT_ID] when HomeSpeaker is available but has no broadcast with a non-blank id
+   *   (so the very next real announcement triggers a notification).
+   */
+  public fun mirrorBaselineId(
+      available: Boolean,
+      recent: List<AgentLastBroadcast>,
+      last: AgentLastBroadcast? = null,
+  ): String? {
+    if (!available) return null
+    val newest = newestBroadcast(recent, last)
+    return newest?.id?.trim()?.takeIf { it.isNotEmpty() } ?: NO_ANNOUNCEMENT_ID
+  }
+
   /**
    * Pure decision for whether to post a phone notification when HomeSpeaker state is observed:
    * - Never notifies when `enabled` is false.
@@ -1193,6 +1243,183 @@ public object Derive {
     if (prev.isEmpty()) return false
     if (next.isEmpty() || next == NO_ANNOUNCEMENT_ID) return false
     return next != prev
+  }
+
+  /**
+   * Pure decision when the "Show announcements as notifications" setting is toggled or its runtime
+   * permission result arrives:
+   * - Turning the toggle OFF, or requesting ON when `POST_NOTIFICATIONS` is denied, disables the
+   *   setting and cancels any active announcement notification.
+   * - Turning the toggle ON with permission granted enables the setting, seeds `baselineId` from
+   *   the current HomeSpeaker snapshot so the already-latest announcement is never notified, and
+   *   emits [MirrorNotificationAction.None].
+   */
+  public fun mirrorToggle(
+      requestedOn: Boolean,
+      permissionGranted: Boolean = true,
+      state: MirrorState = MirrorState(),
+      available: Boolean = false,
+      recent: List<AgentLastBroadcast> = emptyList(),
+      last: AgentLastBroadcast? = null,
+  ): MirrorDecision {
+    if (!requestedOn || !permissionGranted) {
+      val action =
+          state.activeNotificationId?.let { MirrorNotificationAction.Cancel(it) }
+              ?: MirrorNotificationAction.None
+      return MirrorDecision(
+          enabled = false,
+          state = state.copy(activeNotificationId = null, activeNotificationText = null),
+          action = action,
+      )
+    }
+    val baseline = mirrorBaselineId(available = available, recent = recent, last = last)
+    return MirrorDecision(
+        enabled = true,
+        state = state.copy(baselineId = baseline),
+        action = MirrorNotificationAction.None,
+    )
+  }
+
+  /**
+   * Pure decision when a HomeSpeaker status snapshot is observed:
+   * - Picks the newest announcement from `recent` (falling back to `last`).
+   * - When HomeSpeaker is unavailable (`!available`), preserves `baselineId` so the first reachable
+   *   poll will not notify, while still cancelling an active notification if mirroring was disabled
+   *   or lost permission.
+   * - When mirroring is disabled or lacks permission, updates `baselineId` and cancels any active
+   *   notification.
+   * - When a new announcement id arrives after an established baseline (`shouldNotifyAnnouncement`)
+   *   and has non-blank text, emits [MirrorNotificationAction.Post] (or
+   *   [MirrorNotificationAction.Update] if that id is already active with different text).
+   * - When the currently active notification's announcement id is observed again with updated
+   *   non-blank text, emits [MirrorNotificationAction.Update].
+   * - When an active notification's announcement disappears or its text becomes blank, emits
+   *   [MirrorNotificationAction.Cancel].
+   */
+  public fun observeMirrorAnnouncement(
+      state: MirrorState,
+      mirrorEnabled: Boolean,
+      permissionGranted: Boolean = true,
+      available: Boolean,
+      recent: List<AgentLastBroadcast>,
+      last: AgentLastBroadcast? = null,
+  ): MirrorDecision {
+    val enabled = isMirrorEnabled(mirrorEnabled, permissionGranted)
+    if (!available) {
+      if (!enabled && state.activeNotificationId != null) {
+        return MirrorDecision(
+            enabled = false,
+            state = state.copy(activeNotificationId = null, activeNotificationText = null),
+            action = MirrorNotificationAction.Cancel(state.activeNotificationId),
+        )
+      }
+      return MirrorDecision(
+          enabled = enabled,
+          state = state,
+          action = MirrorNotificationAction.None,
+      )
+    }
+    val newest = newestBroadcast(recent, last)
+    val newId = newest?.id?.trim()?.takeIf { it.isNotEmpty() }
+    val newText = newest?.text?.trim().orEmpty()
+    val nextBaselineId = newId ?: NO_ANNOUNCEMENT_ID
+
+    if (!enabled) {
+      val action =
+          state.activeNotificationId?.let { MirrorNotificationAction.Cancel(it) }
+              ?: MirrorNotificationAction.None
+      return MirrorDecision(
+          enabled = false,
+          state =
+              MirrorState(
+                  baselineId = nextBaselineId,
+                  activeNotificationId = null,
+                  activeNotificationText = null,
+              ),
+          action = action,
+      )
+    }
+
+    if (shouldNotifyAnnouncement(previousId = state.baselineId, newId = newId, enabled = true)) {
+      if (newId != null && newText.isNotEmpty()) {
+        val action =
+            if (state.activeNotificationId == newId) {
+              if (state.activeNotificationText != newText) {
+                MirrorNotificationAction.Update(newId, newText)
+              } else {
+                MirrorNotificationAction.None
+              }
+            } else {
+              MirrorNotificationAction.Post(newId, newText)
+            }
+        return MirrorDecision(
+            enabled = true,
+            state =
+                MirrorState(
+                    baselineId = nextBaselineId,
+                    activeNotificationId = newId,
+                    activeNotificationText = newText,
+                ),
+            action = action,
+        )
+      }
+      return MirrorDecision(
+          enabled = true,
+          state = state.copy(baselineId = nextBaselineId),
+          action = MirrorNotificationAction.None,
+      )
+    }
+
+    if (newId != null && newId == state.activeNotificationId) {
+      if (newText.isEmpty()) {
+        return MirrorDecision(
+            enabled = true,
+            state =
+                MirrorState(
+                    baselineId = nextBaselineId,
+                    activeNotificationId = null,
+                    activeNotificationText = null,
+                ),
+            action = MirrorNotificationAction.Cancel(state.activeNotificationId),
+        )
+      }
+      if (newText != state.activeNotificationText) {
+        return MirrorDecision(
+            enabled = true,
+            state =
+                MirrorState(
+                    baselineId = nextBaselineId,
+                    activeNotificationId = newId,
+                    activeNotificationText = newText,
+                ),
+            action = MirrorNotificationAction.Update(newId, newText),
+        )
+      }
+      return MirrorDecision(
+          enabled = true,
+          state = state.copy(baselineId = nextBaselineId),
+          action = MirrorNotificationAction.None,
+      )
+    }
+
+    if (newId == null && state.activeNotificationId != null) {
+      return MirrorDecision(
+          enabled = true,
+          state =
+              MirrorState(
+                  baselineId = nextBaselineId,
+                  activeNotificationId = null,
+                  activeNotificationText = null,
+              ),
+          action = MirrorNotificationAction.Cancel(state.activeNotificationId),
+      )
+    }
+
+    return MirrorDecision(
+        enabled = true,
+        state = state.copy(baselineId = nextBaselineId),
+        action = MirrorNotificationAction.None,
+    )
   }
 
   /**

@@ -1834,6 +1834,265 @@ public class DeriveTest {
   }
 
   @Test
+  public fun `mirrorToggle seeds baseline without notifying on enable and cancels active notification on disable or permission denial`() {
+    val b1 =
+        AgentLastBroadcast(
+            text = "Dinner is ready", target = "Kitchen", source = "user", at = "now", id = " b-1 ")
+    val b2 =
+        AgentLastBroadcast(
+            text = "Earlier", target = "Kitchen", source = "user", at = "earlier", id = "b-0")
+
+    // 1. Toggled ON with permission while speaker is available and has broadcasts:
+    // seeds baselineId to newest id ("b-1") and emits None (never notifies for already-latest).
+    val enabledWithExisting =
+        Derive.mirrorToggle(
+            requestedOn = true,
+            permissionGranted = true,
+            state = Derive.MirrorState(),
+            available = true,
+            recent = listOf(b1, b2),
+            last = b2,
+        )
+    assertTrue(enabledWithExisting.enabled)
+    assertEquals("b-1", enabledWithExisting.state.baselineId)
+    assertEquals(Derive.MirrorNotificationAction.None, enabledWithExisting.action)
+
+    // 2. Toggled ON when recent is empty and only `last` is populated: falls back to `last`.
+    val enabledWithLastFallback =
+        Derive.mirrorToggle(
+            requestedOn = true,
+            permissionGranted = true,
+            state = Derive.MirrorState(),
+            available = true,
+            recent = emptyList(),
+            last = b2,
+        )
+    assertTrue(enabledWithLastFallback.enabled)
+    assertEquals("b-0", enabledWithLastFallback.state.baselineId)
+    assertEquals(Derive.MirrorNotificationAction.None, enabledWithLastFallback.action)
+
+    // 3. Toggled ON when available with no broadcasts yet: seeds NO_ANNOUNCEMENT_ID so the very
+    // next real announcement triggers a notification.
+    val enabledEmpty =
+        Derive.mirrorToggle(
+            requestedOn = true,
+            permissionGranted = true,
+            state = Derive.MirrorState(),
+            available = true,
+            recent = emptyList(),
+            last = null,
+        )
+    assertTrue(enabledEmpty.enabled)
+    assertEquals(Derive.NO_ANNOUNCEMENT_ID, enabledEmpty.state.baselineId)
+    assertEquals(Derive.MirrorNotificationAction.None, enabledEmpty.action)
+
+    // 4. Toggled ON while HomeSpeaker is not available yet: keeps baselineId null so the first
+    // reachable poll still acts as first load and does not notify.
+    val enabledOffline =
+        Derive.mirrorToggle(
+            requestedOn = true,
+            permissionGranted = true,
+            state = Derive.MirrorState(baselineId = "stale"),
+            available = false,
+            recent = listOf(b1),
+            last = b1,
+        )
+    assertTrue(enabledOffline.enabled)
+    assertNull(enabledOffline.state.baselineId)
+    assertEquals(Derive.MirrorNotificationAction.None, enabledOffline.action)
+
+    // 5. Toggled ON when POST_NOTIFICATIONS permission is denied: stays disabled and cancels any
+    // active notification.
+    val deniedWithActive =
+        Derive.mirrorToggle(
+            requestedOn = true,
+            permissionGranted = false,
+            state =
+                Derive.MirrorState(
+                    baselineId = "b-1",
+                    activeNotificationId = "b-1",
+                    activeNotificationText = "Dinner is ready",
+                ),
+            available = true,
+            recent = listOf(b1),
+        )
+    assertFalse(deniedWithActive.enabled)
+    assertNull(deniedWithActive.state.activeNotificationId)
+    assertEquals(Derive.MirrorNotificationAction.Cancel("b-1"), deniedWithActive.action)
+
+    // 6. Toggled OFF while a notification is active: disables and cancels the active notification.
+    val toggledOff =
+        Derive.mirrorToggle(
+            requestedOn = false,
+            permissionGranted = true,
+            state =
+                Derive.MirrorState(
+                    baselineId = "b-1",
+                    activeNotificationId = "b-1",
+                    activeNotificationText = "Dinner is ready",
+                ),
+            available = true,
+            recent = listOf(b1),
+        )
+    assertFalse(toggledOff.enabled)
+    assertNull(toggledOff.state.activeNotificationId)
+    assertNull(toggledOff.state.activeNotificationText)
+    assertEquals(Derive.MirrorNotificationAction.Cancel("b-1"), toggledOff.action)
+  }
+
+  @Test
+  public fun `observeMirrorAnnouncement decides which id to notify and when to post, update, or cancel`() {
+    val b1 =
+        AgentLastBroadcast(
+            text = "Build passed", target = "Office", source = "claude", at = "10:00", id = "b-1")
+    val b2 =
+        AgentLastBroadcast(
+            text = "Deploy complete",
+            target = "Office",
+            source = "claude",
+            at = "10:05",
+            id = "b-2")
+
+    // 1. First load (baselineId == null) with mirror enabled: records baselineId = "b-1", does not
+    // post.
+    val firstLoad =
+        Derive.observeMirrorAnnouncement(
+            state = Derive.MirrorState(),
+            mirrorEnabled = true,
+            permissionGranted = true,
+            available = true,
+            recent = listOf(b1),
+        )
+    assertEquals("b-1", firstLoad.state.baselineId)
+    assertNull(firstLoad.state.activeNotificationId)
+    assertEquals(Derive.MirrorNotificationAction.None, firstLoad.action)
+
+    // 2. Subsequent poll with the same announcement id ("b-1"): None.
+    val samePoll =
+        Derive.observeMirrorAnnouncement(
+            state = firstLoad.state,
+            mirrorEnabled = true,
+            permissionGranted = true,
+            available = true,
+            recent = listOf(b1),
+        )
+    assertEquals("b-1", samePoll.state.baselineId)
+    assertEquals(Derive.MirrorNotificationAction.None, samePoll.action)
+
+    // 3. New announcement id ("b-2" at recent[0], "b-1" at recent[1]): Posts notification for
+    // "b-2".
+    val newArrival =
+        Derive.observeMirrorAnnouncement(
+            state = samePoll.state,
+            mirrorEnabled = true,
+            permissionGranted = true,
+            available = true,
+            recent = listOf(b2, b1),
+        )
+    assertEquals("b-2", newArrival.state.baselineId)
+    assertEquals("b-2", newArrival.state.activeNotificationId)
+    assertEquals("Deploy complete", newArrival.state.activeNotificationText)
+    assertEquals(Derive.MirrorNotificationAction.Post("b-2", "Deploy complete"), newArrival.action)
+
+    // 4. Same active announcement id ("b-2") observed again with unchanged text: None.
+    val unchangedActive =
+        Derive.observeMirrorAnnouncement(
+            state = newArrival.state,
+            mirrorEnabled = true,
+            permissionGranted = true,
+            available = true,
+            recent = listOf(b2, b1),
+        )
+    assertEquals(Derive.MirrorNotificationAction.None, unchangedActive.action)
+    assertEquals("b-2", unchangedActive.state.activeNotificationId)
+
+    // 5. Same active announcement id ("b-2") observed with updated text: emits Update.
+    val b2Updated = b2.copy(text = "Deploy complete on prod")
+    val updatedActive =
+        Derive.observeMirrorAnnouncement(
+            state = unchangedActive.state,
+            mirrorEnabled = true,
+            permissionGranted = true,
+            available = true,
+            recent = listOf(b2Updated, b1),
+        )
+    assertEquals(
+        Derive.MirrorNotificationAction.Update("b-2", "Deploy complete on prod"),
+        updatedActive.action)
+    assertEquals("Deploy complete on prod", updatedActive.state.activeNotificationText)
+
+    // 6. Active announcement's text becomes blank: cancels active notification.
+    val b2BlankText = b2.copy(text = "   ")
+    val blankedActive =
+        Derive.observeMirrorAnnouncement(
+            state = updatedActive.state,
+            mirrorEnabled = true,
+            permissionGranted = true,
+            available = true,
+            recent = listOf(b2BlankText),
+        )
+    assertEquals(Derive.MirrorNotificationAction.Cancel("b-2"), blankedActive.action)
+    assertNull(blankedActive.state.activeNotificationId)
+
+    // 7. History cleared (no broadcasts) while a notification is active: cancels active
+    // notification and sets baseline to NO_ANNOUNCEMENT_ID.
+    val clearedHistory =
+        Derive.observeMirrorAnnouncement(
+            state = updatedActive.state,
+            mirrorEnabled = true,
+            permissionGranted = true,
+            available = true,
+            recent = emptyList(),
+            last = null,
+        )
+    assertEquals(Derive.MirrorNotificationAction.Cancel("b-2"), clearedHistory.action)
+    assertEquals(Derive.NO_ANNOUNCEMENT_ID, clearedHistory.state.baselineId)
+    assertNull(clearedHistory.state.activeNotificationId)
+
+    // 8. Next real announcement after NO_ANNOUNCEMENT_ID posts notification (including fallback to
+    // `last` when `recent` is empty).
+    val afterEmpty =
+        Derive.observeMirrorAnnouncement(
+            state = clearedHistory.state,
+            mirrorEnabled = true,
+            permissionGranted = true,
+            available = true,
+            recent = emptyList(),
+            last = b1,
+        )
+    assertEquals(Derive.MirrorNotificationAction.Post("b-1", "Build passed"), afterEmpty.action)
+    assertEquals("b-1", afterEmpty.state.baselineId)
+    assertEquals("b-1", afterEmpty.state.activeNotificationId)
+
+    // 9. Permission revoked or setting disabled while a notification is active: cancels active
+    // notification.
+    val permissionLost =
+        Derive.observeMirrorAnnouncement(
+            state = afterEmpty.state,
+            mirrorEnabled = true,
+            permissionGranted = false,
+            available = true,
+            recent = listOf(b1),
+        )
+    assertFalse(permissionLost.enabled)
+    assertEquals(Derive.MirrorNotificationAction.Cancel("b-1"), permissionLost.action)
+    assertNull(permissionLost.state.activeNotificationId)
+
+    // 10. Unavailable poll preserves null baseline so the subsequent first available poll still
+    // does not notify.
+    val unavailableFirst =
+        Derive.observeMirrorAnnouncement(
+            state = Derive.MirrorState(),
+            mirrorEnabled = true,
+            permissionGranted = true,
+            available = false,
+            recent = listOf(b1),
+        )
+    assertNull(unavailableFirst.state.baselineId)
+    assertEquals(Derive.MirrorNotificationAction.None, unavailableFirst.action)
+  }
+
+  @Test
   public fun `Quick Settings Speaker tile maps unpaired, unreachable, volume unavailable, muted and active volume`() {
     assertEquals(
         Derive.SpeakerTileSpec(Derive.SpeakerTileLook.Unavailable, "Not paired"),

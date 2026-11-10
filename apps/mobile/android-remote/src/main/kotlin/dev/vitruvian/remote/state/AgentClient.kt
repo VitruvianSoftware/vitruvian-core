@@ -973,6 +973,7 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
       text: String = "",
       replay: Boolean = false,
       replayId: String? = null,
+      readTimeoutMs: Int = LONG_ACTION_TIMEOUT_MS,
   ): AgentActionResult =
       withContext(Dispatchers.IO) {
         val body =
@@ -983,7 +984,7 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
                   if (!replayId.isNullOrBlank()) put("replay_id", replayId)
                 }
                 .toString()
-        parseAction(post("/v1/homespeaker/say", body, readTimeoutMs = LONG_ACTION_TIMEOUT_MS))
+        parseAction(post("/v1/homespeaker/say", body, readTimeoutMs = readTimeoutMs))
       }
 
   /**

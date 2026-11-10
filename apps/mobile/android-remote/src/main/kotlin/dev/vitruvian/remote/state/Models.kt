@@ -387,6 +387,9 @@ public interface Notifier {
    */
   public fun notifyAnnouncement(id: String, text: String) {}
 
+  /** Cancels a previously posted HomeSpeaker announcement notification. */
+  public fun cancelAnnouncement(id: String) {}
+
   /** Whether `POST_NOTIFICATIONS` is granted (always true below API 33). */
   public fun hasNotificationPermission(): Boolean = true
 

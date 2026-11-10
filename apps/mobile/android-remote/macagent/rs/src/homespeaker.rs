@@ -1463,7 +1463,7 @@ pub fn is_quiet_hours_active(enabled: bool, start: &str, end: &str, now: Timesta
 
 pub fn parse_snooze_timestamp(s: &str) -> Result<Timestamp, ApplyError> {
     let trimmed = s.trim();
-    if trimmed.len() < 20 {
+    if trimmed.len() < 20 || !trimmed.is_ascii() {
         return Err(ApplyError::BadRequest(format!(
             "invalid snooze_until {s:?}; must be ISO-8601 timestamp"
         )));
@@ -5651,6 +5651,39 @@ mod tests {
         let raw_get = JsonValue::parse_bytes(&get_resp.body_bytes()).unwrap();
         assert_eq!(
             raw_get.as_object().unwrap().get("snooze_until"),
+            Some(&JsonValue::Null)
+        );
+    }
+
+    #[test]
+    fn test_home_speaker_snooze_post_non_ascii_returns_400_without_panicking() {
+        let (h, _, phone, _) = new_test_home_speaker(true);
+        let resp = h.handle_set(
+            &post_req(
+                "/v1/homespeaker",
+                r#"{"snooze_until":"2026é0123456789012345"}"#,
+            ),
+            &phone,
+        );
+        assert_eq!(resp.status, 400);
+    }
+
+    #[test]
+    fn test_home_speaker_snooze_get_stored_non_ascii_returns_null_without_panicking() {
+        let (h, _, phone, _) = new_test_home_speaker(true);
+        let mut cfg = h.read_config().unwrap();
+        cfg.insert(
+            "snooze_until".to_string(),
+            JsonValue::String("2026é0123456789012345".to_string()),
+        );
+        h.write_config(&cfg).unwrap();
+
+        assert!(h.state().snooze_until.is_none());
+        let resp = h.handle_get(&phone);
+        assert_eq!(resp.status, 200);
+        let raw = JsonValue::parse_bytes(&resp.body_bytes()).unwrap();
+        assert_eq!(
+            raw.as_object().unwrap().get("snooze_until"),
             Some(&JsonValue::Null)
         );
     }

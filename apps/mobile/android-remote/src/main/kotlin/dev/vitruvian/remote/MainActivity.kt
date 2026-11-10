@@ -531,6 +531,13 @@ private class ShadeNotifier(
     }
   }
 
+  override fun cancelAnnouncement(id: String) {
+    runCatching {
+      NotificationManagerCompat.from(context)
+          .cancel(HomeSpeakerNotificationReceiver.NOTIFICATION_TAG, id.hashCode())
+    }
+  }
+
   private fun actionPendingIntent(
       action: String,
       requestCode: Int,
@@ -588,6 +595,7 @@ public class HomeSpeakerNotificationReceiver : BroadcastReceiver() {
                         text = announcementText,
                         replay = true,
                         replayId = announcementId.ifBlank { null },
+                        readTimeoutMs = ACTION_TIMEOUT_MS.toInt(),
                     )
                 ACTION_MUTE ->
                     client.setHomeSpeakerVolume(
