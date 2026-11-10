@@ -218,7 +218,12 @@ final class CommandBarModelTests: XCTestCase {
         let spaces = SpacesModel(appModel: h.app, inbox: h.inbox, sleep: { _ in })
         try await waitUntil { !spaces.spaces.isEmpty }
 
-        let search = SearchModel(appModel: h.app, sleep: { _ in })
+        let search = SearchModel(
+            appModel: h.app,
+            recents: RecentSearches(defaults: defaults),
+            open: { _ in },
+            sleep: { _ in }
+        )
         let all = CommandSet.all(inbox: h.inbox, spaces: spaces, search: search)
         let model = CommandBarModel(defaults: defaults, commandsProvider: { all })
         let bulkIDs = [

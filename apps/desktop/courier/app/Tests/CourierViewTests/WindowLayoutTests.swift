@@ -185,7 +185,7 @@ final class WindowLayoutTests: XCTestCase {
         let store = ScratchDefaults.suite(named: suiteName)!
         let appearance = AppearancePreferences(defaults: store)
         appearance.themePreset = .classicTeal
-        appearance.setRoomThemeOverride(
+        appearance.setChatTheme(
             ChatThemeOverride(preset: .sunsetCoral, accentColorHex: "#E11D48"),
             for: "!custom:courier.local"
         )
