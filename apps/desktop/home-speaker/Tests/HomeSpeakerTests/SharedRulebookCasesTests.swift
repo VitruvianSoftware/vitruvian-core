@@ -68,6 +68,7 @@ struct SharedRulebookCasesTests {
             "speakers.json",
             "outputs_label.json",
             "chat_monitor_status.json",
+            "oauth_client_override.json",
         ]
         #expect(jsonFiles == expectedFiles)
         #expect(entries.contains("README.md"))
@@ -591,6 +592,52 @@ struct SharedRulebookCasesTests {
                 pid: believed.pid
             )
             #expect(actual == tc.expected, "\(tc.name)")
+        }
+    }
+
+    // MARK: - 8. Google Sign-In Client Override Rule (oauth_client_override.json)
+
+    private struct OAuthClientOverrideSuite: Decodable {
+        struct OverrideCase: Decodable {
+            let name: String
+            let initial_id: String?
+            let initial_secret: String?
+            let input_id: String
+            let input_secret: String?
+            let expected_id: String?
+            let expected_secret: String?
+        }
+        let suite: String
+        let cases: [OverrideCase]
+    }
+
+    @Test("Google sign-in client override rule matches shared cases (oauth_client_override.json)")
+    func oauthClientOverrideMatchesRule() throws {
+        let spec = try Self.loadJSON("oauth_client_override.json", as: OAuthClientOverrideSuite.self)
+        #expect(spec.suite == "oauth_client_override")
+
+        let scratch = FileManager.default.temporaryDirectory
+            .appendingPathComponent("homespeaker-oauth-rule-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: scratch) }
+
+        for tc in spec.cases {
+            let store = SecretStore(fileURL: scratch.appendingPathComponent("\(tc.name)-secrets.json"))
+            try store.save(
+                Secrets(
+                    oauthClientIdOverride: tc.initial_id,
+                    oauthClientSecretOverride: tc.initial_secret
+                )
+            )
+            try SettingsActions.saveOAuthClientOverride(
+                id: tc.input_id,
+                secret: tc.input_secret,
+                in: store
+            )
+            let secrets = store.load()
+
+            #expect(secrets.oauthClientIdOverride == tc.expected_id, "\(tc.name): client ID")
+            #expect(secrets.oauthClientSecretOverride == tc.expected_secret, "\(tc.name): client secret")
         }
     }
 }

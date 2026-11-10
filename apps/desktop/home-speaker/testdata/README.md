@@ -18,3 +18,4 @@ These JSON files capture the single rulebook for Home Speaker's settings catalog
 - `speakers.json` — `SpeakerDevice.displayLine`, `SpeakerConfig.uniqueTargets()` deduplication and name sorting, and `SpeakerConfig.removeTarget(_:)` picking the next speaker by name.
 - `outputs_label.json` — `SpeakerConfig.activeOutputsLabel` across output combinations and the phone's `"Your phone"` → `"This phone"` substitution.
 - `chat_monitor_status.json` — `ChatMonitorStatus.believed(ownerRunning:)` clearing `isRunning` and `lastError` when the owning process is no longer running.
+- `oauth_client_override.json` — Google sign-in client override rule: a blank secret with an unchanged client ID keeps the stored secret; a blank secret with a changed client ID clears it; a blank client ID clears both.
