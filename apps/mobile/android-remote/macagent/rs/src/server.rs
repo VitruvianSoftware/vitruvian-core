@@ -58,7 +58,7 @@ use crate::sampler::{
 use crate::stream::handle_exec_stream;
 use crate::tv::{handle_tv_get, handle_tv_post, TVController};
 
-pub const VERSION: &str = "0.1.30"; // x-release-please-version
+pub const VERSION: &str = "0.1.31"; // x-release-please-version
 pub const DEFAULT_PORT: &str = "7411";
 pub const SCREEN_CACHE_TTL: Duration = Duration::from_secs(2);
 
