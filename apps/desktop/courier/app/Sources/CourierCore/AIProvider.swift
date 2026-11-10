@@ -49,6 +49,8 @@ public struct UnavailableAIProvider: AIProvider {
         self.customReason = reason
     }
 
+    public var hasCustomReason: Bool { customReason != nil }
+
     public var isAvailable: Bool { false }
     public var unavailableReason: String {
         customReason ?? String(localized: "AI features aren’t available yet in Courier. Everything you write stays on this Mac.")
@@ -227,7 +229,48 @@ public final class AIPreferences: ObservableObject {
         }
     }
 
+    public static let lastTranslationLanguageHelp = String(localized: "At least one language stays on")
+
+    /// True when `language` is the only remaining enabled translation language and its checkbox must be disabled.
+    public func isLastEnabledTranslationLanguage(_ language: String) -> Bool {
+        translationLanguages.count <= 1 && translationLanguages.contains(language)
+    }
+
+    /// Toggles `language` in `translationLanguages`, refusing to turn off the last remaining enabled language.
+    @discardableResult
+    public func setTranslationLanguage(_ language: String, enabled: Bool) -> Bool {
+        if enabled {
+            if !translationLanguages.contains(language) {
+                var next = translationLanguages
+                next.append(language)
+                next.sort()
+                translationLanguages = next
+            }
+            return true
+        } else {
+            guard !isLastEnabledTranslationLanguage(language) else {
+                return false
+            }
+            var next = translationLanguages
+            next.removeAll { $0 == language }
+            translationLanguages = next
+            return true
+        }
+    }
+
     private func set(_ value: Any, _ name: String) {
         defaults.set(value, forKey: Self.key(name))
+    }
+}
+
+extension AIProvider {
+    @MainActor
+    public func provenanceFooter(preferences: AIPreferences) -> String {
+        if let configured = self as? ConfiguredAIProvider {
+            return configured.kind.provenanceFooter(model: configured.model)
+        }
+        let kind = preferences.selectedEngine
+        let model = preferences.model(for: kind) ?? preferences.selectedModel
+        return kind.provenanceFooter(model: model)
     }
 }

@@ -95,11 +95,67 @@ public enum AIProviderKind: String, CaseIterable, Codable, Sendable {
         }
     }
 
+    /// Expected application bundle URL under `/Applications` for local server providers.
+    public var localAppURL: URL? {
+        localAppBundleName.map { URL(fileURLWithPath: "/Applications/\($0)") }
+    }
+
+    /// Short app name used in `"Open <app>"` and `"Get <app>"` actions.
+    public var shortAppName: String {
+        switch self {
+        case .ollama:
+            String(localized: "Ollama")
+        case .lmStudio:
+            String(localized: "LM Studio")
+        case .unslothStudio:
+            String(localized: "Unsloth")
+        default:
+            label
+        }
+    }
+
+    /// Official download page for local providers.
+    public var downloadURL: URL? {
+        switch self {
+        case .ollama:
+            URL(string: "https://ollama.com")
+        case .lmStudio:
+            URL(string: "https://lmstudio.ai")
+        case .unslothStudio:
+            URL(string: "https://unsloth.ai")
+        default:
+            nil
+        }
+    }
+
+    /// Official API key management or setup documentation URL for key-accepting providers.
+    public var keyPortalURL: URL? {
+        switch self {
+        case .anthropic:
+            URL(string: "https://console.anthropic.com/settings/keys")
+        case .googleAIStudio:
+            URL(string: "https://aistudio.google.com/apikey")
+        case .openAI:
+            URL(string: "https://platform.openai.com/api-keys")
+        case .unslothStudio:
+            URL(string: "https://docs.unsloth.ai")
+        default:
+            nil
+        }
+    }
+
     public func provenanceFooter(model: String) -> String {
         if isLocal {
             return String(localized: "via \(model) · on this Mac")
         }
         return String(localized: "via \(model) · sent to \(label)")
+    }
+
+    public func summaryLocationNote() -> String {
+        if isLocal {
+            return String(localized: "on this Mac")
+        }
+        return String(localized: "sent to \(label)")
     }
 
     public var defaultBaseURL: URL? {
@@ -128,5 +184,9 @@ public enum AIProviderKind: String, CaseIterable, Codable, Sendable {
             return String(localized: "Stays on this Mac.")
         }
         return String(localized: "Messages you use with AI are sent to \(label).")
+    }
+
+    public static var privacyScopeNotice: String {
+        String(localized: "Only the messages you use with AI, and your draft. Never your keys or other chats.")
     }
 }

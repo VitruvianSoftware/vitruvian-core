@@ -1,11 +1,18 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import AppKit
 import Combine
 import Foundation
 
 @MainActor
 public final class AIProviderStore: ObservableObject {
+    public enum LocalRowAction: Equatable, Sendable {
+        case none
+        case openApp(title: String)
+        case getApp(title: String, url: URL)
+    }
+
     public enum TestResult: Equatable, Sendable {
         case connected(modelCount: Int)
         case failure(String)
@@ -42,6 +49,8 @@ public final class AIProviderStore: ObservableObject {
     @Published public private(set) var isSettingsDetectionActive: Bool = false
 
     public let settingsDetectionInterval: Duration
+    public var isAppInstalled: @Sendable (AIProviderKind) -> Bool
+    public var openLocalApp: @MainActor (AIProviderKind) -> Void
     private var settingsDetectionTask: Task<Void, Never>?
     private var cancellables: Set<AnyCancellable> = []
     private let appleClientFactory: @Sendable () -> AppleOnDeviceClient
@@ -52,6 +61,14 @@ public final class AIProviderStore: ObservableObject {
         transport: any HTTPTransport = URLSessionHTTPTransport.shared,
         detector: LocalProviderDetector? = nil,
         settingsDetectionInterval: Duration = .seconds(30),
+        isAppInstalled: @escaping @Sendable (AIProviderKind) -> Bool = { kind in
+            guard let url = kind.localAppURL else { return false }
+            return FileManager.default.fileExists(atPath: url.path)
+        },
+        openLocalApp: @escaping @MainActor (AIProviderKind) -> Void = { kind in
+            guard let url = kind.localAppURL else { return }
+            NSWorkspace.shared.open(url)
+        },
         appleClientFactory: @escaping @Sendable () -> AppleOnDeviceClient = { AppleOnDeviceClient() }
     ) {
         self.preferences = preferences
@@ -59,6 +76,8 @@ public final class AIProviderStore: ObservableObject {
         self.transport = transport
         self.detector = detector ?? LocalProviderDetector(transport: transport)
         self.settingsDetectionInterval = settingsDetectionInterval
+        self.isAppInstalled = isAppInstalled
+        self.openLocalApp = openLocalApp
         self.appleClientFactory = appleClientFactory
 
         observePreferences()
@@ -317,6 +336,66 @@ public final class AIProviderStore: ObservableObject {
             return hasKey(for: .customOpenAICompatible)
                 ? String(localized: "Key saved")
                 : String(localized: "Set up")
+        }
+    }
+
+    /// Detailed row state text for the "On this Mac" list in Settings ▸ AI, distinguishing running, installed-not-running, and not found.
+    public func localRowStateText(for kind: AIProviderKind) -> String {
+        switch kind {
+        case .appleIntelligence:
+            let status = appleClientFactory().availability
+            return status.isAvailable
+                ? String(localized: "Found · 1 model · Stays on this Mac")
+                : status.reason
+        case .ollama, .lmStudio:
+            switch detections[kind] {
+            case let .running(models):
+                let countText = models.count == 1
+                    ? String(localized: "1 model")
+                    : String(localized: "\(models.count) models")
+                return String(localized: "Found · \(countText) · Stays on this Mac")
+            case .needsKey:
+                return String(localized: "Found · Needs key")
+            case .notRunning, nil:
+                return isAppInstalled(kind)
+                    ? String(localized: "Installed · not running")
+                    : String(localized: "Not found")
+            }
+        case .unslothStudio:
+            switch detections[.unslothStudio] {
+            case let .running(models):
+                let countText = models.count == 1
+                    ? String(localized: "1 model")
+                    : String(localized: "\(models.count) models")
+                return String(localized: "Found · \(countText) · Stays on this Mac")
+            case .needsKey:
+                return hasKey(for: .unslothStudio)
+                    ? String(localized: "Found · Key saved")
+                    : String(localized: "Found · Needs key")
+            case .notRunning, nil:
+                return isAppInstalled(.unslothStudio)
+                    ? String(localized: "Installed · not running")
+                    : String(localized: "Not found")
+            }
+        default:
+            return stateText(for: kind)
+        }
+    }
+
+    /// Trailing row action for an "On this Mac" provider row (`Open <app>` when installed-not-running, `Get <app>` when not installed).
+    public func localRowAction(for kind: AIProviderKind) -> LocalRowAction {
+        guard kind.isLocal, kind != .appleIntelligence else { return .none }
+        switch detections[kind] {
+        case .running, .needsKey:
+            return .none
+        case .notRunning, nil:
+            if isAppInstalled(kind) {
+                return .openApp(title: String(localized: "Open \(kind.shortAppName)"))
+            }
+            if let url = kind.downloadURL {
+                return .getApp(title: String(localized: "Get \(kind.shortAppName)"), url: url)
+            }
+            return .none
         }
     }
 

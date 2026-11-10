@@ -1481,42 +1481,72 @@ public enum CommandSet {
         ])
 
         // 11. AI & Intentional Stubs (4.7)
+        let isAIAvailable = (activeComposer?.aiProvider.isAvailable == true) || (actions?.aiProvider.isAvailable == true)
+        let aiUnavailableSubtitle = String(localized: "Set up AI in Settings")
         appendAll([
             CourierCommand(
                 id: "ai.summarizeThread",
                 title: String(localized: "AI: Summarize Thread"),
-                subtitle: String(localized: "Not available in this build"),
+                subtitle: isAIAvailable ? String(localized: "Summarize recent messages in this chat") : aiUnavailableSubtitle,
                 category: .aiAndStubs,
-                keywords: ["ai", "summarize", "summary", "thread"],
+                keywords: ["ai", "summarize", "summary", "thread", "summarize chat"],
                 icon: "sparkles",
                 shortcut: nil
             ) {
-                inbox?.announce(String(localized: "AI thread summaries aren’t available in this build."))
-                openAISettings("summarize")
+                if let conversation, conversation.composer.aiProvider.isAvailable {
+                    conversation.summarizeChat()
+                } else {
+                    inbox?.announce(String(localized: "Set up AI in Settings"))
+                    openAISettings("summarize")
+                }
+            },
+            CourierCommand(
+                id: "ai.summarizeChat",
+                title: String(localized: "Summarize Chat"),
+                subtitle: isAIAvailable ? String(localized: "Summarize recent messages in this chat") : aiUnavailableSubtitle,
+                category: .aiAndStubs,
+                keywords: ["ai", "summarize", "summary", "chat"],
+                icon: "sparkles",
+                shortcut: nil
+            ) {
+                if let conversation, conversation.composer.aiProvider.isAvailable {
+                    conversation.summarizeChat()
+                } else {
+                    inbox?.announce(String(localized: "Set up AI in Settings"))
+                    openAISettings("summarize")
+                }
             },
             CourierCommand(
                 id: "ai.draftReply",
                 title: String(localized: "AI: Draft Reply"),
-                subtitle: String(localized: "Not available in this build"),
+                subtitle: isAIAvailable ? String(localized: "Draft or rewrite a reply in this chat") : aiUnavailableSubtitle,
                 category: .aiAndStubs,
-                keywords: ["ai", "draft", "reply", "compose"],
+                keywords: ["ai", "draft", "reply", "compose", "rewrite"],
                 icon: "wand.and.stars",
                 shortcut: nil
             ) {
-                inbox?.announce(String(localized: "AI draft replies aren’t available in this build."))
-                openAISettings("draft")
+                if let activeComposer, activeComposer.aiProvider.isAvailable {
+                    activeComposer.draftWithAI(tone: nil)
+                } else {
+                    inbox?.announce(String(localized: "Set up AI in Settings"))
+                    openAISettings("draft")
+                }
             },
             CourierCommand(
                 id: "ai.translateMessage",
                 title: String(localized: "AI: Translate Message"),
-                subtitle: String(localized: "Not available in this build"),
+                subtitle: isAIAvailable ? String(localized: "Translate the selected message") : aiUnavailableSubtitle,
                 category: .aiAndStubs,
                 keywords: ["ai", "translate", "language"],
                 icon: "character.bubble",
                 shortcut: nil
             ) {
-                inbox?.announce(String(localized: "AI translation isn’t available in this build."))
-                openAISettings("translate")
+                if let actions, actions.aiProvider.isAvailable, let selected = conversation?.selectedMessage {
+                    actions.translateMessage(eventID: selected.id)
+                } else {
+                    inbox?.announce(String(localized: "Set up AI in Settings"))
+                    openAISettings("translate")
+                }
             },
             CourierCommand(
                 id: "ai.talkToType",

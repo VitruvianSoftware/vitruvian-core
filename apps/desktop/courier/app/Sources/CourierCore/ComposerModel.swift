@@ -116,24 +116,35 @@ public struct ComposerSlashCommand: Equatable, Sendable, Identifiable {
         ComposerSlashCommand(
             trigger: "/ai",
             title: String(localized: "Ask AI"),
-            summary: String(localized: "Ask contextual AI about the current conversation (Not available yet)")
+            summary: String(localized: "Ask contextual AI about the current conversation")
         ),
         ComposerSlashCommand(
             trigger: "/draft",
             title: String(localized: "Draft with AI"),
-            summary: String(localized: "Rewrite or draft a reply in this chat (Not available yet)")
+            summary: String(localized: "Rewrite or draft a reply in this chat")
         ),
         ComposerSlashCommand(
             trigger: "/summarize",
             title: String(localized: "Summarize Chat"),
-            summary: String(localized: "Summarize recent messages in this chat (Not available yet)")
+            summary: String(localized: "Summarize recent messages in this chat")
         ),
         ComposerSlashCommand(
             trigger: "/translate",
             title: String(localized: "Translate Draft"),
-            summary: String(localized: "Translate your message draft before sending (Not available yet)")
+            summary: String(localized: "Translate your message draft before sending")
         ),
     ]
+}
+
+/// Generated AI draft or translation staged above the composer before the person chooses Replace, Insert, or Discard.
+public struct ComposerAIResult: Equatable, Sendable {
+    public let text: String
+    public let provenance: String
+
+    public init(text: String, provenance: String) {
+        self.text = text
+        self.provenance = provenance
+    }
 }
 
 /// Where the composer asks the text view to put the caret, in UTF-16 units. A new request has a higher serial.
@@ -331,10 +342,22 @@ public final class ComposerModel: ObservableObject {
     public var thumbnailLoader: ThumbnailLoader?
     /// Offline GIF provider (StubGIFProvider in Iteration 1; zero network calls).
     public var gifProvider: any GIFProvider = StubGIFProvider()
-    /// Offline AI provider (UnavailableAIProvider in Iteration 1; zero network calls).
+    /// AI provider used for Draft a reply, Rewrite…, and `/translate` (defaults to `UnavailableAIProvider()`).
     public var aiProvider: any AIProvider = UnavailableAIProvider()
     /// Local AI preferences (`AIPreferences`).
     public var aiPreferences: AIPreferences = AIPreferences()
+    /// Staged AI result strip above the composer text (`Replace · Insert · Discard`).
+    @Published public private(set) var aiResult: ComposerAIResult?
+    /// True while an AI draft/rewrite/translation request is in flight for the open chat.
+    @Published public private(set) var isAIWriting: Bool = false
+    /// Plain inline AI error line (`Retry` / `Open AI Settings`).
+    @Published public private(set) var aiError: String?
+    /// Builds `AIChatContext` from the open chat's loaded text messages.
+    public var chatContext: @MainActor () -> AIChatContext = { AIChatContext(title: "", messages: []) }
+    /// Triggered by `/summarize` to open the AI pane and summarize the open chat.
+    public var onSummarizeChat: @MainActor () -> Void = {}
+    /// Opens Settings ▸ AI.
+    public var onOpenAISettings: @MainActor () -> Void = {}
     @Published public var isEmojiPickerPresented: Bool = false
     @Published public var isStickerPickerPresented: Bool = false
     @Published public var isGIFPickerPresented: Bool = false
@@ -491,11 +514,20 @@ public final class ComposerModel: ObservableObject {
     private var caretSerial = 0
     private var preferencesCancellable: AnyCancellable?
     private var lockCancellable: AnyCancellable?
+    private var aiStoreCancellable: AnyCancellable?
     private weak var observedLifecycle: SystemLifecycleModel?
     private var initialStickerLoadStarted = false
     private var stickerLoadGeneration = 0
+    private var aiTask: Task<Void, Never>?
+    private var aiRequestToken = 0
+    private var lastAIAction: ComposerAIAction?
     /// My held messages, by chat, and what Undo does with them.
     private let held = HeldMessages()
+
+    private enum ComposerAIAction: Equatable, Sendable {
+        case draft(tone: AIRewriteTone?, draftOverride: String?)
+        case translate(textOverride: String?)
+    }
 
     public var lifecycle: SystemLifecycleModel {
         observedLifecycle
@@ -748,6 +780,10 @@ public final class ComposerModel: ObservableObject {
     /// thread is left.
     public func open(_ room: String?) {
         guard room != roomID else { return }
+        cancelAI()
+        aiResult = nil
+        aiError = nil
+        lastAIAction = nil
         if voiceRecorder.state != .idle {
             voiceRecorder.cancelImmediately()
         }
@@ -2675,7 +2711,17 @@ public final class ComposerModel: ObservableObject {
         await held.sendNow(in: room)
     }
 
-    // MARK: - AI & Slash Command Stubs (Milestone 4.7)
+    // MARK: - AI & Slash Commands
+
+    /// Binds this composer to a shared `AIProviderStore` so `aiPreferences` and live `aiProvider` updates stay in sync.
+    public func bindAIProviderStore(_ store: AIProviderStore) {
+        aiPreferences = store.preferences
+        aiProvider = store.provider
+        aiStoreCancellable = store.$provider
+            .sink { [weak self] nextProvider in
+                self?.aiProvider = nextProvider
+            }
+    }
 
     /// Matching `/` slash commands when `aiPreferences.enableSlashCommands` is enabled and `text` begins with `/`.
     public var slashCommandSuggestions: [ComposerSlashCommand] {
@@ -2694,28 +2740,185 @@ public final class ComposerModel: ObservableObject {
         notices = [.calmStub(reason: String(localized: "Talk to Type isn’t available yet in Courier."))]
     }
 
-    /// Triggers Draft with AI (`AIRewriteTone`). Preserves `text` and shows a calm notice.
-    public func draftWithAI(tone _: AIRewriteTone? = nil) {
+    /// Triggers Draft a reply (`tone == nil`) or Rewrite (`tone != nil`). Never alters `text` directly; stages the
+    /// result in `aiResult` for Replace / Insert / Discard.
+    public func draftWithAI(tone: AIRewriteTone? = nil) {
         guard !isLocked else { return }
-        notices = [.calmStub(reason: String(localized: "Drafting with AI isn’t available yet in Courier."))]
+        runAIAction(.draft(tone: tone, draftOverride: nil))
     }
 
     /// Runs a slash command (`/ai`, `/translate`, `/summarize`, `/draft`) without clearing or sending `text`.
     public func executeSlashCommand(_ command: String) {
         guard !isLocked else { return }
         let normalized = command.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let reason: String
         switch normalized {
         case let cmd where cmd.hasPrefix("/translate"):
-            reason = String(localized: "Message translation isn’t available yet in Courier.")
+            guard aiProvider.isAvailable else {
+                let reason = (aiProvider as? UnavailableAIProvider)?.hasCustomReason == true
+                    ? aiProvider.unavailableReason
+                    : String(localized: "Message translation isn’t available yet in Courier.")
+                aiError = reason
+                notices = [.calmStub(reason: reason)]
+                return
+            }
+            let payload = Self.strippingSlashTrigger(from: text)
+            runAIAction(.translate(textOverride: payload.isEmpty ? text : payload))
         case let cmd where cmd.hasPrefix("/summarize"):
-            reason = String(localized: "AI chat summaries aren’t available yet in Courier.")
+            guard aiProvider.isAvailable else {
+                let reason = (aiProvider as? UnavailableAIProvider)?.hasCustomReason == true
+                    ? aiProvider.unavailableReason
+                    : String(localized: "AI chat summaries aren’t available yet in Courier.")
+                aiError = reason
+                notices = [.calmStub(reason: reason)]
+                return
+            }
+            if text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "/summarize" {
+                setContents("", [])
+            }
+            onSummarizeChat()
         case let cmd where cmd.hasPrefix("/draft"):
-            reason = String(localized: "Drafting with AI isn’t available yet in Courier.")
+            guard aiProvider.isAvailable else {
+                let reason = (aiProvider as? UnavailableAIProvider)?.hasCustomReason == true
+                    ? aiProvider.unavailableReason
+                    : String(localized: "Drafting with AI isn’t available yet in Courier.")
+                aiError = reason
+                notices = [.calmStub(reason: reason)]
+                return
+            }
+            let payload = Self.strippingSlashTrigger(from: text)
+            runAIAction(.draft(tone: nil, draftOverride: payload))
         default:
-            reason = aiProvider.unavailableReason
+            guard aiProvider.isAvailable else {
+                let reason = aiProvider.unavailableReason
+                aiError = reason
+                notices = [.calmStub(reason: reason)]
+                return
+            }
+            let payload = Self.strippingSlashTrigger(from: text)
+            runAIAction(.draft(tone: nil, draftOverride: payload))
         }
-        notices = [.calmStub(reason: reason)]
+    }
+
+    /// Re-runs the most recent AI draft, rewrite, or draft-translation request.
+    public func retryLastAI() {
+        guard !isLocked, let action = lastAIAction else { return }
+        runAIAction(action)
+    }
+
+    /// Cancels an in-flight AI request in the composer.
+    public func cancelAI() {
+        aiRequestToken += 1
+        aiTask?.cancel()
+        aiTask = nil
+        isAIWriting = false
+    }
+
+    /// Waits for any in-flight composer AI task to finish (for deterministic tests).
+    public func waitForAI() async {
+        await aiTask?.value
+    }
+
+    /// Replaces the composer's text with the staged `aiResult` and clears the strip.
+    public func replaceWithAIResult() {
+        guard !isLocked, let result = aiResult else { return }
+        aiResult = nil
+        aiError = nil
+        setContents(result.text, [])
+        caretSerial += 1
+        caretRequest = CaretRequest(location: (result.text as NSString).length, serial: caretSerial)
+    }
+
+    /// Inserts the staged `aiResult` into the composer's existing text without losing what was already typed.
+    public func insertAIResult() {
+        guard !isLocked, let result = aiResult else { return }
+        aiResult = nil
+        aiError = nil
+        if text.isEmpty {
+            setContents(result.text, [])
+        } else {
+            let (joinedText, joinedEntities) = Self.join((text, entities), (result.text, []))
+            setContents(joinedText, joinedEntities)
+        }
+        caretSerial += 1
+        caretRequest = CaretRequest(location: (text as NSString).length, serial: caretSerial)
+    }
+
+    /// Discards the staged `aiResult` without changing the composer's text.
+    public func discardAIResult() {
+        aiResult = nil
+    }
+
+    /// Dismisses the inline AI error banner.
+    public func dismissAIError() {
+        aiError = nil
+    }
+
+    private func runAIAction(_ action: ComposerAIAction) {
+        lastAIAction = action
+        let provider = aiProvider
+        guard provider.isAvailable else {
+            let reason = (provider as? UnavailableAIProvider)?.hasCustomReason == true
+                ? provider.unavailableReason
+                : String(localized: "Drafting with AI isn’t available yet in Courier.")
+            isAIWriting = false
+            aiResult = nil
+            aiError = reason
+            notices = [.calmStub(reason: reason)]
+            return
+        }
+
+        cancelAI()
+        let startedRoom = roomID
+        let token = aiRequestToken
+        let context = chatContext()
+        let currentDraft = text
+        let targetLanguage = aiPreferences.responseLanguage
+        let provenance = provider.provenanceFooter(preferences: aiPreferences)
+        isAIWriting = true
+        aiResult = nil
+        aiError = nil
+
+        aiTask = Task { @MainActor [weak self] in
+            let disposition: AIProviderDisposition
+            switch action {
+            case let .draft(tone, draftOverride):
+                disposition = await provider.draftResponse(
+                    context: context,
+                    draft: draftOverride ?? currentDraft,
+                    tone: tone
+                )
+            case let .translate(textOverride):
+                disposition = await provider.translate(
+                    text: textOverride ?? currentDraft,
+                    targetLanguage: targetLanguage
+                )
+            }
+            guard !Task.isCancelled,
+                  let self,
+                  self.roomID == startedRoom,
+                  self.aiRequestToken == token
+            else {
+                return
+            }
+            self.isAIWriting = false
+            self.aiTask = nil
+            switch disposition {
+            case let .text(generated):
+                self.aiResult = ComposerAIResult(text: generated, provenance: provenance)
+                self.aiError = nil
+            case let .unavailable(reason):
+                self.aiResult = nil
+                self.aiError = reason
+                self.notices = [.calmStub(reason: reason)]
+            }
+        }
+    }
+
+    private static func strippingSlashTrigger(from raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("/") else { return raw }
+        let rest = trimmed.drop(while: { !$0.isWhitespace }).trimmingCharacters(in: .whitespacesAndNewlines)
+        return rest
     }
 }
 
