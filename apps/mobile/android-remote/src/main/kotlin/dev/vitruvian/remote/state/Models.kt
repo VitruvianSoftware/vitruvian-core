@@ -400,6 +400,9 @@ public interface Notifier {
   public fun ensureNotificationPermission(onResult: (Boolean) -> Unit) {
     onResult(true)
   }
+
+  /** Opens the system notification settings screen for this app. */
+  public fun openNotificationSettings() {}
 }
 
 /**

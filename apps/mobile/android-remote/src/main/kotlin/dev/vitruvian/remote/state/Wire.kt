@@ -177,9 +177,16 @@ public object HostCodec {
       val o = element as? Map<*, *> ?: return@mapNotNull null
       val url = o.string("url")
       if (url.isBlank()) return@mapNotNull null
+      val rawAlias = o.string("alias")
+      val normalizedAlias =
+          if (rawAlias == legacyAliasFor(url) && rawAlias != aliasFor(url)) {
+            aliasFor(url)
+          } else {
+            rawAlias
+          }
       AgentHostEntry(
           id = o.string("id").ifBlank { url },
-          alias = o.string("alias"),
+          alias = normalizedAlias,
           url = url,
           token = o.string("token"),
           mac = o.string("mac"),
@@ -219,9 +226,37 @@ public object HostCodec {
    * A default name for a host the user has not named: the address, without the noise.
    *
    * `http://atlas.example.ts.net:7411/` becomes `atlas`, which is what the top-bar chip has room
-   * for and what the person calls the machine anyway.
+   * for and what the person calls the machine anyway. IPv4 and bracketed IPv6 literals are kept
+   * intact (without port) so `http://10.0.2.2:7411` is not shortened to `10`.
    */
-  public fun aliasFor(url: String): String =
+  public fun aliasFor(url: String): String {
+    val authority = url.trim().substringAfter("://").substringBefore('/')
+    if (authority.startsWith('[') && authority.contains(']')) {
+      return authority.substringBefore(']') + ']'
+    }
+    val host = authority.substringBefore(':')
+    if (isIpv4Literal(host)) return host
+    return host.substringBefore('.').ifBlank { "mac" }
+  }
+
+  /** True when [alias] was not typed by the user (blank, or matches [aliasFor]). */
+  public fun isAutoAlias(alias: String, url: String): Boolean {
+    val trimmed = alias.trim()
+    return trimmed.isEmpty() || trimmed == aliasFor(url) || trimmed == legacyAliasFor(url)
+  }
+
+  private fun isIpv4Literal(host: String): Boolean {
+    val parts = host.split('.')
+    return parts.size == 4 &&
+        parts.all { part ->
+          part.isNotEmpty() &&
+              part.length <= 3 &&
+              part.all { it.isDigit() } &&
+              (part.toIntOrNull() ?: 999) in 0..255
+        }
+  }
+
+  private fun legacyAliasFor(url: String): String =
       url.trim()
           .substringAfter("://")
           .substringBefore('/')
@@ -540,7 +575,15 @@ public object HomeSpeakerWire {
         customOAuthClientId = str("custom_oauth_client_id", ""),
         hasCustomOAuthSecret = flag("has_custom_oauth_secret") ?: false,
         homeSpeakerVersion = str("home_speaker_version", ""),
-        courierEnabled = flag("courier_enabled"),
+        courierEnabled =
+            if (o.containsKey("courier_enabled") ||
+                o.containsKey("has_courier_token") ||
+                o.containsKey("courier_announce") ||
+                o.containsKey("courier_networks")) {
+              flag("courier_enabled") ?: false
+            } else {
+              null
+            },
         courierAnnounce = str("courier_announce", "direct_and_mentions"),
         courierNetworks = networks("courier_networks"),
         hasCourierToken = flag("has_courier_token") ?: false,

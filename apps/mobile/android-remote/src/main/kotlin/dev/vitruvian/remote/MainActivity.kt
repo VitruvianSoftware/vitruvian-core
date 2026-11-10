@@ -106,7 +106,7 @@ public class MainActivity : ComponentActivity() {
       registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         val callback = pendingNotificationPermissionCallback
         pendingNotificationPermissionCallback = null
-        callback?.invoke(granted)
+        callback?.invoke(granted && hasPostNotificationsPermission())
       }
 
   // Registered unconditionally: a launcher must exist before onCreate returns,
@@ -368,6 +368,7 @@ public class MainActivity : ComponentActivity() {
   }
 
   private fun hasPostNotificationsPermission(): Boolean {
+    if (!NotificationManagerCompat.from(this).areNotificationsEnabled()) return false
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
     return ContextCompat.checkSelfPermission(this, PERMISSION_POST_NOTIFICATIONS) ==
         PackageManager.PERMISSION_GRANTED
@@ -376,6 +377,10 @@ public class MainActivity : ComponentActivity() {
   private fun ensurePostNotificationsPermission(onResult: (Boolean) -> Unit) {
     if (hasPostNotificationsPermission()) {
       onResult(true)
+      return
+    }
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+      onResult(false)
       return
     }
     askedForNotifications = true
@@ -452,6 +457,23 @@ private class ShadeNotifier(
 
   override fun ensureNotificationPermission(onResult: (Boolean) -> Unit) {
     ensurePermission(onResult)
+  }
+
+  override fun openNotificationSettings() {
+    val intent =
+        Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+            .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    runCatching { context.startActivity(intent) }
+        .onFailure {
+          val fallback =
+              Intent(
+                      Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                      Uri.fromParts("package", context.packageName, null),
+                  )
+                  .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+          runCatching { context.startActivity(fallback) }
+        }
   }
 
   override fun notify(id: String, title: String, body: String, deepLink: String) {

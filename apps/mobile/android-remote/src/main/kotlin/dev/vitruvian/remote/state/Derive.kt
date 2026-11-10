@@ -1819,6 +1819,49 @@ public object Derive {
   private val HTTP_CODE_REGEX = Regex("""\bHTTP\s+\d{3}\b""", RegexOption.IGNORE_CASE)
   private val AUTH_CODE_REGEX = Regex("""\bHTTP\s+40[13]\b""", RegexOption.IGNORE_CASE)
   private val LEAKED_PATH_OR_CODE_REGEX = Regex("""(?:/v\d+/|https?://)""", RegexOption.IGNORE_CASE)
+  private val TECHNICAL_PREFIX_REGEX =
+      Regex(
+          """^(?:[✗✓!]\s*|(?:agent|homespeaker|google\s+home|google\s+chat|gws|oauth)\s*(?:·\s*[^:]+)?:\s*|(?:error|failed|failure)\s*:\s*|http\s+\d{3}(?:\s+[a-z][a-z ]*)?\s*:\s*)+""",
+          RegexOption.IGNORE_CASE,
+      )
+  private val TRAILING_HTTP_REGEX =
+      Regex("""\s*\(\s*HTTP\s+\d{3}[^)]*\)\s*$""", RegexOption.IGNORE_CASE)
+  private val BARE_STATUS_OR_EXIT_REGEX =
+      Regex(
+          """^(?:HTTP\s+\d{3}(?:\s+for\s+\S+|\s+[a-z][a-z ]*)?|exit\s+status\s+\d+)$""",
+          RegexOption.IGNORE_CASE,
+      )
+
+  /**
+   * Strips raw tool/agent/HTTP prefixes (e.g. `"agent: homespeaker: error: ..."`, `"✗ homespeaker ·
+   * sign in on Mac: ..."`, `"HTTP 400: ..."`) leaving the human-readable reason.
+   */
+  public fun stripHomeSpeakerErrorPrefixes(raw: String): String {
+    var cleaned = raw.trim()
+    while (true) {
+      val next = TECHNICAL_PREFIX_REGEX.replaceFirst(cleaned, "").trim()
+      if (next == cleaned) break
+      cleaned = next
+    }
+    return TRAILING_HTTP_REGEX.replace(cleaned, "").trim()
+  }
+
+  private fun plainHomeSpeakerAction(what: String): String {
+    val raw = what.trim().ifEmpty { "update speaker" }
+    return when (raw.lowercase(Locale.ROOT)) {
+      "sign in on mac",
+      "sign in",
+      "sign out",
+      "import antigravity",
+      "import antigravity login",
+      "import login",
+      "grant google chat",
+      "grant",
+      "disconnect google chat",
+      "disconnect" -> "sign in"
+      else -> raw
+    }
+  }
 
   /**
    * One-line inline error shown directly under a HomeSpeaker Now strip control, stream plate, or
@@ -1830,7 +1873,7 @@ public object Derive {
       reason: String? = null,
       authFailed: Boolean = false,
   ): String {
-    val action = what.trim().ifEmpty { "update speaker" }
+    val action = plainHomeSpeakerAction(what)
     val raw = reason?.trim().orEmpty()
     val lower = raw.lowercase(Locale.ROOT)
     if (authFailed ||
@@ -1857,18 +1900,18 @@ public object Derive {
     if (unreachable) {
       return "Couldn't $action: the Mac didn't answer"
     }
-    val strippedAgent =
-        if (lower.startsWith("agent:")) raw.substring("agent:".length).trim() else raw
-    if (strippedAgent.equals(SIGN_IN_ALREADY_RUNNING, ignoreCase = true)) {
+    val stripped = stripHomeSpeakerErrorPrefixes(raw)
+    if (stripped.equals(SIGN_IN_ALREADY_RUNNING, ignoreCase = true)) {
       return SIGN_IN_ALREADY_RUNNING
     }
-    if (lower.startsWith("agent:") ||
-        HTTP_CODE_REGEX.containsMatchIn(raw) ||
-        LEAKED_PATH_OR_CODE_REGEX.containsMatchIn(raw) ||
-        raw.contains('/')) {
+    if (stripped.isEmpty() ||
+        BARE_STATUS_OR_EXIT_REGEX.matches(stripped) ||
+        HTTP_CODE_REGEX.containsMatchIn(stripped) ||
+        LEAKED_PATH_OR_CODE_REGEX.containsMatchIn(stripped) ||
+        stripped.contains('/')) {
       return "Couldn't $action: the Mac returned an error"
     }
-    return "Couldn't $action: $raw"
+    return "Couldn't $action: $stripped"
   }
 
   /** Visual state for the Quick Settings "Speaker" mute tile. */
@@ -2640,6 +2683,158 @@ public object Derive {
       installed: Set<String>,
       availableDashboards: Set<String>,
   ): List<String> = galleryIds.filter { it in installed && it in availableDashboards }
+
+  /**
+   * Stream/notice wording when a module has no live response from the Mac.
+   *
+   * When a Mac is paired (`[paired] == true`) and unreachable (`[offline] == true`), names the host
+   * and appends `"last seen <relative time>"` (or omits `"last seen"` when `[lastSeenAgoSec] ==
+   * null`). Keeps `"no Mac is configured, so nothing ran/was asked"` only for the truly-unpaired
+   * case (`[paired] == false`).
+   */
+  public fun noMacLine(
+      paired: Boolean,
+      offline: Boolean,
+      hostName: String,
+      lastSeenAgoSec: Long?,
+      nothingRan: Boolean = false,
+  ): String {
+    if (paired && offline) {
+      val name = hostName.trim().ifEmpty { "the Mac" }
+      val rel =
+          if (lastSeenAgoSec != null && lastSeenAgoSec >= 0L) {
+            Format.relativeSeconds(lastSeenAgoSec)
+          } else {
+            ""
+          }
+      return if (rel.isNotEmpty()) "$name isn't answering · last seen $rel"
+      else "$name isn't answering"
+    }
+    return if (nothingRan) "no Mac is configured, so nothing ran"
+    else "no Mac is configured, so nothing was asked"
+  }
+
+  /**
+   * Chooses the display name for a Mac host:
+   * - A user-typed [alias] (non-blank and not auto-derived by [HostCodec.aliasFor]) always wins.
+   * - When [alias] equals [HostCodec.aliasFor] (or is blank) and the agent has reported
+   *   [agentHostname] (`/v1/host`), returns `Format.shortHost(agentHostname)`.
+   * - Otherwise returns the auto-derived alias.
+   */
+  public fun displayHostName(
+      alias: String,
+      url: String,
+      agentHostname: String?,
+  ): String {
+    val trimmedAlias = alias.trim()
+    val auto = HostCodec.aliasFor(url)
+    if (trimmedAlias.isNotEmpty() && !HostCodec.isAutoAlias(trimmedAlias, url)) {
+      return trimmedAlias
+    }
+    val shortHost = agentHostname?.let(Format::shortHost)?.takeIf { it.isNotBlank() }
+    if (shortHost != null) return shortHost
+    return if (trimmedAlias.isNotEmpty() && trimmedAlias == auto) trimmedAlias else auto
+  }
+
+  /** Specification for the "Show announcements as notifications" row on the phone. */
+  public data class MirrorRowSpec(
+      val checked: Boolean,
+      val trailing: String,
+      val error: String?,
+      val showOpenSettings: Boolean,
+      val actionLabel: String = "Open settings",
+  )
+
+  /**
+   * Pure decision logic for the HomeSpeaker phone notification mirror row.
+   *
+   * When notification permission is denied/blocked (`[permissionBlocked] == true`), shows the
+   * toggle as off (`checked = false`), surfaces `"Notifications are blocked for this app"`, and
+   * offers the `"Open settings"` row action.
+   */
+  public fun mirrorRowSpec(
+      mirrorEnabled: Boolean,
+      permissionGranted: Boolean,
+      permissionBlocked: Boolean,
+  ): MirrorRowSpec {
+    if (permissionBlocked) {
+      return MirrorRowSpec(
+          checked = false,
+          trailing = "off",
+          error = "Notifications are blocked for this app",
+          showOpenSettings = true,
+      )
+    }
+    val on = isMirrorEnabled(mirrorEnabled, permissionGranted)
+    return MirrorRowSpec(
+        checked = on,
+        trailing = if (on) "on" else "off",
+        error = null,
+        showOpenSettings = false,
+    )
+  }
+
+  /** Confirmation window for two-tap "Reset HomeSpeaker". */
+  public const val RESET_CONFIRM_WINDOW_MS: Long = 5_000L
+
+  /** Result of tapping the "Reset HomeSpeaker" action. */
+  public data class ResetTapResult(
+      val shouldReset: Boolean,
+      val nextArmedAtMs: Long?,
+  )
+
+  /** Specification for the "Reset HomeSpeaker" section/row. */
+  public data class ResetRowSpec(
+      val title: String,
+      val subtitle: String,
+      val actionLabel: String,
+      val danger: Boolean,
+      val enabled: Boolean,
+      val armed: Boolean,
+  )
+
+  /** True when a reset tap at [armedAtMs] is still within [RESET_CONFIRM_WINDOW_MS] at [nowMs]. */
+  public fun isResetArmed(armedAtMs: Long?, nowMs: Long): Boolean =
+      armedAtMs != null && nowMs >= armedAtMs && (nowMs - armedAtMs) < RESET_CONFIRM_WINDOW_MS
+
+  /**
+   * Pure two-tap confirmation state machine for resetting HomeSpeaker settings.
+   * - First tap (not armed, or window expired): arms reset for 5 s (`nextArmedAtMs = nowMs`).
+   * - Second tap within 5 s: confirms reset (`shouldReset = true`, `nextArmedAtMs = null`).
+   */
+  public fun tapReset(armedAtMs: Long?, nowMs: Long): ResetTapResult =
+      if (isResetArmed(armedAtMs, nowMs)) {
+        ResetTapResult(shouldReset = true, nextArmedAtMs = null)
+      } else {
+        ResetTapResult(shouldReset = false, nextArmedAtMs = nowMs)
+      }
+
+  /** Builds the row spec for the "Reset HomeSpeaker" section. */
+  public fun resetHomeSpeakerRow(
+      armedAtMs: Long?,
+      nowMs: Long,
+      canAct: Boolean,
+      busy: Boolean = false,
+  ): ResetRowSpec {
+    val armed = isResetArmed(armedAtMs, nowMs)
+    return ResetRowSpec(
+        title = "Reset HomeSpeaker",
+        subtitle = "puts every HomeSpeaker setting back to default",
+        actionLabel = if (armed) "Tap again to reset" else "Reset settings",
+        danger = armed,
+        enabled = canAct && !busy,
+        armed = armed,
+    )
+  }
+
+  /**
+   * True when the Courier row should be shown in Chat apps.
+   *
+   * Hidden only when the Mac agent does not support Courier at all (`[courierEnabled] == null` on
+   * an older agent that omits Courier fields). Shown when Courier is off or tokenless
+   * (`[courierEnabled] == false`) or on (`[courierEnabled] == true`).
+   */
+  public fun showsCourierRow(courierEnabled: Boolean?): Boolean = courierEnabled != null
 
   /** `0`, `6.4`, `31.6` -- `Format.decimal`'s shape; this library cannot depend on :format. */
   private fun decimal(value: Double): String {
