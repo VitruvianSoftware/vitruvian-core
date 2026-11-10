@@ -369,15 +369,13 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         case "snooze", "toggleSnooze":
             reload()
             let now = parts.now()
-            if config.isSnoozed(at: now) {
-                config.snoozeUntil = nil
-                try save()
-                parts.link.showMessage("Broadcasting resumed", icon: "hifispeaker.2")
-            } else {
-                let until = now.addingTimeInterval(30 * 60)
-                config.snoozeUntil = until
+            if let until = try SettingsActions.applySnooze(
+                minutes: config.isSnoozed(at: now) ? nil : 30, now: now, to: &config) {
                 try save()
                 parts.link.showMessage(SpeakerConfig.snoozedUntilLine(until), icon: "bell.slash")
+            } else {
+                try save()
+                parts.link.showMessage("Broadcasting resumed", icon: "hifispeaker.2")
             }
         case Command.mute: try speakerJob(.mute)
         case Command.unmute: try speakerJob(.unmute)
@@ -513,11 +511,11 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 guard event.kind == .tap else { return .keep }
                 reload()
                 let now = parts.now()
-                if config.isSnoozed(at: now) {
-                    config.snoozeUntil = nil
-                } else {
-                    config.snoozeUntil = now.addingTimeInterval(30 * 60)
-                }
+                _ = try SettingsActions.applySnooze(
+                    minutes: config.isSnoozed(at: now) ? nil : 30,
+                    now: now,
+                    to: &config
+                )
                 try save()
             case Pages.Block.mute?:
                 guard let isOn = event.isOn else { return .keep }
@@ -1156,11 +1154,11 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             let skipped = networksListed(app)?.contains(where: { $0.key == key && $0.state == .skipped }) == true
             let monitor = config.effectiveChatMonitor
             if app == .courier, skipped || monitor.readsAnyway(app).contains(key) {
-                config.effectiveChatMonitor.setReadAnyway(key, isOn)
+                SettingsActions.applySetReadAnyway(key: key, on: isOn, to: &config)
                 return config.effectiveChatMonitor.readsAnyway(app) != monitor.readsAnyway(app)
             }
             if !isOn, skipped { return false }
-            config.effectiveChatMonitor.setNetwork(key, of: app, reading: isOn)
+            SettingsActions.applySetNetwork(app: app, key: key, reading: isOn, to: &config)
             return config.effectiveChatMonitor.mutedNetworks(for: app) != monitor.mutedNetworks(for: app)
         case Pages.Block.courierNetworks?:
             guard let values = event.values else { return false }

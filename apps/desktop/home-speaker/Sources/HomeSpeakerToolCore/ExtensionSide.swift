@@ -233,6 +233,10 @@ public enum ExtensionSide {
                     for: profile,
                     doorFile: check.file,
                     otherInstalled: { _ in check.appInstalled() },
+                    agentHome: home,
+                    hookExecutablePath: program.path,
+                    now: now,
+                    launchctlBootout: launchctlBootout,
                     doorSwitchSeam: {
                         CommandLineSwitchSeam(
                             check: check,

@@ -148,13 +148,13 @@ public struct MenuBarView: View {
                 HStack {
                     if configManager.config.isSnoozed(), let until = configManager.config.snoozeUntil {
                         Button("Resume now (snoozed until \(SpeakerConfig.localTimeHHmm(until)))") {
-                            configManager.config.snoozeUntil = nil
+                            _ = try? SettingsActions.applySnooze(minutes: nil, to: &configManager.config)
                             configManager.saveConfig()
                         }
                         .controlSize(.small)
                     } else {
                         Button("Snooze 30 min") {
-                            configManager.config.snoozeUntil = Date().addingTimeInterval(30 * 60)
+                            _ = try? SettingsActions.applySnooze(minutes: 30, to: &configManager.config)
                             configManager.saveConfig()
                         }
                         .controlSize(.small)

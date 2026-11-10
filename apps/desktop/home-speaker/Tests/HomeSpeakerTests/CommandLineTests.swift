@@ -226,6 +226,8 @@ HomeSpeaker \(HomeSpeakerVersion.current) — speaks your coding agent's replies
 usage: HomeSpeaker [flag]
   (no flag)            run the menu bar app
   --say <text>         announce text on the default speaker and/or this Mac
+  --say <text> --no-history
+                       the same, without adding it to the history (a replay)
   --source <name> --say <text>
                        the same, for claude-code, antigravity or opencode:
                        spoken only while that agent's switch is on (default:
@@ -259,10 +261,10 @@ usage: HomeSpeaker [flag]
 private func announcement(_ arguments: [String], _ config: SpeakerConfig, _ rig: Rig, at date: Date = Date()) async throws -> CLIOutput {
     let command = try #require(HomeSpeakerCommandLine.parse(arguments))
     switch command {
-    case .say(let text):
+    case .say(let text, let records):
         return await HomeSpeakerCommandLine.say(
             text, config: config, announcer: rig.announcer, history: rig.history,
-            standsAside: false, door: rig.profile.door, at: date)
+            standsAside: false, door: rig.profile.door, records: records, at: date)
     case .announce(let text, let agent):
         return await HomeSpeakerCommandLine.announce(
             text, for: agent, config: config, announcer: rig.announcer, history: rig.history, standsAside: false, at: date)
@@ -513,6 +515,16 @@ private func outcome(of arguments: [String]) throws -> CLIOutput {
             (["--chat-monitor", "start"], .chatMonitor(.success(.start))),
             (["--say", "--volume", "now"], .say("--volume now")),
             (["--say"], .say("")),
+            (["--say", "hi", "--no-history"], .say("hi", records: false)),
+            (["--say", "hi", "there", "--no-history"], .say("hi there", records: false)),
+            (["--no-history", "--say", "hi"], .say("hi", records: false)),
+            (["--source", "claude-code", "--no-history", "--say", "hi"], .say("hi", records: false)),
+            (["--say", "--no-history"], .say("", records: false)),
+            (["--say", "a", "--no-history", "b"], .say("a --no-history b")),
+            (["--no-history"], .usage(UsageError("--no-history is only valid with --say"))),
+            (["--volume", "--no-history"], .usage(UsageError("--no-history is only valid with --say"))),
+            (["--state", "--json", "--no-history"], .usage(UsageError("--no-history is only valid with --say"))),
+            (["--sign-out", "--no-history"], .usage(UsageError("--no-history is only valid with --say"))),
             (["--volume", "--mute"], .volume(.read)),
             (["--set-volume", "7"], .volume(.set(7))),
             (["--set-volume"], .volume(.invalidLevel)),
@@ -957,6 +969,31 @@ private let unreadableSettings = "{ not json"
         #expect(out.exitCode == 0)
         #expect(rig.local.calls.all == ["again"])
         #expect(rig.history.load().isEmpty)
+    }
+
+    /// `--say <text> --no-history` goes through the real parser to the same
+    /// engine call as `--say`, with `records: false`; plain `--say` records.
+    @Test @MainActor func sayNoHistorySpeaksButDoesNotRecordAndPlainSayDoes() async throws {
+        let quiet = try Rig()
+        let replay = try await announcement(["--say", "again", "--no-history"], speaking(), quiet)
+        #expect(replay.exitCode == 0)
+        #expect(quiet.local.calls.all == ["again"], "--no-history must still speak")
+        #expect(quiet.history.load().isEmpty, "--no-history added to the history")
+
+        let loud = try Rig()
+        let plain = try await announcement(["--say", "again"], speaking(), loud)
+        #expect(plain.exitCode == 0)
+        #expect(loud.local.calls.all == ["again"])
+        #expect(loud.history.load().count == 1, "plain --say stopped recording")
+    }
+
+    /// A usage error is exit 2 with the usual message, never the menu bar app.
+    @Test @MainActor func noHistoryWithoutSayIsAUsageErrorNotTheMenuBarApp() throws {
+        for arguments in [["--no-history"], ["--volume", "--no-history"]] {
+            #expect(HomeSpeakerCommandLine.recognizes(arguments), "\(arguments) would start the menu bar app")
+        }
+        let out = HomeSpeakerCommandLine.usageError(UsageError("--no-history is only valid with --say"))
+        #expect(out.exitCode == 2)
     }
 
     @Test @MainActor func theStopHooksAnnouncementFollowsClaudeCodesSwitch() async throws {

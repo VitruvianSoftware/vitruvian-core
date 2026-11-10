@@ -137,6 +137,9 @@ public enum AppStartup {
                     otherInstalled: { record in
                         OtherDoorPresence.extensionInstalled(record: record, fileExists: check.fileExists)
                     },
+                    agentHome: home,
+                    hookExecutablePath: appProgram(),
+                    now: now,
                     doorSwitchSeam: {
                         CommandLineSwitchSeam(
                             check: check,

@@ -28,6 +28,26 @@ import Foundation
 public enum HomeSpeakerStateContract {
     public static let contractVersion = 1
 
+    /// Every operation name accepted by `--apply`. Tested against an explicit
+    /// per-op test table in `StateContractTests` so no operation can be added
+    /// without a corresponding test row.
+    public static let supportedOperations: [String] = [
+        "set",
+        "setDefaultSpeaker",
+        "removeSpeaker",
+        "reset",
+        "clearChatToken",
+        "saveOAuthClient",
+        "switchTo",
+        "setSecret",
+        "snooze",
+        "setNetwork",
+        "setReadAnyway",
+        "importAntigravity",
+        "agentHook",
+        "removeLegacyAgent",
+    ]
+
     /// Injectable seam for every file, process check, and environment lookup
     /// read or written by `--state` and `--apply`.
     ///
@@ -49,12 +69,22 @@ public enum HomeSpeakerStateContract {
         public var speakerOnline: @Sendable () -> [String: Bool]
         public var gwsInstalled: @Sendable () -> Bool
         public var antigravityTokensAvailable: @Sendable () -> Bool
+        public var antigravityTokensURL: URL
         public var shippedOAuthClient: @Sendable () -> OAuthClient?
         public var agentHome: URL
         public var hookExecutablePath: String
         public var doorSwitchSeam: @Sendable () -> (any SettingsActions.DoorSwitchSeam)?
         public var now: @Sendable () -> Date
         public var calendar: Calendar
+        /// Tells a running HomeSpeaker of this program that secrets changed,
+        /// so it re-reads its login and restarts its chat monitor. Called once
+        /// after a successful `--apply` that changed any secret. Silent unless
+        /// the live seam sets it, so tests never post a real notification.
+        public var credentialsChanged: @Sendable () -> Void
+        /// Stops a launchd job (`launchctl bootout <target>`) for
+        /// `removeLegacyAgent`. A no-op unless the live seam sets it, so tests
+        /// never call the real `launchctl`.
+        public var launchctlBootout: @Sendable (String) -> Void
 
         public init(
             program: HomeSpeakerProfile.Door,
@@ -72,12 +102,15 @@ public enum HomeSpeakerStateContract {
             speakerOnline: @escaping @Sendable () -> [String: Bool] = { [:] },
             gwsInstalled: @escaping @Sendable () -> Bool = { GwsChatClient.locate() != nil },
             antigravityTokensAvailable: @escaping @Sendable () -> Bool = { false },
+            antigravityTokensURL: URL? = nil,
             shippedOAuthClient: @escaping @Sendable () -> OAuthClient? = { nil },
             agentHome: URL,
             hookExecutablePath: String,
             doorSwitchSeam: @escaping @Sendable () -> (any SettingsActions.DoorSwitchSeam)? = { nil },
             now: @escaping @Sendable () -> Date = { Date() },
-            calendar: Calendar = .current
+            calendar: Calendar = .current,
+            credentialsChanged: @escaping @Sendable () -> Void = {},
+            launchctlBootout: @escaping @Sendable (String) -> Void = { _ in }
         ) {
             self.program = program
             self.homeSpeakerVersion = homeSpeakerVersion
@@ -94,12 +127,16 @@ public enum HomeSpeakerStateContract {
             self.speakerOnline = speakerOnline
             self.gwsInstalled = gwsInstalled
             self.antigravityTokensAvailable = antigravityTokensAvailable
+            self.antigravityTokensURL = antigravityTokensURL
+                ?? agentHome.appendingPathComponent(".gemini/antigravity/mcp_oauth_tokens.json")
             self.shippedOAuthClient = shippedOAuthClient
             self.agentHome = agentHome
             self.hookExecutablePath = hookExecutablePath
             self.doorSwitchSeam = doorSwitchSeam
             self.now = now
             self.calendar = calendar
+            self.credentialsChanged = credentialsChanged
+            self.launchctlBootout = launchctlBootout
         }
 
         /// Builds the default seam for `engine` on the standalone app or the
@@ -113,10 +150,15 @@ public enum HomeSpeakerStateContract {
                     fileExists: { FileManager.default.fileExists(atPath: $0) }
                 )
             },
+            agentHome: URL = FileManager.default.homeDirectoryForCurrentUser,
+            hookExecutablePath: String = AgentIntegration.runningExecutable(),
+            now: @escaping @Sendable () -> Date = { Date() },
+            launchctlBootout: @escaping @Sendable (String) -> Void = AgentIntegration.launchctlBootout,
             doorSwitchSeam: @escaping @Sendable () -> (any SettingsActions.DoorSwitchSeam)?
         ) -> Seam {
-            let home = FileManager.default.homeDirectoryForCurrentUser
-            let antigravityURL = SecretStore.antigravityTokensURL
+            // From `agentHome`, as `init` does, so a seam built for another
+            // home never reads this account's Antigravity tokens.
+            let antigravityURL = agentHome.appendingPathComponent(".gemini/antigravity/mcp_oauth_tokens.json")
             return Seam(
                 program: profile.door,
                 homeSpeakerVersion: { HomeSpeakerVersion.current },
@@ -140,10 +182,16 @@ public enum HomeSpeakerStateContract {
                     guard let data = try? Data(contentsOf: antigravityURL) else { return false }
                     return SecretStore.parseAntigravityTokens(data) != nil
                 },
+                antigravityTokensURL: antigravityURL,
                 shippedOAuthClient: { profile.shippedClient },
-                agentHome: home,
-                hookExecutablePath: AgentIntegration.runningExecutable(),
-                doorSwitchSeam: doorSwitchSeam
+                agentHome: agentHome,
+                hookExecutablePath: hookExecutablePath,
+                doorSwitchSeam: doorSwitchSeam,
+                now: now,
+                credentialsChanged: {
+                    CredentialsChangedNotice.post(name: CredentialsChangedNotice.notificationName(for: profile))
+                },
+                launchctlBootout: launchctlBootout
             )
         }
     }
@@ -607,6 +655,7 @@ public enum HomeSpeakerStateContract {
         }
 
         // 3. Execute the batch transactionally under configFile's lock.
+        var secretsChanged = false
         do {
             let results: [[String: Any]] = try seam.configFile.modifyTransaction { config, writeConfig in
                 var workingSecrets = seam.secrets.load()
@@ -618,6 +667,7 @@ public enum HomeSpeakerStateContract {
                     return loaded
                 }
                 var secretMutations: [(inout Secrets, inout [[String: Any]]) -> Void] = []
+                var hookMutations: [() throws -> Void] = []
                 var configDirty = false
                 var pendingSwitch: PendingSwitch?
                 var opResults: [[String: Any]] = []
@@ -853,6 +903,261 @@ public enum HomeSpeakerStateContract {
                             )
                         }
 
+                    case "setSecret":
+                        guard let rawName = opDict["name"] as? String,
+                              let secretName = SettingsActions.SecretName(rawValue: rawName) else {
+                            throw IndexedApplyError(
+                                opIndex: index,
+                                code: "invalid_secret_name",
+                                message: "\"setSecret\" requires \"name\" to be one of: slack, beeper, courier, geminiKey."
+                            )
+                        }
+                        guard let rawValue = opDict["value"] as? String else {
+                            throw IndexedApplyError(
+                                opIndex: index,
+                                code: "missing_value",
+                                message: "\"setSecret\" for \"\(secretName.rawValue)\" requires a string \"value\"."
+                            )
+                        }
+                        let res = SettingsActions.applySetSecret(
+                            secretName,
+                            value: rawValue,
+                            to: &workingSecrets,
+                            config: &config
+                        )
+                        secretMutations.append { lockedSecrets, _ in
+                            SettingsActions.applySetSecret(secretName, value: rawValue, to: &lockedSecrets)
+                        }
+                        if res.courierSwitchedOff {
+                            configDirty = true
+                        }
+                        var entryResult: [String: Any] = [
+                            "op": "setSecret",
+                            "name": secretName.rawValue,
+                            "cleared": res.cleared,
+                        ]
+                        if secretName == .courier {
+                            entryResult["courier_switched_off"] = res.courierSwitchedOff
+                        }
+                        opResults.append(entryResult)
+
+                    case "snooze":
+                        let hasClear = opDict["clear"] != nil && !(opDict["clear"] is NSNull)
+                        let hasMinutes = opDict["minutes"] != nil && !(opDict["minutes"] is NSNull)
+                        if hasClear && hasMinutes {
+                            throw IndexedApplyError(
+                                opIndex: index,
+                                code: "invalid_snooze",
+                                message: "\"snooze\" accepts either \"minutes\" (1...240) or \"clear\": true, not both."
+                            )
+                        }
+                        if hasClear {
+                            guard boolFromJSON(opDict["clear"]) == true else {
+                                throw IndexedApplyError(
+                                    opIndex: index,
+                                    code: "invalid_snooze",
+                                    message: "\"snooze\" with \"clear\" requires \"clear\": true."
+                                )
+                            }
+                            _ = try SettingsActions.applySnooze(minutes: nil, now: seam.now(), to: &config)
+                            configDirty = true
+                            opResults.append([
+                                "op": "snooze",
+                                "cleared": true,
+                                "snooze_until": NSNull(),
+                            ])
+                        } else if hasMinutes {
+                            guard let minutes = intFromJSON(opDict["minutes"]) else {
+                                throw IndexedApplyError(
+                                    opIndex: index,
+                                    code: "wrong_kind",
+                                    message: "\"snooze\" requires \"minutes\" to be an integer."
+                                )
+                            }
+                            do {
+                                let until = try SettingsActions.applySnooze(
+                                    minutes: minutes,
+                                    now: seam.now(),
+                                    to: &config
+                                )
+                                configDirty = true
+                                opResults.append([
+                                    "op": "snooze",
+                                    "minutes": minutes,
+                                    "snooze_until": until.map(SpeakerConfig.formatISO8601UTC) ?? NSNull(),
+                                ])
+                            } catch let refusal as SettingsActions.Refusal {
+                                throw indexedError(from: refusal, at: index)
+                            }
+                        } else {
+                            throw IndexedApplyError(
+                                opIndex: index,
+                                code: "invalid_snooze",
+                                message: "\"snooze\" requires either \"minutes\" (1...240) or \"clear\": true."
+                            )
+                        }
+
+                    case "setNetwork":
+                        guard let rawApp = opDict["app"] as? String,
+                              let app = ChatApp(rawValue: rawApp) else {
+                            throw IndexedApplyError(
+                                opIndex: index,
+                                code: "invalid_app",
+                                message: "\"setNetwork\" requires \"app\" to be \"beeper\" or \"courier\"."
+                            )
+                        }
+                        guard let rawKey = opDict["key"] as? String else {
+                            throw IndexedApplyError(
+                                opIndex: index,
+                                code: "missing_key",
+                                message: "\"setNetwork\" requires a non-empty \"key\" string."
+                            )
+                        }
+                        let trimmedKey = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !trimmedKey.isEmpty else {
+                            throw IndexedApplyError(
+                                opIndex: index,
+                                code: "missing_key",
+                                message: "\"setNetwork\" requires a non-empty \"key\" string."
+                            )
+                        }
+                        guard let reading = boolFromJSON(opDict["reading"]) else {
+                            throw IndexedApplyError(
+                                opIndex: index,
+                                code: "wrong_kind",
+                                message: "\"setNetwork\" requires \"reading\" to be a boolean."
+                            )
+                        }
+                        SettingsActions.applySetNetwork(app: app, key: trimmedKey, reading: reading, to: &config)
+                        configDirty = true
+                        opResults.append([
+                            "op": "setNetwork",
+                            "app": app.rawValue,
+                            "key": trimmedKey,
+                            "reading": reading,
+                        ])
+
+                    case "setReadAnyway":
+                        guard let rawKey = opDict["key"] as? String else {
+                            throw IndexedApplyError(
+                                opIndex: index,
+                                code: "missing_key",
+                                message: "\"setReadAnyway\" requires a non-empty \"key\" string."
+                            )
+                        }
+                        let trimmedKey = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !trimmedKey.isEmpty else {
+                            throw IndexedApplyError(
+                                opIndex: index,
+                                code: "missing_key",
+                                message: "\"setReadAnyway\" requires a non-empty \"key\" string."
+                            )
+                        }
+                        guard let isOn = boolFromJSON(opDict["on"]) else {
+                            throw IndexedApplyError(
+                                opIndex: index,
+                                code: "wrong_kind",
+                                message: "\"setReadAnyway\" requires \"on\" to be a boolean."
+                            )
+                        }
+                        SettingsActions.applySetReadAnyway(key: trimmedKey, on: isOn, to: &config)
+                        configDirty = true
+                        opResults.append([
+                            "op": "setReadAnyway",
+                            "key": trimmedKey,
+                            "on": isOn,
+                        ])
+
+                    case "importAntigravity":
+                        guard let imported = SettingsActions.readAntigravityTokens(at: seam.antigravityTokensURL) else {
+                            throw IndexedApplyError(
+                                opIndex: index,
+                                code: "no_antigravity_tokens",
+                                message: "No Google Home login found in the Antigravity token file."
+                            )
+                        }
+                        SettingsActions.applyImportAntigravity(imported, to: &workingSecrets)
+                        secretMutations.append { lockedSecrets, _ in
+                            SettingsActions.applyImportAntigravity(imported, to: &lockedSecrets)
+                        }
+                        opResults.append([
+                            "op": "importAntigravity",
+                            "imported": true,
+                        ])
+
+                    case "agentHook":
+                        // A hook writes the coding agent's own file, outside
+                        // this transaction, so a later failure could not undo
+                        // it: like a switch, it is sent on its own.
+                        guard operations.count == 1 else {
+                            throw IndexedApplyError(
+                                opIndex: index,
+                                code: "hook_must_be_alone",
+                                message: "Send \"agentHook\" on its own in a single-operation --apply batch."
+                            )
+                        }
+                        guard let rawAgent = opDict["agent"] as? String,
+                              let agent = SettingsActions.codingAgent(for: rawAgent) else {
+                            throw IndexedApplyError(
+                                opIndex: index,
+                                code: "invalid_agent",
+                                message: "\"agentHook\" requires \"agent\" to be one of: claude_code, antigravity, opencode."
+                            )
+                        }
+                        guard let rawAction = opDict["action"] as? String,
+                              let action = SettingsActions.AgentHookAction(rawValue: rawAction) else {
+                            throw IndexedApplyError(
+                                opIndex: index,
+                                code: "invalid_action",
+                                message: "\"agentHook\" requires \"action\" to be one of: install, remove, addInstruction, disableRival."
+                            )
+                        }
+                        if action == .install, !AgentIntegration.isHomeSpeakerProgram(seam.hookExecutablePath) {
+                            throw IndexedApplyError(
+                                opIndex: index,
+                                code: "invalid_hook_program",
+                                message: "Refusing to install a hook pointing to a non-HomeSpeaker executable."
+                            )
+                        }
+                        hookMutations.append {
+                            try SettingsActions.performAgentHook(
+                                agent: agent,
+                                action: action,
+                                home: seam.agentHome,
+                                executablePath: seam.hookExecutablePath
+                            )
+                        }
+                        opResults.append([
+                            "op": "agentHook",
+                            "agent": SettingsActions.wireName(for: agent),
+                            "action": action.rawValue,
+                        ])
+
+                    case "removeLegacyAgent":
+                        // Like a hook, it acts outside this transaction (a
+                        // launchd job and a file in LaunchAgents), so it is
+                        // sent on its own.
+                        guard operations.count == 1 else {
+                            throw IndexedApplyError(
+                                opIndex: index,
+                                code: "legacy_must_be_alone",
+                                message: "Send \"removeLegacyAgent\" on its own in a single-operation --apply batch."
+                            )
+                        }
+                        let integration = AgentIntegration(
+                            home: seam.agentHome,
+                            executablePath: seam.hookExecutablePath,
+                            bootout: seam.launchctlBootout
+                        )
+                        let wasInstalled = integration.isLegacyLaunchAgentInstalled()
+                        if wasInstalled {
+                            hookMutations.append { try integration.removeLegacyLaunchAgent() }
+                        }
+                        opResults.append([
+                            "op": "removeLegacyAgent",
+                            "removed": wasInstalled,
+                        ])
+
                     default:
                         throw IndexedApplyError(
                             opIndex: index,
@@ -901,9 +1206,26 @@ public enum HomeSpeakerStateContract {
                         }
                     }
                 }
+                for performHook in hookMutations {
+                    do {
+                        try performHook()
+                    } catch {
+                        // An agentHook is alone in its batch, so it is op 0.
+                        throw IndexedApplyError(
+                            opIndex: 0,
+                            code: "agent_hook_failed",
+                            message: error.localizedDescription
+                        )
+                    }
+                }
                 writeConfig = configDirty
+                secretsChanged = !secretMutations.isEmpty
                 return opResults
             }
+
+            // A running HomeSpeaker of this program learns of new secrets
+            // only after the batch has succeeded.
+            if secretsChanged { seam.credentialsChanged() }
 
             let response: [String: Any] = [
                 "ok": true,
@@ -998,6 +1320,13 @@ public enum HomeSpeakerStateContract {
         let d = num.doubleValue
         guard d.isFinite, d == d.rounded() else { return nil }
         return num.intValue
+    }
+
+    private static func boolFromJSON(_ raw: Any?) -> Bool? {
+        guard let num = raw as? NSNumber, CFGetTypeID(num) == CFBooleanGetTypeID() else {
+            return nil
+        }
+        return num.boolValue
     }
 
     private static func jsonValue(_ value: SettingsActions.Value) -> Any {

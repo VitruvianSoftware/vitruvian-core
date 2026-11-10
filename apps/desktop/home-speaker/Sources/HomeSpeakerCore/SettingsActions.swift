@@ -74,6 +74,8 @@ public enum SettingsActions {
                     return "The poll interval is a whole number of seconds from \(min) to \(max)"
                 case SettingsCatalog.Key.speakerVolume.rawValue:
                     return "A volume is a whole number from \(min) to \(max)"
+                case "snooze":
+                    return "Snooze is a whole number of minutes from \(min) to \(max)"
                 default:
                     return "Value must be between \(min) and \(max)"
                 }
@@ -985,5 +987,280 @@ public enum SettingsActions {
         )
         fresh.customVoices = existing.customVoices
         return fresh
+    }
+
+    // MARK: - 7. Set Secret, Snooze, Chat Networks, Antigravity Import & Agent Hooks
+
+    /// Secret keys accepted by `SettingsActions.setSecret` and `--apply`'s
+    /// `"setSecret"` operation.
+    public enum SecretName: String, CaseIterable, Sendable, Equatable {
+        case slack
+        case beeper
+        case courier
+        case geminiKey
+    }
+
+    /// Outcome of setting or clearing a secret via `SettingsActions.setSecret`.
+    public struct SetSecretResult: Equatable, Sendable {
+        public let name: SecretName
+        public let cleared: Bool
+        public let courierSwitchedOff: Bool
+
+        public init(name: SecretName, cleared: Bool, courierSwitchedOff: Bool) {
+            self.name = name
+            self.cleared = cleared
+            self.courierSwitchedOff = courierSwitchedOff
+        }
+    }
+
+    /// Pure in-memory secret update: trims `value`, stores it on `secrets`
+    /// when non-empty, or clears it when empty.
+    public static func applySetSecret(_ name: SecretName, value: String, to secrets: inout Secrets) {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        let stored: String? = trimmed.isEmpty ? nil : trimmed
+        switch name {
+        case .slack:
+            secrets.slackToken = stored
+        case .beeper:
+            secrets.beeperToken = stored
+        case .courier:
+            secrets.courierToken = stored
+        case .geminiKey:
+            secrets.geminiApiKey = stored
+        }
+    }
+
+    /// Pure in-memory secret + config update: updates `secrets` and, when
+    /// clearing `.courier`, switches `courier_enabled` off on `config` (reusing
+    /// `applyClearChatToken`).
+    @discardableResult
+    public static func applySetSecret(
+        _ name: SecretName,
+        value: String,
+        to secrets: inout Secrets,
+        config: inout SpeakerConfig
+    ) -> SetSecretResult {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleared = trimmed.isEmpty
+        applySetSecret(name, value: value, to: &secrets)
+        let courierSwitchedOff: Bool
+        if cleared, name == .courier {
+            courierSwitchedOff = applyClearChatToken(.courier, to: &config)
+        } else {
+            courierSwitchedOff = false
+        }
+        return SetSecretResult(name: name, cleared: cleared, courierSwitchedOff: courierSwitchedOff)
+    }
+
+    /// Saves or clears `name` in `store` under its lock, and when clearing
+    /// `.courier`, switches `courier_enabled` off in `configFile`.
+    @discardableResult
+    public static func setSecret(
+        _ name: SecretName,
+        value: String,
+        in store: SecretStore,
+        configFile: SpeakerConfigFile? = nil
+    ) throws -> SetSecretResult {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleared = trimmed.isEmpty
+        try store.update { secrets in
+            applySetSecret(name, value: value, to: &secrets)
+        }
+
+        var courierSwitchedOff = false
+        if cleared, name == .courier, let configFile,
+           case .loaded(let existing) = configFile.read(),
+           existing.effectiveChatMonitor.courierEnabled {
+            try configFile.modify { config in
+                _ = applyClearChatToken(.courier, to: &config)
+            }
+            courierSwitchedOff = true
+        }
+        return SetSecretResult(name: name, cleared: cleared, courierSwitchedOff: courierSwitchedOff)
+    }
+
+    /// Allowed snooze duration range in minutes (1–240).
+    public static let minSnoozeMinutes = 1
+    public static let maxSnoozeMinutes = 240
+
+    /// Pure in-memory snooze update: sets `config.snoozeUntil` to
+    /// `now + minutes * 60` when `minutes` is in `1...240` (throwing
+    /// `Refusal.outOfRange` outside that range), or clears `snoozeUntil` when
+    /// `minutes` is `nil`.
+    @discardableResult
+    public static func applySnooze(
+        minutes: Int?,
+        now: Date = Date(),
+        to config: inout SpeakerConfig
+    ) throws -> Date? {
+        guard let minutes else {
+            config.snoozeUntil = nil
+            return nil
+        }
+        guard (minSnoozeMinutes...maxSnoozeMinutes).contains(minutes) else {
+            throw Refusal.outOfRange(
+                key: "snooze",
+                value: minutes,
+                min: minSnoozeMinutes,
+                max: maxSnoozeMinutes
+            )
+        }
+        let until = now.addingTimeInterval(TimeInterval(minutes * 60))
+        config.snoozeUntil = until
+        return until
+    }
+
+    /// Writes `snoozeUntil` in `configFile` under its lock.
+    @discardableResult
+    public static func snooze(
+        minutes: Int?,
+        now: Date = Date(),
+        in configFile: SpeakerConfigFile
+    ) throws -> Date? {
+        if let minutes, !(minSnoozeMinutes...maxSnoozeMinutes).contains(minutes) {
+            throw Refusal.outOfRange(
+                key: "snooze",
+                value: minutes,
+                min: minSnoozeMinutes,
+                max: maxSnoozeMinutes
+            )
+        }
+        var outcome: Date?
+        try configFile.modify { config in
+            outcome = try? applySnooze(minutes: minutes, now: now, to: &config)
+        }
+        return outcome
+    }
+
+    /// Pure in-memory chat network mute/unmute update using
+    /// `ChatMonitorConfig.setNetwork(_:of:reading:)`.
+    public static func applySetNetwork(
+        app: ChatApp,
+        key: String,
+        reading: Bool,
+        to config: inout SpeakerConfig
+    ) {
+        config.effectiveChatMonitor.setNetwork(key, of: app, reading: reading)
+    }
+
+    /// Updates `app`'s muted-networks list in `configFile` under its lock.
+    public static func setNetwork(
+        app: ChatApp,
+        key: String,
+        reading: Bool,
+        in configFile: SpeakerConfigFile
+    ) throws {
+        try configFile.modify { config in
+            applySetNetwork(app: app, key: key, reading: reading, to: &config)
+        }
+    }
+
+    /// Pure in-memory `chat_monitor.courier_read_anyway` update using
+    /// `ChatMonitorConfig.setReadAnyway(_:_:)`.
+    public static func applySetReadAnyway(
+        key: String,
+        on isOn: Bool,
+        to config: inout SpeakerConfig
+    ) {
+        config.effectiveChatMonitor.setReadAnyway(key, isOn)
+    }
+
+    /// Updates `chat_monitor.courier_read_anyway` in `configFile` under its lock.
+    public static func setReadAnyway(
+        key: String,
+        on isOn: Bool,
+        in configFile: SpeakerConfigFile
+    ) throws {
+        try configFile.modify { config in
+            applySetReadAnyway(key: key, on: isOn, to: &config)
+        }
+    }
+
+    /// Reads and parses Google Home credentials from an Antigravity token file,
+    /// returning `nil` when missing or unusable.
+    public static func readAntigravityTokens(
+        at url: URL = SecretStore.antigravityTokensURL
+    ) -> GoogleCredentials? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return SecretStore.parseAntigravityTokens(data)
+    }
+
+    /// Pure in-memory update storing imported Antigravity credentials on `secrets`.
+    public static func applyImportAntigravity(
+        _ credentials: GoogleCredentials,
+        to secrets: inout Secrets
+    ) {
+        secrets.google = credentials
+    }
+
+    /// Imports Google Home credentials from `url` into `store` via
+    /// `SecretStore.importFromAntigravity(at:)`.
+    @discardableResult
+    public static func importAntigravity(
+        from url: URL = SecretStore.antigravityTokensURL,
+        in store: SecretStore
+    ) throws -> Bool {
+        try store.importFromAntigravity(at: url)
+    }
+
+    /// Coding-agent hook actions shared by Settings and `--apply`'s `"agentHook"`.
+    public enum AgentHookAction: String, CaseIterable, Sendable, Equatable {
+        case install
+        case remove
+        case addInstruction
+        /// Renames a rival hook file so a reply is not spoken twice.
+        case disableRival
+    }
+
+    /// Resolves the wire agent name (`"claude_code"`, `"antigravity"`,
+    /// `"opencode"`) to `CodingAgent`.
+    public static func codingAgent(for wireName: String) -> CodingAgent? {
+        switch wireName {
+        case "claude_code":
+            return .claudeCode
+        case "antigravity":
+            return .antigravity
+        case "opencode":
+            return .opencode
+        default:
+            return nil
+        }
+    }
+
+    /// Canonical wire name for `agent` in `--state` and `--apply`.
+    public static func wireName(for agent: CodingAgent) -> String {
+        switch agent {
+        case .claudeCode:
+            return "claude_code"
+        case .antigravity:
+            return "antigravity"
+        case .opencode:
+            return "opencode"
+        }
+    }
+
+    /// Runs `action` (`install`, `remove`, `addInstruction`, or `disableRival`) for `agent`
+    /// through `AgentIntegration(home: home, executablePath: executablePath)`.
+    public static func performAgentHook(
+        agent: CodingAgent,
+        action: AgentHookAction,
+        home: URL,
+        executablePath: String
+    ) throws {
+        let integration = AgentIntegration(
+            home: home,
+            executablePath: executablePath,
+            bootout: { _ in }
+        )
+        switch action {
+        case .install:
+            try integration.installHook(for: agent)
+        case .remove:
+            try integration.removeHook(for: agent)
+        case .addInstruction:
+            try integration.addBroadcastInstruction(for: agent)
+        case .disableRival:
+            try integration.disableRivalHook(for: agent)
+        }
     }
 }

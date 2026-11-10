@@ -315,10 +315,9 @@ public class ConfigManager: ObservableObject {
     @discardableResult
     public func setCourierReadsAnyway(_ key: String, _ isOn: Bool) -> Bool {
         let before = config.effectiveChatMonitor
-        var after = before
-        after.setReadAnyway(key, isOn)
+        SettingsActions.applySetReadAnyway(key: key, on: isOn, to: &config)
+        let after = config.effectiveChatMonitor
         guard after != before else { return false }
-        config.effectiveChatMonitor = after
         guard saveConfig() else {
             config.effectiveChatMonitor = before
             return false
@@ -331,10 +330,9 @@ public class ConfigManager: ObservableObject {
     @discardableResult
     public func setNetwork(_ key: String, of app: ChatApp, reading: Bool) -> Bool {
         let before = config.effectiveChatMonitor
-        var after = before
-        after.setNetwork(key, of: app, reading: reading)
+        SettingsActions.applySetNetwork(app: app, key: key, reading: reading, to: &config)
+        let after = config.effectiveChatMonitor
         guard after.mutedNetworks(for: app) != before.mutedNetworks(for: app) else { return false }
-        config.effectiveChatMonitor = after
         guard saveConfig() else {
             config.effectiveChatMonitor = before
             return false

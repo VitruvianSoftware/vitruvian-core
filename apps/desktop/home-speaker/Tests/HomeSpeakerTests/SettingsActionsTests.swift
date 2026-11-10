@@ -85,6 +85,11 @@ struct SettingsActionsTests {
         func cleanup() {
             try? FileManager.default.removeItem(at: root)
         }
+
+        func readConfig() -> SpeakerConfig {
+            if case .loaded(let cfg) = configFile.read() { return cfg }
+            return SpeakerConfig()
+        }
     }
 
     // MARK: - 1. set(key:value:) Validations, Refusals & Clamping
@@ -727,6 +732,141 @@ struct SettingsActionsTests {
         let applied = manager.applySetting(.speechLength, .string("minimal"))
         #expect(applied == false)
         #expect(manager.config.effectiveSpeechLength == .full)
+    }
+
+    // MARK: - 8. PR C1 Actions: setSecret, snooze, setNetwork, setReadAnyway, importAntigravity, performAgentHook
+
+    @Test("setSecret trims values, clears on empty string, and switches Courier off when clearing courier")
+    func setSecretActionsAndCourierClear() throws {
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+
+        let slackVal = "xoxp-action-\(UUID().uuidString)" // gitleaks:allow
+        let beeperVal = "beeper-action-\(UUID().uuidString)" // gitleaks:allow
+        let courierVal = "courier-action-\(UUID().uuidString)" // gitleaks:allow
+        let geminiVal = "AIza-action-\(UUID().uuidString)" // gitleaks:allow
+
+        let rSlack = try SettingsActions.setSecret(.slack, value: "  \(slackVal) \n", in: rig.secretStore, configFile: rig.configFile)
+        #expect(rSlack == SettingsActions.SetSecretResult(name: .slack, cleared: false, courierSwitchedOff: false))
+        #expect(rig.secretStore.load().slackToken == slackVal)
+
+        let rBeeper = try SettingsActions.setSecret(.beeper, value: " \(beeperVal) ", in: rig.secretStore, configFile: rig.configFile)
+        #expect(rBeeper == SettingsActions.SetSecretResult(name: .beeper, cleared: false, courierSwitchedOff: false))
+        #expect(rig.secretStore.load().beeperToken == beeperVal)
+
+        let rCourier = try SettingsActions.setSecret(.courier, value: courierVal, in: rig.secretStore, configFile: rig.configFile)
+        #expect(rCourier == SettingsActions.SetSecretResult(name: .courier, cleared: false, courierSwitchedOff: false))
+        #expect(rig.secretStore.load().courierToken == courierVal)
+
+        let rGemini = try SettingsActions.setSecret(.geminiKey, value: "  \(geminiVal)  ", in: rig.secretStore, configFile: rig.configFile)
+        #expect(rGemini == SettingsActions.SetSecretResult(name: .geminiKey, cleared: false, courierSwitchedOff: false))
+        #expect(rig.secretStore.load().geminiApiKey == geminiVal)
+
+        // Enable Courier now that a token is present, then clear the Courier secret via setSecret("")
+        _ = try SettingsActions.set(key: .courierEnabled, value: .bool(true), in: rig.configFile, secrets: rig.secretStore)
+        #expect(rig.readConfig().effectiveChatMonitor.courierEnabled == true)
+
+        let rClearCourier = try SettingsActions.setSecret(.courier, value: "   ", in: rig.secretStore, configFile: rig.configFile)
+        #expect(rClearCourier == SettingsActions.SetSecretResult(name: .courier, cleared: true, courierSwitchedOff: true))
+        #expect(rig.secretStore.load().courierToken == nil)
+        #expect(rig.readConfig().effectiveChatMonitor.courierEnabled == false)
+
+        let rClearGemini = try SettingsActions.setSecret(.geminiKey, value: "", in: rig.secretStore, configFile: rig.configFile)
+        #expect(rClearGemini == SettingsActions.SetSecretResult(name: .geminiKey, cleared: true, courierSwitchedOff: false))
+        #expect(rig.secretStore.load().geminiApiKey == nil)
+    }
+
+    @Test("snooze sets snoozeUntil for 1...240 minutes, clears when nil, and throws outOfRange outside 1...240")
+    func snoozeActionValidationAndClear() throws {
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+
+        let now = Date(timeIntervalSince1970: 1_900_000_000)
+        let until30 = try SettingsActions.snooze(minutes: 30, now: now, in: rig.configFile)
+        #expect(until30 == now.addingTimeInterval(30 * 60))
+        #expect(rig.readConfig().snoozeUntil == now.addingTimeInterval(30 * 60))
+
+        let cleared = try SettingsActions.snooze(minutes: nil, now: now, in: rig.configFile)
+        #expect(cleared == nil)
+        #expect(rig.readConfig().snoozeUntil == nil)
+
+        for invalid in [0, -1, 241, 1000] {
+            var draft = SpeakerConfig()
+            #expect(throws: SettingsActions.Refusal.outOfRange(key: "snooze", value: invalid, min: 1, max: 240)) {
+                try SettingsActions.applySnooze(minutes: invalid, now: now, to: &draft)
+            }
+        }
+    }
+
+    @Test("setNetwork and setReadAnyway mutate chat_monitor network lists cleanly")
+    func setNetworkAndReadAnywayActions() throws {
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+
+        try SettingsActions.setNetwork(app: .beeper, key: "whatsapp", reading: false, in: rig.configFile)
+        try SettingsActions.setNetwork(app: .courier, key: "signal", reading: false, in: rig.configFile)
+        try SettingsActions.setReadAnyway(key: "slack", on: true, in: rig.configFile)
+
+        var cfg = rig.readConfig()
+        #expect(cfg.effectiveChatMonitor.beeperMutedNetworks == ["whatsapp"])
+        #expect(cfg.effectiveChatMonitor.courierMutedNetworks == ["signal"])
+        #expect(cfg.effectiveChatMonitor.courierReadAnyway == ["slack"])
+
+        try SettingsActions.setNetwork(app: .beeper, key: "whatsapp", reading: true, in: rig.configFile)
+        try SettingsActions.setReadAnyway(key: "slack", on: false, in: rig.configFile)
+
+        cfg = rig.readConfig()
+        #expect(cfg.effectiveChatMonitor.beeperMutedNetworks.isEmpty)
+        #expect(cfg.effectiveChatMonitor.courierReadAnyway.isEmpty)
+    }
+
+    @Test("importAntigravity imports Google Home credentials from a scratch token file and returns false when absent")
+    func importAntigravityAction() throws {
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+
+        let missingURL = rig.root.appendingPathComponent("missing_tokens.json")
+        #expect(try SettingsActions.importAntigravity(from: missingURL, in: rig.secretStore) == false)
+
+        let tokenURL = rig.root.appendingPathComponent("mcp_oauth_tokens.json")
+        let tokenJSON: [String: Any] = [
+            GoogleHomeClient.mcpEndpointString: [
+                "client_id": "ag-client.apps.googleusercontent.com",
+                "client_secret": "ag-secret-\(UUID().uuidString)", // gitleaks:allow
+                "token": [
+                    "access_token": "ya29.ag-access-\(UUID().uuidString)", // gitleaks:allow
+                    "refresh_token": "1//ag-refresh-\(UUID().uuidString)", // gitleaks:allow
+                    "expiry": "2026-12-01T00:00:00Z",
+                ],
+            ],
+        ]
+        try JSONSerialization.data(withJSONObject: tokenJSON, options: [.prettyPrinted, .sortedKeys]).write(to: tokenURL)
+
+        let imported = try SettingsActions.importAntigravity(from: tokenURL, in: rig.secretStore)
+        #expect(imported == true)
+        #expect(rig.secretStore.load().google?.clientId == "ag-client.apps.googleusercontent.com")
+    }
+
+    @Test("performAgentHook installs, removes, and adds broadcast instruction in scratch home")
+    func performAgentHookAction() throws {
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+
+        let appExe = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
+        #expect(SettingsActions.codingAgent(for: "claude_code") == .claudeCode)
+        #expect(SettingsActions.codingAgent(for: "antigravity") == .antigravity)
+        #expect(SettingsActions.codingAgent(for: "opencode") == .opencode)
+        #expect(SettingsActions.codingAgent(for: "unknown") == nil)
+
+        try SettingsActions.performAgentHook(agent: .claudeCode, action: .install, home: rig.home, executablePath: appExe)
+        let integration = AgentIntegration(home: rig.home, executablePath: appExe, bootout: { _ in })
+        #expect(integration.status(of: .claudeCode).hook == .installed)
+
+        try SettingsActions.performAgentHook(agent: .claudeCode, action: .addInstruction, home: rig.home, executablePath: appExe)
+        #expect(integration.status(of: .claudeCode).configuredByInstruction == true)
+
+        try SettingsActions.performAgentHook(agent: .claudeCode, action: .remove, home: rig.home, executablePath: appExe)
+        #expect(integration.status(of: .claudeCode).hook == .notInstalled)
     }
 }
 
