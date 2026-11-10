@@ -1659,6 +1659,25 @@ fn write_atomic_swift_json(path: &Path, obj: &JsonObject) -> Result<(), ApplyErr
     fs::rename(&tmp, path).map_err(|e| ApplyError::Internal(e.to_string()))
 }
 
+/// The door file as `DoorFile.update` (Door.swift) writes it: prettyPrinted + sortedKeys, without
+/// `.withoutEscapingSlashes` (so `/` is written `\/`) and with no trailing newline.
+fn write_atomic_door_json(path: &Path, obj: &JsonObject) -> Result<(), ApplyError> {
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let data = swift_door_bytes(obj);
+    let tmp = PathBuf::from(format!("{}.agent-tmp", path.display()));
+    fs::write(&tmp, data.as_bytes()).map_err(|e| ApplyError::Internal(e.to_string()))?;
+    fs::rename(&tmp, path).map_err(|e| ApplyError::Internal(e.to_string()))
+}
+
+/// `/` appears only inside JSON strings, so escaping every one matches Foundation's default.
+fn swift_door_bytes(obj: &JsonObject) -> String {
+    JsonValue::Object(obj.clone())
+        .to_json_string_swift_pretty()
+        .replace('/', "\\/")
+}
+
 fn write_atomic_text(path: &Path, text: &str) -> Result<(), ApplyError> {
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
@@ -1762,52 +1781,58 @@ fn antigravity_command_in_hooks(root: &JsonObject) -> Option<String> {
     None
 }
 
+/// HomeSpeaker's OpenCode plugin, byte for byte as `AgentPlugins.openCodePlugin` (Swift) writes
+/// it: a Swift multiline literal with its eight-space margin removed and one trailing newline.
+/// HomeSpeaker compares the file to this text exactly, so any difference reads as "stale".
+const OPENCODE_PLUGIN_TEMPLATE: &str = r#"// HomeSpeaker: speaks each finished OpenCode reply on your Google Home
+// speakers or this Mac. Written by HomeSpeaker; install, update or
+// remove it from HomeSpeaker's Settings, AI Agents.
+// Command: __COMMAND__
+import { spawn } from "node:child_process"
+
+const PROGRAM = __QUOTED__
+const MESSAGES = 40
+
+export default {
+  id: "home-speaker",
+  setup(ctx) {
+    const controller = new AbortController()
+
+    void (async () => {
+      try {
+        for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
+          if (!event || event.type !== "session.idle") continue
+          const sessionID = (event.data && event.data.sessionID) || (event.properties && event.properties.sessionID)
+          if (!sessionID) continue
+          try {
+            const session = await ctx.session.get({ sessionID })
+            if (session && session.parentID) continue
+            const all = await ctx.session.context({ sessionID })
+            if (!Array.isArray(all) || all.length === 0) continue
+            const child = spawn(PROGRAM, ["--opencode-hook"], {
+              stdio: ["pipe", "ignore", "ignore"],
+              detached: true,
+            })
+            child.on("error", () => {})
+            child.stdin.on("error", () => {})
+            child.stdin.end(JSON.stringify({ sessionID, messages: all.slice(-MESSAGES) }))
+            child.unref()
+          } catch {}
+        }
+      } catch {}
+    })()
+
+    return () => controller.abort()
+  },
+}
+"#;
+
 fn opencode_plugin(program: &str) -> String {
     let quoted = escape_json_str(program);
     let cmd = format!("\"{program}\" --opencode-hook");
-    format!(
-        "// HomeSpeaker: speaks each finished OpenCode reply on your Google Home\n\
-// speakers or this Mac. Written by HomeSpeaker; install, update or\n\
-// remove it from HomeSpeaker's Settings, AI Agents.\n\
-// Command: {cmd}\n\
-import {{ spawn }} from \"node:child_process\"\n\
-\n\
-const PROGRAM = {quoted}\n\
-const MESSAGES = 40\n\
-\n\
-export default {{\n\
-  id: \"home-speaker\",\n\
-  setup(ctx) {{\n\
-    const controller = new AbortController()\n\
-\n\
-    void (async () => {{\n\
-      try {{\n\
-        for await (const event of ctx.event.subscribe({{ signal: controller.signal }})) {{\n\
-          if (!event || event.type !== \"session.idle\") continue\n\
-          const sessionID = (event.data && event.data.sessionID) || (event.properties && event.properties.sessionID)\n\
-          if (!sessionID) continue\n\
-          try {{\n\
-            const session = await ctx.session.get({{ sessionID }})\n\
-            if (session && session.parentID) continue\n\
-            const all = await ctx.session.context({{ sessionID }})\n\
-            if (!Array.isArray(all) || all.length === 0) continue\n\
-            const child = spawn(PROGRAM, [\"--opencode-hook\"], {{\n\
-              stdio: [\"pipe\", \"ignore\", \"ignore\"],\n\
-              detached: true,\n\
-            }})\n\
-            child.on(\"error\", () => {{}})\n\
-            child.stdin.on(\"error\", () => {{}})\n\
-            child.stdin.end(JSON.stringify({{ sessionID, messages: all.slice(-MESSAGES) }}))\n\
-            child.unref()\n\
-          }} catch {{}}\n\
-        }}\n\
-      }} catch {{}}\n\
-    }})()\n\
-\n\
-    return () => controller.abort()\n\
-  }},\n\
-}}\n"
-    )
+    OPENCODE_PLUGIN_TEMPLATE
+        .replacen("__COMMAND__", &cmd, 1)
+        .replacen("__QUOTED__", &quoted, 1)
 }
 
 fn opencode_command_in_plugin(text: &str) -> Option<String> {
@@ -2604,10 +2629,7 @@ impl HomeSpeaker {
 
         let mut agy_hook_state = "not_installed".to_string();
         if !self.antigravity_plugin_dir.as_os_str().is_empty() {
-            let candidate_hooks = [
-                self.antigravity_plugin_dir.join("hooks").join("hooks.json"),
-                self.antigravity_plugin_dir.join("hooks.json"),
-            ];
+            let candidate_hooks = [self.antigravity_plugin_dir.join("hooks.json")];
             let existing_hooks: Vec<PathBuf> = candidate_hooks
                 .into_iter()
                 .filter(|hp| file_exists(hp))
@@ -3105,11 +3127,13 @@ impl HomeSpeaker {
                 "chosen_by".to_string(),
                 JsonValue::String(format!("Vitruvian Remote {}", crate::server::VERSION)),
             );
-            write_atomic_swift_json(&self.door_path, &doc)
+            write_atomic_door_json(&self.door_path, &doc)
         })?;
 
         let next_profile = self.active_profile();
-        if prev_profile.config_path != next_profile.config_path {
+        // As AppSwitch.choose: only choosing the extension repoints, and only hooks that are stale.
+        // Choosing the app leaves its own launch repair (repairHookIfMoved) to do it.
+        if door == "extension" && prev_profile.config_path != next_profile.config_path {
             self.repoint_hooks(&next_profile);
         }
         Ok(())
@@ -3117,7 +3141,7 @@ impl HomeSpeaker {
 
     fn repoint_hooks(&self, p: &HomeSpeakerProfile) {
         for agent in self.inspect_agents(p) {
-            if agent.hook_state == "installed" || agent.hook_state == "stale" {
+            if agent.hook_state == "stale" {
                 let action = format!("install:{}", agent.agent_slug);
                 let _ = self.execute_agent_hook_action(&action, p);
             }
@@ -3381,10 +3405,8 @@ impl HomeSpeaker {
                 let hooks = expected_antigravity_hooks(&hook_cmd);
                 let manifest_path = self.antigravity_plugin_dir.join("plugin.json");
                 let root_hooks_path = self.antigravity_plugin_dir.join("hooks.json");
-                let sub_hooks_path = self.antigravity_plugin_dir.join("hooks").join("hooks.json");
                 write_atomic_swift_json(&manifest_path, &manifest)?;
-                write_atomic_swift_json(&root_hooks_path, &hooks)?;
-                write_atomic_swift_json(&sub_hooks_path, &hooks)
+                write_atomic_swift_json(&root_hooks_path, &hooks)
             }
             "remove:antigravity" | "remove:Antigravity" | "remove_antigravity_hook" => {
                 if self.antigravity_plugin_dir.as_os_str().is_empty()
@@ -3392,10 +3414,7 @@ impl HomeSpeaker {
                 {
                     return Ok(());
                 }
-                let candidate_hooks = [
-                    self.antigravity_plugin_dir.join("hooks").join("hooks.json"),
-                    self.antigravity_plugin_dir.join("hooks.json"),
-                ];
+                let candidate_hooks = [self.antigravity_plugin_dir.join("hooks.json")];
                 let is_ours = candidate_hooks.iter().any(|hooks_path| {
                     fs::read_to_string(hooks_path)
                         .ok()
@@ -5549,75 +5568,32 @@ mod tests {
         assert!(last.args().contains(&"First announcement".to_string()));
     }
 
-    fn scout_swift_hooks_text(cmd: &str) -> String {
+    fn swift_hooks_text(cmd: &str) -> String {
         format!(
             "{{\n  \"home-speaker\" : {{\n    \"Stop\" : [\n      {{\n        \"command\" : \"{}\",\n        \"timeout\" : 10,\n        \"type\" : \"command\"\n      }}\n    ]\n  }}\n}}\n",
             cmd.replace('"', "\\\"")
         )
     }
 
-    const SCOUT_SWIFT_MANIFEST: &str = "{\n  \"author\" : {\n    \"name\" : \"VitruvianSoftware\",\n    \"url\" : \"https://github.com/VitruvianSoftware\"\n  },\n  \"description\" : \"Speaks each finished Antigravity reply on your Google Home speakers or this Mac, through HomeSpeaker.\",\n  \"license\" : \"MIT\",\n  \"name\" : \"home-speaker\",\n  \"version\" : \"1.0.0\"\n}\n";
+    const SWIFT_MANIFEST: &str = "{\n  \"author\" : {\n    \"name\" : \"VitruvianSoftware\",\n    \"url\" : \"https://github.com/VitruvianSoftware\"\n  },\n  \"description\" : \"Speaks each finished Antigravity reply on your Google Home speakers or this Mac, through HomeSpeaker.\",\n  \"license\" : \"MIT\",\n  \"name\" : \"home-speaker\",\n  \"version\" : \"1.0.0\"\n}\n";
 
     fn swift_opencode_plugin_golden(program: &str) -> String {
-        let quoted = format!("\"{}\"", program.replace('\\', "\\\\").replace('"', "\\\""));
-        format!(
-            "// HomeSpeaker: speaks each finished OpenCode reply on your Google Home\n\
-// speakers or this Mac. Written by HomeSpeaker; install, update or\n\
-// remove it from HomeSpeaker's Settings, AI Agents.\n\
-// Command: \"{program}\" --opencode-hook\n\
-import {{ spawn }} from \"node:child_process\"\n\
-\n\
-const PROGRAM = {quoted}\n\
-const MESSAGES = 40\n\
-\n\
-export default {{\n\
-  id: \"home-speaker\",\n\
-  setup(ctx) {{\n\
-    const controller = new AbortController()\n\
-\n\
-    void (async () => {{\n\
-      try {{\n\
-        for await (const event of ctx.event.subscribe({{ signal: controller.signal }})) {{\n\
-          if (!event || event.type !== \"session.idle\") continue\n\
-          const sessionID = (event.data && event.data.sessionID) || (event.properties && event.properties.sessionID)\n\
-          if (!sessionID) continue\n\
-          try {{\n\
-            const session = await ctx.session.get({{ sessionID }})\n\
-            if (session && session.parentID) continue\n\
-            const all = await ctx.session.context({{ sessionID }})\n\
-            if (!Array.isArray(all) || all.length === 0) continue\n\
-            const child = spawn(PROGRAM, [\"--opencode-hook\"], {{\n\
-              stdio: [\"pipe\", \"ignore\", \"ignore\"],\n\
-              detached: true,\n\
-            }})\n\
-            child.on(\"error\", () => {{}})\n\
-            child.stdin.on(\"error\", () => {{}})\n\
-            child.stdin.end(JSON.stringify({{ sessionID, messages: all.slice(-MESSAGES) }}))\n\
-            child.unref()\n\
-          }} catch {{}}\n\
-        }}\n\
-      }} catch {{}}\n\
-    }})()\n\
-\n\
-    return () => controller.abort()\n\
-  }},\n\
-}}\n"
+        // Same bytes as SWIFT_OPENCODE_GOLDEN, for another program path.
+        SWIFT_OPENCODE_GOLDEN.replace(
+            "/Applications/Home Speaker.app/Contents/MacOS/HomeSpeaker",
+            program,
         )
     }
 
     #[test]
-    fn scout_repro_swift_written_antigravity_hook_reads_installed_and_removes() {
+    fn swift_parity_swift_written_antigravity_hook_reads_installed_and_removes() {
         let (h, _, phone, _) = new_test_home_speaker(true);
         let cmd = format!("\"{}\" --antigravity-hook", h.binary.display());
         fs::create_dir_all(h.antigravity_plugin_dir.join("hooks")).unwrap();
+        fs::write(h.antigravity_plugin_dir.join("plugin.json"), SWIFT_MANIFEST).unwrap();
         fs::write(
-            h.antigravity_plugin_dir.join("plugin.json"),
-            SCOUT_SWIFT_MANIFEST,
-        )
-        .unwrap();
-        fs::write(
-            h.antigravity_plugin_dir.join("hooks").join("hooks.json"),
-            scout_swift_hooks_text(&cmd),
+            h.antigravity_plugin_dir.join("hooks.json"),
+            swift_hooks_text(&cmd),
         )
         .unwrap();
         let st = h.state();
@@ -5645,7 +5621,7 @@ export default {{\n\
     }
 
     #[test]
-    fn scout_repro_phone_antigravity_install_matches_swift_bytes() {
+    fn swift_parity_phone_antigravity_install_matches_swift_bytes() {
         let (h, _, phone, _) = new_test_home_speaker(true);
         let cmd = format!("\"{}\" --antigravity-hook", h.binary.display());
         let r = h.handle_set(
@@ -5658,20 +5634,23 @@ export default {{\n\
         assert_eq!(r.status, 200);
         assert_eq!(
             fs::read_to_string(h.antigravity_plugin_dir.join("plugin.json")).unwrap(),
-            SCOUT_SWIFT_MANIFEST
+            SWIFT_MANIFEST
         );
         assert_eq!(
             fs::read_to_string(h.antigravity_plugin_dir.join("hooks.json")).unwrap(),
-            scout_swift_hooks_text(&cmd)
+            swift_hooks_text(&cmd)
         );
-        assert_eq!(
-            fs::read_to_string(h.antigravity_plugin_dir.join("hooks").join("hooks.json")).unwrap(),
-            scout_swift_hooks_text(&cmd)
+        assert!(
+            !h.antigravity_plugin_dir
+                .join("hooks")
+                .join("hooks.json")
+                .exists(),
+            "HomeSpeaker writes only <plugin>/hooks.json"
         );
     }
 
     #[test]
-    fn scout_repro_phone_opencode_plugin_sends_messages_payload() {
+    fn swift_parity_phone_opencode_plugin_sends_messages_payload() {
         let (h, _, phone, _) = new_test_home_speaker(true);
         let r = h.handle_set(
             &post_req(
@@ -5720,7 +5699,7 @@ export default {{\n\
     }
 
     #[test]
-    fn scout_repro_door_chosen_at_is_whole_seconds_like_swift() {
+    fn swift_parity_door_chosen_at_is_whole_seconds_like_swift() {
         let (h, _, phone, _) = new_test_home_speaker(true);
         let root = temp_dir("scout_door");
         let ext_bin = root
@@ -5864,7 +5843,7 @@ export default {{\n\
         fs::create_dir_all(h.antigravity_plugin_dir.join("hooks")).unwrap();
         let foreign_agy_hooks = r#"{"other-plugin":{"Stop":[{"command":"echo foreign","timeout":5,"type":"command"}]}}"#;
         fs::write(
-            h.antigravity_plugin_dir.join("hooks").join("hooks.json"),
+            h.antigravity_plugin_dir.join("hooks.json"),
             foreign_agy_hooks,
         )
         .unwrap();
@@ -5878,7 +5857,7 @@ export default {{\n\
         );
         assert_eq!(r_foreign_agy.status, 200);
         assert_eq!(
-            fs::read_to_string(h.antigravity_plugin_dir.join("hooks").join("hooks.json")).unwrap(),
+            fs::read_to_string(h.antigravity_plugin_dir.join("hooks.json")).unwrap(),
             foreign_agy_hooks
         );
 
@@ -5911,10 +5890,10 @@ export default {{\n\
         assert_eq!(hook_state_of(&h, "antigravity"), "installed");
 
         // Stale when command points to a different binary path or manifest differs.
-        let hooks_path = h.antigravity_plugin_dir.join("hooks").join("hooks.json");
+        let hooks_path = h.antigravity_plugin_dir.join("hooks.json");
         fs::write(
             &hooks_path,
-            scout_swift_hooks_text("\"/old/HomeSpeaker\" --antigravity-hook"),
+            swift_hooks_text("\"/old/HomeSpeaker\" --antigravity-hook"),
         )
         .unwrap();
         assert_eq!(hook_state_of(&h, "antigravity"), "stale");
@@ -6209,14 +6188,10 @@ export default {{\n\
         let (h, _, phone, _) = new_test_home_speaker(true);
         let cmd = format!("\"{}\" --antigravity-hook", h.binary.display());
         fs::create_dir_all(&h.antigravity_plugin_dir).unwrap();
-        fs::write(
-            h.antigravity_plugin_dir.join("plugin.json"),
-            SCOUT_SWIFT_MANIFEST,
-        )
-        .unwrap();
+        fs::write(h.antigravity_plugin_dir.join("plugin.json"), SWIFT_MANIFEST).unwrap();
         fs::write(
             h.antigravity_plugin_dir.join("hooks.json"),
-            scout_swift_hooks_text(&cmd),
+            swift_hooks_text(&cmd),
         )
         .unwrap();
         let st = h.state();
@@ -6235,5 +6210,79 @@ export default {{\n\
         );
         assert_eq!(r.status, 200);
         assert!(!h.antigravity_plugin_dir.exists());
+    }
+
+    /// Expected bytes copied from `AgentPlugins.openCodePlugin` (Swift) with its eight-space margin
+    /// removed, for program "/Applications/Home Speaker.app/Contents/MacOS/HomeSpeaker".
+    const SWIFT_OPENCODE_GOLDEN: &str = r#"// HomeSpeaker: speaks each finished OpenCode reply on your Google Home
+// speakers or this Mac. Written by HomeSpeaker; install, update or
+// remove it from HomeSpeaker's Settings, AI Agents.
+// Command: "/Applications/Home Speaker.app/Contents/MacOS/HomeSpeaker" --opencode-hook
+import { spawn } from "node:child_process"
+
+const PROGRAM = "/Applications/Home Speaker.app/Contents/MacOS/HomeSpeaker"
+const MESSAGES = 40
+
+export default {
+  id: "home-speaker",
+  setup(ctx) {
+    const controller = new AbortController()
+
+    void (async () => {
+      try {
+        for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
+          if (!event || event.type !== "session.idle") continue
+          const sessionID = (event.data && event.data.sessionID) || (event.properties && event.properties.sessionID)
+          if (!sessionID) continue
+          try {
+            const session = await ctx.session.get({ sessionID })
+            if (session && session.parentID) continue
+            const all = await ctx.session.context({ sessionID })
+            if (!Array.isArray(all) || all.length === 0) continue
+            const child = spawn(PROGRAM, ["--opencode-hook"], {
+              stdio: ["pipe", "ignore", "ignore"],
+              detached: true,
+            })
+            child.on("error", () => {})
+            child.stdin.on("error", () => {})
+            child.stdin.end(JSON.stringify({ sessionID, messages: all.slice(-MESSAGES) }))
+            child.unref()
+          } catch {}
+        }
+      } catch {}
+    })()
+
+    return () => controller.abort()
+  },
+}
+"#;
+
+    #[test]
+    fn opencode_plugin_is_byte_identical_to_homespeaker() {
+        assert_eq!(
+            super::opencode_plugin("/Applications/Home Speaker.app/Contents/MacOS/HomeSpeaker"),
+            SWIFT_OPENCODE_GOLDEN
+        );
+    }
+
+    #[test]
+    fn door_file_bytes_match_foundation_defaults() {
+        let mut obj = JsonObject::new();
+        obj.insert(
+            "chosen".to_string(),
+            JsonValue::String("extension".to_string()),
+        );
+        obj.insert("version".to_string(), JsonValue::from_i64(1));
+        let mut ext = JsonObject::new();
+        ext.insert(
+            "program".to_string(),
+            JsonValue::String("/a/bin/tool".to_string()),
+        );
+        obj.insert("extension".to_string(), JsonValue::Object(ext));
+        // JSONSerialization [.prettyPrinted, .sortedKeys]: escaped slashes, no trailing newline.
+        assert_eq!(
+            super::swift_door_bytes(&obj),
+            "{\n  \"chosen\" : \"extension\",\n  \"extension\" : {\n    \"program\" : \"\\/a\\/bin\\/tool\"\n  },\n  \"version\" : 1\n}"
+        );
     }
 }
