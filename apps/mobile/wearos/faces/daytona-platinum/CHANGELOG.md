@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.8](https://github.com/VitruvianSoftware/vitruvian-core/compare/daytona-platinum-v0.1.7...daytona-platinum-v0.1.8) (2026-11-10)
+
+
+### Bug Fixes
+
+* **daytona-platinum:** preserve user configurations during install ([#4530](https://github.com/VitruvianSoftware/vitruvian-core/issues/4530)) ([50143e8](https://github.com/VitruvianSoftware/vitruvian-core/commit/50143e8fa0ea3c72ef97bdb6eae4a440f8cd442f))
+
 ## [0.1.7](https://github.com/VitruvianSoftware/vitruvian-core/compare/daytona-platinum-v0.1.6...daytona-platinum-v0.1.7) (2026-11-10)
 
 
