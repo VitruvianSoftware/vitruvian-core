@@ -21,6 +21,10 @@
           "path": "macmenu/Sources/RemoteMenuCore/Version.swift"
         },
         {
+          "type": "generic",
+          "path": "macagent/rs/src/server.rs"
+        },
+        {
           "type": "json",
           "path": "macmenu/tool/vitruvian-tool.json",
           "jsonpath": "$.version"

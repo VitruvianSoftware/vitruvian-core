@@ -576,6 +576,9 @@ public object Derive {
   public fun pollIntervalLabel(seconds: Int): String =
       if (seconds >= 60 && seconds % 60 == 0) "${seconds / 60} min" else "$seconds s"
 
+  /** Coding agents HomeSpeaker installs a hook for (Swift `CodingAgent.supportsHook`). */
+  public val hookAgentSlugs: Set<String> = setOf("claude-code", "antigravity", "opencode")
+
   public val googleChatSources: List<String> = listOf("auto", "api", "gws")
 
   public fun googleChatSourceLabel(source: String): String =

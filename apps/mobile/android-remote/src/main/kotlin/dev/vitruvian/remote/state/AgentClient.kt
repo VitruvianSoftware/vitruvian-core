@@ -445,6 +445,8 @@ public data class AgentHomeSpeaker(
     val styleModel: String = "apple",
     /** Which HomeSpeaker distribution is active on the Mac (`app` or `extension`, agent v1.11+). */
     val activeDoor: String = "app",
+    /** Whether a HomeSpeaker extension that runs alone is installed on the Mac. */
+    val extensionInstalled: Boolean = false,
     /** Which Beeper messages are spoken (`direct_and_mentions` or `all`, agent v1.11+). */
     val beeperAnnounce: String = "direct_and_mentions",
     /** Whether messages sent by the user's own account are skipped (agent v1.11+). */
@@ -1503,6 +1505,7 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
           announcementStyle = sources.announcementStyle,
           styleModel = sources.styleModel,
           activeDoor = sources.activeDoor,
+          extensionInstalled = sources.extensionInstalled,
           beeperAnnounce = sources.beeperAnnounce,
           muteOwnMessages = sources.muteOwnMessages,
           beeperNetworks = sources.beeperNetworks,

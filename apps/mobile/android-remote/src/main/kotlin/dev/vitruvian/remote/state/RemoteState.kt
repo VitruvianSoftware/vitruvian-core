@@ -3172,24 +3172,26 @@ public class RemoteState(
                       setHomeSpeaker("speak clipboard", speakClipboard = true)
                     }),
         ))
-    add(
-        ModuleRow(
-            title = "HomeSpeaker door",
-            subtitle =
-                if (hs.activeDoor == "extension") "running as Vitruvian extension"
-                else "running as standalone app",
-            trailing = hs.activeDoor,
-            choices =
-                listOf("app", "extension").map { d ->
-                  val current = d == hs.activeDoor
-                  RowAction(
-                      if (d == "app") "App" else "Extension",
-                      enabled = paired && !current,
-                      selected = current) {
-                        setHomeSpeaker("door $d", activeDoor = d)
-                      }
-                },
-        ))
+    if (hs.extensionInstalled || hs.activeDoor == "extension") {
+      add(
+          ModuleRow(
+              title = "HomeSpeaker door",
+              subtitle =
+                  if (hs.activeDoor == "extension") "running as Vitruvian extension"
+                  else "running as standalone app",
+              trailing = hs.activeDoor,
+              choices =
+                  listOf("app", "extension").map { d ->
+                    val current = d == hs.activeDoor
+                    RowAction(
+                        if (d == "app") "App" else "Extension",
+                        enabled = paired && !current,
+                        selected = current) {
+                          setHomeSpeaker("door $d", activeDoor = d)
+                        }
+                  },
+          ))
+    }
     add(
         ModuleRow(
             title = "Settings & diagnostics",
@@ -3321,7 +3323,8 @@ public class RemoteState(
                 }
                 hs.agents.forEach { a ->
                   val slug = a.canonicalSlug
-                  val isClaude = slug == "claude-code"
+                  // HomeSpeaker installs a hook for each of these (CodingAgent.supportsHook).
+                  val supportsHook = slug in Derive.hookAgentSlugs
                   val agentName =
                       when (slug) {
                         "claude-code" -> "Claude Code"
@@ -3330,7 +3333,7 @@ public class RemoteState(
                         else -> a.agent
                       }
                   val actions = mutableListOf<RowAction>()
-                  if (isClaude) {
+                  if (supportsHook) {
                     val installed = a.hookState == "installed"
                     val stale = a.hookState == "stale"
                     if (a.speaksTwice) {
@@ -3346,19 +3349,19 @@ public class RemoteState(
                       actions.add(
                           RowAction("Remove hook", enabled = paired && homeSpeakerBusy == null) {
                             setHomeSpeaker(
-                                "remove $agentName hook", agentHookAction = "remove:claude-code")
+                                "remove $agentName hook", agentHookAction = "remove:$slug")
                           })
                     } else if (stale) {
                       actions.add(
                           RowAction("Update hook", enabled = paired && homeSpeakerBusy == null) {
                             setHomeSpeaker(
-                                "update $agentName hook", agentHookAction = "install:claude-code")
+                                "update $agentName hook", agentHookAction = "install:$slug")
                           })
                     } else {
                       actions.add(
                           RowAction("Install hook", enabled = paired && homeSpeakerBusy == null) {
                             setHomeSpeaker(
-                                "install $agentName hook", agentHookAction = "install:claude-code")
+                                "install $agentName hook", agentHookAction = "install:$slug")
                           })
                     }
                     val statusLabel =

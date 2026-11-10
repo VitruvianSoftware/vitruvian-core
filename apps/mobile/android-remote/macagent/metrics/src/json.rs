@@ -390,6 +390,14 @@ impl JsonValue {
         self.to_json_string_pretty()
     }
 
+    /// Formats JSON matching Swift's `JSONSerialization.data(withJSONObject:options:[.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])`:
+    /// 2-space indent, `"key" : value` (space before and after colon), and sorted object keys.
+    pub fn to_json_string_swift_pretty(&self) -> String {
+        let mut out = String::new();
+        self.write_swift_pretty(&mut out, 0);
+        out
+    }
+
     fn write_compact(&self, out: &mut String) {
         match self {
             JsonValue::Null => out.push_str("null"),
@@ -464,6 +472,60 @@ impl JsonValue {
                     write_escaped_str(out, k);
                     out.push_str(": ");
                     v.write_pretty(out, indent + 2);
+                }
+                out.push('\n');
+                for _ in 0..indent {
+                    out.push(' ');
+                }
+                out.push('}');
+            }
+        }
+    }
+
+    fn write_swift_pretty(&self, out: &mut String, indent: usize) {
+        match self {
+            JsonValue::Null | JsonValue::Bool(_) | JsonValue::Number(_) | JsonValue::String(_) => {
+                self.write_compact(out);
+            }
+            JsonValue::Array(arr) => {
+                if arr.is_empty() {
+                    out.push_str("[]");
+                    return;
+                }
+                out.push_str("[\n");
+                for (i, item) in arr.iter().enumerate() {
+                    if i > 0 {
+                        out.push_str(",\n");
+                    }
+                    for _ in 0..(indent + 2) {
+                        out.push(' ');
+                    }
+                    item.write_swift_pretty(out, indent + 2);
+                }
+                out.push('\n');
+                for _ in 0..indent {
+                    out.push(' ');
+                }
+                out.push(']');
+            }
+            JsonValue::Object(map) => {
+                if map.is_empty() {
+                    out.push_str("{}");
+                    return;
+                }
+                out.push_str("{\n");
+                let mut entries: Vec<&(String, JsonValue)> = map.iter().collect();
+                entries.sort_by(|(a, _), (b, _)| a.cmp(b));
+                for (i, (k, v)) in entries.into_iter().enumerate() {
+                    if i > 0 {
+                        out.push_str(",\n");
+                    }
+                    for _ in 0..(indent + 2) {
+                        out.push(' ');
+                    }
+                    write_escaped_str(out, k);
+                    out.push_str(" : ");
+                    v.write_swift_pretty(out, indent + 2);
                 }
                 out.push('\n');
                 for _ in 0..indent {
@@ -908,5 +970,46 @@ mod tests {
             doc.len(),
             took
         );
+    }
+
+    #[test]
+    fn swift_pretty_matches_jsonserialization_sorted_keys_bytes() {
+        // Insert keys in non-sorted order to prove sortedKeys + " : " formatting.
+        let mut author = JsonMap::new();
+        author.insert(
+            "url".to_string(),
+            JsonValue::String("https://github.com/VitruvianSoftware".to_string()),
+        );
+        author.insert(
+            "name".to_string(),
+            JsonValue::String("VitruvianSoftware".to_string()),
+        );
+        let mut manifest = JsonMap::new();
+        manifest.insert(
+            "version".to_string(),
+            JsonValue::String("1.0.0".to_string()),
+        );
+        manifest.insert(
+            "name".to_string(),
+            JsonValue::String("home-speaker".to_string()),
+        );
+        manifest.insert("license".to_string(), JsonValue::String("MIT".to_string()));
+        manifest.insert(
+            "description".to_string(),
+            JsonValue::String(
+                "Speaks each finished Antigravity reply on your Google Home speakers or this Mac, through HomeSpeaker."
+                    .to_string(),
+            ),
+        );
+        manifest.insert("author".to_string(), JsonValue::Object(author));
+
+        let val = JsonValue::Object(manifest);
+        let got = format!("{}\n", val.to_json_string_swift_pretty());
+        let expected_swift = "{\n  \"author\" : {\n    \"name\" : \"VitruvianSoftware\",\n    \"url\" : \"https://github.com/VitruvianSoftware\"\n  },\n  \"description\" : \"Speaks each finished Antigravity reply on your Google Home speakers or this Mac, through HomeSpeaker.\",\n  \"license\" : \"MIT\",\n  \"name\" : \"home-speaker\",\n  \"version\" : \"1.0.0\"\n}\n";
+        assert_eq!(got, expected_swift);
+
+        // Default pretty writer remains unchanged (insertion order, ": " without space before colon).
+        let default_pretty = val.to_json_string_pretty();
+        assert!(default_pretty.contains("\"version\": \"1.0.0\""));
     }
 }

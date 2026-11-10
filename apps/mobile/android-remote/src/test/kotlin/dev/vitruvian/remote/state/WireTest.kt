@@ -667,4 +667,13 @@ public class WireTest {
     assertEquals(300, HomeSpeakerWire.sources("""{"poll_interval":900}""").pollInterval)
     assertEquals(45, HomeSpeakerWire.sources("""{"poll_interval":45}""").pollInterval)
   }
+
+  @Test
+  public fun `homespeaker extension_installed defaults to false and parses true`() {
+    assertEquals(false, HomeSpeakerWire.sources("{}").extensionInstalled)
+    assertEquals(
+        false, HomeSpeakerWire.sources("""{"extension_installed":false}""").extensionInstalled)
+    assertEquals(
+        true, HomeSpeakerWire.sources("""{"extension_installed":true}""").extensionInstalled)
+  }
 }

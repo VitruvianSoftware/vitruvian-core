@@ -89,6 +89,11 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
+exports_files(
+    ["rs/src/server.rs"],
+    visibility = ["//apps/mobile/android-remote:__subpackages__"],
+)
+
 rust_library(
     name = "macagent_lib",
     srcs = [
@@ -111,6 +116,7 @@ rust_library(
         "rs/src/tv.rs",
         "rs/src/voice_cache.rs",
     ],
+    compile_data = ["//apps/mobile/android-remote/macmenu:tool/vitruvian-tool.json"],
     crate_name = "vitruvian_remote_macagent",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
