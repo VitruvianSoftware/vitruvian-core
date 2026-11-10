@@ -1,0 +1,27 @@
+# Model pricing configuration for //tools/model-prices:update.
+#
+# Each row maps a case-insensitive regex `match` pattern (evaluated top-to-bottom
+# in packages/orchestrator-core/src/prices.mjs; first match wins, so order matters)
+# to an OpenRouter model ID from https://openrouter.ai/api/v1/models and fallback
+# per-million-token USD estimates used when `openrouter_id` is `-` or absent from
+# the upstream response (or when OpenRouter omits cache read/write fields).
+#
+# Notes on mapped IDs:
+# - `fable|mythos` maps to `anthropic/claude-fable-5.2` (current Fable release;
+#   `mythos` is an internal alias with no standalone OpenRouter listing).
+# - `opus` and `haiku` keep legacy catch-all pricing behind `opus-5-5` and
+#   `haiku-5-5` (`anthropic/claude-opus-5` and `anthropic/claude-haiku-4.5`).
+# - `gemini-4-(carbon|argon)` maps to `google/gemini-4-carbon` (`google/gemini-4-argon`
+#   is listed separately on OpenRouter at identical rates).
+#
+# Columns (TAB-separated):
+# match	openrouter_id	fallback_input	fallback_output	fallback_cache_read	fallback_cache_write
+match	openrouter_id	fallback_input	fallback_output	fallback_cache_read	fallback_cache_write
+fable|mythos	anthropic/claude-fable-5.2	10	50	0.25	12.5
+opus-5-5	anthropic/claude-opus-5.5	4	20	0.2	5
+opus	anthropic/claude-opus-5	5	25	0.5	6.25
+sonnet	anthropic/claude-sonnet-5.5	2	10	0.2	2.5
+haiku-5-5	anthropic/claude-haiku-5.5	0.1	0.5	0.01	0.125
+haiku	anthropic/claude-haiku-4.5	1	5	0.1	1.25
+gemini-4-(carbon|argon)	google/gemini-4-carbon	2	10	0.2	0
+gemini-3\.8-flash	google/gemini-3.8-flash	0.75	3.75	0.075	0

@@ -154,3 +154,13 @@ delivery is reported. A run parked on an approval leaves its units not
 checked. In the runs list a neutral verdict still shows as a green run,
 because Actions has no neutral run; the run page carries a "nothing checked"
 notice.
+
+### `model-prices.yaml` — keep orchestrator model prices current
+
+Weekly (Mondays 13:41 UTC, plus `workflow_dispatch`), runs
+`bazel run //tools/model-prices:update` against OpenRouter's public
+`/api/v1/models` catalog followed by `bazel run //tools/agent-roster -- --write`.
+When any price changes within the `--max-change` bound (default 50%), it mints
+the sync App token and opens or updates `chore(agents): refresh model prices` on
+`chore/model-prices` with the `old → new` table in the pull request body. See
+[`tools/model-prices/README.md`](../../tools/model-prices/README.md).

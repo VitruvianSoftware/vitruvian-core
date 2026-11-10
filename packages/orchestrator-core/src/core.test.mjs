@@ -41,6 +41,20 @@ import { PRICES, PRICES_UPDATED } from "./prices.mjs";
 
 const { delegateCost } = coreModule;
 
+function priceByMatch(match) {
+  const row = PRICES.find((entry) => entry.match === match);
+  assert.ok(row, `missing PRICES entry for match=${JSON.stringify(match)}`);
+  return row;
+}
+
+function assertUsd(actual, expected) {
+  assert.equal(typeof actual, "number");
+  assert.ok(
+    Math.abs(actual - expected) < 1e-9,
+    `expected ${actual} to be within 1e-9 of ${expected}`,
+  );
+}
+
 function deepFreeze(obj) {
   if (obj === null || typeof obj !== "object") {
     return obj;
@@ -369,14 +383,9 @@ test("spend splits lead and workers, prices sonnet exactly, and puts gemini in u
     tasks: [{ title: "T1", specialist: "wren", tier: "core", after: [] }],
   });
 
-  // 1) Worker Sonnet run:
-  //    Rates for /sonnet/i: [input=2, output=10, cacheRead=0.2, cacheWrite=2.5] per 1M tokens.
+  // 1) Worker Sonnet run (rates read from PRICES by match === "sonnet"):
   //    Tokens: input=100_000, output=20_000, cacheRead=50_000, cacheWrite=10_000
-  //    Arithmetic:
-  //      (100_000 * 2 + 20_000 * 10 + 50_000 * 0.2 + 10_000 * 2.5) / 1_000_000
-  //      = (200_000 + 200_000 + 10_000 + 25_000) / 1_000_000
-  //      = 435_000 / 1_000_000
-  //      = 0.435 USD
+  const sonnet = priceByMatch("sonnet");
   flow = reduce(flow, {
     type: "run.start",
     at: 1100,
@@ -402,14 +411,16 @@ test("spend splits lead and workers, prices sonnet exactly, and puts gemini in u
   });
 
   const expectedSonnetUsd =
-    (100_000 * 2 + 20_000 * 10 + 50_000 * 0.2 + 10_000 * 2.5) / 1_000_000;
-  assert.equal(expectedSonnetUsd, 0.435);
-  assert.equal(runCost(flow.runs[0]), 0.435);
+    (100_000 * sonnet.input +
+      20_000 * sonnet.output +
+      50_000 * sonnet.cacheRead +
+      10_000 * sonnet.cacheWrite) /
+    1_000_000;
+  assertUsd(runCost(flow.runs[0]), expectedSonnetUsd);
 
-  // 2) Lead Opus 5.5 run:
-  //    Rates for /opus-5-5/i: [input=4, output=20, cacheRead=0.2, cacheWrite=5] per 1M tokens.
+  // 2) Lead Opus 5.5 run (rates read from PRICES by match === "opus-5-5"):
   //    Tokens: input=50_000, output=5_000, cacheRead=0, cacheWrite=0
-  //    Arithmetic: (50_000 * 4 + 5_000 * 20) / 1_000_000 = 300_000 / 1_000_000 = 0.3 USD
+  const opus55 = priceByMatch("opus-5-5");
   flow = reduce(flow, {
     type: "run.start",
     at: 1300,
@@ -427,7 +438,9 @@ test("spend splits lead and workers, prices sonnet exactly, and puts gemini in u
     id: "opus-lead",
     tokens: { input: 50_000, output: 5_000, cacheRead: 0, cacheWrite: 0 },
   });
-  assert.equal(runCost(flow.runs[1]), 0.3);
+  const expectedOpusUsd =
+    (50_000 * opus55.input + 5_000 * opus55.output) / 1_000_000;
+  assertUsd(runCost(flow.runs[1]), expectedOpusUsd);
 
   // 3) Unpriced model run:
   flow = reduce(flow, {
@@ -451,23 +464,23 @@ test("spend splits lead and workers, prices sonnet exactly, and puts gemini in u
   assert.equal(runCost(flow.runs[2]), null);
 
   const summary = spend(flow);
-  assert.deepEqual(summary, {
-    total: 0.735,
-    byModel: {
-      "claude-sonnet-5-5": 0.435,
-      "claude-opus-5-5": 0.3,
-    },
-    lead: 0.3,
-    workers: 0.435,
-    unpriced: {
-      runs: 1,
-      tokens: 40_000,
-    },
-    delegated: {
-      runs: 0,
-      unpriced: 0,
-      byModel: {},
-    },
+  assertUsd(summary.total, expectedSonnetUsd + expectedOpusUsd);
+  assert.deepEqual(Object.keys(summary.byModel), [
+    "claude-sonnet-5-5",
+    "claude-opus-5-5",
+  ]);
+  assertUsd(summary.byModel["claude-sonnet-5-5"], expectedSonnetUsd);
+  assertUsd(summary.byModel["claude-opus-5-5"], expectedOpusUsd);
+  assertUsd(summary.lead, expectedOpusUsd);
+  assertUsd(summary.workers, expectedSonnetUsd);
+  assert.deepEqual(summary.unpriced, {
+    runs: 1,
+    tokens: 40_000,
+  });
+  assert.deepEqual(summary.delegated, {
+    runs: 0,
+    unpriced: 0,
+    byModel: {},
   });
 });
 
@@ -561,10 +574,12 @@ test("delegate model on run.start, run.progress, and spend.delegated summary", (
   });
   assert.equal(flow.runs[2].delegate, "gemini-3.8-flash-high");
 
-  // Driver cost is estimated from run.model (claude-haiku-5-5: [0.1, 0.5, 0.01, 0.125] per 1M)
-  // r1 tokens: 10_000 * 0.1 + 2_000 * 0.5 = 2_000 / 1_000_000 = 0.002 USD
+  // Driver cost is estimated from run.model (claude-haiku-5-5 via PRICES match "haiku-5-5")
+  const haiku55 = priceByMatch("haiku-5-5");
+  const expectedDriverUsd =
+    (10_000 * haiku55.input + 2_000 * haiku55.output) / 1_000_000;
   const summary = spend(flow);
-  assert.equal(summary.total, 0.002);
+  assertUsd(summary.total, expectedDriverUsd);
   assert.deepEqual(summary.delegated, {
     runs: 3,
     unpriced: 3,
@@ -1176,8 +1191,18 @@ test("a run waiting on its own work or on Gemini reads waiting, not stalled, unt
 });
 
 test("prices.mjs lists opus-5-5 before opus and haiku-5-5 before haiku", () => {
-  assert.equal(PRICES_UPDATED, "2026-11-10");
+  assert.match(PRICES_UPDATED, /^\d{4}-\d{2}-\d{2}$/);
   assert.ok(Array.isArray(PRICES));
+  for (const entry of PRICES) {
+    assert.equal(typeof entry.match, "string");
+    assert.ok(entry.match.length > 0);
+    assert.equal(typeof entry.input, "number");
+    assert.equal(typeof entry.output, "number");
+    assert.equal(typeof entry.cacheRead, "number");
+    assert.equal(typeof entry.cacheWrite, "number");
+    assert.equal(typeof entry.source, "string");
+    assert.ok(entry.source.length > 0);
+  }
   const matches = PRICES.map((p) => p.match);
   const opus55Idx = matches.indexOf("opus-5-5");
   const opusIdx = matches.indexOf("opus");
@@ -1189,7 +1214,7 @@ test("prices.mjs lists opus-5-5 before opus and haiku-5-5 before haiku", () => {
   assert.ok(matches.includes("gemini-3\\.8-flash"));
 });
 
-test("Haiku 5.5 is priced at $0.10/$0.50 while older Haiku stays $1/$5", () => {
+test("Haiku 5.5 matches haiku-5-5 entry while older Haiku falls through to haiku entry", () => {
   let flow = reduce(null, { type: "plan", at: 0, title: "Haiku", tasks: [] });
   flow = reduce(flow, {
     type: "run.start",
@@ -1225,10 +1250,15 @@ test("Haiku 5.5 is priced at $0.10/$0.50 while older Haiku stays $1/$5", () => {
       cacheWrite: 1_000_000,
     },
   });
-  // Haiku 5.5: 0.1 + 0.5 + 0.01 + 0.125 = 0.735 USD
-  assert.equal(runCost(flow.runs[0]), 0.735);
-  // Legacy Haiku: 1 + 5 + 0.1 + 1.25 = 7.35 USD
-  assert.equal(runCost(flow.runs[1]), 7.35);
+  const haiku55 = priceByMatch("haiku-5-5");
+  const haiku = priceByMatch("haiku");
+  const expectedH55 =
+    haiku55.input + haiku55.output + haiku55.cacheRead + haiku55.cacheWrite;
+  const expectedH45 =
+    haiku.input + haiku.output + haiku.cacheRead + haiku.cacheWrite;
+  assert.notEqual(expectedH55, expectedH45);
+  assertUsd(runCost(flow.runs[0]), expectedH55);
+  assertUsd(runCost(flow.runs[1]), expectedH45);
 });
 
 test("delegated run with delegateTokens costs driver + Gemini with worked arithmetic", () => {
@@ -1263,13 +1293,21 @@ test("delegated run with delegateTokens costs driver + Gemini with worked arithm
     },
   });
 
-  // Driver (Haiku 5.5): (100k*0.1 + 10k*0.5 + 200k*0.01 + 20k*0.125) / 1M
-  //   = (10_000 + 5_000 + 2_000 + 2_500) / 1M = 0.0195 USD
-  // Delegate (Gemini 4 Carbon [2, 10, 0.2, 0]): (50k*2 + (4k+3k)*10 + 100k*0.2) / 1M
-  //   = (100_000 + 70_000 + 20_000) / 1M = 0.19 USD
-  // Combined: 0.0195 + 0.19 = 0.2095 USD
-  assert.equal(delegateCost(flow.runs[0]), 0.19);
-  assert.equal(runCost(flow.runs[0]), 0.2095);
+  const haiku55 = priceByMatch("haiku-5-5");
+  const gemini4 = priceByMatch("gemini-4-(carbon|argon)");
+  const expectedDriverUsd =
+    (100_000 * haiku55.input +
+      10_000 * haiku55.output +
+      200_000 * haiku55.cacheRead +
+      20_000 * haiku55.cacheWrite) /
+    1_000_000;
+  const expectedDelegateUsd =
+    (50_000 * gemini4.input +
+      (4_000 + 3_000) * gemini4.output +
+      100_000 * gemini4.cacheRead) /
+    1_000_000;
+  assertUsd(delegateCost(flow.runs[0]), expectedDelegateUsd);
+  assertUsd(runCost(flow.runs[0]), expectedDriverUsd + expectedDelegateUsd);
 });
 
 test("thinking tokens in delegateTokens are priced at the delegate output rate", () => {
@@ -1297,9 +1335,10 @@ test("thinking tokens in delegateTokens are priced at the delegate output rate",
       cacheRead: 0,
     },
   });
-  // Gemini 4 Carbon output rate = $10/1M -> 100k thinking = $1.00; driver is unpriced so runCost = $1.00
-  assert.equal(delegateCost(flow.runs[0]), 1);
-  assert.equal(runCost(flow.runs[0]), 1);
+  const gemini4 = priceByMatch("gemini-4-(carbon|argon)");
+  const expectedThinkUsd = (100_000 * gemini4.output) / 1_000_000;
+  assertUsd(delegateCost(flow.runs[0]), expectedThinkUsd);
+  assertUsd(runCost(flow.runs[0]), expectedThinkUsd);
 });
 
 test("run.progress replaces delegateTokens instead of adding and ignores negative or non-numeric fields", () => {
@@ -1414,14 +1453,19 @@ test("spend attributes delegate cost to byModel[delegate] and workers/total, and
     tokens: { input: 100_000, output: 10_000, cacheRead: 0, cacheWrite: 0 },
   });
 
-  // r1 driver: (100k*0.1 + 10k*0.5)/1M = 0.015; r2 driver: 0.015 -> haiku total = 0.03
-  // r1 delegate: (50k*2 + 10k*10)/1M = 0.2 -> gemini-4-carbon-high = 0.2
-  // total = workers = 0.23
+  const haiku55 = priceByMatch("haiku-5-5");
+  const gemini4 = priceByMatch("gemini-4-(carbon|argon)");
+  const expectedDriverEach =
+    (100_000 * haiku55.input + 10_000 * haiku55.output) / 1_000_000;
+  const expectedHaikuUsd = expectedDriverEach * 2;
+  const expectedGeminiUsd =
+    (50_000 * gemini4.input + (5_000 + 5_000) * gemini4.output) / 1_000_000;
+  const expectedTotalUsd = expectedHaikuUsd + expectedGeminiUsd;
   const summary = spend(flow);
-  assert.ok(Math.abs(summary.total - 0.23) < 1e-9);
-  assert.ok(Math.abs(summary.workers - 0.23) < 1e-9);
-  assert.ok(Math.abs(summary.byModel["claude-haiku-5-5"] - 0.03) < 1e-9);
-  assert.ok(Math.abs(summary.byModel["gemini-4-carbon-high"] - 0.2) < 1e-9);
+  assertUsd(summary.total, expectedTotalUsd);
+  assertUsd(summary.workers, expectedTotalUsd);
+  assertUsd(summary.byModel["claude-haiku-5-5"], expectedHaikuUsd);
+  assertUsd(summary.byModel["gemini-4-carbon-high"], expectedGeminiUsd);
   assert.deepEqual(summary.delegated, {
     runs: 2,
     unpriced: 1,
@@ -1483,11 +1527,14 @@ test("unpriced delegate model with delegateTokens and all-invalid delegateTokens
     }),
   });
 
+  const haiku55 = priceByMatch("haiku-5-5");
+  const expectedDriverUsd =
+    (100_000 * haiku55.input + 10_000 * haiku55.output) / 1_000_000;
   assert.equal(delegateCost(flow.runs[0]), null);
-  assert.equal(runCost(flow.runs[0]), 0.015);
+  assertUsd(runCost(flow.runs[0]), expectedDriverUsd);
   assert.equal(flow.runs[1].delegateTokens, null);
   assert.equal(delegateCost(flow.runs[1]), null);
-  assert.equal(runCost(flow.runs[1]), 0.015);
+  assertUsd(runCost(flow.runs[1]), expectedDriverUsd);
 
   const summary = spend(flow);
   assert.deepEqual(summary.delegated, {
