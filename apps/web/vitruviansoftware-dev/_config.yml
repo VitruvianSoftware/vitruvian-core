@@ -81,7 +81,7 @@ analytics:
   # vitruviansoftware.dev in the Cloudflare dashboard.
   cloudflare_token: "160f8384c88a474583f3f270e209ef9a" # gitleaks:allow — public client-side Web Analytics site token
   # Umami website id, from Settings > Websites on the self-hosted Umami.
-  umami_website_id: ""
+  umami_website_id: "cb8f197e-5f28-4cca-8e2e-012ed0351971"
 
 # Publish the Claude Code marketplace catalog at /.claude-plugin/marketplace.json.
 include:
