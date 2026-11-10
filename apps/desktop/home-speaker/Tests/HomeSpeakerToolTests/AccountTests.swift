@@ -85,4 +85,26 @@ final class AccountTests: XCTestCase {
         XCTAssertTrue(account.hasOAuthClient)
         XCTAssertFalse(account.hasBundledOAuthClient, "still nothing shipped")
     }
+
+    func testSaveOAuthClientTrimsIdAndKeepsStoredSecretWhenSecretIsBlankForSameId() throws {
+        let store = SecretStore(fileURL: root.appendingPathComponent("secrets.json"))
+        let account = SecretStoreAccount(
+            store: store,
+            antigravityTokens: root.appendingPathComponent("none.json"),
+            profile: try profile()
+        )
+        try account.saveOAuthClient(id: "  my-client.apps.googleusercontent.com  ", secret: "  GOCSPX-secret  ")
+        XCTAssertEqual(store.load().oauthClientIdOverride, "my-client.apps.googleusercontent.com")
+        XCTAssertEqual(store.load().oauthClientSecretOverride, "GOCSPX-secret")
+
+        // Saving again with padded unchanged ID and empty secret keeps the existing secret.
+        try account.saveOAuthClient(id: "  my-client.apps.googleusercontent.com  ", secret: "")
+        XCTAssertEqual(store.load().oauthClientIdOverride, "my-client.apps.googleusercontent.com")
+        XCTAssertEqual(store.load().oauthClientSecretOverride, "GOCSPX-secret")
+
+        // Saving a blank ID clears both ID and secret even if secret is non-empty.
+        try account.saveOAuthClient(id: "   ", secret: "GOCSPX-ignored")
+        XCTAssertNil(store.load().oauthClientIdOverride)
+        XCTAssertNil(store.load().oauthClientSecretOverride)
+    }
 }

@@ -1,0 +1,59 @@
+{
+  "suite": "chat_monitor_status",
+  "cases": [
+    {
+      "name": "live_owner_preserves_running_and_last_error",
+      "owner_running": true,
+      "input": {
+        "is_running": true,
+        "last_error": "Slack answered HTTP 401",
+        "slack_identity": "james (Vitruvian)",
+        "active_google_chat_backend": "Google Chat API",
+        "pid": 4242
+      },
+      "expected": {
+        "is_running": true,
+        "last_error": "Slack answered HTTP 401",
+        "slack_identity": "james (Vitruvian)",
+        "active_google_chat_backend": "Google Chat API",
+        "pid": 4242
+      }
+    },
+    {
+      "name": "dead_owner_clears_running_and_last_error_but_keeps_metadata",
+      "owner_running": false,
+      "input": {
+        "is_running": true,
+        "last_error": "Slack answered HTTP 401",
+        "slack_identity": "james (Vitruvian)",
+        "active_google_chat_backend": "Google Chat API",
+        "pid": 4242
+      },
+      "expected": {
+        "is_running": false,
+        "last_error": null,
+        "slack_identity": "james (Vitruvian)",
+        "active_google_chat_backend": "Google Chat API",
+        "pid": 4242
+      }
+    },
+    {
+      "name": "dead_owner_when_already_stopped_still_clears_stale_error",
+      "owner_running": false,
+      "input": {
+        "is_running": false,
+        "last_error": "Beeper unreachable",
+        "slack_identity": null,
+        "active_google_chat_backend": null,
+        "pid": 9999
+      },
+      "expected": {
+        "is_running": false,
+        "last_error": null,
+        "slack_identity": null,
+        "active_google_chat_backend": null,
+        "pid": 9999
+      }
+    }
+  ]
+}

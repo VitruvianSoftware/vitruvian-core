@@ -1,0 +1,90 @@
+{
+  "suite": "outputs_label",
+  "phone_substitution": {
+    "mac": "Your phone",
+    "phone": "This phone"
+  },
+  "cases": [
+    {
+      "name": "home_with_selected_speaker_only",
+      "speak_home": true,
+      "default_speaker_name": "Lake Office",
+      "speak_local": false,
+      "speak_phone": false,
+      "expected_mac": "Lake Office",
+      "expected_phone": "Lake Office"
+    },
+    {
+      "name": "home_without_selected_speaker",
+      "speak_home": true,
+      "default_speaker_name": null,
+      "speak_local": false,
+      "speak_phone": false,
+      "expected_mac": "No speaker picked",
+      "expected_phone": "No speaker picked"
+    },
+    {
+      "name": "mac_only",
+      "speak_home": false,
+      "default_speaker_name": "Lake Office",
+      "speak_local": true,
+      "speak_phone": false,
+      "expected_mac": "This Mac",
+      "expected_phone": "This Mac"
+    },
+    {
+      "name": "phone_only",
+      "speak_home": false,
+      "default_speaker_name": "Lake Office",
+      "speak_local": false,
+      "speak_phone": true,
+      "expected_mac": "Your phone",
+      "expected_phone": "This phone"
+    },
+    {
+      "name": "home_and_mac",
+      "speak_home": true,
+      "default_speaker_name": "Lake Office",
+      "speak_local": true,
+      "speak_phone": false,
+      "expected_mac": "Lake Office + This Mac",
+      "expected_phone": "Lake Office + This Mac"
+    },
+    {
+      "name": "home_and_phone",
+      "speak_home": true,
+      "default_speaker_name": "Lake Office",
+      "speak_local": false,
+      "speak_phone": true,
+      "expected_mac": "Lake Office + Your phone",
+      "expected_phone": "Lake Office + This phone"
+    },
+    {
+      "name": "mac_and_phone",
+      "speak_home": false,
+      "default_speaker_name": "Lake Office",
+      "speak_local": true,
+      "speak_phone": true,
+      "expected_mac": "This Mac + Your phone",
+      "expected_phone": "This Mac + This phone"
+    },
+    {
+      "name": "all_three_outputs",
+      "speak_home": true,
+      "default_speaker_name": "Lake Office",
+      "speak_local": true,
+      "speak_phone": true,
+      "expected_mac": "Lake Office + This Mac + Your phone",
+      "expected_phone": "Lake Office + This Mac + This phone"
+    },
+    {
+      "name": "all_outputs_off",
+      "speak_home": false,
+      "default_speaker_name": "Lake Office",
+      "speak_local": false,
+      "speak_phone": false,
+      "expected_mac": "",
+      "expected_phone": ""
+    }
+  ]
+}

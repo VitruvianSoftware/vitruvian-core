@@ -899,4 +899,76 @@ final class DoorPagesTests: XCTestCase {
         XCTAssertTrue(words(refused).contains("The HomeSpeaker app is in use, so its hooks are the ones that run"))
         XCTAssertEqual(try installedHook(), AgentIntegration.hookCommand(executable: appProgram.path))
     }
+
+    func testChoosingRunningAppOrExtensionSettlesStepAndReportBeforeRefresh() async throws {
+        try hook(at: extensionProgram)
+        let claudeDir = hooksFile().deletingLastPathComponent()
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: claudeDir.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: claudeDir.path) }
+
+        let tool = tool()
+        _ = tool.islandPage()
+        _ = tool.settingsPage()
+        _ = tap(tool, Pages.Block.doorUseApp)
+        link.rendered = []
+        let appPage = tap(tool, Pages.Block.doorKeep)
+
+        XCTAssertNil(tool.doorStep)
+        let renderedWords = link.rendered.flatMap { words($0.tree) } + words(appPage)
+        XCTAssertFalse(renderedWords.contains(Pages.DoorWords.choiceChanged),
+                       "our own choice write must not be reported as choiceChanged during refreshRole")
+        XCTAssertEqual(tool.doorReport.count, 1)
+        XCTAssertTrue(tool.doorReport.first?.contains("settings.json") ?? false,
+                      "\(tool.doorReport)")
+        XCTAssertTrue(words(appPage).contains { $0.contains("settings.json") })
+        for rendered in link.rendered {
+            XCTAssertTrue(words(rendered.tree).contains { $0.contains("settings.json") },
+                          "open panel redraw during refreshRole must carry the settled hook report: \(words(rendered.tree))")
+        }
+
+        // Extension chooses itself -> reaches step 3 (.closing, then .offers) with report settled before refresh.
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: claudeDir.path)
+        try door.update { $0.chosen = nil; $0.chosenAt = nil; $0.chosenBy = nil }
+        let selfTool = self.tool()
+        _ = selfTool.islandPage()
+        _ = selfTool.settingsPage()
+        _ = tap(selfTool, Pages.Block.doorUseExtension)
+        link.rendered = []
+        let closingPage = tap(selfTool, Pages.Block.doorCopy)
+        XCTAssertEqual(selfTool.doorStep, .closing)
+        XCTAssertTrue(words(closingPage).contains("Settings: copied from the app."))
+        for rendered in link.rendered {
+            XCTAssertTrue(words(rendered.tree).contains("Settings: copied from the app."),
+                          "refreshOpenPanels during refreshRole must see the settled copy report")
+        }
+        await settle { offersShown(selfTool) }
+        guard case .offers? = selfTool.doorStep else {
+            return XCTFail("expected step 3 offers after closing the other app")
+        }
+    }
+
+    func testChoosingStoppedAppOpensItSetsOpeningStepBeforeRefreshAndReportsNoChoiceChanged() async throws {
+        appRunning.value = false
+        let tool = tool()
+        _ = tool.islandPage()
+        _ = tool.settingsPage()
+        _ = tap(tool, Pages.Block.doorUseApp)
+        link.rendered = []
+        let openingPage = tap(tool, Pages.Block.doorKeep)
+
+        XCTAssertEqual(tool.doorStep, .opening)
+        let renderedWords = link.rendered.flatMap { words($0.tree) } + words(openingPage)
+        XCTAssertFalse(renderedWords.contains(Pages.DoorWords.choiceChanged),
+                       "choosing a stopped app must transition to .opening before refreshRole so choiceChanged is not reported")
+        XCTAssertTrue(words(openingPage).contains(Pages.DoorWords.opening))
+        for rendered in link.rendered {
+            XCTAssertTrue(words(rendered.tree).contains(Pages.DoorWords.opening),
+                          "refreshOpenPanels during refreshRole must see the .opening step")
+        }
+
+        await settle { tool.doorStep == nil }
+        XCTAssertEqual(order.all, ["open", "loginItemOn"])
+        XCTAssertFalse(tool.doorReport.contains(Pages.DoorWords.choiceChanged))
+        XCTAssertTrue(tool.doorReport.contains(Pages.DoorWords.loginItemOn))
+    }
 }

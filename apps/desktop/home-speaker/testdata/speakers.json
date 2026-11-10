@@ -1,0 +1,168 @@
+{
+  "suite": "speakers",
+  "display_line_cases": [
+    {
+      "name": "distinct_room_appended_with_middle_dot",
+      "device": {
+        "id": "dev-1",
+        "type": "SpeakerDevice",
+        "name": "Nest Audio",
+        "room": "Kitchen"
+      },
+      "expected": "Nest Audio · Kitchen"
+    },
+    {
+      "name": "room_already_in_name_case_insensitively_is_omitted",
+      "device": {
+        "id": "dev-2",
+        "type": "SpeakerDevice",
+        "name": "Living Room speaker",
+        "room": "Living Room"
+      },
+      "expected": "Living Room speaker"
+    },
+    {
+      "name": "nil_room_shows_name_only",
+      "device": {
+        "id": "dev-3",
+        "type": "SpeakerDevice",
+        "name": "Lake Office",
+        "room": null
+      },
+      "expected": "Lake Office"
+    },
+    {
+      "name": "empty_room_shows_name_only",
+      "device": {
+        "id": "dev-4",
+        "type": "SpeakerDevice",
+        "name": "Bedroom Mini",
+        "room": ""
+      },
+      "expected": "Bedroom Mini"
+    }
+  ],
+  "unique_targets_cases": [
+    {
+      "name": "deduplicates_by_device_id_preferring_default_then_shortest_alias_and_sorts_by_name",
+      "default_target": "living_room_primary",
+      "targets": {
+        "z_kitchen_long": {
+          "id": "id-kitchen",
+          "type": "SpeakerDevice",
+          "name": "Kitchen",
+          "room": "Kitchen"
+        },
+        "kitchen": {
+          "id": "id-kitchen",
+          "type": "SpeakerDevice",
+          "name": "Kitchen",
+          "room": "Kitchen"
+        },
+        "lr": {
+          "id": "id-living",
+          "type": "SpeakerDevice",
+          "name": "Living Room",
+          "room": "Living Room"
+        },
+        "living_room_primary": {
+          "id": "id-living",
+          "type": "SpeakerDevice",
+          "name": "Living Room",
+          "room": "Living Room"
+        },
+        "bedroom": {
+          "id": "id-bedroom",
+          "type": "SpeakerDevice",
+          "name": "attiC speaker",
+          "room": "Attic"
+        }
+      },
+      "expected_order": [
+        {
+          "key": "bedroom",
+          "id": "id-bedroom",
+          "name": "attiC speaker",
+          "display_line": "attiC speaker"
+        },
+        {
+          "key": "kitchen",
+          "id": "id-kitchen",
+          "name": "Kitchen",
+          "display_line": "Kitchen"
+        },
+        {
+          "key": "living_room_primary",
+          "id": "id-living",
+          "name": "Living Room",
+          "display_line": "Living Room"
+        }
+      ]
+    }
+  ],
+  "remove_target_cases": [
+    {
+      "name": "removing_default_speaker_picks_next_by_name",
+      "default_target": "office",
+      "remove_key": "office",
+      "targets": {
+        "office": {
+          "id": "id-office",
+          "type": "SpeakerDevice",
+          "name": "Office",
+          "room": "Office"
+        },
+        "zeta": {
+          "id": "id-den",
+          "type": "SpeakerDevice",
+          "name": "Den",
+          "room": "Den"
+        },
+        "alpha": {
+          "id": "id-patio",
+          "type": "SpeakerDevice",
+          "name": "Patio",
+          "room": "Patio"
+        }
+      },
+      "expected_default_target": "zeta",
+      "expected_remaining_keys": ["zeta", "alpha"]
+    },
+    {
+      "name": "removing_non_default_speaker_keeps_default",
+      "default_target": "office",
+      "remove_key": "zeta",
+      "targets": {
+        "office": {
+          "id": "id-office",
+          "type": "SpeakerDevice",
+          "name": "Office",
+          "room": "Office"
+        },
+        "zeta": {
+          "id": "id-den",
+          "type": "SpeakerDevice",
+          "name": "Den",
+          "room": "Den"
+        }
+      },
+      "expected_default_target": "office",
+      "expected_remaining_keys": ["office"]
+    },
+    {
+      "name": "removing_last_speaker_clears_default",
+      "default_target": "office",
+      "remove_key": "office",
+      "targets": {
+        "office": {
+          "id": "id-office",
+          "type": "SpeakerDevice",
+          "name": "Office",
+          "room": "Office"
+        }
+      },
+      "expected_default_target": "",
+      "expected_remaining_keys": []
+    }
+  ]
+}

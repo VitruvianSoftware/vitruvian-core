@@ -1,0 +1,184 @@
+{
+  "suite": "quiet_hours",
+  "default_start": "22:00",
+  "default_end": "07:00",
+  "half_hours": [
+    "00:00",
+    "00:30",
+    "01:00",
+    "01:30",
+    "02:00",
+    "02:30",
+    "03:00",
+    "03:30",
+    "04:00",
+    "04:30",
+    "05:00",
+    "05:30",
+    "06:00",
+    "06:30",
+    "07:00",
+    "07:30",
+    "08:00",
+    "08:30",
+    "09:00",
+    "09:30",
+    "10:00",
+    "10:30",
+    "11:00",
+    "11:30",
+    "12:00",
+    "12:30",
+    "13:00",
+    "13:30",
+    "14:00",
+    "14:30",
+    "15:00",
+    "15:30",
+    "16:00",
+    "16:30",
+    "17:00",
+    "17:30",
+    "18:00",
+    "18:30",
+    "19:00",
+    "19:30",
+    "20:00",
+    "20:30",
+    "21:00",
+    "21:30",
+    "22:00",
+    "22:30",
+    "23:00",
+    "23:30"
+  ],
+  "parsing_cases": [
+    { "input": "00:00", "minutes": 0, "normalized": "00:00" },
+    { "input": "7:05", "minutes": 425, "normalized": "07:05" },
+    { "input": "07:15", "minutes": 435, "normalized": "07:15" },
+    { "input": "22:00", "minutes": 1320, "normalized": "22:00" },
+    { "input": " 23:59 ", "minutes": 1439, "normalized": "23:59" },
+    { "input": "24:00", "minutes": null, "normalized": null },
+    { "input": "-1:00", "minutes": null, "normalized": null },
+    { "input": "12:60", "minutes": null, "normalized": null },
+    { "input": "12:3:4", "minutes": null, "normalized": null },
+    { "input": "soon", "minutes": null, "normalized": null },
+    { "input": "", "minutes": null, "normalized": null }
+  ],
+  "window_cases": [
+    {
+      "name": "disabled_ignores_window",
+      "enabled": false,
+      "start": "22:00",
+      "end": "07:00",
+      "time": "23:15",
+      "expected": false
+    },
+    {
+      "name": "overnight_before_start",
+      "enabled": true,
+      "start": "22:00",
+      "end": "07:00",
+      "time": "21:59",
+      "expected": false
+    },
+    {
+      "name": "overnight_at_start_inclusive",
+      "enabled": true,
+      "start": "22:00",
+      "end": "07:00",
+      "time": "22:00",
+      "expected": true
+    },
+    {
+      "name": "overnight_after_midnight",
+      "enabled": true,
+      "start": "22:00",
+      "end": "07:00",
+      "time": "02:30",
+      "expected": true
+    },
+    {
+      "name": "overnight_just_before_end",
+      "enabled": true,
+      "start": "22:00",
+      "end": "07:00",
+      "time": "06:59",
+      "expected": true
+    },
+    {
+      "name": "overnight_at_end_exclusive",
+      "enabled": true,
+      "start": "22:00",
+      "end": "07:00",
+      "time": "07:00",
+      "expected": false
+    },
+    {
+      "name": "same_day_before_start",
+      "enabled": true,
+      "start": "09:00",
+      "end": "17:00",
+      "time": "08:59",
+      "expected": false
+    },
+    {
+      "name": "same_day_inside_window",
+      "enabled": true,
+      "start": "09:00",
+      "end": "17:00",
+      "time": "12:30",
+      "expected": true
+    },
+    {
+      "name": "same_day_at_end_exclusive",
+      "enabled": true,
+      "start": "09:00",
+      "end": "17:00",
+      "time": "17:00",
+      "expected": false
+    },
+    {
+      "name": "zero_length_window_fails_open",
+      "enabled": true,
+      "start": "22:00",
+      "end": "22:00",
+      "time": "22:00",
+      "expected": false
+    },
+    {
+      "name": "malformed_time_fails_open",
+      "enabled": true,
+      "start": "bad",
+      "end": "07:00",
+      "time": "23:00",
+      "expected": false
+    }
+  ],
+  "choice_cases": [
+    {
+      "name": "on_grid_saved_time_returns_48_half_hours",
+      "saved": "22:00",
+      "expected_count": 48,
+      "expected_first": "00:00",
+      "expected_second": "00:30",
+      "expected_last": "23:30"
+    },
+    {
+      "name": "off_grid_saved_time_is_shown_first_then_half_hours",
+      "saved": "07:15",
+      "expected_count": 49,
+      "expected_first": "07:15",
+      "expected_second": "00:00",
+      "expected_last": "23:30"
+    },
+    {
+      "name": "empty_saved_time_returns_48_half_hours",
+      "saved": "",
+      "expected_count": 48,
+      "expected_first": "00:00",
+      "expected_second": "00:30",
+      "expected_last": "23:30"
+    }
+  ]
+}

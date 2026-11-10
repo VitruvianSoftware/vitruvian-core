@@ -286,6 +286,19 @@ final class MonitorRuntimeTests: XCTestCase {
         XCTAssertNil(tool.setupNotice)
     }
 
+    func testRefusedBeeperAddressThenValidOneClearsSetupNotice() {
+        store.config?.effectiveChatMonitor.beeperEnabled = true
+        let tool = opened()
+        let badTree = event(tool, Pages.Block.beeperAddress, .submit, .string("https://example.com:23373"))
+        XCTAssertNotNil(tool.setupNotice)
+        XCTAssertTrue(texts(badTree).contains(tool.setupNotice ?? ""))
+
+        let goodTree = event(tool, Pages.Block.beeperAddress, .submit, .string("http://127.0.0.1:23373"))
+        XCTAssertEqual(store.config?.effectiveChatMonitor.beeperAddress, "http://127.0.0.1:23373")
+        XCTAssertNil(tool.setupNotice)
+        XCTAssertFalse(texts(goodTree).contains { $0.contains("Beeper address") })
+    }
+
     // MARK: - Heard here, not on the speaker
 
     func testSpokenHereWithTheSpeakerFailedIsWhatTheIslandSays() {

@@ -121,9 +121,6 @@ extension Pages {
     /// What the card and the row say (shared with the app).
     public typealias DoorWords = HomeSpeakerCore.DoorWords
 
-    /// The quiet-hours choices: every half hour, "00:00" to "23:30".
-    public static let halfHours: [String] = (0..<48).map { String(format: "%02d:%02d", $0 / 2, ($0 % 2) * 30) }
-
     // MARK: - The card
 
     /// At the top of the island and of General: the card while nobody has
@@ -243,22 +240,25 @@ extension Pages {
     /// long to be an option (a file edited by hand) is the typed field
     /// too, where it can be fixed: as an option it would refuse the page.
     static func quietHourBlocks(_ status: Status) -> [UIBlock] {
-        let start = status.config.quietHoursStart ?? "22:00"
-        let end = status.config.quietHoursEnd ?? "07:00"
+        let start = status.config.quietHoursStart ?? SettingsCatalog.defaultQuietHoursStart
+        let end = status.config.quietHoursEnd ?? SettingsCatalog.defaultQuietHoursEnd
+        let startTitle = SettingsCatalog.Key.quietHoursStart.label()
+        let endTitle = SettingsCatalog.Key.quietHoursEnd.label()
         let fits = [start, end].allSatisfy { $0.unicodeScalars.count <= UILimits.maxChoiceValueLength }
         guard status.offersChoice, fits else {
             return [
-                field(Block.quietStart, title: "From (HH:mm)", value: start),
-                field(Block.quietEnd, title: "Until (HH:mm)", value: end),
+                field(Block.quietStart, title: UIText.plain("\(startTitle) (HH:mm)"), value: start),
+                field(Block.quietEnd, title: UIText.plain("\(endTitle) (HH:mm)"), value: end),
             ]
         }
         func options(keeping value: String) -> [UIChoiceOption] {
-            let times = halfHours.contains(value) ? halfHours : [value] + halfHours
-            return times.map { UIChoiceOption(value: $0, title: UIText.plain($0)) }
+            SettingsCatalog.quietHoursChoices(keeping: value).map {
+                UIChoiceOption(value: $0.value, title: UIText.plain($0.label))
+            }
         }
         return [
-            choice(Block.quietStart, title: "From", value: start, options: options(keeping: start)),
-            choice(Block.quietEnd, title: "Until", value: end, options: options(keeping: end)),
+            choice(Block.quietStart, title: UIText.plain(startTitle), value: start, options: options(keeping: start)),
+            choice(Block.quietEnd, title: UIText.plain(endTitle), value: end, options: options(keeping: end)),
         ]
     }
 

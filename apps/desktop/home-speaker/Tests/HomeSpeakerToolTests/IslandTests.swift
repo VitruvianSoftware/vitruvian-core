@@ -1072,8 +1072,8 @@ final class IslandTests: XCTestCase {
         let page = Pages.island(status)
         order = ids(page)
         XCTAssertEqual(following(order, Pages.Block.quiet, 2), [Pages.Block.quietStart, Pages.Block.quietEnd], "right after the switch")
-        XCTAssertEqual(choice(page, Pages.Block.quietStart)?.title?.text(for: "en"), "From")
-        XCTAssertEqual(choice(page, Pages.Block.quietEnd)?.title?.text(for: "en"), "Until")
+        XCTAssertEqual(choice(page, Pages.Block.quietStart)?.title?.text(for: "en"), "Start")
+        XCTAssertEqual(choice(page, Pages.Block.quietEnd)?.title?.text(for: "en"), "End")
     }
 
     func testSnoozeButtonSetsAndClearsSnoozeUntil() throws {
@@ -1227,8 +1227,8 @@ final class IslandTests: XCTestCase {
             guard at > 0, case .text(let caption) = blocks[at - 1].content else { return XCTFail("\(id): no caption") }
             XCTAssertEqual(caption.text.text(for: "en"), title)
         }
-        XCTAssertEqual(field(page, Pages.Block.quietStart)?.title?.text(for: "en"), "From (HH:mm)")
-        XCTAssertEqual(field(page, Pages.Block.quietEnd)?.title?.text(for: "en"), "Until (HH:mm)")
+        XCTAssertEqual(field(page, Pages.Block.quietStart)?.title?.text(for: "en"), "Start (HH:mm)")
+        XCTAssertEqual(field(page, Pages.Block.quietEnd)?.title?.text(for: "en"), "End (HH:mm)")
         XCTAssertNil(choice(page, Pages.Block.quietStart))
     }
 

@@ -502,12 +502,12 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             case Pages.Block.broadcasting?:
                 guard let isOn = event.isOn else { return .keep }
                 reload()
-                config.enabled = isOn
+                _ = try SettingsActions.applySet(key: .enabled, value: String(isOn), to: &config)
                 try save()
             case Pages.Block.quiet?:
                 guard let isOn = event.isOn else { return .keep }
                 reload()
-                config.quietHoursEnabled = isOn
+                _ = try SettingsActions.applySet(key: .quietHoursEnabled, value: String(isOn), to: &config)
                 try save()
             case Pages.Block.snooze?:
                 guard event.kind == .tap else { return .keep }
@@ -526,8 +526,9 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 // The menu's pick or the typed level, both as text. The
                 // menu's "—" (not read yet) and an empty field ask nothing.
                 guard let text = event.text?.trimmingCharacters(in: .whitespaces), !text.isEmpty else { return .keep }
-                guard let level = Int(text), (0...100).contains(level) else {
-                    notice = "A volume is a whole number from 0 to 100"
+                guard let level = Int(text), SettingsCatalog.speakerVolumeLimits.contains(level) else {
+                    let limits = SettingsCatalog.speakerVolumeLimits
+                    notice = SettingsActions.Refusal.outOfRange(key: "speaker_volume", value: 0, min: limits.min, max: limits.max).localizedDescription
                     return .page(Pages.island(status()))
                 }
                 guard level != volume?.percent else { return .keep }
@@ -538,32 +539,32 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 // key that is not a protocol name (`Pages.Block.rowId`).
                 guard let id = event.text ?? event.row, !id.isEmpty else { return .keep }
                 reload()
-                guard let key = Pages.Block.rowValue(id, among: config.targets.keys), key != config.defaultTarget else { return .keep }
-                config.defaultTarget = key
+                guard let key = Pages.Block.rowValue(id, among: config.targets.keys),
+                      try SettingsActions.applySet(key: .defaultTarget, value: key, to: &config) else { return .keep }
                 try save()
                 speakerChanged()
                 readVolumeSoon()
             case Pages.Block.outputHome?:
                 guard let isOn = event.isOn else { return .keep }
                 reload()
-                config.effectiveSpeakHome = isOn
+                _ = try SettingsActions.applySet(key: .speakHome, value: String(isOn), to: &config)
                 try save()
                 // A reading from before Home speakers went off is stale.
                 forgetVolume()
             case Pages.Block.outputLocal?:
                 guard let isOn = event.isOn else { return .keep }
                 reload()
-                config.effectiveSpeakLocal = isOn
+                _ = try SettingsActions.applySet(key: .speakLocal, value: String(isOn), to: &config)
                 try save()
             case Pages.Block.outputPhone?:
                 guard let isOn = event.isOn else { return .keep }
                 reload()
-                config.effectiveSpeakPhone = isOn
+                _ = try SettingsActions.applySet(key: .speakPhone, value: String(isOn), to: &config)
                 try save()
             case Pages.Block.claudeCodeEnabled?, Pages.Block.antigravityEnabled?, Pages.Block.opencodeEnabled?:
                 guard let isOn = event.isOn, let id = event.block, let agent = Pages.Block.agentEnabledAgent(id) else { return .keep }
                 reload()
-                config.setAnnounces(agent, isOn)
+                _ = try SettingsActions.applySet(key: SettingsCatalog.Key.forAgent(agent), value: String(isOn), to: &config)
                 try save()
             case Pages.Block.slackEnabled?, Pages.Block.googleChatEnabled?, Pages.Block.beeperEnabled?:
                 // Saved, as Settings saves it: the engine follows the file
@@ -573,11 +574,13 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 // about at the top.
                 guard let isOn = event.isOn else { return .keep }
                 reload()
+                let key: SettingsCatalog.Key
                 switch event.block {
-                case Pages.Block.slackEnabled?: config.effectiveChatMonitor.slackEnabled = isOn
-                case Pages.Block.googleChatEnabled?: config.effectiveChatMonitor.googleChatEnabled = isOn
-                default: config.effectiveChatMonitor.beeperEnabled = isOn
+                case Pages.Block.slackEnabled?: key = .slackEnabled
+                case Pages.Block.googleChatEnabled?: key = .googleChatEnabled
+                default: key = .beeperEnabled
                 }
+                _ = try SettingsActions.applySet(key: key, value: String(isOn), to: &config)
                 try save()
             case Pages.Block.courierEnabled?:
                 // Courier stays off until a token is saved, as in
@@ -591,7 +594,8 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                     return .page(Pages.island(status()))
                 }
                 courierTokenAsked = false
-                config.effectiveChatMonitor.courierEnabled = isOn
+                _ = try SettingsActions.applySet(key: .courierEnabled, value: String(isOn), to: &config,
+                                                 hasCourierToken: parts.chat.hasCourierToken || config.effectiveChatMonitor.courierEnabled)
                 try save()
             case let id? where Self.islandSettings.contains(id) || Pages.Block.networkKey(id) != nil:
                 // Settings' own controls, saved as Settings saves them; an
@@ -647,7 +651,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 // What the switch was turned on for.
                 courierTokenAsked = false
                 reload()
-                config.effectiveChatMonitor.courierEnabled = true
+                _ = try SettingsActions.applySet(key: .courierEnabled, value: "true", to: &config, hasCourierToken: true)
                 try save()
             }
         } catch {
@@ -860,8 +864,8 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                  Pages.Block.announceVolume?, Pages.Block.announceLevel?, Pages.Block.pauseMedia?, Pages.Block.pauseExtra?,
                  Pages.Block.quiet?, Pages.Block.quietStart?, Pages.Block.quietEnd?, Pages.Block.targets?, Pages.Block.speakers?, Pages.Block.voice?,
                  Pages.Block.slackEnabled?, Pages.Block.googleChatEnabled?, Pages.Block.chatSource?, Pages.Block.gwsAccount?,
-                 Pages.Block.beeperEnabled?, Pages.Block.beeperAnnounce?, Pages.Block.beeperNetworks?,
-                 Pages.Block.courierEnabled?, Pages.Block.courierAnnounce?, Pages.Block.courierNetworks?,
+                 Pages.Block.beeperEnabled?, Pages.Block.beeperAnnounce?, Pages.Block.beeperAddress?, Pages.Block.beeperNetworks?,
+                 Pages.Block.courierEnabled?, Pages.Block.courierAnnounce?, Pages.Block.courierAddress?, Pages.Block.courierNetworks?,
                  Pages.Block.muteOwnMessages?, Pages.Block.pollInterval?,
                  Pages.Block.claudeCodeEnabled?, Pages.Block.antigravityEnabled?, Pages.Block.opencodeEnabled?,
                  Pages.Block.announcementStyle?, Pages.Block.styleModel?, Pages.Block.localEngine?, Pages.Block.geminiVoice?:
@@ -876,10 +880,14 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 return .keep
             }
         } catch {
-            setupNotice = Self.words(error)
+            let refusal = Self.words(error)
+            setupNotice = refusal
+            refusalNotice = refusal
         }
         return .page(settingsTree())
     }
+
+    private var refusalNotice: String?
 
     /// Starts or stops this side's monitor. The page says Running once the
     /// monitor has written that it is; the request alone changes nothing on
@@ -904,11 +912,28 @@ public final class HomeSpeakerTool: @unchecked Sendable {
 
     /// What a settings field that will not take a value says.
     public enum Invalid {
-        public static let quietHour = "Quiet hours take a time as HH:mm, such as 22:00"
-        public static let announceLevel = "The announcement volume is a whole number from 0 to 100"
-        public static let pauseExtra = "Resume after is a number of seconds from 0 to 10"
-        public static let pollInterval =
-            "The poll interval is a whole number of seconds from \(ChatMonitorConfig.minPollInterval) to \(ChatMonitorConfig.maxPollInterval)"
+        public static let quietHour = SettingsActions.Refusal.invalidTime(
+            key: SettingsCatalog.Key.quietHoursStart.rawValue,
+            value: ""
+        ).localizedDescription
+        public static let announceLevel = SettingsActions.Refusal.outOfRange(
+            key: SettingsCatalog.Key.announceVolume.rawValue,
+            value: 0,
+            min: SettingsCatalog.announceVolumeLimits.min,
+            max: SettingsCatalog.announceVolumeLimits.max
+        ).localizedDescription
+        public static let pauseExtra = SettingsActions.Refusal.outOfRange(
+            key: SettingsCatalog.Key.pauseMediaExtraSeconds.rawValue,
+            value: 0,
+            min: SettingsCatalog.pauseMarginLimits.min,
+            max: SettingsCatalog.pauseMarginLimits.max
+        ).localizedDescription
+        public static let pollInterval = SettingsActions.Refusal.outOfRange(
+            key: SettingsCatalog.Key.pollIntervalSeconds.rawValue,
+            value: 0,
+            min: SettingsCatalog.chatPollIntervalLimits.min,
+            max: SettingsCatalog.chatPollIntervalLimits.max
+        ).localizedDescription
         public static let all = [quietHour, announceLevel, pauseExtra, pollInterval]
     }
 
@@ -956,7 +981,10 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         guard try change(event, picked: picked) else { return false }
         do {
             try save()
-            if let notice = setupNotice, Invalid.all.contains(notice) { setupNotice = nil }
+            if let notice = setupNotice, notice == refusalNotice || Invalid.all.contains(notice) {
+                setupNotice = nil
+                refusalNotice = nil
+            }
         } catch {
             parts.link.log("the settings could not be saved: \(error)")
             reload()
@@ -964,144 +992,157 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         return true
     }
 
-    /// Applies a settings change to `config`. False when the event changes
-    /// nothing, so nothing is saved; throws, changing nothing, when a field
-    /// holds a value the setting cannot take.
+    /// Applies a settings change to `config` through `SettingsActions`.
+    /// False when the event changes nothing, so nothing is saved; throws,
+    /// changing nothing, when a field holds a value the setting cannot take.
+    private func applySetting(_ key: SettingsCatalog.Key, _ value: String) throws -> Bool {
+        do {
+            return try SettingsActions.applySet(
+                key: key,
+                value: value,
+                to: &config,
+                clampNumbers: false,
+                hasCourierToken: parts.chat.hasCourierToken,
+                systemVoices: voices ?? parts.voices()
+            )
+        } catch let refusal as SettingsActions.Refusal {
+            switch refusal {
+            case .invalidChoice:
+                return false
+            case .missingToken:
+                throw CommandRefused(Pages.courierTokenFirst)
+            default:
+                throw CommandRefused(refusal.localizedDescription)
+            }
+        }
+    }
+
     private func change(_ event: PanelEvent, picked: String?) throws -> Bool {
         switch event.block {
         case Pages.Block.broadcasting?:
             guard let isOn = event.isOn else { return false }
-            config.enabled = isOn
+            _ = try applySetting(.enabled, String(isOn))
         case Pages.Block.speechLength?:
-            guard let picked, let length = SpeechLength(rawValue: picked) else { return false }
-            config.effectiveSpeechLength = length
+            guard let picked, SpeechLength(rawValue: picked) != nil else { return false }
+            _ = try applySetting(.speechLength, picked)
         case Pages.Block.announcementStyle?:
-            guard let picked, let style = AnnouncementStyle(rawValue: picked) else { return false }
-            guard style != config.effectiveAnnouncementStyle else { return false }
-            config.effectiveAnnouncementStyle = style
+            guard let picked else { return false }
+            return try applySetting(.announcementStyle, picked)
         case Pages.Block.customStylePrompt?:
             guard let text = event.text else { return false }
             guard text != (config.customStylePrompt ?? "") else { return false }
-            config.customStylePrompt = text
+            _ = try applySetting(.customStylePrompt, text)
+            if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                config.customStylePrompt = text
+            }
         case Pages.Block.styleModel?:
-            guard let picked, let model = StyleModel(rawValue: picked) else { return false }
-            guard model != config.effectiveStyleModel else { return false }
-            config.effectiveStyleModel = model
+            guard let picked else { return false }
+            return try applySetting(.styleModel, picked)
         case Pages.Block.localEngine?:
-            guard let picked, let engine = LocalVoiceEngine(rawValue: picked) else { return false }
-            guard engine != config.effectiveLocalEngine else { return false }
-            config.effectiveLocalEngine = engine
+            guard let picked else { return false }
+            return try applySetting(.localEngine, picked)
         case Pages.Block.geminiVoice?:
-            // One of the voices drawn: those offered (including cloned custom voices), and the one saved.
-            let drawn = config.geminiVoiceOptions().map(\.value)
-            guard let picked, drawn.contains(picked), picked != config.effectiveGeminiVoice else { return false }
-            config.effectiveGeminiVoice = picked
+            guard let picked else { return false }
+            return try applySetting(.geminiVoice, picked)
         case Pages.Block.speakHome?:
             guard let isOn = event.isOn else { return false }
-            config.effectiveSpeakHome = isOn
+            _ = try applySetting(.speakHome, String(isOn))
         case Pages.Block.homeCastVoice?:
             guard let isOn = event.isOn else { return false }
-            config.effectiveHomeCastVoice = isOn
+            _ = try applySetting(.homeCastVoice, String(isOn))
         case Pages.Block.speakLocal?:
             guard let isOn = event.isOn else { return false }
-            config.effectiveSpeakLocal = isOn
+            _ = try applySetting(.speakLocal, String(isOn))
         case Pages.Block.speakPhone?:
             guard let isOn = event.isOn else { return false }
-            config.effectiveSpeakPhone = isOn
+            _ = try applySetting(.speakPhone, String(isOn))
         case Pages.Block.phonePauseMedia?:
             guard let isOn = event.isOn else { return false }
-            config.effectivePhonePauseMedia = isOn
+            _ = try applySetting(.phonePauseMedia, String(isOn))
         case Pages.Block.phoneHeadphonesOnly?:
             guard let isOn = event.isOn else { return false }
-            config.effectivePhoneHeadphonesOnly = isOn
+            _ = try applySetting(.phoneHeadphonesOnly, String(isOn))
         case Pages.Block.announceVolume?:
             guard let isOn = event.isOn else { return false }
-            config.effectiveAnnounceVolumeEnabled = isOn
+            _ = try applySetting(.announceVolumeEnabled, String(isOn))
         case Pages.Block.announceLevel?:
             guard let text = event.text else { return false }
-            guard let level = Int(text.trimmingCharacters(in: .whitespaces)), (0...100).contains(level) else {
-                throw CommandRefused(Invalid.announceLevel)
-            }
-            config.effectiveAnnounceVolume = level
+            _ = try applySetting(.announceVolume, text)
         case Pages.Block.pauseMedia?:
             guard let isOn = event.isOn else { return false }
-            config.effectivePauseMedia = isOn
+            _ = try applySetting(.pauseMedia, String(isOn))
         case Pages.Block.pauseExtra?:
             guard let text = event.text else { return false }
-            guard let seconds = Double(text.trimmingCharacters(in: .whitespaces)), seconds.isFinite, (0...10).contains(seconds) else {
-                throw CommandRefused(Invalid.pauseExtra)
-            }
-            config.effectivePauseMediaExtraSeconds = seconds.rounded()
+            _ = try applySetting(.pauseMediaExtraSeconds, text)
         case Pages.Block.quiet?:
             guard let isOn = event.isOn else { return false }
-            config.quietHoursEnabled = isOn
+            _ = try applySetting(.quietHoursEnabled, String(isOn))
         case Pages.Block.quietStart?, Pages.Block.quietEnd?:
             guard let text = event.text else { return false }
-            guard let hour = SpeakerConfig.quietHour(text) else { throw CommandRefused(Invalid.quietHour) }
-            if event.block == Pages.Block.quietStart {
-                config.quietHoursStart = hour
-            } else {
-                config.quietHoursEnd = hour
-            }
+            let key: SettingsCatalog.Key = event.block == Pages.Block.quietStart ? .quietHoursStart : .quietHoursEnd
+            _ = try applySetting(key, text)
         case Pages.Block.targets?:
             guard let key = Pages.Block.rowValue(event.row, among: config.targets.keys) else { return false }
             let before = config.defaultTarget
             if removingSpeakers {
-                config.removeTarget(key)
+                _ = SettingsActions.removeSpeaker(key, from: &config)
                 if config.targets.isEmpty { removingSpeakers = false }
             } else {
-                guard before != key else { return false }
-                config.defaultTarget = key
+                guard try applySetting(.defaultTarget, key) else { return false }
             }
             // The island's reading was the old default's.
             if config.defaultTarget != before { speakerChanged() }
         case Pages.Block.speakers?:
             guard let id = event.text ?? event.row ?? picked, !id.isEmpty else { return false }
-            guard let key = Pages.Block.rowValue(id, among: config.targets.keys), key != config.defaultTarget else { return false }
-            config.defaultTarget = key
+            guard let key = Pages.Block.rowValue(id, among: config.targets.keys),
+                  try applySetting(.defaultTarget, key) else { return false }
             speakerChanged()
             readVolumeSoon()
         case Pages.Block.voice?:
             // One of the voices drawn: those installed, and the one saved.
             let drawn = (voices ?? parts.voices()).map(\.id) + [config.effectiveLocalVoice]
             guard let voice = Pages.Block.rowValue(picked, among: drawn), !voice.isEmpty else { return false }
-            config.effectiveLocalVoice = voice
+            _ = try applySetting(.localVoice, voice)
         // Chats: the app follows the file and starts, stops or
         // restarts its monitor to match (ChatMonitorReconciliation).
         case Pages.Block.slackEnabled?:
             guard let isOn = event.isOn else { return false }
-            config.effectiveChatMonitor.slackEnabled = isOn
+            _ = try applySetting(.slackEnabled, String(isOn))
         case Pages.Block.googleChatEnabled?:
             guard let isOn = event.isOn else { return false }
-            config.effectiveChatMonitor.googleChatEnabled = isOn
+            _ = try applySetting(.googleChatEnabled, String(isOn))
         case Pages.Block.chatSource?:
-            guard let picked, let source = ChatMonitorConfig.GoogleChatSource(rawValue: picked) else { return false }
-            config.effectiveChatMonitor.googleChatSource = source
+            guard let picked, ChatMonitorConfig.GoogleChatSource(rawValue: picked) != nil else { return false }
+            _ = try applySetting(.googleChatSource, picked)
         case Pages.Block.gwsAccount?:
             guard let text = event.text else { return false }
-            config.effectiveChatMonitor.gwsAccount = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            _ = try applySetting(.gwsAccount, text)
         case Pages.Block.beeperEnabled?:
             guard let isOn = event.isOn else { return false }
-            config.effectiveChatMonitor.beeperEnabled = isOn
+            _ = try applySetting(.beeperEnabled, String(isOn))
         case Pages.Block.beeperAnnounce?:
-            guard let picked, let mode = ChatMonitorConfig.BeeperAnnounce(rawValue: picked) else { return false }
-            config.effectiveChatMonitor.beeperAnnounce = mode
+            guard let picked, ChatMonitorConfig.BeeperAnnounce(rawValue: picked) != nil else { return false }
+            _ = try applySetting(.beeperAnnounce, picked)
+        case Pages.Block.beeperAddress?:
+            guard let text = event.text else { return false }
+            _ = try applySetting(.beeperAddress, text)
         case Pages.Block.courierEnabled?:
             // Off until a token is saved, as in HomeSpeaker's own Settings,
             // where the switch is greyed: an app may ignore `enabled`.
             guard let isOn = event.isOn else { return false }
-            guard isOn != config.effectiveChatMonitor.courierEnabled else { return false }
-            if isOn && !parts.chat.hasCourierToken { throw CommandRefused(Pages.courierTokenFirst) }
-            config.effectiveChatMonitor.courierEnabled = isOn
+            return try applySetting(.courierEnabled, String(isOn))
         case Pages.Block.courierAnnounce?:
-            guard let picked, let mode = ChatMonitorConfig.BeeperAnnounce(rawValue: picked) else { return false }
-            config.effectiveChatMonitor.courierAnnounce = mode
+            guard let picked, ChatMonitorConfig.BeeperAnnounce(rawValue: picked) != nil else { return false }
+            _ = try applySetting(.courierAnnounce, picked)
+        case Pages.Block.courierAddress?:
+            guard let text = event.text else { return false }
+            _ = try applySetting(.courierAddress, text)
         case Pages.Block.claudeCodeEnabled?, Pages.Block.antigravityEnabled?, Pages.Block.opencodeEnabled?:
             guard let isOn = event.isOn, let id = event.block, let agent = Pages.Block.agentEnabledAgent(id) else { return false }
-            config.setAnnounces(agent, isOn)
+            _ = try applySetting(SettingsCatalog.Key.forAgent(agent), String(isOn))
         case Pages.Block.muteOwnMessages?:
             guard let isOn = event.isOn else { return false }
-            config.effectiveChatMonitor.muteOwnMessages = isOn
+            _ = try applySetting(.muteOwnMessages, String(isOn))
         case let id? where Pages.Block.networkKey(id) != nil:
             // Off mutes the network, on reads it again. Read at the
             // monitor's next poll, without a restart. A switch already
@@ -1136,11 +1177,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             return saveDrawnNetworkChips(.beeper, values)
         case Pages.Block.pollInterval?:
             guard let text = event.text else { return false }
-            guard let seconds = Int(text.trimmingCharacters(in: .whitespaces)),
-                  (ChatMonitorConfig.minPollInterval...ChatMonitorConfig.maxPollInterval).contains(seconds) else {
-                throw CommandRefused(Invalid.pollInterval)
-            }
-            config.effectiveChatMonitor.pollIntervalSeconds = seconds
+            _ = try applySetting(.pollIntervalSeconds, text)
         default:
             return false
         }
@@ -1367,162 +1404,96 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// False for any other block. What goes wrong is said on the card.
     private func doorEvent(_ event: PanelEvent) -> Bool {
         guard let id = event.block, id.hasPrefix(Pages.Block.doorPrefix) else { return false }
-        do {
-            switch id {
-            case Pages.Block.doorUseExtension: try compare(choosing: .extension)
-            case Pages.Block.doorUseApp: try compare(choosing: .app)
-            case Pages.Block.doorBack:
-                // Nothing is committed before Copy or Keep.
-                if case .compare? = doorStep { doorStep = nil }
-            case Pages.Block.doorQuitAgain: quitAgain()
-            case Pages.Block.doorUseThis: try compare(choosing: me)
-            case Pages.Block.doorSwitch:
-                guard let inUse = doorState().inUse else { return true }
-                try compare(choosing: Self.other(of: inUse))
-            case Pages.Block.doorCopyAgain:
-                guard let inUse = doorState().inUse else { return true }
-                try compare(from: Self.other(of: inUse), into: inUse, purpose: .copyOnly)
-            case Pages.Block.doorCopy: finishCompare(copy: true)
-            case Pages.Block.doorKeep: finishCompare(copy: false)
-            case Pages.Block.doorLoginItem, Pages.Block.doorTrash:
-                guard case .offers(var offers) = doorStep, !offers.working, let isOn = event.isOn else { return true }
-                if id == Pages.Block.doorTrash {
-                    offers.trash = isOn
-                } else if offers.loginItemOptional {
-                    offers.loginItem = isOn
-                }
-                doorStep = .offers(offers)
-            case Pages.Block.doorDone: closeOffers()
-            default: break
+        switch id {
+        case Pages.Block.doorUseExtension: compare(choosing: .extension)
+        case Pages.Block.doorUseApp: compare(choosing: .app)
+        case Pages.Block.doorBack:
+            // Nothing is committed before Copy or Keep.
+            if case .compare? = doorStep { doorStep = nil }
+        case Pages.Block.doorQuitAgain: quitAgain()
+        case Pages.Block.doorUseThis: compare(choosing: me)
+        case Pages.Block.doorSwitch:
+            guard let inUse = doorState().inUse else { return true }
+            compare(choosing: Self.other(of: inUse))
+        case Pages.Block.doorCopyAgain:
+            guard let inUse = doorState().inUse else { return true }
+            compare(from: Self.other(of: inUse), into: inUse, purpose: .copyOnly)
+        case Pages.Block.doorCopy: finishCompare(copy: true)
+        case Pages.Block.doorKeep: finishCompare(copy: false)
+        case Pages.Block.doorLoginItem, Pages.Block.doorTrash:
+            guard case .offers(var offers) = doorStep, !offers.working, let isOn = event.isOn else { return true }
+            if id == Pages.Block.doorTrash {
+                offers.trash = isOn
+            } else if offers.loginItemOptional {
+                offers.loginItem = isOn
             }
-        } catch {
-            doorReport = [Self.words(error)]
+            doorStep = .offers(offers)
+        case Pages.Block.doorDone: closeOffers()
+        default: break
         }
         return true
     }
 
-    private func profile(_ door: HomeSpeakerProfile.Door) throws -> HomeSpeakerProfile {
-        guard let profile = door == me ? parts.profile : parts.appProfile else {
-            throw CommandRefused("the \(door.rawValue)'s files are not known here, so nothing can be compared")
-        }
-        return profile
+    private var switchSeam: ExtensionSwitchSeam {
+        ExtensionSwitchSeam(tool: self)
     }
 
     /// Step 2 for choosing `door`: what the other one has, beside it.
-    private func compare(choosing door: HomeSpeakerProfile.Door) throws {
-        try compare(from: Self.other(of: door), into: door, purpose: .choose)
+    private func compare(choosing door: HomeSpeakerProfile.Door) {
+        compare(from: Self.other(of: door), into: door, purpose: .choose)
     }
 
     private func compare(from: HomeSpeakerProfile.Door, into: HomeSpeakerProfile.Door,
-                         purpose: Pages.DoorCompare.Purpose) throws {
-        // The app is offered only while it is installed, and picked only
-        // while its program can be found: the hook must have it to run.
-        if purpose == .choose, into != me {
-            guard parts.otherInstalled() else { return }
-            guard appProgramNow() != nil else { throw CommandRefused(Pages.DoorWords.appNotFound) }
-        }
-        let source = try profile(from)
-        let destination = try profile(into)
-        let record = parts.door?.read()
-        doorReport = []
-        doorStep = .compare(Pages.DoorCompare(
-            purpose: purpose, from: from, into: into,
-            source: DoorSnapshot(profile: source), destination: DoorSnapshot(profile: destination),
-            seenChoice: record?.chosen, seenChosenAt: record?.chosenAt))
-    }
-
-    /// Copy or Keep, then, when choosing, the rest in order (design 7.6):
-    /// the copy reads the other side while it still writes its files; the
-    /// choice is written; the hooks follow it; then the app is closed.
-    private func finishCompare(copy: Bool) {
-        guard case .compare(var compare) = doorStep else { return }
-        // A choice made elsewhere since this step began (in the app, say)
-        // is never overridden: the step goes, and the page shows what is.
-        if choiceChanged(since: compare) {
-            doorStep = nil
-            doorReport = [Pages.DoorWords.choiceChanged]
-            refreshRole()
-            return
-        }
-        // The hook must have the app's program to run: without it, nothing
-        // is copied or chosen.
-        var appProgram: URL?
-        if compare.purpose == .choose, compare.into != me {
-            appProgram = appProgramNow()
-            if appProgram == nil {
-                compare.problem = Pages.DoorWords.appNotFound
-                doorStep = .compare(compare)
-                return
-            }
-        }
+                         purpose: Pages.DoorCompare.Purpose) {
         do {
-            let source = try profile(compare.from)
-            let destination = try profile(compare.into)
+            guard let compare = try SettingsActions.beginSwitch(
+                from: from,
+                into: into,
+                purpose: purpose,
+                seam: switchSeam
+            ) else { return }
             doorReport = []
-            compare.problem = nil
-            if copy {
-                do {
-                    doorReport = try parts.copy(source, destination).lines
-                } catch let partial as DoorCopyPartial {
-                    // Stopped part-way: say what came across and what did
-                    // not, and tell the destination if its sign-ins changed.
-                    if partial.signInsWritten { parts.credentialsChangedIn(destination) }
-                    doorReport = partial.copied + partial.notCopied
-                    doorStep = .compare(compare)
-                    return
-                }
-                // The side that took the copy re-reads its sign-ins.
-                parts.credentialsChangedIn(destination)
-            }
-            if compare.purpose == .choose { try choose(compare.into) }
-        } catch {
-            compare.problem = Self.words(error)
             doorStep = .compare(compare)
-            return
-        }
-        guard compare.purpose == .choose else {
-            doorStep = nil
-            return
-        }
-        doorReport += repointHooks(at: compare.into, program: compare.into == me ? parts.driver.program : appProgram)
-        if compare.into == me {
-            closeTheOther()
-        } else if let other = parts.other, !other.isRunning {
-            openTheOther(other)
-        } else {
-            doorStep = nil
-        }
-        refreshRole()
-    }
-
-    /// Writes the person's choice into the choice file, under its lock.
-    private func choose(_ door: HomeSpeakerProfile.Door) throws {
-        guard let file = parts.door else { throw CommandRefused("the choice file is not available, so nothing was chosen") }
-        let now = parts.now()
-        try file.update {
-            $0.chosen = door
-            $0.chosenAt = now
-            $0.chosenBy = "HomeSpeaker extension \(ToolVersion.current)"
+        } catch let refused as SettingsActions.SwitchRefused {
+            doorReport = [refused.message]
+        } catch {
+            doorReport = [Self.words(error)]
         }
     }
 
-    /// Points every agent's HomeSpeaker hook at the chosen side's program
-    /// (design 7.6): otherwise each reply would go to a program that stands
-    /// aside, or one in the Trash. An agent with no HomeSpeaker hook gets
-    /// none. What could not be done, a sentence each.
-    private func repointHooks(at door: HomeSpeakerProfile.Door, program: URL?) -> [String] {
-        guard let program else { return [] }
-        let integration = AgentIntegration(home: parts.home, executablePath: program.path, bootout: parts.launchctlBootout)
-        var problems: [String] = []
-        for agent in CodingAgent.allCases where agent.supportsHook {
-            guard case .stale = integration.status(of: agent).hook else { continue }
-            do {
-                try integration.installHook(for: agent)
-            } catch {
-                problems.append(Self.words(error))
+    /// Copy or Keep, then, when choosing, the rest in order (design 7.6),
+    /// forwarded to `SettingsActions.finishSwitch`.
+    private func finishCompare(copy: Bool) {
+        guard case .compare(let compare) = doorStep else { return }
+        switch SettingsActions.finishSwitch(compare: compare, copy: copy, seam: switchSeam) {
+        case .choiceChanged(let lines):
+            doorStep = nil
+            doorReport = lines
+            refreshRole()
+        case .abortedInTrash:
+            doorStep = nil
+        case .stayOnCompare(var updatedCompare, let lines):
+            if let problem = updatedCompare.problem {
+                updatedCompare.problem = problem.capitalizingFirst
             }
+            doorReport = lines
+            doorStep = .compare(updatedCompare)
+        case .copiedOnly(let lines):
+            doorReport = lines
+            doorStep = nil
+        case .appChosen(let lines):
+            doorReport = lines
+            if let other = parts.other, !other.isRunning {
+                openTheOther(other)
+            } else {
+                doorStep = nil
+            }
+            refreshRole()
+        case .extensionChosen(_, let lines):
+            doorReport = lines
+            closeTheOther()
+            refreshRole()
         }
-        return problems
     }
 
     /// Asks the app to quit, and waits for it, off the kit's thread; then
@@ -1609,23 +1580,13 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         let (loginItem, trash) = (offers.loginItem, offers.trash)
         let later = parts.later
         Task.detached { [weak self] in
-            var lines: [String] = []
-            if loginItem {
-                switch await other.turnOffLoginItem() {
-                case .success: lines.append(Pages.DoorWords.loginItemOff)
-                case .failure(let problem): lines.append(problem.sentence)
-                }
-            }
-            if trash {
-                do {
-                    _ = try other.moveToTrash()
-                    lines.append(Pages.DoorWords.inTheTrash)
-                } catch {
-                    lines.append(error.localizedDescription)
-                }
-            }
-            let said = lines
-            later { [weak self] in self?.offersDone(said) }
+            let loginResult: Result<Void, OtherAppProblem>? = loginItem ? await other.turnOffLoginItem() : nil
+            let offerSeam = ExtensionOfferSeam(other: other, loginResult: loginResult)
+            let result = SettingsActions.applySwitchOffers(
+                AppSwitch.Offers(loginItem: loginItem, trash: trash),
+                seam: offerSeam
+            )
+            later { [weak self] in self?.offersDone(result.report) }
         }
     }
 
@@ -1634,6 +1595,124 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         doorReport += lines
         refreshRole()
         refreshOpenPanels()
+    }
+
+    private struct ExtensionSwitchSeam: SettingsActions.DoorSwitchSeam {
+        unowned let tool: HomeSpeakerTool
+
+        var me: HomeSpeakerProfile.Door { tool.me }
+        var chosenBy: String { "HomeSpeaker extension \(ToolVersion.current)" }
+
+        func now() -> Date { tool.parts.now() }
+
+        func inTrash() -> Bool { false }
+
+        func readDoor() -> DoorRecord? { tool.parts.door?.read() }
+
+        func otherInstalled(record: DoorRecord?) -> Bool {
+            tool.parts.otherInstalled()
+        }
+
+        func profile(for side: HomeSpeakerProfile.Door, record: DoorRecord?) -> HomeSpeakerProfile? {
+            side == tool.me ? tool.parts.profile : tool.parts.appProfile
+        }
+
+        func program(for side: HomeSpeakerProfile.Door, record: DoorRecord?) -> String? {
+            switch side {
+            case .extension:
+                return tool.parts.driver.program?.path
+            case .app:
+                return tool.appProgramNow()?.path
+            }
+        }
+
+        func copy(from source: HomeSpeakerProfile, to destination: HomeSpeakerProfile) throws -> CopyReport {
+            try tool.parts.copy(source, destination)
+        }
+
+        func credentialsChanged(in destination: HomeSpeakerProfile) {
+            tool.parts.credentialsChangedIn(destination)
+        }
+
+        func writeChoice(_ side: HomeSpeakerProfile.Door, at date: Date, chosenBy: String) throws {
+            guard let file = tool.parts.door else {
+                throw CommandRefused("the choice file is not available, so nothing was chosen")
+            }
+            try file.update {
+                $0.chosen = side
+                $0.chosenAt = date
+                $0.chosenBy = chosenBy
+            }
+        }
+
+        func repointHooks(to side: HomeSpeakerProfile.Door, program: String) -> [String] {
+            SettingsActions.repointStaleHooks(
+                home: tool.parts.home,
+                to: program,
+                bootout: tool.parts.launchctlBootout
+            )
+        }
+
+        func refreshRole() {
+            // Deferred to `finishCompare` after `doorStep` and `doorReport` are settled.
+        }
+
+        func quitOther() -> Bool {
+            // Deferred to `finishCompare` (`closeTheOther()`) after `doorReport` is settled.
+            true
+        }
+
+        func isOtherRunning() -> Bool {
+            tool.parts.other?.isRunning ?? true
+        }
+
+        func openOtherAndEnableLoginItem() -> [String] {
+            // Deferred to `finishCompare` (`openTheOther(_:)`) after `doorReport` is settled.
+            []
+        }
+
+        func turnOffLoginItem() throws {}
+        func moveToTrash() throws {}
+        func quitSelf() {}
+        func openVitruvian() -> Bool { false }
+    }
+
+    private struct ExtensionOfferSeam: SettingsActions.DoorSwitchSeam {
+        let other: any OtherAppControlling
+        let loginResult: Result<Void, OtherAppProblem>?
+
+        var me: HomeSpeakerProfile.Door { .extension }
+        var chosenBy: String { "" }
+
+        func now() -> Date { Date() }
+        func inTrash() -> Bool { false }
+        func readDoor() -> DoorRecord? { nil }
+        func otherInstalled(record: DoorRecord?) -> Bool { false }
+        func profile(for side: HomeSpeakerProfile.Door, record: DoorRecord?) -> HomeSpeakerProfile? { nil }
+        func program(for side: HomeSpeakerProfile.Door, record: DoorRecord?) -> String? { nil }
+        func copy(from source: HomeSpeakerProfile, to destination: HomeSpeakerProfile) throws -> CopyReport {
+            try DoorCopy.copy(from: source, to: destination)
+        }
+        func credentialsChanged(in destination: HomeSpeakerProfile) {}
+        func writeChoice(_ side: HomeSpeakerProfile.Door, at date: Date, chosenBy: String) throws {}
+        func repointHooks(to side: HomeSpeakerProfile.Door, program: String) -> [String] { [] }
+        func refreshRole() {}
+        func quitOther() -> Bool { false }
+        func isOtherRunning() -> Bool { false }
+        func openOtherAndEnableLoginItem() -> [String] { [] }
+
+        func turnOffLoginItem() throws {
+            if case .failure(let problem)? = loginResult {
+                throw problem
+            }
+        }
+
+        func moveToTrash() throws {
+            _ = try other.moveToTrash()
+        }
+
+        func quitSelf() {}
+        func openVitruvian() -> Bool { false }
     }
 
     // MARK: - HomeSpeaker's program
@@ -2005,7 +2084,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             courierTokenAsked = false
             reload()
             if config.effectiveChatMonitor.courierEnabled {
-                config.effectiveChatMonitor.courierEnabled = false
+                _ = try SettingsActions.applySet(key: .courierEnabled, value: "false", to: &config)
                 try save()
             }
         } else {
@@ -2029,11 +2108,6 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             setupNotice = "Gemini API key saved"
             draftGeminiKey = ""
         }
-    }
-
-    /// A poll interval the chat monitor accepts.
-    public static func clampedPollInterval(_ seconds: Int) -> Int {
-        min(max(seconds, ChatMonitorConfig.minPollInterval), ChatMonitorConfig.maxPollInterval)
     }
 
     /// Speaks the preview on this Mac, in the tool's own process: it needs

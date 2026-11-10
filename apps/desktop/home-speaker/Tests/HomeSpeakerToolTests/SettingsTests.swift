@@ -477,7 +477,7 @@ final class SettingsTests: XCTestCase {
         let tool = opened()
         var tree = tool.settingsPage()
         guard case .field(let extra)? = content(tree, Pages.Block.pauseExtra) else { return XCTFail("no field") }
-        XCTAssertEqual(extra.title?.text(for: "en"), "Resume after (0 to 10 s)")
+        XCTAssertEqual(extra.title?.text(for: "en"), "Resume after")
         XCTAssertEqual(extra.value, "1", "one second unless chosen")
         XCTAssertEqual(extra.kind, .number)
         XCTAssertTrue(texts(tree).contains { $0.contains("for 3 seconds") })

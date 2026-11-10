@@ -1,0 +1,59 @@
+{
+  "suite": "oauth_client_override",
+  "cases": [
+    {
+      "name": "save_id_and_secret_trims_whitespace",
+      "initial_id": null,
+      "initial_secret": null,
+      "input_id": "  my-client.apps.googleusercontent.com  ",
+      "input_secret": "  GOCSPX-secret  ",
+      "expected_id": "my-client.apps.googleusercontent.com",
+      "expected_secret": "GOCSPX-secret"
+    },
+    {
+      "name": "blank_secret_with_unchanged_id_keeps_stored_secret",
+      "initial_id": "my-client.apps.googleusercontent.com",
+      "initial_secret": "GOCSPX-secret",
+      "input_id": "my-client.apps.googleusercontent.com",
+      "input_secret": "   ",
+      "expected_id": "my-client.apps.googleusercontent.com",
+      "expected_secret": "GOCSPX-secret"
+    },
+    {
+      "name": "blank_secret_with_changed_id_clears_stored_secret",
+      "initial_id": "old-client.apps.googleusercontent.com",
+      "initial_secret": "GOCSPX-old",
+      "input_id": "new-client.apps.googleusercontent.com",
+      "input_secret": "",
+      "expected_id": "new-client.apps.googleusercontent.com",
+      "expected_secret": null
+    },
+    {
+      "name": "new_secret_with_unchanged_id_replaces_stored_secret",
+      "initial_id": "my-client.apps.googleusercontent.com",
+      "initial_secret": "GOCSPX-old",
+      "input_id": "my-client.apps.googleusercontent.com",
+      "input_secret": "GOCSPX-new",
+      "expected_id": "my-client.apps.googleusercontent.com",
+      "expected_secret": "GOCSPX-new"
+    },
+    {
+      "name": "blank_id_clears_both_id_and_secret",
+      "initial_id": "my-client.apps.googleusercontent.com",
+      "initial_secret": "GOCSPX-old",
+      "input_id": "   ",
+      "input_secret": "GOCSPX-ignored",
+      "expected_id": null,
+      "expected_secret": null
+    },
+    {
+      "name": "whitespace_padded_unchanged_id_with_empty_secret_keeps_stored_secret",
+      "initial_id": "my-client.apps.googleusercontent.com",
+      "initial_secret": "GOCSPX-secret",
+      "input_id": "  my-client.apps.googleusercontent.com  ",
+      "input_secret": "",
+      "expected_id": "my-client.apps.googleusercontent.com",
+      "expected_secret": "GOCSPX-secret"
+    }
+  ]
+}

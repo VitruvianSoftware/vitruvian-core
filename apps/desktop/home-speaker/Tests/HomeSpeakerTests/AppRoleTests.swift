@@ -779,6 +779,81 @@ private final class AppRig {
         #expect(side.step == nil)
     }
 
+    @Test func choosingTheExtensionWhenItsProgramIsGoneSaysSo() throws {
+        let rig = try AppRig()
+        try rig.installExtension(chosen: nil)
+        let door = rig.makeDoor()
+        door.refresh()
+        let side = rig.makeSwitch(door)
+        #expect(side.canChooseExtension)
+
+        try FileManager.default.removeItem(at: rig.extensionProgram)
+        side.choose(.extension)
+        #expect(side.step == nil)
+        #expect(side.report == [DoorWords.extensionNotFound])
+
+        // Found when step 2 began, gone by Keep: nothing changes and step 2 shows the problem.
+        try Data().write(to: rig.extensionProgram)
+        side.choose(.extension)
+        #expect(side.step != nil)
+        try FileManager.default.removeItem(at: rig.extensionProgram)
+        side.finish(copy: false)
+        guard case .compare(let compare)? = side.step else {
+            Issue.record("expected compare step with problem")
+            return
+        }
+        #expect(compare.problem == DoorWords.extensionNotFound)
+        #expect(rig.door.read()?.chosen == nil)
+    }
+
+    @Test func removedExtensionWithRecordLeftStopsCopyOnlyAndChooseApp() throws {
+        let rig = try AppRig()
+        try rig.installExtension(chosen: nil)
+        let door = rig.makeDoor()
+        door.refresh()
+        let side = rig.makeSwitch(door)
+
+        // Choose-app started while present, then extension files removed before Copy & Use.
+        side.choose(.app)
+        #expect(side.step != nil)
+        try FileManager.default.removeItem(at: rig.extensionProgram)
+        side.finish(copy: true)
+        guard case .compare(let chooseCompare)? = side.step else {
+            Issue.record("expected choose-app compare step with extensionNotFound problem")
+            return
+        }
+        #expect(chooseCompare.problem == DoorWords.extensionNotFound)
+        #expect(rig.door.read()?.chosen == nil)
+        #expect(!rig.calls.contains { $0.hasPrefix("copy") })
+
+        // Copy-only started while present, then extension files removed before Copy.
+        try Data().write(to: rig.extensionProgram)
+        try rig.choose(.app)
+        door.refresh()
+        side.back()
+        side.copyAgain()
+        #expect(side.step != nil)
+        try FileManager.default.removeItem(at: rig.extensionProgram)
+        side.finish(copy: true)
+        guard case .compare(let copyCompare)? = side.step else {
+            Issue.record("expected copy-only compare step with extensionNotFound problem")
+            return
+        }
+        #expect(copyCompare.problem == DoorWords.extensionNotFound)
+        #expect(!rig.calls.contains { $0.hasPrefix("copy") })
+
+        // Starting copy-only or choose-app when extension files are already gone also stops with extensionNotFound.
+        side.back()
+        side.copyAgain()
+        #expect(side.step == nil)
+        #expect(side.report == [DoorWords.extensionNotFound])
+        try rig.door.update { $0.chosen = nil }
+        side.choose(.app)
+        #expect(side.step == nil)
+        #expect(side.report == [DoorWords.extensionNotFound])
+        #expect(!rig.calls.contains { $0.hasPrefix("copy") })
+    }
+
     // MARK: - Odds and ends
 
     @Test func aChangeInTheFolderReachesTheRole() throws {

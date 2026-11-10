@@ -655,8 +655,17 @@ fn end_to_end(
         }
         said.push("settings: a stale section event kept".into());
 
+        let quiet_on = app
+            .act(
+                "settings",
+                "quiet",
+                "toggle",
+                Some(CValue::Bool(true)),
+                false,
+            )?
+            .ok_or_else(|| E2EFailure("quiet toggle returned keep".into()))?;
         for block_id in &["quietStart", "quietEnd"] {
-            let drawn = block(&page, block_id);
+            let drawn = block(&quiet_on, block_id);
             if drawn.is_none()
                 || drawn.and_then(|b| b.get("type").and_then(|t| t.as_str())) != Some("choice")
             {
@@ -667,13 +676,6 @@ fn end_to_end(
                 );
             }
         }
-        app.act(
-            "settings",
-            "quiet",
-            "toggle",
-            Some(CValue::Bool(true)),
-            false,
-        )?;
         app.act("settings", "quietStart", "change", Some(s("23:00")), false)?;
         app.act("settings", "quietEnd", "change", Some(s("23:30")), false)?;
         app.act(

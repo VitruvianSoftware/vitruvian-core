@@ -25,14 +25,7 @@ import Foundation
 /// copies or keeps; then the choice is written, the hooks follow it, and
 /// the side not chosen goes quiet.
 ///
-/// - Choosing the app: the extension goes quiet by itself (it reads the
-///   choice file), so the app says how to remove it, with Open Vitruvian.
-/// - Choosing the extension: the app goes quiet at once, then offers to
-///   turn its own Open at Login off (ticked) and to move itself to the
-///   Trash (not ticked), and quits. It cannot start the extension, so it
-///   offers Open Vitruvian too.
-///
-/// Every effect outside the files is handed in, so a test records it.
+/// Forwards every step to the unified switch path in `SettingsActions`.
 @MainActor
 public final class AppSwitch: ObservableObject {
     public enum Step: Equatable {
@@ -45,12 +38,15 @@ public final class AppSwitch: ObservableObject {
     }
 
     /// After choosing the extension: what happens on Done.
-    public struct Offers: Equatable {
+    public struct Offers: Equatable, Sendable {
         /// Turn off the app's Open at Login. Ticked by default.
         public var loginItem = true
         /// Move HomeSpeaker.app to the Trash. Not ticked by default.
         public var trash = false
-        public init() {}
+        public init(loginItem: Bool = true, trash: Bool = false) {
+            self.loginItem = loginItem
+            self.trash = trash
+        }
     }
 
     public struct Parts {
@@ -120,6 +116,10 @@ public final class AppSwitch: ObservableObject {
         side == .app ? .extension : .app
     }
 
+    private var seam: SeamAdapter {
+        SeamAdapter(door: door, parts: parts)
+    }
+
     /// Step 2 for choosing `side`: what the other one has, beside it.
     public func choose(_ side: HomeSpeakerProfile.Door) {
         begin(from: Self.other(of: side), into: side, purpose: .choose)
@@ -133,17 +133,23 @@ public final class AppSwitch: ObservableObject {
 
     private func begin(from: HomeSpeakerProfile.Door, into: HomeSpeakerProfile.Door, purpose: DoorCompare.Purpose) {
         guard !door.plan.inTrash, canChooseExtension else { return }
-        let record = door.check.file.read()
-        guard let source = profile(from, record: record), let destination = profile(into, record: record) else { return }
-        report = []
-        step = .compare(DoorCompare(
-            purpose: purpose, from: from, into: into,
-            source: DoorSnapshot(profile: source), destination: DoorSnapshot(profile: destination),
-            seenChoice: record?.chosen, seenChosenAt: record?.chosenAt))
-    }
-
-    private func profile(_ side: HomeSpeakerProfile.Door, record: DoorRecord?) -> HomeSpeakerProfile? {
-        side == .app ? parts.appProfile : AppStartup.extensionProfile(record: record)
+        do {
+            guard let compare = try SettingsActions.beginSwitch(
+                from: from,
+                into: into,
+                purpose: purpose,
+                seam: seam
+            ) else {
+                report = [DoorWords.extensionNotFound]
+                return
+            }
+            report = []
+            step = .compare(compare)
+        } catch let refused as SettingsActions.SwitchRefused {
+            report = [refused.message]
+        } catch {
+            report = [error.localizedDescription]
+        }
     }
 
     /// Back: nothing is committed before Copy or Keep.
@@ -151,96 +157,29 @@ public final class AppSwitch: ObservableObject {
         if case .compare? = step { step = nil }
     }
 
-    /// Copy or Keep, then, when choosing, the rest in order (design 7.6):
-    /// the copy, the destination told, the choice written, the hooks
-    /// pointed at the chosen program, then this app runs or goes quiet.
+    /// Copy or Keep, then, when choosing, the rest in order (design 7.6),
+    /// forwarded to `SettingsActions.finishSwitch`.
     public func finish(copy: Bool) {
-        guard case .compare(var compare) = step else { return }
-        // A choice made elsewhere since step 2 began (in the extension, say)
-        // is never overridden.
-        let record = door.check.file.read()
-        if record?.chosen != compare.seenChoice || record?.chosenAt != compare.seenChosenAt {
+        guard case .compare(let compare) = step else { return }
+        switch SettingsActions.finishSwitch(compare: compare, copy: copy, seam: seam) {
+        case .choiceChanged(let lines):
             step = nil
-            report = [DoorWords.choiceChanged]
-            door.refresh()
-            return
-        }
-        // An app in the Trash writes nothing; the extension must be there.
-        guard !door.plan.inTrash else {
+            report = lines
+        case .abortedInTrash:
             step = nil
-            return
-        }
-        guard OtherDoorPresence.extensionInstalled(record: record, fileExists: door.check.fileExists),
-              let extensionProfile = AppStartup.extensionProfile(record: record),
-              let extensionProgram = record?.installedExtension?.program else {
-            compare.problem = DoorWords.extensionNotFound
-            step = .compare(compare)
-            return
-        }
-        let source = compare.from == .app ? parts.appProfile : extensionProfile
-        let destination = compare.into == .app ? parts.appProfile : extensionProfile
-        report = []
-        compare.problem = nil
-        if copy {
-            do {
-                report = try parts.copy(source, destination).lines
-            } catch let partial as DoorCopyPartial {
-                // Stopped part-way: say what came across and what did not,
-                // and tell the destination if its sign-ins changed.
-                if partial.signInsWritten { parts.credentialsChangedIn(destination) }
-                report = partial.copied + partial.notCopied
-                step = .compare(compare)
-                return
-            } catch {
-                compare.problem = error.localizedDescription
-                step = .compare(compare)
-                return
-            }
-            parts.credentialsChangedIn(destination)
-        }
-        guard compare.purpose == .choose else {
+        case .stayOnCompare(let updatedCompare, let lines):
+            report = lines
+            step = .compare(updatedCompare)
+        case .copiedOnly(let lines):
+            report = lines
             step = nil
-            return
-        }
-        do {
-            let now = parts.now()
-            try door.check.file.update {
-                $0.chosen = compare.into
-                $0.chosenAt = now
-                $0.chosenBy = "HomeSpeaker app \(HomeSpeakerVersion.current)"
-            }
-        } catch {
-            compare.problem = error.localizedDescription
-            step = .compare(compare)
-            return
-        }
-        if compare.into == .extension {
-            // The hooks go to the extension's program; the app's own repair
-            // (on becoming active) covers the other way round.
-            report += repointHooks(at: extensionProgram)
-            door.refresh()
-            step = .extensionChosen(Offers())
-        } else {
-            door.refresh()
+        case .appChosen(let lines):
+            report = lines
             step = .appChosen
+        case .extensionChosen(let offers, let lines):
+            report = lines
+            step = .extensionChosen(offers)
         }
-    }
-
-    /// Points every agent's HomeSpeaker hook that runs another program at
-    /// `program`. An agent with no HomeSpeaker hook gets none. What could
-    /// not be done, a sentence each.
-    private func repointHooks(at program: String) -> [String] {
-        let integration = AgentIntegration(home: parts.home, executablePath: program, bootout: { _ in })
-        var problems: [String] = []
-        for agent in CodingAgent.allCases where agent.supportsHook {
-            guard case .stale = integration.status(of: agent).hook else { continue }
-            do {
-                try integration.installHook(for: agent)
-            } catch {
-                problems.append(error.localizedDescription)
-            }
-        }
-        return problems
     }
 
     public func setLoginItem(_ on: Bool) {
@@ -263,33 +202,97 @@ public final class AppSwitch: ObservableObject {
             step = nil
             return
         }
-        var lines: [String] = []
-        var failed = false
-        if offers.loginItem {
-            do {
-                try parts.turnOffLoginItem()
-                lines.append(DoorWords.loginItemOff)
-            } catch {
-                failed = true
-                lines.append(error.localizedDescription)
-            }
-        }
-        if offers.trash {
-            do {
-                try parts.moveToTrash()
-                lines.append(DoorWords.inTheTrash)
-            } catch {
-                failed = true
-                lines.append(error.localizedDescription)
-            }
-        }
-        report = lines
-        guard !failed else { return }
-        parts.quit()
+        let result = SettingsActions.applySwitchOffers(offers, seam: seam)
+        report = result.report
     }
 
     /// Opens Vitruvian, where the extension is.
     public func openVitruvian() {
         if !parts.openVitruvian() { report = [DoorWords.couldNotOpenVitruvian] }
+    }
+
+    // MARK: - Seam Adapter
+
+    @MainActor
+    private struct SeamAdapter: @preconcurrency SettingsActions.DoorSwitchSeam {
+        let door: AppDoor
+        let parts: Parts
+
+        var me: HomeSpeakerProfile.Door { .app }
+        var chosenBy: String { "HomeSpeaker app \(HomeSpeakerVersion.current)" }
+
+        func now() -> Date { parts.now() }
+
+        func inTrash() -> Bool { door.plan.inTrash }
+
+        func readDoor() -> DoorRecord? { door.check.file.read() }
+
+        func otherInstalled(record: DoorRecord?) -> Bool {
+            OtherDoorPresence.extensionInstalled(record: record, fileExists: door.check.fileExists)
+        }
+
+        func profile(for side: HomeSpeakerProfile.Door, record: DoorRecord?) -> HomeSpeakerProfile? {
+            side == .app ? parts.appProfile : AppStartup.extensionProfile(record: record)
+        }
+
+        func program(for side: HomeSpeakerProfile.Door, record: DoorRecord?) -> String? {
+            switch side {
+            case .app:
+                // When choosing `.app` from the app, `door.refresh()` runs
+                // `effects.repairHooks` using the app's own executable.
+                return nil
+            case .extension:
+                guard OtherDoorPresence.extensionInstalled(record: record, fileExists: door.check.fileExists) else {
+                    return nil
+                }
+                return record?.installedExtension?.program
+            }
+        }
+
+        func copy(from source: HomeSpeakerProfile, to destination: HomeSpeakerProfile) throws -> CopyReport {
+            try parts.copy(source, destination)
+        }
+
+        func credentialsChanged(in destination: HomeSpeakerProfile) {
+            parts.credentialsChangedIn(destination)
+        }
+
+        func writeChoice(_ side: HomeSpeakerProfile.Door, at date: Date, chosenBy: String) throws {
+            try door.check.file.update {
+                $0.chosen = side
+                $0.chosenAt = date
+                $0.chosenBy = chosenBy
+            }
+        }
+
+        func repointHooks(to side: HomeSpeakerProfile.Door, program: String) -> [String] {
+            SettingsActions.repointStaleHooks(home: parts.home, to: program)
+        }
+
+        func refreshRole() {
+            door.refresh()
+        }
+
+        func quitOther() -> Bool { true }
+
+        func isOtherRunning() -> Bool { true }
+
+        func openOtherAndEnableLoginItem() -> [String] { [] }
+
+        func turnOffLoginItem() throws {
+            try parts.turnOffLoginItem()
+        }
+
+        func moveToTrash() throws {
+            try parts.moveToTrash()
+        }
+
+        func quitSelf() {
+            parts.quit()
+        }
+
+        func openVitruvian() -> Bool {
+            parts.openVitruvian()
+        }
     }
 }

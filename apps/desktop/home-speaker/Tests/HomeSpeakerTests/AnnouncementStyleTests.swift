@@ -133,7 +133,7 @@ private let reply = """
 
     @Test func theLabelsAreTheOnesSettingsShows() {
         #expect(AnnouncementStyle.allCases.map(\.label) == ["As written", "Plain summary", "Status update", "Conversational", "Custom…"])
-        #expect(StyleModel.allCases.map(\.label) == ["Apple (On-device)", "Gemini"])
+        #expect(StyleModel.allCases.map(\.label) == ["Apple (on this Mac)", "Gemini"])
         #expect(LocalVoiceEngine.allCases.map(\.label) == ["Apple (System)", "Gemini TTS"])
         #expect(GeminiVoice.allCases.map(\.rawValue) == ["Kore", "Puck", "Aoede", "Charon", "Zephyr", "Fenrir", "Leda", "Orus", "voice_vaoo7ayczx69", "voice_o1be80ujj8bb"])
         #expect(GeminiVoice.kore.label == "Kore · Warm & clear")
@@ -247,7 +247,11 @@ private let reply = """
         let out = await stylist(gemini: FakeModel(.stall), apple: FakeModel(.stall), timeout: 0.2)
             .style(reply, config: styled(.plain, model: .gemini))
         #expect(out == GoogleHomeClient.cleanForSpeech(reply, length: .summary))
-        #expect(Date().timeIntervalSince(start) < 3)
+        // Each stalled model would take 30 s; giving up at 0.2 s each finishes
+        // far sooner. The bound is loose because a busy CI Mac can delay this
+        // test's start by seconds (it took 4.8 s in a merge-queue run): any
+        // bound well under 30 s still proves the stall was given up on.
+        #expect(Date().timeIntervalSince(start) < 15)
     }
 
     @Test func anAnswerThatCleansToNothingFallsThrough() async {

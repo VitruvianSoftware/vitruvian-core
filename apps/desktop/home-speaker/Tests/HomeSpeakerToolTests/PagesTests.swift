@@ -85,15 +85,15 @@ final class PagesTests: XCTestCase {
               case .choice(let until)? = page.blocks.first(where: { $0.id == "quietEnd" })?.content else {
             return XCTFail("no choices")
         }
-        XCTAssertEqual(from.options.map(\.value), Pages.halfHours)
-        XCTAssertEqual(Pages.halfHours.count, 48)
-        XCTAssertEqual(Pages.halfHours.first, "00:00")
-        XCTAssertEqual(Pages.halfHours[45], "22:30")
-        XCTAssertEqual(Pages.halfHours.last, "23:30")
+        XCTAssertEqual(from.options.map(\.value), SettingsCatalog.halfHours)
+        XCTAssertEqual(SettingsCatalog.halfHours.count, 48)
+        XCTAssertEqual(SettingsCatalog.halfHours.first, "00:00")
+        XCTAssertEqual(SettingsCatalog.halfHours[45], "22:30")
+        XCTAssertEqual(SettingsCatalog.halfHours.last, "23:30")
         XCTAssertEqual(from.value, "22:00")
         XCTAssertEqual(until.value, "07:00")
-        XCTAssertEqual(from.title?.text(for: "en"), "From")
-        XCTAssertEqual(until.title?.text(for: "en"), "Until")
+        XCTAssertEqual(from.title?.text(for: "en"), "Start")
+        XCTAssertEqual(until.title?.text(for: "en"), "End")
 
         // A time typed before, off the half hour, is kept and offered.
         status.config.quietHoursStart = "23:15"
@@ -108,8 +108,14 @@ final class PagesTests: XCTestCase {
         status.offersChoice = false
         page = Pages.settings(status)
         guard case .field(let field)? = page.blocks.first(where: { $0.id == "quietStart" })?.content else { return XCTFail("no field") }
-        XCTAssertEqual(field.title?.text(for: "en"), "From (HH:mm)")
+        XCTAssertEqual(field.title?.text(for: "en"), "Start (HH:mm)")
         XCTAssertEqual(field.value, "23:15")
+
+        // When quiet hours are off, the start and end controls are hidden, as in the app.
+        status.config.quietHoursEnabled = false
+        page = Pages.settings(status)
+        XCTAssertFalse(ids(page).contains("quietStart"))
+        XCTAssertFalse(ids(page).contains("quietEnd"))
     }
 
     func testTheRestoreReportIsTheEngines() {
@@ -197,7 +203,7 @@ final class PagesTests: XCTestCase {
         guard case .choice(let volume)? = page.blocks.first(where: { $0.id == "volume" })?.content else { return XCTFail("no menu") }
         XCTAssertEqual(volume.title?.text(for: "en"), "Volume")
         XCTAssertEqual(volume.value, "40")
-        XCTAssertEqual(volume.options.map(\.value), Pages.volumeSteps.map(String.init))
+        XCTAssertEqual(volume.options.map(\.value), SettingsCatalog.volumeSteps.map(String.init))
         XCTAssertEqual(volume.options.first?.title.text(for: "en"), "0 %")
         XCTAssertEqual(volume.options.count, 11)
         XCTAssertFalse(texts(page).contains("Speaker"), "the menu carries its own title")
@@ -215,7 +221,7 @@ final class PagesTests: XCTestCase {
     func testTheVolumeMenuKeepsALevelBetweenTwoSteps() {
         XCTAssertEqual(Pages.volumeOptions(35).map(\.value), ["0", "10", "20", "30", "35", "40", "50", "60", "70", "80", "90", "100"],
                        "35 is kept, in its place")
-        XCTAssertEqual(Pages.volumeOptions(30).map(\.value), Pages.volumeSteps.map(String.init), "a step is not added twice")
+        XCTAssertEqual(Pages.volumeOptions(30).map(\.value), SettingsCatalog.volumeSteps.map(String.init), "a step is not added twice")
         let unread = Pages.volumeOptions(nil)
         XCTAssertEqual(unread.first?.value, "")
         XCTAssertEqual(unread.first?.title.text(for: "en"), "—")
@@ -373,7 +379,8 @@ final class PagesTests: XCTestCase {
                                  hasBeeperToken: true)
         XCTAssertEqual(ids(Pages.settings(status)), ["section", "startChatMonitor", "slackEnabled", "slackToken", "saveSlackToken", "clearSlackToken", "googleChatEnabled",
                                                     "chatSource", "disconnectChat", "gwsAccount", "beeperEnabled", "beeperAnnounce",
-                                                    "beeperToken", "saveBeeperToken", "clearBeeperToken", "courierEnabled", "courierToken",
+                                                    "beeperToken", "saveBeeperToken", "clearBeeperToken", "beeperAddress",
+                                                    "courierEnabled", "courierToken",
                                                     "saveCourierToken", "muteOwnMessages", "pollInterval"])
         XCTAssertTrue(texts(Pages.settings(status)).contains("Beeper token saved · "))
         XCTAssertTrue(texts(Pages.settings(status)).contains("Slack token saved · "))
@@ -388,9 +395,11 @@ final class PagesTests: XCTestCase {
         status.chat.hasSlackToken = false
         status.config.effectiveChatMonitor.slackEnabled = true
         XCTAssertTrue(texts(Pages.settings(status)).contains("\(ChatMonitorError.slackTokenMissing.localizedDescription) · "))
-        XCTAssertEqual(Pages.chatSourceTitle(.auto), "Automatic")
-        XCTAssertEqual(Pages.chatSourceTitle(.api), "Google API (this app's login)")
-        XCTAssertEqual(Pages.chatSourceTitle(.gws), "gws command-line tool")
+        XCTAssertEqual(SettingsCatalog.googleChatSourceChoices, [
+            SettingsCatalog.Choice(value: "auto", label: "Automatic"),
+            SettingsCatalog.Choice(value: "api", label: "Google API (this app's login)"),
+            SettingsCatalog.Choice(value: "gws", label: "gws command-line tool"),
+        ])
     }
 
     func testEverySetupJobHasABusyLine() {

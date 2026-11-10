@@ -713,7 +713,7 @@ final class ChatSlackTests: XCTestCase {
     func testThePollIntervalTakesOnlyWhatTheMonitorAccepts() {
         let tool = opened()
         XCTAssertEqual(field(tool.settingsPage(), Pages.Block.pollInterval)?.title?.text(for: "en"),
-                       "Poll interval (\(ChatMonitorConfig.minPollInterval) to \(ChatMonitorConfig.maxPollInterval) s)")
+                       "Poll Interval")
         event(tool, Pages.Block.pollInterval, .submit, .string(" 60 "))
         XCTAssertEqual(monitor.pollIntervalSeconds, 60)
         let saves = store.saves
@@ -727,8 +727,8 @@ final class ChatSlackTests: XCTestCase {
         XCTAssertEqual(store.saves, saves, "nothing saved")
         event(tool, Pages.Block.pollInterval, .submit, .string(String(ChatMonitorConfig.maxPollInterval)))
         XCTAssertEqual(monitor.pollIntervalSeconds, ChatMonitorConfig.maxPollInterval)
-        XCTAssertEqual(HomeSpeakerTool.clampedPollInterval(-5), ChatMonitorConfig.minPollInterval)
-        XCTAssertEqual(HomeSpeakerTool.clampedPollInterval(30), 30)
+        XCTAssertEqual(SettingsCatalog.chatPollIntervalLimits.clamp(-5), ChatMonitorConfig.minPollInterval)
+        XCTAssertEqual(SettingsCatalog.chatPollIntervalLimits.clamp(30), 30)
     }
 
     /// A value out of range written by hand shows as the monitor uses it.
@@ -998,7 +998,7 @@ final class ChatSlackTests: XCTestCase {
         XCTAssertEqual(saved.effectiveAnnouncementStyle, .briefing)
         XCTAssertEqual(ids(tree)[at + 2], Pages.Block.styleModel)
         guard case .list(let models)? = content(tree, Pages.Block.styleModel) else { return XCTFail("no model picker") }
-        XCTAssertEqual(models.rows.map { $0.title.text(for: "en") }, ["Apple (On-device)", "Gemini"])
+        XCTAssertEqual(models.rows.map { $0.title.text(for: "en") }, ["Apple (on this Mac)", "Gemini"])
         XCTAssertNil(content(tree, Pages.Block.geminiApiKey), "Apple needs no key")
 
         tree = event(tool, Pages.Block.styleModel, .change, .string("gemini"))

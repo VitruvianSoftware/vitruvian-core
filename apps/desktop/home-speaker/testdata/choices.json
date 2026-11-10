@@ -1,0 +1,219 @@
+{
+  "suite": "choices",
+  "lists": [
+    {
+      "key": "speech_length",
+      "label": "Speak",
+      "kind": "choice",
+      "default_value": "summary",
+      "choices": [
+        {
+          "value": "headline",
+          "label": "Headline (1-2 sentences)",
+          "max_characters": 200,
+          "max_sentences": 2
+        },
+        {
+          "value": "summary",
+          "label": "Summary (about 4 lines)",
+          "max_characters": 600,
+          "max_sentences": null
+        },
+        {
+          "value": "full",
+          "label": "Full reply",
+          "max_characters": 1500,
+          "max_sentences": null
+        }
+      ]
+    },
+    {
+      "key": "announcement_style",
+      "label": "Style",
+      "kind": "choice",
+      "default_value": "verbatim",
+      "choices": [
+        { "value": "verbatim", "label": "As written" },
+        { "value": "plain", "label": "Plain summary" },
+        { "value": "briefing", "label": "Status update" },
+        { "value": "casual", "label": "Conversational" },
+        { "value": "custom", "label": "Custom…" }
+      ]
+    },
+    {
+      "key": "style_model",
+      "label": "Style with",
+      "kind": "choice",
+      "default_value": "apple",
+      "choices": [
+        { "value": "apple", "label": "Apple (on this Mac)" },
+        { "value": "gemini", "label": "Gemini" }
+      ]
+    },
+    {
+      "key": "local_engine",
+      "label": "Voice engine",
+      "kind": "choice",
+      "default_value": "apple",
+      "choices": [
+        { "value": "apple", "label": "Apple (System)" },
+        { "value": "gemini", "label": "Gemini TTS" }
+      ]
+    },
+    {
+      "key": "gemini_voice",
+      "label": "Gemini voice",
+      "kind": "choice",
+      "default_value": "Kore",
+      "choices": [
+        { "value": "Kore", "label": "Kore · Warm & clear" },
+        { "value": "Puck", "label": "Puck · Upbeat" },
+        { "value": "Aoede", "label": "Aoede · Natural" },
+        { "value": "Charon", "label": "Charon · Calm & steady" },
+        { "value": "Zephyr", "label": "Zephyr · Bright" },
+        { "value": "Fenrir", "label": "Fenrir · Deep" },
+        { "value": "Leda", "label": "Leda · Composed" },
+        { "value": "Orus", "label": "Orus · Crisp" },
+        { "value": "voice_vaoo7ayczx69", "label": "Freeman · Custom" },
+        { "value": "voice_o1be80ujj8bb", "label": "James · Custom" }
+      ]
+    },
+    {
+      "key": "beeper_announce",
+      "label": "Announce",
+      "kind": "choice",
+      "default_value": "direct_and_mentions",
+      "choices": [
+        {
+          "value": "direct_and_mentions",
+          "label": "Direct messages and mentions"
+        },
+        { "value": "all", "label": "Every message" }
+      ]
+    },
+    {
+      "key": "courier_announce",
+      "label": "Announce",
+      "kind": "choice",
+      "default_value": "direct_and_mentions",
+      "choices": [
+        {
+          "value": "direct_and_mentions",
+          "label": "Direct messages and mentions"
+        },
+        { "value": "all", "label": "Every message" }
+      ]
+    },
+    {
+      "key": "google_chat_source",
+      "label": "Read Google Chat via",
+      "kind": "choice",
+      "default_value": "auto",
+      "choices": [
+        { "value": "auto", "label": "Automatic" },
+        { "value": "api", "label": "Google API (this app's login)" },
+        { "value": "gws", "label": "gws command-line tool" }
+      ]
+    }
+  ],
+  "gemini_voice_option_cases": [
+    {
+      "name": "prebuilt_only",
+      "gemini_voice": null,
+      "custom_voices": [],
+      "expected_first": { "value": "Kore", "label": "Kore · Warm & clear" },
+      "expected_last": {
+        "value": "voice_o1be80ujj8bb",
+        "label": "James · Custom"
+      },
+      "expected_count": 10
+    },
+    {
+      "name": "cloned_voices_appended_and_deduplicated",
+      "gemini_voice": "Kore",
+      "custom_voices": [
+        { "id": "voice_clone_alpha", "name": "Alpha" },
+        { "id": "voice_vaoo7ayczx69", "name": "Duplicate Builtin" }
+      ],
+      "expected_first": { "value": "Kore", "label": "Kore · Warm & clear" },
+      "expected_last": {
+        "value": "voice_clone_alpha",
+        "label": "Alpha (cloned)"
+      },
+      "expected_count": 11
+    },
+    {
+      "name": "unknown_active_voice_prepended_first",
+      "gemini_voice": "Sulafat",
+      "custom_voices": [{ "id": "voice_clone_beta", "name": "Beta" }],
+      "expected_first": { "value": "Sulafat", "label": "Sulafat" },
+      "expected_last": {
+        "value": "voice_clone_beta",
+        "label": "Beta (cloned)"
+      },
+      "expected_count": 12
+    }
+  ],
+  "local_voice_option_cases": [
+    {
+      "name": "saved_voice_installed",
+      "local_voice": "com.apple.voice.premium.en-US.Ava",
+      "system_voices": [
+        {
+          "id": "com.apple.voice.premium.en-US.Ava",
+          "name": "Ava",
+          "language": "en-US",
+          "quality": "premium"
+        },
+        {
+          "id": "com.apple.voice.enhanced.en-GB.Daniel",
+          "name": "Daniel",
+          "language": "en-GB",
+          "quality": "enhanced"
+        }
+      ],
+      "expected_choices": [
+        {
+          "value": "com.apple.voice.premium.en-US.Ava",
+          "label": "Ava (en-US) · Premium"
+        },
+        {
+          "value": "com.apple.voice.enhanced.en-GB.Daniel",
+          "label": "Daniel (en-GB) · Enhanced"
+        }
+      ]
+    },
+    {
+      "name": "saved_voice_not_installed_prepended_first_with_fallback",
+      "local_voice": "com.apple.voice.premium.en-US.Zoe",
+      "system_voices": [
+        {
+          "id": "com.apple.voice.premium.en-US.Ava",
+          "name": "Ava",
+          "language": "en-US",
+          "quality": "premium"
+        },
+        {
+          "id": "com.apple.voice.enhanced.en-GB.Daniel",
+          "name": "Daniel",
+          "language": "en-GB",
+          "quality": "enhanced"
+        }
+      ],
+      "expected_choices": [
+        {
+          "value": "com.apple.voice.premium.en-US.Zoe",
+          "label": "Zoe (not installed; using Ava)"
+        },
+        {
+          "value": "com.apple.voice.premium.en-US.Ava",
+          "label": "Ava (en-US) · Premium"
+        },
+        {
+          "value": "com.apple.voice.enhanced.en-GB.Daniel",
+          "label": "Daniel (en-GB) · Enhanced"
+        }
+      ]
+    }
+  ]
+}

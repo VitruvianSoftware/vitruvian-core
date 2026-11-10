@@ -14,21 +14,23 @@ It is scriptable — `HomeSpeaker --say`, `--volume`, `--set-volume 0-100`, `--m
 
 ## Build, test, run
 
-- **Inner loop is SwiftPM**, from this directory: `./scripts/test.sh` (wraps `swift test` with
-  the swift-testing plugin path the Command Line Tools toolchain needs — bare `swift test`
-  fails without Xcode), then `swift build && .build/debug/HomeSpeaker`.
+- **Build and test with Bazel**, from the repo root. Build with
+  `bazel build --config=macos-app //apps/desktop/home-speaker/...`.
+  Run tests with:
+  `bazel test --config=macos-app //apps/desktop/home-speaker:HomeSpeakerTests //apps/desktop/home-speaker:HomeSpeakerToolTests //apps/desktop/home-speaker:HomeSpeakerViewTests //apps/desktop/home-speaker:tool_conformance_test //apps/desktop/home-speaker:tool_version_test`.
 - **What CI actually runs** (`macos-build` lane in `.github/workflows/ci.yaml`, when
   `apps/desktop/home-speaker/**` changes): `bazel build --config=macos-app
-  //apps/desktop/home-speaker/... :HomeSpeaker` as a compile check, `./scripts/test.sh` for the
-  unit tests, and `bazel test --config=macos-app //apps/desktop/home-speaker:sync_secrets_test`.
-  `:HomeSpeakerTests` exists as a Bazel target but CI never runs it.
-- **What ships is SwiftPM, not Bazel:** the release workflow runs `scripts/publish.sh`, which
+  //apps/desktop/home-speaker/... :HomeSpeaker` as a compile check, then `:HomeSpeakerTests`,
+  `:sync_secrets_test`, `:HomeSpeakerToolTests`, `:tool_conformance_test`, `:tool_version_test`,
+  `:zip_tool_test` and `:publish_test`, and `bazel run //apps/desktop/home-speaker:publish -- --dry-run`.
+  It does not run `:HomeSpeakerViewTests` (the view snapshots): run those yourself.
+- **What ships is SwiftPM, not Bazel:** the release workflow runs `bazel run //apps/desktop/home-speaker:publish`, which
   builds with `swift build -c release --arch arm64 --arch x86_64` and bundles the universal .app.
 - **The app, test and `sync_secrets_test` targets are `manual` and macOS-only**, so none of them
   appears in `bazel test //...` or in the Linux presubmit plan (`sync-secrets` and the two
   libraries are ordinary targets). Run the steps above on a Mac before pushing — a green Linux
   sweep proves nothing about this app.
-- **Release package exactly as CI does:** `./scripts/publish.sh --dry-run` (universal .app,
+- **Release package exactly as CI does:** `bazel run //apps/desktop/home-speaker:publish -- --dry-run` (universal .app,
   zip, sha256). Slack token onto this Mac from Bitwarden:
   `bazel run //apps/desktop/home-speaker:sync-secrets` for the app, or
   `bazel run //apps/desktop/home-speaker:sync-secrets -- --extension` for the extension's
@@ -71,18 +73,20 @@ It is scriptable — `HomeSpeaker --say`, `--volume`, `--set-volume 0-100`, `--m
 - **Honesty rules hold in code:** an offline speaker shows offline, not its last level;
   "Whole Home" has no single volume; the slider waits for the speaker to confirm; "announce at
   a set volume" only restores the level if nobody changed it meanwhile.
+- **`testdata/` holds shared rulebook test cases.** Shared JSON cases read by
+  `Tests/HomeSpeakerTests/SharedRulebookCasesTests.swift`; a changed rule changes its case first.
 
 ## Distribution & Parity Touchpoints Checklist
 
-HomeSpeaker spans both local macOS runtimes and remote clients. Whenever adding or modifying a setting (`SpeakerConfig` in `Models.swift`), secret (`SecretStore.swift`), door path (`Door.swift` / `Profile.swift`), or CLI flag, verify parity across **all** touchpoints below before declaring the work complete:
+HomeSpeaker spans both local macOS runtimes and remote clients. The rule now lives in ONE place: a new setting is added to `SettingsCatalog` (label, kind, choices, limits, visibility) and changed through `SettingsActions`; the app's SwiftUI screens and the extension's pages only lay it out. Whenever adding or modifying a setting, secret (`SecretStore.swift`), door path (`Door.swift` / `Profile.swift`), or CLI flag, verify parity across **all** touchpoints below before declaring the work complete:
 
-1. **Core Engine (`Sources/HomeSpeakerCore/`)** — `Models.swift` (`SpeakerConfig`, including `speak_phone`, `phone_pause_media`, `phone_headphones_only`), `SecretStore.swift`, `GeminiSpeaker.swift`, `LocalSpeaker.swift`, `PhoneSpeaker.swift`, `Announcer.swift`, `AnnouncementStylist.swift`, `CommandLine.swift`, `AgentIntegration.swift`, `AgentPlugins.swift`, `AgentHooks.swift`, `AppStartup.swift`, `AppSwitch.swift`, `Door.swift`, `DoorCopy.swift`, and `Profile.swift`.
-2. **Standalone macOS Menu-Bar App (`Sources/HomeSpeaker/`)** — `App.swift`, `MenuBarView.swift`, `SettingsView.swift`, `DoorWindow.swift` (packaged via `scripts/publish.sh` to `/Applications/HomeSpeaker.app`, data in `~/.gemini/` and `~/Library/Application Support/HomeSpeaker/secrets.json`).
-3. **Vitruvian Extension / Daemon (`Sources/HomeSpeakerToolCore/` & `Sources/HomeSpeakerTool/`)** — `HomeSpeakerTool.swift`, `Pages.swift`, `ExtensionSide.swift`, `main.swift`, `tool/vitruvian-tool.json` (packaged via `scripts/zip-tool.sh` to `~/Library/Application Support/com.vitruviansoftware.vitruvian/Tools/dev.vitruvian.homespeaker/bin/tool`, data in `ToolData/dev.vitruvian.homespeaker/`).
+1. **Core Engine (`Sources/HomeSpeakerCore/`)** — The rule lives in one place: add the setting to `SettingsCatalog.swift` (label, kind, choices, limits, visibility) and change it through `SettingsActions.swift`. `testdata/` holds shared JSON cases read by `Tests/HomeSpeakerTests/SharedRulebookCasesTests.swift`; a changed rule changes its case first. Also covers `Models.swift` (`SpeakerConfig`, including `speak_phone`, `phone_pause_media`, `phone_headphones_only`), `SecretStore.swift`, `GeminiSpeaker.swift`, `LocalSpeaker.swift`, `PhoneSpeaker.swift`, `Announcer.swift`, `AnnouncementStylist.swift`, `CommandLine.swift`, `AgentIntegration.swift`, `AgentPlugins.swift`, `AgentHooks.swift`, `AppStartup.swift`, `AppSwitch.swift`, `Door.swift`, `DoorCopy.swift`, and `Profile.swift`.
+2. **Standalone macOS Menu-Bar App (`Sources/HomeSpeaker/`)** — The SwiftUI screens only lay out what `SettingsCatalog` defines; no rules live here. `App.swift`, `MenuBarView.swift`, `SettingsView.swift`, `DoorWindow.swift` (packaged via `bazel run //apps/desktop/home-speaker:publish` to `/Applications/HomeSpeaker.app`, data in `~/.gemini/` and `~/Library/Application Support/HomeSpeaker/secrets.json`).
+3. **Vitruvian Extension / Daemon (`Sources/HomeSpeakerToolCore/` & `Sources/HomeSpeakerTool/`)** — The extension's pages only lay out what `SettingsCatalog` defines; no rules live here. `HomeSpeakerTool.swift`, `Pages.swift`, `ExtensionSide.swift`, `main.swift`, `tool/vitruvian-tool.json` (packaged via `bazel run //apps/desktop/home-speaker:zip-tool` to `~/Library/Application Support/com.vitruviansoftware.vitruvian/Tools/dev.vitruvian.homespeaker/bin/tool`, data in `ToolData/dev.vitruvian.homespeaker/`).
 4. **Vitruvian Host External Tool Store (`apps/desktop/vitruvian/Sources/Vitruvian/Services/Platform/External/`)** — `ExternalToolStore.swift`, `ToolHost.swift`, `CatalogueWatch.swift`, and tool protocol (`packages/vitruvian-sdk/`).
-5. **Android Remote — Mac Daemon (`apps/mobile/android-remote/macagent/`)** — `rs/src/homespeaker.rs`, `macagent_test`, and `API.md` (resolves active door from `~/.gemini/speaker_door.json` and exposes `/v1/homespeaker`, `/v1/homespeaker/volume`, `/v1/homespeaker/say`, and `/v1/homespeaker/phone-say`).
-6. **Android Remote — Mobile App (`apps/mobile/android-remote/src/main/kotlin/dev/vitruvian/remote/state/`)** — `Wire.kt` (`HomeSpeakerWire`), `AgentClient.kt` (`AgentHomeSpeaker`), `Derive.kt`, `RemoteState.kt` (`homeSpeakerRows`), `MockHost.kt`, `DeriveTest.kt`, and `WireTest.kt`.
-7. **Coding Agent Integrations, Packaging & Registries** — Claude Code (`~/.claude/settings.json`), Antigravity (`~/.gemini/antigravity/plugins/home-speaker/`), OpenCode (`~/.config/opencode/plugins/home-speaker.ts`), `scripts/sync-secrets.sh`, version lockstep (`tool_version_test` across `Version.swift`, `Info.plist`, `tool/vitruvian-tool.json`, `release-please-config.json`), and external distribution (`vitruvian-extensions` & `homebrew-tap` via `scripts/verify-published-release.sh`).
+5. **Android Remote — Mac Daemon (`apps/mobile/android-remote/macagent/`)** — `rs/src/homespeaker.rs`, `macagent_test`, and `API.md` (resolves active door from `~/.gemini/speaker_door.json` and exposes `/v1/homespeaker`, `/v1/homespeaker/volume`, `/v1/homespeaker/say`, and `/v1/homespeaker/phone-say`). Being replaced: the helper and the phone will read the engine's `--state` (plan Tasks 3-5); until then, keep them in step and add a shared case in `testdata/`.
+6. **Android Remote — Mobile App (`apps/mobile/android-remote/src/main/kotlin/dev/vitruvian/remote/state/`)** — `Wire.kt` (`HomeSpeakerWire`), `AgentClient.kt` (`AgentHomeSpeaker`), `Derive.kt`, `RemoteState.kt` (`homeSpeakerRows`), `MockHost.kt`, `DeriveTest.kt`, and `WireTest.kt`. Being replaced: the helper and the phone will read the engine's `--state` (plan Tasks 3-5); until then, keep them in step and add a shared case in `testdata/`.
+7. **Coding Agent Integrations, Packaging & Registries** — Claude Code (`~/.claude/settings.json`), Antigravity (`~/.gemini/antigravity/plugins/home-speaker/`), OpenCode (`~/.config/opencode/plugins/home-speaker.ts`), `bazel run //apps/desktop/home-speaker:sync-secrets`, version lockstep (`tool_version_test` across `Version.swift`, `Info.plist`, `tool/vitruvian-tool.json`, `release-please-config.json`), and external distribution (`vitruvian-extensions` & `homebrew-tap`).
 8. **Cross-component PR scope (`release-scope` CI check)** — `release-please` maps each directory to a separate component (`home-speaker`, `vitruvian`, `android-remote`, `vitruvian-sdk`). Split changes touching `apps/desktop/home-speaker/`, `apps/desktop/vitruvian/`, and `apps/mobile/android-remote/` into per-component PRs (or declare `Releases:`) so `release-scope` passes.
 
 
