@@ -102,6 +102,26 @@ struct SettingsWindow: View {
                 accountsAndBridges.selectedAccountKey = key
             }
         }
+        .onChange(of: navigation.selectedPane) { _, pane in
+            if pane != .ai {
+                aiProviderStore?.stopSettingsDetection()
+            }
+        }
+        .onDisappear {
+            aiProviderStore?.stopSettingsDetection()
+        }
+        .background(
+            SettingsWindowDetectionObserver(
+                onWindowClose: {
+                    aiProviderStore?.stopSettingsDetection()
+                },
+                onWindowBecomeKey: {
+                    if navigation.selectedPane == .ai, aiProviderStore?.isSettingsDetectionActive == false {
+                        aiProviderStore?.startSettingsDetection()
+                    }
+                }
+            )
+        )
         .sheet(isPresented: $navigation.isPresentingProblemReport) {
             ProblemReportSheet(
                 model: problemReport,

@@ -22,6 +22,84 @@ private final class EphemeralCredentialStore: CredentialStore, @unchecked Sendab
     }
 }
 
+/// Observes `NSWindow.willCloseNotification` (and `didBecomeKeyNotification`) for the hosting Settings window so
+/// periodic local AI detection stops immediately when the Settings window closes, even when SwiftUI keeps the
+/// `Settings` scene view hierarchy alive.
+struct SettingsWindowDetectionObserver: NSViewRepresentable {
+    var onWindowClose: @MainActor () -> Void
+    var onWindowBecomeKey: (@MainActor () -> Void)? = nil
+
+    final class ObserverView: NSView {
+        var onWindowClose: @MainActor () -> Void = {}
+        var onWindowBecomeKey: (@MainActor () -> Void)?
+        private var observers: [NSObjectProtocol] = []
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            removeObservers()
+            guard let window else {
+                MainActor.assumeIsolated {
+                    onWindowClose()
+                }
+                return
+            }
+            observers.append(
+                NotificationCenter.default.addObserver(
+                    forName: NSWindow.willCloseNotification,
+                    object: window,
+                    queue: .main
+                ) { [weak self] _ in
+                    MainActor.assumeIsolated {
+                        self?.onWindowClose()
+                    }
+                }
+            )
+            if onWindowBecomeKey != nil {
+                observers.append(
+                    NotificationCenter.default.addObserver(
+                        forName: NSWindow.didBecomeKeyNotification,
+                        object: window,
+                        queue: .main
+                    ) { [weak self] _ in
+                        MainActor.assumeIsolated {
+                            self?.onWindowBecomeKey?()
+                        }
+                    }
+                )
+            }
+        }
+
+        func removeObservers() {
+            for observer in observers {
+                NotificationCenter.default.removeObserver(observer)
+            }
+            observers = []
+        }
+
+        deinit {
+            for observer in observers {
+                NotificationCenter.default.removeObserver(observer)
+            }
+        }
+    }
+
+    func makeNSView(context _: Context) -> ObserverView {
+        let view = ObserverView(frame: .zero)
+        view.onWindowClose = onWindowClose
+        view.onWindowBecomeKey = onWindowBecomeKey
+        return view
+    }
+
+    func updateNSView(_ nsView: ObserverView, context _: Context) {
+        nsView.onWindowClose = onWindowClose
+        nsView.onWindowBecomeKey = onWindowBecomeKey
+    }
+
+    static func dismantleNSView(_ nsView: ObserverView, coordinator _: ()) {
+        nsView.removeObservers()
+    }
+}
+
 /// `Settings ▸ AI` (`01` §13, `02` §1.3, `docs/ai-providers.md`): provider list with `Off`, `On this Mac`, and `Cloud`
 /// groups, selected-provider key/URL/model/test controls, custom instructions, translation languages, Talk to Type,
 /// and slash command triggers, backed by `AIPreferences` and `AIProviderStore`.
@@ -79,6 +157,20 @@ public struct AISettingsPane: View {
             }
             .formStyle(.grouped)
             .disabled(lifecycle.isLocked)
+            .background(
+                SettingsWindowDetectionObserver(
+                    onWindowClose: {
+                        if !ownsFallbackStore {
+                            store.stopSettingsDetection()
+                        }
+                    },
+                    onWindowBecomeKey: {
+                        if !ownsFallbackStore, !store.isSettingsDetectionActive {
+                            store.startSettingsDetection()
+                        }
+                    }
+                )
+            )
             .onAppear {
                 if !ownsFallbackStore {
                     store.startSettingsDetection()
