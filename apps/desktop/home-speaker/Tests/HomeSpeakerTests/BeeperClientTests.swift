@@ -628,11 +628,11 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
     }
 
     /// Every test run names a Beeper on this Mac that nothing listens on
-    /// (scripts/test.sh, and the Bazel test targets' env), so a test that
+    /// (the Bazel test targets' `env`), so a test that
     /// forgets its stand-in can never reach the real Beeper Desktop.
     @Test func testRunsNeverPointAtTheRealBeeper() throws {
         let url = try ChatAppClient.baseURL(environment: ProcessInfo.processInfo.environment).get()
-        #expect(url.port != 23373, "run the tests with scripts/test.sh, which sets HOMESPEAKER_BEEPER_URL")
+        #expect(url.port != 23373, "run the tests through the Bazel targets, which set HOMESPEAKER_BEEPER_URL")
         #expect(url != ChatAppClient.defaultBaseURL)
     }
 
