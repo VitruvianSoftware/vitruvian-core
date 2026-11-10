@@ -252,7 +252,9 @@ private fun ColumnScope.DashboardsPane(state: RemoteState) {
     AutoGrid(minItemWidth = TWO_UP_MIN, gap = Space.s4) {
       item { StreamPlate(state = state, module = module) }
       item { ModuleListPlate(module.listLabel, module.rows) }
-      module.extraLists.forEach { list -> item { ModuleListPlate(list.label, list.rows) } }
+      module.extraLists.forEach { list ->
+        item { key(list.label) { ModuleListPlate(list.label, list.rows) } }
+      }
     }
   }
 }
@@ -991,7 +993,6 @@ private fun ColumnScope.GalleryPane(state: RemoteState) {
               why != null -> StatusTone.Warn
               else -> StatusTone.Neutral
             },
-        onClick = if (installed) ({ state.configureModule(entry.id) }) else null,
     ) {
       if (entry.source == "config") {
         VButton(
@@ -1103,41 +1104,43 @@ private fun MarkdownStream(lines: List<TerminalLine>, modifier: Modifier, cursor
     lines.forEachIndexed { lineIndex, line ->
       val role = roles[lineIndex]
       if (role == Markdown.LineRole.Fence) return@forEachIndexed
-      val blocks =
-          remember(role, line.text) {
-            when (role) {
-              Markdown.LineRole.Heading ->
-                  listOf(
-                      Markdown.Block(
-                          Markdown.Kind.Paragraph,
-                          listOf(Markdown.Span(Markdown.headingText(line.text), bold = true)),
-                      ))
-              Markdown.LineRole.Code ->
-                  listOf(
-                      Markdown.Block(
-                          Markdown.Kind.Paragraph, listOf(Markdown.Span(line.text, code = true))))
-              else -> Markdown.parse(line.text)
+      key(lineIndex) {
+        val blocks =
+            remember(role, line.text) {
+              when (role) {
+                Markdown.LineRole.Heading ->
+                    listOf(
+                        Markdown.Block(
+                            Markdown.Kind.Paragraph,
+                            listOf(Markdown.Span(Markdown.headingText(line.text), bold = true)),
+                        ))
+                Markdown.LineRole.Code ->
+                    listOf(
+                        Markdown.Block(
+                            Markdown.Kind.Paragraph, listOf(Markdown.Span(line.text, code = true))))
+                else -> Markdown.parse(line.text)
+              }
             }
+        val color =
+            when (line.tone) {
+              TerminalTone.Text -> colors.text
+              TerminalTone.Dim -> colors.textDim
+              TerminalTone.Ok -> colors.ok
+              TerminalTone.Warn -> colors.warn
+              TerminalTone.Err -> colors.sanguineText
+            }
+        val rows = blocks.ifEmpty { listOf(Markdown.Block(Markdown.Kind.Paragraph, emptyList())) }
+        rows.forEachIndexed { index, block ->
+          Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
+            VText(
+                // Mono, so spaces of the prefix's length hold the column.
+                text = if (index == 0) line.prefix else " ".repeat(line.prefix.length),
+                style = style,
+                color = colors.accent400,
+                softWrap = false,
+            )
+            VText(text = styled(block, code), style = style, color = color)
           }
-      val color =
-          when (line.tone) {
-            TerminalTone.Text -> colors.text
-            TerminalTone.Dim -> colors.textDim
-            TerminalTone.Ok -> colors.ok
-            TerminalTone.Warn -> colors.warn
-            TerminalTone.Err -> colors.sanguineText
-          }
-      val rows = blocks.ifEmpty { listOf(Markdown.Block(Markdown.Kind.Paragraph, emptyList())) }
-      rows.forEachIndexed { index, block ->
-        Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
-          VText(
-              // Mono, so spaces of the prefix's length hold the column.
-              text = if (index == 0) line.prefix else " ".repeat(line.prefix.length),
-              style = style,
-              color = colors.accent400,
-              softWrap = false,
-          )
-          VText(text = styled(block, code), style = style, color = color)
         }
       }
     }

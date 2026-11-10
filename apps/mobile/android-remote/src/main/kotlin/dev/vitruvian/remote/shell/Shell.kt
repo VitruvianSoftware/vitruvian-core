@@ -42,7 +42,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -195,14 +194,6 @@ private fun ShellBody(
   val density = LocalDensity.current
   val slide = with(density) { PUSH_SLIDE.roundToPx() }
   val duration = motion(Duration.D3)
-  val pageScroll =
-      rememberSaveable(
-          screen.name,
-          if (screen == Screen.Apps) state.module else "",
-          saver = ScrollState.Saver,
-      ) {
-        ScrollState(0)
-      }
 
   val primary: @Composable (Modifier) -> Unit = { paneModifier ->
     AnimatedContent(
@@ -216,7 +207,14 @@ private fun ShellBody(
         },
         label = "screen",
     ) { target ->
-      val scrollState = if (target == screen) pageScroll else rememberScrollState()
+      val scrollState =
+          rememberSaveable(
+              target.name,
+              if (target == Screen.Apps) "${state.appsView.name}:${state.module}" else "",
+              saver = ScrollState.Saver,
+          ) {
+            ScrollState(0)
+          }
       Column(
           modifier = Modifier.fillMaxSize().verticalScroll(scrollState).padding(bottom = Space.s5),
       ) {

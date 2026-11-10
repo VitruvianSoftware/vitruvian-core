@@ -1851,14 +1851,14 @@ public object Derive {
     return when (raw.lowercase(Locale.ROOT)) {
       "sign in on mac",
       "sign in",
-      "sign out",
       "import antigravity",
       "import antigravity login",
       "import login",
       "grant google chat",
-      "grant",
+      "grant" -> "sign in"
+      "sign out" -> "sign out"
       "disconnect google chat",
-      "disconnect" -> "sign in"
+      "disconnect" -> "disconnect"
       else -> raw
     }
   }
@@ -1875,19 +1875,23 @@ public object Derive {
   ): String {
     val action = plainHomeSpeakerAction(what)
     val raw = reason?.trim().orEmpty()
-    val lower = raw.lowercase(Locale.ROOT)
+    val stripped = stripHomeSpeakerErrorPrefixes(raw)
+    val lower = stripped.lowercase(Locale.ROOT)
+    val rawLower = raw.lowercase(Locale.ROOT)
     if (authFailed ||
         AUTH_CODE_REGEX.containsMatchIn(raw) ||
-        lower.contains("not paired") ||
-        lower.contains("unauthorized") ||
-        lower.contains("forbidden")) {
+        rawLower.contains("not paired") ||
+        rawLower.contains("unauthorized") ||
+        rawLower.contains("forbidden")) {
       return "Couldn't $action: this phone isn't paired"
     }
     val unreachable =
         raw.isEmpty() ||
             lower.contains("timeout") ||
             lower.contains("timed out") ||
-            lower.contains("connect") ||
+            lower.contains("connection ") ||
+            lower.contains("connect ") ||
+            lower.contains("connectexception") ||
             lower.contains("unreachable") ||
             lower.contains("refused") ||
             lower.contains("reset") ||
@@ -1900,7 +1904,6 @@ public object Derive {
     if (unreachable) {
       return "Couldn't $action: the Mac didn't answer"
     }
-    val stripped = stripHomeSpeakerErrorPrefixes(raw)
     if (stripped.equals(SIGN_IN_ALREADY_RUNNING, ignoreCase = true)) {
       return SIGN_IN_ALREADY_RUNNING
     }
@@ -2699,7 +2702,8 @@ public object Derive {
       lastSeenAgoSec: Long?,
       nothingRan: Boolean = false,
   ): String {
-    if (paired && offline) {
+    if (paired) {
+      if (!offline) return "asking…"
       val name = hostName.trim().ifEmpty { "the Mac" }
       val rel =
           if (lastSeenAgoSec != null && lastSeenAgoSec >= 0L) {
@@ -2746,18 +2750,30 @@ public object Derive {
   )
 
   /**
+   * True when the user denied notification permission and Android will not prompt again
+   * (`[shouldShowRationale] == false`). A first denial (`[shouldShowRationale] == true`) can still
+   * prompt next time, so it is not treated as permanently blocked.
+   */
+  public fun isNotificationPermissionBlocked(
+      granted: Boolean,
+      shouldShowRationale: Boolean,
+  ): Boolean = !granted && !shouldShowRationale
+
+  /**
    * Pure decision logic for the HomeSpeaker phone notification mirror row.
    *
-   * When notification permission is denied/blocked (`[permissionBlocked] == true`), shows the
-   * toggle as off (`checked = false`), surfaces `"Notifications are blocked for this app"`, and
-   * offers the `"Open settings"` row action.
+   * When notification permission is permanently denied/blocked (`[permissionBlocked] == true` and
+   * `[shouldShowRationale] == false`), shows the toggle as off (`checked = false`), surfaces
+   * `"Notifications are blocked for this app"`, and offers the `"Open settings"` row action.
    */
   public fun mirrorRowSpec(
       mirrorEnabled: Boolean,
       permissionGranted: Boolean,
       permissionBlocked: Boolean,
+      shouldShowRationale: Boolean = false,
   ): MirrorRowSpec {
-    if (permissionBlocked) {
+    if (permissionBlocked &&
+        isNotificationPermissionBlocked(permissionGranted, shouldShowRationale)) {
       return MirrorRowSpec(
           checked = false,
           trailing = "off",

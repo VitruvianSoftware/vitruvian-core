@@ -2564,6 +2564,10 @@ public class DeriveTest {
         "atlas isn't answering",
         Derive.noMacLine(paired = true, offline = true, hostName = "atlas", lastSeenAgoSec = null),
     )
+    assertEquals(
+        "asking…",
+        Derive.noMacLine(paired = true, offline = false, hostName = "atlas", lastSeenAgoSec = null),
+    )
   }
 
   @Test
@@ -2599,15 +2603,36 @@ public class DeriveTest {
   }
 
   @Test
-  public fun `mirrorRowSpec shows blocked notification error and Open settings action when denied`() {
-    val blocked =
+  public fun `mirrorRowSpec shows blocked notification error only when permanently denied`() {
+    assertTrue(Derive.isNotificationPermissionBlocked(granted = false, shouldShowRationale = false))
+    assertFalse(Derive.isNotificationPermissionBlocked(granted = false, shouldShowRationale = true))
+    assertFalse(Derive.isNotificationPermissionBlocked(granted = true, shouldShowRationale = false))
+
+    val permanentlyBlocked =
         Derive.mirrorRowSpec(
-            mirrorEnabled = true, permissionGranted = false, permissionBlocked = true)
-    assertFalse(blocked.checked)
-    assertEquals("off", blocked.trailing)
-    assertEquals("Notifications are blocked for this app", blocked.error)
-    assertTrue(blocked.showOpenSettings)
-    assertEquals("Open settings", blocked.actionLabel)
+            mirrorEnabled = true,
+            permissionGranted = false,
+            permissionBlocked = true,
+            shouldShowRationale = false,
+        )
+    assertFalse(permanentlyBlocked.checked)
+    assertEquals("off", permanentlyBlocked.trailing)
+    assertEquals("Notifications are blocked for this app", permanentlyBlocked.error)
+    assertTrue(permanentlyBlocked.showOpenSettings)
+    assertEquals("Open settings", permanentlyBlocked.actionLabel)
+
+    val firstDenial =
+        Derive.mirrorRowSpec(
+            mirrorEnabled = false,
+            permissionGranted = false,
+            permissionBlocked =
+                Derive.isNotificationPermissionBlocked(granted = false, shouldShowRationale = true),
+            shouldShowRationale = true,
+        )
+    assertFalse(firstDenial.checked)
+    assertEquals("off", firstDenial.trailing)
+    assertNull(firstDenial.error)
+    assertFalse(firstDenial.showOpenSettings)
 
     val active =
         Derive.mirrorRowSpec(
@@ -2690,9 +2715,19 @@ public class DeriveTest {
             reason = "✗ homespeaker · grant Google Chat: error: access denied (HTTP 400)"),
     )
     assertEquals(
-        "Couldn't sign in: keychain locked",
+        "Couldn't sign out: token revoke failed",
+        Derive.homeSpeakerInlineError(
+            what = "sign out", reason = "homespeaker: error: token revoke failed"),
+    )
+    assertEquals(
+        "Couldn't disconnect: keychain locked",
         Derive.homeSpeakerInlineError(
             what = "disconnect Google Chat", reason = "homespeaker: error: keychain locked"),
+    )
+    assertEquals(
+        "Couldn't disconnect: token file busy",
+        Derive.homeSpeakerInlineError(
+            what = "disconnect", reason = "✗ homespeaker · disconnect: error: token file busy"),
     )
   }
 

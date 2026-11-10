@@ -80,7 +80,7 @@ public class MainActivity : ComponentActivity() {
   /** Ask once per launch, not on every focus change (returning from the dialog is one). */
   private var askedForBluetooth = false
   private var askedForNotifications = false
-  private var pendingNotificationPermissionCallback: ((Boolean) -> Unit)? = null
+  private var pendingNotificationPermissionCallback: ((Boolean, Boolean) -> Unit)? = null
 
   /**
    * The bridge's runtime permissions, one row at a time.
@@ -106,7 +106,12 @@ public class MainActivity : ComponentActivity() {
       registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         val callback = pendingNotificationPermissionCallback
         pendingNotificationPermissionCallback = null
-        callback?.invoke(granted && hasPostNotificationsPermission())
+        val reallyGranted = granted && hasPostNotificationsPermission()
+        val shouldShowRationale =
+            !reallyGranted &&
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                shouldShowRequestPermissionRationale(PERMISSION_POST_NOTIFICATIONS)
+        callback?.invoke(reallyGranted, shouldShowRationale)
       }
 
   // Registered unconditionally: a launcher must exist before onCreate returns,
@@ -374,13 +379,13 @@ public class MainActivity : ComponentActivity() {
         PackageManager.PERMISSION_GRANTED
   }
 
-  private fun ensurePostNotificationsPermission(onResult: (Boolean) -> Unit) {
+  private fun ensurePostNotificationsPermission(onResult: (Boolean, Boolean) -> Unit) {
     if (hasPostNotificationsPermission()) {
-      onResult(true)
+      onResult(true, false)
       return
     }
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-      onResult(false)
+      onResult(false, false)
       return
     }
     askedForNotifications = true
@@ -432,7 +437,7 @@ public class MainActivity : ComponentActivity() {
 private class ShadeNotifier(
     private val context: Context,
     private val hasPermission: () -> Boolean = { true },
-    private val ensurePermission: ((Boolean) -> Unit) -> Unit = { it(true) },
+    private val ensurePermission: ((Boolean, Boolean) -> Unit) -> Unit = { it(true, false) },
 ) : Notifier {
   init {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -455,7 +460,9 @@ private class ShadeNotifier(
 
   override fun hasNotificationPermission(): Boolean = hasPermission()
 
-  override fun ensureNotificationPermission(onResult: (Boolean) -> Unit) {
+  override fun ensureNotificationPermission(
+      onResult: (granted: Boolean, shouldShowRationale: Boolean) -> Unit,
+  ) {
     ensurePermission(onResult)
   }
 

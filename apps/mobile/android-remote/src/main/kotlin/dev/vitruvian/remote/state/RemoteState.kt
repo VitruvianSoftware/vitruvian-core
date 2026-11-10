@@ -1075,11 +1075,18 @@ public class RemoteState(
     return agentHost?.hostname?.let(Format::shortHost).orEmpty()
   }
 
-  /** True when a Mac is configured/paired and its agent is currently unreachable. */
+  /**
+   * True when a Mac is configured/paired and its agent is currently unreachable (either forced
+   * offline or after a poll has failed). Before the first poll after launch (`agentError` is
+   * blank), the Mac is not yet known to be unreachable.
+   */
   private val isMacOffline: Boolean
     get() =
         connection == Connection.Offline ||
-            (!isUnpaired && hosts.isNotEmpty() && metricsSource == MetricsSource.Unreachable)
+            (!isUnpaired &&
+                hosts.isNotEmpty() &&
+                metricsSource == MetricsSource.Unreachable &&
+                agentError.isNotBlank())
 
   private fun noMacStreamLine(nothingRan: Boolean = false): String =
       Derive.noMacLine(
@@ -1847,13 +1854,9 @@ public class RemoteState(
 
   private val knownModuleIds: Set<String> = MockHost.gallery.map { it.id }.toSet()
 
-  public val moduleDashboards: Map<String, ModuleDashboard>
-    get() = MockHost.gallery.map { it.id }.associateWith(::dashboardFor)
-
   private fun dashboardFor(id: String): ModuleDashboard {
     if (id == "homespeaker") {
-      if (isLive ||
-          (!isUnpaired && hosts.isNotEmpty() && (agentHomeSpeaker != null || isMacOffline))) {
+      if (isLive || (!isUnpaired && hosts.isNotEmpty())) {
         return homeSpeakerDashboard()
       }
       return simulatedHomeSpeakerDashboard()
@@ -2152,12 +2155,18 @@ public class RemoteState(
    */
   private fun simulatedPrsDashboard(): ModuleDashboard {
     val offline = isMacOffline
+    val hasMac = !isUnpaired && hosts.isNotEmpty()
     val line = noMacStreamLine(nothingRan = true)
     return ModuleDashboard(
         id = "prs",
         name = "Pull requests",
         meta = "gh · on the Mac",
-        status = if (offline) "$hostShortName isn't answering" else "simulated · no Mac",
+        status =
+            when {
+              offline -> "$hostShortName isn't answering"
+              hasMac -> "asking…"
+              else -> "simulated · no Mac"
+            },
         statusTone = if (offline) StatusTone.Warn else StatusTone.Neutral,
         metrics =
             listOf(
@@ -2360,33 +2369,9 @@ public class RemoteState(
    * with the selected speaker carrying the accent rule and the switches as row buttons. One
    * selection idiom and one button idiom in the app, not three.
    */
-  private fun frozenHomeSpeakerFallback(): AgentHomeSpeaker =
-      AgentHomeSpeaker(
-          available = true,
-          reason = "",
-          installed = false,
-          appRunning = false,
-          signedIn = false,
-          enabled = false,
-          defaultTarget = "",
-          speechLength = "summary",
-          pauseMedia = true,
-          pauseMediaExtraSeconds = 0.0,
-          announceVolumeEnabled = false,
-          announceVolume = 50,
-          speakHome = true,
-          speakLocal = false,
-          localVoice = "",
-          localVoiceName = "",
-          structureName = "",
-          quietHoursEnabled = false,
-          targets = emptyList(),
-          last = null,
-      )
-
   private fun homeSpeakerDashboard(): ModuleDashboard {
     val offline = isMacOffline
-    val hs = agentHomeSpeaker ?: if (offline) frozenHomeSpeakerFallback() else null
+    val hs = agentHomeSpeaker
     val available = hs?.available == true
     val busy = homeSpeakerBusy
     val status =
@@ -2449,7 +2434,7 @@ public class RemoteState(
     val newest = Derive.newestBroadcast(hs?.recent.orEmpty(), hs?.last)
     val canSpeak = homeSpeakerCanAct && available && hs!!.installed
     val canReplay = canSpeak && Derive.isReplayable(newest)
-    val showSettings = hs != null && (hs.available || offline)
+    val showSettings = hs != null && hs.available
     return ModuleDashboard(
         id = "homespeaker",
         name = "HomeSpeaker",
@@ -2707,7 +2692,7 @@ public class RemoteState(
         tone = if (spec.checked) StatusTone.Ok else StatusTone.Neutral,
         error = spec.error,
         toggle =
-            RowToggle(checked = spec.checked, enabled = !isMacOffline) { next ->
+            RowToggle(checked = spec.checked, enabled = true) { next ->
               updateHomeSpeakerMirror(next)
             },
         actions =
@@ -3457,7 +3442,7 @@ public class RemoteState(
             subtitle =
                 if (hs.homeSpeakerVersion.isNotBlank()) "HomeSpeaker v${hs.homeSpeakerVersion}"
                 else "HomeSpeaker",
-            trailing = hs.homeSpeakerVersion.ifBlank { "" },
+            trailing = "",
         ))
   }
 
@@ -4213,44 +4198,52 @@ public class RemoteState(
       hs.speakHome == false && hs.speakLocal == false && hs.speakPhone != true
 
   /** The HomeSpeaker module with no Mac: says what it needs, invents no speakers. */
-  private fun simulatedHomeSpeakerDashboard(): ModuleDashboard =
-      ModuleDashboard(
-          id = "homespeaker",
-          name = "HomeSpeaker",
-          meta = "on the Mac",
-          status = if (isMacOffline) "$hostShortName isn't answering" else "simulated · no Mac",
-          statusTone = if (isMacOffline) StatusTone.Warn else StatusTone.Neutral,
-          metrics =
-              listOf(
-                  ModuleMetric("Speaker", "n/a", "needs a paired Mac"),
-                  ModuleMetric("Says", "n/a", "needs a paired Mac"),
-                  ModuleMetric("Quiet hours", "n/a", "needs a paired Mac"),
-              ),
-          streamLabel = "Last announcement",
-          lines =
-              listOf(
-                  TerminalLine("$", "GET /v1/homespeaker", TerminalTone.Text),
-                  TerminalLine(
-                      " ",
-                      noMacStreamLine(nothingRan = false),
-                      if (isMacOffline) TerminalTone.Warn else TerminalTone.Dim)),
-          cursor = false,
-          prompts = false,
-          listLabel = "Controls and speakers",
-          rows =
-              listOf(
-                  ModuleRow(
-                      "Nothing to show without a Mac",
-                      "pair one that has HomeSpeaker set up",
-                      "n/a",
-                      StatusTone.Neutral)),
-          quick = homeSpeakerQuick(null),
-          streamActions =
-              listOf(
-                  RowAction("Replay", enabled = false) {},
-                  RowAction("Test", enabled = false) {},
-              ),
-      )
+  private fun simulatedHomeSpeakerDashboard(): ModuleDashboard {
+    val offline = isMacOffline
+    val hasMac = !isUnpaired && hosts.isNotEmpty()
+    return ModuleDashboard(
+        id = "homespeaker",
+        name = "HomeSpeaker",
+        meta = "on the Mac",
+        status =
+            when {
+              offline -> "$hostShortName isn't answering"
+              hasMac -> "asking…"
+              else -> "simulated · no Mac"
+            },
+        statusTone = if (offline) StatusTone.Warn else StatusTone.Neutral,
+        metrics =
+            listOf(
+                ModuleMetric("Speaker", "n/a", "needs a paired Mac"),
+                ModuleMetric("Says", "n/a", "needs a paired Mac"),
+                ModuleMetric("Quiet hours", "n/a", "needs a paired Mac"),
+            ),
+        streamLabel = "Last announcement",
+        lines =
+            listOf(
+                TerminalLine("$", "GET /v1/homespeaker", TerminalTone.Text),
+                TerminalLine(
+                    " ",
+                    noMacStreamLine(nothingRan = false),
+                    if (offline) TerminalTone.Warn else TerminalTone.Dim)),
+        cursor = false,
+        prompts = false,
+        listLabel = "Controls and speakers",
+        rows =
+            listOf(
+                ModuleRow(
+                    "Nothing to show without a Mac",
+                    "pair one that has HomeSpeaker set up",
+                    "n/a",
+                    StatusTone.Neutral)),
+        quick = homeSpeakerQuick(null),
+        streamActions =
+            listOf(
+                RowAction("Replay", enabled = false) {},
+                RowAction("Test", enabled = false) {},
+            ),
+    )
+  }
 
   private fun clearHomeSpeakerError(controlId: String) {
     if (controlId in homeSpeakerErrors) {
@@ -4305,8 +4298,9 @@ public class RemoteState(
       )
       return
     }
-    val applyGranted: (Boolean) -> Unit = { granted ->
-      homeSpeakerMirrorPermissionBlocked = !granted
+    val applyGranted: (Boolean, Boolean) -> Unit = { granted, shouldShowRationale ->
+      homeSpeakerMirrorPermissionBlocked =
+          Derive.isNotificationPermissionBlocked(granted, shouldShowRationale)
       val hs = agentHomeSpeaker
       applyMirrorDecision(
           Derive.mirrorToggle(
@@ -4322,7 +4316,7 @@ public class RemoteState(
     }
     val n = notifier
     if (n == null) {
-      applyGranted(true)
+      applyGranted(true, false)
     } else {
       n.ensureNotificationPermission(applyGranted)
     }
@@ -4600,6 +4594,15 @@ public class RemoteState(
             }
             .onFailure {
               recordHomeSpeakerError(key, what, it)
+              val isSignInGrantOrDisconnect =
+                  signIn || signOut || importAntigravity || grantChat || disconnectChat
+              if (!isSignInGrantOrDisconnect) {
+                homeSpeakerNotice =
+                    "✗ homespeaker · $what: ${
+                      if (it is AgentAuthException) failureText(it) else it.message ?: "failed"
+                    }" to
+                        StatusTone.Crit
+              }
               actFailed("homespeaker · $what", it)
             }
       } finally {
@@ -5044,38 +5047,46 @@ public class RemoteState(
   }
 
   /** The Sony TV module with no Mac configured. */
-  private fun simulatedTvDashboard(): ModuleDashboard =
-      ModuleDashboard(
-          id = "tv",
-          name = "Sony TV",
-          meta = "via ADB on the Mac",
-          status = if (isMacOffline) "$hostShortName isn't answering" else "simulated · no Mac",
-          statusTone = if (isMacOffline) StatusTone.Warn else StatusTone.Neutral,
-          metrics =
-              listOf(
-                  ModuleMetric("Status", "n/a", "needs a paired Mac"),
-                  ModuleMetric("Foreground", "n/a", "needs a paired Mac"),
-                  ModuleMetric("Memory", "n/a", "needs a paired Mac"),
-              ),
-          streamLabel = "ADB · ${TvWire.DEFAULT_ADDRESS}",
-          lines =
-              listOf(
-                  TerminalLine("$", "GET /v1/tv", TerminalTone.Text),
-                  TerminalLine(
-                      " ",
-                      noMacStreamLine(nothingRan = false),
-                      if (isMacOffline) TerminalTone.Warn else TerminalTone.Dim)),
-          cursor = false,
-          prompts = false,
-          listLabel = "Power & Quick Actions",
-          rows =
-              listOf(
-                  ModuleRow(
-                      "Nothing to show without a Mac",
-                      "pair one that has adb installed on the LAN",
-                      "n/a",
-                      StatusTone.Neutral)),
-      )
+  private fun simulatedTvDashboard(): ModuleDashboard {
+    val offline = isMacOffline
+    val hasMac = !isUnpaired && hosts.isNotEmpty()
+    return ModuleDashboard(
+        id = "tv",
+        name = "Sony TV",
+        meta = "via ADB on the Mac",
+        status =
+            when {
+              offline -> "$hostShortName isn't answering"
+              hasMac -> "asking…"
+              else -> "simulated · no Mac"
+            },
+        statusTone = if (offline) StatusTone.Warn else StatusTone.Neutral,
+        metrics =
+            listOf(
+                ModuleMetric("Status", "n/a", "needs a paired Mac"),
+                ModuleMetric("Foreground", "n/a", "needs a paired Mac"),
+                ModuleMetric("Memory", "n/a", "needs a paired Mac"),
+            ),
+        streamLabel = "ADB · ${TvWire.DEFAULT_ADDRESS}",
+        lines =
+            listOf(
+                TerminalLine("$", "GET /v1/tv", TerminalTone.Text),
+                TerminalLine(
+                    " ",
+                    noMacStreamLine(nothingRan = false),
+                    if (isMacOffline) TerminalTone.Warn else TerminalTone.Dim)),
+        cursor = false,
+        prompts = false,
+        listLabel = "Power & Quick Actions",
+        rows =
+            listOf(
+                ModuleRow(
+                    "Nothing to show without a Mac",
+                    "pair one that has adb installed on the LAN",
+                    "n/a",
+                    StatusTone.Neutral)),
+    )
+  }
 
   public fun updateTvCastDraft(value: String) {
     tvCastDraft = value
