@@ -504,6 +504,9 @@ public data class AgentHomeSpeaker(
     /** The running monitor has listed Beeper's (Courier's) networks; null from an older agent. */
     val beeperNetworksListed: Boolean? = null,
     val courierNetworksListed: Boolean? = null,
+    val catalog: HomeSpeakerCatalog = HomeSpeakerCatalog(),
+    val outputsLabel: String? = null,
+    val outputsFooter: String? = null,
 )
 
 /**
@@ -525,6 +528,7 @@ public data class AgentSpeakerTarget(
     val room: String,
     val type: String,
     val selected: Boolean,
+    val displayLine: String = "",
 )
 
 /** Whether the agent has somewhere to publish notifications, from `/healthz`. */
@@ -944,7 +948,7 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
       withContext(Dispatchers.IO) {
         val body =
             JSONObject().apply {
-              if (percent != null) put("percent", percent.coerceIn(0, 100))
+              if (percent != null) put("percent", Derive.clampSpeakerVolume(percent))
               if (muted != null) put("muted", muted)
             }
         parseSpeakerVolume(
@@ -1496,6 +1500,7 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
                     room = it.optString("room"),
                     type = it.optString("type"),
                     selected = it.optBoolean("selected", false),
+                    displayLine = it.optString("display_line"),
                 )
               },
           last =
@@ -1563,6 +1568,9 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
           hasCourierToken = sources.hasCourierToken,
           beeperNetworksListed = sources.beeperNetworksListed,
           courierNetworksListed = sources.courierNetworksListed,
+          catalog = sources.catalog,
+          outputsLabel = sources.outputsLabel,
+          outputsFooter = sources.outputsFooter,
       )
     }
 

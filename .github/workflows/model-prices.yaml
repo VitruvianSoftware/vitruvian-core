@@ -1,0 +1,177 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Weekly refresh of packages/orchestrator-core/src/prices.mjs (and its three
+# vendored plugin copies) from https://openrouter.ai/api/v1/models.
+#
+# When a model price changes within the 50% safety bound, opens or updates a
+# pull request on chore/model-prices with the old -> new table in the body.
+name: model-prices
+
+on:
+  schedule:
+    # Mondays at 13:41 UTC (off-the-hour to avoid GitHub cron load spikes).
+    - cron: "41 13 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: model-prices
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: Refresh model prices and vendored plugin copies
+        id: update
+        run: |
+          set -euo pipefail
+          table="$RUNNER_TEMP/model-prices-table.md"
+          bazel run //tools/model-prices:update -- --markdown-out "$table"
+          bazel run //tools/agent-roster -- --write
+
+          status_lines="$(git status --porcelain=v1 -uall | LC_ALL=C sort)"
+          if [ -z "$status_lines" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Model prices are already current; nothing to commit."
+            exit 0
+          fi
+
+          expected="$(printf ' M %s\n' \
+            apps/antigravity/plugins/vitruvian-orchestrator/sidecars/panel/lib/prices.mjs \
+            apps/claude-code/plugins/vitruvian-orchestrator/hooks/lib/prices.mjs \
+            apps/opencode/plugins/vitruvian-orchestrator/lib/prices.mjs \
+            packages/orchestrator-core/src/prices.mjs | LC_ALL=C sort)"
+
+          if [ "$status_lines" != "$expected" ]; then
+            echo "::error::Unexpected changed or untracked files after model-prices refresh (expected only the four prices.mjs paths):"
+            printf '%s\n' "$status_lines" >&2
+            exit 1
+          fi
+
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Mint App token for PR operations
+        if: steps.update.outputs.changed == 'true'
+        id: app-token
+        uses: ./.github/actions/mint-sync-app-token
+        with:
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+          owner: VitruvianSoftware
+          repositories: vitruvian-core
+
+      - name: Open or update the pull request
+        if: steps.update.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          branch="chore/model-prices"
+          title="chore(agents): refresh model prices"
+          table="$RUNNER_TEMP/model-prices-table.md"
+          body="$RUNNER_TEMP/model-prices-body.md"
+
+          git config user.name "vitruvian-wren-agent[bot]"
+          git config user.email "314429222+vitruvian-wren-agent[bot]@users.noreply.github.com"
+          # The checkout used persist-credentials: false; hand git the App token.
+          gh auth setup-git
+
+          # Leave the branch alone if it holds commits this workflow did not write.
+          remote_sha=""
+          found=0
+          ls_out="$(git ls-remote --exit-code --heads origin "refs/heads/$branch")" || found=$?
+          case "$found" in
+            0)
+              remote_sha="${ls_out%%[[:space:]]*}"
+              if ! [[ "$remote_sha" =~ ^[0-9a-f]{40}$ ]]; then
+                echo "::error::Unexpected git ls-remote output for $branch."
+                exit 1
+              fi
+              git fetch --no-tags origin "+refs/heads/main:refs/remotes/origin/main" "$remote_sha"
+              foreign=()
+              while IFS= read -r sha; do
+                [ -z "$sha" ] && continue
+                trailer="$(git log -1 --format='%(trailers:key=Model-Prices-Update,valueonly)' "$sha")"
+                if [ "$trailer" != "true" ]; then
+                  foreign+=("${sha:0:9}")
+                fi
+              done < <(git rev-list "refs/remotes/origin/main..$remote_sha")
+              if [ "${#foreign[@]}" -gt 0 ]; then
+                printf -v foreign_list '%s, ' "${foreign[@]}"
+                foreign_list="${foreign_list%, }"
+                echo "::notice::$branch holds commits model-prices did not write ($foreign_list); left alone."
+                exit 0
+              fi
+              ;;
+            2) ;;
+            *)
+              echo "::error::Could not read $branch on origin (git ls-remote exit $found)."
+              exit 1
+              ;;
+          esac
+
+          existing="$(gh pr list --head "$branch" --base main --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$existing" ] && [ "$(gh pr view "$existing" --json autoMergeRequest --jq '.autoMergeRequest != null')" = "true" ]; then
+            gh pr merge "$existing" --disable-auto
+          fi
+
+          {
+            echo "Refreshes \`packages/orchestrator-core/src/prices.mjs\` and its three vendored plugin copies from OpenRouter's public \`/api/v1/models\` catalog."
+            echo ""
+            cat "$table"
+            echo ""
+            echo "Generated automatically by the \`model-prices\` workflow (\`//tools/model-prices:update\` + \`//tools/agent-roster -- --write\`). Prices are per-million-token USD spend estimates for the orchestrator panel, not a billing record."
+          } > "$body"
+
+          git checkout -B "$branch"
+          git add \
+            packages/orchestrator-core/src/prices.mjs \
+            apps/claude-code/plugins/vitruvian-orchestrator/hooks/lib/prices.mjs \
+            apps/antigravity/plugins/vitruvian-orchestrator/sidecars/panel/lib/prices.mjs \
+            apps/opencode/plugins/vitruvian-orchestrator/lib/prices.mjs
+          git commit \
+            -m "$title" \
+            -m "Refreshed from https://openrouter.ai/api/v1/models by the model-prices workflow." \
+            -m "Model-Prices-Update: true"
+          if [ -n "$remote_sha" ]; then
+            git push "--force-with-lease=refs/heads/chore/model-prices:$remote_sha" origin "$branch"
+          else
+            git push origin "$branch"
+          fi
+
+          if [ -n "$existing" ]; then
+            gh pr edit "$existing" --title "$title" --body-file "$body"
+            echo "PR #${existing} already open for $branch: updated."
+          else
+            gh pr create --title "$title" --body-file "$body" --base main --head "$branch"
+          fi

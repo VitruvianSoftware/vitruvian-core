@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-11-10T21:17:15Z",
+  "generated": "2026-11-10T22:52:32Z",
   "tools": [
     {
       "id": "dev.vitruvian.reference",
@@ -146,14 +146,14 @@
       "summary": {
         "en": "Speaks what you type, or the clipboard, on your Google Home speakers, and keeps broadcasting, quiet hours and the volume at hand."
       },
-      "version": "1.40.0",
+      "version": "1.41.0",
       "protocol": "2",
       "minimumAppVersion": "3.45.0",
       "source": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/home-speaker",
       "download": {
-        "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.40.0/HomeSpeaker-1.40.0-tool.zip",
-        "sha256": "5f88ed8b6455538a9acdb41193b610dd0e8ba489f090e1918132141835720cf0",
-        "size": 4381994
+        "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.41.0/HomeSpeaker-1.41.0-tool.zip",
+        "sha256": "f4d3dd3a4d2549d0601eaa4d502977666caa407487e3165aae8eaf7cff37a67c",
+        "size": 4432800
       },
       "uses": ["notify", "clipboard.read", "open"],
       "commands": [
@@ -199,14 +199,14 @@
       "summary": {
         "en": "Pairs your Android phone with this Mac's Vitruvian Remote agent over Tailscale, manages push notifications and Claude Code permission prompts, and exposes the phone's MCP bridge."
       },
-      "version": "0.1.31",
+      "version": "0.1.33",
       "protocol": "2",
       "minimumAppVersion": "3.48.0",
       "source": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/mobile/android-remote",
       "download": {
-        "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/android-remote-v0.1.31/VitruvianRemote-0.1.31-tool.zip",
-        "sha256": "c2f49002b3533bda5180a06945664a26d036f98942be2b3bf689d86bbd0a93b3",
-        "size": 2642296
+        "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/android-remote-v0.1.33/VitruvianRemote-0.1.33-tool.zip",
+        "sha256": "cac9beedad91fed80c3809b0caf07d7f54b0dc9bc287b9676bd4469ff4b1053f",
+        "size": 2500816
       },
       "uses": ["notify", "clipboard.write", "open"],
       "commands": [

@@ -1,0 +1,73 @@
+{
+  "data": [
+    {
+      "id": "openrouter/auto",
+      "pricing": {
+        "prompt": "-1",
+        "completion": "-1"
+      }
+    },
+    {
+      "id": "anthropic/claude-fable-5.2",
+      "pricing": {
+        "prompt": "0.000008",
+        "completion": "0.00004",
+        "input_cache_read": "0.0000002",
+        "input_cache_write": "0.00001"
+      }
+    },
+    {
+      "id": "anthropic/claude-opus-5.5",
+      "pricing": {
+        "prompt": "0.000004",
+        "completion": "0.00002",
+        "input_cache_read": "0.0000002",
+        "input_cache_write": "0.000005"
+      }
+    },
+    {
+      "id": "anthropic/claude-opus-5",
+      "pricing": {
+        "prompt": "0.000005",
+        "completion": "0.000025",
+        "input_cache_read": "0.0000005",
+        "input_cache_write": "0.00000625"
+      }
+    },
+    {
+      "id": "anthropic/claude-sonnet-5.5",
+      "pricing": {
+        "prompt": "0.000002",
+        "completion": "0.00001",
+        "input_cache_read": "0.0000001",
+        "input_cache_write": "0.0000025"
+      }
+    },
+    {
+      "id": "anthropic/claude-haiku-5.5",
+      "pricing": {
+        "prompt": "0.0000001",
+        "completion": "0.0000005",
+        "input_cache_read": "0.00000001",
+        "input_cache_write": "0.000000125"
+      }
+    },
+    {
+      "id": "google/gemini-4-carbon",
+      "pricing": {
+        "prompt": "0.000002",
+        "completion": "0.00001",
+        "input_cache_read": "0.0000001"
+      }
+    },
+    {
+      "id": "google/gemini-3.8-flash",
+      "pricing": {
+        "prompt": "0.000000825",
+        "completion": "0.000004125",
+        "input_cache_read": "0.0000000825",
+        "input_cache_write": "0.0000000416666666666667"
+      }
+    }
+  ]
+}

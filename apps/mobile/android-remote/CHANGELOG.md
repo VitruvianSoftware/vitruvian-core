@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.33](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.32...android-remote-v0.1.33) (2026-11-10)
+
+
+### Features
+
+* **android-remote:** the Mac helper asks Home Speaker for its settings instead of editing its files ([#4557](https://github.com/VitruvianSoftware/vitruvian-core/issues/4557)) ([b8e95a4](https://github.com/VitruvianSoftware/vitruvian-core/commit/b8e95a4b49fd5fab8c22db3ebe2333701e77f475))
+
 ## [0.1.32](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.31...android-remote-v0.1.32) (2026-11-10)
 
 

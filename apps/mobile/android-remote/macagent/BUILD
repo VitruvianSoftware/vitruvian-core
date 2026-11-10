@@ -144,3 +144,21 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
     deps = ["//apps/mobile/android-remote/macagent/metrics"],
 )
+
+rust_binary(
+    name = "dump_golden_homespeaker",
+    srcs = ["rs/src/dump_golden.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":macagent_lib"],
+)
+
+genrule(
+    name = "golden_homespeaker_v1",
+    testonly = True,
+    srcs = ["//apps/desktop/home-speaker:testdata/state_v1.json"],
+    outs = ["golden_homespeaker_v1.json"],
+    cmd = "$(location :dump_golden_homespeaker) $(location //apps/desktop/home-speaker:testdata/state_v1.json) > $@",
+    tools = [":dump_golden_homespeaker"],
+    visibility = ["//apps/mobile/android-remote:__subpackages__"],
+)

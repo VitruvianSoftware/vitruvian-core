@@ -23,6 +23,7 @@
 import { expect, mock, test } from "claude-code/testing";
 
 import type { Flow } from "../types";
+import { PRICES } from "./lib/prices.mjs";
 
 const PLUGIN = "vitruvian-orchestrator";
 const PANE_ID = "vitruvian-orchestrator";
@@ -950,7 +951,7 @@ test("step call with delegateUsage lands delegateTokens on the run, includes Gem
   });
 
   // Report Gemini usage from AGY_USAGE:
-  // Gemini 4 Carbon [2, 10, 0.2, 0]: (100k*2 + (10k+5k)*10 + 50k*0.2) / 1M = 0.36 USD
+  // Gemini 4 Carbon: 100k input, 10k output + 5k thinking (priced as output), 50k cache read, at the rates in PRICES.
   await $.tool.call({
     tool: STEP_TOOL,
     done: 2,
@@ -967,7 +968,7 @@ test("step call with delegateUsage lands delegateTokens on the run, includes Gem
   } as never);
 
   // Driver tokens on Haiku 5.5 [0.1, 0.5, 0.01, 0.125]: (100k*0.1 + 10k*0.5)/1M = 0.015 USD
-  // Combined run cost = 0.015 + 0.36 = 0.375 -> fmtCost = "$0.38"
+  // Combined run cost = Haiku driver + Gemini, formatted by fmtCost.
   await $.turn.complete({
     turnId: "wren-turn-done",
     agentId: "wren-priced-1",
@@ -993,13 +994,29 @@ test("step call with delegateUsage lands delegateTokens on the run, includes Gem
     cacheRead: 50_000,
   });
 
+  const haiku55 = PRICES.find((p) => p.match === "haiku-5-5")!;
+  const gemini4 = PRICES.find((p) => p.match === "gemini-4-(carbon|argon)")!;
+  const expectedDelegateUsd =
+    (100_000 * gemini4.input +
+      (10_000 + 5_000) * gemini4.output +
+      50_000 * gemini4.cacheRead) /
+    1_000_000;
+  const expectedDriverUsd =
+    (100_000 * haiku55.input + 10_000 * haiku55.output) / 1_000_000;
+  const fmtExpected = (usd: number) =>
+    `$${usd < 10 ? usd.toFixed(2) : usd.toFixed(1)}`;
+  const delegateCostLabel = `est. ${fmtExpected(expectedDelegateUsd)}`;
+  const combinedCostLabel = `est. ${fmtExpected(expectedDriverUsd + expectedDelegateUsd)}`;
+
   // With 0 unpriced delegated runs, "delegated to Gemini ... not priced" disappears
   for (const surface of ["terminal", "desktop"] as const) {
     const ui = await $.ui.mount({ ...PANE_MOUNT, surface });
     expect(
       await ui.find({
         type: "Text",
-        text: /gemini-4-carbon-high: est\. \$0\.36/,
+        text: new RegExp(
+          `gemini-4-carbon-high: ${delegateCostLabel.replace(/[.$]/g, "\\$&")}`,
+        ),
       }),
     ).toBeDefined();
     expect(
@@ -1007,12 +1024,15 @@ test("step call with delegateUsage lands delegateTokens on the run, includes Gem
     ).toBeUndefined();
     if (surface === "terminal") {
       expect(
-        await ui.find({ type: "Text", text: /est\. \$0\.38/ }),
+        await ui.find({
+          type: "Text",
+          text: new RegExp(combinedCostLabel.replace(/[.$]/g, "\\$&")),
+        }),
       ).toBeDefined();
     } else {
       const svgs = await ui.findAll({ type: "Svg" });
       const agentSvg = svgs.find((s) =>
-        String((s.props as { alt?: string }).alt).includes("est. $0.38"),
+        String((s.props as { alt?: string }).alt).includes(combinedCostLabel),
       );
       expect(agentSvg).toBeDefined();
     }

@@ -243,17 +243,6 @@ public object Derive {
 
   // --- HomeSpeaker ---------------------------------------------------------
 
-  /** The three values HomeSpeaker's `speech_length` accepts, in the order the buttons show. */
-  public val speechLengths: List<String> = listOf("headline", "summary", "full")
-
-  /** The wire value as the button reads; anything unknown is shown as the app's default. */
-  public fun speechLengthLabel(wire: String): String =
-      when (wire.lowercase(Locale.ROOT)) {
-        "headline" -> "Headline"
-        "full" -> "Full reply"
-        else -> "Summary"
-      }
-
   /**
    * The one word on the HomeSpeaker plate, worst problem first.
    *
@@ -292,6 +281,92 @@ public object Derive {
   /** What "This phone" is called wherever an output is named. */
   public const val THIS_PHONE: String = "This phone"
 
+  /** Shown when the helper or Home Speaker is too old to supply the `settings[]` catalog. */
+  public const val UPDATE_HOMESPEAKER_MESSAGE: String =
+      "Update Home Speaker and the Vitruvian Remote helper on your Mac to change these settings here."
+
+  /**
+   * The single point-of-view substitution on the phone: Home Speaker's `"Your phone"` becomes
+   * [THIS_PHONE] (`"This phone"`).
+   */
+  public fun phoneWording(text: String): String = text.replace("Your phone", THIS_PHONE)
+
+  /** Relayed `outputs_label` from Home Speaker with [phoneWording] applied, or null when blank. */
+  public fun outputsSummary(outputsLabel: String?): String? =
+      outputsLabel?.trim()?.takeIf { it.isNotEmpty() }?.let(::phoneWording)
+
+  /** True only when Home Speaker is available and sent a non-empty `settings[]` catalog. */
+  public fun hasHomeSpeakerCatalog(available: Boolean, catalog: HomeSpeakerCatalog): Boolean =
+      available && !catalog.isEmpty
+
+  /**
+   * The single sentence shown when `settings[]` is missing: the helper's own [reason] when present,
+   * else [UPDATE_HOMESPEAKER_MESSAGE].
+   */
+  public fun missingCatalogMessage(reason: String?): String =
+      reason?.trim()?.takeIf { it.isNotEmpty() } ?: UPDATE_HOMESPEAKER_MESSAGE
+
+  /** Display label for catalog setting [key], with `"Your phone"` substituted as [THIS_PHONE]. */
+  public fun catalogLabel(catalog: HomeSpeakerCatalog, key: String): String =
+      catalog[key]?.label?.let(::phoneWording).orEmpty()
+
+  /** Visibility flag for catalog setting [key] directly from Home Speaker's `shown` field. */
+  public fun catalogShown(catalog: HomeSpeakerCatalog, key: String): Boolean =
+      catalog[key]?.shown == true
+
+  /** Selectable choices for catalog setting [key], with [phoneWording] applied to labels. */
+  public fun catalogChoices(catalog: HomeSpeakerCatalog, key: String): List<HomeSpeakerChoice> =
+      catalog[key]?.choices.orEmpty().map { it.copy(label = phoneWording(it.label)) }
+
+  /** Display label for [value] in catalog setting [key]'s choices, or [value] if unlisted. */
+  public fun catalogChoiceLabel(catalog: HomeSpeakerCatalog, key: String, value: String): String =
+      catalogChoices(catalog, key).firstOrNull { it.value == value }?.label ?: value
+
+  /** Numeric limits (`min`, `max`, `step`, `defaultValue`) for catalog setting [key]. */
+  public fun catalogLimits(catalog: HomeSpeakerCatalog, key: String): HomeSpeakerLimits? =
+      catalog[key]?.limits
+
+  /** Pure stepper button specification derived from a catalog entry's [HomeSpeakerLimits]. */
+  public data class StepperSpec(
+      val minusLabel: String,
+      val minusEnabled: Boolean,
+      val minusNext: Double,
+      val plusLabel: String,
+      val plusEnabled: Boolean,
+      val plusNext: Double,
+  )
+
+  /**
+   * Builds − / + stepper buttons from [limits]. The next value stops at Home Speaker's own min and
+   * max, so the phone never sends one outside them.
+   */
+  public fun catalogStepper(
+      current: Double,
+      limits: HomeSpeakerLimits,
+      canAct: Boolean,
+      unitSuffix: String = "",
+  ): StepperSpec {
+    val stepText =
+        if (limits.step % 1.0 == 0.0) limits.step.toLong().toString() else decimal(limits.step)
+    return StepperSpec(
+        minusLabel = "−$stepText$unitSuffix",
+        minusEnabled = canAct && current > limits.min,
+        minusNext = maxOf(limits.min, current - limits.step),
+        plusLabel = "+$stepText$unitSuffix",
+        plusEnabled = canAct && current < limits.max,
+        plusNext = minOf(limits.max, current + limits.step),
+    )
+  }
+
+  /**
+   * The speaker's live volume is the device's 0-100 range, not a Home Speaker setting, so the phone
+   * keeps it inside that range before sending.
+   */
+  public fun clampSpeakerVolume(percent: Int): Int = percent.coerceIn(0, 100)
+
+  /** The inline error recorded under catalog [key], or null. Rows look their error up by key. */
+  public fun settingError(errors: Map<String, String>, key: String): String? = errors[key]
+
   /**
    * Android `AudioDeviceInfo.TYPE_*` constants that count as headphones or personal audio outputs
    * for `phone_headphones_only`: wired headset (3), wired headphones (4), Bluetooth SCO (7),
@@ -303,30 +378,6 @@ public object Derive {
 
   /** True when an `AudioDeviceInfo.type` integer represents wired, USB, or Bluetooth headphones. */
   public fun isHeadphoneDeviceType(type: Int): Boolean = type in HEADPHONE_DEVICE_TYPES
-
-  /**
-   * Where an announcement will be spoken, in one line: "Lake Office display + This Mac", "This Mac
-   * only", "This phone only", or the warning when all outputs are off. [speaker] is the selected
-   * home speaker's name, null when none is picked.
-   */
-  public fun homeSpeakerOutputs(
-      speakHome: Boolean,
-      speakLocal: Boolean,
-      speaker: String?,
-      speakPhone: Boolean = false,
-  ): String {
-    val home = speaker?.takeIf { it.isNotBlank() } ?: "no speaker"
-    val parts = buildList {
-      if (speakHome) add(home)
-      if (speakLocal) add(THIS_MAC)
-      if (speakPhone) add(THIS_PHONE)
-    }
-    return when {
-      parts.isEmpty() -> NO_OUTPUTS
-      parts.size == 1 && !speakHome -> "${parts.single()} only"
-      else -> parts.joinToString(" + ")
-    }
-  }
 
   /** All outputs off. Shown in amber: the switches stay as the user left them. */
   public const val NO_OUTPUTS: String = "No outputs — nothing will be spoken"
@@ -376,161 +427,6 @@ public object Derive {
         .joinToString(" · ")
   }
 
-  /** The two local speech engines HomeSpeaker's `local_engine` accepts. */
-  public val localEngines: List<String> = listOf("apple", "gemini")
-
-  public fun localEngineLabel(engine: String): String =
-      when (engine.lowercase(Locale.ROOT)) {
-        "gemini" -> "Gemini TTS"
-        else -> "Apple (on Mac)"
-      }
-
-  /** The built-in Gemini TTS voices HomeSpeaker's `gemini_voice` accepts. */
-  public val geminiVoices: List<String> =
-      listOf(
-          "Kore",
-          "Puck",
-          "Aoede",
-          "Charon",
-          "Zephyr",
-          "Fenrir",
-          "Leda",
-          "Orus",
-          "voice_vaoo7ayczx69",
-          "voice_o1be80ujj8bb",
-      )
-
-  /**
-   * The person-facing name of a `gemini_voice`: a cloned voice's name, a built-in custom voice
-   * (`Freeman`, `James`), else the id itself (the prebuilt voices are their own names).
-   */
-  public fun geminiVoiceDisplayName(voiceId: String, customVoices: List<AgentCustomVoice>): String =
-      customVoices.firstOrNull { it.id == voiceId }?.name
-          ?: when (voiceId) {
-            "voice_vaoo7ayczx69" -> "Freeman"
-            "voice_o1be80ujj8bb" -> "James"
-            else -> voiceId
-          }
-
-  /**
-   * The announcement rewrite styles HomeSpeaker's `announcement_style` accepts. `custom` uses the
-   * instruction written on the Mac (`custom_style_prompt`).
-   */
-  public val announcementStyles: List<String> =
-      listOf("verbatim", "plain", "briefing", "casual", "custom")
-
-  public fun announcementStyleLabel(style: String): String =
-      when (style.lowercase(Locale.ROOT)) {
-        "plain" -> "Plain spoken"
-        "briefing" -> "Warm briefing"
-        "casual" -> "Casual"
-        "custom" -> "Custom"
-        else -> "Verbatim"
-      }
-
-  /** The two rewrite models HomeSpeaker's `style_model` accepts. */
-  public val styleModels: List<String> = listOf("apple", "gemini")
-
-  public fun styleModelLabel(model: String): String =
-      when (model.lowercase(Locale.ROOT)) {
-        "gemini" -> "Gemini Flash"
-        else -> "Apple (on Mac)"
-      }
-
-  // --- HomeSpeaker progressive disclosure ---------------------------------
-  // The HomeSpeaker plate shows a setting only when it can change what is heard. Each rule lives
-  // here, not in RemoteState, so a JVM test pins it.
-
-  /**
-   * Whether the home-speaker settings (which speaker, its volume, announce volume) matter. Null is
-   * an agent too old to switch outputs, where the home speaker is always the output.
-   */
-  public fun homeSettingsRelevant(speakHome: Boolean?): Boolean = speakHome != false
-
-  /**
-   * "Cast selected voice" only means something when the home speaker is on and Gemini is chosen.
-   */
-  public fun castVoiceRelevant(speakHome: Boolean?, localEngine: String): Boolean =
-      speakHome == true && localEngine == "gemini"
-
-  /**
-   * Whether any output speaks with the local engine (and so its Gemini voice): this Mac, this
-   * phone, or the home speaker (when casting that voice or when switching local engine to reveal
-   * casting). Matches Models.swift:467-470 showsVoiceEngine.
-   */
-  public fun localVoiceInUse(
-      speakLocal: Boolean,
-      speakPhone: Boolean?,
-      speakHome: Boolean?,
-      homeCastVoice: Boolean = false,
-  ): Boolean = speakLocal || speakPhone == true || speakHome == true
-
-  /**
-   * Whether any active output actually synthesizes with the local voice engine: This Mac, This
-   * phone, or Google Home when casting the selected voice. Matches Models.swift `usesVoiceEngine`.
-   */
-  public fun usesVoiceEngine(
-      speakLocal: Boolean,
-      speakPhone: Boolean?,
-      speakHome: Boolean?,
-      homeCastVoice: Boolean = false,
-  ): Boolean = speakLocal || speakPhone == true || (speakHome == true && homeCastVoice)
-
-  /**
-   * Whether the Mac voice picker is shown: whenever This Mac is enabled (labelled "Fallback Mac
-   * voice" when Gemini TTS is the engine, and "Mac voice" otherwise). Matches SettingsView.swift
-   * (`if configManager.config.effectiveSpeakLocal`).
-   */
-  public fun showsMacVoice(speakLocal: Boolean, localEngine: String = ""): Boolean = speakLocal
-
-  /**
-   * Whether Gemini TTS is actively used by an output, so the Gemini voice picker and Gemini API key
-   * appear in the Speakers section. Matches Models.swift `showsGeminiVoice` / `geminiSpeaks`.
-   */
-  public fun geminiSpeaks(
-      speakLocal: Boolean,
-      speakPhone: Boolean?,
-      speakHome: Boolean?,
-      homeCastVoice: Boolean = false,
-      localEngine: String,
-  ): Boolean =
-      usesVoiceEngine(speakLocal, speakPhone, speakHome, homeCastVoice) &&
-          localEngine.equals("gemini", ignoreCase = true)
-
-  /**
-   * Whether the Gemini API key row appears under Style model: when at least one coding agent is on,
-   * the style is not verbatim, the rewrite model is Gemini, and the key is not already shown under
-   * the Speakers section (`!geminiSpeaks`). Matches SettingsView.swift:511-525.
-   */
-  public fun showsStyleGeminiKey(
-      allCodingAgentsOff: Boolean,
-      announcementStyle: String,
-      styleModel: String,
-      geminiSpeaks: Boolean,
-  ): Boolean =
-      !allCodingAgentsOff &&
-          !announcementStyle.equals("verbatim", ignoreCase = true) &&
-          styleModel.equals("gemini", ignoreCase = true) &&
-          !geminiSpeaks
-
-  /** The 48 half-hour slots for quiet hours dropdowns ("00:00" to "23:30"). */
-  public val quietHoursSlots: List<String> =
-      (0..23).flatMap { h ->
-        listOf(String.format(Locale.ROOT, "%02d:00", h), String.format(Locale.ROOT, "%02d:30", h))
-      }
-
-  /**
-   * Choices for quiet hours start/end times, including all 48 half-hour slots plus [current]
-   * preserved if it is an off-step time (e.g. "07:15").
-   */
-  public fun quietHoursChoices(current: String): List<String> {
-    val clean = current.trim()
-    if (clean.isBlank() || clean in quietHoursSlots) {
-      return quietHoursSlots
-    }
-    return (quietHoursSlots + clean).sorted()
-  }
-
   /** Subtitle for the Quiet hours row. */
   public fun quietHoursSubtitle(
       enabled: Boolean,
@@ -553,43 +449,12 @@ public object Derive {
       when {
         !enabled -> "always speaks"
         active -> "quiet now"
-        else -> "quiet from ${start.ifBlank { HomeSpeakerWire.DEFAULT_QUIET_START }}"
+        start.isBlank() -> "quiet hours on"
+        else -> "quiet from $start"
       }
-
-  /** Volume dropdown choices from 0% to 100% in 10% steps. */
-  public val volumePercentChoices: List<Int> = (0..100 step 10).toList()
-
-  /** Announcement volume dropdown choices from 10% to 100% in 10% steps. */
-  public val announceVolumePercentChoices: List<Int> = (10..100 step 10).toList()
-
-  /** Choices for announcement volume dropdown including current value if off-step. */
-  public fun announceVolumeChoices(current: Int): List<Int> {
-    if (current in announceVolumePercentChoices || current < 0 || current > 100) {
-      return announceVolumePercentChoices
-    }
-    return (announceVolumePercentChoices + current).sorted()
-  }
-
-  /** Media pause extra margin choices (0 s to 10 s in 1 s steps). */
-  public val pauseMarginSecondChoices: List<Double> = (0..10).map { it.toDouble() }
-
-  /** Poll interval choices for chat monitoring (10s, 15s, 30s, 60s, 120s, 300s). */
-  public val pollIntervalChoices: List<Int> = listOf(10, 15, 30, 60, 120, 300)
-
-  public fun pollIntervalLabel(seconds: Int): String =
-      if (seconds >= 60 && seconds % 60 == 0) "${seconds / 60} min" else "$seconds s"
 
   /** Coding agents HomeSpeaker installs a hook for (Swift `CodingAgent.supportsHook`). */
   public val hookAgentSlugs: Set<String> = setOf("claude-code", "antigravity", "opencode")
-
-  public val googleChatSources: List<String> = listOf("auto", "api", "gws")
-
-  public fun googleChatSourceLabel(source: String): String =
-      when (source.lowercase(Locale.ROOT)) {
-        "api" -> "Google API"
-        "gws" -> "gws CLI"
-        else -> "Automatic"
-      }
 
   /** Subtitle for the Chat monitor row, surfacing the last poll relative time when running. */
   public fun chatMonitorSubtitle(running: Boolean, lastPollRelative: String = ""): String =
@@ -659,15 +524,11 @@ public object Derive {
 
   /** Subtitle for the Google Chat source row, showing the active backend when running. */
   public fun googleChatSourceSubtitle(
-      activeBackend: String,
+      activeBackendLabel: String,
       monitorRunning: Boolean,
   ): String {
-    val via =
-        when (activeBackend.trim().lowercase(Locale.ROOT)) {
-          "api" -> "the Google API"
-          "gws" -> "gws CLI"
-          else -> ""
-        }
+    // The backend is named the way Home Speaker's own catalog names it.
+    val via = activeBackendLabel.trim()
     return if (monitorRunning && via.isNotEmpty()) {
       "currently reading via $via"
     } else {
@@ -1133,29 +994,6 @@ public object Derive {
         else -> "Not installed"
       }
 
-  /**
-   * True only when every coding agent is known to be off: the phrasing settings then shape nothing.
-   * A null switch (an older agent) is not "off".
-   */
-  public fun allCodingAgentsOff(
-      claudeCode: Boolean?,
-      antigravity: Boolean?,
-      openCode: Boolean?,
-  ): Boolean = claudeCode == false && antigravity == false && openCode == false
-
-  /** How a speaker target reads in the Speaker dropdown. */
-  public fun speakerChoiceLabel(name: String, room: String, type: String): String =
-      if (type == "Structure") "$name (all rooms)" else "$room · $name"
-
-  /** The two Beeper announcement filter modes HomeSpeaker's `beeper_announce` accepts. */
-  public val beeperAnnounceModes: List<String> = listOf("direct_and_mentions", "all")
-
-  public fun beeperAnnounceLabel(mode: String): String =
-      when (mode.lowercase(Locale.ROOT)) {
-        "all" -> "All messages"
-        else -> "Direct & mentions"
-      }
-
   /** What a chat-app network's switch does on the phone. */
   public enum class NetworkSwitch {
     /** On reads it, off mutes it. */
@@ -1250,23 +1088,6 @@ public object Derive {
         else -> "$percent%"
       }
 
-  /** A volume after a − or + tap, inside 0-100. */
-  public fun nextVolume(current: Int, delta: Int): Int = (current + delta).coerceIn(0, 100)
-
-  /** HomeSpeaker's own range for the resume margin (its Settings stepper). */
-  public const val PAUSE_MARGIN_MAX: Double = 10.0
-
-  /** The resume margin after a − or + tap, kept inside what the Mac accepts. */
-  public fun nextPauseMargin(current: Double, delta: Double): Double =
-      (current + delta).coerceIn(0.0, PAUSE_MARGIN_MAX)
-
-  /**
-   * "resumes 1 s after the speaker" -- whole seconds, as the Mac's stepper shows it, and short
-   * enough for one line on the folded screen (the longer form was cut off there).
-   */
-  public fun pauseMarginLabel(seconds: Double): String =
-      "resumes ${seconds.roundToInt()} s after the speaker"
-
   /** Whether [homeSpeakerStatus]'s word is a good one, an off one, or a problem. */
   public enum class SpeakerHealth {
     Ok,
@@ -1329,7 +1150,7 @@ public object Derive {
           !volumeAvailable -> "Mute speaker, volume unavailable"
           !volumeOnline -> "Mute speaker, speaker offline"
           muted -> "Unmute speaker, currently muted"
-          else -> "Mute speaker, volume ${percent.coerceIn(0, 100)}%"
+          else -> "Mute speaker, volume $percent%"
         }
     return QuickActionSpec(
         id = "mute",
@@ -1356,7 +1177,8 @@ public object Derive {
       end: String,
   ): QuickActionSpec {
     val label = if (enabled) "Quiet on" else "Quiet off"
-    val window = if (!available) null else "${start.ifBlank { "22:00" }}–${end.ifBlank { "07:00" }}"
+    // The window is whatever the Mac reported; with none reported there is nothing to show.
+    val window = if (!available || start.isBlank() || end.isBlank()) null else "$start–$end"
     val sub =
         when {
           window == null -> null
@@ -1753,6 +1575,7 @@ public object Derive {
 
   /** Builds all five controls for HomeSpeaker's Now strip in display order. */
   public fun homeSpeakerQuickActions(
+      hasCatalog: Boolean = true,
       paired: Boolean,
       available: Boolean,
       installed: Boolean = true,
@@ -1774,47 +1597,53 @@ public object Derive {
       snoozeUntil: String? = null,
       nowMs: Long = System.currentTimeMillis(),
       zoneId: ZoneId = ZoneId.systemDefault(),
-  ): List<QuickActionSpec> =
-      listOf(
-          muteQuickAction(
-              paired = paired,
-              volumeAvailable = volumeAvailable,
-              volumeOnline = volumeOnline,
-              muted = muted,
-              percent = percent,
-              busy = volumeBusy,
-          ),
-          quietHoursQuickAction(
-              paired = paired,
-              available = available,
-              enabled = quietEnabled,
-              active = quietActive,
-              start = quietStart,
-              end = quietEnd,
-          ),
-          roomQuickAction(
-              paired = paired,
-              available = available,
-              targetName = targetName,
-              targetRoom = targetRoom,
-              targetType = targetType,
-              hasChoices = hasRoomChoices,
-          ),
-          replayQuickAction(
-              paired = paired,
-              available = available,
-              installed = installed,
-              hasReplay = hasReplay,
-              target = replayTarget,
-          ),
-          snoozeQuickAction(
-              paired = paired,
-              available = available,
-              snoozeUntil = snoozeUntil,
-              nowMs = nowMs,
-              zoneId = zoneId,
-          ),
-      )
+  ): List<QuickActionSpec> {
+    val replay =
+        replayQuickAction(
+            paired = paired,
+            available = available,
+            installed = installed,
+            hasReplay = hasReplay,
+            target = replayTarget,
+        )
+    // Without Home Speaker's catalog every control that changes a setting is hidden; replaying
+    // speaks, it does not change a setting.
+    if (!hasCatalog) return listOf(replay)
+    return listOf(
+        muteQuickAction(
+            paired = paired,
+            volumeAvailable = volumeAvailable,
+            volumeOnline = volumeOnline,
+            muted = muted,
+            percent = percent,
+            busy = volumeBusy,
+        ),
+        quietHoursQuickAction(
+            paired = paired,
+            available = available,
+            enabled = quietEnabled,
+            active = quietActive,
+            start = quietStart,
+            end = quietEnd,
+        ),
+        roomQuickAction(
+            paired = paired,
+            available = available,
+            targetName = targetName,
+            targetRoom = targetRoom,
+            targetType = targetType,
+            hasChoices = hasRoomChoices,
+        ),
+        replay,
+        snoozeQuickAction(
+            paired = paired,
+            available = available,
+            snoozeUntil = snoozeUntil,
+            nowMs = nowMs,
+            zoneId = zoneId,
+        ),
+    )
+  }
 
   private val HTTP_CODE_REGEX = Regex("""\bHTTP\s+\d{3}\b""", RegexOption.IGNORE_CASE)
   private val AUTH_CODE_REGEX = Regex("""\bHTTP\s+40[13]\b""", RegexOption.IGNORE_CASE)
@@ -1885,16 +1714,23 @@ public object Derive {
         rawLower.contains("forbidden")) {
       return "Couldn't $action: this phone isn't paired"
     }
+    // Network failures only, by the phrases Java and OkHttp use for them. Home Speaker's own
+    // refusals reach the phone verbatim and may say "refused" or "reset"; those must keep
+    // their words, so no bare "refused" / "reset" / "connect" here.
     val unreachable =
         raw.isEmpty() ||
             lower.contains("timeout") ||
             lower.contains("timed out") ||
-            lower.contains("connection ") ||
-            lower.contains("connect ") ||
+            lower.contains("connection refused") ||
+            lower.contains("connection reset") ||
+            lower.contains("connection closed") ||
+            lower.contains("connection abort") ||
+            lower.contains("econnrefused") ||
+            lower.contains("econnreset") ||
+            lower.contains("failed to connect") ||
             lower.contains("connectexception") ||
+            lower.contains("socketexception") ||
             lower.contains("unreachable") ||
-            lower.contains("refused") ||
-            lower.contains("reset") ||
             lower.contains("eof") ||
             lower.contains("broken pipe") ||
             lower.contains("unable to resolve") ||

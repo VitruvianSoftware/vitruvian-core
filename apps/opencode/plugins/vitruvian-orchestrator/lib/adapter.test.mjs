@@ -33,6 +33,7 @@ import {
   formatSidebarData,
   formatSidebarLines,
   formatSidebarTitle,
+  formatUsd,
   mapOpenCodeTokens,
   mapProgressInputToEvents,
   mergeTokenSnapshots,
@@ -41,6 +42,13 @@ import {
   sparkline,
   statusColorToken,
 } from "./adapter.mjs";
+import { PRICES } from "./prices.mjs";
+
+function priceByMatch(match) {
+  const row = PRICES.find((entry) => entry.match === match);
+  assert.ok(row, `missing PRICES entry for match=${JSON.stringify(match)}`);
+  return row;
+}
 
 describe("mapProgressInputToEvents & applyProgressCall", () => {
   it("maps progress fields in the contract order (tasks -> phase -> accept -> return -> close)", () => {
@@ -310,9 +318,22 @@ describe("sidebar formatting", () => {
     assert.equal(statusColorToken("returned"), "error");
     assert.equal(statusColorToken("ready"), "muted");
 
+    const opus = priceByMatch("opus");
+    const sonnet = priceByMatch("sonnet");
+    const leadUsd = (10_000 * opus.input + 2_000 * opus.output) / 1_000_000;
+    const workerUsd =
+      (20_000 * sonnet.input + 4_000 * sonnet.output) / 1_000_000;
+    const totalUsd = leadUsd + workerUsd;
+    const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
     const lines = formatSidebarLines(flow, 11_200);
     const joined = lines.join("\n");
-    assert.match(joined, /Auth rollout — accepted 0 of 2 · est\. \$0\.18/);
+    assert.match(
+      joined,
+      new RegExp(
+        `Auth rollout — accepted 0 of 2 · est\\. ${escRe(formatUsd(totalUsd))}`,
+      ),
+    );
     assert.match(
       joined,
       /Phases: ✓plan · ✓design · \[DELEGATE\] · review · close/,
@@ -324,11 +345,15 @@ describe("sidebar formatting", () => {
     );
     assert.match(
       joined,
-      /wren #1 \(claude-sonnet-5-6 · high\) · 3\/4 bazel test · 24k tok · est\. \$0\.08/,
+      new RegExp(
+        `wren #1 \\(claude-sonnet-5-6 · high\\) · 3\\/4 bazel test · 24k tok · est\\. ${escRe(formatUsd(workerUsd))}`,
+      ),
     );
     assert.match(
       joined,
-      /Spend: lead \$0\.10 · workers \$0\.08 · total \$0\.18/,
+      new RegExp(
+        `Spend: lead ${escRe(formatUsd(leadUsd))} · workers ${escRe(formatUsd(workerUsd))} · total ${escRe(formatUsd(totalUsd))}`,
+      ),
     );
     assert.match(joined, /Unpriced: local-model: 2\.0k tok/);
   });
@@ -490,8 +515,18 @@ describe("sidebar formatting", () => {
         cacheRead: 50_000,
       });
 
+      const gemini4 = priceByMatch("gemini-4-(carbon|argon)");
+      const expectedGeminiUsd =
+        (100_000 * gemini4.input +
+          (10_000 + 5_000) * gemini4.output +
+          50_000 * gemini4.cacheRead) /
+        1_000_000;
+      const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const joined = formatSidebarLines(savedFlow, Date.now()).join("\n");
-      assert.match(joined, /est\. \$0\.36/);
+      assert.match(
+        joined,
+        new RegExp(`est\\. ${escRe(formatUsd(expectedGeminiUsd))}`),
+      );
       assert.doesNotMatch(joined, /not priced/);
     } finally {
       if (prevDir === undefined) {

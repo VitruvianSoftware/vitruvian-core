@@ -352,6 +352,64 @@ public data class AgentBeeperNetwork(
 /** One cloned voice from `custom_voices`; its [id] is a valid `gemini_voice`. */
 public data class AgentCustomVoice(val id: String, val name: String)
 
+/** One selectable option in a Home Speaker catalog setting (`choices[]`). */
+public data class HomeSpeakerChoice(val value: String, val label: String)
+
+/** Numeric range, step and default for a Home Speaker `.number` catalog setting (`limits`). */
+public data class HomeSpeakerLimits(
+    val min: Double,
+    val max: Double,
+    val step: Double,
+    val defaultValue: Double,
+) {
+  public val minInt: Int
+    get() = min.toInt()
+
+  public val maxInt: Int
+    get() = max.toInt()
+
+  public val stepInt: Int
+    get() = step.toInt()
+}
+
+/** One entry in Home Speaker's `settings[]` catalog relayed by `GET /v1/homespeaker`. */
+public data class HomeSpeakerSetting(
+    val key: String,
+    val kind: String,
+    val label: String,
+    val stringValue: String = "",
+    val boolValue: Boolean? = null,
+    val numberValue: Double? = null,
+    val shown: Boolean = true,
+    val choices: List<HomeSpeakerChoice> = emptyList(),
+    val limits: HomeSpeakerLimits? = null,
+)
+
+/** Lookup wrapper over Home Speaker's `settings[]` catalog. */
+public class HomeSpeakerCatalog(public val settings: List<HomeSpeakerSetting> = emptyList()) {
+  private val byKey: Map<String, HomeSpeakerSetting> = settings.associateBy { it.key }
+
+  public val isEmpty: Boolean
+    get() = settings.isEmpty()
+
+  public operator fun get(key: String): HomeSpeakerSetting? = byKey[key]
+
+  override fun equals(other: Any?): Boolean =
+      other is HomeSpeakerCatalog && settings == other.settings
+
+  override fun hashCode(): Int = settings.hashCode()
+}
+
+/** Pure-JVM wire representation of one entry in `targets[]` from `GET /v1/homespeaker`. */
+public data class HomeSpeakerTargetWire(
+    val key: String,
+    val name: String,
+    val room: String,
+    val type: String,
+    val selected: Boolean,
+    val displayLine: String = "",
+)
+
 /**
  * The parts of `GET /v1/homespeaker` added in agent v1.10+: which senders HomeSpeaker speaks for,
  * and its newest broadcasts.
@@ -425,14 +483,17 @@ public data class HomeSpeakerSources(
      */
     val beeperNetworksListed: Boolean? = null,
     val courierNetworksListed: Boolean? = null,
+    val settings: List<HomeSpeakerSetting> = emptyList(),
+    val catalog: HomeSpeakerCatalog = HomeSpeakerCatalog(settings),
+    val outputsLabel: String? = null,
+    val outputsFooter: String? = null,
+    val targets: List<HomeSpeakerTargetWire> = emptyList(),
 )
 
 public object HomeSpeakerWire {
   public const val DEFAULT_QUIET_START: String = "22:00"
   public const val DEFAULT_QUIET_END: String = "07:00"
   public const val DEFAULT_POLL_INTERVAL: Int = 15
-  public const val MIN_POLL_INTERVAL: Int = 5
-  public const val MAX_POLL_INTERVAL: Int = 300
 
   /**
    * Reads the v1.10+ fields; anything unparseable reads as an older agent (all null, no history,
@@ -519,9 +580,71 @@ public object HomeSpeakerWire {
         (quiet?.get("start") as? String)?.takeIf { it.isNotBlank() } ?: DEFAULT_QUIET_START
     val quietHoursEnd =
         (quiet?.get("end") as? String)?.takeIf { it.isNotBlank() } ?: DEFAULT_QUIET_END
-    val pollInterval =
-        ((o["poll_interval"] as? Number)?.toInt() ?: DEFAULT_POLL_INTERVAL).coerceIn(
-            MIN_POLL_INTERVAL, MAX_POLL_INTERVAL)
+    val pollInterval = (o["poll_interval"] as? Number)?.toInt() ?: DEFAULT_POLL_INTERVAL
+    val settings =
+        (o["settings"] as? List<*>).orEmpty().mapNotNull { element ->
+          val it = element as? Map<*, *> ?: return@mapNotNull null
+          val key = (it["key"] as? String)?.trim().orEmpty()
+          val kind = (it["kind"] as? String)?.trim().orEmpty()
+          val label = (it["label"] as? String).orEmpty()
+          if (key.isEmpty() || kind.isEmpty()) return@mapNotNull null
+          val rawValue = it["value"]
+          val choices =
+              (it["choices"] as? List<*>).orEmpty().mapNotNull { ch ->
+                val c = ch as? Map<*, *> ?: return@mapNotNull null
+                val v = c["value"] as? String ?: return@mapNotNull null
+                val l = c["label"] as? String ?: v
+                HomeSpeakerChoice(value = v, label = l)
+              }
+          val limMap = it["limits"] as? Map<*, *>
+          val limits =
+              if (limMap != null) {
+                val min = (limMap["min"] as? Number)?.toDouble()
+                val max = (limMap["max"] as? Number)?.toDouble()
+                val step = (limMap["step"] as? Number)?.toDouble()
+                val def = (limMap["default_value"] as? Number)?.toDouble()
+                if (min != null && max != null && step != null && def != null) {
+                  HomeSpeakerLimits(min = min, max = max, step = step, defaultValue = def)
+                } else null
+              } else null
+          HomeSpeakerSetting(
+              key = key,
+              kind = kind,
+              label = label,
+              stringValue =
+                  when (rawValue) {
+                    is String -> rawValue
+                    is Boolean -> rawValue.toString()
+                    is Number -> {
+                      val d = rawValue.toDouble()
+                      if (d % 1.0 == 0.0) d.toLong().toString() else d.toString()
+                    }
+                    else -> ""
+                  },
+              boolValue = rawValue as? Boolean,
+              numberValue = (rawValue as? Number)?.toDouble(),
+              shown = (it["shown"] as? Boolean) ?: true,
+              choices = choices,
+              limits = limits,
+          )
+        }
+    val outputsLabel = o["outputs_label"] as? String
+    val outputsFooter = o["outputs_footer"] as? String
+    val targets =
+        (o["targets"] as? List<*>).orEmpty().mapNotNull { element ->
+          val it = element as? Map<*, *> ?: return@mapNotNull null
+          val key = (it["key"] as? String).orEmpty()
+          val name = (it["name"] as? String).orEmpty()
+          if (key.isEmpty() && name.isEmpty()) return@mapNotNull null
+          HomeSpeakerTargetWire(
+              key = key,
+              name = name,
+              room = (it["room"] as? String).orEmpty(),
+              type = (it["type"] as? String).orEmpty(),
+              selected = (it["selected"] as? Boolean) ?: false,
+              displayLine = (it["display_line"] as? String).orEmpty(),
+          )
+        }
     return HomeSpeakerSources(
         announceClaudeCode = flag("announce_claude_code"),
         announceAntigravity = flag("announce_antigravity"),
@@ -589,6 +712,11 @@ public object HomeSpeakerWire {
         hasCourierToken = flag("has_courier_token") ?: false,
         beeperNetworksListed = flag("beeper_networks_listed"),
         courierNetworksListed = flag("courier_networks_listed"),
+        settings = settings,
+        catalog = HomeSpeakerCatalog(settings),
+        outputsLabel = outputsLabel,
+        outputsFooter = outputsFooter,
+        targets = targets,
     )
   }
 }
