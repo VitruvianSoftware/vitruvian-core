@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.27](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.26...android-remote-v0.1.27) (2026-11-10)
+
+
+### Features
+
+* **android-remote:** HomeSpeaker Now controls, a Speaker mute tile, and clearer names ([#4479](https://github.com/VitruvianSoftware/vitruvian-core/issues/4479)) ([8813db0](https://github.com/VitruvianSoftware/vitruvian-core/commit/8813db052d608ca3d6e5c75a4b1b19aa1c6548bf))
+
 ## [0.1.26](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.25...android-remote-v0.1.26) (2026-11-10)
 
 
