@@ -48,27 +48,22 @@ extension InboxRow {
     }
 
     /// Before the preview when the newest message is a reply that stays in its thread, which the chat's timeline
-    /// doesn't show: "You, in a thread: " or "<Name>, in a thread: ". Nil otherwise.
+    /// doesn't show: "You, in a thread: ", "<Name>, in a thread: " in a direct chat, or "In a thread: " in a group.
+    /// Nil otherwise.
     public var previewThreadPrefix: String? {
         guard previewInThread else { return nil }
         if previewMine {
             return String(localized: "You, in a thread: ")
         }
-        if let (sender, _) = splitSenderPrefix(of: preview) {
-            return String(localized: "\(sender), in a thread: ")
-        }
-        if !name.isEmpty {
+        if isDirect, !name.isEmpty {
             return String(localized: "\(name), in a thread: ")
         }
         return String(localized: "In a thread: ")
     }
 
-    /// The preview body after stripping any leading `<Sender>: ` that `previewThreadPrefix` absorbed.
+    /// The preview body.
     public var previewBody: String {
-        guard previewInThread, !previewMine, let (_, body) = splitSenderPrefix(of: preview) else {
-            return preview
-        }
-        return body
+        preview
     }
 
     /// The full plain-text preview string for an inbox row.
@@ -87,14 +82,6 @@ extension InboxRow {
             result += previewLabel == nil ? body : " " + body
         }
         return result
-    }
-
-    private func splitSenderPrefix(of text: String) -> (sender: String, body: String)? {
-        guard let range = text.range(of: ": ") else { return nil }
-        let sender = String(text[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !sender.isEmpty else { return nil }
-        let body = String(text[range.upperBound...])
-        return (sender, body)
     }
 
     /// The unread count as the row shows it: nothing at 0, and 99+ past 99.

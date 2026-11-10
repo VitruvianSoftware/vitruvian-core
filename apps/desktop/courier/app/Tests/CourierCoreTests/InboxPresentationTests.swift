@@ -143,12 +143,21 @@ final class InboxPresentationTests: XCTestCase {
 
         let groupReply = InboxRow(
             roomID: "!a", network: "signal", name: "Weekend Trail Crew", avatarPath: "",
-            isDirect: false, lastTS: 1, preview: "Ann: Sounds good", previewKind: .text,
+            isDirect: false, lastTS: 1, preview: "Sounds good", previewKind: .text,
             previewMine: false, unread: 1, muted: false, previewInThread: true
         )
-        XCTAssertEqual(groupReply.previewThreadPrefix, "Ann, in a thread: ")
+        XCTAssertEqual(groupReply.previewThreadPrefix, "In a thread: ")
         XCTAssertEqual(groupReply.previewBody, "Sounds good")
-        XCTAssertEqual(groupReply.formattedPreviewText, "Ann, in a thread: Sounds good")
+        XCTAssertEqual(groupReply.formattedPreviewText, "In a thread: Sounds good")
+
+        let groupReplyWithColon = InboxRow(
+            roomID: "!a", network: "signal", name: "Weekend Trail Crew", avatarPath: "",
+            isDirect: false, lastTS: 1, preview: "Note: bring water", previewKind: .text,
+            previewMine: false, unread: 1, muted: false, previewInThread: true
+        )
+        XCTAssertEqual(groupReplyWithColon.previewThreadPrefix, "In a thread: ")
+        XCTAssertEqual(groupReplyWithColon.previewBody, "Note: bring water")
+        XCTAssertEqual(groupReplyWithColon.formattedPreviewText, "In a thread: Note: bring water")
 
         let directReply = InboxRow(
             roomID: "!b", network: "signal", name: "Ann", avatarPath: "",

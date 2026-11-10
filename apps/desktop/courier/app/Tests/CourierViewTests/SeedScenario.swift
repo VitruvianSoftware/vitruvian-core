@@ -156,16 +156,7 @@ struct SeedScenario: Decodable {
             let lastTS = last.map { Fixture.millis($0.minutesAgo) } ?? 0
             let mine = last?.from == "me"
             let inThread = last?.thread != nil
-            let preview: String
-            if let last {
-                if !isDirect && !mine {
-                    preview = "\(name(of: last.from)): \(last.text)"
-                } else {
-                    preview = last.text
-                }
-            } else {
-                preview = ""
-            }
+            let preview = last?.text ?? ""
             let trailingIncoming = ordered.reversed().prefix { $0.from != "me" }.count
             let unread = (chat.unread ?? false) ? max(1, trailingIncoming) : 0
             return InboxRow(
