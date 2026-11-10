@@ -2037,7 +2037,7 @@ public final class ConversationModel: ObservableObject {
             switch disposition {
             case let .text(summaryText):
                 self.chatSummary = ChatAISummary(
-                    text: summaryText,
+                    text: AIOutputFormatter.cleanMarkdown(summaryText),
                     messageCount: cappedCount,
                     collapsedHeader: collapsedHeader,
                     provenance: provenance

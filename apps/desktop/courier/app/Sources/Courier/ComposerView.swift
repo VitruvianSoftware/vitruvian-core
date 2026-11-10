@@ -288,7 +288,7 @@ struct ComposerView: View {
 
     private func aiResultStrip(_ result: ComposerAIResult) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(result.text)
+            Text(AIOutputFormatter.attributed(result.text))
                 .font(.callout)
                 .foregroundStyle(.primary)
                 .textSelection(.enabled)

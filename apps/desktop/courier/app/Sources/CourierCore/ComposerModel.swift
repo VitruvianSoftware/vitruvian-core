@@ -2810,9 +2810,10 @@ public final class ComposerModel: ObservableObject {
         guard !isLocked, let result = aiResult else { return }
         aiResult = nil
         aiError = nil
-        setContents(result.text, [])
+        let cleaned = AIOutputFormatter.plainText(result.text)
+        setContents(cleaned, [])
         caretSerial += 1
-        caretRequest = CaretRequest(location: (result.text as NSString).length, serial: caretSerial)
+        caretRequest = CaretRequest(location: (cleaned as NSString).length, serial: caretSerial)
     }
 
     /// Inserts the staged `aiResult` into the composer's existing text without losing what was already typed.
@@ -2820,10 +2821,11 @@ public final class ComposerModel: ObservableObject {
         guard !isLocked, let result = aiResult else { return }
         aiResult = nil
         aiError = nil
+        let cleaned = AIOutputFormatter.plainText(result.text)
         if text.isEmpty {
-            setContents(result.text, [])
+            setContents(cleaned, [])
         } else {
-            let (joinedText, joinedEntities) = Self.join((text, entities), (result.text, []))
+            let (joinedText, joinedEntities) = Self.join((text, entities), (cleaned, []))
             setContents(joinedText, joinedEntities)
         }
         caretSerial += 1
@@ -2891,7 +2893,10 @@ public final class ComposerModel: ObservableObject {
             self.aiTask = nil
             switch disposition {
             case let .text(generated):
-                self.aiResult = ComposerAIResult(text: generated, provenance: provenance)
+                self.aiResult = ComposerAIResult(
+                    text: AIOutputFormatter.cleanMarkdown(generated),
+                    provenance: provenance
+                )
                 self.aiError = nil
             case let .unavailable(reason):
                 self.aiResult = nil

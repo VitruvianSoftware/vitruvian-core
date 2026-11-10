@@ -1322,6 +1322,115 @@ final class AIProvidersTests: XCTestCase {
         )
     }
 
+    func testAIOutputFormatterStripsCodeFenceFormatsBulletsAndCleansDraftsForComposer() async {
+        // 1. Strip wrapping ``` code fence (with or without language tag)
+        let fencedMarkdown = """
+        ```markdown
+        ### Key Points
+        * **Alice** proposed the Q3 timeline
+
+        - *Bob* confirmed the `budget`
+
+        + Ship on [Friday](https://example.com)
+        ```
+        """
+        let stripped = AIOutputFormatter.stripCodeFence(fencedMarkdown)
+        XCTAssertFalse(stripped.contains("```"))
+        XCTAssertTrue(stripped.contains("* **Alice** proposed the Q3 timeline"))
+
+        // 2. cleanMarkdown converts "* item" / "- item" / "+ item" to "• item" and removes stray blank lines between bullets
+        let cleaned = AIOutputFormatter.cleanMarkdown(fencedMarkdown)
+        XCTAssertEqual(
+            cleaned,
+            """
+            Key Points
+            • **Alice** proposed the Q3 timeline
+            • *Bob* confirmed the `budget`
+            • Ship on [Friday](https://example.com)
+            """
+        )
+
+        // 3. attributed(_:) renders with .inlineOnlyPreservingWhitespace so bullets stay "•" lines without stray breaks and inline Markdown is parsed
+        let rendered = AIOutputFormatter.attributed(fencedMarkdown)
+        XCTAssertEqual(
+            String(rendered.characters),
+            """
+            Key Points
+            • Alice proposed the Q3 timeline
+            • Bob confirmed the budget
+            • Ship on Friday
+            """
+        )
+
+        // 4. plainText(_:) strips Markdown markers for drafts inserted into the composer
+        let draftMarkdown = """
+        ```
+        > Quick update
+        Hey **team**, let's meet *tomorrow* to review `v2.0` and ~~old plan~~ [the doc](https://example.com):
+        * Bring **notes**
+
+        - Check `metrics`
+        ```
+        """
+        let plain = AIOutputFormatter.plainText(draftMarkdown)
+        XCTAssertEqual(
+            plain,
+            """
+            Quick update
+            Hey team, let's meet tomorrow to review v2.0 and old plan the doc:
+            • Bring notes
+            • Check metrics
+            """
+        )
+
+        // 5. ComposerModel replaceWithAIResult() and insertAIResult() insert cleaned plain text without Markdown markers
+        let suiteName = "test.courier.ai.composer.markdown.\(UUID().uuidString)"
+        let defaults = ScratchDefaults.suite(named: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let prefs = AIPreferences(defaults: defaults)
+        prefs.enableContextualAI = true
+        prefs.selectedEngine = .ollama
+        prefs.selectedModel = "llama3.2"
+
+        let composer = ComposerModel()
+        composer.aiPreferences = prefs
+        composer.open("!room1:courier.local")
+        composer.aiProvider = MockTestAIProvider(result: .text(draftMarkdown))
+
+        composer.draftWithAI(tone: nil)
+        await composer.waitForAI()
+        XCTAssertFalse(composer.aiResult?.text.contains("```") ?? true)
+
+        composer.replaceWithAIResult()
+        XCTAssertEqual(
+            composer.text,
+            """
+            Quick update
+            Hey team, let's meet tomorrow to review v2.0 and old plan the doc:
+            • Bring notes
+            • Check metrics
+            """
+        )
+
+        // Insert appends plain text with Markdown markers removed
+        composer.text = "Hi all,"
+        composer.draftWithAI(tone: nil)
+        await composer.waitForAI()
+        composer.insertAIResult()
+        XCTAssertEqual(
+            composer.text,
+            """
+            Hi all,
+
+            Quick update
+            Hey team, let's meet tomorrow to review v2.0 and old plan the doc:
+            • Bring notes
+            • Check metrics
+            """
+        )
+    }
+
     // MARK: - Helpers
 
     private func makeTempUnslothStudioDir(pidFiles: [String]) throws -> URL {

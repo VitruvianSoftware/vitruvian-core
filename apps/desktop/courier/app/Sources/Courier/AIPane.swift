@@ -242,7 +242,7 @@ public struct AIPane: View {
 
             if isSummaryExpanded {
                 Divider()
-                Text(summary.text)
+                Text(AIOutputFormatter.attributed(summary.text))
                     .font(.caption)
                     .foregroundStyle(.primary)
                     .textSelection(.enabled)
@@ -255,7 +255,7 @@ public struct AIPane: View {
                         .lineLimit(1)
                     Spacer(minLength: 0)
                     Button(String(localized: "Copy")) {
-                        onCopySummary(summary.text)
+                        onCopySummary(AIOutputFormatter.plainText(summary.text))
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.mini)
@@ -341,7 +341,7 @@ public struct MessageTranslationRowView: View {
                         .foregroundStyle(.secondary)
                     switch disposition {
                     case let .text(translated):
-                        Text(translated)
+                        Text(AIOutputFormatter.attributed(translated))
                             .font(.caption)
                             .foregroundStyle(.primary)
                             .textSelection(.enabled)
