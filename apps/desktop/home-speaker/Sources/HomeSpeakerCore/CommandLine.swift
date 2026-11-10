@@ -413,7 +413,9 @@ public enum HomeSpeakerCommandLine {
             return .now(state(seam: seam))
         case .apply(.success(let changes)):
             let seam = parts.stateSeam?(profile) ?? .live(for: profile, doorSwitchSeam: { nil })
-            return .now(apply(changes, seam: seam))
+            return headless {
+                apply(changes, seam: seam)
+            }
         case .signIn(let purpose):
             let openBrowser = parts.openBrowser
             return headless {
@@ -482,7 +484,9 @@ public enum HomeSpeakerCommandLine {
             return TimeLimit(seconds: 40, timedOut: volumeFailure("timed out"))
         case .signIn:
             return TimeLimit(seconds: 300, timedOut: timedOut)
-        case .app(.success(.loginItem)), .app(.failure), .chatMonitor, .state, .apply, .help, .version, .location:
+        case .apply(.success):
+            return TimeLimit(seconds: 60, timedOut: HomeSpeakerStateContract.timedOutOutput())
+        case .app(.success(.loginItem)), .app(.failure), .chatMonitor, .state, .apply(.failure), .help, .version, .location:
             return nil
         }
     }

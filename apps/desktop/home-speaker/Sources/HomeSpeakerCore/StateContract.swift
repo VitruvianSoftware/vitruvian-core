@@ -598,9 +598,15 @@ public enum HomeSpeakerStateContract {
 
         // 3. Execute the batch transactionally under configFile's lock.
         do {
-            let voices = seam.systemVoices()
             let results: [[String: Any]] = try seam.configFile.modifyTransaction { config, writeConfig in
                 var workingSecrets = seam.secrets.load()
+                var cachedVoices: [LocalVoice]?
+                func voices() -> [LocalVoice] {
+                    if let cachedVoices { return cachedVoices }
+                    let loaded = seam.systemVoices()
+                    cachedVoices = loaded
+                    return loaded
+                }
                 var secretMutations: [(inout Secrets, inout [[String: Any]]) -> Void] = []
                 var configDirty = false
                 var pendingSwitch: PendingSwitch?
@@ -649,7 +655,7 @@ public enum HomeSpeakerStateContract {
                                 value: parsedValue,
                                 to: &config,
                                 secrets: workingSecrets,
-                                systemVoices: voices,
+                                systemVoices: voices(),
                                 clampNumbers: clampNumbers
                             )
                             configDirty = true
@@ -681,7 +687,7 @@ public enum HomeSpeakerStateContract {
                                 value: .string(rawKey),
                                 to: &config,
                                 secrets: workingSecrets,
-                                systemVoices: voices
+                                systemVoices: voices()
                             )
                             configDirty = true
                             opResults.append([
@@ -778,11 +784,11 @@ public enum HomeSpeakerStateContract {
                         ])
 
                     case "switchTo":
-                        guard pendingSwitch == nil else {
+                        guard operations.count == 1 else {
                             throw IndexedApplyError(
                                 opIndex: index,
-                                code: "one_switch_per_batch",
-                                message: "At most one \"switchTo\" operation is allowed per --apply batch."
+                                code: "switch_must_be_alone",
+                                message: "Send \"switchTo\" on its own in a single-operation --apply batch."
                             )
                         }
                         guard let sideRaw = opDict["side"] as? String,
@@ -951,6 +957,11 @@ public enum HomeSpeakerStateContract {
             "error": errorDict,
         ]
         return CLIOutput(stdout: [encodeJSON(payload)], exitCode: 1)
+    }
+
+    /// JSON error output when `--apply` exceeds its headless time limit.
+    public static func timedOutOutput() -> CLIOutput {
+        applyFailure(IndexedApplyError(code: "timed_out", message: "timed out"))
     }
 
     private static func parseSettingsValue(_ raw: Any) -> SettingsActions.Value? {

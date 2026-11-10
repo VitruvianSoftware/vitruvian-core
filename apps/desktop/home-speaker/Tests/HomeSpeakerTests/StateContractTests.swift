@@ -439,7 +439,7 @@ struct StateContractTests {
 
     @Test("Every --apply operation mutates state through SettingsActions and returns updated state + results")
     @MainActor
-    func everyApplyOperationWorks() throws {
+    func everyApplyOperationWorks() async throws {
         let rig = try ScratchRig()
         defer { rig.cleanup() }
         try rig.seedGoldenFixture()
@@ -479,14 +479,24 @@ struct StateContractTests {
         }
         """
 
-        guard case .now(let out1) = HomeSpeakerCommandLine.action(
+        guard case .headless(let timeout, let timedOut, let body1) = HomeSpeakerCommandLine.action(
             for: ["--apply", "--json", batch1],
             engine: engine,
             parts: parts
         ) else {
-            Issue.record("--apply did not return .now")
+            Issue.record("--apply --json did not return .headless")
             return
         }
+        #expect(timeout == 60)
+        #expect(timedOut.exitCode != 0)
+        let timedOutParsed = try #require(
+            JSONSerialization.jsonObject(with: Data(timedOut.stdout[0].utf8)) as? [String: Any]
+        )
+        #expect(timedOutParsed["ok"] as? Bool == false)
+        let timedOutErr = try #require(timedOutParsed["error"] as? [String: Any])
+        #expect(timedOutErr["code"] as? String == "timed_out")
+
+        let out1 = await body1()
 
         #expect(out1.exitCode == 0)
         let resp1 = try #require(JSONSerialization.jsonObject(with: Data(out1.stdout[0].utf8)) as? [String: Any])
@@ -515,14 +525,13 @@ struct StateContractTests {
         let speakers1 = try #require(state1["speakers"] as? [[String: Any]])
         #expect(speakers1.map { $0["key"] as? String } == ["bedroom", "office"])
 
-        // Batch 2: saveOAuthClient (keeps secret when ID unchanged), reset (preserves discovered speakers, resets preferences), and switchTo
+        // Batch 2: saveOAuthClient (keeps secret when ID unchanged) and reset (preserves discovered speakers, resets preferences)
         let batch2 = """
         {
           "contract_version": 1,
           "operations": [
             {"op": "saveOAuthClient", "client_id": "custom-client-id.apps.googleusercontent.com", "client_secret": ""},
-            {"op": "reset"},
-            {"op": "switchTo", "side": "extension"}
+            {"op": "reset"}
           ]
         }
         """
@@ -533,11 +542,26 @@ struct StateContractTests {
         let results2 = try #require(resp2["results"] as? [[String: Any]])
         #expect(results2[0]["kept_existing_secret"] as? Bool == true)
         let state2 = try #require(resp2["state"] as? [String: Any])
-        #expect(state2["chosen"] as? String == "extension")
         let speakers2 = try #require(state2["speakers"] as? [[String: Any]])
         #expect(speakers2.count == 2, "reset preserves discovered speakers")
         let quiet2 = try #require(state2["quiet_hours"] as? [String: Any])
         #expect(quiet2["enabled"] as? Bool == false, "reset clears quiet_hours_enabled back to default")
+
+        // Batch 3: switchTo sent on its own
+        let batch3 = """
+        {
+          "contract_version": 1,
+          "operations": [
+            {"op": "switchTo", "side": "extension"}
+          ]
+        }
+        """
+        let out3 = HomeSpeakerCommandLine.apply(batch3, seam: seam)
+        #expect(out3.exitCode == 0)
+        let resp3 = try #require(JSONSerialization.jsonObject(with: Data(out3.stdout[0].utf8)) as? [String: Any])
+        #expect(resp3["ok"] as? Bool == true)
+        let state3 = try #require(resp3["state"] as? [String: Any])
+        #expect(state3["chosen"] as? String == "extension")
 
         // Verify switchTo re-pointed the Claude Code hook in agentHome to the extension binary.
         let extIntegration = AgentIntegration(
@@ -584,7 +608,7 @@ struct StateContractTests {
             (#"{"op":"set","key":"quiet_hours_start","value":"25:99"}"#, "invalid_time"),
             (#"{"op":"set","key":"beeper_address","value":"http://example.com:23373"}"#, "invalid_address"),
             (#"{"op":"set","key":"courier_enabled","value":true}"#, "missing_token"),
-            (#"{"op":"switchTo","side":"extension"}"#, "switch_refused"),
+            (#"{"op":"switchTo","side":"extension"}"#, "switch_must_be_alone"),
             (#"{"op":"unknownOperation"}"#, "unknown_op"),
         ]
 
@@ -612,6 +636,18 @@ struct StateContractTests {
             let afterBytes = try Data(contentsOf: rig.configFile.url)
             #expect(afterBytes == beforeBytes, "Refused batch (\(expectedCode)) modified settings file on disk")
         }
+
+        // Also verify standalone switchTo when target side is not installed refuses with switch_refused at op_index 0.
+        let switchAloneOut = HomeSpeakerCommandLine.apply(
+            #"{"contract_version":1,"operations":[{"op":"switchTo","side":"extension"}]}"#,
+            seam: seam
+        )
+        #expect(switchAloneOut.exitCode == 1)
+        let switchAloneParsed = try #require(JSONSerialization.jsonObject(with: Data(switchAloneOut.stdout[0].utf8)) as? [String: Any])
+        let switchAloneErr = try #require(switchAloneParsed["error"] as? [String: Any])
+        #expect(switchAloneErr["op_index"] as? Int == 0)
+        #expect(switchAloneErr["code"] as? String == "switch_refused")
+        #expect(try Data(contentsOf: rig.configFile.url) == beforeBytes)
     }
 
     // MARK: - 5. `not_chosen` Refusal on Standby Program
@@ -987,9 +1023,9 @@ struct StateContractTests {
         #expect(extIntegration.status(of: .claudeCode).hook == .installed)
     }
 
-    // MARK: - 12. At Most One switchTo Per Batch & Failed Switch Writes Nothing
+    // MARK: - 12. switchTo Must Be Alone in Its Batch & Failed Switch Writes Nothing
 
-    @Test("At most one switchTo is allowed per batch (one_switch_per_batch) and a failed switch writes nothing")
+    @Test("switchTo must be the only operation in its batch (switch_must_be_alone) and a failed switch writes nothing")
     func atMostOneSwitchPerBatchAndFailedSwitchWritesNothing() throws {
         let rig = try ScratchRig()
         defer { rig.cleanup() }
@@ -1012,7 +1048,7 @@ struct StateContractTests {
         let beforeDoorBytes = try Data(contentsOf: rig.doorFile.url)
         let beforeConfigBytes = try Data(contentsOf: rig.configFile.url)
 
-        // (a) Two switchTo ops in one batch must refuse at op_index 1 with one_switch_per_batch and leave speaker_door.json untouched.
+        // (a) Two switchTo ops in one batch must refuse with switch_must_be_alone and leave speaker_door.json untouched.
         let twoSwitches = """
         {
           "contract_version": 1,
@@ -1027,17 +1063,13 @@ struct StateContractTests {
         let parsedTwo = try #require(JSONSerialization.jsonObject(with: Data(outTwo.stdout[0].utf8)) as? [String: Any])
         #expect(parsedTwo["ok"] as? Bool == false)
         let errTwo = try #require(parsedTwo["error"] as? [String: Any])
-        #expect(errTwo["op_index"] as? Int == 1)
-        #expect(errTwo["code"] as? String == "one_switch_per_batch")
+        #expect(errTwo["op_index"] as? Int == 0)
+        #expect(errTwo["code"] as? String == "switch_must_be_alone")
         #expect(rig.doorFile.read()?.chosen == .app)
         #expect(try Data(contentsOf: rig.doorFile.url) == beforeDoorBytes)
 
-        // (b) A failing switch with a pending config change writes neither door file nor config file.
-        struct CopyBoom: LocalizedError {
-            var errorDescription: String? { "copy failed on purpose" }
-        }
-        switchSeam.copyOverride = { _, _ in throw CopyBoom() }
-        let failingSwitchWithConfig = """
+        // (b) A switchTo combined with a set op in the same batch must refuse with switch_must_be_alone before writing anything.
+        let setAndSwitch = """
         {
           "contract_version": 1,
           "operations": [
@@ -1046,12 +1078,36 @@ struct StateContractTests {
           ]
         }
         """
-        let outFail = HomeSpeakerCommandLine.apply(failingSwitchWithConfig, seam: seam)
+        let outSetAndSwitch = HomeSpeakerCommandLine.apply(setAndSwitch, seam: seam)
+        #expect(outSetAndSwitch.exitCode == 1)
+        let parsedSetAndSwitch = try #require(JSONSerialization.jsonObject(with: Data(outSetAndSwitch.stdout[0].utf8)) as? [String: Any])
+        #expect(parsedSetAndSwitch["ok"] as? Bool == false)
+        let errSetAndSwitch = try #require(parsedSetAndSwitch["error"] as? [String: Any])
+        #expect(errSetAndSwitch["op_index"] as? Int == 1)
+        #expect(errSetAndSwitch["code"] as? String == "switch_must_be_alone")
+        #expect(rig.doorFile.read()?.chosen == .app)
+        #expect(try Data(contentsOf: rig.doorFile.url) == beforeDoorBytes)
+        #expect(try Data(contentsOf: rig.configFile.url) == beforeConfigBytes)
+
+        // (c) A single-op failing switch writes nothing.
+        struct CopyBoom: LocalizedError {
+            var errorDescription: String? { "copy failed on purpose" }
+        }
+        switchSeam.copyOverride = { _, _ in throw CopyBoom() }
+        let failingSwitchAlone = """
+        {
+          "contract_version": 1,
+          "operations": [
+            {"op": "switchTo", "side": "extension", "copy": true}
+          ]
+        }
+        """
+        let outFail = HomeSpeakerCommandLine.apply(failingSwitchAlone, seam: seam)
         #expect(outFail.exitCode == 1)
         let parsedFail = try #require(JSONSerialization.jsonObject(with: Data(outFail.stdout[0].utf8)) as? [String: Any])
         #expect(parsedFail["ok"] as? Bool == false)
         let errFail = try #require(parsedFail["error"] as? [String: Any])
-        #expect(errFail["op_index"] as? Int == 1)
+        #expect(errFail["op_index"] as? Int == 0)
         #expect(errFail["code"] as? String == "switch_refused")
         #expect(rig.doorFile.read()?.chosen == .app)
         #expect(try Data(contentsOf: rig.doorFile.url) == beforeDoorBytes)
@@ -1060,33 +1116,31 @@ struct StateContractTests {
 
     // MARK: - 13. Concurrent Secrets Writer Is Not Lost
 
-    @Test("A concurrent SecretStore.update writer is not lost when --apply updates secrets")
+    @Test("A second writer changing a different secret while a batch's secret op is running is not lost")
     func concurrentSecretsWriterIsNotLost() throws {
         let rig = try ScratchRig()
         defer { rig.cleanup() }
         try rig.seedGoldenFixture()
 
-        let seam = rig.makeSeam()
         let appSecretsStore = SecretStore(fileURL: rig.secrets.fileURL)
-        let enteredLock = DispatchSemaphore(value: 0)
-        let writerDone = DispatchSemaphore(value: 0)
-
-        DispatchQueue.global(qos: .userInitiated).async {
-            try? appSecretsStore.update { secrets in
-                enteredLock.signal()
-                Thread.sleep(forTimeInterval: 0.05)
-                secrets.slackToken = "concurrent-app-slack-token" // gitleaks:allow
+        nonisolated(unsafe) var interleaved = false
+        var seam = rig.makeSeam()
+        seam.systemVoices = {
+            if !interleaved {
+                interleaved = true
+                try? appSecretsStore.update { secrets in
+                    secrets.slackToken = "concurrent-app-slack-token" // gitleaks:allow
+                }
             }
-            writerDone.signal()
+            return ScratchRig.systemVoices
         }
 
-        enteredLock.wait()
         let applyOut = HomeSpeakerCommandLine.apply(
-            #"{"contract_version":1,"operations":[{"op":"saveOAuthClient","client_id":"cli-client-id.apps.googleusercontent.com","client_secret":"cli-secret"}]}"#,
+            #"{"contract_version":1,"operations":[{"op":"saveOAuthClient","client_id":"cli-client-id.apps.googleusercontent.com","client_secret":"cli-secret"},{"op":"set","key":"local_voice","value":"com.apple.voice.premium.en-US.Ava"}]}"#,
             seam: seam
         )
-        writerDone.wait()
 
+        #expect(interleaved, "Seam hook must interleave while batch is running")
         #expect(applyOut.exitCode == 0)
         let finalSecrets = rig.secrets.load()
         #expect(finalSecrets.oauthClientIdOverride == "cli-client-id.apps.googleusercontent.com")

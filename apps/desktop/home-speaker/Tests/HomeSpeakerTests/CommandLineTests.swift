@@ -773,6 +773,10 @@ private let unreadableSettings = "{ not json"
     @Test @MainActor func everyCommandKeepsItsTimeLimit() throws {
         let timedOut = CLIOutput(stderr: ["error: timed out"], exitCode: 1)
         let volumeTimedOut = CLIOutput(stdout: [#"{"available":false,"reason":"timed out"}"#], exitCode: 1)
+        let applyTimedOut = CLIOutput(
+            stdout: [HomeSpeakerStateContract.encodeJSON(["ok": false, "error": ["code": "timed_out", "message": "timed out"]])],
+            exitCode: 1
+        )
         let limits: [([String], TimeInterval, CLIOutput)] = [
             (["--say", "hi"], 20, timedOut),
             (["--announce", "hi"], 20, timedOut),
@@ -782,6 +786,7 @@ private let unreadableSettings = "{ not json"
             (["--volume"], 40, volumeTimedOut),
             (["--set-volume", "5"], 40, volumeTimedOut),
             (["--mute"], 40, volumeTimedOut),
+            (["--apply", "--json", #"{"contract_version":1,"operations":[]}"#], 60, applyTimedOut),
             (["--sign-in"], 300, timedOut),
             (["--sign-out"], 30, timedOut),
             (["--discover"], 60, timedOut),
