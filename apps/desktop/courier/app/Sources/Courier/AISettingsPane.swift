@@ -112,6 +112,7 @@ public struct AISettingsPane: View {
     public var highlightedSettingID: String? = nil
 
     @State private var apiKeyInput: String = ""
+    @State private var keyError: String? = nil
 
     @MainActor
     public init(
@@ -183,6 +184,7 @@ public struct AISettingsPane: View {
             }
             .onChange(of: preferences.selectedEngine) { _, _ in
                 apiKeyInput = ""
+                keyError = nil
             }
             .onChange(of: highlightedSettingID, initial: true) { _, targetID in
                 if let targetID {
@@ -469,8 +471,16 @@ public struct AISettingsPane: View {
                     let trimmed = apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
                     preferences.enableContextualAI = true
                     if !trimmed.isEmpty {
-                        try? store.saveKey(trimmed, for: kind)
-                        apiKeyInput = ""
+                        do {
+                            try store.saveKey(trimmed, for: kind)
+                            apiKeyInput = ""
+                            keyError = nil
+                        } catch {
+                            keyError = String(localized: "Couldn’t save key to Keychain (\(error.localizedDescription)).")
+                            return
+                        }
+                    } else {
+                        keyError = nil
                     }
                     Task { await store.test() }
                 }
@@ -480,8 +490,13 @@ public struct AISettingsPane: View {
                     let trimmed = apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !trimmed.isEmpty else { return }
                     preferences.enableContextualAI = true
-                    try? store.saveKey(trimmed, for: kind)
-                    apiKeyInput = ""
+                    do {
+                        try store.saveKey(trimmed, for: kind)
+                        apiKeyInput = ""
+                        keyError = nil
+                    } catch {
+                        keyError = String(localized: "Couldn’t save key to Keychain (\(error.localizedDescription)).")
+                    }
                 }
                 .disabled(apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
@@ -498,13 +513,24 @@ public struct AISettingsPane: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Button(String(localized: "Remove")) {
-                        try? store.removeKey(for: kind)
-                        apiKeyInput = ""
+                        do {
+                            try store.removeKey(for: kind)
+                            apiKeyInput = ""
+                            keyError = nil
+                        } catch {
+                            keyError = String(localized: "Couldn’t remove key from Keychain (\(error.localizedDescription)).")
+                        }
                     }
                     .buttonStyle(.borderless)
                     .font(.caption)
                     Spacer(minLength: 0)
                 }
+            }
+
+            if let keyError {
+                Text(keyError)
+                    .font(.caption)
+                    .foregroundStyle(Color.red)
             }
         }
     }
