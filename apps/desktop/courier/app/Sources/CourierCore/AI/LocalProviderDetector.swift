@@ -103,6 +103,7 @@ public final class LocalProviderDetector: @unchecked Sendable {
         return URL(string: "http://127.0.0.1:\(port)/v1")
     }
 
+    @MainActor
     public func detect(unslothKey: String? = nil) async -> [AIProviderKind: LocalDetection] {
         guard !Task.isCancelled else {
             return [
@@ -126,12 +127,12 @@ public final class LocalProviderDetector: @unchecked Sendable {
         var unslothByPort: [Int: LocalDetection] = [:]
 
         await withTaskGroup(of: ProbeKind.self) { group in
-            group.addTask {
+            group.addTask { @MainActor in
                 guard !Task.isCancelled else { return .ollama(.notRunning) }
                 let detection = await Self.probeOllama(using: transport)
                 return .ollama(detection)
             }
-            group.addTask {
+            group.addTask { @MainActor in
                 guard !Task.isCancelled else { return .lmStudio(.notRunning) }
                 let detection = await Self.probeOpenAIModels(
                     url: Self.lmStudioModelsURL,
@@ -141,7 +142,7 @@ public final class LocalProviderDetector: @unchecked Sendable {
                 return .lmStudio(detection)
             }
             for port in Self.unslothPorts {
-                group.addTask {
+                group.addTask { @MainActor in
                     guard !Task.isCancelled else { return .unsloth(port: port, detection: .notRunning) }
                     let url = URL(string: "http://127.0.0.1:\(port)/v1/models")!
                     let detection = await Self.probeOpenAIModels(
@@ -212,11 +213,12 @@ public final class LocalProviderDetector: @unchecked Sendable {
         return host == "127.0.0.1" || host == "localhost" || host == "::1"
     }
 
+    @MainActor
     private static func probeOllama(using transport: any HTTPTransport) async -> LocalDetection {
-        guard isLocalhost(ollamaTagsURL) else { return .notRunning }
+        guard !Task.isCancelled, isLocalhost(ollamaTagsURL) else { return .notRunning }
         var request = URLRequest(url: ollamaTagsURL, timeoutInterval: AIClientHTTP.detectionProbeTimeout)
         request.httpMethod = "GET"
-        guard let (data, response) = try? await transport.send(request) else {
+        guard !Task.isCancelled, let (data, response) = try? await transport.send(request) else {
             return .notRunning
         }
         switch response.statusCode {
@@ -246,18 +248,19 @@ public final class LocalProviderDetector: @unchecked Sendable {
         }
     }
 
+    @MainActor
     private static func probeOpenAIModels(
         url: URL,
         apiKey: String?,
         using transport: any HTTPTransport
     ) async -> LocalDetection {
-        guard isLocalhost(url) else { return .notRunning }
+        guard !Task.isCancelled, isLocalhost(url) else { return .notRunning }
         var request = URLRequest(url: url, timeoutInterval: AIClientHTTP.detectionProbeTimeout)
         request.httpMethod = "GET"
         if let apiKey {
             request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         }
-        guard let (data, response) = try? await transport.send(request) else {
+        guard !Task.isCancelled, let (data, response) = try? await transport.send(request) else {
             return .notRunning
         }
         switch response.statusCode {

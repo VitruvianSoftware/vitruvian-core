@@ -99,6 +99,7 @@ public final class StubHTTPTransport: HTTPTransport, @unchecked Sendable {
     }
 
     public func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        try Task.checkCancellation()
         let nextAction = lock.withLock { () -> (Result<(Data, HTTPURLResponse), Error>?, Handler?) in
             _requests.append(request)
             if !queued.isEmpty {
