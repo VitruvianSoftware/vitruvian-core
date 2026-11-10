@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.14](https://github.com/VitruvianSoftware/vitruvian-core/compare/courier-v0.3.13...courier-v0.3.14) (2026-11-10)
+
+
+### Features
+
+* **courier:** calmer look — one accent, simpler message box, less clutter ([#4476](https://github.com/VitruvianSoftware/vitruvian-core/issues/4476)) ([2b19316](https://github.com/VitruvianSoftware/vitruvian-core/commit/2b193165b2552ddfcc93de705e85766517d0629a))
+
 ## [0.3.13](https://github.com/VitruvianSoftware/vitruvian-core/compare/courier-v0.3.12...courier-v0.3.13) (2026-11-07)
 
 
