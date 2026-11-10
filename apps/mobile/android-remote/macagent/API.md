@@ -699,6 +699,10 @@ The following status and diagnostic fields bring `/v1/homespeaker` to full parit
 | `custom_oauth_client_id` | string | Saved Google Cloud OAuth client ID (always shown on phone) |
 | `has_custom_oauth_secret` | bool | Whether custom OAuth client secret is saved |
 | `home_speaker_version` | string | Version of the installed HomeSpeaker application |
+| `settings` | `[{key, kind, label, value, shown, choices?:[{value, label}], limits?:{min, max, step, default_value}}]` | Home Speaker's own `--state --json` catalog passed through verbatim when `available: true` (omitted when unavailable). Current phones read labels, choice lists, limits, and visibility rules directly from this array; top-level fields remain for older phones |
+| `outputs_label` | string | Home Speaker's summary of active outputs (`outputs_label` from `--state --json`), omitted when unavailable |
+| `outputs_footer` | string | Home Speaker's explanation of active outputs (`outputs_footer` from `--state --json`), omitted when unavailable |
+| `targets[].display_line` | string | Home Speaker's formatted label for each speaker (`speakers[].display_line` from `--state --json`) alongside `key`, `name`, `room`, `type`, and `selected` |
 
 `available_voices` comes from Home Speaker's `--state` (the agent no longer runs `say -v '?'` or caches a
 listing), so it follows whatever Home Speaker lists.

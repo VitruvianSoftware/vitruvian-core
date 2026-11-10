@@ -370,31 +370,6 @@ public class DeriveTest {
   }
 
   @Test
-  public fun `the outputs line names what will speak`() {
-    assertEquals(
-        "Lake Office display + This Mac",
-        Derive.homeSpeakerOutputs(true, true, "Lake Office display"))
-    assertEquals(
-        "Lake Office display", Derive.homeSpeakerOutputs(true, false, "Lake Office display"))
-    assertEquals("This Mac only", Derive.homeSpeakerOutputs(false, true, "Lake Office display"))
-    assertEquals(
-        "No outputs — nothing will be spoken",
-        Derive.homeSpeakerOutputs(false, false, "Lake Office display"))
-    // No speaker picked is said, not left blank.
-    assertEquals("no speaker + This Mac", Derive.homeSpeakerOutputs(true, true, null))
-    assertEquals("no speaker", Derive.homeSpeakerOutputs(true, false, " "))
-    assertEquals(
-        "This phone only",
-        Derive.homeSpeakerOutputs(false, false, "Lake Office display", speakPhone = true))
-    assertEquals(
-        "Lake Office display + This phone",
-        Derive.homeSpeakerOutputs(true, false, "Lake Office display", speakPhone = true))
-    assertEquals(
-        "Lake Office display + This Mac + This phone",
-        Derive.homeSpeakerOutputs(true, true, "Lake Office display", speakPhone = true))
-  }
-
-  @Test
   public fun `This phone speaking alone needs no Google sign-in and explains its voice`() {
     assertEquals(
         "on",
@@ -504,42 +479,6 @@ public class DeriveTest {
   }
 
   @Test
-  public fun `local engine, Gemini voice, announcement style and style model labels`() {
-    assertEquals(listOf("apple", "gemini"), Derive.localEngines)
-    assertEquals("Apple (on Mac)", Derive.localEngineLabel("apple"))
-    assertEquals("Gemini TTS", Derive.localEngineLabel("gemini"))
-    assertEquals(
-        listOf(
-            "Kore",
-            "Puck",
-            "Aoede",
-            "Charon",
-            "Zephyr",
-            "Fenrir",
-            "Leda",
-            "Orus",
-            "voice_vaoo7ayczx69",
-            "voice_o1be80ujj8bb",
-        ),
-        Derive.geminiVoices)
-    assertEquals(
-        listOf("verbatim", "plain", "briefing", "casual", "custom"), Derive.announcementStyles)
-    assertEquals("Custom", Derive.announcementStyleLabel("custom"))
-    assertEquals("Verbatim", Derive.announcementStyleLabel("verbatim"))
-    assertEquals("Plain spoken", Derive.announcementStyleLabel("plain"))
-    assertEquals("Warm briefing", Derive.announcementStyleLabel("briefing"))
-    assertEquals("Casual", Derive.announcementStyleLabel("casual"))
-    assertEquals("Verbatim", Derive.announcementStyleLabel("unknown"))
-    assertEquals(listOf("apple", "gemini"), Derive.styleModels)
-    assertEquals("Apple (on Mac)", Derive.styleModelLabel("apple"))
-    assertEquals("Gemini Flash", Derive.styleModelLabel("gemini"))
-    assertEquals(listOf("direct_and_mentions", "all"), Derive.beeperAnnounceModes)
-    assertEquals("Direct & mentions", Derive.beeperAnnounceLabel("direct_and_mentions"))
-    assertEquals("All messages", Derive.beeperAnnounceLabel("all"))
-    assertEquals("Direct & mentions", Derive.beeperAnnounceLabel("unknown"))
-  }
-
-  @Test
   public fun `Courier's networks HomeSpeaker reads itself are read here as well, Beeper's are greyed`() {
     val slack = AgentBeeperNetwork("slack", "Slack", "skipped")
     val beeper = Derive.chatNetworkRow("Beeper", slack)
@@ -584,42 +523,11 @@ public class DeriveTest {
   }
 
   @Test
-  public fun `speech length labels round trip the wire values and default to summary`() {
-    assertEquals(listOf("headline", "summary", "full"), Derive.speechLengths)
-    assertEquals("Headline", Derive.speechLengthLabel("headline"))
-    assertEquals("Full reply", Derive.speechLengthLabel("FULL"))
-    assertEquals("Summary", Derive.speechLengthLabel("summary"))
-    assertEquals("Summary", Derive.speechLengthLabel(""))
-    assertEquals("Summary", Derive.speechLengthLabel("medium"))
-  }
-
-  @Test
-  public fun `the pause margin stays inside what the Mac accepts`() {
-    assertEquals(2.0, Derive.nextPauseMargin(1.0, 1.0), 1e-9)
-    assertEquals(0.0, Derive.nextPauseMargin(0.0, -1.0), 1e-9)
-    assertEquals(10.0, Derive.nextPauseMargin(10.0, 1.0), 1e-9)
-    assertEquals(10.0, Derive.nextPauseMargin(9.5, 1.0), 1e-9)
-  }
-
-  @Test
-  public fun `the pause margin reads in whole seconds like the Mac's stepper`() {
-    assertEquals("resumes 1 s after the speaker", Derive.pauseMarginLabel(1.0))
-    assertEquals("resumes 3 s after the speaker", Derive.pauseMarginLabel(2.6))
-  }
-
-  @Test
   public fun `a speaker's volume is never shown as a stale number`() {
     assertEquals("40%", Derive.speakerVolumeLabel(true, true, false, 40))
     assertEquals("muted", Derive.speakerVolumeLabel(true, true, true, 40))
     assertEquals("offline", Derive.speakerVolumeLabel(true, false, false, 40))
     assertEquals("n/a", Derive.speakerVolumeLabel(false, true, false, 40))
-  }
-
-  @Test
-  public fun `volume steps stay inside 0 to 100`() {
-    assertEquals(50, Derive.nextVolume(40, 10))
-    assertEquals(0, Derive.nextVolume(5, -10))
-    assertEquals(100, Derive.nextVolume(95, 10))
   }
 
   // --- battery (API v1.5.1) ----------------------------------------------
@@ -828,81 +736,6 @@ public class DeriveTest {
   // --- HomeSpeaker progressive disclosure ----------------------------------
 
   @Test
-  public fun `gemini voice display name prefers a cloned voice's name`() {
-    val custom = listOf(AgentCustomVoice("clone-1", "James"), AgentCustomVoice("clone-2", "Ana"))
-    assertEquals("James", Derive.geminiVoiceDisplayName("clone-1", custom))
-    assertEquals("Kore", Derive.geminiVoiceDisplayName("Kore", custom))
-    // A deleted clone still shows something honest: its id.
-    assertEquals("clone-9", Derive.geminiVoiceDisplayName("clone-9", custom))
-    assertEquals("Puck", Derive.geminiVoiceDisplayName("Puck", emptyList()))
-    assertEquals("Freeman", Derive.geminiVoiceDisplayName("voice_vaoo7ayczx69", emptyList()))
-    assertEquals("James", Derive.geminiVoiceDisplayName("voice_o1be80ujj8bb", emptyList()))
-  }
-
-  @Test
-  public fun `home speaker settings hide only when the home output is known off`() {
-    assertTrue(Derive.homeSettingsRelevant(true))
-    assertFalse(Derive.homeSettingsRelevant(false))
-    // An agent too old to switch outputs always speaks on the home speaker.
-    assertTrue(Derive.homeSettingsRelevant(null))
-  }
-
-  @Test
-  public fun `cast selected voice shows only for home speaker with gemini`() {
-    assertTrue(Derive.castVoiceRelevant(true, "gemini"))
-    assertFalse(Derive.castVoiceRelevant(true, "apple"))
-    assertFalse(Derive.castVoiceRelevant(false, "gemini"))
-    assertFalse(Derive.castVoiceRelevant(null, "gemini"))
-  }
-
-  @Test
-  public fun `local voice settings show only when an output speaks with them`() {
-    // When only home speaker is on, local voice engine is visible to avoid deadlock
-    assertTrue(Derive.localVoiceInUse(false, false, true, false))
-    assertFalse(Derive.localVoiceInUse(false, null, false, true))
-    assertTrue(Derive.localVoiceInUse(true, false, false, false))
-    assertTrue(Derive.localVoiceInUse(false, true, false, false))
-    // The home speaker uses the local voice only when it casts it or to configure it.
-    assertTrue(Derive.localVoiceInUse(false, false, true, true))
-    assertFalse(Derive.localVoiceInUse(false, false, null, true))
-  }
-
-  @Test
-  public fun `cast selected voice reachability when only home speaker is enabled`() {
-    // Deadlock reproduction & resolution test:
-    // When only Home speakers is on and localEngine is "apple":
-    val speakHome = true
-    val speakLocal = false
-    val speakPhone = false
-    var localEngine = "apple"
-
-    // 1. Local voice engine control is visible so user is NOT deadlocked:
-    assertTrue(Derive.localVoiceInUse(speakLocal, speakPhone, speakHome, false))
-    // Cast selected voice is hidden initially while localEngine == "apple"
-    assertFalse(Derive.castVoiceRelevant(speakHome, localEngine))
-
-    // 2. User selects "gemini" in Local voice engine:
-    localEngine = "gemini"
-
-    // 3. Cast selected voice is now revealed and reachable!
-    assertTrue(Derive.castVoiceRelevant(speakHome, localEngine))
-  }
-
-  @Test
-  public fun `quiet hours choices preserves off step values`() {
-    assertEquals(48, Derive.quietHoursSlots.size)
-    assertEquals("00:00", Derive.quietHoursSlots.first())
-    assertEquals("23:30", Derive.quietHoursSlots.last())
-
-    val standard = Derive.quietHoursChoices("07:00")
-    assertEquals(48, standard.size)
-
-    val offStep = Derive.quietHoursChoices("07:15")
-    assertEquals(49, offStep.size)
-    assertTrue("07:15" in offStep)
-  }
-
-  @Test
   public fun `quiet hours subtitle reflects active status`() {
     assertEquals(
         "off · plays at any hour", Derive.quietHoursSubtitle(false, false, "22:00", "07:00"))
@@ -911,38 +744,6 @@ public class DeriveTest {
         Derive.quietHoursSubtitle(true, true, "22:00", "07:00"))
     assertEquals(
         "quiet from 22:00 to 07:00", Derive.quietHoursSubtitle(true, false, "22:00", "07:00"))
-  }
-
-  @Test
-  public fun `volume and margin choices generation`() {
-    assertEquals(11, Derive.volumePercentChoices.size) // 0..100 step 10
-    assertEquals(10, Derive.announceVolumePercentChoices.size) // 10..100 step 10
-    val offStep = Derive.announceVolumeChoices(45)
-    assertEquals(11, offStep.size)
-    assertTrue(45 in offStep)
-
-    assertEquals(11, Derive.pauseMarginSecondChoices.size) // 0.0..10.0
-    assertEquals("2 min", Derive.pollIntervalLabel(120))
-    assertEquals("15 s", Derive.pollIntervalLabel(15))
-    assertEquals("Google API", Derive.googleChatSourceLabel("api"))
-    assertEquals("Automatic", Derive.googleChatSourceLabel("auto"))
-  }
-
-  @Test
-  public fun `phrasing settings hide only when every coding agent is known off`() {
-    assertTrue(Derive.allCodingAgentsOff(false, false, false))
-    assertFalse(Derive.allCodingAgentsOff(true, false, false))
-    assertFalse(Derive.allCodingAgentsOff(false, false, true))
-    // An older agent without the OpenCode switch is not "all off".
-    assertFalse(Derive.allCodingAgentsOff(false, false, null))
-    assertFalse(Derive.allCodingAgentsOff(null, null, null))
-  }
-
-  @Test
-  public fun `speaker choice label names the room, or says all rooms`() {
-    assertEquals(
-        "Kitchen · Nest Mini", Derive.speakerChoiceLabel("Nest Mini", "Kitchen", "Speaker"))
-    assertEquals("Whole Home (all rooms)", Derive.speakerChoiceLabel("Whole Home", "", "Structure"))
   }
 
   @Test
@@ -1299,83 +1100,9 @@ public class DeriveTest {
     assertEquals(
         "quiet from 22:00",
         Derive.quietHoursMetricSub(enabled = true, active = false, start = "22:00"))
+    // No start reported: the phone invents none.
     assertEquals(
-        "quiet from 22:00", Derive.quietHoursMetricSub(enabled = true, active = false, start = ""))
-  }
-
-  @Test
-  public fun `voice row show-hide rules match HomeSpeaker SettingsView`() {
-    // Mac voice shows whenever This Mac is on (labelled "Fallback Mac voice" under Gemini).
-    assertTrue(Derive.showsMacVoice(speakLocal = true, localEngine = "apple"))
-    assertTrue(Derive.showsMacVoice(speakLocal = true, localEngine = "gemini"))
-    assertFalse(Derive.showsMacVoice(speakLocal = false, localEngine = "apple"))
-    assertFalse(Derive.showsMacVoice(speakLocal = false, localEngine = "gemini"))
-
-    // usesVoiceEngine: local, phone, or home when casting.
-    assertTrue(Derive.usesVoiceEngine(speakLocal = true, speakPhone = false, speakHome = false))
-    assertTrue(Derive.usesVoiceEngine(speakLocal = false, speakPhone = true, speakHome = false))
-    assertFalse(
-        Derive.usesVoiceEngine(
-            speakLocal = false, speakPhone = false, speakHome = true, homeCastVoice = false))
-    assertTrue(
-        Derive.usesVoiceEngine(
-            speakLocal = false, speakPhone = false, speakHome = true, homeCastVoice = true))
-
-    // geminiSpeaks: usesVoiceEngine && localEngine == "gemini".
-    assertTrue(
-        Derive.geminiSpeaks(
-            speakLocal = true,
-            speakPhone = false,
-            speakHome = false,
-            homeCastVoice = false,
-            localEngine = "gemini"))
-    assertFalse(
-        Derive.geminiSpeaks(
-            speakLocal = true,
-            speakPhone = false,
-            speakHome = false,
-            homeCastVoice = false,
-            localEngine = "apple"))
-    assertFalse(
-        Derive.geminiSpeaks(
-            speakLocal = false,
-            speakPhone = false,
-            speakHome = true,
-            homeCastVoice = false,
-            localEngine = "gemini"))
-
-    // showsStyleGeminiKey: Apple TTS + Gemini rewrites shows the Gemini API key under Style model,
-    // while Gemini TTS shows it under Speakers instead (not duplicated).
-    assertTrue(
-        Derive.showsStyleGeminiKey(
-            allCodingAgentsOff = false,
-            announcementStyle = "briefing",
-            styleModel = "gemini",
-            geminiSpeaks = false))
-    assertFalse(
-        Derive.showsStyleGeminiKey(
-            allCodingAgentsOff = false,
-            announcementStyle = "briefing",
-            styleModel = "gemini",
-            geminiSpeaks = true))
-    assertFalse(
-        Derive.showsStyleGeminiKey(
-            allCodingAgentsOff = false,
-            announcementStyle = "verbatim",
-            styleModel = "gemini",
-            geminiSpeaks = false))
-    assertFalse(
-        Derive.showsStyleGeminiKey(
-            allCodingAgentsOff = true,
-            announcementStyle = "briefing",
-            styleModel = "gemini",
-            geminiSpeaks = false))
-    assertFalse(
-        Derive.showsStyleGeminiKey(
-            allCodingAgentsOff = false,
-            announcementStyle = "briefing",
-            styleModel = "apple",
-            geminiSpeaks = false))
+        "quiet hours on", Derive.quietHoursMetricSub(enabled = true, active = false, start = ""))
   }
 
   @Test
@@ -1403,14 +1130,16 @@ public class DeriveTest {
         Derive.slackTokenSubtitle(hasToken = false, slackIdentity = "@james"))
 
     assertEquals(
-        "currently reading via the Google API",
-        Derive.googleChatSourceSubtitle(activeBackend = "api", monitorRunning = true))
+        "currently reading via Google API (this app's login)",
+        Derive.googleChatSourceSubtitle(
+            activeBackendLabel = "Google API (this app's login)", monitorRunning = true))
     assertEquals(
-        "currently reading via gws CLI",
-        Derive.googleChatSourceSubtitle(activeBackend = "gws", monitorRunning = true))
+        "currently reading via gws command-line tool",
+        Derive.googleChatSourceSubtitle(
+            activeBackendLabel = "gws command-line tool", monitorRunning = true))
     assertEquals(
         "which backend reads Google Chat",
-        Derive.googleChatSourceSubtitle(activeBackend = "api", monitorRunning = false))
+        Derive.googleChatSourceSubtitle(activeBackendLabel = "Google API", monitorRunning = false))
 
     val apiOk =
         Derive.googleChatAccountDiag(
@@ -2130,6 +1859,32 @@ public class DeriveTest {
   }
 
   @Test
+  public fun `a Home Speaker refusal keeps its own words even when it says refused or reset`() {
+    // Home Speaker's --apply messages now reach the phone verbatim; only real network
+    // failures may read as "the Mac didn't answer".
+    assertEquals(
+        "Couldn't change Speak: Home Speaker refused this change: not a choice",
+        Derive.homeSpeakerInlineError(
+            what = "change Speak", reason = "Home Speaker refused this change: not a choice"))
+    assertEquals(
+        "Couldn't reset: Reset settings is not available while signing in",
+        Derive.homeSpeakerInlineError(
+            what = "reset", reason = "Reset settings is not available while signing in"))
+    assertEquals(
+        "Couldn't mute: the Mac didn't answer",
+        Derive.homeSpeakerInlineError(
+            what = "mute", reason = "java.net.ConnectException: Connection refused"))
+    assertEquals(
+        "Couldn't mute: the Mac didn't answer",
+        Derive.homeSpeakerInlineError(
+            what = "mute", reason = "java.net.SocketException: Connection reset"))
+    assertEquals(
+        "Couldn't mute: the Mac didn't answer",
+        Derive.homeSpeakerInlineError(
+            what = "mute", reason = "failed to connect to /10.0.2.2 (port 8765)"))
+  }
+
+  @Test
   public fun `HomeSpeaker inline errors use plain words for unreachable, auth, agent HTTP errors and explicit reasons`() {
     assertEquals(
         "Couldn't mute: the Mac didn't answer",
@@ -2749,5 +2504,385 @@ public class DeriveTest {
     assertFalse(Derive.showsCourierRow(null))
     assertTrue(Derive.showsCourierRow(false))
     assertTrue(Derive.showsCourierRow(true))
+  }
+
+  private fun runfileKotlinFiles(relDir: String): List<String> {
+    val roots = mutableListOf(java.io.File("."))
+    System.getenv("TEST_SRCDIR")
+        ?.takeIf { it.isNotBlank() }
+        ?.let { src ->
+          for (w in listOf("_main", "vitruvian_core", "")) {
+            roots += if (w.isEmpty()) java.io.File(src) else java.io.File(src, w)
+          }
+        }
+    val dir = roots.map { java.io.File(it, relDir) }.firstOrNull { it.isDirectory }
+    val names = dir?.listFiles { f -> f.name.endsWith(".kt") }?.map { it.name }.orEmpty().sorted()
+    assertTrue("no screens/*.kt found in runfiles under $relDir", names.isNotEmpty())
+    return names.map { "$relDir/$it" }
+  }
+
+  private fun readRunfile(relPath: String): String {
+    val direct = java.io.File(relPath)
+    if (direct.exists()) return direct.readText()
+    val testSrcDir = System.getenv("TEST_SRCDIR")
+    if (!testSrcDir.isNullOrBlank()) {
+      for (workspace in listOf("_main", "vitruvian_core", "")) {
+        val candidate =
+            if (workspace.isEmpty()) java.io.File(testSrcDir, relPath)
+            else java.io.File(java.io.File(testSrcDir, workspace), relPath)
+        if (candidate.exists()) return candidate.readText()
+      }
+    }
+    error("Runfile not found: $relPath")
+  }
+
+  @Test
+  public fun `catalog labels choices limits and shown come from payload and substitute This phone`() {
+    val sources =
+        HomeSpeakerWire.sources(
+            readRunfile("apps/mobile/android-remote/macagent/golden_homespeaker_v1.json"))
+    val catalog = sources.catalog
+
+    assertTrue(Derive.hasHomeSpeakerCatalog(available = true, catalog = catalog))
+    assertEquals("Enable Voice Broadcasting", Derive.catalogLabel(catalog, "enabled"))
+    assertEquals("Speak", Derive.catalogLabel(catalog, "speech_length"))
+    assertEquals(
+        "Headline (1-2 sentences)", Derive.catalogChoiceLabel(catalog, "speech_length", "headline"))
+    assertEquals("Plain summary", Derive.catalogChoiceLabel(catalog, "announcement_style", "plain"))
+    assertEquals("Apple (on this Mac)", Derive.catalogChoiceLabel(catalog, "style_model", "apple"))
+    assertEquals("Apple (System)", Derive.catalogChoiceLabel(catalog, "local_engine", "apple"))
+    assertEquals("Kore · Warm & clear", Derive.catalogChoiceLabel(catalog, "gemini_voice", "Kore"))
+    assertEquals(
+        "Studio Narrator (cloned)", Derive.catalogChoiceLabel(catalog, "gemini_voice", "cloned-1"))
+    assertEquals(
+        "Direct messages and mentions",
+        Derive.catalogChoiceLabel(catalog, "beeper_announce", "direct_and_mentions"))
+    assertEquals(
+        "gws command-line tool", Derive.catalogChoiceLabel(catalog, "google_chat_source", "gws"))
+    assertFalse(Derive.catalogShown(catalog, "custom_style_prompt"))
+    assertTrue(Derive.catalogShown(catalog, "style_model"))
+
+    // The single phone point-of-view substitution: "Your phone" -> "This phone".
+    assertEquals(Derive.THIS_PHONE, Derive.catalogLabel(catalog, "speak_phone"))
+    assertEquals("Office Mini + This Mac + This phone", Derive.outputsSummary(sources.outputsLabel))
+    val footer = Derive.phoneWording(sources.outputsFooter.orEmpty())
+    assertTrue(footer.contains("This phone plays the Gemini voice"))
+    assertFalse(footer.contains("Your phone"))
+
+    // Synthetic catalog proves the phone uses whatever labels, choices and step limits arrive
+    // without falling back to local copies or clamping step deltas on the phone.
+    val custom =
+        HomeSpeakerCatalog(
+            listOf(
+                HomeSpeakerSetting(
+                    key = "speech_length",
+                    kind = "choice",
+                    label = "Length from Mac",
+                    stringValue = "terse",
+                    shown = true,
+                    choices = listOf(HomeSpeakerChoice("terse", "One short line")),
+                ),
+                HomeSpeakerSetting(
+                    key = "announce_volume",
+                    kind = "number",
+                    label = "Custom level",
+                    numberValue = 98.0,
+                    shown = true,
+                    limits =
+                        HomeSpeakerLimits(min = 10.0, max = 100.0, step = 5.0, defaultValue = 60.0),
+                ),
+            ))
+    assertEquals("Length from Mac", Derive.catalogLabel(custom, "speech_length"))
+    assertEquals("One short line", Derive.catalogChoiceLabel(custom, "speech_length", "terse"))
+    val stepper =
+        Derive.catalogStepper(
+            current = 98.0,
+            limits = Derive.catalogLimits(custom, "announce_volume")!!,
+            canAct = true,
+        )
+    assertEquals("−5", stepper.minusLabel)
+    assertEquals("+5", stepper.plusLabel)
+    assertTrue(stepper.minusEnabled)
+    assertTrue(stepper.plusEnabled)
+    // The stepper stops at Home Speaker's max: 98 + 5 is sent as 100, never 103.
+    assertEquals(100.0, stepper.plusNext, 0.0)
+  }
+
+  @Test
+  public fun `missing catalog yields helper reason when present or the update sentence`() {
+    val empty = HomeSpeakerCatalog()
+    assertFalse(Derive.hasHomeSpeakerCatalog(available = true, catalog = empty))
+    assertFalse(
+        Derive.hasHomeSpeakerCatalog(
+            available = false,
+            catalog =
+                HomeSpeakerCatalog(
+                    listOf(HomeSpeakerSetting("enabled", "toggle", "Enable", shown = true)))))
+
+    assertEquals(
+        "Update Home Speaker on atlas (have 1.38.0, need 1.40.0)",
+        Derive.missingCatalogMessage("Update Home Speaker on atlas (have 1.38.0, need 1.40.0)"),
+    )
+    assertEquals(
+        "Home Speaker is not installed on this Mac",
+        Derive.missingCatalogMessage("  Home Speaker is not installed on this Mac  "),
+    )
+    val fallback =
+        "Update Home Speaker and the Vitruvian Remote helper on your Mac to change these settings here."
+    assertEquals(fallback, Derive.missingCatalogMessage(null))
+    assertEquals(fallback, Derive.missingCatalogMessage(""))
+    assertEquals(fallback, Derive.missingCatalogMessage("   "))
+  }
+
+  @Test
+  public fun `deleted Home Speaker label constants choice lists and clamps stay out of phone sources`() {
+    val files =
+        listOf(
+            "apps/mobile/android-remote/src/main/kotlin/dev/vitruvian/remote/state/AgentClient.kt",
+            "apps/mobile/android-remote/src/main/kotlin/dev/vitruvian/remote/state/Derive.kt",
+            "apps/mobile/android-remote/src/main/kotlin/dev/vitruvian/remote/state/RemoteState.kt",
+            "apps/mobile/android-remote/src/main/kotlin/dev/vitruvian/remote/state/Wire.kt",
+        ) +
+            runfileKotlinFiles(
+                "apps/mobile/android-remote/src/main/kotlin/dev/vitruvian/remote/screens")
+    val deletedSymbols =
+        listOf(
+            "speechLengths",
+            "speechLengthLabel",
+            "localEngines",
+            "localEngineLabel",
+            "announcementStyles",
+            "announcementStyleLabel",
+            "styleModels",
+            "styleModelLabel",
+            "geminiVoices",
+            "geminiVoiceDisplayName",
+            "quietHoursChoices",
+            "quietHoursSlots",
+            "announceVolumeChoices",
+            "announceVolumePercentChoices",
+            "volumePercentChoices",
+            "pauseMarginSecondChoices",
+            "pollIntervalChoices",
+            "pollIntervalLabel",
+            "googleChatSources",
+            "googleChatSourceLabel",
+            "beeperAnnounceModes",
+            "beeperAnnounceLabel",
+            "pauseMarginLabel",
+            "PAUSE_MARGIN_MAX",
+            "nextPauseMargin",
+            "nextVolume",
+            "MIN_POLL_INTERVAL",
+            "MAX_POLL_INTERVAL",
+            "speakerChoiceLabel",
+            "homeSpeakerOutputs",
+            "homeSettingsRelevant",
+            "castVoiceRelevant",
+            "localVoiceInUse",
+            "usesVoiceEngine",
+            "showsMacVoice",
+            "geminiSpeaks",
+            "showsStyleGeminiKey",
+            "allCodingAgentsOff",
+        )
+    val forbiddenLiterals =
+        listOf(
+            "Headline (1-2 sentences)",
+            "Summary (about 4 lines)",
+            "Plain summary",
+            "Apple (on this Mac)",
+            "Apple (System)",
+            "Direct messages and mentions",
+            "gws command-line tool",
+            "Kore · Warm & clear",
+            "Enable Voice Broadcasting",
+            "Enable Quiet Hours",
+            "Plain spoken",
+            "Gemini Flash",
+            "Direct & mentions",
+            "gws CLI",
+            "Apple (on Mac)",
+            // Old inline-error keys: errors are keyed by catalog key, not by a label.
+            "What to say",
+            "Style model",
+            "Poll interval",
+            "Speaker volume",
+        )
+    val hits = mutableListOf<String>()
+    for (path in files) {
+      val text = readRunfile(path)
+      for (sym in deletedSymbols) {
+        if (Regex("""\b${Regex.escape(sym)}\b""").containsMatchIn(text)) {
+          hits += "$path contains deleted symbol `$sym`"
+        }
+      }
+      for (lit in forbiddenLiterals) {
+        if (text.contains("\"$lit\"")) {
+          hits += "$path contains hardcoded Home Speaker choice/label literal \"$lit\""
+        }
+      }
+    }
+    assertTrue(
+        "Local Home Speaker rulebook copies found:\n${hits.joinToString("\n")}", hits.isEmpty())
+  }
+
+  @Test
+  public fun `probe catalog helpers handle shown false unknown keys choice phone substitution and stepper boundaries`() {
+    val catalog =
+        HomeSpeakerCatalog(
+            listOf(
+                HomeSpeakerSetting(
+                    key = "hidden_toggle",
+                    kind = "toggle",
+                    label = "Hidden on Your phone",
+                    boolValue = true,
+                    shown = false,
+                ),
+                HomeSpeakerSetting(
+                    key = "route_mode",
+                    kind = "choice",
+                    label = "Your phone routing",
+                    stringValue = "phone_only",
+                    shown = true,
+                    choices =
+                        listOf(
+                            HomeSpeakerChoice("phone_only", "Your phone only"),
+                            HomeSpeakerChoice("both", "Your phone + Mac"),
+                        ),
+                ),
+                HomeSpeakerSetting(
+                    key = "pause_media_extra_seconds",
+                    kind = "number",
+                    label = "Resume after",
+                    numberValue = 0.0,
+                    shown = true,
+                    limits =
+                        HomeSpeakerLimits(min = 0.0, max = 10.0, step = 0.5, defaultValue = 1.0),
+                ),
+            ))
+
+    assertFalse(Derive.catalogShown(catalog, "hidden_toggle"))
+    assertFalse(Derive.catalogShown(catalog, "future_unknown_key"))
+    assertEquals("", Derive.catalogLabel(catalog, "future_unknown_key"))
+    assertEquals("unlisted_raw", Derive.catalogChoiceLabel(catalog, "route_mode", "unlisted_raw"))
+
+    assertEquals("This phone routing", Derive.catalogLabel(catalog, "route_mode"))
+    assertEquals(
+        listOf(
+            HomeSpeakerChoice("phone_only", "This phone only"),
+            HomeSpeakerChoice("both", "This phone + Mac"),
+        ),
+        Derive.catalogChoices(catalog, "route_mode"),
+    )
+    assertEquals("This phone only", Derive.catalogChoiceLabel(catalog, "route_mode", "phone_only"))
+    assertEquals(
+        "This phone then This phone",
+        Derive.outputsSummary("  Your phone then Your phone  "),
+    )
+    assertEquals(null, Derive.outputsSummary("   "))
+
+    val limits = Derive.catalogLimits(catalog, "pause_media_extra_seconds")!!
+    val atMin =
+        Derive.catalogStepper(current = 0.0, limits = limits, canAct = true, unitSuffix = "s")
+    assertEquals("−0.5s", atMin.minusLabel)
+    assertEquals("+0.5s", atMin.plusLabel)
+    assertFalse(atMin.minusEnabled)
+    assertTrue(atMin.plusEnabled)
+
+    val atMax =
+        Derive.catalogStepper(current = 10.0, limits = limits, canAct = true, unitSuffix = "s")
+    assertTrue(atMax.minusEnabled)
+    assertFalse(atMax.plusEnabled)
+
+    val unpaired = Derive.catalogStepper(current = 5.0, limits = limits, canAct = false)
+    assertFalse(unpaired.minusEnabled)
+    assertFalse(unpaired.plusEnabled)
+  }
+
+  @Test
+  public fun `catalog steppers stop at the limits and never send a value outside them`() {
+    val volume = HomeSpeakerLimits(min = 0.0, max = 100.0, step = 10.0, defaultValue = 60.0)
+    val nearMax = Derive.catalogStepper(current = 95.0, limits = volume, canAct = true)
+    assertEquals(100.0, nearMax.plusNext, 0.0)
+    val atMax = Derive.catalogStepper(current = 100.0, limits = volume, canAct = true)
+    assertFalse(atMax.plusEnabled)
+    assertEquals(100.0, atMax.plusNext, 0.0)
+    val nearMin = Derive.catalogStepper(current = 5.0, limits = volume, canAct = true)
+    assertEquals(0.0, nearMin.minusNext, 0.0)
+    val poll = HomeSpeakerLimits(min = 5.0, max = 300.0, step = 5.0, defaultValue = 15.0)
+    assertEquals(5.0, Derive.catalogStepper(7.0, poll, true).minusNext, 0.0)
+    assertEquals(300.0, Derive.catalogStepper(298.0, poll, true).plusNext, 0.0)
+  }
+
+  @Test
+  public fun `the speaker's live volume is kept inside the device's 0 to 100 before sending`() {
+    assertEquals(100, Derive.clampSpeakerVolume(105))
+    assertEquals(0, Derive.clampSpeakerVolume(-10))
+    assertEquals(60, Derive.clampSpeakerVolume(60))
+  }
+
+  @Test
+  public fun `quiet hours quick action shows no window the Mac did not report`() {
+    val spec =
+        Derive.quietHoursQuickAction(
+            true, true, enabled = true, active = false, start = "", end = "")
+    assertNull(spec.secondary)
+    assertFalse(spec.contentDescription.contains("22:00"))
+    val reported =
+        Derive.quietHoursQuickAction(
+            true, true, enabled = true, active = false, start = "21:00", end = "06:30")
+    assertEquals("21:00–06:30", reported.secondary)
+  }
+
+  @Test
+  public fun `without a catalog the Now strip keeps only replay, no setting controls`() {
+    fun ids(hasCatalog: Boolean) =
+        Derive.homeSpeakerQuickActions(
+                hasCatalog = hasCatalog,
+                paired = true,
+                available = true,
+                volumeAvailable = true,
+                volumeOnline = true,
+                muted = false,
+                percent = 40,
+                quietEnabled = false,
+                quietActive = false,
+                quietStart = "",
+                quietEnd = "",
+                targetName = "Office Mini",
+                hasReplay = true,
+            )
+            .map { it.id }
+    assertEquals(listOf("replay"), ids(false))
+    assertEquals(listOf("mute", "quiet_hours", "room", "replay", "snooze"), ids(true))
+  }
+
+  @Test
+  public fun `a refusal recorded under a catalog key shows on that row, an old label does not`() {
+    val errors = mapOf("speech_length" to "Home Speaker refused that")
+    assertEquals("Home Speaker refused that", Derive.settingError(errors, "speech_length"))
+    assertNull(Derive.settingError(errors, "What to say"))
+  }
+
+  @Test
+  public fun `setHomeSpeaker files its errors under real catalog keys`() {
+    val catalogKeys =
+        HomeSpeakerWire.sources(
+                readRunfile("apps/mobile/android-remote/macagent/golden_homespeaker_v1.json"))
+            .catalog
+            .settings
+            .map { it.key }
+            .toSet()
+    val text =
+        readRunfile(
+            "apps/mobile/android-remote/src/main/kotlin/dev/vitruvian/remote/state/RemoteState.kt")
+    val block =
+        text.substringAfter("    val key =\n        controlId").substringBefore("else -> what")
+    val keys = Regex("""-> "([a-z][a-z_]+)"""").findAll(block).map { it.groupValues[1] }.toList()
+    assertTrue("no catalog-key error keys found in setHomeSpeaker", keys.size >= 30)
+    // "snooze" is the phone's own Now-strip control, not a Home Speaker field.
+    val notInCatalog = keys.filter { it !in catalogKeys && it != "snooze" }
+    assertTrue("error keys that are not catalog keys: $notInCatalog", notInCatalog.isEmpty())
   }
 }

@@ -224,6 +224,7 @@ pub struct HomeSpeakerTarget {
     pub room: String,
     pub target_type: String,
     pub selected: bool,
+    pub display_line: String,
 }
 
 impl HomeSpeakerTarget {
@@ -237,6 +238,10 @@ impl HomeSpeakerTarget {
             JsonValue::String(self.target_type.clone()),
         );
         m.insert("selected".to_string(), JsonValue::Bool(self.selected));
+        m.insert(
+            "display_line".to_string(),
+            JsonValue::String(self.display_line.clone()),
+        );
         JsonValue::Object(m)
     }
 }
@@ -399,6 +404,12 @@ pub struct HomeSpeakerState {
     pub recent: Vec<HomeSpeakerLast>,
     /// Home Speaker's own warnings about its setup.
     pub warnings: Vec<String>,
+    /// Home Speaker's `settings[]` catalog passed through verbatim from `--state --json`.
+    pub settings: Vec<JsonValue>,
+    /// Home Speaker's summary of active outputs (`outputs_label`), when available.
+    pub outputs_label: Option<String>,
+    /// Home Speaker's explanation of active outputs (`outputs_footer`), when available.
+    pub outputs_footer: Option<String>,
 }
 
 impl Default for HomeSpeakerState {
@@ -486,6 +497,9 @@ impl Default for HomeSpeakerState {
             mute_own_messages: None,
             recent: Vec::new(),
             warnings: Vec::new(),
+            settings: Vec::new(),
+            outputs_label: None,
+            outputs_footer: None,
         }
     }
 }
@@ -835,6 +849,18 @@ impl HomeSpeakerState {
                     .collect(),
             ),
         );
+        if !self.settings.is_empty() {
+            m.insert(
+                "settings".to_string(),
+                JsonValue::Array(self.settings.clone()),
+            );
+        }
+        if let Some(ref s) = self.outputs_label {
+            m.insert("outputs_label".to_string(), JsonValue::String(s.clone()));
+        }
+        if let Some(ref s) = self.outputs_footer {
+            m.insert("outputs_footer".to_string(), JsonValue::String(s.clone()));
+        }
         JsonValue::Object(m)
     }
 }
@@ -2378,6 +2404,19 @@ fn map_state_doc(
         return st;
     }
     st.available = true;
+    st.settings = d
+        .get("settings")
+        .and_then(|v| v.as_array())
+        .map(|a| a.to_vec())
+        .unwrap_or_default();
+    st.outputs_label = d
+        .get("outputs_label")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    st.outputs_footer = d
+        .get("outputs_footer")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
 
     let s = DocSettings::of(d);
     st.enabled = s.bool("enabled").unwrap_or(false);
@@ -2447,6 +2486,7 @@ fn map_state_doc(
                 room: doc_str(sp, "room"),
                 target_type: doc_str(sp, "type"),
                 selected: doc_bool(sp, "is_default"),
+                display_line: doc_str(sp, "display_line"),
             });
         }
     }
@@ -2523,6 +2563,17 @@ fn map_state_doc(
         .and_then(doc_entry)
         .or_else(|| st.recent.first().cloned());
     st
+}
+
+/// Converts a raw `--state --json` document string into the helper's `GET /v1/homespeaker` JSON.
+pub fn state_from_doc_json(doc_json: &str) -> Result<String, String> {
+    let doc = JsonValue::parse(doc_json.trim()).map_err(|e| e.to_string())?;
+    let program = HomeSpeakerProgram {
+        door: "app".to_string(),
+        binary: PathBuf::from(HOME_SPEAKER_BINARY),
+    };
+    let st = map_state_doc(&doc, &program, HomeSpeakerState::default());
+    Ok(st.to_json().to_json_string())
 }
 
 /// What one update asks of `--apply`.
@@ -4482,6 +4533,107 @@ mod tests {
             plain_json(r#"{"pause_media_extra_seconds":3}"#),
             r#"[{"op":"set","key":"pause_media_extra_seconds","value":3}]"#
         );
+    }
+
+    #[test]
+    fn test_golden_state_v1_passes_through_settings_catalog_outputs_and_target_display_line() {
+        let raw = golden_state();
+        let doc = JsonValue::parse(&raw).unwrap();
+        let (h, _dir, _calls) = relay_speaker("golden_catalog", state_answering("1.41.0", raw));
+        let b = body_of(&h.handle_get(&PhoneBridge::new()));
+
+        // `settings[]` is passed through verbatim from `--state --json`.
+        let expected_settings = doc.get("settings").expect("state_v1 has settings");
+        let got_settings = b
+            .get("settings")
+            .expect("GET /v1/homespeaker must include settings");
+        assert_eq!(
+            got_settings, expected_settings,
+            "settings[] must pass through as is"
+        );
+        let arr = got_settings.as_array().unwrap();
+        assert_eq!(arr.len(), 38);
+
+        let speech = arr
+            .iter()
+            .find(|s| s.get_str("key") == "speech_length")
+            .unwrap();
+        assert_eq!(speech.get_str("kind"), "choice");
+        assert_eq!(speech.get_str("label"), "Speak");
+        assert_eq!(speech.get_str("value"), "summary");
+        assert!(speech.get_bool("shown"));
+        let choices = speech.get_array("choices").unwrap();
+        assert_eq!(choices[0].get_str("value"), "headline");
+        assert_eq!(choices[0].get_str("label"), "Headline (1-2 sentences)");
+
+        let poll = arr
+            .iter()
+            .find(|s| s.get_str("key") == "poll_interval_seconds")
+            .unwrap();
+        let limits = poll.get("limits").unwrap();
+        assert_eq!(limits.get_i64("min"), 5);
+        assert_eq!(limits.get_i64("max"), 300);
+        assert_eq!(limits.get_i64("step"), 5);
+        assert_eq!(limits.get_i64("default_value"), 15);
+
+        // `outputs_label`, `outputs_footer`, and `targets[].display_line` pass through alongside legacy fields.
+        assert_eq!(
+            b.get_str("outputs_label"),
+            "Office Mini + This Mac + Your phone"
+        );
+        assert_eq!(b.get_str("outputs_footer"), doc.get_str("outputs_footer"));
+        let targets = b.get_array("targets").unwrap();
+        let lines: Vec<(&str, &str)> = targets
+            .iter()
+            .map(|t| (t.get_str("key"), t.get_str("display_line")))
+            .collect();
+        assert_eq!(
+            lines,
+            vec![
+                ("bedroom", "Bedroom Hub"),
+                ("kitchen", "Kitchen Speaker"),
+                ("office", "Office Mini"),
+            ]
+        );
+        // Legacy top-level fields remain for older phones.
+        assert_eq!(b.get_str("speech_length"), "summary");
+        assert_eq!(b.get_i64("poll_interval"), 30);
+
+        // Unavailable responses omit `settings`, `outputs_label`, and `outputs_footer`.
+        let (old_h, _d2, _c2) = relay_speaker(
+            "too_old_no_catalog",
+            state_answering("1.40.0", golden_state()),
+        );
+        let old_b = body_of(&old_h.handle_get(&PhoneBridge::new()));
+        assert!(old_b.get("settings").is_none());
+        assert!(old_b.get("outputs_label").is_none());
+        assert!(old_b.get("outputs_footer").is_none());
+    }
+
+    #[test]
+    fn test_probe_post_set_relays_catalog_and_empty_settings_array_omits_field() {
+        let (h, _d, _calls) = relay_speaker("probe_post_catalog", state_and_apply(golden_state()));
+        let resp = h.handle_set(
+            &post_req("/v1/homespeaker", r#"{"speech_length":"headline"}"#),
+            &PhoneBridge::new(),
+        );
+        assert_eq!(resp.status, 200, "{}", resp.body_string());
+        let b = body_of(&resp);
+        assert_eq!(b.get_array("settings").unwrap().len(), 38);
+        assert_eq!(
+            b.get_str("outputs_label"),
+            "Office Mini + This Mac + Your phone"
+        );
+        assert!(!b.get_str("outputs_footer").is_empty());
+
+        // If a `--state` document carries `"settings": []`, the helper omits `settings` so the
+        // phone treats the catalog as absent rather than rendering empty choices.
+        let empty_doc = r#"{"contract_version":1,"config_initialized":true,"program":{"version":"1.41.0","door":"app","active_door":"app","extension_installed":false},"settings":[],"speakers":[],"available_voices":[],"homes":[],"recent":[],"warnings":[]}"#;
+        let mapped = JsonValue::parse(&state_from_doc_json(empty_doc).unwrap()).unwrap();
+        assert!(mapped.get("available").unwrap().as_bool().unwrap());
+        assert!(mapped.get("settings").is_none());
+        assert!(mapped.get("outputs_label").is_none());
+        assert!(mapped.get("outputs_footer").is_none());
     }
 
     // ---- The helper no longer reads or writes Home Speaker's files. ----

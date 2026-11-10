@@ -21,6 +21,7 @@
 package dev.vitruvian.remote.state
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -672,7 +673,7 @@ public class WireTest {
   }
 
   @Test
-  public fun `homespeaker defaults quiet hours to 22_00 to 07_00 and clamps poll interval to 5 through 300 with default 15`() {
+  public fun `homespeaker defaults quiet hours to 22_00 to 07_00 and leaves poll interval unclamped with default 15`() {
     val defaults = HomeSpeakerWire.sources("{}")
     assertEquals("22:00", defaults.quietHoursStart)
     assertEquals("07:00", defaults.quietHoursEnd)
@@ -689,8 +690,8 @@ public class WireTest {
     assertEquals("23:30", customQuiet.quietHoursStart)
     assertEquals("06:30", customQuiet.quietHoursEnd)
 
-    assertEquals(5, HomeSpeakerWire.sources("""{"poll_interval":1}""").pollInterval)
-    assertEquals(300, HomeSpeakerWire.sources("""{"poll_interval":900}""").pollInterval)
+    assertEquals(1, HomeSpeakerWire.sources("""{"poll_interval":1}""").pollInterval)
+    assertEquals(900, HomeSpeakerWire.sources("""{"poll_interval":900}""").pollInterval)
     assertEquals(45, HomeSpeakerWire.sources("""{"poll_interval":45}""").pollInterval)
   }
 
@@ -771,5 +772,133 @@ public class WireTest {
         ),
         v.courierNetworks)
     assertEquals("claude-code", v.agents.single().canonicalSlug)
+  }
+
+  private fun readRunfile(relPath: String): String {
+    val direct = java.io.File(relPath)
+    if (direct.exists()) return direct.readText()
+    val testSrcDir = System.getenv("TEST_SRCDIR")
+    if (!testSrcDir.isNullOrBlank()) {
+      for (workspace in listOf("_main", "vitruvian_core", "")) {
+        val candidate =
+            if (workspace.isEmpty()) java.io.File(testSrcDir, relPath)
+            else java.io.File(java.io.File(testSrcDir, workspace), relPath)
+        if (candidate.exists()) return candidate.readText()
+      }
+    }
+    error("Runfile not found: $relPath")
+  }
+
+  @Test
+  public fun `golden state payload parses settings catalog choices limits outputs and target display_line`() {
+    val json = readRunfile("apps/mobile/android-remote/macagent/golden_homespeaker_v1.json")
+    val s = HomeSpeakerWire.sources(json)
+
+    assertEquals(38, s.settings.size)
+    assertFalse(s.catalog.isEmpty)
+
+    val speech = s.catalog["speech_length"]!!
+    assertEquals("choice", speech.kind)
+    assertEquals("Speak", speech.label)
+    assertEquals("summary", speech.stringValue)
+    assertTrue(speech.shown)
+    assertEquals(
+        listOf(
+            HomeSpeakerChoice("headline", "Headline (1-2 sentences)"),
+            HomeSpeakerChoice("summary", "Summary (about 4 lines)"),
+            HomeSpeakerChoice("full", "Full reply"),
+        ),
+        speech.choices,
+    )
+
+    val hiddenPrompt = s.catalog["custom_style_prompt"]!!
+    assertEquals("text", hiddenPrompt.kind)
+    assertEquals("Custom style", hiddenPrompt.label)
+    assertEquals(false, hiddenPrompt.shown)
+
+    val volume = s.catalog["speaker_volume"]!!
+    assertEquals("number", volume.kind)
+    assertEquals("Volume", volume.label)
+    assertEquals(45.0, volume.numberValue!!, 0.0)
+    assertEquals(HomeSpeakerLimits(0.0, 100.0, 10.0, 60.0), volume.limits)
+    assertEquals(11, volume.choices.size)
+    assertEquals(HomeSpeakerChoice("0", "0%"), volume.choices.first())
+    assertEquals(HomeSpeakerChoice("100", "100%"), volume.choices.last())
+
+    val announceVol = s.catalog["announce_volume"]!!
+    assertEquals(HomeSpeakerLimits(0.0, 100.0, 5.0, 60.0), announceVol.limits)
+
+    val pauseExtra = s.catalog["pause_media_extra_seconds"]!!
+    assertEquals("Resume after", pauseExtra.label)
+    assertEquals(HomeSpeakerLimits(0.0, 10.0, 1.0, 1.0), pauseExtra.limits)
+
+    val poll = s.catalog["poll_interval_seconds"]!!
+    assertEquals("Poll Interval", poll.label)
+    assertEquals(HomeSpeakerLimits(5.0, 300.0, 5.0, 15.0), poll.limits)
+
+    assertEquals("Office Mini + This Mac + Your phone", s.outputsLabel)
+    assertTrue(s.outputsFooter.orEmpty().contains("Your phone plays the Gemini voice"))
+
+    assertEquals(
+        listOf("Bedroom Hub", "Kitchen Speaker", "Office Mini"),
+        s.targets.map { it.displayLine },
+    )
+    assertEquals("office", s.targets.single { it.selected }.key)
+
+    // The phone does not clamp poll_interval on wire parse; the Mac owns limits.
+    assertEquals(1, HomeSpeakerWire.sources("""{"poll_interval":1}""").pollInterval)
+    assertEquals(900, HomeSpeakerWire.sources("""{"poll_interval":900}""").pollInterval)
+  }
+
+  @Test
+  public fun `probe unknown catalog setting keys unknown kinds and partial limits parse without crashing`() {
+    val json =
+        """
+        {
+          "available": true,
+          "settings": [
+            42,
+            {"key": "", "kind": "toggle", "label": "Blank key"},
+            {"key": "no_kind", "kind": "   ", "label": "Blank kind"},
+            {
+              "key": "future_quantum_chime",
+              "kind": "toggle",
+              "label": "Quantum chime",
+              "value": true
+            },
+            {
+              "key": "future_curve_setting",
+              "kind": "curve",
+              "label": "Voice curve on Your phone",
+              "value": 2.5,
+              "shown": false,
+              "choices": [
+                {"value": "soft"},
+                {"label": "missing value"}
+              ],
+              "limits": {"min": 0, "max": 10}
+            }
+          ]
+        }
+        """
+            .trimIndent()
+
+    val s = HomeSpeakerWire.sources(json)
+    assertEquals(2, s.settings.size)
+
+    val chime = s.catalog["future_quantum_chime"]!!
+    assertEquals("toggle", chime.kind)
+    assertEquals("Quantum chime", chime.label)
+    assertEquals(true, chime.boolValue)
+    assertEquals("true", chime.stringValue)
+    assertTrue(chime.shown)
+
+    val curve = s.catalog["future_curve_setting"]!!
+    assertEquals("curve", curve.kind)
+    assertEquals(2.5, curve.numberValue!!, 0.0)
+    assertEquals("2.5", curve.stringValue)
+    assertFalse(curve.shown)
+    assertEquals(listOf(HomeSpeakerChoice("soft", "soft")), curve.choices)
+    assertNull(curve.limits)
   }
 }
