@@ -938,30 +938,28 @@ public object Derive {
   /**
    * The Mute / Unmute control in HomeSpeaker's Now strip.
    *
-   * Label names the action tapping will take ("Mute" when unmuted, "Unmute" when muted). Disabled
-   * whenever the speaker volume cannot be changed (unpaired, Home speaker target off, volume
-   * unavailable, or speaker offline).
+   * Label names the action tapping will take ("Mute" when unmuted, "Unmute" when muted). Enabled
+   * whenever the speaker volume is available and online (and not mid-request), regardless of
+   * whether Google Home speaking is currently toggled on.
    */
   public fun muteQuickAction(
       paired: Boolean,
-      speakHome: Boolean = true,
       volumeAvailable: Boolean,
       volumeOnline: Boolean,
       muted: Boolean,
       percent: Int,
       busy: Boolean = false,
   ): QuickActionSpec {
-    val ready = paired && speakHome && volumeAvailable && volumeOnline && !busy
+    val ready = paired && volumeAvailable && volumeOnline && !busy
     val actionLabel = if (volumeAvailable && volumeOnline && muted) "Unmute" else "Mute"
     val sub =
         when {
-          !speakHome -> "speaker off"
+          !volumeAvailable -> null
           busy -> "…"
-          else -> speakerVolumeLabel(volumeAvailable, volumeOnline, muted, percent)
+          else -> speakerVolumeLabel(true, volumeOnline, muted, percent)
         }
     val desc =
         when {
-          !speakHome -> "Mute speaker, Google Home speaker off"
           !volumeAvailable -> "Mute speaker, volume unavailable"
           !volumeOnline -> "Mute speaker, speaker offline"
           muted -> "Unmute speaker, currently muted"
@@ -981,7 +979,7 @@ public object Derive {
    * The Quiet hours control in HomeSpeaker's Now strip.
    *
    * Label shows "Quiet on" / "Quiet off"; secondary text shows the window ("22:00–07:00") and
-   * appends "now" when quiet hours are currently active.
+   * appends "now" when quiet hours are currently active, or is omitted when no Mac is available.
    */
   public fun quietHoursQuickAction(
       paired: Boolean,
@@ -992,11 +990,19 @@ public object Derive {
       end: String,
   ): QuickActionSpec {
     val label = if (enabled) "Quiet on" else "Quiet off"
-    val window = "${start.ifBlank { "22:00" }}–${end.ifBlank { "07:00" }}"
-    val sub = if (enabled && active) "$window · now" else window
+    val window = if (!available) null else "${start.ifBlank { "22:00" }}–${end.ifBlank { "07:00" }}"
+    val sub =
+        when {
+          window == null -> null
+          enabled && active -> "$window · now"
+          else -> window
+        }
     val desc =
-        if (enabled && active) "Quiet hours: Quiet on, $window, active now"
-        else "Quiet hours: $label, $window"
+        when {
+          window == null -> "Quiet hours: $label"
+          enabled && active -> "Quiet hours: Quiet on, $window, active now"
+          else -> "Quiet hours: $label, $window"
+        }
     return QuickActionSpec(
         id = "quiet_hours",
         label = label,
@@ -1024,12 +1030,12 @@ public object Derive {
     val label = name.ifEmpty { "Room" }
     val sub =
         when {
-          name.isEmpty() -> "none"
+          !available || name.isEmpty() -> null
           targetRoom.isNotBlank() -> targetRoom
           targetType == "Structure" -> "all rooms"
           else -> "speaker"
         }
-    val desc = if (name.isEmpty()) "Room speaker: none selected" else "Room speaker: $name, $sub"
+    val desc = if (sub == null) "Room speaker: none selected" else "Room speaker: $name, $sub"
     return QuickActionSpec(
         id = "room",
         label = label,
@@ -1053,7 +1059,9 @@ public object Derive {
       target: String? = null,
   ): QuickActionSpec {
     val ready = paired && available && installed && hasReplay
-    val sub = if (!hasReplay) "none" else target?.trim()?.takeIf { it.isNotEmpty() } ?: "last"
+    val sub =
+        if (!available || !installed || !hasReplay) null
+        else target?.trim()?.takeIf { it.isNotEmpty() } ?: "last"
     val desc =
         if (hasReplay) "Replay last announcement" else "Replay last announcement, nothing to replay"
     return QuickActionSpec(
@@ -1066,12 +1074,21 @@ public object Derive {
     )
   }
 
+  /**
+   * The broadcast that Now strip Replay and the Last announcement plate Replay both replay:
+   * `recent.firstOrNull()` (falling back to `last` on an older agent), matching the newest row in
+   * Recent broadcasts verbatim.
+   */
+  public fun newestBroadcast(
+      recent: List<AgentLastBroadcast>,
+      last: AgentLastBroadcast? = null,
+  ): AgentLastBroadcast? = (recent.ifEmpty { listOfNotNull(last) }).firstOrNull()
+
   /** Builds all four controls for HomeSpeaker's Now strip in display order. */
   public fun homeSpeakerQuickActions(
       paired: Boolean,
       available: Boolean,
       installed: Boolean = true,
-      speakHome: Boolean = true,
       volumeAvailable: Boolean,
       volumeOnline: Boolean,
       muted: Boolean,
@@ -1091,7 +1108,6 @@ public object Derive {
       listOf(
           muteQuickAction(
               paired = paired,
-              speakHome = speakHome,
               volumeAvailable = volumeAvailable,
               volumeOnline = volumeOnline,
               muted = muted,
@@ -1123,21 +1139,31 @@ public object Derive {
           ),
       )
 
+  private val HTTP_CODE_REGEX = Regex("""\bHTTP\s+\d{3}\b""", RegexOption.IGNORE_CASE)
+  private val AUTH_CODE_REGEX = Regex("""\b40[13]\b""")
+  private val LEAKED_PATH_OR_CODE_REGEX =
+      Regex("""(?:/v\d+/|https?://|\b\d{3}\b)""", RegexOption.IGNORE_CASE)
+
   /**
-   * One-line inline error shown directly under a HomeSpeaker Now strip control or Settings row when
-   * an action fails. Uses plain words rather than exception class names or raw HTTP codes.
+   * One-line inline error shown directly under a HomeSpeaker Now strip control, stream plate, or
+   * Settings row when an action fails. Uses plain words rather than exception class names, paths,
+   * or raw HTTP codes.
    */
   public fun homeSpeakerInlineError(
       what: String,
       reason: String? = null,
       authFailed: Boolean = false,
-      mac: String = "the Mac",
   ): String {
     val action = what.trim().ifEmpty { "update speaker" }
-    val host = mac.trim().ifEmpty { "the Mac" }
-    if (authFailed) return "Couldn't $action: not paired with $host"
     val raw = reason?.trim().orEmpty()
     val lower = raw.lowercase(Locale.ROOT)
+    if (authFailed ||
+        AUTH_CODE_REGEX.containsMatchIn(raw) ||
+        lower.contains("not paired") ||
+        lower.contains("unauthorized") ||
+        lower.contains("forbidden")) {
+      return "Couldn't $action: this phone isn't paired"
+    }
     val unreachable =
         raw.isEmpty() ||
             lower.contains("timeout") ||
@@ -1147,11 +1173,21 @@ public object Derive {
             lower.contains("refused") ||
             lower.contains("reset") ||
             lower.contains("eof") ||
-            lower.contains(" broken pipe") ||
+            lower.contains("broken pipe") ||
             lower.contains("unable to resolve") ||
+            lower.contains("unknownhost") ||
+            lower.contains("unknown host") ||
             lower.contains("no route")
-    val detail = if (unreachable) "$host didn't answer" else raw
-    return "Couldn't $action: $detail"
+    if (unreachable) {
+      return "Couldn't $action: the Mac didn't answer"
+    }
+    if (lower.startsWith("agent:") ||
+        HTTP_CODE_REGEX.containsMatchIn(raw) ||
+        LEAKED_PATH_OR_CODE_REGEX.containsMatchIn(raw) ||
+        raw.contains('/')) {
+      return "Couldn't $action: the Mac returned an error"
+    }
+    return "Couldn't $action: $raw"
   }
 
   /** Visual state for the Quick Settings "Speaker" mute tile. */
@@ -1171,8 +1207,9 @@ public object Derive {
    * Maps pairing and `/v1/homespeaker/volume` state to the Quick Settings "Speaker" tile.
    * - Unpaired or no host -> [SpeakerTileLook.Unavailable], `"Not paired"`
    * - POST click failure -> [SpeakerTileLook.Unavailable], `"Couldn't reach the Mac"`
-   * - GET unreachable / volume unavailable / offline -> [SpeakerTileLook.Unavailable], `"Mac
-   *   unreachable"`
+   * - GET unreachable -> [SpeakerTileLook.Unavailable], `"Mac unreachable"`
+   * - Reachable but volume unavailable / offline -> [SpeakerTileLook.Unavailable], `"Volume
+   *   unavailable"`
    * - Muted -> [SpeakerTileLook.Inactive], `"Muted"`
    * - Unmuted -> [SpeakerTileLook.Active], `"On · NN%"`
    */
@@ -1188,8 +1225,8 @@ public object Derive {
       when {
         !paired -> SpeakerTileSpec(SpeakerTileLook.Unavailable, "Not paired")
         clickFailed -> SpeakerTileSpec(SpeakerTileLook.Unavailable, "Couldn't reach the Mac")
-        !reachable || !available || !online ->
-            SpeakerTileSpec(SpeakerTileLook.Unavailable, "Mac unreachable")
+        !reachable -> SpeakerTileSpec(SpeakerTileLook.Unavailable, "Mac unreachable")
+        !available || !online -> SpeakerTileSpec(SpeakerTileLook.Unavailable, "Volume unavailable")
         muted -> SpeakerTileSpec(SpeakerTileLook.Inactive, "Muted")
         else -> SpeakerTileSpec(SpeakerTileLook.Active, "On · ${percent.coerceIn(0, 100)}%")
       }

@@ -103,7 +103,6 @@ import dev.vitruvian.design.bottomHairline
 import dev.vitruvian.remote.overlays.DictateButton
 import dev.vitruvian.remote.state.AppsView
 import dev.vitruvian.remote.state.Derive
-import dev.vitruvian.remote.state.DialogKind
 import dev.vitruvian.remote.state.Markdown
 import dev.vitruvian.remote.state.MockHost
 import dev.vitruvian.remote.state.ModuleComposer
@@ -299,22 +298,21 @@ private fun QuickActionCell(action: QuickAction, modifier: Modifier = Modifier) 
   ) {
     VButton(
         label = action.label,
+        secondary = action.secondary,
         onClick = { if (hasChoices) sheetOpen = true else action.onClick() },
         modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = Hit.h1),
-        variant = if (action.active) ButtonVariant.Primary else ButtonVariant.Secondary,
+        variant = ButtonVariant.Secondary,
+        borderColor = if (action.active) colors.accent else null,
+        contentColor = if (action.active) colors.accentText else null,
         enabled = action.enabled,
-        contentPadding = PaddingValues(horizontal = Space.s3),
+        contentPadding =
+            if (!action.secondary.isNullOrBlank()) {
+              PaddingValues(horizontal = Space.s3, vertical = Space.s2)
+            } else {
+              PaddingValues(horizontal = Space.s3)
+            },
         trailingIcon = if (hasChoices) VitruvianIcons.CHEVRON_DOWN else null,
     )
-    if (!action.secondary.isNullOrBlank()) {
-      VText(
-          text = action.secondary,
-          style = VitruvianType.listSub,
-          color = colors.textDim,
-          maxLines = 1,
-          overflow = TextOverflow.Ellipsis,
-      )
-    }
     if (!action.error.isNullOrBlank()) {
       VText(
           text = action.error,
@@ -591,6 +589,19 @@ private fun StreamPlate(state: RemoteState, module: ModuleDashboard) {
             )
           }
         }
+        module.streamActions
+            .mapNotNull { it.error?.takeIf(String::isNotBlank) }
+            .distinct()
+            .forEach { err ->
+              VText(
+                  text = err,
+                  style = VitruvianType.listSub,
+                  color = Vitruvian.crit,
+                  modifier = Modifier.fillMaxWidth(),
+                  maxLines = 1,
+                  overflow = TextOverflow.Ellipsis,
+              )
+            }
       }
       // A transcript nobody has written to is a lone cursor, which looks
       // like a stream that failed rather than one waiting for a first
@@ -641,13 +652,8 @@ private fun StreamPlate(state: RemoteState, module: ModuleDashboard) {
         }
         Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
           VButton(
-              label = if (state.agentPaused) "Resume" else "Pause",
+              label = if (state.agentPaused) "Resume updates" else "Pause updates",
               onClick = state::toggleAgentPaused,
-              modifier = Modifier.weight(1f),
-          )
-          VButton(
-              label = "Pause updates",
-              onClick = { state.openDialog(DialogKind.Halt) },
               modifier = Modifier.weight(1f),
           )
         }

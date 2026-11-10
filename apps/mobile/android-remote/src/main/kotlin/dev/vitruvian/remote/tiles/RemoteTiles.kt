@@ -86,14 +86,16 @@ public class LockMacTile : RemoteActionTile() {
  * app or unlocking the phone.
  */
 public class SpeakerMuteTile : TileService() {
-  private var scope: CoroutineScope? = null
+  private var listenScope: CoroutineScope? = null
+  private val clickScope: CoroutineScope =
+      CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
   private var currentMuted: Boolean? = null
 
   override fun onStartListening() {
     super.onStartListening()
-    scope?.cancel()
+    listenScope?.cancel()
     val tileScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    scope = tileScope
+    listenScope = tileScope
     val host = selectedPairedHost()
     if (host == null) {
       currentMuted = null
@@ -104,7 +106,8 @@ public class SpeakerMuteTile : TileService() {
       val volume =
           runCatching {
                 withTimeout(TILE_TIMEOUT_MS) {
-                  AgentClient(host.url, host.token).homeSpeakerVolume()
+                  AgentClient(host.url, host.token)
+                      .homeSpeakerVolume(readTimeoutMs = TILE_READ_TIMEOUT_MS)
                 }
               }
               .getOrNull()
@@ -127,14 +130,15 @@ public class SpeakerMuteTile : TileService() {
   }
 
   override fun onStopListening() {
-    scope?.cancel()
-    scope = null
+    listenScope?.cancel()
+    listenScope = null
     super.onStopListening()
   }
 
   override fun onDestroy() {
-    scope?.cancel()
-    scope = null
+    listenScope?.cancel()
+    listenScope = null
+    clickScope.cancel()
     super.onDestroy()
   }
 
@@ -146,15 +150,15 @@ public class SpeakerMuteTile : TileService() {
       applySpec(Derive.speakerTileState(paired = false, reachable = false))
       return
     }
-    val tileScope =
-        scope ?: CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate).also { scope = it }
+    listenScope?.cancel()
     val currentlyMuted = currentMuted ?: (qsTile?.state == Tile.STATE_INACTIVE)
     val nextMuted = !currentlyMuted
-    tileScope.launch {
+    clickScope.launch {
       val updated =
           runCatching {
                 withTimeout(TILE_TIMEOUT_MS) {
-                  AgentClient(host.url, host.token).setHomeSpeakerVolume(muted = nextMuted)
+                  AgentClient(host.url, host.token)
+                      .setHomeSpeakerVolume(muted = nextMuted, readTimeoutMs = TILE_READ_TIMEOUT_MS)
                 }
               }
               .getOrNull()
@@ -200,5 +204,6 @@ public class SpeakerMuteTile : TileService() {
 
   private companion object {
     const val TILE_TIMEOUT_MS = 3_000L
+    const val TILE_READ_TIMEOUT_MS = 3_000
   }
 }

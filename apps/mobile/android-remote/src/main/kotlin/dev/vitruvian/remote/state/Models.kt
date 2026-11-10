@@ -237,6 +237,7 @@ public data class RowAction(
     val danger: Boolean = false,
     /** The current value, when this action is one of a row's [ModuleRow.choices]. */
     val selected: Boolean = false,
+    val error: String? = null,
     val onClick: () -> Unit,
 )
 
@@ -454,8 +455,6 @@ public sealed interface DialogKind {
   public data object Sleep : DialogKind
 
   public data object Restart : DialogKind
-
-  public data object Halt : DialogKind
 
   /** Merge this pull request. [title] is carried so the dialog can name what it is merging. */
   public data class MergePr(val repo: String, val number: Int, val title: String) : DialogKind

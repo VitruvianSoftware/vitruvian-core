@@ -2260,8 +2260,7 @@ public class RemoteState(
         }
       }
     }
-    val recent = hs?.recent.orEmpty().ifEmpty { listOfNotNull(hs?.last) }
-    val newest = recent.firstOrNull { it.text.isNotBlank() || !it.id.isNullOrBlank() }
+    val newest = Derive.newestBroadcast(hs?.recent.orEmpty(), hs?.last)
     val canSpeak = paired && available && hs!!.installed
     val canReplay = canSpeak && newest != null
     return ModuleDashboard(
@@ -2337,12 +2336,14 @@ public class RemoteState(
         quick = homeSpeakerQuick(hs),
         streamActions =
             listOf(
-                RowAction("Replay", enabled = canReplay) {
+                RowAction("Replay", enabled = canReplay, error = homeSpeakerErrors["replay"]) {
                   if (newest != null) {
                     replayAnnouncement(newest.text, newest.id, controlId = "replay")
                   }
                 },
-                RowAction("Test", enabled = canSpeak) { testHomeSpeaker() },
+                RowAction("Test", enabled = canSpeak, error = homeSpeakerErrors["test"]) {
+                  testHomeSpeaker()
+                },
             ),
     )
   }
@@ -2375,11 +2376,9 @@ public class RemoteState(
   private fun homeSpeakerQuick(hs: AgentHomeSpeaker?): List<QuickAction> {
     val available = hs?.available == true
     val installed = hs?.installed == true
-    val speakHome = hs?.speakHome ?: true
     val v = agentSpeakerVolume
     val selected = hs?.targets?.firstOrNull { it.selected }
-    val recent = hs?.recent.orEmpty().ifEmpty { listOfNotNull(hs?.last) }
-    val newest = recent.firstOrNull { it.text.isNotBlank() || !it.id.isNullOrBlank() }
+    val newest = Derive.newestBroadcast(hs?.recent.orEmpty(), hs?.last)
     val roomChoices =
         if (hs != null && hs.available) speakerTargetChoices(hs, controlId = "room")
         else emptyList()
@@ -2388,7 +2387,6 @@ public class RemoteState(
             paired = paired,
             available = available,
             installed = installed,
-            speakHome = speakHome,
             volumeAvailable = v?.available == true,
             volumeOnline = v?.online == true,
             muted = v?.muted == true,
@@ -3858,7 +3856,6 @@ public class RemoteState(
             what = what,
             reason = error.message,
             authFailed = error is AgentAuthException,
-            mac = hostShortName,
         )
     homeSpeakerErrors = homeSpeakerErrors + (controlId to msg)
   }
@@ -4096,9 +4093,7 @@ public class RemoteState(
             } else {
               val err =
                   Derive.homeSpeakerInlineError(
-                      what = what,
-                      reason = v.reason.ifBlank { "speaker refused" },
-                      mac = hostShortName)
+                      what = what, reason = v.reason.ifBlank { "speaker refused" })
               homeSpeakerErrors = homeSpeakerErrors + (controlId to err)
               log("warn", "homespeaker · $what · ${v.reason.ifBlank { "refused" }}")
             }
@@ -4140,22 +4135,30 @@ public class RemoteState(
   }
 
   /** Speaks "Test from your phone" on the Mac's default speaker, from the stream plate header. */
-  public fun testHomeSpeaker() {
+  public fun testHomeSpeaker(controlId: String = "test") {
     val text = "Test from your phone"
     val client = actClient("homespeaker · test") ?: return
     scope.launch {
       runCatching { client.homeSpeakerSay(text) }
           .onSuccess { result ->
             if (result.ok) {
+              clearHomeSpeakerError(controlId)
               log("info", "homespeaker · said \"$text\"")
               runCatching { client.homeSpeaker() }.onSuccess { agentHomeSpeaker = it }
             } else {
+              val err =
+                  Derive.homeSpeakerInlineError(
+                      what = "test", reason = result.output.ifBlank { "not spoken" })
+              homeSpeakerErrors = homeSpeakerErrors + (controlId to err)
               log(
                   "warn",
                   "homespeaker · not spoken · ${result.output.ifBlank { "no reason given" }}")
             }
           }
-          .onFailure { actFailed("homespeaker · test", it) }
+          .onFailure {
+            recordHomeSpeakerError(controlId, "test", it)
+            actFailed("homespeaker · test", it)
+          }
     }
   }
 
@@ -4169,7 +4172,6 @@ public class RemoteState(
       controlId: String = "replay",
   ) {
     val line = text.trim()
-    if (line.isEmpty() && id.isNullOrBlank()) return
     val client = actClient("homespeaker · replay") ?: return
     scope.launch {
       runCatching { client.homeSpeakerSay(line, replay = true, replayId = id) }
@@ -4181,9 +4183,7 @@ public class RemoteState(
             } else {
               val err =
                   Derive.homeSpeakerInlineError(
-                      what = "replay",
-                      reason = result.output.ifBlank { "not spoken" },
-                      mac = hostShortName)
+                      what = "replay", reason = result.output.ifBlank { "not spoken" })
               homeSpeakerErrors = homeSpeakerErrors + (controlId to err)
               log(
                   "warn",
@@ -6662,10 +6662,6 @@ public class RemoteState(
           }
         }
       }
-      DialogKind.Halt -> {
-        agentPaused = true
-        log("info", "claude code · updates paused on this phone")
-      }
       // Merging is the one PR action that cannot be undone from a phone, so
       // it is the one that comes through here.
       is DialogKind.MergePr -> {
@@ -7457,15 +7453,6 @@ public data class DialogSpec(
                           "homelab node on this Mac is gone until the reboot completes.",
                   action = "Restart",
                   word = "restart".takeIf { confirmDestructive },
-              )
-          DialogKind.Halt ->
-              DialogSpec(
-                  kicker = "Claude Code · this phone",
-                  destructive = false,
-                  title = "Pause updates?",
-                  body = "Stops this phone refreshing Claude Code; nothing on the Mac is stopped.",
-                  action = "Pause updates",
-                  word = null,
               )
           // Typed like Restart, for the same reason: a merge lands on a
           // branch other people are working from and no button on this phone

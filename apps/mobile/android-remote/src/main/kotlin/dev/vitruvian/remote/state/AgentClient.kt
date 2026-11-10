@@ -911,9 +911,9 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
       }
 
   /** The default speaker's volume. A round trip to Google through the Mac: seconds, not ms. */
-  public suspend fun homeSpeakerVolume(): AgentSpeakerVolume =
+  public suspend fun homeSpeakerVolume(readTimeoutMs: Int = VOLUME_TIMEOUT_MS): AgentSpeakerVolume =
       withContext(Dispatchers.IO) {
-        parseSpeakerVolume(get("/v1/homespeaker/volume", readTimeoutMs = VOLUME_TIMEOUT_MS))
+        parseSpeakerVolume(get("/v1/homespeaker/volume", readTimeoutMs = readTimeoutMs))
       }
 
   /**
@@ -922,7 +922,8 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
    */
   public suspend fun setHomeSpeakerVolume(
       percent: Int? = null,
-      muted: Boolean? = null
+      muted: Boolean? = null,
+      readTimeoutMs: Int = VOLUME_TIMEOUT_MS,
   ): AgentSpeakerVolume =
       withContext(Dispatchers.IO) {
         val body =
@@ -931,7 +932,7 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
               if (muted != null) put("muted", muted)
             }
         parseSpeakerVolume(
-            post("/v1/homespeaker/volume", body.toString(), readTimeoutMs = VOLUME_TIMEOUT_MS))
+            post("/v1/homespeaker/volume", body.toString(), readTimeoutMs = readTimeoutMs))
       }
 
   /** `GET /v1/tv`: Sony Google TV state over wireless ADB. */
