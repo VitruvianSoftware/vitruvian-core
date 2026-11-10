@@ -181,7 +181,9 @@ public fun ColumnScope.HomeScreen(state: RemoteState) {
   // same buttons a second time under the dashboard read as a layout bug.
   if (!LocalShowDock.current) {
     Label(
-        text = "Quick actions",
+        text =
+            if (state.actsNeedPairing) "Quick actions · pair this phone to run them"
+            else "Quick actions",
         modifier =
             Modifier.padding(start = Space.s4, end = Space.s4, top = Space.s5, bottom = Space.s3),
     )
@@ -192,6 +194,7 @@ public fun ColumnScope.HomeScreen(state: RemoteState) {
             VButton(
                 label = macro.label,
                 onClick = { state.runMacro(macro) },
+                enabled = !state.actsNeedPairing,
                 modifier = Modifier.fillMaxWidth(),
                 contentPadding =
                     PaddingValues(

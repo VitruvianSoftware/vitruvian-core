@@ -648,7 +648,12 @@ private fun StreamPlate(state: RemoteState, module: ModuleDashboard) {
             state.updatePrompt(
                 listOf(state.prompt.trim(), spoken).filter { it.isNotBlank() }.joinToString(" "))
           }
-          VButton("Send", state::sendModulePrompt, variant = ButtonVariant.Primary)
+          VButton(
+              "Send",
+              state::sendModulePrompt,
+              variant = ButtonVariant.Primary,
+              enabled = !state.actsNeedPairing,
+          )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
           VButton(

@@ -180,6 +180,7 @@ private fun ConsoleDock(state: RemoteState, modifier: Modifier = Modifier) {
             VButton(
                 label = macro.label,
                 onClick = { state.runMacro(macro) },
+                enabled = !state.actsNeedPairing,
                 modifier = Modifier.fillMaxWidth(),
             )
           }
@@ -189,6 +190,7 @@ private fun ConsoleDock(state: RemoteState, modifier: Modifier = Modifier) {
           VButton(
               label = "Restart",
               onClick = { state.openDialog(DialogKind.Restart) },
+              enabled = !state.actsNeedPairing,
               modifier = Modifier.fillMaxWidth(),
               variant = ButtonVariant.Danger,
           )

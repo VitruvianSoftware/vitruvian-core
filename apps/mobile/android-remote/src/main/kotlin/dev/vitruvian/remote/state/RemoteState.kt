@@ -369,6 +369,15 @@ public class RemoteState(
     get() = agentToken.isNotBlank()
 
   /**
+   * A Mac is chosen but this phone holds no token for it, so anything that needs the act half of
+   * the contract (macros, prompts, restart) would only log "not paired". Those controls disable on
+   * this rather than looking live and doing nothing when tapped. With no Mac at all the app is in
+   * its simulated demo and the controls stay as they are.
+   */
+  public val actsNeedPairing: Boolean
+    get() = agentUrl.isNotBlank() && !paired
+
+  /**
    * The Mac answered 401/403 to the token this phone held, and the token was dropped.
    *
    * Only changes the wording ("stopped accepting this phone" rather than "not paired"): a token
