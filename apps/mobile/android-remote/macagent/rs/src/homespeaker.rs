@@ -5590,6 +5590,72 @@ mod tests {
     }
 
     #[test]
+    fn test_home_speaker_snooze_preserves_other_config_keys_and_ignores_stored_garbage() {
+        let (h, _, phone, _) = new_test_home_speaker(true);
+        let mut cfg = h.read_config().unwrap();
+        cfg.insert(
+            "quiet_hours_start".to_string(),
+            JsonValue::String("21:45".to_string()),
+        );
+        cfg.insert(
+            "default_target".to_string(),
+            JsonValue::String("living_room".to_string()),
+        );
+        h.write_config(&cfg).unwrap();
+
+        let r_set = h.handle_set(
+            &post_req("/v1/homespeaker", r#"{"snooze_minutes":30}"#),
+            &phone,
+        );
+        assert_eq!(r_set.status, 200);
+        let cfg_after_set = h.read_config().unwrap();
+        assert_eq!(
+            cfg_after_set
+                .get("quiet_hours_start")
+                .and_then(|v| v.as_str()),
+            Some("21:45")
+        );
+        assert_eq!(
+            cfg_after_set.get("default_target").and_then(|v| v.as_str()),
+            Some("living_room")
+        );
+
+        let r_clear = h.handle_set(
+            &post_req("/v1/homespeaker", r#"{"snooze_until":""}"#),
+            &phone,
+        );
+        assert_eq!(r_clear.status, 200);
+        let cfg_after_clear = h.read_config().unwrap();
+        assert_eq!(
+            cfg_after_clear
+                .get("quiet_hours_start")
+                .and_then(|v| v.as_str()),
+            Some("21:45")
+        );
+        assert_eq!(
+            cfg_after_clear
+                .get("default_target")
+                .and_then(|v| v.as_str()),
+            Some("living_room")
+        );
+
+        let mut cfg_garbage = h.read_config().unwrap();
+        cfg_garbage.insert(
+            "snooze_until".to_string(),
+            JsonValue::String("garbage".to_string()),
+        );
+        h.write_config(&cfg_garbage).unwrap();
+        assert!(h.state().snooze_until.is_none());
+        let get_resp = h.handle_get(&phone);
+        assert_eq!(get_resp.status, 200);
+        let raw_get = JsonValue::parse_bytes(&get_resp.body_bytes()).unwrap();
+        assert_eq!(
+            raw_get.as_object().unwrap().get("snooze_until"),
+            Some(&JsonValue::Null)
+        );
+    }
+
+    #[test]
     fn test_home_speaker_poll_interval_default_and_clamp() {
         let (h, _, phone, _) = new_test_home_speaker(true);
         assert_eq!(h.state().poll_interval, 15);

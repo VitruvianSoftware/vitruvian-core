@@ -1731,6 +1731,19 @@ public class DeriveTest {
     assertTrue(active.active)
     assertEquals("Snoozed until 22:30, tap to resume", active.contentDescription)
 
+    val activeFractional =
+        Derive.snoozeQuickAction(
+            paired = true,
+            available = true,
+            snoozeUntil = "2026-11-10T06:30:00.500Z",
+            nowMs = nowMs,
+            zoneId = zone)
+    assertEquals("Snoozed", activeFractional.label)
+    assertEquals("until 22:30", activeFractional.secondary)
+    assertTrue(activeFractional.enabled)
+    assertTrue(activeFractional.active)
+    assertEquals("Snoozed until 22:30, tap to resume", activeFractional.contentDescription)
+
     // 3. Expired snooze (equal to or before nowMs)
     val exactBoundary =
         Derive.snoozeQuickAction(
