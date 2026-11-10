@@ -5,12 +5,13 @@ import AppKit
 import CourierCore
 import SwiftUI
 
-/// `AIPane.tsx` (`01` §13, `docs/ai-providers.md`): header with active provider/model line, Summarize action with
-/// collapsible one-line summary card (`"Summary of N messages · on this Mac"`), selectable summary text and Copy button,
-/// or a single calm setup prompt with **Open AI Settings** when no provider is configured.
+/// `AIPane.tsx` (`01` §13, `docs/ai-providers.md`): unified pane header (`PaneHeader`), single active provider/model
+/// status row, Summarize action with collapsible one-line summary card (`"Summary of N messages · on this Mac"`),
+/// selectable summary text and Copy button, or a single calm setup prompt with **Open AI Settings** when no provider is configured.
 public struct AIPane: View {
     public let chatTitle: String
     @ObservedObject public var preferences: AIPreferences
+    /// The active `AIProvider` from `AIProviderStore` (`composer.aiProvider` in `ConversationView`).
     public let provider: any AIProvider
     public var isSummarizing: Bool
     public var summarizingMessageCount: Int
@@ -23,7 +24,14 @@ public struct AIPane: View {
     public var onCopySummary: (String) -> Void
     public var onOpenAISettings: () -> Void
     public var onClose: () -> Void
+    /// With glass in the main window the header is a toolbar item (`AIPaneHeader`, placed by `ConversationView`), so
+    /// the pane draws none of its own.
+    public var headerInToolbar: Bool = false
 
+    /// Creates the Courier AI side pane.
+    /// - Parameter provider: The live `AIProvider` from `AIProviderStore` (for example `composer.aiProvider`).
+    ///   Defaults to `UnavailableAIProvider()` only for standalone previews and snapshot tests that do not own a store;
+    ///   app callers must pass the store-backed provider so configured providers are reflected.
     public init(
         chatTitle: String,
         preferences: AIPreferences,
@@ -41,7 +49,8 @@ public struct AIPane: View {
             NSPasteboard.general.setString(text, forType: .string)
         },
         onOpenAISettings: @escaping () -> Void = {},
-        onClose: @escaping () -> Void = {}
+        onClose: @escaping () -> Void = {},
+        headerInToolbar: Bool = false
     ) {
         self.chatTitle = chatTitle
         self.preferences = preferences
@@ -57,17 +66,24 @@ public struct AIPane: View {
         self.onCopySummary = onCopySummary
         self.onOpenAISettings = onOpenAISettings
         self.onClose = onClose
+        self.headerInToolbar = headerInToolbar
     }
 
     private var activeProviderModelLine: String {
-        let model = preferences.model(for: preferences.selectedEngine) ?? preferences.selectedModel
+        let model = (preferences.model(for: preferences.selectedEngine) ?? preferences.selectedModel)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !model.isEmpty else {
+            return preferences.selectedEngine.label
+        }
         return "\(preferences.selectedEngine.label) · \(model)"
     }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            headerBar
-            Divider()
+            if !headerInToolbar {
+                AIPaneHeader(onClose: onClose, inToolbar: false)
+                Divider()
+            }
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     if provider.isAvailable {
@@ -77,46 +93,12 @@ public struct AIPane: View {
                         unavailableCard
                     }
                 }
-                .padding(14)
+                .padding(PaneHeaderMetrics.inset)
             }
+            .courierScrollEdges()
         }
         .frame(minWidth: 280, idealWidth: 300, maxWidth: 380)
-        .background(Color(nsColor: .windowBackgroundColor))
-    }
-
-    private var headerBar: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "sparkles")
-                .foregroundStyle(Color.accentColor)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(String(localized: "Courier AI"))
-                    .font(.subheadline.weight(.semibold))
-                Text(chatTitle)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 0)
-            if provider.isAvailable {
-                Text(activeProviderModelLine)
-                    .font(.caption2.weight(.medium))
-                    .lineLimit(1)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(Capsule().fill(Color.secondary.opacity(0.14)))
-                    .foregroundStyle(.secondary)
-            }
-            Button(action: onClose) {
-                Image(systemName: "xmark")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 22, height: 22)
-            }
-            .buttonStyle(.plain)
-            .help(String(localized: "Close AI pane"))
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .courierSurface(.sidePane)
     }
 
     private var providerStatusCard: some View {
@@ -127,10 +109,14 @@ public struct AIPane: View {
                 .accessibilityHidden(true)
             Text(activeProviderModelLine)
                 .font(.caption.weight(.semibold))
+                .lineLimit(1)
+                .truncationMode(.middle)
             Spacer(minLength: 0)
             Text(preferences.selectedEngine.summaryLocationNote())
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
@@ -285,6 +271,23 @@ public struct AIPane: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .strokeBorder(Color.secondary.opacity(0.22), lineWidth: 0.5)
         )
+    }
+}
+
+/// Courier AI pane header: its title and Close button. A strip at the pane's top, or with glass, the pane's item in the
+/// window's toolbar (`inToolbar`), aligned with the chat, thread, and Chat Info headers.
+struct AIPaneHeader: View {
+    var onClose: () -> Void = {}
+    var inToolbar: Bool
+
+    var body: some View {
+        PaneHeader(title: String(localized: "Courier AI"), inToolbar: inToolbar) {
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+            }
+            .help(String(localized: "Close AI pane"))
+            .accessibilityLabel(String(localized: "Close AI pane"))
+        }
     }
 }
 

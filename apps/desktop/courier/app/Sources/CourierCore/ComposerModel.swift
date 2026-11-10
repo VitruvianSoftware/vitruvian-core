@@ -67,7 +67,7 @@ public enum ComposerNotice: Equatable, Sendable {
     /// The text is longer than the chat's network takes (`ChatFeatures.maxTextLength`, counted in bytes of UTF-8,
     /// so an emoji counts four). Nothing was sent, and the text stays to be shortened.
     case textTooLong
-    /// Calm stub notice for features not available yet in Courier (`AIProvider` Talk to Type, Draft with AI, slash commands).
+    /// Calm notice shown when an optional feature is not available yet (Talk to Type) or when AI is not set up in Settings.
     case calmStub(reason: String)
 
     /// User-facing text shown in the notice banner under the composer.

@@ -151,8 +151,10 @@ struct ConversationView: View {
                         conversation.onToast(String(localized: "Copied summary"))
                     },
                     onOpenAISettings: { conversation.onOpenAISettings() },
-                    onClose: { conversation.isShowingAIPane = false }
+                    onClose: { conversation.isShowingAIPane = false },
+                    headerInToolbar: drawsLiquidGlass
                 )
+                .reportsSidePaneWidth(.ai)
             }
         }
         .onPreferenceChange(SidePaneWidthKey.self) { sidePaneWidths = $0 }
@@ -302,17 +304,25 @@ struct ConversationView: View {
     private var sidePaneHeaders: some View {
         let showsThread = thread.rootID != nil && thread.roomID == conversation.roomID
         let info = conversation.isShowingChatInfo ? conversation.chatInfo : nil
+        let showsAI = conversation.isShowingAIPane
         let threadWidth = showsThread ? sidePaneWidths[.thread] : nil
         let infoWidth = info != nil ? sidePaneWidths[.chatInfo] : nil
-        if threadWidth != nil || infoWidth != nil {
+        let aiWidth = showsAI ? sidePaneWidths[.ai] : nil
+        if threadWidth != nil || infoWidth != nil || aiWidth != nil {
             HStack(spacing: 0) {
                 if let threadWidth {
+                    let isLast = infoWidth == nil && aiWidth == nil
                     ThreadPaneHeader(thread: thread, focus: focus, chatName: chatName, inToolbar: true)
-                        .frame(width: max(0, threadWidth - (infoWidth == nil ? PaneHeaderMetrics.toolbarItemSlack : 0)))
+                        .frame(width: max(0, threadWidth - (isLast ? PaneHeaderMetrics.toolbarItemSlack : 0)))
                 }
                 if let info, let infoWidth {
+                    let isLast = aiWidth == nil
                     ChatInfoHeader(roomID: info.roomID, onClose: conversation.toggleChatInfo, inToolbar: true)
-                        .frame(width: max(0, infoWidth - PaneHeaderMetrics.toolbarItemSlack))
+                        .frame(width: max(0, infoWidth - (isLast ? PaneHeaderMetrics.toolbarItemSlack : 0)))
+                }
+                if let aiWidth {
+                    AIPaneHeader(onClose: { conversation.isShowingAIPane = false }, inToolbar: true)
+                        .frame(width: max(0, aiWidth - PaneHeaderMetrics.toolbarItemSlack))
                 }
             }
         }
