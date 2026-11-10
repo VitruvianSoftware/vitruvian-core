@@ -46,6 +46,7 @@ private const val KEY_SELECTED_HOST_ID = "selectedHostId"
 private const val KEY_BRIDGE_ENABLED = "bridgeEnabled"
 private const val KEY_BRIDGE_TRUST_UNTIL = "bridgeTrustUntil"
 private const val KEY_BRIDGE_AUDIT = "bridgeAudit"
+private const val KEY_HOMESPEAKER_SETTINGS_EXPANDED = "homeSpeakerSettingsExpanded"
 
 /** How many console commands are remembered. Beyond this the oldest fall off. */
 private const val RECENT_COMMAND_LIMIT = 20
@@ -182,6 +183,10 @@ public class Persistence(context: Context) {
   public var dockOpen: Boolean
     get() = prefs.getBoolean(KEY_DOCK, true)
     set(value) = prefs.edit().putBoolean(KEY_DOCK, value).apply()
+
+  public var homeSpeakerSettingsExpanded: Boolean
+    get() = prefs.getBoolean(KEY_HOMESPEAKER_SETTINGS_EXPANDED, false)
+    set(value) = prefs.edit().putBoolean(KEY_HOMESPEAKER_SETTINGS_EXPANDED, value).apply()
 
   /**
    * Which of the Remote screen's collapsible sections are open.

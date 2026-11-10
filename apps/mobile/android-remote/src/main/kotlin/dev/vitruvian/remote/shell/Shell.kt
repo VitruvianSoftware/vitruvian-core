@@ -316,7 +316,7 @@ private fun SettingsButton(onClick: () -> Unit) {
   Box(
       modifier =
           Modifier.size(Hit.h1).clickable(role = Role.Button, onClick = onClick).semantics {
-            contentDescription = "Settings and hosts"
+            contentDescription = "Settings"
           },
       contentAlignment = Alignment.Center,
   ) {

@@ -166,7 +166,13 @@ impl Server {
                 HttpResponse::json(200, &self.sampler.snapshot().to_json())
             }),
             "/v1/host" => self.get_only(req, |_| {
-                HttpResponse::json(200, &self.sampler.host().to_json())
+                // API.md promises agent_version here; the phone's Settings line
+                // read "agent v" with nothing after it while only /healthz had it.
+                let mut host = self.sampler.host().to_json();
+                if let JsonValue::Object(map) = &mut host {
+                    map.insert("agent_version", JsonValue::Str(VERSION.to_string()));
+                }
+                HttpResponse::json(200, &host)
             }),
             "/v1/processes" => self.get_only(req, |_| {
                 HttpResponse::json(200, &self.sampler.processes().to_json())
@@ -982,6 +988,7 @@ mod tests {
         for (path, want) in [
             ("/v1/metrics", r#""busy_percent":12.5"#),
             ("/v1/host", r#""mac_address":"a2:26:7e:45:c1:2d""#),
+            ("/v1/host", r#""agent_version":""#),
         ] {
             let req = HttpRequest::new_test("GET", path, "");
             let resp = srv.handle(&req);

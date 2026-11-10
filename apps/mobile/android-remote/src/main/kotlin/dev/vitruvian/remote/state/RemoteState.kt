@@ -369,6 +369,15 @@ public class RemoteState(
     get() = agentToken.isNotBlank()
 
   /**
+   * A Mac is chosen but this phone holds no token for it, so anything that needs the act half of
+   * the contract (macros, prompts, restart) would only log "not paired". Those controls disable on
+   * this rather than looking live and doing nothing when tapped. With no Mac at all the app is in
+   * its simulated demo and the controls stay as they are.
+   */
+  public val actsNeedPairing: Boolean
+    get() = agentUrl.isNotBlank() && !paired
+
+  /**
    * The Mac answered 401/403 to the token this phone held, and the token was dropped.
    *
    * Only changes the wording ("stopped accepting this phone" rather than "not paired"): a token
@@ -433,6 +442,15 @@ public class RemoteState(
 
   /** Recent status notice from a HomeSpeaker action (success or failure). */
   public var homeSpeakerNotice: Pair<String, StatusTone>? by mutableStateOf(null)
+    private set
+
+  /** Whether the HomeSpeaker "Settings" disclosure row is expanded; persisted per device. */
+  public var homeSpeakerSettingsExpanded: Boolean by
+      mutableStateOf(persistence.homeSpeakerSettingsExpanded)
+    private set
+
+  /** Inline errors keyed by HomeSpeaker control id ("mute", "quiet_hours", or row title). */
+  public var homeSpeakerErrors: Map<String, String> by mutableStateOf(emptyMap())
     private set
 
   /** The announce box on the HomeSpeaker dashboard. Cleared once the Mac has spoken it. */
@@ -1293,7 +1311,7 @@ public class RemoteState(
   public val promqlSource: String
     get() =
         when {
-          agentUrl.isBlank() -> "source · none · configure the agent on Hosts"
+          agentUrl.isBlank() -> "source · none · configure the agent on Settings"
           else -> "source · ${agentHostLabel()} · via the Mac agent"
         }
 
@@ -2251,6 +2269,9 @@ public class RemoteState(
         }
       }
     }
+    val newest = Derive.newestBroadcast(hs?.recent.orEmpty(), hs?.last)
+    val canSpeak = paired && available && hs!!.installed
+    val canReplay = canSpeak && Derive.isReplayable(newest)
     return ModuleDashboard(
         id = "homespeaker",
         name = "HomeSpeaker",
@@ -2268,7 +2289,8 @@ public class RemoteState(
                 ModuleMetric(
                     "Speaker",
                     selected?.name ?: if (available) "none" else "n/a",
-                    selected?.room ?: "pick one below"),
+                    selected?.room ?: "pick one below",
+                    onClick = if (available) ::expandHomeSpeakerSettings else null),
                 agentSpeakerVolume.let { v ->
                   ModuleMetric(
                       "Volume",
@@ -2278,7 +2300,8 @@ public class RemoteState(
                         else -> Derive.speakerVolumeLabel(v.available, v.online, v.muted, v.percent)
                       },
                       if (v != null && !v.available) Format.clip(v.reason, 40)
-                      else "of the speaker")
+                      else "of the speaker",
+                      onClick = if (available) ::expandHomeSpeakerSettings else null)
                 },
                 ModuleMetric(
                     "Says",
@@ -2294,7 +2317,8 @@ public class RemoteState(
                     Derive.quietHoursMetricSub(
                         enabled = available && hs!!.quietHoursEnabled,
                         active = available && hs!!.quietHoursActive,
-                        start = hs?.quietHoursStart.orEmpty())),
+                        start = hs?.quietHoursStart.orEmpty()),
+                    onClick = if (available) ::expandHomeSpeakerSettings else null),
             ),
         streamLabel = "Last announcement",
         lines = lines,
@@ -2302,7 +2326,13 @@ public class RemoteState(
         prompts = false,
         listLabel = "Controls and speakers",
         rows = if (hs == null || !hs.available) emptyList() else homeSpeakerRows(hs),
-        extraLists = if (hs == null || !hs.available) emptyList() else homeSpeakerExtraLists(hs),
+        extraLists =
+            if (hs == null || !hs.available) emptyList()
+            else
+                homeSpeakerExtraLists(hs).map { list ->
+                  list.copy(
+                      rows = list.rows.map { r -> r.copy(error = homeSpeakerErrors[r.title]) })
+                },
         composer =
             ModuleComposer(
                 placeholder = "Announce on ${selected?.name ?: "the speaker"}…",
@@ -2312,10 +2342,158 @@ public class RemoteState(
                 onValueChange = ::updateAnnounceDraft,
                 onSubmit = ::announce,
             ),
+        quick = homeSpeakerQuick(hs),
+        streamActions =
+            listOf(
+                RowAction("Replay", enabled = canReplay, error = homeSpeakerErrors["replay"]) {
+                  if (newest != null) {
+                    replayAnnouncement(newest.text, newest.id, controlId = "replay")
+                  }
+                },
+                RowAction("Test", enabled = canSpeak, error = homeSpeakerErrors["test"]) {
+                  testHomeSpeaker()
+                },
+            ),
     )
   }
 
-  private fun homeSpeakerRows(hs: AgentHomeSpeaker): List<ModuleRow> = buildList {
+  public fun toggleHomeSpeakerSettings() {
+    homeSpeakerSettingsExpanded = !homeSpeakerSettingsExpanded
+    persistence.homeSpeakerSettingsExpanded = homeSpeakerSettingsExpanded
+  }
+
+  public fun expandHomeSpeakerSettings() {
+    if (!homeSpeakerSettingsExpanded) {
+      homeSpeakerSettingsExpanded = true
+      persistence.homeSpeakerSettingsExpanded = true
+    }
+  }
+
+  private fun speakerTargetChoices(
+      hs: AgentHomeSpeaker,
+      controlId: String = "Speaker",
+  ): List<RowAction> =
+      hs.targets.map { t ->
+        RowAction(
+            Derive.speakerChoiceLabel(t.name, t.room, t.type),
+            enabled = paired && !t.selected,
+            selected = t.selected) {
+              setHomeSpeaker("speaker ${t.name}", defaultTarget = t.key, controlId = controlId)
+            }
+      }
+
+  private fun homeSpeakerQuick(hs: AgentHomeSpeaker?): List<QuickAction> {
+    val available = hs?.available == true
+    val installed = hs?.installed == true
+    val v = agentSpeakerVolume
+    val selected = hs?.targets?.firstOrNull { it.selected }
+    val newest = Derive.newestBroadcast(hs?.recent.orEmpty(), hs?.last)
+    val roomChoices =
+        if (hs != null && hs.available) speakerTargetChoices(hs, controlId = "room")
+        else emptyList()
+    val specs =
+        Derive.homeSpeakerQuickActions(
+            paired = paired,
+            available = available,
+            installed = installed,
+            volumeAvailable = v?.available == true,
+            volumeOnline = v?.online == true,
+            muted = v?.muted == true,
+            percent = v?.percent ?: 0,
+            volumeBusy = speakerVolumeBusy,
+            quietEnabled = hs?.quietHoursEnabled == true,
+            quietActive = hs?.quietHoursActive == true,
+            quietStart = hs?.quietHoursStart.orEmpty(),
+            quietEnd = hs?.quietHoursEnd.orEmpty(),
+            targetName = selected?.name.orEmpty(),
+            targetRoom = selected?.room.orEmpty(),
+            targetType = selected?.type.orEmpty(),
+            hasRoomChoices = roomChoices.any { it.enabled },
+            hasReplay = Derive.isReplayable(newest),
+            replayTarget = newest?.target,
+        )
+    return specs.map { spec ->
+      when (spec.id) {
+        "mute" ->
+            QuickAction(
+                label = spec.label,
+                secondary = spec.secondary,
+                enabled = spec.enabled,
+                active = spec.active,
+                onClick = { setSpeakerVolume(muted = !(v?.muted == true), controlId = "mute") },
+                contentDescription = spec.contentDescription,
+                error = homeSpeakerErrors["mute"],
+            )
+        "quiet_hours" ->
+            QuickAction(
+                label = spec.label,
+                secondary = spec.secondary,
+                enabled = spec.enabled,
+                active = spec.active,
+                onClick = {
+                  val next = !(hs?.quietHoursEnabled == true)
+                  setHomeSpeaker(
+                      "quiet hours ${if (next) "on" else "off"}",
+                      quietHoursEnabled = next,
+                      controlId = "quiet_hours")
+                },
+                contentDescription = spec.contentDescription,
+                error = homeSpeakerErrors["quiet_hours"],
+            )
+        "room" ->
+            QuickAction(
+                label = spec.label,
+                secondary = spec.secondary,
+                enabled = spec.enabled,
+                active = spec.active,
+                onClick = {},
+                contentDescription = spec.contentDescription,
+                error = homeSpeakerErrors["room"],
+                choices = roomChoices,
+                choiceTitle = "Speaker",
+            )
+        "replay" ->
+            QuickAction(
+                label = spec.label,
+                secondary = spec.secondary,
+                enabled = spec.enabled,
+                active = spec.active,
+                onClick = {
+                  if (newest != null) {
+                    replayAnnouncement(newest.text, newest.id, controlId = "replay")
+                  }
+                },
+                contentDescription = spec.contentDescription,
+                error = homeSpeakerErrors["replay"],
+            )
+        else ->
+            QuickAction(
+                label = spec.label,
+                secondary = spec.secondary,
+                enabled = spec.enabled,
+                active = spec.active,
+                contentDescription = spec.contentDescription,
+                error = homeSpeakerErrors[spec.id],
+            )
+      }
+    }
+  }
+
+  private fun homeSpeakerRows(hs: AgentHomeSpeaker): List<ModuleRow> {
+    val disclosure =
+        ModuleRow(
+            title = "Settings",
+            subtitle = "voices, chat apps, door, diagnostics",
+            trailing = if (homeSpeakerSettingsExpanded) "hide" else "show",
+            tone = StatusTone.Neutral,
+            onSelect = ::toggleHomeSpeakerSettings,
+        )
+    if (!homeSpeakerSettingsExpanded) return listOf(disclosure)
+    return listOf(disclosure) +
+        homeSpeakerSettingsRows(hs).map { row -> row.copy(error = homeSpeakerErrors[row.title]) }
+  }
+
+  private fun homeSpeakerSettingsRows(hs: AgentHomeSpeaker): List<ModuleRow> = buildList {
     // Broadcasting off: nothing else on this plate changes what is heard, so
     // the master switch is the whole plate.
     if (!hs.enabled) {
@@ -2375,15 +2553,7 @@ public class RemoteState(
                                 "remove speaker ${current.name}", removeTarget = current.key)
                           })
                   else emptyList(),
-              choices =
-                  hs.targets.map { t ->
-                    RowAction(
-                        Derive.speakerChoiceLabel(t.name, t.room, t.type),
-                        enabled = paired && !t.selected,
-                        selected = t.selected) {
-                          setHomeSpeaker("speaker ${t.name}", defaultTarget = t.key)
-                        }
-                  },
+              choices = speakerTargetChoices(hs, controlId = "Speaker"),
           ))
     }
     // The outputs, from an agent that can switch them (v1.8+); an older
@@ -3675,7 +3845,29 @@ public class RemoteState(
                       "pair one that has HomeSpeaker set up",
                       "n/a",
                       StatusTone.Neutral)),
+          quick = homeSpeakerQuick(null),
+          streamActions =
+              listOf(
+                  RowAction("Replay", enabled = false) {},
+                  RowAction("Test", enabled = false) {},
+              ),
       )
+
+  private fun clearHomeSpeakerError(controlId: String) {
+    if (controlId in homeSpeakerErrors) {
+      homeSpeakerErrors = homeSpeakerErrors - controlId
+    }
+  }
+
+  private fun recordHomeSpeakerError(controlId: String, what: String, error: Throwable) {
+    val msg =
+        Derive.homeSpeakerInlineError(
+            what = what,
+            reason = error.message,
+            authFailed = error is AgentAuthException,
+        )
+    homeSpeakerErrors = homeSpeakerErrors + (controlId to msg)
+  }
 
   /**
    * One change to HomeSpeaker's settings. The reply is the Mac's state read back, so the dashboard
@@ -3742,7 +3934,58 @@ public class RemoteState(
       courierNetworkReading: Boolean? = null,
       courierReadAnywayKey: String? = null,
       courierReadAnywayOn: Boolean? = null,
+      controlId: String? = null,
   ) {
+    val key =
+        controlId
+            ?: when {
+              enabled != null -> "Broadcasting"
+              defaultTarget != null || removeTarget != null -> "Speaker"
+              discover -> "Find speakers"
+              structureId != null -> "Google Home"
+              signOut || importAntigravity -> "Google account"
+              oauthClientId != null || oauthClientSecret != null -> "OAuth client"
+              speakHome != null -> "Google Home speaker"
+              speakLocal != null -> "Mac speakers"
+              speakPhone != null -> "This phone"
+              phonePauseMedia != null -> "Phone · Pause media"
+              phoneHeadphonesOnly != null -> "Phone · Headphones only"
+              localEngine != null -> "Voice engine"
+              geminiVoice != null -> "Gemini voice"
+              geminiApiKey != null -> "Gemini API key"
+              localVoice != null || previewVoice -> "Mac voice"
+              homeCastVoice != null -> "Speaker voice"
+              speechLength != null -> "What to say"
+              announcementStyle != null -> "Style"
+              styleModel != null -> "Style model"
+              customStylePrompt != null -> "Custom style prompt"
+              announceVolumeEnabled != null || announceVolume != null -> "Announce at a set volume"
+              pauseMedia != null || pauseMediaExtraSeconds != null || testMediaPause ->
+                  "Pause media while announcing"
+              quietHoursEnabled != null -> "Quiet hours"
+              quietHoursStart != null -> "Quiet hours · From"
+              quietHoursEnd != null -> "Quiet hours · Until"
+              speakClipboard -> "Speak clipboard"
+              activeDoor != null -> "HomeSpeaker door"
+              resetSettings -> "Settings & diagnostics"
+              announceClaudeCode != null -> "Claude Code"
+              announceAntigravity != null -> "Antigravity"
+              announceOpenCode != null -> "OpenCode"
+              chatMonitorAction != null -> "Chat monitor"
+              slackEnabled != null -> "Slack"
+              slackToken != null -> "Slack user token"
+              googleChatEnabled != null -> "Google Chat"
+              googleChatSource != null -> "Google Chat source"
+              gwsAccount != null -> "gws CLI account"
+              beeperEnabled != null -> "Beeper"
+              beeperToken != null -> "Beeper access token"
+              beeperAnnounce != null -> "Beeper · Announce"
+              courierEnabled != null -> "Courier"
+              courierAnnounce != null -> "Courier · Announce"
+              muteOwnMessages != null -> "Mute your own messages"
+              pollInterval != null -> "Poll interval"
+              else -> what
+            }
     val client = actClient("homespeaker · $what") ?: return
     homeSpeakerBusy = what
     homeSpeakerNotice = null
@@ -3812,6 +4055,7 @@ public class RemoteState(
             }
             .onSuccess {
               agentHomeSpeaker = it
+              clearHomeSpeakerError(key)
               homeSpeakerNotice = "✓ homespeaker · $what" to StatusTone.Ok
               log("info", "homespeaker · $what")
               // A different speaker has a different volume; show it now.
@@ -3820,6 +4064,7 @@ public class RemoteState(
               }
             }
             .onFailure {
+              recordHomeSpeakerError(key, what, it)
               homeSpeakerNotice =
                   "✗ homespeaker · $what: ${
                     if (it is AgentAuthException) failureText(it) else it.message ?: "failed"
@@ -3837,7 +4082,11 @@ public class RemoteState(
    * Changes the default speaker's volume (or mutes it) and shows what Google reports afterwards --
    * which takes seconds, so the row says so meanwhile rather than showing the old level.
    */
-  private fun setSpeakerVolume(percent: Int? = null, muted: Boolean? = null) {
+  private fun setSpeakerVolume(
+      percent: Int? = null,
+      muted: Boolean? = null,
+      controlId: String = "Speaker volume",
+  ) {
     val what = if (percent != null) "volume $percent%" else if (muted == true) "mute" else "unmute"
     val client = actClient("homespeaker · $what") ?: return
     speakerVolumeBusy = true
@@ -3845,10 +4094,23 @@ public class RemoteState(
       runCatching { client.setHomeSpeakerVolume(percent, muted) }
           .onSuccess { v ->
             agentSpeakerVolume = v
-            if (v.available) log("info", "homespeaker · $what")
-            else log("warn", "homespeaker · $what · ${v.reason.ifBlank { "refused" }}")
+            if (v.available) {
+              clearHomeSpeakerError(controlId)
+              if (controlId != "Speaker volume") clearHomeSpeakerError("Speaker volume")
+              if (controlId != "mute") clearHomeSpeakerError("mute")
+              log("info", "homespeaker · $what")
+            } else {
+              val err =
+                  Derive.homeSpeakerInlineError(
+                      what = what, reason = v.reason.ifBlank { "speaker refused" })
+              homeSpeakerErrors = homeSpeakerErrors + (controlId to err)
+              log("warn", "homespeaker · $what · ${v.reason.ifBlank { "refused" }}")
+            }
           }
-          .onFailure { actFailed("homespeaker · $what", it) }
+          .onFailure {
+            recordHomeSpeakerError(controlId, what, it)
+            actFailed("homespeaker · $what", it)
+          }
       speakerVolumeBusy = false
     }
   }
@@ -3881,27 +4143,69 @@ public class RemoteState(
     }
   }
 
+  /** Speaks "Test from your phone" on the Mac's default speaker, from the stream plate header. */
+  public fun testHomeSpeaker(controlId: String = "test") {
+    val text = "Test from your phone"
+    val client = actClient("homespeaker · test") ?: return
+    scope.launch {
+      runCatching { client.homeSpeakerSay(text) }
+          .onSuccess { result ->
+            if (result.ok) {
+              clearHomeSpeakerError(controlId)
+              log("info", "homespeaker · said \"$text\"")
+              runCatching { client.homeSpeaker() }.onSuccess { agentHomeSpeaker = it }
+            } else {
+              val err =
+                  Derive.homeSpeakerInlineError(
+                      what = "test", reason = result.output.ifBlank { "not spoken" })
+              homeSpeakerErrors = homeSpeakerErrors + (controlId to err)
+              log(
+                  "warn",
+                  "homespeaker · not spoken · ${result.output.ifBlank { "no reason given" }}")
+            }
+          }
+          .onFailure {
+            recordHomeSpeakerError(controlId, "test", it)
+            actFailed("homespeaker · test", it)
+          }
+    }
+  }
+
   /**
    * Speaks a recent broadcast again, through the same `HomeSpeaker --say` as the Say box: the
    * master switch holds, quiet hours do not. The Mac lists it again in its history.
    */
-  public fun replayAnnouncement(text: String, id: String? = null) {
+  public fun replayAnnouncement(
+      text: String,
+      id: String? = null,
+      controlId: String = "replay",
+  ) {
     val line = text.trim()
+    // A blank broadcast with no id has nothing to replay; sending it would
+    // ask the Mac to speak an empty line.
     if (line.isEmpty() && id.isNullOrBlank()) return
     val client = actClient("homespeaker · replay") ?: return
     scope.launch {
       runCatching { client.homeSpeakerSay(line, replay = true, replayId = id) }
           .onSuccess { result ->
             if (result.ok) {
+              clearHomeSpeakerError(controlId)
               log("info", "homespeaker · replayed \"${Format.clip(line, 60)}\"")
               runCatching { client.homeSpeaker() }.onSuccess { agentHomeSpeaker = it }
             } else {
+              val err =
+                  Derive.homeSpeakerInlineError(
+                      what = "replay", reason = result.output.ifBlank { "not spoken" })
+              homeSpeakerErrors = homeSpeakerErrors + (controlId to err)
               log(
                   "warn",
                   "homespeaker · not replayed · ${result.output.ifBlank { "no reason given" }}")
             }
           }
-          .onFailure { actFailed("homespeaker · replay", it) }
+          .onFailure {
+            recordHomeSpeakerError(controlId, "replay", it)
+            actFailed("homespeaker · replay", it)
+          }
     }
   }
 
@@ -5626,6 +5930,8 @@ public class RemoteState(
     agentArgo = null
     agentHomeSpeaker = null
     agentSpeakerVolume = null
+    homeSpeakerNotice = null
+    homeSpeakerErrors = emptyMap()
     agentTv = null
     tvCastDraft = ""
     tvBusyAction = null
@@ -6345,9 +6651,8 @@ public class RemoteState(
     // cannot be smart-cast, and the branches below need the target the dialog
     // was opened for.
     when (val open = dialog) {
-      // The one power action a keyboard can actually perform. Restart and
-      // Halt below stay mocked: HID cannot express them, and pretending
-      // otherwise would be worse than an honest no-op.
+      // The one power action a keyboard can actually perform. Restart below
+      // goes through the agent, because HID cannot express it.
       DialogKind.Sleep -> {
         log("info", "power · $hostShortName sleeping")
         // Ctrl+Shift+Power on the KEYBOARD page. Consumer 0x30 -- what the
@@ -6367,10 +6672,6 @@ public class RemoteState(
             runCatching { client.power("restart") }.onFailure { actFailed("power · restart", it) }
           }
         }
-      }
-      DialogKind.Halt -> {
-        agentPaused = true
-        log("info", "claude code · updates paused on this phone")
       }
       // Merging is the one PR action that cannot be undone from a phone, so
       // it is the one that comes through here.
@@ -7163,15 +7464,6 @@ public data class DialogSpec(
                           "homelab node on this Mac is gone until the reboot completes.",
                   action = "Restart",
                   word = "restart".takeIf { confirmDestructive },
-              )
-          DialogKind.Halt ->
-              DialogSpec(
-                  kicker = "Claude Code · this phone",
-                  destructive = false,
-                  title = "Pause updates?",
-                  body = "Stops this phone refreshing Claude Code; nothing on the Mac is stopped.",
-                  action = "Pause updates",
-                  word = null,
               )
           // Typed like Restart, for the same reason: a merge lands on a
           // branch other people are working from and no button on this phone
