@@ -48,6 +48,14 @@ pub const MAX_PHONE_SAY_BODY: usize = 8 << 20;
 pub const PHONE_SAY_TIMEOUT: Duration = Duration::from_secs(60);
 pub const SAY_LIMIT: Duration = Duration::from_secs(90);
 pub const VOLUME_LIMIT: Duration = Duration::from_secs(45);
+/// The oldest Home Speaker that answers `--state` and `--apply`. Older programs would take them
+/// for unknown arguments and start their menu-bar app.
+pub const MIN_HOME_SPEAKER_VERSION: &str = "1.40.0";
+/// Bounds on `--version` and `--state`.
+pub const VERSION_LIMIT: Duration = Duration::from_secs(15);
+pub const STATE_LIMIT: Duration = Duration::from_secs(15);
+/// The `contract_version` of the `--state` document this helper reads.
+const STATE_CONTRACT_VERSION: i64 = 1;
 /// Upper bound on one `say -v ?` run (about 13 s with ~200 voices installed).
 /// Callers share a single in-flight run (see `voice_cache`), so a hung `say`
 /// must not block them indefinitely.
@@ -108,6 +116,8 @@ pub struct HomeSpeaker {
     pub antigravity_tokens_path: PathBuf,
     pub binary: PathBuf,
     pub run: RunnerFn,
+    /// Like `run`, but keeps stdout when the program exits non-zero (`--apply` explains a refusal there).
+    pub run_capture: Option<RunnerFn>,
     pub launch: Option<RunnerFn>,
     pub say: Option<RunnerFn>,
     pub running: Option<RunningFn>,
@@ -485,6 +495,8 @@ pub struct HomeSpeakerState {
     pub courier_networks_listed: bool,
     pub mute_own_messages: Option<bool>,
     pub recent: Vec<HomeSpeakerLast>,
+    /// Home Speaker's own warnings about its setup.
+    pub warnings: Vec<String>,
 }
 
 impl Default for HomeSpeakerState {
@@ -571,6 +583,7 @@ impl Default for HomeSpeakerState {
             courier_networks_listed: false,
             mute_own_messages: None,
             recent: Vec::new(),
+            warnings: Vec::new(),
         }
     }
 }
@@ -910,6 +923,15 @@ impl HomeSpeakerState {
         m.insert(
             "recent".to_string(),
             JsonValue::Array(self.recent.iter().map(|r| r.to_json()).collect()),
+        );
+        m.insert(
+            "warnings".to_string(),
+            JsonValue::Array(
+                self.warnings
+                    .iter()
+                    .map(|w| JsonValue::String(w.clone()))
+                    .collect(),
+            ),
         );
         JsonValue::Object(m)
     }
@@ -2217,6 +2239,7 @@ impl HomeSpeaker {
                     None => Ok((out, err_s)),
                 }
             }),
+            run_capture: Some(Arc::new(run_capturing_exit)),
             launch: Some(Arc::new(move |_limit, name, args| {
                 spawn_as_person_detached_with_busy(name, args, Some(launch_busy.clone()))
             })),
@@ -3091,307 +3114,125 @@ impl HomeSpeaker {
         String::new()
     }
 
-    pub fn state(&self) -> HomeSpeakerState {
+    /// The program the helper talks to: the app or the extension, as the choice file says.
+    pub fn active_program(&self) -> HomeSpeakerProgram {
         let p = self.active_profile();
+        HomeSpeakerProgram {
+            door: p.active_door,
+            binary: p.binary,
+        }
+    }
+
+    /// Runs one Home Speaker command and keeps its output even when it exits non-zero:
+    /// `--apply` explains a refusal in JSON on stdout and exits 1.
+    fn call_program(
+        &self,
+        limit: Duration,
+        program: &HomeSpeakerProgram,
+        args: &[String],
+    ) -> Result<(String, String), String> {
+        let runner = self.run_capture.as_ref().unwrap_or(&self.run);
+        runner(limit, &program.binary.to_string_lossy(), args)
+    }
+
+    /// Asks `program` for its version, once per request (`verified` remembers who has answered).
+    /// Below `MIN_HOME_SPEAKER_VERSION` nothing else may be run on it: an old program would
+    /// read `--state` as an unknown argument and start its menu-bar app.
+    fn check_version(
+        &self,
+        program: &HomeSpeakerProgram,
+        verified: &mut Vec<PathBuf>,
+    ) -> Result<(), VersionProblem> {
+        if verified.contains(&program.binary) {
+            return Ok(());
+        }
+        let args = vec!["--version".to_string()];
+        let (stdout, _) = self
+            .call_program(VERSION_LIMIT, program, &args)
+            .map_err(VersionProblem::Unreadable)?;
+        let Some(have) = parse_version_output(&stdout) else {
+            return Err(VersionProblem::Unreadable(
+                "it did not print a version".to_string(),
+            ));
+        };
+        if version_at_least(&have, MIN_HOME_SPEAKER_VERSION) {
+            verified.push(program.binary.clone());
+            return Ok(());
+        }
+        Err(VersionProblem::TooOld(format!(
+            "Update Home Speaker on {} (have {have}, need {MIN_HOME_SPEAKER_VERSION})",
+            crate::sampler::get_hostname()
+        )))
+    }
+
+    /// `--state --json` from `program`, after the version gate.
+    fn fetch_state_doc(
+        &self,
+        program: &HomeSpeakerProgram,
+        verified: &mut Vec<PathBuf>,
+    ) -> Result<JsonValue, String> {
+        match self.check_version(program, verified) {
+            Ok(()) => {}
+            Err(VersionProblem::TooOld(sentence)) => return Err(sentence),
+            Err(VersionProblem::Unreadable(e)) => {
+                return Err(format!("Could not read the Home Speaker version: {e}"))
+            }
+        }
+        let args = vec!["--state".to_string(), "--json".to_string()];
+        let (stdout, _) = self
+            .call_program(STATE_LIMIT, program, &args)
+            .map_err(|e| format!("Home Speaker did not answer --state: {e}"))?;
+        let doc = JsonValue::parse(stdout.trim())
+            .map_err(|_| "Home Speaker's --state answer was not JSON".to_string())?;
+        let Some(obj) = doc.as_object() else {
+            return Err("Home Speaker's --state answer was not a JSON object".to_string());
+        };
+        match obj.get("contract_version").and_then(|v| v.as_i64()) {
+            Some(STATE_CONTRACT_VERSION) => Ok(doc),
+            other => Err(format!(
+                "Home Speaker answered --state in contract version {}, this helper reads {STATE_CONTRACT_VERSION}",
+                other.map(|n| n.to_string()).unwrap_or_else(|| "none".to_string())
+            )),
+        }
+    }
+
+    pub fn state(&self) -> HomeSpeakerState {
+        self.state_checked(&mut Vec::new())
+    }
+
+    fn state_checked(&self, verified: &mut Vec<PathBuf>) -> HomeSpeakerState {
+        let program = self.active_program();
         let mut st = HomeSpeakerState {
-            active_door: p.active_door.clone(),
+            active_door: program.door.clone(),
             extension_installed: self.extension_installed(),
             ..Default::default()
         };
-        if file_exists(&p.binary) {
-            st.installed = true;
+        if !file_exists(&program.binary) {
+            st.reason = format!(
+                "HomeSpeaker is not installed at {}",
+                program.binary.display()
+            );
+            return st;
         }
-        let cfg = match self.read_config() {
-            Ok(c) => c,
-            Err(ApplyError::NotFound(_)) => {
-                st.reason = format!(
-                    "HomeSpeaker has not been set up on this Mac (no {})",
-                    p.config_path.display()
-                );
+        st.installed = true;
+        match self.check_version(&program, verified) {
+            Ok(()) => {}
+            Err(VersionProblem::TooOld(sentence)) => {
+                st.reason = sentence;
                 return st;
             }
+            Err(VersionProblem::Unreadable(e)) => {
+                st.reason = format!("Could not read the Home Speaker version: {e}");
+                return st;
+            }
+        }
+        match self.fetch_state_doc(&program, verified) {
+            Ok(doc) => map_state_doc(&doc, &program, st),
             Err(e) => {
-                st.reason = e.message().to_string();
-                return st;
-            }
-        };
-        st.available = true;
-        st.app_running = self.is_running(&p);
-        st.signed_in = self.signed_in();
-        st.has_gemini_key = self.has_gemini_key();
-        st.enabled = cfg
-            .get("enabled")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        st.default_target = cfg
-            .get("default_target")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        st.speech_length = cfg
-            .get("speech_length")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty())
-            .unwrap_or("summary")
-            .to_string();
-        st.pause_media = cfg
-            .get("pause_media")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        st.pause_media_extra_seconds = cfg
-            .get("pause_media_extra_seconds")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(1.0);
-        st.announce_volume_enabled = cfg
-            .get("announce_volume_enabled")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        st.announce_volume = cfg
-            .get("announce_volume")
-            .and_then(|v| v.as_f64())
-            .map(|n| n as i64)
-            .unwrap_or(60);
-        st.speak_home = cfg
-            .get("speak_home")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(true);
-        st.speak_local = cfg
-            .get("speak_local")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        st.speak_phone = bool_or(Some(&cfg), "speak_phone", false);
-        st.phone_pause_media = cfg
-            .get("phone_pause_media")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        st.phone_headphones_only = cfg
-            .get("phone_headphones_only")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        st.local_voice = cfg
-            .get("local_voice")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.trim().is_empty())
-            .unwrap_or(DEFAULT_LOCAL_VOICE)
-            .to_string();
-        st.local_voice_name = voice_name(&st.local_voice);
-        st.local_engine = string_in(Some(&cfg), "local_engine", LOCAL_ENGINES, "apple");
-        st.custom_voices = custom_voices(&cfg);
-        st.gemini_voice = cfg
-            .get("gemini_voice")
-            .and_then(|v| v.as_str())
-            .filter(|v| valid_gemini_voice(v, &st.custom_voices))
-            .unwrap_or("Kore")
-            .to_string();
-        st.announcement_style = string_in(
-            Some(&cfg),
-            "announcement_style",
-            ANNOUNCEMENT_STYLES,
-            "verbatim",
-        );
-        st.custom_style_prompt = cfg
-            .get("custom_style_prompt")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        st.home_cast_voice = cfg
-            .get("home_cast_voice")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        st.style_model = string_in(Some(&cfg), "style_model", STYLE_MODELS, "apple");
-        st.structure_name = cfg
-            .get("structure_name")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        st.structure_id = cfg
-            .get("structure_id")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        if let Some(raw_homes) = cfg.get("homes").and_then(|v| v.as_array()) {
-            for raw_h in raw_homes {
-                if let Some(hm) = raw_h.as_object() {
-                    let id = hm.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                    let name = hm.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                    if !id.is_empty() {
-                        st.homes.push(HomeSpeakerHome {
-                            id: id.to_string(),
-                            name: name.to_string(),
-                        });
-                    }
-                }
+                st.reason = e;
+                st
             }
         }
-        if st.homes.is_empty() && !st.structure_name.is_empty() {
-            st.homes.push(HomeSpeakerHome {
-                id: st.structure_id.clone(),
-                name: st.structure_name.clone(),
-            });
-        }
-
-        let q_enabled = cfg
-            .get("quiet_hours_enabled")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        let q_start = cfg
-            .get("quiet_hours_start")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty())
-            .unwrap_or("22:00")
-            .to_string();
-        let q_end = cfg
-            .get("quiet_hours_end")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty())
-            .unwrap_or("07:00")
-            .to_string();
-        let q_active = is_quiet_hours_active(q_enabled, &q_start, &q_end, Timestamp::now());
-        st.quiet_hours = HomeSpeakerQuiet {
-            enabled: q_enabled,
-            start: q_start,
-            end: q_end,
-            active: q_active,
-        };
-        st.quiet_hours_active = q_active;
-        st.snooze_until = cfg
-            .get("snooze_until")
-            .and_then(|v| v.as_str())
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty() && parse_snooze_timestamp(s).is_ok())
-            .map(|s| s.to_string());
-
-        st.available_voices = if let Some(ref lv) = self.list_voices {
-            match self.voice_cache.get(lv) {
-                Ok(list) if !list.is_empty() => list,
-                _ => default_voice_list(),
-            }
-        } else {
-            default_voice_list()
-        };
-
-        let sec = self.read_secrets_data(&p.secrets_path);
-        let cred = self.read_credentials_data();
-        if !sec.google_email.is_empty() {
-            st.account_email = sec.google_email;
-        }
-        st.has_oauth_client = !sec.oauth_client_id_override.is_empty()
-            || !cred.oauth_client_id.is_empty()
-            || file_exists(&self.oauth_client_path);
-        st.has_antigravity_tokens = file_exists(&self.antigravity_tokens_path);
-        st.custom_oauth_client_id = if !sec.oauth_client_id_override.is_empty() {
-            sec.oauth_client_id_override
-        } else {
-            cred.oauth_client_id
-        };
-        st.has_custom_oauth_secret =
-            !sec.oauth_client_secret_override.is_empty() || !cred.oauth_client_secret.is_empty();
-        st.has_slack_token = !sec.slack_token.is_empty() || !cred.slack_token.is_empty();
-        st.has_beeper_token = !sec.beeper_token.is_empty() || !cred.beeper_token.is_empty();
-        st.has_courier_token = !sec.courier_token.is_empty();
-        st.has_google_chat_token = sec.has_google_chat_token;
-        // As HomeSpeaker's `hasChatAccess` (GoogleAuth.swift): Google Chat consent only; Slack and
-        // Beeper tokens have their own flags.
-        st.has_chat_access = st.has_google_chat_token;
-
-        if let Some(targets) = cfg.get("targets").and_then(|v| v.as_object()) {
-            for key in dedupe_target_keys(targets, &st.default_target) {
-                let t = targets.get(&key).and_then(|v| v.as_object());
-                let name = t
-                    .and_then(|m| m.get("name"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let room = t
-                    .and_then(|m| m.get("room"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let target_type = t
-                    .and_then(|m| m.get("type"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let selected = key == st.default_target;
-                st.targets.push(HomeSpeakerTarget {
-                    key,
-                    name,
-                    room,
-                    target_type,
-                    selected,
-                });
-            }
-            st.targets.sort_by(|a, b| {
-                let a_struct = a.target_type == "Structure";
-                let b_struct = b.target_type == "Structure";
-                if a_struct != b_struct {
-                    return b_struct.cmp(&a_struct);
-                }
-                if a.room != b.room {
-                    return a.room.cmp(&b.room);
-                }
-                a.name.cmp(&b.name)
-            });
-        }
-
-        st.announce_claude_code = bool_or(Some(&cfg), "announce_claude_code", true);
-        st.announce_antigravity = bool_or(Some(&cfg), "announce_antigravity", true);
-        st.announce_opencode = bool_or(Some(&cfg), "announce_opencode", true);
-        let monitor = cfg.get("chat_monitor").and_then(|v| v.as_object());
-        st.slack_enabled = bool_or(monitor, "slack_enabled", false);
-        st.google_chat_enabled = bool_or(monitor, "google_chat_enabled", false);
-        st.beeper_enabled = bool_or(monitor, "beeper_enabled", false);
-        st.beeper_announce = string_in(
-            monitor,
-            "beeper_announce",
-            BEEPER_ANNOUNCE_MODES,
-            "direct_and_mentions",
-        );
-        st.mute_own_messages = bool_or(monitor, "mute_own_messages", true);
-        (st.beeper_networks, st.beeper_networks_listed) =
-            self.networks(&p, st.app_running, monitor, ChatApp::Beeper);
-        st.courier_enabled = bool_or(monitor, "courier_enabled", false);
-        st.courier_announce = string_in(
-            monitor,
-            "courier_announce",
-            BEEPER_ANNOUNCE_MODES,
-            "direct_and_mentions",
-        );
-        (st.courier_networks, st.courier_networks_listed) =
-            self.networks(&p, st.app_running, monitor, ChatApp::Courier);
-
-        let mon_status = self.read_monitor_status();
-        st.monitor_running = mon_status.is_running;
-        st.last_poll_at = mon_status.last_poll_date;
-        st.slack_identity = mon_status.slack_identity;
-        st.active_google_chat_backend = mon_status.active_google_chat_backend;
-        st.chat_runtime_error = mon_status.last_error;
-        st.gws_installed = file_exists(Path::new("/opt/homebrew/bin/gws"))
-            || file_exists(Path::new("/usr/local/bin/gws"))
-            || find_executable_in_path("gws").is_some();
-        st.gws_account = monitor
-            .and_then(|m| m.get("gws_account"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        st.google_chat_source = string_in(
-            monitor,
-            "google_chat_source",
-            &["auto", "api", "gws"],
-            "auto",
-        );
-        st.poll_interval = monitor
-            .and_then(|m| m.get("poll_interval_seconds"))
-            .and_then(|v| v.as_f64())
-            .map(|pi| (pi as i64).clamp(5, 300))
-            .unwrap_or(15);
-
-        st.agents = self.inspect_agents(&p);
-        st.legacy_launch_agent = file_exists(&self.legacy_plist_path);
-        st.home_speaker_version = self.inspect_version(&p);
-        st.recent = self.recent_broadcasts(RECENT_BROADCASTS);
-        st.last = st.recent.first().cloned();
-        st
     }
 
     fn say_preview_voice(&self, voice: &str) -> Result<(), ApplyError> {
@@ -4979,6 +4820,341 @@ fn filter_claude_stop_groups(hooks: &JsonObject) -> Vec<JsonValue> {
     kept_groups
 }
 
+/// Runs `name` and keeps its output when it exits non-zero; only a failure to start it, or the
+/// time limit, is an error.
+pub fn run_capturing_exit(
+    limit: Duration,
+    name: &str,
+    args: &[String],
+) -> Result<(String, String), String> {
+    let (out, err, failure) = run_tool_within(limit, name, args, None);
+    match failure {
+        Some(e) if !e.starts_with("exit status") => Err(e),
+        _ => Ok((out, err)),
+    }
+}
+
+/// The program the helper talks to.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HomeSpeakerProgram {
+    pub door: String,
+    pub binary: PathBuf,
+}
+
+enum VersionProblem {
+    /// The update sentence, ready to show.
+    TooOld(String),
+    Unreadable(String),
+}
+
+/// The version in `HomeSpeaker --version`'s answer ("HomeSpeaker 1.40.0").
+fn parse_version_output(out: &str) -> Option<String> {
+    let line = out.lines().map(str::trim).find(|l| !l.is_empty())?;
+    let token = line.split_whitespace().last()?.trim_start_matches('v');
+    if token
+        .split(['-', '+'])
+        .next()?
+        .split('.')
+        .all(|p| p.parse::<u64>().is_ok())
+    {
+        Some(token.to_string())
+    } else {
+        None
+    }
+}
+
+fn version_parts(v: &str) -> Vec<u64> {
+    v.split(['-', '+'])
+        .next()
+        .unwrap_or("")
+        .split('.')
+        .map(|p| p.parse::<u64>().unwrap_or(0))
+        .collect()
+}
+
+/// `have >= need`, comparing dotted numbers part by part.
+pub fn version_at_least(have: &str, need: &str) -> bool {
+    let (h, n) = (version_parts(have), version_parts(need));
+    for i in 0..h.len().max(n.len()) {
+        let (a, b) = (
+            h.get(i).copied().unwrap_or(0),
+            n.get(i).copied().unwrap_or(0),
+        );
+        if a != b {
+            return a > b;
+        }
+    }
+    true
+}
+
+fn doc_str(o: &JsonObject, key: &str) -> String {
+    o.get(key)
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string()
+}
+
+fn doc_bool(o: &JsonObject, key: &str) -> bool {
+    o.get(key).and_then(|v| v.as_bool()).unwrap_or(false)
+}
+
+fn doc_obj<'a>(o: &'a JsonObject, key: &str) -> Option<&'a JsonObject> {
+    o.get(key).and_then(|v| v.as_object())
+}
+
+fn doc_entry(o: &JsonObject) -> Option<HomeSpeakerLast> {
+    let at = Timestamp::parse_rfc3339(o.get("at")?.as_str()?).ok()?;
+    Some(HomeSpeakerLast {
+        id: doc_str(o, "id"),
+        text: doc_str(o, "text"),
+        target: doc_str(o, "target"),
+        source: doc_str(o, "source"),
+        at,
+    })
+}
+
+/// Reads the settings out of the document by key.
+struct DocSettings<'a>(Vec<(&'a str, &'a JsonValue)>);
+
+impl<'a> DocSettings<'a> {
+    fn of(doc: &'a JsonObject) -> Self {
+        let mut v = Vec::new();
+        if let Some(items) = doc.get("settings").and_then(|s| s.as_array()) {
+            for item in items {
+                if let Some(o) = item.as_object() {
+                    if let (Some(k), Some(val)) =
+                        (o.get("key").and_then(|k| k.as_str()), o.get("value"))
+                    {
+                        v.push((k, val));
+                    }
+                }
+            }
+        }
+        Self(v)
+    }
+    fn get(&self, key: &str) -> Option<&JsonValue> {
+        self.0.iter().find(|(k, _)| *k == key).map(|(_, v)| *v)
+    }
+    fn bool(&self, key: &str) -> Option<bool> {
+        self.get(key).and_then(|v| v.as_bool())
+    }
+    fn str(&self, key: &str) -> String {
+        self.get(key)
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string()
+    }
+    fn i64(&self, key: &str) -> i64 {
+        self.get(key)
+            .and_then(|v| v.as_f64())
+            .map(|n| n as i64)
+            .unwrap_or(0)
+    }
+    fn f64(&self, key: &str) -> f64 {
+        self.get(key).and_then(|v| v.as_f64()).unwrap_or(0.0)
+    }
+}
+
+fn doc_networks(chat: &JsonObject, key: &str) -> Vec<HomeSpeakerBeeperNetwork> {
+    let mut out = Vec::new();
+    if let Some(rows) = chat.get(key).and_then(|v| v.as_array()) {
+        for row in rows {
+            if let Some(o) = row.as_object() {
+                out.push(HomeSpeakerBeeperNetwork {
+                    key: doc_str(o, "key"),
+                    name: doc_str(o, "name"),
+                    state: doc_str(o, "state"),
+                    read_anyway: doc_bool(o, "read_anyway"),
+                });
+            }
+        }
+    }
+    out
+}
+
+/// Maps Home Speaker's `--state` document (contract v1) onto the fields the phone reads.
+fn map_state_doc(
+    doc: &JsonValue,
+    program: &HomeSpeakerProgram,
+    mut st: HomeSpeakerState,
+) -> HomeSpeakerState {
+    let Some(d) = doc.as_object() else {
+        return st;
+    };
+    st.installed = true;
+    st.active_door = doc_str(d, "active_door");
+    st.extension_installed = doc_bool(d, "extension_installed");
+    st.app_running = match d.get("chosen").and_then(|v| v.as_str()) {
+        Some(_) => doc_bool(d, "chosen_running"),
+        None if program.door == "extension" => doc_bool(d, "extension_running"),
+        None => doc_bool(d, "app_running"),
+    };
+    st.warnings = d
+        .get("warnings")
+        .and_then(|v| v.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|w| w.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    if !doc_bool(d, "config_initialized") {
+        st.reason = d
+            .get("config_problem")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .unwrap_or("HomeSpeaker has not been set up on this Mac")
+            .to_string();
+        return st;
+    }
+    st.available = true;
+
+    let s = DocSettings::of(d);
+    st.enabled = s.bool("enabled").unwrap_or(false);
+    st.default_target = s.str("default_target");
+    st.speech_length = s.str("speech_length");
+    st.pause_media = s.bool("pause_media").unwrap_or(false);
+    st.pause_media_extra_seconds = s.f64("pause_media_extra_seconds");
+    st.announce_volume_enabled = s.bool("announce_volume_enabled").unwrap_or(false);
+    st.announce_volume = s.i64("announce_volume");
+    st.speak_home = s.bool("speak_home").unwrap_or(false);
+    st.speak_local = s.bool("speak_local").unwrap_or(false);
+    st.speak_phone = s.bool("speak_phone");
+    st.phone_pause_media = s.bool("phone_pause_media").unwrap_or(false);
+    st.phone_headphones_only = s.bool("phone_headphones_only").unwrap_or(false);
+    st.local_voice = s.str("local_voice");
+    st.local_voice_name = doc_str(d, "local_voice_name");
+    st.local_engine = s.str("local_engine");
+    st.gemini_voice = s.str("gemini_voice");
+    st.announcement_style = s.str("announcement_style");
+    st.style_model = s.str("style_model");
+    st.custom_style_prompt = s.str("custom_style_prompt");
+    st.home_cast_voice = s.bool("home_cast_voice").unwrap_or(false);
+    st.announce_claude_code = s.bool("announce_claude_code");
+    st.announce_antigravity = s.bool("announce_antigravity");
+    st.announce_opencode = s.bool("announce_opencode");
+    st.slack_enabled = s.bool("slack_enabled");
+    st.google_chat_enabled = s.bool("google_chat_enabled");
+    st.beeper_enabled = s.bool("beeper_enabled");
+    st.beeper_announce = s.str("beeper_announce");
+    st.courier_enabled = s.bool("courier_enabled");
+    st.courier_announce = s.str("courier_announce");
+    st.mute_own_messages = s.bool("mute_own_messages");
+    st.gws_account = s.str("gws_account");
+    st.google_chat_source = s.str("google_chat_source");
+    st.poll_interval = s.i64("poll_interval_seconds");
+
+    st.structure_id = doc_str(d, "structure_id");
+    st.structure_name = doc_str(d, "structure_name");
+    if let Some(homes) = d.get("homes").and_then(|v| v.as_array()) {
+        for h in homes.iter().filter_map(|h| h.as_object()) {
+            st.homes.push(HomeSpeakerHome {
+                id: doc_str(h, "id"),
+                name: doc_str(h, "name"),
+            });
+        }
+    }
+    if let Some(q) = doc_obj(d, "quiet_hours") {
+        st.quiet_hours = HomeSpeakerQuiet {
+            enabled: doc_bool(q, "enabled"),
+            start: doc_str(q, "start"),
+            end: doc_str(q, "end"),
+            active: doc_bool(q, "active"),
+        };
+        st.quiet_hours_active = st.quiet_hours.active;
+    }
+    st.snooze_until = d
+        .get("snooze_until")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+
+    if let Some(speakers) = d.get("speakers").and_then(|v| v.as_array()) {
+        for sp in speakers.iter().filter_map(|v| v.as_object()) {
+            st.targets.push(HomeSpeakerTarget {
+                key: doc_str(sp, "key"),
+                name: doc_str(sp, "name"),
+                room: doc_str(sp, "room"),
+                target_type: doc_str(sp, "type"),
+                selected: doc_bool(sp, "is_default"),
+            });
+        }
+    }
+    if let Some(voices) = d.get("available_voices").and_then(|v| v.as_array()) {
+        for v in voices.iter().filter_map(|v| v.as_object()) {
+            st.available_voices.push(HomeSpeakerVoice {
+                id: doc_str(v, "id"),
+                name: doc_str(v, "name"),
+                lang: doc_str(v, "language"),
+            });
+        }
+    }
+    if let Some(voices) = d.get("custom_voices").and_then(|v| v.as_array()) {
+        for v in voices.iter().filter_map(|v| v.as_object()) {
+            st.custom_voices.push(HomeSpeakerCustomVoice {
+                id: doc_str(v, "id"),
+                name: doc_str(v, "name"),
+            });
+        }
+    }
+
+    if let Some(si) = doc_obj(d, "sign_in") {
+        st.signed_in = doc_bool(si, "signed_in");
+        st.account_email = doc_str(si, "email");
+        st.has_oauth_client = doc_bool(si, "has_oauth_client");
+        st.has_antigravity_tokens = doc_bool(si, "has_antigravity_tokens");
+        st.custom_oauth_client_id = doc_str(si, "custom_oauth_client_id");
+        st.has_custom_oauth_secret = doc_bool(si, "has_custom_oauth_secret");
+        st.has_gemini_key = doc_bool(si, "has_gemini_key");
+    }
+    if let Some(chat) = doc_obj(d, "chat") {
+        st.has_slack_token = doc_bool(chat, "has_slack_token");
+        st.has_beeper_token = doc_bool(chat, "has_beeper_token");
+        st.has_courier_token = doc_bool(chat, "has_courier_token");
+        st.has_google_chat_token = doc_bool(chat, "has_google_chat_token");
+        st.has_chat_access = doc_bool(chat, "has_chat_access");
+        st.gws_installed = doc_bool(chat, "gws_installed");
+        st.beeper_networks = doc_networks(chat, "beeper_networks");
+        st.beeper_networks_listed = doc_bool(chat, "beeper_networks_listed");
+        st.courier_networks = doc_networks(chat, "courier_networks");
+        st.courier_networks_listed = doc_bool(chat, "courier_networks_listed");
+        if let Some(m) = doc_obj(chat, "monitor") {
+            st.monitor_running = doc_bool(m, "is_running");
+            st.last_poll_at = doc_str(m, "last_poll_at");
+            st.slack_identity = doc_str(m, "slack_identity");
+            st.active_google_chat_backend = doc_str(m, "active_google_chat_backend");
+            st.chat_runtime_error = doc_str(m, "last_error");
+        }
+    }
+    if let Some(hooks) = doc_obj(d, "hooks") {
+        for key in ["claude_code", "antigravity", "opencode"] {
+            if let Some(h) = doc_obj(hooks, key) {
+                st.agents.push(HomeSpeakerAgentHook {
+                    agent: doc_str(h, "display_name"),
+                    agent_slug: doc_str(h, "agent"),
+                    hook_state: doc_str(h, "hook_state"),
+                    speaks_twice: doc_bool(h, "speaks_twice"),
+                    configured_by_instruction: doc_bool(h, "configured_by_instruction"),
+                });
+            }
+        }
+    }
+    st.legacy_launch_agent = doc_bool(d, "legacy_launch_agent");
+    st.home_speaker_version = doc_str(d, "home_speaker_version");
+    if let Some(rows) = d.get("recent").and_then(|v| v.as_array()) {
+        st.recent = rows
+            .iter()
+            .filter_map(|r| r.as_object())
+            .filter_map(doc_entry)
+            .take(RECENT_BROADCASTS)
+            .collect();
+    }
+    st.last = doc_obj(d, "last")
+        .and_then(doc_entry)
+        .or_else(|| st.recent.first().cloned());
+    st
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -5072,6 +5248,7 @@ mod tests {
             oauth_client_path: dir.join("google-oauth-client.json"),
             antigravity_tokens_path: dir.join("mcp_oauth_tokens.json"),
             binary: bin,
+            run_capture: None,
             run: Arc::new(move |_limit, name, args| {
                 last_c.record(name, args);
                 Ok(("sent to Lake Office display\n".to_string(), String::new()))
@@ -5104,67 +5281,12 @@ mod tests {
     }
 
     #[test]
-    fn test_home_speaker_state_lists_voices_once_across_polls() {
-        // GET /v1/homespeaker is polled; `say -v ?` must not run per poll.
-        let (mut h, _, _, _) = new_test_home_speaker(true);
-        let calls = Arc::new(AtomicU64::new(0));
-        let calls_l = calls.clone();
-        h.list_voices = Some(Arc::new(move || {
-            calls_l.fetch_add(1, Ordering::SeqCst);
-            Ok(vec![HomeSpeakerVoice {
-                id: "Zarvox".to_string(),
-                name: "Zarvox".to_string(),
-                lang: "en_US".to_string(),
-            }])
-        }));
-        for _ in 0..20 {
-            let st = h.state();
-            assert_eq!(st.available_voices.len(), 1);
-            assert_eq!(st.available_voices[0].id, "Zarvox");
-        }
-        assert_eq!(calls.load(Ordering::SeqCst), 1);
-    }
-
-    #[test]
-    fn test_home_speaker_state_falls_back_without_caching_a_failed_listing() {
-        let (mut h, _, _, _) = new_test_home_speaker(true);
-        let calls = Arc::new(AtomicU64::new(0));
-        let calls_l = calls.clone();
-        h.list_voices = Some(Arc::new(move || {
-            calls_l.fetch_add(1, Ordering::SeqCst);
-            Err("say -v ? failed".to_string())
-        }));
-        for _ in 0..5 {
-            assert_eq!(h.state().available_voices, default_voice_list());
-        }
-        // Negative-cached: one attempt, not one per poll.
-        assert_eq!(calls.load(Ordering::SeqCst), 1);
-    }
-
-    #[test]
     fn test_parse_say_voices() {
         let out = "Alex                en_US    # Most people recognize me by my voice.\nGood News           en_US    # Hello!\n\n";
         let v = parse_say_voices(out);
         assert_eq!(v.len(), 2);
         assert_eq!(v[1].name, "Good News");
         assert_eq!(v[1].lang, "en_US");
-    }
-
-    #[test]
-    fn test_home_speaker_state_reads_the_apps_own_config() {
-        let (h, _, _, _) = new_test_home_speaker(true);
-        let st = h.state();
-        assert!(st.available && st.installed && st.app_running);
-        assert!(!st.signed_in);
-        assert!(st.enabled);
-        assert_eq!(st.default_target, "lake_office");
-        assert_eq!(st.speech_length, "summary");
-        assert_eq!(st.targets.len(), 3);
-        assert_eq!(st.targets[0].key, "all");
-        assert_eq!(st.targets[1].key, "kitchen");
-        assert_eq!(st.targets[2].key, "lake_office");
-        assert!(st.targets[2].selected && !st.targets[1].selected);
-        assert!(st.last.is_none());
     }
 
     #[test]
@@ -5187,70 +5309,6 @@ mod tests {
         no_id.insert("name".to_string(), JsonValue::String("no id".to_string()));
         targets.insert("mystery".to_string(), JsonValue::Object(no_id));
         assert_eq!(dedupe_target_keys(&targets, "").len(), 4);
-    }
-
-    #[test]
-    fn test_home_speaker_state_without_a_setup_is_honest() {
-        let (h, _, _, _) = new_test_home_speaker(false);
-        let st = h.state();
-        assert!(!st.available);
-        assert!(st.reason.contains("not been set up"));
-        assert!(st.installed);
-    }
-
-    #[test]
-    fn test_home_speaker_signed_in_never_leaks_the_token() {
-        let (h, _, phone, _) = new_test_home_speaker(true);
-        fs::write(
-            &h.secrets_path,
-            r#"{"google":{"accessToken":"ya29.x","refreshToken":"1//SECRET-VALUE","clientId":"c","scopes":["s"]}}"#,
-        )
-        .unwrap();
-        let resp = h.handle_get(&phone);
-        let body_str = resp.body_string();
-        assert!(!body_str.contains("SECRET-VALUE"));
-        assert!(h.state().signed_in);
-
-        fs::write(&h.secrets_path, r#"{"google":{"refresh_token":"1//x"}}"#).unwrap();
-        assert!(!h.state().signed_in);
-    }
-
-    #[test]
-    fn test_home_speaker_last_broadcast_uses_swifts_epoch() {
-        let (h, _, _, _) = new_test_home_speaker(true);
-        let want = Timestamp::parse_rfc3339("2026-09-19T08:14:00Z").unwrap();
-        let stamp = want.unix_seconds() - SWIFT_REFERENCE_EPOCH_UNIX_SECS;
-        let hist = format!(
-            r#"[{{"id":"x","timestamp":{stamp},"text":"Problem. Two hooks.","targetName":"Lake Office display","source":"claude"}}]"#
-        );
-        fs::write(&h.history_path, hist).unwrap();
-        let st = h.state();
-        let last = st.last.expect("history present");
-        assert_eq!(last.at.unix_seconds(), want.unix_seconds());
-        assert_eq!(last.text, "Problem. Two hooks.");
-        assert_eq!(last.target, "Lake Office display");
-    }
-
-    #[test]
-    fn test_home_speaker_update_rewrites_only_what_was_asked_and_keeps_unknown_keys() {
-        let (h, _, phone, _) = new_test_home_speaker(true);
-        let req = post_req(
-            "/v1/homespeaker",
-            r#"{"default_target":"kitchen","enabled":false,"speech_length":"full"}"#,
-        );
-        let resp = h.handle_set(&req, &phone);
-        assert_eq!(resp.status, 200);
-        let st = h.state();
-        assert!(!st.enabled && st.default_target == "kitchen" && st.speech_length == "full");
-
-        let cfg = h.read_config().unwrap();
-        assert_eq!(cfg.get("default_target").unwrap().as_str(), Some("kitchen"));
-        assert_eq!(cfg.get("enabled").unwrap().as_bool(), Some(false));
-        assert_eq!(cfg.get("speech_length").unwrap().as_str(), Some("full"));
-        assert!(cfg.contains_key("chat_monitor"));
-        assert_eq!(cfg.get("structure_id").unwrap().as_str(), Some("5219a9d7"));
-        assert_eq!(cfg.get("targets").unwrap().as_object().unwrap().len(), 4);
-        assert!(!PathBuf::from(format!("{}.agent-tmp", h.config_path.display())).exists());
     }
 
     #[test]
@@ -5309,23 +5367,6 @@ mod tests {
         let got = tools.tools.get("homespeaker").unwrap();
         assert_eq!(got.path, HOME_SPEAKER_BINARY);
         assert_eq!(got.available, Path::new(HOME_SPEAKER_BINARY).exists());
-    }
-
-    #[test]
-    fn test_home_speaker_pause_media_defaults_and_round_trip() {
-        let (h, _, phone, _) = new_test_home_speaker(true);
-        let st = h.state();
-        assert!(!st.pause_media && st.pause_media_extra_seconds == 1.0);
-        let resp = h.handle_set(
-            &post_req(
-                "/v1/homespeaker",
-                r#"{"pause_media":true,"pause_media_extra_seconds":3}"#,
-            ),
-            &phone,
-        );
-        assert_eq!(resp.status, 200);
-        let st2 = h.state();
-        assert!(st2.pause_media && st2.pause_media_extra_seconds == 3.0);
     }
 
     #[test]
@@ -5396,52 +5437,6 @@ mod tests {
     }
 
     #[test]
-    fn test_home_speaker_announce_volume_defaults_round_trip_and_range() {
-        let (h, _, phone, _) = new_test_home_speaker(true);
-        let st = h.state();
-        assert!(!st.announce_volume_enabled && st.announce_volume == 60);
-        let r = h.handle_set(
-            &post_req(
-                "/v1/homespeaker",
-                r#"{"announce_volume_enabled":true,"announce_volume":45}"#,
-            ),
-            &phone,
-        );
-        assert_eq!(r.status, 200);
-        let st2 = h.state();
-        assert!(st2.announce_volume_enabled && st2.announce_volume == 45);
-        let r_bad = h.handle_set(
-            &post_req("/v1/homespeaker", r#"{"announce_volume":101}"#),
-            &phone,
-        );
-        assert_eq!(r_bad.status, 400);
-    }
-
-    #[test]
-    fn test_home_speaker_outputs_default_and_round_trip() {
-        let (h, _, phone, _) = new_test_home_speaker(true);
-        let st = h.state();
-        assert!(st.speak_home && !st.speak_local);
-        assert_eq!(st.local_voice, DEFAULT_LOCAL_VOICE);
-        assert_eq!(st.local_voice_name, "Aaron");
-
-        let mut cfg = h.read_config().unwrap();
-        cfg.insert(
-            "local_voice".to_string(),
-            JsonValue::String("com.apple.voice.premium.en-US.Zoe".to_string()),
-        );
-        h.write_config(&cfg).unwrap();
-
-        let r = h.handle_set(
-            &post_req("/v1/homespeaker", r#"{"speak_local":true}"#),
-            &phone,
-        );
-        assert_eq!(r.status, 200);
-        let st2 = h.state();
-        assert!(st2.speak_home && st2.speak_local && st2.local_voice_name == "Zoe");
-    }
-
-    #[test]
     fn test_home_speaker_voice_name() {
         for (id, want) in [
             ("com.apple.siri.natural.Aaron", "Aaron"),
@@ -5459,47 +5454,6 @@ mod tests {
     }
 
     #[test]
-    fn test_home_speaker_sources_default_and_toggles() {
-        let (h, _, phone, _) = new_test_home_speaker(true);
-        let resp = h.handle_get(&phone);
-        let raw = JsonValue::parse_bytes(&resp.body_bytes()).unwrap();
-        assert_eq!(raw.get_opt_bool("announce_claude_code"), Some(true));
-        assert_eq!(raw.get_opt_bool("announce_antigravity"), Some(true));
-        assert_eq!(raw.get_opt_bool("announce_opencode"), Some(true));
-        assert_eq!(raw.get_opt_bool("slack_enabled"), Some(false));
-        assert_eq!(raw.get_opt_bool("google_chat_enabled"), Some(false));
-        assert_eq!(raw.get_opt_bool("beeper_enabled"), Some(false));
-        assert_eq!(raw.get_opt_bool("mute_own_messages"), Some(true));
-        assert_eq!(raw.get_str("beeper_announce"), "direct_and_mentions");
-
-        let r = h.handle_set(
-            &post_req("/v1/homespeaker", r#"{"beeper_enabled":true}"#),
-            &phone,
-        );
-        assert_eq!(r.status, 200);
-        assert_eq!(h.state().beeper_enabled, Some(true));
-    }
-
-    #[test]
-    fn test_home_speaker_recent_broadcasts() {
-        let (h, _, _, _) = new_test_home_speaker(true);
-        assert!(h.state().recent.is_empty());
-        let base = 789_000_000.0;
-        let mut items = Vec::new();
-        for i in 0..7 {
-            items.push(format!(
-                r#"{{"id":"{i}","timestamp":{},"text":"line {i}","targetName":"Kitchen speaker","source":"Claude Code"}}"#,
-                base - (i as f64) * 60.0
-            ));
-        }
-        fs::write(&h.history_path, format!("[{}]", items.join(","))).unwrap();
-        let st = h.state();
-        assert_eq!(st.recent.len(), RECENT_BROADCASTS);
-        assert_eq!(st.recent[0].text, "line 0");
-        assert_eq!(st.last.as_ref().unwrap().text, "line 0");
-    }
-
-    #[test]
     fn test_home_speaker_say_runs_as_a_person() {
         let env = vec![
             "PATH=/usr/bin".to_string(),
@@ -5514,334 +5468,6 @@ mod tests {
             person_env(&env),
             vec!["PATH=/usr/bin", "CLAUDECODE_X=keep", "HOME=/Users/j"]
         );
-    }
-
-    #[test]
-    fn test_home_speaker_door_routes_to_extension_when_chosen() {
-        let (mut h, _, phone, last) = new_test_home_speaker(true);
-        assert_eq!(h.state().active_door, "app");
-
-        let root = temp_dir("ext_root");
-        let ext_bin = root
-            .join("Tools")
-            .join("dev.vitruvian.homespeaker")
-            .join("bin")
-            .join("tool");
-        let data_folder = root.join("ToolData").join("dev.vitruvian.homespeaker");
-        fs::create_dir_all(ext_bin.parent().unwrap()).unwrap();
-        fs::create_dir_all(&data_folder).unwrap();
-        fs::write(&ext_bin, b"#!/bin/sh\n").unwrap();
-        fs::write(
-            data_folder.join("settings.json"),
-            HOME_SPEAKER_CONFIG_FIXTURE,
-        )
-        .unwrap();
-        fs::write(
-            data_folder.join("secrets.json"),
-            r#"{"google":{"refreshToken":"1//ext-token"},"geminiAPIKey":"AIza-SECRET-GEMINI"}"#,
-        )
-        .unwrap();
-
-        let lock_path = data_folder.join("running.lock");
-        let lock_file = fs::OpenOptions::new()
-            .create(true)
-            .read(true)
-            .write(true)
-            .open(&lock_path)
-            .unwrap();
-        unsafe {
-            assert_eq!(flock(lock_file.as_raw_fd(), LOCK_EX | LOCK_NB), 0);
-        }
-
-        let door_json = format!(
-            r#"{{"version":1,"chosen":"extension","extension":{{"program":"{}","version":"1.19.0","door":1}}}}"#,
-            ext_bin.display()
-        );
-        fs::write(&h.door_path, door_json).unwrap();
-        h.running = Some(Arc::new(|| false));
-
-        let st = h.state();
-        assert_eq!(st.active_door, "extension");
-        assert!(st.available && st.installed && st.app_running);
-        assert!(st.signed_in && st.has_gemini_key);
-
-        unsafe {
-            let _ = flock(lock_file.as_raw_fd(), LOCK_UN);
-        }
-        assert!(!h.state().app_running);
-
-        let r = h.handle_set(
-            &post_req("/v1/homespeaker", r#"{"default_target":"kitchen"}"#),
-            &phone,
-        );
-        assert_eq!(r.status, 200);
-        let r_say = h.handle_say(&post_req(
-            "/v1/homespeaker/say",
-            r#"{"text":"hello extension"}"#,
-        ));
-        assert_eq!(r_say.status, 200);
-        assert_eq!(last.name(), ext_bin.to_string_lossy());
-    }
-
-    #[test]
-    fn test_home_speaker_gemini_tts_and_style_defaults_and_custom_voices() {
-        let (h, _, phone, _) = new_test_home_speaker(true);
-        let st = h.state();
-        assert_eq!(st.local_engine, "apple");
-        assert_eq!(st.gemini_voice, "Kore");
-        assert!(!st.has_gemini_key);
-        assert_eq!(st.announcement_style, "verbatim");
-        assert_eq!(st.style_model, "apple");
-
-        let mut cfg = h.read_config().unwrap();
-        cfg.insert(
-            "custom_voices".to_string(),
-            JsonValue::parse(r#"[{"id":"clone-james","name":"James"},{"id":"clone-anon"}]"#)
-                .unwrap(),
-        );
-        cfg.insert(
-            "gemini_voice".to_string(),
-            JsonValue::String("clone-james".to_string()),
-        );
-        h.write_config(&cfg).unwrap();
-        let st2 = h.state();
-        assert_eq!(st2.custom_voices.len(), 2);
-        assert_eq!(st2.gemini_voice, "clone-james");
-
-        let r = h.handle_set(
-            &post_req("/v1/homespeaker", r#"{"gemini_voice":"clone-nobody"}"#),
-            &phone,
-        );
-        assert_eq!(r.status, 400);
-        assert!(r.body_string().contains("clone-james"));
-    }
-
-    #[test]
-    fn test_home_speaker_beeper_networks_and_chat_monitor_parity() {
-        let (mut h, _, phone, _) = new_test_home_speaker(true);
-        let mut cfg = h.read_config().unwrap();
-        cfg.insert(
-            "chat_monitor".to_string(),
-            JsonValue::parse(
-                r#"{"beeper_enabled":true,"beeper_muted_networks":["whatsapp","telegram"],"beeper_token":"keep-secret-token"}"#,
-            )
-            .unwrap(),
-        );
-        h.write_config(&cfg).unwrap();
-        let status_path = h
-            .config_path
-            .parent()
-            .unwrap()
-            .join("speaker_monitor_status.json");
-        fs::write(
-            &status_path,
-            r#"{
-              "is_running": true,
-              "beeper_network_states": [
-                {"key": "whatsapp", "name": "WhatsApp", "state": "reading"},
-                {"key": "googlechat", "name": "Google Chat", "state": "skipped"},
-                {"key": "matrix", "name": "Beeper", "state": "reading"},
-                {"key": "signal", "name": "Signal", "state": "reading"}
-              ]
-            }"#,
-        )
-        .unwrap();
-
-        let st = h.state();
-        assert_eq!(
-            st.beeper_networks,
-            vec![
-                HomeSpeakerBeeperNetwork {
-                    key: "matrix".to_string(),
-                    name: "Beeper".to_string(),
-                    state: "reading".to_string(),
-                    read_anyway: false
-                },
-                HomeSpeakerBeeperNetwork {
-                    key: "googlechat".to_string(),
-                    name: "Google Chat".to_string(),
-                    state: "skipped".to_string(),
-                    read_anyway: false
-                },
-                HomeSpeakerBeeperNetwork {
-                    key: "signal".to_string(),
-                    name: "Signal".to_string(),
-                    state: "reading".to_string(),
-                    read_anyway: false
-                },
-                HomeSpeakerBeeperNetwork {
-                    key: "telegram".to_string(),
-                    name: "telegram".to_string(),
-                    state: "muted".to_string(),
-                    read_anyway: false
-                },
-                HomeSpeakerBeeperNetwork {
-                    key: "whatsapp".to_string(),
-                    name: "WhatsApp".to_string(),
-                    state: "muted".to_string(),
-                    read_anyway: false
-                },
-            ]
-        );
-
-        let r = h.handle_set(
-            &post_req(
-                "/v1/homespeaker",
-                r#"{"beeper_network":{"key":"signal","reading":false}}"#,
-            ),
-            &phone,
-        );
-        assert_eq!(r.status, 200);
-        h.running = Some(Arc::new(|| false));
-        let st_stopped = h.state();
-        assert_eq!(st_stopped.beeper_networks.len(), 3);
-    }
-
-    #[test]
-    fn test_home_speaker_courier_mirrors_beepers_switches() {
-        let (mut h, _, phone, _) = new_test_home_speaker(true);
-        let raw = JsonValue::parse_bytes(&h.handle_get(&phone).body_bytes()).unwrap();
-        assert_eq!(raw.get_opt_bool("courier_enabled"), Some(false));
-        assert_eq!(raw.get_str("courier_announce"), "direct_and_mentions");
-        assert_eq!(raw.get_opt_bool("has_courier_token"), Some(false));
-        assert_eq!(raw.get_opt_bool("courier_networks_listed"), Some(false));
-
-        // Off until a token is saved on the Mac (from the phone or in HomeSpeaker).
-        let r = h.handle_set(
-            &post_req("/v1/homespeaker", r#"{"courier_enabled":true}"#),
-            &phone,
-        );
-        assert_eq!(r.status, 400);
-        assert!(r.body_string().contains("New connection"));
-        assert_eq!(h.state().courier_enabled, Some(false));
-        let r = h.handle_set(
-            &post_req(
-                "/v1/homespeaker",
-                r#"{"courier_token":"fake-courier-token"}"#,
-            ),
-            &phone,
-        );
-        assert_eq!(r.status, 200);
-        let st = h.state();
-        assert!(st.has_courier_token);
-        let body = String::from_utf8(h.handle_get(&phone).body_bytes()).unwrap();
-        assert!(
-            !body.contains("fake-courier-token"),
-            "never a token to the phone"
-        );
-        let r = h.handle_set(
-            &post_req(
-                "/v1/homespeaker",
-                r#"{"courier_enabled":true,"courier_announce":"all"}"#,
-            ),
-            &phone,
-        );
-        assert_eq!(r.status, 200);
-        let st = h.state();
-        assert_eq!(st.courier_enabled, Some(true));
-        assert_eq!(st.courier_announce, "all");
-        assert_eq!(st.beeper_enabled, Some(false), "Beeper is left alone");
-        let r = h.handle_set(
-            &post_req("/v1/homespeaker", r#"{"courier_announce":"vips"}"#),
-            &phone,
-        );
-        assert_eq!(r.status, 400);
-
-        let status_path = h
-            .config_path
-            .parent()
-            .unwrap()
-            .join("speaker_monitor_status.json");
-        fs::write(
-            &status_path,
-            r#"{
-              "is_running": true,
-              "beeper_network_states": [{"key": "signal", "name": "Signal", "state": "reading"}],
-              "courier_network_states": [
-                {"key": "whatsapp", "name": "WhatsApp", "state": "reading"},
-                {"key": "slack", "name": "Slack", "state": "skipped"}
-              ]
-            }"#,
-        )
-        .unwrap();
-        let st = h.state();
-        assert!(st.courier_networks_listed && st.beeper_networks_listed);
-        assert_eq!(st.beeper_networks.len(), 1, "Beeper's list is Beeper's");
-        assert_eq!(
-            st.courier_networks,
-            vec![
-                HomeSpeakerBeeperNetwork {
-                    key: "slack".to_string(),
-                    name: "Slack".to_string(),
-                    state: "skipped".to_string(),
-                    read_anyway: false,
-                },
-                HomeSpeakerBeeperNetwork {
-                    key: "whatsapp".to_string(),
-                    name: "WhatsApp".to_string(),
-                    state: "reading".to_string(),
-                    read_anyway: false,
-                },
-            ]
-        );
-
-        let r = h.handle_set(
-            &post_req(
-                "/v1/homespeaker",
-                r#"{"courier_network":{"key":"whatsapp","reading":false},"courier_read_anyway":{"key":"slack","on":true}}"#,
-            ),
-            &phone,
-        );
-        assert_eq!(r.status, 200);
-        let cfg = h.read_config().unwrap();
-        let monitor = cfg.get("chat_monitor").and_then(|m| m.as_object()).unwrap();
-        assert_eq!(
-            string_list_from_monitor(Some(monitor), "courier_muted_networks"),
-            vec!["whatsapp"]
-        );
-        assert_eq!(
-            string_list_from_monitor(Some(monitor), "courier_read_anyway"),
-            vec!["slack"]
-        );
-        assert!(string_list_from_monitor(Some(monitor), "beeper_muted_networks").is_empty());
-        let raw = JsonValue::parse_bytes(&h.handle_get(&phone).body_bytes()).unwrap();
-        let rows = raw
-            .get("courier_networks")
-            .and_then(|v| v.as_array())
-            .unwrap();
-        let slack = rows.iter().find(|r| r.get_str("key") == "slack").unwrap();
-        assert_eq!(slack.get_opt_bool("read_anyway"), Some(true));
-        assert!(
-            raw.get("beeper_networks")
-                .and_then(|v| v.as_array())
-                .unwrap()[0]
-                .get("read_anyway")
-                .is_none(),
-            "Beeper's rows keep their shape"
-        );
-
-        let r = h.handle_set(
-            &post_req(
-                "/v1/homespeaker",
-                r#"{"courier_read_anyway":{"key":"slack","on":false},"courier_network":{"key":"whatsapp","reading":true}}"#,
-            ),
-            &phone,
-        );
-        assert_eq!(r.status, 200);
-        let cfg = h.read_config().unwrap();
-        let monitor = cfg.get("chat_monitor").and_then(|m| m.as_object()).unwrap();
-        assert!(string_list_from_monitor(Some(monitor), "courier_read_anyway").is_empty());
-        assert!(string_list_from_monitor(Some(monitor), "courier_muted_networks").is_empty());
-        let r = h.handle_set(
-            &post_req(
-                "/v1/homespeaker",
-                r#"{"courier_network":{"key":"Bad Key","reading":false}}"#,
-            ),
-            &phone,
-        );
-        assert_eq!(r.status, 400);
-        h.running = Some(Arc::new(|| false));
-        assert!(!h.state().courier_networks_listed);
     }
 
     #[test]
@@ -5937,116 +5563,6 @@ mod tests {
         let after_dst = Timestamp::from_unix_secs(1_773_066_600);
         assert_eq!(local_minutes_since_midnight(after_dst), 7 * 60 + 30);
         assert!(!is_quiet_hours_active(true, "22:00", "07:00", after_dst));
-    }
-
-    #[test]
-    fn test_home_speaker_quiet_hours_defaults_and_reset() {
-        let (h, _, phone, _) = new_test_home_speaker(true);
-        let mut cfg = h.read_config().unwrap();
-        cfg.remove("quiet_hours_start");
-        cfg.remove("quiet_hours_end");
-        h.write_config(&cfg).unwrap();
-
-        let st = h.state();
-        assert_eq!(st.quiet_hours.start, "22:00");
-        assert_eq!(st.quiet_hours.end, "07:00");
-
-        let r = h.handle_set(
-            &post_req("/v1/homespeaker", r#"{"reset_settings":true}"#),
-            &phone,
-        );
-        assert_eq!(r.status, 200);
-        let st_reset = h.state();
-        assert_eq!(st_reset.quiet_hours.start, "22:00");
-        assert_eq!(st_reset.quiet_hours.end, "07:00");
-        let cfg_reset = h.read_config().unwrap();
-        assert_eq!(
-            cfg_reset.get("quiet_hours_start").and_then(|v| v.as_str()),
-            Some("22:00")
-        );
-        assert_eq!(
-            cfg_reset.get("quiet_hours_end").and_then(|v| v.as_str()),
-            Some("07:00")
-        );
-    }
-
-    #[test]
-    fn test_home_speaker_snooze_set_via_minutes_clear_and_reject_invalid() {
-        let (h, _, phone, _) = new_test_home_speaker(true);
-        let raw0 = JsonValue::parse_bytes(&h.handle_get(&phone).body_bytes()).unwrap();
-        assert_eq!(
-            raw0.as_object().unwrap().get("snooze_until"),
-            Some(&JsonValue::Null)
-        );
-        assert!(h.state().snooze_until.is_none());
-
-        let before_secs = Timestamp::now().unix_seconds();
-        let r_set_mins = h.handle_set(
-            &post_req("/v1/homespeaker", r#"{"snooze_minutes":30}"#),
-            &phone,
-        );
-        let after_secs = Timestamp::now().unix_seconds();
-        assert_eq!(r_set_mins.status, 200);
-        let st_mins = h.state();
-        let until_str = st_mins.snooze_until.as_deref().expect("snooze_until set");
-        let parsed = Timestamp::parse_rfc3339(until_str).expect("valid RFC3339");
-        assert!(
-            parsed.unix_seconds() >= before_secs + 30 * 60
-                && parsed.unix_seconds() <= after_secs + 30 * 60
-        );
-        let raw_mins = JsonValue::parse_bytes(&h.handle_get(&phone).body_bytes()).unwrap();
-        assert_eq!(raw_mins.get_str("snooze_until"), until_str);
-        let cfg_mins = h.read_config().unwrap();
-        assert_eq!(
-            cfg_mins.get("snooze_until").and_then(|v| v.as_str()),
-            Some(until_str)
-        );
-        assert_eq!(
-            cfg_mins.get("structure_id").and_then(|v| v.as_str()),
-            Some("5219a9d7")
-        );
-
-        let r_clear_empty = h.handle_set(
-            &post_req("/v1/homespeaker", r#"{"snooze_until":""}"#),
-            &phone,
-        );
-        assert_eq!(r_clear_empty.status, 200);
-        assert!(h.state().snooze_until.is_none());
-        assert!(!h.read_config().unwrap().contains_key("snooze_until"));
-
-        let r_set_iso = h.handle_set(
-            &post_req(
-                "/v1/homespeaker",
-                r#"{"snooze_until":"2026-11-10T06:30:00Z"}"#,
-            ),
-            &phone,
-        );
-        assert_eq!(r_set_iso.status, 200);
-        assert_eq!(
-            h.state().snooze_until.as_deref(),
-            Some("2026-11-10T06:30:00Z")
-        );
-
-        let r_clear_null = h.handle_set(
-            &post_req("/v1/homespeaker", r#"{"snooze_until":null}"#),
-            &phone,
-        );
-        assert_eq!(r_clear_null.status, 200);
-        assert!(h.state().snooze_until.is_none());
-
-        for bad in [
-            r#"{"snooze_until":"not-a-timestamp"}"#,
-            r#"{"snooze_until":"2026-02-30T06:30:00Z"}"#,
-            r#"{"snooze_until":"   "}"#,
-            r#"{"snooze_until":123}"#,
-            r#"{"snooze_minutes":0}"#,
-            r#"{"snooze_minutes":-5}"#,
-            r#"{"snooze_minutes":241}"#,
-        ] {
-            let resp = h.handle_set(&post_req("/v1/homespeaker", bad), &phone);
-            assert_eq!(resp.status, 400, "bad={bad}");
-        }
-        assert!(h.state().snooze_until.is_none());
     }
 
     #[test]
@@ -6148,158 +5664,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_home_speaker_poll_interval_default_and_clamp() {
-        let (h, _, phone, _) = new_test_home_speaker(true);
-        assert_eq!(h.state().poll_interval, 15);
-
-        let mut cfg = h.read_config().unwrap();
-        cfg.insert(
-            "chat_monitor".to_string(),
-            JsonValue::parse(r#"{"poll_interval_seconds":999}"#).unwrap(),
-        );
-        h.write_config(&cfg).unwrap();
-        assert_eq!(h.state().poll_interval, 300);
-
-        cfg.insert(
-            "chat_monitor".to_string(),
-            JsonValue::parse(r#"{"poll_interval_seconds":1}"#).unwrap(),
-        );
-        h.write_config(&cfg).unwrap();
-        assert_eq!(h.state().poll_interval, 5);
-
-        let r_ok = h.handle_set(
-            &post_req("/v1/homespeaker", r#"{"poll_interval":300}"#),
-            &phone,
-        );
-        assert_eq!(r_ok.status, 200);
-        assert_eq!(h.state().poll_interval, 300);
-
-        for bad in [
-            r#"{"poll_interval":4}"#,
-            r#"{"poll_interval":301}"#,
-            r#"{"poll_interval":0}"#,
-        ] {
-            let r_bad = h.handle_set(&post_req("/v1/homespeaker", bad), &phone);
-            assert_eq!(r_bad.status, 400, "body={bad}");
-        }
-    }
-
-    #[test]
-    fn test_home_speaker_preview_voice_plays_locally_only() {
-        assert_eq!(
-            preview_say_args(DEFAULT_LOCAL_VOICE, "Hi"),
-            vec![
-                vec!["-v".to_string(), "Aaron".to_string(), "Hi".to_string()],
-                vec!["Hi".to_string()],
-            ]
-        );
-        assert_eq!(
-            preview_say_args("default", "Hi"),
-            vec![vec!["Hi".to_string()]]
-        );
-        assert_eq!(
-            preview_say_args("com.apple.voice.premium.en-US.Zoe", "Hi"),
-            vec![
-                vec!["-v".to_string(), "Zoe".to_string(), "Hi".to_string()],
-                vec![
-                    "-v".to_string(),
-                    "com.apple.voice.premium.en-US.Zoe".to_string(),
-                    "Hi".to_string()
-                ],
-                vec!["Hi".to_string()],
-            ]
-        );
-
-        let (mut h, _, phone, _) = new_test_home_speaker(true);
-        let calls: Arc<Mutex<Vec<(String, Vec<String>)>>> = Arc::new(Mutex::new(Vec::new()));
-        let calls_c = calls.clone();
-        // Simulate macOS `say` rejecting `-v Aaron` for the Siri bundle voice, succeeding on default `say`.
-        h.run = Arc::new(move |_limit, name, args| {
-            calls_c
-                .lock()
-                .unwrap()
-                .push((name.to_string(), args.to_vec()));
-            if name == "say" && args.first().map(|s| s.as_str()) == Some("-v") {
-                return Err("Voice `Aaron' not found.".to_string());
-            }
-            Ok((String::new(), String::new()))
-        });
-        let say_broadcast_called = Arc::new(AtomicU64::new(0));
-        let say_c = say_broadcast_called.clone();
-        h.say = Some(Arc::new(move |_limit, _name, _args| {
-            say_c.fetch_add(1, Ordering::SeqCst);
-            Ok((String::new(), String::new()))
-        }));
-
-        let r = h.handle_set(
-            &post_req("/v1/homespeaker", r#"{"preview_voice":true}"#),
-            &phone,
-        );
-        assert_eq!(r.status, 200);
-        assert_eq!(
-            say_broadcast_called.load(Ordering::SeqCst),
-            0,
-            "preview must never invoke HomeSpeaker --say broadcast"
-        );
-        let recorded = calls.lock().unwrap().clone();
-        assert!(recorded.iter().all(|(bin, _)| bin == "say"));
-        assert_eq!(
-            recorded.last().unwrap(),
-            &(
-                "say".to_string(),
-                vec!["This is how announcements will sound.".to_string()]
-            )
-        );
-    }
-
-    #[test]
-    fn test_home_speaker_agent_hooks_and_reset_settings_and_replay() {
-        let (h, _, phone, last) = new_test_home_speaker(true);
-        let r = h.handle_set(
-            &post_req(
-                "/v1/homespeaker",
-                r#"{"agent_hook_action":"install_claude_hook"}"#,
-            ),
-            &phone,
-        );
-        assert_eq!(r.status, 200);
-        let st = h.state();
-        assert!(st
-            .agents
-            .iter()
-            .any(|a| a.agent == "Claude Code" && a.hook_state == "installed"));
-
-        let r2 = h.handle_set(
-            &post_req(
-                "/v1/homespeaker",
-                r#"{"agent_hook_action":"add_claude_instruction"}"#,
-            ),
-            &phone,
-        );
-        assert_eq!(r2.status, 200);
-        assert!(fs::read_to_string(&h.claude_md_path)
-            .unwrap()
-            .contains("speaker-broadcast"));
-
-        let r3 = h.handle_set(
-            &post_req("/v1/homespeaker", r#"{"reset_settings":true}"#),
-            &phone,
-        );
-        assert_eq!(r3.status, 200);
-        assert!(PathBuf::from(format!("{}.bak", h.config_path.display())).exists());
-
-        // Replay history restoration
-        let initial_hist = r#"[{"id":"item-1","text":"First announcement","timestamp":789000,"targetName":"Living Room","source":"claudeCode"},{"id":"item-2","text":"Second announcement","timestamp":789100,"targetName":"Kitchen","source":"user"}]"#;
-        fs::write(&h.history_path, initial_hist).unwrap();
-        let r_rep = h.handle_say(&post_req(
-            "/v1/homespeaker/say",
-            r#"{"replay_id":"item-1"}"#,
-        ));
-        assert_eq!(r_rep.status, 200);
-        assert!(last.args().contains(&"First announcement".to_string()));
-    }
-
     fn swift_hooks_text(cmd: &str) -> String {
         format!(
             "{{\n  \"home-speaker\" : {{\n    \"Stop\" : [\n      {{\n        \"command\" : \"{}\",\n        \"timeout\" : 10,\n        \"type\" : \"command\"\n      }}\n    ]\n  }}\n}}\n",
@@ -6315,41 +5679,6 @@ mod tests {
             "/Applications/Home Speaker.app/Contents/MacOS/HomeSpeaker",
             program,
         )
-    }
-
-    #[test]
-    fn swift_parity_swift_written_antigravity_hook_reads_installed_and_removes() {
-        let (h, _, phone, _) = new_test_home_speaker(true);
-        let cmd = format!("\"{}\" --antigravity-hook", h.binary.display());
-        fs::create_dir_all(h.antigravity_plugin_dir.join("hooks")).unwrap();
-        fs::write(h.antigravity_plugin_dir.join("plugin.json"), SWIFT_MANIFEST).unwrap();
-        fs::write(
-            h.antigravity_plugin_dir.join("hooks.json"),
-            swift_hooks_text(&cmd),
-        )
-        .unwrap();
-        let st = h.state();
-        let agy = st
-            .agents
-            .iter()
-            .find(|a| a.agent_slug == "antigravity")
-            .unwrap();
-        assert_eq!(
-            agy.hook_state, "installed",
-            "Swift-written Antigravity hook must read installed"
-        );
-        let r = h.handle_set(
-            &post_req(
-                "/v1/homespeaker",
-                r#"{"agent_hook_action":"remove:antigravity"}"#,
-            ),
-            &phone,
-        );
-        assert_eq!(r.status, 200);
-        assert!(
-            !h.antigravity_plugin_dir.exists(),
-            "remove must delete the Swift-written plugin folder"
-        );
     }
 
     #[test]
@@ -6379,55 +5708,6 @@ mod tests {
                 .exists(),
             "HomeSpeaker writes only <plugin>/hooks.json"
         );
-    }
-
-    #[test]
-    fn swift_parity_phone_opencode_plugin_sends_messages_payload() {
-        let (h, _, phone, _) = new_test_home_speaker(true);
-        let r = h.handle_set(
-            &post_req(
-                "/v1/homespeaker",
-                r#"{"agent_hook_action":"install:opencode"}"#,
-            ),
-            &phone,
-        );
-        assert_eq!(r.status, 200);
-        let text = fs::read_to_string(&h.opencode_plugin_path).unwrap();
-        // OpenCodeHook.run (Swift) returns unless the stdin JSON has a "messages" array.
-        assert!(
-            text.contains("messages"),
-            "OpenCode plugin must send messages to --opencode-hook"
-        );
-        assert_eq!(
-            text,
-            swift_opencode_plugin_golden(&h.binary.to_string_lossy()),
-            "OpenCode plugin must match Swift AgentPlugins.openCodePlugin bytes verbatim"
-        );
-        let mode = fs::metadata(&h.opencode_plugin_path)
-            .unwrap()
-            .permissions()
-            .mode()
-            & 0o777;
-        assert_ne!(
-            mode, 0o600,
-            "OpenCode plugin file mode must match Swift default write permissions, got {mode:o}"
-        );
-
-        // Also prove a Swift-written OpenCode plugin reads "installed".
-        let (h2, _, _, _) = new_test_home_speaker(true);
-        fs::create_dir_all(h2.opencode_plugin_path.parent().unwrap()).unwrap();
-        fs::write(
-            &h2.opencode_plugin_path,
-            swift_opencode_plugin_golden(&h2.binary.to_string_lossy()),
-        )
-        .unwrap();
-        let oc = h2
-            .state()
-            .agents
-            .into_iter()
-            .find(|a| a.agent_slug == "opencode")
-            .unwrap();
-        assert_eq!(oc.hook_state, "installed");
     }
 
     #[test]
@@ -6462,280 +5742,6 @@ mod tests {
             "chosen_at must be whole seconds, got {at}"
         );
         assert_eq!(at.len(), 20, "expected YYYY-MM-DDTHH:MM:SSZ, got {at}");
-    }
-
-    #[test]
-    fn test_home_speaker_antigravity_and_opencode_hooks_status_install_and_remove() {
-        let (h, _, phone, _) = new_test_home_speaker(true);
-
-        // Put unrelated settings and unrelated Stop hooks in the SAME ~/.claude/settings.json file
-        // that install/remove:claude-code writes, and verify they survive install and remove.
-        fs::create_dir_all(h.claude_settings_path.parent().unwrap()).unwrap();
-        fs::write(
-            &h.claude_settings_path,
-            r#"{
-  "customSetting" : "keep-me",
-  "hooks" : {
-    "PreToolUse" : [
-      {
-        "hooks" : [
-          {
-            "command" : "echo pre-tool",
-            "type" : "command"
-          }
-        ]
-      }
-    ],
-    "Stop" : [
-      {
-        "hooks" : [
-          {
-            "command" : "echo unrelated-stop-hook",
-            "type" : "command"
-          }
-        ],
-        "matcher" : ".*"
-      }
-    ]
-  }
-}
-"#,
-        )
-        .unwrap();
-
-        let hook_state_of = |h: &HomeSpeaker, slug: &str| -> String {
-            h.state()
-                .agents
-                .into_iter()
-                .find(|a| a.agent_slug == slug)
-                .unwrap()
-                .hook_state
-        };
-
-        assert_eq!(hook_state_of(&h, "claude-code"), "not_installed");
-        let r_claude_in = h.handle_set(
-            &post_req(
-                "/v1/homespeaker",
-                r#"{"agent_hook_action":"install:claude-code"}"#,
-            ),
-            &phone,
-        );
-        assert_eq!(r_claude_in.status, 200);
-        assert_eq!(hook_state_of(&h, "claude-code"), "installed");
-
-        let claude_after_install =
-            JsonValue::parse(&fs::read_to_string(&h.claude_settings_path).unwrap()).unwrap();
-        assert_eq!(claude_after_install.get_str("customSetting"), "keep-me");
-        let hooks_after_install = claude_after_install
-            .as_object()
-            .unwrap()
-            .get("hooks")
-            .unwrap()
-            .as_object()
-            .unwrap();
-        assert!(hooks_after_install.contains_key("PreToolUse"));
-        assert_eq!(
-            hooks_after_install
-                .get("Stop")
-                .unwrap()
-                .as_array()
-                .unwrap()
-                .len(),
-            2
-        );
-
-        let r_claude_rm = h.handle_set(
-            &post_req(
-                "/v1/homespeaker",
-                r#"{"agent_hook_action":"remove:claude-code"}"#,
-            ),
-            &phone,
-        );
-        assert_eq!(r_claude_rm.status, 200);
-        assert_eq!(hook_state_of(&h, "claude-code"), "not_installed");
-        let claude_after_remove =
-            JsonValue::parse(&fs::read_to_string(&h.claude_settings_path).unwrap()).unwrap();
-        assert_eq!(claude_after_remove.get_str("customSetting"), "keep-me");
-        let hooks_after_remove = claude_after_remove
-            .as_object()
-            .unwrap()
-            .get("hooks")
-            .unwrap()
-            .as_object()
-            .unwrap();
-        assert!(hooks_after_remove.contains_key("PreToolUse"));
-        let kept_stop = hooks_after_remove.get("Stop").unwrap().as_array().unwrap();
-        assert_eq!(kept_stop.len(), 1);
-        assert!(kept_stop[0]
-            .to_json_string()
-            .contains("echo unrelated-stop-hook"));
-
-        // If a non-HomeSpeaker hook/plugin occupies the SAME hooks.json / home-speaker.ts file,
-        // remove must leave it untouched.
-        fs::create_dir_all(h.antigravity_plugin_dir.join("hooks")).unwrap();
-        let foreign_agy_hooks = r#"{"other-plugin":{"Stop":[{"command":"echo foreign","timeout":5,"type":"command"}]}}"#;
-        fs::write(
-            h.antigravity_plugin_dir.join("hooks.json"),
-            foreign_agy_hooks,
-        )
-        .unwrap();
-        assert_eq!(hook_state_of(&h, "antigravity"), "not_installed");
-        let r_foreign_agy = h.handle_set(
-            &post_req(
-                "/v1/homespeaker",
-                r#"{"agent_hook_action":"remove:antigravity"}"#,
-            ),
-            &phone,
-        );
-        assert_eq!(r_foreign_agy.status, 200);
-        assert_eq!(
-            fs::read_to_string(h.antigravity_plugin_dir.join("hooks.json")).unwrap(),
-            foreign_agy_hooks
-        );
-
-        fs::create_dir_all(h.opencode_plugin_path.parent().unwrap()).unwrap();
-        let foreign_oc = "// Foreign plugin\nexport default { id: \"foreign\" }\n";
-        fs::write(&h.opencode_plugin_path, foreign_oc).unwrap();
-        assert_eq!(hook_state_of(&h, "opencode"), "not_installed");
-        let r_foreign_oc = h.handle_set(
-            &post_req(
-                "/v1/homespeaker",
-                r#"{"agent_hook_action":"remove:opencode"}"#,
-            ),
-            &phone,
-        );
-        assert_eq!(r_foreign_oc.status, 200);
-        assert_eq!(
-            fs::read_to_string(&h.opencode_plugin_path).unwrap(),
-            foreign_oc
-        );
-
-        // Install Antigravity hook -> installed.
-        let r = h.handle_set(
-            &post_req(
-                "/v1/homespeaker",
-                r#"{"agent_hook_action":"install:antigravity"}"#,
-            ),
-            &phone,
-        );
-        assert_eq!(r.status, 200);
-        assert_eq!(hook_state_of(&h, "antigravity"), "installed");
-
-        // Stale when command points to a different binary path or manifest differs.
-        let hooks_path = h.antigravity_plugin_dir.join("hooks.json");
-        fs::write(
-            &hooks_path,
-            swift_hooks_text("\"/old/HomeSpeaker\" --antigravity-hook"),
-        )
-        .unwrap();
-        assert_eq!(hook_state_of(&h, "antigravity"), "stale");
-
-        // Re-install updates stale hook back to installed.
-        let r = h.handle_set(
-            &post_req(
-                "/v1/homespeaker",
-                r#"{"agent_hook_action":"install:antigravity"}"#,
-            ),
-            &phone,
-        );
-        assert_eq!(r.status, 200);
-        assert_eq!(hook_state_of(&h, "antigravity"), "installed");
-
-        // Remove Antigravity hook -> not_installed.
-        let r = h.handle_set(
-            &post_req(
-                "/v1/homespeaker",
-                r#"{"agent_hook_action":"remove:antigravity"}"#,
-            ),
-            &phone,
-        );
-        assert_eq!(r.status, 200);
-        assert_eq!(hook_state_of(&h, "antigravity"), "not_installed");
-        assert!(!h.antigravity_plugin_dir.exists());
-
-        // Install OpenCode hook -> installed.
-        let r = h.handle_set(
-            &post_req(
-                "/v1/homespeaker",
-                r#"{"agent_hook_action":"install:opencode"}"#,
-            ),
-            &phone,
-        );
-        assert_eq!(r.status, 200);
-        assert_eq!(hook_state_of(&h, "opencode"), "installed");
-
-        // Stale when plugin command points to an old path or file body was modified.
-        fs::write(
-            &h.opencode_plugin_path,
-            "// HomeSpeaker\n// Command: \"/old/HomeSpeaker\" --opencode-hook\nexport default {}\n",
-        )
-        .unwrap();
-        assert_eq!(hook_state_of(&h, "opencode"), "stale");
-
-        // Re-install -> installed.
-        let r = h.handle_set(
-            &post_req(
-                "/v1/homespeaker",
-                r#"{"agent_hook_action":"install:opencode"}"#,
-            ),
-            &phone,
-        );
-        assert_eq!(r.status, 200);
-        assert_eq!(hook_state_of(&h, "opencode"), "installed");
-
-        // Remove OpenCode hook -> not_installed.
-        let r = h.handle_set(
-            &post_req(
-                "/v1/homespeaker",
-                r#"{"agent_hook_action":"remove:opencode"}"#,
-            ),
-            &phone,
-        );
-        assert_eq!(r.status, 200);
-        assert_eq!(hook_state_of(&h, "opencode"), "not_installed");
-        assert!(!h.opencode_plugin_path.exists());
-    }
-
-    #[test]
-    fn test_home_speaker_has_chat_access_counts_google_chat_oauth() {
-        let (h, _, phone, _) = new_test_home_speaker(true);
-        let st0 = h.state();
-        assert!(!st0.has_google_chat_token);
-        assert!(!st0.has_chat_access);
-
-        // A Slack token alone is not Google Chat access (HomeSpeaker's hasChatAccess is Google Chat only).
-        fs::write(&h.secrets_path, r#"{"slackToken":"xoxp-SLACK"}"#).unwrap();
-        let st_slack = h.state();
-        assert!(st_slack.has_slack_token);
-        assert!(!st_slack.has_chat_access);
-
-        // Missing messages.readonly scope -> false.
-        fs::write(
-            &h.secrets_path,
-            r#"{"googleChat":{"refreshToken":"1//GCHAT-SECRET","scopes":["https://www.googleapis.com/auth/chat.spaces.readonly"]}}"#,
-        )
-        .unwrap();
-        let st1 = h.state();
-        assert!(!st1.has_google_chat_token);
-        assert!(!st1.has_chat_access);
-
-        // Both required Google Chat scopes present (even with blank refreshToken, matching GoogleAuth.swift:488) -> true.
-        fs::write(
-            &h.secrets_path,
-            r#"{"googleChat":{"accessToken":"ya29.gchat","refreshToken":"","scopes":["https://www.googleapis.com/auth/chat.spaces.readonly","https://www.googleapis.com/auth/chat.messages.readonly"]}}"#,
-        )
-        .unwrap();
-        let st2 = h.state();
-        assert!(!st2.has_slack_token && !st2.has_beeper_token);
-        assert!(st2.has_google_chat_token);
-        assert!(st2.has_chat_access);
-
-        let resp = h.handle_get(&phone);
-        let body = resp.body_string();
-        assert!(!body.contains("ya29.gchat"));
-        let raw = JsonValue::parse(&body).unwrap();
-        assert_eq!(raw.get_opt_bool("has_google_chat_token"), Some(true));
-        assert_eq!(raw.get_opt_bool("has_chat_access"), Some(true));
     }
 
     #[test]
@@ -6945,37 +5951,6 @@ mod tests {
         assert!(!door_doc.get_str("chosen_by").is_empty());
     }
 
-    #[test]
-    fn scout_antigravity_hooks_json_at_plugin_root_is_read_and_removed() {
-        // Swift keeps the Antigravity hook at <plugin>/hooks.json (AgentPlugins.antigravityHooksFile),
-        // beside plugin.json. Reads and removal must work from that root location.
-        let (h, _, phone, _) = new_test_home_speaker(true);
-        let cmd = format!("\"{}\" --antigravity-hook", h.binary.display());
-        fs::create_dir_all(&h.antigravity_plugin_dir).unwrap();
-        fs::write(h.antigravity_plugin_dir.join("plugin.json"), SWIFT_MANIFEST).unwrap();
-        fs::write(
-            h.antigravity_plugin_dir.join("hooks.json"),
-            swift_hooks_text(&cmd),
-        )
-        .unwrap();
-        let st = h.state();
-        let agy = st
-            .agents
-            .iter()
-            .find(|a| a.agent_slug == "antigravity")
-            .unwrap();
-        assert_eq!(agy.hook_state, "installed");
-        let r = h.handle_set(
-            &post_req(
-                "/v1/homespeaker",
-                r#"{"agent_hook_action":"remove:antigravity"}"#,
-            ),
-            &phone,
-        );
-        assert_eq!(r.status, 200);
-        assert!(!h.antigravity_plugin_dir.exists());
-    }
-
     /// Expected bytes copied from `AgentPlugins.openCodePlugin` (Swift) with its eight-space margin
     /// removed, for program "/Applications/Home Speaker.app/Contents/MacOS/HomeSpeaker".
     const SWIFT_OPENCODE_GOLDEN: &str = r#"// HomeSpeaker: speaks each finished OpenCode reply on your Google Home
@@ -7095,213 +6070,6 @@ export default {
             &phone,
         );
         assert_eq!(r_grant_missing.status, 400);
-    }
-
-    #[test]
-    fn test_home_speaker_disconnect_chat_matches_swift_and_preserves_unrelated_files() {
-        let (h, _, phone, last) = new_test_home_speaker(true);
-        let cfg_before = fs::read_to_string(&h.config_path).unwrap();
-        let cred_before = "{\n  \"slack_token\" : \"xoxp-keep-cred\"\n}\n";
-        fs::write(&h.credentials_path, cred_before).unwrap();
-
-        // Populate secrets.json with Google Home login, Google Chat login, and other secrets.
-        fs::write(
-            &h.secrets_path,
-            r#"{
-  "courierToken" : "crr-keep-me",
-  "google" : {
-    "accessToken" : "ya29.home",
-    "clientId" : "cid",
-    "clientSecret" : "csec",
-    "email" : "user@example.com",
-    "expiry" : "2026-12-01T00:00:00Z",
-    "refreshToken" : "1//home-refresh",
-    "scopes" : [
-      "https://www.googleapis.com/auth/home.graph"
-    ]
-  },
-  "googleChat" : {
-    "accessToken" : "ya29.chat",
-    "clientId" : "cid",
-    "clientSecret" : "csec",
-    "expiry" : "2026-12-01T00:00:00Z",
-    "refreshToken" : "1//chat-refresh",
-    "scopes" : [
-      "https://www.googleapis.com/auth/chat.spaces.readonly",
-      "https://www.googleapis.com/auth/chat.messages.readonly"
-    ]
-  },
-  "slackToken" : "xoxp-keep-me"
-}"#,
-        )
-        .unwrap();
-        assert!(h.state().signed_in);
-        assert!(h.state().has_google_chat_token);
-
-        let r = h.handle_set(
-            &post_req("/v1/homespeaker", r#"{"disconnect_chat":true}"#),
-            &phone,
-        );
-        assert_eq!(r.status, 200);
-        assert_eq!(last.name(), h.binary.to_string_lossy());
-        assert_eq!(last.args(), vec!["--sign-out", "--chat"]);
-
-        // Golden bytes follow JSONSerialization's [.prettyPrinted, .sortedKeys] rules as encoded
-        // in SecretStore.swift:252-257 (Swift not runnable here): escaped slashes, no trailing
-        // newline, googleChat removed, google and other tokens intact.
-        const SWIFT_SECRETS_AFTER_DISCONNECT_GOLDEN: &str = "{\n  \"courierToken\" : \"crr-keep-me\",\n  \"google\" : {\n    \"accessToken\" : \"ya29.home\",\n    \"clientId\" : \"cid\",\n    \"clientSecret\" : \"csec\",\n    \"email\" : \"user@example.com\",\n    \"expiry\" : \"2026-12-01T00:00:00Z\",\n    \"refreshToken\" : \"1\\/\\/home-refresh\",\n    \"scopes\" : [\n      \"https:\\/\\/www.googleapis.com\\/auth\\/home.graph\"\n    ]\n  },\n  \"slackToken\" : \"xoxp-keep-me\"\n}";
-        assert_eq!(
-            fs::read_to_string(&h.secrets_path).unwrap(),
-            SWIFT_SECRETS_AFTER_DISCONNECT_GOLDEN
-        );
-        let mode = fs::metadata(&h.secrets_path).unwrap().permissions().mode() & 0o777;
-        assert_eq!(mode, 0o600);
-        assert!(h.state().signed_in);
-        assert!(!h.state().has_google_chat_token);
-
-        // Unrelated files are byte-for-byte untouched.
-        assert_eq!(fs::read_to_string(&h.config_path).unwrap(), cfg_before);
-        assert_eq!(
-            fs::read_to_string(&h.credentials_path).unwrap(),
-            cred_before
-        );
-    }
-
-    #[test]
-    fn test_home_speaker_courier_token_set_and_clear_matches_swift_golden_bytes() {
-        let (h, _, phone, _) = new_test_home_speaker(true);
-        let cfg_before = fs::read_to_string(&h.config_path).unwrap();
-        let cred_before = "{\n  \"slack_token\" : \"xoxp-keep\"\n}\n";
-        fs::write(&h.credentials_path, cred_before).unwrap();
-
-        // Save Courier token: trimmed, written only to secrets.json as courierToken, never logged/echoed.
-        let apply_out = h
-            .apply(
-                HomeSpeakerUpdate::from_json(
-                    &JsonValue::parse(r#"{"courier_token":"  crr_super_secret_token  "}"#).unwrap(),
-                )
-                .unwrap(),
-            )
-            .unwrap();
-        assert!(!apply_out.contains("crr_super_secret_token"));
-        assert_eq!(apply_out, "courier_token=<redacted>");
-
-        // Expected bytes copied from Swift SecretStore.encoder ([.prettyPrinted, .sortedKeys]):
-        // no trailing newline, mode 0600.
-        const SWIFT_COURIER_SECRETS_GOLDEN: &str =
-            "{\n  \"courierToken\" : \"crr_super_secret_token\"\n}";
-        assert_eq!(
-            fs::read_to_string(&h.secrets_path).unwrap(),
-            SWIFT_COURIER_SECRETS_GOLDEN
-        );
-        let mode = fs::metadata(&h.secrets_path).unwrap().permissions().mode() & 0o777;
-        assert_eq!(mode, 0o600);
-        assert!(h.state().has_courier_token);
-        // Saving a Courier token never touches speaker_broadcast.json or chat_credentials.json.
-        assert_eq!(fs::read_to_string(&h.config_path).unwrap(), cfg_before);
-        assert_eq!(
-            fs::read_to_string(&h.credentials_path).unwrap(),
-            cred_before
-        );
-
-        // Add another key in secrets.json and enable Courier, then clear Courier token.
-        h.handle_set(
-            &post_req(
-                "/v1/homespeaker",
-                r#"{"gemini_api_key":"AIza-keep","courier_enabled":true}"#,
-            ),
-            &phone,
-        );
-        assert_eq!(h.state().courier_enabled, Some(true));
-
-        let r_clear = h.handle_set(
-            &post_req("/v1/homespeaker", r#"{"courier_token":"   "}"#),
-            &phone,
-        );
-        assert_eq!(r_clear.status, 200);
-        assert!(!r_clear.body_string().contains("crr_super_secret_token"));
-        assert!(!h.state().has_courier_token);
-        // Clearing Courier token turns courier_enabled off, matching Block.clearCourierToken (HomeSpeakerTool.swift:665-675).
-        assert_eq!(h.state().courier_enabled, Some(false));
-        const SWIFT_AFTER_CLEAR_GOLDEN: &str = "{\n  \"geminiApiKey\" : \"AIza-keep\"\n}";
-        assert_eq!(
-            fs::read_to_string(&h.secrets_path).unwrap(),
-            SWIFT_AFTER_CLEAR_GOLDEN
-        );
-        assert_eq!(
-            fs::read_to_string(&h.credentials_path).unwrap(),
-            cred_before
-        );
-    }
-
-    #[test]
-    fn test_home_speaker_remove_legacy_agent_matches_swift_and_preserves_unrelated_files() {
-        let (mut h, _, phone, _) = new_test_home_speaker(true);
-        let calls: Arc<Mutex<Vec<(String, Vec<String>)>>> = Arc::new(Mutex::new(Vec::new()));
-        let calls_c = calls.clone();
-        // Simulate launchctl bootout returning non-zero (e.g. service not currently loaded);
-        // Swift ignores launchctl's exit status (`_ = try? runProcess(...)`) and still deletes the plist.
-        h.run = Arc::new(move |_limit, name, args| {
-            calls_c
-                .lock()
-                .unwrap()
-                .push((name.to_string(), args.to_vec()));
-            Err("exit status 3".to_string())
-        });
-
-        let launch_agents_dir = h.legacy_plist_path.parent().unwrap();
-        fs::create_dir_all(launch_agents_dir).unwrap();
-        fs::write(&h.legacy_plist_path, "<plist>legacy</plist>").unwrap();
-        let sibling_plist = launch_agents_dir.join("com.example.unrelated.plist");
-        fs::write(&sibling_plist, "<plist>keep</plist>").unwrap();
-        let cfg_before = fs::read_to_string(&h.config_path).unwrap();
-        fs::write(&h.secrets_path, "{\n  \"slackToken\" : \"xoxp-keep\"\n}").unwrap();
-        let secrets_before = fs::read_to_string(&h.secrets_path).unwrap();
-
-        assert!(h.state().legacy_launch_agent);
-        let r = h.handle_set(
-            &post_req(
-                "/v1/homespeaker",
-                r#"{"agent_hook_action":"remove-legacy-agent"}"#,
-            ),
-            &phone,
-        );
-        assert_eq!(r.status, 200);
-        assert!(!h.legacy_plist_path.exists());
-        assert!(!h.state().legacy_launch_agent);
-        assert_eq!(
-            calls.lock().unwrap().as_slice(),
-            &[(
-                "/bin/launchctl".to_string(),
-                vec![
-                    "bootout".to_string(),
-                    "gui/501/com.james.chat-monitor".to_string()
-                ]
-            )]
-        );
-        // Unrelated files stay intact.
-        assert_eq!(
-            fs::read_to_string(&sibling_plist).unwrap(),
-            "<plist>keep</plist>"
-        );
-        assert_eq!(fs::read_to_string(&h.config_path).unwrap(), cfg_before);
-        assert_eq!(fs::read_to_string(&h.secrets_path).unwrap(), secrets_before);
-    }
-
-    #[test]
-    fn test_home_speaker_disconnect_chat_runner_err_preserves_secrets_byte_for_byte() {
-        let (mut h, _, phone, _) = new_test_home_speaker(true);
-        h.run = Arc::new(|_limit, _name, _args| Err("exit status 1".to_string()));
-        let secrets_before = "{\n  \"googleChat\" : {\n    \"accessToken\" : \"ya29.fake-chat\",\n    \"refreshToken\" : \"1\\/\\/fake-chat-refresh\",\n    \"scopes\" : [\n      \"https:\\/\\/www.googleapis.com\\/auth\\/chat.spaces.readonly\",\n      \"https:\\/\\/www.googleapis.com\\/auth\\/chat.messages.readonly\"\n    ]\n  }\n}";
-        fs::write(&h.secrets_path, secrets_before).unwrap();
-
-        let r = h.handle_set(
-            &post_req("/v1/homespeaker", r#"{"disconnect_chat":true}"#),
-            &phone,
-        );
-        assert_ne!(r.status, 200);
-        assert_eq!(fs::read_to_string(&h.secrets_path).unwrap(), secrets_before);
-        assert!(h.state().has_google_chat_token);
     }
 
     #[test]
@@ -7528,5 +6296,332 @@ export default {
             notices.lock().unwrap().as_slice(),
             &["dev.vitruvian.homespeaker.credentials-changed"]
         );
+    }
+
+    // ---- The program answers; the helper relays (golden `--state` document, fake runner). ----
+
+    const GOLDEN_STATE_PATH: &str = "apps/desktop/home-speaker/testdata/state_v1.json";
+
+    fn golden_state() -> String {
+        fs::read_to_string(GOLDEN_STATE_PATH).expect("golden state_v1.json is in the test data")
+    }
+
+    type CallLog = Arc<Mutex<Vec<Vec<String>>>>;
+
+    /// A helper whose "Home Speaker" is a closure: nothing real is ever run. `handler` sees the
+    /// arguments of every program call (`--version`, `--state`, `--apply`, ...).
+    fn relay_speaker(
+        prefix: &str,
+        handler: impl Fn(&[String]) -> Result<(String, String), String> + Send + Sync + 'static,
+    ) -> (HomeSpeaker, PathBuf, CallLog) {
+        let dir = temp_dir(prefix);
+        let bin = dir.join("HomeSpeaker");
+        fs::write(&bin, b"#!/bin/sh\n").unwrap();
+        let calls: CallLog = Arc::new(Mutex::new(Vec::new()));
+        let calls_c = calls.clone();
+        let mut h = HomeSpeaker::new();
+        h.binary = bin.clone();
+        h.door_path = dir.join("speaker_door.json");
+        h.run_capture = None;
+        h.launch = None;
+        h.say = None;
+        h.read_clipboard = Some(Arc::new(|| Ok("clipboard announcement text".to_string())));
+        h.run = Arc::new(move |_limit, name, args| {
+            // Anything that is not the scratch program (`say`, ...) is recorded under its own name.
+            let mut entry = args.to_vec();
+            if name != bin.to_string_lossy() {
+                entry.insert(0, name.to_string());
+            }
+            calls_c.lock().unwrap().push(entry);
+            handler(args)
+        });
+        (h, dir, calls)
+    }
+
+    fn state_answering(
+        version: &'static str,
+        state: String,
+    ) -> impl Fn(&[String]) -> Result<(String, String), String> {
+        move |args: &[String]| match args {
+            [f] if f == "--version" => Ok((format!("HomeSpeaker {version}\n"), String::new())),
+            [a, b] if a == "--state" && b == "--json" => Ok((state.clone(), String::new())),
+            _ => Err(format!("unexpected arguments: {args:?}")),
+        }
+    }
+
+    fn body_of(resp: &HttpResponse) -> JsonValue {
+        JsonValue::parse(&resp.body_string()).unwrap()
+    }
+
+    fn strs(v: &JsonValue, key: &str) -> Vec<String> {
+        v.get_array(key)
+            .unwrap_or(&[])
+            .iter()
+            .map(|x| x.as_str().unwrap_or("").to_string())
+            .collect()
+    }
+
+    #[test]
+    fn test_golden_state_v1_maps_every_phone_field_and_records_exact_args() {
+        let (h, _dir, calls) =
+            relay_speaker("golden_get", state_answering("1.40.0", golden_state()));
+        let resp = h.handle_get(&PhoneBridge::new());
+        assert_eq!(resp.status, 200);
+        assert_eq!(
+            calls.lock().unwrap().clone(),
+            vec![
+                vec!["--version".to_string()],
+                vec!["--state".to_string(), "--json".to_string()]
+            ],
+            "exactly --version, then --state --json"
+        );
+        let b = body_of(&resp);
+        // Running / door / install state.
+        assert!(b.get_bool("available") && b.get_bool("installed"));
+        assert!(b.get_bool("app_running"), "chosen_running");
+        assert_eq!(b.get_str("active_door"), "app");
+        assert!(b.get_bool("extension_installed"));
+        assert!(!b.get_bool("phone_connected"));
+        assert_eq!(b.get_str("home_speaker_version"), "1.19.1");
+        assert!(!b.get_bool("legacy_launch_agent"));
+        // Settings, by key.
+        assert!(b.get_bool("enabled"));
+        assert_eq!(b.get_str("default_target"), "office");
+        assert_eq!(b.get_str("speech_length"), "summary");
+        assert!(b.get_bool("pause_media"));
+        assert_eq!(b.get_f64("pause_media_extra_seconds"), 3.0);
+        assert!(b.get_bool("announce_volume_enabled"));
+        assert_eq!(b.get_i64("announce_volume"), 65);
+        assert!(b.get_bool("speak_home") && b.get_bool("speak_local"));
+        assert_eq!(b.get_opt_bool("speak_phone"), Some(true));
+        assert!(!b.get_bool("phone_pause_media") && !b.get_bool("phone_headphones_only"));
+        assert_eq!(
+            b.get_str("local_voice"),
+            "com.apple.voice.premium.en-US.Ava"
+        );
+        assert_eq!(b.get_str("local_voice_name"), "Ava");
+        assert_eq!(b.get_str("local_engine"), "gemini");
+        assert_eq!(b.get_str("gemini_voice"), "Kore");
+        assert_eq!(b.get_str("announcement_style"), "briefing");
+        assert_eq!(b.get_str("style_model"), "gemini");
+        assert!(b.get_bool("home_cast_voice"));
+        assert_eq!(b.get_opt_bool("announce_claude_code"), Some(true));
+        assert_eq!(b.get_opt_bool("announce_antigravity"), Some(true));
+        assert_eq!(b.get_opt_bool("announce_opencode"), Some(false));
+        assert_eq!(b.get_opt_bool("slack_enabled"), Some(true));
+        assert_eq!(b.get_opt_bool("google_chat_enabled"), Some(true));
+        assert_eq!(b.get_opt_bool("beeper_enabled"), Some(true));
+        assert_eq!(b.get_str("beeper_announce"), "direct_and_mentions");
+        assert_eq!(b.get_opt_bool("courier_enabled"), Some(true));
+        assert_eq!(b.get_str("courier_announce"), "all");
+        assert_eq!(b.get_opt_bool("mute_own_messages"), Some(true));
+        assert_eq!(b.get_str("gws_account"), "ops@example.com");
+        assert_eq!(b.get_str("google_chat_source"), "gws");
+        assert_eq!(b.get_i64("poll_interval"), 30, "poll_interval_seconds");
+        // Home, quiet hours, snooze.
+        assert_eq!(b.get_str("structure_name"), "Home");
+        assert_eq!(b.get_str("structure_id"), "home-structure-1");
+        assert_eq!(b.get_array("homes").unwrap().len(), 1);
+        assert_eq!(
+            b.get_array("homes").unwrap()[0].get_str("id"),
+            "home-structure-1"
+        );
+        let q = b.get("quiet_hours").unwrap();
+        assert!(q.get_bool("enabled") && q.get_bool("active"));
+        assert_eq!((q.get_str("start"), q.get_str("end")), ("22:30", "07:00"));
+        assert!(b.get_bool("quiet_hours_active"));
+        assert!(b.get("snooze_until").unwrap().is_null());
+        // Speakers -> targets.
+        let targets = b.get_array("targets").unwrap();
+        assert_eq!(targets.len(), 3);
+        let office = targets
+            .iter()
+            .find(|t| t.get_str("key") == "office")
+            .unwrap();
+        assert_eq!(office.get_str("name"), "Office Mini");
+        assert_eq!(office.get_str("room"), "Office");
+        assert_eq!(office.get_str("type"), "sdm.devices.types.SPEAKER");
+        assert!(office.get_bool("selected"));
+        assert_eq!(targets.iter().filter(|t| t.get_bool("selected")).count(), 1);
+        // Voices.
+        let voices = b.get_array("available_voices").unwrap();
+        assert_eq!(voices.len(), 2);
+        assert_eq!(voices[0].get_str("id"), "com.apple.voice.premium.en-US.Ava");
+        assert_eq!(voices[0].get_str("lang"), "en-US");
+        assert_eq!(
+            b.get_array("custom_voices").unwrap()[0].get_str("name"),
+            "Studio Narrator"
+        );
+        // Sign-in.
+        assert!(b.get_bool("signed_in"));
+        assert_eq!(b.get_str("account_email"), "owner@example.com");
+        assert!(b.get_bool("has_gemini_key") && b.get_bool("has_oauth_client"));
+        assert!(b.get_bool("has_antigravity_tokens") && b.get_bool("has_custom_oauth_secret"));
+        assert_eq!(
+            b.get_str("custom_oauth_client_id"),
+            "custom-client-id.apps.googleusercontent.com"
+        );
+        // Chat.
+        assert!(b.get_bool("has_slack_token") && b.get_bool("has_beeper_token"));
+        assert!(b.get_bool("has_courier_token") && b.get_bool("has_google_chat_token"));
+        assert!(b.get_bool("has_chat_access") && b.get_bool("gws_installed"));
+        assert!(b.get_bool("monitor_running"));
+        assert_eq!(b.get_str("last_poll_at"), "2026-11-10T23:14:50Z");
+        assert_eq!(b.get_str("slack_identity"), "owner (Vitruvian)");
+        assert_eq!(
+            b.get_str("active_google_chat_backend"),
+            "gws (ops@example.com)"
+        );
+        assert!(
+            b.get("chat_runtime_error").is_none(),
+            "last_error null: nothing to say"
+        );
+        let beeper = b.get_array("beeper_networks").unwrap();
+        assert_eq!(beeper.len(), 2);
+        assert_eq!(
+            (beeper[0].get_str("key"), beeper[0].get_str("state")),
+            ("signal", "muted")
+        );
+        assert!(b.get_bool("beeper_networks_listed") && b.get_bool("courier_networks_listed"));
+        let courier = b.get_array("courier_networks").unwrap();
+        assert!(courier[1].get_bool("read_anyway"));
+        assert!(courier[0].get("read_anyway").is_none());
+        // Hooks -> agents.
+        let agents = b.get_array("agents").unwrap();
+        let slugs: Vec<&str> = agents.iter().map(|a| a.get_str("agent_slug")).collect();
+        assert_eq!(slugs, vec!["claude-code", "antigravity", "opencode"]);
+        assert_eq!(agents[0].get_str("agent"), "Claude Code");
+        assert_eq!(agents[0].get_str("hook_state"), "installed");
+        assert_eq!(agents[1].get_str("hook_state"), "not_installed");
+        assert!(
+            !agents[0].get_bool("speaks_twice") && !agents[0].get_bool("configured_by_instruction")
+        );
+        // History.
+        let last = b.get("last").unwrap();
+        assert_eq!(last.get_str("text"), "All tests passed on main.");
+        assert_eq!(last.get_str("target"), "Office Mini + this Mac");
+        assert_eq!(last.get_str("source"), "Claude Code");
+        assert_eq!(last.get_str("id"), "00000000-0000-0000-0000-000000000001");
+        assert_eq!(last.get_str("at"), "2026-11-10T23:14:00Z");
+        assert_eq!(b.get_array("recent").unwrap().len(), 1);
+        assert!(strs(&b, "warnings").is_empty());
+    }
+
+    #[test]
+    fn test_get_too_old_answers_the_update_sentence_and_never_runs_state() {
+        let (h, _dir, calls) = relay_speaker("too_old", state_answering("1.39.0", golden_state()));
+        let b = body_of(&h.handle_get(&PhoneBridge::new()));
+        assert!(!b.get_bool("available"));
+        assert!(b.get_bool("installed"));
+        let reason = b.get_str("reason");
+        assert!(reason.starts_with("Update Home Speaker on "), "{reason}");
+        assert!(reason.ends_with("(have 1.39.0, need 1.40.0)"), "{reason}");
+        assert_eq!(
+            calls.lock().unwrap().clone(),
+            vec![vec!["--version".to_string()]],
+            "an old program must never be given --state"
+        );
+    }
+
+    #[test]
+    fn test_version_comparison_is_numeric_not_textual() {
+        assert!(version_at_least("1.40.0", "1.40.0"));
+        assert!(version_at_least("1.100.0", "1.40.0"));
+        assert!(version_at_least("2.0", "1.40.0"));
+        assert!(version_at_least("1.40.1-beta", "1.40.0"));
+        assert!(!version_at_least("1.9.9", "1.40.0"));
+        assert!(!version_at_least("1.39.99", "1.40.0"));
+        assert_eq!(
+            parse_version_output("HomeSpeaker 1.40.0\n").as_deref(),
+            Some("1.40.0")
+        );
+        assert_eq!(parse_version_output("v1.41.2").as_deref(), Some("1.41.2"));
+        assert_eq!(parse_version_output("garbage"), None);
+        assert_eq!(parse_version_output(""), None);
+    }
+
+    #[test]
+    fn test_get_missing_program_keeps_the_not_installed_answer() {
+        let (h, dir, calls) = relay_speaker("missing", state_answering("1.40.0", golden_state()));
+        fs::remove_file(dir.join("HomeSpeaker")).unwrap();
+        let b = body_of(&h.handle_get(&PhoneBridge::new()));
+        assert!(!b.get_bool("available") && !b.get_bool("installed"));
+        assert!(
+            b.get_str("reason").contains("not installed"),
+            "{}",
+            b.get_str("reason")
+        );
+        assert!(
+            calls.lock().unwrap().is_empty(),
+            "nothing is run when there is no program"
+        );
+    }
+
+    #[test]
+    fn test_get_state_timeout_and_bad_json_are_clear_errors_not_crashes() {
+        let (h, _d, _c) = relay_speaker("state_timeout", |args| match args {
+            [f] if f == "--version" => Ok(("HomeSpeaker 1.40.0".to_string(), String::new())),
+            _ => Err("HomeSpeaker: no answer within 15s".to_string()),
+        });
+        let b = body_of(&h.handle_get(&PhoneBridge::new()));
+        assert!(!b.get_bool("available") && b.get_bool("installed"));
+        assert!(
+            b.get_str("reason").contains("did not answer --state"),
+            "{}",
+            b.get_str("reason")
+        );
+        assert!(b.get_str("reason").contains("no answer within 15s"));
+
+        for junk in [
+            "not json at all",
+            "[1,2,3]",
+            "",
+            "{\"contract_version\":2}",
+            "{}",
+        ] {
+            let junk = junk.to_string();
+            let (h, _d, _c) = relay_speaker("state_junk", state_answering("1.40.0", junk.clone()));
+            let resp = h.handle_get(&PhoneBridge::new());
+            assert_eq!(resp.status, 200, "{junk:?}");
+            let b = body_of(&resp);
+            assert!(!b.get_bool("available"), "{junk:?}");
+            assert!(!b.get_str("reason").is_empty(), "{junk:?}");
+        }
+
+        let (h, _d, _c) = relay_speaker("version_junk", |_| {
+            Ok(("no version here".to_string(), String::new()))
+        });
+        let b = body_of(&h.handle_get(&PhoneBridge::new()));
+        assert!(!b.get_bool("available"));
+        assert!(b
+            .get_str("reason")
+            .contains("Could not read the Home Speaker version"));
+    }
+
+    #[test]
+    fn test_get_config_not_initialized_says_so_and_runs_nothing_more() {
+        let state = golden_state().replace(
+            "\"config_initialized\": true",
+            "\"config_initialized\": false",
+        );
+        let (h, _d, _c) = relay_speaker("uninit", state_answering("1.40.0", state));
+        let b = body_of(&h.handle_get(&PhoneBridge::new()));
+        assert!(!b.get_bool("available") && b.get_bool("installed"));
+        assert!(b.get_str("reason").contains("not been set up"));
+    }
+
+    #[test]
+    fn test_capturing_runner_keeps_stdout_of_a_refusal_and_reports_a_timeout() {
+        // /bin/sh stands in for any program: this is about the runner, not Home Speaker.
+        let args = vec![
+            "-c".to_string(),
+            "echo '{\"ok\":false}'; exit 1".to_string(),
+        ];
+        let (out, _) = run_capturing_exit(Duration::from_secs(10), "/bin/sh", &args).unwrap();
+        assert_eq!(out.trim(), "{\"ok\":false}");
+        let slow = vec!["-c".to_string(), "sleep 5".to_string()];
+        let err = run_capturing_exit(Duration::from_millis(200), "/bin/sh", &slow).unwrap_err();
+        assert!(err.contains("no answer within"), "{err}");
+        assert!(run_capturing_exit(Duration::from_secs(1), "/nonexistent/program", &[]).is_err());
     }
 }
