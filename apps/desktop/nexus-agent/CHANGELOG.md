@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.32.7](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.32.6...nexus-agent-v1.32.7) (2026-11-10)
+
+
+### Bug Fixes
+
+* **nexus-agent:** the subagent list clears when subagents are killed or the chat changes ([#4538](https://github.com/VitruvianSoftware/vitruvian-core/issues/4538)) ([ca6dc36](https://github.com/VitruvianSoftware/vitruvian-core/commit/ca6dc360bc257ecc7f425ff03ddf300ecbe32878))
+
 ## [1.32.6](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.32.5...nexus-agent-v1.32.6) (2026-11-10)
 
 
