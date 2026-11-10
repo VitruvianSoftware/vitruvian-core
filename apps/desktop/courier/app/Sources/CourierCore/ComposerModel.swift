@@ -2751,7 +2751,18 @@ public final class ComposerModel: ObservableObject {
     public func executeSlashCommand(_ command: String) {
         guard !isLocked else { return }
         guard aiProvider.isAvailable else {
-            let reason = String(localized: "Set up AI in Settings")
+            let reason: String
+            if (aiProvider as? UnavailableAIProvider)?.hasCustomReason == true,
+               !aiProvider.unavailableReason.isEmpty
+            {
+                reason = aiProvider.unavailableReason
+            } else if !(aiProvider is UnavailableAIProvider),
+                      !aiProvider.unavailableReason.isEmpty
+            {
+                reason = aiProvider.unavailableReason
+            } else {
+                reason = String(localized: "Set up AI in Settings")
+            }
             aiError = reason
             notices = [.calmStub(reason: reason)]
             return

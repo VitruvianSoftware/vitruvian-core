@@ -660,9 +660,7 @@ public final class AIProviderStore: ObservableObject {
 
     public func rebuildProvider() {
         guard preferences.enableContextualAI else {
-            provider = UnavailableAIProvider(
-                reason: String(localized: "Turn on AI in Settings ▸ AI to use Courier AI features. Everything you write stays on this Mac.")
-            )
+            provider = UnavailableAIProvider()
             return
         }
 
@@ -710,6 +708,13 @@ public final class AIProviderStore: ObservableObject {
             }
         }
 
+        if kind.needsKey, !hasKey(for: kind) {
+            provider = UnavailableAIProvider(
+                reason: String(localized: "Enter your \(kind.label) API key in Settings ▸ AI.")
+            )
+            return
+        }
+
         guard let client = makeClient(for: kind) else {
             provider = UnavailableAIProvider(reason: AIClientError.notConfigured.message)
             return
@@ -717,7 +722,13 @@ public final class AIProviderStore: ObservableObject {
 
         let resolvedModel = resolveModel(for: kind)
         guard !resolvedModel.isEmpty else {
-            provider = UnavailableAIProvider(reason: AIClientError.notConfigured.message)
+            if kind.isLocal, kind != .appleIntelligence {
+                provider = UnavailableAIProvider(
+                    reason: String(localized: "\(kind.label) is not running on this Mac. Start it and click Refresh in Settings ▸ AI.")
+                )
+            } else {
+                provider = UnavailableAIProvider(reason: AIClientError.notConfigured.message)
+            }
             return
         }
 

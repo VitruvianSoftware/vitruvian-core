@@ -1267,6 +1267,61 @@ final class AIProvidersTests: XCTestCase {
         XCTAssertEqual(composer.text, "")
     }
 
+    func testComposerSlashNoticeShowsChosenProvidersUnavailableReasonInsteadOfSetUpAIInSettings() {
+        let suiteName = "test.courier.ai.composer.slashreason.\(UUID().uuidString)"
+        let defaults = ScratchDefaults.suite(named: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let prefs = AIPreferences(defaults: defaults)
+        let store = AIProviderStore(
+            preferences: prefs,
+            keyStore: AIKeyStore(store: InMemoryCredentialStore()),
+            transport: StubHTTPTransport()
+        )
+        let composer = ComposerModel()
+        composer.bindAIProviderStore(store)
+        composer.open("!room1:courier.local")
+        composer.text = "Hello"
+
+        // 1. With AI Off, slash commands show "Set up AI in Settings"
+        for slash in ["/draft", "/translate", "/summarize", "/ai"] {
+            composer.executeSlashCommand(slash)
+            XCTAssertEqual(composer.notice?.displayText, "Set up AI in Settings")
+            XCTAssertEqual(composer.aiError, "Set up AI in Settings")
+        }
+
+        // 2. With Unsloth Studio chosen and not running, slash commands show Unsloth's reason
+        store.selectProvider(.unslothStudio)
+        for slash in ["/draft", "/translate", "/summarize", "/ai"] {
+            composer.executeSlashCommand(slash)
+            XCTAssertEqual(
+                composer.notice?.displayText,
+                "Unsloth Studio is not running on this Mac. Start it and click Refresh in Settings ▸ AI."
+            )
+            XCTAssertEqual(
+                composer.aiError,
+                "Unsloth Studio is not running on this Mac. Start it and click Refresh in Settings ▸ AI."
+            )
+            XCTAssertNotEqual(composer.notice?.displayText, "Set up AI in Settings")
+        }
+
+        // 3. With Ollama chosen and not running, slash commands show Ollama's reason
+        store.selectProvider(.ollama)
+        composer.executeSlashCommand("/draft")
+        XCTAssertEqual(
+            composer.notice?.displayText,
+            "Ollama is not running on this Mac. Start it and click Refresh in Settings ▸ AI."
+        )
+
+        // 4. With Anthropic chosen without a key, slash commands show Anthropic's missing-key reason
+        store.selectProvider(.anthropic)
+        composer.executeSlashCommand("/draft")
+        XCTAssertEqual(
+            composer.notice?.displayText,
+            "Enter your Anthropic API key in Settings ▸ AI."
+        )
+    }
+
     // MARK: - Helpers
 
     private func makeTempUnslothStudioDir(pidFiles: [String]) throws -> URL {
