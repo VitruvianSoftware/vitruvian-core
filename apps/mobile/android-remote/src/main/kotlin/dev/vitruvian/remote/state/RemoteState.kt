@@ -2532,6 +2532,19 @@ public class RemoteState(
         homeSpeakerSettingsRows(hs).map { row -> row.copy(error = homeSpeakerErrors[row.title]) }
   }
 
+  private fun homeSpeakerMirrorRow(): ModuleRow {
+    val mirrorOn =
+        Derive.isMirrorEnabled(homeSpeakerMirror, notifier?.hasNotificationPermission() != false)
+    return ModuleRow(
+        title = "Show announcements as notifications",
+        subtitle = "While Vitruvian Remote is running",
+        trailing = if (mirrorOn) "on" else "off",
+        tone = if (mirrorOn) StatusTone.Ok else StatusTone.Neutral,
+        toggle =
+            RowToggle(checked = mirrorOn, enabled = true) { next -> updateHomeSpeakerMirror(next) },
+    )
+  }
+
   private fun homeSpeakerSettingsRows(hs: AgentHomeSpeaker): List<ModuleRow> = buildList {
     // Broadcasting off: nothing else on this plate changes what is heard, so
     // the master switch is the whole plate.
@@ -2547,6 +2560,9 @@ public class RemoteState(
                     setHomeSpeaker("broadcasting on", enabled = true)
                   },
           ))
+      // A phone-side setting: it shows announcements made with broadcasting back on, so it stays
+      // reachable while broadcasting is off.
+      add(homeSpeakerMirrorRow())
       return@buildList
     }
     add(
@@ -3199,19 +3215,7 @@ public class RemoteState(
                       setHomeSpeaker("speak clipboard", speakClipboard = true)
                     }),
         ))
-    val mirrorOn =
-        Derive.isMirrorEnabled(homeSpeakerMirror, notifier?.hasNotificationPermission() != false)
-    add(
-        ModuleRow(
-            title = "Show announcements as notifications",
-            subtitle = "While Vitruvian Remote is running",
-            trailing = if (mirrorOn) "on" else "off",
-            tone = if (mirrorOn) StatusTone.Ok else StatusTone.Neutral,
-            toggle =
-                RowToggle(checked = mirrorOn, enabled = true) { next ->
-                  updateHomeSpeakerMirror(next)
-                },
-        ))
+    add(homeSpeakerMirrorRow())
     if (hs.extensionInstalled || hs.activeDoor == "extension") {
       add(
           ModuleRow(
