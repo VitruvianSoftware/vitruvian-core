@@ -6201,4 +6201,39 @@ export default {{\n\
         assert!(!door_doc.get_str("chosen_at").contains('.'));
         assert!(!door_doc.get_str("chosen_by").is_empty());
     }
+
+    #[test]
+    fn scout_antigravity_hooks_json_at_plugin_root_is_read_and_removed() {
+        // Swift keeps the Antigravity hook at <plugin>/hooks.json (AgentPlugins.antigravityHooksFile),
+        // beside plugin.json. Reads and removal must work from that root location.
+        let (h, _, phone, _) = new_test_home_speaker(true);
+        let cmd = format!("\"{}\" --antigravity-hook", h.binary.display());
+        fs::create_dir_all(&h.antigravity_plugin_dir).unwrap();
+        fs::write(
+            h.antigravity_plugin_dir.join("plugin.json"),
+            SCOUT_SWIFT_MANIFEST,
+        )
+        .unwrap();
+        fs::write(
+            h.antigravity_plugin_dir.join("hooks.json"),
+            scout_swift_hooks_text(&cmd),
+        )
+        .unwrap();
+        let st = h.state();
+        let agy = st
+            .agents
+            .iter()
+            .find(|a| a.agent_slug == "antigravity")
+            .unwrap();
+        assert_eq!(agy.hook_state, "installed");
+        let r = h.handle_set(
+            &post_req(
+                "/v1/homespeaker",
+                r#"{"agent_hook_action":"remove:antigravity"}"#,
+            ),
+            &phone,
+        );
+        assert_eq!(r.status, 200);
+        assert!(!h.antigravity_plugin_dir.exists());
+    }
 }
