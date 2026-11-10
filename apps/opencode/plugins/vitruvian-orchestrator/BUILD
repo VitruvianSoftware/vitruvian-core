@@ -29,6 +29,8 @@ js_library(
     srcs = [
         "lib/adapter.mjs",
         "lib/orchestrator-core.mjs",
+        "lib/prices.mjs",
+        "server.mjs",
     ],
 )
 

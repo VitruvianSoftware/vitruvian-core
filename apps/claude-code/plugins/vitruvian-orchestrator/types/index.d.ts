@@ -40,6 +40,13 @@ export type TokenCounts = {
   cacheWrite: number;
 };
 
+export type DelegateTokenCounts = {
+  input: number;
+  output: number;
+  thinking: number;
+  cacheRead: number;
+};
+
 export type StepProgress = {
   done: number;
   total: number;
@@ -83,6 +90,7 @@ export type Run = {
   endedAt: number | null;
   status: RunStatus;
   tokens: TokenCounts;
+  delegateTokens?: DelegateTokenCounts | null;
   steps: StepProgress | null;
   contextPct: number | null;
   role: RunRole;
@@ -130,6 +138,7 @@ export type UnpricedSummary = {
 
 export type DelegatedSummary = {
   runs: number;
+  unpriced: number;
   byModel: Record<string, number>;
 };
 
@@ -156,6 +165,7 @@ export type FlowEvent = {
   delegate?: string | null;
   role?: RunRole;
   tokens?: Partial<TokenCounts>;
+  delegateTokens?: Partial<DelegateTokenCounts> | null;
   steps?: Partial<StepProgress> | null;
   contextPct?: number | null;
   status?: RunStatus;
