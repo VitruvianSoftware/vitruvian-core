@@ -380,11 +380,7 @@ fn test_user_configurations_define_all_chronograph_options_and_launch_targets() 
             "bezel_expanded",
             &["bezel_expanded", "bezel_full"],
         ),
-        (
-            "aod_mode",
-            "aod_chromalight",
-            &["aod_chromalight", "aod_ultra"],
-        ),
+        ("aod_mode", "aod_ultra", &["aod_chromalight", "aod_ultra"]),
         (
             "subdial_mode",
             "subdials_chrono",
