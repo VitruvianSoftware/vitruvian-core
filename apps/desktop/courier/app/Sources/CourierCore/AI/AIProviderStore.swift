@@ -39,7 +39,10 @@ public final class AIProviderStore: ObservableObject {
     @Published public private(set) var isLoadingModels: Bool = false
     @Published public private(set) var isTesting: Bool = false
     @Published public private(set) var lastTestResult: TestResult?
+    @Published public private(set) var isSettingsDetectionActive: Bool = false
 
+    public let settingsDetectionInterval: Duration
+    private var settingsDetectionTask: Task<Void, Never>?
     private var cancellables: Set<AnyCancellable> = []
     private let appleClientFactory: @Sendable () -> AppleOnDeviceClient
 
@@ -48,16 +51,22 @@ public final class AIProviderStore: ObservableObject {
         keyStore: AIKeyStore = AIKeyStore(),
         transport: any HTTPTransport = URLSessionHTTPTransport.shared,
         detector: LocalProviderDetector? = nil,
+        settingsDetectionInterval: Duration = .seconds(30),
         appleClientFactory: @escaping @Sendable () -> AppleOnDeviceClient = { AppleOnDeviceClient() }
     ) {
         self.preferences = preferences
         self.keyStore = keyStore
         self.transport = transport
         self.detector = detector ?? LocalProviderDetector(transport: transport)
+        self.settingsDetectionInterval = settingsDetectionInterval
         self.appleClientFactory = appleClientFactory
 
         observePreferences()
         rebuildProvider()
+    }
+
+    deinit {
+        settingsDetectionTask?.cancel()
     }
 
     private func observePreferences() {
@@ -96,10 +105,59 @@ public final class AIProviderStore: ObservableObject {
 
     // MARK: - Detection & Models
 
+    /// Starts periodic local-only provider detection while Settings ▸ AI is open (re-detecting every 30 s).
+    /// Runs even when AI is Off so the provider list can display what is installed/running on this Mac.
+    public func startSettingsDetection() {
+        isSettingsDetectionActive = true
+        settingsDetectionTask?.cancel()
+        let interval = settingsDetectionInterval
+        settingsDetectionTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.refresh()
+            while !Task.isCancelled, self.isSettingsDetectionActive {
+                try? await Task.sleep(for: interval)
+                guard !Task.isCancelled, self.isSettingsDetectionActive else { break }
+                await self.refreshLocalDetections()
+            }
+        }
+    }
+
+    /// Stops periodic Settings ▸ AI local provider detection.
+    public func stopSettingsDetection() {
+        isSettingsDetectionActive = false
+        settingsDetectionTask?.cancel()
+        settingsDetectionTask = nil
+    }
+
+    /// Probes local servers (`127.0.0.1` only). Safe to run while Settings ▸ AI is open even when AI is Off.
+    public func refreshLocalDetections() async {
+        guard preferences.enableContextualAI || isSettingsDetectionActive else {
+            return
+        }
+        isDetecting = true
+        let unslothKey = keyStore.key(for: .unslothStudio)
+        let detected = await detector.detect(unslothKey: unslothKey)
+        detections = detected
+        isDetecting = false
+
+        if preferences.enableContextualAI {
+            if let localDetection = detected[preferences.selectedEngine],
+               case let .running(models) = localDetection
+            {
+                applyDiscoveredModels(models, for: preferences.selectedEngine)
+            }
+            rebuildProvider()
+        }
+    }
+
     /// Re-runs local provider detection and refreshes models for the selected provider when AI is enabled.
-    /// When AI is off (`enableContextualAI == false`), makes zero network requests.
+    /// When AI is off (`enableContextualAI == false`) and Settings ▸ AI is closed, makes zero network requests.
+    /// While Settings ▸ AI is open (`isSettingsDetectionActive == true`), probes localhost only.
     public func refresh() async {
         guard preferences.enableContextualAI else {
+            if isSettingsDetectionActive {
+                await refreshLocalDetections()
+            }
             availableModels = []
             lastTestResult = nil
             rebuildProvider()

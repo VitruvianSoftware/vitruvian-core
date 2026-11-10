@@ -66,7 +66,7 @@ public final class LocalProviderDetector: @unchecked Sendable {
                     let url = URL(string: "http://127.0.0.1:\(port)/v1/models")!
                     let detection = await Self.probeOpenAIModels(
                         url: url,
-                        apiKey: activeKey,
+                        apiKey: nil,
                         using: transport
                     )
                     return .unsloth(port: port, detection: detection)
@@ -100,6 +100,17 @@ public final class LocalProviderDetector: @unchecked Sendable {
                     unslothResult = .needsKey
                     chosenPort = port
                     break
+                }
+            }
+            if let chosenPort, let activeKey {
+                let url = URL(string: "http://127.0.0.1:\(chosenPort)/v1/models")!
+                let keyedDetection = await Self.probeOpenAIModels(
+                    url: url,
+                    apiKey: activeKey,
+                    using: transport
+                )
+                if case let .running(models) = keyedDetection {
+                    unslothResult = .running(models: models)
                 }
             }
         }
@@ -147,7 +158,7 @@ public final class LocalProviderDetector: @unchecked Sendable {
                 return .running(models: ids)
             }
             return .notRunning
-        case 401, 403:
+        case 401:
             return .needsKey
         default:
             return .notRunning
@@ -174,7 +185,7 @@ public final class LocalProviderDetector: @unchecked Sendable {
                 return .notRunning
             }
             return .running(models: models)
-        case 401, 403:
+        case 401:
             return .needsKey
         default:
             return .notRunning

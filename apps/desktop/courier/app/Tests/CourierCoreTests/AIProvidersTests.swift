@@ -336,6 +336,40 @@ final class AIProvidersTests: XCTestCase {
         XCTAssertEqual(detector.detectedUnslothPort, 8891)
     }
 
+    func testLocalProviderDetectorIgnores403AndSendsUnslothKeyOnlyToChosen401Port() async {
+        let secretKey = "unsloth-secret-key"
+        let transport = StubHTTPTransport { request in
+            guard let url = request.url else { throw URLError(.badURL) }
+            switch url.absoluteString {
+            case "http://127.0.0.1:8888/v1/models":
+                // 403 (e.g. another local server) must NOT be treated as an Unsloth candidate
+                return (Data(), StubHTTPTransport.makeResponse(url: url, status: 403))
+            case "http://127.0.0.1:8890/v1/models":
+                if request.value(forHTTPHeaderField: "Authorization") == "Bearer \(secretKey)" {
+                    let body = Data(#"{"data":[{"id":"unsloth/Llama-3.2-3B"}]}"#.utf8)
+                    return (body, StubHTTPTransport.makeResponse(url: url, status: 200))
+                }
+                return (Data(), StubHTTPTransport.makeResponse(url: url, status: 401))
+            default:
+                throw URLError(.cannotConnectToHost)
+            }
+        }
+
+        let detector = LocalProviderDetector(transport: transport)
+        let results = await detector.detect(unslothKey: secretKey)
+
+        XCTAssertEqual(detector.detectedUnslothPort, 8890)
+        XCTAssertEqual(detector.unslothBaseURL.absoluteString, "http://127.0.0.1:8890/v1")
+        XCTAssertEqual(results[.unslothStudio], .running(models: ["unsloth/Llama-3.2-3B"]))
+
+        let keyedRequests = transport.requests.filter {
+            $0.value(forHTTPHeaderField: "Authorization") != nil
+        }
+        XCTAssertEqual(keyedRequests.count, 1, "Saved Unsloth key must only be sent once, to the chosen 401 port")
+        XCTAssertEqual(keyedRequests.first?.url?.absoluteString, "http://127.0.0.1:8890/v1/models")
+        XCTAssertEqual(keyedRequests.first?.value(forHTTPHeaderField: "Authorization"), "Bearer \(secretKey)")
+    }
+
     // MARK: - AIKeyStore
 
     func testAIKeyStoreInMemoryAndServiceSeparationAndRedaction() throws {
@@ -536,6 +570,56 @@ final class AIProvidersTests: XCTestCase {
         _ = await store.provider.summarize(context: context)
 
         XCTAssertTrue(transport.requests.isEmpty, "With AI off, Courier must make zero network requests")
+    }
+
+    func testAIProviderStoreSettingsDetectionRunsLocalhostWhenAIOffAndStopsWhenClosed() async throws {
+        let suiteName = "test.courier.ai.store.settings.\(UUID().uuidString)"
+        let defaults = ScratchDefaults.suite(named: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let prefs = AIPreferences(defaults: defaults)
+        prefs.selectedEngine = .openAI
+        XCTAssertFalse(prefs.enableContextualAI)
+
+        let transport = StubHTTPTransport { request in
+            guard let url = request.url else { throw URLError(.badURL) }
+            if url.absoluteString == "http://127.0.0.1:11434/api/tags" {
+                let body = Data(#"{"models":[{"name":"llama3.2:latest"}]}"#.utf8)
+                return (body, StubHTTPTransport.makeResponse(url: url, status: 200))
+            }
+            throw URLError(.cannotConnectToHost)
+        }
+        let keyStore = AIKeyStore(store: InMemoryCredentialStore(["openAI": "test-openai-key"]))
+        let store = AIProviderStore(
+            preferences: prefs,
+            keyStore: keyStore,
+            transport: transport,
+            settingsDetectionInterval: .milliseconds(40)
+        )
+
+        // While Settings is closed and AI is off: zero requests
+        await store.refresh()
+        XCTAssertTrue(transport.requests.isEmpty)
+
+        // Opening Settings ▸ AI starts local-only detection even while AI is Off
+        store.startSettingsDetection()
+        XCTAssertTrue(store.isSettingsDetectionActive)
+        try await Task.sleep(for: .milliseconds(100))
+
+        XCTAssertEqual(store.detections[.ollama], .running(models: ["llama3.2:latest"]))
+        XCTAssertFalse(store.provider.isAvailable, "Provider stays unavailable while AI is Off")
+        XCTAssertFalse(transport.requests.isEmpty)
+        for req in transport.requests {
+            XCTAssertEqual(req.url?.host, "127.0.0.1", "Settings detection when AI is off must only hit localhost")
+        }
+
+        // Closing Settings stops periodic detection; subsequent refresh while AI is off makes zero new requests
+        store.stopSettingsDetection()
+        XCTAssertFalse(store.isSettingsDetectionActive)
+        transport.reset()
+        try await Task.sleep(for: .milliseconds(100))
+        await store.refresh()
+        XCTAssertTrue(transport.requests.isEmpty, "With Settings closed and AI off, zero requests must be made")
     }
 
     func testAIProviderStoreRebuildsWhenEnabledAndTestConnects() async throws {
