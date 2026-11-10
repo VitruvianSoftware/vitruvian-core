@@ -247,7 +247,7 @@ public enum NexusAgentCatalog {
             name: "Antigravity",
             executableName: "agy",
             commandTemplate: "agy -p \"{prompt}\" --output-format stream-json --dangerously-skip-permissions",
-            defaultModels: ["gemini-4-argon-high", "claude-opus-5-5-high"],
+            defaultModels: ["gemini-4-carbon-high", "claude-opus-5-5-high"],
             streamDialect: .antigravityJSON,
             supportsResumeFlag: "--conversation",
             websiteURL: "https://antigravity.google"
