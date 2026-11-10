@@ -2003,4 +2003,13 @@ public class DeriveTest {
     assertFalse(Derive.legacyLaunchAgentRow(canAct = false, busy = false).actionEnabled)
     assertFalse(Derive.legacyLaunchAgentRow(canAct = true, busy = true).actionEnabled)
   }
+
+  @Test
+  public fun `googleCloudConsoleUrl matches Pages swift cloudConsole literal`() {
+    assertEquals(
+        "https://console.cloud.google.com/apis/credentials", Derive.GOOGLE_CLOUD_CONSOLE_URL)
+    val spec =
+        Derive.googleCloudOAuthSpec(customClientId = "", hasCustomSecret = false, canAct = true)
+    assertEquals("https://console.cloud.google.com/apis/credentials", spec.setupUrl)
+  }
 }

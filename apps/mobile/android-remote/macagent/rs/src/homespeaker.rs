@@ -6779,4 +6779,61 @@ export default {
         assert_eq!(fs::read_to_string(&h.config_path).unwrap(), cfg_before);
         assert_eq!(fs::read_to_string(&h.secrets_path).unwrap(), secrets_before);
     }
+
+    #[test]
+    fn scout_t1_disconnect_chat_runner_err_preserves_secrets_byte_for_byte() {
+        let (mut h, _, phone, _) = new_test_home_speaker(true);
+        h.run = Arc::new(|_limit, _name, _args| Err("exit status 1".to_string()));
+        let secrets_before = "{\n  \"googleChat\" : {\n    \"accessToken\" : \"ya29.fake-chat\",\n    \"refreshToken\" : \"1\\/\\/fake-chat-refresh\",\n    \"scopes\" : [\n      \"https:\\/\\/www.googleapis.com\\/auth\\/chat.spaces.readonly\",\n      \"https:\\/\\/www.googleapis.com\\/auth\\/chat.messages.readonly\"\n    ]\n  }\n}";
+        fs::write(&h.secrets_path, secrets_before).unwrap();
+
+        let r = h.handle_set(
+            &post_req("/v1/homespeaker", r#"{"disconnect_chat":true}"#),
+            &phone,
+        );
+        assert_ne!(r.status, 200);
+        assert_eq!(fs::read_to_string(&h.secrets_path).unwrap(), secrets_before);
+        assert!(h.state().has_google_chat_token);
+    }
+
+    #[test]
+    fn scout_t2_courier_token_save_cleans_tmp_and_sets_0600_modes() {
+        let (h, _, _, _) = new_test_home_speaker(true);
+        let u = HomeSpeakerUpdate::from_json(
+            &JsonValue::parse(r#"{"courier_token":"crr_fake_token"}"#).unwrap(),
+        )
+        .unwrap();
+        h.apply(u).unwrap();
+
+        let tmp_path = PathBuf::from(format!("{}.agent-tmp", h.secrets_path.display()));
+        let lock_path = PathBuf::from(format!("{}.lock", h.secrets_path.display()));
+        assert!(!tmp_path.exists());
+        assert_eq!(
+            fs::metadata(&lock_path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert_eq!(
+            fs::metadata(&h.secrets_path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
+
+    #[test]
+    fn scout_t3_courier_token_clear_when_already_disabled_leaves_config_bytes_unchanged() {
+        let (h, _, _, _) = new_test_home_speaker(true);
+        let cfg_bytes = "{\n  \"chat_monitor\" : {\n    \"courier_enabled\" : false\n  },\n  \"enabled\" : true\n}\n";
+        fs::write(&h.config_path, cfg_bytes).unwrap();
+        fs::write(
+            &h.secrets_path,
+            "{\n  \"courierToken\" : \"crr_fake_token\"\n}",
+        )
+        .unwrap();
+
+        let u = HomeSpeakerUpdate::from_json(&JsonValue::parse(r#"{"courier_token":""}"#).unwrap())
+            .unwrap();
+        h.apply(u).unwrap();
+
+        assert_eq!(fs::read_to_string(&h.config_path).unwrap(), cfg_bytes);
+        assert!(!h.state().has_courier_token);
+    }
 }
