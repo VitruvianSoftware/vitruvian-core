@@ -458,6 +458,8 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
     public internal(set) var startsGroup: Bool
     /// Whether this event's local media was removed via storage cleanup (`com.courier.media_removed == true`).
     public let mediaRemoved: Bool
+    /// Whether this message is in a direct (1:1) chat, hiding the sender name label above incoming bubbles.
+    public let isDirect: Bool
 
     public static var mediaRemovedPlaceholderText: String {
         String(localized: "Removed to free up space")
@@ -513,7 +515,8 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
         reply: ReplyPreview?,
         reactions: [ReactionChip],
         startsGroup: Bool,
-        mediaRemoved: Bool = false
+        mediaRemoved: Bool = false,
+        isDirect: Bool = false
     ) {
         self.id = id
         self.roomID = roomID
@@ -561,6 +564,7 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
         self.reactions = reactions
         self.startsGroup = startsGroup
         self.mediaRemoved = mediaRemoved
+        self.isDirect = isDirect
     }
 
     /// Stickers render in a borderless container without the coloured text bubble background tint.
@@ -1082,7 +1086,7 @@ public enum Timeline {
                 expiresAt: base.expiresAt > 0 ? base.expiresAt : nil,
                 timerChange: base.type == "m.room.message" && !isDeleted ? TimerChange.of(base.content) : nil,
                 call: base.type == "m.room.message" && !isDeleted ? CallNote.of(base.content) : nil,
-                reply: nil, reactions: chips, startsGroup: false, mediaRemoved: mediaRemoved))
+                reply: nil, reactions: chips, startsGroup: false, mediaRemoved: mediaRemoved, isDirect: isDirect))
         }
 
         // Replies are resolved last, so a quote shows the text the quoted message has now.
