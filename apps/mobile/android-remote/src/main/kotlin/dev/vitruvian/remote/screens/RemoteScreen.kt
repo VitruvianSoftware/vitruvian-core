@@ -294,7 +294,12 @@ public fun ColumnScope.RemoteScreen(state: RemoteState) {
         state.updatePrompt(
             listOf(state.prompt.trim(), spoken).filter { it.isNotBlank() }.joinToString(" "))
       }
-      VButton("Send", state::sendPrompt, variant = ButtonVariant.Primary)
+      VButton(
+          "Send",
+          state::sendPrompt,
+          variant = ButtonVariant.Primary,
+          enabled = !state.actsNeedPairing,
+      )
     }
   }
 
@@ -305,7 +310,7 @@ public fun ColumnScope.RemoteScreen(state: RemoteState) {
           subtitle = macro.command,
           status = StatusTone.Ok,
       ) {
-        VButton("Run", { state.runMacro(macro) })
+        VButton("Run", { state.runMacro(macro) }, enabled = !state.actsNeedPairing)
       }
     }
   }

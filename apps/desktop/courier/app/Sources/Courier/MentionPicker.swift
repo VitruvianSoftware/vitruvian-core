@@ -44,6 +44,7 @@ struct PickerList<Row: View>: View {
     let count: Int
     let index: Int
     @ViewBuilder let row: (Int) -> Row
+    @Environment(\.themeAccentColor) private var themeAccent
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -52,7 +53,7 @@ struct PickerList<Row: View>: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(RoundedRectangle(cornerRadius: 6)
-                        .fill(position == index ? Color.accentColor.opacity(0.18) : .clear))
+                        .fill(position == index ? themeAccent.opacity(0.18) : .clear))
                     // The row the arrows are on is announced as selected.
                     .accessibilityAddTraits(position == index ? .isSelected : [])
             }

@@ -13,6 +13,7 @@ struct SearchRowView: View {
     /// A row of the Bookmarks section: the message, with a bookmark beside it.
     var isBookmark = false
     @ObservedObject var composerPreferences: ComposerPreferences = ComposerPreferences()
+    @Environment(\.themeAccentColor) private var themeAccent
 
     func formattedTimestamp(
         now: Date = Date(),
@@ -35,7 +36,7 @@ struct SearchRowView: View {
             .padding(.vertical, 5)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 7)
-                .fill(isSelected ? Color.accentColor.opacity(0.18) : .clear))
+                .fill(isSelected ? themeAccent.opacity(0.18) : .clear))
             .padding(.horizontal, 6)
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
@@ -178,6 +179,7 @@ struct MediaCell: View {
     let isSelected: Bool
     @ObservedObject var composerPreferences: ComposerPreferences = ComposerPreferences()
     @State private var image: CGImage?
+    @Environment(\.themeAccentColor) private var themeAccent
 
     func helpText(
         now: Date = Date(),
@@ -215,7 +217,7 @@ struct MediaCell: View {
         .aspectRatio(1, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay(RoundedRectangle(cornerRadius: 6)
-            .strokeBorder(isSelected ? Color.accentColor : .clear, lineWidth: 3))
+            .strokeBorder(isSelected ? themeAccent : .clear, lineWidth: 3))
         .contentShape(Rectangle())
         .help(Text(verbatim: helpText()))
         .accessibilityElement()

@@ -197,6 +197,21 @@ public enum RoomConfirmationRequest: Equatable, Identifiable, Sendable {
     }
 }
 
+/// Completed AI chat summary for the open chat, shown in `AIPane`.
+public struct ChatAISummary: Equatable, Sendable {
+    public let text: String
+    public let messageCount: Int
+    public let collapsedHeader: String
+    public let provenance: String
+
+    public init(text: String, messageCount: Int, collapsedHeader: String, provenance: String) {
+        self.text = text
+        self.messageCount = messageCount
+        self.collapsedHeader = collapsedHeader
+        self.provenance = provenance
+    }
+}
+
 /// The open chat: its timeline, what is new in it, and its composer.
 ///
 /// The timeline keeps the pages it has loaded. A change in the open chat (a new event, a status, the read marker)
@@ -368,6 +383,22 @@ public final class ConversationModel: ObservableObject {
     @Published public var isShowingCalendar = false
     /// On-demand macOS EventKit bridge for the Calendar right pane and detected message dates.
     public var calendarBridge = CalendarBridge()
+    /// Whether the AI right pane (`AIPane`) is open.
+    @Published public var isShowingAIPane = false
+    /// True while an AI summary request is in flight for the open chat.
+    @Published public private(set) var isSummarizingChat = false
+    /// Count of messages being summarized while `isSummarizingChat` is true.
+    @Published public private(set) var summarizingMessageCount = 0
+    /// Finished AI summary for the open chat (`AIPane`).
+    @Published public private(set) var chatSummary: ChatAISummary?
+    /// Plain error message when an AI summary request fails.
+    @Published public private(set) var chatSummaryError: String?
+    /// Whether the finished summary in `AIPane` is expanded.
+    @Published public var isChatSummaryExpanded = false
+    /// Opens Settings ▸ AI.
+    public var onOpenAISettings: @MainActor () -> Void = {}
+    private var summarizeTask: Task<Void, Never>?
+    private var summarizeToken = 0
     /// Active view-once message being viewed in `ViewOnceSheet`.
     @Published public var activeViewOnceMessage: TimelineMessage?
     /// Whether the poll creator sheet (`PollCreatorWindow`) is presented.
@@ -577,6 +608,9 @@ public final class ConversationModel: ObservableObject {
         composer.onSubmit = { [weak self] in self?.jumpToBottom() }
         for target in [composer, thread.composer] {
             target.onSent = { [weak self] room, eventID in self?.sent(eventID, in: room) }
+            target.chatContext = { [weak self] in self?.aiChatContext ?? AIChatContext(title: "", messages: []) }
+            target.onSummarizeChat = { [weak self] in self?.summarizeChat() }
+            target.onOpenAISettings = { [weak self] in self?.onOpenAISettings() }
         }
         composer.quote = { [weak self] id in self?.message(id)?.quoted }
         thread.mayMarkRead = { [weak self] in
@@ -825,7 +859,10 @@ public final class ConversationModel: ObservableObject {
             target.network = activeReplyNetwork ?? network
             target.otherPerson = otherPerson
         }
-        if thread.roomID == room || thread.roomID == targetRoom { thread.hideDeleted = hidesDeleted }
+        thread.isDirect = isDirectChat ?? false
+        if thread.roomID == room || thread.roomID == targetRoom {
+            thread.hideDeleted = hidesDeleted
+        }
     }
 
     /// Deleted messages leave no placeholder: the person's setting, or a network that leaves none (Telegram).
@@ -977,6 +1014,10 @@ public final class ConversationModel: ObservableObject {
             chatInfo = nil
             chatInfoBookmarks = []
             dismissSenderCard()
+            cancelSummarizeChat()
+            chatSummary = nil
+            chatSummaryError = nil
+            isChatSummaryExpanded = false
         }
         // Opened at a message, nothing is read until the person reaches the newest one; in Incognito, nothing is
         // read at all, and nothing waits to be read once it is off.
@@ -1921,6 +1962,105 @@ public final class ConversationModel: ObservableObject {
         if isShowingCalendar {
             Task { [weak self] in await self?.calendarBridge.loadSelectedDay() }
         }
+    }
+
+    // MARK: - AI Context & Summarize
+
+    /// Binds this conversation's composers to a shared `AIProviderStore`.
+    public func bindAIProviderStore(_ store: AIProviderStore) {
+        composer.bindAIProviderStore(store)
+        thread.composer.bindAIProviderStore(store)
+    }
+
+    /// Loaded `TimelineMessage` items in the open chat (oldest first).
+    public var timelineMessages: [TimelineMessage] {
+        items.compactMap { item in
+            if case let .message(msg) = item { return msg }
+            return nil
+        }
+    }
+
+    /// Builds `AIChatContext` from the open chat's title and loaded text messages.
+    public var aiChatContext: AIChatContext {
+        let title = chatInfo?.name
+            ?? roomID.flatMap { chat($0)?.name }
+            ?? otherPerson
+            ?? ""
+        return AIChatContext(title: title, timelineMessages: timelineMessages)
+    }
+
+    /// Opens the AI right pane and summarizes the open chat's recent messages using `composer.aiProvider`.
+    public func summarizeChat() {
+        guard !isLocked else { return }
+        isShowingAIPane = true
+        let provider = composer.aiProvider
+        let prefs = composer.aiPreferences
+        guard provider.isAvailable else {
+            isSummarizingChat = false
+            chatSummary = nil
+            chatSummaryError = provider.unavailableReason
+            return
+        }
+
+        cancelSummarizeChat()
+        let context = aiChatContext
+        let cappedCount = min(context.messages.count, AIPrompts.maxSummarizeMessages)
+        let startedRoom = roomID
+        summarizeToken += 1
+        let token = summarizeToken
+        isSummarizingChat = true
+        summarizingMessageCount = cappedCount
+        chatSummaryError = nil
+
+        let provenance = provider.provenanceFooter(preferences: prefs)
+        let locationNote: String
+        if let configured = provider as? ConfiguredAIProvider {
+            locationNote = configured.kind.summaryLocationNote()
+        } else {
+            locationNote = prefs.selectedEngine.summaryLocationNote()
+        }
+        let collapsedHeader = cappedCount == 1
+            ? String(localized: "Summary of 1 message · \(locationNote)")
+            : String(localized: "Summary of \(cappedCount) messages · \(locationNote)")
+
+        summarizeTask = Task { @MainActor [weak self] in
+            let disposition = await provider.summarize(context: context)
+            guard !Task.isCancelled,
+                  let self,
+                  self.roomID == startedRoom,
+                  self.summarizeToken == token
+            else {
+                return
+            }
+            self.isSummarizingChat = false
+            self.summarizeTask = nil
+            switch disposition {
+            case let .text(summaryText):
+                self.chatSummary = ChatAISummary(
+                    text: AIOutputFormatter.cleanMarkdown(summaryText),
+                    messageCount: cappedCount,
+                    collapsedHeader: collapsedHeader,
+                    provenance: provenance
+                )
+                self.chatSummaryError = nil
+            case let .unavailable(reason):
+                self.chatSummary = nil
+                self.chatSummaryError = reason
+            }
+        }
+    }
+
+    /// Cancels an in-flight AI chat summary request.
+    public func cancelSummarizeChat() {
+        summarizeToken += 1
+        summarizeTask?.cancel()
+        summarizeTask = nil
+        isSummarizingChat = false
+    }
+
+    /// Waits for an in-flight chat summary request to finish (for deterministic tests).
+    public func waitForSummary() async {
+        await summarizeTask?.value
     }
 
     /// Opens the Chat Info pane if closed and asks its filter field to take focus.

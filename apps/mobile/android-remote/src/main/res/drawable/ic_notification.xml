@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copyright (c) 2026 VitruvianSoftware
+  SPDX-License-Identifier: MIT
+
+  Small status-bar notification icon: monochrome Vitruvian Golden-Datum V inside
+  inscribed circle and square, 1.5 dp stroke on the 24 dp notification grid.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FFFFFFFF">
+    <path
+        android:pathData="M5,5 H19 V19 H5 Z"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.5" />
+    <path
+        android:pathData="M3.5,12 a8.5,8.5 0 1,0 17,0 a8.5,8.5 0 1,0 -17,0"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.5" />
+    <path
+        android:pathData="M6.5,6.5 L12,19.5 L17.5,6.5"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="square"
+        android:strokeLineJoin="miter" />
+</vector>

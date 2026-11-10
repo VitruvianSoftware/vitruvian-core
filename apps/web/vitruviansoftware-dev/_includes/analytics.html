@@ -1,0 +1,20 @@
+{%- comment -%}
+  Visitor analytics: which pages are read and which sites send visitors.
+  Both services are cookieless, so the site needs no consent banner.
+
+  - Cloudflare Web Analytics: the beacon script, because the apex is DNS-only
+    (not proxied) and Cloudflare cannot inject it.
+  - Umami, self-hosted on the homelab at stats.vitruviansoftware.dev.
+
+  Each emits only in production builds (GitHub Pages sets
+  jekyll.environment to "production") and only once its public id is set in
+  _config.yml under `analytics`, so a local `jekyll serve` never counts.
+{%- endcomment -%}
+{%- if jekyll.environment == "production" -%}
+  {%- if site.analytics.cloudflare_token and site.analytics.cloudflare_token != "" %}
+    <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "{{ site.analytics.cloudflare_token }}"}'></script>
+  {%- endif -%}
+  {%- if site.analytics.umami_website_id and site.analytics.umami_website_id != "" %}
+    <script defer src="https://stats.vitruviansoftware.dev/script.js" data-website-id="{{ site.analytics.umami_website_id }}"></script>
+  {%- endif -%}
+{%- endif -%}

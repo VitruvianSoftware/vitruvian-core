@@ -45,30 +45,6 @@ class QuickPromptPanel: NSPanel {
     override var canBecomeMain: Bool { return true }
 }
 
-// MARK: - Backdrop
-
-/// What is drawn behind the chat: the popover material this app's chat
-/// window has always had, blurring whatever is under the panel. It is the
-/// dark material whatever the system's appearance, because the panel is
-/// always dark (see `ensureWindow`).
-private struct ChatBackdrop: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = .popover
-        view.blendingMode = .behindWindow
-        view.state = .active
-        // Rounded and clipped like the chat itself, so the material leaves
-        // no square outline outside the panel's corners.
-        view.wantsLayer = true
-        view.layer?.cornerRadius = NexusAgentQuickPromptLayout.cornerRadius
-        view.layer?.cornerCurve = .continuous
-        view.layer?.masksToBounds = true
-        return view
-    }
-
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
-}
-
 // MARK: - Window Controller
 
 /// The floating, Spotlight-style panel the chat lives in, and the global
@@ -287,14 +263,14 @@ final class QuickPromptWindowController: NSObject, NSWindowDelegate {
     // MARK: - The panel and the chat in it
 
     /// The chat as this app shows it: the shared view on the app's engine,
-    /// with its English text, this window's backdrop and pin, and Clear All
+    /// with its English text, Vitruvian's notch black behind it, the pin, and Clear All
     /// in the sessions drawer. There is no notch here to dock into.
     private func chatView(for engine: StandaloneEngine) -> NexusAgentChatView {
         NexusAgentChatView(
             engine: engine,
             strings: NexusAgentChatStrings(),
             chrome: NexusAgentChatChrome(
-                backdrop: AnyView(ChatBackdrop()),
+                backdrop: AnyView(NexusAgentNotchBackdrop()),
                 isPinned: Binding(get: { [weak self] in self?.isPinned ?? false },
                                   set: { [weak self] in self?.isPinned = $0 }),
                 // The folder picker counts as a click outside the panel,

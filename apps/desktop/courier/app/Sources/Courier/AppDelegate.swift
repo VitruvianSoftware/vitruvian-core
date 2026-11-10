@@ -34,6 +34,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The AI settings (slash commands, translation languages): one instance, so what Settings changes reaches the
     /// composers at once.
     let aiPreferences = AIPreferences()
+    /// Shared AI provider store (`AIProviderStore`) driving Settings ▸ AI, the AI pane, composers, and message actions.
+    let aiProviderStore: AIProviderStore
     /// Shared ⌘J Command Bar model (`CommandBarModel`).
     let commandBar: CommandBarModel
     /// Shared Settings navigation and search model (`⌘,`).
@@ -178,6 +180,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             inbox.row(of: id)
         }, preferences: composerPreferences)
         self.conversation = conversation
+        let aiProviderStore = AIProviderStore(preferences: aiPreferences)
+        self.aiProviderStore = aiProviderStore
         // Both composers (the chat's and the thread pane's): the plan, the quick replies, ⌘↩ archiving as the inbox's
         // Archive does, and toasts where the inbox's show.
         for composer in [conversation.composer, conversation.thread.composer] {
@@ -187,6 +191,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             composer.onArchive = { [weak inbox] room in await inbox?.archive(true, ids: [room]) }
             composer.onToast = { [weak inbox] message in inbox?.announce(message) }
         }
+        conversation.bindAIProviderStore(aiProviderStore)
         conversation.onToast = { [weak inbox] message in inbox?.announce(message) }
         // Mark as Unread from a message goes where the inbox's own Mark as Unread goes (one rule).
         conversation.planAfterToggleRead = { [weak inbox] in inbox?.planAfterToggleRead() ?? {} }
@@ -204,6 +209,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let messageActions = MessageActionsModel(conversation: conversation, appModel: model,
                                                  preferences: composerPreferences, pasteboard: SystemPasteboard())
         messageActions.quickReplies = quickReplies
+        messageActions.bindAIProviderStore(aiProviderStore)
         messageActions.onToast = { [weak inbox] message in inbox?.announce(message) }
         messageActions.openURL = { url in NSWorkspace.shared.open(url) }
         self.messageActions = messageActions
@@ -256,6 +262,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         inbox.onAddNetwork = { login.showPicker() }
         inbox.onReconnect = { network, accountID in login.begin(network: network, accountID: accountID) }
         super.init()
+        let openAISettings: () -> Void = { [weak self] in
+            self?.menuCoordinator.openSettings(pane: .ai)
+        }
+        conversation.onOpenAISettings = openAISettings
+        for composer in [conversation.composer, conversation.thread.composer] {
+            composer.onOpenAISettings = openAISettings
+        }
+        messageActions.onOpenAISettings = openAISettings
         commandBar.commandsProvider = { [weak self] in
             guard let self else { return [] }
             return CommandSet.all(

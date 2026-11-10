@@ -25,6 +25,7 @@ struct SettingsView: View {
     var problemReport: ProblemReportModel? = nil
     var appearance: AppearancePreferences = AppearancePreferences()
     var aiPreferences: AIPreferences = AIPreferences()
+    var aiProviderStore: AIProviderStore? = nil
     var storage: StorageModel? = nil
     var integrations: IntegrationsModel? = nil
     var updates: UpdateModel? = nil
@@ -66,6 +67,7 @@ struct SettingsView: View {
             problemReport: problemReport ?? ProblemReportModel(appModel: resolvedApp),
             appearance: appearance,
             aiPreferences: aiPreferences,
+            aiProviderStore: aiProviderStore,
             storage: storage ?? StorageModel(appModel: resolvedApp, lifecycle: lifecycle),
             integrations: integrations ?? IntegrationsModel(appModel: nil, enginePath: EngineLocation.enginePath()),
             updates: updates ?? UpdateModel(

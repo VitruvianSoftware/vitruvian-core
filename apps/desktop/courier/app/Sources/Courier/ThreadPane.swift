@@ -46,6 +46,7 @@ struct ThreadPane: View {
                 }
         }
         .courierSurface(.sidePane)
+        .environment(\.themeRoomID, thread.roomID ?? conversation.roomID)
         .onAppear {
             ui.history = { await messageActions.history(of: $0) }
             // Return in the pane's empty composer edits or replies to the message selected in the pane.
@@ -147,6 +148,7 @@ struct ThreadPane: View {
 struct ThreadSummaryLine: View {
     let summary: ThreadSummary
     let open: () -> Void
+    @Environment(\.themeAccentColor) private var themeAccent
 
     var body: some View {
         Button(action: open) {
@@ -154,7 +156,7 @@ struct ThreadSummaryLine: View {
                 Image(systemName: "bubble.left.and.bubble.right")
                 Text(MessageLines.replies(summary))
                     .fontWeight(.semibold)
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(themeAccent)
                 if let new = MessageLines.newReplies(summary) {
                     NewRepliesMark(text: new, mentionsMe: summary.unreadMentionsMe)
                 }
@@ -195,8 +197,10 @@ private struct NewRepliesMark: View {
             }
             Text(text).fontWeight(.semibold)
         }
-        .foregroundStyle(Color.accentColor)
+        .foregroundStyle(themeAccent)
     }
+
+    @Environment(\.themeAccentColor) private var themeAccent
 }
 
 /// Above the open chat's timeline while it has threads with unread replies: "New replies in 2 threads". A click
@@ -206,25 +210,29 @@ struct ThreadRepliesBanner: View {
     let text: String
     let mentionsMe: Bool
     let show: () -> Void
+    @Environment(\.themeAccentColor) private var themeAccent
 
     var body: some View {
         Button(action: show) {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Image(systemName: mentionsMe ? "at" : "bubble.left.and.bubble.right.fill")
-                    .foregroundStyle(Color.accentColor)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(themeAccent)
                 Text(text)
-                    .font(.callout.weight(.semibold))
-                Spacer(minLength: 0)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
                 Image(systemName: "arrow.up.right")
-                    .font(.caption)
+                    .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
-            .background(Color.accentColor.opacity(0.10))
-            .contentShape(Rectangle())
+            .padding(.horizontal, 10)
+            .padding(.vertical, 3)
+            .background(Capsule().fill(.quaternary))
         }
         .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
         .help(String(localized: "Show the thread with new replies"))
         .accessibilityLabel(text)
         .accessibilityHint(String(localized: "Opens the thread at its first new reply"))

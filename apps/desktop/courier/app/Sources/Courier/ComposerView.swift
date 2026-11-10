@@ -103,6 +103,7 @@ struct ComposerView: View {
     ]
 
     @Environment(\.drawsLiquidGlass) private var drawsLiquidGlass
+    @Environment(\.themeAccentColor) private var themeAccent
 
     /// The message box's height at one line, with glass: the text's height and the field's padding above and below.
     static let floatingFieldPadding: CGFloat = 4
@@ -167,6 +168,15 @@ struct ComposerView: View {
         ForEach(Array(composer.notices.enumerated()), id: \.offset) { _, notice in
             NoticeBar(text: noticeText(notice)) { composer.dismissNotice() }
         }
+        if composer.isAIWriting {
+            aiWritingRow
+        }
+        if let aiResult = composer.aiResult {
+            aiResultStrip(aiResult)
+        }
+        if let aiError = composer.aiError {
+            aiErrorStrip(aiError)
+        }
         ComposerVoiceStatusBanner(voiceRecorder: composer.voiceRecorder)
         if let mergedChat, let activeNetwork = activeReplyNetwork, !activeNetwork.isEmpty {
             mergedReplyNetworkPill(mergedChat: mergedChat, activeNetwork: activeNetwork)
@@ -213,17 +223,13 @@ struct ComposerView: View {
 
                 if showsIncognitoMark { IncognitoMark() }
 
+                primaryActionButton
+
                 if case .editing = composer.mode {
                     EmptyView()
                 } else {
                     secondaryActionButton
-                    if preferences.primaryComposerButton != .gifPicker && preferences.secondaryComposerButton != .gifPicker {
-                        gifToolbarButton
-                    }
-                    stickerToolbarButton
                 }
-
-                primaryActionButton
 
                 sendButton(floating: floating)
             }
@@ -258,6 +264,110 @@ struct ComposerView: View {
 
     // MARK: Parts
 
+    private var aiWritingRow: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+            Text(String(localized: "Writing…"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+            Button(String(localized: "Cancel")) {
+                composer.cancelAI()
+            }
+            .buttonStyle(.borderless)
+            .font(.caption)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.secondary.opacity(0.11))
+        )
+    }
+
+    private func aiResultStrip(_ result: ComposerAIResult) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(AIOutputFormatter.attributed(result.text))
+                .font(.callout)
+                .foregroundStyle(.primary)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            HStack(spacing: 10) {
+                Text(result.provenance)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Button(String(localized: "Replace")) {
+                    composer.replaceWithAIResult()
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                Button(String(localized: "Insert")) {
+                    composer.insertAIResult()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                Button(String(localized: "Discard")) {
+                    composer.discardAIResult()
+                }
+                .buttonStyle(.borderless)
+                .font(.caption)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.secondary.opacity(0.11))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Color.secondary.opacity(0.22), lineWidth: 0.5)
+        )
+    }
+
+    private func aiErrorStrip(_ errorText: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.caption)
+                .foregroundStyle(.orange)
+            Text(errorText)
+                .font(.caption)
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+            Spacer(minLength: 0)
+            Button(String(localized: "Retry")) {
+                composer.retryLastAI()
+            }
+            .buttonStyle(.borderless)
+            .font(.caption.weight(.medium))
+            Button(String(localized: "Open AI Settings")) {
+                composer.onOpenAISettings()
+            }
+            .buttonStyle(.borderless)
+            .font(.caption)
+            Button {
+                composer.dismissAIError()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help(String(localized: "Dismiss"))
+            .accessibilityLabel(String(localized: "Dismiss"))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.orange.opacity(0.12))
+        )
+    }
+
     private func mergedReplyNetworkPill(mergedChat: MergedChat, activeNetwork: String) -> some View {
         let displayName = NetworkNames.displayName(of: activeNetwork) ?? activeNetwork
         return HStack(spacing: 8) {
@@ -281,8 +391,8 @@ struct ComposerView: View {
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
-                .background(Capsule().fill(Color.accentColor.opacity(0.14)))
-                .overlay(Capsule().strokeBorder(Color.accentColor.opacity(0.45), lineWidth: 1))
+                .background(Capsule().fill(themeAccent.opacity(0.14)))
+                .overlay(Capsule().strokeBorder(themeAccent.opacity(0.45), lineWidth: 1))
             }
             .buttonStyle(.plain)
             .help(String(localized: "Switch the network your reply is sent on"))
@@ -332,16 +442,18 @@ struct ComposerView: View {
                 }
             }
             .disabled(composer.roomID == nil)
-            Button(composer.addGIFMenuTitle) {
-                if let dispatcher = composer.hotkeyDispatcher {
-                    _ = dispatcher.perform("Message: Send GIF")
-                } else {
-                    _ = composer.openGIFPicker()
+            if preferences.showsGIFInPlusMenu {
+                Button(composer.addGIFMenuTitle) {
+                    if let dispatcher = composer.hotkeyDispatcher {
+                        _ = dispatcher.perform("Message: Send GIF")
+                    } else {
+                        _ = composer.openGIFPicker()
+                    }
                 }
+                .registryShortcut("Message: Send GIF", in: composer.hotkeyDispatcher?.hotkeys ?? HotkeyRegistry())
+                .disabled(!composer.canSendGIF || composer.hotkeyDispatcher?.lifecycle.isLocked == true)
+                .help(composer.canSendGIF ? "" : composer.sendGIFMenuTitle)
             }
-            .registryShortcut("Message: Send GIF", in: composer.hotkeyDispatcher?.hotkeys ?? HotkeyRegistry())
-            .disabled(!composer.canSendGIF || composer.hotkeyDispatcher?.lifecycle.isLocked == true)
-            .help(composer.canSendGIF ? "" : composer.sendGIFMenuTitle)
             Button(composer.addStickerMenuTitle) {
                 if let dispatcher = composer.hotkeyDispatcher {
                     _ = dispatcher.perform("Message: Send Sticker")
@@ -354,7 +466,17 @@ struct ComposerView: View {
             .help(composer.canSendSticker ? "" : composer.sendStickerMenuTitle)
             Divider()
             Button(String(localized: "Add Attachment…")) { AttachmentPicker.run(into: composer) }
-            if let sendLater = menus.sendLater { sendLaterItem(sendLater) }
+            if preferences.showsSendLaterInPlusMenu {
+                if let sendLater = menus.sendLater {
+                    sendLaterItem(sendLater)
+                } else if case .thread = composer.mode {
+                    EmptyView()
+                } else {
+                    sendLaterItem {
+                        _ = composer.hotkeyDispatcher?.perform("Message: Send Later")
+                    }
+                }
+            }
             if let createPoll = menus.createPoll {
                 Button(String(localized: "Create Poll…"), action: createPoll)
                     .disabled(menus.pollsUnavailable != nil || composer.roomID == nil)
@@ -366,14 +488,28 @@ struct ComposerView: View {
             }
             .registryShortcut("Message: Talk to Type", in: composer.hotkeyDispatcher?.hotkeys ?? HotkeyRegistry())
             .disabled(composer.roomID == nil || composer.hotkeyDispatcher?.lifecycle.isLocked == true)
-            Menu(String(localized: "Draft with AI")) {
+            Button(String(localized: "Draft a reply")) {
+                if composer.aiProvider.isAvailable {
+                    composer.draftWithAI(tone: nil)
+                } else {
+                    composer.onOpenAISettings()
+                }
+            }
+            .disabled(composer.roomID == nil || composer.hotkeyDispatcher?.lifecycle.isLocked == true || !composer.aiProvider.isAvailable)
+            .help(composer.aiProvider.isAvailable ? "" : String(localized: "Set up AI in Settings"))
+            Menu(String(localized: "Rewrite…")) {
                 ForEach(AIRewriteTone.allCases, id: \.self) { tone in
                     Button(tone.label) {
-                        composer.draftWithAI(tone: tone)
+                        if composer.aiProvider.isAvailable {
+                            composer.draftWithAI(tone: tone)
+                        } else {
+                            composer.onOpenAISettings()
+                        }
                     }
                 }
             }
-            .disabled(composer.roomID == nil || composer.hotkeyDispatcher?.lifecycle.isLocked == true)
+            .disabled(composer.roomID == nil || composer.hotkeyDispatcher?.lifecycle.isLocked == true || !composer.aiProvider.isAvailable)
+            .help(composer.aiProvider.isAvailable ? "" : String(localized: "Set up AI in Settings"))
         } label: {
             if floating {
                 Image(systemName: "plus")
@@ -393,6 +529,18 @@ struct ComposerView: View {
         .fixedSize()
         .help(String(localized: "Attach files, send later, or create a poll"))
         .accessibilityLabel(String(localized: "More"))
+        .popover(
+            isPresented: Binding(
+                get: { composer.isGIFPickerPresented && preferences.showsGIFInPlusMenu },
+                set: { composer.isGIFPickerPresented = $0 }
+            ),
+            arrowEdge: .top
+        ) {
+            GIFPickerPopover(composer: composer)
+        }
+        .popover(isPresented: $composer.isStickerPickerPresented, arrowEdge: .top) {
+            StickerPickerPopover(composer: composer)
+        }
     }
 
     /// Send Later…, or without a plan that has it, greyed with "Available with a plan".
@@ -423,7 +571,7 @@ struct ComposerView: View {
             } else {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 26))
-                    .foregroundStyle(composer.canSend ? Color.accentColor : Color.secondary.opacity(0.5))
+                    .foregroundStyle(composer.canSend ? themeAccent : Color.secondary.opacity(0.5))
                     .frame(width: 28, height: ComposerTextView.minimumHeight)
                     .contentShape(Rectangle())
             }
@@ -599,7 +747,7 @@ struct ComposerView: View {
                 composer.dismissEmojiAutocomplete()
                 presentCustomEmojiImportPanel(shortcode: shortcode)
             }
-        } else if !composer.slashCommandSuggestions.isEmpty {
+        } else if !composer.isAIWriting, composer.aiResult == nil, !composer.slashCommandSuggestions.isEmpty {
             HStack(spacing: 8) {
                 ForEach(composer.slashCommandSuggestions) { cmd in
                     Button {

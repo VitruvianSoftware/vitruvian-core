@@ -248,6 +248,23 @@ package struct NotchAgentsView: View {
                                  checking: state.checking, failure: failure, refreshHint: strings.refreshHint,
                                  checkLabel: strings.check) { accounts.refresh(id: id, force: true) }
     }
+
+    /// Orders Claude limit rows: session first, then all-models weekly
+    /// (`claude.sd`), then model-scoped weeklies in the order listed.
+    nonisolated package static func claudeWindows(_ windows: [AgentLimitWindow]) -> [AgentLimitWindow] {
+        func rank(_ w: AgentLimitWindow) -> Int {
+            if w.kind == .session || w.id == "claude.fh" { return 0 }
+            if w.id == "claude.sd" || (w.kind == .weekly && w.scope == nil && !w.id.hasPrefix("claude-weekly-scoped-")) {
+                return 1
+            }
+            if w.kind == .weekly { return 2 }
+            return 3
+        }
+        return windows.enumerated().sorted { a, b in
+            let ra = rank(a.element), rb = rank(b.element)
+            return ra != rb ? ra < rb : a.offset < b.offset
+        }.map(\.element)
+    }
 }
 
 private struct NotchAgentChip: View {
@@ -332,16 +349,7 @@ private struct NotchAgentLimitsCard: View {
                 return ra != rb ? ra < rb : a.id < b.id
             }
         } else if provider == .claude {
-            return all.sorted { a, b in
-                func rank(_ w: AgentLimitWindow) -> Int {
-                    if w.kind == .session || w.id.contains("fh") { return 0 }
-                    if w.id.contains("fable") { return 2 }
-                    if w.kind == .weekly || w.id.contains("sd") { return 1 }
-                    return 3
-                }
-                let ra = rank(a), rb = rank(b)
-                return ra != rb ? ra < rb : a.id < b.id
-            }
+            return NotchAgentsView.claudeWindows(all)
         }
         let session = all.first { $0.kind == .session }
         let longer = all.filter { $0.kind != .session }.max { $0.usedPercent < $1.usedPercent }
@@ -469,15 +477,18 @@ private struct NotchAgentLimitsCard: View {
     /// A row says what is spent, when the window renews, and under-bar runway forecasting.
     private func row(_ window: AgentLimitWindow) -> some View {
         let all = (snapshot.limits[provider]?.windows ?? []).map { AgentLimitSupport.current($0, at: now) }
-        let is3p = window.id.contains("3p") || window.scope == "Claude/GPT"
+        let is3p = !window.id.hasPrefix("claude") && (window.id.contains("3p") || window.scope == "Claude/GPT")
         let weekly = all.first { w in
-            guard w.kind == .weekly && !w.id.contains("fable") else { return false }
-            let wIs3p = w.id.contains("3p") || w.scope == "Claude/GPT"
+            // The pace is measured against the plan-wide week, never a
+            // single model's week (Claude's Opus, Sonnet or Fable rows).
+            guard w.kind == .weekly && !w.id.contains("fable"),
+                  !w.id.hasPrefix("claude") || w.scope == nil else { return false }
+            let wIs3p = !w.id.hasPrefix("claude") && (w.id.contains("3p") || w.scope == "Claude/GPT")
             return wIs3p == is3p
         }
         let session = all.first { w in
             guard w.kind == .session else { return false }
-            let sIs3p = w.id.contains("3p") || w.scope == "Claude/GPT"
+            let sIs3p = !w.id.hasPrefix("claude") && (w.id.contains("3p") || w.scope == "Claude/GPT")
             return sIs3p == is3p
         }
         let pace = AgentLimitSupport.pace(for: window, now: now, weeklyWindow: weekly, sessionWindow: session)

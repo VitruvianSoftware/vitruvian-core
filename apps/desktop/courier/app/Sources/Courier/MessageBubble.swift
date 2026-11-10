@@ -78,6 +78,10 @@ struct MessageActions {
     var appearance: AppearancePreferences? = nil
     /// Per-message inline translation disposition (`MessageTranslationRowView`).
     var translation: (String) -> (targetLanguage: String, disposition: AIProviderDisposition)? = { _ in nil }
+    var isTranslating: (String) -> Bool = { _ in false }
+    var translationProvenance: (String) -> String? = { _ in nil }
+    var retryTranslation: ((String) -> Void)? = nil
+    var openAISettings: (() -> Void)? = nil
     /// Dismisses an inline translation row for a message ID.
     var dismissTranslation: (String) -> Void = { _ in }
     /// Pops a video message out into the floating Picture-in-Picture window.
@@ -160,7 +164,7 @@ struct TimelineItemView: View {
         case let .dateSeparator(day):
             DaySeparator(day: day)
         case .newDivider:
-            NewDivider()
+            NewDivider(appearance: actions.appearance)
         case let .membershipRun(_, _, summary):
             MembershipRunRow(summary: summary, isSelected: isSelected)
         case let .message(message):
@@ -204,12 +208,25 @@ private struct DaySeparator: View {
 }
 
 private struct NewDivider: View {
+    var appearance: AppearancePreferences? = nil
+    @Environment(\.appearancePreferences) private var appearanceEnv
+    @Environment(\.themeRoomID) private var themeRoomID
+    @Environment(\.themeAccentColor) private var envThemeAccent
+
+    private var themeAccent: Color {
+        if let resolved = appearance ?? appearanceEnv,
+           let color = Color(hex: resolved.effectiveTheme(for: themeRoomID).accentColorHex) {
+            return color
+        }
+        return envThemeAccent
+    }
+
     var body: some View {
         HStack(spacing: 8) {
             line
             Text(String(localized: "New"))
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(themeAccent)
             line
         }
         .padding(.vertical, 8)
@@ -218,7 +235,7 @@ private struct NewDivider: View {
     }
 
     private var line: some View {
-        Rectangle().fill(Color.accentColor.opacity(0.5)).frame(height: 1)
+        Rectangle().fill(themeAccent.opacity(0.5)).frame(height: 1)
     }
 }
 
@@ -227,6 +244,7 @@ private struct NewDivider: View {
 struct MembershipRunRow: View {
     let summary: String
     let isSelected: Bool
+    @Environment(\.themeAccentColor) private var themeAccent
 
     var body: some View {
         HStack(spacing: 6) {
@@ -240,7 +258,7 @@ struct MembershipRunRow: View {
         .multilineTextAlignment(.center)
         .padding(.horizontal, 10)
         .padding(.vertical, 4)
-        .background(RoundedRectangle(cornerRadius: 8).fill(isSelected ? Color.accentColor.opacity(0.10) : .clear))
+        .background(RoundedRectangle(cornerRadius: 8).fill(isSelected ? themeAccent.opacity(0.10) : .clear))
         .frame(maxWidth: .infinity)
         .padding(.vertical, 6)
         .contentShape(Rectangle())
@@ -254,6 +272,7 @@ private struct TimerNoteRow: View {
     let message: TimelineMessage
     let isSelected: Bool
     let actions: MessageActions
+    @Environment(\.themeAccentColor) private var themeAccent
 
     var body: some View {
         HStack(spacing: 6) {
@@ -274,7 +293,7 @@ private struct TimerNoteRow: View {
         .multilineTextAlignment(.center)
         .padding(.horizontal, 10)
         .padding(.vertical, 4)
-        .background(RoundedRectangle(cornerRadius: 8).fill(isSelected ? Color.accentColor.opacity(0.10) : .clear))
+        .background(RoundedRectangle(cornerRadius: 8).fill(isSelected ? themeAccent.opacity(0.10) : .clear))
         .frame(maxWidth: .infinity)
         .padding(.vertical, 6)
         .contentShape(Rectangle())
@@ -298,6 +317,7 @@ private struct CallNoteRow: View {
     let call: CallNote
     let isSelected: Bool
     let actions: MessageActions
+    @Environment(\.themeAccentColor) private var themeAccent
 
     var body: some View {
         HStack(spacing: 6) {
@@ -315,7 +335,7 @@ private struct CallNoteRow: View {
         .multilineTextAlignment(.center)
         .padding(.horizontal, 10)
         .padding(.vertical, 4)
-        .background(RoundedRectangle(cornerRadius: 8).fill(isSelected ? Color.accentColor.opacity(0.10) : .clear))
+        .background(RoundedRectangle(cornerRadius: 8).fill(isSelected ? themeAccent.opacity(0.10) : .clear))
         .frame(maxWidth: .infinity)
         .padding(.vertical, 6)
         .contentShape(Rectangle())
@@ -342,6 +362,7 @@ struct MessageRowView: View {
     @ObservedObject var ui: MessageUI
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.appearancePreferences) private var appearanceEnv
+    @Environment(\.themeAccentColor) private var envThemeAccent
     @Environment(\.reactionCardOverride) private var cardOverride
     @State private var barSize: CGSize = .zero
     /// The reaction chip under the pointer, and the one whose card is open (after a short rest on it).
@@ -383,6 +404,10 @@ struct MessageRowView: View {
                     MessageTranslationRowView(
                         targetLanguage: translated.targetLanguage,
                         disposition: translated.disposition,
+                        isTranslating: actions.isTranslating(message.id),
+                        provenance: actions.translationProvenance(message.id),
+                        onRetry: actions.retryTranslation.map { retry in { retry(message.id) } },
+                        onOpenAISettings: actions.openAISettings,
                         onDismiss: { actions.dismissTranslation(message.id) }
                     )
                     .takesOwnClick()
@@ -408,7 +433,7 @@ struct MessageRowView: View {
         }
         .padding(.top, message.startsGroup ? 10 : 2)
         .padding(.vertical, 1)
-        .background(RoundedRectangle(cornerRadius: 8).fill(isSelected ? Color.accentColor.opacity(0.10) : .clear))
+        .background(RoundedRectangle(cornerRadius: 8).fill(isSelected ? themeAccent.opacity(0.10) : .clear))
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.yellow.opacity(0.28 * highlight)))
         .onChange(of: isHighlighted, initial: true) { _, on in fadeHighlight(on) }
         .contentShape(Rectangle())
@@ -632,6 +657,14 @@ struct MessageRowView: View {
         actions.appearance ?? appearanceEnv
     }
 
+    private var themeAccent: Color {
+        if let hex = resolvedAppearance?.effectiveTheme(for: message.roomID).accentColorHex,
+           let color = Color(hex: hex) {
+            return color
+        }
+        return envThemeAccent
+    }
+
     @ViewBuilder
     private var avatarColumn: some View {
         let isRedacted = resolvedAppearance?.redactNamesAndPictures ?? false
@@ -651,6 +684,7 @@ struct MessageRowView: View {
         }
     }
 
+    @ViewBuilder
     private var header: some View {
         let isRedacted = resolvedAppearance?.redactNamesAndPictures ?? false
         let displaySenderName = isRedacted
@@ -659,29 +693,34 @@ struct MessageRowView: View {
         let senderColor: Color = (resolvedAppearance?.perParticipantBubbleColors ?? false)
             ? (Color(hex: AppearancePreferences.participantBubbleColorHex(for: message.sender, isDark: colorScheme == .dark)) ?? AvatarView.color(for: message.senderName))
             : AvatarView.color(for: message.senderName)
-        return HStack(spacing: 6) {
-            if let net = actions.messageNetwork(message), !net.isEmpty {
-                NetworkBadge(
-                    network: net,
-                    name: NetworkNames.displayName(of: net) ?? net,
-                    size: 12
-                )
+        let net = actions.messageNetwork(message)
+        let hasNet = net != nil && !(net?.isEmpty ?? true)
+        let showsSender = !message.mine && !message.isDirect
+        if hasNet || showsSender || actions.showMessageTimestamps {
+            HStack(spacing: 6) {
+                if let net, !net.isEmpty {
+                    NetworkBadge(
+                        network: net,
+                        name: NetworkNames.displayName(of: net) ?? net,
+                        size: 12
+                    )
+                }
+                if showsSender {
+                    Text(displaySenderName)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(senderColor)
+                        .onHover { hovering in
+                            actions.hoverSender(hovering, message)
+                        }
+                }
+                if actions.showMessageTimestamps {
+                    Text(actions.timeFormat.formatTime(Date(timeIntervalSince1970: Double(message.ts) / 1000)))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
-            if !message.mine {
-                Text(displaySenderName)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(senderColor)
-                    .onHover { hovering in
-                        actions.hoverSender(hovering, message)
-                    }
-            }
-            if actions.showMessageTimestamps {
-                Text(actions.timeFormat.formatTime(Date(timeIntervalSince1970: Double(message.ts) / 1000)))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
+            .padding(.horizontal, 4)
         }
-        .padding(.horizontal, 4)
     }
 
     @ViewBuilder
@@ -898,7 +937,7 @@ struct MessageRowView: View {
             let effective = appearance.effectiveTheme(for: message.roomID)
             let isDark = colorScheme == .dark
             if message.mine {
-                return Color(hex: isDark ? effective.outgoingBubbleHexDark : effective.outgoingBubbleHexLight) ?? Color.accentColor
+                return Color(hex: isDark ? effective.outgoingBubbleHexDark : effective.outgoingBubbleHexLight) ?? themeAccent
             }
             if appearance.perParticipantBubbleColors {
                 return Color(hex: AppearancePreferences.participantBubbleColorHex(for: message.sender, isDark: isDark)) ?? Color.primary.opacity(0.09)
@@ -907,7 +946,7 @@ struct MessageRowView: View {
                 return Color(hex: isDark ? effective.incomingBubbleHexDark : effective.incomingBubbleHexLight) ?? Color.primary.opacity(0.09)
             }
         }
-        return message.mine ? Color.accentColor : Color.primary.opacity(0.09)
+        return message.mine ? themeAccent : Color.primary.opacity(0.09)
     }
 
     private var foreground: Color {
@@ -934,7 +973,7 @@ struct MessageRowView: View {
                     .padding(.horizontal, 7)
                     .padding(.vertical, 2)
                     .background(Capsule().fill(chipFill(chip)))
-                    .overlay(Capsule().strokeBorder(chip.mine ? Color.accentColor : .clear, lineWidth: 1))
+                    .overlay(Capsule().strokeBorder(chip.mine ? themeAccent : .clear, lineWidth: 1))
                     .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
@@ -953,7 +992,7 @@ struct MessageRowView: View {
 
     private func chipFill(_ chip: ReactionChip) -> Color {
         let hovered = hoveredChip == chip.key
-        return chip.mine ? Color.accentColor.opacity(hovered ? 0.32 : 0.22) : Color.primary.opacity(hovered ? 0.14 : 0.08)
+        return chip.mine ? themeAccent.opacity(hovered ? 0.32 : 0.22) : Color.primary.opacity(hovered ? 0.14 : 0.08)
     }
 
     /// "Add Reaction…" at the end of the chips, while the message is selected. Always laid out, so the row keeps its
@@ -1123,11 +1162,12 @@ struct MessageRowView: View {
 private struct QuoteView: View {
     let reply: ReplyPreview
     let onBubble: Bool
+    @Environment(\.themeAccentColor) private var themeAccent
 
     var body: some View {
         HStack(spacing: 6) {
             Rectangle()
-                .fill(onBubble ? Color.white.opacity(0.7) : Color.accentColor)
+                .fill(onBubble ? Color.white.opacity(0.7) : themeAccent)
                 .frame(width: 3)
             VStack(alignment: .leading, spacing: 1) {
                 switch reply {

@@ -26,6 +26,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
@@ -39,7 +40,6 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -78,6 +78,7 @@ public fun VButton(
     contentPadding: PaddingValues = PaddingValues(horizontal = Space.s5),
     trailingIcon: String? = null,
     contentDescription: String? = null,
+    secondary: String? = null,
 ) {
   val colors = Vitruvian
   val border =
@@ -109,7 +110,6 @@ public fun VButton(
                   enabled = enabled,
                   interactionSource = interactionSource,
                   indication = LocalIndication.current,
-                  role = Role.Button,
                   onClick = onClick,
               )
               .then(
@@ -139,37 +139,77 @@ public fun VButton(
               .padding(contentPadding),
       contentAlignment = Alignment.Center,
   ) {
-    if (trailingIcon == null) {
-      VText(
-          text = label.uppercase(),
-          modifier =
-              if (resolvedDescription != null) Modifier.clearAndSetSemantics {} else Modifier,
-          style = VitruvianType.buttonTouch.copy(textAlign = TextAlign.Center),
-          color = text,
-          maxLines = 1,
-          overflow = TextOverflow.Ellipsis,
-          softWrap = false,
-      )
-    } else {
-      // The label gives way to the icon: a long one ellipsises, the icon always shows.
-      Row(
-          verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.spacedBy(Space.s2),
-      ) {
+    val labelSemantics =
+        if (resolvedDescription != null) Modifier.clearAndSetSemantics {} else Modifier
+    if (secondary.isNullOrBlank()) {
+      if (trailingIcon == null) {
         VText(
             text = label.uppercase(),
-            modifier =
-                Modifier.weight(1f, fill = false)
-                    .then(
-                        if (resolvedDescription != null) Modifier.clearAndSetSemantics {}
-                        else Modifier),
-            style = VitruvianType.buttonTouch,
+            modifier = labelSemantics,
+            style = VitruvianType.buttonTouch.copy(textAlign = TextAlign.Center),
             color = text,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             softWrap = false,
         )
-        VIcon(path = trailingIcon, iconSize = 16.dp, color = text)
+      } else {
+        // The label gives way to the icon: a long one ellipsises, the icon always shows.
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Space.s2),
+        ) {
+          VText(
+              text = label.uppercase(),
+              modifier = Modifier.weight(1f, fill = false).then(labelSemantics),
+              style = VitruvianType.buttonTouch,
+              color = text,
+              maxLines = 1,
+              overflow = TextOverflow.Ellipsis,
+              softWrap = false,
+          )
+          VIcon(path = trailingIcon, iconSize = 16.dp, color = text)
+        }
+      }
+    } else {
+      Column(
+          horizontalAlignment = Alignment.CenterHorizontally,
+          verticalArrangement = Arrangement.spacedBy(Space.s1),
+      ) {
+        if (trailingIcon == null) {
+          VText(
+              text = label.uppercase(),
+              modifier = labelSemantics,
+              style = VitruvianType.buttonTouch.copy(textAlign = TextAlign.Center),
+              color = text,
+              maxLines = 1,
+              overflow = TextOverflow.Ellipsis,
+              softWrap = false,
+          )
+        } else {
+          Row(
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(Space.s2),
+          ) {
+            VText(
+                text = label.uppercase(),
+                modifier = Modifier.weight(1f, fill = false).then(labelSemantics),
+                style = VitruvianType.buttonTouch,
+                color = text,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                softWrap = false,
+            )
+            VIcon(path = trailingIcon, iconSize = 16.dp, color = text)
+          }
+        }
+        VText(
+            text = secondary,
+            style = VitruvianType.listSub.copy(textAlign = TextAlign.Center),
+            color = colors.textDim,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            softWrap = false,
+        )
       }
     }
   }

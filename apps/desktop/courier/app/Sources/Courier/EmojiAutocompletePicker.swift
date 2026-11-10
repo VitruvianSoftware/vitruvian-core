@@ -10,6 +10,7 @@ public struct EmojiItemRow: View {
     public let isSelected: Bool
     public let thumbnailLoader: ThumbnailLoader?
     @State private var loadedImage: CGImage?
+    @Environment(\.themeAccentColor) private var themeAccent
 
     public init(
         candidate: EmojiCandidate,
@@ -56,7 +57,7 @@ public struct EmojiItemRow: View {
         .padding(.vertical, 5)
         .background(
             RoundedRectangle(cornerRadius: 6)
-                .fill(isSelected ? Color.accentColor : Color.clear)
+                .fill(isSelected ? themeAccent : Color.clear)
         )
         .contentShape(Rectangle())
         .task(id: candidate.mediaURL) {

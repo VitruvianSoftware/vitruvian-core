@@ -350,6 +350,8 @@ public data class HomeSpeakerSources(
     val customVoices: List<AgentCustomVoice> = emptyList(),
     val customStylePrompt: String = "",
     val quietHoursActive: Boolean = false,
+    val quietHoursStart: String = HomeSpeakerWire.DEFAULT_QUIET_START,
+    val quietHoursEnd: String = HomeSpeakerWire.DEFAULT_QUIET_END,
     val availableVoices: List<AgentVoice> = emptyList(),
     val structureId: String = "",
     val homes: List<AgentHome> = emptyList(),
@@ -367,7 +369,7 @@ public data class HomeSpeakerSources(
     val gwsInstalled: Boolean = false,
     val gwsAccount: String = "",
     val googleChatSource: String = "auto",
-    val pollInterval: Int = 30,
+    val pollInterval: Int = HomeSpeakerWire.DEFAULT_POLL_INTERVAL,
     val agents: List<AgentHookStatus> = emptyList(),
     val legacyLaunchAgent: Boolean = false,
     val customOAuthClientId: String = "",
@@ -388,6 +390,12 @@ public data class HomeSpeakerSources(
 )
 
 public object HomeSpeakerWire {
+  public const val DEFAULT_QUIET_START: String = "22:00"
+  public const val DEFAULT_QUIET_END: String = "07:00"
+  public const val DEFAULT_POLL_INTERVAL: Int = 15
+  public const val MIN_POLL_INTERVAL: Int = 5
+  public const val MAX_POLL_INTERVAL: Int = 300
+
   /**
    * Reads the v1.10+ fields; anything unparseable reads as an older agent (all null, no history,
    * default local engine and style).
@@ -468,7 +476,14 @@ public object HomeSpeakerWire {
               agentSlug = (it["agent_slug"] as? String).orEmpty(),
           )
         }
-    val pollInterval = ((o["poll_interval"] as? Number)?.toInt() ?: 30).coerceAtLeast(5)
+    val quiet = o["quiet_hours"] as? Map<*, *>
+    val quietHoursStart =
+        (quiet?.get("start") as? String)?.takeIf { it.isNotBlank() } ?: DEFAULT_QUIET_START
+    val quietHoursEnd =
+        (quiet?.get("end") as? String)?.takeIf { it.isNotBlank() } ?: DEFAULT_QUIET_END
+    val pollInterval =
+        ((o["poll_interval"] as? Number)?.toInt() ?: DEFAULT_POLL_INTERVAL).coerceIn(
+            MIN_POLL_INTERVAL, MAX_POLL_INTERVAL)
     return HomeSpeakerSources(
         announceClaudeCode = flag("announce_claude_code"),
         announceAntigravity = flag("announce_antigravity"),
@@ -494,6 +509,8 @@ public object HomeSpeakerWire {
         customVoices = customVoices,
         customStylePrompt = (o["custom_style_prompt"] as? String).orEmpty(),
         quietHoursActive = flag("quiet_hours_active") ?: false,
+        quietHoursStart = quietHoursStart,
+        quietHoursEnd = quietHoursEnd,
         availableVoices = availableVoices,
         structureId = str("structure_id", ""),
         homes = homes,
@@ -770,7 +787,7 @@ public data class PairLink(val url: String, val code: String, val name: String)
 
 // --- Sony Google TV (`/v1/tv`) ------------------------------------------
 
-/** State of the Sony Google TV reported by `GET /v1/tv` and `POST /v1/tv`. */
+/** State of the Sony Google TV reported by `GET /v1/tv` and `POST /v1/tv/act`. */
 public data class AgentTv(
     val available: Boolean,
     val connected: Boolean,
@@ -784,8 +801,12 @@ public data class AgentTv(
 
 public object TvWire {
   public const val DEFAULT_ADDRESS: String = "192.168.86.31:5555"
+  public const val STATE_PATH: String = "/v1/tv"
+  public const val ACT_PATH: String = "/v1/tv/act"
 
-  /** Parses `GET /v1/tv` and `POST /v1/tv` responses without `org.json` so JVM unit tests run. */
+  /**
+   * Parses `GET /v1/tv` and `POST /v1/tv/act` responses without `org.json` so JVM unit tests run.
+   */
   public fun parse(json: String): AgentTv {
     val o =
         runCatching { JsonReader(json).readValue() as? Map<*, *> }.getOrNull()

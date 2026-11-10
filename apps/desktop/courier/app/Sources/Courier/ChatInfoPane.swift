@@ -42,6 +42,9 @@ public struct ChatInfoPane: View {
     public var onLeaveGroup: () -> Void = {}
     public var onDeleteChat: () -> Void = {}
     public var onReportSpam: () -> Void = {}
+    public var isAIAvailable: Bool = false
+    public var onSummarizeChat: (() -> Void)? = nil
+    public var onOpenAISettings: (() -> Void)? = nil
     public var onClose: () -> Void = {}
     /// With glass in the main window the header is a toolbar item (`ChatInfoHeader`, placed by ConversationView), so
     /// the pane draws none of its own.
@@ -84,6 +87,9 @@ public struct ChatInfoPane: View {
         onLeaveGroup: @escaping () -> Void = {},
         onDeleteChat: @escaping () -> Void = {},
         onReportSpam: @escaping () -> Void = {},
+        isAIAvailable: Bool = false,
+        onSummarizeChat: (() -> Void)? = nil,
+        onOpenAISettings: (() -> Void)? = nil,
         onClose: @escaping () -> Void = {},
         headerInToolbar: Bool = false
     ) {
@@ -110,6 +116,9 @@ public struct ChatInfoPane: View {
         self.onLeaveGroup = onLeaveGroup
         self.onDeleteChat = onDeleteChat
         self.onReportSpam = onReportSpam
+        self.isAIAvailable = isAIAvailable
+        self.onSummarizeChat = onSummarizeChat
+        self.onOpenAISettings = onOpenAISettings
         self.onClose = onClose
     }
 
@@ -658,6 +667,29 @@ public struct ChatInfoPane: View {
     private var actionsSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             Divider()
+            if let onSummarizeChat {
+                Button(action: {
+                    if isAIAvailable {
+                        onSummarizeChat()
+                    } else {
+                        onOpenAISettings?()
+                    }
+                }) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "text.redaction")
+                            .frame(width: 16)
+                        Text(String(localized: "Summarize Chat"))
+                            .font(.callout)
+                            .foregroundStyle(isAIAvailable ? .primary : .secondary)
+                        Spacer(minLength: 0)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(!isAIAvailable && onOpenAISettings == nil)
+                .help(isAIAvailable ? "" : String(localized: "Set up AI in Settings"))
+            }
+
             Button(action: onRefresh) {
                 HStack(spacing: 8) {
                     Image(systemName: "arrow.clockwise")
@@ -975,6 +1007,13 @@ struct ChatInfoWindow: View {
                     },
                     onReportSpam: {
                         Task { await conversation.beginReportSpam(info: info, roomID: roomID) }
+                    },
+                    isAIAvailable: conversation.composer.aiProvider.isAvailable,
+                    onSummarizeChat: {
+                        conversation.summarizeChat()
+                    },
+                    onOpenAISettings: {
+                        conversation.onOpenAISettings()
                     }
                 )
             } else {

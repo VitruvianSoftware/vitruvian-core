@@ -203,6 +203,7 @@ private struct RowsHeightKey: PreferenceKey {
 private struct ScopeChip: View {
     let name: String
     let remove: () -> Void
+    @Environment(\.themeAccentColor) private var themeAccent
 
     var body: some View {
         HStack(spacing: 4) {
@@ -220,7 +221,7 @@ private struct ScopeChip: View {
         .font(.callout)
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
-        .background(Capsule().fill(Color.accentColor.opacity(0.15)))
+        .background(Capsule().fill(themeAccent.opacity(0.15)))
         .frame(maxWidth: 220, alignment: .leading)
         .fixedSize()
     }

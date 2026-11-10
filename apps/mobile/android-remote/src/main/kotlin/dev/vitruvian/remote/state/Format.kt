@@ -133,6 +133,21 @@ public object Format {
     return "${seconds / DAY} d ago"
   }
 
+  /**
+   * Body copy for the offline host banner.
+   *
+   * Uses the real time since the last sample ([lastSampleIso]); when no sample timestamp has been
+   * recorded yet or cannot be parsed, omits the "Last seen …" clause rather than inventing one.
+   */
+  public fun offlineBannerBody(lastSampleIso: String?, now: Long): String {
+    val rel = relativeTime(lastSampleIso.orEmpty(), now)
+    return if (rel.isNotBlank()) {
+      "Last seen $rel via Tailscale. Controls are disabled; dashboards show the last sample."
+    } else {
+      "Controls are disabled; dashboards show the last sample."
+    }
+  }
+
   private fun parseInstant(iso: String): Instant? {
     val text = iso.trim()
     if (text.isEmpty()) return null

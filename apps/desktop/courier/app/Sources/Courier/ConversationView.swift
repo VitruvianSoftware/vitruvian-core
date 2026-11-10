@@ -23,6 +23,7 @@ struct ConversationView: View {
     var appearance: AppearancePreferences? = nil
     @Environment(\.controlActiveState) private var controlActiveState
     @Environment(\.appearancePreferences) private var appearanceEnv
+    @Environment(\.themeAccentHex) private var themeAccentHex
     @Environment(\.drawsLiquidGlass) private var drawsLiquidGlass
     @StateObject private var ui = MessageUI()
     @State private var isDropTargeted = false
@@ -118,14 +119,56 @@ struct ConversationView: View {
                     onReportSpam: {
                         Task { await conversation.beginReportSpam(info: info) }
                     },
+                    isAIAvailable: composer.aiProvider.isAvailable,
+                    onSummarizeChat: {
+                        conversation.summarizeChat()
+                    },
+                    onOpenAISettings: {
+                        conversation.onOpenAISettings()
+                    },
                     onClose: conversation.toggleChatInfo,
                     headerInToolbar: drawsLiquidGlass
                 )
                 .frame(minWidth: 280, idealWidth: 320, maxWidth: 420)
                 .reportsSidePaneWidth(.chatInfo)
             }
+            if conversation.isShowingAIPane {
+                AIPane(
+                    chatTitle: chatName ?? String(localized: "Chat"),
+                    preferences: composer.aiPreferences,
+                    provider: composer.aiProvider,
+                    isSummarizing: conversation.isSummarizingChat,
+                    summarizingMessageCount: conversation.summarizingMessageCount,
+                    summary: conversation.chatSummary,
+                    summaryError: conversation.chatSummaryError,
+                    isSummaryExpanded: conversation.isChatSummaryExpanded,
+                    onSummarize: { conversation.summarizeChat() },
+                    onCancelSummarize: { conversation.cancelSummarizeChat() },
+                    onToggleSummaryExpanded: { conversation.isChatSummaryExpanded.toggle() },
+                    onCopySummary: { text in
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(text, forType: .string)
+                        conversation.onToast(String(localized: "Copied summary"))
+                    },
+                    onOpenAISettings: { conversation.onOpenAISettings() },
+                    onClose: { conversation.isShowingAIPane = false },
+                    headerInToolbar: drawsLiquidGlass
+                )
+                .reportsSidePaneWidth(.ai)
+            }
         }
         .onPreferenceChange(SidePaneWidthKey.self) { sidePaneWidths = $0 }
+        .environment(\.appearancePreferences, resolvedAppearance)
+        .environment(\.themeRoomID, conversation.roomID)
+        .environment(
+            \.themeAccentHex,
+            resolvedAppearance?.effectiveTheme(for: conversation.roomID).accentColorHex ?? themeAccentHex
+        )
+        .tint(
+            Color(
+                hex: resolvedAppearance?.effectiveTheme(for: conversation.roomID).accentColorHex ?? themeAccentHex
+            ) ?? .accentColor
+        )
         .courierChatToolbar {
             ConversationHeaderContainer(inbox: inbox, conversation: conversation, redactNamesAndPictures: redact,
                                         part: .identity)
@@ -261,17 +304,25 @@ struct ConversationView: View {
     private var sidePaneHeaders: some View {
         let showsThread = thread.rootID != nil && thread.roomID == conversation.roomID
         let info = conversation.isShowingChatInfo ? conversation.chatInfo : nil
+        let showsAI = conversation.isShowingAIPane
         let threadWidth = showsThread ? sidePaneWidths[.thread] : nil
         let infoWidth = info != nil ? sidePaneWidths[.chatInfo] : nil
-        if threadWidth != nil || infoWidth != nil {
+        let aiWidth = showsAI ? sidePaneWidths[.ai] : nil
+        if threadWidth != nil || infoWidth != nil || aiWidth != nil {
             HStack(spacing: 0) {
                 if let threadWidth {
+                    let isLast = infoWidth == nil && aiWidth == nil
                     ThreadPaneHeader(thread: thread, focus: focus, chatName: chatName, inToolbar: true)
-                        .frame(width: max(0, threadWidth - (infoWidth == nil ? PaneHeaderMetrics.toolbarItemSlack : 0)))
+                        .frame(width: max(0, threadWidth - (isLast ? PaneHeaderMetrics.toolbarItemSlack : 0)))
                 }
                 if let info, let infoWidth {
+                    let isLast = aiWidth == nil
                     ChatInfoHeader(roomID: info.roomID, onClose: conversation.toggleChatInfo, inToolbar: true)
-                        .frame(width: max(0, infoWidth - PaneHeaderMetrics.toolbarItemSlack))
+                        .frame(width: max(0, infoWidth - (isLast ? PaneHeaderMetrics.toolbarItemSlack : 0)))
+                }
+                if let aiWidth {
+                    AIPaneHeader(onClose: { conversation.isShowingAIPane = false }, inToolbar: true)
+                        .frame(width: max(0, aiWidth - PaneHeaderMetrics.toolbarItemSlack))
                 }
             }
         }
@@ -302,7 +353,6 @@ struct ConversationView: View {
                 if let banner = conversation.unreadThreadsBanner {
                     ThreadRepliesBanner(text: banner, mentionsMe: conversation.unreadThreadsMentionMe,
                                         show: conversation.showNextUnreadThread)
-                    if !drawsLiquidGlass { Divider() }
                 }
             }
             // With glass the messages run under the composer, which floats over their bottom.
@@ -696,8 +746,10 @@ struct ConversationView: View {
                         Text(String(localized: "Jump to latest"))
                             .font(.callout.weight(.medium))
                         if conversation.hasNewerWhileAway {
+                            let accentHex = resolvedAppearance?.effectiveTheme(for: conversation.roomID).accentColorHex
+                                ?? CourierThemePreset.classicTeal.defaultAccentHex
                             Circle()
-                                .fill(Color.accentColor)
+                                .fill(Color(hex: accentHex) ?? Color.accentColor)
                                 .frame(width: 7, height: 7)
                                 .accessibilityLabel(String(localized: "New messages"))
                         }
@@ -838,7 +890,7 @@ private struct ConversationComposerContainer: View {
     let upArrow: () -> Bool
 
     private var currentChromeSignature: String {
-        "\(composer.replyTarget?.eventID ?? "")|\(composer.attachments.count)|\(composer.notice == nil ? "" : "notice")"
+        "\(composer.replyTarget?.eventID ?? "")|\(composer.attachments.count)|\(composer.notice == nil ? "" : "notice")|\(composer.isAIWriting)|\(composer.aiResult != nil)|\(composer.aiError ?? "")"
     }
 
     var body: some View {
@@ -873,7 +925,7 @@ private struct ConversationComposerContainer: View {
 /// The chat's picture, name and network, and with a disappearing timer running, "Messages disappear after 7 days",
 /// with the timer's menu. Without glass it is a strip over the messages; with glass its two parts go in the window's
 /// toolbar, the identity where the title was and the buttons as toolbar buttons.
-private struct ConversationHeader: View {
+struct ConversationHeader: View {
     enum Part { case strip, identity, actions }
 
     let row: InboxRow?
@@ -912,16 +964,13 @@ private struct ConversationHeader: View {
                 .clipShape(Circle())
                 .frame(width: 32, height: 32)
             VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 6) {
-                    Text(
-                        redactNamesAndPictures
-                            ? AppearancePreferences.redactedText(row.name, kind: .chatTitle)
-                            : row.name
-                    )
-                        .font(.headline)
-                        .lineLimit(1)
-                    NetworkBadge(network: row.network, name: networkName ?? row.network, size: 14)
-                }
+                Text(
+                    redactNamesAndPictures
+                        ? AppearancePreferences.redactedText(row.name, kind: .chatTitle)
+                        : row.name
+                )
+                    .font(.headline)
+                    .lineLimit(1)
                 if let timer = conversation.timerLine {
                     Label(timer, systemImage: "timer")
                         .font(.caption)
@@ -939,6 +988,21 @@ private struct ConversationHeader: View {
         DisappearingMenu(conversation: conversation, inToolbar: inToolbar)
         let info = Button(action: conversation.toggleChatInfo) {
             Image(systemName: conversation.isShowingChatInfo ? "info.circle.fill" : "info.circle")
+        }
+        .contextMenu {
+            Button(String(localized: "Chat Info")) {
+                conversation.toggleChatInfo()
+            }
+            Divider()
+            Button(String(localized: "Summarize Chat")) {
+                if conversation.composer.aiProvider.isAvailable {
+                    conversation.summarizeChat()
+                } else {
+                    conversation.onOpenAISettings()
+                }
+            }
+            .disabled(!conversation.composer.aiProvider.isAvailable)
+            .help(conversation.composer.aiProvider.isAvailable ? "" : String(localized: "Set up AI in Settings"))
         }
         .help(String(localized: "Chat Info (⌘⇧I)"))
         .accessibilityLabel(String(localized: "Chat Info"))

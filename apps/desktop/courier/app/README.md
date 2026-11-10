@@ -39,6 +39,49 @@ which holds none of this code: `:release_engine_has_no_seed_test` checks both ap
 
 Quit it from its menu, or `osascript -e 'tell application id "com.vitruviansoftware.courier.dev" to quit'`. Its menus can be driven by System Events (`click menu item "Settings…" of menu 1 of menu bar item "Courier Test Copy" of menu bar 1 of process "Courier Test Copy"`), which is how the menu bar was checked item by item.
 
+## AI providers
+
+Courier can draft replies, rewrite text in different tones, translate messages inline, and summarize chats (including the `/draft`, `/translate`, `/summarize`, and `/ai` slash commands). AI is turned off by default. Nothing leaves your Mac until you turn it on, and Courier never sends AI output on your behalf—everything lands in the composer or AI pane for you to review, edit, or discard.
+
+Where each action lives:
+
+- **Draft a reply** and **Rewrite…** (tones): the **+** menu in the message box, or type `/draft`. The result shows above your text with **Replace**, **Insert** and **Discard**.
+- **Translate**: right-click a message. It uses *Preferred response language*; a submenu offers your other enabled languages.
+- **Summarize**: the chat's ⓘ menu or the command bar (⌘K). The summary opens in the AI pane.
+
+Voice transcription and Talk to Type are not available yet.
+
+### Providers and setup
+
+Pick a provider in **Settings ▸ AI**. Choosing one turns AI on; choosing **Off** turns it off.
+
+- **On this Mac (stays local):**
+  - **Apple Intelligence:** Built-in on macOS 26 or later on supported Macs.
+  - **Ollama:** Install and run Ollama; Courier detects it automatically.
+  - **LM Studio:** Install LM Studio, start its local server, and Courier detects it.
+  - **Unsloth Studio:** Start Unsloth Studio and paste its API key in Settings ▸ AI.
+- **Cloud (bring your own key):**
+  - **Anthropic:** Create an API key at [console.anthropic.com](https://console.anthropic.com).
+  - **Google AI Studio:** Create an API key at [aistudio.google.com](https://aistudio.google.com).
+  - **OpenAI:** Create an API key at [platform.openai.com](https://platform.openai.com).
+  - **OpenAI-compatible:** Enter your endpoint base URL and optional API key.
+
+### Privacy and key storage
+
+- **Keys in Keychain only:** API keys are stored exclusively in the macOS Keychain, never in config files or logs. The test copy keeps its own separate Keychain store.
+- **Minimal text only:** Courier sends only the text messages needed for the immediate action (for example, the last 30 text messages for drafting a reply or the last 100 for a summary). Attachments, photos, and files are never sent.
+- **No background queries:** Courier never queries an AI model automatically. Every request happens only when you explicitly invoke an AI action.
+
+### Troubleshooting
+
+| Issue | What to check |
+|---|---|
+| **Not running** | Start the local app. Ollama listens on `127.0.0.1:11434`, LM Studio on port `1234` with its local server turned on, and Unsloth Studio on ports `8888`–`8908`. Courier only treats a port as Unsloth Studio when Studio's own file for it exists in `~/.unsloth/studio` (or `$UNSLOTH_STUDIO_HOME`), so start Studio normally rather than serving a model some other way. Click **Refresh** in Settings ▸ AI. |
+| **Needs key** | Enter and save your API key in Settings ▸ AI. Cloud providers and Unsloth Studio require a key before use. |
+| **Bad key** | Verify the API key pasted into Settings ▸ AI is correct, active, and has not expired or been revoked. |
+| **Rate limited** | You reached your provider's rate or quota limits. Wait a few moments or verify billing on your provider console. |
+| **No network** | Check your Mac's internet connection for cloud models, or confirm localhost server connectivity for local models. |
+
 ## Courier's Telegram app ID
 
 Telegram wants every app to register its own `api_id` and `api_hash`. Courier is built for people who will never type them, so a finished app carries Courier's own, and Telegram goes straight to its QR code.

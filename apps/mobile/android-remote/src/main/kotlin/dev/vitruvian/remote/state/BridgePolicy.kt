@@ -122,7 +122,7 @@ public object BridgePolicy {
 
   /** What an act tool says when the window is shut. Names the button, not the rule. */
   public const val ACT_DENIED: String =
-      "denied: the trust window is closed. On the phone: Hosts → Phone bridge → " +
+      "denied: the trust window is closed. On the phone: Settings → Phone bridge → " +
           "\"Trust agents for 1 hour\"."
 
   /** What an outbound tool says when nobody answered the prompt. */

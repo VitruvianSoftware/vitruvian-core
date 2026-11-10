@@ -149,6 +149,7 @@ struct CourierApp: App {
                     problemReport: delegate.problemReport,
                     appearance: delegate.appearance,
                     aiPreferences: delegate.aiPreferences,
+                    aiProviderStore: delegate.aiProviderStore,
                     storage: delegate.storage,
                     integrations: delegate.integrations,
                     updates: delegate.updates,
@@ -156,6 +157,9 @@ struct CourierApp: App {
                         delegate.notifier.restartNotificationCenter()
                     }
                 )
+                .onDisappear {
+                    delegate.aiProviderStore.stopSettingsDetection()
+                }
             }
         }
         .defaultSize(width: 820, height: 600)

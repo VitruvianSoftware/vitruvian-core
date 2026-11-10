@@ -153,11 +153,11 @@ public class PhoneBridgeService : Service() {
       val host = selectedHost(store)
       when {
         host == null || host.url.isBlank() ->
-            BridgeHub.setLink(false, "no Mac selected — add one on the Hosts screen")
+            BridgeHub.setLink(false, "no Mac selected — add one on the Settings screen")
         host.token.isBlank() ->
             BridgeHub.setLink(
                 false,
-                "not paired with ${host.alias.ifBlank { "the Mac" }} — pair on the Hosts screen")
+                "not paired with ${host.alias.ifBlank { "the Mac" }} — pair on the Settings screen")
         else -> connect(host)
       }
       if (handle.cancelled) return
@@ -351,7 +351,7 @@ public class PhoneBridgeService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
     return NotificationCompat.Builder(this, BridgeHub.CHANNEL_LINK)
-        .setSmallIcon(R.drawable.ic_tile_display_sleep)
+        .setSmallIcon(R.drawable.ic_notification)
         .setContentTitle(
             if (BridgeHub.linked) "Phone bridge · linked"
             else "Phone bridge · ${BridgeHub.linkStatus}")

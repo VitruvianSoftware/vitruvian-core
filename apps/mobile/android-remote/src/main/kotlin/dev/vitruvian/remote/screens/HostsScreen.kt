@@ -101,13 +101,13 @@ public fun ColumnScope.HostsScreen(state: RemoteState) {
               .fillMaxWidth(),
       verticalAlignment = Alignment.Bottom,
   ) {
-    Label(text = "Hosts · ${state.hostRows.size}", modifier = Modifier.weight(1f))
+    Label(text = "Macs · ${state.hostRows.size}", modifier = Modifier.weight(1f))
     Status(tone = state.hostTone, text = state.connectionWord)
   }
 
   if (state.isUnpaired) {
     ListItem(
-        title = "No hosts yet",
+        title = "No Macs yet",
         subtitle = "pair one below",
         status = StatusTone.Neutral,
         titleColor = colors.textDim,

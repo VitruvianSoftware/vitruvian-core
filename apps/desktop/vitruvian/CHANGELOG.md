@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.88.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.88.0...vitruvian-v3.88.1) (2026-11-10)
+
+
+### Bug Fixes
+
+* **vitruvian:** show Claude's limits the way the Claude app does ([#4463](https://github.com/VitruvianSoftware/vitruvian-core/issues/4463)) ([0dcc362](https://github.com/VitruvianSoftware/vitruvian-core/commit/0dcc3621607a5e2720be70d2d3e3f8cd1d14d7fd))
+
 ## [3.88.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.87.1...vitruvian-v3.88.0) (2026-11-07)
 
 

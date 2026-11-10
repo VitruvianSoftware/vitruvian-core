@@ -271,3 +271,18 @@ def test_a_dry_run_writes_and_clears_nothing(tmp_path):
     assert result.evicted == ["aa/id1"]
     assert os.path.isfile(marker(repo))
     assert sorted(p for p, _, _ in os.walk(tmp_path)) == before
+
+
+def test_self_hosted_runners_do_not_restore_the_bazelisk_cache():
+    # The shared NFS bazelisk cache must not be overwritten from the Actions
+    # cache on every job (2026-11-09: torn binary, EIO in every queue job).
+    here = os.path.dirname(os.path.abspath(__file__))
+    action = open(os.path.join(here, "action.yml")).read()
+    lines = [
+        l.strip()
+        for l in action.splitlines()
+        if l.strip().startswith("bazelisk-cache:")
+    ]
+    assert lines, "setup-bazel no longer sets bazelisk-cache; re-check this rule"
+    for line in lines:
+        assert "runner.environment != 'self-hosted'" in line, line

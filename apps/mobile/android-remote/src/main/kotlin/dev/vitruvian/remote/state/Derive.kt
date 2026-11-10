@@ -462,6 +462,54 @@ public object Derive {
       homeCastVoice: Boolean = false,
   ): Boolean = speakLocal || speakPhone == true || speakHome == true
 
+  /**
+   * Whether any active output actually synthesizes with the local voice engine: This Mac, This
+   * phone, or Google Home when casting the selected voice. Matches Models.swift `usesVoiceEngine`.
+   */
+  public fun usesVoiceEngine(
+      speakLocal: Boolean,
+      speakPhone: Boolean?,
+      speakHome: Boolean?,
+      homeCastVoice: Boolean = false,
+  ): Boolean = speakLocal || speakPhone == true || (speakHome == true && homeCastVoice)
+
+  /**
+   * Whether the Mac voice picker is shown: whenever This Mac is enabled (labelled "Fallback Mac
+   * voice" when Gemini TTS is the engine, and "Mac voice" otherwise). Matches SettingsView.swift
+   * (`if configManager.config.effectiveSpeakLocal`).
+   */
+  public fun showsMacVoice(speakLocal: Boolean, localEngine: String = ""): Boolean = speakLocal
+
+  /**
+   * Whether Gemini TTS is actively used by an output, so the Gemini voice picker and Gemini API key
+   * appear in the Speakers section. Matches Models.swift `showsGeminiVoice` / `geminiSpeaks`.
+   */
+  public fun geminiSpeaks(
+      speakLocal: Boolean,
+      speakPhone: Boolean?,
+      speakHome: Boolean?,
+      homeCastVoice: Boolean = false,
+      localEngine: String,
+  ): Boolean =
+      usesVoiceEngine(speakLocal, speakPhone, speakHome, homeCastVoice) &&
+          localEngine.equals("gemini", ignoreCase = true)
+
+  /**
+   * Whether the Gemini API key row appears under Style model: when at least one coding agent is on,
+   * the style is not verbatim, the rewrite model is Gemini, and the key is not already shown under
+   * the Speakers section (`!geminiSpeaks`). Matches SettingsView.swift:511-525.
+   */
+  public fun showsStyleGeminiKey(
+      allCodingAgentsOff: Boolean,
+      announcementStyle: String,
+      styleModel: String,
+      geminiSpeaks: Boolean,
+  ): Boolean =
+      !allCodingAgentsOff &&
+          !announcementStyle.equals("verbatim", ignoreCase = true) &&
+          styleModel.equals("gemini", ignoreCase = true) &&
+          !geminiSpeaks
+
   /** The 48 half-hour slots for quiet hours dropdowns ("00:00" to "23:30"). */
   public val quietHoursSlots: List<String> =
       (0..23).flatMap { h ->
@@ -491,6 +539,18 @@ public object Derive {
         !enabled -> "off · plays at any hour"
         active -> "active until $end · what you type still plays"
         else -> "quiet from $start to $end"
+      }
+
+  /** Sub-line for the Quiet hours top metric card on the HomeSpeaker dashboard. */
+  public fun quietHoursMetricSub(
+      enabled: Boolean,
+      active: Boolean,
+      start: String,
+  ): String =
+      when {
+        !enabled -> "always speaks"
+        active -> "quiet now"
+        else -> "quiet from ${start.ifBlank { HomeSpeakerWire.DEFAULT_QUIET_START }}"
       }
 
   /** Volume dropdown choices from 0% to 100% in 10% steps. */
@@ -524,6 +584,175 @@ public object Derive {
         "gws" -> "gws CLI"
         else -> "Automatic"
       }
+
+  /** Subtitle for the Chat monitor row, surfacing the last poll relative time when running. */
+  public fun chatMonitorSubtitle(running: Boolean, lastPollRelative: String = ""): String =
+      when {
+        running && lastPollRelative.isNotBlank() ->
+            "Monitoring chat apps · last checked $lastPollRelative"
+        running -> "Monitoring chat apps in background"
+        else -> "Stopped · background monitor is not running"
+      }
+
+  /** Trimmed runtime error from the chat monitor, or null when healthy. */
+  public fun chatDiagnosticError(runtimeError: String): String? =
+      runtimeError.trim().takeIf { it.isNotEmpty() }
+
+  /** Subtitle for the Slack token row, surfacing the signed-in Slack identity when known. */
+  public fun slackTokenSubtitle(hasToken: Boolean, slackIdentity: String = ""): String {
+    if (!hasToken) return "Tap to paste user token (xoxp-...)"
+    val user = slackIdentity.trim()
+    return if (user.isNotEmpty()) "Token saved on Mac · signed in as $user"
+    else "Token saved on Mac"
+  }
+
+  /** Subtitle for the Google Chat source row, showing the active backend when running. */
+  public fun googleChatSourceSubtitle(
+      activeBackend: String,
+      monitorRunning: Boolean,
+  ): String {
+    val via =
+        when (activeBackend.trim().lowercase(Locale.ROOT)) {
+          "api" -> "the Google API"
+          "gws" -> "gws CLI"
+          else -> ""
+        }
+    return if (monitorRunning && via.isNotEmpty()) {
+      "currently reading via $via"
+    } else {
+      "which backend reads Google Chat"
+    }
+  }
+
+  /** Signed-in Google Chat account and backend readiness diagnostic. */
+  public data class GoogleChatAccountDiag(
+      val account: String,
+      val subtitle: String,
+      val trailing: String,
+      val healthy: Boolean,
+  )
+
+  /**
+   * Derives the Google Chat account and access status row from the fields reported by
+   * `/v1/homespeaker`.
+   */
+  public fun googleChatAccountDiag(
+      source: String,
+      activeBackend: String,
+      accountEmail: String,
+      gwsAccount: String,
+      hasChatAccess: Boolean,
+      gwsInstalled: Boolean,
+  ): GoogleChatAccountDiag {
+    val effectiveSource =
+        activeBackend.trim().lowercase(Locale.ROOT).takeIf { it == "api" || it == "gws" }
+            ?: source.trim().lowercase(Locale.ROOT)
+    val apiEmail = accountEmail.trim()
+    val cliEmail = gwsAccount.trim()
+    val email =
+        when (effectiveSource) {
+          "gws" -> cliEmail.ifEmpty { apiEmail }
+          "api" -> apiEmail.ifEmpty { cliEmail }
+          else -> apiEmail.ifEmpty { cliEmail }
+        }
+    return when (effectiveSource) {
+      "gws" ->
+          if (!gwsInstalled) {
+            GoogleChatAccountDiag(
+                account = email,
+                subtitle =
+                    if (email.isNotEmpty()) "$email · gws CLI not installed on Mac"
+                    else "gws CLI not installed on Mac",
+                trailing = "no gws",
+                healthy = false,
+            )
+          } else if (email.isNotEmpty()) {
+            GoogleChatAccountDiag(
+                account = email,
+                subtitle = "$email · via gws CLI",
+                trailing = "gws",
+                healthy = true,
+            )
+          } else {
+            GoogleChatAccountDiag(
+                account = "",
+                subtitle = "gws CLI installed · default account",
+                trailing = "gws",
+                healthy = true,
+            )
+          }
+      "api" ->
+          if (!hasChatAccess) {
+            GoogleChatAccountDiag(
+                account = email,
+                subtitle =
+                    if (email.isNotEmpty()) "$email · Chat access not granted on Mac"
+                    else "Chat access not granted on Mac",
+                trailing = "no access",
+                healthy = false,
+            )
+          } else if (email.isNotEmpty()) {
+            GoogleChatAccountDiag(
+                account = email,
+                subtitle = "$email · Chat access granted",
+                trailing = "signed in",
+                healthy = true,
+            )
+          } else {
+            GoogleChatAccountDiag(
+                account = "",
+                subtitle = "Chat access granted on Mac",
+                trailing = "signed in",
+                healthy = true,
+            )
+          }
+      else ->
+          when {
+            hasChatAccess && email.isNotEmpty() ->
+                GoogleChatAccountDiag(
+                    account = email,
+                    subtitle = "$email · Chat access granted",
+                    trailing = "signed in",
+                    healthy = true,
+                )
+            gwsInstalled && email.isNotEmpty() ->
+                GoogleChatAccountDiag(
+                    account = email,
+                    subtitle = "$email · via gws CLI",
+                    trailing = "gws",
+                    healthy = true,
+                )
+            hasChatAccess ->
+                GoogleChatAccountDiag(
+                    account = "",
+                    subtitle = "Chat access granted on Mac",
+                    trailing = "signed in",
+                    healthy = true,
+                )
+            gwsInstalled ->
+                GoogleChatAccountDiag(
+                    account = "",
+                    subtitle = "gws CLI installed · default account",
+                    trailing = "gws",
+                    healthy = true,
+                )
+            email.isNotEmpty() ->
+                GoogleChatAccountDiag(
+                    account = email,
+                    subtitle = "$email · Chat access or gws CLI needed on Mac",
+                    trailing = "not ready",
+                    healthy = false,
+                )
+            else ->
+                GoogleChatAccountDiag(
+                    account = "",
+                    subtitle = "grant Chat access or install gws CLI on Mac",
+                    trailing = "not set up",
+                    healthy = false,
+                )
+          }
+    }
+  }
 
   public fun agentHookStatusLabel(
       hookState: String,
@@ -694,6 +923,315 @@ public object Derive {
         !enabled -> SpeakerHealth.Off
         !speakHome && !speakLocal && !speakPhone -> SpeakerHealth.Problem
         else -> SpeakerHealth.Ok
+      }
+
+  /** Pure specification for one button in HomeSpeaker's top "Now" strip. */
+  public data class QuickActionSpec(
+      val id: String,
+      val label: String,
+      val secondary: String?,
+      val enabled: Boolean,
+      val active: Boolean,
+      val contentDescription: String,
+  )
+
+  /**
+   * The Mute / Unmute control in HomeSpeaker's Now strip.
+   *
+   * Label names the action tapping will take ("Mute" when unmuted, "Unmute" when muted). Enabled
+   * whenever the speaker volume is available and online (and not mid-request), regardless of
+   * whether Google Home speaking is currently toggled on.
+   */
+  public fun muteQuickAction(
+      paired: Boolean,
+      volumeAvailable: Boolean,
+      volumeOnline: Boolean,
+      muted: Boolean,
+      percent: Int,
+      busy: Boolean = false,
+  ): QuickActionSpec {
+    val ready = paired && volumeAvailable && volumeOnline && !busy
+    val actionLabel = if (volumeAvailable && volumeOnline && muted) "Unmute" else "Mute"
+    val sub =
+        when {
+          !volumeAvailable -> null
+          busy -> "…"
+          else -> speakerVolumeLabel(true, volumeOnline, muted, percent)
+        }
+    val desc =
+        when {
+          !volumeAvailable -> "Mute speaker, volume unavailable"
+          !volumeOnline -> "Mute speaker, speaker offline"
+          muted -> "Unmute speaker, currently muted"
+          else -> "Mute speaker, volume ${percent.coerceIn(0, 100)}%"
+        }
+    return QuickActionSpec(
+        id = "mute",
+        label = actionLabel,
+        secondary = sub,
+        enabled = ready,
+        active = volumeAvailable && volumeOnline && muted,
+        contentDescription = desc,
+    )
+  }
+
+  /**
+   * The Quiet hours control in HomeSpeaker's Now strip.
+   *
+   * Label shows "Quiet on" / "Quiet off"; secondary text shows the window ("22:00–07:00") and
+   * appends "now" when quiet hours are currently active, or is omitted when no Mac is available.
+   */
+  public fun quietHoursQuickAction(
+      paired: Boolean,
+      available: Boolean,
+      enabled: Boolean,
+      active: Boolean,
+      start: String,
+      end: String,
+  ): QuickActionSpec {
+    val label = if (enabled) "Quiet on" else "Quiet off"
+    val window = if (!available) null else "${start.ifBlank { "22:00" }}–${end.ifBlank { "07:00" }}"
+    val sub =
+        when {
+          window == null -> null
+          enabled && active -> "$window · now"
+          else -> window
+        }
+    val desc =
+        when {
+          window == null -> "Quiet hours: $label"
+          enabled && active -> "Quiet hours: Quiet on, $window, active now"
+          else -> "Quiet hours: $label, $window"
+        }
+    return QuickActionSpec(
+        id = "quiet_hours",
+        label = label,
+        secondary = sub,
+        enabled = paired && available,
+        active = available && enabled,
+        contentDescription = desc,
+    )
+  }
+
+  /**
+   * The Room control in HomeSpeaker's Now strip.
+   *
+   * Shows the current target speaker's name and opens the speaker picker on tap.
+   */
+  public fun roomQuickAction(
+      paired: Boolean,
+      available: Boolean,
+      targetName: String,
+      targetRoom: String = "",
+      targetType: String = "",
+      hasChoices: Boolean = true,
+  ): QuickActionSpec {
+    val name = targetName.trim()
+    val label = name.ifEmpty { "Room" }
+    val sub =
+        when {
+          !available || name.isEmpty() -> null
+          targetRoom.isNotBlank() -> targetRoom
+          targetType == "Structure" -> "all rooms"
+          else -> "speaker"
+        }
+    val desc = if (sub == null) "Room speaker: none selected" else "Room speaker: $name, $sub"
+    return QuickActionSpec(
+        id = "room",
+        label = label,
+        secondary = sub,
+        enabled = paired && available && hasChoices,
+        active = available && name.isNotEmpty(),
+        contentDescription = desc,
+    )
+  }
+
+  /**
+   * The Replay control in HomeSpeaker's Now strip.
+   *
+   * Replays the newest item from Recent broadcasts; disabled when there is nothing to replay.
+   */
+  public fun replayQuickAction(
+      paired: Boolean,
+      available: Boolean,
+      installed: Boolean = true,
+      hasReplay: Boolean,
+      target: String? = null,
+  ): QuickActionSpec {
+    val ready = paired && available && installed && hasReplay
+    // No helper line: the room name it used to show described nothing about
+    // what would be replayed.
+    val sub: String? = null
+    val desc =
+        if (hasReplay) "Replay last announcement" else "Replay last announcement, nothing to replay"
+    return QuickActionSpec(
+        id = "replay",
+        label = "Replay",
+        secondary = sub,
+        enabled = ready,
+        active = false,
+        contentDescription = desc,
+    )
+  }
+
+  /**
+   * The broadcast that Now strip Replay and the Last announcement plate Replay both replay:
+   * `recent.firstOrNull()` (falling back to `last` on an older agent), matching the newest row in
+   * Recent broadcasts verbatim.
+   */
+  /** A broadcast can be replayed only if it has words or an id the Mac can look up. */
+  public fun isReplayable(b: AgentLastBroadcast?): Boolean =
+      b != null && (b.text.isNotBlank() || b.id.isNotBlank())
+
+  public fun newestBroadcast(
+      recent: List<AgentLastBroadcast>,
+      last: AgentLastBroadcast? = null,
+  ): AgentLastBroadcast? = (recent.ifEmpty { listOfNotNull(last) }).firstOrNull()
+
+  /** Builds all four controls for HomeSpeaker's Now strip in display order. */
+  public fun homeSpeakerQuickActions(
+      paired: Boolean,
+      available: Boolean,
+      installed: Boolean = true,
+      volumeAvailable: Boolean,
+      volumeOnline: Boolean,
+      muted: Boolean,
+      percent: Int,
+      volumeBusy: Boolean = false,
+      quietEnabled: Boolean,
+      quietActive: Boolean,
+      quietStart: String,
+      quietEnd: String,
+      targetName: String,
+      targetRoom: String = "",
+      targetType: String = "",
+      hasRoomChoices: Boolean = true,
+      hasReplay: Boolean,
+      replayTarget: String? = null,
+  ): List<QuickActionSpec> =
+      listOf(
+          muteQuickAction(
+              paired = paired,
+              volumeAvailable = volumeAvailable,
+              volumeOnline = volumeOnline,
+              muted = muted,
+              percent = percent,
+              busy = volumeBusy,
+          ),
+          quietHoursQuickAction(
+              paired = paired,
+              available = available,
+              enabled = quietEnabled,
+              active = quietActive,
+              start = quietStart,
+              end = quietEnd,
+          ),
+          roomQuickAction(
+              paired = paired,
+              available = available,
+              targetName = targetName,
+              targetRoom = targetRoom,
+              targetType = targetType,
+              hasChoices = hasRoomChoices,
+          ),
+          replayQuickAction(
+              paired = paired,
+              available = available,
+              installed = installed,
+              hasReplay = hasReplay,
+              target = replayTarget,
+          ),
+      )
+
+  private val HTTP_CODE_REGEX = Regex("""\bHTTP\s+\d{3}\b""", RegexOption.IGNORE_CASE)
+  private val AUTH_CODE_REGEX = Regex("""\bHTTP\s+40[13]\b""", RegexOption.IGNORE_CASE)
+  private val LEAKED_PATH_OR_CODE_REGEX = Regex("""(?:/v\d+/|https?://)""", RegexOption.IGNORE_CASE)
+
+  /**
+   * One-line inline error shown directly under a HomeSpeaker Now strip control, stream plate, or
+   * Settings row when an action fails. Uses plain words rather than exception class names, paths,
+   * or raw HTTP codes.
+   */
+  public fun homeSpeakerInlineError(
+      what: String,
+      reason: String? = null,
+      authFailed: Boolean = false,
+  ): String {
+    val action = what.trim().ifEmpty { "update speaker" }
+    val raw = reason?.trim().orEmpty()
+    val lower = raw.lowercase(Locale.ROOT)
+    if (authFailed ||
+        AUTH_CODE_REGEX.containsMatchIn(raw) ||
+        lower.contains("not paired") ||
+        lower.contains("unauthorized") ||
+        lower.contains("forbidden")) {
+      return "Couldn't $action: this phone isn't paired"
+    }
+    val unreachable =
+        raw.isEmpty() ||
+            lower.contains("timeout") ||
+            lower.contains("timed out") ||
+            lower.contains("connect") ||
+            lower.contains("unreachable") ||
+            lower.contains("refused") ||
+            lower.contains("reset") ||
+            lower.contains("eof") ||
+            lower.contains("broken pipe") ||
+            lower.contains("unable to resolve") ||
+            lower.contains("unknownhost") ||
+            lower.contains("unknown host") ||
+            lower.contains("no route")
+    if (unreachable) {
+      return "Couldn't $action: the Mac didn't answer"
+    }
+    if (lower.startsWith("agent:") ||
+        HTTP_CODE_REGEX.containsMatchIn(raw) ||
+        LEAKED_PATH_OR_CODE_REGEX.containsMatchIn(raw) ||
+        raw.contains('/')) {
+      return "Couldn't $action: the Mac returned an error"
+    }
+    return "Couldn't $action: $raw"
+  }
+
+  /** Visual state for the Quick Settings "Speaker" mute tile. */
+  public enum class SpeakerTileLook {
+    Unavailable,
+    Inactive,
+    Active,
+  }
+
+  /** State and subtitle for the Quick Settings "Speaker" mute tile. */
+  public data class SpeakerTileSpec(
+      val look: SpeakerTileLook,
+      val subtitle: String,
+  )
+
+  /**
+   * Maps pairing and `/v1/homespeaker/volume` state to the Quick Settings "Speaker" tile.
+   * - Unpaired or no host -> [SpeakerTileLook.Unavailable], `"Not paired"`
+   * - POST click failure -> [SpeakerTileLook.Unavailable], `"Couldn't reach the Mac"`
+   * - GET unreachable -> [SpeakerTileLook.Unavailable], `"Mac unreachable"`
+   * - Reachable but volume unavailable / offline -> [SpeakerTileLook.Unavailable], `"Volume
+   *   unavailable"`
+   * - Muted -> [SpeakerTileLook.Inactive], `"Muted"`
+   * - Unmuted -> [SpeakerTileLook.Active], `"On · NN%"`
+   */
+  public fun speakerTileState(
+      paired: Boolean,
+      reachable: Boolean,
+      available: Boolean = true,
+      online: Boolean = true,
+      muted: Boolean = false,
+      percent: Int = 0,
+      clickFailed: Boolean = false,
+  ): SpeakerTileSpec =
+      when {
+        !paired -> SpeakerTileSpec(SpeakerTileLook.Unavailable, "Not paired")
+        clickFailed -> SpeakerTileSpec(SpeakerTileLook.Unavailable, "Couldn't reach the Mac")
+        !reachable -> SpeakerTileSpec(SpeakerTileLook.Unavailable, "Mac unreachable")
+        !available || !online -> SpeakerTileSpec(SpeakerTileLook.Unavailable, "Volume unavailable")
+        muted -> SpeakerTileSpec(SpeakerTileLook.Inactive, "Muted")
+        else -> SpeakerTileSpec(SpeakerTileLook.Active, "On · ${percent.coerceIn(0, 100)}%")
       }
 
   // --- battery (API v1.5.1) ---------------------------------------------
@@ -1403,6 +1941,18 @@ public object Derive {
     val next = untilDue.minOrNull() ?: tickMs
     return next.coerceIn(MIN_POLL_WAIT_MS, maxOf(tickMs, MIN_POLL_WAIT_MS))
   }
+
+  /**
+   * Gallery module ids that appear in the Dashboards chip bar: every gallery module in [installed]
+   * that is present in [availableDashboards]. Both live and simulated modes populate
+   * [availableDashboards] for every gallery id (falling back to an unwired placeholder), so
+   * installing Docker, Ollama, Grafana, or Xcode in simulated mode keeps its tab visible.
+   */
+  public fun visibleModuleIds(
+      galleryIds: List<String>,
+      installed: Set<String>,
+      availableDashboards: Set<String>,
+  ): List<String> = galleryIds.filter { it in installed && it in availableDashboards }
 
   /** `0`, `6.4`, `31.6` -- `Format.decimal`'s shape; this library cannot depend on :format. */
   private fun decimal(value: Double): String {

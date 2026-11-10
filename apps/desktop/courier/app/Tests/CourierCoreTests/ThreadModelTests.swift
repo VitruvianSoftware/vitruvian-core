@@ -184,4 +184,25 @@ final class ThreadModelTests: XCTestCase {
         XCTAssertEqual(h.conversation.scrollToMessageRequest?.messageID, "$r")
         XCTAssertEqual(thread.scrollToMessageRequest?.messageID, "$t1")
     }
+
+    func testDirectChatThreadPassesIsDirectThroughToTimelineItems() async throws {
+        let h = try await startConversation(
+            ["!dm": [threadRoot(id: "$r", room: "!dm", at: 1, replies: 1),
+                     threadReply(id: "$t1", root: "$r", room: "!dm", at: 2, body: "See you soon", mine: false)]],
+            features: ["!dm": featuresJSON(replyIsThread: true)],
+            rows: ["!dm": chatRow("!dm", name: "Ann", network: "signal", direct: true)]
+        )
+        harnesses.append(h)
+        try await h.open("!dm")
+        let thread = h.conversation.thread
+        h.conversation.openThread("$r")
+        try await waitUntil { thread.isLoaded }
+
+        let messages = thread.items.compactMap { item -> TimelineMessage? in
+            if case let .message(msg) = item { return msg }
+            return nil
+        }
+        XCTAssertEqual(messages.map(\.id), ["$r", "$t1"])
+        XCTAssertTrue(messages.allSatisfy(\.isDirect), "Direct chat thread pane items must have isDirect == true")
+    }
 }

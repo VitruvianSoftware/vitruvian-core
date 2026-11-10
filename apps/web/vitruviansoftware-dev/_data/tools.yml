@@ -1,6 +1,6 @@
 # Written by tools/sync-site-tools from catalog/tools.json. Do not edit:
 #   bazel run //tools/sync-site-tools:sync
-generated: "2026-11-07T07:12:31Z"
+generated: "2026-11-10T04:44:37Z"
 public_key: "ysvqcMifelrOyxEx01sOS4B5VN585nBLKkdaaT0xyWY="
 tools:
   - id: "dev.vitruvian.reference"
@@ -56,11 +56,11 @@ tools:
     name: "Vitruvian Remote"
     publisher: "VitruvianSoftware"
     summary: "Pairs your Android phone with this Mac's Vitruvian Remote agent over Tailscale, manages push notifications and Claude Code permission prompts, and exposes the phone's MCP bridge."
-    version: "0.1.25"
+    version: "0.1.26"
     source: "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/mobile/android-remote"
-    download: "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/android-remote-v0.1.25/VitruvianRemote-0.1.25-tool.zip"
+    download: "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/android-remote-v0.1.26/VitruvianRemote-0.1.26-tool.zip"
     size: "2.5 MB"
-    sha256: "a2f35289eb1fc82b79912fad4e9908f7a0de78c6bbe0fe95138272f9341edd84"
+    sha256: "8fedc211dec8092ea1991441d56cfc37e9492dd4b0b3917a6d2e1e0464fe9ba1"
     uses:
       - "Show messages and play the alert sound"
       - "Write to the clipboard"
@@ -69,11 +69,11 @@ tools:
     name: "Nexus Agent"
     publisher: "VitruvianSoftware"
     summary: "Run your Telegram bot for the Antigravity agent and ask the agent from anywhere with a Quick Prompt"
-    version: "1.32.2"
+    version: "1.32.4"
     source: "https://github.com/VitruvianSoftware/nexus-agent"
-    download: "https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.32.2/nexus-agent-tool-1.32.2.zip"
+    download: "https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.32.4/nexus-agent-tool-1.32.4.zip"
     size: "6.9 MB"
-    sha256: "4354d2345c0d91962d3867938bd7fbeab976fb884783784c831a67f47aedc3d5"
+    sha256: "823c6432a8b05cb1beb78f90ee825608c4472b182d6e7068553ffe0949e6a843"
     uses:
       - "Show messages and play the alert sound"
       - "Save its own settings"

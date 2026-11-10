@@ -26,6 +26,7 @@ enum PaneHeaderMetrics {
 enum SidePane: Hashable {
     case thread
     case chatInfo
+    case ai
 }
 
 /// Each side pane's width, measured where it is laid out, for its toolbar item.

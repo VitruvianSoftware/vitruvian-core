@@ -178,4 +178,41 @@ final class WindowLayoutTests: XCTestCase {
         let sizes = try Snapshot.render("liquid-glass-off", width: 760, height: 420) { surfaces(glass: false) }
         XCTAssertEqual(sizes.count, 2)
     }
+
+    func testThemeAccentColorUsesGlobalForInboxAndRoomEffectiveThemeInsideChat() {
+        let suiteName = "courier.theme-accent.\(UUID().uuidString)"
+        defer { UserDefaults.standard.removePersistentDomain(forName: suiteName) }
+        let store = ScratchDefaults.suite(named: suiteName)!
+        let appearance = AppearancePreferences(defaults: store)
+        appearance.themePreset = .classicTeal
+        appearance.setChatTheme(
+            ChatThemeOverride(preset: .sunsetCoral, accentColorHex: "#E11D48"),
+            for: "!custom:courier.local"
+        )
+
+        var inboxEnv = EnvironmentValues()
+        inboxEnv.appearancePreferences = appearance
+        inboxEnv.themeRoomID = nil
+        XCTAssertEqual(
+            inboxEnv.themeAccentColor,
+            Color(hex: CourierThemePreset.classicTeal.defaultAccentHex),
+            "Inbox-level views (themeRoomID == nil) must keep the global theme accent"
+        )
+
+        var chatEnv = EnvironmentValues()
+        chatEnv.appearancePreferences = appearance
+        chatEnv.themeRoomID = "!custom:courier.local"
+        XCTAssertEqual(
+            chatEnv.themeAccentColor,
+            Color(hex: "#E11D48"),
+            "Open-chat views (New divider, thread unread marks) must use the room's effective theme accent"
+        )
+    }
+
+    func testSpaceLookTitleFallsBackToNetworkDisplayNameWhenAccountTitleIsEmpty() {
+        let untitledAccount = Space(spaceID: "account:wa", kind: .account, title: "", network: "whatsapp", chats: 4)
+        XCTAssertEqual(SpaceLook.title(untitledAccount), "WhatsApp")
+        let titledAccount = Space(spaceID: "account:wa2", kind: .account, title: "Work WhatsApp", network: "whatsapp", chats: 2)
+        XCTAssertEqual(SpaceLook.title(titledAccount), "Work WhatsApp")
+    }
 }

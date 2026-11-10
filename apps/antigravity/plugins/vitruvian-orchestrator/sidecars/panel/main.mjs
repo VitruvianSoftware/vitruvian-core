@@ -643,7 +643,19 @@ export function selectFlowFile(flowsDir, requestedCid = "") {
     return null;
   }
 
-  return candidates[0] || null;
+  // Without a requested conversation, show the newest flow that has a plan.
+  // A file with no plan is a Gemini CLI job's own step reports (each agy run
+  // is its own root conversation): it folds to nothing, and picking it would
+  // hide the lead's real flow behind an empty panel.
+  return (
+    candidates.find((c) => {
+      try {
+        return /"type"\s*:\s*"plan"/.test(readFileSync(c.filePath, "utf8"));
+      } catch {
+        return false;
+      }
+    }) || null
+  );
 }
 
 export function readTranscriptForConversation(conversationId, customRoots) {

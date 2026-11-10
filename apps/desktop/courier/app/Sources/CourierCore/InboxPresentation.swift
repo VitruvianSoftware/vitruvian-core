@@ -48,9 +48,40 @@ extension InboxRow {
     }
 
     /// Before the preview when the newest message is a reply that stays in its thread, which the chat's timeline
-    /// doesn't show: "↳ in thread: ". Nil otherwise.
+    /// doesn't show: "You, in a thread: ", "<Name>, in a thread: " in a direct chat, or "In a thread: " in a group.
+    /// Nil otherwise.
     public var previewThreadPrefix: String? {
-        previewInThread ? String(localized: "↳ in thread: ") : nil
+        guard previewInThread else { return nil }
+        if previewMine {
+            return String(localized: "You, in a thread: ")
+        }
+        if isDirect, !name.isEmpty {
+            return String(localized: "\(name), in a thread: ")
+        }
+        return String(localized: "In a thread: ")
+    }
+
+    /// The preview body.
+    public var previewBody: String {
+        preview
+    }
+
+    /// The full plain-text preview string for an inbox row.
+    public var formattedPreviewText: String {
+        var result = ""
+        if let prefix = previewThreadPrefix {
+            result += prefix
+        } else if previewMine {
+            result += String(localized: "You: ")
+        }
+        if let label = previewLabel {
+            result += label.title
+        }
+        let body = previewBody
+        if !body.isEmpty {
+            result += previewLabel == nil ? body : " " + body
+        }
+        return result
     }
 
     /// The unread count as the row shows it: nothing at 0, and 99+ past 99.

@@ -43,6 +43,7 @@ import {
   parseFlowJsonl,
   readChildTranscriptActivityAt,
   readChildTranscriptState,
+  selectFlowFile,
 } from "./main.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -619,6 +620,42 @@ test("a subagent waiting on its own background command is not woken until the lo
       readChildTranscriptState("child-conv", [brainRoot]).waiting,
       false,
     );
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("with no conversation requested, the panel picks the newest flow with a plan, not a newer plan-less file", () => {
+  const tmpDir = mkdtempSync(join(tmpdir(), "orch-select-"));
+  try {
+    const t = Date.UTC(2026, 10, 9, 12, 0, 0) / 1000;
+    const write = (cid, events, mtime) => {
+      const p = join(tmpDir, `${cid}.jsonl`);
+      writeFileSync(
+        p,
+        events.map((e) => JSON.stringify(e)).join("\n") + "\n",
+        "utf8",
+      );
+      utimesSync(p, mtime, mtime);
+    };
+    write(
+      "lead-conv",
+      [{ type: "plan", at: 1, title: "Real flow", tasks: [] }],
+      t - 600,
+    );
+    // A Gemini CLI job's own step reports, written more recently.
+    write(
+      "agy-job",
+      [{ type: "run.progress", at: 2, rootConversationId: "agy-job" }],
+      t,
+    );
+
+    assert.equal(selectFlowFile(tmpDir)?.conversationId, "lead-conv");
+    // Asking for a conversation by id still returns exactly that file.
+    assert.equal(selectFlowFile(tmpDir, "agy-job")?.conversationId, "agy-job");
+    // Nothing with a plan: nothing to show.
+    rmSync(join(tmpDir, "lead-conv.jsonl"));
+    assert.equal(selectFlowFile(tmpDir), null);
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
   }

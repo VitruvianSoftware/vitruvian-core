@@ -67,6 +67,7 @@ struct DetachedSpaceWindowView: View {
     @ObservedObject var spaces: SpacesModel
     @ObservedObject var lifecycle: SystemLifecycleModel
     @StateObject private var ui = InboxUI()
+    @Environment(\.appearancePreferences) private var appearanceEnv
     var onOpenDetached: ((DetachedWindowTarget) -> Void)?
     var onSearchInChat: (@MainActor (String) -> Void)?
 
@@ -112,9 +113,12 @@ struct DetachedSpaceWindowView: View {
                     )
                     .frame(minWidth: 420, maxWidth: .infinity)
                 } else {
-                    Text(String(localized: "Select a chat"))
-                        .foregroundStyle(.secondary)
-                        .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
+                    NoChatSelected(
+                        appearance: appearanceEnv ?? AppearancePreferences(),
+                        rows: inbox.rows,
+                        onSelectRoom: { roomID in inbox.select(roomID) }
+                    )
+                    .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
             .environment(\.openDetachedWindow, onOpenDetached)
@@ -333,7 +337,9 @@ private struct DetachedGlassEnvironment<Content: View>: View {
     let content: Content
 
     var body: some View {
-        content.environment(\.liquidGlass, appearance.liquidGlassIsActive)
+        content
+            .environment(\.appearancePreferences, appearance)
+            .environment(\.liquidGlass, appearance.liquidGlassIsActive)
     }
 }
 
