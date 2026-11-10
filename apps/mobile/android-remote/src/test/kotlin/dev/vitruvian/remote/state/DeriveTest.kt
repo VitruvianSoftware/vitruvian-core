@@ -1304,10 +1304,11 @@ public class DeriveTest {
 
   @Test
   public fun `voice row show-hide rules match HomeSpeaker SettingsView`() {
-    // Mac voice shows only when This Mac is on and Apple TTS is the engine.
+    // Mac voice shows whenever This Mac is on (labelled "Fallback Mac voice" under Gemini).
     assertTrue(Derive.showsMacVoice(speakLocal = true, localEngine = "apple"))
-    assertFalse(Derive.showsMacVoice(speakLocal = true, localEngine = "gemini"))
+    assertTrue(Derive.showsMacVoice(speakLocal = true, localEngine = "gemini"))
     assertFalse(Derive.showsMacVoice(speakLocal = false, localEngine = "apple"))
+    assertFalse(Derive.showsMacVoice(speakLocal = false, localEngine = "gemini"))
 
     // usesVoiceEngine: local, phone, or home when casting.
     assertTrue(Derive.usesVoiceEngine(speakLocal = true, speakPhone = false, speakHome = false))

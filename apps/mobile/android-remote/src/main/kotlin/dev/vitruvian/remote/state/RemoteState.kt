@@ -2540,7 +2540,9 @@ public class RemoteState(
       if (Derive.showsMacVoice(speakLocal, hs.localEngine)) {
         add(
             ModuleRow(
-                title = "Mac voice",
+                title =
+                    if (hs.localEngine.equals("gemini", ignoreCase = true)) "Fallback Mac voice"
+                    else "Mac voice",
                 subtitle = hs.localVoiceName.ifBlank { "System default" },
                 trailing = hs.localVoiceName.ifBlank { "default" },
                 actions =
@@ -2779,7 +2781,9 @@ public class RemoteState(
                     },
             ))
         if (Derive.showsStyleGeminiKey(
-            allCodingAgentsOff = false,
+            allCodingAgentsOff =
+                Derive.allCodingAgentsOff(
+                    hs.announceClaudeCode, hs.announceAntigravity, hs.announceOpenCode),
             announcementStyle = hs.announcementStyle,
             styleModel = hs.styleModel,
             geminiSpeaks = geminiSpeaks)) {
@@ -3903,7 +3907,7 @@ public class RemoteState(
 
   // --- Sony Google TV ------------------------------------------------------
 
-  /** Sony Google TV dashboard driven over wireless ADB (`GET/POST /v1/tv`). */
+  /** Sony Google TV dashboard driven over wireless ADB (`GET /v1/tv`, `POST /v1/tv/act`). */
   private fun tvDashboard(): ModuleDashboard {
     val tv = agentTv
     val address = tv?.address?.ifBlank { TvWire.DEFAULT_ADDRESS } ?: TvWire.DEFAULT_ADDRESS

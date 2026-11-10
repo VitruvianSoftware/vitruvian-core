@@ -474,11 +474,11 @@ public object Derive {
   ): Boolean = speakLocal || speakPhone == true || (speakHome == true && homeCastVoice)
 
   /**
-   * Whether the Mac voice picker is shown: only when This Mac is enabled and Apple TTS is the
-   * engine. Matches SettingsView.swift (`effectiveSpeakLocal && effectiveLocalEngine == .apple`).
+   * Whether the Mac voice picker is shown: whenever This Mac is enabled (labelled "Fallback Mac
+   * voice" when Gemini TTS is the engine, and "Mac voice" otherwise). Matches SettingsView.swift
+   * (`if configManager.config.effectiveSpeakLocal`).
    */
-  public fun showsMacVoice(speakLocal: Boolean, localEngine: String): Boolean =
-      speakLocal && !localEngine.equals("gemini", ignoreCase = true)
+  public fun showsMacVoice(speakLocal: Boolean, localEngine: String = ""): Boolean = speakLocal
 
   /**
    * Whether Gemini TTS is actively used by an output, so the Gemini voice picker and Gemini API key

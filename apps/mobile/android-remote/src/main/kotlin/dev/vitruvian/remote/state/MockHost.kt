@@ -53,9 +53,6 @@ public object MockHost {
           ),
       )
 
-  /** The offline variant of the selected host's sub-line. */
-  public const val OFFLINE_SUBTITLE: String = "100.64.0.12 · last seen 4 m ago"
-
   public val builtInMacros: List<Macro> =
       listOf(
           Macro(

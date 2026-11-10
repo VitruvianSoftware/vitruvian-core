@@ -1890,7 +1890,7 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
       )
     }
 
-    /** `GET /v1/tv` and `POST /v1/tv` response parser. */
+    /** `GET /v1/tv` and `POST /v1/tv/act` response parser. */
     public fun parseTv(json: String): AgentTv = TvWire.parse(json)
 
     /** `JSONArray` predates the collections API by two decades and iterates like it. */

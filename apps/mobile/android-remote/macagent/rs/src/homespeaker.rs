@@ -4835,24 +4835,44 @@ mod tests {
             "15:00",
             12 * 60
         ));
+    }
 
-        // Timestamp evaluation uses Mac local wall-clock time via localtime_r.
-        let base = Timestamp::from_unix_secs(1_767_225_600);
-        let base_m = local_minutes_since_midnight(base) as i64;
-        let at_local = |h: i64, m: i64| -> Timestamp {
-            let delta_m = ((h * 60 + m) - base_m).rem_euclid(1440);
-            Timestamp::from_unix_secs(base.unix_secs() + delta_m * 60)
-        };
-        let now_late = at_local(23, 30);
-        let now_early = at_local(4, 30);
-        let now_day = at_local(12, 0);
-        let now_afternoon = at_local(14, 0);
-        assert_eq!(local_minutes_since_midnight(now_late), 23 * 60 + 30);
-        assert!(!is_quiet_hours_active(false, "22:00", "07:00", now_late));
-        assert!(is_quiet_hours_active(true, "22:00", "07:00", now_late));
-        assert!(is_quiet_hours_active(true, "22:00", "07:00", now_early));
-        assert!(!is_quiet_hours_active(true, "22:00", "07:00", now_day));
-        assert!(is_quiet_hours_active(true, "13:00", "15:00", now_afternoon));
+    #[test]
+    fn test_home_speaker_local_minutes_since_midnight_dst_in_los_angeles() {
+        extern "C" {
+            fn tzset();
+        }
+        static TZ_LOCK: Mutex<()> = Mutex::new(());
+        let _guard = TZ_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+        struct TzRestore(Option<std::ffi::OsString>);
+        impl Drop for TzRestore {
+            fn drop(&mut self) {
+                match &self.0 {
+                    Some(prev) => std::env::set_var("TZ", prev),
+                    None => std::env::remove_var("TZ"),
+                }
+                // SAFETY: `tzset` updates libc's timezone globals from `TZ`.
+                unsafe { tzset() };
+            }
+        }
+
+        let _restore = TzRestore(std::env::var_os("TZ"));
+        std::env::set_var("TZ", "America/Los_Angeles");
+        // SAFETY: `tzset` updates libc's timezone globals from `TZ`.
+        unsafe { tzset() };
+
+        // One day before the 2026-03-08 spring-forward in America/Los_Angeles:
+        // 2026-03-07T14:30:00Z = 06:30 PST (UTC-8), 390 minutes since midnight.
+        let before_dst = Timestamp::from_unix_secs(1_772_893_800);
+        assert_eq!(local_minutes_since_midnight(before_dst), 6 * 60 + 30);
+        assert!(is_quiet_hours_active(true, "22:00", "07:00", before_dst));
+
+        // One day after the 2026-03-08 spring-forward in America/Los_Angeles:
+        // 2026-03-09T14:30:00Z = 07:30 PDT (UTC-7), 450 minutes since midnight.
+        let after_dst = Timestamp::from_unix_secs(1_773_066_600);
+        assert_eq!(local_minutes_since_midnight(after_dst), 7 * 60 + 30);
+        assert!(!is_quiet_hours_active(true, "22:00", "07:00", after_dst));
     }
 
     #[test]
