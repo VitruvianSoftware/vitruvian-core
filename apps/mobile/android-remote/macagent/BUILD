@@ -114,7 +114,6 @@ rust_library(
         "rs/src/stream.rs",
         "rs/src/tailnet.rs",
         "rs/src/tv.rs",
-        "rs/src/voice_cache.rs",
     ],
     compile_data = ["//apps/mobile/android-remote/macmenu:tool/vitruvian-tool.json"],
     crate_name = "vitruvian_remote_macagent",
