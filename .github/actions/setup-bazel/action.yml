@@ -272,7 +272,13 @@ runs:
 
     - uses: bazel-contrib/setup-bazel@104e3eea9447cdaa4b00d0fb46191a3985d26ab3 # 0.19.1
       with:
-        bazelisk-cache: true
+        # Never on the self-hosted runners: their ~/.cache/bazelisk is one NFS
+        # volume shared by every pod, so it already is the cache. Restoring the
+        # Actions cache there untars over a binary other jobs are running; on
+        # 2026-11-09 that left d302d22.../bin/bazel torn, and every job that
+        # touched it failed with "Failed to open ... as a zip file:
+        # Input/output error" right after "Failed to restore bazelisk cache".
+        bazelisk-cache: ${{ runner.environment != 'self-hosted' }}
         repository-cache: ${{ github.ref == 'refs/heads/main' && runner.environment == 'github-hosted' }}
         cache-save: ${{ github.ref == 'refs/heads/main' && runner.environment == 'github-hosted' }}
         bazelrc: |
