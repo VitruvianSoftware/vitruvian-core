@@ -10,7 +10,7 @@
 
 A Kotlin / Jetpack Compose Android app: a remote control and observability console for a Mac,
 shaped for a foldable (folded, unfolded and tabletop postures). Two transports: Bluetooth HID
-(nothing installed on the Mac) and [`macagent/`](macagent/README.md), a Go daemon on the Mac
+(nothing installed on the Mac) and [`macagent/`](macagent/README.md), a Rust daemon on the Mac
 reached over Tailscale. The app ↔ daemon contract is [`macagent/API.md`](macagent/API.md).
 Every colour, size and font comes from `//packages/design-system-android`; this app defines
 no design value of its own.
@@ -27,11 +27,13 @@ no design value of its own.
   ephemeral ports use `bazel run //tools/adb-connect`.
 - **Tests.** `bazel test //apps/mobile/android-remote/...` runs the `kt_jvm_test` targets
   (`hid_codes_test`, `format_test`, `derive_test`, `wire_test`, `wake_on_lan_test`,
-  `bridge_policy_test`, `tuning_test`) and the `macagent` Go tests. `:boot_smoke` installs the
-  APK on an attached device or emulator and launches `MainActivity`; it is `large` and needs
-  that device, so run it by explicit label.
-- **Daemon.** `macagent/BUILD` carries the Go binary plus its `install` and `pair` helpers;
-  the six-digit pairing code gates the macros, console and clipboard endpoints.
+  `bridge_policy_test`, `tuning_test`) and the `macagent` Rust tests (`:macagent_test`,
+  `:macagent_scripts_lib_test`, `//apps/mobile/android-remote/macagent/metrics:metrics_test`).
+  `:boot_smoke` installs the APK on an attached device or emulator and launches
+  `MainActivity`; it is `large` and needs that device, so run it by explicit label.
+- **Daemon.** `macagent/BUILD` carries the Rust binary (`:macagent`, built with rules_rust)
+  plus its `install` and `pair` helpers (`:install`, `:pair`); the six-digit pairing code
+  gates the macros, console and clipboard endpoints.
 - **Release and distribution.** Release-please cuts `android-remote-vX.Y.Z` on merge to `main`.
   `.github/workflows/android-remote-release.yaml` packages the release APK with multi-ABI support
   via `scripts/publish.sh` and attaches `VitruvianRemote-X.Y.Z.apk` to GitHub Releases. A macOS
@@ -73,8 +75,8 @@ update `android-remote` in lockstep across these files:
     `ToolData/dev.vitruvian.homespeaker/{settings.json,history.json,secrets.json,running.lock}`)
   - `SecretStore.swift` (`secrets.json` `google.refreshToken` and `geminiAPIKey`)
 - **Counterparts in `apps/mobile/android-remote/`:**
-  1. `macagent/homespeaker.go` & `macagent/homespeaker_test.go` (`activeProfile()`, `state()`,
-     `apply()`, `homeSpeakerSay`, `homeSpeakerPhoneSay`, `runVolume`, `speak_phone`,
+  1. `macagent/rs/src/homespeaker.rs` & `macagent_test` (`active_profile()`, `state()`,
+     `apply()`, `handle_say`, `handle_phone_say`, `run_volume`, `speak_phone`,
      `phone_pause_media`, `phone_headphones_only`)
   2. `macagent/API.md` (contract documentation for `/v1/homespeaker` and
      `/v1/homespeaker/phone-say`)
