@@ -24,14 +24,14 @@ import dev.vitruvian.design.StatusTone
 import dev.vitruvian.design.TagTone
 import dev.vitruvian.design.TerminalLine
 
-/** The six destinations. Hosts is reachable from the host chip and the rail only. */
+/** The six destinations. Settings (Hosts) is reachable from the host chip and the rail only. */
 public enum class Screen(public val title: String) {
   Home("Home"),
   Remote("Remote"),
   Mac("Mac"),
-  Apps("Apps"),
+  Apps("Modules"),
   Console("Console"),
-  Hosts("Hosts"),
+  Hosts("Settings"),
 }
 
 /**
@@ -145,7 +145,12 @@ public data class Notice(val title: String, val detail: String)
 public data class PanelRow(val name: String, val value: String)
 
 /** One metric plate on a module dashboard. */
-public data class ModuleMetric(val label: String, val value: String, val sub: String)
+public data class ModuleMetric(
+    val label: String,
+    val value: String,
+    val sub: String,
+    val onClick: (() -> Unit)? = null,
+)
 
 /**
  * One row of a module's list pane.
@@ -187,6 +192,8 @@ public data class ModuleRow(
      * changes it in the same place.
      */
     val toggle: RowToggle? = null,
+    /** One-line inline error shown under the row when its last toggle or action failed. */
+    val error: String? = null,
 )
 
 /**
@@ -231,6 +238,19 @@ public data class RowAction(
     /** The current value, when this action is one of a row's [ModuleRow.choices]. */
     val selected: Boolean = false,
     val onClick: () -> Unit,
+)
+
+/** One control in a module dashboard's top "Now" strip. */
+public data class QuickAction(
+    val label: String,
+    val secondary: String? = null,
+    val enabled: Boolean = true,
+    val active: Boolean = false,
+    val onClick: () -> Unit = {},
+    val contentDescription: String = label,
+    val error: String? = null,
+    val choices: List<RowAction> = emptyList(),
+    val choiceTitle: String = label,
 )
 
 /**
@@ -279,6 +299,10 @@ public data class ModuleDashboard(
      * spoken" is a setting the user chose, and a dim line would read as fine.
      */
     val metaWarn: Boolean = false,
+    /** Top "Now" strip controls rendered before the metric plates when non-empty. */
+    val quick: List<QuickAction> = emptyList(),
+    /** Optional action buttons rendered in the stream plate header. */
+    val streamActions: List<RowAction> = emptyList(),
 )
 
 /** A titled list of rows on a dashboard, beside or under the main one. */

@@ -5,6 +5,7 @@
     <!-- Quick Settings tile labels. Short: the shade truncates hard. -->
     <string name="tile_display_sleep">Sleep Mac display</string>
     <string name="tile_lock_mac">Lock Mac</string>
+    <string name="tile_speaker">Speaker</string>
     <!--
       The two phone-bridge services, as Settings lists them. Both say what the
       access is FOR, because in those two lists this app sits beside a screen

@@ -25,6 +25,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -56,6 +57,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -102,15 +106,18 @@ import dev.vitruvian.remote.state.Derive
 import dev.vitruvian.remote.state.DialogKind
 import dev.vitruvian.remote.state.Markdown
 import dev.vitruvian.remote.state.MockHost
+import dev.vitruvian.remote.state.ModuleComposer
 import dev.vitruvian.remote.state.ModuleDashboard
 import dev.vitruvian.remote.state.ModuleMetric
 import dev.vitruvian.remote.state.ModuleRow
 import dev.vitruvian.remote.state.PendingPermission
+import dev.vitruvian.remote.state.QuickAction
 import dev.vitruvian.remote.state.RemoteState
 import dev.vitruvian.remote.state.RowTextPrompt
 import kotlinx.coroutines.delay
 
 private val METRIC_MIN = 150.dp
+private val QUICK_FOUR_UP_MIN = 520.dp
 private val STREAM_MAX_HEIGHT = 220.dp
 private val INSTALL_BUTTON_MIN = 89.dp
 private val CHIP_HEIGHT = 32.dp
@@ -210,6 +217,21 @@ private fun ColumnScope.DashboardsPane(state: RemoteState) {
     Status(tone = module.statusTone, text = module.status)
   }
 
+  if (module.quick.isNotEmpty()) {
+    module.composer?.let { composer ->
+      Box(modifier = Modifier.padding(start = Space.s4, end = Space.s4, bottom = Space.s4)) {
+        Plate(modifier = Modifier.fillMaxWidth()) {
+          Box(modifier = Modifier.padding(Space.s4)) {
+            ComposerRow(state = state, composer = composer)
+          }
+        }
+      }
+    }
+    Box(modifier = Modifier.padding(start = Space.s4, end = Space.s4, bottom = Space.s4)) {
+      NowStrip(quick = module.quick)
+    }
+  }
+
   Box(modifier = Modifier.padding(horizontal = Space.s4)) {
     AutoGrid(minItemWidth = METRIC_MIN) {
       module.metrics.forEach { metric -> item { ModuleMetricPlate(metric) } }
@@ -233,6 +255,94 @@ private fun ColumnScope.DashboardsPane(state: RemoteState) {
   }
 }
 
+@Composable
+private fun NowStrip(quick: List<QuickAction>) {
+  BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+    if (maxWidth >= QUICK_FOUR_UP_MIN || quick.size <= 2) {
+      Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.spacedBy(Space.s2),
+      ) {
+        quick.forEach { action -> QuickActionCell(action = action, modifier = Modifier.weight(1f)) }
+      }
+    } else {
+      Column(
+          modifier = Modifier.fillMaxWidth(),
+          verticalArrangement = Arrangement.spacedBy(Space.s2),
+      ) {
+        quick.chunked(2).forEach { pair ->
+          Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.spacedBy(Space.s2),
+          ) {
+            pair.forEach { action ->
+              QuickActionCell(action = action, modifier = Modifier.weight(1f))
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun QuickActionCell(action: QuickAction, modifier: Modifier = Modifier) {
+  val colors = Vitruvian
+  val hasChoices = action.choices.isNotEmpty()
+  var sheetOpen by remember { mutableStateOf(false) }
+  Column(
+      modifier =
+          modifier.semantics(mergeDescendants = true) {
+            contentDescription = action.contentDescription
+          },
+      verticalArrangement = Arrangement.spacedBy(Space.s1),
+  ) {
+    VButton(
+        label = action.label,
+        onClick = { if (hasChoices) sheetOpen = true else action.onClick() },
+        modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = Hit.h1),
+        variant = if (action.active) ButtonVariant.Primary else ButtonVariant.Secondary,
+        enabled = action.enabled,
+        contentPadding = PaddingValues(horizontal = Space.s3),
+        trailingIcon = if (hasChoices) VitruvianIcons.CHEVRON_DOWN else null,
+    )
+    if (!action.secondary.isNullOrBlank()) {
+      VText(
+          text = action.secondary,
+          style = VitruvianType.listSub,
+          color = colors.textDim,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+      )
+    }
+    if (!action.error.isNullOrBlank()) {
+      VText(
+          text = action.error,
+          style = VitruvianType.listSub,
+          color = colors.crit,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+      )
+    }
+  }
+  if (sheetOpen && hasChoices) {
+    OptionSheet(
+        title = action.choiceTitle,
+        options =
+            action.choices.map { choice ->
+              SheetOption(
+                  label = choice.label,
+                  selected = choice.selected,
+                  enabled = choice.enabled,
+                  danger = choice.danger,
+              )
+            },
+        onSelect = { index -> action.choices[index].onClick() },
+        onDismissRequest = { sheetOpen = false },
+    )
+  }
+}
+
 /**
  * One metric plate on a module dashboard.
  *
@@ -246,7 +356,13 @@ private fun ColumnScope.DashboardsPane(state: RemoteState) {
 @Composable
 private fun ModuleMetricPlate(metric: ModuleMetric) {
   val colors = Vitruvian
-  Plate(modifier = Modifier.fillMaxWidth()) {
+  val plateModifier =
+      if (metric.onClick != null) {
+        Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = metric.onClick)
+      } else {
+        Modifier.fillMaxWidth()
+      }
+  Plate(modifier = plateModifier) {
     if (metric.value.length <= METRIC_VALUE_MAX) {
       Metric(
           label = metric.label,
@@ -456,7 +572,26 @@ private fun StreamPlate(state: RemoteState, module: ModuleDashboard) {
         modifier = Modifier.padding(Space.s4),
         verticalArrangement = Arrangement.spacedBy(Space.s3),
     ) {
-      Label(module.streamLabel)
+      if (module.streamActions.isEmpty()) {
+        Label(module.streamLabel)
+      } else {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Space.s2),
+        ) {
+          Label(text = module.streamLabel, modifier = Modifier.weight(1f))
+          module.streamActions.forEach { action ->
+            VButton(
+                label = action.label,
+                onClick = action.onClick,
+                enabled = action.enabled,
+                variant = if (action.danger) ButtonVariant.Danger else ButtonVariant.Secondary,
+                contentPadding = PaddingValues(horizontal = Space.s3),
+            )
+          }
+        }
+      }
       // A transcript nobody has written to is a lone cursor, which looks
       // like a stream that failed rather than one waiting for a first
       // prompt. Not a transcript line: nothing was said, so nothing is
@@ -487,24 +622,8 @@ private fun StreamPlate(state: RemoteState, module: ModuleDashboard) {
             cursor = module.cursor,
         )
       }
-      module.composer?.let { composer ->
-        Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
-          VInput(
-              value = composer.value,
-              onValueChange = composer.onValueChange,
-              modifier = Modifier.weight(1f),
-              placeholder = composer.placeholder,
-          )
-          DictateButton(state) { spoken ->
-            composer.onValueChange(
-                listOf(composer.value.trim(), spoken).filter { it.isNotBlank() }.joinToString(" "))
-          }
-          VButton(
-              composer.buttonLabel,
-              composer.onSubmit,
-              enabled = composer.enabled,
-              variant = ButtonVariant.Primary)
-        }
+      if (module.quick.isEmpty()) {
+        module.composer?.let { composer -> ComposerRow(state = state, composer = composer) }
       }
       if (module.prompts) {
         Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
@@ -534,6 +653,27 @@ private fun StreamPlate(state: RemoteState, module: ModuleDashboard) {
         }
       }
     }
+  }
+}
+
+@Composable
+private fun ComposerRow(state: RemoteState, composer: ModuleComposer) {
+  Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
+    VInput(
+        value = composer.value,
+        onValueChange = composer.onValueChange,
+        modifier = Modifier.weight(1f),
+        placeholder = composer.placeholder,
+    )
+    DictateButton(state) { spoken ->
+      composer.onValueChange(
+          listOf(composer.value.trim(), spoken).filter { it.isNotBlank() }.joinToString(" "))
+    }
+    VButton(
+        composer.buttonLabel,
+        composer.onSubmit,
+        enabled = composer.enabled,
+        variant = ButtonVariant.Primary)
   }
 }
 
@@ -671,6 +811,16 @@ private fun ModuleListRow(row: ModuleRow) {
         )
       }
     }
+  }
+  if (!row.error.isNullOrBlank()) {
+    VText(
+        text = row.error,
+        style = VitruvianType.listSub,
+        color = colors.crit,
+        modifier = Modifier.fillMaxWidth().padding(bottom = Space.s2),
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
   }
   val prompt = row.textPrompt
   if (promptOpen && prompt != null) {

@@ -23,21 +23,26 @@ package dev.vitruvian.remote.tiles
 import android.app.PendingIntent
 import android.content.Intent
 import android.os.Build
+import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import dev.vitruvian.remote.MainActivity
+import dev.vitruvian.remote.state.AgentClient
+import dev.vitruvian.remote.state.AgentHostEntry
+import dev.vitruvian.remote.state.Derive
+import dev.vitruvian.remote.state.Persistence
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 
 /**
- * The two Quick Settings tiles.
+ * The Quick Settings tiles.
  *
- * The point is the two actions worth reaching from a locked phone without opening anything: put the
- * Mac's display to sleep, and lock it. Both are HID key presses, so they work with no agent and no
- * pairing -- the phone IS the keyboard.
- *
- * A tile cannot send the key press itself: the Bluetooth HID profile is held by the activity, and a
- * `TileService` is a different process lifecycle with nothing connected. So the tile launches the
- * app with an extra, and [MainActivity] waits for the link before sending -- or says why it could
- * not. That wait is the whole reason this is not fire-and-forget: a tile tapped from the lock
- * screen runs seconds before Bluetooth has finished connecting.
+ * Sleep display and Lock Mac are HID key presses, so they work with no agent and no pairing -- the
+ * phone IS the keyboard. SpeakerMuteTile talks directly to the Mac agent's `/v1/homespeaker/volume`
+ * endpoint without launching the activity.
  */
 public abstract class RemoteActionTile : TileService() {
   /** One of [MainActivity.ACTION_DISPLAY_SLEEP] or [MainActivity.ACTION_LOCK_MAC]. */
@@ -74,4 +79,126 @@ public class SleepDisplayTile : RemoteActionTile() {
 /** Ctrl+Cmd+Q: locked, and a password needed to get back in. */
 public class LockMacTile : RemoteActionTile() {
   override val action: String = MainActivity.ACTION_LOCK_MAC
+}
+
+/**
+ * Quick Settings tile that mutes or unmutes HomeSpeaker on the selected Mac without launching the
+ * app or unlocking the phone.
+ */
+public class SpeakerMuteTile : TileService() {
+  private var scope: CoroutineScope? = null
+  private var currentMuted: Boolean? = null
+
+  override fun onStartListening() {
+    super.onStartListening()
+    scope?.cancel()
+    val tileScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    scope = tileScope
+    val host = selectedPairedHost()
+    if (host == null) {
+      currentMuted = null
+      applySpec(Derive.speakerTileState(paired = false, reachable = false))
+      return
+    }
+    tileScope.launch {
+      val volume =
+          runCatching {
+                withTimeout(TILE_TIMEOUT_MS) {
+                  AgentClient(host.url, host.token).homeSpeakerVolume()
+                }
+              }
+              .getOrNull()
+      if (volume == null) {
+        currentMuted = null
+        applySpec(Derive.speakerTileState(paired = true, reachable = false))
+      } else {
+        currentMuted = if (volume.available && volume.online) volume.muted else null
+        applySpec(
+            Derive.speakerTileState(
+                paired = true,
+                reachable = true,
+                available = volume.available,
+                online = volume.online,
+                muted = volume.muted,
+                percent = volume.percent,
+            ))
+      }
+    }
+  }
+
+  override fun onStopListening() {
+    scope?.cancel()
+    scope = null
+    super.onStopListening()
+  }
+
+  override fun onDestroy() {
+    scope?.cancel()
+    scope = null
+    super.onDestroy()
+  }
+
+  override fun onClick() {
+    super.onClick()
+    val host = selectedPairedHost()
+    if (host == null) {
+      currentMuted = null
+      applySpec(Derive.speakerTileState(paired = false, reachable = false))
+      return
+    }
+    val tileScope =
+        scope ?: CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate).also { scope = it }
+    val currentlyMuted = currentMuted ?: (qsTile?.state == Tile.STATE_INACTIVE)
+    val nextMuted = !currentlyMuted
+    tileScope.launch {
+      val updated =
+          runCatching {
+                withTimeout(TILE_TIMEOUT_MS) {
+                  AgentClient(host.url, host.token).setHomeSpeakerVolume(muted = nextMuted)
+                }
+              }
+              .getOrNull()
+      if (updated == null) {
+        applySpec(Derive.speakerTileState(paired = true, reachable = false, clickFailed = true))
+      } else {
+        currentMuted = if (updated.available && updated.online) updated.muted else null
+        applySpec(
+            Derive.speakerTileState(
+                paired = true,
+                reachable = true,
+                available = updated.available,
+                online = updated.online,
+                muted = updated.muted,
+                percent = updated.percent,
+            ))
+      }
+    }
+  }
+
+  private fun selectedPairedHost(): AgentHostEntry? {
+    val store = Persistence(applicationContext)
+    val selectedId = store.selectedHostId
+    val host = store.hosts.firstOrNull { it.id == selectedId } ?: store.hosts.firstOrNull()
+    if (host == null || host.url.isBlank() || host.token.isBlank()) return null
+    return host
+  }
+
+  private fun applySpec(spec: Derive.SpeakerTileSpec) {
+    val tile = qsTile ?: return
+    tile.state =
+        when (spec.look) {
+          Derive.SpeakerTileLook.Unavailable -> Tile.STATE_UNAVAILABLE
+          Derive.SpeakerTileLook.Inactive -> Tile.STATE_INACTIVE
+          Derive.SpeakerTileLook.Active -> Tile.STATE_ACTIVE
+        }
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+      tile.subtitle = spec.subtitle
+    }
+    tile.contentDescription = "Speaker, ${spec.subtitle}"
+    tile.updateTile()
+  }
+
+  private companion object {
+    const val TILE_TIMEOUT_MS = 3_000L
+  }
 }

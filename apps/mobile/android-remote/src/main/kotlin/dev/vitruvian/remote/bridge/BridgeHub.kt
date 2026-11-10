@@ -89,35 +89,35 @@ public object BridgePermissions {
               label = "Read SMS",
               permission = Manifest.permission.READ_SMS,
               tools = "sms.list",
-              howTo = "Grant SMS: Hosts → Phone bridge → Read SMS → Grant.",
+              howTo = "Grant SMS: Settings → Phone bridge → Read SMS → Grant.",
           ),
           BridgePermission(
               id = "send_sms",
               label = "Send SMS",
               permission = Manifest.permission.SEND_SMS,
               tools = "sms.send",
-              howTo = "Grant SMS: Hosts → Phone bridge → Send SMS → Grant.",
+              howTo = "Grant SMS: Settings → Phone bridge → Send SMS → Grant.",
           ),
           BridgePermission(
               id = "read_contacts",
               label = "Contacts",
               permission = Manifest.permission.READ_CONTACTS,
               tools = "contacts.search",
-              howTo = "Grant Contacts: Hosts → Phone bridge → Contacts → Grant.",
+              howTo = "Grant Contacts: Settings → Phone bridge → Contacts → Grant.",
           ),
           BridgePermission(
               id = "read_call_log",
               label = "Call log",
               permission = Manifest.permission.READ_CALL_LOG,
               tools = "calls.log",
-              howTo = "Grant Call log: Hosts → Phone bridge → Call log → Grant.",
+              howTo = "Grant Call log: Settings → Phone bridge → Call log → Grant.",
           ),
           BridgePermission(
               id = "call_phone",
               label = "Place calls",
               permission = Manifest.permission.CALL_PHONE,
               tools = "calls.dial",
-              howTo = "Grant Phone: Hosts → Phone bridge → Place calls → Grant.",
+              howTo = "Grant Phone: Settings → Phone bridge → Place calls → Grant.",
           ),
           BridgePermission(
               id = "location",
@@ -125,7 +125,7 @@ public object BridgePermissions {
               permission = Manifest.permission.ACCESS_FINE_LOCATION,
               tools = "location.current",
               howTo =
-                  "Grant Location: Hosts → Phone bridge → Location → Grant, and choose " +
+                  "Grant Location: Settings → Phone bridge → Location → Grant, and choose " +
                       "\"Precise\" — a coarse grant answers with the wrong accuracy.",
           ),
           // The two Settings-granted rows. Neither is a runtime permission:

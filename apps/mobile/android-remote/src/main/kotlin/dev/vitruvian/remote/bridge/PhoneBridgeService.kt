@@ -153,11 +153,11 @@ public class PhoneBridgeService : Service() {
       val host = selectedHost(store)
       when {
         host == null || host.url.isBlank() ->
-            BridgeHub.setLink(false, "no Mac selected — add one on the Hosts screen")
+            BridgeHub.setLink(false, "no Mac selected — add one on the Settings screen")
         host.token.isBlank() ->
             BridgeHub.setLink(
                 false,
-                "not paired with ${host.alias.ifBlank { "the Mac" }} — pair on the Hosts screen")
+                "not paired with ${host.alias.ifBlank { "the Mac" }} — pair on the Settings screen")
         else -> connect(host)
       }
       if (handle.cancelled) return

@@ -1470,4 +1470,211 @@ public class DeriveTest {
         listOf("claude", "docker", "grafana", "ollama", "xcode"),
         Derive.visibleModuleIds(galleryIds, installed, availableDashboards))
   }
+
+  @Test
+  public fun `HomeSpeaker Now strip quick actions cover mute, quiet hours, room and replay states`() {
+    // 1. Mute / Unmute: online unmuted -> "Mute", online muted -> "Unmute", offline/unavailable ->
+    // disabled
+    val unmuted =
+        Derive.muteQuickAction(
+            paired = true,
+            speakHome = true,
+            volumeAvailable = true,
+            volumeOnline = true,
+            muted = false,
+            percent = 45)
+    assertEquals("Mute", unmuted.label)
+    assertEquals("45%", unmuted.secondary)
+    assertTrue(unmuted.enabled)
+    assertFalse(unmuted.active)
+    assertEquals("Mute speaker, volume 45%", unmuted.contentDescription)
+
+    val muted =
+        Derive.muteQuickAction(
+            paired = true,
+            speakHome = true,
+            volumeAvailable = true,
+            volumeOnline = true,
+            muted = true,
+            percent = 45)
+    assertEquals("Unmute", muted.label)
+    assertEquals("muted", muted.secondary)
+    assertTrue(muted.enabled)
+    assertTrue(muted.active)
+    assertEquals("Unmute speaker, currently muted", muted.contentDescription)
+
+    val offline =
+        Derive.muteQuickAction(
+            paired = true,
+            speakHome = true,
+            volumeAvailable = true,
+            volumeOnline = false,
+            muted = false,
+            percent = 45)
+    assertEquals("Mute", offline.label)
+    assertEquals("offline", offline.secondary)
+    assertFalse(offline.enabled)
+    assertFalse(offline.active)
+
+    val unavailable =
+        Derive.muteQuickAction(
+            paired = true,
+            speakHome = true,
+            volumeAvailable = false,
+            volumeOnline = false,
+            muted = false,
+            percent = 0)
+    assertEquals("Mute", unavailable.label)
+    assertEquals("n/a", unavailable.secondary)
+    assertFalse(unavailable.enabled)
+
+    // 2. Quiet hours: active now, enabled but outside window, and off
+    val quietNow =
+        Derive.quietHoursQuickAction(
+            paired = true,
+            available = true,
+            enabled = true,
+            active = true,
+            start = "22:00",
+            end = "07:00")
+    assertEquals("Quiet on", quietNow.label)
+    assertEquals("22:00–07:00 · now", quietNow.secondary)
+    assertTrue(quietNow.enabled)
+    assertTrue(quietNow.active)
+
+    val quietStandby =
+        Derive.quietHoursQuickAction(
+            paired = true,
+            available = true,
+            enabled = true,
+            active = false,
+            start = "22:00",
+            end = "07:00")
+    assertEquals("Quiet on", quietStandby.label)
+    assertEquals("22:00–07:00", quietStandby.secondary)
+    assertTrue(quietStandby.enabled)
+    assertTrue(quietStandby.active)
+
+    val quietOff =
+        Derive.quietHoursQuickAction(
+            paired = true,
+            available = true,
+            enabled = false,
+            active = false,
+            start = "22:00",
+            end = "07:00")
+    assertEquals("Quiet off", quietOff.label)
+    assertEquals("22:00–07:00", quietOff.secondary)
+    assertTrue(quietOff.enabled)
+    assertFalse(quietOff.active)
+
+    // 3. Room: selected speaker vs none
+    val room =
+        Derive.roomQuickAction(
+            paired = true,
+            available = true,
+            targetName = "Lake Office display",
+            targetRoom = "Lake Office",
+            targetType = "Device",
+            hasChoices = true)
+    assertEquals("Lake Office display", room.label)
+    assertEquals("Lake Office", room.secondary)
+    assertTrue(room.enabled)
+    assertTrue(room.active)
+
+    val noRoom =
+        Derive.roomQuickAction(paired = true, available = true, targetName = "", hasChoices = false)
+    assertEquals("Room", noRoom.label)
+    assertEquals("none", noRoom.secondary)
+    assertFalse(noRoom.enabled)
+    assertFalse(noRoom.active)
+
+    // 4. Replay: nothing to replay vs newest item available
+    val noReplay =
+        Derive.replayQuickAction(
+            paired = true, available = true, installed = true, hasReplay = false, target = null)
+    assertEquals("Replay", noReplay.label)
+    assertEquals("none", noReplay.secondary)
+    assertFalse(noReplay.enabled)
+
+    val withReplay =
+        Derive.replayQuickAction(
+            paired = true, available = true, installed = true, hasReplay = true, target = "Kitchen")
+    assertEquals("Replay", withReplay.label)
+    assertEquals("Kitchen", withReplay.secondary)
+    assertTrue(withReplay.enabled)
+
+    // Full strip order: mute, quiet_hours, room, replay
+    val strip =
+        Derive.homeSpeakerQuickActions(
+            paired = true,
+            available = true,
+            installed = true,
+            speakHome = true,
+            volumeAvailable = true,
+            volumeOnline = true,
+            muted = false,
+            percent = 60,
+            quietEnabled = true,
+            quietActive = true,
+            quietStart = "22:00",
+            quietEnd = "07:00",
+            targetName = "Kitchen",
+            targetRoom = "Kitchen",
+            hasRoomChoices = true,
+            hasReplay = true,
+            replayTarget = "Kitchen",
+        )
+    assertEquals(listOf("mute", "quiet_hours", "room", "replay"), strip.map { it.id })
+  }
+
+  @Test
+  public fun `Quick Settings Speaker tile maps unpaired, unreachable, muted and active volume`() {
+    assertEquals(
+        Derive.SpeakerTileSpec(Derive.SpeakerTileLook.Unavailable, "Not paired"),
+        Derive.speakerTileState(paired = false, reachable = true, muted = false, percent = 50))
+    assertEquals(
+        Derive.SpeakerTileSpec(Derive.SpeakerTileLook.Unavailable, "Mac unreachable"),
+        Derive.speakerTileState(paired = true, reachable = false))
+    assertEquals(
+        Derive.SpeakerTileSpec(Derive.SpeakerTileLook.Unavailable, "Mac unreachable"),
+        Derive.speakerTileState(paired = true, reachable = true, available = false))
+    assertEquals(
+        Derive.SpeakerTileSpec(Derive.SpeakerTileLook.Unavailable, "Mac unreachable"),
+        Derive.speakerTileState(paired = true, reachable = true, online = false))
+    assertEquals(
+        Derive.SpeakerTileSpec(Derive.SpeakerTileLook.Unavailable, "Couldn't reach the Mac"),
+        Derive.speakerTileState(paired = true, reachable = false, clickFailed = true))
+    assertEquals(
+        Derive.SpeakerTileSpec(Derive.SpeakerTileLook.Inactive, "Muted"),
+        Derive.speakerTileState(
+            paired = true,
+            reachable = true,
+            available = true,
+            online = true,
+            muted = true,
+            percent = 40))
+    assertEquals(
+        Derive.SpeakerTileSpec(Derive.SpeakerTileLook.Active, "On · 65%"),
+        Derive.speakerTileState(
+            paired = true,
+            reachable = true,
+            available = true,
+            online = true,
+            muted = false,
+            percent = 65))
+  }
+
+  @Test
+  public fun `HomeSpeaker inline errors use plain words for unreachable, auth and explicit reasons`() {
+    assertEquals(
+        "Couldn't mute: the Mac didn't answer",
+        Derive.homeSpeakerInlineError(what = "mute", reason = "SocketTimeoutException: timed out"))
+    assertEquals(
+        "Couldn't quiet hours on: not paired with atlas",
+        Derive.homeSpeakerInlineError(what = "quiet hours on", authFailed = true, mac = "atlas"))
+    assertEquals(
+        "Couldn't replay: speaker is offline",
+        Derive.homeSpeakerInlineError(what = "replay", reason = "speaker is offline"))
+  }
 }
