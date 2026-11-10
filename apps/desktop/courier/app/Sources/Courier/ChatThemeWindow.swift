@@ -780,6 +780,7 @@ public struct EmptyStateUnreadCardsView: View {
     public let unreadRows: [CourierCore.InboxRow]
     public var redactNamesAndPictures: Bool = false
     public let onSelectRoom: (String) -> Void
+    @Environment(\.themeAccentColor) private var themeAccent
 
     public init(
         unreadRows: [CourierCore.InboxRow],
@@ -796,7 +797,7 @@ public struct EmptyStateUnreadCardsView: View {
             HStack(spacing: 6) {
                 Image(systemName: "hexagon.fill")
                     .font(.caption)
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(themeAccent)
                 Text(
                     unreadRows.isEmpty
                         ? String(localized: "All caught up")
@@ -856,7 +857,7 @@ public struct EmptyStateUnreadCardsView: View {
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 5)
                                 .padding(.vertical, 1)
-                                .background(Capsule().fill(Color.accentColor))
+                                .background(Capsule().fill(themeAccent))
                         }
                     }
                     Text(row.preview.isEmpty ? String(localized: "New message") : row.preview)

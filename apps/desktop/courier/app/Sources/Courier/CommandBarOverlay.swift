@@ -9,6 +9,7 @@ public struct CommandBarOverlay: View {
     @ObservedObject public var model: CommandBarModel
     @FocusState private var isSearchFocused: Bool
     @Environment(\.redactNamesAndPictures) private var isRedacted
+    @Environment(\.themeAccentColor) private var themeAccent
 
     public init(model: CommandBarModel) {
         self.model = model
@@ -117,9 +118,9 @@ public struct CommandBarOverlay: View {
                         .padding(.vertical, 3)
                         .background(
                             Capsule()
-                                .fill(Color.accentColor.opacity(0.16))
+                                .fill(themeAccent.opacity(0.16))
                         )
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(themeAccent)
                     }
                     .buttonStyle(.plain)
                 }
@@ -134,9 +135,9 @@ public struct CommandBarOverlay: View {
                 .padding(.vertical, 3)
                 .background(
                     Capsule()
-                        .fill(Color.accentColor.opacity(0.16))
+                        .fill(themeAccent.opacity(0.16))
                 )
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(themeAccent)
             }
 
             TextField(
@@ -181,7 +182,7 @@ public struct CommandBarOverlay: View {
     private func statusBannerRow(_ message: String) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "info.circle.fill")
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(themeAccent)
             Text(message)
                 .font(.caption)
                 .foregroundStyle(.primary)
@@ -194,7 +195,7 @@ public struct CommandBarOverlay: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(Color.accentColor.opacity(0.08))
+        .background(themeAccent.opacity(0.08))
     }
 
     private func confirmationRow(_ command: CourierCommand) -> some View {
@@ -317,7 +318,7 @@ public struct CommandBarOverlay: View {
             Image(systemName: command.icon)
                 .font(.system(size: 13, weight: .medium))
                 .frame(width: 20, alignment: .center)
-                .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+                .foregroundStyle(isSelected ? themeAccent : .secondary)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(command.title)
@@ -361,7 +362,7 @@ public struct CommandBarOverlay: View {
         .padding(.vertical, 7)
         .background(
             RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(isSelected ? Color.accentColor.opacity(0.16) : Color.clear)
+                .fill(isSelected ? themeAccent.opacity(0.16) : Color.clear)
         )
         .opacity(enabled ? 1.0 : 0.48)
         .contentShape(Rectangle())
@@ -406,7 +407,7 @@ public struct CommandBarOverlay: View {
                             HStack(spacing: 10) {
                                 Image(systemName: row.isDirect ? "person.crop.circle.fill" : "person.2.circle.fill")
                                     .font(.system(size: 16))
-                                    .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+                                    .foregroundStyle(isSelected ? themeAccent : .secondary)
                                     .frame(width: 22)
 
                                 VStack(alignment: .leading, spacing: 1) {
@@ -440,7 +441,7 @@ public struct CommandBarOverlay: View {
                             .padding(.vertical, 7)
                             .background(
                                 RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                    .fill(isSelected ? Color.accentColor.opacity(0.16) : Color.clear)
+                                    .fill(isSelected ? themeAccent.opacity(0.16) : Color.clear)
                             )
                             .contentShape(Rectangle())
                             .onTapGesture {

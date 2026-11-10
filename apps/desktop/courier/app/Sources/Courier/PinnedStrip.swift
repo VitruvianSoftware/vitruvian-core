@@ -68,6 +68,7 @@ private struct PinnedChat: View {
     let showsBadge: Bool
     let tinted: Bool
     @Environment(\.redactNamesAndPictures) private var isRedacted
+    @Environment(\.themeAccentColor) private var themeAccent
 
     /// The chat's name, or with "Redact names and pictures" on, its stand-in, as the chat list shows it.
     private var displayName: String {
@@ -92,7 +93,7 @@ private struct PinnedChat: View {
                     if row.isUnread {
                         Circle()
                             // Grey when the chat is muted itself or by its label or account, as in the chat list.
-                            .fill(row.muted || row.mutedBy != .none ? Color.gray : Color.accentColor)
+                            .fill(row.muted || row.mutedBy != .none ? Color.gray : themeAccent)
                             .frame(width: 10, height: 10)
                             .overlay(Circle().strokeBorder(.background, lineWidth: 1.5))
                             .accessibilityLabel(String(localized: "Unread"))
@@ -101,7 +102,7 @@ private struct PinnedChat: View {
                 .padding(3)
                 .background {
                     if isOpen || isSelected {
-                        Circle().strokeBorder(Color.accentColor, lineWidth: 2)
+                        Circle().strokeBorder(themeAccent, lineWidth: 2)
                     }
                 }
             Text(displayName)

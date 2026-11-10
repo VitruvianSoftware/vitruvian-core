@@ -7,7 +7,11 @@ import SwiftUI
 /// How a space looks and is named on the bar. The engine names accounts and labels; the app names its own spaces.
 enum SpaceLook {
     static func title(_ space: Space) -> String {
-        guard space.kind == .builtin else { return space.title }
+        guard space.kind == .builtin else {
+            if !space.title.isEmpty { return space.title }
+            if !space.network.isEmpty { return NetworkNames.displayName(of: space.network) ?? space.network }
+            return space.spaceID
+        }
         switch space.spaceID {
         case "inbox": return String(localized: "Inbox")
         case "reminders": return String(localized: "Reminders")
@@ -231,6 +235,7 @@ private struct SpaceIcon: View {
     let isStarting: Bool
     let select: () -> Void
     @State private var hovering = false
+    @Environment(\.themeAccentColor) private var themeAccent
 
     var body: some View {
         Button(action: select) {
@@ -268,36 +273,44 @@ private struct SpaceIcon: View {
     }
 
     private var background: Color {
-        isShown ? Color.accentColor.opacity(0.22) : hovering ? Color.primary.opacity(0.08) : Color.clear
+        isShown ? themeAccent.opacity(0.22) : hovering ? Color.primary.opacity(0.08) : Color.clear
     }
 
     @ViewBuilder
     private var mark: some View {
         switch space.kind {
         case .account:
-            NetworkBadge(network: space.network, name: space.title, size: 26)
+            NetworkBadge(network: space.network, name: SpaceLook.title(space), size: 26)
                 .accessibilityHidden(true)
         case .label:
             LabelIcon(color: space.color, icon: space.icon, size: 28)
         default:
             Image(systemName: SpaceLook.symbol(space.spaceID))
                 .font(.system(size: 18))
-                .foregroundStyle(isShown ? Color.accentColor : Color.secondary)
+                .foregroundStyle(isShown ? themeAccent : Color.secondary)
         }
     }
 
     @ViewBuilder
     private var badge: some View {
         if space.unreadChats > 0 {
-            Text(space.unreadChats > 99 ? "99+" : String(space.unreadChats))
-                .font(.system(size: 10, weight: .semibold))
-                .monospacedDigit()
-                .foregroundStyle(.white)
-                .padding(.horizontal, 4)
-                .frame(minWidth: 16, minHeight: 16)
-                .background(Capsule().fill(space.muted ? Color.gray : Color.red))
-                .offset(x: 5, y: -4)
-                .accessibilityHidden(true)
+            if space.kind == .account {
+                Circle()
+                    .fill(space.muted ? Color.gray : themeAccent)
+                    .frame(width: 6, height: 6)
+                    .offset(x: 2, y: -2)
+                    .accessibilityHidden(true)
+            } else {
+                Text(space.unreadChats > 99 ? "99+" : String(space.unreadChats))
+                    .font(.system(size: 10, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 4)
+                    .frame(minWidth: 16, minHeight: 16)
+                    .background(Capsule().fill(space.muted ? Color.gray : themeAccent))
+                    .offset(x: 5, y: -4)
+                    .accessibilityHidden(true)
+            }
         }
     }
 
@@ -315,25 +328,23 @@ private struct SpaceIcon: View {
 /// With no label yet: the nudge to make one.
 private struct NewLabelNudge: View {
     let create: () -> Void
+    @State private var hovering = false
 
     var body: some View {
         Button(action: create) {
-            Image(systemName: "tag")
-                .font(.system(size: 16))
-                .foregroundStyle(.secondary)
+            Image(systemName: "plus")
+                .font(.system(size: 18))
+                .foregroundStyle(Color.secondary)
                 .frame(width: 40, height: 40)
-                .overlay(RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
-                    .foregroundStyle(.tertiary))
-                .overlay(alignment: .bottomTrailing) {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 12))
-                        .foregroundStyle(Color.accentColor)
-                        .offset(x: 3, y: 3)
-                }
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(hovering ? Color.primary.opacity(0.08) : Color.clear)
+                )
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(String(localized: "New label: put chats from any network into a space of their own."))
+        .onHover { hovering = $0 }
+        .help(String(localized: "New label"))
         .accessibilityLabel(String(localized: "New label"))
     }
 }
