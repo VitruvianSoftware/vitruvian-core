@@ -331,7 +331,10 @@ final class AIProvidersTests: XCTestCase {
 
     // MARK: - LocalProviderDetector
 
-    func testLocalProviderDetectorRunningNeedsKeyNotRunningAndNon8888UnslothPort() async {
+    func testLocalProviderDetectorRunningNeedsKeyNotRunningAndNon8888UnslothPort() async throws {
+        let studioDir = try makeTempUnslothStudioDir(pidFiles: ["studio-8891-4242.pid"])
+        defer { try? FileManager.default.removeItem(at: studioDir) }
+
         let transport = StubHTTPTransport { request in
             guard let url = request.url else { throw URLError(.badURL) }
             switch url.absoluteString {
@@ -349,7 +352,7 @@ final class AIProvidersTests: XCTestCase {
             }
         }
 
-        let detector = LocalProviderDetector(transport: transport)
+        let detector = LocalProviderDetector(transport: transport, unslothStudioDirectory: { studioDir })
 
         // First probe without an Unsloth key: Ollama is running, LM Studio is not running, Unsloth on 8891 needs key
         let firstResults = await detector.detect()
@@ -372,7 +375,10 @@ final class AIProvidersTests: XCTestCase {
         XCTAssertEqual(detector.detectedUnslothPort, 8891)
     }
 
-    func testLocalProviderDetectorIgnores403AndSendsUnslothKeyOnlyToChosen401Port() async {
+    func testLocalProviderDetectorIgnores403AndSendsUnslothKeyOnlyToChosen401Port() async throws {
+        let studioDir = try makeTempUnslothStudioDir(pidFiles: ["studio-8890-9001.pid"])
+        defer { try? FileManager.default.removeItem(at: studioDir) }
+
         let secretKey = "unsloth-secret-key"
         let transport = StubHTTPTransport { request in
             guard let url = request.url else { throw URLError(.badURL) }
@@ -391,7 +397,7 @@ final class AIProvidersTests: XCTestCase {
             }
         }
 
-        let detector = LocalProviderDetector(transport: transport)
+        let detector = LocalProviderDetector(transport: transport, unslothStudioDirectory: { studioDir })
         let results = await detector.detect(unslothKey: secretKey)
 
         XCTAssertEqual(detector.detectedUnslothPort, 8890)
@@ -404,6 +410,72 @@ final class AIProvidersTests: XCTestCase {
         XCTAssertEqual(keyedRequests.count, 1, "Saved Unsloth key must only be sent once, to the chosen 401 port")
         XCTAssertEqual(keyedRequests.first?.url?.absoluteString, "http://127.0.0.1:8890/v1/models")
         XCTAssertEqual(keyedRequests.first?.value(forHTTPHeaderField: "Authorization"), "Bearer \(secretKey)")
+    }
+
+    func testUnslothRequiresMatchingPIDFileFor401PortAndHonoursEnvVars() async throws {
+        // 1. Directory resolution honours $UNSLOTH_STUDIO_HOME and $STUDIO_HOME, falling back to ~/.unsloth/studio
+        let fakeHome = URL(fileURLWithPath: "/Users/tester", isDirectory: true)
+        XCTAssertEqual(
+            LocalProviderDetector.defaultUnslothStudioDirectory(environment: [:], homeDirectory: fakeHome).path,
+            "/Users/tester/.unsloth/studio"
+        )
+        XCTAssertEqual(
+            LocalProviderDetector.defaultUnslothStudioDirectory(
+                environment: ["STUDIO_HOME": "/tmp/custom-studio"],
+                homeDirectory: fakeHome
+            ).path,
+            "/tmp/custom-studio"
+        )
+        XCTAssertEqual(
+            LocalProviderDetector.defaultUnslothStudioDirectory(
+                environment: [
+                    "UNSLOTH_STUDIO_HOME": "/tmp/unsloth-override",
+                    "STUDIO_HOME": "/tmp/custom-studio",
+                ],
+                homeDirectory: fakeHome
+            ).path,
+            "/tmp/unsloth-override"
+        )
+
+        // 2. Port 8888 returns 401, but no matching studio-8888-<pid>.pid exists -> report .notRunning and send NO key
+        let studioDir = try makeTempUnslothStudioDir(pidFiles: ["studio-8899-1111.pid"])
+        defer { try? FileManager.default.removeItem(at: studioDir) }
+
+        let testToken = "test-unsloth-token"
+        let transport = StubHTTPTransport { request in
+            guard let url = request.url else { throw URLError(.badURL) }
+            switch url.absoluteString {
+            case "http://127.0.0.1:8888/v1/models":
+                // Foreign service on 8888 returning 401 without a matching Unsloth pid file
+                return (Data(), StubHTTPTransport.makeResponse(url: url, status: 401))
+            case "http://127.0.0.1:8892/v1/models":
+                if request.value(forHTTPHeaderField: "Authorization") == "Bearer \(testToken)" {
+                    let body = Data(#"{"data":[{"id":"unsloth/Mistral-7B"}]}"#.utf8)
+                    return (body, StubHTTPTransport.makeResponse(url: url, status: 200))
+                }
+                return (Data(), StubHTTPTransport.makeResponse(url: url, status: 401))
+            default:
+                throw URLError(.cannotConnectToHost)
+            }
+        }
+
+        let detector = LocalProviderDetector(transport: transport, unslothStudioDirectory: { studioDir })
+        let withoutMatchingPID = await detector.detect(unslothKey: testToken)
+        XCTAssertEqual(withoutMatchingPID[.unslothStudio], .notRunning)
+        XCTAssertNil(detector.detectedUnslothPort)
+        XCTAssertNil(detector.unslothBaseURL)
+        let leakedRequests = transport.requests.filter { $0.value(forHTTPHeaderField: "Authorization") != nil }
+        XCTAssertTrue(leakedRequests.isEmpty, "No key may be sent to a 401 port without a matching studio-<port>-<pid>.pid file")
+
+        // 3. Write studio-8892-7777.pid: detector skips unowned 8888, matches 8892, and sends key only to 8892
+        transport.reset()
+        try Data("7777".utf8).write(to: studioDir.appendingPathComponent("studio-8892-7777.pid"))
+        let withMatchingPID = await detector.detect(unslothKey: testToken)
+        XCTAssertEqual(withMatchingPID[.unslothStudio], .running(models: ["unsloth/Mistral-7B"]))
+        XCTAssertEqual(detector.detectedUnslothPort, 8892)
+        let keyedRequests = transport.requests.filter { $0.value(forHTTPHeaderField: "Authorization") != nil }
+        XCTAssertEqual(keyedRequests.count, 1)
+        XCTAssertEqual(keyedRequests.first?.url?.absoluteString, "http://127.0.0.1:8892/v1/models")
     }
 
     func testUnslothKeyNeverSentWhenNoPortDetectedEvenWithStubOn8888() async {
@@ -1150,6 +1222,16 @@ final class AIProvidersTests: XCTestCase {
     }
 
     // MARK: - Helpers
+
+    private func makeTempUnslothStudioDir(pidFiles: [String]) throws -> URL {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("courier-unsloth-test-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        for name in pidFiles {
+            try Data("12345".utf8).write(to: dir.appendingPathComponent(name))
+        }
+        return dir
+    }
 
     private func assertThrowsClientError<T>(
         _ expression: @autoclosure () async throws -> T,

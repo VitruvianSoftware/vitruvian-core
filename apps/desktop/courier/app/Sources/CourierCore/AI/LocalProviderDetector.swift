@@ -17,11 +17,80 @@ public final class LocalProviderDetector: @unchecked Sendable {
     public static let unslothPorts: ClosedRange<Int> = 8888 ... 8908
 
     private let transport: any HTTPTransport
+    private let unslothStudioDirectory: @Sendable () -> URL
     private let lock = NSLock()
     private var _detectedUnslothPort: Int?
 
-    public init(transport: any HTTPTransport = URLSessionHTTPTransport.shared) {
+    public init(
+        transport: any HTTPTransport = URLSessionHTTPTransport.shared,
+        unslothStudioDirectory: @escaping @Sendable () -> URL = {
+            LocalProviderDetector.defaultUnslothStudioDirectory()
+        }
+    ) {
         self.transport = transport
+        self.unslothStudioDirectory = unslothStudioDirectory
+    }
+
+    public convenience init(
+        transport: any HTTPTransport = URLSessionHTTPTransport.shared,
+        unslothStudioDirectoryURL: URL
+    ) {
+        self.init(transport: transport, unslothStudioDirectory: { unslothStudioDirectoryURL })
+    }
+
+    /// Resolves the Unsloth Studio directory (`$UNSLOTH_STUDIO_HOME`, then `$STUDIO_HOME`, else `~/.unsloth/studio`).
+    public static func defaultUnslothStudioDirectory(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> URL {
+        for key in ["UNSLOTH_STUDIO_HOME", "STUDIO_HOME"] {
+            if let raw = environment[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !raw.isEmpty
+            {
+                let expanded = (raw as NSString).expandingTildeInPath
+                return URL(fileURLWithPath: expanded, isDirectory: true)
+            }
+        }
+        return homeDirectory
+            .appendingPathComponent(".unsloth", isDirectory: true)
+            .appendingPathComponent("studio", isDirectory: true)
+    }
+
+    /// Returns ports that Unsloth Studio owns according to `studio-<port>-<pid>.pid` files in `directory`.
+    public static func unslothOwnedPorts(in directory: URL) -> Set<Int> {
+        var ports: Set<Int> = []
+        let candidateDirs = [
+            directory,
+            directory.appendingPathComponent("studio", isDirectory: true),
+        ]
+        for dir in candidateDirs {
+            guard let filenames = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else {
+                continue
+            }
+            for filename in filenames {
+                if let port = parseUnslothPIDFilePort(filename: filename) {
+                    ports.insert(port)
+                }
+            }
+        }
+        return ports
+    }
+
+    /// Parses `<port>` from an Unsloth Studio pid filename `studio-<port>-<pid>.pid`.
+    public static func parseUnslothPIDFilePort(filename: String) -> Int? {
+        guard filename.hasPrefix("studio-"), filename.hasSuffix(".pid") else {
+            return nil
+        }
+        let body = filename.dropFirst("studio-".count).dropLast(".pid".count)
+        let parts = body.split(separator: "-", omittingEmptySubsequences: false)
+        guard parts.count == 2,
+              let port = Int(parts[0]),
+              !parts[1].isEmpty,
+              parts[1].allSatisfy(\.isNumber)
+        else {
+            return nil
+        }
+        return port
     }
 
     public var detectedUnslothPort: Int? {
@@ -96,9 +165,10 @@ public final class LocalProviderDetector: @unchecked Sendable {
             }
         }
 
+        let ownedUnslothPorts = Self.unslothOwnedPorts(in: unslothStudioDirectory())
         var unslothResult: LocalDetection = .notRunning
         var chosenPort: Int?
-        for port in Self.unslothPorts {
+        for port in Self.unslothPorts where ownedUnslothPorts.contains(port) {
             if case let .running(models) = unslothByPort[port] {
                 unslothResult = .running(models: models)
                 chosenPort = port
@@ -106,7 +176,7 @@ public final class LocalProviderDetector: @unchecked Sendable {
             }
         }
         if chosenPort == nil {
-            for port in Self.unslothPorts {
+            for port in Self.unslothPorts where ownedUnslothPorts.contains(port) {
                 if unslothByPort[port] == .needsKey {
                     unslothResult = .needsKey
                     chosenPort = port
