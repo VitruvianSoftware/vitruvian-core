@@ -582,6 +582,16 @@ public enum HomeSpeakerStateContract {
                 )
             )
         }
+        // An empty list is a caller's mistake, not a request: say so rather
+        // than answer "ok" for a change that never happened.
+        guard !operations.isEmpty else {
+            return applyFailure(
+                IndexedApplyError(
+                    code: "no_operations",
+                    message: "\"operations\" is empty; send at least one operation."
+                )
+            )
+        }
 
         // 2. Refuse when another program is the chosen one in speaker_door.json.
         let doorRecord = seam.doorFile.read()

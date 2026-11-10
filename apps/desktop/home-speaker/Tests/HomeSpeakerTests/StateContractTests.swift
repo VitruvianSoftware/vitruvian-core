@@ -1146,4 +1146,162 @@ struct StateContractTests {
         #expect(finalSecrets.oauthClientIdOverride == "cli-client-id.apps.googleusercontent.com")
         #expect(finalSecrets.slackToken == "concurrent-app-slack-token")
     }
+
+    // MARK: - 14. QA Probe Tests
+
+    @Test("Probe: switchTo combined with another op (before or after) refuses with switch_must_be_alone and leaves settings, secrets, and door bytes unchanged")
+    func probeSwitchWithOtherOpWritesNothing() throws {
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+        try rig.seedGoldenFixture()
+
+        let switchSeam = SettingsActions.RecordingDoorSwitchSeam(
+            me: .app,
+            chosenBy: "HomeSpeaker app 1.19.1",
+            doorFile: rig.doorFile,
+            home: rig.agentHome,
+            appProfile: rig.appProfile,
+            extensionProfile: rig.extProfile,
+            appProgram: rig.hookExecutablePath,
+            extensionProgram: rig.extExecutablePath,
+            now: ScratchRig.fixedDate,
+            otherIsInstalled: true,
+            otherRunning: true
+        )
+        let seam = rig.makeSeam(program: .app, doorSwitchSeam: switchSeam)
+        let beforeConfigBytes = try Data(contentsOf: rig.configFile.url)
+        let beforeSecretsBytes = try Data(contentsOf: rig.secrets.fileURL)
+        let beforeDoorBytes = try Data(contentsOf: rig.doorFile.url)
+
+        let batches: [(payload: String, expectedIndex: Int)] = [
+            (
+                """
+                {"contract_version":1,"operations":[
+                  {"op":"set","key":"speech_length","value":"full"},
+                  {"op":"switchTo","side":"extension","copy":true}
+                ]}
+                """,
+                1
+            ),
+            (
+                """
+                {"contract_version":1,"operations":[
+                  {"op":"switchTo","side":"extension","copy":true},
+                  {"op":"set","key":"speech_length","value":"full"}
+                ]}
+                """,
+                0
+            ),
+        ]
+
+        for (payload, expectedIndex) in batches {
+            let out = HomeSpeakerCommandLine.apply(payload, seam: seam)
+            #expect(out.exitCode == 1)
+            let parsed = try #require(JSONSerialization.jsonObject(with: Data(out.stdout[0].utf8)) as? [String: Any])
+            #expect(parsed["ok"] as? Bool == false)
+            let err = try #require(parsed["error"] as? [String: Any])
+            #expect(err["op_index"] as? Int == expectedIndex)
+            #expect(err["code"] as? String == "switch_must_be_alone")
+            #expect(try Data(contentsOf: rig.configFile.url) == beforeConfigBytes)
+            #expect(try Data(contentsOf: rig.secrets.fileURL) == beforeSecretsBytes)
+            #expect(try Data(contentsOf: rig.doorFile.url) == beforeDoorBytes)
+        }
+    }
+
+    @Test("Probe: failure after valid set, saveOAuthClient, and clearChatToken writes nothing to settings, secrets, or door")
+    func probeFailureInBatchWritesNoSettingsSecretsOrDoor() throws {
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+        try rig.seedGoldenFixture()
+
+        let seam = rig.makeSeam(program: .app)
+        let beforeConfigBytes = try Data(contentsOf: rig.configFile.url)
+        let beforeSecretsBytes = try Data(contentsOf: rig.secrets.fileURL)
+        let beforeDoorBytes = try Data(contentsOf: rig.doorFile.url)
+
+        let payload = """
+        {
+          "contract_version": 1,
+          "operations": [
+            {"op": "set", "key": "speech_length", "value": "full"},
+            {"op": "saveOAuthClient", "client_id": "new-id.apps.googleusercontent.com", "client_secret": "new-secret"},
+            {"op": "clearChatToken", "token": "slack"},
+            {"op": "set", "key": "speech_length", "value": "invalid-choice"}
+          ]
+        }
+        """
+        let out = HomeSpeakerCommandLine.apply(payload, seam: seam)
+        #expect(out.exitCode == 1)
+        let parsed = try #require(JSONSerialization.jsonObject(with: Data(out.stdout[0].utf8)) as? [String: Any])
+        #expect(parsed["ok"] as? Bool == false)
+        let err = try #require(parsed["error"] as? [String: Any])
+        #expect(err["op_index"] as? Int == 3)
+        #expect(err["code"] as? String == "invalid_choice")
+        #expect(try Data(contentsOf: rig.configFile.url) == beforeConfigBytes)
+        #expect(try Data(contentsOf: rig.secrets.fileURL) == beforeSecretsBytes)
+        #expect(try Data(contentsOf: rig.doorFile.url) == beforeDoorBytes)
+    }
+
+    @Test("Probe: secrets never appear in --apply saveOAuthClient output or --apply error messages")
+    func probeSecretsNeverAppearInApplyOrErrorOutputs() throws {
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+        try rig.seedGoldenFixture()
+
+        let seam = rig.makeSeam(program: .app)
+        let extraSecret = "SECRET-APPLIED-OAUTH-DO-NOT-LEAK"
+        let allCanaries = ScratchRig.secretCanaries + [extraSecret]
+
+        let payloads: [(payload: String, expectedExit: Int32)] = [
+            (#"{"contract_version":1,"operations":[{"op":"saveOAuthClient","client_id":"new.apps.googleusercontent.com","client_secret":"\#(extraSecret)"}]}"#, 0),
+            (#"{"contract_version":1,"operations":[{"op":"clearChatToken","token":"not-a-service"}]}"#, 1),
+            (#"{"contract_version":1,"operations":[{"op":"set","key":"speech_length","value":"not-a-choice"}]}"#, 1),
+            ("{invalid json", 1),
+        ]
+
+        for (payload, expectedExit) in payloads {
+            let out = HomeSpeakerCommandLine.apply(payload, seam: seam)
+            #expect(out.exitCode == expectedExit)
+            let combined = (out.stdout + out.stderr).joined(separator: "\n")
+            for canary in allCanaries {
+                #expect(!combined.contains(canary), "Secret canary \(canary) leaked in output")
+            }
+        }
+    }
+
+    @Test("Probe: invalid JSON, non-array JSON, and non-object operation entries return JSON error with exit 1 and write nothing")
+    func probeNonObjectOperationAndMalformedJsonWriteNothing() throws {
+        let rig = try ScratchRig()
+        defer { rig.cleanup() }
+        try rig.seedGoldenFixture()
+
+        let seam = rig.makeSeam(program: .app)
+        let beforeConfigBytes = try Data(contentsOf: rig.configFile.url)
+        let beforeSecretsBytes = try Data(contentsOf: rig.secrets.fileURL)
+        let beforeDoorBytes = try Data(contentsOf: rig.doorFile.url)
+
+        let cases: [(input: String, expectedCode: String)] = [
+            ("{not valid json", "invalid_json"),
+            ("[]", "invalid_json"),
+            ("123", "invalid_json"),
+            (#"{"contract_version":1,"operations":"not-an-array"}"#, "invalid_operations"),
+            (#"{"contract_version":1,"operations":{"op":"reset"}}"#, "invalid_operations"),
+            (#"{"contract_version":1,"operations":["not-an-object"]}"#, "invalid_operations"),
+            (#"{"contract_version":1,"operations":[123]}"#, "invalid_operations"),
+            (#"{"contract_version":1,"operations":[]}"#, "no_operations"),
+            (#"{"contract_version":1,"operations":[{"op":"set","key":"enabled","value":false},"not-an-object"]}"#, "invalid_operations"),
+        ]
+
+        for (input, expectedCode) in cases {
+            let out = HomeSpeakerCommandLine.apply(input, seam: seam)
+            #expect(out.exitCode == 1, "Expected exit 1 for \(input)")
+            let parsed = try #require(JSONSerialization.jsonObject(with: Data(out.stdout[0].utf8)) as? [String: Any])
+            #expect(parsed["ok"] as? Bool == false)
+            let err = try #require(parsed["error"] as? [String: Any])
+            #expect(err["code"] as? String == expectedCode)
+            #expect(try Data(contentsOf: rig.configFile.url) == beforeConfigBytes)
+            #expect(try Data(contentsOf: rig.secrets.fileURL) == beforeSecretsBytes)
+            #expect(try Data(contentsOf: rig.doorFile.url) == beforeDoorBytes)
+        }
+    }
 }
