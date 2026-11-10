@@ -3,6 +3,40 @@
 
 import Foundation
 
+public struct AIKeyStoreError: Error, LocalizedError, Equatable, Sendable {
+    public let message: String
+
+    public init(message: String) {
+        self.message = message
+    }
+
+    public var errorDescription: String? { message }
+
+    public static func saveFailed(_ error: Error) -> AIKeyStoreError {
+        AIKeyStoreError(
+            message: String(localized: "Couldn’t save key to Keychain (\(describe(error))).")
+        )
+    }
+
+    public static func removeFailed(_ error: Error) -> AIKeyStoreError {
+        AIKeyStoreError(
+            message: String(localized: "Couldn’t remove key from Keychain (\(describe(error))).")
+        )
+    }
+
+    private static func describe(_ error: Error) -> String {
+        if let failure = error as? KeychainStore.Failure {
+            return "OSStatus \(failure.status)"
+        }
+        if let localized = (error as? LocalizedError)?.errorDescription,
+           !localized.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
+            return localized
+        }
+        return error.localizedDescription
+    }
+}
+
 /// API keys for AI providers stored in the Keychain via `CredentialStore`.
 /// Keys never go to UserDefaults, logs, or string descriptions.
 public struct AIKeyStore: Sendable {
@@ -37,21 +71,34 @@ public struct AIKeyStore: Sendable {
         return String(stored.suffix(4))
     }
 
-    public func saveKey(_ key: String, for provider: AIProviderKind) throws {
+    @discardableResult
+    public func saveKey(_ key: String, for provider: AIProviderKind) -> Result<Void, AIKeyStoreError> {
         let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty {
-            try store.delete(account: provider.rawValue)
-        } else {
-            try store.write(trimmed, account: provider.rawValue)
+        do {
+            if trimmed.isEmpty {
+                try store.delete(account: provider.rawValue)
+            } else {
+                try store.write(trimmed, account: provider.rawValue)
+            }
+            return .success(())
+        } catch {
+            return .failure(.saveFailed(error))
         }
     }
 
-    public func removeKey(for provider: AIProviderKind) throws {
-        try store.delete(account: provider.rawValue)
+    @discardableResult
+    public func removeKey(for provider: AIProviderKind) -> Result<Void, AIKeyStoreError> {
+        do {
+            try store.delete(account: provider.rawValue)
+            return .success(())
+        } catch {
+            return .failure(.removeFailed(error))
+        }
     }
 
-    public func deleteKey(for provider: AIProviderKind) throws {
-        try removeKey(for: provider)
+    @discardableResult
+    public func deleteKey(for provider: AIProviderKind) -> Result<Void, AIKeyStoreError> {
+        removeKey(for: provider)
     }
 }
 

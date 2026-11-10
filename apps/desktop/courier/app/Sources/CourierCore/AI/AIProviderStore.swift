@@ -46,6 +46,7 @@ public final class AIProviderStore: ObservableObject {
     @Published public private(set) var isLoadingModels: Bool = false
     @Published public private(set) var isTesting: Bool = false
     @Published public private(set) var lastTestResult: TestResult?
+    @Published public private(set) var keyError: String?
     @Published public private(set) var isSettingsDetectionActive: Bool = false
 
     public let settingsDetectionInterval: Duration
@@ -179,6 +180,7 @@ public final class AIProviderStore: ObservableObject {
         currentEngineForModels = kind
         wasEnabled = true
         lastTestResult = nil
+        keyError = nil
         syncAvailableModelsForCurrentSelection()
         rebuildProvider()
         if availableModels.isEmpty {
@@ -205,6 +207,7 @@ public final class AIProviderStore: ObservableObject {
         if providerChanged {
             cancelModelLoad()
             availableModels = []
+            keyError = nil
         }
         syncAvailableModelsForCurrentSelection()
         rebuildProvider()
@@ -219,16 +222,36 @@ public final class AIProviderStore: ObservableObject {
         keyStore.hasKey(for: kind)
     }
 
-    public func saveKey(_ key: String, for kind: AIProviderKind) throws {
-        try keyStore.saveKey(key, for: kind)
-        lastTestResult = nil
-        rebuildProvider()
+    public func clearKeyError() {
+        keyError = nil
     }
 
-    public func removeKey(for kind: AIProviderKind) throws {
-        try keyStore.removeKey(for: kind)
-        lastTestResult = nil
-        rebuildProvider()
+    @discardableResult
+    public func saveKey(_ key: String, for kind: AIProviderKind) -> Result<Void, AIKeyStoreError> {
+        let result = keyStore.saveKey(key, for: kind)
+        switch result {
+        case .success:
+            keyError = nil
+            lastTestResult = nil
+            rebuildProvider()
+        case let .failure(error):
+            keyError = error.message
+        }
+        return result
+    }
+
+    @discardableResult
+    public func removeKey(for kind: AIProviderKind) -> Result<Void, AIKeyStoreError> {
+        let result = keyStore.removeKey(for: kind)
+        switch result {
+        case .success:
+            keyError = nil
+            lastTestResult = nil
+            rebuildProvider()
+        case let .failure(error):
+            keyError = error.message
+        }
+        return result
     }
 
     // MARK: - Detection & Models

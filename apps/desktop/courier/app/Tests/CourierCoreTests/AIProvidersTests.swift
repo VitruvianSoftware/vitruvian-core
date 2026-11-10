@@ -554,7 +554,7 @@ final class AIProvidersTests: XCTestCase {
         XCTAssertFalse(keyStore.hasKey(for: .anthropic))
         XCTAssertNil(keyStore.key(for: .anthropic))
 
-        try keyStore.saveKey("  test-stored-token-1234  ", for: .anthropic)
+        XCTAssertNoThrow(try keyStore.saveKey("  test-stored-token-1234  ", for: .anthropic).get())
         XCTAssertTrue(keyStore.hasKey(for: .anthropic))
         XCTAssertEqual(keyStore.key(for: .anthropic), "test-stored-token-1234")
         XCTAssertEqual(keyStore.keyLastFour(for: .anthropic), "1234")
@@ -564,7 +564,7 @@ final class AIProvidersTests: XCTestCase {
         XCTAssertFalse(String(describing: keyStore).contains("test-stored-token-1234"))
         XCTAssertFalse(String(reflecting: keyStore).contains("test-stored-token-1234"))
 
-        try keyStore.removeKey(for: .anthropic)
+        XCTAssertNoThrow(try keyStore.removeKey(for: .anthropic).get())
         XCTAssertFalse(keyStore.hasKey(for: .anthropic))
         XCTAssertNil(keyStore.key(for: .anthropic))
 
@@ -577,6 +577,52 @@ final class AIProvidersTests: XCTestCase {
             AIKeyStore.service(for: TestCopy.bundleIdentifier),
             "com.vitruviansoftware.courier.dev.ai"
         )
+    }
+
+    func testAIProviderStoreSaveAndRemoveKeyWithFailingCredentialStoreSurfacesError() {
+        let suiteName = "test.courier.ai.keystore.failing.\(UUID().uuidString)"
+        let defaults = ScratchDefaults.suite(named: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let failing = FailingCredentialStore(
+            initial: ["openAI": "existing-key"],
+            writeError: KeychainStore.Failure(status: -25291),
+            deleteError: KeychainStore.Failure(status: -25244)
+        )
+        let prefs = AIPreferences(defaults: defaults)
+        prefs.enableContextualAI = true
+        prefs.selectedEngine = .anthropic
+
+        let store = AIProviderStore(
+            preferences: prefs,
+            keyStore: AIKeyStore(store: failing),
+            transport: StubHTTPTransport()
+        )
+        XCTAssertNil(store.keyError)
+
+        // 1. Failing save returns .failure and sets store.keyError for the pane to display
+        let saveResult = store.saveKey("new-token", for: .anthropic)
+        if case let .failure(error) = saveResult {
+            XCTAssertEqual(error.message, "Couldn’t save key to Keychain (OSStatus -25291).")
+            XCTAssertEqual(store.keyError, error.message)
+        } else {
+            XCTFail("Expected saveKey to fail when CredentialStore.write throws")
+        }
+
+        // 2. Failing remove returns .failure and sets store.keyError for the pane to display
+        let removeResult = store.removeKey(for: .openAI)
+        if case let .failure(error) = removeResult {
+            XCTAssertEqual(error.message, "Couldn’t remove key from Keychain (OSStatus -25244).")
+            XCTAssertEqual(store.keyError, error.message)
+        } else {
+            XCTFail("Expected removeKey to fail when CredentialStore.delete throws")
+        }
+
+        // 3. When the underlying store succeeds again, saveKey clears keyError
+        failing.writeError = nil
+        XCTAssertNoThrow(try store.saveKey("valid-token", for: .anthropic).get())
+        XCTAssertNil(store.keyError)
+        XCTAssertTrue(store.hasKey(for: .anthropic))
     }
 
     // MARK: - AIPrompts & AIChatContext
@@ -813,7 +859,7 @@ final class AIProvidersTests: XCTestCase {
         XCTAssertFalse(store.provider.isAvailable, "Anthropic without a key is not available")
         XCTAssertEqual(store.stateText(for: .anthropic), "Needs key")
 
-        try store.saveKey("test-anthropic-valid", for: .anthropic)
+        XCTAssertNoThrow(try store.saveKey("test-anthropic-valid", for: .anthropic).get())
         XCTAssertEqual(store.stateText(for: .anthropic), "Key saved")
 
         transport.enqueue(
@@ -1352,5 +1398,40 @@ private final class MockTestAIProvider: AIProvider, @unchecked Sendable {
 
     func startTalkToType() async -> AIProviderDisposition {
         .unavailable(reason: "Not available")
+    }
+}
+
+private final class FailingCredentialStore: CredentialStore, @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [String: String]
+    var writeError: Error?
+    var deleteError: Error?
+
+    init(initial: [String: String] = [:], writeError: Error? = nil, deleteError: Error? = nil) {
+        self.values = initial
+        self.writeError = writeError
+        self.deleteError = deleteError
+    }
+
+    func read(account: String) throws -> String? {
+        lock.withLock { values[account] }
+    }
+
+    func write(_ value: String, account: String) throws {
+        try lock.withLock {
+            if let writeError {
+                throw writeError
+            }
+            values[account] = value
+        }
+    }
+
+    func delete(account: String) throws {
+        try lock.withLock {
+            if let deleteError {
+                throw deleteError
+            }
+            _ = values.removeValue(forKey: account)
+        }
     }
 }
