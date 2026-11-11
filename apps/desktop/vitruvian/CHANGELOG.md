@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.89.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.88.1...vitruvian-v3.89.0) (2026-11-11)
+
+
+### Features
+
+* **vitruvian-code:** new app identity and a one-time migration from Nexus Agent ([#4577](https://github.com/VitruvianSoftware/vitruvian-core/issues/4577)) ([cb3624a](https://github.com/VitruvianSoftware/vitruvian-core/commit/cb3624af45ac0bc5c06d397691b7a226a45d27c6))
+
 ## [3.88.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.88.0...vitruvian-v3.88.1) (2026-11-10)
 
 
