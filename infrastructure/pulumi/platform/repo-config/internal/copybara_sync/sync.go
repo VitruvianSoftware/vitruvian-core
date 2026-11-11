@@ -96,6 +96,13 @@ type syncedProject struct {
 	// ensuring zero click-ops or manual repository creation.
 	CreateRepo bool
 
+	// Adopt imports an EXISTING standalone repository into Pulumi state via
+	// github.NewRepository with pulumi.Import(pulumi.ID(StandaloneRepo)) and
+	// pulumi.Protect(true), with arguments matching its live GitHub settings so
+	// adoption is a zero-diff import before any in-place rename or setting
+	// change. Mutually exclusive with CreateRepo.
+	Adopt *adoptedRepo
+
 	// Description is the repository description used when CreateRepo is true.
 	Description string
 
@@ -110,6 +117,32 @@ type syncedProject struct {
 	// created rather than adopted: pulumi.Import of a protection that does not
 	// exist fails the whole update.
 	UnprotectedMirror bool
+}
+
+// adoptedRepo mirrors the live GitHub repository settings for a brownfield
+// standalone repository being imported into Pulumi state. Passing the live
+// values explicitly prevents pulumi-github defaults (such as allowMergeCommit
+// and allowRebaseMerge) from causing an import input mismatch.
+type adoptedRepo struct {
+	Description              string
+	Visibility               string
+	DeleteBranchOnMerge      bool
+	HasIssues                bool
+	HasProjects              bool
+	HasWiki                  bool
+	HasDiscussions           bool
+	AllowSquashMerge         bool
+	AllowMergeCommit         bool
+	AllowRebaseMerge         bool
+	AllowAutoMerge           bool
+	AllowUpdateBranch        bool
+	AllowForking             bool
+	IsTemplate               bool
+	Archived                 bool
+	WebCommitSignoffRequired bool
+	SquashMergeCommitTitle   string
+	SquashMergeCommitMessage string
+	Topics                   []string
 }
 
 // syncedProjects is the source of truth for which components have sync auth
@@ -130,8 +163,41 @@ var syncedProjects = []syncedProject{
 		StandaloneRepo: "homelab",
 	},
 	{
+		// Adopted via pulumi.Import before the rename to VitruvianSoftware/vitruvian-code
+		// so PR 2 can rename the existing mirror (and its releases, stars and tags)
+		// in place instead of creating or replacing a repository.
 		Name:           "nexus-agent",
 		StandaloneRepo: "nexus-agent",
+		Adopt: &adoptedRepo{
+			Description:              "A macOS menu bar app and Telegram bot bridging your messages to local AI coding CLI tools, giving you remote access to agentic capabilities from any device.",
+			Visibility:               "public",
+			DeleteBranchOnMerge:      true,
+			HasIssues:                true,
+			HasProjects:              true,
+			HasWiki:                  false,
+			HasDiscussions:           false,
+			AllowSquashMerge:         true,
+			AllowMergeCommit:         false,
+			AllowRebaseMerge:         false,
+			AllowAutoMerge:           false,
+			AllowUpdateBranch:        false,
+			AllowForking:             true,
+			IsTemplate:               false,
+			Archived:                 false,
+			WebCommitSignoffRequired: false,
+			SquashMergeCommitTitle:   "COMMIT_OR_PR_TITLE",
+			SquashMergeCommitMessage: "COMMIT_MESSAGES",
+			Topics: []string{
+				"ai-agent",
+				"cli",
+				"gemini",
+				"llm",
+				"macos",
+				"menubar-app",
+				"ollama",
+				"telegram-bot",
+			},
+		},
 	},
 	{
 		Name:           "oauth-user-inspector",
@@ -299,6 +365,9 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 	appID, appKey := syncAppCreds(cfg)
 
 	for _, project := range syncedProjects {
+		if project.CreateRepo && project.Adopt != nil {
+			return fmt.Errorf("copybara_sync: project %q sets both CreateRepo and Adopt", project.Name)
+		}
 		prefix := secretPrefix(project.Name)
 
 		var repo *github.Repository
@@ -323,6 +392,10 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 			})
 			if repoErr != nil {
 				return repoErr
+			}
+		} else if project.Adopt != nil {
+			if err := adoptRepository(ctx, project); err != nil {
+				return err
 			}
 		}
 
@@ -530,5 +603,54 @@ func tapKey(ctx *pulumi.Context, project syncedProject, repo *github.Repository)
 		opts = append(opts, pulumi.DependsOn([]pulumi.Resource{repo}))
 	}
 	_, err = github.NewActionsSecret(ctx, fmt.Sprintf("%s-homebrew-tap-key-secret", project.Name), secretArgs, opts...)
+	return err
+}
+
+// adoptRepository brings an existing standalone mirror repository under Pulumi
+// management without altering live settings or rewiring its existing deploy-key
+// dependencies. Protect blocks accidental replacement or deletion when a follow-up
+// change renames the repository in place; IgnoreChanges covers deprecated,
+// inapplicable (mergeCommit* when allowMergeCommit is false), and org-governed
+// fields while keeping name, description, and topics under Pulumi control.
+func adoptRepository(ctx *pulumi.Context, project syncedProject) error {
+	a := project.Adopt
+	_, err := github.NewRepository(
+		ctx,
+		project.StandaloneRepo,
+		&github.RepositoryArgs{
+			Name:                     pulumi.String(project.StandaloneRepo),
+			Description:              pulumi.String(a.Description),
+			Visibility:               pulumi.String(a.Visibility),
+			DeleteBranchOnMerge:      pulumi.Bool(a.DeleteBranchOnMerge),
+			HasIssues:                pulumi.Bool(a.HasIssues),
+			HasProjects:              pulumi.Bool(a.HasProjects),
+			HasWiki:                  pulumi.Bool(a.HasWiki),
+			HasDiscussions:           pulumi.Bool(a.HasDiscussions),
+			AllowSquashMerge:         pulumi.Bool(a.AllowSquashMerge),
+			AllowMergeCommit:         pulumi.Bool(a.AllowMergeCommit),
+			AllowRebaseMerge:         pulumi.Bool(a.AllowRebaseMerge),
+			AllowAutoMerge:           pulumi.Bool(a.AllowAutoMerge),
+			AllowUpdateBranch:        pulumi.Bool(a.AllowUpdateBranch),
+			AllowForking:             pulumi.Bool(a.AllowForking),
+			IsTemplate:               pulumi.Bool(a.IsTemplate),
+			Archived:                 pulumi.Bool(a.Archived),
+			WebCommitSignoffRequired: pulumi.Bool(a.WebCommitSignoffRequired),
+			SquashMergeCommitTitle:   pulumi.String(a.SquashMergeCommitTitle),
+			SquashMergeCommitMessage: pulumi.String(a.SquashMergeCommitMessage),
+			Topics:                   pulumi.ToStringArray(a.Topics),
+		},
+		pulumi.Import(pulumi.ID(project.StandaloneRepo)),
+		pulumi.Protect(true),
+		pulumi.IgnoreChanges([]string{
+			"hasDownloads",
+			"homepageUrl",
+			"mergeCommitMessage",
+			"mergeCommitTitle",
+			"pages",
+			"securityAndAnalysis",
+			"template",
+			"vulnerabilityAlerts",
+		}),
+	)
 	return err
 }
