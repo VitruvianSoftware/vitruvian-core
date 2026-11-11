@@ -42,10 +42,22 @@ This design keeps one connection open for the whole chat instead:
     [ACP registry](https://agentclientprotocol.com/get-started/agents) lists
     which agents exist.
 
-**T3 Code is the model.** [T3 Code](https://github.com/pingdotgg/t3code) is
-an open-source desktop app (Electron) that drives many coding agents. Its
-developers work with the AI labs on ACP support. Where T3 Code has already
-answered a question, this design copies its answer.
+**T3 Code is the reference design.** [T3 Code](https://github.com/pingdotgg/t3code)
+is an open-source desktop app (Electron) that drives many coding agents over
+these same connections. Where T3 Code has already answered a question, this
+design copies its answer.
+
+**Terms used below:**
+
+*   **Command-line connection:** today's way of running an agent. The app runs
+    one command per prompt and reads its output. The command comes from an
+    editable **command template** in settings.
+*   **Transcript readers:** the code that reads agy's and Claude's saved session
+    files, for session history.
+*   **Transcript follower:** the part of the readers that watches a running
+    session's files and turns them into chat events.
+*   **YOLO:** today's name for the mode that skips all approvals. It is the
+    default.
 
 T3 Code file paths below are relative to its repository root, at commit
 `d6e5f2e0` (read on 2026-11-11).
@@ -58,11 +70,10 @@ What the app cannot do today depends on the agent.
 `claude -p` once per prompt.
 
 *   **Approvals already work, except in YOLO.** In the standard and
-    accept-edits modes, the app starts Claude with
-    `--input-format stream-json --permission-prompt-tool stdio`. It answers
-    Claude's approval requests mid-turn (`VitruvianCodeSupport.swift`,
-    `VitruvianCodeApprovalCardView`). Only YOLO, the default mode, skips
-    approvals.
+    accept-edits modes, the app answers Claude's approval requests mid-turn
+    and shows them in `VitruvianCodeApprovalCardView`. To do that it starts
+    Claude with `--input-format stream-json --permission-prompt-tool stdio`
+    (`VitruvianCodeSupport.swift`). YOLO skips approvals.
 *   **One process per prompt.** Each turn starts Claude again and reloads the
     session from disk.
 *   **Stopping kills the process.** There is no clean "stop this turn".
@@ -71,10 +82,14 @@ What the app cannot do today depends on the agent.
 *   **Events are guessed.** Tool steps, plans and subagents are read out of the
     printed output.
 
-**agy** is worse off:
+**agy** has larger gaps:
 
-*   **No approvals at all.** The app always starts agy with
-    `--dangerously-skip-permissions`.
+*   **It can't ask anything mid-turn.** The app passes flags by mode
+    (`VitruvianCodeApprovalMode.agyArguments`): `--dangerously-skip-permissions`
+    for YOLO, `--mode accept-edits`, `--mode plan`, or nothing for standard.
+    The default command templates hard-code the YOLO flag. Either way, agy
+    can't ask the user to approve an action or answer a question while it
+    works.
 *   **Events come from transcripts.** Subagents and turn results are inferred
     from agy's transcript files. The stuck subagent list fixed in
     [PR #4538](https://github.com/VitruvianSoftware/vitruvian-core/pull/4538)
@@ -87,9 +102,10 @@ covers Claude stream-json, agy, Codex JSONL, Gemini, Qwen, Amp, Cursor and
 OpenCode. A new agent, or a format change in an existing one, means new
 parsing code and new tests.
 
-ACP and the Agent SDK both fix this. They keep a connection open and send
-typed events: text, tool call, plan, approval request, turn finished. The app
-can answer the agent while it works.
+For sessions the app starts, ACP and the Agent SDK replace this text parsing
+with typed events: text, tool call, plan, approval request, turn finished. They
+keep the connection open, so the app can answer the agent while it works.
+Sessions started elsewhere still need the transcript readers.
 
 ## Goals
 
@@ -107,7 +123,7 @@ can answer the agent while it works.
     *   auto, only where the agent has a distinct auto mode.
 
     A separate **plan** switch sits beside the mode. Today's settings carry
-    over (see Section 8).
+    over (Technical Plan, section 8).
 *   **Claude keeps working on the user's existing Claude Code login,** with no
     API key needed. An API key or another endpoint is optional. It's set
     through a Claude config folder and environment variables, as in T3 Code.
@@ -117,9 +133,8 @@ can answer the agent while it works.
     *   the command line.
 *   **One ACP path for every other ACP agent,** so adding an agent from the ACP
     registry needs no new parsing code.
-*   **Every stable ACP feature, per agent, as T3 Code offers it.** "What ACP
-    gives us" lists them. Nothing T3 Code offers to an agent is held back. What
-    T3 Code deliberately turns off for an agent stays off.
+*   **Each agent gets exactly the ACP features T3 Code enables for it,** listed
+    in "What ACP gives us".
 *   **No loss of what works today:**
     *   following outside sessions and saved session history;
     *   the subagent list, the timeline and the diff review;
@@ -129,7 +144,7 @@ can answer the agent while it works.
     *   the Telegram bot's shared approval setting.
 *   **A safe fallback.** If a live connection fails to start, the chat uses the
     command-line connection, but only when that can honour the chat's approval
-    mode (Section 5).
+    mode (Technical Plan, section 5).
 
 ## Non-Goals
 
@@ -148,45 +163,52 @@ can answer the agent while it works.
     (see Risks & Mitigations).
 *   **Mobile, remote or multi-machine use** of these connections.
 
-## What ACP gives us (all in scope)
+## What ACP gives us
 
 The point is to use what a live connection makes possible, not to swap one way
 of running agents for another. Each row is something the app either can't do
 today, or does only for one agent, or by hand.
 
-*   **Columns:** the ACP feature, what agy gets, and what Claude gets through
-    the Agent SDK.
-*   **Registry agents** get every ACP feature they advertise, under the client
-    policy in Section 2.
-*   **Sources:** the Claude column was checked against what T3 Code's
-    `apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts` imports and
-    calls. The agy column was checked against
-    `apps/server/src/provider/acp/AntigravityAcpSupport.ts`.
+**How to read the table:**
 
-| What the user gets | ACP feature | agy (ACP) | Claude (SDK) | Today |
-|---|---|---|---|---|
-| **Stop a turn** and keep the session | `session/cancel` | Yes | `interrupt()` | Kills the process |
-| **Approve or deny one action** mid-turn | `session/request_permission` | Yes, new | `canUseTool` | Claude only, outside YOLO |
-| **Answer an agent's question** in a form in the chat | `elicitation/create` | Questions arrive inside `request_permission` (T3 Code `extractAntigravityUserInputQuestion`) | `AskUserQuestion` via `canUseTool`; `onElicitation` for MCP servers | Claude only |
-| **Approval mode per chat**, plus a plan switch | Session config option | The app answers approvals itself (Section 8) | `permissionMode`, `setPermissionMode()` | One global setting |
-| **Pick model, thinking level and other settings** from the agent's own live list | `configOptions`, `session/set_config_option`, `config_option_update` | Yes | `setModel()`, effort and thinking options | Hard-coded in settings |
-| **The agent's own slash commands** in a menu, kept current | `available_commands_update` | Yes | Claude's skills and commands read from disk (T3 Code `apps/server/src/provider/Drivers/ClaudeSkills.ts`) | Read from Claude's output; hand-kept list for others |
-| **Live plan** with each step's status | `plan` updates | Yes | TodoWrite tool events | Guessed from text |
-| **Tool cards:** kind (read, edit, run…), status, and file locations you can click | `tool_call`, `tool_call_update`, `locations` | Yes | Tool use and tool result messages | Parsed per agent |
-| **Diffs as the agent edits**, in the chat and the diff review | Tool content `diff` | Yes, from agy's own edits | Edit and Write tool inputs | Parsed after the fact |
-| **App-hosted terminals:** live output in the chat and a Stop button per command | `terminal/*`; tool content `terminal` | Not offered: T3 Code turns them off for agy | Bash tool output (Claude runs its own commands) | No |
-| **Agent reads and writes files through the app**, limited to the session's folders | `fs/read_text_file`, `fs/write_text_file` | Reads only, and only on agy releases T3 Code hasn't qualified. No writes: offering writes replaces agy's diff edits with whole-file writes | Edit and Write tool events | No |
-| **Attach images and files**; an @-mention embeds the file | Prompt content `image`, `resource`, `resource_link` | Where agy advertises them | Image and document content | Claude only |
-| **Context-window meter and cost** | `usage_update` | Yes | Usage in result messages | Parsed per agent |
-| **Compaction shown as it happens** | `compaction_update`, `compaction_summary_chunk` | Not supported by agy | Compact boundary messages | Not shown |
-| **Agent notices** (warnings, rate limits) as banners, not chat text | `notice` | Yes | System and status messages | Not shown |
-| **Subagents from typed events** | — | Start from agy's child-work reports. Finish at the end of the turn, as T3 Code does. Kills from tool results. Agy reports no child session IDs, so the PR #4538 rules stay | Task and subagent messages | Inferred from transcripts |
-| **Session history from the agent itself:** list, reopen without replay, close, live titles | `session/list`, `session/resume`, `session/load`, `session/close`, `session_info_update` | Yes, plus T3 Code's session-log watch, which catches turns that ended on an upstream error | `resume`, `forkSession`, `getSessionMessages`, `getSubagentMessages` | Transcript files only |
-| **Give any agent the user's MCP servers** when a chat starts | `mcpServers` on `session/new` | Yes | `mcpServers`, `mcpServerStatus()` | Each agent set up separately |
-| **Extra folders** in a chat's workspace | `additionalDirectories` | Yes | `additionalDirectories` | No |
-| **App instructions added to the agent's system prompt** (for example, how to link PRs, as T3 Code does) | `systemPrompt` (append) | Sent again on every new, reopened or resumed session, as agy needs | `systemPrompt` with append | No |
-| **Sign in to an agent from the app** | `authMethods`, `authenticate`, terminal auth, `logout` | Yes (`oauth-personal`) | Uses Claude Code's own login | Done in a terminal |
-| **New agents with no new code** | ACP registry | — | — | One parser per agent |
+*   **The agy, Claude (SDK) and Claude (ACP adapter) columns** say what that
+    connection gets. Detail lives in the Technical Plan section named in the cell.
+*   **Registry agents** get every ACP feature they advertise, under the client
+    policy in Technical Plan, section 2.
+*   **A feature is used only when** the agent advertises it in `initialize` and
+    the per-agent client policy offers it. The UI hides any control an agent
+    doesn't support.
+*   **Sources:** the agy column follows T3 Code's
+    `apps/server/src/provider/acp/AntigravityAcpSupport.ts`. The Claude (SDK)
+    column follows what `apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts`
+    imports and calls. The Claude (ACP adapter) column follows
+    `packages/provider-acp-registry/src/server/claudeAcp.ts`.
+
+| What the user gets | ACP feature | agy (ACP) | Claude (SDK) | Claude (ACP adapter) | Today |
+|---|---|---|---|---|---|
+| **Stop a turn** and keep the session | `session/cancel` | Yes | `interrupt()` | Yes | Kills the process |
+| **Approve or deny one action** mid-turn | `session/request_permission` | Yes, new | `canUseTool` | Yes | Claude only, outside YOLO |
+| **Answer an agent's question** in a form | `elicitation/create` | Yes; agy sends questions inside `request_permission` (section 2) | `AskUserQuestion`; `onElicitation` for MCP servers | Yes | Claude only |
+| **Approval mode per chat**, plus a plan switch | Session config option | The app decides (section 8) | `permissionMode`, `setPermissionMode()` | Yes | One global setting |
+| **Pick model, thinking level and other settings** from the agent's live list | `configOptions`, `session/set_config_option` | Yes (section 2, version gates) | `setModel()`, effort and thinking | Yes | Hard-coded in settings |
+| **The agent's own slash commands**, kept current | `available_commands_update` | Yes | Skills and commands read from disk (T3 Code `ClaudeSkills.ts`) | Yes | From Claude's output; hand-kept for others |
+| **Live plan** with step status | `plan` updates | Yes | TodoWrite events; the helper sets `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` | Yes | Guessed from text |
+| **Tool cards:** kind, status, clickable file locations | `tool_call`, `tool_call_update`, `locations` | Yes | Tool use and result messages | Yes | Parsed per agent |
+| **Diffs as the agent edits** | Tool content `diff` | Yes, from agy's own edits | Edit and Write tool inputs | Yes | Parsed after the fact |
+| **App-hosted terminals** with a Stop button per command | `terminal/*` | Not offered (section 2) | Not used: Claude runs its own commands | Not offered | No |
+| **Agent reads and writes files through the app** | `fs/read_text_file`, `fs/write_text_file` | Reads on some releases; no writes (section 2) | Not used | Not offered | No |
+| **Attach images and files**; @-mention embeds a file | Prompt content `image`, `resource`, `resource_link` | Where agy advertises them | Image and document content | Yes | Claude only |
+| **Context-window meter and cost** | `usage_update` | Where agy reports it (section 2) | Usage in result messages | Yes | Parsed per agent |
+| **Usage-limit wait:** when a plan limit is hit, wait for the reset and resume | — | — | Rate-limit messages (T3 Code `claudeUsageLimits.ts`) | — | No |
+| **Compaction** as it happens, an "auto-compact after" threshold, and a Compact/Keep chip on idle chats | `compaction_update` | Not supported by agy | Compact messages and settings (T3 Code `docs/user/providers-claude.md`) | Where offered | Not shown |
+| **Agent notices** as banners | `notice` | Yes | System and status messages | Yes | Not shown |
+| **Subagents from typed events** | — | Start from child-work reports, finish at end of turn (section 2) | Task and subagent messages | `subagent_update` and `session_message`, with child session IDs | Inferred from transcripts |
+| **Session history from the agent:** list, reopen without replay, close, live titles, fork | `session/list`, `session/resume`, `session/load`, `session/close`, `session_info_update` | Yes, plus the session-log watch (section 2) | `resume`, `forkSession`, `getSessionMessages` | Yes | Transcript files; fork through `--fork` |
+| **The user's MCP servers** for any agent | `mcpServers` on `session/new` | Yes | `mcpServers`, `mcpServerStatus()` | Yes | Each agent set up separately |
+| **Extra folders** in a chat's workspace | `additionalDirectories` | Yes | `additionalDirectories` | Yes | No |
+| **App instructions added to the system prompt** (for example, how to link PRs) | `systemPrompt` (append) | Only on agy releases that support it (section 2) | `systemPrompt` with append | Yes | No |
+| **Sign in to an agent from the app** | `authMethods`, `authenticate` | Yes (`oauth-personal`, section 5) | Claude Code's own login | Claude Code's own login | Done in a terminal |
+| **New agents with no new code** | ACP registry | — | — | — | One parser per agent |
 
 ### Limited or not used, and why
 
@@ -201,10 +223,6 @@ today, or does only for one agent, or by hand.
     others): not stable yet. The app adopts them once they're stable, as T3
     Code does.
 
-Each feature is used only when the agent advertises it in `initialize`, and
-only when the per-agent client policy offers it. The UI hides any control an
-agent doesn't support.
-
 ## Technical Plan (Architecture)
 
 ### 0. What changes, in one picture
@@ -217,18 +235,20 @@ flowchart LR
     C -->|registry agent| A2["ACP client"] -->|"stdio: registry command"| REG["OpenCode, Cursor, Kiro, Pi, ..."]
     C -->|"Claude: SDK (default)"| H["Claude helper<br>(bundled Node + Agent SDK)"] -->|"spawns user's claude"| CL["claude"]
     C -->|"Claude: ACP adapter"| A3["ACP client"] -->|"stdio: bundled Node + claude-agent-acp"| CL
-    C -->|"Command-line connection<br>(option or fallback)"| L["Today's per-prompt runner"] -->|"claude -p / agy ..."| CL
+    C -->|"Command-line connection<br>(option or fallback)"| L["Today's per-prompt runner"]
+    L -->|"claude -p"| CL
+    L -->|"agy -p"| AGY
     T["Transcript readers (unchanged)"] --> S
 ```
 
 Every connection turns what its agent sends into the same set of events,
-listed in Section 1. The session and the UI work only with those events, so
+listed in section 1. The session and the UI work only with those events, so
 they don't depend on which connection is underneath.
 
 ### 1. One connection interface
 
 A new Swift protocol, `AgentConnection`, lives in `VitruvianCodeCore`. Each open
-chat owns one. In summary, it can:
+chat owns one. It can:
 
 *   start or reopen a session;
 *   send a prompt;
@@ -237,8 +257,8 @@ chat owns one. In summary, it can:
 *   change a setting;
 *   stop.
 
-It sends out one stream of `AgentEvent`. Step 1 of the implementation plan
-has the full method list.
+It sends out one stream of `AgentEvent`. The full method list is in Detailed
+Implementation, Delivery order, step 1.
 
 `AgentEvent` is the shared vocabulary:
 
@@ -259,7 +279,7 @@ has the full method list.
 
 The existing approval card (`VitruvianCodeApprovalCardView`) and the session's
 approval handling (`decideApproval`, "allow for this session") serve every
-connection. Nothing new replaces them.
+connection.
 
 ### 2. ACP client (Swift)
 
@@ -272,10 +292,9 @@ process's standard input and output. The client:
     otherwise with `session/load`, which replays the whole history;
 *   sends `session/prompt` for each turn and `session/cancel` to stop;
 *   turns `session/update` notifications into `AgentEvent`s;
-*   answers `session/request_permission` either itself (Section 8) or through
+*   answers `session/request_permission` either itself (section 8) or through
     the approval card;
-*   implements the other features in "What ACP gives us", which is above this
-    section.
+*   implements the other features in "What ACP gives us".
 
 **Client policy per agent.** What the app offers an agent (file reads and
 writes, terminals, forms) is set per agent. It copies T3 Code's settings in
@@ -283,29 +302,64 @@ writes, terminals, forms) is set per agent. It copies T3 Code's settings in
 in each agent's support file (on where T3 Code turns it on). For agy, T3 Code's
 `apps/server/src/provider/acp/AntigravityAcpSupport.ts` sets three things:
 
-*   no file writes;
-*   no terminals;
-*   file reads only on agy releases it hasn't qualified.
+*   **No file writes.** Offering writes makes agy send whole-file writes
+    instead of its own diff edits.
+*   **No terminals.**
+*   **File reads only for older agy releases.** T3 Code serves reads only to
+    agy releases it hasn't marked as "qualified" (`isQualifiedAntigravityRelease`,
+    currently 1.4.5). Qualified releases read files themselves.
 
 **agy layer.** agy-specific behaviour sits in a layer on top of the client,
 copied from T3 Code's `apps/server/src/provider/acp/Antigravity*.ts`. It covers:
 
-*   sign-in through `oauth-personal`;
+*   sign-in through `oauth-personal`, started as soon as the session opens
+    (section 5);
 *   reopening with `session/resume`;
 *   a cancel that waits for the prompt's result;
-*   the system prompt sent again on every new, reopened or resumed session;
-*   child-work reports turned into subagent events;
-*   questions arriving inside `request_permission`;
-*   the session-log watch, using agy's own session files, as T3 Code's
-    `AntigravitySessionFiles.ts` does.
+*   **child-work reports.** These are agy's messages saying it started work in
+    a child agent. The app turns them into subagent-started events. A subagent
+    is marked finished when the turn ends, as T3 Code does. agy reports no
+    child session IDs, so the subagent rules from PR #4538 stay;
+*   questions, which agy sends inside `request_permission`, not as
+    `elicitation/create`;
+*   **the session-log watch.** The app reads agy's own session log files, as
+    T3 Code's `AntigravitySessionFiles.ts` does, only to learn whether a turn
+    ended on an upstream error. It sends no chat events, so nothing is shown
+    twice;
+*   **a silent-prompt timeout.** A prompt that sends nothing for 15 minutes
+    is stopped and marked failed. The timer pauses while a tool runs or an
+    approval waits (T3 Code `promptInactivityTimeout`).
+
+**agy version gates.** The layer reads agy's version from `initialize`
+(`agentInfo.version`) and applies T3 Code's per-release rules:
+
+*   it reports itself as `zed` to releases before 1.5.1, which only list
+    non-Gemini models for known clients;
+*   it disables the `run_workflow` tool on 1.4.2–1.4.5, which otherwise writes
+    `skills/system/run-workflow/SKILL.md` into the user's repository;
+*   it appends to the system prompt only on releases that support it
+    (`antigravityAppendsSystemPrompt`, currently 1.4.5);
+*   it reads per-turn usage only where agy reports it (1.4.1 reports none);
+*   it applies T3 Code's read repair;
+*   it adds the chat's attachments folder to the readable folders.
 
 **Registry agents.** Registry agents use the same client. Some need a small
 per-agent file of quirks. T3 Code keeps these in
 `packages/provider-acp-registry/src/server/` (for example `claudeAcp.ts` and
 `copilotAcp.ts`), and the app does the same. The registry lists the agents.
-The app installs them from npm or uv using the bundled Node, as T3 Code's
+Installing follows T3 Code's
 `packages/provider-acp-registry/src/server/AcpRegistrySupport.ts`, `driver.ts`
-and `probe.ts` do. OpenCode uses this path when its ACP mode is available.
+and `probe.ts`:
+
+*   a package installs only when the user adds that agent in settings;
+*   it must name an exact version, and it installs from npm or uv into a
+    folder the app manages, using the bundled Node;
+*   it updates only when the user picks a new version;
+*   an install that takes more than 20 minutes is stopped;
+*   the user's MCP servers are passed to a registry agent only after the user
+    turns that on for that agent.
+
+OpenCode uses this path when its ACP mode is available.
 
 ### 3. Claude helper (bundled Node + Agent SDK)
 
@@ -322,18 +376,32 @@ that both sides test against. The helper:
 *   forwards each SDK permission check (`canUseTool`) to the app;
 *   reopens a saved conversation with the SDK's `resume` option;
 *   takes MCP server secrets over standard input, never as process arguments
-    or environment variables, as T3 Code does.
+    or environment variables, as T3 Code does;
+*   sets `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, so Claude's task list (the live
+    plan) appears, as T3 Code's docs require.
 
-The helper never reads, stores or handles Claude credentials.
+**Credentials.** The app never handles Claude *login* credentials. Sign-in
+stays in `claude auth login`. Optional API keys or tokens that the user enters
+as environment values are marked sensitive. The app stores them in the macOS
+Keychain, shows them masked, and passes them only into the helper's own
+environment.
 
-**Ollama (claude)** uses this same connection, with Ollama's endpoint set
-through environment variables. That's how T3 Code handles router connections.
+**Ollama (claude)** is today's setting that runs Claude Code against a local
+Ollama server. It uses this same connection, with Ollama's address set through
+environment variables, which is how T3 Code points Claude at another endpoint.
+
+**Version check.** At start-up the app runs `claude --version`. It hides
+models that version doesn't support and asks the user to upgrade when it is
+too old, as T3 Code's `apps/server/src/provider/ClaudeProvider.ts` does.
 
 ### 4. Claude through the ACP adapter (option)
 
 The bundled Node runs `@agentclientprotocol/claude-agent-acp`. The app talks to
-it with the ACP client from Section 2, the same way it talks to agy. It drives
-the user's own `claude`, so it uses the same login.
+it with the ACP client from section 2, the same way it talks to agy. It drives
+the user's own `claude`, so it uses the same login. Its quirks (Agent and Task
+subagents, background subagents, `subagent_update` and `session_message`) live
+in one file, copied from T3 Code's
+`packages/provider-acp-registry/src/server/claudeAcp.ts`.
 
 ### 5. Command-line connection (option and fallback)
 
@@ -347,14 +415,19 @@ wrapped as an `AgentConnection`. How it works doesn't change. It's used:
 **Fallback rules:**
 
 *   **What "fails to start" means:** the process won't launch, `initialize`
-    fails, or there's no session within 30 seconds. A crash after the session
-    has started is handled by Section 7 (restart and resume), not by the
+    fails, or no session opens within 90 seconds, which is T3 Code's
+    session-load timeout (`AcpSessionRuntime.ts`). A crash after the session
+    has started is handled by section 7 (restart and resume), not by the
     fallback.
+*   **Sign-in is not a failure.** If the agent needs the user to sign in, the
+    chat shows the sign-in link (`onAuthorizationUrl`) and waits. The timer
+    doesn't run while sign-in is in progress, and the chat never falls back.
 *   **The fallback is automatic, and the chat says so.**
-*   **It never weakens the chat's approval mode.** If the command-line
-    connection can't honour the mode, the chat shows the error and offers a
-    retry instead. One example is agy in "approval required", because agy's
-    command line only runs with `--dangerously-skip-permissions`.
+*   **It never weakens the chat's approval mode.** The command-line connection
+    uses the mode's own flags (`agyArguments` for agy). It is used only if
+    those flags give the chat's mode or a stricter one. Otherwise the chat
+    shows the error and offers a retry. A custom command template that
+    hard-codes a skip flag never counts as honouring a stricter mode.
 
 ### 6. Bundled Node and helper packaging
 
@@ -379,7 +452,14 @@ The optional Telegram bot keeps using the user's own Node, as it does today.
     a grace period, then forces the kill, as T3 Code's `AcpSessionRuntime.ts`
     does.
 *   **Idle shutdown.** A chat idle for 30 minutes stops its connection and
-    reopens the session on the next prompt.
+    reopens the session on the next prompt. No connection stays loaded for
+    more than 4 hours without use. Both limits are T3 Code's
+    (`apps/server/src/orchestration-v2/ProviderSessionManager.ts`). Like T3
+    Code, there is no cap on how many chats can be live at once.
+*   **Resource estimate.** A Claude chat on the SDK adds the Node helper to
+    the user's `claude` process. As a planning estimate, not a measurement,
+    that's roughly 60–100 MB per chat. The real figure is measured in Detailed
+    Implementation, Delivery order, step 2.
 *   **Crash recovery.** If the process exits during a session:
     *   a turn that was running ends as "interrupted";
     *   pending approvals are cancelled;
@@ -387,11 +467,8 @@ The optional Telegram bot keeps using the user's own Node, as it does today.
         (`session/resume` for agy, SDK `resume` for Claude);
     *   a helper crash and a `claude` crash are reported separately;
     *   after 3 failed restarts in a row, the chat shows the error.
-*   **No duplicate events.** For chats the app started, the UI uses the
-    connection's events, and the transcript follower doesn't run for those
-    chats. **Transcript readers** read agy's and Claude's saved session files.
-    The **transcript follower** is the part that watches a running session
-    the app didn't start.
+*   **No duplicate events.** For chats the app started, the transcript
+    follower is off, and the UI uses the connection's events.
 *   **Worktree mode.** The app creates the worktree itself
     (`VitruvianCodeWorktreeEngine`) and starts the connection inside it. On the
     live connections this replaces Claude's `-w` flag.
@@ -402,20 +479,24 @@ Each chat has an approval mode and a separate plan switch, as in T3 Code
 (`packages/contracts/src/providerPolicy.ts`; plan is its own
 `interactionMode` in `ClaudeAdapterV2.ts`).
 
-| Mode | Behaviour | Claude (SDK) | agy (ACP) |
+| Mode | Behaviour | Claude (SDK) | agy (ACP), decided by the app |
 |---|---|---|---|
-| **Full access** (default) | No approvals | `bypassPermissions` | The app allows every request |
-| **Auto-accept edits** | File edits go through; everything else asks | `acceptEdits` | The app allows edits and asks about the rest |
-| **Approval required** | Every guarded action asks | `default` | Every request is shown |
-| **Auto** (Claude only) | Claude's own automatic judgement of what is safe to run | `auto` | Hidden: agy has no distinct auto mode |
-| **Plan switch** | The agent plans and doesn't act | `plan` | agy's plan mode where it offers one |
+| **Full access** (default) | No approvals | `bypassPermissions` | Allow every request |
+| **Auto-accept edits** | Edits go through; everything else asks | `acceptEdits` | Allow edit, delete and move; ask about the rest |
+| **Approval required** | Guarded actions ask | `default` | Allow reads, searches and thinking; ask about the rest |
+| **Auto** (Claude only) | Claude decides for itself what is safe to run | `auto` | Hidden: agy has no separate auto mode |
+| **Plan switch** | The agent plans and doesn't act | `plan` | agy's `plan` mode, passed through |
 
-**agy over ACP.** agy over ACP always runs in agy's `default` mode, and the app
-answers each request according to the chat's mode. agy isn't started with
-`--dangerously-skip-permissions`, and the app never asks agy for its `yolo` or
-`auto_edit` modes. T3 Code does the same, because the agy CLI rejects those
-modes (`antigravityCliSessionMode` in `AntigravityAcpSupport.ts`). Doing it
-this way has two benefits:
+The agy column is T3 Code's client policy
+(`packages/provider-acp/src/server/clientPolicy.ts`: "Reads never ask"; edit,
+delete and move count as edits).
+
+**How agy runs.** The app never asks agy for its `yolo` or `auto_edit` modes
+and never starts it with `--dangerously-skip-permissions`. agy stays in its
+`default` mode (or `plan` when the plan switch is on), and the app answers each
+request by the table above. T3 Code does the same, because the agy CLI rejects
+those two modes (`antigravityCliSessionMode` in `AntigravityAcpSupport.ts`).
+This has two benefits:
 
 *   every action is visible to the app;
 *   a mode change takes effect on the next turn, with no restart.
@@ -434,19 +515,22 @@ The command-line connection keeps today's flags.
 **Who owns the setting.** Each chat has its own mode, as T3 Code has one per
 thread. New chats start from the global default. That default stays in
 `.env` (`AGY_APPROVAL_MODE`), and the Telegram bot keeps reading it
-unchanged.
+unchanged. "Auto" can be chosen per chat but not as the global default, so the
+bot's four values stay as they are.
 
-**Unattended runs.** Claude can still ask for approval even in full access:
+**When full access is blocked.** Claude can still ask in full access:
 
-*   some checks and settings rules always ask;
+*   some safety checks and settings rules always ask;
 *   Claude's settings can switch bypass off (`disableBypassPermissionsMode`);
 *   Claude refuses bypass when running as root.
 
-When bypass is switched off, the app drops to the next mode Claude allows and
-shows a notice, as T3 Code does. In a worktree or automation run, an approval
-request raises a system notification and waits. After 15 minutes without an
-answer, it's denied and the run is marked "needs attention". That's T3 Code's
-inactivity timeout for agy.
+If bypass is switched off, the app uses auto-accept edits, or approval
+required if that is also blocked, and shows a notice, as T3 Code does.
+
+**Unattended runs** (worktree and automation runs). An approval request
+raises a system notification and waits for the user, as in T3 Code. Nothing
+is denied automatically. A prompt that goes silent is caught by the agy
+silent-prompt timeout (section 2).
 
 ### 9. Settings
 
@@ -502,19 +586,18 @@ and Node.
 
 *   **Rejected because** it's still one process per prompt, and the
     stream-json control protocol isn't Anthropic's documented interface. The
-    Agent SDK is the documented one, and it drives that protocol for you. It
-    also departs from T3 Code, which uses the SDK. This path stays as the
+    Agent SDK is the documented one, and it drives that protocol for you. This
+    path also departs from T3 Code, which uses the SDK. This path stays as the
     command-line option and the fallback.
 
-### Why not move everything to ACP?
+### Limits that apply to every option
 
-Two limits apply whichever path is chosen:
+These aren't alternatives. They hold whichever path is chosen.
 
 *   **Sessions started outside the app.** ACP and the SDK only cover sessions
     the app itself starts. Following a session the user runs in a terminal, or
     showing saved sessions, still needs the transcript readers.
-*   **Claude has no built-in ACP mode** (Claude Code 2.1.318). Its ACP option
-    is a third-party adapter, which is itself built on the Agent SDK.
+*   **Claude has no built-in ACP mode,** as of Claude Code 2.1.318.
 
 ### Use the user's own Node for the helper
 
@@ -530,7 +613,7 @@ and fall back to the command line when no Node is found.
 
 Build the helper with Node's single-executable feature or Bun's compiler.
 
-*   **Rejected for now:**
+*   **Rejected because (for now):**
     *   the Agent SDK and the ACP adapter load files at run time that these
         compilers may miss;
     *   it needs new Bazel toolchain work;
@@ -545,13 +628,16 @@ Build the helper with Node's single-executable feature or Bun's compiler.
 | Risk | Mitigation |
 |---|---|
 | **Anthropic's terms for the SDK default.** [Anthropic's Agent SDK page](https://code.claude.com/docs/en/agent-sdk/overview) says third-party products should not "offer claude.ai login … including agents built on the Claude Agent SDK". The [legal page](https://code.claude.com/docs/en/legal-and-compliance) allows a user's own subscription in the unmodified `claude` when sign-in goes through Anthropic's own flow. | Accepted. T3 Code ships the SDK on the user's own login, and this design does the same: the app never handles credentials. If Anthropic objects, the command-line connection stays available. |
-| **Unattended runs waiting forever** on an approval nobody sees. | Section 8: a system notification, then an automatic deny after 15 minutes and a "needs attention" mark. If bypass is switched off, the app shows a notice. |
-| **Too many processes.** Each live chat holds a helper, `claude`, subagents and MCP servers, and worktree races multiply that. | Process-group ownership and clean shutdown (Section 7), and idle shutdown after 30 minutes. Memory per connection is measured in step 2 and recorded in this design. |
-| **The fallback weakening a stricter approval mode.** | Section 5: the fallback runs only if the command line can honour the mode. Otherwise the chat shows an error. |
-| **Security of full access.** Full access stays the default, as in T3 Code. | App file writes and terminals are offered only where T3 Code offers them, and always limited to the session's folders. In full access, agy's approvals pass through the app, so every action is visible. |
-| **Bundled Node costs:** larger bundle, signing, and patching. | One Node binary per architecture, signed with the app. It needs the signing entitlements that let Node's JIT compiler run under Apple's hardened runtime. Node is pinned in `//:.nvmrc`, and Node security releases follow the repo's dependency updates. Size is measured in step 3. A single-program helper is the fallback (see Alternatives). |
-| **The Agent SDK drifting from the user's `claude` version.** | Pin the SDK, read the `claude` version at start-up, and show a warning if they don't match, as T3 Code's `apps/server/src/provider/Drivers/ClaudeExecutable.ts` does. |
-| **agy behaving differently over ACP than T3 Code expects.** | Recorded replay tests from a real `agy acp` session (step 2). The facts below are checked before anything depends on them. |
+| **Unattended runs waiting** on an approval nobody sees. | A system notification, as in T3 Code; the run shows it is waiting. A silent agy prompt is stopped after 15 minutes (Technical Plan, sections 2 and 8). |
+| **Many live processes.** Each live chat holds a helper, `claude`, subagents and MCP servers, and worktree races multiply that. | Process-group shutdown (section 7); idle shutdown after 30 minutes and a 4-hour limit, as in T3 Code. Memory is measured in Detailed Implementation, Delivery order, step 2. |
+| **The fallback weakening a stricter approval mode.** | Technical Plan, section 5: the fallback uses the mode's own flags and runs only if they honour the mode. |
+| **An agent acting with full access**, the default, as in T3 Code. | App file writes and terminals are offered only where T3 Code offers them, and only inside the session's folders. agy's approvals pass through the app, so every action is visible. |
+| **agy writing a file into the user's repository** (`run_workflow` on agy 1.4.2–1.4.5). | The agy version gates disable that tool (section 2). |
+| **API keys entered in the app.** | Stored in the macOS Keychain, shown masked, passed only to the helper's environment (section 3). |
+| **Registry agents run third-party code** with the user's rights. | Installed only when the user adds them, at an exact version, into an app-managed folder; MCP servers only with the user's consent (section 2). |
+| **Bundled Node costs:** larger bundle, signing, and patching. | One Node binary per architecture, signed with the app. It needs the entitlements that let Node's JIT compiler run under Apple's hardened runtime. Node is pinned in `//:.nvmrc` and updated with the repo's dependencies. Size is measured in Detailed Implementation, Delivery order, step 3. A single-program helper is the fallback (see Alternatives). |
+| **The user's `claude` too old for the SDK or a model.** | The version check in section 3, as in T3 Code's `ClaudeProvider.ts`. |
+| **agy behaving differently over ACP than T3 Code expects.** | Recorded replay tests from a real `agy acp` session (Detailed Implementation, Delivery order, step 2), and the checks in Facts to verify. |
 
 ## Facts to verify
 
@@ -559,8 +645,10 @@ These don't need a decision. They're checked during implementation.
 
 *   **Whether `agy acp` still writes agy's transcript files.** T3 Code reads
     agy's session logs (`AntigravitySessionFiles.ts`), so this design expects
-    them. The first change in step 2 confirms it.
-*   **Memory per live connection,** measured in step 2 and recorded here.
+    them. The first change in Detailed Implementation, Delivery order, step 2 confirms it.
+*   **Memory per live connection,** measured in Detailed Implementation, Delivery order, step 2, and recorded here.
+*   **What `agy -p` does with a guarded action in standard mode** (no flags,
+    no terminal). The fallback rule in section 5 depends on the answer.
 
 ## Decisions
 
