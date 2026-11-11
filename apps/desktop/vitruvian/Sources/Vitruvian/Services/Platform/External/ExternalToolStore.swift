@@ -180,6 +180,10 @@ package final class ExternalToolStore {
         package var added: @MainActor (Installed, CatalogueOrigin?) -> Void
         /// Told of a tool just removed, after its program is gone.
         package var removed: @MainActor (ToolID) -> Void
+        /// Called once at launch, before the file of records is read: a tool
+        /// added under an id that has been renamed is given its new id
+        /// (`ToolIDMigration`).
+        package var renamed: @MainActor (ToolFolders) -> Void
 
         package init(folders: ToolFolders?, host: @escaping @MainActor () -> ToolHost,
                      registry: @escaping @MainActor () -> ToolRegistry,
@@ -196,7 +200,8 @@ package final class ExternalToolStore {
                          ready()
                      },
                      added: @escaping @MainActor (Installed, CatalogueOrigin?) -> Void = { _, _ in },
-                     removed: @escaping @MainActor (ToolID) -> Void = { _ in }) {
+                     removed: @escaping @MainActor (ToolID) -> Void = { _ in },
+                     renamed: @escaping @MainActor (ToolFolders) -> Void = { _ in }) {
             self.folders = folders
             self.host = host
             self.registry = registry
@@ -213,6 +218,7 @@ package final class ExternalToolStore {
             self.beforeAdding = beforeAdding
             self.added = added
             self.removed = removed
+            self.renamed = renamed
         }
 
         /// The app as it is. That a tool stopped working is also a line
@@ -238,7 +244,18 @@ package final class ExternalToolStore {
             // tool, as the GitHub feature did to its tool until 3.50.1.
             beforeAdding: { _, ready in ready() },
             added: { installed, origin in NexusAgentHandoff.perform(installed, from: origin, parts: .live) },
-            removed: { NexusAgentHandoff.toolRemoved($0, defaults: .standard) })
+            removed: { NexusAgentHandoff.toolRemoved($0, defaults: .standard) },
+            // Nexus Agent became Vitruvian Code: a tool added under the old
+            // id is the same tool under the new one.
+            renamed: { folders in
+                let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian", category: "tools")
+                // Only once the catalog the app has kept lists the new id.
+                let kept = CatalogueWatch.keptCatalogue(
+                    at: folders.root.appendingPathComponent(CatalogueWatch.keptFileName), source: .inUse)
+                ToolIDMigration.run(folders: folders, defaults: .standard, catalogue: kept.map { Set($0.tools.map(\.id)) }) {
+                    logger.notice("\($0, privacy: .public)")
+                }
+            })
     }
 
     /// Hears each language the app changes to, as its tag, on the main
@@ -420,6 +437,7 @@ package final class ExternalToolStore {
     /// stays.
     package func restore() {
         guard records.isEmpty, let folders = parts.folders else { return }
+        parts.renamed(folders)
         switch ToolRecords.read(at: folders.records) {
         case .none:
             return

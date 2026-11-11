@@ -700,8 +700,8 @@ fn additional() -> Vec<Ext> {
             claude_marketplace_source: s("./apps/mcp/roborock/plugin"),
         },
         Ext {
-            id: s("nexus-agent"),
-            name: s("NexusAgent"),
+            id: s("vitruvian-code"),
+            name: s("Vitruvian Code"),
             kind: s("plugin"),
             category: s("Remote Agent Bridge"),
             status: s("mirror"),
@@ -1123,7 +1123,7 @@ mod tests {
                 "alpha",
                 "zeta",
                 "mcp-roborock",
-                "nexus-agent",
+                "vitruvian-code",
                 "mcp-slack",
                 "devx"
             ]

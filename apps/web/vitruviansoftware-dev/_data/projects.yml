@@ -268,7 +268,7 @@ projects:
         - tool: Antigravity
           command: agy plugin install https://github.com/VitruvianSoftware/mcp-roborock
 
-  - name: NexusAgent
+  - name: Vitruvian Code
     group: agents
     featured: true
     status: mirror

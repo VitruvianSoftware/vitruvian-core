@@ -26,8 +26,8 @@ categories:
     title: Desktop & Menu Bar Apps
     blurb: Native macOS applications built for high-performance agent workflows, speech notifications, and menu bar control.
     items:
-      - id: nexus-agent
-        name: NexusAgent
+      - id: vitruvian-code
+        name: Vitruvian Code
         version: "1.32.5"
         summary: >-
           macOS menu bar companion for AI coding assistants. Bridges Claude Code,
@@ -54,7 +54,7 @@ categories:
             arch: Universal
         releases_url: https://github.com/VitruvianSoftware/nexus-agent/releases
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-code
-        extensions_url: /ai/#nexus-agent
+        extensions_url: /ai/#vitruvian-code
         extensions_label: MCP & Agent Setup
 
       - id: vitruvian-desktop

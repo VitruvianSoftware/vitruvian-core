@@ -63,7 +63,7 @@ Usage:
   --execute      actually publish/push. Omit for a dry run (prints the plan only).
 
 Publish the EXPORTED bump only -- run `bazel run //tools/copybara/sync -- export <component>` first.
-GoReleaser binaries (devx, homelab) and nexus-agent are manual: see
+GoReleaser binaries (devx, homelab) and vitruvian-code are manual: see
 docs/operations/break-glass-deploy-runbook.md.
 ";
 

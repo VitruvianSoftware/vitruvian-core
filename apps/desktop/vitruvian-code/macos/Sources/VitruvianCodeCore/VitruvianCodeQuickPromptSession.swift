@@ -286,7 +286,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     @Published public var activeADEPanel: VitruvianCodeADEPanel?
     /// Initial URL opened when `/design` or the Design Mode panel is launched.
     @Published public var designModeInitialURL: String = "http://localhost:3000"
-    /// Engine-managed git worktrees (`~/.nexus-agent/worktrees/<repo>/<branch>`).
+    /// Engine-managed git worktrees (`~/.vitruvian-code/worktrees/<repo>/<branch>`).
     public let worktreeManager = VitruvianCodeWorktreeManager()
     /// Multi-agent side-by-side race coordinator.
     public lazy var raceSession = VitruvianCodeRaceSession(worktreeManager: worktreeManager)
@@ -327,7 +327,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             stateDirectory: URL(fileURLWithPath: environment.stateDirectory)
         )
         self.orchestrationCoordinator = VitruvianCodeOrchestrationCoordinator(
-            worktreeRoot: (environment.home as NSString).appendingPathComponent(".nexus-agent/worktrees") // TODO(brand step 2)
+            worktreeRoot: (environment.home as NSString).appendingPathComponent(".vitruvian-code/worktrees")
         )
         self.workspaceNoteStore = VitruvianCodeWorkspaceNoteStore(
             worktreePath: environment.home,

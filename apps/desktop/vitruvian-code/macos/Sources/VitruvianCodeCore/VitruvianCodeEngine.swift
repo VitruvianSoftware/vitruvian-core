@@ -185,7 +185,7 @@ open class VitruvianCodeEngine: NSObject, ObservableObject {
                 defaults: .standard,
                 home: home,
                 processEnvironment: ProcessInfo.processInfo.environment,
-                stateDirectory: (home as NSString).appendingPathComponent("Library/Application Support/NexusAgent"), // TODO(brand step 2)
+                stateDirectory: VitruvianCodeSupport.defaultStateDirectory(home: home),
                 isExecutable: { FileManager.default.isExecutableFile(atPath: $0) },
                 fileExists: { FileManager.default.fileExists(atPath: $0) },
                 readFile: { try? String(contentsOfFile: $0, encoding: .utf8) },

@@ -237,6 +237,7 @@ swift_test(
     # TimelineTests reads the standalone host and its Settings to prove the
     # timeline's edge is kept under one key.
     data = [
+        "Sources/VitruvianCode/ConfigManager.swift",
         "Sources/VitruvianCode/SettingsView.swift",
         "Sources/VitruvianCode/StandaloneHost.swift",
         ":shared_sources",
@@ -253,7 +254,7 @@ swift_test(
 )
 
 # Produces bazel-bin/apps/desktop/vitruvian-code/macos/VitruvianCode.zip
-# containing NexusAgent.app (bundle_name stays NexusAgent until brand step 2).
+# containing "Vitruvian Code.app" (its program is VitruvianCode, inside).
 #
 # `tags = ["manual"]` keeps this out of wildcard builds (`//...`, `//apps/desktop/vitruvian-code/...`)
 # so a Linux `bazel build //...` skips it. `target_compatible_with` does NOT work
@@ -272,8 +273,9 @@ swift_test(
 # ad-hoc signs the bundle by default ("codesign --identity -").
 macos_application(
     name = "VitruvianCode",
-    bundle_id = "com.vitruviansoftware.nexusagent",  # TODO(brand step 2)
-    bundle_name = "NexusAgent",  # TODO(brand step 2)
+    bundle_id = "com.vitruviansoftware.code",
+    bundle_name = "Vitruvian Code",
+    executable_name = "VitruvianCode",
     infoplists = ["Resources/Info.plist"],
     minimum_os_version = "14.0",
     resources = ["Resources/AppIcon.icns"],
@@ -330,7 +332,7 @@ rust_test(
     ],
     edition = "2021",
     env = {
-        "APP_NAME": "NexusAgent",  # TODO(brand step 2)
+        "APP_NAME": "Vitruvian Code",
         "ARCHIVE_PATHS": "$(rootpaths :VitruvianCode)",
         "RESOURCE_PATHS": "$(rootpaths :shared_ui_resources)",
     },

@@ -208,7 +208,7 @@ struct StatusView: View {
 
 /// Floating panel that accepts keyboard input — standard NSWindow at .floating level
 /// silently refuses to become key, which blocks all text field interaction.
-private class KeyablePanel: NSPanel {
+class KeyablePanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
 }

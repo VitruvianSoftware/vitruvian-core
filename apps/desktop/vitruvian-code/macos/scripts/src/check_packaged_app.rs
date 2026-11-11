@@ -26,6 +26,9 @@ use std::process::Command;
 const SCRIPT_NAME: &str = "mermaid.min.js";
 const LICENCE_NAME: &str = "mermaid-LICENSE.txt";
 const UI_RESOURCES: &str = "VitruvianCode_VitruvianCodeUI.bundle";
+/// The bridge, the last release of Nexus Agent: no chat view, so no Mermaid and
+/// no notices to check, but still a signed program for the processors named.
+const BRIDGE_APP: &str = "NexusAgent.app";
 
 fn fail(app: &str, msg: &str) -> i32 {
     eprintln!("error: {}", msg);
@@ -107,7 +110,9 @@ pub fn find_mermaid(app: &str, name: &str) -> Option<PathBuf> {
 pub fn run(args: &[String]) -> i32 {
     let rest = if args.len() > 1 { &args[1..] } else { &[] };
     if rest.is_empty() {
-        eprintln!("Usage: check-packaged-app <NexusAgent.app> <architecture>...");
+        eprintln!(
+            "Usage: check-packaged-app <app folder, e.g. Vitruvian Code.app> <architecture>..."
+        );
         return 2;
     }
 
@@ -121,6 +126,14 @@ pub fn run(args: &[String]) -> i32 {
     let mut sorted_archs: Vec<&str> = archs.iter().map(|s| s.as_str()).collect();
     sorted_archs.sort();
     let want_archs = format!("{} ", sorted_archs.join(" "));
+
+    if Path::new(app).file_name().and_then(|n| n.to_str()) == Some(BRIDGE_APP) {
+        println!("==> Checking {}", app);
+        if !Path::new(app).is_dir() {
+            return fail(app, &format!("no app at {}", app));
+        }
+        return check_program_and_signature(app, "NexusAgent", &want_archs);
+    }
 
     // Resolve THIRD_PARTY_NOTICES.md relative to the binary's location,
     // mirroring the shell script's SCRIPT_DIR/../../THIRD_PARTY_NOTICES.md,
@@ -226,14 +239,23 @@ pub fn run(args: &[String]) -> i32 {
     }
     println!("    \u{2713} {} is beside it", LICENCE_NAME);
 
+    check_program_and_signature(app, "VitruvianCode", &want_archs)
+}
+
+/// The program's presence, its processors and the bundle's signature: what is
+/// checked of both apps.
+fn check_program_and_signature(app: &str, program: &str, want_archs: &str) -> i32 {
     // Executable check
-    let exe = format!("{}/Contents/MacOS/NexusAgent", app);
+    let exe = format!("{}/Contents/MacOS/{}", app, program);
     if !Path::new(&exe).is_file() {
-        return fail(app, "no executable at Contents/MacOS/NexusAgent");
+        return fail(app, &format!("no executable at Contents/MacOS/{}", program));
     }
     let exe_meta = fs::metadata(&exe).unwrap();
     if exe_meta.permissions().mode() & 0o111 == 0 {
-        return fail(app, "Contents/MacOS/NexusAgent is not executable");
+        return fail(
+            app,
+            &format!("Contents/MacOS/{} is not executable", program),
+        );
     }
 
     // Architecture check

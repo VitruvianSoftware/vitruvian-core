@@ -119,6 +119,12 @@ application.setActivationPolicy(.accessory)
 let dataFolder = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
 let link = WakerLink(kit: kit)
 let settings = ToolSettings(folder: dataFolder, log: { message in link.log(message) })
+// The tool may be the first of the two programs to run after Nexus Agent was
+// renamed. The standalone app moves the old folders on its first launch; this
+// is the same copy, which leaves what is already there alone, so the engine
+// below finds the bot's folder and state where it now looks for them.
+let folderMove = VitruvianCodeLegacyMigration.moveFolders { message in link.log(message) }
+for failure in folderMove.failures { link.log("Moving the Nexus Agent folders: \(failure.line)") }
 let engine = ToolEngine(environment: .live, host: settings)
 nonisolated(unsafe) var languageTag = "en"
 let window = ToolWindowController(engine: engine, language: { languageTag })

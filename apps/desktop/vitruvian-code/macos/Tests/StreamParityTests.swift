@@ -418,8 +418,8 @@ final class StreamParityTests: XCTestCase {
         preferences.rename(id: "b", to: "  Better name ")
         // The property-list form a host saves, under the agreed keys.
         let stored = preferences.stored
-        XCTAssertEqual(stored["nexusAgent.pinnedSessionIDs"] as? [String], ["c"])
-        XCTAssertEqual(stored["nexusAgent.renamedSessionTitles"] as? [String: String], ["b": "Better name"])
+        XCTAssertEqual(stored["vitruvianCode.pinnedSessionIDs"] as? [String], ["c"])
+        XCTAssertEqual(stored["vitruvianCode.renamedSessionTitles"] as? [String: String], ["b": "Better name"])
         let loaded = VitruvianCodeSessionPreferences(stored: stored)
         XCTAssertEqual(loaded, preferences)
         let coded = try JSONDecoder().decode(VitruvianCodeSessionPreferences.self,

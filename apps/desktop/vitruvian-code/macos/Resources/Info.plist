@@ -5,13 +5,11 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleExecutable</key>
-    <!-- TODO(brand step 2): executable file name stays NexusAgent until migration -->
-    <string>NexusAgent</string>
+    <string>VitruvianCode</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
-    <!-- TODO(brand step 2): bundle ID stays com.vitruviansoftware.nexusagent until migration -->
-    <string>com.vitruviansoftware.nexusagent</string>
+    <string>com.vitruviansoftware.code</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>

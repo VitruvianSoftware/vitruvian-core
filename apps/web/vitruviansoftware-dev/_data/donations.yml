@@ -48,7 +48,7 @@ esp32-desk-companion:
   url: "https://donate.stripe.com/7sYbJ04bXaRr0w13XZbwk03"
 
 nexus-agent:
-  name: NexusAgent
+  name: Vitruvian Code
   repo: https://github.com/VitruvianSoftware/nexus-agent
   url: "https://donate.stripe.com/eVqdR8dMxf7Ha6B2TVbwk0c"
 

@@ -1,5 +1,5 @@
 {
-  "name": "nexus-agent",
+  "name": "vitruvian-code",
   "version": "1.32.7",
   "description": "Telegram bot bridging messages to the Antigravity CLI (agy) for remote coding agent access",
   "main": "src/bot.js",

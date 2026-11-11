@@ -86,15 +86,27 @@ package final class CatalogueWatch: ObservableObject {
     /// At launch: reads the list kept from before, fetches a new one when a
     /// tool from the catalog is installed, and does the same once a day.
     package func start() {
-        if let kept = parts.kept, let data = FileManager.default.contents(atPath: kept.path),
-           let file = try? JSONDecoder().decode(Kept.self, from: data),
-           CatalogueSigning.verify(file.list, signatureFile: file.signature, publicKey: parts.source.publicKey),
-           let catalogue = Catalogue.read(file.list, permits: parts.source.permits) {
+        if let (file, catalogue) = Self.readKept(at: parts.kept, source: parts.source) {
             last = file
             state = .ready(catalogue)
         }
         if watchesSomething { refresh() }
         scheduleDaily()
+    }
+
+    /// The list kept from the last launch, verified again, or nil when none
+    /// is kept or it no longer verifies. For what must know the catalog
+    /// before the watch has started (`ToolIDMigration`).
+    package static func keptCatalogue(at kept: URL?, source: CatalogueSource) -> Catalogue? {
+        readKept(at: kept, source: source)?.1
+    }
+
+    private static func readKept(at kept: URL?, source: CatalogueSource) -> (Kept, Catalogue)? {
+        guard let kept, let data = FileManager.default.contents(atPath: kept.path),
+              let file = try? JSONDecoder().decode(Kept.self, from: data),
+              CatalogueSigning.verify(file.list, signatureFile: file.signature, publicKey: source.publicKey),
+              let catalogue = Catalogue.read(file.list, permits: source.permits) else { return nil }
+        return (file, catalogue)
     }
 
     /// Fetches the list now, unless a fetch is already in flight.

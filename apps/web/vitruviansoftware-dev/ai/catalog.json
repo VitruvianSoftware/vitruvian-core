@@ -671,8 +671,8 @@
       ]
     },
     {
-      "id": "nexus-agent",
-      "name": "NexusAgent",
+      "id": "vitruvian-code",
+      "name": "Vitruvian Code",
       "kind": "plugin",
       "category": "Remote Agent Bridge",
       "status": "mirror",

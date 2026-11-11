@@ -829,8 +829,8 @@ public struct VitruvianCodeSessionSummary: Identifiable, Equatable, Sendable {
 /// (`VitruvianCodeHost.sessionPreferences`); `stored` and `init(stored:)` are a
 /// property-list form of it under `pinnedKey` and `renamedKey`.
 public struct VitruvianCodeSessionPreferences: Codable, Equatable, Sendable {
-    public static let pinnedKey = "nexusAgent.pinnedSessionIDs" // TODO(brand step 2)
-    public static let renamedKey = "nexusAgent.renamedSessionTitles" // TODO(brand step 2)
+    public static let pinnedKey = "vitruvianCode.pinnedSessionIDs"
+    public static let renamedKey = "vitruvianCode.renamedSessionTitles"
 
     public var pinnedSessionIDs: Set<String>
     public var renamedSessionTitles: [String: String]

@@ -133,7 +133,7 @@ final class PortedRulesTests: XCTestCase {
 
     func testLocations() {
         let home = "/Users/test"
-        XCTAssertTrue(VitruvianCodeSupport.botDirectory(configured: "", home: home) == "/Users/test/.config/nexus-agent"
+        XCTAssertTrue(VitruvianCodeSupport.botDirectory(configured: "", home: home) == "/Users/test/.config/vitruvian-code"
                       && VitruvianCodeSupport.botDirectory(configured: "~", home: home) == home
                       && VitruvianCodeSupport.botDirectory(configured: " ~/bots/nexus ", home: home) == "/Users/test/bots/nexus"
                       && VitruvianCodeSupport.botDirectory(configured: "/opt/nexus", home: home) == "/opt/nexus",

@@ -155,7 +155,7 @@ final class EngineHostTests: XCTestCase {
                 home = "/Users/rig"
             }
             ownsHome = realHome
-            state = home + "/Library/Application Support/NexusAgent"
+            state = home + "/Library/Application Support/Vitruvian Code"
         }
 
         func tearDown() {
@@ -163,7 +163,7 @@ final class EngineHostTests: XCTestCase {
             if ownsHome { try? FileManager.default.removeItem(atPath: home) }
         }
 
-        var defaultBot: String { home + "/.config/nexus-agent" }
+        var defaultBot: String { home + "/.config/vitruvian-code" }
 
         /// Writes a Claude session file where the app's Claude parser looks.
         func writeClaudeSession(id: String, prompt: String) {
@@ -273,8 +273,8 @@ final class EngineHostTests: XCTestCase {
         let engine = VitruvianCodeEngine(environment: rig.environment, host: host)
 
         host.configuredBotDirectory = ""
-        XCTAssertEqual(engine.botDirectory, "/Users/rig/.config/nexus-agent")
-        XCTAssertEqual(engine.envFilePath, "/Users/rig/.config/nexus-agent/.env")
+        XCTAssertEqual(engine.botDirectory, "/Users/rig/.config/vitruvian-code")
+        XCTAssertEqual(engine.envFilePath, "/Users/rig/.config/vitruvian-code/.env")
 
         // The user edits the setting while the app runs: the same engine
         // follows, so nothing was cached at construction.

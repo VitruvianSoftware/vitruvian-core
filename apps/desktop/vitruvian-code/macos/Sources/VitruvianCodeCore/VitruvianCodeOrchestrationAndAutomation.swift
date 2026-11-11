@@ -523,7 +523,16 @@ public final class VitruvianCodeAutomationManager: ObservableObject {
 
     /// The launchd label a task's LaunchAgent is saved under.
     public nonisolated static func launchdLabel(for task: VitruvianCodeScheduledTask) -> String {
-        "nexus-agent.automation.\(task.id.uuidString.lowercased())" // TODO(brand step 2)
+        launchdLabel(forTaskID: task.id)
+    }
+
+    /// What every automation's launchd label starts with. The first
+    /// version of the app used `nexus-agent.automation.`; the first launch of this
+    /// one moves those over (`VitruvianCodeLegacyMigration`).
+    public nonisolated static let launchdLabelPrefix = "com.vitruviansoftware.code.automation."
+
+    public nonisolated static func launchdLabel(forTaskID id: UUID) -> String {
+        launchdLabelPrefix + id.uuidString.lowercased()
     }
 
     /// A LaunchAgent property list that runs `executablePath --run-automation

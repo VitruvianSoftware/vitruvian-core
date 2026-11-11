@@ -124,7 +124,7 @@ mod in_sync_tests {
             "live-context",
             "savvy-fleet",
             "mcp-roborock",
-            "nexus-agent",
+            "vitruvian-code",
             "mcp-slack",
             "devx",
         ] {
