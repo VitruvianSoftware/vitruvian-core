@@ -128,7 +128,7 @@ jobs:
             VitruvianSoftware/mcp-slack
             VitruvianSoftware/mcp-roborock
             VitruvianSoftware/gh-watch
-            VitruvianSoftware/nexus-agent
+            VitruvianSoftware/vitruvian-code
             VitruvianSoftware/devx
             VitruvianSoftware/homelab
             VitruvianSoftware/pulumi-library

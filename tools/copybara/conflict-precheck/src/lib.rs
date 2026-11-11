@@ -138,7 +138,12 @@ pub fn trim_space(s: &[u8]) -> &[u8] {
 }
 
 /// "mcp-slack" -> "MCP_SLACK_REV_ID", "devx" -> "DEVX_REV_ID".
+/// "vitruvian-code" keeps "NEXUS_AGENT_REV_ID" so export pre-checks continue
+/// to match the historical import rev-id label declared in copy.bara.sky.
 pub fn import_label(component: &[u8]) -> Vec<u8> {
+    if component == b"vitruvian-code" {
+        return b"NEXUS_AGENT_REV_ID".to_vec();
+    }
     let replaced: Vec<u8> = component
         .iter()
         .map(|&b| if b == b'-' { b'_' } else { b })

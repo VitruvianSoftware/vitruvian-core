@@ -18,7 +18,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Publish-on-version-bump. The monorepo (vitruvian-core) authors nexus-agent's
+# Publish-on-version-bump. The monorepo (vitruvian-core) authors vitruvian-code's
 # version bump via release-please (bumping .release-please-manifest.json AND
 # macos/Sources/VitruvianCode/Version.swift via extra-files), exported here. When
 # the exported version has no matching tag yet, this is a new release: tag the
@@ -324,10 +324,10 @@ jobs:
             version "${VERSION}"
             sha256 "${SHA256}"
 
-            url "https://github.com/VitruvianSoftware/nexus-agent/releases/download/v${VERSION}/${DMG_FILE}"
+            url "https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v${VERSION}/${DMG_FILE}"
             name "Vitruvian Code"
             desc "Advanced multi-provider agent GUI"
-            homepage "https://github.com/VitruvianSoftware/nexus-agent"
+            homepage "https://github.com/VitruvianSoftware/vitruvian-code"
 
             app "Vitruvian Code.app"
           end

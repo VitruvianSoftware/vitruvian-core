@@ -37,22 +37,22 @@ categories:
         brew_cask: vitruviansoftware/tap/nexus-agent
         downloads:
           - label: Universal DMG
-            url: https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.32.5/NexusAgent-1.32.5-universal.dmg
+            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.32.5/NexusAgent-1.32.5-universal.dmg
             size: 8.5 MB
             arch: Universal
           - label: Apple Silicon DMG
-            url: https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.32.7/NexusAgent-1.32.7-arm64.dmg
+            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.32.7/NexusAgent-1.32.7-arm64.dmg
             size: 5.6 MB
             arch: arm64
           - label: Intel x86_64 DMG
-            url: https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.32.7/NexusAgent-1.32.7-x86_64.dmg
+            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.32.7/NexusAgent-1.32.7-x86_64.dmg
             size: 5.7 MB
             arch: x86_64
           - label: Universal ZIP
-            url: https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.32.5/NexusAgent-1.32.5-universal.zip
+            url: https://github.com/VitruvianSoftware/vitruvian-code/releases/download/v1.32.5/NexusAgent-1.32.5-universal.zip
             size: 8.5 MB
             arch: Universal
-        releases_url: https://github.com/VitruvianSoftware/nexus-agent/releases
+        releases_url: https://github.com/VitruvianSoftware/vitruvian-code/releases
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-code
         extensions_url: /ai/#vitruvian-code
         extensions_label: MCP & Agent Setup

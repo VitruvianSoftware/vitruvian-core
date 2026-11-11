@@ -677,8 +677,8 @@
       "category": "Remote Agent Bridge",
       "status": "mirror",
       "summary": "A macOS menu bar app and Telegram bot that forwards your messages to a locally installed AI coding CLI, so a full agent session is reachable from your phone.",
-      "repo": "https://github.com/VitruvianSoftware/nexus-agent",
-      "mirrorRepo": "https://github.com/VitruvianSoftware/nexus-agent",
+      "repo": "https://github.com/VitruvianSoftware/vitruvian-code",
+      "mirrorRepo": "https://github.com/VitruvianSoftware/vitruvian-code",
       "source": "apps/desktop/vitruvian-code",
       "ecosystems": [
         "antigravity",
@@ -703,7 +703,7 @@
           "tool": "Antigravity",
           "ecosystem": "antigravity",
           "label": "Install in Antigravity",
-          "command": "agy plugin install https://github.com/VitruvianSoftware/nexus-agent"
+          "command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-code"
         }
       ]
     },
