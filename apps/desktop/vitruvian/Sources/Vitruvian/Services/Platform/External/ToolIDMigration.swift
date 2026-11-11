@@ -54,6 +54,11 @@ package enum ToolIDMigration {
         /// record and everything else are left exactly as they are, so the
         /// app holds the tool back as it already did; this says why.
         case heldBack([String])
+        /// The catalog the app has loaded does not list the new id (or none
+        /// has been loaded yet), so the tool stays as it is: moved, it would
+        /// be a tool the catalog does not know, with no updates, while the old
+        /// entry were offered for installing again. Tried again at every launch.
+        case waitingForCatalogue
         /// Moved; what was done, in order.
         case migrated([String])
         /// Something could not be moved. What was done is kept, the record
@@ -62,15 +67,22 @@ package enum ToolIDMigration {
     }
 
     /// Runs every rename in `renames`. `defaults` is where the app keeps its
-    /// preferences, including the tools'.
+    /// preferences, including the tools'. `catalogue` is the ids of the tools
+    /// the catalog the app has loaded lists (the one kept from the last
+    /// launch), or nil when it has none: a tool moves to its new id only once
+    /// the catalog lists that id.
     @discardableResult
     package static func run(_ renames: [Rename] = renames, folders: ToolFolders, defaults: UserDefaults,
-                            fileManager: FileManager = .default, log: (String) -> Void) -> [Outcome] {
-        renames.map { migrate($0, folders: folders, defaults: defaults, fileManager: fileManager, log: log) }
+                            catalogue: Set<ToolID>?, fileManager: FileManager = .default,
+                            log: (String) -> Void) -> [Outcome] {
+        renames.map {
+            migrate($0, folders: folders, defaults: defaults, catalogue: catalogue, fileManager: fileManager, log: log)
+        }
     }
 
     package static func migrate(_ rename: Rename, folders: ToolFolders, defaults: UserDefaults,
-                                fileManager: FileManager = .default, log: (String) -> Void) -> Outcome {
+                                catalogue: Set<ToolID>?, fileManager: FileManager = .default,
+                                log: (String) -> Void) -> Outcome {
         let from = rename.from
         let to = rename.to
         let records: [ToolRecord]
@@ -84,6 +96,10 @@ package enum ToolIDMigration {
         if records.contains(where: { $0.id == to.rawValue }) {
             log("tool \(from.rawValue) and \(to.rawValue) are both installed; the old one is left alone")
             return .bothInstalled
+        }
+        guard catalogue?.contains(to) == true else {
+            log("tool \(from.rawValue) stays as it is: the catalog does not list \(to.rawValue) yet")
+            return .waitingForCatalogue
         }
         guard let old = folders.place(for: from), let new = folders.place(for: to) else {
             return .failed(["\(from.rawValue) or \(to.rawValue) is not an id an outside tool may have"])

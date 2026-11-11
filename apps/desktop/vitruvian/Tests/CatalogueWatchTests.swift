@@ -136,6 +136,11 @@ enum CatalogueWatchTests {
         rig.serve([CatalogueFixtures.entry(["version": "1.3.0"])])
         rig.watch.start()
         rig.fetcher.answers = [:]
+        let kept = CatalogueWatch.keptCatalogue(at: rig.kept, source: CatalogueFixtures.source)
+        suite.expect(kept?.tools.map(\.id.rawValue) == ["com.acme.deploys"]
+                         && CatalogueWatch.keptCatalogue(at: nil, source: CatalogueFixtures.source) == nil
+                         && CatalogueWatch.keptCatalogue(at: rig.kept.appendingPathExtension("none"), source: CatalogueFixtures.source) == nil,
+                     "what the watch kept can be read before it starts, verified, for what must know the catalog first")
         let next = rig.makeWatch()
         next.start()
         suite.expect(ready(next)?.tools.first?.version == "1.3.0"

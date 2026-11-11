@@ -20,6 +20,7 @@ enum ToolIDMigrationTests {
         bothInstalledIsLeftAlone(suite)
         anUnreadableRecordIsLeftAlone(suite)
         aTwoCopiesTrapKeepsTheRecord(suite)
+        waitsForTheCatalogue(suite)
         aChangedManifestIsNotCarriedOver(suite)
         aResumedLaunchTrustsItsOwnRewrite(suite)
         theStoreDoesItAtLaunch(suite)
@@ -99,9 +100,10 @@ enum ToolIDMigrationTests {
             defaults.set(old.rawValue, forKey: DefaultsKey.panelCollapsedExtensions)
         }
 
+        /// By default the catalog the app has loaded lists the new id.
         @discardableResult
-        func migrate() -> [ToolIDMigration.Outcome] {
-            ToolIDMigration.run(folders: folders, defaults: defaults) { [self] in logged.append($0) }
+        func migrate(catalogue: Set<ToolID>? = [ToolIDMigrationTests.new]) -> [ToolIDMigration.Outcome] {
+            ToolIDMigration.run(folders: folders, defaults: defaults, catalogue: catalogue) { [self] in logged.append($0) }
         }
 
         func records() -> [ToolRecord] {
@@ -280,6 +282,34 @@ enum ToolIDMigrationTests {
         suite.expect(rig.logged.contains { $0.contains("FAILED") }, "and the log says so")
     }
 
+    /// A tool moves to its new id only once the catalog the app has loaded
+    /// lists it: otherwise it would be a tool the catalog does not know.
+    static func waitsForTheCatalogue(_ suite: TestSuite) {
+        let rig = Rig("catalogue")
+        defer { rig.close() }
+        rig.seedOldInstall()
+        let before = rig.snapshot()
+        let recordBefore = rig.read(rig.folders.records)
+
+        for (what, ids) in [("no catalog loaded", nil), ("a catalog with only the old id", Set([old])),
+                            ("a catalog without either", Set([ToolID("com.acme.deploys")!]))] as [(String, Set<ToolID>?)] {
+            rig.logged = []
+            let outcomes = rig.migrate(catalogue: ids)
+            suite.expect(outcomes == [.waitingForCatalogue] && rig.snapshot() == before
+                             && rig.read(rig.folders.records) == recordBefore && rig.exists(rig.files(old))
+                             && !rig.exists(rig.files(new)),
+                         "\(what): nothing is moved: \(outcomes)")
+            suite.expect(rig.logged.count == 1 && rig.logged[0].contains("does not list"),
+                         "\(what): and it is said once: \(rig.logged)")
+        }
+
+        let outcomes = rig.migrate(catalogue: [old, new])
+        suite.expect({ if case .migrated? = outcomes.first { return true }; return false }()
+                         && rig.records().map(\.id).contains(new.rawValue),
+                     "once the catalog lists the new id, the tool moves: \(outcomes)")
+        suite.expect(rig.migrate(catalogue: [new]) == [.notInstalled], "and a second run finds nothing to do")
+    }
+
     /// A copy whose manifest is not what the person agreed to is not given a
     /// new fingerprint: the record, the folders and the preferences stay.
     static func aChangedManifestIsNotCarriedOver(_ suite: TestSuite) {
@@ -330,7 +360,7 @@ enum ToolIDMigrationTests {
         try? FileManager.default.copyItem(at: rig.folders.records, to: folders.records)
 
         let before = bench.relaunched()
-        before.renamed = { ToolIDMigration.run(folders: $0, defaults: rig.defaults) { _ in } }
+        before.renamed = { ToolIDMigration.run(folders: $0, defaults: rig.defaults, catalogue: [new]) { _ in } }
         before.store.restore()
         suite.expect(before.store.isInstalled(new) && !before.store.isInstalled(old)
                          && before.store.listed.map(\.id) == [ToolID("com.acme.deploys")!, new]
@@ -339,7 +369,7 @@ enum ToolIDMigrationTests {
                          + "\(before.store.listed.map { "\($0.id) held=\($0.isHeld)" }), \(rig.logged)")
 
         let again = bench.relaunched()
-        again.renamed = { ToolIDMigration.run(folders: $0, defaults: rig.defaults) { _ in } }
+        again.renamed = { ToolIDMigration.run(folders: $0, defaults: rig.defaults, catalogue: [new]) { _ in } }
         again.store.restore()
         suite.expect(again.store.isInstalled(new) && again.store.listed.count == 2,
                      "and the launch after it finds the same tools")

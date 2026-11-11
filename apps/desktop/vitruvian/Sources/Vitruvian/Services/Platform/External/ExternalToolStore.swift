@@ -249,7 +249,12 @@ package final class ExternalToolStore {
             // id is the same tool under the new one.
             renamed: { folders in
                 let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian", category: "tools")
-                ToolIDMigration.run(folders: folders, defaults: .standard) { logger.notice("\($0, privacy: .public)") }
+                // Only once the catalog the app has kept lists the new id.
+                let kept = CatalogueWatch.keptCatalogue(
+                    at: folders.root.appendingPathComponent(CatalogueWatch.keptFileName), source: .inUse)
+                ToolIDMigration.run(folders: folders, defaults: .standard, catalogue: kept.map { Set($0.tools.map(\.id)) }) {
+                    logger.notice("\($0, privacy: .public)")
+                }
             })
     }
 

@@ -250,9 +250,9 @@
       "panels": ["island", "settings"]
     },
     {
-      "id": "dev.vitruvian.code",
+      "id": "dev.vitruvian.nexus-agent",
       "name": {
-        "en": "Code"
+        "en": "Nexus Agent"
       },
       "publisher": "VitruvianSoftware",
       "summary": {
@@ -275,7 +275,7 @@
       "version": "1.32.7",
       "protocol": "2",
       "minimumAppVersion": "3.72.1",
-      "source": "https://github.com/VitruvianSoftware/vitruvian-code",
+      "source": "https://github.com/VitruvianSoftware/nexus-agent",
       "download": {
         "url": "https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.32.7/nexus-agent-tool-1.32.7.zip",
         "sha256": "aa3305422ebe3057299047f78bb0e588bb3d89b63aaedfe93a5c821f6c40ff81",

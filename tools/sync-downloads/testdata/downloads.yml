@@ -65,7 +65,7 @@ categories:
             url: https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.31.1/NexusAgent-1.31.1-universal.zip
             size: 8.3 MB
             arch: Universal
-        releases_url: https://github.com/VitruvianSoftware/vitruvian-code/releases
+        releases_url: https://github.com/VitruvianSoftware/nexus-agent/releases
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-code
         extensions_url: /ai/#vitruvian-code
         extensions_label: MCP & Agent Setup
