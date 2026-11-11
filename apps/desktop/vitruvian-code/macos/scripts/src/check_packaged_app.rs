@@ -107,7 +107,9 @@ pub fn find_mermaid(app: &str, name: &str) -> Option<PathBuf> {
 pub fn run(args: &[String]) -> i32 {
     let rest = if args.len() > 1 { &args[1..] } else { &[] };
     if rest.is_empty() {
-        eprintln!("Usage: check-packaged-app <NexusAgent.app> <architecture>...");
+        eprintln!(
+            "Usage: check-packaged-app <app folder, e.g. Vitruvian Code.app> <architecture>..."
+        );
         return 2;
     }
 
@@ -227,13 +229,13 @@ pub fn run(args: &[String]) -> i32 {
     println!("    \u{2713} {} is beside it", LICENCE_NAME);
 
     // Executable check
-    let exe = format!("{}/Contents/MacOS/NexusAgent", app);
+    let exe = format!("{}/Contents/MacOS/VitruvianCode", app);
     if !Path::new(&exe).is_file() {
-        return fail(app, "no executable at Contents/MacOS/NexusAgent");
+        return fail(app, "no executable at Contents/MacOS/VitruvianCode");
     }
     let exe_meta = fs::metadata(&exe).unwrap();
     if exe_meta.permissions().mode() & 0o111 == 0 {
-        return fail(app, "Contents/MacOS/NexusAgent is not executable");
+        return fail(app, "Contents/MacOS/VitruvianCode is not executable");
     }
 
     // Architecture check

@@ -25,4 +25,4 @@ let appVersion = "1.32.7" // x-release-please-version
 
 /// GitHub repository for update checks
 let appRepoOwner = "VitruvianSoftware"
-let appRepoName = "nexus-agent" // TODO(brand step 2)
+let appRepoName = "nexus-agent" // TODO(brand step 3): the mirror repo is renamed there

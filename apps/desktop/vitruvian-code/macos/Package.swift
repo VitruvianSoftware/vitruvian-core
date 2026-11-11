@@ -25,8 +25,7 @@ let package = Package(
     name: "VitruvianCode",
     platforms: [.macOS(.v14)],
     products: [
-        // TODO(brand step 2): executable file name stays NexusAgent until migration.
-        .executable(name: "NexusAgent", targets: ["VitruvianCode"]),
+        .executable(name: "VitruvianCode", targets: ["VitruvianCode"]),
         // The tool for the Vitruvian app; the app is built by `swift build`
         // as the executable target below, as before.
         .executable(name: "vitruvian-code-tool", targets: ["VitruvianCodeTool"]),

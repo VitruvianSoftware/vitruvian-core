@@ -6,8 +6,9 @@ import os
 import VitruvianCore
 import VitruvianToolProtocol
 
-/// What the Nexus Agent feature kept goes to the Nexus Agent tool
-/// (`dev.vitruvian.nexus-agent`), once, when the tool is added: the bot
+/// What the Nexus Agent feature kept goes to the Code tool
+/// (`dev.vitruvian.code`, once `dev.vitruvian.nexus-agent`; `ToolIDMigration`
+/// moves a tool added under that), once, when the tool is added: the bot
 /// folder, whether the bot starts with the app, plan mode, worktree mode,
 /// the provider chosen, the providers of the person's own, the prompt
 /// history and the archived Claude sessions, each written as one of the
@@ -28,7 +29,7 @@ import VitruvianToolProtocol
 /// section 9.
 @MainActor
 package enum NexusAgentHandoff {
-    package static let toolID = ToolID("dev.vitruvian.nexus-agent")!
+    package static let toolID = ToolID("dev.vitruvian.code")!
     /// The tool's command the Quick Prompt's shortcut goes to.
     package static let quickPromptCommand = CommandID(tool: toolID, name: "quickPrompt")!
 

@@ -129,7 +129,7 @@ class UpdateChecker: ObservableObject {
 
             // Unzip
             let extractDir = FileManager.default.temporaryDirectory
-                .appendingPathComponent("NexusAgent-update-\(UUID().uuidString)")
+                .appendingPathComponent("VitruvianCode-update-\(UUID().uuidString)")
             try FileManager.default.createDirectory(at: extractDir, withIntermediateDirectories: true)
 
             let unzipProcess = Process()
@@ -145,7 +145,7 @@ class UpdateChecker: ObservableObject {
             }
 
             // Find the .app in extracted contents
-            let newAppURL = extractDir.appendingPathComponent("NexusAgent.app")
+            let newAppURL = extractDir.appendingPathComponent("Vitruvian Code.app")
             guard FileManager.default.fileExists(atPath: newAppURL.path) else {
                 throw UpdateError.appNotFound
             }
@@ -159,12 +159,12 @@ class UpdateChecker: ObservableObject {
                 targetURL = currentBundle
             } else {
                 // Running from swift build — install to /Applications
-                targetURL = URL(fileURLWithPath: "/Applications/NexusAgent.app")
+                targetURL = URL(fileURLWithPath: "/Applications/Vitruvian Code.app")
             }
 
             // Backup current if it exists
             let backupURL = targetURL.deletingLastPathComponent()
-                .appendingPathComponent("NexusAgent.app.bak")
+                .appendingPathComponent("Vitruvian Code.app.bak")
             if FileManager.default.fileExists(atPath: backupURL.path) {
                 try? FileManager.default.removeItem(at: backupURL)
             }
@@ -211,7 +211,7 @@ class UpdateChecker: ObservableObject {
         downloadProgress = 1.0
 
         let tempFile = FileManager.default.temporaryDirectory
-            .appendingPathComponent("NexusAgent-\(latestVersion).zip")
+            .appendingPathComponent("VitruvianCode-\(latestVersion).zip")
         try data.write(to: tempFile)
         return (tempFile, response)
     }

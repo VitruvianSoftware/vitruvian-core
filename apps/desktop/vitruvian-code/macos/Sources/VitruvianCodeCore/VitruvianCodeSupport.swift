@@ -743,9 +743,15 @@ public enum VitruvianCodeEnvFile {
 
 /// Where the bot and the agent CLI live, and how the agent is asked.
 public enum VitruvianCodeSupport {
+    /// Where the app keeps its own files (the bot's log, the automations, the
+    /// accounts), as the folder people see in Application Support.
+    public static func defaultStateDirectory(home: String) -> String {
+        (home as NSString).appendingPathComponent("Library/Application Support/Vitruvian Code")
+    }
+
     /// The bot's standard home, shared with the standalone app.
     public static func defaultBotDirectory(home: String) -> String {
-        (home as NSString).appendingPathComponent(".config/nexus-agent") // TODO(brand step 2)
+        (home as NSString).appendingPathComponent(".config/vitruvian-code")
     }
 
     /// A configured folder, with `~` expanded, or the standard home.

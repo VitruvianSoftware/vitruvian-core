@@ -218,7 +218,7 @@ struct SettingsView: View {
                     } header: {
                         Text("Runs")
                     } footer: {
-                        Text("These apply to Telegram and to Quick Prompt. The bot reads them from ~/.config/nexus-agent/.env after Save.")
+                        Text("These apply to Telegram and to Quick Prompt. The bot reads them from ~/.config/vitruvian-code/.env after Save.")
                     }
                 }
                 .formStyle(.grouped)

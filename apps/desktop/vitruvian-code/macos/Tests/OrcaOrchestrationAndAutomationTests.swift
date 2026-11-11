@@ -232,9 +232,9 @@ final class OrcaOrchestrationAndAutomationTests: XCTestCase {
         let id = UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
         let weekdays = VitruvianCodeScheduledTask(id: id, name: "Standup", prompt: "p", workingDirectory: "/Users/me/R&D",
                                                providerID: UUID(), schedule: .weekdays9am)
-        let xml = manager.launchdPlistXML(for: weekdays, executablePath: "/Applications/NexusAgent.app/Contents/MacOS/NexusAgent")
+        let xml = manager.launchdPlistXML(for: weekdays, executablePath: "/Applications/Vitruvian Code.app/Contents/MacOS/VitruvianCode")
         XCTAssertTrue(xml.hasPrefix("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"), xml)
-        XCTAssertTrue(xml.contains("<string>nexus-agent.automation.11111111-2222-3333-4444-555555555555</string>"), xml)
+        XCTAssertTrue(xml.contains("<string>com.vitruviansoftware.code.automation.11111111-2222-3333-4444-555555555555</string>"), xml)
         XCTAssertTrue(xml.contains("<string>--run-automation</string>"), xml)
         XCTAssertTrue(xml.contains("<string>/Users/me/R&amp;D</string>"), "escaped: \(xml)")
 
@@ -242,7 +242,7 @@ final class OrcaOrchestrationAndAutomationTests: XCTestCase {
         let plist = try XCTUnwrap(PropertyListSerialization.propertyList(from: Data(xml.utf8), format: nil)
             as? [String: Any])
         XCTAssertEqual(plist["ProgramArguments"] as? [String],
-                       ["/Applications/NexusAgent.app/Contents/MacOS/NexusAgent", "--run-automation", id.uuidString])
+                       ["/Applications/Vitruvian Code.app/Contents/MacOS/VitruvianCode", "--run-automation", id.uuidString])
         let entries = try XCTUnwrap(plist["StartCalendarInterval"] as? [[String: Int]])
         XCTAssertEqual(entries.count, 5)
         XCTAssertEqual(Set(entries.compactMap { $0["Weekday"] }), [1, 2, 3, 4, 5])

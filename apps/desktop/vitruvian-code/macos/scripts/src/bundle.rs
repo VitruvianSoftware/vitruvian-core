@@ -23,8 +23,11 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-// TODO(brand step 2): .app and executable file name stay NexusAgent until migration.
-const APP_NAME: &str = "NexusAgent";
+// The folder is "Vitruvian Code.app" (the name people see in Finder); the program
+// inside it has no space, as Swift and the brand standard (docs/standards/brand.md) name it.
+const APP_NAME: &str = "Vitruvian Code";
+const EXECUTABLE_NAME: &str = "VitruvianCode";
+const BUNDLE_ID: &str = "com.vitruviansoftware.code";
 const DISPLAY_NAME: &str = "Vitruvian Code";
 const UI_RESOURCES: &str = "VitruvianCode_VitruvianCodeUI.bundle";
 
@@ -93,7 +96,7 @@ pub fn run(args: &[String]) -> i32 {
     }
 
     // Copy executable
-    let dest_exe = macos_dir.join(APP_NAME);
+    let dest_exe = macos_dir.join(EXECUTABLE_NAME);
     if let Err(e) = fs::copy(&exe_path, &dest_exe) {
         eprintln!("error: cannot copy executable: {}", e);
         return 1;
@@ -138,11 +141,11 @@ pub fn run(args: &[String]) -> i32 {
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleExecutable</key>
-    <string>{app}</string>
+    <string>{exe}</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
-    <string>com.vitruviansoftware.nexusagent</string>
+    <string>{bundle_id}</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
@@ -164,7 +167,8 @@ pub fn run(args: &[String]) -> i32 {
 </dict>
 </plist>
 "#,
-        app = APP_NAME,
+        exe = EXECUTABLE_NAME,
+        bundle_id = BUNDLE_ID,
         display_name = DISPLAY_NAME,
         ver = version,
     );

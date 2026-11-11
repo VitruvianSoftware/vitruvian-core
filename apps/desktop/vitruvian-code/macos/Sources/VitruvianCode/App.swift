@@ -19,6 +19,7 @@
 // SOFTWARE.
 
 import SwiftUI
+import VitruvianCodeCore
 
 @main
 struct VitruvianCodeApp: App {
@@ -43,6 +44,12 @@ class AppState: ObservableObject {
     let updateChecker: UpdateChecker
 
     init() {
+        // Before anything reads the settings or the folders: a person who
+        // used Nexus Agent finds their things here, not an empty app.
+        let migration = VitruvianCodeLegacyMigration(environment: .live(
+            executablePath: Bundle.main.executablePath ?? "/Applications/Vitruvian Code.app/Contents/MacOS/VitruvianCode"))
+        let migrated = migration.run()
+
         let bot = BotManager()
         // The bot manager owns the shared engine; settings are read and saved through it.
         let config = ConfigManager(engine: bot.engine, host: bot.host)
@@ -66,6 +73,16 @@ class AppState: ObservableObject {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                 if !bot.isRunning {
                     bot.start()
+                }
+            }
+        }
+
+        // Tell the person what moved over and what macOS will ask again, once;
+        // or what did not move, which the next launch tries again.
+        if migrated.needsNotice {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                openLegacyMigrationWindow(outcome: migrated) {
+                    if migrated.completed { migration.markPermissionsExplained() }
                 }
             }
         }

@@ -104,7 +104,7 @@ fn test_mirror_build() {
         .join(&test_workspace)
         .join(bundle_bin_rel);
     let status = Command::new(&bundle_bin)
-        .arg(built.join("NexusAgent"))
+        .arg(built.join("VitruvianCode"))
         .arg("0.0.0")
         .arg(&dist_dir)
         .current_dir(&work)
@@ -113,7 +113,7 @@ fn test_mirror_build() {
         .expect("bundle-app");
     assert!(status.success(), "bundle-app failed");
 
-    let packaged = dist_dir.join("NexusAgent.app");
+    let packaged = dist_dir.join("Vitruvian Code.app");
     let status = Command::new("codesign")
         .args(["--verify", "--deep", "--strict"])
         .arg(&packaged)

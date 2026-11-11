@@ -215,7 +215,6 @@ final class ChatSymbolsTests: XCTestCase {
         ("@AppStorage", "reads saved settings; an app hands the view what it needs"),
         ("vitruvian.", "names a Vitruvian saved-settings key"),
         ("vitruvian-error", "names Vitruvian's URL scheme; the app passes its own in"),
-        ("NexusAgentService", "names Vitruvian's service; the view is handed an engine"), // TODO(brand step 2)
     ]
 
     static func forbiddenUses(in source: String) -> [String] {
@@ -238,7 +237,6 @@ final class ChatSymbolsTests: XCTestCase {
         XCTAssertEqual(Self.forbiddenUses(in: "import SwiftUI\nimport VitruvianCodeCore\n"), [])
         XCTAssertEqual(Self.forbiddenUses(in: "import VitruvianCore\n").count, 1)
         XCTAssertEqual(Self.forbiddenUses(in: "@AppStorage(\"vitruvian.x\") var x = false").count, 2)
-        XCTAssertEqual(Self.forbiddenUses(in: "let service = NexusAgentService.shared").count, 1)
         XCTAssertEqual(Self.forbiddenUses(in: "url.scheme == \"vitruvian-error\"").count, 1)
     }
 }

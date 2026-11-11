@@ -105,8 +105,8 @@ final class VitruvianCodeToolTests: XCTestCase {
         var opened: [String] = []
         var sessionList: [VitruvianCodeSessionSummary] = []
         let home = "/Users/rig"
-        let state = "/Users/rig/Library/Application Support/NexusAgent"
-        var bot: String { home + "/.config/nexus-agent" }
+        let state = "/Users/rig/Library/Application Support/Vitruvian Code"
+        var bot: String { home + "/.config/vitruvian-code" }
 
         func installBot(token: String = "1:real") {
             files[bot] = ""

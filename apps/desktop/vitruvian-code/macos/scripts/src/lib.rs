@@ -306,7 +306,7 @@ mod tests {
 
         let exe_dir = dir.join("exe_dir");
         fs::create_dir_all(&exe_dir).unwrap();
-        let exe = exe_dir.join("NexusAgent");
+        let exe = exe_dir.join("VitruvianCode");
         fs::write(&exe, b"fake-executable").unwrap();
         fs::set_permissions(&exe, fs::Permissions::from_mode(0o755)).unwrap();
 
@@ -331,8 +331,8 @@ mod tests {
         std::env::set_var("PATH", &orig_path);
 
         assert_eq!(rc, 0, "bundle should succeed");
-        let app = output.join("NexusAgent.app");
-        assert!(app.join("Contents/MacOS/NexusAgent").exists());
+        let app = output.join("Vitruvian Code.app");
+        assert!(app.join("Contents/MacOS/VitruvianCode").exists());
         assert!(app.join("Contents/Resources").exists());
         assert!(app.join("Contents/Info.plist").exists());
         assert!(app.join("Contents/PkgInfo").exists());
@@ -342,7 +342,7 @@ mod tests {
 
         let plist = fs::read_to_string(app.join("Contents/Info.plist")).unwrap();
         assert!(plist.contains("<string>1.2.3</string>"));
-        assert!(plist.contains("com.vitruviansoftware.nexusagent"));
+        assert!(plist.contains("com.vitruviansoftware.code"));
 
         let _ = fs::remove_dir_all(&dir);
     }
@@ -361,7 +361,7 @@ mod tests {
         make_fake_tool(&fake_bin, "codesign", "#!/bin/sh\nexit 0\n");
 
         // Create app structure
-        let app = dir.join("NexusAgent.app");
+        let app = dir.join("Vitruvian Code.app");
         let contents = app.join("Contents");
         let resources = contents.join("Resources");
         let ui_bundle = resources.join("VitruvianCode_VitruvianCodeUI.bundle");
@@ -372,7 +372,7 @@ mod tests {
         fs::write(ui_bundle.join("mermaid.min.js"), mermaid_content).unwrap();
         fs::write(ui_bundle.join("mermaid-LICENSE.txt"), b"licence").unwrap();
 
-        let exe = contents.join("MacOS/NexusAgent");
+        let exe = contents.join("MacOS/VitruvianCode");
         fs::write(&exe, b"fake-exe").unwrap();
         fs::set_permissions(&exe, fs::Permissions::from_mode(0o755)).unwrap();
 

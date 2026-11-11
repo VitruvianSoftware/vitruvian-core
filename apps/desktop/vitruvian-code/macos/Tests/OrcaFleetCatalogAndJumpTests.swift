@@ -115,7 +115,7 @@ final class OrcaFleetCatalogAndJumpTests: XCTestCase {
             "/Users/tester/.claude/work-creds.json": #"{"token":"work-secret"}"#,
             "/Users/tester/.claude/personal-creds.json": #"{"token":"personal-secret"}"#,
         ]
-        let stateDir = "/Users/tester/Library/Application Support/NexusAgent"
+        let stateDir = "/Users/tester/Library/Application Support/Vitruvian Code"
         let liveCredPath = "/Users/tester/.claude/.credentials.json"
 
         let manager = VitruvianCodeAccountManager(

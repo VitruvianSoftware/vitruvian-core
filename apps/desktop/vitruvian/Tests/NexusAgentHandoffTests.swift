@@ -22,11 +22,11 @@ enum NexusAgentHandoffTests {
     /// `macos/tool/vitruvian-tool.json` in apps/desktop/vitruvian-code declares
     /// them, four with a title and four without.
     static let manifest = Data(#"""
-        {"id": "dev.vitruvian.nexus-agent", "name": {"en": "Nexus Agent"}, "version": "1.22.0", "protocol": "2",
+        {"id": "dev.vitruvian.code", "name": {"en": "Code"}, "version": "1.22.0", "protocol": "2",
          "publisher": "VitruvianSoftware", "uses": ["notify", "storage"],
          "contributes": {"commands": [{"id": "quickPrompt", "title": {"en": "Open the Quick Prompt"}}],
-                         "panels": [{"id": "agent", "title": {"en": "Nexus Agent"}, "placement": "island"},
-                                    {"id": "settings", "title": {"en": "Nexus Agent"}, "placement": "settings"}]},
+                         "panels": [{"id": "agent", "title": {"en": "Code"}, "placement": "island"},
+                                    {"id": "settings", "title": {"en": "Code"}, "placement": "settings"}]},
          "preferences": [
            {"id": "botDirectory", "title": {"en": "Bot folder"}, "type": "string", "default": ""},
            {"id": "autoStart", "title": {"en": "Start the bot when Vitruvian opens"}, "type": "boolean", "default": false},
@@ -102,7 +102,7 @@ enum NexusAgentHandoffTests {
         let box = Box()
         let recorder = Recorder()
         guard let tool = installedTool(in: root) else { return suite.expect(false, "the Nexus Agent tool's manifest reads") }
-        let origin = CatalogueOrigin(id: "dev.vitruvian.nexus-agent", version: "1.22.0", source: "https://x", download: "https://x/z.zip")
+        let origin = CatalogueOrigin(id: "dev.vitruvian.code", version: "1.22.0", source: "https://x", download: "https://x/z.zip")
         let outcome = NexusAgentHandoff.perform(tool, from: origin, parts: parts(defaults, box: box, recorder: recorder))
         suite.expect(outcome == .handed(["autoStart", "botDirectory", "chosenProvider", "hiddenClaudeSessions", "planMode",
                                          "promptHistory", "savedProviders", "worktreeMode"], shortcut: true),
@@ -149,7 +149,7 @@ enum NexusAgentHandoffTests {
         let box = Box()
         let recorder = Recorder()
         let other = Data(String(decoding: manifest, as: UTF8.self)
-            .replacingOccurrences(of: "dev.vitruvian.nexus-agent", with: "com.acme.deploys").utf8)
+            .replacingOccurrences(of: "dev.vitruvian.code", with: "com.acme.deploys").utf8)
         guard let deploys = installedTool(manifest: other, in: root) else { return suite.expect(false, "the other manifest reads") }
         suite.expect(NexusAgentHandoff.perform(deploys, from: nil, parts: parts(defaults, box: box, recorder: recorder)) == .notTheTool
                          && box.values.isEmpty && !defaults[Preferences.nexusAgentReplacedByTool],
