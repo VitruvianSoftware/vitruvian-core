@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.33.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.32.7...vitruvian-code-v1.33.0) (2026-11-11)
+
+
+### Features
+
+* **vitruvian-code:** new app identity and a one-time migration from Nexus Agent ([#4577](https://github.com/VitruvianSoftware/vitruvian-core/issues/4577)) ([cb3624a](https://github.com/VitruvianSoftware/vitruvian-core/commit/cb3624af45ac0bc5c06d397691b7a226a45d27c6))
+
 ## [1.32.7](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.32.6...nexus-agent-v1.32.7) (2026-11-10)
 
 
