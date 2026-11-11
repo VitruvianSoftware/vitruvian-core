@@ -443,3 +443,28 @@ This bootstrap implements several security controls that match the upstream Terr
 | `README-GitLab.md`             | GitLab CI/CD-specific documentation: OIDC differences, pipeline YAML, self-hosted support                                                                                                                                                              |
 | `Pulumi.yaml`                  | Pulumi project configuration                                                                                                                                                                                                                           |
 | `go.mod` / `go.sum`            | Go module dependencies                                                                                                                                                                                                                                 |
+
+## Interface
+- `[build_github.go:CICDBuildOutputs]`
+- `[config.go:Config]`
+- `[projects.go:SeedProject]`
+- `[projects.go:CICDProject]`
+- Subdirectory: [modules](./modules/README.md)
+
+## Invariants
+- [config.go:98]: `OrgID:                 conf.Require("org_id"),`
+- [config.go:99]: `BillingAccount:        conf.Require("billing_account"),`
+- [config.go:110]: `GroupOrgAdmins:        conf.Require("group_org_admins"),`
+
+## Side Effects
+- [build_github.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [config.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [groups.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [main.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [outputs.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [outputs_github.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [projects.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [sa.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/go-foundation/0-bootstrap/...`

@@ -63,3 +63,7 @@ they were handed. It pins: the key travels in the environment and never argv
 (which `ps` exposes) or the output; the CLI version is pinned; every `gcloud`
 call is identity+project pinned; and both a `gcloud` auth failure (which exits
 **0**) and an unseeded secret are fatal with an actionable message.
+
+## Subdirectories & Boundaries
+- [src](./src/README.md): Component package providing implementation for tools/saas-cli/src.
+

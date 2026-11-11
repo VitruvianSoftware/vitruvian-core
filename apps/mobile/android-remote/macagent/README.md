@@ -563,3 +563,9 @@ authorisation tests run there too — they touch a temp directory, not
 What CI cannot check is the macOS commands themselves. Shell commands that require
 `/bin/zsh` are exercised on a Mac and not on the Linux CI runner; `bazel run` on a Mac
 plus `curl` is the rest of that check.
+
+## Subdirectories & Boundaries
+- [metrics](./metrics/README.md): Subsystem blueprint grouping child modules under apps/mobile/android-remote/macagent/me...
+- [rs](./rs/README.md): Subsystem blueprint grouping child modules under apps/mobile/android-remote/macagent/rs.
+- [scripts](./scripts/README.md): Subsystem blueprint grouping child modules under apps/mobile/android-remote/macagent/sc...
+

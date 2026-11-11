@@ -35,3 +35,7 @@ kubectl apply -f gitops/argocd/root-applications.yaml
 
 Container **images** continue to publish to GCP Artifact Registry (see
 `apps/suites/tabula/api/BUILD`); only the **charts** live in GHCR.
+
+## Subdirectories & Boundaries
+- [argocd](./argocd/README.md): Contract for gitops/argocd
+

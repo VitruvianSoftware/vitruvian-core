@@ -97,3 +97,7 @@ curl -X DELETE https://pushgateway.lab.ipv1337.dev/metrics/job/mac_power/instanc
   to remove a retired host.
 - **Sample cost:** one ~0.7s `powermetrics` run every 30s; negligible.
 - **Intel Macs** report only `mac_soc_power_watts` (no CPU/GPU/ANE split).
+
+## Subdirectories & Boundaries
+- [src](./src/README.md): Component package providing implementation for tools/ops/macos-power-agent/src.
+

@@ -131,3 +131,28 @@ cb, err := cicd.NewCloudBuild(ctx, "foundation-cb", &cicd.CloudBuildArgs{
     },
 })
 ```
+
+## Interface
+- `[cloudbuild.go:CloudBuildSourceType]`
+- `[cloudbuild.go:CloudBuildTriggerConfig]`
+- `[cloudbuild.go:CloudBuildArgs]`
+- `[cloudbuild.go:CloudBuild]`
+- `[cloudbuild.go:NewCloudBuild]`
+- `[github.go:SAMappingEntry]`
+- `[github.go:GitHubOIDCArgs]`
+- `[github.go:GitHubOIDC]`
+- `[github.go:NewGitHubOIDC]`
+- `[gitlab.go:GitLabOIDCArgs]`
+- `[gitlab.go:GitLabOIDC]`
+- `[gitlab.go:NewGitLabOIDC]`
+
+## Invariants
+- None
+
+## Side Effects
+- [cloudbuild.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [github.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [gitlab.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/library/go/pkg/cicd/...`

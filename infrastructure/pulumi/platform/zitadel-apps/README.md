@@ -74,3 +74,15 @@ ZITADEL_MACHINE_KEY_JSON="$(cat key.json)"
 #   pulumi config set --secret zitadel:jwtProfileJson "$ZITADEL_MACHINE_KEY_JSON"
 bazel run //infrastructure/pulumi/platform/zitadel-apps:preview
 ```
+
+## Interface
+- Internal implementation components
+
+## Invariants
+- [main.go:80]: `projectID := cfg.Require("projectId")`
+
+## Side Effects
+- [main.go:145]: `// devMode allows the http://localhost dev redirect; every env keeps the`
+
+## Verification
+- Run: `bazel test //infrastructure/pulumi/platform/zitadel-apps/...`

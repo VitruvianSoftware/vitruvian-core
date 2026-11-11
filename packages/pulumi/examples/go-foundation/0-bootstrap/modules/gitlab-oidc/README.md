@@ -51,3 +51,20 @@ oidc, err := gitlaboidc.NewGitlabOidc(ctx, "gitlab-oidc", &gitlaboidc.GitlabOidc
 |------|-------------|
 | PoolName | Pool name (upstream `pool_name`) |
 | ProviderName | Provider name (upstream `provider_name`) |
+
+## Interface
+- `[main.go:NewGitlabOidc]`
+- `[outputs.go:GitlabOidc]`
+- `[variables.go:SAMappingEntry]`
+- `[variables.go:GitlabOidcArgs]`
+
+## Invariants
+- None
+
+## Side Effects
+- [main.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [outputs.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [variables.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/go-foundation/0-bootstrap/modules/gitlab-oidc/...`

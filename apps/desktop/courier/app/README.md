@@ -162,3 +162,17 @@ Out of scope for now: a saved pair that Telegram itself later rejects shows as a
 ### Updates
 
 A released Courier updates itself (Settings ▸ About ▸ Updates; Courier ▸ Check for Updates…). It checks when it opens and once a day, unless that is turned off there. The check lists the `courier-v*` tags the way `git ls-remote` does, not through GitHub's rate-limited API, and offers the newest plain release newer than the one running. Installing downloads the universal DMG and refuses it unless it matches the `.sha256` the release publishes beside it, the DMG and the app inside carry Courier's Developer ID (bundle ID `com.vitruviansoftware.courier`, team `Q5MH753M3F`), Gatekeeper accepts the app as notarized, and its version is the tag's. The new app is copied beside the old one; a small script waits for Courier to quit, swaps them (putting the old one back if that fails) and opens Courier again. `Sources/CourierCore/Updates.swift` has the details; its tests answer from a fake, so none reaches the network. A Courier in a folder the user can't write to says so and points at the release page instead.
+
+## Interface
+- Internal implementation components
+- Subdirectory: [Sources](./Sources/README.md)
+- Subdirectory: [scripts](./scripts/README.md)
+
+## Invariants
+- None
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //apps/desktop/courier/app/...`

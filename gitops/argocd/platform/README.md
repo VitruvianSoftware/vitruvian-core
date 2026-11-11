@@ -44,3 +44,14 @@ IngressClass (Traefik is). `crossplane/` is similarly optional.
 
 Longhorn, MinIO (storage) stay in Pulumi. CNPG cluster, Prometheus, Grafana,
 MongoDB (stateful) are deferred pending review.
+
+## Subdirectories & Boundaries
+- [actions-runners-manifests](./actions-runners-manifests/README.md): Subsystem blueprint grouping child modules under gitops/argocd/platform/actions-runners...
+- [cicd-telemetry](./cicd-telemetry/README.md): Subsystem blueprint grouping child modules under gitops/argocd/platform/cicd-telemetry.
+- [envoy-gateway](./envoy-gateway/README.md): Subsystem blueprint grouping child modules under gitops/argocd/platform/envoy-gateway.
+- [headscale](./headscale/README.md): Subsystem blueprint grouping child modules under gitops/argocd/platform/headscale.
+- [opentelemetry-collector](./opentelemetry-collector/README.md): Subsystem blueprint grouping child modules under gitops/argocd/platform/opentelemetry-c...
+- [prometheus](./prometheus/README.md): Subsystem blueprint grouping child modules under gitops/argocd/platform/prometheus.
+- [tempo](./tempo/README.md): Subsystem blueprint grouping child modules under gitops/argocd/platform/tempo.
+- [thanos](./thanos/README.md): Subsystem blueprint grouping child modules under gitops/argocd/platform/thanos.
+

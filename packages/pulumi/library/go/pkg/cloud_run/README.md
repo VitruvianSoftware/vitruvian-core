@@ -26,3 +26,19 @@ cr, err := cloud_run.NewCloudRun(ctx, "app", &cloud_run.CloudRunArgs{
     MaxInstances: 3,
 })
 ```
+
+## Interface
+- `[cloud_run.go:SecretEnv]`
+- `[cloud_run.go:CloudRunArgs]`
+- `[cloud_run.go:TrafficTarget]`
+- `[cloud_run.go:CloudRun]`
+- `[cloud_run.go:NewCloudRun]`
+
+## Invariants
+- None
+
+## Side Effects
+- [cloud_run.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/library/go/pkg/cloud_run/...`

@@ -84,3 +84,17 @@ ctx.Export("service_url", app.Service.Uri)
 pkg:index:CloudRunApp ("api")
 └── gcp:cloudrunv2:Service ("api")
 ```
+
+## Interface
+- `[app.go:CloudRunAppArgs]`
+- `[app.go:CloudRunApp]`
+- `[app.go:NewCloudRunApp]`
+
+## Invariants
+- None
+
+## Side Effects
+- [app.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/library/go/pkg/app/...`

@@ -113,3 +113,8 @@ Or through Bazel in the monorepo:
 ```bash
 bazel test //apps/antigravity/plugins/hookify/...
 ```
+
+## Subdirectories & Boundaries
+- [hooks](./hooks/README.md): Component package providing implementation for apps/antigravity/plugins/hookify/hooks.
+- [sidecars](./sidecars/README.md): Subsystem blueprint grouping child modules under apps/antigravity/plugins/hookify/sidec...
+

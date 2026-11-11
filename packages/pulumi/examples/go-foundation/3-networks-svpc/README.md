@@ -146,3 +146,8 @@ plus three thin env roots that pin their environment and call the shared
 | `envs/production/main.go`       | Thin env root pinning `production`/`p`; loads config and calls `modules/base_env`                                |
 | `modules/base_env/base_env.go`  | Per-env network stack: SVPC host, VPC, subnets with GKE ranges, PSA, DNS, NAT, VPC-SC, restricted APIs routing  |
 | `modules/hierarchical_firewall_policy/` | Org/folder-level hierarchical firewall policy module (used by `envs/shared`)                             |
+
+## Subdirectories & Boundaries
+- [envs](./envs/README.md): Subsystem blueprint grouping child modules under packages/pulumi/examples/go-foundation...
+- [modules](./modules/README.md): Subsystem blueprint grouping child modules under packages/pulumi/examples/go-foundation...
+

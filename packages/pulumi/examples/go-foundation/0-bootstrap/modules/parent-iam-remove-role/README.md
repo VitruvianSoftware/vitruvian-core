@@ -33,3 +33,18 @@ _, err := parentiamremoverole.NewParentIamRemoveRole(ctx, "remove-editor-seed", 
 ## Outputs
 
 None (matches upstream, which declares no outputs for this module).
+
+## Interface
+- `[main.go:ParentIamRemoveRole]`
+- `[main.go:NewParentIamRemoveRole]`
+- `[variables.go:ParentIamRemoveRoleArgs]`
+
+## Invariants
+- None
+
+## Side Effects
+- [main.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [variables.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/go-foundation/0-bootstrap/modules/parent-iam-remove-role/...`

@@ -33,3 +33,17 @@ _, err := parentiamremoverole.NewParentIamRemoveRole(ctx, "remove-editor-seed", 
 ## Outputs
 
 None (matches upstream, which declares no outputs for this module).
+
+## Interface
+- `[main.go:ParentIamRemoveRole]`
+- `[main.go:NewParentIamRemoveRole]`
+- `[variables.go:ParentIamRemoveRoleArgs]`
+
+## Invariants
+- None
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //infrastructure/pulumi/foundation/gcp-bootstrap/modules/parent-iam-remove-role/...`

@@ -59,3 +59,7 @@ compiling when one is added.
 
 Rust 1.75 or later. Two dependencies, `serde` and `serde_json`: Rust has no
 JSON in its standard library. MIT licence.
+
+## Subdirectories & Boundaries
+- [src](./src/README.md): Component package providing implementation for packages/vitruvian-sdk/kits/rust/src.
+

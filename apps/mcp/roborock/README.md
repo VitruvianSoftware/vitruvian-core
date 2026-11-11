@@ -104,3 +104,7 @@ When installed as a plugin, your AI agent automatically gains two specialized sk
 
 - [Detailed Installation & User Guide](https://github.com/VitruvianSoftware/vitruvian-core/blob/main/apps/mcp/roborock/docs/installation.md)
 - [Architecture & Security Model](https://github.com/VitruvianSoftware/vitruvian-core/blob/main/apps/mcp/roborock/docs/index.md)
+
+## Subdirectories & Boundaries
+- [rust_src](./rust_src/README.md): Component package providing implementation for apps/mcp/roborock/rust_src.
+

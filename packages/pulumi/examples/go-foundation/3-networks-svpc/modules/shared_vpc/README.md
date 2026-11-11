@@ -11,3 +11,15 @@ keeps the original flat port's resource logical names intact. This package
 split (`dns.tf`, `firewall.tf`, `nat.tf`, `private_service_connect.tf`,
 `service_control.tf`, …) maps onto the numbered sections of
 `../base_env/main.go`.
+
+## Interface
+- Internal implementation components
+
+## Invariants
+- None
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/go-foundation/3-networks-svpc/modules/shared_vpc/...`

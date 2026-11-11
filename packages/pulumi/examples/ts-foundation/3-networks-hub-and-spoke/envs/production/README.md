@@ -19,3 +19,16 @@ This directory contains the Pulumi network configuration for the **production** 
 | ------------------ | ----------------------------- |
 | `hub_network_id`   | Hub VPC network resource ID   |
 | `spoke_network_id` | Spoke VPC network resource ID |
+
+## Interface
+- Internal implementation components
+
+## Invariants
+- [index.ts:48]: `orgId: config.require("org_id"),`
+- [index.ts:49]: `parent: config.require("parent"),`
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/ts-foundation/3-networks-hub-and-spoke/envs/production/...`

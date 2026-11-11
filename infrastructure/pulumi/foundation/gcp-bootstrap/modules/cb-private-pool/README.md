@@ -87,3 +87,25 @@ pool, err := cbprivatepool.NewCbPrivatePool(ctx, "cb-private-pool", &cbprivatepo
 | WorkerRangeID | The worker IP range ID; `""` when peering is disabled (upstream `worker_range_id`) |
 | WorkerPeeredIPRange | The IP range of the peered service network (upstream `worker_peered_ip_range`) |
 | PeeredNetworkID | The ID of the peered network (upstream `peered_network_id`) |
+
+## Interface
+- `[main.go:NewCbPrivatePool]`
+- `[outputs.go:CbPrivatePool]`
+- `[variables.go:PrivateWorkerPoolConfig]`
+- `[variables.go:VPNConfiguration]`
+- `[variables.go:VPCFlowLogsConfig]`
+- `[variables.go:CbPrivatePoolArgs]`
+
+## Invariants
+- None
+
+## Side Effects
+- [main.go:97]: `PeeredNetwork: net.peeredNetworkID,`
+- [main.go:101]: `pulumi.Parent(&resource), pulumi.DependsOn(net.poolDependencies))`
+- [main.go:112]: `resource.WorkerRangeID = net.workerRangeID`
+- [vpn_ha.go:60]: `Network: net.peeredNetworkID,`
+- [vpn_ha.go:91]: `Network: net.peeredNetworkName,`
+- [vpn_ha.go:98]: `Range:       net.peeredIPRange,`
+
+## Verification
+- Run: `bazel test //infrastructure/pulumi/foundation/gcp-bootstrap/modules/cb-private-pool/...`

@@ -730,3 +730,26 @@ One heads-up from the inside: build in this space for a week and you learn that 
 **🌐 God's Eye View. No place left behind.**
 
 </div>
+
+## Interface
+- `[vite.config.js:config]`
+- Subdirectory: [pinokio](./pinokio/README.md)
+- Subdirectory: [scripts](./scripts/README.md)
+- Subdirectory: [server](./server/README.md)
+- Subdirectory: [src](./src/README.md)
+- Subdirectory: [tools](./tools/README.md)
+- Subdirectory: [upstream](./upstream/README.md)
+
+## Invariants
+- None
+
+## Side Effects
+- [server.mjs:24]: `* Production HTTP server for God's Eye View.`
+- [server.mjs:43]: `import http from 'node:http';`
+- [server.mjs:148]: `return await fs.promises.stat(filePath);`
+- [vite.config.js:31]: `* with a dereferencing fs.cp of the same five targets; :cesium_assets_test`
+- [vite.config.js:53]: `if (fs.existsSync(local)) return local;`
+- [vite.config.js:69]: `const content = fs.readFileSync(htmlPath);`
+
+## Verification
+- Run: `bazel test //apps/web/gods-eye-view/...`

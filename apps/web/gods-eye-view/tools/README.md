@@ -191,3 +191,17 @@ bazel run //apps/web/gods-eye-view:streetview_headings -- --lat 30.266476 --lon 
 # 5. Render a 3D view of the same location from above
 node tools/cesium-render.mjs --lookat-lat 30.266476 --lookat-lon -97.73719 --pitch -90 --height 50 --fov 90 --width 2560 --height-px 1440
 ```
+
+## Interface
+- Internal implementation components
+
+## Invariants
+- None
+
+## Side Effects
+- [cesium-render.mjs:74]: `import { createServer } from 'node:http';`
+- [cesium-render.mjs:199]: `// Temporary HTTP server to serve Cesium assets + render page`
+- [cesium-render.mjs:220]: `const url = new URL(req.url, 'http://localhost');`
+
+## Verification
+- Run: `bazel test //apps/web/gods-eye-view/tools/...`

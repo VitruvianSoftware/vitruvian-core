@@ -57,3 +57,17 @@ logOutputs, err := centralized_logging.New(ctx, "logs-export", &centralized_logg
 | LinkedDatasetName | The resource name of the Log Bucket linked BigQuery dataset. |
 | BillingSinkNames | Map of log sink names with billing suffix. |
 | LastResource | The last resource created; used for dependency ordering (policies wait for sinks). |
+
+## Interface
+- `[centralized_logging.go:Args]`
+- `[centralized_logging.go:Result]`
+- `[centralized_logging.go:New]`
+
+## Invariants
+- None
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //infrastructure/pulumi/foundation/gcp-org/modules/centralized_logging/...`

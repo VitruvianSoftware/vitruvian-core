@@ -138,3 +138,8 @@ roots that pin their environment and call the shared `env_baseline` module.
 | `envs/nonproduction/main.go`            | Thin root pinning `nonproduction`/`n`; loads config and calls `modules/env_baseline`    |
 | `envs/production/main.go`               | Thin root pinning `production`/`p`; loads config and calls `modules/env_baseline`       |
 | `modules/env_baseline/env_baseline.go`  | Shared logic: env folder, KMS + Secrets projects, budgets, optional Assured Workload    |
+
+## Subdirectories & Boundaries
+- [envs](./envs/README.md): Subsystem blueprint grouping child modules under packages/pulumi/examples/go-foundation...
+- [modules](./modules/README.md): Subsystem blueprint grouping child modules under packages/pulumi/examples/go-foundation...
+

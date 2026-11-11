@@ -190,3 +190,7 @@ fallback and asked for the **requested** account; stdout the bare token so
 metacharacters refused *before* it reaches the remote command line; a
 short/garbage reply refused rather than exported; and an unreachable broker fatal
 with a message that names the fix.
+
+## Subdirectories & Boundaries
+- [src](./src/README.md): Component package providing implementation for tools/gcp-token/src.
+

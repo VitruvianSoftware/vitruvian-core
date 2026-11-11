@@ -88,3 +88,17 @@ pkg:index:DataPlatform ("events")
 ├── gcp:bigquery:Dataset ("events-raw")
 └── gcp:bigquery:Dataset ("events-curated")
 ```
+
+## Interface
+- `[data.go:DataPlatformArgs]`
+- `[data.go:DataPlatform]`
+- `[data.go:NewDataPlatform]`
+
+## Invariants
+- None
+
+## Side Effects
+- [data.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/library/go/pkg/data/...`

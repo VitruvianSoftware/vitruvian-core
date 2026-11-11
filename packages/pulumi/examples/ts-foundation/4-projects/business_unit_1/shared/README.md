@@ -21,3 +21,17 @@ This directory contains the Pulumi project configuration for the **shared** envi
 | `floating_project_id`       | Floating project ID                |
 | `peering_project_id`        | Peering project ID                 |
 | `infra_pipeline_project_id` | Infrastructure pipeline project ID |
+
+## Interface
+- Internal implementation components
+
+## Invariants
+- [index.ts:20]: `const orgId = config.require("org_id");`
+- [index.ts:21]: `const billingAccount = config.require("billing_account");`
+- [index.ts:28]: `folderId: config.require("common_folder_name"),`
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/ts-foundation/4-projects/business_unit_1/shared/...`

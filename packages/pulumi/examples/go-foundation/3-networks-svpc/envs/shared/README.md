@@ -17,3 +17,19 @@ sibling `envs/{development,nonproduction,production}` leaves.
 | `outputs.tf` | `outputs.go` | no exports declared in this port (documented there) |
 | `remote.tf` | `remote.go` | parent taken from stack config (documented there) |
 | `backend.tf`, `providers.tf`, `versions.tf` | `Pulumi.yaml`, `go.mod` | engine adaptation |
+
+## Interface
+- `[config.go:SharedConfig]`
+
+## Invariants
+- [config.go:36]: `ParentID: conf.Require("parent_id"),`
+
+## Side Effects
+- [config.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [hierarchical_firewall.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [main.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [outputs.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [remote.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/go-foundation/3-networks-svpc/envs/shared/...`

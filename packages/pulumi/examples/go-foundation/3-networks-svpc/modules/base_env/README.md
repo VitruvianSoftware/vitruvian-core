@@ -23,3 +23,20 @@ split stays a preview no-op. See `../shared_vpc/README.md`.
 | `interconnect.tf.example` | `interconnect.go.example` | rename-to-activate example |
 | `partner_interconnect.tf.example` | `partner_interconnect.go.example` | rename-to-activate example |
 | `vpn.tf.example` | `vpn.go.example` | rename-to-activate example |
+
+## Interface
+- `[main.go:New]`
+- `[outputs.go:Result]`
+- `[variables.go:Args]`
+
+## Invariants
+- None
+
+## Side Effects
+- [main.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [outputs.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [remote.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [variables.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/go-foundation/3-networks-svpc/modules/base_env/...`

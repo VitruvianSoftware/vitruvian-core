@@ -123,3 +123,7 @@ Deliberate `KEEP-SAFE` differences in the Rust port (`src/lib.rs`) over `git.sh`
 - `--agent` parses `export KEY=VALUE` lines from `agent-app.sh env` rather than running shell `eval`.
 - Conflict-marker detection during merge commits prepends literal file paths instead of `sed "s|^|${f}:|"`, so markers in files named with `|` or `&` are still caught and reported literally.
 - Runfiles resolution matches `runfiles.bash` lookup order without exporting bash shell functions (`BASH_FUNC_rlocation%%`), `_RLOCATION_*`, or `RUNFILES_REPO_MAPPING` into child environments.
+
+## Subdirectories & Boundaries
+- [src](./src/README.md): Component package providing implementation for tools/git/src.
+

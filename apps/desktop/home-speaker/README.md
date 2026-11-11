@@ -423,3 +423,17 @@ a test fails if they drift.
 ## License
 
 Copyright (c) 2026 VitruvianSoftware. MIT Licensed.
+
+## Interface
+- Internal implementation components
+- Subdirectory: [Sources](./Sources/README.md)
+- Subdirectory: [scripts](./scripts/README.md)
+
+## Invariants
+- None
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //apps/desktop/home-speaker/...`

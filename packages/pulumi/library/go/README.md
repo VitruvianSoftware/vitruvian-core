@@ -366,3 +366,8 @@ make lint
 # Tidy module dependencies
 make tidy
 ```
+
+## Subdirectories & Boundaries
+- [internal](./internal/README.md): Subsystem blueprint grouping child modules under packages/pulumi/library/go/internal.
+- [pkg](./pkg/README.md): Subsystem blueprint grouping child modules under packages/pulumi/library/go/pkg.
+

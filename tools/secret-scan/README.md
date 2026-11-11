@@ -37,3 +37,7 @@ Linux checksums, disagree, so update both together.
 - **Already committed on your branch:** fix it in a new commit and fold it in:
   `bazel run //tools/git:commit -- --fixup <sha> <file>`, then
   `bazel run //tools/git:sync -- --autosquash`.
+
+## Subdirectories & Boundaries
+- [src](./src/README.md): Component package providing implementation for tools/secret-scan/src.
+

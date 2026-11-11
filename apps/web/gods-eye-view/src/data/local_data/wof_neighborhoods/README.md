@@ -57,3 +57,16 @@ Original upstream notices remain unchanged.
 **Curation:** current, non-deprecated, named polygon records; simplified to
 about 15 m, snapped to 5 decimals and kept valid under GEOS (checked on the
 geometry decoded from the shipped strings).
+
+## Interface
+- `[files.js:INDEX_URL]`
+- `[files.js:TILE_URLS]`
+
+## Invariants
+- None
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //apps/web/gods-eye-view/src/data/local_data/wof_neighborhoods/...`

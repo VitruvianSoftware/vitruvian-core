@@ -170,3 +170,7 @@ implement the Gemini CLI lifecycle-hook protocol. Nothing invokes them now —
 they are retained because `export` is still a usable way to post a single
 event from a script, and removing the modules would break that. They are not
 installed by `setup`.
+
+## Subdirectories & Boundaries
+- [src](./src/README.md): Component package providing implementation for tools/antigravity-telemetry/src.
+

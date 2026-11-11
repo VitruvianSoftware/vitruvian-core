@@ -68,3 +68,7 @@ function page(app) {
   ]);
 }
 ```
+
+## Subdirectories & Boundaries
+- [bin](./bin/README.md): Component package providing implementation for packages/vitruvian-sdk/samples/hello-typ...
+

@@ -184,3 +184,17 @@ Some configuration values used to deploy the stages have defaults. Check those *
 
 - This repo is a **Public Reference**.
 - Real Vitruvian Software implementations are managed in **Private** `gcp-*` repositories that consume this foundation logic.
+
+## Subdirectories & Boundaries
+- [0-bootstrap](./0-bootstrap/README.md): Contract for packages/pulumi/examples/go-foundation/0-bootstrap
+- [1-org](./1-org/README.md): Contract for packages/pulumi/examples/go-foundation/1-org
+- [2-environments](./2-environments/README.md): Contract for packages/pulumi/examples/go-foundation/2-environments
+- [3-networks-hub-and-spoke](./3-networks-hub-and-spoke/README.md): Contract for packages/pulumi/examples/go-foundation/3-networks-hub-and-spoke
+- [3-networks-svpc](./3-networks-svpc/README.md): Contract for packages/pulumi/examples/go-foundation/3-networks-svpc
+- [4-projects](./4-projects/README.md): Contract for packages/pulumi/examples/go-foundation/4-projects
+- [5-app-infra](./5-app-infra/README.md): Contract for packages/pulumi/examples/go-foundation/5-app-infra
+- [helpers](./helpers/README.md): Subsystem blueprint grouping child modules under packages/pulumi/examples/go-foundation...
+- [policy-library](./policy-library/README.md): Contract for packages/pulumi/examples/go-foundation/policy-library
+- [scripts](./scripts/README.md): Component package providing implementation for packages/pulumi/examples/go-foundation/s...
+- [test](./test/README.md): Component package providing implementation for packages/pulumi/examples/go-foundation/t...
+

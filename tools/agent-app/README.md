@@ -209,3 +209,7 @@ GitHub has no API for this, so it is done by hand, in this order:
 
 Removing a permission is the same three steps. If the installation still holds
 it after step 1, the check says `PENDING` until it does not.
+
+## Subdirectories & Boundaries
+- [src](./src/README.md): Component package providing implementation for tools/agent-app/src.
+

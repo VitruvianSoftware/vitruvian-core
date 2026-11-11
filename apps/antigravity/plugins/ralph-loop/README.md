@@ -87,3 +87,8 @@ Or via Bazel in the monorepo:
 ```bash
 bazel test //apps/antigravity/plugins/ralph-loop/...
 ```
+
+## Subdirectories & Boundaries
+- [hooks](./hooks/README.md): Component package providing implementation for apps/antigravity/plugins/ralph-loop/hooks.
+- [sidecars](./sidecars/README.md): Subsystem blueprint grouping child modules under apps/antigravity/plugins/ralph-loop/si...
+

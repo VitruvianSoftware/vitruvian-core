@@ -446,3 +446,16 @@ To verify Redis is working with Istio rate limiting:
 # Test rate limiting functionality in the template-fastapi-app
 skaffold verify -m template-fastapi-app -p istio-rate-limit
 ```
+
+## Interface
+- Internal implementation components
+- Subdirectory: [pkg](./pkg/README.md)
+
+## Invariants
+- None
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //infrastructure/pulumi/platform/dev-local/...`

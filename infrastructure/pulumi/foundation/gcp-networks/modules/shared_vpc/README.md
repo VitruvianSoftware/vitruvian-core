@@ -25,3 +25,17 @@ PSA-vs-peering serialization: the spoke peering `DependsOn` the spoke
 `PSAConnection` (see `createPeering` in `main.go`) — a documented workaround
 that mirrors upstream's peering/PSA mutual-exclusion with the opposite (but
 equally deadlock-free) ordering.
+
+## Interface
+- `[main.go:New]`
+- `[outputs.go:Result]`
+- `[variables.go:Args]`
+
+## Invariants
+- None
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //infrastructure/pulumi/foundation/gcp-networks/modules/shared_vpc/...`

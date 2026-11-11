@@ -101,3 +101,16 @@ preview-time (before any API calls) rather than post-plan.
 | `GCPServiceUsageConstraintV1`                  | Enforced via org policy in Stage 1 | ✅     |
 | `GCPIAMAllowedPolicyMemberDomainsConstraintV2` | Enforced via org policy in Stage 1 | ✅     |
 | `GCPResourceValuePatternConstraintV1` (labels) | `project-labels-required`          | ✅     |
+
+## Interface
+- Internal implementation components
+
+## Invariants
+- [index.ts:120]: `name: "require-private-google-access",`
+- [index.ts:135]: `name: "require-flow-logs",`
+
+## Side Effects
+- [index.ts:7]: `//     http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/ts-foundation/policy-library/...`

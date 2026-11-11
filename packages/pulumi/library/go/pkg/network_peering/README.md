@@ -39,3 +39,17 @@ peering, err := network_peering.NewNetworkPeering(ctx, "hub-spoke", &network_pee
     ImportCustomRoutes: true,
 })
 ```
+
+## Interface
+- `[network_peering.go:NetworkPeeringArgs]`
+- `[network_peering.go:NetworkPeering]`
+- `[network_peering.go:NewNetworkPeering]`
+
+## Invariants
+- None
+
+## Side Effects
+- [network_peering.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/library/go/pkg/network_peering/...`

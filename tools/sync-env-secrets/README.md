@@ -165,3 +165,7 @@ reviewer's approval.
 To set them: `set -- stripe-sandbox STRIPE_API_KEY` and
 `set -- stripe-production STRIPE_API_KEY` (each also backs the store up to
 Bitwarden), then `apply -- stripe-sandbox` and `apply -- stripe-production`.
+
+## Subdirectories & Boundaries
+- [src](./src/README.md): Component package providing implementation for tools/sync-env-secrets/src.
+

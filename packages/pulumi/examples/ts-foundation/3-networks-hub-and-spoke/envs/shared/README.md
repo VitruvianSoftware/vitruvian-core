@@ -19,3 +19,17 @@ This directory contains the Pulumi network configuration for the **shared** envi
 | ------------------ | ----------------------------- |
 | `hub_network_id`   | Hub VPC network resource ID   |
 | `spoke_network_id` | Spoke VPC network resource ID |
+
+## Interface
+- Internal implementation components
+
+## Invariants
+- [index.ts:45]: `orgId: config.require("org_id"),`
+- [index.ts:46]: `parent: config.require("parent"),`
+- [index.ts:82]: `const orgId = config.require("org_id");`
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/ts-foundation/3-networks-hub-and-spoke/envs/shared/...`

@@ -223,3 +223,8 @@ To create a new business unit (e.g., `bu2`), copy the `business_unit_1` director
 | `business_unit_1/production/index.ts`    | Production projects for business unit 1                   |
 | `business_unit_1/shared/index.ts`        | Shared projects for business unit 1 (infra pipeline)      |
 | `modules/single_project.ts`              | Single project factory with APIs, billing, VPC attachment |
+
+## Subdirectories & Boundaries
+- [business_unit_1](./business_unit_1/README.md): Subsystem blueprint grouping child modules under packages/pulumi/examples/ts-foundation...
+- [modules](./modules/README.md): Component package providing implementation for packages/pulumi/examples/ts-foundation/4...
+

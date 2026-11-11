@@ -19,3 +19,19 @@ identity (`nonproduction`/`n`) and its spoke CIDR plan, then calls the shared
 
 Deploy order: `shared` → `development` → `nonproduction` → `production`
 (serializes hub-side peering mutations; see the note in `main.go`).
+
+## Interface
+- `[config.go:VpcFlowLogsConfig]`
+- `[config.go:NetConfig]`
+
+## Invariants
+- None
+
+## Side Effects
+- [config.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [main.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [outputs.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [remote.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/go-foundation/3-networks-hub-and-spoke/envs/nonproduction/...`

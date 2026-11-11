@@ -46,3 +46,17 @@ psc, err := private_service_connect.NewPrivateServiceConnect(ctx, "psc-apis", &p
     PscGlobalAccess:      true,
 })
 ```
+
+## Interface
+- `[private_service_connect.go:PrivateServiceConnectArgs]`
+- `[private_service_connect.go:PrivateServiceConnect]`
+- `[private_service_connect.go:NewPrivateServiceConnect]`
+
+## Invariants
+- None
+
+## Side Effects
+- [private_service_connect.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/library/go/pkg/private_service_connect/...`

@@ -172,3 +172,38 @@ iam.NewBillingIAMMember(ctx, "billing-user", &iam.BillingIAMMemberArgs{
 ## Deprecated API
 
 The unified `NewIAMMember` and `NewIAMBinding` constructors (with `ParentType` string dispatch) are still available for backward compatibility but are deprecated. Migrate to the scope-specific constructors above.
+
+## Interface
+- `[billing.go:BillingIAMMemberArgs]`
+- `[billing.go:BillingIAMMember]`
+- `[billing.go:NewBillingIAMMember]`
+- `[billing.go:BillingIAMBindingArgs]`
+- `[billing.go:BillingIAMBinding]`
+- `[billing.go:NewBillingIAMBinding]`
+- `[folder.go:FolderIAMMemberArgs]`
+- `[folder.go:FolderIAMMember]`
+- `[folder.go:NewFolderIAMMember]`
+- `[folder.go:FolderIAMBindingArgs]`
+- `[folder.go:FolderIAMBinding]`
+- `[folder.go:NewFolderIAMBinding]`
+- `[organization.go:OrganizationIAMMemberArgs]`
+- `[organization.go:OrganizationIAMMember]`
+- `[organization.go:NewOrganizationIAMMember]`
+- `[organization.go:OrganizationIAMBindingArgs]`
+- `[organization.go:OrganizationIAMBinding]`
+- `[organization.go:NewOrganizationIAMBinding]`
+- `[project.go:ProjectIAMMemberArgs]`
+- `[project.go:ProjectIAMMember]`
+
+## Invariants
+- None
+
+## Side Effects
+- [billing.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [folder.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [organization.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [project.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [service_account.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/library/go/pkg/iam/...`

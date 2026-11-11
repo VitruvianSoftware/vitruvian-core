@@ -127,3 +127,7 @@ just before deleting it.
   be in none of them), and GitHub has no copy of the branch. It prints the old tip,
   so `git branch <name> <sha>` brings it back. A branch that has a worktree goes
   through the normal `--delete-branch` instead.
+
+## Subdirectories & Boundaries
+- [src](./src/README.md): Component package providing implementation for tools/worktree/src.
+

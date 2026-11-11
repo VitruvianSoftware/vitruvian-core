@@ -85,3 +85,7 @@ belonged to processes that no longer exist.
 choice, argv for each mode, the guard (including every write verb above), and
 that the token never reaches argv or output. The tests run no gcloud: command
 execution sits behind a `Runner` trait that the tests replace.
+
+## Subdirectories & Boundaries
+- [src](./src/README.md): Component package providing implementation for tools/gcp-cloudrun/src.
+

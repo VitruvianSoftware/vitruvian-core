@@ -59,3 +59,17 @@ shared-VPC subnet. Mirrors upstream
 | `InstanceName`     | Name of the compute instance                    |
 | `InstanceZone`     | Zone of the compute instance                    |
 | `InstanceDetails`  | Map of details (name/zone/selfLink)             |
+
+## Interface
+- `[main.go:DeployEnvBase]`
+- `[outputs.go:EnvBaseResult]`
+- `[variables.go:EnvBaseArgs]`
+
+## Invariants
+- None
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //infrastructure/pulumi/foundation/gcp-app-infra/modules/env_base/...`

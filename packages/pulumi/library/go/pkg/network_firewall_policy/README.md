@@ -68,3 +68,20 @@ policy, err := network_firewall_policy.NewNetworkFirewallPolicy(ctx, "fw-policy"
     },
 })
 ```
+
+## Interface
+- `[network_firewall_policy.go:Layer4Config]`
+- `[network_firewall_policy.go:SecureTag]`
+- `[network_firewall_policy.go:FirewallRule]`
+- `[network_firewall_policy.go:NetworkFirewallPolicyArgs]`
+- `[network_firewall_policy.go:NetworkFirewallPolicy]`
+- `[network_firewall_policy.go:NewNetworkFirewallPolicy]`
+
+## Invariants
+- None
+
+## Side Effects
+- [network_firewall_policy.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/library/go/pkg/network_firewall_policy/...`

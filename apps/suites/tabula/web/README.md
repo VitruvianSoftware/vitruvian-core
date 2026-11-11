@@ -43,3 +43,22 @@ from the creators of Next.js.
 Check out our
 [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying)
 for more details.
+
+## Interface
+- `[proxy.ts:proxy]`
+- `[proxy.ts:config]`
+- Subdirectory: [__mocks__](./__mocks__/README.md)
+- Subdirectory: [__tests__](./__tests__/README.md)
+- Subdirectory: [app](./app/README.md)
+- Subdirectory: [lib](./lib/README.md)
+- Subdirectory: [types](./types/README.md)
+
+## Invariants
+- [jest.config.js:23]: `const nextJest = require("next/jest");`
+
+## Side Effects
+- [proxy.test.ts:56]: `const request = new NextRequest(new URL("http://localhost:3000/"));`
+- [proxy.test.ts:60]: `"connect-src 'self' http://localhost:8080",`
+
+## Verification
+- Run: `bazel test //apps/suites/tabula/web/...`

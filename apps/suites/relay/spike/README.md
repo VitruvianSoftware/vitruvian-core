@@ -61,3 +61,7 @@ testing with self-minted tokens. It is never set in the cluster.
 
 No device routing, no billing, no storage, one replica. It gets deleted, or
 grows into the relay, after P0.
+
+## Subdirectories & Boundaries
+- [src](./src/README.md): Component package providing implementation for apps/suites/relay/spike/src.
+

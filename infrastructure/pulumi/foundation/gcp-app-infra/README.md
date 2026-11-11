@@ -55,3 +55,9 @@ This stage consumes the stage-4 BU leaf (`oss_floating_project`) and `gcp-bootst
 (`wif_pool_name`), so a leaf cannot apply before its stage-4 counterpart. The `foundation-app-*` WIF
 bindings live in `gcp-bootstrap`'s `build_github.go` and must be applied before the first deploy can
 authenticate.
+
+## Subdirectories & Boundaries
+- [business_unit_1](./business_unit_1/README.md): Subsystem blueprint grouping child modules under infrastructure/pulumi/foundation/gcp-a...
+- [business_unit_2](./business_unit_2/README.md): Subsystem blueprint grouping child modules under infrastructure/pulumi/foundation/gcp-a...
+- [modules](./modules/README.md): Subsystem blueprint grouping child modules under infrastructure/pulumi/foundation/gcp-a...
+

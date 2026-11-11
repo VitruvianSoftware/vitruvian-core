@@ -13,3 +13,16 @@ associations (hub only).
 | `variables.tf` | `variables.go` | `Args` |
 | `outputs.tf` | `outputs.go` | outputs encapsulated by the library component (documented there) |
 | `versions.tf` | `../go.mod` | engine adaptation |
+
+## Interface
+- `[main.go:New]`
+- `[variables.go:Args]`
+
+## Invariants
+- None
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //infrastructure/pulumi/foundation/gcp-networks/modules/hierarchical_firewall_policy/...`

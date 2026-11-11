@@ -89,3 +89,7 @@ The kit needs nothing but the standard library and Python 3.9 or later.
 
 The whole guide, the protocol and the other kits are in
 [the SDK](https://github.com/VitruvianSoftware/vitruvian-sdk). MIT licence.
+
+## Subdirectories & Boundaries
+- [vitruvian_tool_kit](./vitruvian_tool_kit/README.md): Component package providing implementation for packages/vitruvian-sdk/kits/python/vitru...
+

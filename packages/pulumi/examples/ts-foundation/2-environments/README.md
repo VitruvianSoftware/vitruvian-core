@@ -196,3 +196,8 @@ See [troubleshooting](../docs/TROUBLESHOOTING.md) if you run into issues during 
 | `envs/nonproduction/index.ts` | Non-production environment deployment                      |
 | `envs/production/index.ts`    | Production environment deployment                          |
 | `modules/env_baseline.ts`     | Per-environment KMS + Secrets project creation with labels |
+
+## Subdirectories & Boundaries
+- [envs](./envs/README.md): Subsystem blueprint grouping child modules under packages/pulumi/examples/ts-foundation...
+- [modules](./modules/README.md): Component package providing implementation for packages/pulumi/examples/ts-foundation/2...
+

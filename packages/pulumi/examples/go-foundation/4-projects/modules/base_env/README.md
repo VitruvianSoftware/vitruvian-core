@@ -60,3 +60,28 @@ Port divergences from the upstream file set (documented, per the port policy):
 | `CMEKBucket`, `CMEKKeyring`, `CMEKKeys` | CMEK storage (nil when disabled) |
 | `ConfSpaceProjectID`, `ConfSpaceProjectNumber`, `ConfSpaceWorkloadSA` | Confidential Space project (nil unless deployed) |
 | `SubnetsSelfLinks`, `VPCSCPerimeterName`, `PeeringComplete`, `AccessContextManagerPolicyID`, `RestrictedEnabledApis` | TF-parity outputs |
+
+## Interface
+- `[base_env.go:New]`
+- `[example_confidential_space_project.go:ConfidentialSpaceResult]`
+- `[example_confidential_space_project.go:DeployConfidentialSpaceProject]`
+- `[example_peering_project.go:PeeringResult]`
+- `[example_storage_cmek.go:CMEKResult]`
+- `[outputs.go:BUProjects]`
+- `[variables.go:Args]`
+
+## Invariants
+- None
+
+## Side Effects
+- [base_env.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [example_confidential_space_project.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [example_floating_project.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [example_peering_project.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [example_shared_vpc_project.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [example_storage_cmek.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [outputs.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [variables.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/go-foundation/4-projects/modules/base_env/...`

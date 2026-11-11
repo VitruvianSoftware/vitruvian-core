@@ -469,3 +469,6 @@ sequenceDiagram
     Spark-->>User: Assistant displays Slack info
 ```
 
+## Subdirectories & Boundaries
+- [rs](./rs/README.md): Subsystem blueprint grouping child modules under apps/mcp/slack/rs.
+

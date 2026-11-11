@@ -43,3 +43,21 @@ Build port is kept as the build-tagged `example_infra_pipelines.go`
 | Name | Description |
 |------|-------------|
 | `ProjectID` | The pipeline project id (upstream's `cloudbuild_project_id` analogue) |
+
+## Interface
+- `[example_infra_pipelines.go:InfraPipelinesArgs]`
+- `[example_infra_pipelines.go:InfraPipelinesResult]`
+- `[main.go:Deploy]`
+- `[outputs.go:Result]`
+- `[variables.go:Args]`
+
+## Invariants
+- None
+
+## Side Effects
+- [main.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [outputs.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [variables.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/go-foundation/4-projects/modules/infra_pipelines/...`

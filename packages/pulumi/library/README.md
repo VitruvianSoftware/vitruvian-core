@@ -55,3 +55,8 @@ The components across all languages adhere to the following principles:
 ## License
 
 Apache License 2.0 — see [LICENSE](./LICENSE) for details.
+
+## Subdirectories & Boundaries
+- [go](./go/README.md): Contract for packages/pulumi/library/go
+- [ts](./ts/README.md): Contract for packages/pulumi/library/ts
+

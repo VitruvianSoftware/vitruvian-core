@@ -58,3 +58,17 @@ binding.
 | `ServiceName`    | Cloud Run service name            |
 | `ServiceUri`     | Cloud Run service URI             |
 | `RuntimeSAEmail` | Runtime service account email     |
+
+## Interface
+- `[main.go:DeployServerlessSpace]`
+- `[outputs.go:ServerlessSpaceResult]`
+- `[variables.go:ServerlessSpaceArgs]`
+
+## Invariants
+- None
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //infrastructure/pulumi/foundation/gcp-app-infra/modules/serverless_space/...`

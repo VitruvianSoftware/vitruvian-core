@@ -268,3 +268,8 @@ configured by `release-please-config.json` and `.release-please-manifest.json`:
    version with no tag, tags the commit `v<version>` and creates a GitHub
    release with that changelog section as its notes. A test (`version_rs_test`)
    fails if the version files disagree.
+
+## Subdirectories & Boundaries
+- [hooks](./hooks/README.md): Component package providing implementation for apps/antigravity/plugins/gh-watch/hooks.
+- [sidecars](./sidecars/README.md): Subsystem blueprint grouping child modules under apps/antigravity/plugins/gh-watch/side...
+

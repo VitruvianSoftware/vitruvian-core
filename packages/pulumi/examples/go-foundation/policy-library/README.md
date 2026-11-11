@@ -54,3 +54,16 @@ Add the `--policy-pack` flag to your preview and apply steps:
 ## Relationship to Upstream Terraform Policies
 
 See the [TypeScript foundation's policy-library README](https://github.com/VitruvianSoftware/pulumi_ts-example-foundation/tree/main/policy-library#relationship-to-upstream-terraform-policies) for a detailed mapping between upstream OPA constraints and CrossGuard equivalents.
+
+## Interface
+- Internal implementation components
+
+## Invariants
+- [index.ts:120]: `name: "require-private-google-access",`
+- [index.ts:135]: `name: "require-flow-logs",`
+
+## Side Effects
+- [index.ts:7]: `//     http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/go-foundation/policy-library/...`

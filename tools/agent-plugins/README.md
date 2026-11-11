@@ -28,3 +28,15 @@ After a refresh, running sessions still use the old code: run `/reload-plugins` 
 - `--check`: change nothing; list what is stale and exit 1 if anything is.
 - `--no-pull`: don't fast-forward the main checkout.
 - `--plugin <name>`: the plugin folder name under `apps/<harness>/plugins/` (default `vitruvian-orchestrator`). A harness without that folder is skipped.
+
+## Interface
+- `[refresh.sh:script entrypoint]`
+
+## Invariants
+- None
+
+## Side Effects
+- [refresh.sh:108]: `git -C "$MAIN" fetch -q origin main || note "could not fetch origin/main; usi...`
+
+## Verification
+- Run: `bazel test //tools/agent-plugins/...`

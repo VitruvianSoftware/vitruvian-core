@@ -1,0 +1,85 @@
+# Tools
+
+## Overview
+Component package providing implementation for `tools`.
+
+## Interface
+- `[workspace-status.sh:script entrypoint]`
+- Subdirectory: [adb-connect](./adb-connect/README.md)
+- Subdirectory: [agent-app](./agent-app/README.md)
+- Subdirectory: [agent-guard](./agent-guard/README.md)
+- Subdirectory: [agent-plugins](./agent-plugins/README.md)
+- Subdirectory: [agent-roster](./agent-roster/README.md)
+- Subdirectory: [antigravity-telemetry](./antigravity-telemetry/README.md)
+- Subdirectory: [apple-signing](./apple-signing/README.md)
+- Subdirectory: [argocd-admin-password](./argocd-admin-password/README.md)
+- Subdirectory: [bazel-cache](./bazel-cache/README.md)
+- Subdirectory: [boundaries](./boundaries/README.md)
+- Subdirectory: [charts](./charts/README.md)
+- Subdirectory: [ci](./ci/README.md)
+- Subdirectory: [ci-preflight](./ci-preflight/README.md)
+- Subdirectory: [ci-runner](./ci-runner/README.md)
+- Subdirectory: [cloud-bootstrap](./cloud-bootstrap/README.md)
+- Subdirectory: [cluster](./cluster/README.md)
+- Subdirectory: [conformance](./conformance/README.md)
+- Subdirectory: [copybara](./copybara/README.md)
+- Subdirectory: [crates](./crates/README.md)
+- Subdirectory: [delivery](./delivery/README.md)
+- Subdirectory: [deploy](./deploy/README.md)
+- Subdirectory: [design-sync](./design-sync/README.md)
+- Subdirectory: [desktop-package](./desktop-package/README.md)
+- Subdirectory: [doctor](./doctor/README.md)
+- Subdirectory: [format](./format/README.md)
+- Subdirectory: [gcp-cloudrun](./gcp-cloudrun/README.md)
+- Subdirectory: [gcp-secrets](./gcp-secrets/README.md)
+- Subdirectory: [gcp-token](./gcp-token/README.md)
+- Subdirectory: [git](./git/README.md)
+- Subdirectory: [githooks](./githooks/README.md)
+- Subdirectory: [github-app-key](./github-app-key/README.md)
+- Subdirectory: [github-security](./github-security/README.md)
+- Subdirectory: [gitops](./gitops/README.md)
+- Subdirectory: [gomod](./gomod/README.md)
+- Subdirectory: [harness2](./harness2/README.md)
+- Subdirectory: [landed](./landed/README.md)
+- Subdirectory: [license](./license/README.md)
+- Subdirectory: [lint-naming](./lint-naming/README.md)
+- Subdirectory: [maven](./maven/README.md)
+- Subdirectory: [merge-queue-stats](./merge-queue-stats/README.md)
+- Subdirectory: [model-prices](./model-prices/README.md)
+- Subdirectory: [npm-publish-audit](./npm-publish-audit/README.md)
+- Subdirectory: [npm-trusted-publisher](./npm-trusted-publisher/README.md)
+- Subdirectory: [ops](./ops/README.md)
+- Subdirectory: [osv-scan](./osv-scan/README.md)
+- Subdirectory: [owners](./owners/README.md)
+- Subdirectory: [pipeline](./pipeline/README.md)
+- Subdirectory: [pipeline-status](./pipeline-status/README.md)
+- Subdirectory: [platform-e2e](./platform-e2e/README.md)
+- Subdirectory: [preview](./preview/README.md)
+- Subdirectory: [pulumi](./pulumi/README.md)
+- Subdirectory: [registry-trust](./registry-trust/README.md)
+- Subdirectory: [release](./release/README.md)
+- Subdirectory: [release-scope](./release-scope/README.md)
+- Subdirectory: [remote](./remote/README.md)
+- Subdirectory: [rotate-buildbuddy-key](./rotate-buildbuddy-key/README.md)
+- Subdirectory: [saas-cli](./saas-cli/README.md)
+- Subdirectory: [scripts](./scripts/README.md)
+- Subdirectory: [sdk-codegen](./sdk-codegen/README.md)
+- Subdirectory: [secret-scan](./secret-scan/README.md)
+- Subdirectory: [shell-compat](./shell-compat/README.md)
+- Subdirectory: [src](./src/README.md)
+- Subdirectory: [sync-downloads](./sync-downloads/README.md)
+- Subdirectory: [sync-env-secrets](./sync-env-secrets/README.md)
+- Subdirectory: [sync-site-tools](./sync-site-tools/README.md)
+- Subdirectory: [techdocs](./techdocs/README.md)
+- Subdirectory: [testinfra](./testinfra/README.md)
+- Subdirectory: [watch-pr](./watch-pr/README.md)
+- Subdirectory: [worktree](./worktree/README.md)
+
+## Invariants
+- None
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //tools/...`

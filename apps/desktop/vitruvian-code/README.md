@@ -273,7 +273,7 @@ The application is distributed as a universal DMG. Because it is currently **uns
 
 1. **Download** the latest `VitruvianCode-x.x.x-universal.dmg` from the [GitHub Releases page](https://github.com/VitruvianSoftware/vitruvian-code/releases).
 2. **Mount the DMG** by double-clicking it.
-3. **Install** by dragging the `Vitruvian Code` app into the `Applications` folder shortcut.
+3. **Install** by dragging the `NexusAgent` app into the `Applications` folder shortcut.
 4. **First Launch (Important):**
    - Open your `Applications` folder in Finder.
    - You **cannot** double-click the app directly (macOS will warn you about an unidentified developer).
@@ -282,7 +282,7 @@ The application is distributed as a universal DMG. Because it is currently **uns
      - **Option A (System Settings):** Double click the app and click **Done** on the warning. Open **System Settings > Privacy & Security**, scroll down to the Security section, and click **Open Anyway**.
      - **Option B (Terminal):** Open your **Terminal** and run the following command to clear the browser download quarantine flag, then open the app normally:
        ```bash
-       find "/Applications/Vitruvian Code.app" -print0 | xargs -0 xattr -c
+       find /Applications/NexusAgent.app -print0 | xargs -0 xattr -c
        ```
 
 *You only need to do this exact process once. For subsequent launches, or when the app auto-updates, it will open normally.*
@@ -357,3 +357,8 @@ The pre-migration `GEMINI_*` names are still read as fallbacks.
 - Node.js 18+
 - [Antigravity CLI](https://antigravity.google) (`agy`) installed and signed in — Google retired Gemini CLI for individual accounts
 - A Telegram bot token from [@BotFather](https://t.me/BotFather)
+
+## Subdirectories & Boundaries
+- [macos](./macos/README.md): Component package providing implementation for apps/desktop/vitruvian-code/macos.
+- [src](./src/README.md): Component package providing implementation for apps/desktop/vitruvian-code/src.
+

@@ -34,3 +34,17 @@ _, err := parentiammember.NewParentIamMember(ctx, "parent-iam-bootstrap", &paren
 ## Outputs
 
 None (matches upstream, which declares no outputs for this module).
+
+## Interface
+- `[main.go:ParentIamMember]`
+- `[main.go:NewParentIamMember]`
+- `[variables.go:ParentIamMemberArgs]`
+
+## Invariants
+- None
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //infrastructure/pulumi/foundation/gcp-bootstrap/modules/parent-iam-member/...`

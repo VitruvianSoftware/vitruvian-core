@@ -96,3 +96,17 @@ leaves the tool's folder, with `vitruvian-tool.json` and `bin/tool`, under
 Here, in the mirror: `swift build -c release` against the published kit, as
 `release.yml` does; the release attaches `github-tool-X.Y.Z.zip` and its
 SHA-256, which the catalog entry pins.
+
+## Interface
+- Internal implementation components
+- Subdirectory: [Sources](./Sources/README.md)
+- Subdirectory: [tests_rs](./tests_rs/README.md)
+
+## Invariants
+- None
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //apps/desktop/vitruvian-tool-github/...`

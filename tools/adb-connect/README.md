@@ -101,3 +101,7 @@ final exception line.
 ```bash
 bazel test //tools/adb-connect/...
 ```
+
+## Subdirectories & Boundaries
+- [src](./src/README.md): Component package providing implementation for tools/adb-connect/src.
+

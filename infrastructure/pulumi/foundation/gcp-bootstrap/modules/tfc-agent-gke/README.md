@@ -122,3 +122,18 @@ following APIs are activated on it:
 "logging.googleapis.com",
 "monitoring.googleapis.com"
 ```
+
+## Interface
+- `[main.go:NewTfcAgentGke]`
+- `[outputs.go:TfcAgentGke]`
+- `[variables.go:TfcAgentGkeArgs]`
+
+## Invariants
+- None
+
+## Side Effects
+- [main.go:241]: `// kubeconfig (exec-auth via gke-gcloud-auth-plugin), the Pulumi`
+- [main.go:266]: `exec:`
+
+## Verification
+- Run: `bazel test //infrastructure/pulumi/foundation/gcp-bootstrap/modules/tfc-agent-gke/...`

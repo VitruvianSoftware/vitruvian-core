@@ -14,3 +14,17 @@ only invokes `New` when enabled.
 | `variables.tf` | `variables.go` | `Args` |
 | `versions.tf` | `../go.mod` | engine adaptation |
 | `assets/` | — | appliance startup logic lives in the library component |
+
+## Interface
+- `[main.go:New]`
+- `[variables.go:Args]`
+
+## Invariants
+- None
+
+## Side Effects
+- [main.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [variables.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/go-foundation/3-networks-hub-and-spoke/modules/transitivity/...`

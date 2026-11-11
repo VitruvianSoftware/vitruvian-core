@@ -23,3 +23,16 @@ hierarchical firewall policy, and (when enabled) the transitivity appliance.
 
 Deploy order: `shared` → `development` → `nonproduction` → `production`
 (serializes hub-side peering mutations; see the note in `main.go`).
+
+## Interface
+- `[config.go:VpcFlowLogsConfig]`
+- `[config.go:NetSharedConfig]`
+
+## Invariants
+- [config.go:101]: `OrgID:        conf.Require("org_id"),`
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //infrastructure/pulumi/foundation/gcp-networks/envs/shared/...`

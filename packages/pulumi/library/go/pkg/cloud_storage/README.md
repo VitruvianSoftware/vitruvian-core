@@ -60,3 +60,17 @@ bucket, err := storage.NewSimpleBucket(ctx, "projects-state", &storage.SimpleBuc
     },
 })
 ```
+
+## Interface
+- `[storage.go:SimpleBucketArgs]`
+- `[storage.go:SimpleBucket]`
+- `[storage.go:NewSimpleBucket]`
+
+## Invariants
+- None
+
+## Side Effects
+- [storage.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/library/go/pkg/cloud_storage/...`

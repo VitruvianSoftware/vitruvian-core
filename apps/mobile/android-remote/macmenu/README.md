@@ -53,3 +53,7 @@ bazel test --config=macos-app //apps/mobile/android-remote/macmenu:RemoteMenuTes
 The second test fails when the agent's installer and this app disagree about
 where the agent lives, so the menu can't quietly report "not installed" about
 an agent that is running fine.
+
+## Subdirectories & Boundaries
+- [Sources](./Sources/README.md): Subsystem blueprint grouping child modules under apps/mobile/android-remote/macmenu/Sou...
+

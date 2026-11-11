@@ -120,3 +120,8 @@ the shared modules.
 | `modules/base_env/base_env.go`          | Per-env spoke orchestrator: builds spoke subnet args, invokes `shared_vpc` in spoke mode          |
 | `modules/hierarchical_firewall_policy/` | Org/folder-level hierarchical firewall policy (used by `envs/shared`)                             |
 | `modules/transitivity/`                 | Optional transitivity gateway appliance (hub)                                                     |
+
+## Subdirectories & Boundaries
+- [envs](./envs/README.md): Subsystem blueprint grouping child modules under packages/pulumi/examples/go-foundation...
+- [modules](./modules/README.md): Subsystem blueprint grouping child modules under packages/pulumi/examples/go-foundation...
+

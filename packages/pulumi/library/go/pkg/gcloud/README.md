@@ -43,3 +43,19 @@ cmd, err := gcloud.NewGcloud(ctx, "enable-apis", &gcloud.GcloudArgs{
     },
 })
 ```
+
+## Interface
+- `[gcloud.go:GcloudArgs]`
+- `[gcloud.go:Gcloud]`
+- `[gcloud.go:NewGcloud]`
+
+## Invariants
+- None
+
+## Side Effects
+- [gcloud.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [gcloud.go:18]: `// Mirrors: terraform-google-modules/gcloud/google (local-exec provisioner pa...`
+- [gcloud.go:19]: `// In Pulumi, this uses the Command resource instead of local-exec.`
+
+## Verification
+- Run: `bazel test //packages/pulumi/library/go/pkg/gcloud/...`

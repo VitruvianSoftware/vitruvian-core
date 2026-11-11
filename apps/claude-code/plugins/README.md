@@ -36,3 +36,7 @@ This single command regenerates:
 3. `.claude-plugin/marketplace.json` and `apps/web/vitruviansoftware-dev/.claude-plugin/marketplace.json` (`claude plugin marketplace add VitruvianSoftware/vitruvian-core`)
 
 CI enforces zero drift via `bazel test //tools/sync-site-tools:in_sync_test` and `bazel run //tools/conformance:check`.
+
+## Subdirectories & Boundaries
+- [vitruvian-orchestrator](./vitruvian-orchestrator/README.md): Contract for apps/claude-code/plugins/vitruvian-orchestrator
+

@@ -106,3 +106,18 @@ The `BuildServiceAccount` must have the following project-level roles:
 - `roles/artifactregistry.writer`
 
 These are typically granted separately in the IAM configuration (see `iam.go` section 11 in the foundation).
+
+## Interface
+- `[cai_monitoring.go:DefaultRolesToMonitor]`
+- `[cai_monitoring.go:CAIMonitoringArgs]`
+- `[cai_monitoring.go:CAIMonitoring]`
+- `[cai_monitoring.go:NewCAIMonitoring]`
+
+## Invariants
+- None
+
+## Side Effects
+- [cai_monitoring.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/library/go/pkg/cai_monitoring/...`

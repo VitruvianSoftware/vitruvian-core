@@ -114,3 +114,9 @@ bazel build //apps/suites/wand/android:wand_apk
 - **Bluetooth Protocol**: Wire packet structure, service UUIDs, and sensor bit unpacking are derived from [mrdoob/daydream-controller.js](https://github.com/mrdoob/daydream-controller.js) (MIT License).
 - **Feature Ideas**: Feature concepts and default mapping layouts were inspired by the public README of [kaminoer/Dream-Mouse](https://github.com/kaminoer/Dream-Mouse).
 - **Clean-Room Guarantee**: Wand is a completely independent, clean-room implementation. Only Dream-Mouse's public README was read, as a feature list. No code, assets, icons, screenshots or text from it are used (its repository contains no source code).
+
+## Subdirectories & Boundaries
+- [android](./android/README.md): Subsystem blueprint grouping child modules under apps/suites/wand/android.
+- [core](./core/README.md): Subsystem blueprint grouping child modules under apps/suites/wand/core.
+- [desktop](./desktop/README.md): Subsystem blueprint grouping child modules under apps/suites/wand/desktop.
+

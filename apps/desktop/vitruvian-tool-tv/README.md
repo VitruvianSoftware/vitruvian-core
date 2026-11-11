@@ -37,3 +37,7 @@ suite exercises it. Set `VITRUVIAN_TV_LIVE=1` to talk to a real TV from
 elsewhere.
 
 To add the built folder in the Vitruvian macOS app, open **Settings → Extensions → Add from Folder…** and select `bazel-bin/apps/desktop/vitruvian-tool-tv/built/vitruvian-tv` (or install directly under `~/Library/Application Support/com.vitruviansoftware.vitruvian/Tools/dev.vitruvian.tv`).
+
+## Subdirectories & Boundaries
+- [src](./src/README.md): Component package providing implementation for apps/desktop/vitruvian-tool-tv/src.
+

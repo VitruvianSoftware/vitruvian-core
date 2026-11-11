@@ -131,3 +131,42 @@ pkg:index:Networking ("shared")
 │   ├── gcp:compute:GlobalAddress ("shared-psa-ip")
 │   └── gcp:servicenetworking:Connection ("shared-psa-conn")
 ```
+
+## Interface
+- `[dns.go:RecordSet]`
+- `[dns.go:DnsZoneArgs]`
+- `[dns.go:DnsZone]`
+- `[dns.go:NewDnsZone]`
+- `[firewall.go:FirewallLayer4Config]`
+- `[firewall.go:FirewallRuleMatch]`
+- `[firewall.go:FirewallRule]`
+- `[firewall.go:NetworkFirewallPolicyArgs]`
+- `[firewall.go:NetworkFirewallPolicy]`
+- `[firewall.go:NewNetworkFirewallPolicy]`
+- `[firewall.go:BuildFoundationRules]`
+- `[hierarchical_firewall.go:HierarchicalFirewallPolicyArgs]`
+- `[hierarchical_firewall.go:HierarchicalFirewallPolicy]`
+- `[hierarchical_firewall.go:NewHierarchicalFirewallPolicy]`
+- `[networking.go:SecondaryRangeArgs]`
+- `[networking.go:SubnetArgs]`
+- `[networking.go:NetworkingArgs]`
+- `[networking.go:Networking]`
+- `[networking.go:OrderedSubnetNames]`
+- `[networking.go:OrderedSubnets]`
+
+## Invariants
+- [dns.go:177]: `// Service directory zones require additional config — caller provides via Ne...`
+
+## Side Effects
+- [dns.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [firewall.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [hierarchical_firewall.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [networking.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [psc.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [router.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [transitivity.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [transitivity.go:84]: `sudo sysctl -w net.ipv4.ip_forward=1`
+- [vpn_ha.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/library/go/pkg/network/...`

@@ -47,3 +47,16 @@ simplified rings would cross is simplified again at half the tolerance, then
 at 5 or 6 decimals. Every place is then a valid MultiPolygon under GEOS in
 the pack's integer units (the rest are repaired and snapped back to the
 grid), with its largest part first.
+
+## Interface
+- `[files.js:INDEX_URL]`
+- `[files.js:STATE_URLS]`
+
+## Invariants
+- None
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //apps/web/gods-eye-view/src/data/local_data/us_census_places/...`

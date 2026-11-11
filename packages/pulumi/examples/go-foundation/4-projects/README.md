@@ -294,3 +294,8 @@ their upstream file sets too (see each directory's README).
 | `modules/base_env/`                         | Per-env project orchestrator: SVPC/floating/peering project types, CMEK, peering network, Confidential Space |
 | `modules/single_project/`                   | Single-project wrapper over the project factory (labels, budget, APIs, VPC-SC, API-propagation gating)       |
 | `modules/infra_pipelines/`                  | App-infra pipeline project (WIF model); Cloud Build reference port behind the `example` build tag            |
+
+## Subdirectories & Boundaries
+- [business_unit_1](./business_unit_1/README.md): Subsystem blueprint grouping child modules under packages/pulumi/examples/go-foundation...
+- [modules](./modules/README.md): Subsystem blueprint grouping child modules under packages/pulumi/examples/go-foundation...
+

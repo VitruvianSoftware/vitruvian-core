@@ -51,3 +51,16 @@ engine-difference note.
 |------|-------------|
 | `infra_pipeline_project_id` | The BU's app-infra pipeline project id (upstream's `cloudbuild_project_id` analogue) |
 | `default_region` | The default region |
+
+## Interface
+- `[config.go:SharedConfig]`
+
+## Invariants
+- [config.go:77]: `BusinessCode:   conf.Require("business_code"),`
+- [config.go:78]: `BillingAccount: conf.Require("billing_account"),`
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //infrastructure/pulumi/foundation/gcp-projects/business_unit_2/shared/...`

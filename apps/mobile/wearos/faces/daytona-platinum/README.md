@@ -26,3 +26,8 @@ bazel test //apps/mobile/wearos/faces/daytona-platinum:watchface_test
 bazel run //tools/adb-connect -- --device watch
 bazel run //apps/mobile/wearos/faces/daytona-platinum:install
 ```
+
+## Subdirectories & Boundaries
+- [scripts](./scripts/README.md): Subsystem blueprint grouping child modules under apps/mobile/wearos/faces/daytona-plati...
+- [src](./src/README.md): Component package providing implementation for apps/mobile/wearos/faces/daytona-platinu...
+

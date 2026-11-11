@@ -32,3 +32,7 @@ After every event, waiting tasks whose `after` lists are all accepted become `"r
 ## How Plugins Use It
 
 Each harness plugin (`Claude Code`, `Antigravity`, `OpenCode`) vendors direct copies of `src/core.mjs` (`orchestrator-core.mjs`) and `src/prices.mjs` (`prices.mjs`) via `//tools/agent-roster` so plugins remain self-contained at runtime without external package resolution. `bazel run //tools/agent-roster -- --check` enforces that every vendored copy stays byte-identical to `packages/orchestrator-core/src/`.
+
+## Subdirectories & Boundaries
+- [src](./src/README.md): Component package providing implementation for packages/orchestrator-core/src.
+

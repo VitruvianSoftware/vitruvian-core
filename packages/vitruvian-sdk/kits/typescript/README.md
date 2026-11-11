@@ -86,3 +86,17 @@ this way. The kit needs Node 20 or later and has no dependencies.
 
 The whole guide, the protocol and the other kits are in
 [the SDK](https://github.com/VitruvianSoftware/vitruvian-sdk). MIT licence.
+
+## Interface
+- Internal implementation components
+- Subdirectory: [src](./src/README.md)
+- Subdirectory: [test](./test/README.md)
+
+## Invariants
+- [jest.config.cjs:24]: `const path = require("path");`
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //packages/vitruvian-sdk/kits/typescript/...`

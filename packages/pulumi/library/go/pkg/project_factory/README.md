@@ -133,3 +133,18 @@ pkg:index:Project ("seed-project")
 ├── gcp:projects:Service ("seed-project-cloudkms.googleapis.com")
 └── gcp:projects:Service ("seed-project-compute.googleapis.com")
 ```
+
+## Interface
+- `[project.go:BudgetConfig]`
+- `[project.go:ProjectArgs]`
+- `[project.go:Project]`
+- `[project.go:NewProject]`
+
+## Invariants
+- None
+
+## Side Effects
+- [project.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/library/go/pkg/project_factory/...`

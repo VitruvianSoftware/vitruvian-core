@@ -34,3 +34,18 @@ _, err := parentiammember.NewParentIamMember(ctx, "parent-iam-bootstrap", &paren
 ## Outputs
 
 None (matches upstream, which declares no outputs for this module).
+
+## Interface
+- `[main.go:ParentIamMember]`
+- `[main.go:NewParentIamMember]`
+- `[variables.go:ParentIamMemberArgs]`
+
+## Invariants
+- None
+
+## Side Effects
+- [main.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [variables.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/go-foundation/0-bootstrap/modules/parent-iam-member/...`

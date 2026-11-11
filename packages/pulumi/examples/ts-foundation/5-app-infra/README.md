@@ -167,3 +167,8 @@ See [troubleshooting](../docs/TROUBLESHOOTING.md) if you run into issues during 
 | `business_unit_1/development/index.ts`   | Development app infrastructure for BU1    |
 | `business_unit_1/nonproduction/index.ts` | Non-production app infrastructure for BU1 |
 | `business_unit_1/production/index.ts`    | Production app infrastructure for BU1     |
+
+## Subdirectories & Boundaries
+- [business_unit_1](./business_unit_1/README.md): Subsystem blueprint grouping child modules under packages/pulumi/examples/ts-foundation...
+- [modules](./modules/README.md): Subsystem blueprint grouping child modules under packages/pulumi/examples/ts-foundation...
+

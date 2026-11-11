@@ -19,3 +19,18 @@ identity (`development`/`d`) and its spoke CIDR plan, then calls the shared
 
 Deploy order: `shared` → `development` → `nonproduction` → `production`
 (serializes hub-side peering mutations; see the note in `main.go`).
+
+## Interface
+- `[config.go:VpcFlowLogsConfig]`
+- `[config.go:NetConfig]`
+
+## Invariants
+- [config.go:87]: `OrgID:        conf.Require("org_id"),`
+
+## Side Effects
+- [outputs.go:38]: `ctx.Export("network_name", net.VPC.Name)`
+- [outputs.go:39]: `ctx.Export("network_self_link", net.VPC.SelfLink)`
+- [outputs.go:41]: `// net.Subnets is a Go map, whose range order is randomized on every run.`
+
+## Verification
+- Run: `bazel test //infrastructure/pulumi/foundation/gcp-networks/envs/development/...`

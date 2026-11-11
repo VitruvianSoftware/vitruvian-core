@@ -134,3 +134,10 @@ The design is `packages/design-system/ANDROID.md` plus the tokens in
 implementation of a Claude Design handoff built on both. Colours, type, spacing
 and copy are final and token-derived; if a value here disagrees with
 `tokens.json`, `tokens.json` is right.
+
+## Subdirectories & Boundaries
+- [macagent](./macagent/README.md): Contract for apps/mobile/android-remote/macagent
+- [macmenu](./macmenu/README.md): Contract for apps/mobile/android-remote/macmenu
+- [src](./src/README.md): Subsystem blueprint grouping child modules under apps/mobile/android-remote/src.
+- [tools](./tools/README.md): Subsystem blueprint grouping child modules under apps/mobile/android-remote/tools.
+

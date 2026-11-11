@@ -87,3 +87,20 @@ project set. The BU's shared infra-pipeline project lives in the sibling
 | `vpc_service_control_perimeter_name` | VPC-SC perimeter name |
 | `peering_complete` | Module-dependency marker for the peering network |
 | `access_context_manager_policy_id` | Access Context Manager policy id |
+
+## Interface
+- `[config.go:ProjectsConfig]`
+
+## Invariants
+- [config.go:115]: `BusinessCode:     conf.Require("business_code"),`
+- [config.go:116]: `BillingAccount:   conf.Require("billing_account"),`
+- [config.go:119]: `OrgStackName:     conf.Require("org_stack_name"),`
+
+## Side Effects
+- [config.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [main.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [outputs.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [remote.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/go-foundation/4-projects/business_unit_1/development/...`

@@ -55,3 +55,15 @@ Read the preview's plan before running `up`.
 
 Never run the `:import` target here. The provider plans a replacement, which
 deletes the live client.
+
+## Interface
+- Internal implementation components
+
+## Invariants
+- None
+
+## Side Effects
+- [main.go:124]: `return nil, fmt.Errorf("%s: redirect URI %q must be an https URL on %s with n...`
+
+## Verification
+- Run: `bazel test //infrastructure/pulumi/platform/zitadel-apps-relay/...`
