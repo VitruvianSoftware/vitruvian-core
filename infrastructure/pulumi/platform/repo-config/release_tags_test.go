@@ -326,8 +326,7 @@ func TestDeployTagPatternsNeverMatchExemptTags(t *testing.T) {
 	// Inspect EVERY tag deployment policy the program registers across every
 	// repository (never silently skipping non-monorepo policies): vitruvian-core
 	// policies must equal environmentTagPatterns and reject every exempt rolling
-	// tag, while standalone mirror tag policies must belong only to declared
-	// mirrors (vitruvian-code's v*).
+	// tag, and no standalone mirror repository registers a tag deployment policy.
 	registeredByRepo := map[string]map[string]bool{}
 	for _, p := range res["github:index/repositoryEnvironmentDeploymentPolicy:RepositoryEnvironmentDeploymentPolicy"] {
 		v, ok := p["tagPattern"]
@@ -345,7 +344,7 @@ func TestDeployTagPatternsNeverMatchExemptTags(t *testing.T) {
 	}
 
 	for repo, patterns := range registeredByRepo {
-		if repo != rulesetRepo && repo != "vitruvian-code" {
+		if repo != rulesetRepo {
 			t.Errorf("unexpected repository %q registers tag deployment policies %v", repo, patterns)
 		}
 	}
@@ -376,18 +375,14 @@ func TestDeployTagPatternsNeverMatchExemptTags(t *testing.T) {
 			t.Errorf("environmentTagPatterns lists %q, which no Environment on %s uses", p, rulesetRepo)
 		}
 	}
-
-	mirrorRegistered := registeredByRepo["vitruvian-code"]
-	if len(mirrorRegistered) != 1 || !mirrorRegistered["v*"] {
-		t.Errorf("vitruvian-code tag deployment policies = %v, want exactly map[v*:true]", mirrorRegistered)
-	}
 }
 
-// Vitruvian Code's mirror cuts plain `v<version>` tags on `vitruvian-code` and
-// deploys to `vitruvian-code-release` there. On `vitruvian-core`, `v*` would
-// match the exempt rolling tag `vitruvian-beta-latest`, so `vitruvian-code`'s
-// `v*` policy and `vitruvian-code-release` environment must stay strictly
-// isolated from the monorepo's environments and release tags.
+// Vitruvian Code's mirror cuts plain `v<version>` tags on `vitruvian-code` from
+// pushes to `main` and deploys to `vitruvian-code-release` from branch `main`
+// only (never from tags). On `vitruvian-core`, `v*` would match the exempt
+// rolling tag `vitruvian-beta-latest`, so `vitruvian-code-release` must stay on
+// `vitruvian-code` with its single `main` branch deployment policy and zero tag
+// deployment policies anywhere.
 func TestVitruvianCodeReleaseTagsStaySeparateFromMonorepoReleaseTags(t *testing.T) {
 	if ok, err := path.Match("v*", "vitruvian-beta-latest"); err != nil || !ok {
 		t.Fatalf("expected v* to match vitruvian-beta-latest (got ok=%v, err=%v); this invariant explains why v* must never sit on vitruvian-core", ok, err)
@@ -452,7 +447,7 @@ func TestVitruvianCodeReleaseTagsStaySeparateFromMonorepoReleaseTags(t *testing.
 		}
 	}
 	sort.Strings(vcPolicies)
-	if got, want := strings.Join(vcPolicies, " "), "branch=,tag=v* branch=main,tag="; got != want {
+	if got, want := strings.Join(vcPolicies, " "), "branch=main,tag="; got != want {
 		t.Errorf("vitruvian-code-release policies = %q, want %q", got, want)
 	}
 }

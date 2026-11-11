@@ -99,7 +99,7 @@ fn install_fake_signing_toolchain(fake_bin: &Path, slow_codesign: bool) {
     write_exec(
         fake_bin,
         "security",
-        r#"#!/usr/bin/env bash
+        r#"#!/bin/bash
 set -euo pipefail
 echo "security $*" >> "${FAKE_LOG_DIR}/security.log"
 sub="${1:-}"
@@ -112,7 +112,7 @@ case "${sub}" in
     ;;
   create-keychain)
     # args: create-keychain -p <pass> <kc_path>
-    touch "$4"
+    : > "$4"
     ;;
   delete-keychain)
     rm -f "${2:-}"
@@ -128,19 +128,19 @@ esac
     );
 
     let codesign_body = if slow_codesign {
-        r#"#!/usr/bin/env bash
+        r#"#!/bin/bash
 set -euo pipefail
 echo "codesign $*" >> "${FAKE_LOG_DIR}/codesign.log"
 if [ -n "${READY_FILE:-}" ] && [ ! -f "${READY_FILE}" ]; then
   kc_found="$(find "${RUNNER_TEMP}" -name 'vitruvian-code-signing.keychain-db' -print -quit)"
-  wd_found="$(find "${RUNNER_TEMP}" -maxdepth 1 -type d -name 'vc-signing.*' -print -quit)"
+  wd_found="$(find "${RUNNER_TEMP}" -maxdepth 1 -type d -name 'vc-sign.*' -print -quit)"
   printf '%s\n%s\n' "${wd_found}" "${kc_found}" > "${READY_FILE}.tmp"
   mv "${READY_FILE}.tmp" "${READY_FILE}"
   sleep 2
 fi
 "#
     } else {
-        r#"#!/usr/bin/env bash
+        r#"#!/bin/bash
 set -euo pipefail
 echo "codesign $*" >> "${FAKE_LOG_DIR}/codesign.log"
 "#
@@ -152,7 +152,7 @@ echo "codesign $*" >> "${FAKE_LOG_DIR}/codesign.log"
     write_exec(
         fake_bin,
         "file",
-        r#"#!/usr/bin/env bash
+        r#"#!/bin/bash
 set -euo pipefail
 target="${!#}"
 if head -c 10 "${target}" 2>/dev/null | grep -q '^FAKE_MACHO'; then
@@ -168,17 +168,17 @@ fi
     write_exec(
         fake_bin,
         "ditto",
-        r#"#!/usr/bin/env bash
+        r#"#!/bin/bash
 set -euo pipefail
 dest="${!#}"
-touch "${dest}"
+: > "${dest}"
 "#,
     );
 
     write_exec(
         fake_bin,
         "xcrun",
-        r#"#!/usr/bin/env bash
+        r#"#!/bin/bash
 set -euo pipefail
 echo "xcrun $*" >> "${FAKE_LOG_DIR}/xcrun.log"
 if [ "${1:-}" = "notarytool" ] && [ "${2:-}" = "submit" ]; then
@@ -191,7 +191,7 @@ fi
     write_exec(
         fake_bin,
         "spctl",
-        r#"#!/usr/bin/env bash
+        r#"#!/bin/bash
 set -euo pipefail
 echo "spctl $*" >> "${FAKE_LOG_DIR}/spctl.log"
 "#,
@@ -200,10 +200,62 @@ echo "spctl $*" >> "${FAKE_LOG_DIR}/spctl.log"
     write_exec(
         fake_bin,
         "xattr",
-        r#"#!/usr/bin/env bash
+        r#"#!/bin/bash
 exit 0
 "#,
     );
+}
+
+/// Because `sign-and-notarize.sh` hardcodes absolute `/usr/bin/...` and
+/// `/usr/sbin/...` paths with no environment overrides (to prevent PATH and env
+/// hijacking in production), tests that mock macOS signing/notary tools rewrite
+/// only those 7 absolute paths in a test-only copy of the script.
+fn create_mocked_harness_script(dir: &Path, fake_bin: &Path) -> PathBuf {
+    let mut src = fs::read_to_string(script_path()).expect("read sign-and-notarize.sh");
+    for (abs_tool, fake_name) in [
+        ("/usr/bin/security", "security"),
+        ("/usr/bin/codesign", "codesign"),
+        ("/usr/bin/file", "file"),
+        ("/usr/bin/ditto", "ditto"),
+        ("/usr/bin/xcrun", "xcrun"),
+        ("/usr/sbin/spctl", "spctl"),
+        ("/usr/bin/xattr", "xattr"),
+    ] {
+        let replacement = fake_bin.join(fake_name).to_string_lossy().into_owned();
+        src = src.replace(abs_tool, &replacement);
+    }
+    // Force the awk fallback for Info.plist in mocked cross-platform tests too.
+    src = src.replace("/usr/libexec/PlistBuddy", "/nonexistent/PlistBuddy");
+    let out = dir.join("sign-and-notarize-harness.sh");
+    fs::write(&out, src).expect("write harness script");
+    fs::set_permissions(&out, fs::Permissions::from_mode(0o755)).expect("chmod harness script");
+    out
+}
+
+#[test]
+fn help_prints_usage_and_exits_0() {
+    let script = script_path();
+    for flag in ["-h", "--help"] {
+        let out = Command::new(&script)
+            .arg(flag)
+            .output()
+            .expect("run sign-and-notarize.sh --help");
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "flag {} should exit 0, got {:?} (stderr: {})",
+            flag,
+            out.status.code(),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            stdout.contains("Usage:"),
+            "flag {} stdout should contain Usage:, got: {}",
+            flag,
+            stdout
+        );
+    }
 }
 
 #[test]
@@ -233,14 +285,16 @@ fn no_arguments_prints_usage_and_exits_2() {
 }
 
 #[test]
-fn missing_secrets_fails_closed() {
+fn missing_secrets_fails_closed_and_cleans_up_work_dir() {
     let dir = scratch_dir("missing_secrets");
+    let runner_temp = dir.join("runner_temp");
+    fs::create_dir_all(&runner_temp).unwrap();
     let app = create_fake_app(&dir, "Vitruvian Code.app", "VitruvianCode", false);
     let out = Command::new(script_path())
         .args(["apps", "--entitlements-app", app.to_str().unwrap()])
         .env("SIGNING", "developer-id")
         .env("GITHUB_ACTIONS", "true")
-        .env("RUNNER_TEMP", &dir)
+        .env("RUNNER_TEMP", &runner_temp)
         .env("VITRUVIAN_CODE_ENTITLEMENTS", entitlements_path())
         .env_remove("VITRUVIAN_SIGNING_CERT_P12")
         .env_remove("VITRUVIAN_SIGNING_CERT_PASSWORD")
@@ -257,6 +311,270 @@ fn missing_secrets_fails_closed() {
         "stdout: {}",
         stdout
     );
+    let leftovers: Vec<_> = fs::read_dir(&runner_temp)
+        .unwrap()
+        .filter_map(Result::ok)
+        .collect();
+    assert!(
+        leftovers.is_empty(),
+        "failed secret check must still remove vc-sign.* work dir: {:?}",
+        leftovers
+    );
+}
+
+/// Extracts shell code outside quotes plus any `$(...)` command substitutions
+/// embedded inside double-quoted strings, replacing plain string literal text
+/// with spaces so prose words (such as "temporary file") are not mistaken for
+/// commands while `$(cmd ...)` inside `"..."` is still audited.
+fn shell_code_segments(line: &str) -> String {
+    let bytes = line.as_bytes();
+    let mut out = String::with_capacity(line.len());
+    let mut i = 0;
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut cmd_sub_depth: usize = 0;
+
+    while i < bytes.len() {
+        let b = bytes[i];
+        if in_single {
+            if b == b'\'' {
+                in_single = false;
+            }
+            out.push(' ');
+            i += 1;
+            continue;
+        }
+        if b == b'\\' && i + 1 < bytes.len() {
+            i += 2;
+            out.push(' ');
+            continue;
+        }
+        if in_double && cmd_sub_depth == 0 {
+            if b == b'"' {
+                in_double = false;
+                out.push(' ');
+                i += 1;
+            } else if b == b'$' && i + 1 < bytes.len() && bytes[i + 1] == b'(' {
+                cmd_sub_depth = 1;
+                out.push(' ');
+                i += 2;
+            } else {
+                out.push(' ');
+                i += 1;
+            }
+            continue;
+        }
+        if cmd_sub_depth > 0 {
+            if b == b'\'' {
+                in_single = true;
+                out.push(' ');
+                i += 1;
+                continue;
+            }
+            if b == b'"' {
+                // Skip simple quoted arg inside $(...)
+                i += 1;
+                while i < bytes.len() && bytes[i] != b'"' {
+                    if bytes[i] == b'\\' && i + 1 < bytes.len() {
+                        i += 2;
+                    } else {
+                        i += 1;
+                    }
+                }
+                i += 1;
+                out.push(' ');
+                continue;
+            }
+            if b == b'(' {
+                cmd_sub_depth += 1;
+                out.push(' ');
+                i += 1;
+                continue;
+            }
+            if b == b')' {
+                cmd_sub_depth -= 1;
+                out.push(' ');
+                i += 1;
+                continue;
+            }
+            out.push(b as char);
+            i += 1;
+            continue;
+        }
+        // Unquoted shell code
+        if b == b'\'' {
+            in_single = true;
+            out.push(' ');
+            i += 1;
+        } else if b == b'"' {
+            in_double = true;
+            out.push(' ');
+            i += 1;
+        } else if b == b'#' && (i == 0 || bytes[i - 1].is_ascii_whitespace()) {
+            break;
+        } else {
+            out.push(b as char);
+            i += 1;
+        }
+    }
+    out
+}
+
+#[test]
+fn script_locks_path_and_calls_no_bare_system_tools() {
+    let src = fs::read_to_string(script_path()).expect("read sign-and-notarize.sh");
+    assert!(
+        src.lines()
+            .any(|l| l.trim() == "export PATH=/usr/bin:/bin:/usr/sbin:/sbin"),
+        "sign-and-notarize.sh must lock PATH at the top"
+    );
+    assert!(
+        src.contains("mktemp -d \"${RUNNER_TEMP:-${TMPDIR:-/tmp}}/vc-sign.XXXXXX\""),
+        "sign-and-notarize.sh must create a private vc-sign.XXXXXX work dir"
+    );
+
+    let forbidden_bare = [
+        "codesign",
+        "security",
+        "xcrun",
+        "ditto",
+        "hdiutil",
+        "file",
+        "PlistBuddy",
+        "shasum",
+        "xattr",
+        "find",
+        "xargs",
+        "awk",
+        "sed",
+        "grep",
+        "base64",
+        "tr",
+        "head",
+        "chmod",
+        "rm",
+        "mktemp",
+        "date",
+        "stapler",
+        "spctl",
+        "dirname",
+        "basename",
+        "cat",
+        "tee",
+    ];
+
+    let mut in_heredoc = false;
+    let mut in_single_quote = false;
+    for (idx, line) in src.lines().enumerate() {
+        let trimmed = line.trim();
+        if in_heredoc {
+            if trimmed == "EOF" {
+                in_heredoc = false;
+            }
+            continue;
+        }
+        if trimmed.contains("<<'EOF'") {
+            in_heredoc = true;
+            continue;
+        }
+        if in_single_quote {
+            if line.contains('\'') {
+                in_single_quote = false;
+            }
+            continue;
+        }
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        // Track multi-line single-quoted awk script blocks
+        if line.chars().filter(|&c| c == '\'').count() % 2 == 1 {
+            in_single_quote = true;
+        }
+        let code = shell_code_segments(trimmed);
+        for token in code.split(|c: char| {
+            c.is_whitespace()
+                || matches!(
+                    c,
+                    '|' | ';' | '(' | ')' | '<' | '>' | '"' | '\'' | '$' | '=' | '`'
+                )
+        }) {
+            if token.is_empty() {
+                continue;
+            }
+            if token == "stapler" && trimmed.contains("/usr/bin/xcrun stapler") {
+                continue;
+            }
+            if token.ends_with(':') {
+                continue;
+            }
+            if forbidden_bare.contains(&token) {
+                panic!(
+                    "sign-and-notarize.sh:{} contains bare system tool `{}` in `{}`",
+                    idx + 1,
+                    token,
+                    trimmed
+                );
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn real_script_resists_poisoned_path_and_signs_macho_bundle() {
+    let dir = scratch_dir("poisoned_path_macos");
+    let poisoned_bin = dir.join("poisoned_bin");
+    let runner_temp = dir.join("runner_temp");
+    let marker = dir.join("hijacked.marker");
+    fs::create_dir_all(&poisoned_bin).unwrap();
+    fs::create_dir_all(&runner_temp).unwrap();
+
+    for tool in [
+        "codesign", "security", "xcrun", "ditto", "file", "xattr", "find", "xargs", "awk", "sed",
+        "grep", "base64", "tr", "head", "chmod", "rm", "mktemp", "date", "spctl", "dirname",
+        "basename", "cat", "tee",
+    ] {
+        write_exec(
+            &poisoned_bin,
+            tool,
+            &format!(
+                "#!/bin/bash\necho {} >> \"{}\"\nexit 99\n",
+                tool,
+                marker.display()
+            ),
+        );
+    }
+
+    let app = create_fake_app(&dir, "Vitruvian Code.app", "VitruvianCode", true);
+    fs::copy("/usr/bin/true", app.join("Contents/MacOS/VitruvianCode")).unwrap();
+    fs::copy("/usr/bin/true", app.join("Contents/MacOS/auxiliary-helper")).unwrap();
+    fs::copy(
+        "/usr/bin/true",
+        app.join("Contents/Frameworks/Nested.dylib"),
+    )
+    .unwrap();
+
+    let out = Command::new(script_path())
+        .args(["apps", "--entitlements-app", app.to_str().unwrap()])
+        .env("PATH", poisoned_bin.to_str().unwrap())
+        .env("SIGNING", "adhoc")
+        .env("RUNNER_TEMP", &runner_temp)
+        .env("VITRUVIAN_CODE_ENTITLEMENTS", entitlements_path())
+        .output()
+        .expect("run real sign-and-notarize.sh under poisoned PATH");
+
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        !marker.exists(),
+        "poisoned PATH tool was executed: {:?}",
+        fs::read_to_string(&marker)
+    );
 }
 
 #[test]
@@ -270,13 +588,12 @@ fn inside_out_signing_signs_other_macos_machos_and_skips_only_cfbundleexecutable
     fs::create_dir_all(&runner_temp).unwrap();
 
     install_fake_signing_toolchain(&fake_bin, false);
+    let harness = create_mocked_harness_script(&dir, &fake_bin);
 
     let app = create_fake_app(&dir, "Vitruvian Code.app", "VitruvianCode", true);
-    let orig_path = std::env::var("PATH").unwrap_or_default();
 
-    let out = Command::new(script_path())
+    let out = Command::new(&harness)
         .args(["apps", "--entitlements-app", app.to_str().unwrap()])
-        .env("PATH", format!("{}:{}", fake_bin.display(), orig_path))
         .env("FAKE_LOG_DIR", &log_dir)
         .env("RUNNER_TEMP", &runner_temp)
         .env("VITRUVIAN_CODE_ENTITLEMENTS", entitlements_path())
@@ -293,7 +610,7 @@ fn inside_out_signing_signs_other_macos_machos_and_skips_only_cfbundleexecutable
             "00000000-0000-0000-0000-000000000000",
         )
         .output()
-        .expect("run sign-and-notarize.sh");
+        .expect("run sign-and-notarize harness");
 
     assert_eq!(
         out.status.code(),
@@ -357,12 +674,11 @@ fn assert_signal_exits_and_cleans_up(sig_flag: &str, expected_code: i32, dir_nam
     fs::create_dir_all(&runner_temp).unwrap();
 
     install_fake_signing_toolchain(&fake_bin, true);
+    let harness = create_mocked_harness_script(&dir, &fake_bin);
     let app = create_fake_app(&dir, "Vitruvian Code.app", "VitruvianCode", false);
-    let orig_path = std::env::var("PATH").unwrap_or_default();
 
-    let mut child = Command::new(script_path())
+    let mut child = Command::new(&harness)
         .args(["apps", "--entitlements-app", app.to_str().unwrap()])
-        .env("PATH", format!("{}:{}", fake_bin.display(), orig_path))
         .env("FAKE_LOG_DIR", &log_dir)
         .env("RUNNER_TEMP", &runner_temp)
         .env("READY_FILE", &ready_file)
@@ -382,7 +698,7 @@ fn assert_signal_exits_and_cleans_up(sig_flag: &str, expected_code: i32, dir_nam
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("spawn sign-and-notarize.sh");
+        .expect("spawn sign-and-notarize harness");
 
     let deadline = Instant::now() + Duration::from_secs(10);
     while !ready_file.exists() {
@@ -401,6 +717,18 @@ fn assert_signal_exits_and_cleans_up(sig_flag: &str, expected_code: i32, dir_nam
         !observed_work_dir.as_os_str().is_empty() && !observed_keychain.as_os_str().is_empty(),
         "mid-run work dir and temporary keychain should have been created: {:?}",
         recorded
+    );
+    let mode = fs::metadata(&observed_work_dir)
+        .expect("stat mid-run work dir")
+        .permissions()
+        .mode()
+        & 0o777;
+    assert_eq!(
+        mode,
+        0o700,
+        "work dir {} must be private mode 0700, got {:o}",
+        observed_work_dir.display(),
+        mode
     );
 
     let kill_status = Command::new("kill")

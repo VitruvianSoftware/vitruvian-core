@@ -41,7 +41,7 @@ on:
       - main
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -51,10 +51,12 @@ jobs:
   detect:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: write
     outputs:
       version: ${{ steps.detect.outputs.version }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
@@ -101,7 +103,9 @@ jobs:
       matrix:
         arch: [arm64, x86_64]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Build for ${{ matrix.arch }}
         run: |
@@ -113,7 +117,7 @@ jobs:
       # macos/scripts/bundle.sh copies that folder into the app and stops
       # when it is missing.
       - name: Upload arch binary
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: VitruvianCode-${{ matrix.arch }}
           path: |
@@ -130,7 +134,7 @@ jobs:
           swift build -c release --arch ${{ matrix.arch }}
 
       - name: Upload bridge binary
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: NexusAgent-${{ matrix.arch }}
           path: bridge/.build/release/NexusAgent
@@ -142,25 +146,29 @@ jobs:
     environment: vitruvian-code-release
     runs-on: macos-15
     timeout-minutes: 60
+    permissions:
+      contents: write
     env:
       SIGNING: developer-id
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Download arm64 binary
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: VitruvianCode-arm64
           path: /tmp/arm64
 
       - name: Download x86_64 binary
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: VitruvianCode-x86_64
           path: /tmp/x86_64
 
       - name: Download the bridge binaries
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: NexusAgent-*
           path: /tmp/bridge
@@ -241,11 +249,9 @@ jobs:
           "$RUNNER_TEMP/check-packaged-app" "/tmp/dist-x86_64/Vitruvian Code.app" x86_64
           "$RUNNER_TEMP/check-packaged-app" "/tmp/dist-bridge/NexusAgent.app" arm64 x86_64
 
-      - name: Install create-dmg
-        run: brew install create-dmg
-
       - name: Create DMGs
         run: |
+          set -euo pipefail
           VERSION="${{ needs.detect.outputs.version }}"
 
           for arch in universal arm64 x86_64; do
@@ -254,16 +260,18 @@ jobs:
             # bridge's zip is to be that.
             name="$arch"
             if [ "$arch" = universal ]; then name="macos"; fi
-            create-dmg \
-              --volname "Vitruvian Code" \
-              --window-pos 200 120 \
-              --window-size 600 400 \
-              --icon-size 100 \
-              --icon "Vitruvian Code.app" 175 190 \
-              --app-drop-link 425 190 \
-              --no-internet-enable \
-              "VitruvianCode-${VERSION}-${name}.dmg" \
-              "/tmp/dist-${arch}/" || true
+            stage="$RUNNER_TEMP/dmg-stage-${arch}"
+            /bin/rm -rf "$stage"
+            /bin/mkdir -p "$stage"
+            /usr/bin/ditto "/tmp/dist-${arch}/Vitruvian Code.app" "$stage/Vitruvian Code.app"
+            /bin/ln -s /Applications "$stage/Applications"
+            /usr/bin/hdiutil create \
+              -volname "Vitruvian Code" \
+              -srcfolder "$stage" \
+              -ov \
+              -format UDZO \
+              "VitruvianCode-${VERSION}-${name}.dmg"
+            /bin/rm -rf "$stage"
           done
 
           ls -lh *.dmg

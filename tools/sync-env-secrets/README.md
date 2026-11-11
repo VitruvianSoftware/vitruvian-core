@@ -156,7 +156,7 @@ Secrets of the GitHub Environment on the public mirror
 bridge `NexusAgent.app`, the standalone `vitruvian-code-tool` Mach-O, and the
 release `.dmg` disk images. The environment is declared in
 [`copybara_sync`](../../infrastructure/pulumi/platform/repo-config/internal/copybara_sync/vitruvian_code_release.go):
-only branch `main` and release tags `v*` may deploy to it.
+only branch `main` may deploy to it.
 
 | Secret | What it is |
 |---|---|

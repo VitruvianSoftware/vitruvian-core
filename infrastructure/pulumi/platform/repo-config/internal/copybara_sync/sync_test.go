@@ -403,9 +403,10 @@ func TestRepositoryDeclarationMatchesCreateOrAdoptMode(t *testing.T) {
 	}
 }
 
-// The vitruvian-code-release environment exists on vitruvian-code with custom
-// deployment policies that let only main and v* release tags deploy: never a
-// pull request branch, and with no secret values in Pulumi state.
+// The vitruvian-code-release environment exists on vitruvian-code with a
+// single custom deployment policy that lets only branch main deploy (because
+// release.yml runs only on push to main): never a tag or pull request branch,
+// and with no secret values in Pulumi state.
 func TestVitruvianCodeReleaseEnvironment(t *testing.T) {
 	got := run(t)
 
@@ -456,7 +457,7 @@ func TestVitruvianCodeReleaseEnvironment(t *testing.T) {
 		}
 	}
 	sort.Strings(refs)
-	if gotRefs, wantRefs := strings.Join(refs, " "), "branch:main tag:v*"; gotRefs != wantRefs {
+	if gotRefs, wantRefs := strings.Join(refs, " "), "branch:main"; gotRefs != wantRefs {
 		t.Errorf("deploy refs = %q, want %q", gotRefs, wantRefs)
 	}
 }

@@ -132,7 +132,6 @@ fn shared_steps(release_job: &str) -> &'static [&'static str] {
             "Assemble .app bundles",
             "Sign and notarize apps and tool",
             "Check the apps",
-            "Install create-dmg",
             "Create DMGs",
             "Sign and notarize DMGs",
             "Create ZIP for auto-updater",
@@ -593,6 +592,14 @@ pub fn looked_at_what_matters(release_text: &str) -> Vec<String> {
             && sign_apps.iter().any(|l| l.contains("--plain-app "))
             && sign_apps.iter().any(|l| l.contains("--macho ")),
     );
+    let dmgs = body("Create DMGs");
+    expect(
+        "DMGs built with `/usr/bin/hdiutil create` in UDZO format with an /Applications symlink",
+        dmgs.iter()
+            .any(|l| l.starts_with("/usr/bin/hdiutil create"))
+            && dmgs.iter().any(|l| l.contains("-format UDZO"))
+            && dmgs.iter().any(|l| l.contains("/Applications")),
+    );
     let zips = body("Create ZIP for auto-updater");
     expect(
         "the new app's zip built with `ditto -c -k --keepParent`, saying macos and never universal",
@@ -721,6 +728,105 @@ pub fn signing_secrets_scoped(release_text: &str, rehearsal_text: &str) -> Vec<S
     problems
 }
 
+/// Ensures release.yml narrows top-level permissions to `contents: read`,
+/// pins every `uses:` line to a 40-char commit SHA with `# vX.Y.Z`, and runs
+/// no unpinned Homebrew installs in either workflow.
+pub fn workflow_hardened(release_text: &str, rehearsal_text: &str) -> Vec<String> {
+    let mut problems = Vec::new();
+
+    let before_jobs = release_text
+        .split("\njobs:\n")
+        .next()
+        .unwrap_or(release_text);
+    let mut top_perms: Vec<&str> = Vec::new();
+    let mut in_perms = false;
+    for line in before_jobs.lines() {
+        if line == "permissions:" {
+            in_perms = true;
+            continue;
+        }
+        if in_perms {
+            if line.starts_with("  ") {
+                let trimmed = line.trim();
+                if !trimmed.is_empty() && !trimmed.starts_with('#') {
+                    top_perms.push(trimmed);
+                }
+            } else if !line.trim().is_empty() {
+                in_perms = false;
+            }
+        }
+    }
+    if top_perms != ["contents: read"] {
+        problems.push(format!(
+            "release.yml top-level permissions = {:?}, want [\"contents: read\"]",
+            top_perms
+        ));
+    }
+
+    if let Some(build_lines) = job_lines(release_text, "build-macos") {
+        let (header, _) = split_job(&build_lines);
+        if header.iter().any(|l| l.contains("contents: write")) {
+            problems
+                .push("release.yml job `build-macos` must not grant `contents: write`".to_string());
+        }
+    }
+
+    for (lineno, raw_line) in release_text.lines().enumerate() {
+        let trimmed = raw_line.trim();
+        if trimmed.starts_with('#') {
+            continue;
+        }
+        let after_dash = trimmed.strip_prefix("- ").unwrap_or(trimmed).trim_start();
+        if let Some(after_uses) = after_dash.strip_prefix("uses:") {
+            let spec = after_uses.trim_start();
+            let pinned = spec.split_once('@').is_some_and(|(action, rest)| {
+                !action.is_empty()
+                    && !action.chars().any(char::is_whitespace)
+                    && rest.len() > 40
+                    && rest[..40]
+                        .bytes()
+                        .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+                    && {
+                        let tail = rest[40..].trim_start();
+                        tail.len() < rest[40..].len()
+                            && tail
+                                .strip_prefix('#')
+                                .is_some_and(|c| c.trim_start().starts_with('v'))
+                    }
+            });
+            if !pinned {
+                problems.push(format!(
+                    "release.yml:{} `uses:` must be pinned to a 40-char SHA with `# vX.Y.Z`: `{}`",
+                    lineno + 1,
+                    trimmed
+                ));
+            }
+        }
+    }
+
+    for (label, text) in [
+        ("release.yml", release_text),
+        ("the rehearsal", rehearsal_text),
+    ] {
+        for (lineno, raw_line) in text.lines().enumerate() {
+            let trimmed = raw_line.trim();
+            if trimmed.starts_with('#') {
+                continue;
+            }
+            if trimmed.contains("brew install") || trimmed.contains("create-dmg") {
+                problems.push(format!(
+                    "{}:{} runs unpinned Homebrew/create-dmg (`{}`); build DMGs with `/usr/bin/hdiutil`",
+                    label,
+                    lineno + 1,
+                    trimmed
+                ));
+            }
+        }
+    }
+
+    problems
+}
+
 /// Problems where a job reads SwiftPM's checkouts and never fetched them.
 pub fn reads_only_what_it_fetched(text: &str, name: &str, jobs: &[&str]) -> Vec<String> {
     let mut problems = Vec::new();
@@ -832,6 +938,19 @@ jobs:
         "expected job-header and step leaks: {:?}",
         secret_errs
     );
+
+    // 4. workflow_hardened rejects workflow-level write permissions, unpinned actions, and brew install
+    let unhardened_wf = "\
+permissions:
+  contents: write
+jobs:
+  package:
+    steps:
+      - uses: actions/checkout@v7
+      - run: brew install create-dmg
+";
+    let hard_errs = workflow_hardened(unhardened_wf, "");
+    assert_eq!(hard_errs.len(), 3, "got: {:?}", hard_errs);
 }
 
 fn main() -> ExitCode {
@@ -850,6 +969,7 @@ fn main() -> ExitCode {
 
     let mut problems = Vec::new();
     problems.extend(looked_at_what_matters(&release_text));
+    problems.extend(workflow_hardened(&release_text, &rehearsal_text));
     problems.extend(signing_secrets_scoped(&release_text, &rehearsal_text));
     problems.extend(compare(&release_text, &rehearsal_text));
     problems.extend(reads_only_what_it_fetched(

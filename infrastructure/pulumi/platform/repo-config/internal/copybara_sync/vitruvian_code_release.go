@@ -21,8 +21,6 @@
 package copybara_sync
 
 import (
-	"fmt"
-
 	"github.com/pulumi/pulumi-github/sdk/v6/go/github"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
@@ -36,24 +34,11 @@ import (
 // them.
 const vitruvianCodeReleaseEnvironmentName = "vitruvian-code-release"
 
-// vitruvianCodeReleaseTagPattern matches the mirror's v<version> release tags.
-const vitruvianCodeReleaseTagPattern = "v*"
-
-// vitruvianCodeReleaseDeployRefs are the only refs that may deploy to it: main
-// (when Copybara exports a release-please version bump to main) and the
-// mirror's v* release tags.
-var vitruvianCodeReleaseDeployRefs = []struct {
-	suffix  string
-	branch  string
-	tagGlob string
-}{
-	{suffix: "main", branch: "main"},
-	{suffix: "tags", tagGlob: vitruvianCodeReleaseTagPattern},
-}
-
-// vitruvianCodeReleaseEnvironment declares the environment and its deployment
-// policies on the vitruvian-code repository. As with courier_release.go, the
-// secret values themselves live out of git and are pushed idempotently with
+// vitruvianCodeReleaseEnvironment declares the environment and its single
+// deployment policy on the vitruvian-code repository. Only branch main may
+// deploy to it because release.yml runs exclusively on push to main (when
+// Copybara exports a release-please version bump). As with courier_release.go,
+// the secret values themselves live out of git and are pushed idempotently with
 // `REPO=VitruvianSoftware/vitruvian-code bazel run //tools/sync-env-secrets:apply -- vitruvian-code-release`
 // so CI applies of repo-config never wipe them. No required reviewer: the
 // monorepo release-please PR merge is the human gate.
@@ -69,20 +54,10 @@ func vitruvianCodeReleaseEnvironment(ctx *pulumi.Context, repo *github.Repositor
 	if err != nil {
 		return err
 	}
-	for _, ref := range vitruvianCodeReleaseDeployRefs {
-		args := &github.RepositoryEnvironmentDeploymentPolicyArgs{
-			Repository:  repo.Name,
-			Environment: env.Environment,
-		}
-		if ref.branch != "" {
-			args.BranchPattern = pulumi.String(ref.branch)
-		} else {
-			args.TagPattern = pulumi.String(ref.tagGlob)
-		}
-		name := fmt.Sprintf("%s-deploy-policy-%s", vitruvianCodeReleaseEnvironmentName, ref.suffix)
-		if _, err := github.NewRepositoryEnvironmentDeploymentPolicy(ctx, name, args, pulumi.DependsOn([]pulumi.Resource{env})); err != nil {
-			return err
-		}
-	}
-	return nil
+	_, err = github.NewRepositoryEnvironmentDeploymentPolicy(ctx, vitruvianCodeReleaseEnvironmentName+"-deploy-policy-main", &github.RepositoryEnvironmentDeploymentPolicyArgs{
+		Repository:    repo.Name,
+		Environment:   env.Environment,
+		BranchPattern: pulumi.String("main"),
+	}, pulumi.DependsOn([]pulumi.Resource{env}))
+	return err
 }

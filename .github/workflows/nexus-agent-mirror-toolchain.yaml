@@ -354,11 +354,9 @@ jobs:
           [ "$failed" = no ]
           echo "==> The app started, stayed up for fifteen seconds, stopped when told to, and left no crash report"
 
-      - name: Install create-dmg
-        run: brew install create-dmg
-
       - name: Create DMGs
         run: |
+          set -euo pipefail
           VERSION="0.0.0-rehearsal"
 
           for arch in universal arm64 x86_64; do
@@ -367,16 +365,18 @@ jobs:
             # bridge's zip is to be that.
             name="$arch"
             if [ "$arch" = universal ]; then name="macos"; fi
-            create-dmg \
-              --volname "Vitruvian Code" \
-              --window-pos 200 120 \
-              --window-size 600 400 \
-              --icon-size 100 \
-              --icon "Vitruvian Code.app" 175 190 \
-              --app-drop-link 425 190 \
-              --no-internet-enable \
-              "VitruvianCode-${VERSION}-${name}.dmg" \
-              "/tmp/dist-${arch}/" || true
+            stage="$RUNNER_TEMP/dmg-stage-${arch}"
+            /bin/rm -rf "$stage"
+            /bin/mkdir -p "$stage"
+            /usr/bin/ditto "/tmp/dist-${arch}/Vitruvian Code.app" "$stage/Vitruvian Code.app"
+            /bin/ln -s /Applications "$stage/Applications"
+            /usr/bin/hdiutil create \
+              -volname "Vitruvian Code" \
+              -srcfolder "$stage" \
+              -ov \
+              -format UDZO \
+              "VitruvianCode-${VERSION}-${name}.dmg"
+            /bin/rm -rf "$stage"
           done
 
           ls -lh *.dmg
