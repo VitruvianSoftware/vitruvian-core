@@ -221,6 +221,10 @@ enum MessageRowActions {
                         messageActions.translateMessage(eventID: id, targetLanguage: lang)
                         messageActions.onOpenAISettings()
                     }
+                case .transcribeVoiceNote:
+                    guard let msg = conversation.message(id, from: source) else { return }
+                    let store = conversation.voiceNoteTranscripts
+                    Task { await store.transcribe(eventID: msg.id, mediaPath: msg.mediaPath) }
                 case .info: break
                 }
             },
@@ -252,6 +256,8 @@ enum MessageRowActions {
             openLightbox: { conversation.openLightbox($0) },
             openViewOnce: { conversation.openViewOnce($0) },
             audioPlayer: conversation.audioPlayer,
+            voiceNoteTranscripts: conversation.voiceNoteTranscripts,
+            copyPlainText: { text in messageActions.copyPlainText(text) },
             chatTitle: { msg in conversation.otherPerson ?? conversation.chatInfo?.name ?? msg.senderName },
             voiceNoteQueue: { id in
                 conversation.voiceNoteQueue(

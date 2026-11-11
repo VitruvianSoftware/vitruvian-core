@@ -93,6 +93,11 @@ struct ConversationCommands: Commands {
             }
             .registryShortcut("Message: Record Audio", in: hotkeys)
             .disabled(!hotkeyDispatcher.canPerform("Message: Record Audio"))
+            Button(String(localized: "Talk to Type")) {
+                _ = hotkeyDispatcher.perform("Message: Talk to Type")
+            }
+            .registryShortcut("Message: Talk to Type", in: hotkeys)
+            .disabled(!hotkeyDispatcher.canPerform("Message: Talk to Type"))
             Button(sendGIFMenuTitle) {
                 _ = hotkeyDispatcher.perform("Message: Send GIF")
             }

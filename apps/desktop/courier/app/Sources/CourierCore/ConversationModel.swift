@@ -385,6 +385,8 @@ public final class ConversationModel: ObservableObject {
     public var calendarBridge = CalendarBridge()
     /// Whether the AI right pane (`AIPane`) is open.
     @Published public var isShowingAIPane = false
+    /// Session cache and auto-transcribe queue for voice-note transcripts.
+    public var voiceNoteTranscripts = VoiceNoteTranscriptStore()
     /// True while an AI summary request is in flight for the open chat.
     @Published public private(set) var isSummarizingChat = false
     /// Count of messages being summarized while `isSummarizingChat` is true.
@@ -1966,8 +1968,9 @@ public final class ConversationModel: ObservableObject {
 
     // MARK: - AI Context & Summarize
 
-    /// Binds this conversation's composers to a shared `AIProviderStore`.
+    /// Binds this conversation's composers and voice-note transcript store to a shared `AIProviderStore`.
     public func bindAIProviderStore(_ store: AIProviderStore) {
+        voiceNoteTranscripts = store.voiceNoteTranscripts
         composer.bindAIProviderStore(store)
         thread.composer.bindAIProviderStore(store)
     }

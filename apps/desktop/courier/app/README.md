@@ -47,9 +47,9 @@ Where each action lives:
 
 - **Draft a reply** and **Rewrite…** (tones): the **+** menu in the message box, or type `/draft`. The result shows above your text with **Replace**, **Insert** and **Discard**.
 - **Translate**: right-click a message. It uses *Preferred response language*; a submenu offers your other enabled languages.
-- **Summarize**: the chat's ⓘ menu or the command bar (⌘K). The summary opens in the AI pane.
-
-Voice transcription and Talk to Type are not available yet.
+- **Summarize**: the chat's ⓘ menu or the command bar (⌘J). The summary opens in the AI pane.
+- **Talk to Type**: `⌘⇧D`, the **+** menu in the message box, or the command bar (⌘J). Words go in at the cursor.
+- **Transcribe a voice note**: right-click the voice note or click **Transcribe** next to its waveform.
 
 ### Providers and setup
 
@@ -66,11 +66,21 @@ Pick a provider in **Settings ▸ AI**. Choosing one turns AI on; choosing **Off
   - **OpenAI:** Create an API key at [platform.openai.com](https://platform.openai.com).
   - **OpenAI-compatible:** Enter your endpoint base URL and optional API key.
 
+### Talk to Type and voice notes
+
+Speak into the message box instead of typing (Talk to Type). Start it with `⌘⇧D`, the **+** menu in the message box, or the command bar (⌘J). Press **Stop** or `⌘⇧D` again to finish, or press `Esc` to cancel. Spoken text is inserted at the cursor without replacing your draft. Nothing is ever sent automatically.
+
+Turn voice notes into readable text. Right-click any voice note or click **Transcribe** next to its waveform. You can also turn on automatic transcription in **Settings ▸ AI** (off by default). When enabled, Courier automatically transcribes voice notes sent by other people as they appear on screen.
+
+Where audio goes:
+- **On this Mac by default:** Speech is recognized locally using Apple speech recognition. Audio never leaves your Mac and is never sent to Apple's servers. This works even when AI providers are turned off.
+- **OpenAI Whisper (optional):** Turn on the Whisper toggle in **Settings ▸ AI** to transcribe audio using OpenAI. This requires an OpenAI API key. Audio is sent to OpenAI only when this toggle is on.
+
 ### Privacy and key storage
 
 - **Keys in Keychain only:** API keys are stored exclusively in the macOS Keychain, never in config files or logs. The test copy keeps its own separate Keychain store.
 - **Minimal text only:** Courier sends only the text messages needed for the immediate action (for example, the last 30 text messages for drafting a reply or the last 100 for a summary). Attachments, photos, and files are never sent.
-- **No background queries:** Courier never queries an AI model automatically. Every request happens only when you explicitly invoke an AI action.
+- **No background queries:** Courier never queries an AI model automatically. Every request happens only when you explicitly invoke an AI action. The one exception is *Automatically transcribe incoming voice notes*, which you turn on yourself: with Whisper off it stays on this Mac; with Whisper on, those voice notes are sent to OpenAI.
 
 ### Troubleshooting
 
@@ -118,7 +128,7 @@ The injector signs the app after it writes the plist, and it signs it the way th
 - **Attributes.** Both signatures also pass `--strip-disallowed-xattrs`, so an attribute that cannot be sealed (a download's quarantine flag, say) is dropped instead of failing the signing or, later, notarization.
 - **Extra flags.** `COURIER_SIGN_FLAGS` adds flags to both signatures, split on spaces.
 - **Entitlements.** `Resources/Courier.entitlements` holds only what the hardened runtime needs before macOS will even ask the person. Courier is not sandboxed (it ships directly, not through the Mac App Store), and its engine, a Go program with Signal's Rust library linked in, runs under the hardened runtime without any exception. Without these, the hardened runtime refuses the resource silently, with no prompt:
-  - `com.apple.security.device.audio-input`: recording voice notes (milestone 4.5b). macOS still asks the person first.
+  - `com.apple.security.device.audio-input`: recording voice notes (milestone 4.5b) and Talk to Type. macOS still asks the person first.
   - `com.apple.security.personal-information.addressbook`: matching people with your Contacts and "Save to Contacts" (4.5a). macOS still asks first.
   - `com.apple.security.personal-information.calendars`: the Calendar pane and "Add to Calendar" (4.5a). macOS still asks first.
   `inject_app_credentials_test` fails if any of the three goes missing. A new entitlement goes in that file and one line here: what it is and why.

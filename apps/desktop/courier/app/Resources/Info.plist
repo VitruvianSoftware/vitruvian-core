@@ -34,7 +34,9 @@
 	<key>NSDownloadsFolderUsageDescription</key>
 	<string>Courier saves the attachments you download to this folder. Nothing else in it is read or changed.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Courier records voice notes only while you hold record. Recordings stay on this Mac until you send them.</string>
+	<string>Courier uses the microphone to record voice notes and for Talk to Type. Audio stays on this Mac unless you send a voice note or turn on OpenAI Whisper.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Courier turns your speech into text on this Mac for Talk to Type and voice-note transcripts.</string>
 	<key>NSSupportsAutomaticTermination</key>
 	<false/>
 </dict>

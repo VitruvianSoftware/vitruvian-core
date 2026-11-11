@@ -612,15 +612,34 @@ public struct AISettingsPane: View {
     // MARK: - Talk to Type
 
     private var talkToTypeSection: some View {
-        Section(String(localized: "Talk to Type & Voice Transcription")) {
+        let hasOpenAIKey = store.hasKey(for: .openAI)
+        return Section(String(localized: "Talk to Type & Voice Transcription")) {
             VStack(alignment: .leading, spacing: 10) {
-                Text(String(localized: "Voice transcription isn’t wired up yet in Courier."))
+                Text(store.speechStatusLine)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Toggle(
-                    String(localized: "Use OpenAI's Whisper model for Talk to Type and transcribing"),
-                    isOn: $preferences.useWhisperForTalkToType
-                )
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle(
+                        String(localized: "Use OpenAI's Whisper model for Talk to Type and transcribing"),
+                        isOn: Binding(
+                            get: { hasOpenAIKey && preferences.useWhisperForTalkToType },
+                            set: { enabled in
+                                guard hasOpenAIKey else { return }
+                                preferences.useWhisperForTalkToType = enabled
+                            }
+                        )
+                    )
+                    .disabled(!hasOpenAIKey)
+                    .help(hasOpenAIKey ? "" : SpeechEngineFactory.whisperMissingKeyMessage)
+
+                    if !hasOpenAIKey {
+                        Text(SpeechEngineFactory.whisperMissingKeyMessage)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
                 Toggle(
                     String(localized: "Automatically transcribe incoming voice notes"),
                     isOn: $preferences.autoTranscribeVoiceNotes
@@ -636,6 +655,9 @@ public struct AISettingsPane: View {
                 }
             }
             .settingAnchor("ai.talkToType", highlighted: highlightedSettingID)
+            .task(id: "\(preferences.useWhisperForTalkToType)|\(preferences.transcriptionLanguage)|\(hasOpenAIKey)") {
+                await store.refreshSpeechStatus()
+            }
         }
     }
 

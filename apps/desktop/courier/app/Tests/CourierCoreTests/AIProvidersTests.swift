@@ -758,12 +758,6 @@ final class AIProvidersTests: XCTestCase {
         transport.enqueue(error: URLError(.notConnectedToInternet))
         let summarizeDisp = await provider.summarize(context: context)
         XCTAssertEqual(summarizeDisp, .unavailable(reason: AIClientError.unreachable.message))
-
-        // Out-of-scope voice transcription & Talk to Type stay unavailable
-        let voiceDisp = await provider.transcribeVoiceNote(roomID: "!r:local", eventID: "$1")
-        let talkDisp = await provider.startTalkToType()
-        if case .text = voiceDisp { XCTFail("Expected unavailable") }
-        if case .text = talkDisp { XCTFail("Expected unavailable") }
     }
 
     // MARK: - AI Off Makes Zero Requests
@@ -1593,14 +1587,6 @@ private final class MockTestAIProvider: AIProvider, @unchecked Sendable {
             try? await Task.sleep(for: delay)
         }
         return result
-    }
-
-    func transcribeVoiceNote(roomID: String, eventID: String) async -> AIProviderDisposition {
-        .unavailable(reason: "Not available")
-    }
-
-    func startTalkToType() async -> AIProviderDisposition {
-        .unavailable(reason: "Not available")
     }
 }
 

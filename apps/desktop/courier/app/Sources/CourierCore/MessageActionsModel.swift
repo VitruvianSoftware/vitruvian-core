@@ -264,6 +264,13 @@ public final class MessageActionsModel: ObservableObject {
             || conversation.isLocked
     }
 
+    /// Copies plain text (such as a voice-note transcript) to the pasteboard when unlocked.
+    public func copyPlainText(_ text: String) {
+        guard !isLocked, !text.isEmpty else { return }
+        pasteboard.setString(text)
+        onToast(String(localized: "Copied to clipboard"))
+    }
+
     // MARK: - The menu
 
     /// Does `action` to the open chat's message `messageID`, acted on `from` the chat or the thread pane, or asks

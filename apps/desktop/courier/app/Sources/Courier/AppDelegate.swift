@@ -180,7 +180,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             inbox.row(of: id)
         }, preferences: composerPreferences)
         self.conversation = conversation
-        let aiProviderStore = AIProviderStore(preferences: aiPreferences)
+        let aiProviderStore = AIProviderStore(
+            preferences: aiPreferences,
+            preferredMicrophoneUID: {
+                let uid = UserDefaults.standard.string(forKey: ComposerPreferences.preferredMicrophoneUIDKey)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                return (uid?.isEmpty == false) ? uid : nil
+            }
+        )
         self.aiProviderStore = aiProviderStore
         // Both composers (the chat's and the thread pane's): the plan, the quick replies, ⌘↩ archiving as the inbox's
         // Archive does, and toasts where the inbox's show.
@@ -241,7 +248,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             entitlement: entitlement,
             makePasteboard: { SystemPasteboard() },
             openURL: { url in NSWorkspace.shared.open(url) },
-            hotkeys: hotkeys
+            hotkeys: hotkeys,
+            aiProviderStore: aiProviderStore
         )
         search = SearchModel(appModel: model, recents: RecentSearches(), open: { [model] in model.open($0) })
         let commandBar = CommandBarModel(

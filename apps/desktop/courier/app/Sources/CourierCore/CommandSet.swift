@@ -1558,11 +1558,14 @@ public enum CommandSet {
                 subtitle: String(localized: "Dictation / voice transcription"),
                 category: .aiAndStubs,
                 keywords: ["talk to type", "dictation", "transcribe", "voice"],
-                icon: "Waveform.and.mic",
+                icon: "waveform.and.mic",
                 shortcut: "⌘⇧D"
             ) {
-                inbox?.announce(String(localized: "Talk to Type isn’t available in this build."))
-                openAISettings("talkToType")
+                if let activeComposer, activeComposer.roomID != nil {
+                    activeComposer.triggerTalkToType()
+                } else {
+                    openAISettings("talkToType")
+                }
             },
             CourierCommand(
                 id: "plan.manage",

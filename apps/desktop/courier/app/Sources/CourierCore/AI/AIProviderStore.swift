@@ -38,6 +38,8 @@ public final class AIProviderStore: ObservableObject {
     public let keyStore: AIKeyStore
     public let transport: any HTTPTransport
     public let detector: LocalProviderDetector
+    public let speechEngineFactory: SpeechEngineFactory
+    public let voiceNoteTranscripts: VoiceNoteTranscriptStore
 
     @Published public private(set) var provider: any AIProvider = UnavailableAIProvider()
     @Published public private(set) var detections: [AIProviderKind: LocalDetection] = [:]
@@ -48,12 +50,15 @@ public final class AIProviderStore: ObservableObject {
     @Published public private(set) var lastTestResult: TestResult?
     @Published public private(set) var keyError: String?
     @Published public private(set) var isSettingsDetectionActive: Bool = false
+    @Published public private(set) var speechStatusLine: String = AppleSpeechAvailability.ready.settingsStatusLine
 
     public let settingsDetectionInterval: Duration
     public var isAppInstalled: @Sendable (AIProviderKind) -> Bool
     public var openLocalApp: @MainActor (AIProviderKind) -> Void
     private var settingsDetectionTask: Task<Void, Never>?
     private var modelLoadTask: Task<Void, Never>?
+    private var speechStatusTask: Task<Void, Never>?
+    private var speechStatusToken: UInt64 = 0
     private var modelLoadToken: UInt64 = 0
     private var currentEngineForModels: AIProviderKind?
     private var wasEnabled: Bool = false
@@ -75,12 +80,23 @@ public final class AIProviderStore: ObservableObject {
             guard let url = kind.localAppURL else { return }
             NSWorkspace.shared.open(url)
         },
-        appleClientFactory: @escaping @Sendable () -> AppleOnDeviceClient = { AppleOnDeviceClient() }
+        appleClientFactory: @escaping @Sendable () -> AppleOnDeviceClient = { AppleOnDeviceClient() },
+        preferredMicrophoneUID: @escaping @Sendable () -> String? = { nil },
+        appleSpeechAvailability: @escaping AppleSpeechEngine.AvailabilityCheck = AppleSpeechEngine.systemAvailability
     ) {
         self.preferences = preferences
         self.keyStore = keyStore
         self.transport = transport
         self.detector = detector ?? LocalProviderDetector(transport: transport)
+        let factory = SpeechEngineFactory(
+            preferences: preferences,
+            keyStore: keyStore,
+            transport: transport,
+            preferredMicrophoneUIDFallback: preferredMicrophoneUID,
+            appleAvailability: appleSpeechAvailability
+        )
+        self.speechEngineFactory = factory
+        self.voiceNoteTranscripts = VoiceNoteTranscriptStore(engineFactory: factory)
         self.settingsDetectionInterval = settingsDetectionInterval
         self.isAppInstalled = isAppInstalled
         self.openLocalApp = openLocalApp
@@ -88,13 +104,18 @@ public final class AIProviderStore: ObservableObject {
 
         self.wasEnabled = preferences.enableContextualAI
         self.currentEngineForModels = preferences.enableContextualAI ? preferences.selectedEngine : nil
+        if preferences.useWhisperForTalkToType, keyStore.hasKey(for: .openAI) {
+            self.speechStatusLine = SpeechEngineFactory.whisperStatusLine
+        }
         observePreferences()
         rebuildProvider()
+        scheduleSpeechStatusRefresh()
     }
 
     deinit {
         settingsDetectionTask?.cancel()
         modelLoadTask?.cancel()
+        speechStatusTask?.cancel()
     }
 
     private func observePreferences() {
@@ -192,6 +213,7 @@ public final class AIProviderStore: ObservableObject {
 
     private func handlePreferencesChanged() {
         lastTestResult = nil
+        scheduleSpeechStatusRefresh()
         guard preferences.enableContextualAI else {
             cancelModelLoad()
             availableModels = []
@@ -216,6 +238,29 @@ public final class AIProviderStore: ObservableObject {
         }
     }
 
+    /// Recomputes `speechStatusLine` for Settings ▸ AI ▸ Talk to Type & Voice Transcription.
+    public func refreshSpeechStatus() async {
+        speechStatusToken &+= 1
+        let token = speechStatusToken
+        let status = await speechEngineFactory.settingsStatusLine()
+        guard !Task.isCancelled, speechStatusToken == token else { return }
+        speechStatusLine = status
+    }
+
+    private func scheduleSpeechStatusRefresh() {
+        if preferences.useWhisperForTalkToType, keyStore.hasKey(for: .openAI) {
+            speechStatusToken &+= 1
+            speechStatusTask?.cancel()
+            speechStatusTask = nil
+            speechStatusLine = SpeechEngineFactory.whisperStatusLine
+            return
+        }
+        speechStatusTask?.cancel()
+        speechStatusTask = Task { @MainActor [weak self] in
+            await self?.refreshSpeechStatus()
+        }
+    }
+
     // MARK: - Keys
 
     public func hasKey(for kind: AIProviderKind) -> Bool {
@@ -234,6 +279,9 @@ public final class AIProviderStore: ObservableObject {
             keyError = nil
             lastTestResult = nil
             rebuildProvider()
+            if kind == .openAI {
+                scheduleSpeechStatusRefresh()
+            }
         case let .failure(error):
             keyError = error.message
         }
@@ -247,7 +295,15 @@ public final class AIProviderStore: ObservableObject {
         case .success:
             keyError = nil
             lastTestResult = nil
+            if kind == .openAI, preferences.useWhisperForTalkToType {
+                withInternalPreferenceUpdate {
+                    preferences.useWhisperForTalkToType = false
+                }
+            }
             rebuildProvider()
+            if kind == .openAI {
+                scheduleSpeechStatusRefresh()
+            }
         case let .failure(error):
             keyError = error.message
         }
