@@ -111,13 +111,31 @@ pub fn run(args: &[String]) -> i32 {
     let rest = if args.len() > 1 { &args[1..] } else { &[] };
     if rest.is_empty() {
         eprintln!(
-            "Usage: check-packaged-app <app folder, e.g. Vitruvian Code.app> <architecture>..."
+            "Usage: check-packaged-app [--notarized] <app folder, e.g. Vitruvian Code.app> <architecture>..."
         );
         return 2;
     }
 
-    let app = &rest[0];
-    let archs = &rest[1..];
+    let mut require_notarized = std::env::var("CHECK_NOTARIZED")
+        .map(|v| v == "1")
+        .unwrap_or(false);
+    let mut positional: Vec<&String> = Vec::new();
+    for arg in rest {
+        if arg == "--notarized" {
+            require_notarized = true;
+        } else {
+            positional.push(arg);
+        }
+    }
+    if positional.is_empty() {
+        eprintln!(
+            "Usage: check-packaged-app [--notarized] <app folder, e.g. Vitruvian Code.app> <architecture>..."
+        );
+        return 2;
+    }
+
+    let app = positional[0];
+    let archs = &positional[1..];
     if archs.is_empty() {
         eprintln!("error: name the architectures the executable must have");
         return 2;
@@ -132,7 +150,7 @@ pub fn run(args: &[String]) -> i32 {
         if !Path::new(app).is_dir() {
             return fail(app, &format!("no app at {}", app));
         }
-        return check_program_and_signature(app, "NexusAgent", &want_archs);
+        return check_program_and_signature(app, "NexusAgent", &want_archs, require_notarized);
     }
 
     // Resolve THIRD_PARTY_NOTICES.md relative to the binary's location,
@@ -239,12 +257,17 @@ pub fn run(args: &[String]) -> i32 {
     }
     println!("    \u{2713} {} is beside it", LICENCE_NAME);
 
-    check_program_and_signature(app, "VitruvianCode", &want_archs)
+    check_program_and_signature(app, "VitruvianCode", &want_archs, require_notarized)
 }
 
 /// The program's presence, its processors and the bundle's signature: what is
 /// checked of both apps.
-fn check_program_and_signature(app: &str, program: &str, want_archs: &str) -> i32 {
+fn check_program_and_signature(
+    app: &str,
+    program: &str,
+    want_archs: &str,
+    require_notarized: bool,
+) -> i32 {
     // Executable check
     let exe = format!("{}/Contents/MacOS/{}", app, program);
     if !Path::new(&exe).is_file() {
@@ -299,6 +322,20 @@ fn check_program_and_signature(app: &str, program: &str, want_archs: &str) -> i3
         }
         _ => {
             return fail(app, "the signature does not verify");
+        }
+    }
+
+    if require_notarized {
+        let spctl = Command::new("spctl")
+            .args(["-a", "-vv", "-t", "exec", app])
+            .status();
+        match spctl {
+            Ok(s) if s.success() => {
+                println!("    \u{2713} Gatekeeper (spctl) accepts executable bundle");
+            }
+            _ => {
+                return fail(app, "Gatekeeper (spctl -a -t exec) rejected the bundle");
+            }
         }
     }
 

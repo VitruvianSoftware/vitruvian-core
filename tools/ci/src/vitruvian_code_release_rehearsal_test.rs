@@ -71,7 +71,6 @@ const REHEARSAL_ONLY: &[&str] = &[
     "Show the toolchain the mirror builds with",
     "Run the tests",
     "Show what was downloaded",
-    "Check the apps",
     // The bridge is a package of its own: its tests are run apart.
     "Run the bridge's tests",
     // The rehearsal starts the app it packaged; a release starts nothing.
@@ -88,6 +87,27 @@ const PACKAGE_PREFIX: &str = "apps/desktop/vitruvian-code/";
 /// Lines the rehearsal may add to a shared step: its artifacts are read once,
 /// minutes later, so they are not kept for the default ninety days.
 const REHEARSAL_EXTRA_LINES: &[&str] = &["retention-days: 1"];
+
+/// The ONLY steps in release.yml's `package` job that may see the five
+/// Developer ID signing / notary secrets. Every other step (and the rehearsal
+/// workflow, which runs on pull requests) must never see them.
+const SIGNING_STEPS: &[&str] = &["Sign and notarize apps and tool", "Sign and notarize DMGs"];
+
+const SIGNING_SECRET_ENV_LINES: &[&str] = &[
+    "VITRUVIAN_SIGNING_CERT_P12: ${{ secrets.VITRUVIAN_SIGNING_CERT_P12 }}",
+    "VITRUVIAN_SIGNING_CERT_PASSWORD: ${{ secrets.VITRUVIAN_SIGNING_CERT_PASSWORD }}",
+    "VITRUVIAN_NOTARY_API_KEY_P8: ${{ secrets.VITRUVIAN_NOTARY_API_KEY_P8 }}",
+    "VITRUVIAN_NOTARY_KEY_ID: ${{ secrets.VITRUVIAN_NOTARY_KEY_ID }}",
+    "VITRUVIAN_NOTARY_ISSUER_ID: ${{ secrets.VITRUVIAN_NOTARY_ISSUER_ID }}",
+];
+
+const SIGNING_SECRET_NAMES: &[&str] = &[
+    "VITRUVIAN_SIGNING_CERT_P12",
+    "VITRUVIAN_SIGNING_CERT_PASSWORD",
+    "VITRUVIAN_NOTARY_API_KEY_P8",
+    "VITRUVIAN_NOTARY_KEY_ID",
+    "VITRUVIAN_NOTARY_ISSUER_ID",
+];
 
 const CHECKOUT: &str = "uses: actions/checkout";
 
@@ -110,8 +130,10 @@ fn shared_steps(release_job: &str) -> &'static [&'static str] {
             "Download the bridge binaries",
             "Create universal binary",
             "Assemble .app bundles",
-            "Install create-dmg",
+            "Sign and notarize apps and tool",
+            "Check the apps",
             "Create DMGs",
+            "Sign and notarize DMGs",
             "Create ZIP for auto-updater",
             "Zip the tool's folder",
         ],
@@ -469,7 +491,18 @@ pub fn compare(release_text: &str, rehearsal_text: &str) -> Vec<String> {
             else {
                 continue;
             };
-            let want = normalise(rel_step, false);
+            let rel_filtered: Vec<String> = if SIGNING_STEPS.contains(&title) {
+                rel_step
+                    .iter()
+                    .filter(|l| {
+                        l.as_str() != "env:" && !SIGNING_SECRET_ENV_LINES.contains(&l.as_str())
+                    })
+                    .cloned()
+                    .collect()
+            } else {
+                rel_step.clone()
+            };
+            let want = normalise(&rel_filtered, false);
             let got = normalise(reh_step, true);
             if want != got {
                 let diff = unified_diff(&want, &got, "release.yml", "the rehearsal");
@@ -552,16 +585,41 @@ pub fn looked_at_what_matters(release_text: &str) -> Vec<String> {
             .iter()
             .any(|l| l.starts_with("\"$RUNNER_TEMP/bundle-app\" ") && l.ends_with(" --bridge")),
     );
+    let sign_apps = body("Sign and notarize apps and tool");
+    expect(
+        "explicit --entitlements-app, --plain-app, and --macho paths on `Sign and notarize apps and tool`",
+        sign_apps.iter().filter(|l| l.contains("--entitlements-app ")).count() == 3
+            && sign_apps.iter().any(|l| l.contains("--plain-app "))
+            && sign_apps.iter().any(|l| l.contains("--macho ")),
+    );
+    let dmgs = body("Create DMGs");
+    expect(
+        "DMGs built with `/usr/bin/hdiutil create` in UDZO format with an /Applications symlink",
+        dmgs.iter()
+            .any(|l| l.starts_with("/usr/bin/hdiutil create"))
+            && dmgs.iter().any(|l| l.contains("-format UDZO"))
+            && dmgs.iter().any(|l| l.contains("/Applications")),
+    );
     let zips = body("Create ZIP for auto-updater");
     expect(
-        "the new app's zip, which says macos and never universal",
-        zips.iter()
-            .any(|l| l.contains("VitruvianCode-${VERSION}-macos.zip\" \"Vitruvian Code.app\"")),
+        "the new app's zip built with `ditto -c -k --keepParent`, saying macos and never universal",
+        zips.iter().any(|l| {
+            l.starts_with("ditto -c -k --keepParent ")
+                && l.contains("Vitruvian Code.app\"")
+                && l.contains("VitruvianCode-${VERSION}-macos.zip\"")
+        }),
     );
     expect(
-        "the bridge's zip, the one asset that says universal",
-        zips.iter()
-            .any(|l| l.contains("NexusAgent-${VERSION}-universal.zip\" NexusAgent.app")),
+        "the bridge's zip built with `ditto -c -k --keepParent`, the one asset that says universal",
+        zips.iter().any(|l| {
+            l.starts_with("ditto -c -k --keepParent ")
+                && l.contains("NexusAgent.app")
+                && l.contains("NexusAgent-${VERSION}-universal.zip\"")
+        }),
+    );
+    expect(
+        "no `zip -r -y` in `Create ZIP for auto-updater`",
+        !zips.iter().any(|l| l.contains("zip -r -y")),
     );
     expect(
         "the new app's checksum file",
@@ -574,6 +632,198 @@ pub fn looked_at_what_matters(release_text: &str) -> Vec<String> {
             .iter()
             .any(|l| l.starts_with("(cd \"$folder\" && zip -r -X")),
     );
+    problems
+}
+
+fn mentions_signing_secret(line: &str) -> bool {
+    SIGNING_SECRET_NAMES.iter().any(|name| line.contains(name))
+}
+
+/// Ensures the five signing/notary secrets are passed ONLY to the two signing
+/// steps in `release.yml`, never at job scope, never to other steps, and never
+/// in the pull-request rehearsal workflow.
+pub fn signing_secrets_scoped(release_text: &str, rehearsal_text: &str) -> Vec<String> {
+    let mut problems = Vec::new();
+
+    for job in ["detect", "build-macos", "package"] {
+        let Some(lines) = job_lines(release_text, job) else {
+            continue;
+        };
+        let (header, steps) = split_job(&lines);
+        for line in &header {
+            if mentions_signing_secret(line) {
+                problems.push(format!(
+                    "release.yml, job `{}` header exposes signing secret (`{}`); pass signing secrets only to the two signing steps",
+                    job, line
+                ));
+            }
+        }
+        let step_map: HashMap<String, Vec<String>> = steps.iter().cloned().collect();
+        if job == "package" {
+            for &sign_step in SIGNING_STEPS {
+                match step_map.get(sign_step) {
+                    None => problems.push(format!(
+                        "release.yml, job `package` is missing signing step `{}`",
+                        sign_step
+                    )),
+                    Some(body) => {
+                        if !body.iter().any(|l| l == "env:") {
+                            problems.push(format!(
+                                "release.yml, step `{}` has no `env:` block for signing secrets",
+                                sign_step
+                            ));
+                        }
+                        for &expected in SIGNING_SECRET_ENV_LINES {
+                            if !body.iter().any(|l| l == expected) {
+                                problems.push(format!(
+                                    "release.yml, step `{}` is missing `{}`",
+                                    sign_step, expected
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        for (title, body) in &steps {
+            let allowed = job == "package" && SIGNING_STEPS.contains(&title.as_str());
+            if !allowed {
+                for line in body {
+                    if mentions_signing_secret(line) {
+                        problems.push(format!(
+                            "release.yml, job `{}`, step `{}` sees signing secret (`{}`); no step other than the two signing steps may see them",
+                            job, title, line
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    for job in ["build", "package"] {
+        let Some(lines) = job_lines(rehearsal_text, job) else {
+            continue;
+        };
+        let (header, steps) = split_job(&lines);
+        for line in &header {
+            if mentions_signing_secret(line) {
+                problems.push(format!(
+                    "the rehearsal, job `{}` header references signing secret (`{}`)",
+                    job, line
+                ));
+            }
+        }
+        for (title, body) in &steps {
+            for line in body {
+                if mentions_signing_secret(line) {
+                    problems.push(format!(
+                        "the rehearsal, job `{}`, step `{}` references signing secret (`{}`)",
+                        job, title, line
+                    ));
+                }
+            }
+        }
+    }
+
+    problems
+}
+
+/// Ensures release.yml narrows top-level permissions to `contents: read`,
+/// pins every `uses:` line to a 40-char commit SHA with `# vX.Y.Z`, and runs
+/// no unpinned Homebrew installs in either workflow.
+pub fn workflow_hardened(release_text: &str, rehearsal_text: &str) -> Vec<String> {
+    let mut problems = Vec::new();
+
+    let before_jobs = release_text
+        .split("\njobs:\n")
+        .next()
+        .unwrap_or(release_text);
+    let mut top_perms: Vec<&str> = Vec::new();
+    let mut in_perms = false;
+    for line in before_jobs.lines() {
+        if line == "permissions:" {
+            in_perms = true;
+            continue;
+        }
+        if in_perms {
+            if line.starts_with("  ") {
+                let trimmed = line.trim();
+                if !trimmed.is_empty() && !trimmed.starts_with('#') {
+                    top_perms.push(trimmed);
+                }
+            } else if !line.trim().is_empty() {
+                in_perms = false;
+            }
+        }
+    }
+    if top_perms != ["contents: read"] {
+        problems.push(format!(
+            "release.yml top-level permissions = {:?}, want [\"contents: read\"]",
+            top_perms
+        ));
+    }
+
+    if let Some(build_lines) = job_lines(release_text, "build-macos") {
+        let (header, _) = split_job(&build_lines);
+        if header.iter().any(|l| l.contains("contents: write")) {
+            problems
+                .push("release.yml job `build-macos` must not grant `contents: write`".to_string());
+        }
+    }
+
+    for (lineno, raw_line) in release_text.lines().enumerate() {
+        let trimmed = raw_line.trim();
+        if trimmed.starts_with('#') {
+            continue;
+        }
+        let after_dash = trimmed.strip_prefix("- ").unwrap_or(trimmed).trim_start();
+        if let Some(after_uses) = after_dash.strip_prefix("uses:") {
+            let spec = after_uses.trim_start();
+            let pinned = spec.split_once('@').is_some_and(|(action, rest)| {
+                !action.is_empty()
+                    && !action.chars().any(char::is_whitespace)
+                    && rest.len() > 40
+                    && rest[..40]
+                        .bytes()
+                        .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+                    && {
+                        let tail = rest[40..].trim_start();
+                        tail.len() < rest[40..].len()
+                            && tail
+                                .strip_prefix('#')
+                                .is_some_and(|c| c.trim_start().starts_with('v'))
+                    }
+            });
+            if !pinned {
+                problems.push(format!(
+                    "release.yml:{} `uses:` must be pinned to a 40-char SHA with `# vX.Y.Z`: `{}`",
+                    lineno + 1,
+                    trimmed
+                ));
+            }
+        }
+    }
+
+    for (label, text) in [
+        ("release.yml", release_text),
+        ("the rehearsal", rehearsal_text),
+    ] {
+        for (lineno, raw_line) in text.lines().enumerate() {
+            let trimmed = raw_line.trim();
+            if trimmed.starts_with('#') {
+                continue;
+            }
+            if trimmed.contains("brew install") || trimmed.contains("create-dmg") {
+                problems.push(format!(
+                    "{}:{} runs unpinned Homebrew/create-dmg (`{}`); build DMGs with `/usr/bin/hdiutil`",
+                    label,
+                    lineno + 1,
+                    trimmed
+                ));
+            }
+        }
+    }
+
     problems
 }
 
@@ -651,6 +901,56 @@ jobs:
           cp .build/checkouts/foo/bar /tmp/
 ";
     assert!(reads_only_what_it_fetched(good_wf, "release.yml", &["package"]).is_empty());
+
+    // 3. signing_secrets_scoped rejects job-level or non-signing-step exposure
+    let leaked_job_wf = "\
+jobs:
+  package:
+    runs-on: macos-15
+    env:
+      VITRUVIAN_SIGNING_CERT_P12: ${{ secrets.VITRUVIAN_SIGNING_CERT_P12 }}
+    steps:
+      - name: Sign and notarize apps and tool
+        env:
+          VITRUVIAN_SIGNING_CERT_P12: ${{ secrets.VITRUVIAN_SIGNING_CERT_P12 }}
+          VITRUVIAN_SIGNING_CERT_PASSWORD: ${{ secrets.VITRUVIAN_SIGNING_CERT_PASSWORD }}
+          VITRUVIAN_NOTARY_API_KEY_P8: ${{ secrets.VITRUVIAN_NOTARY_API_KEY_P8 }}
+          VITRUVIAN_NOTARY_KEY_ID: ${{ secrets.VITRUVIAN_NOTARY_KEY_ID }}
+          VITRUVIAN_NOTARY_ISSUER_ID: ${{ secrets.VITRUVIAN_NOTARY_ISSUER_ID }}
+        run: scripts/sign-and-notarize.sh apps --macho /tmp/tool
+      - name: Sign and notarize DMGs
+        env:
+          VITRUVIAN_SIGNING_CERT_P12: ${{ secrets.VITRUVIAN_SIGNING_CERT_P12 }}
+          VITRUVIAN_SIGNING_CERT_PASSWORD: ${{ secrets.VITRUVIAN_SIGNING_CERT_PASSWORD }}
+          VITRUVIAN_NOTARY_API_KEY_P8: ${{ secrets.VITRUVIAN_NOTARY_API_KEY_P8 }}
+          VITRUVIAN_NOTARY_KEY_ID: ${{ secrets.VITRUVIAN_NOTARY_KEY_ID }}
+          VITRUVIAN_NOTARY_ISSUER_ID: ${{ secrets.VITRUVIAN_NOTARY_ISSUER_ID }}
+        run: scripts/sign-and-notarize.sh dmgs foo.dmg
+      - name: Check the apps
+        env:
+          VITRUVIAN_NOTARY_KEY_ID: ${{ secrets.VITRUVIAN_NOTARY_KEY_ID }}
+        run: echo check
+";
+    let secret_errs = signing_secrets_scoped(leaked_job_wf, "jobs:\n  package:\n    steps:\n");
+    assert_eq!(
+        secret_errs.len(),
+        2,
+        "expected job-header and step leaks: {:?}",
+        secret_errs
+    );
+
+    // 4. workflow_hardened rejects workflow-level write permissions, unpinned actions, and brew install
+    let unhardened_wf = "\
+permissions:
+  contents: write
+jobs:
+  package:
+    steps:
+      - uses: actions/checkout@v7
+      - run: brew install create-dmg
+";
+    let hard_errs = workflow_hardened(unhardened_wf, "");
+    assert_eq!(hard_errs.len(), 3, "got: {:?}", hard_errs);
 }
 
 fn main() -> ExitCode {
@@ -669,6 +969,8 @@ fn main() -> ExitCode {
 
     let mut problems = Vec::new();
     problems.extend(looked_at_what_matters(&release_text));
+    problems.extend(workflow_hardened(&release_text, &rehearsal_text));
+    problems.extend(signing_secrets_scoped(&release_text, &rehearsal_text));
     problems.extend(compare(&release_text, &rehearsal_text));
     problems.extend(reads_only_what_it_fetched(
         &release_text,

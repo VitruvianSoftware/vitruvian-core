@@ -24,6 +24,8 @@
     <string>14.0</string>
     <key>LSUIElement</key>
     <true/>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Vitruvian Code launches AI coding tools (such as Claude and Gemini) that may run AppleScript to automate other Mac apps when a task asks for it.</string>
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSSupportsAutomaticTermination</key>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Vitruvian Code launches AI coding tools (claude, gemini, and others) as child processes that may run osascript; TCC treats Vitruvian Code as the responsible process, and under Hardened Runtime it refuses Apple Events without this entitlement. -->
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
+</dict>
+</plist>

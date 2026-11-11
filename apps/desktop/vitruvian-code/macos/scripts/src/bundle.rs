@@ -168,6 +168,11 @@ pub fn run(args: &[String]) -> i32 {
     }
 
     // Generate Info.plist
+    let apple_events_usage = if flavor.full {
+        "\n    <key>NSAppleEventsUsageDescription</key>\n    <string>Vitruvian Code launches AI coding tools (such as Claude and Gemini) that may run AppleScript to automate other Mac apps when a task asks for it.</string>"
+    } else {
+        ""
+    };
     let plist = format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -194,7 +199,7 @@ pub fn run(args: &[String]) -> i32 {
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>LSUIElement</key>
-    <true/>
+    <true/>{apple_events_usage}
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSSupportsAutomaticTermination</key>
@@ -206,6 +211,7 @@ pub fn run(args: &[String]) -> i32 {
         bundle_id = flavor.bundle_id,
         display_name = flavor.display,
         ver = version,
+        apple_events_usage = apple_events_usage,
     );
     if let Err(e) = fs::write(app_bundle.join("Contents/Info.plist"), &plist) {
         eprintln!("error: cannot write Info.plist: {}", e);

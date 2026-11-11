@@ -40,8 +40,11 @@ name: Nexus Agent Mirror Toolchain
 # does not: the tests otherwise run only under Bazel, on the newer Xcode.
 #
 # Left out, because they publish or need the mirror's token: the detect job
-# (which tags and creates the release), "Upload release assets" and "Update
-# Homebrew Cask". Nothing here is notarised, because the release is not either.
+# (which tags and creates the release), "Upload release assets", "Say what
+# the catalog entry pins" and "Update Homebrew Cask". The mirror's release
+# signs and notarizes with the Apple Developer ID inside its
+# `vitruvian-code-release` environment; this rehearsal runs on pull requests
+# without release secrets, so it opts out explicitly with `SIGNING: adhoc`.
 #
 # Only when the package or its release changes, so it runs rarely. A standard
 # GitHub-hosted runner on a public repository is not billed. NOT a required
@@ -61,6 +64,7 @@ on:
       - 'apps/desktop/vitruvian-code/macos/Tests/**'
       - 'apps/desktop/vitruvian-code/macos/Resources/**'
       - 'apps/desktop/vitruvian-code/macos/scripts/**'
+      - 'apps/desktop/vitruvian-code/scripts/**'
       - 'apps/desktop/vitruvian-code/testdata/**'
       - 'apps/desktop/vitruvian-code/THIRD_PARTY_NOTICES.md'
       - 'apps/desktop/vitruvian-code/.github/workflows/release.yml'
@@ -162,6 +166,8 @@ jobs:
     needs: build
     runs-on: macos-15
     timeout-minutes: 45
+    env:
+      SIGNING: adhoc
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -239,12 +245,25 @@ jobs:
           mkdir -p /tmp/dist-bridge
           "$RUNNER_TEMP/bundle-app" /tmp/bridge-universal/NexusAgent "$VERSION" /tmp/dist-bridge --bridge
 
+      - name: Sign and notarize apps and tool
+        run: |
+          apps/desktop/vitruvian-code/scripts/sign-and-notarize.sh apps \
+            --entitlements-app "/tmp/dist-universal/Vitruvian Code.app" \
+            --entitlements-app "/tmp/dist-arm64/Vitruvian Code.app" \
+            --entitlements-app "/tmp/dist-x86_64/Vitruvian Code.app" \
+            --plain-app /tmp/dist-bridge/NexusAgent.app \
+            --macho /tmp/universal/vitruvian-code-tool
+
       # Each app holds the copy of Mermaid where the chat view looks for it,
       # unchanged, with its licence, and is the signed executable for the
       # processors its name says.
       - name: Check the apps
         run: |
           set -euo pipefail
+          export CHECK_NOTARIZED=0
+          if [ "${SIGNING:-developer-id}" != "adhoc" ]; then
+            export CHECK_NOTARIZED=1
+          fi
           rustc --edition 2021 --crate-type lib --crate-name vitruvian_code_scripts_lib apps/desktop/vitruvian-code/macos/scripts/src/lib.rs -o "$RUNNER_TEMP/libvitruvian_code_scripts_lib.rlib"
           rustc --edition 2021 apps/desktop/vitruvian-code/macos/scripts/src/bin/check_packaged_app.rs -L "$RUNNER_TEMP" --extern vitruvian_code_scripts_lib="$RUNNER_TEMP/libvitruvian_code_scripts_lib.rlib" -o "$RUNNER_TEMP/check-packaged-app"
           "$RUNNER_TEMP/check-packaged-app" "/tmp/dist-universal/Vitruvian Code.app" arm64 x86_64
@@ -335,11 +354,9 @@ jobs:
           [ "$failed" = no ]
           echo "==> The app started, stayed up for fifteen seconds, stopped when told to, and left no crash report"
 
-      - name: Install create-dmg
-        run: brew install create-dmg
-
       - name: Create DMGs
         run: |
+          set -euo pipefail
           VERSION="0.0.0-rehearsal"
 
           for arch in universal arm64 x86_64; do
@@ -348,29 +365,37 @@ jobs:
             # bridge's zip is to be that.
             name="$arch"
             if [ "$arch" = universal ]; then name="macos"; fi
-            create-dmg \
-              --volname "Vitruvian Code" \
-              --window-pos 200 120 \
-              --window-size 600 400 \
-              --icon-size 100 \
-              --icon "Vitruvian Code.app" 175 190 \
-              --app-drop-link 425 190 \
-              --no-internet-enable \
-              "VitruvianCode-${VERSION}-${name}.dmg" \
-              "/tmp/dist-${arch}/" || true
+            stage="$RUNNER_TEMP/dmg-stage-${arch}"
+            /bin/rm -rf "$stage"
+            /bin/mkdir -p "$stage"
+            /usr/bin/ditto "/tmp/dist-${arch}/Vitruvian Code.app" "$stage/Vitruvian Code.app"
+            /bin/ln -s /Applications "$stage/Applications"
+            /usr/bin/hdiutil create \
+              -volname "Vitruvian Code" \
+              -srcfolder "$stage" \
+              -ov \
+              -format UDZO \
+              "VitruvianCode-${VERSION}-${name}.dmg"
+            /bin/rm -rf "$stage"
           done
 
           ls -lh *.dmg
 
+      - name: Sign and notarize DMGs
+        run: |
+          VERSION="0.0.0-rehearsal"
+          apps/desktop/vitruvian-code/scripts/sign-and-notarize.sh dmgs \
+            "VitruvianCode-${VERSION}-macos.dmg" \
+            "VitruvianCode-${VERSION}-arm64.dmg" \
+            "VitruvianCode-${VERSION}-x86_64.dmg"
+
       - name: Create ZIP for auto-updater
         run: |
           VERSION="0.0.0-rehearsal"
-          cd /tmp/dist-universal
-          zip -r "${GITHUB_WORKSPACE}/VitruvianCode-${VERSION}-macos.zip" "Vitruvian Code.app"
+          ditto -c -k --keepParent "/tmp/dist-universal/Vitruvian Code.app" "${GITHUB_WORKSPACE}/VitruvianCode-${VERSION}-macos.zip"
           # The bridge, in the zip old updaters take: the only one that says
           # "universal", with NexusAgent.app inside.
-          cd /tmp/dist-bridge
-          zip -r "${GITHUB_WORKSPACE}/NexusAgent-${VERSION}-universal.zip" NexusAgent.app
+          ditto -c -k --keepParent /tmp/dist-bridge/NexusAgent.app "${GITHUB_WORKSPACE}/NexusAgent-${VERSION}-universal.zip"
           cd "${GITHUB_WORKSPACE}"
           # What the bridge and the new updater check the new app's zip against.
           shasum -a 256 "VitruvianCode-${VERSION}-macos.zip" > "VitruvianCode-${VERSION}-macos.zip.sha256"

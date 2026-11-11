@@ -365,6 +365,22 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
+rust_test(
+    name = "sign_and_notarize_test",
+    size = "small",
+    srcs = ["scripts/src/sign_and_notarize_test.rs"],
+    data = [
+        "Resources/VitruvianCode.entitlements",
+        "//apps/desktop/vitruvian-code:sign_and_notarize_script",
+    ],
+    edition = "2021",
+    env = {
+        "ENTITLEMENTS_PATH": "$(rootpath Resources/VitruvianCode.entitlements)",
+        "SIGN_SCRIPT": "$(rootpath //apps/desktop/vitruvian-code:sign_and_notarize_script)",
+    },
+    rustc_flags = ["-Copt-level=3"],
+)
+
 rust_binary(
     name = "bazel-app-holds-mermaid",
     srcs = ["scripts/src/bin/bazel_app_holds_mermaid.rs"],

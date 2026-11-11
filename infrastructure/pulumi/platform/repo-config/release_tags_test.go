@@ -28,6 +28,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -307,11 +308,13 @@ func TestProgramRegistersReleaseTagRuleset(t *testing.T) {
 func TestDeployTagPatternsNeverMatchExemptTags(t *testing.T) {
 	res := runProgram(t)
 
+	var rulesetRepo string
 	var exempt []string
 	for _, rs := range res["github:index/repositoryRuleset:RepositoryRuleset"] {
 		if rs["name"].StringValue() != "release-tags" {
 			continue
 		}
+		rulesetRepo = rs["repository"].StringValue()
 		for _, e := range propStrings(rs["conditions"].ObjectValue()["refName"].ObjectValue()["excludes"]) {
 			exempt = append(exempt, strings.TrimPrefix(e, "refs/tags/"))
 		}
@@ -320,14 +323,35 @@ func TestDeployTagPatternsNeverMatchExemptTags(t *testing.T) {
 		t.Fatal("found no exempt tags on a registered release-tags ruleset; the check would be blind")
 	}
 
-	registered := map[string]bool{}
+	// Inspect EVERY tag deployment policy the program registers across every
+	// repository (never silently skipping non-monorepo policies): vitruvian-core
+	// policies must equal environmentTagPatterns and reject every exempt rolling
+	// tag, and no standalone mirror repository registers a tag deployment policy.
+	registeredByRepo := map[string]map[string]bool{}
 	for _, p := range res["github:index/repositoryEnvironmentDeploymentPolicy:RepositoryEnvironmentDeploymentPolicy"] {
-		if v, ok := p["tagPattern"]; ok && v.IsString() && v.StringValue() != "" {
-			registered[v.StringValue()] = true
+		v, ok := p["tagPattern"]
+		if !ok || !v.IsString() || v.StringValue() == "" {
+			continue
+		}
+		repo := p["repository"].StringValue()
+		if repo == "" {
+			t.Fatalf("deployment policy %v has tagPattern %q with empty repository", p, v.StringValue())
+		}
+		if registeredByRepo[repo] == nil {
+			registeredByRepo[repo] = map[string]bool{}
+		}
+		registeredByRepo[repo][v.StringValue()] = true
+	}
+
+	for repo, patterns := range registeredByRepo {
+		if repo != rulesetRepo {
+			t.Errorf("unexpected repository %q registers tag deployment policies %v", repo, patterns)
 		}
 	}
+
+	registered := registeredByRepo[rulesetRepo]
 	if len(registered) == 0 {
-		t.Fatal("the program registers no tag deployment policy; the check would be blind")
+		t.Fatal("the program registers no tag deployment policy on the monorepo; the check would be blind")
 	}
 	for pattern := range registered {
 		for _, tag := range exempt {
@@ -343,13 +367,88 @@ func TestDeployTagPatternsNeverMatchExemptTags(t *testing.T) {
 	}
 	for p := range registered {
 		if !declared[p] {
-			t.Errorf("the program registers tag pattern %q, which is not in environmentTagPatterns", p)
+			t.Errorf("the program registers tag pattern %q on %s, which is not in environmentTagPatterns", p, rulesetRepo)
 		}
 	}
 	for p := range declared {
 		if !registered[p] {
-			t.Errorf("environmentTagPatterns lists %q, which no Environment uses", p)
+			t.Errorf("environmentTagPatterns lists %q, which no Environment on %s uses", p, rulesetRepo)
 		}
+	}
+}
+
+// Vitruvian Code's mirror cuts plain `v<version>` tags on `vitruvian-code` from
+// pushes to `main` and deploys to `vitruvian-code-release` from branch `main`
+// only (never from tags). On `vitruvian-core`, `v*` would match the exempt
+// rolling tag `vitruvian-beta-latest`, so `vitruvian-code-release` must stay on
+// `vitruvian-code` with its single `main` branch deployment policy and zero tag
+// deployment policies anywhere.
+func TestVitruvianCodeReleaseTagsStaySeparateFromMonorepoReleaseTags(t *testing.T) {
+	if ok, err := path.Match("v*", "vitruvian-beta-latest"); err != nil || !ok {
+		t.Fatalf("expected v* to match vitruvian-beta-latest (got ok=%v, err=%v); this invariant explains why v* must never sit on vitruvian-core", ok, err)
+	}
+	for _, p := range environmentTagPatterns {
+		if p == "v*" {
+			t.Fatal("environmentTagPatterns must never include bare v* on vitruvian-core")
+		}
+		for _, vcTag := range []string{"v1.33.0", "vitruvian-code-v1.33.0"} {
+			if ok, _ := path.Match(p, vcTag); ok {
+				t.Errorf("monorepo Environment tag pattern %q unexpectedly matches vitruvian-code tag %q", p, vcTag)
+			}
+		}
+	}
+	for _, vcTag := range []string{"v1.33.0", "vitruvian-code-v1.33.0"} {
+		if !tagProtected(t, vcTag) {
+			t.Errorf("tag %q must remain protected by release-tags on vitruvian-core", vcTag)
+		}
+	}
+
+	res := runProgram(t)
+
+	var vcEnvs int
+	for _, env := range res["github:index/repositoryEnvironment:RepositoryEnvironment"] {
+		repo := env["repository"].StringValue()
+		name := env["environment"].StringValue()
+		if name == "vitruvian-code-release" {
+			vcEnvs++
+			if repo != "vitruvian-code" {
+				t.Errorf("vitruvian-code-release registered on repository %q, want vitruvian-code", repo)
+			}
+		} else if repo == "vitruvian-code" {
+			t.Errorf("unexpected environment %q registered on vitruvian-code", name)
+		}
+	}
+	if vcEnvs != 1 {
+		t.Fatalf("program registered %d vitruvian-code-release environments, want 1", vcEnvs)
+	}
+
+	var vcPolicies []string
+	for _, p := range res["github:index/repositoryEnvironmentDeploymentPolicy:RepositoryEnvironmentDeploymentPolicy"] {
+		repo := p["repository"].StringValue()
+		env := p["environment"].StringValue()
+		branch := ""
+		if v, ok := p["branchPattern"]; ok && v.IsString() {
+			branch = v.StringValue()
+		}
+		tag := ""
+		if v, ok := p["tagPattern"]; ok && v.IsString() {
+			tag = v.StringValue()
+		}
+		if repo == "vitruvian-core" {
+			if env == "vitruvian-code-release" || tag == "v*" {
+				t.Errorf("vitruvian-core must never carry vitruvian-code-release or v* policy (got env=%q tag=%q)", env, tag)
+			}
+		}
+		if env == "vitruvian-code-release" || repo == "vitruvian-code" {
+			if repo != "vitruvian-code" || env != "vitruvian-code-release" {
+				t.Errorf("mismatched mirror policy repo=%q env=%q", repo, env)
+			}
+			vcPolicies = append(vcPolicies, fmt.Sprintf("branch=%s,tag=%s", branch, tag))
+		}
+	}
+	sort.Strings(vcPolicies)
+	if got, want := strings.Join(vcPolicies, " "), "branch=main,tag="; got != want {
+		t.Errorf("vitruvian-code-release policies = %q, want %q", got, want)
 	}
 }
 

@@ -240,7 +240,7 @@ Runs in the background with PID tracking and orphan process cleanup. Logs are wr
 
 Download the latest DMG from the [Releases page](https://github.com/VitruvianSoftware/vitruvian-code/releases). Open it and drag the app to your Applications folder.
 
-A native SwiftUI app that lives in the menu bar (no dock icon). Provides a GUI to start/stop the bot, view logs, configure settings, and handle Quick Prompts. See [macOS App Setup](#macos-menu-bar-app) below for Gatekeeper instructions.
+A native SwiftUI app that lives in the menu bar (no dock icon). Provides a GUI to start/stop the bot, view logs, configure settings, and handle Quick Prompts. See [macOS Menu Bar App](#macos-menu-bar-app) below for installation and release signing details.
 
 #### Option D: Antigravity plugin
 
@@ -269,23 +269,23 @@ A native SwiftUI companion app that manages the bot daemon from the menu bar.
 
 ### Installation
 
-The application is distributed as a universal DMG. Because it is currently **unsigned**, macOS Gatekeeper will block the first launch. Follow these steps to install and open it:
+Releases are signed with the Apple Developer ID Application certificate and notarized by Apple so macOS Gatekeeper opens them directly:
 
-1. **Download** the latest `VitruvianCode-x.x.x-universal.dmg` from the [GitHub Releases page](https://github.com/VitruvianSoftware/vitruvian-code/releases).
+1. **Download** the latest `VitruvianCode-x.x.x-macos.dmg` (universal) — or `-arm64.dmg` / `-x86_64.dmg` — from the [GitHub Releases page](https://github.com/VitruvianSoftware/vitruvian-code/releases).
 2. **Mount the DMG** by double-clicking it.
-3. **Install** by dragging the `NexusAgent` app into the `Applications` folder shortcut.
-4. **First Launch (Important):**
-   - Open your `Applications` folder in Finder.
-   - You **cannot** double-click the app directly (macOS will warn you about an unidentified developer).
-   - *For macOS 14 Sonoma and older:* **Right-click (or Control-click)** the app and select **Open**.
-   - *For macOS 15 Sequoia and newer:* Apple has removed the Right-click bypass. You have two options:
-     - **Option A (System Settings):** Double click the app and click **Done** on the warning. Open **System Settings > Privacy & Security**, scroll down to the Security section, and click **Open Anyway**.
-     - **Option B (Terminal):** Open your **Terminal** and run the following command to clear the browser download quarantine flag, then open the app normally:
-       ```bash
-       find /Applications/NexusAgent.app -print0 | xargs -0 xattr -c
-       ```
+3. **Install** by dragging `Vitruvian Code.app` into the `Applications` folder shortcut, then open it from `/Applications`.
 
-*You only need to do this exact process once. For subsequent launches, or when the app auto-updates, it will open normally.*
+### Release Signing
+
+Every standalone release signs and notarizes all shipped macOS binaries and disk images via [`scripts/sign-and-notarize.sh`](./scripts/sign-and-notarize.sh) before generating `.zip` archives and `.sha256` checksums:
+
+- **What is signed:** `Vitruvian Code.app` (`com.vitruviansoftware.code`, universal + `arm64` + `x86_64`), the legacy updater migration bridge `NexusAgent.app` (`com.vitruviansoftware.nexusagent`), the standalone `bin/tool` Mach-O inside `vitruvian-code-tool-<version>.zip`, and all three `.dmg` disk images (`-macos.dmg`, `-arm64.dmg`, `-x86_64.dmg`). App bundles and `.dmg` images have notarization tickets stapled via `xcrun stapler`.
+- **Entitlements:** `Vitruvian Code.app` carries only `com.apple.security.automation.apple-events` ([`macos/Resources/VitruvianCode.entitlements`](./macos/Resources/VitruvianCode.entitlements)) because it launches AI coding tools (`claude`, `gemini`, and others) as child processes that may run `osascript`; TCC treats Vitruvian Code as the responsible process and Hardened Runtime refuses Apple Events without this entitlement. `NexusAgent.app` and `vitruvian-code-tool` carry no entitlements.
+- **Where secrets live:** the `vitruvian-code-release` GitHub Environment on `VitruvianSoftware/vitruvian-code` (declared in monorepo `repo-config`, restricted to branch `main` only), holding `VITRUVIAN_SIGNING_CERT_P12`, `VITRUVIAN_SIGNING_CERT_PASSWORD`, `VITRUVIAN_NOTARY_API_KEY_P8`, `VITRUVIAN_NOTARY_KEY_ID`, and `VITRUVIAN_NOTARY_ISSUER_ID`.
+- **Loading secrets from `vitruvian-core`:**
+  ```sh
+  REPO=VitruvianSoftware/vitruvian-code bazel run //tools/sync-env-secrets:apply -- vitruvian-code-release
+  ```
 
 ### Auto-Update
 
@@ -360,5 +360,6 @@ The pre-migration `GEMINI_*` names are still read as fallbacks.
 
 ## Subdirectories & Boundaries
 - [macos](./macos/README.md): Component package providing implementation for apps/desktop/vitruvian-code/macos.
+- [scripts](./scripts/README.md): Release code-signing and notarization scripts for Vitruvian Code macOS bundles and disk images.
 - [src](./src/README.md): Component package providing implementation for apps/desktop/vitruvian-code/src.
 
