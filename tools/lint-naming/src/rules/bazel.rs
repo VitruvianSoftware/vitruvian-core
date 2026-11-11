@@ -342,7 +342,7 @@ mod tests {
         assert!(validate_bazel_target_name("B", "agent-app_test", "sh_test", None).is_empty());
         assert!(validate_bazel_target_name("B", "app.min", "js_binary", None).is_empty());
         assert!(
-            validate_bazel_target_name("B", "NexusAgent", "macos_application", None).is_empty()
+            validate_bazel_target_name("B", "VitruvianCode", "macos_application", None).is_empty()
         );
         let v = validate_bazel_target_name("B", "Bad", "sh_test", None);
         assert_eq!(v[0].suggested_fix.as_deref(), Some("Bad_test"));

@@ -1,0 +1,311 @@
+// Copyright (c) 2026 VitruvianSoftware
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
+import VitruvianCodeCore
+@testable import VitruvianCodeUI
+import XCTest
+
+/// The composer's `/` commands: which the chat runs itself, and which go to
+/// the agent.
+@MainActor
+final class SlashCommandTests: XCTestCase {
+    private let configuration = VitruvianCodeConfiguration(model: "m1")
+
+    func testEffortCyclesThroughEveryLevelAndRoundAgain() {
+        typealias S = VitruvianCodeQuickPromptSession
+        XCTAssertEqual(S.nextEffort(after: .automatic), .low)
+        XCTAssertEqual(S.nextEffort(after: .low), .medium)
+        XCTAssertEqual(S.nextEffort(after: .medium), .high)
+        XCTAssertEqual(S.nextEffort(after: .high), .max)
+        XCTAssertEqual(S.nextEffort(after: .max), .automatic)
+    }
+
+    func testPlanAndWorktreeToggleLocallyAndClearTheDraft() {
+        let rig = ComposerRig()
+        let session = rig.session()
+        session.draft = "/plan"
+        XCTAssertEqual(session.submitDraft(configuration: configuration, agentPath: "/fake/agy"),
+                       .command(.planMode(true)))
+        XCTAssertTrue(session.planMode)
+        XCTAssertEqual(session.draft, "")
+        XCTAssertTrue(rig.launches.isEmpty, "nothing went to the agent")
+
+        session.draft = "/worktree"
+        XCTAssertEqual(session.submitDraft(configuration: configuration, agentPath: "/fake/agy"),
+                       .command(.worktreeMode(true)))
+        XCTAssertTrue(session.worktreeMode)
+    }
+
+    func testModelAloneOpensTheEditor() {
+        let session = ComposerRig().session()
+        session.draft = "/model"
+        XCTAssertEqual(session.submitDraft(configuration: configuration, agentPath: nil), .command(.editModel))
+        XCTAssertTrue(session.isEditingModel)
+        XCTAssertEqual(session.mode, .chat, "switches to chat mode so the header editor is visible")
+    }
+
+    func testPlanWorktreeAndForkWithArgumentsEnableModeAndDispatchPrompt() {
+        let rig = ComposerRig()
+        let session = rig.session()
+        session.draft = "/plan design the schema"
+        XCTAssertEqual(session.submitDraft(configuration: configuration, agentPath: "/fake/agy"), .sent)
+        XCTAssertTrue(session.planMode)
+        XCTAssertEqual(session.messages.first?.text, "design the schema")
+        rig.finishCleanly()
+
+        session.draft = "/worktree implement the migration"
+        XCTAssertEqual(session.submitDraft(configuration: configuration, agentPath: "/fake/agy"), .sent)
+        XCTAssertTrue(session.worktreeMode)
+        XCTAssertEqual(session.messages.filter { $0.role == .user }.last?.text, "implement the migration")
+        rig.finishCleanly()
+
+        session.resume(VitruvianCodeSessionSummary(id: "conv-fork", title: "Base", steps: 1, modified: nil),
+                       configuration: VitruvianCodeConfiguration(activeProvider: .claude))
+        session.draft = "/fork try alternative approach"
+        XCTAssertEqual(session.submitDraft(configuration: VitruvianCodeConfiguration(activeProvider: .claude),
+                                           agentPath: "/fake/claude"), .sent)
+        XCTAssertTrue(rig.launches.last?.contains("--fork-session") ?? false)
+        rig.finishCleanly()
+        session.stopTranscriptFollower()
+    }
+
+    func testUpdateChatConfigurationWorksWithoutABotFolderAndSurvivesLoad() {
+        let rig = ComposerRig()
+        let engine = VitruvianCodeEngine(environment: rig.environment, host: rig.host)
+        XCTAssertNil(engine.problem)
+
+        var updated = engine.configuration
+        updated.workingDirectory = "/Users/rig/project"
+        updated.effort = .high
+        updated.approvalMode = .acceptEdits
+        engine.updateChatConfiguration(updated)
+
+        XCTAssertNil(engine.problem, "changing chat settings without a bot folder does not flag missingBot")
+        XCTAssertEqual(engine.configuration.workingDirectory, "/Users/rig/project")
+        XCTAssertEqual(engine.configuration.effort, .high)
+        XCTAssertEqual(engine.configuration.approvalMode, .acceptEdits)
+
+        engine.load()
+        XCTAssertEqual(engine.configuration.workingDirectory, "/Users/rig/project")
+        XCTAssertEqual(engine.configuration.effort, .high)
+        XCTAssertEqual(engine.configuration.approvalMode, .acceptEdits)
+    }
+
+    func testRecallingAndEditingHistoryDoesNotWipeDraftOnDownArrow() {
+        let session = ComposerRig().session()
+        session.promptHistory = ["first prompt", "second prompt"]
+        XCTAssertTrue(session.recallPreviousPrompt())
+        XCTAssertEqual(session.draft, "second prompt")
+        XCTAssertTrue(session.recallPreviousPrompt())
+        XCTAssertEqual(session.draft, "first prompt")
+        XCTAssertTrue(session.recallNextPrompt())
+        XCTAssertEqual(session.draft, "second prompt")
+
+        // User edits the recalled prompt, then presses Down arrow:
+        session.draft = "second prompt edited"
+        XCTAssertFalse(session.recallNextPrompt(), "Down arrow is left to the text field when edited")
+        XCTAssertEqual(session.draft, "second prompt edited", "edited draft is preserved")
+        XCTAssertEqual(session.historyIndex, -1)
+    }
+
+    func testResumeClearsLastFailedPrompt() {
+        let rig = ComposerRig()
+        let session = rig.session()
+        session.send("broken", configuration: configuration, agentPath: "/fake/agy")
+        rig.agentExit?(1)
+        XCTAssertEqual(session.lastFailedPrompt, "broken")
+
+        session.resume(VitruvianCodeSessionSummary(id: "conv-ok", title: "Clean", steps: 1, modified: nil),
+                       configuration: configuration)
+        XCTAssertNil(session.lastFailedPrompt)
+        session.stopTranscriptFollower()
+    }
+
+    func testClearStartsANewChat() {
+        let rig = ComposerRig()
+        let session = rig.session()
+        session.send("hello", configuration: configuration, agentPath: "/fake/agy")
+        rig.finishCleanly()
+        XCTAssertFalse(session.messages.isEmpty)
+        session.draft = "/clear"
+        XCTAssertEqual(session.submitDraft(configuration: configuration, agentPath: "/fake/agy"), .command(.newChat))
+        XCTAssertTrue(session.messages.isEmpty)
+        XCTAssertEqual(session.mode, .compact)
+    }
+
+    func testCompactAndUnknownCommandsGoToTheAgentAsThePrompt() {
+        let rig = ComposerRig()
+        let session = rig.session()
+        session.draft = "/compact"
+        XCTAssertEqual(session.submitDraft(configuration: configuration, agentPath: "/fake/agy"), .sent)
+        XCTAssertEqual(rig.launches.count, 1)
+        XCTAssertTrue(rig.launches[0].contains(where: { $0.contains("/compact") }), "\(rig.launches[0])")
+        XCTAssertEqual(session.messages.first?.text, "/compact")
+        rig.finishCleanly()
+
+        XCTAssertEqual(session.runSlashCommand("/review now", configuration: configuration, agentPath: "/fake/agy"),
+                       .sentToAgent("/review now"))
+        XCTAssertEqual(rig.launches.count, 2)
+        session.stopTranscriptFollower()
+    }
+
+    func testAPathIsAPromptNotACommand() {
+        let session = ComposerRig().session()
+        XCTAssertNil(session.runSlashCommand("/Users/me/notes.txt explain", configuration: configuration,
+                                             agentPath: nil))
+        XCTAssertNil(session.runSlashCommand("hello", configuration: configuration, agentPath: nil))
+        XCTAssertNil(session.runSlashCommand("/", configuration: configuration, agentPath: nil))
+    }
+
+    func testCostAddsUpTheRepliesAndSaysSo() {
+        let session = ComposerRig().session()
+        session.messages = [
+            VitruvianCodeChatMessage(role: .user, text: "a"),
+            VitruvianCodeChatMessage(role: .agent, text: "b", inputTokens: 100, outputTokens: 20, cachedTokens: 5,
+                                  totalCostUSD: 0.01),
+            VitruvianCodeChatMessage(role: .agent, text: "c", inputTokens: 50, outputTokens: 10, totalCostUSD: 0.02),
+            VitruvianCodeChatMessage(role: .agent, text: "no figures"),
+        ]
+        let result = session.runSlashCommand("/cost", configuration: configuration, agentPath: nil,
+                                             costSummary: { "total \($0.inputTokens)" })
+        guard case .cost(let totals) = result else { return XCTFail("\(String(describing: result))") }
+        XCTAssertEqual(totals.inputTokens, 150)
+        XCTAssertEqual(totals.outputTokens, 30)
+        XCTAssertEqual(totals.cachedTokens, 5)
+        XCTAssertEqual(totals.costUSD ?? 0, 0.03, accuracy: 0.0001)
+        XCTAssertEqual(totals.replies, 2)
+        XCTAssertEqual(session.messages.last?.text, "total 150")
+        XCTAssertNil(session.messages.last?.inputTokens, "the note carries no figures to be counted again")
+        XCTAssertEqual(VitruvianCodeQuickPromptSession.costTotals(of: session.messages), totals)
+    }
+
+    func testForkNeedsAConversationAndGoesWithTheNextTurnOnly() {
+        let rig = ComposerRig()
+        let session = rig.session()
+        XCTAssertEqual(session.runSlashCommand("/fork", configuration: configuration, agentPath: nil), .nothingToFork)
+        XCTAssertFalse(session.forkNextTurn)
+
+        session.resume(VitruvianCodeSessionSummary(id: "conv-9", title: "Old", steps: 2, modified: nil),
+                       configuration: VitruvianCodeConfiguration(activeProvider: .claude))
+        XCTAssertEqual(session.runSlashCommand("/fork", configuration: configuration, agentPath: nil), .forked)
+        XCTAssertTrue(session.forkNextTurn)
+        session.send("go", configuration: VitruvianCodeConfiguration(activeProvider: .claude), agentPath: "/fake/claude")
+        XCTAssertFalse(session.forkNextTurn, "the fork is used up by the turn")
+        XCTAssertTrue(rig.launches.last?.contains("--fork-session") ?? false, "\(rig.launches)")
+        rig.finishCleanly()
+        session.send("again", configuration: VitruvianCodeConfiguration(activeProvider: .claude), agentPath: "/fake/claude")
+        XCTAssertFalse(rig.launches.last?.contains("--fork-session") ?? true)
+        rig.finishCleanly()
+        session.stopTranscriptFollower()
+    }
+
+    func testForkFromTheDrawerResumesAndArms() {
+        let session = ComposerRig().session()
+        session.fork(VitruvianCodeSessionSummary(id: "conv-3", title: "T", steps: 1, modified: nil),
+                     configuration: configuration)
+        XCTAssertEqual(session.conversationID, "conv-3")
+        XCTAssertTrue(session.forkNextTurn)
+        session.stopTranscriptFollower()
+    }
+
+    func testPinsAndNamesGoThroughTheHost() {
+        let rig = ComposerRig()
+        rig.sessions = [
+            VitruvianCodeSessionSummary(id: "a", title: "First", steps: 1, modified: nil),
+            VitruvianCodeSessionSummary(id: "b", title: "Second", steps: 1, modified: nil),
+        ]
+        let session = rig.session()
+        session.refreshSessions(configuration: configuration)
+        XCTAssertEqual(session.sessions.map(\.id), ["a", "b"])
+
+        session.togglePin(session.sessions[1])
+        XCTAssertEqual(session.sessions.map(\.id), ["b", "a"], "pinned first")
+        XCTAssertTrue(session.sessions[0].isPinned)
+        XCTAssertTrue(rig.host.sessionPreferences.isPinned("b"), "kept by the host")
+
+        session.renamingSessionID = "a"
+        session.rename(session.sessions[1], to: "  Renamed  ")
+        XCTAssertNil(session.renamingSessionID, "the editor closes")
+        XCTAssertEqual(session.sessions.first(where: { $0.id == "a" })?.title, "Renamed")
+
+        session.togglePin(session.sessions[0])
+        XCTAssertEqual(session.sessions.map(\.id), ["a", "b"], "unpinned goes back to its place")
+    }
+
+    func testEscClosesTheRenameEditorFirst() {
+        let session = ComposerRig().session()
+        session.renamingSessionID = "a"
+        XCTAssertEqual(session.pressEscape(stoppingReply: true), .closeInlineEditor)
+        XCTAssertNil(session.renamingSessionID)
+    }
+
+    func testOrcaADESlashCommandsAndJumpTargets() {
+        let rig = ComposerRig()
+        let session = rig.session()
+
+        session.draft = "/race implement auth middleware"
+        XCTAssertEqual(session.submitDraft(configuration: configuration, agentPath: nil),
+                       .command(.adePanel(.raceMode)))
+        XCTAssertEqual(session.activeADEPanel, .raceMode)
+        XCTAssertEqual(session.raceSession.prompt, "implement auth middleware")
+        XCTAssertEqual(session.mode, .chat)
+
+        // Escape dismisses the open ADE panel first.
+        XCTAssertEqual(session.pressEscape(stoppingReply: true), .closeInlineEditor)
+        XCTAssertNil(session.activeADEPanel)
+
+        XCTAssertEqual(session.runSlashCommand("/diff", configuration: configuration, agentPath: nil),
+                       .adePanel(.diffReview))
+        XCTAssertEqual(session.activeADEPanel, .diffReview)
+
+        XCTAssertEqual(session.runSlashCommand("/design http://localhost:5173", configuration: configuration, agentPath: nil),
+                       .adePanel(.designMode))
+        XCTAssertEqual(session.activeADEPanel, .designMode)
+        XCTAssertEqual(session.designModeInitialURL, "http://localhost:5173")
+
+        XCTAssertEqual(session.runSlashCommand("/jump", configuration: configuration, agentPath: nil),
+                       .adePanel(.jumpPalette))
+        XCTAssertEqual(session.runSlashCommand("/inbox", configuration: configuration, agentPath: nil),
+                       .adePanel(.inbox))
+        XCTAssertEqual(session.runSlashCommand("/tasks", configuration: configuration, agentPath: nil),
+                       .adePanel(.tasks))
+        XCTAssertEqual(session.runSlashCommand("/agents", configuration: configuration, agentPath: nil),
+                       .adePanel(.accountsAndCatalog))
+        XCTAssertEqual(session.runSlashCommand("/checkpoints", configuration: configuration, agentPath: nil),
+                       .adePanel(.checkpoints))
+        XCTAssertEqual(session.runSlashCommand("/notes", configuration: configuration, agentPath: nil),
+                       .adePanel(.notes))
+        XCTAssertEqual(session.runSlashCommand("/automations", configuration: configuration, agentPath: nil),
+                       .adePanel(.automationsAndOrchestration))
+        XCTAssertEqual(session.runSlashCommand("/orchestrate", configuration: configuration, agentPath: nil),
+                       .adePanel(.automationsAndOrchestration))
+
+        let targets = session.buildJumpTargets(configuration: configuration)
+        XCTAssertTrue(targets.contains(where: { $0.kind == .agentPreset && $0.title == "Claude Code" }))
+        XCTAssertTrue(targets.contains(where: { $0.kind == .slashCommand && $0.payload == "/race" }))
+
+        // Typing "/" matches all 19 built-in commands and sizes the popover to maxRowsHeight (188pt), not 1 row.
+        session.draft = "/"
+        XCTAssertEqual(session.matchingSlashCommands.count, 19)
+        XCTAssertEqual(ComposerSuggestionList.rowsHeight(for: session.matchingSlashCommands.count),
+                       ComposerSuggestionList.maxRowsHeight)
+        XCTAssertEqual(ComposerSuggestionList.rowsHeight(for: 1), ComposerSuggestionList.rowHeight + 6)
+    }
+}

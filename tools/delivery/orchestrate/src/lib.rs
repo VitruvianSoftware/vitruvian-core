@@ -64,7 +64,7 @@ pub const DEFAULT_MANIFEST_NAME: &str = "delivery-manifest.json";
 /// Where the decision engine sits in the orchestrator's runfiles.
 pub const ENGINE_RLOCATION: &str = "_main/tools/ci/deploy_affected";
 pub const DELIVERY_QUERY: &str =
-    r#"attr(tags, "\bdelivery\b", (//... except //apps/desktop/nexus-agent/macos/...))"#;
+    r#"attr(tags, "\bdelivery\b", (//... except //apps/desktop/vitruvian-code/macos/...))"#;
 const UNIT_TARGET_SUFFIX: &str = ".delivery_unit";
 const META_FILE_SUFFIX: &str = ".delivery.json";
 

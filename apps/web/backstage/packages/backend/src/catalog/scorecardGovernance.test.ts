@@ -35,7 +35,7 @@ describe("Service Maturity Scorecards & Governance", () => {
     "apps/cli/devx/catalog-info.yaml",
     "apps/cli/homelab/catalog-info.yaml",
     "apps/mcp/slack/catalog-info.yaml",
-    "apps/desktop/nexus-agent/catalog-info.yaml",
+    "apps/desktop/vitruvian-code/catalog-info.yaml",
   ];
 
   it.each(componentPaths)(

@@ -113,22 +113,22 @@ rust_test(
     deps = [":ci_testkit"],
 )
 
-# The mirror's release workflow for the standalone Nexus Agent never runs here;
+# The mirror's release workflow for the standalone Vitruvian Code app never runs here;
 # nexus-agent-mirror-toolchain.yaml rehearses its build and packaging on pull
 # requests. This fails when the steps the two share stop being the same, which
 # nothing else would report: the rehearsal would stay green while proving
 # nothing about the release. Reads both files as text; builds nothing.
 rust_test(
-    name = "nexus_agent_release_rehearsal_test",
+    name = "vitruvian_code_release_rehearsal_test",
     size = "small",
-    srcs = ["src/nexus_agent_release_rehearsal_test.rs"],
+    srcs = ["src/vitruvian_code_release_rehearsal_test.rs"],
     args = [
-        "$(rootpath //apps/desktop/nexus-agent:release_workflow)",
+        "$(rootpath //apps/desktop/vitruvian-code:release_workflow)",
         "$(rootpath //:.github/workflows/nexus-agent-mirror-toolchain.yaml)",
     ],
     data = [
         "//:.github/workflows/nexus-agent-mirror-toolchain.yaml",
-        "//apps/desktop/nexus-agent:release_workflow",
+        "//apps/desktop/vitruvian-code:release_workflow",
     ],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],

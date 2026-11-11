@@ -710,22 +710,22 @@ TOOL_PROTOCOL_ARGS = [
 
 py_binary(
     name = "pin_tool_protocol",
-    srcs = ["bazel/pin_nexus_agent_shared.py"],
+    srcs = ["bazel/pin_vitruvian_code_shared.py"],
     args = TOOL_PROTOCOL_ARGS,
     data = TOOL_PROTOCOL,
-    main = "bazel/pin_nexus_agent_shared.py",
+    main = "bazel/pin_vitruvian_code_shared.py",
 )
 
 py_test(
     name = "tool_protocol_pin_test",
     size = "small",
-    srcs = ["bazel/pin_nexus_agent_shared.py"],
+    srcs = ["bazel/pin_vitruvian_code_shared.py"],
     args = [
         "--check",
         "$(rootpath bazel/tool_protocol.sha256)",
     ] + TOOL_PROTOCOL_ARGS,
     data = ["bazel/tool_protocol.sha256"] + TOOL_PROTOCOL,
-    main = "bazel/pin_nexus_agent_shared.py",
+    main = "bazel/pin_vitruvian_code_shared.py",
 )
 
 # make-dmg.sh finds a disk image's attachments in what `hdiutil info` prints.

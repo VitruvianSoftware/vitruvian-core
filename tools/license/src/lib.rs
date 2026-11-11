@@ -39,7 +39,7 @@ pub const APPS: &[&str] = &[
     "apps/cli/devx",
     "apps/cli/homelab",
     "apps/mcp/slack",
-    "apps/desktop/nexus-agent",
+    "apps/desktop/vitruvian-code",
     "apps/desktop/home-speaker",
 ];
 
@@ -56,8 +56,8 @@ const EXEMPT_PREFIXES: &[&str] = &[
     "apps/desktop/vitruvian/",
     // carries code from that fork, so GPL-3.0-or-later too
     "apps/desktop/vitruvian-tool-github/",
-    // Nexus Agent's unmodified vendored Mermaid (another holder's MIT)
-    "apps/desktop/nexus-agent/macos/Sources/NexusAgentUI/Resources/",
+    // Vitruvian Code's unmodified vendored Mermaid (another holder's MIT)
+    "apps/desktop/vitruvian-code/macos/Sources/VitruvianCodeUI/Resources/",
     // AGPL-3.0-or-later, with SPDX AGPL headers
     "apps/desktop/courier/",
 ];

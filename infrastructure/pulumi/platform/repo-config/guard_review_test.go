@@ -125,7 +125,7 @@ func TestGuardReviewPathsCoverage(t *testing.T) {
 		".github/dependabot.yml",
 		".github/CODEOWNERS",
 		".github/PULL_REQUEST_TEMPLATE.md",
-		"apps/desktop/nexus-agent/.github/workflows/release.yml",
+		"apps/desktop/vitruvian-code/.github/workflows/release.yml",
 		"infrastructure/pulumi/platform/repo-config/internal/secrets/secrets.go",
 		"infrastructure/pulumi/platform/repo-config/release_tags_test.go",
 		"infrastructure/pulumi/platform/repo-config/guard_review_test.go",

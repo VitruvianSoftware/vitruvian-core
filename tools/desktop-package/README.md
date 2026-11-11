@@ -1,6 +1,6 @@
 # Desktop Release Packaging Tool (`package-desktop`)
 
-`//tools/desktop-package:package-desktop` is the canonical, reusable packaging tool for macOS desktop applications in `apps/desktop/` (`home-speaker`, `vitruvian`, `nexus-agent`, and future desktop apps).
+`//tools/desktop-package:package-desktop` is the canonical, reusable packaging tool for macOS desktop applications in `apps/desktop/` (`home-speaker`, `vitruvian`, `vitruvian-code`, and future desktop apps).
 
 It automates and enforces the standardized **6-point distribution contract** so developers and coding agents do not need to duplicate lipo thinning, codesigning, DMG packaging, checksumming, or cask maintenance by hand.
 

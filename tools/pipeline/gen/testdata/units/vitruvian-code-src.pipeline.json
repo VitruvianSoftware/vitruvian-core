@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "name": "vitruvian-code-src",
+  "package": "apps/desktop/vitruvian-code/src",
+  "test_targets": [
+    "//apps/desktop/vitruvian-code/src:formatter_test",
+    "//apps/desktop/vitruvian-code/src:sessions_test"
+  ],
+  "tier": "L1",
+  "runner": "ubuntu-26.04",
+  "persona": "backend",
+  "concurrency_group": "pipeline-vitruvian-code-src",
+  "timeout_minutes": 15
+}

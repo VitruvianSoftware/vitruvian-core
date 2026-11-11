@@ -77,7 +77,7 @@ vitruvian-core/
 │   ├── cli/devx/                 # CLI / developer tool (Go)
 │   ├── cli/homelab/              # CLI / infra-ops tool (Go)
 │   ├── mcp/slack/                # Agent / MCP service (Node/TS)
-│   └── desktop/nexus-agent/      # Agent / MCP service (Node bot + Swift macOS app)
+│   └── desktop/vitruvian-code/   # Agent / MCP service (Node bot + Swift macOS app)
 │
 ├── tools/                        # Shared build/ops tooling (Bazel rules + run-wrappers)
 │   ├── pulumi/                   # //tools/pulumi — bazel-only Pulumi wrapper (identity injection)
@@ -118,12 +118,12 @@ Each app type has its own inner loop. The table below is the practical per-type 
 | **Go CLI** | `devx` | `bazel run //apps/cli/devx:devx -- <args>` (developer build of record); release builds via goreleaser only | `bazel test //apps/cli/devx/...` |
 | **Go CLI (infra/ops)** | `homelab` | `bazel run //apps/cli/homelab/cmd/homelab -- <args>` | `bazel test //apps/cli/homelab/...` |
 | **Agent / MCP (Rust)** | `mcp-slack` | `bazel run //apps/mcp/slack:mcp-slack` (the MCP host injects the Slack tokens as env) | `bazel test //apps/mcp/slack/...` |
-| **Agent / MCP + macOS** | `nexus-agent` | `pnpm start` / `pnpm dev` for the bot; `bazel build --config=macos-app //apps/desktop/nexus-agent/macos:NexusAgent` for the menu-bar app | — (no tests yet) |
+| **Agent / MCP + macOS** | `vitruvian-code` | `pnpm start` / `pnpm dev` for the bot; `bazel build --config=macos-app //apps/desktop/vitruvian-code/macos:VitruvianCode` for the menu-bar app | — (no tests yet) |
 
 > **Known divergences you will hit (all tracked in the Alignment Gaps doc):**
 > - **`tabula`'s docs were pre-monorepo and have been corrected.** They now live at [`apps/suites/tabula/docs/`](apps/suites/tabula/docs/index.md) (relocated so they mirror with the app), and the `getting-started/*` and `reference/infrastructure.md` pages have been rewritten to the real Bazel+pnpm+Pulumi flow (Node 22, no `docker-compose.yml`, no Terraform, no `BlueCentre` clone). If you hit any lingering `npm`/`docker-compose`/Terraform references in older tabula prose (e.g. deep in `apps/suites/tabula/CONTRIBUTING.md`), this SOP and the root README win.
 > - **`oauth-user-inspector` README deploy path is dead.** `npm run deploy` / `scripts/deploy.sh` invoke a retired Cloud Build flow (`gcloud builds submit --config cloudbuild.yaml`) and **no `cloudbuild.yaml` exists**. Deploy is CI-only (Section 8). Ignore that section of the README.
-> - **`nexus-agent` is documented with bare `npm`** even though it is a member of `pnpm-workspace.yaml`. Prefer `pnpm` to keep the single lockfile honest.
+> - **`vitruvian-code` is documented with bare `npm`** even though it is a member of `pnpm-workspace.yaml`. Prefer `pnpm` to keep the single lockfile honest.
 > - **Two Go task runners exist out-of-band:** `devx` carries a `magefile.go`, `homelab` carries `.mise.toml`. **🎯 Target:** Bazel is the developer build of record for both; the Mage/mise runners are legacy and being retired (goreleaser stays for mirror releases only). Use the `bazel run` commands above.
 
 ### 3.2 Using devx / a local k8s cluster
@@ -150,7 +150,7 @@ There is **no documented local-vs-dev-project split** yet — that's a known loc
 | App | File | Source |
 |-----|------|--------|
 | `tabula` (API) | `apps/suites/tabula/api/.env` | copy `apps/suites/tabula/api/.env.example`; keys: `DATABASE_URL`, `JWT_SECRET`, `WORKOS_*`, `UPSTASH_REDIS_URL` |
-| `nexus-agent` | `apps/desktop/nexus-agent/.env` | copy `apps/desktop/nexus-agent/.env.example`; keys: `TELEGRAM_BOT_TOKEN`, `ALLOWED_USER_IDS`, `GEMINI_*` |
+| `vitruvian-code` | `apps/desktop/vitruvian-code/.env` | copy `apps/desktop/vitruvian-code/.env.example`; keys: `TELEGRAM_BOT_TOKEN`, `ALLOWED_USER_IDS`, `GEMINI_*` |
 | `devx` | `.env` / `.env.keys` | managed via `devx config secrets`; keys: `CF_TUNNEL_TOKEN`, `DEV_HOSTNAME` |
 | Pulumi stacks | `infrastructure/pulumi/<project>/Pulumi.<stack>.yaml` | gitignored; non-secret config is committed, secrets are not (Section 7) |
 
@@ -294,7 +294,7 @@ The authoritative list lives in `infrastructure/pulumi/platform/repo_config/main
 | Check | Workflow | What it gates |
 |-------|----------|---------------|
 | **build-test** | `ci.yaml` | `bazel test`, affected targets on every lane (full `//...` on global-impact/fallback) |
-| **build-macos** | `ci.yaml` | macOS build incl. the `nexus-agent` app (`--config=macos-app`), step-gated on macOS-relevant paths |
+| **build-macos** | `ci.yaml` | macOS build incl. the `vitruvian-code` app (`--config=macos-app`), step-gated on macOS-relevant paths |
 | **license-check** | `ci.yaml` | whole-repo header presence (`//tools/license:check`) **and** MIT+holder content (`:verify`) |
 | **go-lint (devx\|homelab)** | `ci.yaml` | golangci-lint per Go module, step-gated on that module's paths |
 | **go-test (devx\|homelab)** | `ci.yaml` | `go test -race` per Go module (Bazel doesn't run `-race`), step-gated likewise |
@@ -329,11 +329,11 @@ addlicense -check -c "VitruvianSoftware" -l mit \
 - **Not covered:** `json`, `md`, lockfiles, `_helpers.tpl`, generated/scaffold trees (`docs/**`, `internal/scaffold/templates/**`, `dev-local/{crds,values,dashboards}/**`, prisma migrations, `Pulumi.*.yaml`).
 - **The HTML gotcha:** addlicense inserts an **HTML comment** (`<!-- ... -->`) header into `.html`/`.css`-style files. If a header looks "missing," check that it wasn't stripped by a formatter or templating step — addlicense will re-add it; run `addlicense` without `-check` (or `bazel run //:tidy` adjacent flows) to fix locally.
 
-> **`-check` only verifies a header is *present*, not that it's MIT or that the holder is VitruvianSoftware.** An Apache/wrong-holder header passes silently. So today `homelab`, `mcp-slack`, and `nexus-agent` ship **Apache-2.0** LICENSE files (and `mcp-slack`'s source carries an Apache header), and `tabula`'s LICENSE names `BlueCentre` — all slip through. **🎯 Target:** MIT `(c) 2026 VitruvianSoftware` everywhere, plus a content gate that fails on non-MIT/wrong-holder. New code must use the MIT/VitruvianSoftware header; do not copy headers from the Apache-licensed apps. See the Alignment Gaps doc.
+> **`-check` only verifies a header is *present*, not that it's MIT or that the holder is VitruvianSoftware.** An Apache/wrong-holder header passes silently. So today `homelab`, `mcp-slack`, and `vitruvian-code` ship **Apache-2.0** LICENSE files (and `mcp-slack`'s source carries an Apache header), and `tabula`'s LICENSE names `BlueCentre` — all slip through. **🎯 Target:** MIT `(c) 2026 VitruvianSoftware` everywhere, plus a content gate that fails on non-MIT/wrong-holder. New code must use the MIT/VitruvianSoftware header; do not copy headers from the Apache-licensed apps. See the Alignment Gaps doc.
 
 ### Governance files
 
-Each first-party app should carry the governance quartet: **`LICENSE`, `CONTRIBUTING.md`, `CLA.md`, `CODE_OF_CONDUCT.md`**. `oauth-user-inspector` and `devx` are the aligned references. **🎯 Target:** generate all four from one template and add a canonical root governance set that per-app files link to (today `tabula` lacks a standalone `CODE_OF_CONDUCT.md`/`CLA.md`; `homelab` and `nexus-agent` lack `CODE_OF_CONDUCT.md`).
+Each first-party app should carry the governance quartet: **`LICENSE`, `CONTRIBUTING.md`, `CLA.md`, `CODE_OF_CONDUCT.md`**. `oauth-user-inspector` and `devx` are the aligned references. **🎯 Target:** generate all four from one template and add a canonical root governance set that per-app files link to (today `tabula` lacks a standalone `CODE_OF_CONDUCT.md`/`CLA.md`; `homelab` and `vitruvian-code` lack `CODE_OF_CONDUCT.md`).
 
 ---
 
@@ -368,7 +368,7 @@ Deploy mechanics are determined by **app type** (see the Applications & Categori
 |----------|--------|-----------|
 | **SaaS web service** (`tabula`, `oauth-user-inspector`) | **GCP Cloud Run** | image → Artifact Registry → **Pulumi `cloudrunv2`**, deployed by GitHub Actions via **keyless WIF**, keyed on a per-app **GitHub Environment** |
 | **CLI / developer tool** (`devx`, `homelab`) | Standalone-repo **GitHub Releases + Homebrew tap** | `goreleaser` + `release-please` from the mirror (**released, not deployed**) |
-| **Agent / MCP** (`mcp-slack`, `nexus-agent`) | container image (`mcp-slack`) / DMG (`nexus-agent`) | `release-please`; `mcp-slack` publishes its image from `main`; *DMG publishing CI is a gap — see below* |
+| **Agent / MCP** (`mcp-slack`, `vitruvian-code`) | container image (`mcp-slack`) / DMG (`vitruvian-code`) | `release-please`; `mcp-slack` publishes its image from `main`; *DMG publishing CI is a gap — see below* |
 | **Self-hosted platform** (`gitops/`) | dev-local **k3s** | **ArgoCD app-of-apps**, reconciled from git only (Section 9) |
 
 ### Cloud Run deploy (the two SaaS apps)
@@ -404,7 +404,7 @@ Deploy auth is **keyless** Workload Identity Federation per GCP project, **codif
 
 ### Releases
 
-- **`apps-release.yaml`** runs per-app `release-please` for the four released apps (`devx`, `homelab`, `mcp-slack`, `nexus-agent`) — version bumps in the app's manifest drive the release, so releases stay **manifest-driven by design** (not path- or graph-gated like deploys). The monorepo is the **single release authority**; mirrors self-tag off the exported manifest.
+- **`apps-release.yaml`** runs per-app `release-please` for the four released apps (`devx`, `homelab`, `mcp-slack`, `vitruvian-code`) — version bumps in the app's manifest drive the release, so releases stay **manifest-driven by design** (not path- or graph-gated like deploys). The monorepo is the **single release authority**; mirrors self-tag off the exported manifest.
 - The generated `charts-publish` job (`tools/charts/publish.sh`, break-glass `bazel run //tools/charts:publish`) publishes **OCI Helm charts to GHCR**, scoped to the chart whose directory changed in the push (fail-open to all on manual dispatch); container images stay in **GCP Artifact Registry**.
 
 ---
@@ -445,7 +445,7 @@ Five of the six first-party apps (`devx`, `homelab`, `mcp-slack`, `nexus-agent`,
 - **Companion docs (this orientation layer):**
   - **Applications & Categories** — what each app is and its category (the shared vocabulary).
   - **Alignment Gaps** — every "🎯 Target / not yet adopted" item above, tracked with severity and recommendation.
-- **Per-app:** each app's `README.md` / `CONTRIBUTING.md` / `AGENTS.md`; `apps/cli/devx/docs/`, `apps/desktop/nexus-agent/docs/`, `apps/cli/devx/FEATURES.md`/`IDEAS.md`.
+- **Per-app:** each app's `README.md` / `CONTRIBUTING.md` / `AGENTS.md`; `apps/cli/devx/docs/`, `apps/desktop/vitruvian-code/docs/`, `apps/cli/devx/FEATURES.md`/`IDEAS.md`.
 - **Repo-root `AGENTS.md`** and `README.bazel.md` for Bazel-specific guidance.
 - **CI/CD vocabulary:** [`.github/CI_DEFINITIONS.md`](.github/CI_DEFINITIONS.md) (presubmit/postsubmit/affected targets/safety floor/deploy gate). **Flaky tests:** [`docs/engineering/flaky-tests.md`](docs/engineering/flaky-tests.md) (quarantine + culprit-finder).
 

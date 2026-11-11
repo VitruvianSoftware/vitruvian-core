@@ -68,27 +68,27 @@
       "concurrency_group": "pipeline-mcp-slack-service"
     },
     {
-      "name": "nexus-agent-macos",
-      "package": "apps/desktop/nexus-agent/macos",
-      "targets": "//apps/desktop/nexus-agent/macos:NexusAgentTests",
-      "test_targets": "//apps/desktop/nexus-agent/macos:NexusAgentTests",
+      "name": "vitruvian-code-macos",
+      "package": "apps/desktop/vitruvian-code/macos",
+      "targets": "//apps/desktop/vitruvian-code/macos:VitruvianCodeTests",
+      "test_targets": "//apps/desktop/vitruvian-code/macos:VitruvianCodeTests",
       "runner": "xcode-27",
       "tier": "L1",
       "persona": "frontend",
       "timeout_minutes": 30,
-      "concurrency_group": "pipeline-nexus-agent-macos",
-      "needs": ["nexus-agent-src"]
+      "concurrency_group": "pipeline-vitruvian-code-macos",
+      "needs": ["vitruvian-code-src"]
     },
     {
-      "name": "nexus-agent-src",
-      "package": "apps/desktop/nexus-agent/src",
-      "targets": "//apps/desktop/nexus-agent/src:formatter_test //apps/desktop/nexus-agent/src:sessions_test",
-      "test_targets": "//apps/desktop/nexus-agent/src:formatter_test //apps/desktop/nexus-agent/src:sessions_test",
+      "name": "vitruvian-code-src",
+      "package": "apps/desktop/vitruvian-code/src",
+      "targets": "//apps/desktop/vitruvian-code/src:formatter_test //apps/desktop/vitruvian-code/src:sessions_test",
+      "test_targets": "//apps/desktop/vitruvian-code/src:formatter_test //apps/desktop/vitruvian-code/src:sessions_test",
       "runner": "ubuntu-26.04",
       "tier": "L1",
       "persona": "backend",
       "timeout_minutes": 15,
-      "concurrency_group": "pipeline-nexus-agent-src"
+      "concurrency_group": "pipeline-vitruvian-code-src"
     },
     {
       "name": "oauth-user-inspector",

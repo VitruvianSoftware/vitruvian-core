@@ -212,7 +212,7 @@ rust_test(
 )
 
 # bazel-bin/apps/mobile/android-remote/macmenu/VitruvianRemote.zip. `manual`
-# for the same reason as NexusAgent: macos_application transitions to a darwin
+# for the same reason as VitruvianCode: macos_application transitions to a darwin
 # platform, so target_compatible_with cannot keep it out of a Linux `//...`.
 # MenuIcon.png/@2x are template images (black + alpha); macOS tints them for
 # light and dark menu bars. Ad-hoc signed.

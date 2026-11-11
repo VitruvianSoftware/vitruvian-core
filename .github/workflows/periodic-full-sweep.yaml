@@ -88,7 +88,7 @@ jobs:
       #
       # //tools:all covers those manual targets and costs seconds. Widen this to
       # the full `deps(//...)` universe TD actually queries once the remaining
-      # blocker (//nexus-agent/macos — see the issue linked from #200) is fixed.
+      # blocker (//apps/desktop/vitruvian-code/macos — see the issue linked from #200) is fixed.
       - name: Analysis guard (manual-tagged //tools targets)
         run: bazel cquery --config=remote --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" '//tools:all' >/dev/null
 

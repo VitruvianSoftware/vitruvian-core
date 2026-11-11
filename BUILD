@@ -180,7 +180,7 @@ exports_files(
     visibility = ["//tools/delivery/gen:__pkg__"],
 )
 
-# The rehearsal of the standalone Nexus Agent's release, read by the test that
+# The rehearsal of the standalone Vitruvian Code's release, read by the test that
 # keeps it running the same steps as the release workflow the mirror runs.
 exports_files(
     [".github/workflows/nexus-agent-mirror-toolchain.yaml"],
@@ -237,8 +237,8 @@ exports_files(
 # gazelle:exclude apps/antigravity
 # gazelle:exclude apps/cli/homelab
 # gazelle:exclude apps/desktop/home-speaker
-# gazelle:exclude apps/desktop/nexus-agent
 # gazelle:exclude apps/desktop/vitruvian
+# gazelle:exclude apps/desktop/vitruvian-code
 # gazelle:exclude apps/desktop/vitruvian-tool-github
 # gazelle:exclude apps/desktop/vitruvian-tool-tv
 # gazelle:exclude apps/embedded

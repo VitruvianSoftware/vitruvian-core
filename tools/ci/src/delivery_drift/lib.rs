@@ -308,7 +308,7 @@ fn log(msg: &[u8]) {
 }
 
 const DELIVERY_QUERY: &[u8] =
-    b"attr(tags, \"\\bdelivery\\b\", (//... except //apps/desktop/nexus-agent/macos/...))";
+    b"attr(tags, \"\\bdelivery\\b\", (//... except //apps/desktop/vitruvian-code/macos/...))";
 
 const RUNS_QUERY: &str = r#"query($id: ID!, $n: Int!, $after: String) {
   node(id: $id) { ... on Workflow { runs(first: $n, after: $after) {

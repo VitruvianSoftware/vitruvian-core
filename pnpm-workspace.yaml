@@ -25,7 +25,7 @@ packages:
   # The Vitruvian SDK's TypeScript kit, published as @vitruviansoftware/tool-kit
   # from the vitruvian-sdk mirror. packages/* above stops one folder down.
   - packages/vitruvian-sdk/kits/typescript
-  - apps/desktop/nexus-agent
+  - apps/desktop/vitruvian-code
   - apps/web/oauth-user-inspector
   - apps/web/gods-eye-view
   - apps/web/backstage/packages/*

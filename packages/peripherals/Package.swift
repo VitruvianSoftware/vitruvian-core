@@ -34,7 +34,7 @@ let package = Package(
         // MUST MIRROR packages/peripherals/BUILD, target for target. These
         // sources have two build definitions and CI only runs the Bazel one; a
         // target added to BUILD but not here (or the reverse) breaks `swift
-        // build` silently (see apps/desktop/nexus-agent/macos/Package.swift).
+        // build` silently (see apps/desktop/vitruvian-code/macos/Package.swift).
         .target(
             name: "CompXProtocol",
             path: "Sources/CompXProtocol"

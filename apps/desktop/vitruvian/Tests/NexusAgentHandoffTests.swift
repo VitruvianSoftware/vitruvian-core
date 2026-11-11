@@ -19,7 +19,7 @@ enum NexusAgentHandoffTests {
     }
 
     /// The Nexus Agent tool's manifest: its preferences, as
-    /// `macos/tool/vitruvian-tool.json` in apps/desktop/nexus-agent declares
+    /// `macos/tool/vitruvian-tool.json` in apps/desktop/vitruvian-code declares
     /// them, four with a title and four without.
     static let manifest = Data(#"""
         {"id": "dev.vitruvian.nexus-agent", "name": {"en": "Nexus Agent"}, "version": "1.22.0", "protocol": "2",

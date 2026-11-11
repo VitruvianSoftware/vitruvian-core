@@ -65,7 +65,7 @@ describe("sdlc metadata parser", () => {
     ]);
   });
 
-  it("parses multi-strategy release models (e.g. nexus-agent: dmg + npm)", () => {
+  it("parses multi-strategy release models (e.g. vitruvian-code: dmg + npm)", () => {
     const ent = entity({
       "vitruvian.dev/release-model": "dmg-github-releases npm-publish",
       "vitruvian.dev/release-workflow": "apps-release.yaml",

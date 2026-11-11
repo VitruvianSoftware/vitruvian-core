@@ -67,7 +67,7 @@ pub const GO_PACKAGE_DIR_ROOTS: &[&str] = &[
 
 /// Subtrees whose Swift directories may be PascalCase (SWIFT_DIR_ROOTS).
 pub const SWIFT_DIR_ROOTS: &[&str] = &[
-    "apps/desktop/nexus-agent/macos",
+    "apps/desktop/vitruvian-code/macos",
     "macos",
     "Sources",
     "Tests",
@@ -247,7 +247,7 @@ mod tests {
             false
         )
         .is_empty());
-        assert!(validate_directory_name("macos/Sources/NexusAgent", false).is_empty());
+        assert!(validate_directory_name("macos/Sources/VitruvianCode", false).is_empty());
         assert!(validate_directory_name("app/[id]", false).is_empty());
         assert!(validate_directory_name("app/[...slug]", false).is_empty());
         assert!(validate_directory_name("app/(group)", false).is_empty());

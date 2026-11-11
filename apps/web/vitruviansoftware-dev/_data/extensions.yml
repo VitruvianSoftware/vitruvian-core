@@ -422,7 +422,7 @@ extensions:
     summary: "A macOS menu bar app and Telegram bot that forwards your messages to a locally installed AI coding CLI, so a full agent session is reachable from your phone."
     repo: "https://github.com/VitruvianSoftware/nexus-agent"
     mirror_repo: "https://github.com/VitruvianSoftware/nexus-agent"
-    source: "apps/desktop/nexus-agent"
+    source: "apps/desktop/vitruvian-code"
     needs: "Node.js and a Telegram account"
     note: "Installing adds a setup guide to Antigravity. Then ask the agent to \"help me set up the Telegram bot\" and it walks you through creating the bot and starting it."
     ecosystems:

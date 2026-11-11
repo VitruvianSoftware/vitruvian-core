@@ -1,0 +1,271 @@
+// Copyright (c) 2026 VitruvianSoftware
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+//
+// Shared by the standalone Vitruvian Code app and the Code feature of the
+// Vitruvian desktop app. Written for Vitruvian and released under MIT by its
+// copyright holder on 2026-10-09 (apps/desktop/vitruvian/UPSTREAM.md).
+
+import AppKit
+import SwiftUI
+import WebKit
+
+/// An interactive card rendering a Mermaid diagram with Diagram and Source toggle modes.
+struct VitruvianCodeMermaidCard: View {
+    let source: String
+    let strings: VitruvianCodeChatStrings
+    let errorScheme: String
+    @State private var mode: DiagramViewMode = .diagram
+    @State private var copied = false
+    @State private var renderFailed = false
+    @Environment(\.colorScheme) private var colorScheme
+
+    private enum DiagramViewMode: String, CaseIterable, Identifiable {
+        case diagram = "Diagram"
+        case source = "Source"
+        var id: String { rawValue }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: "point.3.connected.trianglepath.dotted")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(VitruvianCodeTheme.warmCoral)
+                Text(strings.diagram)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Picker("", selection: $mode) {
+                    ForEach(DiagramViewMode.allCases) { item in
+                        Text(item == .diagram ? strings.diagram : strings.diagramSource).tag(item)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .controlSize(.small)
+                .frame(width: 140)
+
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(source, forType: .string)
+                    copied = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        copied = false
+                    }
+                } label: {
+                    Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                        .font(.system(size: 11))
+                        .foregroundStyle(copied ? Color.green : Color.secondary)
+                }
+                .buttonStyle(.plain)
+                .help(strings.copySource)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.primary.opacity(0.04))
+
+            Divider().opacity(0.3)
+
+            if mode == .diagram && !renderFailed {
+                VitruvianCodeMermaidWebView(source: source, isDark: colorScheme == .dark, errorScheme: errorScheme, onRenderError: {
+                    renderFailed = true
+                })
+                .frame(minHeight: 180, idealHeight: 240, maxHeight: 420)
+            } else {
+                VStack(alignment: .leading, spacing: 4) {
+                    if renderFailed {
+                        HStack(spacing: 4) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.orange)
+                            Text(strings.diagramRenderFailed)
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.top, 6)
+                    }
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        Text(source)
+                            .font(.system(size: 11, design: .monospaced))
+                            .padding(8)
+                    }
+                }
+                .background(Color.black.opacity(0.25))
+            }
+        }
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.primary.opacity(0.03)))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
+/// A WKWebView rendering a Mermaid diagram with the copy of Mermaid the app
+/// ships (`VitruvianCodeMermaidPage`). Nothing is fetched from the network.
+struct VitruvianCodeMermaidWebView: NSViewRepresentable {
+    let source: String
+    let isDark: Bool
+    /// The URL scheme the page goes to when the diagram cannot be drawn.
+    let errorScheme: String
+    let onRenderError: @MainActor () -> Void
+
+    func makeCoordinator() -> VitruvianCodeMermaidNavigationDelegate {
+        VitruvianCodeMermaidNavigationDelegate(errorScheme: errorScheme, onRenderError: onRenderError)
+    }
+
+    func makeNSView(context: Context) -> WKWebView {
+        let webView = VitruvianCodeMermaidPage.makeWebView(script: VitruvianCodeMermaidPage.bundledScript)
+        webView.navigationDelegate = context.coordinator
+        loadDiagram(in: webView)
+        return webView
+    }
+
+    func updateNSView(_ nsView: WKWebView, context: Context) {
+        context.coordinator.errorScheme = errorScheme
+        context.coordinator.onRenderError = onRenderError
+        loadDiagram(in: nsView)
+    }
+
+    private func loadDiagram(in webView: WKWebView) {
+        VitruvianCodeMermaidPage.load(source: source, isDark: isDark, errorScheme: errorScheme, in: webView)
+    }
+}
+
+/// A styled monospaced code container with language badge, line numbers,
+/// syntax colour and copy button; shell blocks can also be run in Terminal.
+/// The code is one text, so a drag selects across its lines.
+struct VitruvianCodeCodeBlockView: View {
+    let language: String?
+    let bodyText: String
+    let strings: VitruvianCodeChatStrings
+    /// Where a shell block runs; nil runs it in the home folder.
+    var workingDirectory: String? = nil
+    @State private var copied = false
+    /// When Run was first clicked, or nil (`VitruvianCodeRunSnippetGuard`).
+    @State private var runFirstClick: Date?
+    @Environment(\.colorScheme) private var colorScheme
+
+    private static let font = Font.system(size: 11, design: .monospaced)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                if let language = language, !language.isEmpty {
+                    Text(language.lowercased())
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(Color.primary.opacity(0.08)))
+                } else {
+                    Text(strings.codeLabel)
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if VitruvianCodeSyntaxHighlighter.isShell(language) {
+                    runButton
+                }
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(bodyText, forType: .string)
+                    copied = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        copied = false
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                            .font(.system(size: 11))
+                        Text(copied ? strings.copiedCode : strings.copy)
+                            .font(.system(size: 11))
+                    }
+                    .foregroundStyle(copied ? Color.green : Color.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.primary.opacity(0.04))
+
+            Divider().opacity(0.3)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                codeLines
+            }
+        }
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.black.opacity(colorScheme == .dark ? 0.25 : 0.035)))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    /// The line numbers and the code beside them, the code one text.
+    var codeLines: some View {
+        let lineCount = max(1, bodyText.components(separatedBy: "\n").count)
+        return HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .trailing, spacing: 0) {
+                ForEach(1...lineCount, id: \.self) { number in
+                    Text("\(number)")
+                        .font(Self.font)
+                        .foregroundStyle(Color.secondary.opacity(0.6))
+                }
+            }
+            .accessibilityHidden(true)
+            Text(VitruvianCodeSyntaxHighlighter.highlight(code: bodyText, language: language))
+                .font(Self.font)
+                .foregroundStyle(Color.primary)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: true, vertical: true)
+        }
+        .padding(10)
+    }
+
+    /// Run, then "Confirm?" for three seconds; a second click in that time
+    /// opens Terminal with the snippet.
+    private var runButton: some View {
+        let asking = VitruvianCodeRunSnippetGuard.isArmed(firstClick: runFirstClick, now: Date())
+        return Button {
+            if VitruvianCodeRunSnippetGuard.clickRuns(firstClick: runFirstClick, now: Date()) {
+                runFirstClick = nil
+                VitruvianCodeShellSnippet.runInTerminal(bodyText, directory: workingDirectory)
+            } else {
+                runFirstClick = Date()
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: asking ? "exclamationmark.triangle.fill" : "play.fill")
+                    .font(.system(size: 9))
+                Text(asking ? strings.confirmRun : strings.runInTerminal)
+                    .font(.system(size: 11, weight: asking ? .semibold : .regular))
+            }
+            .foregroundStyle(asking ? VitruvianCodeTheme.warmCoral : Color.secondary)
+        }
+        .buttonStyle(.plain)
+        .help(strings.runInTerminalHelp)
+        .task(id: runFirstClick) {
+            guard let first = runFirstClick else { return }
+            let left = VitruvianCodeRunSnippetGuard.window - Date().timeIntervalSince(first)
+            if left > 0 {
+                try? await Task.sleep(nanoseconds: UInt64(left * 1_000_000_000))
+            }
+            if !Task.isCancelled, runFirstClick == first { runFirstClick = nil }
+        }
+        .onDisappear { runFirstClick = nil }
+    }
+}

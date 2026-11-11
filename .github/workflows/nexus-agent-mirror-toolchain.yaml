@@ -20,14 +20,14 @@
 
 name: Nexus Agent Mirror Toolchain
 
-# Rehearses the standalone Nexus Agent's release the way its public mirror
+# Rehearses the standalone Vitruvian Code app's release the way its public mirror
 # runs it: the same runner image and the same steps as the build-macos and
-# package jobs of apps/desktop/nexus-agent/.github/workflows/release.yml, from
+# package jobs of apps/desktop/vitruvian-code/.github/workflows/release.yml, from
 # `swift build` to the three .app bundles, the DMGs and the ZIP. That file is
 # exported to the mirror and never runs here, so without this a change to it,
-# or to macos/scripts/bundle.sh, first runs on a real release.
+# or to macos/scripts/src/bundle.rs, first runs on a real release.
 #
-# Why this exists beside //apps/desktop/nexus-agent/macos:mirror_build_test:
+# Why this exists beside //apps/desktop/vitruvian-code/macos:mirror_build_test:
 # that test runs on this repository's pinned Xcode, which is newer than the one
 # the mirror builds with, and it never passes the build through an artifact.
 # It catches a library missing from Package.swift. It cannot catch code that
@@ -49,20 +49,20 @@ name: Nexus Agent Mirror Toolchain
 #
 # The steps the two files share must stay word for word the same, apart from
 # this repository's path to the package and the pinned actions.
-# //tools/ci:nexus_agent_release_rehearsal_test compares them and fails when
+# //tools/ci:vitruvian_code_release_rehearsal_test compares them and fails when
 # one changes without the other.
 
 on:
   pull_request:
     paths:
-      - 'apps/desktop/nexus-agent/macos/Package.swift'
-      - 'apps/desktop/nexus-agent/macos/Sources/**'
-      - 'apps/desktop/nexus-agent/macos/Tests/**'
-      - 'apps/desktop/nexus-agent/macos/Resources/**'
-      - 'apps/desktop/nexus-agent/macos/scripts/**'
-      - 'apps/desktop/nexus-agent/testdata/**'
-      - 'apps/desktop/nexus-agent/THIRD_PARTY_NOTICES.md'
-      - 'apps/desktop/nexus-agent/.github/workflows/release.yml'
+      - 'apps/desktop/vitruvian-code/macos/Package.swift'
+      - 'apps/desktop/vitruvian-code/macos/Sources/**'
+      - 'apps/desktop/vitruvian-code/macos/Tests/**'
+      - 'apps/desktop/vitruvian-code/macos/Resources/**'
+      - 'apps/desktop/vitruvian-code/macos/scripts/**'
+      - 'apps/desktop/vitruvian-code/testdata/**'
+      - 'apps/desktop/vitruvian-code/THIRD_PARTY_NOTICES.md'
+      - 'apps/desktop/vitruvian-code/.github/workflows/release.yml'
       - '.github/workflows/nexus-agent-mirror-toolchain.yaml'
   # Run it by hand after changing the mirror's runner image.
   workflow_dispatch:
@@ -99,12 +99,12 @@ jobs:
 
       - name: Build for ${{ matrix.arch }}
         run: |
-          cd apps/desktop/nexus-agent/macos
+          cd apps/desktop/vitruvian-code/macos
           swift build -c release --arch ${{ matrix.arch }}
 
       # The executable and, beside it, the folder SwiftPM writes the chat
       # view's resources to (the copy of Mermaid that draws diagrams).
-      # macos/scripts/bundle.sh copies that folder into the app and stops
+      # macos/scripts/src/bundle.rs copies that folder into the app and stops
       # when it is missing. One day is enough: only the package job below
       # reads it.
       - name: Upload arch binary
@@ -112,9 +112,9 @@ jobs:
         with:
           name: NexusAgent-${{ matrix.arch }}
           path: |
-            apps/desktop/nexus-agent/macos/.build/release/NexusAgent
-            apps/desktop/nexus-agent/macos/.build/release/NexusAgent_NexusAgentUI.bundle
-            apps/desktop/nexus-agent/macos/.build/release/nexus-agent-tool
+            apps/desktop/vitruvian-code/macos/.build/release/NexusAgent
+            apps/desktop/vitruvian-code/macos/.build/release/VitruvianCode_VitruvianCodeUI.bundle
+            apps/desktop/vitruvian-code/macos/.build/release/vitruvian-code-tool
           if-no-files-found: error
           retention-days: 1
 
@@ -126,7 +126,7 @@ jobs:
         if: matrix.arch == 'arm64'
         run: |
           set -euo pipefail
-          cd apps/desktop/nexus-agent/macos
+          cd apps/desktop/vitruvian-code/macos
           swift test 2>&1 | tee "$RUNNER_TEMP/swift-test.log"
           grep -E 'Executed [1-9][0-9]* tests?, with 0 failures' "$RUNNER_TEMP/swift-test.log"
 
@@ -171,19 +171,19 @@ jobs:
           echo "==> Universal binary architectures:"
           lipo -info /tmp/universal/NexusAgent
           # The resources are the same files for both architectures.
-          cp -R /tmp/arm64/NexusAgent_NexusAgentUI.bundle /tmp/universal/
+          cp -R /tmp/arm64/VitruvianCode_VitruvianCodeUI.bundle /tmp/universal/
           # The tool for the Vitruvian app, one binary for both as well.
           lipo -create \
-            /tmp/arm64/nexus-agent-tool \
-            /tmp/x86_64/nexus-agent-tool \
-            -output /tmp/universal/nexus-agent-tool
-          lipo -info /tmp/universal/nexus-agent-tool
+            /tmp/arm64/vitruvian-code-tool \
+            /tmp/x86_64/vitruvian-code-tool \
+            -output /tmp/universal/vitruvian-code-tool
+          lipo -info /tmp/universal/vitruvian-code-tool
 
       - name: Assemble .app bundles
         run: |
           VERSION="0.0.0-rehearsal"
-          rustc --edition 2021 --crate-type lib --crate-name nexus_agent_scripts_lib apps/desktop/nexus-agent/macos/scripts/src/lib.rs -o "$RUNNER_TEMP/libnexus_agent_scripts_lib.rlib"
-          rustc --edition 2021 apps/desktop/nexus-agent/macos/scripts/src/bin/bundle.rs -L "$RUNNER_TEMP" --extern nexus_agent_scripts_lib="$RUNNER_TEMP/libnexus_agent_scripts_lib.rlib" -o "$RUNNER_TEMP/bundle-app"
+          rustc --edition 2021 --crate-type lib --crate-name vitruvian_code_scripts_lib apps/desktop/vitruvian-code/macos/scripts/src/lib.rs -o "$RUNNER_TEMP/libvitruvian_code_scripts_lib.rlib"
+          rustc --edition 2021 apps/desktop/vitruvian-code/macos/scripts/src/bin/bundle.rs -L "$RUNNER_TEMP" --extern vitruvian_code_scripts_lib="$RUNNER_TEMP/libvitruvian_code_scripts_lib.rlib" -o "$RUNNER_TEMP/bundle-app"
 
           # Universal
           mkdir -p /tmp/dist-universal
@@ -203,8 +203,8 @@ jobs:
       - name: Check the three apps
         run: |
           set -euo pipefail
-          rustc --edition 2021 --crate-type lib --crate-name nexus_agent_scripts_lib apps/desktop/nexus-agent/macos/scripts/src/lib.rs -o "$RUNNER_TEMP/libnexus_agent_scripts_lib.rlib"
-          rustc --edition 2021 apps/desktop/nexus-agent/macos/scripts/src/bin/check_packaged_app.rs -L "$RUNNER_TEMP" --extern nexus_agent_scripts_lib="$RUNNER_TEMP/libnexus_agent_scripts_lib.rlib" -o "$RUNNER_TEMP/check-packaged-app"
+          rustc --edition 2021 --crate-type lib --crate-name vitruvian_code_scripts_lib apps/desktop/vitruvian-code/macos/scripts/src/lib.rs -o "$RUNNER_TEMP/libvitruvian_code_scripts_lib.rlib"
+          rustc --edition 2021 apps/desktop/vitruvian-code/macos/scripts/src/bin/check_packaged_app.rs -L "$RUNNER_TEMP" --extern vitruvian_code_scripts_lib="$RUNNER_TEMP/libvitruvian_code_scripts_lib.rlib" -o "$RUNNER_TEMP/check-packaged-app"
           "$RUNNER_TEMP/check-packaged-app" /tmp/dist-universal/NexusAgent.app arm64 x86_64
           "$RUNNER_TEMP/check-packaged-app" /tmp/dist-arm64/NexusAgent.app arm64
           "$RUNNER_TEMP/check-packaged-app" /tmp/dist-x86_64/NexusAgent.app x86_64
@@ -331,12 +331,13 @@ jobs:
       - name: Zip the tool's folder
         run: |
           VERSION="0.0.0-rehearsal"
-          folder="/tmp/tool/nexus-agent"
+          folder="/tmp/tool/vitruvian-code"
           mkdir -p "$folder/bin"
-          cp apps/desktop/nexus-agent/macos/tool/vitruvian-tool.json "$folder/"
-          cp /tmp/universal/nexus-agent-tool "$folder/bin/tool"
+          cp apps/desktop/vitruvian-code/macos/tool/vitruvian-tool.json "$folder/"
+          cp /tmp/universal/vitruvian-code-tool "$folder/bin/tool"
           chmod 755 "$folder/bin/tool"
-          cp apps/desktop/nexus-agent/macos/Sources/NexusAgentUI/Resources/mermaid.min.js "$folder/bin/"
+          cp apps/desktop/vitruvian-code/macos/Sources/VitruvianCodeUI/Resources/mermaid.min.js "$folder/bin/"
+          # TODO(brand step 2): catalog/sources.json asset name stays nexus-agent-tool-{version}.zip
           asset="nexus-agent-tool-${VERSION}.zip"
           (cd "$folder" && zip -r -X "${GITHUB_WORKSPACE}/${asset}" .)
           cd "${GITHUB_WORKSPACE}"
@@ -363,8 +364,8 @@ jobs:
           test -x "$RUNNER_TEMP/tool/bin/tool"
           test -f "$RUNNER_TEMP/tool/bin/mermaid.min.js"
           lipo -archs "$RUNNER_TEMP/tool/bin/tool"
-          swift package resolve --package-path apps/desktop/nexus-agent/macos
-          sdk="$(find apps/desktop/nexus-agent/macos/.build/checkouts -maxdepth 1 -name 'vitruvian-sdk*' -type d | head -1)"
+          swift package resolve --package-path apps/desktop/vitruvian-code/macos
+          sdk="$(find apps/desktop/vitruvian-code/macos/.build/checkouts -maxdepth 1 -name 'vitruvian-sdk*' -type d | head -1)"
           test -n "$sdk"
           swift build --package-path "$sdk" --product vitruvian-tool
           "$(swift build --package-path "$sdk" --show-bin-path)/vitruvian-tool" validate "$RUNNER_TEMP/tool"

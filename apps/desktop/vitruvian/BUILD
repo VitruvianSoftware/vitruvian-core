@@ -918,25 +918,25 @@ TOOL_PROTOCOL_ARGS = [
 ] + ["$(rootpaths %s)" % group for group in TOOL_PROTOCOL]
 
 rust_library(
-    name = "pin_nexus_agent_shared_lib",
-    srcs = ["bazel/src/pin_nexus_agent_shared/lib.rs"],
-    crate_name = "pin_nexus_agent_shared",
+    name = "pin_vitruvian_code_shared_lib",
+    srcs = ["bazel/src/pin_vitruvian_code_shared/lib.rs"],
+    crate_name = "pin_vitruvian_code_shared",
     edition = "2021",
 )
 
 rust_binary(
     name = "pin_tool_protocol",
-    srcs = ["bazel/src/pin_nexus_agent_shared/main.rs"],
+    srcs = ["bazel/src/pin_vitruvian_code_shared/main.rs"],
     args = TOOL_PROTOCOL_ARGS,
     data = TOOL_PROTOCOL,
     edition = "2021",
-    deps = [":pin_nexus_agent_shared_lib"],
+    deps = [":pin_vitruvian_code_shared_lib"],
 )
 
 rust_test(
-    name = "pin_nexus_agent_shared_test",
+    name = "pin_vitruvian_code_shared_test",
     size = "small",
-    crate = ":pin_nexus_agent_shared_lib",
+    crate = ":pin_vitruvian_code_shared_lib",
     data = ["bazel/tool_protocol.sha256"] + TOOL_PROTOCOL,
     env = {
         "TOOL_PROTOCOL_PIN_FILE": "$(rootpath bazel/tool_protocol.sha256)",
@@ -946,7 +946,7 @@ rust_test(
 
 test_suite(
     name = "tool_protocol_pin_test",
-    tests = [":pin_nexus_agent_shared_test"],
+    tests = [":pin_vitruvian_code_shared_test"],
 )
 
 # --- Release tools ----------------------------------------------------------
