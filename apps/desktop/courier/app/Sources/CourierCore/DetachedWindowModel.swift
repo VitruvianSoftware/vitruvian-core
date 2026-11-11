@@ -50,7 +50,8 @@ public final class DetachedWindowSession: ObservableObject {
         pasteboard: TextPasteboard? = nil,
         openURL: (@MainActor (URL) -> Void)? = nil,
         hotkeys: HotkeyRegistry? = nil,
-        lifecycle: SystemLifecycleModel? = nil
+        lifecycle: SystemLifecycleModel? = nil,
+        aiProviderStore: AIProviderStore? = nil
     ) {
         self.target = target
         self.appModel = appModel
@@ -192,6 +193,10 @@ public final class DetachedWindowSession: ObservableObject {
         self.messageActions.onToast = { [weak host] message in host?.announce(message) }
         self.messageActions.openURL = resolvedOpenURL
         self.scheduled.onToast = { [weak host] message in host?.announce(message) }
+        if let aiProviderStore {
+            conv.bindAIProviderStore(aiProviderStore)
+            self.messageActions.bindAIProviderStore(aiProviderStore)
+        }
     }
 }
 
@@ -218,6 +223,7 @@ public final class DetachedWindowRegistry: ObservableObject {
     private let makePasteboard: (@MainActor () -> TextPasteboard)?
     private let openURL: (@MainActor (URL) -> Void)?
     private weak var hotkeys: HotkeyRegistry?
+    private weak var aiProviderStore: AIProviderStore?
     private var lifecycleSubscription: AnyCancellable?
 
     public var onOpen: ((DetachedWindowTarget) -> Void)?
@@ -239,6 +245,7 @@ public final class DetachedWindowRegistry: ObservableObject {
         makePasteboard: (@MainActor () -> TextPasteboard)? = nil,
         openURL: (@MainActor (URL) -> Void)? = nil,
         hotkeys: HotkeyRegistry? = nil,
+        aiProviderStore: AIProviderStore? = nil,
         onOpen: ((DetachedWindowTarget) -> Void)? = nil,
         onFocus: ((DetachedWindowTarget) -> Void)? = nil,
         onClose: ((DetachedWindowTarget) -> Void)? = nil
@@ -253,6 +260,7 @@ public final class DetachedWindowRegistry: ObservableObject {
         self.makePasteboard = makePasteboard
         self.openURL = openURL
         self.hotkeys = hotkeys
+        self.aiProviderStore = aiProviderStore
         self.onOpen = onOpen
         self.onFocus = onFocus
         self.onClose = onClose
@@ -282,7 +290,8 @@ public final class DetachedWindowRegistry: ObservableObject {
                 pasteboard: makePasteboard?(),
                 openURL: openURL,
                 hotkeys: hotkeys,
-                lifecycle: lifecycle
+                lifecycle: lifecycle,
+                aiProviderStore: aiProviderStore
             )
         }
         openTargets.append(target)

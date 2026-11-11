@@ -14,7 +14,7 @@ Status: design, 2026-11-09. Owner: the lead. Builders follow this; change it onl
     **OpenAI-compatible** endpoint (base URL plus optional key).
 - AI output is never sent for them. It lands in the composer, or in a panel, for the person to edit and send.
 - AI is **off by default**. Nothing leaves the Mac until they turn it on and choose a provider.
-- Voice transcription and Talk to Type stay "not available yet" (out of scope; say so honestly).
+- **Talk to Type and voice-note transcription** have their own speech engine (Apple on-device speech by default, or OpenAI Whisper when enabled with a saved OpenAI key) and work even when the chat provider is Off — see [voice-transcription.md](voice-transcription.md).
 
 ## Acceptance criteria (UAT tests these)
 
@@ -89,8 +89,9 @@ Files (new unless noted), all under `apps/desktop/courier/app/Sources/CourierCor
   Attachments, media, and messages with no text are left out.
 - `ConfiguredAIProvider.swift`: implements the `AIProvider` protocol on top of one client and model. The protocol
   changes so callers pass text, not ids: `draftResponse(context: AIChatContext, draft: String, tone: AIRewriteTone?)`,
-  `translate(text:targetLanguage:)` (unchanged), `summarize(context: AIChatContext)`. Transcription and Talk to
-  Type keep returning `.unavailable`. `UnavailableAIProvider` stays as the "AI off / not set up" provider.
+  `translate(text:targetLanguage:)` (unchanged), `summarize(context: AIChatContext)`. Speech features (`TalkToTypeModel`
+  and `VoiceNoteTranscriptStore`) run on `SpeechEngine` directly rather than `AIProvider` (see
+  [voice-transcription.md](voice-transcription.md)). `UnavailableAIProvider` stays as the "AI off / not set up" provider.
 - `AIProviderStore.swift` (`@MainActor ObservableObject`): owns the current `any AIProvider`, rebuilt when
   preferences or keys change; owns detection results and the model list; exposes `test()` and `refresh()`.
   `AppDelegate` creates one and hands it to Settings, the AI pane, `ComposerModel` and `MessageActionsModel`
@@ -111,8 +112,8 @@ Files (new unless noted), all under `apps/desktop/courier/app/Sources/CourierCor
      also the base URL field. Then the Model menu (filled from `listModels`, with its own refresh) and a `Test`
      button whose result shows inline (✓ Connected, 12 models / the error message). Then the privacy line
      (criterion 5) in secondary text.
-  4. Existing sections stay: Custom instructions, translation languages, Talk to Type (still "not available
-     yet"), slash commands.
+  4. Existing sections stay: Custom instructions, translation languages, Talk to Type & Voice Transcription (see
+     [voice-transcription.md](voice-transcription.md)), slash commands.
 - **Composer**: Draft with AI and the tone menu call the provider. While working, the composer shows a small
   inline "Writing…" row with a Stop button; on success the text goes into the composer (undoable); on error a
   calm notice with the error and "Open AI Settings".
@@ -160,5 +161,6 @@ Files (new unless noted), all under `apps/desktop/courier/app/Sources/CourierCor
 
 ## Out of scope
 
-Voice transcription, Talk to Type, "mention an AI in chat" (the toggle stays as is), tool use, streaming
-(responses arrive whole; fine for short replies), and the Go engine.
+"Mention an AI in chat" (the toggle stays as is), tool use, streaming (responses arrive whole; fine for short
+replies), and the Go engine. Talk to Type and voice-note transcription are specified separately in
+[voice-transcription.md](voice-transcription.md).

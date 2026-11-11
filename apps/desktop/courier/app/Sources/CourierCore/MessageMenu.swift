@@ -46,6 +46,8 @@ public struct MessageMenuItem: Equatable, Sendable, Identifiable {
         case translate
         /// Translates the message inline into a specific target language.
         case translateTo(String)
+        /// Transcribes a voice note inline below its waveform (`VoiceNoteTranscriptStore`).
+        case transcribeVoiceNote
         /// A line that only says something ("Sent at 14:02"), always greyed.
         case info
     }
@@ -132,6 +134,21 @@ public enum MessageMenu {
             [item(.forward)].compactMap { $0 },
             [item(.showHistory)].compactMap { $0 },
         ]
+        if message.kind == .voiceNote,
+           !message.isNote,
+           !message.showsMediaRemovedPlaceholder,
+           message.statusLine?.hasGone ?? true
+        {
+            sections.append([
+                MessageMenuItem(
+                    command: .transcribeVoiceNote,
+                    title: String(localized: "Transcribe"),
+                    key: nil,
+                    isEnabled: true,
+                    help: nil
+                ),
+            ])
+        }
         if includeDiagnostics, !message.isNote, message.statusLine != .queued, !(message.statusLine?.isWaiting ?? false) {
             if !message.rich.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, message.kind != .deleted {
                 let translateHelp = isAIAvailable ? nil : String(localized: "Set up AI in Settings")

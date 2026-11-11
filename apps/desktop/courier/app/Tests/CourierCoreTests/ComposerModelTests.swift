@@ -2958,14 +2958,15 @@ extension ComposerModelTests {
         )
     }
 
-    func testTalkToTypeDraftWithAIAndSlashCommandsShowCalmStubNoticeWithoutLosingDraft() {
+    func testTalkToTypeDraftWithAIAndSlashCommandsShowCalmStubNoticeWithoutLosingDraft() async {
         let (composer, sender) = make()
         composer.open("!a")
         composer.text = "Hello team"
 
         composer.triggerTalkToType()
-        XCTAssertEqual(composer.text, "Hello team", "draft must never be lost or cleared by Talk to Type stub")
-        XCTAssertEqual(composer.notice?.displayText, "Talk to Type isn’t available yet in Courier.")
+        await composer.talkToType.waitForIdle()
+        XCTAssertEqual(composer.text, "Hello team", "draft must never be lost or cleared when Talk to Type lacks permission")
+        XCTAssertEqual(composer.talkToType.permissionNotice?.message, "Courier needs microphone access for Talk to Type.")
         XCTAssertTrue(sender.calls.isEmpty)
 
         composer.draftWithAI(tone: .moreConcise)

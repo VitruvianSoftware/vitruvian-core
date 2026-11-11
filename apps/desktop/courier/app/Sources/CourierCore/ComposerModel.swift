@@ -67,7 +67,7 @@ public enum ComposerNotice: Equatable, Sendable {
     /// The text is longer than the chat's network takes (`ChatFeatures.maxTextLength`, counted in bytes of UTF-8,
     /// so an emoji counts four). Nothing was sent, and the text stays to be shortened.
     case textTooLong
-    /// Calm notice shown when an optional feature is not available yet (Talk to Type) or when AI is not set up in Settings.
+    /// Calm notice shown under the composer when AI is not set up in Settings or an AI or speech action cannot run.
     case calmStub(reason: String)
 
     /// User-facing text shown in the notice banner under the composer.
@@ -410,6 +410,8 @@ public final class ComposerModel: ObservableObject {
     public weak var hotkeyDispatcher: HotkeyDispatcher?
     /// The composer's voice-note recorder.
     public let voiceRecorder: VoiceRecorderModel
+    /// The composer's Talk to Type speech dictation controller (`⌘⇧D`).
+    public let talkToType: TalkToTypeModel
     /// Called when a send is done, whether it worked or not, so the chat can read what the engine has.
     public var onSettled: @MainActor () -> Void = {}
     /// Called when something is submitted, before it is sent.
@@ -515,6 +517,7 @@ public final class ComposerModel: ObservableObject {
     private var preferencesCancellable: AnyCancellable?
     private var lockCancellable: AnyCancellable?
     private var aiStoreCancellable: AnyCancellable?
+    private var talkToTypeCancellable: AnyCancellable?
     private weak var observedLifecycle: SystemLifecycleModel?
     private var initialStickerLoadStarted = false
     private var stickerLoadGeneration = 0
@@ -562,6 +565,8 @@ public final class ComposerModel: ObservableObject {
         if voiceRecorder.state != .idle {
             voiceRecorder.cancelImmediately()
         }
+        _ = talkToType.cancel()
+        talkToType.dismissPermissionNotice()
         stopTyping()
     }
 
@@ -593,7 +598,8 @@ public final class ComposerModel: ObservableObject {
                 preferences: ComposerPreferences? = nil, entitlement: any EntitlementProvider = NoPlan(),
                 quickReplies: QuickReplies? = nil, now: @escaping @MainActor () -> Date = Date.init,
                 typingSleep: @escaping @Sendable (TimeInterval) async -> Void = { await waitForInboxWindow($0) },
-                voiceRecorder: VoiceRecorderModel? = nil) {
+                voiceRecorder: VoiceRecorderModel? = nil,
+                talkToType: TalkToTypeModel? = nil) {
         self.typingSleep = typingSleep
         self.sender = sender
         self.fileInfo = fileInfo
@@ -604,6 +610,17 @@ public final class ComposerModel: ObservableObject {
         self.quickReplies = quickReplies
         self.now = now
         self.voiceRecorder = voiceRecorder ?? VoiceRecorderModel()
+        self.talkToType = talkToType ?? TalkToTypeModel()
+        self.talkToType.onInsertText = { [weak self] spoken in
+            self?.insertDictatedText(spoken)
+        }
+        self.talkToType.onErrorNotice = { [weak self] reason in
+            self?.notices = [.calmStub(reason: reason)]
+        }
+        self.talkToTypeCancellable = self.talkToType.objectWillChange
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
         held.sender = { [weak self] in self?.sender }
         held.now = now
         held.quote = { [weak self] id in self?.quote(id) }
@@ -738,6 +755,9 @@ public final class ComposerModel: ObservableObject {
             voiceRecorder.cancelImmediately()
             return true
         }
+        if talkToType.cancel() {
+            return true
+        }
         if isEditing {
             leaveEditing()
             return true
@@ -787,6 +807,8 @@ public final class ComposerModel: ObservableObject {
         if voiceRecorder.state != .idle {
             voiceRecorder.cancelImmediately()
         }
+        _ = talkToType.cancel()
+        talkToType.dismissPermissionNotice()
         isStickerPickerPresented = false
         isGIFPickerPresented = false
         isEmojiPickerPresented = false
@@ -1712,6 +1734,7 @@ public final class ComposerModel: ObservableObject {
             let query = trimmedText == "/gif"
                 ? ""
                 : String(trimmedText.dropFirst("/gif ".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+            _ = talkToType.cancel()
             stopTyping()
             setContents("", [])
             notices = []
@@ -1719,6 +1742,7 @@ public final class ComposerModel: ObservableObject {
             return nil
         }
         if attachments.isEmpty, pendingGIF == nil, trimmedText == "/voice", roomID != nil {
+            _ = talkToType.cancel()
             stopTyping()
             setContents("", [])
             notices = []
@@ -1731,6 +1755,7 @@ public final class ComposerModel: ObservableObject {
            let room = roomID, let sender {
             let reply = replyTarget
             let rawText = trimmedText
+            _ = talkToType.cancel()
             stopTyping()
             setContents("", [])
             replyTarget = nil
@@ -1776,6 +1801,7 @@ public final class ComposerModel: ObservableObject {
         let thread = threadRoot
         let hold = holdMillis
         let disableLinkPreview = preferences?.disableOutgoingLinkPreviews
+        _ = talkToType.cancel()
         stopTyping() // the engine stops typing for a send too (C8); this ends the composer's own pulses
         setContents("", [])
         attachments = []
@@ -1799,6 +1825,9 @@ public final class ComposerModel: ObservableObject {
     /// Starts recording a voice note in the open chat (`⌘⇧A`, the microphone button, or `/voice`).
     public func startVoiceRecording() async {
         guard !isLocked, roomID != nil else { return }
+        if talkToType.cancel() {
+            await talkToType.waitForIdle()
+        }
         let preferredUID = preferences?.preferredMicrophoneUID ?? ""
         await voiceRecorder.start(preferredDeviceUID: preferredUID)
     }
@@ -1809,6 +1838,7 @@ public final class ComposerModel: ObservableObject {
         let reply = replyTarget
         replyTarget = nil
         notices = []
+        _ = talkToType.cancel()
         stopTyping()
         onSubmit()
         let task = enqueue(in: room) { [weak self] in
@@ -2314,6 +2344,7 @@ public final class ComposerModel: ObservableObject {
             return nil
         }
         notices = []
+        _ = talkToType.cancel()
         stopTyping()
         leaveEditing()
         let unchanged = rich.text == original.text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2713,10 +2744,12 @@ public final class ComposerModel: ObservableObject {
 
     // MARK: - AI & Slash Commands
 
-    /// Binds this composer to a shared `AIProviderStore` so `aiPreferences` and live `aiProvider` updates stay in sync.
+    /// Binds this composer to a shared `AIProviderStore` so `aiPreferences`, live `aiProvider` updates, and
+    /// `talkToType.engineFactory` stay in sync.
     public func bindAIProviderStore(_ store: AIProviderStore) {
         aiPreferences = store.preferences
         aiProvider = store.provider
+        talkToType.engineFactory = store.speechEngineFactory
         aiStoreCancellable = store.$provider
             .sink { [weak self] nextProvider in
                 self?.aiProvider = nextProvider
@@ -2734,10 +2767,41 @@ public final class ComposerModel: ObservableObject {
         }
     }
 
-    /// Triggers Talk to Type (`⌘⇧D` / `Message: Talk to Type`). Preserves `text` and shows a calm notice.
+    /// Triggers or stops Talk to Type (`⌘⇧D` / `Message: Talk to Type`).
+    /// Never sends anything and never alters `text` until dictation finishes cleanly.
     public func triggerTalkToType() {
         guard !isLocked else { return }
-        notices = [.calmStub(reason: String(localized: "Talk to Type isn’t available yet in Courier."))]
+        guard !voiceRecorder.isRecordingOrReviewing else { return }
+        if talkToType.engineFactory.preferences !== aiPreferences {
+            talkToType.engineFactory = SpeechEngineFactory(preferences: aiPreferences)
+        }
+        talkToType.toggle()
+    }
+
+    /// Inserts finalized speech text at the cursor without replacing or losing any existing draft text,
+    /// adding a leading space when the character immediately before the insertion point is not whitespace.
+    public func insertDictatedText(_ spoken: String) {
+        guard !isLocked else { return }
+        let trimmed = spoken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let nsText = text as NSString
+        let insertAt: Int
+        if selection.location >= 0, selection.location + selection.length <= nsText.length {
+            insertAt = selection.location + selection.length
+        } else {
+            insertAt = nsText.length
+        }
+        let needsLeadingSpace: Bool
+        if insertAt > 0 {
+            let before = nsText.substring(to: insertAt)
+            needsLeadingSpace = before.unicodeScalars.last.map {
+                !CharacterSet.whitespacesAndNewlines.contains($0)
+            } ?? false
+        } else {
+            needsLeadingSpace = false
+        }
+        let piece = needsLeadingSpace ? " " + trimmed : trimmed
+        replaceText(in: NSRange(location: insertAt, length: 0), with: piece)
     }
 
     /// Triggers Draft a reply (`tone == nil`) or Rewrite (`tone != nil`). Never alters `text` directly; stages the

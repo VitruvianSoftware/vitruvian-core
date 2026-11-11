@@ -1203,7 +1203,6 @@ public final class HotkeyDispatcher: ObservableObject {
         case "Focus App",
              "Focus App and Command Bar",
              HotkeyID.commandBar,
-             HotkeyID.talkToType,
              HotkeyID.zoomIn,
              HotkeyID.zoomOut,
              HotkeyID.resetZoom,
@@ -1257,7 +1256,8 @@ public final class HotkeyDispatcher: ObservableObject {
              "Message: Edit",
              "Message: Forward",
              "Message: Send Message and Archive",
-             "Insert New Line":
+             "Insert New Line",
+             HotkeyID.talkToType:
             return conversation.roomID != nil
 
         case "Message: Send Later":
@@ -1378,7 +1378,7 @@ public final class HotkeyDispatcher: ObservableObject {
             return true
 
         case HotkeyID.talkToType:
-            inbox.announce(String(localized: "Talk to Type isn’t available in this build."))
+            activeComposer.triggerTalkToType()
             return true
 
         case HotkeyID.zoomIn:

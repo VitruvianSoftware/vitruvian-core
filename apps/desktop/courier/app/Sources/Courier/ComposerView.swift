@@ -177,6 +177,7 @@ struct ComposerView: View {
         if let aiError = composer.aiError {
             aiErrorStrip(aiError)
         }
+        ComposerTalkToTypeBanner(talkToType: composer.talkToType)
         ComposerVoiceStatusBanner(voiceRecorder: composer.voiceRecorder)
         if let mergedChat, let activeNetwork = activeReplyNetwork, !activeNetwork.isEmpty {
             mergedReplyNetworkPill(mergedChat: mergedChat, activeNetwork: activeNetwork)
@@ -1566,6 +1567,150 @@ struct BrandStopButton: View {
         .buttonStyle(.plain)
         .help(String(localized: "Stop recording to review"))
         .accessibilityLabel(String(localized: "Stop recording"))
+    }
+}
+
+private struct ComposerTalkToTypeBanner: View {
+    @ObservedObject var talkToType: TalkToTypeModel
+
+    var body: some View {
+        if let notice = talkToType.permissionNotice {
+            HStack(spacing: 10) {
+                Image(systemName: "mic.slash.fill")
+                    .foregroundStyle(.orange)
+                Text(notice.message)
+                    .font(.callout)
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 4)
+                Button(String(localized: "Open System Settings")) {
+                    if let url = notice.systemSettingsURL {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+                .controlSize(.small)
+                Button {
+                    talkToType.dismissPermissionNotice()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(String(localized: "Dismiss"))
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.12)))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.orange.opacity(0.35), lineWidth: 1))
+        }
+
+        switch talkToType.state {
+        case .idle:
+            EmptyView()
+        case .askingPermission:
+            stripContainer {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(String(localized: "Waiting for permission…"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                }
+            }
+        case let .listening(partialText, level, provenance, statusMessage):
+            stripContainer {
+                VStack(alignment: .leading, spacing: partialText.isEmpty ? 0 : 6) {
+                    if !partialText.isEmpty {
+                        Text(partialText)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .lineLimit(3)
+                    }
+                    HStack(spacing: 10) {
+                        Image(systemName: "mic.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color.accentColor)
+                            .symbolEffect(.pulse)
+                        TalkToTypeLevelMeter(level: level)
+                        Text(statusMessage ?? String(localized: "Listening…"))
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(statusMessage == nil ? .primary : .secondary)
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                        Text(provenance.liveStripLabel)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        Button(String(localized: "Stop")) {
+                            talkToType.stop()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                    }
+                }
+            }
+        case let .finishing(partialText, provenance, statusMessage):
+            stripContainer {
+                VStack(alignment: .leading, spacing: partialText.isEmpty ? 0 : 6) {
+                    if !partialText.isEmpty {
+                        Text(partialText)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .lineLimit(3)
+                    }
+                    HStack(spacing: 10) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text(statusMessage ?? String(localized: "Finishing…"))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                        Text(provenance.liveStripLabel)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+            }
+        }
+    }
+
+    private func stripContainer<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.secondary.opacity(0.11))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(Color.secondary.opacity(0.22), lineWidth: 0.5)
+            )
+    }
+}
+
+private struct TalkToTypeLevelMeter: View {
+    let level: Float
+    private static let multipliers: [CGFloat] = [0.45, 0.85, 1.0, 0.75, 0.5]
+
+    var body: some View {
+        let clamped = CGFloat(min(max(level, 0), 1))
+        HStack(alignment: .center, spacing: 2) {
+            ForEach(Array(Self.multipliers.enumerated()), id: \.offset) { _, mult in
+                let barHeight = max(3, min(14, 3 + clamped * 11 * mult))
+                Capsule(style: .continuous)
+                    .fill(Color.accentColor.opacity(clamped > 0.02 ? 0.85 : 0.35))
+                    .frame(width: 2.5, height: barHeight)
+            }
+        }
+        .frame(height: 14)
+        .accessibilityHidden(true)
     }
 }
 

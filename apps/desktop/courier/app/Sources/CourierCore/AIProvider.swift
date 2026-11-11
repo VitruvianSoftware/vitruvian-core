@@ -29,7 +29,8 @@ public enum AIProviderDisposition: Equatable, Sendable {
     case text(String)
 }
 
-/// Spec §3 seam for AI features (Settings ▸ AI, AIPane, Talk to Type, Draft with AI, Translate, Whisper transcription).
+/// Spec §3 seam for chat AI features (Settings ▸ AI, AIPane, Draft with AI, Rewrite, Translate, Summarize).
+/// Speech features (`TalkToTypeModel`, `VoiceNoteTranscriptStore`) use `SpeechEngine` directly rather than `AIProvider`.
 /// `UnavailableAIProvider` is completely offline and never contacts any server.
 public protocol AIProvider: Sendable {
     var isAvailable: Bool { get }
@@ -38,8 +39,6 @@ public protocol AIProvider: Sendable {
     func draftResponse(context: AIChatContext, draft: String, tone: AIRewriteTone?) async -> AIProviderDisposition
     func translate(text: String, targetLanguage: String) async -> AIProviderDisposition
     func summarize(context: AIChatContext) async -> AIProviderDisposition
-    func transcribeVoiceNote(roomID: String, eventID: String) async -> AIProviderDisposition
-    func startTalkToType() async -> AIProviderDisposition
 }
 
 public struct UnavailableAIProvider: AIProvider {
@@ -66,12 +65,6 @@ public struct UnavailableAIProvider: AIProvider {
     }
     public func summarize(context _: AIChatContext) async -> AIProviderDisposition {
         .unavailable(reason: customReason ?? String(localized: "AI chat summaries aren’t available yet in Courier."))
-    }
-    public func transcribeVoiceNote(roomID _: String, eventID _: String) async -> AIProviderDisposition {
-        .unavailable(reason: String(localized: "Voice-note transcription isn’t available yet in Courier."))
-    }
-    public func startTalkToType() async -> AIProviderDisposition {
-        .unavailable(reason: String(localized: "Talk to Type isn’t available yet in Courier."))
     }
 }
 

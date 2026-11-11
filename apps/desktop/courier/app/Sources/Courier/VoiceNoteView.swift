@@ -1,16 +1,23 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import AppKit
 import CourierCore
 import SwiftUI
 
 /// Inline voice-note and audio player (`Audio.tsx` / `MSC1767Audio`) with interactive waveform bar scrubbing,
-/// elapsed/duration readout, `0.5× / 1× / 1.5× / 2×` speed pill, and an unplayed indicator dot.
+/// elapsed/duration readout, `0.5× / 1× / 1.5× / 2×` speed pill, unplayed indicator dot, inline `Transcribe`
+/// button, and collapsible transcript block with Copy + provenance.
 struct VoiceNoteView: View {
     let message: TimelineMessage
     let chatTitle: String
     @ObservedObject var audioPlayer: AudioPlayerModel
     var queueInRoom: [AudioPlayerModel.Track] = []
+    @ObservedObject var transcriptStore: VoiceNoteTranscriptStore = VoiceNoteTranscriptStore()
+    var onCopyTranscript: (String) -> Void = { text in
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
 
     private static let defaultWaveform: [Int] = [
         18, 32, 48, 70, 54, 36, 62, 88, 74, 46, 28, 58,
@@ -25,6 +32,13 @@ struct VoiceNoteView: View {
             String(localized: "Playback speed"),
             String(localized: "Unplayed voice message"),
             String(localized: "Voice message"),
+            String(localized: "Transcribe"),
+            String(localized: "Transcribing…"),
+            String(localized: "Transcript"),
+            String(localized: "Copy"),
+            SpeechProvenance.onThisMac.transcriptFooter,
+            SpeechProvenance.openAIWhisper.transcriptFooter,
+            SpeechError.missingLocalFile.message,
         ] + AudioPlayerModel.Speed.allCases.map(\.label)
     }
 
@@ -59,6 +73,20 @@ struct VoiceNoteView: View {
         Self.normalizeWaveform(message.waveform.isEmpty ? Self.defaultWaveform : message.waveform, count: Self.barCount)
     }
 
+    private var transcriptEntry: VoiceNoteTranscriptStore.Entry? {
+        transcriptStore.entry(for: message.id)
+    }
+
+    private var showsTranscribeButton: Bool {
+        guard message.kind == .voiceNote else { return false }
+        switch transcriptEntry {
+        case nil, .failed?:
+            return true
+        case .transcribing?, .transcribed?:
+            return false
+        }
+    }
+
     private var trackForMessage: AudioPlayerModel.Track {
         let sender = message.mine
             ? String(localized: "You")
@@ -85,35 +113,150 @@ struct VoiceNoteView: View {
 
     @ViewBuilder
     private var playerContent: some View {
-        HStack(spacing: 10) {
-            playPauseButton
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                playPauseButton
 
-            VStack(alignment: .leading, spacing: 5) {
-                waveformScrubber
-                    .frame(height: 24)
+                VStack(alignment: .leading, spacing: 5) {
+                    waveformScrubber
+                        .frame(height: 24)
 
-                HStack(spacing: 6) {
-                    Text(timeLabel)
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(secondaryColor)
+                    HStack(spacing: 6) {
+                        Text(timeLabel)
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(secondaryColor)
 
-                    if showsUnplayedDot {
-                        Circle()
-                            .fill(unplayedDotColor)
-                            .frame(width: 6, height: 6)
-                            .help(String(localized: "Unplayed voice message"))
-                            .accessibilityLabel(String(localized: "Unplayed voice message"))
+                        if showsUnplayedDot {
+                            Circle()
+                                .fill(unplayedDotColor)
+                                .frame(width: 6, height: 6)
+                                .help(String(localized: "Unplayed voice message"))
+                                .accessibilityLabel(String(localized: "Unplayed voice message"))
+                        }
+
+                        Spacer(minLength: 4)
+
+                        if showsTranscribeButton {
+                            transcribeButton
+                        }
+
+                        speedPillButton
                     }
-
-                    Spacer(minLength: 4)
-
-                    speedPillButton
                 }
             }
+
+            transcriptSection
         }
         .padding(.vertical, 3)
         .frame(minWidth: 230, maxWidth: 310, alignment: .leading)
         .accessibilityElement(children: .contain)
+        .onAppear {
+            transcriptStore.noteAppeared(message: message)
+        }
+        .onChange(of: message.id) { oldID, _ in
+            transcriptStore.noteDisappeared(eventID: oldID)
+            transcriptStore.noteAppeared(message: message)
+        }
+        .onChange(of: message.mediaPath) { _, _ in
+            transcriptStore.noteAppeared(message: message)
+        }
+        .onDisappear {
+            transcriptStore.noteDisappeared(message: message)
+        }
+    }
+
+    private var transcribeButton: some View {
+        Button {
+            let store = transcriptStore
+            let eventID = message.id
+            let mediaPath = message.mediaPath
+            Task {
+                await store.transcribe(eventID: eventID, mediaPath: mediaPath)
+            }
+        } label: {
+            Text(String(localized: "Transcribe"))
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(pillTextColor)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(pillBackgroundColor)
+                )
+        }
+        .buttonStyle(.plain)
+        .help(String(localized: "Transcribe voice message"))
+        .accessibilityLabel(String(localized: "Transcribe"))
+    }
+
+    @ViewBuilder
+    private var transcriptSection: some View {
+        switch transcriptEntry {
+        case nil:
+            EmptyView()
+        case .transcribing:
+            HStack(spacing: 6) {
+                ProgressView()
+                    .controlSize(.mini)
+                Text(String(localized: "Transcribing…"))
+                    .font(.caption)
+                    .foregroundStyle(secondaryColor)
+            }
+            .padding(.top, 2)
+        case let .transcribed(text, provenance, isCollapsed):
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Button {
+                        transcriptStore.toggleCollapsed(eventID: message.id)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                                .font(.system(size: 9, weight: .semibold))
+                            Text(String(localized: "Transcript"))
+                                .font(.caption2.weight(.semibold))
+                        }
+                        .foregroundStyle(secondaryColor)
+                    }
+                    .buttonStyle(.plain)
+
+                    Spacer(minLength: 4)
+
+                    Button {
+                        onCopyTranscript(text)
+                    } label: {
+                        Text(String(localized: "Copy"))
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(secondaryColor)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(String(localized: "Copy transcript"))
+                }
+
+                if !isCollapsed {
+                    Text(text)
+                        .font(.callout)
+                        .foregroundStyle(transcriptTextColor)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(provenance.transcriptFooter)
+                        .font(.caption2)
+                        .foregroundStyle(secondaryColor)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(transcriptBackgroundColor)
+            )
+        case let .failed(errorMessage):
+            Text(errorMessage)
+                .font(.caption)
+                .foregroundStyle(secondaryColor)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 2)
+        }
     }
 
     private var playPauseButton: some View {
@@ -226,6 +369,14 @@ struct VoiceNoteView: View {
 
     private var secondaryColor: Color {
         message.mine ? .white.opacity(0.82) : .secondary
+    }
+
+    private var transcriptTextColor: Color {
+        message.mine ? .white : .primary
+    }
+
+    private var transcriptBackgroundColor: Color {
+        message.mine ? .white.opacity(0.14) : Color.primary.opacity(0.06)
     }
 
     private var unplayedDotColor: Color {

@@ -85,14 +85,6 @@ public struct ConfiguredAIProvider: AIProvider, Sendable {
         return await complete(turns)
     }
 
-    public func transcribeVoiceNote(roomID _: String, eventID _: String) async -> AIProviderDisposition {
-        .unavailable(reason: String(localized: "Voice-note transcription isn’t available yet in Courier."))
-    }
-
-    public func startTalkToType() async -> AIProviderDisposition {
-        .unavailable(reason: String(localized: "Talk to Type isn’t available yet in Courier."))
-    }
-
     private func complete(_ turns: [AIChatTurn]) async -> AIProviderDisposition {
         do {
             let output = try await client.complete(turns, model: model)

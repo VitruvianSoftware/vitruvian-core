@@ -50,10 +50,8 @@ final class ProviderStubsTests: XCTestCase {
         let draftDisp = await ai.draftResponse(context: context, draft: "Summarize", tone: .moreConcise)
         let translateDisp = await ai.translate(text: "Bonjour", targetLanguage: "English")
         let summarizeDisp = await ai.summarize(context: context)
-        let transcribeDisp = await ai.transcribeVoiceNote(roomID: "!r1:courier.local", eventID: "$e1")
-        let talkDisp = await ai.startTalkToType()
 
-        for disp in [draftDisp, translateDisp, summarizeDisp, transcribeDisp, talkDisp] {
+        for disp in [draftDisp, translateDisp, summarizeDisp] {
             switch disp {
             case .unavailable(let reason):
                 XCTAssertFalse(reason.isEmpty)

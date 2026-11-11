@@ -1561,8 +1561,11 @@ public enum CommandSet {
                 icon: "Waveform.and.mic",
                 shortcut: "⌘⇧D"
             ) {
-                inbox?.announce(String(localized: "Talk to Type isn’t available in this build."))
-                openAISettings("talkToType")
+                if let activeComposer, activeComposer.roomID != nil {
+                    activeComposer.triggerTalkToType()
+                } else {
+                    openAISettings("talkToType")
+                }
             },
             CourierCommand(
                 id: "plan.manage",

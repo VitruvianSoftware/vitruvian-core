@@ -5168,6 +5168,105 @@ final class ViewSnapshotTests: XCTestCase {
             .background(Color(nsColor: .windowBackgroundColor))
         }
     }
+
+    func testTalkToTypeAndVoiceNoteTranscriptSnapshotsLightAndDark() throws {
+        let preferences = ComposerPreferences(defaults: defaults())
+        let listeningComposer = composer(text: "Hey Alice,")
+        listeningComposer.talkToType.setStateForTesting(
+            .listening(
+                partialText: "running five minutes late to the trailhead",
+                level: 0.65,
+                provenance: .onThisMac,
+                statusMessage: nil
+            )
+        )
+
+        let deniedComposer = composer(text: "Existing draft stays safe")
+        deniedComposer.talkToType.setStateForTesting(
+            .idle,
+            permissionNotice: TalkToTypePermissionNotice(
+                kind: .microphone,
+                message: SpeechError.microphoneAccessDenied.message
+            )
+        )
+
+        try assertLightAndDarkSnapshot("speech-talk-to-type-composer", width: 620) {
+            VStack(spacing: 14) {
+                ComposerView(
+                    composer: listeningComposer,
+                    preferences: preferences,
+                    textHeight: .constant(ComposerTextView.minimumHeight),
+                    menus: ComposerMenus(sendLater: {}, createPoll: {}, pollsUnavailable: nil)
+                )
+                ComposerView(
+                    composer: deniedComposer,
+                    preferences: preferences,
+                    textHeight: .constant(ComposerTextView.minimumHeight),
+                    menus: ComposerMenus(sendLater: {}, createPoll: {}, pollsUnavailable: nil)
+                )
+            }
+            .padding(14)
+            .background(Color(nsColor: .windowBackgroundColor))
+        }
+
+        var incomingVoice = Fixture.event(
+            "$vn-speech-1",
+            type: "m.room.message",
+            mine: false,
+            ts: 12,
+            content: [
+                "msgtype": .string("m.audio"),
+                "body": .string("Voice message"),
+                "org.matrix.msc3245.voice": .object([:]),
+                "info": .object(["duration": .int(18_000), "size": .int(24_576)]),
+            ],
+            name: "Alice Example"
+        )
+        incomingVoice.mediaPath = "/tmp/fake-voice.ogg"
+        incomingVoice.durationMS = 18_000
+        incomingVoice.waveform = [20, 48, 76, 62, 34, 80, 52, 28, 66, 40]
+        incomingVoice.played = false
+
+        var collapsedVoice = incomingVoice
+        collapsedVoice.eventID = "$vn-speech-2"
+        collapsedVoice.played = true
+
+        let voiceMessages = Fixture.messages([incomingVoice, collapsedVoice])
+        let transcriptStore = VoiceNoteTranscriptStore()
+        transcriptStore.setEntryForTesting(
+            .transcribed(
+                text: "Let’s meet by the north entrance at nine thirty.",
+                provenance: .onThisMac,
+                isCollapsed: false
+            ),
+            for: "$vn-speech-1"
+        )
+        transcriptStore.setEntryForTesting(
+            .transcribed(
+                text: "Short collapsed transcript.",
+                provenance: .openAIWhisper,
+                isCollapsed: true
+            ),
+            for: "$vn-speech-2"
+        )
+
+        let player = AudioPlayerModel(defaults: defaults())
+        try assertLightAndDarkSnapshot("speech-voice-note-transcripts", width: 400) {
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(voiceMessages) { msg in
+                    VoiceNoteView(
+                        message: msg,
+                        chatTitle: "Saturday Hike",
+                        audioPlayer: player,
+                        queueInRoom: [],
+                        transcriptStore: transcriptStore
+                    )
+                }
+            }
+            .padding(16)
+            .background(Color(nsColor: .windowBackgroundColor))
+        }
+    }
 }
 
 struct SnapshotLoginItemService: LoginItemService {

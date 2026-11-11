@@ -62,6 +62,13 @@ struct MessageActions {
     var openViewOnce: (TimelineMessage) -> Void = { _ in }
     /// Shared voice-note & audio player model.
     var audioPlayer: AudioPlayerModel? = nil
+    /// Shared voice-note transcript cache & auto-transcribe queue.
+    var voiceNoteTranscripts: VoiceNoteTranscriptStore? = nil
+    /// Copies plain text (such as a voice-note transcript) to the clipboard.
+    var copyPlainText: (String) -> Void = { text in
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
     /// Title of the chat a message belongs to, for `VoiceNoteView` and `GlobalAudioPlayerBar`.
     var chatTitle: (TimelineMessage) -> String = { _ in "" }
     /// Consecutive voice-note queue starting at the given message ID in the same chat.
@@ -881,7 +888,9 @@ struct MessageRowView: View {
                     message: message,
                     chatTitle: actions.chatTitle(message),
                     audioPlayer: actions.audioPlayer ?? AudioPlayerModel(),
-                    queueInRoom: actions.voiceNoteQueue(message.id)
+                    queueInRoom: actions.voiceNoteQueue(message.id),
+                    transcriptStore: actions.voiceNoteTranscripts ?? VoiceNoteTranscriptStore(),
+                    onCopyTranscript: actions.copyPlainText
                 )
                 caption
             case .file:
