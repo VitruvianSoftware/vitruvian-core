@@ -169,7 +169,7 @@ pub fn run(args: &[String]) -> i32 {
 
     // Generate Info.plist
     let apple_events_usage = if flavor.full {
-        "\n    <key>NSAppleEventsUsageDescription</key>\n    <string>Vitruvian Code allows local coding agents you start from it to automate macOS apps when a task asks for AppleScript.</string>"
+        "\n    <key>NSAppleEventsUsageDescription</key>\n    <string>Vitruvian Code launches AI coding tools (such as Claude and Gemini) that may run AppleScript to automate other Mac apps when a task asks for it.</string>"
     } else {
         ""
     };

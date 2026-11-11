@@ -52,8 +52,8 @@ SIGN_IDENTITY=""
 DO_NOTARIZE=0
 
 cleanup() {
-	local rc=$?
 	set +e
+	trap - EXIT INT TERM
 	if [ -n "${KEYCHAIN_RESTORE_NEEDED}" ]; then
 		if [ "${#ORIG_KEYCHAINS[@]}" -gt 0 ]; then
 			security list-keychains -d user -s "${ORIG_KEYCHAINS[@]}" >/dev/null 2>&1 || true
@@ -65,9 +65,44 @@ cleanup() {
 	if [ -n "${WORK_DIR}" ] && [ -d "${WORK_DIR}" ]; then
 		rm -rf "${WORK_DIR}"
 	fi
+}
+
+on_exit() {
+	local rc=$?
+	cleanup
 	exit "${rc}"
 }
-trap cleanup EXIT INT TERM
+
+on_int() {
+	cleanup
+	exit 130
+}
+
+on_term() {
+	cleanup
+	exit 143
+}
+
+trap on_exit EXIT
+trap on_int INT
+trap on_term TERM
+
+usage() {
+	cat >&2 <<'EOF'
+Usage:
+  sign-and-notarize.sh apps [--entitlements-app <app.app>]... [--plain-app <app.app>]... [--macho <binary>]...
+  sign-and-notarize.sh dmgs <dmg>...
+EOF
+}
+
+usage_error() {
+	local msg="${1:-}"
+	if [ -n "${msg}" ]; then
+		echo "error: ${msg}" >&2
+	fi
+	usage
+	exit 2
+}
 
 fail_error() {
 	local msg="$1"
@@ -100,15 +135,18 @@ decode_base64_to_file() {
 write_notary_key() {
 	local raw="$1"
 	local dest="$2"
-	if printf '%s' "${raw}" | grep -q -- "-----BEGIN"; then
+	case "${raw}" in
+	*"-----BEGIN"*)
 		(
 			umask 077
 			printf '%s\n' "${raw}" >"${dest}"
 		)
 		chmod 600 "${dest}"
-	else
+		;;
+	*)
 		decode_base64_to_file "${raw}" "${dest}"
-	fi
+		;;
+	esac
 	if ! grep -q -- "-----BEGIN" "${dest}"; then
 		fail_error "VITRUVIAN_NOTARY_API_KEY_P8 did not decode to a PEM private key."
 	fi
@@ -156,6 +194,7 @@ setup_credentials() {
 		kc_pass="$(LC_ALL=C head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 24)"
 		TMP_KEYCHAIN="${WORK_DIR}/vitruvian-code-signing.keychain-db"
 
+		# macOS `security` accepts no password via stdin or env var (-P/-u open GUI prompts); ephemeral runner, the keychain password is random per run, and GitHub masks secrets.
 		security create-keychain -p "${kc_pass}" "${TMP_KEYCHAIN}"
 		chmod 600 "${TMP_KEYCHAIN}"
 		security set-keychain-settings -lut 21600 "${TMP_KEYCHAIN}"
@@ -180,9 +219,9 @@ setup_credentials() {
 
 		local listing
 		listing="$(security find-identity -v -p codesigning "${TMP_KEYCHAIN}")"
-		SIGN_IDENTITY="$(printf '%s\n' "${listing}" | awk '/Developer ID Application:/ { print $2; exit }')"
+		SIGN_IDENTITY="$(awk '/Developer ID Application:/ { print $2; exit }' <<<"${listing}")"
 		local identity_label
-		identity_label="$(printf '%s\n' "${listing}" | grep 'Developer ID Application:' | head -1 | sed -E 's/.*"(.*)".*/\1/' || true)"
+		identity_label="$(awk -F'"' '/Developer ID Application:/ { print $2; exit }' <<<"${listing}")"
 		if [ -z "${SIGN_IDENTITY}" ]; then
 			fail_error "Imported signing certificate in temporary keychain contains no valid 'Developer ID Application' identity."
 		fi
@@ -196,9 +235,9 @@ setup_credentials() {
 	local-keychain)
 		local listing
 		listing="$(security find-identity -v -p codesigning)"
-		SIGN_IDENTITY="$(printf '%s\n' "${listing}" | awk '/Developer ID Application:/ { print $2; exit }')"
+		SIGN_IDENTITY="$(awk '/Developer ID Application:/ { print $2; exit }' <<<"${listing}")"
 		local identity_label
-		identity_label="$(printf '%s\n' "${listing}" | grep 'Developer ID Application:' | head -1 | sed -E 's/.*"(.*)".*/\1/' || true)"
+		identity_label="$(awk -F'"' '/Developer ID Application:/ { print $2; exit }' <<<"${listing}")"
 		if [ -z "${SIGN_IDENTITY}" ]; then
 			fail_error "SIGNING=local-keychain found no valid 'Developer ID Application' identity in the user keychain."
 		fi
@@ -254,6 +293,32 @@ clear_xattrs() {
 	find "${target}" -print0 | xargs -0 xattr -c -s 2>/dev/null || true
 }
 
+read_bundle_executable() {
+	local info_plist="$1"
+	if [ ! -f "${info_plist}" ]; then
+		fail_error "Bundle Info.plist not found: ${info_plist}"
+	fi
+	local exec_name=""
+	if [ -x /usr/libexec/PlistBuddy ]; then
+		exec_name="$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "${info_plist}" 2>/dev/null || true)"
+	fi
+	if [ -z "${exec_name}" ]; then
+		exec_name="$(awk '
+			/<key>[[:space:]]*CFBundleExecutable[[:space:]]*<\/key>/ { found=1; next }
+			found && /<string>/ {
+				sub(/^.*<string>/, "")
+				sub(/<\/string>.*$/, "")
+				print
+				exit
+			}
+		' "${info_plist}")"
+	fi
+	if [ -z "${exec_name}" ]; then
+		fail_error "CFBundleExecutable missing in ${info_plist}"
+	fi
+	printf '%s\n' "${exec_name}"
+}
+
 sign_app_inside_out() {
 	local app="$1"
 	local entitlements="${2:-}"
@@ -265,21 +330,29 @@ sign_app_inside_out() {
 		fail_error "Entitlements file not found: ${entitlements}"
 	fi
 
+	local main_exec
+	main_exec="$(read_bundle_executable "${app}/Contents/Info.plist")"
+	local main_exec_path="${app}/Contents/MacOS/${main_exec}"
+
 	chmod -R u+w "${app}"
 	clear_xattrs "${app}"
 
-	# 1. Sign nested regular Mach-O files (helpers, dylibs) inside-out, excluding
-	#    the bundle's own Contents/MacOS/* main executable(s) which are signed by
-	#    the bundle pass below.
+	# 1. Sign nested regular Mach-O files (helpers, dylibs, and any non-main
+	#    Mach-O inside Contents/MacOS) inside-out, skipping ONLY the main
+	#    executable (CFBundleExecutable), which is signed with the bundle below.
+	local file_desc
 	while IFS= read -r candidate; do
 		[ -n "${candidate}" ] || continue
-		case "${candidate}" in
-		"${app}/Contents/MacOS/"*) continue ;;
-		esac
-		if file -b "${candidate}" | grep -q "Mach-O"; then
+		if [ "${candidate}" = "${main_exec_path}" ]; then
+			continue
+		fi
+		file_desc="$(file -b "${candidate}" 2>/dev/null || true)"
+		case "${file_desc}" in
+		*Mach-O*)
 			echo "    Signing nested Mach-O: ${candidate}"
 			codesign_leaf "${candidate}"
-		fi
+			;;
+		esac
 	done < <(find "${app}/Contents" -depth -type f)
 
 	# 2. Sign nested frameworks, XPC services, or helper app bundles inside-out.
@@ -347,7 +420,7 @@ notarize_and_staple_app() {
 
 	clear_xattrs "${app}"
 	codesign --verify --deep --strict "${app}"
-	/usr/bin/ditto -c -k --keepParent "${app}" "${zip_path}"
+	ditto -c -k --keepParent "${app}" "${zip_path}"
 	notarytool_submit_and_require_accepted "${zip_path}" "${base}"
 	rm -f "${zip_path}"
 
@@ -362,40 +435,34 @@ run_apps() {
 	local machos=()
 
 	if [ "$#" -eq 0 ]; then
-		entitled_apps=(
-			"/tmp/dist-universal/Vitruvian Code.app"
-			"/tmp/dist-arm64/Vitruvian Code.app"
-			"/tmp/dist-x86_64/Vitruvian Code.app"
-		)
-		plain_apps=(
-			"/tmp/dist-bridge/NexusAgent.app"
-		)
-		machos=(
-			"/tmp/universal/vitruvian-code-tool"
-		)
-	else
-		while [ "$#" -gt 0 ]; do
-			case "$1" in
-			--entitlements-app)
-				[ "$#" -ge 2 ] || fail_error "--entitlements-app requires a path"
-				entitled_apps+=("$2")
-				shift 2
-				;;
-			--plain-app)
-				[ "$#" -ge 2 ] || fail_error "--plain-app requires a path"
-				plain_apps+=("$2")
-				shift 2
-				;;
-			--macho)
-				[ "$#" -ge 2 ] || fail_error "--macho requires a path"
-				machos+=("$2")
-				shift 2
-				;;
-			*)
-				fail_error "Unknown apps argument: $1"
-				;;
-			esac
-		done
+		usage_error
+	fi
+
+	while [ "$#" -gt 0 ]; do
+		case "$1" in
+		--entitlements-app)
+			[ "$#" -ge 2 ] || usage_error "--entitlements-app requires a path"
+			entitled_apps+=("$2")
+			shift 2
+			;;
+		--plain-app)
+			[ "$#" -ge 2 ] || usage_error "--plain-app requires a path"
+			plain_apps+=("$2")
+			shift 2
+			;;
+		--macho)
+			[ "$#" -ge 2 ] || usage_error "--macho requires a path"
+			machos+=("$2")
+			shift 2
+			;;
+		*)
+			usage_error "Unknown apps argument: $1"
+			;;
+		esac
+	done
+
+	if [ "${#entitled_apps[@]}" -eq 0 ] && [ "${#plain_apps[@]}" -eq 0 ] && [ "${#machos[@]}" -eq 0 ]; then
+		usage_error
 	fi
 
 	setup_credentials
@@ -443,7 +510,7 @@ run_apps() {
 			for bin in "${machos[@]}"; do
 				idx=$((idx + 1))
 				local tool_zip="${WORK_DIR}/macho-${idx}.zip"
-				/usr/bin/ditto -c -k "${bin}" "${tool_zip}"
+				ditto -c -k "${bin}" "${tool_zip}"
 				notarytool_submit_and_require_accepted "${tool_zip}" "$(basename "${bin}")"
 				rm -f "${tool_zip}"
 			done
@@ -476,7 +543,7 @@ run_apps() {
 
 run_dmgs() {
 	if [ "$#" -eq 0 ]; then
-		fail_error "Usage: sign-and-notarize.sh dmgs <dmg>..."
+		usage_error
 	fi
 
 	local dmg
@@ -512,14 +579,18 @@ run_dmgs() {
 
 main() {
 	if [ "$#" -lt 1 ]; then
-		fail_error "Usage: sign-and-notarize.sh <apps|dmgs> [args...]"
+		usage_error
 	fi
 	local subcmd="$1"
 	shift
 	case "${subcmd}" in
 	apps) run_apps "$@" ;;
 	dmgs) run_dmgs "$@" ;;
-	*) fail_error "Unknown subcommand '${subcmd}' (expected apps or dmgs)." ;;
+	-h | --help)
+		usage
+		exit 2
+		;;
+	*) usage_error "Unknown subcommand '${subcmd}' (expected apps or dmgs)." ;;
 	esac
 }
 

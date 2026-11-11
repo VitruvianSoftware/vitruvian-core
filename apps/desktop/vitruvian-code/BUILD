@@ -33,6 +33,12 @@ filegroup(
     visibility = ["//tools/ci:__pkg__"],
 )
 
+filegroup(
+    name = "sign_and_notarize_script",
+    srcs = ["scripts/sign-and-notarize.sh"],
+    visibility = ["//apps/desktop/vitruvian-code:__subpackages__"],
+)
+
 rust_library(
     name = "bot_lib",
     srcs = ["//apps/desktop/vitruvian-code/src:bot_lib.rs"],

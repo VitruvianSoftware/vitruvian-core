@@ -88,6 +88,27 @@ const PACKAGE_PREFIX: &str = "apps/desktop/vitruvian-code/";
 /// minutes later, so they are not kept for the default ninety days.
 const REHEARSAL_EXTRA_LINES: &[&str] = &["retention-days: 1"];
 
+/// The ONLY steps in release.yml's `package` job that may see the five
+/// Developer ID signing / notary secrets. Every other step (and the rehearsal
+/// workflow, which runs on pull requests) must never see them.
+const SIGNING_STEPS: &[&str] = &["Sign and notarize apps and tool", "Sign and notarize DMGs"];
+
+const SIGNING_SECRET_ENV_LINES: &[&str] = &[
+    "VITRUVIAN_SIGNING_CERT_P12: ${{ secrets.VITRUVIAN_SIGNING_CERT_P12 }}",
+    "VITRUVIAN_SIGNING_CERT_PASSWORD: ${{ secrets.VITRUVIAN_SIGNING_CERT_PASSWORD }}",
+    "VITRUVIAN_NOTARY_API_KEY_P8: ${{ secrets.VITRUVIAN_NOTARY_API_KEY_P8 }}",
+    "VITRUVIAN_NOTARY_KEY_ID: ${{ secrets.VITRUVIAN_NOTARY_KEY_ID }}",
+    "VITRUVIAN_NOTARY_ISSUER_ID: ${{ secrets.VITRUVIAN_NOTARY_ISSUER_ID }}",
+];
+
+const SIGNING_SECRET_NAMES: &[&str] = &[
+    "VITRUVIAN_SIGNING_CERT_P12",
+    "VITRUVIAN_SIGNING_CERT_PASSWORD",
+    "VITRUVIAN_NOTARY_API_KEY_P8",
+    "VITRUVIAN_NOTARY_KEY_ID",
+    "VITRUVIAN_NOTARY_ISSUER_ID",
+];
+
 const CHECKOUT: &str = "uses: actions/checkout";
 
 /// Commands after which SwiftPM's checkouts of the package's dependencies
@@ -471,7 +492,18 @@ pub fn compare(release_text: &str, rehearsal_text: &str) -> Vec<String> {
             else {
                 continue;
             };
-            let want = normalise(rel_step, false);
+            let rel_filtered: Vec<String> = if SIGNING_STEPS.contains(&title) {
+                rel_step
+                    .iter()
+                    .filter(|l| {
+                        l.as_str() != "env:" && !SIGNING_SECRET_ENV_LINES.contains(&l.as_str())
+                    })
+                    .cloned()
+                    .collect()
+            } else {
+                rel_step.clone()
+            };
+            let want = normalise(&rel_filtered, false);
             let got = normalise(reh_step, true);
             if want != got {
                 let diff = unified_diff(&want, &got, "release.yml", "the rehearsal");
@@ -554,16 +586,33 @@ pub fn looked_at_what_matters(release_text: &str) -> Vec<String> {
             .iter()
             .any(|l| l.starts_with("\"$RUNNER_TEMP/bundle-app\" ") && l.ends_with(" --bridge")),
     );
+    let sign_apps = body("Sign and notarize apps and tool");
+    expect(
+        "explicit --entitlements-app, --plain-app, and --macho paths on `Sign and notarize apps and tool`",
+        sign_apps.iter().filter(|l| l.contains("--entitlements-app ")).count() == 3
+            && sign_apps.iter().any(|l| l.contains("--plain-app "))
+            && sign_apps.iter().any(|l| l.contains("--macho ")),
+    );
     let zips = body("Create ZIP for auto-updater");
     expect(
-        "the new app's zip, which says macos and never universal",
-        zips.iter()
-            .any(|l| l.contains("VitruvianCode-${VERSION}-macos.zip\" \"Vitruvian Code.app\"")),
+        "the new app's zip built with `ditto -c -k --keepParent`, saying macos and never universal",
+        zips.iter().any(|l| {
+            l.starts_with("ditto -c -k --keepParent ")
+                && l.contains("Vitruvian Code.app\"")
+                && l.contains("VitruvianCode-${VERSION}-macos.zip\"")
+        }),
     );
     expect(
-        "the bridge's zip, the one asset that says universal",
-        zips.iter()
-            .any(|l| l.contains("NexusAgent-${VERSION}-universal.zip\" NexusAgent.app")),
+        "the bridge's zip built with `ditto -c -k --keepParent`, the one asset that says universal",
+        zips.iter().any(|l| {
+            l.starts_with("ditto -c -k --keepParent ")
+                && l.contains("NexusAgent.app")
+                && l.contains("NexusAgent-${VERSION}-universal.zip\"")
+        }),
+    );
+    expect(
+        "no `zip -r -y` in `Create ZIP for auto-updater`",
+        !zips.iter().any(|l| l.contains("zip -r -y")),
     );
     expect(
         "the new app's checksum file",
@@ -576,6 +625,99 @@ pub fn looked_at_what_matters(release_text: &str) -> Vec<String> {
             .iter()
             .any(|l| l.starts_with("(cd \"$folder\" && zip -r -X")),
     );
+    problems
+}
+
+fn mentions_signing_secret(line: &str) -> bool {
+    SIGNING_SECRET_NAMES.iter().any(|name| line.contains(name))
+}
+
+/// Ensures the five signing/notary secrets are passed ONLY to the two signing
+/// steps in `release.yml`, never at job scope, never to other steps, and never
+/// in the pull-request rehearsal workflow.
+pub fn signing_secrets_scoped(release_text: &str, rehearsal_text: &str) -> Vec<String> {
+    let mut problems = Vec::new();
+
+    for job in ["detect", "build-macos", "package"] {
+        let Some(lines) = job_lines(release_text, job) else {
+            continue;
+        };
+        let (header, steps) = split_job(&lines);
+        for line in &header {
+            if mentions_signing_secret(line) {
+                problems.push(format!(
+                    "release.yml, job `{}` header exposes signing secret (`{}`); pass signing secrets only to the two signing steps",
+                    job, line
+                ));
+            }
+        }
+        let step_map: HashMap<String, Vec<String>> = steps.iter().cloned().collect();
+        if job == "package" {
+            for &sign_step in SIGNING_STEPS {
+                match step_map.get(sign_step) {
+                    None => problems.push(format!(
+                        "release.yml, job `package` is missing signing step `{}`",
+                        sign_step
+                    )),
+                    Some(body) => {
+                        if !body.iter().any(|l| l == "env:") {
+                            problems.push(format!(
+                                "release.yml, step `{}` has no `env:` block for signing secrets",
+                                sign_step
+                            ));
+                        }
+                        for &expected in SIGNING_SECRET_ENV_LINES {
+                            if !body.iter().any(|l| l == expected) {
+                                problems.push(format!(
+                                    "release.yml, step `{}` is missing `{}`",
+                                    sign_step, expected
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        for (title, body) in &steps {
+            let allowed = job == "package" && SIGNING_STEPS.contains(&title.as_str());
+            if !allowed {
+                for line in body {
+                    if mentions_signing_secret(line) {
+                        problems.push(format!(
+                            "release.yml, job `{}`, step `{}` sees signing secret (`{}`); no step other than the two signing steps may see them",
+                            job, title, line
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    for job in ["build", "package"] {
+        let Some(lines) = job_lines(rehearsal_text, job) else {
+            continue;
+        };
+        let (header, steps) = split_job(&lines);
+        for line in &header {
+            if mentions_signing_secret(line) {
+                problems.push(format!(
+                    "the rehearsal, job `{}` header references signing secret (`{}`)",
+                    job, line
+                ));
+            }
+        }
+        for (title, body) in &steps {
+            for line in body {
+                if mentions_signing_secret(line) {
+                    problems.push(format!(
+                        "the rehearsal, job `{}`, step `{}` references signing secret (`{}`)",
+                        job, title, line
+                    ));
+                }
+            }
+        }
+    }
+
     problems
 }
 
@@ -653,6 +795,43 @@ jobs:
           cp .build/checkouts/foo/bar /tmp/
 ";
     assert!(reads_only_what_it_fetched(good_wf, "release.yml", &["package"]).is_empty());
+
+    // 3. signing_secrets_scoped rejects job-level or non-signing-step exposure
+    let leaked_job_wf = "\
+jobs:
+  package:
+    runs-on: macos-15
+    env:
+      VITRUVIAN_SIGNING_CERT_P12: ${{ secrets.VITRUVIAN_SIGNING_CERT_P12 }}
+    steps:
+      - name: Sign and notarize apps and tool
+        env:
+          VITRUVIAN_SIGNING_CERT_P12: ${{ secrets.VITRUVIAN_SIGNING_CERT_P12 }}
+          VITRUVIAN_SIGNING_CERT_PASSWORD: ${{ secrets.VITRUVIAN_SIGNING_CERT_PASSWORD }}
+          VITRUVIAN_NOTARY_API_KEY_P8: ${{ secrets.VITRUVIAN_NOTARY_API_KEY_P8 }}
+          VITRUVIAN_NOTARY_KEY_ID: ${{ secrets.VITRUVIAN_NOTARY_KEY_ID }}
+          VITRUVIAN_NOTARY_ISSUER_ID: ${{ secrets.VITRUVIAN_NOTARY_ISSUER_ID }}
+        run: scripts/sign-and-notarize.sh apps --macho /tmp/tool
+      - name: Sign and notarize DMGs
+        env:
+          VITRUVIAN_SIGNING_CERT_P12: ${{ secrets.VITRUVIAN_SIGNING_CERT_P12 }}
+          VITRUVIAN_SIGNING_CERT_PASSWORD: ${{ secrets.VITRUVIAN_SIGNING_CERT_PASSWORD }}
+          VITRUVIAN_NOTARY_API_KEY_P8: ${{ secrets.VITRUVIAN_NOTARY_API_KEY_P8 }}
+          VITRUVIAN_NOTARY_KEY_ID: ${{ secrets.VITRUVIAN_NOTARY_KEY_ID }}
+          VITRUVIAN_NOTARY_ISSUER_ID: ${{ secrets.VITRUVIAN_NOTARY_ISSUER_ID }}
+        run: scripts/sign-and-notarize.sh dmgs foo.dmg
+      - name: Check the apps
+        env:
+          VITRUVIAN_NOTARY_KEY_ID: ${{ secrets.VITRUVIAN_NOTARY_KEY_ID }}
+        run: echo check
+";
+    let secret_errs = signing_secrets_scoped(leaked_job_wf, "jobs:\n  package:\n    steps:\n");
+    assert_eq!(
+        secret_errs.len(),
+        2,
+        "expected job-header and step leaks: {:?}",
+        secret_errs
+    );
 }
 
 fn main() -> ExitCode {
@@ -671,6 +850,7 @@ fn main() -> ExitCode {
 
     let mut problems = Vec::new();
     problems.extend(looked_at_what_matters(&release_text));
+    problems.extend(signing_secrets_scoped(&release_text, &rehearsal_text));
     problems.extend(compare(&release_text, &rehearsal_text));
     problems.extend(reads_only_what_it_fetched(
         &release_text,

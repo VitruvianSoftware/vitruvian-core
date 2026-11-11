@@ -144,11 +144,6 @@ jobs:
     timeout-minutes: 60
     env:
       SIGNING: developer-id
-      VITRUVIAN_SIGNING_CERT_P12: ${{ secrets.VITRUVIAN_SIGNING_CERT_P12 }}
-      VITRUVIAN_SIGNING_CERT_PASSWORD: ${{ secrets.VITRUVIAN_SIGNING_CERT_PASSWORD }}
-      VITRUVIAN_NOTARY_API_KEY_P8: ${{ secrets.VITRUVIAN_NOTARY_API_KEY_P8 }}
-      VITRUVIAN_NOTARY_KEY_ID: ${{ secrets.VITRUVIAN_NOTARY_KEY_ID }}
-      VITRUVIAN_NOTARY_ISSUER_ID: ${{ secrets.VITRUVIAN_NOTARY_ISSUER_ID }}
     steps:
       - uses: actions/checkout@v7
 
@@ -218,8 +213,19 @@ jobs:
           "$RUNNER_TEMP/bundle-app" /tmp/bridge-universal/NexusAgent "$VERSION" /tmp/dist-bridge --bridge
 
       - name: Sign and notarize apps and tool
+        env:
+          VITRUVIAN_SIGNING_CERT_P12: ${{ secrets.VITRUVIAN_SIGNING_CERT_P12 }}
+          VITRUVIAN_SIGNING_CERT_PASSWORD: ${{ secrets.VITRUVIAN_SIGNING_CERT_PASSWORD }}
+          VITRUVIAN_NOTARY_API_KEY_P8: ${{ secrets.VITRUVIAN_NOTARY_API_KEY_P8 }}
+          VITRUVIAN_NOTARY_KEY_ID: ${{ secrets.VITRUVIAN_NOTARY_KEY_ID }}
+          VITRUVIAN_NOTARY_ISSUER_ID: ${{ secrets.VITRUVIAN_NOTARY_ISSUER_ID }}
         run: |
-          scripts/sign-and-notarize.sh apps
+          scripts/sign-and-notarize.sh apps \
+            --entitlements-app "/tmp/dist-universal/Vitruvian Code.app" \
+            --entitlements-app "/tmp/dist-arm64/Vitruvian Code.app" \
+            --entitlements-app "/tmp/dist-x86_64/Vitruvian Code.app" \
+            --plain-app /tmp/dist-bridge/NexusAgent.app \
+            --macho /tmp/universal/vitruvian-code-tool
 
       - name: Check the apps
         run: |
@@ -263,6 +269,12 @@ jobs:
           ls -lh *.dmg
 
       - name: Sign and notarize DMGs
+        env:
+          VITRUVIAN_SIGNING_CERT_P12: ${{ secrets.VITRUVIAN_SIGNING_CERT_P12 }}
+          VITRUVIAN_SIGNING_CERT_PASSWORD: ${{ secrets.VITRUVIAN_SIGNING_CERT_PASSWORD }}
+          VITRUVIAN_NOTARY_API_KEY_P8: ${{ secrets.VITRUVIAN_NOTARY_API_KEY_P8 }}
+          VITRUVIAN_NOTARY_KEY_ID: ${{ secrets.VITRUVIAN_NOTARY_KEY_ID }}
+          VITRUVIAN_NOTARY_ISSUER_ID: ${{ secrets.VITRUVIAN_NOTARY_ISSUER_ID }}
         run: |
           VERSION="${{ needs.detect.outputs.version }}"
           scripts/sign-and-notarize.sh dmgs \
@@ -273,12 +285,10 @@ jobs:
       - name: Create ZIP for auto-updater
         run: |
           VERSION="${{ needs.detect.outputs.version }}"
-          cd /tmp/dist-universal
-          zip -r -y "${GITHUB_WORKSPACE}/VitruvianCode-${VERSION}-macos.zip" "Vitruvian Code.app"
+          ditto -c -k --keepParent "/tmp/dist-universal/Vitruvian Code.app" "${GITHUB_WORKSPACE}/VitruvianCode-${VERSION}-macos.zip"
           # The bridge, in the zip old updaters take: the only one that says
           # "universal", with NexusAgent.app inside.
-          cd /tmp/dist-bridge
-          zip -r -y "${GITHUB_WORKSPACE}/NexusAgent-${VERSION}-universal.zip" NexusAgent.app
+          ditto -c -k --keepParent /tmp/dist-bridge/NexusAgent.app "${GITHUB_WORKSPACE}/NexusAgent-${VERSION}-universal.zip"
           cd "${GITHUB_WORKSPACE}"
           # What the bridge and the new updater check the new app's zip against.
           shasum -a 256 "VitruvianCode-${VERSION}-macos.zip" > "VitruvianCode-${VERSION}-macos.zip.sha256"

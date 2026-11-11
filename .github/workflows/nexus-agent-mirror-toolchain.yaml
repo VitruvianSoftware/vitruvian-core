@@ -247,7 +247,12 @@ jobs:
 
       - name: Sign and notarize apps and tool
         run: |
-          apps/desktop/vitruvian-code/scripts/sign-and-notarize.sh apps
+          apps/desktop/vitruvian-code/scripts/sign-and-notarize.sh apps \
+            --entitlements-app "/tmp/dist-universal/Vitruvian Code.app" \
+            --entitlements-app "/tmp/dist-arm64/Vitruvian Code.app" \
+            --entitlements-app "/tmp/dist-x86_64/Vitruvian Code.app" \
+            --plain-app /tmp/dist-bridge/NexusAgent.app \
+            --macho /tmp/universal/vitruvian-code-tool
 
       # Each app holds the copy of Mermaid where the chat view looks for it,
       # unchanged, with its licence, and is the signed executable for the
@@ -387,12 +392,10 @@ jobs:
       - name: Create ZIP for auto-updater
         run: |
           VERSION="0.0.0-rehearsal"
-          cd /tmp/dist-universal
-          zip -r -y "${GITHUB_WORKSPACE}/VitruvianCode-${VERSION}-macos.zip" "Vitruvian Code.app"
+          ditto -c -k --keepParent "/tmp/dist-universal/Vitruvian Code.app" "${GITHUB_WORKSPACE}/VitruvianCode-${VERSION}-macos.zip"
           # The bridge, in the zip old updaters take: the only one that says
           # "universal", with NexusAgent.app inside.
-          cd /tmp/dist-bridge
-          zip -r -y "${GITHUB_WORKSPACE}/NexusAgent-${VERSION}-universal.zip" NexusAgent.app
+          ditto -c -k --keepParent /tmp/dist-bridge/NexusAgent.app "${GITHUB_WORKSPACE}/NexusAgent-${VERSION}-universal.zip"
           cd "${GITHUB_WORKSPACE}"
           # What the bridge and the new updater check the new app's zip against.
           shasum -a 256 "VitruvianCode-${VERSION}-macos.zip" > "VitruvianCode-${VERSION}-macos.zip.sha256"
