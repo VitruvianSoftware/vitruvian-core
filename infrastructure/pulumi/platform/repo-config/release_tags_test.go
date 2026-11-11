@@ -307,11 +307,13 @@ func TestProgramRegistersReleaseTagRuleset(t *testing.T) {
 func TestDeployTagPatternsNeverMatchExemptTags(t *testing.T) {
 	res := runProgram(t)
 
+	var rulesetRepo string
 	var exempt []string
 	for _, rs := range res["github:index/repositoryRuleset:RepositoryRuleset"] {
 		if rs["name"].StringValue() != "release-tags" {
 			continue
 		}
+		rulesetRepo = rs["repository"].StringValue()
 		for _, e := range propStrings(rs["conditions"].ObjectValue()["refName"].ObjectValue()["excludes"]) {
 			exempt = append(exempt, strings.TrimPrefix(e, "refs/tags/"))
 		}
@@ -320,8 +322,14 @@ func TestDeployTagPatternsNeverMatchExemptTags(t *testing.T) {
 		t.Fatal("found no exempt tags on a registered release-tags ruleset; the check would be blind")
 	}
 
+	// Scope to the repository that release-tags governs (vitruvian-core);
+	// standalone mirror environments (e.g. vitruvian-code-release on
+	// vitruvian-code) have their own tag namespace and tests in copybara_sync.
 	registered := map[string]bool{}
 	for _, p := range res["github:index/repositoryEnvironmentDeploymentPolicy:RepositoryEnvironmentDeploymentPolicy"] {
+		if p["repository"].StringValue() != rulesetRepo {
+			continue
+		}
 		if v, ok := p["tagPattern"]; ok && v.IsString() && v.StringValue() != "" {
 			registered[v.StringValue()] = true
 		}

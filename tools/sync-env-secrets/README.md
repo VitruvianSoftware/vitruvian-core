@@ -147,6 +147,33 @@ The local install reads the same two files from `secrets/courier-release/`
 `set -- courier-release COURIER_TELEGRAM_API_ID` (and `..._HASH`), then
 `apply -- courier-release`.
 
+## `vitruvian-code-release`
+
+Secrets of the GitHub Environment on the public mirror
+`VitruvianSoftware/vitruvian-code` that
+[`apps/desktop/vitruvian-code/.github/workflows/release.yml`](../../apps/desktop/vitruvian-code/.github/workflows/release.yml)'s
+`package` job binds to sign and notarize `Vitruvian Code.app`, the migration
+bridge `NexusAgent.app`, the standalone `vitruvian-code-tool` Mach-O, and the
+release `.dmg` disk images. The environment is declared in
+[`copybara_sync`](../../infrastructure/pulumi/platform/repo-config/internal/copybara_sync/vitruvian_code_release.go):
+only branch `main` and release tags `v*` may deploy to it.
+
+| Secret | What it is |
+|---|---|
+| `VITRUVIAN_SIGNING_CERT_P12` | Base64-encoded Apple Developer ID Application `.p12` certificate + private key imported into an ephemeral keychain during packaging. |
+| `VITRUVIAN_SIGNING_CERT_PASSWORD` | Passphrase protecting `VITRUVIAN_SIGNING_CERT_P12`. |
+| `VITRUVIAN_NOTARY_API_KEY_P8` | App Store Connect API `.p8` private key (PEM or base64) used by `xcrun notarytool`. |
+| `VITRUVIAN_NOTARY_KEY_ID` | App Store Connect API Key ID paired with `VITRUVIAN_NOTARY_API_KEY_P8`. |
+| `VITRUVIAN_NOTARY_ISSUER_ID` | App Store Connect API Issuer UUID. |
+
+Because this environment lives on the standalone mirror repository rather than
+`vitruvian-core`, pass `REPO=VitruvianSoftware/vitruvian-code` when applying
+from `secrets/vitruvian-code-release/`:
+
+```sh
+REPO=VitruvianSoftware/vitruvian-code bazel run //tools/sync-env-secrets:apply -- vitruvian-code-release
+```
+
 ## `stripe-sandbox` and `stripe-production`
 
 Secrets of the GitHub Environments that

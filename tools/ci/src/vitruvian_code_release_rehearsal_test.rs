@@ -71,7 +71,6 @@ const REHEARSAL_ONLY: &[&str] = &[
     "Show the toolchain the mirror builds with",
     "Run the tests",
     "Show what was downloaded",
-    "Check the apps",
     // The bridge is a package of its own: its tests are run apart.
     "Run the bridge's tests",
     // The rehearsal starts the app it packaged; a release starts nothing.
@@ -110,8 +109,11 @@ fn shared_steps(release_job: &str) -> &'static [&'static str] {
             "Download the bridge binaries",
             "Create universal binary",
             "Assemble .app bundles",
+            "Sign and notarize apps and tool",
+            "Check the apps",
             "Install create-dmg",
             "Create DMGs",
+            "Sign and notarize DMGs",
             "Create ZIP for auto-updater",
             "Zip the tool's folder",
         ],

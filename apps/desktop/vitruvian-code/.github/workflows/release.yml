@@ -22,7 +22,9 @@
 # version bump via release-please (bumping .release-please-manifest.json AND
 # macos/Sources/VitruvianCode/Version.swift via extra-files), exported here. When
 # the exported version has no matching tag yet, this is a new release: tag the
-# exported commit, build the universal macOS app, publish the DMGs/ZIP, and
+# exported commit, build the universal macOS app, sign and notarize all apps,
+# the standalone tool binary, and the DMGs with the Apple Developer ID inside
+# the `vitruvian-code-release` GitHub Environment, publish the DMGs/ZIPs, and
 # update the Homebrew cask -- all with the mirror's existing RELEASE_AUTOMATION_
 # TOKEN. Replaces the in-mirror release-please job (now in the monorepo).
 #
@@ -137,8 +139,16 @@ jobs:
   package:
     needs: [detect, build-macos]
     if: needs.detect.outputs.version
+    environment: vitruvian-code-release
     runs-on: macos-15
-    timeout-minutes: 45
+    timeout-minutes: 60
+    env:
+      SIGNING: developer-id
+      VITRUVIAN_SIGNING_CERT_P12: ${{ secrets.VITRUVIAN_SIGNING_CERT_P12 }}
+      VITRUVIAN_SIGNING_CERT_PASSWORD: ${{ secrets.VITRUVIAN_SIGNING_CERT_PASSWORD }}
+      VITRUVIAN_NOTARY_API_KEY_P8: ${{ secrets.VITRUVIAN_NOTARY_API_KEY_P8 }}
+      VITRUVIAN_NOTARY_KEY_ID: ${{ secrets.VITRUVIAN_NOTARY_KEY_ID }}
+      VITRUVIAN_NOTARY_ISSUER_ID: ${{ secrets.VITRUVIAN_NOTARY_ISSUER_ID }}
     steps:
       - uses: actions/checkout@v7
 
@@ -207,6 +217,24 @@ jobs:
           mkdir -p /tmp/dist-bridge
           "$RUNNER_TEMP/bundle-app" /tmp/bridge-universal/NexusAgent "$VERSION" /tmp/dist-bridge --bridge
 
+      - name: Sign and notarize apps and tool
+        run: |
+          scripts/sign-and-notarize.sh apps
+
+      - name: Check the apps
+        run: |
+          set -euo pipefail
+          export CHECK_NOTARIZED=0
+          if [ "${SIGNING:-developer-id}" != "adhoc" ]; then
+            export CHECK_NOTARIZED=1
+          fi
+          rustc --edition 2021 --crate-type lib --crate-name vitruvian_code_scripts_lib macos/scripts/src/lib.rs -o "$RUNNER_TEMP/libvitruvian_code_scripts_lib.rlib"
+          rustc --edition 2021 macos/scripts/src/bin/check_packaged_app.rs -L "$RUNNER_TEMP" --extern vitruvian_code_scripts_lib="$RUNNER_TEMP/libvitruvian_code_scripts_lib.rlib" -o "$RUNNER_TEMP/check-packaged-app"
+          "$RUNNER_TEMP/check-packaged-app" "/tmp/dist-universal/Vitruvian Code.app" arm64 x86_64
+          "$RUNNER_TEMP/check-packaged-app" "/tmp/dist-arm64/Vitruvian Code.app" arm64
+          "$RUNNER_TEMP/check-packaged-app" "/tmp/dist-x86_64/Vitruvian Code.app" x86_64
+          "$RUNNER_TEMP/check-packaged-app" "/tmp/dist-bridge/NexusAgent.app" arm64 x86_64
+
       - name: Install create-dmg
         run: brew install create-dmg
 
@@ -234,15 +262,23 @@ jobs:
 
           ls -lh *.dmg
 
+      - name: Sign and notarize DMGs
+        run: |
+          VERSION="${{ needs.detect.outputs.version }}"
+          scripts/sign-and-notarize.sh dmgs \
+            "VitruvianCode-${VERSION}-macos.dmg" \
+            "VitruvianCode-${VERSION}-arm64.dmg" \
+            "VitruvianCode-${VERSION}-x86_64.dmg"
+
       - name: Create ZIP for auto-updater
         run: |
           VERSION="${{ needs.detect.outputs.version }}"
           cd /tmp/dist-universal
-          zip -r "${GITHUB_WORKSPACE}/VitruvianCode-${VERSION}-macos.zip" "Vitruvian Code.app"
+          zip -r -y "${GITHUB_WORKSPACE}/VitruvianCode-${VERSION}-macos.zip" "Vitruvian Code.app"
           # The bridge, in the zip old updaters take: the only one that says
           # "universal", with NexusAgent.app inside.
           cd /tmp/dist-bridge
-          zip -r "${GITHUB_WORKSPACE}/NexusAgent-${VERSION}-universal.zip" NexusAgent.app
+          zip -r -y "${GITHUB_WORKSPACE}/NexusAgent-${VERSION}-universal.zip" NexusAgent.app
           cd "${GITHUB_WORKSPACE}"
           # What the bridge and the new updater check the new app's zip against.
           shasum -a 256 "VitruvianCode-${VERSION}-macos.zip" > "VitruvianCode-${VERSION}-macos.zip.sha256"

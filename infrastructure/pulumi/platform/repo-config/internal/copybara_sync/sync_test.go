@@ -22,6 +22,8 @@ package copybara_sync
 
 import (
 	"slices"
+	"sort"
+	"strings"
 	"sync"
 	"testing"
 
@@ -398,5 +400,63 @@ func TestRepositoryDeclarationMatchesCreateOrAdoptMode(t *testing.T) {
 				t.Errorf("%s: declared unexpected Repository resource without CreateRepo or Adopt", p.Name)
 			}
 		}
+	}
+}
+
+// The vitruvian-code-release environment exists on vitruvian-code with custom
+// deployment policies that let only main and v* release tags deploy: never a
+// pull request branch, and with no secret values in Pulumi state.
+func TestVitruvianCodeReleaseEnvironment(t *testing.T) {
+	got := run(t)
+
+	env, ok := got["vitruvian-code-release"]
+	if !ok {
+		t.Fatal("vitruvian-code-release environment was not declared")
+	}
+	if env.typeToken != "github:index/repositoryEnvironment:RepositoryEnvironment" {
+		t.Fatalf("vitruvian-code-release is %q, want github:index/repositoryEnvironment:RepositoryEnvironment", env.typeToken)
+	}
+	if v := text(t, got, "vitruvian-code-release", "repository"); v != "vitruvian-code" {
+		t.Errorf("repository = %q, want vitruvian-code", v)
+	}
+	if v := text(t, got, "vitruvian-code-release", "environment"); v != "vitruvian-code-release" {
+		t.Errorf("environment = %q, want vitruvian-code-release", v)
+	}
+	bpVal, ok := env.inputs["deploymentBranchPolicy"]
+	if !ok || !bpVal.IsObject() {
+		t.Fatalf("deploymentBranchPolicy = %v, want object", bpVal)
+	}
+	bp := bpVal.ObjectValue()
+	if !bp["customBranchPolicies"].BoolValue() || bp["protectedBranches"].BoolValue() {
+		t.Errorf("deploymentBranchPolicy = %v, want custom policies only", bp)
+	}
+	if _, hasReviewers := env.inputs["reviewers"]; hasReviewers {
+		t.Errorf("reviewers = %v, want none (the release PR merge is the gate)", env.inputs["reviewers"])
+	}
+
+	var refs []string
+	for name, r := range got {
+		if r.typeToken == "github:index/actionsEnvironmentSecret:ActionsEnvironmentSecret" {
+			t.Errorf("unexpected environment secret resource %q; secrets are pushed via //tools/sync-env-secrets", name)
+		}
+		if r.typeToken != "github:index/repositoryEnvironmentDeploymentPolicy:RepositoryEnvironmentDeploymentPolicy" {
+			continue
+		}
+		if v := text(t, got, name, "repository"); v != "vitruvian-code" {
+			t.Errorf("policy %s repository = %q, want vitruvian-code", name, v)
+		}
+		if v := text(t, got, name, "environment"); v != "vitruvian-code-release" {
+			t.Errorf("policy %s environment = %q, want vitruvian-code-release", name, v)
+		}
+		if v, ok := r.inputs["branchPattern"]; ok && v.IsString() && v.StringValue() != "" {
+			refs = append(refs, "branch:"+v.StringValue())
+		}
+		if v, ok := r.inputs["tagPattern"]; ok && v.IsString() && v.StringValue() != "" {
+			refs = append(refs, "tag:"+v.StringValue())
+		}
+	}
+	sort.Strings(refs)
+	if gotRefs, wantRefs := strings.Join(refs, " "), "branch:main tag:v*"; gotRefs != wantRefs {
+		t.Errorf("deploy refs = %q, want %q", gotRefs, wantRefs)
 	}
 }

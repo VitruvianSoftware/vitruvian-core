@@ -70,6 +70,10 @@ const monorepoRepoName = "vitruvian-core"
 // HomebrewTapKey writes its formula there.
 const homebrewTapRepo = "homebrew-tap"
 
+// vitruvianCodeRepoName is the standalone repository whose release.yml signs
+// and notarises macOS bundles inside the vitruvian-code-release environment.
+const vitruvianCodeRepoName = "vitruvian-code"
+
 // syncedProject describes one component that is bidirectionally synced between
 // the monorepo and a standalone repository.
 //
@@ -393,6 +397,7 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 		prefix := secretPrefix(project.Name)
 
 		var repo *github.Repository
+		var adoptedRepoRes *github.Repository
 		if project.CreateRepo {
 			var repoErr error
 			repo, repoErr = github.NewRepository(ctx, project.StandaloneRepo, &github.RepositoryArgs{
@@ -416,8 +421,10 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 				return repoErr
 			}
 		} else if project.Adopt != nil {
-			if err := adoptRepository(ctx, project); err != nil {
-				return err
+			var adoptErr error
+			adoptedRepoRes, adoptErr = adoptRepository(ctx, project)
+			if adoptErr != nil {
+				return adoptErr
 			}
 		}
 
@@ -554,6 +561,12 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 				return err
 			}
 		}
+
+		if project.StandaloneRepo == vitruvianCodeRepoName && adoptedRepoRes != nil {
+			if err := vitruvianCodeReleaseEnvironment(ctx, adoptedRepoRes); err != nil {
+				return err
+			}
+		}
 	}
 
 	// Monorepo-side App credentials for the Dependabot reconcile + auto-merge
@@ -638,12 +651,12 @@ func tapKey(ctx *pulumi.Context, project syncedProject, repo *github.Repository)
 // change renames the repository in place; IgnoreChanges covers deprecated,
 // inapplicable (mergeCommit* when allowMergeCommit is false), and org-governed
 // fields while keeping name, description, and topics under Pulumi control.
-func adoptRepository(ctx *pulumi.Context, project syncedProject) error {
+func adoptRepository(ctx *pulumi.Context, project syncedProject) (*github.Repository, error) {
 	a := project.Adopt
 	// Logical name is project.Name (keeping the URN github:index:Repository::nexus-agent
 	// across an in-place rename), while Args.Name sets the live GitHub repository name
 	// and Import uses the pre-rename LegacyRepo ID it was adopted under.
-	_, err := github.NewRepository(
+	return github.NewRepository(
 		ctx,
 		project.Name,
 		&github.RepositoryArgs{
@@ -681,5 +694,4 @@ func adoptRepository(ctx *pulumi.Context, project syncedProject) error {
 			"vulnerabilityAlerts",
 		}),
 	)
-	return err
 }
