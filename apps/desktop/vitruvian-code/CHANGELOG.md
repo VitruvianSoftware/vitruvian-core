@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.34.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.33.0...vitruvian-code-v1.34.0) (2026-11-11)
+
+
+### Features
+
+* **vitruvian-code:** sign and notarize releases with the Developer ID ([#4589](https://github.com/VitruvianSoftware/vitruvian-core/issues/4589)) ([58c49d2](https://github.com/VitruvianSoftware/vitruvian-core/commit/58c49d2625781ebe2c24f717e5c8f05527722be1))
+
 ## [1.33.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.32.7...vitruvian-code-v1.33.0) (2026-11-11)
 
 
