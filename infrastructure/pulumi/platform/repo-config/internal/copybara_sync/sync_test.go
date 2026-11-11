@@ -244,9 +244,9 @@ func flag(t *testing.T, got map[string]seen, resourceName, field string) bool {
 	return v.BoolValue()
 }
 
-// The nexus-agent mirror is imported into Pulumi state with its exact live
-// GitHub settings and protected against replacement so the follow-up PR can
-// rename it to vitruvian-code in place without losing releases, stars or tags.
+// The nexus-agent mirror is renamed in place to vitruvian-code while keeping
+// its Pulumi logical name, import ID, protection, live GitHub settings and
+// existing sync-auth bindings stable.
 func TestNexusAgentMirrorIsAdoptedProtectedWithLiveSettings(t *testing.T) {
 	got := run(t)
 	r, ok := got["nexus-agent"]
@@ -260,18 +260,22 @@ func TestNexusAgentMirrorIsAdoptedProtectedWithLiveSettings(t *testing.T) {
 		t.Errorf("nexus-agent importID = %q, want %q", r.importID, "nexus-agent")
 	}
 	if !r.protect {
-		t.Error("nexus-agent must be protected so a later rename cannot replace or delete it")
+		t.Error("nexus-agent must be protected so a rename cannot replace or delete it")
 	}
 	for _, mutable := range []string{"name", "description", "topics"} {
 		if slices.Contains(r.ignoreChanges, mutable) {
-			t.Errorf("nexus-agent ignoreChanges contains %q; PR 2 must be able to update it in place", mutable)
+			t.Errorf("nexus-agent ignoreChanges contains %q; in-place rename must be able to update it", mutable)
 		}
 	}
 	if _, hasAutoInit := r.inputs["autoInit"]; hasAutoInit {
 		t.Error("nexus-agent must not set autoInit on an imported repository")
 	}
-	if v := text(t, got, "nexus-agent", "name"); v != "nexus-agent" {
-		t.Errorf("name = %q, want nexus-agent (rename belongs to PR 2)", v)
+	if v := text(t, got, "nexus-agent", "name"); v != "vitruvian-code" {
+		t.Errorf("name = %q, want vitruvian-code", v)
+	}
+	const wantDesc = "Vitruvian Code: a macOS menu bar app and Telegram bot that connects your messages to local AI coding tools."
+	if v := text(t, got, "nexus-agent", "description"); v != wantDesc {
+		t.Errorf("description = %q, want %q", v, wantDesc)
 	}
 	if v := text(t, got, "nexus-agent", "visibility"); v != "public" {
 		t.Errorf("visibility = %q, want public", v)
@@ -318,7 +322,8 @@ func TestNexusAgentMirrorIsAdoptedProtectedWithLiveSettings(t *testing.T) {
 		t.Errorf("nexus-agent.topics = %v, want %v", topics, wantTopics)
 	}
 
-	// Existing sync auth resources stay untouched on nexus-agent in PR 1.
+	// Existing sync auth resources stay on LegacyRepo ("nexus-agent") with
+	// unchanged secret names so no ForceNew deploy key or secret is replaced.
 	if v := text(t, got, "nexus-agent-standalone-deploy-key", "repository"); v != "nexus-agent" {
 		t.Errorf("deploy key repository = %q, want nexus-agent", v)
 	}
@@ -328,8 +333,34 @@ func TestNexusAgentMirrorIsAdoptedProtectedWithLiveSettings(t *testing.T) {
 	if v := text(t, got, "nexus-agent-dispatch-app-id-secret", "secretName"); v != "NEXUS_AGENT_DISPATCH_APP_ID" {
 		t.Errorf("dispatch app id secret = %q, want NEXUS_AGENT_DISPATCH_APP_ID", v)
 	}
+	if v := text(t, got, "nexus-agent-dispatch-app-id-secret", "repository"); v != "nexus-agent" {
+		t.Errorf("dispatch app id repository = %q, want nexus-agent", v)
+	}
+	if v := text(t, got, "nexus-agent-dispatch-app-private-key-secret", "repository"); v != "nexus-agent" {
+		t.Errorf("dispatch app key repository = %q, want nexus-agent", v)
+	}
 	if _, ok := got["nexus-agent-mirror-readonly"]; ok {
-		t.Error("nexus-agent is two-way today and must not declare one-way branch protection in PR 1")
+		t.Error("nexus-agent is two-way in sync.go today and must not declare one-way branch protection here")
+	}
+}
+
+func TestNexusAgentRenamePreservesLogicalNameImportIDAndDeployKeyTarget(t *testing.T) {
+	got := run(t)
+	if _, renamedURN := got["vitruvian-code"]; renamedURN {
+		t.Fatal("vitruvian-code must not be registered as a new Repository logical name; URN must stay nexus-agent")
+	}
+	r, ok := got["nexus-agent"]
+	if !ok {
+		t.Fatal("logical resource name nexus-agent missing; changing it would delete and recreate the repo")
+	}
+	if v := text(t, got, "nexus-agent", "name"); v != "vitruvian-code" {
+		t.Errorf("RepositoryArgs.Name = %q, want vitruvian-code", v)
+	}
+	if r.importID != "nexus-agent" {
+		t.Errorf("importID = %q, want pre-rename live name nexus-agent", r.importID)
+	}
+	if v := text(t, got, "nexus-agent-standalone-deploy-key", "repository"); v != "nexus-agent" {
+		t.Errorf("deploy key repository = %q, want nexus-agent to avoid ForceNew replacement", v)
 	}
 }
 
@@ -339,9 +370,9 @@ func TestRepositoryDeclarationMatchesCreateOrAdoptMode(t *testing.T) {
 		if p.CreateRepo && p.Adopt != nil {
 			t.Fatalf("%s sets both CreateRepo and Adopt", p.Name)
 		}
-		r, declared := got[p.StandaloneRepo]
 		switch {
 		case p.CreateRepo:
+			r, declared := got[p.StandaloneRepo]
 			if !declared || r.typeToken != "github:index/repository:Repository" {
 				t.Errorf("%s: CreateRepo=true must declare github:index/repository:Repository", p.Name)
 			}
@@ -349,17 +380,21 @@ func TestRepositoryDeclarationMatchesCreateOrAdoptMode(t *testing.T) {
 				t.Errorf("%s: CreateRepo=true must not set importID (%q)", p.Name, r.importID)
 			}
 		case p.Adopt != nil:
+			r, declared := got[p.Name]
 			if !declared || r.typeToken != "github:index/repository:Repository" {
-				t.Errorf("%s: Adopt!=nil must declare github:index/repository:Repository", p.Name)
+				t.Errorf("%s: Adopt!=nil must declare github:index/repository:Repository under logical name %q", p.Name, p.Name)
 			}
-			if r.importID != p.StandaloneRepo {
-				t.Errorf("%s: importID = %q, want %q", p.Name, r.importID, p.StandaloneRepo)
+			if v := text(t, got, p.Name, "name"); v != p.StandaloneRepo {
+				t.Errorf("%s: RepositoryArgs.Name = %q, want %q", p.Name, v, p.StandaloneRepo)
+			}
+			if r.importID != p.legacyRepo() {
+				t.Errorf("%s: importID = %q, want %q", p.Name, r.importID, p.legacyRepo())
 			}
 			if !r.protect {
 				t.Errorf("%s: adopted repository must be protected", p.Name)
 			}
 		default:
-			if declared && r.typeToken == "github:index/repository:Repository" {
+			if r, declared := got[p.StandaloneRepo]; declared && r.typeToken == "github:index/repository:Repository" {
 				t.Errorf("%s: declared unexpected Repository resource without CreateRepo or Adopt", p.Name)
 			}
 		}

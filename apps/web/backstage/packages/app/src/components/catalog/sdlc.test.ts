@@ -69,7 +69,7 @@ describe("sdlc metadata parser", () => {
     const ent = entity({
       "vitruvian.dev/release-model": "dmg-github-releases npm-publish",
       "vitruvian.dev/release-workflow": "apps-release.yaml",
-      "vitruvian.dev/mirror": "VitruvianSoftware/nexus-agent",
+      "vitruvian.dev/mirror": "VitruvianSoftware/vitruvian-code",
     });
 
     const info = readSdlcInfo(ent);
@@ -83,7 +83,7 @@ describe("sdlc metadata parser", () => {
       name: "apps-release.yaml",
       type: "release",
     });
-    expect(info?.mirror).toBe("VitruvianSoftware/nexus-agent");
+    expect(info?.mirror).toBe("VitruvianSoftware/vitruvian-code");
   });
 
   it("gracefully falls back for custom/unrecognized release strategies", () => {

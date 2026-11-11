@@ -296,7 +296,7 @@ What generalises, whatever tool you are on:
 
 ## Copybara (component sync)
 The monorepo is the **single source of truth**; each standalone repo is a read-only mirror.
-Components (`devx`, `homelab`, `mcp-slack`, `nexus-agent`, `oauth-user-inspector`) export one-way on
+Components (`devx`, `homelab`, `mcp-slack`, `vitruvian-code`, `oauth-user-inspector`) export one-way on
 push; the `pulumi-*` trees are export-only. Nothing syncs bidirectionally. External contributions
 come back only as a mirror PR labelled `import-to-monorepo`, imported hourly as a monorepo PR for
 review. Never edit a mirror directly, never delete standalone-only files or import monorepo-only

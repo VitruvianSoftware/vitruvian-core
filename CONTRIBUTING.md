@@ -429,7 +429,7 @@ bazel run //tools/gitops:<target> -- <args>
 
 ## 10. Code sharing / Copybara
 
-Five of the six first-party apps (`devx`, `homelab`, `mcp-slack`, `nexus-agent`, `oauth-user-inspector`) are **one-way Copybara-mirrored** to a standalone repo in the `VitruvianSoftware` org. `tabula` is currently **not** mirrored.
+Five of the six first-party apps (`devx`, `homelab`, `mcp-slack`, `vitruvian-code`, `oauth-user-inspector`) are **one-way Copybara-mirrored** to a standalone repo in the `VitruvianSoftware` org. `tabula` is currently **not** mirrored.
 
 - **Edit in the monorepo. Never edit the standalone mirror** for first-party work — Copybara exports one-way (monorepo → mirror). Config lives in `tools/copybara/copy.bara.sky`; per-component export workflows are `.github/workflows/copybara-export-<app>.yaml` (plus the shared `_copybara-export.yaml`).
 - A cron **import** workflow (`copybara-import-pr.yaml`) opens monorepo PRs and re-runs `//:tidy`.

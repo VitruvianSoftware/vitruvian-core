@@ -96,11 +96,11 @@ describe("release target reader", () => {
         name: "vitruvian-code",
         annotations: {
           "vitruvian.dev/release-model": "dmg-github-releases npm-publish",
-          "vitruvian.dev/mirror": "VitruvianSoftware/nexus-agent",
+          "vitruvian.dev/mirror": "VitruvianSoftware/vitruvian-code",
         },
         links: [
           {
-            url: "https://github.com/VitruvianSoftware/nexus-agent/releases",
+            url: "https://github.com/VitruvianSoftware/vitruvian-code/releases",
             title: "macOS DMG Releases",
           },
         ],
@@ -112,8 +112,9 @@ describe("release target reader", () => {
     const target = readReleaseTarget(vitruvianCode);
     expect(target).toEqual({
       type: "github",
-      repoSlug: "VitruvianSoftware/nexus-agent",
-      releasesUrl: "https://github.com/VitruvianSoftware/nexus-agent/releases",
+      repoSlug: "VitruvianSoftware/vitruvian-code",
+      releasesUrl:
+        "https://github.com/VitruvianSoftware/vitruvian-code/releases",
     });
   });
 });

@@ -238,17 +238,17 @@ Runs in the background with PID tracking and orphan process cleanup. Logs are wr
 
 #### Option C: macOS Menu Bar App
 
-Download the latest DMG from the [Releases page](https://github.com/VitruvianSoftware/nexus-agent/releases). Open it and drag the app to your Applications folder.
+Download the latest DMG from the [Releases page](https://github.com/VitruvianSoftware/vitruvian-code/releases). Open it and drag the app to your Applications folder.
 
 A native SwiftUI app that lives in the menu bar (no dock icon). Provides a GUI to start/stop the bot, view logs, configure settings, and handle Quick Prompts. See [macOS App Setup](#macos-menu-bar-app) below for Gatekeeper instructions.
 
 #### Option D: Antigravity plugin
 
 ```bash
-agy plugin install https://github.com/VitruvianSoftware/nexus-agent
+agy plugin install https://github.com/VitruvianSoftware/vitruvian-code
 ```
 
-Clones this repository into Antigravity's plugin folder (`~/.gemini/config/plugins/nexus-agent`) and loads its setup guide (`rules/AGENTS.md`) into every session. Ask agy *"help me set up the Telegram bot"* and it will walk you through configuration, then start the bot from that folder. To install from a local clone instead, pass its path in place of the URL.
+Clones this repository into Antigravity's plugin folder (`~/.gemini/config/plugins/vitruvian-code`) and loads its setup guide (`rules/AGENTS.md`) into every session. Ask agy *"help me set up the Telegram bot"* and it will walk you through configuration, then start the bot from that folder. To install from a local clone instead, pass its path in place of the URL.
 
 ---
 
@@ -271,7 +271,7 @@ A native SwiftUI companion app that manages the bot daemon from the menu bar.
 
 The application is distributed as a universal DMG. Because it is currently **unsigned**, macOS Gatekeeper will block the first launch. Follow these steps to install and open it:
 
-1. **Download** the latest `VitruvianCode-x.x.x-universal.dmg` from the [GitHub Releases page](https://github.com/VitruvianSoftware/nexus-agent/releases).
+1. **Download** the latest `VitruvianCode-x.x.x-universal.dmg` from the [GitHub Releases page](https://github.com/VitruvianSoftware/vitruvian-code/releases).
 2. **Mount the DMG** by double-clicking it.
 3. **Install** by dragging the `Vitruvian Code` app into the `Applications` folder shortcut.
 4. **First Launch (Important):**

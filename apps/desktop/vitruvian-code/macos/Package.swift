@@ -40,7 +40,7 @@ let package = Package(
     targets: [
         // MUST MIRROR apps/desktop/vitruvian-code/macos/BUILD. These sources have TWO build
         // definitions -- Bazel for the monorepo, SwiftPM for the exported
-        // standalone (VitruvianSoftware/nexus-agent) -- and only the Bazel one
+        // standalone (VitruvianSoftware/vitruvian-code) -- and only the Bazel one
         // runs in this repo's CI. When this manifest omitted NexusAgentCore (as
         // the target was then called), `bazel build //nexus-agent/macos:NexusAgent`
         // stayed green here while EVERY release build on the mirror failed with

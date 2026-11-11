@@ -108,6 +108,7 @@ fn import_label_cases() {
         ("mcp-slack", "MCP_SLACK_REV_ID"),
         ("devx", "DEVX_REV_ID"),
         ("nexus-agent", "NEXUS_AGENT_REV_ID"),
+        ("vitruvian-code", "NEXUS_AGENT_REV_ID"),
         ("homelab", "HOMELAB_REV_ID"),
     ] {
         assert_eq!(import_label(c.as_bytes()), want.as_bytes());
