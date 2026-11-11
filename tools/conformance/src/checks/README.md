@@ -28,7 +28,7 @@ Component package providing implementation for `tools/conformance/src/checks`.
 ## Invariants
 - [brew.rs:192]: `assert!(problems(text).is_empty(), "{:?}", problems(text));`
 - [brew.rs:195]: `assert!(problems(text).is_empty(), "{:?}", problems(text));`
-- [brew.rs:206]: `assert!(got[0].contains("brew install vitruviansoftware/tap/devx"));`
+- [brew.rs:206]: `assert!(got[0].contains("brew install <tap>/devx"));`
 - [swift_tests.rs:264]: `assert!(rows.contains("apps/a/BUILD"), "{rows}");`
 - [swift_tests.rs:265]: `assert!(`
 - [swift_tests.rs:269]: `assert!(rows.contains("apps/a/Tests/ATests/More.swift:1"), "{rows}");`
