@@ -118,3 +118,8 @@ Two constraints are worth knowing before editing the build files:
 Stories are excluded from `:lib` — they must not land in `dist/` or in the
 published package — and are typechecked in CI by `:stories_typecheck`
 (`tsconfig.stories.json`).
+
+## Subdirectories & Boundaries
+- [src](./src/README.md): Component package providing implementation for packages/design-system/src.
+- [tools](./tools/README.md): Subsystem blueprint grouping child modules under packages/design-system/tools.
+

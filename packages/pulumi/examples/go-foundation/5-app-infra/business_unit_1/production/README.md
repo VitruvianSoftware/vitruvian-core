@@ -24,3 +24,18 @@ configuration reference, and outputs.
 | `Pulumi.yaml`, `go.mod`          | `backend.tf`, `versions.tf`    | Engine adaptation: Pulumi project/backend + Go module pins         |
 | `Pulumi.production.yaml.example` | `common.auto.tfvars`           | Engine adaptation: example stack configuration                     |
 | `config_test.go`                 | —                              | Regression guard for the pinned identity + stack-reference defaults |
+
+## Interface
+- `[config.go:AppInfraConfig]`
+
+## Invariants
+- None
+
+## Side Effects
+- [config.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [main.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [outputs.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [remote.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/go-foundation/5-app-infra/business_unit_1/production/...`

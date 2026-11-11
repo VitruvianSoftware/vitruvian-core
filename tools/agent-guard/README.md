@@ -695,3 +695,17 @@ The guard also checks that every file a
 refusal's "pending" target names exists and holds the target
 (`:pending_target_files`), so deleting a tool cannot again leave refusals
 saying its replacement "is not in this checkout yet".
+
+## Interface
+- `[hook.sh:script entrypoint]`
+- Subdirectory: [install](./install/README.md)
+- Subdirectory: [src](./src/README.md)
+
+## Invariants
+- None
+
+## Side Effects
+- [hook.sh:152]: `! -name "guard-$1" ! -name "policy-$2.json" -exec rm -rf {} + 2>/dev/null`
+
+## Verification
+- Run: `bazel test //tools/agent-guard/...`

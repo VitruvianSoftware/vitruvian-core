@@ -127,3 +127,16 @@ Store tokens with `--secret`. Outputs do not expose secret values. DNS automatio
 
 ---
 This file is auto-maintained alongside infrastructure code. Keep edits scoped and additive.
+
+## Interface
+- Internal implementation components
+- Subdirectory: [modules](./modules/README.md)
+
+## Invariants
+- None
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //infrastructure/pulumi/accounts/personal/...`

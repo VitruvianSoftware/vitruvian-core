@@ -72,3 +72,7 @@ properties whose failure would be a leak or a wrong-target write: value on stdin
 and absent from argv, absent from all output, every call identity+project pinned,
 already-seeded skipped, `--force` rotates, empty input skips, an unmapped dir
 refused, and an auth failure fatal despite gcloud's exit 0.
+
+## Subdirectories & Boundaries
+- [src](./src/README.md): Component package providing implementation for tools/gcp-secrets/src.
+

@@ -138,3 +138,7 @@ adb logcat -v raw -s Thing-Network:D Thing-Bluetooth:D Thing-Activator:D
 The handshake log lines are a goldmine: `[LogHexData:60]data:` logs the first bytes of
 each outgoing encrypted payload, and after `GetSessionKey` the `SendByte2:448` line logs
 the derived binary session key — both were used to verify the analysis offline.
+
+## Subdirectories & Boundaries
+- [rust_src](./rust_src/README.md): Component package providing implementation for apps/cli/ostation/rust_src.
+

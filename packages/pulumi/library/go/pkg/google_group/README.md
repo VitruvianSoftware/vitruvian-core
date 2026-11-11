@@ -67,3 +67,17 @@ g, err := group.NewGroup(ctx, "org-admins", &group.GroupArgs{
     Members:     []string{"admin-user@example.com"},
 })
 ```
+
+## Interface
+- `[group.go:GroupArgs]`
+- `[group.go:Group]`
+- `[group.go:NewGroup]`
+
+## Invariants
+- None
+
+## Side Effects
+- [group.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/library/go/pkg/google_group/...`

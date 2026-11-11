@@ -185,3 +185,8 @@ Same as [3-networks-svpc](../3-networks-svpc/README.md#outputs), with additional
 | `envs/production/index.ts`    | Production hub-and-spoke network deployment              |
 | `envs/shared/index.ts`        | Shared resources (DNS Hub, hierarchical FW)              |
 | `modules/shared_vpc.ts`       | Hub-and-spoke VPC module with peering and route exchange |
+
+## Subdirectories & Boundaries
+- [envs](./envs/README.md): Subsystem blueprint grouping child modules under packages/pulumi/examples/ts-foundation...
+- [modules](./modules/README.md): Component package providing implementation for packages/pulumi/examples/ts-foundation/3...
+

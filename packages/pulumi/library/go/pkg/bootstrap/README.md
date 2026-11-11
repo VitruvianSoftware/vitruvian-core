@@ -55,3 +55,17 @@ seed, err := bootstrap.NewBootstrap(ctx, "foundation-seed", &bootstrap.Bootstrap
     },
 })
 ```
+
+## Interface
+- `[bootstrap.go:BootstrapArgs]`
+- `[bootstrap.go:Bootstrap]`
+- `[bootstrap.go:NewBootstrap]`
+
+## Invariants
+- None
+
+## Side Effects
+- [bootstrap.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/library/go/pkg/bootstrap/...`

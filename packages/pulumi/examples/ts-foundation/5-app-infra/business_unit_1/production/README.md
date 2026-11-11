@@ -16,3 +16,15 @@ This directory contains the Pulumi application infrastructure for the **producti
 | -------------------- | ------------------------------------------ |
 | `instance_name`      | Name of the deployed compute instance      |
 | `instance_self_link` | Self-link of the deployed compute instance |
+
+## Interface
+- Internal implementation components
+
+## Invariants
+- None
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/ts-foundation/5-app-infra/business_unit_1/production/...`

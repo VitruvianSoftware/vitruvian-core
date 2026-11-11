@@ -31,3 +31,17 @@ pulumi config set billing_account "YOUR_BILLING_ACCOUNT_ID"
 pulumi config set bootstrap_stack_name "organization/vitruvian/0-bootstrap/production"
 pulumi up
 ```
+
+## Interface
+- Internal implementation components
+
+## Invariants
+- [index.ts:23]: `orgId: config.require("org_id"),`
+- [index.ts:24]: `billingAccount: config.require("billing_account"),`
+- [index.ts:27]: `parent: config.require("parent"),`
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/ts-foundation/2-environments/envs/development/...`

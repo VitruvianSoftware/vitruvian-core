@@ -50,3 +50,7 @@ The certificate lasts until the date Apple prints on it. To renew, move the old
 `developer-id.*` files aside and run the steps again; the API key does not
 expire. Override the folder, repository or secret prefix with
 `APPLE_SIGNING_DIR`, `APPLE_SIGNING_REPO` and `APPLE_SIGNING_SECRET_PREFIX`.
+
+## Subdirectories & Boundaries
+- [src](./src/README.md): Component package providing implementation for tools/apple-signing/src.
+

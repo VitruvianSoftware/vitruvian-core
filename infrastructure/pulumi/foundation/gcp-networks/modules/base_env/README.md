@@ -16,3 +16,17 @@ args (secondary ranges only on R1, matching upstream) and invokes the
 | `remote.tf` | `remote.go` | cross-stage reads happen at the leaf roots (documented there) |
 | `versions.tf` | `../go.mod` | engine adaptation |
 | `vpn.tf.example` | `vpn.go.example` | rename-to-activate HA-VPN example |
+
+## Interface
+- `[main.go:New]`
+- `[outputs.go:Result]`
+- `[variables.go:Args]`
+
+## Invariants
+- None
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //infrastructure/pulumi/foundation/gcp-networks/modules/base_env/...`

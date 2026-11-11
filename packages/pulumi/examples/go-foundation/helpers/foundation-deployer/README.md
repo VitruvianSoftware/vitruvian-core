@@ -68,3 +68,15 @@ This is the Pulumi equivalent of the Terraform foundation's `helpers/foundation-
 - Google Cloud SDK authenticated (`gcloud auth application-default login`)
 - Node.js 20+ (TypeScript) or Go 1.23+ (Go)
 - All `Pulumi.<stack>.yaml` configs populated (copy from `.example` files)
+
+## Interface
+- `[deploy.sh:script entrypoint]`
+
+## Invariants
+- None
+
+## Side Effects
+- [deploy.sh:9]: `#      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/go-foundation/helpers/foundation-deployer/...`

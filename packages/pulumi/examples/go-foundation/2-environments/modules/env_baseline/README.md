@@ -82,3 +82,20 @@ res, err := env_baseline.Deploy(ctx, &env_baseline.Args{
 The three env leaves (`../../envs/{development,nonproduction,production}`) are
 the only callers; each pins its environment identity and passes stack config
 through unchanged.
+
+## Interface
+- `[config.go:PerProjectBudget]`
+- `[config.go:EnvProjectBudgetConfig]`
+- `[config.go:AssuredWorkloadConfig]`
+- `[config.go:Args]`
+- `[env_baseline.go:Deploy]`
+- `[outputs.go:Result]`
+
+## Invariants
+- None
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/go-foundation/2-environments/modules/env_baseline/...`

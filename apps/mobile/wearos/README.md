@@ -17,3 +17,8 @@ Wear OS watch faces, complication providers, and wrist companion apps built for 
 | **Vitruvian Home** | `dev.vitruvian.wear.home` | `//apps/mobile/wearos/apps/home-control:app` | Smart-home wrist controller for switching `speaker-broadcast` room targets (*Lake Office*, *Master Bedroom*, *Living Room*, *Kitchen*, *Dining Room*, *Guest Room*, *All*, *Mute*) and triggering one-tap Roborock room cleans, mop washes, and docking. |
 | **Vitruvian Nexus** | `dev.vitruvian.wear.nexus` | `//apps/mobile/wearos/apps/nexus-wrist:app` | Voice-to-Agent wrist dispatcher (`VoiceAgentRouter` routing spoken prompts to `ridge`, `scout`, `atlas`, `aegis`, `wren`, or `beacon`) and one-tap haptic PR approval/hold queue. |
 | **Shared Domain (`common`)** | `dev.vitruvian.wear.common` | `//apps/mobile/wearos/apps/common:common_test` | Pure-JVM domain models, rotary volume hysteresis math, complication derivations, and wire payload codecs tested hermetically in CI. |
+
+## Subdirectories & Boundaries
+- [apps](./apps/README.md): Subsystem blueprint grouping child modules under apps/mobile/wearos/apps.
+- [faces](./faces/README.md): Subsystem blueprint grouping child modules under apps/mobile/wearos/faces.
+

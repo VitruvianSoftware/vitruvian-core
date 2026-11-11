@@ -130,3 +130,8 @@ Modules follow the same split (`main.go`/`variables.go`/`outputs.go` + `README.m
 | `modules/env_base/`           | Standard Compute Instances with Service Accounts and IAP tag bindings                        |
 | `modules/confidential_space/` | Confidential Space VMs and Workload Identity components for attestation                      |
 | `modules/serverless_space/`   | Cloud Run service + SA + secret wiring (our serverless addition — no upstream counterpart)   |
+
+## Subdirectories & Boundaries
+- [business_unit_1](./business_unit_1/README.md): Subsystem blueprint grouping child modules under packages/pulumi/examples/go-foundation...
+- [modules](./modules/README.md): Subsystem blueprint grouping child modules under packages/pulumi/examples/go-foundation...
+

@@ -65,3 +65,8 @@ Taken straight from ANDROID.md, and the easiest ones to break:
 The design system's definition of done asks for a Compose preview per component
 in both modes, screenshot-tested. Those previews are not written; the module
 ships the components and the token gate, not the visual regression suite.
+
+## Subdirectories & Boundaries
+- [src](./src/README.md): Subsystem blueprint grouping child modules under packages/design-system-android/src.
+- [tools](./tools/README.md): Subsystem blueprint grouping child modules under packages/design-system-android/tools.
+

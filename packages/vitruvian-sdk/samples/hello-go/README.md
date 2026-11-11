@@ -70,3 +70,15 @@ func (c *counter) page(app *toolkit.App) toolkit.UITree {
 	)
 }
 ```
+
+## Interface
+- Internal implementation components
+
+## Invariants
+- None
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //packages/vitruvian-sdk/samples/hello-go/...`

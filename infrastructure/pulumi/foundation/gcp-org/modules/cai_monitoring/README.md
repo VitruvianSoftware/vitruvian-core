@@ -49,3 +49,18 @@ caiOutputs, err := cai_monitoring.New(ctx, "cai-monitoring", &cai_monitoring.Arg
 
 - The `roles_to_monitor` list is fixed in-module (`caiRolesToMonitor`), matching the upstream default variable value.
 - The Cloud Build service account (`cai-monitoring-builder`, upstream `build_service_account`) is created in `envs/shared/sa.go` and passed in as `BuilderSA`.
+
+## Interface
+- `[cai_monitoring.go:Args]`
+- `[cai_monitoring.go:Result]`
+- `[cai_monitoring.go:New]`
+- Subdirectory: [function-source](./function-source/README.md)
+
+## Invariants
+- None
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //infrastructure/pulumi/foundation/gcp-org/modules/cai_monitoring/...`

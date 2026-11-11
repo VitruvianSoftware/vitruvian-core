@@ -315,3 +315,26 @@ MIT - See [LICENSE](../../LICENSE)
 - [ ] Mobile companion app
 - [ ] Advanced filtering
 - [ ] Analytics dashboard
+
+## Interface
+- Internal implementation components
+- Subdirectory: [coverage](./coverage/README.md)
+- Subdirectory: [scripts](./scripts/README.md)
+- Subdirectory: [src](./src/README.md)
+
+## Invariants
+- [jest.setup.js:25]: `require("@testing-library/jest-dom");`
+- [jest.setup.js:29]: `const { TextEncoder, TextDecoder } = require("util");`
+- [jest.setup.js:37]: `const { createWebLocksMock } = require("./src/testUtils/webLocks");`
+- [playwright.config.ts:34]: `const jwt = require("jsonwebtoken");`
+- [webpack.config.js:23]: `const path = require("path");`
+- [webpack.config.js:24]: `const webpack = require("webpack");`
+- [webpack.config.js:25]: `const CopyPlugin = require("copy-webpack-plugin");`
+
+## Side Effects
+- [webpack.config.js:31]: `const API_URL = process.env.API_URL || "http://localhost:8080/api/v1";`
+- [webpack.config.js:40]: `return ["http://localhost:8080/*"];`
+- [webpack.config.js:118]: `// update checker's getOwnChannel() fetch from logging a noisy`
+
+## Verification
+- Run: `bazel test //apps/suites/tabula/extension/...`

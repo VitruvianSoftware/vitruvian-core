@@ -220,3 +220,8 @@ If you cannot use Dedicated or Partner Interconnect, you can use an HA Cloud VPN
 | `envs/production/index.ts`    | Production SVPC network deployment                       |
 | `envs/shared/index.ts`        | Shared resources (DNS Hub, hierarchical FW)              |
 | `modules/shared_vpc.ts`       | Shared VPC module: VPC, subnets, firewall, DNS, NAT, PSA |
+
+## Subdirectories & Boundaries
+- [envs](./envs/README.md): Subsystem blueprint grouping child modules under packages/pulumi/examples/ts-foundation...
+- [modules](./modules/README.md): Component package providing implementation for packages/pulumi/examples/ts-foundation/3...
+

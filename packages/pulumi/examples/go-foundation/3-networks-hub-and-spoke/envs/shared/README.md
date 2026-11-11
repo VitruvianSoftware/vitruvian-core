@@ -23,3 +23,23 @@ hierarchical firewall policy, and (when enabled) the transitivity appliance.
 
 Deploy order: `shared` → `development` → `nonproduction` → `production`
 (serializes hub-side peering mutations; see the note in `main.go`).
+
+## Interface
+- `[config.go:VpcFlowLogsConfig]`
+- `[config.go:NetSharedConfig]`
+
+## Invariants
+- [config.go:67]: `HubProjectID: conf.Require("hub_project_id"),`
+- [config.go:70]: `ParentID:     conf.Require("parent_id"),`
+
+## Side Effects
+- [config.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [hierarchical_firewall.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [main.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [net_hubs.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [net_hubs_transitivity.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [outputs.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [remote.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/go-foundation/3-networks-hub-and-spoke/envs/shared/...`

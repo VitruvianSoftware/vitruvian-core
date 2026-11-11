@@ -212,3 +212,7 @@ is out; after that it signs nothing.
 Delete its entry and set `generated`. Within a day of the signed copy being
 deployed the app stops offering it. A copy a person installed stays
 installed: removing it is theirs to do.
+
+## Subdirectories & Boundaries
+- [src](./src/README.md): Component package providing implementation for catalog/src.
+

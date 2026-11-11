@@ -180,3 +180,7 @@ function settings(app) {
 The manifest says `"protocol": "2"` and lists the two panels under
 `contributes.panels`. Add the folder in Vitruvian, `node_modules/` and all:
 Settings › Extensions, "Add from Folder…".
+
+## Subdirectories & Boundaries
+- [bin](./bin/README.md): Component package providing implementation for packages/vitruvian-sdk/samples/hello-pan...
+

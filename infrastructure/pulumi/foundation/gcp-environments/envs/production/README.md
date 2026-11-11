@@ -74,3 +74,17 @@ bazel run //infrastructure/pulumi/foundation/gcp-environments/envs/production:up
 ```
 
 Promotion order across the env leaves: development → nonproduction → production.
+
+## Interface
+- `[config.go:EnvConfig]`
+
+## Invariants
+- [config.go:72]: `OrgID:          conf.Require("org_id"),`
+- [config.go:73]: `BillingAccount: conf.Require("billing_account"),`
+- [config.go:76]: `OrgStackName:   conf.Require("org_stack_name"),`
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //infrastructure/pulumi/foundation/gcp-environments/envs/production/...`

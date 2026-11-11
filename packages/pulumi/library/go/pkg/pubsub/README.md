@@ -51,3 +51,18 @@ ps, err := pubsub.NewPubSub(ctx, "events", &pubsub.PubSubArgs{
     },
 })
 ```
+
+## Interface
+- `[pubsub.go:SubscriptionConfig]`
+- `[pubsub.go:PubSubArgs]`
+- `[pubsub.go:PubSub]`
+- `[pubsub.go:NewPubSub]`
+
+## Invariants
+- None
+
+## Side Effects
+- [pubsub.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/library/go/pkg/pubsub/...`

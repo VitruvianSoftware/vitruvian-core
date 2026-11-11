@@ -204,3 +204,17 @@ is the first thing to change.
 **Failure signature:** Zitadel returns `invalid_client` at `/oauth/v2/token` *after*
 a successful redirect back to Google. Browser round-trip working plus failure at
 token exchange means this field, not the mcp-slack server.
+
+## Interface
+- Internal implementation components
+
+## Invariants
+- [main.go:39]: `// The alternative (opaque tokens + introspection) would require mcp-slack to`
+
+## Side Effects
+- [main.go:22]: `// Gemini Spark) reach the hosted mcp-slack HTTP listener. Sibling of`
+- [main.go:327]: `// Surfacing it as an output makes the check a query rather than a thing`
+- [main.go:338]: `// Exported so "is the access control actually on?" is a query rather than a`
+
+## Verification
+- Run: `bazel test //infrastructure/pulumi/platform/zitadel-apps-mcp-slack/...`

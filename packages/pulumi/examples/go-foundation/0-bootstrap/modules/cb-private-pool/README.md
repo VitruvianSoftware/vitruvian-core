@@ -87,3 +87,28 @@ pool, err := cbprivatepool.NewCbPrivatePool(ctx, "cb-private-pool", &cbprivatepo
 | WorkerRangeID | The worker IP range ID; `""` when peering is disabled (upstream `worker_range_id`) |
 | WorkerPeeredIPRange | The IP range of the peered service network (upstream `worker_peered_ip_range`) |
 | PeeredNetworkID | The ID of the peered network (upstream `peered_network_id`) |
+
+## Interface
+- `[main.go:NewCbPrivatePool]`
+- `[outputs.go:CbPrivatePool]`
+- `[variables.go:PrivateWorkerPoolConfig]`
+- `[variables.go:VPNConfiguration]`
+- `[variables.go:VPCFlowLogsConfig]`
+- `[variables.go:CbPrivatePoolArgs]`
+
+## Invariants
+- None
+
+## Side Effects
+- [main.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [main.go:93]: `PeeredNetwork: net.peeredNetworkID,`
+- [main.go:97]: `pulumi.Parent(&resource), pulumi.DependsOn(net.poolDependencies))`
+- [network.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [outputs.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [variables.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [vpn_ha.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [vpn_ha.go:56]: `Network: net.peeredNetworkID,`
+- [vpn_ha.go:87]: `Network: net.peeredNetworkName,`
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/go-foundation/0-bootstrap/modules/cb-private-pool/...`

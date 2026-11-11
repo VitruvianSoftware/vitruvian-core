@@ -117,3 +117,46 @@ A proposal that breaks any rule is rejected whole:
   reflector is told to prefer `confounded` over invented credit.
 - Antigravity's exact PreInvocation payload field for your message is not documented; the hook
   reads `lastUserInput` (and a few aliases) and falls back to the transcript's last user message.
+
+## Interface
+- `[cli.py:copy_surface]`
+- `[cli.py:tree_files]`
+- `[cli.py:diff_trees]`
+- `[cli.py:session_env]`
+- `[cli.py:claude_command]`
+- `[cli.py:run_claude]`
+- `[cli.py:notes_of]`
+- `[cli.py:shared_context]`
+- `[cli.py:new_session]`
+- `[cli.py:distill]`
+- `[cli.py:confirm_apply]`
+- `[cli.py:apply_run]`
+- `[cli.py:probe]`
+- `[cli.py:lock]`
+- `[cli.py:unlock]`
+- `[cli.py:status]`
+- `[cli.py:show_library]`
+- `[cli.py:validate]`
+- `[cli.py:main]`
+- `[common.py:gemini_config]`
+- Subdirectory: [assets](./assets/README.md)
+
+## Invariants
+- [common.py:137]: `raise RuntimeError(f"{path} kept changing underneath; gave up after {tries} t...`
+- [trajectory.py:226]: `raise FileNotFoundError(f"no transcript for {ref!r} (looked for {cand})")`
+- [trajectory.py:232]: `raise FileNotFoundError(f"no transcripts under {brain}")`
+
+## Side Effects
+- [cli.py:29]: `import subprocess`
+- [cli.py:225]: `r = subprocess.run(`
+- [cli.py:238]: `except subprocess.TimeoutExpired:`
+- [installer.py:21]: `import subprocess`
+- [installer.py:211]: `r = subprocess.run(`
+- [installer.py:220]: `except (OSError, subprocess.TimeoutExpired):`
+- [runtime_hooks.py:32]: `import subprocess`
+- [runtime_hooks.py:82]: `r"|\bfind\b.*\s-(?:delete|exec)\b"`
+- [trajectory.py:121]: `for key in ("CommandLine", "Path", "TypeName", "query", "Action", "Recipient"):`
+- [validator.py:30]: `import subprocess`
+
+## Verification
+- Run: `bazel test //tools/harness2/...`

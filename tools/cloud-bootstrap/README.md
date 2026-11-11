@@ -427,3 +427,16 @@ half-written binary, and the `bazel run` fallback.
 
 The installers are not covered — they are network downloads whose only
 interesting property is whether `curl` worked.
+
+## Interface
+- `[cloud-bootstrap.sh:script entrypoint]`
+
+## Invariants
+- None
+
+## Side Effects
+- [cloud-bootstrap.sh:152]: `exec "${bin}" "$@"`
+- [cloud-bootstrap.sh:166]: `exec bazel run --noshow_progress "//tools/cloud-bootstrap:${target}" -- "$@"`
+
+## Verification
+- Run: `bazel test //tools/cloud-bootstrap/...`

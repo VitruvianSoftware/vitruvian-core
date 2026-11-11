@@ -277,3 +277,8 @@ Consider the following:
 | `logging.go`  | Sets up centralized logging with org sinks to Storage, Pub/Sub, and BigQuery                      |
 | `scc.go`      | Configures SCC notification with Pub/Sub pipeline                                                 |
 | `tags.go`     | Creates org-level environment classification tags                                                 |
+
+## Subdirectories & Boundaries
+- [envs](./envs/README.md): Subsystem blueprint grouping child modules under packages/pulumi/examples/go-foundation...
+- [modules](./modules/README.md): Subsystem blueprint grouping child modules under packages/pulumi/examples/go-foundation...
+

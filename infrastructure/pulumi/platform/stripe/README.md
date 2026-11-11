@@ -237,3 +237,18 @@ the price and one Payment Link URL per app.
 ## Not in this change
 
 - The redirect pages on the website and the app changes above.
+
+## Interface
+- Internal implementation components
+- Subdirectory: [internal](./internal/README.md)
+- Subdirectory: [sdks](./sdks/README.md)
+
+## Invariants
+- [main.go:57]: `Mode:     account.Mode(cfg.Require("mode")),`
+- [main.go:58]: `Currency: cfg.Require("currency"),`
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //infrastructure/pulumi/platform/stripe/...`

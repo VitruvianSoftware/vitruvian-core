@@ -52,3 +52,7 @@ folder; an app without `toolkit.FeatureFolderPicker` draws a plain field.
 Go 1.22 or later, and nothing outside Go's standard library. MIT licence.
 `toolkit/protocol_gen.go` is written by the SDK's generator from the
 protocol's schemas; do not edit it.
+
+## Subdirectories & Boundaries
+- [toolkit](./toolkit/README.md): Component package providing implementation for packages/vitruvian-sdk/go/toolkit.
+

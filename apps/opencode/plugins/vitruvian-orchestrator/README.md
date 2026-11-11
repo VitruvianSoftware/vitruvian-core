@@ -30,3 +30,24 @@ When no plan has been reported for the active root session, the sidebar shows:
 ```sh
 bazel test //apps/opencode/plugins/vitruvian-orchestrator/...
 ```
+
+## Interface
+- `[install.sh:script entrypoint]`
+- `[server.mjs:PLUGIN_ID]`
+- `[server.mjs:getStateDir]`
+- `[server.mjs:getStateFilePath]`
+- `[tui.tsx:PLUGIN_ID]`
+- Subdirectory: [lib](./lib/README.md)
+
+## Invariants
+- None
+
+## Side Effects
+- [server.mjs:50]: `if (!fs.existsSync(file)) {`
+- [server.mjs:53]: `const parsed = JSON.parse(fs.readFileSync(file, "utf8"));`
+- [server.mjs:65]: `fs.mkdirSync(dir, { recursive: true });`
+- [tui.tsx:44]: `if (!fs.existsSync(file)) return null;`
+- [tui.tsx:45]: `const parsed = JSON.parse(fs.readFileSync(file, "utf8"));`
+
+## Verification
+- Run: `bazel test //apps/opencode/plugins/vitruvian-orchestrator/...`

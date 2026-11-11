@@ -83,3 +83,25 @@ cl, err := logging.NewCentralizedLogging(ctx, "logs-export", &logging.Centralize
     },
 })
 ```
+
+## Interface
+- `[centralized_logging.go:StorageOptions]`
+- `[centralized_logging.go:PubSubOptions]`
+- `[centralized_logging.go:ProjectOptions]`
+- `[centralized_logging.go:CentralizedLoggingArgs]`
+- `[centralized_logging.go:CentralizedLoggingOutputs]`
+- `[centralized_logging.go:CentralizedLogging]`
+- `[centralized_logging.go:NewCentralizedLogging]`
+- `[log_export.go:LogExportArgs]`
+- `[log_export.go:LogExport]`
+- `[log_export.go:NewLogExport]`
+
+## Invariants
+- [centralized_logging.go:289]: `// Log-bucket destinations require roles/logging.bucketWriter`
+
+## Side Effects
+- [centralized_logging.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [log_export.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/library/go/pkg/centralized_logging/...`

@@ -46,3 +46,7 @@ Reads `.agents/roster/skills/orchestrate/{claude-code,antigravity,opencode}.md`,
 - `.opencode/skills/orchestrate/SKILL.md`
 
 Each `SKILL.md` gets the generated header comment after its frontmatter and a harness-specific `| Agent | Tier | Model | Routing rule |` table in `agents.tsv` order.
+
+## Subdirectories & Boundaries
+- [src](./src/README.md): Component package providing implementation for tools/agent-roster/src.
+

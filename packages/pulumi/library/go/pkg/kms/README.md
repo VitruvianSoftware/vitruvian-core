@@ -47,3 +47,18 @@ kmsComponent, err := kms.NewKms(ctx, "app-kms", &kms.KmsArgs{
     },
 })
 ```
+
+## Interface
+- `[kms.go:KmsArgs]`
+- `[kms.go:KeyConfig]`
+- `[kms.go:Kms]`
+- `[kms.go:NewKms]`
+
+## Invariants
+- None
+
+## Side Effects
+- [kms.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/library/go/pkg/kms/...`

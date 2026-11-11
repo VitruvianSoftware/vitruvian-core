@@ -456,3 +456,7 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for development guidelines.
 ## License
 
 MIT License - see [LICENSE](../LICENSE) for details.
+
+## Subdirectories & Boundaries
+- [rs](./rs/README.md): Subsystem blueprint grouping child modules under apps/suites/tabula/cli/rs.
+

@@ -14,3 +14,16 @@ only invokes `New` when enabled.
 | `variables.tf` | `variables.go` | `Args` |
 | `versions.tf` | `../go.mod` | engine adaptation |
 | `assets/` | — | appliance startup logic lives in the library component |
+
+## Interface
+- `[main.go:New]`
+- `[variables.go:Args]`
+
+## Invariants
+- None
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //infrastructure/pulumi/foundation/gcp-networks/modules/transitivity/...`

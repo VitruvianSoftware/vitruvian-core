@@ -147,3 +147,7 @@ requests on the `gods-eye-view-tle` branch. The deployment points
 before CelesTrak (a local change to `server/providers/space/celestrak.js`).
 `:tle_mirror_test` fails when the client requests a group the mirror lacks,
 or when the mirror's URL drifts from the server's.
+
+## Subdirectories & Boundaries
+- [src](./src/README.md): Component package providing implementation for apps/web/gods-eye-view/upstream/src.
+

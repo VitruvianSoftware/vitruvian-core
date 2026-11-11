@@ -42,3 +42,17 @@ instances, err := compute_instance.NewComputeInstance(ctx, "web-pool", &compute_
     NumInstances:     3,
 })
 ```
+
+## Interface
+- `[compute_instance.go:ComputeInstanceArgs]`
+- `[compute_instance.go:ComputeInstance]`
+- `[compute_instance.go:NewComputeInstance]`
+
+## Invariants
+- None
+
+## Side Effects
+- [compute_instance.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/library/go/pkg/compute_instance/...`

@@ -232,3 +232,17 @@ Notes from building the IOKit side (verified on hardware 2026-10-07):
 ## License
 
 Copyright (c) 2026 VitruvianSoftware. MIT Licensed; see [`LICENSE`](LICENSE).
+
+## Interface
+- Internal implementation components
+- Subdirectory: [Sources](./Sources/README.md)
+- Subdirectory: [scripts](./scripts/README.md)
+
+## Invariants
+- None
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //packages/peripherals/...`

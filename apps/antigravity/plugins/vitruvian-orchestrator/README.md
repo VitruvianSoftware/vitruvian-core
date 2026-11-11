@@ -46,3 +46,8 @@ ln -s "$(pwd)/apps/antigravity/plugins/vitruvian-orchestrator" ~/.gemini/config/
 ## Credits
 
 Adapted from [`savvy-fleet`](../savvy-fleet/README.md) (MIT, VitruvianSoftware) for Antigravity sidecar architecture and `transcript.jsonl` subagent run extraction, and powered by the shared [`packages/orchestrator-core`](../../../../packages/orchestrator-core/README.md) state machine.
+
+## Subdirectories & Boundaries
+- [mcp](./mcp/README.md): Component package providing implementation for apps/antigravity/plugins/vitruvian-orche...
+- [sidecars](./sidecars/README.md): Subsystem blueprint grouping child modules under apps/antigravity/plugins/vitruvian-orc...
+

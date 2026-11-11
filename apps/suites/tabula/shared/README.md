@@ -102,3 +102,7 @@ npm run typecheck -w shared
 
 This package is built before lint, typecheck, and test steps in CI to ensure the type declarations
 are available to consuming packages. See `.github/workflows/ci.yml` for details.
+
+## Subdirectories & Boundaries
+- [src](./src/README.md): Component package providing implementation for apps/suites/tabula/shared/src.
+

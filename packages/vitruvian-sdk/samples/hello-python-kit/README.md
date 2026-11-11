@@ -68,3 +68,7 @@ the tool sends. The guide's "Drawing" says how. Its page:
             self.words_picker() if app.supports(Feature.STATUS_ACTIVITY) else None,
         )
 ```
+
+## Subdirectories & Boundaries
+- [bin](./bin/README.md): Component package providing implementation for packages/vitruvian-sdk/samples/hello-pyt...
+

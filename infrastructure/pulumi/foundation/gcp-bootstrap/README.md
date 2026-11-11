@@ -43,3 +43,27 @@ bazel run //infrastructure/pulumi/foundation/gcp-bootstrap:up          # manual 
 
 Prereq: `gcloud auth login james@vitruviansoftware.dev` with
 `organizationAdmin` + `billing.admin` + `projectCreator` + `folderCreator`.
+
+## Interface
+- `[build_github.go:CICDBuildOutputs]`
+- `[build_pulumi_esc.go:PulumiESCOutputs]`
+- `[config.go:Config]`
+- `[groups.go:GroupOutputs]`
+- `[projects.go:SeedProject]`
+- `[projects.go:CICDProject]`
+- Subdirectory: [modules](./modules/README.md)
+
+## Invariants
+- [build_homelab_cluster_wif.go:160]: `//	Error 400: Precondition check failed`
+- [build_wif_issuer_policy.go:50]: `//	Error 400: Precondition check failed`
+- [config.go:166]: `OrgID:                 conf.Require("org_id"),`
+- [config.go:167]: `BillingAccount:        conf.Require("billing_account"),`
+- [config.go:178]: `GroupOrgAdmins:        conf.Require("group_org_admins"),`
+- [groups.go:125]: `panic(fmt.Sprintf("adoptExistingMemberships: %s %q has args of type %T, want ...`
+- [sa.go:311]: `// resource name — skip here to avoid a duplicate-URN panic.`
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //infrastructure/pulumi/foundation/gcp-bootstrap/...`

@@ -224,3 +224,10 @@ rotate a secret, add a provider).
 - **Code Style:** The project uses Prettier for code formatting.
 - **Testing:** Backend and frontend helpers are tested with Jest + ts-jest (`pnpm test`, or `bazel test //apps/web/oauth-user-inspector:unit_tests`). See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#testing).
 - **Commits:** Conventional-commit prefixes are used across the monorepo (e.g. `feat(oauth-user-inspector): …`), enforced by the merge queue.
+
+## Subdirectories & Boundaries
+- [frontend](./frontend/README.md): Component package providing implementation for apps/web/oauth-user-inspector/frontend.
+- [infra](./infra/README.md): Subsystem blueprint grouping child modules under apps/web/oauth-user-inspector/infra.
+- [scripts](./scripts/README.md): Subsystem blueprint grouping child modules under apps/web/oauth-user-inspector/scripts.
+- [server](./server/README.md): Subsystem blueprint grouping child modules under apps/web/oauth-user-inspector/server.
+

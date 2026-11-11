@@ -94,3 +94,24 @@ Config keys on this stack (upstream variable of the same name unless noted).
 | scc\_notifications\_project\_id | The SCC notifications project ID. |
 | shared\_vpc\_projects | Shared VPC projects info grouped by environment. |
 | tags | Tag values to be applied on next steps. |
+
+## Interface
+- `[config.go:RetentionPolicy]`
+- `[config.go:PerProjectBudget]`
+- `[config.go:ProjectBudgetConfig]`
+- `[config.go:OrgConfig]`
+- `[folders.go:Folders]`
+- `[projects.go:OrgProjects]`
+- `[remote.go:BootstrapOutputs]`
+
+## Invariants
+- [config.go:178]: `OrgID:                 conf.Require("org_id"),`
+- [config.go:179]: `BillingAccount:        conf.Require("billing_account"),`
+- [config.go:184]: `BootstrapStackName:    conf.Require("bootstrap_stack_name"),`
+
+## Side Effects
+- [org_policy.go:65]: `"sql.restrictPublicIp",`
+- [org_policy.go:66]: `"sql.restrictAuthorizedNetworks",`
+
+## Verification
+- Run: `bazel test //infrastructure/pulumi/foundation/gcp-org/envs/shared/...`

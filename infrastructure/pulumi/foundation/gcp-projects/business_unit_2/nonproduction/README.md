@@ -90,3 +90,20 @@ project set. The BU's shared infra-pipeline project lives in the sibling
 | `vpc_service_control_perimeter_name` | VPC-SC perimeter name |
 | `peering_complete` | Module-dependency marker for the peering network |
 | `access_context_manager_policy_id` | Access Context Manager policy id |
+
+## Interface
+- `[config.go:ProjectsConfig]`
+- `[config.go:AppBuildReaderGrant]`
+- `[config.go:AppIdentityConfig]`
+- `[config.go:GitHubEnvironment]`
+
+## Invariants
+- [config.go:136]: `BusinessCode:     conf.Require("business_code"),`
+- [config.go:137]: `BillingAccount:   conf.Require("billing_account"),`
+- [config.go:237]: `panic(fmt.Sprintf("%s_deploy_conditional_roles: %v", name, err))`
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //infrastructure/pulumi/foundation/gcp-projects/business_unit_2/nonproduction/...`

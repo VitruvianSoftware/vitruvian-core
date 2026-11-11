@@ -57,3 +57,19 @@ the workload container referenced by digest. Mirrors upstream
 | `InstanceZone`           | Zone of the Confidential VM                     |
 | `WorkloadPoolID`         | Workload Identity Pool ID                       |
 | `WorkloadPoolProviderID` | Workload Identity Pool Provider ID              |
+
+## Interface
+- `[main.go:DeployConfidentialSpace]`
+- `[outputs.go:ConfidentialSpaceResult]`
+- `[variables.go:ConfidentialSpaceArgs]`
+
+## Invariants
+- None
+
+## Side Effects
+- [main.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [outputs.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [variables.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/go-foundation/5-app-infra/modules/confidential_space/...`

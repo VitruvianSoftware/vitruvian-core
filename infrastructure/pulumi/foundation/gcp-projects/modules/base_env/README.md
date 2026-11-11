@@ -62,3 +62,21 @@ Port divergences from the upstream file set (documented, per the port policy):
 | `CMEKBucket`, `CMEKKeyring`, `CMEKKeys` | CMEK storage (nil when disabled) |
 | `ConfSpaceProjectID`, `ConfSpaceProjectNumber`, `ConfSpaceWorkloadSA` | Confidential Space project (nil unless deployed) |
 | `SubnetsSelfLinks`, `VPCSCPerimeterName`, `PeeringComplete`, `AccessContextManagerPolicyID`, `RestrictedEnabledApis` | TF-parity outputs |
+
+## Interface
+- `[base_env.go:New]`
+- `[example_confidential_space_project.go:ConfidentialSpaceResult]`
+- `[example_confidential_space_project.go:DeployConfidentialSpaceProject]`
+- `[example_peering_project.go:PeeringResult]`
+- `[example_storage_cmek.go:CMEKResult]`
+- `[outputs.go:BUProjects]`
+- `[variables.go:Args]`
+
+## Invariants
+- None
+
+## Side Effects
+- [example_floating_project.go:99]: `// stack gets HTTP 403 PreconditionFailure ("failed on request`
+
+## Verification
+- Run: `bazel test //infrastructure/pulumi/foundation/gcp-projects/modules/base_env/...`

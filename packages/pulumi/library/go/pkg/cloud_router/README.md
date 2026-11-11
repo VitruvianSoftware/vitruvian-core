@@ -60,3 +60,18 @@ router, err := cloud_router.NewCloudRouter(ctx, "my-router", &cloud_router.Cloud
     NatNumAddresses: 2,
 })
 ```
+
+## Interface
+- `[cloud_router.go:AdvertisedIPRange]`
+- `[cloud_router.go:CloudRouterArgs]`
+- `[cloud_router.go:CloudRouter]`
+- `[cloud_router.go:NewCloudRouter]`
+
+## Invariants
+- None
+
+## Side Effects
+- [cloud_router.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/library/go/pkg/cloud_router/...`

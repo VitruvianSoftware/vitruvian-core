@@ -108,3 +108,17 @@ policy.NewOrgPolicy(ctx, "folder-no-nested-virt", &policy.OrgPolicyArgs{
 | `compute.vmExternalIpAccess`                         | List    | Control VM external IPs      |
 | `iam.allowedPolicyMemberDomains`                     | List    | Restrict IAM member domains  |
 | `compute.restrictProtocolForwardingCreationForTypes` | List    | Restrict protocol forwarding |
+
+## Interface
+- `[org_policy.go:OrgPolicyArgs]`
+- `[org_policy.go:OrgPolicy]`
+- `[org_policy.go:NewOrgPolicy]`
+
+## Invariants
+- None
+
+## Side Effects
+- [org_policy.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/library/go/pkg/org_policy/...`

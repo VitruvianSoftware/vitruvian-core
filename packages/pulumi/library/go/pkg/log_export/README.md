@@ -41,3 +41,17 @@ sink, err := log_export.NewLogExport(ctx, "audit-sink", &log_export.LogExportArg
     IncludeChildren:  true,
 })
 ```
+
+## Interface
+- `[log_export.go:LogExportArgs]`
+- `[log_export.go:LogExport]`
+- `[log_export.go:NewLogExport]`
+
+## Invariants
+- None
+
+## Side Effects
+- [log_export.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/library/go/pkg/log_export/...`

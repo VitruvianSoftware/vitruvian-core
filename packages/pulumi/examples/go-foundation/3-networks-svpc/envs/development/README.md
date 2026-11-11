@@ -17,3 +17,19 @@ shared/global resources (hierarchical firewall) live in the sibling
 | `outputs.tf` | `outputs.go` | per-environment stack exports |
 | `remote.tf` | `remote.go` | 1-org read happens in `modules/base_env` (documented there) |
 | `backend.tf`, `providers.tf`, `versions.tf` | `Pulumi.yaml`, `go.mod` | engine adaptation |
+
+## Interface
+- `[config.go:VpcFlowLogsConfig]`
+- `[config.go:NetConfig]`
+
+## Invariants
+- [config.go:70]: `ProjectID:    conf.Require("project_id"),`
+
+## Side Effects
+- [config.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [main.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [outputs.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [remote.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/go-foundation/3-networks-svpc/envs/development/...`

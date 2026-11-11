@@ -48,3 +48,19 @@ propagate to consumers.
 
 The provider reads `NEON_API_KEY`. Store it in Secret Manager and seed the value
 with [`//tools/gcp-secrets`](../../../../tools/gcp-secrets) — never inline.
+
+## Interface
+- `[neon.go:DefaultPgVersion]`
+- `[neon.go:ProjectArgs]`
+- `[neon.go:Project]`
+- `[neon.go:NewProject]`
+- Subdirectory: [sdk](./sdk/README.md)
+
+## Invariants
+- None
+
+## Side Effects
+- [neon.go:62]: `// cross-region latency to every query, and it cannot be changed later`
+
+## Verification
+- Run: `bazel test //packages/pulumi/library/go/pkg/neon/...`

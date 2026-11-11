@@ -76,3 +76,17 @@ bazel run //pulumi/examples/go-foundation/2-environments/envs/nonproduction:up
 
 Deploy 0-bootstrap and 1-org first; this stage consumes the 1-org stack's
 `tags` output via `org_stack_name`.
+
+## Interface
+- `[config.go:EnvConfig]`
+
+## Invariants
+- [config.go:72]: `OrgID:          conf.Require("org_id"),`
+- [config.go:73]: `BillingAccount: conf.Require("billing_account"),`
+- [config.go:76]: `OrgStackName:   conf.Require("org_stack_name"),`
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/go-foundation/2-environments/envs/nonproduction/...`

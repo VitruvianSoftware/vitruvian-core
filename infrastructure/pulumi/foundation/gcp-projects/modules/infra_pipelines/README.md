@@ -43,3 +43,17 @@ Build port is kept as the build-tagged `example_infra_pipelines.go`
 | Name | Description |
 |------|-------------|
 | `ProjectID` | The pipeline project id (upstream's `cloudbuild_project_id` analogue) |
+
+## Interface
+- `[main.go:Deploy]`
+- `[outputs.go:Result]`
+- `[variables.go:Args]`
+
+## Invariants
+- None
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //infrastructure/pulumi/foundation/gcp-projects/modules/infra_pipelines/...`

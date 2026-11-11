@@ -86,3 +86,16 @@ libsignal it wants; the link test fails if it no longer matches.
   -0386 and -0383.
 - `Cargo.lock` is cargo-generated, so it carries cargo's header rather than a
   licence header.
+
+## Interface
+- Internal implementation components
+- Subdirectory: [scripts](./scripts/README.md)
+
+## Invariants
+- None
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //apps/desktop/courier/libsignal/...`

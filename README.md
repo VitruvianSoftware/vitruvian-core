@@ -140,3 +140,25 @@ consistency across apps is tracked in the
 project and stays GPL-3.0-or-later, including the files we add there. It is exempt from the MIT header
 checks, nothing outside it may depend on it, and distributing it requires publishing its source. See its
 [`UPSTREAM.md`](apps/desktop/vitruvian/UPSTREAM.md).
+
+
+## Subdirectories & System Boundaries
+- [apps](./apps/README.md): Application packages by tier (suites, web, cli, mcp, desktop, mobile, embedded)
+- [catalog](./catalog/README.md): Curated tools list and distribution catalog
+- [gitops](./gitops/README.md): Declarative GitOps ArgoCD application suites and cluster manifests
+- [infrastructure](./infrastructure/README.md): Cloud and platform infrastructure as code (Pulumi / Go)
+- [packages](./packages/README.md): Shared reusable libraries and foundation modules
+- [tools](./tools/README.md): Repository tooling, build automation, and Bazel wrappers
+
+## Global Invariants
+- Bazel workspace hermeticity: all repository and development operations route through Bazel targets.
+- Monorepo single-source of truth: component mirrors in GitHub are downstream read-only replicas.
+- Version control isolation: secrets and credentials must never be committed to git.
+
+## Global Side Effects
+- CI/CD workflow triggers via GitHub Actions and automated merge queue progression.
+- Homelab Kubernetes platform state reconciliation via GitOps / ArgoCD.
+- Remote build and test caching interactions.
+
+## System Verification
+- Run: `bazel test //...`

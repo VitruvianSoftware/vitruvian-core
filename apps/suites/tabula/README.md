@@ -256,3 +256,21 @@ Tabula is built with modern, open-source technologies and leverages generous fre
 ---
 
 **Built with ❤️ by the Tabula team**
+
+## Interface
+- Internal implementation components
+- Subdirectory: [api](./api/README.md)
+- Subdirectory: [cli](./cli/README.md)
+- Subdirectory: [extension](./extension/README.md)
+- Subdirectory: [infra](./infra/README.md)
+- Subdirectory: [shared](./shared/README.md)
+- Subdirectory: [web](./web/README.md)
+
+## Invariants
+- None
+
+## Side Effects
+- [jest-resolver.cjs:36]: `*      every jest.mock() silently no-ops, real chrome/prisma/ioredis modules`
+
+## Verification
+- Run: `bazel test //apps/suites/tabula/...`

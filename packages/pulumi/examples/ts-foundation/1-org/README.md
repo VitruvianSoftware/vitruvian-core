@@ -242,3 +242,25 @@ Consider the following:
 | ----------- | ------------------------------------------------------------------------------------------- |
 | `index.ts`  | Orchestrates the org stage: folders, projects, policies, logging, SCC, tags, CAI monitoring |
 | `config.ts` | Configuration loading for organization-level settings                                       |
+
+## Interface
+- `[config.ts:OrgConfig]`
+- `[config.ts:loadOrgConfig]`
+- `[essential_contacts.ts:deployEssentialContacts]`
+- `[iam.ts:OrgProjectRefs]`
+- `[iam.ts:deployOrgIAM]`
+- Subdirectory: [cai-monitoring-function](./cai-monitoring-function/README.md)
+- Subdirectory: [modules](./modules/README.md)
+
+## Invariants
+- [config.ts:75]: `const orgId = config.require("org_id");`
+- [config.ts:84]: `billingAccount: config.require("billing_account"),`
+- [config.ts:132]: `remoteStateBucket: config.require("remote_state_bucket"),`
+
+## Side Effects
+- [config.ts:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [index.ts:89]: `"sql.restrictPublicIp": true,`
+- [index.ts:90]: `"sql.restrictAuthorizedNetworks": true,`
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/ts-foundation/1-org/...`

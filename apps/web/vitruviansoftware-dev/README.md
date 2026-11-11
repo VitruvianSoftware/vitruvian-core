@@ -91,3 +91,7 @@ Production builds with `actions/jekyll-build-pages`, which uses the
 - colours, type and spacing come from
   [`packages/design-system/src/tokens.css`](../../../packages/design-system/src/tokens.css).
   Keep the copies in `main.css` in step when the tokens change.
+
+## Subdirectories & Boundaries
+- [assets](./assets/README.md): Subsystem blueprint grouping child modules under apps/web/vitruviansoftware-dev/assets.
+

@@ -194,3 +194,7 @@ The manifest says `"protocol": "2"` and lists the two panels under
 is installed into `lib/` inside the folder, as `hello-python-kit` does. Add
 the folder in Vitruvian, `lib/` and all:
 Settings › Extensions, "Add from Folder…".
+
+## Subdirectories & Boundaries
+- [bin](./bin/README.md): Component package providing implementation for packages/vitruvian-sdk/samples/hello-pan...
+

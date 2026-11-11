@@ -99,3 +99,21 @@ project set. The BU's shared infra-pipeline project lives in the sibling
 Run rollout can be diagnosed. It is separate from `cluster_reader_members`
 (homelab workloads) so neither list widens the other. Roles are validated
 against the read-only allowlist in `modules/cluster_reader`.
+
+## Interface
+- `[config.go:ProjectsConfig]`
+- `[config.go:AppIdentityConfig]`
+- `[config.go:GitHubEnvironment]`
+- `[config.go:PreviewGitHubEnvironment]`
+- `[config.go:AppBuildReaderGrant]`
+
+## Invariants
+- [config.go:144]: `BusinessCode:     conf.Require("business_code"),`
+- [config.go:145]: `BillingAccount:   conf.Require("billing_account"),`
+- [config.go:248]: `panic(fmt.Sprintf("%s_deploy_conditional_roles: %v", name, err))`
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //infrastructure/pulumi/foundation/gcp-projects/business_unit_1/development/...`

@@ -57,3 +57,7 @@ ArgoCD itself is bootstrapped by Pulumi (`infrastructure/pulumi/platform/dev-loc
 remaining Pulumi module). The three roots above are applied once at bootstrap. That
 single bootstrap step is the *only* sanctioned manual apply — everything downstream
 is GitOps.
+
+## Subdirectories & Boundaries
+- [platform](./platform/README.md): Contract for gitops/argocd/platform
+

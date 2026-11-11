@@ -116,3 +116,7 @@ too (the Go one is `//tools/pipeline/plan:plan-go`). Both pairs are held to
 the same behaviour by `verifiedrun_rs_parity_test` and `plan_rs_parity_test`,
 which run Go and Rust side by side and require the same output, exit codes and
 bazel command lines.
+
+## Subdirectories & Boundaries
+- [src](./src/README.md): Component package providing implementation for tools/pipeline/verifiedrun/src.
+

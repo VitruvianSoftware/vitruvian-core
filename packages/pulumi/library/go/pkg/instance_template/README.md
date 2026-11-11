@@ -58,3 +58,17 @@ tmpl, err := instance_template.NewInstanceTemplate(ctx, "web-tmpl", &instance_te
     Tags:             []string{"allow-ssh", "allow-http"},
 })
 ```
+
+## Interface
+- `[instance_template.go:InstanceTemplateArgs]`
+- `[instance_template.go:InstanceTemplate]`
+- `[instance_template.go:NewInstanceTemplate]`
+
+## Invariants
+- None
+
+## Side Effects
+- [instance_template.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/library/go/pkg/instance_template/...`

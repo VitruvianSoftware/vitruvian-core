@@ -45,3 +45,8 @@ Or from a local checkout of `vitruvian-core`:
 claude plugin marketplace add .
 claude plugin install vitruvian-orchestrator@vitruvian-core
 ```
+
+## Subdirectories & Boundaries
+- [hooks](./hooks/README.md): Component package providing implementation for apps/claude-code/plugins/vitruvian-orche...
+- [types](./types/README.md): Component package providing implementation for apps/claude-code/plugins/vitruvian-orche...
+

@@ -58,3 +58,19 @@ binding.
 | `ServiceName`    | Cloud Run service name            |
 | `ServiceUri`     | Cloud Run service URI             |
 | `RuntimeSAEmail` | Runtime service account email     |
+
+## Interface
+- `[main.go:DeployServerlessSpace]`
+- `[outputs.go:ServerlessSpaceResult]`
+- `[variables.go:ServerlessSpaceArgs]`
+
+## Invariants
+- None
+
+## Side Effects
+- [main.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [outputs.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [variables.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/go-foundation/5-app-infra/modules/serverless_space/...`

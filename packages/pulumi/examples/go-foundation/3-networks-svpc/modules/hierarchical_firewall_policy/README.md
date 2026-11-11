@@ -13,3 +13,18 @@ associations (envs/shared only).
 | `variables.tf` | `variables.go` | `Args` |
 | `outputs.tf` | `outputs.go` | outputs encapsulated by the library component (documented there) |
 | `versions.tf` | `../go.mod` | engine adaptation |
+
+## Interface
+- `[main.go:New]`
+- `[variables.go:Args]`
+
+## Invariants
+- None
+
+## Side Effects
+- [main.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [outputs.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [variables.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/go-foundation/3-networks-svpc/modules/hierarchical_firewall_policy/...`

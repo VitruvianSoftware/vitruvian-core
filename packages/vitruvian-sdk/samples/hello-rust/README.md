@@ -62,3 +62,7 @@ blocks, one function for each kind, and an item that is `None` is left out:
         ]
     }
 ```
+
+## Subdirectories & Boundaries
+- [src](./src/README.md): Component package providing implementation for packages/vitruvian-sdk/samples/hello-rus...
+

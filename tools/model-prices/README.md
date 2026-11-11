@@ -38,3 +38,7 @@ bazel run //tools/agent-roster -- --write
 ## Weekly workflow
 
 [`.github/workflows/model-prices.yaml`](../../.github/workflows/model-prices.yaml) runs Mondays at `13:41 UTC` (and via `workflow_dispatch`), executes `//tools/model-prices:update` followed by `//tools/agent-roster -- --write`, and opens or updates a pull request titled `chore(agents): refresh model prices` on branch `chore/model-prices` when prices change.
+
+## Subdirectories & Boundaries
+- [src](./src/README.md): Component package providing implementation for tools/model-prices/src.
+

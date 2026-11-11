@@ -314,3 +314,20 @@ you do.
 
 MIT. See [`LICENSE`](LICENSE). The Vitruvian app that links this package is
 GPL-3.0-or-later; nothing from the app's folder may be copied here.
+
+## Interface
+- Internal implementation components
+- Subdirectory: [Sources](./Sources/README.md)
+- Subdirectory: [conformance](./conformance/README.md)
+- Subdirectory: [go](./go/README.md)
+- Subdirectory: [samples](./samples/README.md)
+- Subdirectory: [verification](./verification/README.md)
+
+## Invariants
+- None
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //packages/vitruvian-sdk/...`

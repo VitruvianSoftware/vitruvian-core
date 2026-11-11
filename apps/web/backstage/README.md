@@ -96,3 +96,8 @@ That sets every `@backstage/*` dependency to the versions that release shipped, 
 3. Open a PR. The `backstage-image` workflow builds the image and boots it against Postgres; that smoke test is what catches a backend that cannot start.
 
 `packages/backend/src/release.test.ts` fails if any `@backstage/*` dependency is off the recorded release, and Dependabot is told to leave them alone. Both exist because a single bumped package crashed the backend at boot on 2026-10-07.
+
+## Subdirectories & Boundaries
+- [packages](./packages/README.md): Subsystem blueprint grouping child modules under apps/web/backstage/packages.
+- [src](./src/README.md): Component package providing implementation for apps/web/backstage/src.
+

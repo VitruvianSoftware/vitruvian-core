@@ -122,3 +122,21 @@ following APIs are activated on it:
 "logging.googleapis.com",
 "monitoring.googleapis.com"
 ```
+
+## Interface
+- `[main.go:NewTfcAgentGke]`
+- `[outputs.go:TfcAgentGke]`
+- `[variables.go:TfcAgentGkeArgs]`
+
+## Invariants
+- None
+
+## Side Effects
+- [main.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [main.go:237]: `// kubeconfig (exec-auth via gke-gcloud-auth-plugin), the Pulumi`
+- [main.go:262]: `exec:`
+- [outputs.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [variables.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/go-foundation/0-bootstrap/modules/tfc-agent-gke/...`

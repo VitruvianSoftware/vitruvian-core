@@ -226,3 +226,17 @@ npm test
 # Run tests with coverage
 npm run test:coverage
 ```
+
+## Interface
+- Internal implementation components
+- Subdirectory: [packages](./packages/README.md)
+- Subdirectory: [test](./test/README.md)
+
+## Invariants
+- None
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //packages/pulumi/library/ts/...`

@@ -158,3 +158,9 @@ that builds natively with `rustc --edition 2021 -O flash/main.rs -o flash-esp32-
 ## License
 
 Copyright (c) 2026 Vitruvian Software, LLC. MIT licensed: see [`LICENSE`](LICENSE).
+
+## Subdirectories & Boundaries
+- [host_companion](./host_companion/README.md): Subsystem blueprint grouping child modules under apps/embedded/esp32-s3/host_companion.
+- [include](./include/README.md): Component package providing implementation for apps/embedded/esp32-s3/include.
+- [src](./src/README.md): Component package providing implementation for apps/embedded/esp32-s3/src.
+

@@ -41,3 +41,17 @@ resulting resource URN is byte-identical to the pre-refactor inline call.
 | `ProjectID` | Project id (upstream `project_id`) |
 | `ProjectNumber` | Project number (upstream `project_number`) |
 | `ApisReadyProjectID` | Project id gated on the API-propagation wait (data dependency for library components) |
+
+## Interface
+- `[main.go:New]`
+- `[outputs.go:Result]`
+- `[variables.go:Args]`
+
+## Invariants
+- None
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //infrastructure/pulumi/foundation/gcp-projects/modules/single_project/...`

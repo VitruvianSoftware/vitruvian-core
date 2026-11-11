@@ -19,3 +19,15 @@ This directory contains the Pulumi network configuration for the **shared** envi
 | `network_id`        | VPC network resource ID |
 | `network_name`      | VPC network name        |
 | `network_self_link` | VPC network self link   |
+
+## Interface
+- Internal implementation components
+
+## Invariants
+- [index.ts:16]: `const orgId = config.require("org_id");`
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/ts-foundation/3-networks-svpc/envs/shared/...`

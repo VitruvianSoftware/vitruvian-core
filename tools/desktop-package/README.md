@@ -111,3 +111,7 @@ bazel test //tools/desktop-package/...
 ```
 
 The test also runs the real driver with stand-ins for `codesign`, `gh` and `python3`, under every bash on the machine. On Linux that is a recent bash, which cannot reproduce the bash 3.2 failures; there a static check (no bare `"${array[@]}"`) and planted failures stand in. The run that proves the bash 3.2 case is the macOS lane in `ci.yaml`, which names the test with `REQUIRE_BASH32=1` so it fails if no bash 3 is found.
+
+## Subdirectories & Boundaries
+- [src](./src/README.md): Component package providing implementation for tools/desktop-package/src.
+

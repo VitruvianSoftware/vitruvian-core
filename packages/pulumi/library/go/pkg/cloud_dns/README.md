@@ -64,3 +64,18 @@ zone, err := cloud_dns.NewDnsZone(ctx, "internal-dns", &cloud_dns.DnsZoneArgs{
     },
 })
 ```
+
+## Interface
+- `[cloud_dns.go:RecordSet]`
+- `[cloud_dns.go:DnsZoneArgs]`
+- `[cloud_dns.go:DnsZone]`
+- `[cloud_dns.go:NewDnsZone]`
+
+## Invariants
+- None
+
+## Side Effects
+- [cloud_dns.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/library/go/pkg/cloud_dns/...`

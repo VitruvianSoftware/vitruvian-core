@@ -208,3 +208,18 @@ and reach the Pulumi Cloud backend via `PULUMI_ACCESS_TOKEN` (secret).
 > `Issues: write` and `Dependabot secrets: write` to the existing App (Developer
 > settings → GitHub Apps → *…-pulumi* → Permissions) and **re-approve** the
 > installation, or the auto-apply will `403` when creating the labels/secret.
+
+## Interface
+- `[stripe_environments.go:Error]`
+- Subdirectory: [internal](./internal/README.md)
+
+## Invariants
+- [main.go:68]: `repoOwner := cfg.Require("repoOwner")`
+- [main.go:285]: `// always report — safe to require.`
+- [main.go:291]: `// so it always reports — safe to require.`
+
+## Side Effects
+- [main.go:287]: `// migration-safety (#819) Squawk-lints Tabula's Prisma migrations so a`
+
+## Verification
+- Run: `bazel test //infrastructure/pulumi/platform/repo-config/...`

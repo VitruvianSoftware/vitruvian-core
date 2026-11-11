@@ -204,3 +204,19 @@ module, and the app is now split into modules (see below). Use Bazel.
 
 Architecture review notes and the planned refactor are tracked in the PRs that
 follow the import.
+
+## Interface
+- `[build.sh:script entrypoint]`
+- Subdirectory: [Sources](./Sources/README.md)
+- Subdirectory: [Tools](./Tools/README.md)
+- Subdirectory: [bazel](./bazel/README.md)
+- Subdirectory: [upstream](./upstream/README.md)
+
+## Invariants
+- [build.sh:224]: `# cfprefsd can recreate an emptied domain after the first removal. Require`
+
+## Side Effects
+- [build.sh:246]: `# Standalone automated tests: pure contracts plus isolated disk, subprocess,`
+
+## Verification
+- Run: `bazel test //apps/desktop/vitruvian/...`

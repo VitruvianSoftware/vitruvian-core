@@ -92,3 +92,32 @@ Config keys on this stack (upstream variable of the same name unless noted).
 | scc\_notifications\_project\_id | The SCC notifications project ID. |
 | shared\_vpc\_projects | Shared VPC projects info grouped by environment. |
 | tags | Tag values to be applied on next steps. |
+
+## Interface
+- `[config.go:RetentionPolicy]`
+- `[config.go:PerProjectBudget]`
+- `[config.go:ProjectBudgetConfig]`
+- `[config.go:OrgConfig]`
+- `[folders.go:Folders]`
+- `[projects.go:OrgProjects]`
+- `[remote.go:BootstrapOutputs]`
+
+## Invariants
+- [config.go:148]: `OrgID:              conf.Require("org_id"),`
+- [config.go:149]: `BillingAccount:     conf.Require("billing_account"),`
+- [config.go:153]: `BootstrapStackName: conf.Require("bootstrap_stack_name"),`
+
+## Side Effects
+- [cai_monitoring.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [config.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [essential_contacts.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [folders.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [iam.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [log_sinks.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [main.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [org_policy.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [org_policy.go:74]: `"sql.restrictPublicIp",`
+- [org_policy.go:75]: `"sql.restrictAuthorizedNetworks",`
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/go-foundation/1-org/envs/shared/...`

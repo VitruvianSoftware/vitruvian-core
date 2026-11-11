@@ -350,3 +350,29 @@ The Pulumi foundation supports pluggable CI/CD providers:
 | `sa.ts`       | 5 per-stage service accounts with least-privilege IAM at org/parent/seed/cicd/billing scopes                 |
 | `groups.ts`   | Required and optional Cloud Identity group creation                                                          |
 | `build_cb.ts` | GitHub Actions WIF OIDC provider and per-SA repository bindings                                              |
+
+## Interface
+- `[build_github_actions.ts:CICDProjectOutputs]`
+- `[build_github_actions.ts:WIFOutputs]`
+- `[build_github_actions.ts:deployCICDProject]`
+- `[build_github_actions.ts:deployGitHubActionsWIF]`
+- `[config.ts:BootstrapConfig]`
+- `[config.ts:loadConfig]`
+- `[groups.ts:GroupOutputs]`
+- `[groups.ts:deployGroups]`
+- `[sa.ts:GranularSAs]`
+- `[sa.ts:deployServiceAccounts]`
+- Subdirectory: [modules](./modules/README.md)
+
+## Invariants
+- [config.ts:83]: `const orgId = pulumiConfig.require("org_id");`
+- [config.ts:92]: `const groupOrgAdmins = pulumiConfig.require("group_org_admins");`
+- [config.ts:93]: `const groupBillingAdmins = pulumiConfig.require("group_billing_admins");`
+
+## Side Effects
+- [build_github_actions.ts:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [config.ts:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [index.ts:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/ts-foundation/0-bootstrap/...`

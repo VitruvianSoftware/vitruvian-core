@@ -54,3 +54,19 @@ pulumi package add terraform-provider upstash/upstash
 then re-home the module path from `github.com/pulumi/pulumi-terraform-provider/...`
 to `github.com/VitruvianSoftware/pulumi-library/go/pkg/upstash/sdk` and delete the
 generated `sdk/go.mod`. Treat a provider bump as a reviewed change.
+
+## Interface
+- `[upstash.go:RedisArgs]`
+- `[upstash.go:Redis]`
+- `[upstash.go:NewRedis]`
+- Subdirectory: [sdk](./sdk/README.md)
+
+## Invariants
+- None
+
+## Side Effects
+- [upstash.go:145]: `url := pulumi.All(db.Endpoint, db.Password, db.Port).ApplyT(`
+- [upstash.go:154]: `Endpoint:      db.Endpoint,`
+
+## Verification
+- Run: `bazel test //packages/pulumi/library/go/pkg/upstash/...`

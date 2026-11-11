@@ -51,3 +51,20 @@ engine-difference note.
 |------|-------------|
 | `infra_pipeline_project_id` | The BU's app-infra pipeline project id (upstream's `cloudbuild_project_id` analogue) |
 | `default_region` | The default region |
+
+## Interface
+- `[config.go:SharedConfig]`
+
+## Invariants
+- [config.go:73]: `BusinessCode:   conf.Require("business_code"),`
+- [config.go:74]: `BillingAccount: conf.Require("billing_account"),`
+- [config.go:76]: `OrgStackName:   conf.Require("org_stack_name"),`
+
+## Side Effects
+- [config.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [main.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [outputs.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+- [remote.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/go-foundation/4-projects/business_unit_1/shared/...`

@@ -40,3 +40,17 @@ netOutputs, err := network.New(ctx, "development-network", &network.Args{
 | ProjectNumber | The Shared-VPC host project number. |
 
 > Upstream's module carries no README; this one documents the Pulumi port using the same Inputs/Outputs format as the sibling modules.
+
+## Interface
+- `[network.go:Args]`
+- `[network.go:Result]`
+- `[network.go:New]`
+
+## Invariants
+- None
+
+## Side Effects
+- [network.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/go-foundation/1-org/modules/network/...`

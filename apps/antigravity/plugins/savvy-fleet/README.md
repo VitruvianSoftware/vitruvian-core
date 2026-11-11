@@ -75,3 +75,8 @@ Or via Bazel in the monorepo:
 ```bash
 bazel test //apps/antigravity/plugins/savvy-fleet/...
 ```
+
+## Subdirectories & Boundaries
+- [hooks](./hooks/README.md): Component package providing implementation for apps/antigravity/plugins/savvy-fleet/hooks.
+- [sidecars](./sidecars/README.md): Subsystem blueprint grouping child modules under apps/antigravity/plugins/savvy-fleet/s...
+

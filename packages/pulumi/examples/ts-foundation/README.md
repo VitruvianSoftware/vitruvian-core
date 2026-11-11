@@ -190,3 +190,26 @@ Some configuration values used to deploy the stages have defaults. Check those *
 
 - This repo is a **Public Reference**.
 - Real Vitruvian Software implementations are managed in **Private** `gcp-*` repositories that consume this foundation logic.
+
+## Interface
+- Internal implementation components
+- Subdirectory: [0-bootstrap](./0-bootstrap/README.md)
+- Subdirectory: [1-org](./1-org/README.md)
+- Subdirectory: [2-environments](./2-environments/README.md)
+- Subdirectory: [3-networks-hub-and-spoke](./3-networks-hub-and-spoke/README.md)
+- Subdirectory: [3-networks-svpc](./3-networks-svpc/README.md)
+- Subdirectory: [4-projects](./4-projects/README.md)
+- Subdirectory: [5-app-infra](./5-app-infra/README.md)
+- Subdirectory: [helpers](./helpers/README.md)
+- Subdirectory: [policy-library](./policy-library/README.md)
+- Subdirectory: [scripts](./scripts/README.md)
+- Subdirectory: [test](./test/README.md)
+
+## Invariants
+- None
+
+## Side Effects
+- None
+
+## Verification
+- Run: `bazel test //packages/pulumi/examples/ts-foundation/...`

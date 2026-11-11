@@ -53,3 +53,17 @@ fn, err := cloud_functions.NewCloudFunction(ctx, "processor", &cloud_functions.C
     AvailableMemory:  "512M",
 })
 ```
+
+## Interface
+- `[cloud_functions.go:CloudFunctionArgs]`
+- `[cloud_functions.go:CloudFunction]`
+- `[cloud_functions.go:NewCloudFunction]`
+
+## Invariants
+- None
+
+## Side Effects
+- [cloud_functions.go:8]: `*      http://www.apache.org/licenses/LICENSE-2.0`
+
+## Verification
+- Run: `bazel test //packages/pulumi/library/go/pkg/cloud_functions/...`
