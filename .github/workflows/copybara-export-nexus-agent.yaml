@@ -20,7 +20,7 @@
 
 name: Copybara Export (nexus-agent)
 
-# Exports vitruvian-core/apps/desktop/vitruvian-code/ to VitruvianSoftware/nexus-agent on every
+# Exports vitruvian-core/apps/desktop/vitruvian-code/ to VitruvianSoftware/vitruvian-code on every
 # push under apps/desktop/vitruvian-code/**. Thin caller — logic lives in _copybara-export.yaml.
 on:
     push:
@@ -44,7 +44,7 @@ jobs:
     export:
         uses: ./.github/workflows/_copybara-export.yaml
         with:
-            component: nexus-agent
+            component: vitruvian-code
             standalone-only: "package-lock.json .github/workflows/sync-to-monorepo.yaml"
             copybara-options: ${{ inputs['copybara-options'] || github.event.inputs['copybara-options'] || '--force --ignore-noop' }}
         secrets:

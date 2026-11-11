@@ -795,7 +795,7 @@ pub mod tests {
         assert!(has(
             "apps/desktop/vitruvian-code",
             "VitruvianSoftware",
-            "nexus-agent"
+            "vitruvian-code"
         ));
         let lengths: Vec<usize> = found.iter().map(|m| m.0.len()).collect();
         assert!(

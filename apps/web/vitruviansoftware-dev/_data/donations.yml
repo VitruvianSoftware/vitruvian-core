@@ -49,7 +49,7 @@ esp32-desk-companion:
 
 nexus-agent:
   name: Vitruvian Code
-  repo: https://github.com/VitruvianSoftware/nexus-agent
+  repo: https://github.com/VitruvianSoftware/vitruvian-code
   url: "https://donate.stripe.com/eVqdR8dMxf7Ha6B2TVbwk0c"
 
 oauth-user-inspector:

@@ -17,7 +17,7 @@ courier                       apps/desktop/courier/.github/FUNDING.yml
 home-speaker                  apps/desktop/home-speaker/.github/FUNDING.yml
 vitruvian-remote              apps/mobile/android-remote/.github/FUNDING.yml
 esp32-desk-companion          apps/embedded/esp32-s3/.github/FUNDING.yml
-nexus-agent                   apps/desktop/vitruvian-code/.github/FUNDING.yml
+vitruvian-code                apps/desktop/vitruvian-code/.github/FUNDING.yml
 oauth-user-inspector          apps/web/oauth-user-inspector/.github/FUNDING.yml
 mcp-slack                     apps/mcp/slack/.github/FUNDING.yml
 mcp-roborock                  apps/mcp/roborock/.github/FUNDING.yml

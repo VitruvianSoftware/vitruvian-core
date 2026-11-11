@@ -277,7 +277,7 @@ projects:
       locally installed AI coding CLI, so a full agent session is reachable
       from your phone.
     tags: [TypeScript, Swift, Telegram]
-    repo: https://github.com/VitruvianSoftware/nexus-agent
+    repo: https://github.com/VitruvianSoftware/vitruvian-code
     source: apps/desktop/vitruvian-code
     extension:
       kind: plugin
@@ -288,7 +288,7 @@ projects:
         the bot and starting it.
       installs:
         - tool: Antigravity
-          command: agy plugin install https://github.com/VitruvianSoftware/nexus-agent
+          command: agy plugin install https://github.com/VitruvianSoftware/vitruvian-code
 
   - name: OAuth User Inspector
     group: web

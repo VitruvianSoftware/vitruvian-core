@@ -21,7 +21,7 @@
 name: Copybara Import PR
 
 # ONE-WAY PR-import for EVERY mirrored component (devx, homelab, mcp-slack,
-# nexus-agent, oauth-user-inspector) -- SCHEDULED-POLL variant. One matrix leg
+# vitruvian-code, oauth-user-inspector) -- SCHEDULED-POLL variant. One matrix leg
 # per component (the authoritative list is the `component:` matrix below).
 #
 # The MONOREPO polls VitruvianSoftware/<component> for open PRs labelled
@@ -76,7 +76,7 @@ on:
     workflow_dispatch:
         inputs:
             only-component:
-                description: "Limit this manual run to one component (devx|homelab|mcp-slack|nexus-agent|oauth-user-inspector). Empty = all."
+                description: "Limit this manual run to one component (devx|homelab|mcp-slack|vitruvian-code|oauth-user-inspector). Empty = all."
                 default: ""
                 required: false
             poll-only:
@@ -95,7 +95,7 @@ jobs:
         strategy:
             fail-fast: false
             matrix:
-                component: [devx, homelab, mcp-slack, nexus-agent, oauth-user-inspector]
+                component: [devx, homelab, mcp-slack, vitruvian-code, oauth-user-inspector]
         # Serialize poll cycles PER COMPONENT so two runs cannot race the same
         # monorepo PR branch / GitHub API. cancel-in-progress:false means a queued
         # cycle waits rather than pre-empting an in-flight import.

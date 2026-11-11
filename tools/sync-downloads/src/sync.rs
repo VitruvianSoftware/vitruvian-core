@@ -326,10 +326,8 @@ pub fn sync_catalog(
         ("universal.zip", "Universal ZIP"),
     ];
 
-    // 1. Vitruvian Code. Its releases are still on the mirror's old address
-    // (VitruvianSoftware/nexus-agent) until the mirror is renamed, which GitHub
-    // then redirects; this follows the rename.
-    if let Some(rel) = get_latest_release("VitruvianSoftware/nexus-agent", None, token)? {
+    // 1. Vitruvian Code
+    if let Some(rel) = get_latest_release("VitruvianSoftware/vitruvian-code", None, token)? {
         if rel.truthy() {
             let tag = str_of(&rel, "tag_name", "lstrip")?
                 .trim_start_matches('v')
