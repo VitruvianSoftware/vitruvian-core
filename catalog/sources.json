@@ -36,10 +36,10 @@
       "universal": true
     },
     {
-      "id": "dev.vitruvian.nexus-agent",
-      "repo": "VitruvianSoftware/nexus-agent",
+      "id": "dev.vitruvian.code",
+      "repo": "VitruvianSoftware/vitruvian-code",
       "tagPrefix": "v",
-      "asset": "nexus-agent-tool-{version}.zip",
+      "asset": "vitruvian-code-tool-{version}.zip",
       "uploader": "ipv1337",
       "universal": true
     },

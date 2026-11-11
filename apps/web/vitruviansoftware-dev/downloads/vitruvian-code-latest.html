@@ -1,0 +1,27 @@
+---
+layout: null
+permalink: /downloads/latest/vitruvian-code.dmg
+sitemap: false
+---
+{%- comment -%}
+  The address the bridge (the last Nexus Agent) falls back to for the download.
+  downloads/nexus-agent-latest.html is the same page at the old address.
+{%- endcomment -%}
+{%- assign desktop = site.data.downloads.categories | where: "id", "desktop" | first -%}
+{%- assign app = desktop.items | where: "id", "vitruvian-code" | first -%}
+{%- assign dl = app.downloads | where: "arch", "Universal" | first -%}
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Downloading Vitruvian Code...</title>
+    <link rel="canonical" href="{{ dl.url }}">
+    <meta http-equiv="refresh" content="0; url={{ dl.url }}">
+    <meta name="robots" content="noindex">
+  </head>
+  <body>
+    <p>Downloading latest Vitruvian Code release (v{{ app.version }})...</p>
+    <p>If your download does not start automatically, <a href="{{ dl.url }}">click here to download</a>.</p>
+    <script>window.location.replace("{{ dl.url }}");</script>
+  </body>
+</html>

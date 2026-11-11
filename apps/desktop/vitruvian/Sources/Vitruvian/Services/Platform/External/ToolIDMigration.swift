@@ -49,6 +49,11 @@ package enum ToolIDMigration {
         /// Both ids are installed. Neither is touched: the person has
         /// added the new tool already, and the old one is theirs to remove.
         case bothInstalled
+        /// The copy of the tool is not what the person agreed to (its
+        /// manifest has other bytes than the record's fingerprint). The
+        /// record and everything else are left exactly as they are, so the
+        /// app holds the tool back as it already did; this says why.
+        case heldBack([String])
         /// Moved; what was done, in order.
         case migrated([String])
         /// Something could not be moved. What was done is kept, the record
@@ -82,6 +87,13 @@ package enum ToolIDMigration {
         }
         guard let old = folders.place(for: from), let new = folders.place(for: to) else {
             return .failed(["\(from.rawValue) or \(to.rawValue) is not an id an outside tool may have"])
+        }
+        // Only a copy the person agreed to is carried over. A copy that was
+        // changed since stays as it is: moving it under a new id and writing
+        // down a new fingerprint would make the app trust it.
+        if let why = fingerprintProblem(records[index], from: from, to: to, old: old, new: new, fileManager) {
+            log("tool \(from.rawValue) is left alone: \(why)")
+            return .heldBack([why])
         }
 
         var done: [String] = []
@@ -131,7 +143,7 @@ package enum ToolIDMigration {
 
         // What the tool is keeps its preferences, its shortcuts and its
         // place in the menu bar panel under the id.
-        let preferences = movePreferences(from: from, to: to, defaults)
+        let preferences = movePreferences(from: from, to: to, defaults, log: log)
         if preferences > 0 { note("moved \(preferences) preference(s)") }
         if moveShortcuts(from: from, to: to, defaults) { note("moved the tool's shortcuts") }
         if movePanelLists(from: from, to: to, defaults) { note("moved the tool's place in the menu bar panel") }
@@ -152,6 +164,29 @@ package enum ToolIDMigration {
     }
 
     // MARK: - The record
+
+    /// Why the copy is not the one agreed to; nil when it is, or when there
+    /// is no single copy to judge (the steps below say that). Judged by the
+    /// bytes of its manifest, as the app does at every launch. A copy this
+    /// migration has already given the new id is judged as it was.
+    private static func fingerprintProblem(_ record: ToolRecord, from: ToolID, to: ToolID,
+                                           old: ToolFolders.Place, new: ToolFolders.Place,
+                                           _ fileManager: FileManager) -> String? {
+        let agreed = record.agreement.fingerprint
+        let hasOld = exists(old.files, fileManager)
+        let hasNew = exists(new.files, fileManager)
+        guard hasOld != hasNew else { return nil }
+        let folder = hasOld ? old.files : new.files
+        guard let data = fileManager.contents(atPath: folder.appendingPathComponent(ToolManifestFile.fileName).path) else {
+            return "its manifest cannot be read"
+        }
+        if ToolFingerprint.of(data) == agreed { return nil }
+        if hasNew, let text = String(data: data, encoding: .utf8),
+           ToolFingerprint.of(Data(text.replacingOccurrences(of: "\"\(to.rawValue)\"", with: "\"\(from.rawValue)\"").utf8)) == agreed {
+            return nil
+        }
+        return "its manifest is not the one the person agreed to"
+    }
 
     private static func renamed(_ record: ToolRecord, to: ToolID, from: ToolID, fingerprint: String) -> ToolRecord {
         let agreement = ToolAgreement(date: record.agreement.date, name: record.agreement.name,
@@ -262,18 +297,22 @@ package enum ToolIDMigration {
     // MARK: - Preferences
 
     /// Every preference saved under the old id (`<id>/<preference>`) is saved
-    /// under the new one, unless the new one already has a value, and the
-    /// old one goes. Returns how many were moved.
-    private static func movePreferences(from: ToolID, to: ToolID, _ defaults: UserDefaults) -> Int {
+    /// under the new one, and the old one goes. Where the new id already has a
+    /// value the new one counts and the old one is kept, and the log says so:
+    /// it may be something the person set. Returns how many were moved.
+    private static func movePreferences(from: ToolID, to: ToolID, _ defaults: UserDefaults,
+                                        log: (String) -> Void) -> Int {
         let prefix = from.rawValue + "/"
         var moved = 0
         for key in defaults.dictionaryRepresentation().keys.sorted() where key.hasPrefix(prefix) {
             let target = to.rawValue + "/" + key.dropFirst(prefix.count)
-            if defaults.object(forKey: target) == nil, let value = defaults.object(forKey: key) {
-                defaults.set(value, forKey: target)
-                moved += 1
+            guard defaults.object(forKey: target) == nil, let value = defaults.object(forKey: key) else {
+                log("\(from.rawValue) to \(to.rawValue): kept \(key) as it is, \(target) has a value already")
+                continue
             }
+            defaults.set(value, forKey: target)
             defaults.removeObject(forKey: key)
+            moved += 1
         }
         return moved
     }

@@ -20,6 +20,8 @@ enum ToolIDMigrationTests {
         bothInstalledIsLeftAlone(suite)
         anUnreadableRecordIsLeftAlone(suite)
         aTwoCopiesTrapKeepsTheRecord(suite)
+        aChangedManifestIsNotCarriedOver(suite)
+        aResumedLaunchTrustsItsOwnRewrite(suite)
         theStoreDoesItAtLaunch(suite)
     }
 
@@ -233,8 +235,12 @@ enum ToolIDMigrationTests {
         suite.expect(rig.read(rig.data(new).appendingPathComponent("settings.json")) == "{\"new\":true}"
                          && rig.read(rig.data(new).appendingPathComponent("history/prompts.txt")) == "prompts"
                          && rig.defaults.string(forKey: "\(new.rawValue)/botDirectory") == "~/new"
-                         && rig.defaults.object(forKey: "\(old.rawValue)/botDirectory") == nil,
-                     "a file or preference the new id already has is never replaced; what it lacks is filled in")
+                         && rig.defaults.string(forKey: "\(old.rawValue)/botDirectory") == "~/bots"
+                         && rig.defaults.object(forKey: "\(old.rawValue)/autoStart") == nil
+                         && rig.defaults.bool(forKey: "\(new.rawValue)/autoStart")
+                         && rig.logged.contains { $0.contains("kept \(old.rawValue)/botDirectory") },
+                     "a file or preference the new id already has is never replaced, and the old preference is kept, and logged; "
+                         + "what the new id lacks is filled in: \(rig.logged)")
     }
 
     static func bothInstalledIsLeftAlone(_ suite: TestSuite) {
@@ -272,6 +278,40 @@ enum ToolIDMigrationTests {
                          && rig.exists(rig.files(old)),
                      "a step that cannot be done is reported, and the record stays as it was so the next launch tries again: \(outcomes)")
         suite.expect(rig.logged.contains { $0.contains("FAILED") }, "and the log says so")
+    }
+
+    /// A copy whose manifest is not what the person agreed to is not given a
+    /// new fingerprint: the record, the folders and the preferences stay.
+    static func aChangedManifestIsNotCarriedOver(_ suite: TestSuite) {
+        let rig = Rig("changed")
+        defer { rig.close() }
+        rig.seedOldInstall()
+        let manifest = rig.files(old).appendingPathComponent("vitruvian-tool.json")
+        try? (String(decoding: oldManifest, as: UTF8.self) + "\n").write(to: manifest, atomically: true, encoding: .utf8)
+        let before = rig.snapshot()
+        let recordBefore = rig.read(rig.folders.records)
+
+        let outcomes = rig.migrate()
+        suite.expect({ if case .heldBack(let why)? = outcomes.first { return why.first?.contains("not the one") == true }; return false }(),
+                     "a manifest that is not the agreed one is reported: \(outcomes)")
+        suite.expect(rig.snapshot() == before && rig.read(rig.folders.records) == recordBefore
+                         && rig.exists(rig.files(old)) && !rig.exists(rig.files(new)),
+                     "and nothing is moved, rewritten or re-agreed to")
+        suite.expect(rig.logged.contains { $0.contains("left alone") }, "and the log says so: \(rig.logged)")
+    }
+
+    /// Once the migration has given the copy the new id, a launch that picks
+    /// up after it judges the copy by what it was, and goes on.
+    static func aResumedLaunchTrustsItsOwnRewrite(_ suite: TestSuite) {
+        let rig = Rig("resumed")
+        defer { rig.close() }
+        rig.seedOldInstall()
+        try? FileManager.default.moveItem(at: rig.files(old), to: rig.files(new))
+        let manifest = rig.files(new).appendingPathComponent("vitruvian-tool.json")
+        try? String(decoding: NexusAgentHandoffTests.manifest, as: UTF8.self).write(to: manifest, atomically: true, encoding: .utf8)
+        let outcomes = rig.migrate()
+        suite.expect({ if case .migrated? = outcomes.first { return true }; return false }(),
+                     "a copy this migration already rewrote is not mistaken for a changed one: \(outcomes)")
     }
 
     /// The store does it before it reads its file, so the tool is back under

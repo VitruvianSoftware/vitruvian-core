@@ -69,9 +69,10 @@ jobs:
             echo "No version in manifest."
             exit 0
           fi
-          # New plain tag OR the legacy component-prefixed tag => already released.
-          if git rev-parse "v$V" >/dev/null 2>&1 || git rev-parse "nexus-agent-v$V" >/dev/null 2>&1; then
-            echo "v$V (or legacy nexus-agent-v$V) already released -- nothing to do."
+          # New plain tag OR a component-prefixed tag (vitruvian-code-v, or nexus-agent-v
+          # before the rename) => already released.
+          if git rev-parse "v$V" >/dev/null 2>&1 || git rev-parse "vitruvian-code-v$V" >/dev/null 2>&1 || git rev-parse "nexus-agent-v$V" >/dev/null 2>&1; then
+            echo "v$V (or vitruvian-code-v$V, or legacy nexus-agent-v$V) already released -- nothing to do."
           else
             echo "version=$V" >> "$GITHUB_OUTPUT"
             echo "Detected new release v$V."
@@ -119,6 +120,20 @@ jobs:
             macos/.build/release/vitruvian-code-tool
           if-no-files-found: error
 
+      # The bridge: the last release of Nexus Agent, the one old installs
+      # update to. It installs Vitruvian Code (bridge/ holds its own package).
+      - name: Build the bridge for ${{ matrix.arch }}
+        run: |
+          cd bridge
+          swift build -c release --arch ${{ matrix.arch }}
+
+      - name: Upload bridge binary
+        uses: actions/upload-artifact@v7
+        with:
+          name: NexusAgent-${{ matrix.arch }}
+          path: bridge/.build/release/NexusAgent
+          if-no-files-found: error
+
   package:
     needs: [detect, build-macos]
     if: needs.detect.outputs.version
@@ -139,6 +154,12 @@ jobs:
           name: VitruvianCode-x86_64
           path: /tmp/x86_64
 
+      - name: Download the bridge binaries
+        uses: actions/download-artifact@v8
+        with:
+          pattern: NexusAgent-*
+          path: /tmp/bridge
+
       - name: Create universal binary
         run: |
           mkdir -p /tmp/universal
@@ -156,6 +177,13 @@ jobs:
             /tmp/x86_64/vitruvian-code-tool \
             -output /tmp/universal/vitruvian-code-tool
           lipo -info /tmp/universal/vitruvian-code-tool
+          # The bridge, one binary for both as well.
+          mkdir -p /tmp/bridge-universal
+          lipo -create \
+            /tmp/bridge/NexusAgent-arm64/NexusAgent \
+            /tmp/bridge/NexusAgent-x86_64/NexusAgent \
+            -output /tmp/bridge-universal/NexusAgent
+          lipo -info /tmp/bridge-universal/NexusAgent
 
       - name: Assemble .app bundles
         run: |
@@ -175,6 +203,10 @@ jobs:
           mkdir -p /tmp/dist-x86_64
           "$RUNNER_TEMP/bundle-app" /tmp/x86_64/VitruvianCode "$VERSION" /tmp/dist-x86_64
 
+          # The bridge: NexusAgent.app, under the name and ID old installs know.
+          mkdir -p /tmp/dist-bridge
+          "$RUNNER_TEMP/bundle-app" /tmp/bridge-universal/NexusAgent "$VERSION" /tmp/dist-bridge --bridge
+
       - name: Install create-dmg
         run: brew install create-dmg
 
@@ -183,6 +215,11 @@ jobs:
           VERSION="${{ needs.detect.outputs.version }}"
 
           for arch in universal arm64 x86_64; do
+            # The build for every Mac is the "macos" one: no new file says
+            # "universal". Old updaters take the zip that does, and only the
+            # bridge's zip is to be that.
+            name="$arch"
+            if [ "$arch" = universal ]; then name="macos"; fi
             create-dmg \
               --volname "Vitruvian Code" \
               --window-pos 200 120 \
@@ -191,7 +228,7 @@ jobs:
               --icon "Vitruvian Code.app" 175 190 \
               --app-drop-link 425 190 \
               --no-internet-enable \
-              "VitruvianCode-${VERSION}-${arch}.dmg" \
+              "VitruvianCode-${VERSION}-${name}.dmg" \
               "/tmp/dist-${arch}/" || true
           done
 
@@ -201,8 +238,15 @@ jobs:
         run: |
           VERSION="${{ needs.detect.outputs.version }}"
           cd /tmp/dist-universal
-          zip -r "${GITHUB_WORKSPACE}/VitruvianCode-${VERSION}-universal.zip" "Vitruvian Code.app"
+          zip -r "${GITHUB_WORKSPACE}/VitruvianCode-${VERSION}-macos.zip" "Vitruvian Code.app"
+          # The bridge, in the zip old updaters take: the only one that says
+          # "universal", with NexusAgent.app inside.
+          cd /tmp/dist-bridge
+          zip -r "${GITHUB_WORKSPACE}/NexusAgent-${VERSION}-universal.zip" NexusAgent.app
           cd "${GITHUB_WORKSPACE}"
+          # What the bridge and the new updater check the new app's zip against.
+          shasum -a 256 "VitruvianCode-${VERSION}-macos.zip" > "VitruvianCode-${VERSION}-macos.zip.sha256"
+          cat "VitruvianCode-${VERSION}-macos.zip.sha256"
           ls -lh *.zip
 
       # The tool as the Vitruvian app installs it: a zip of its folder with
@@ -220,8 +264,7 @@ jobs:
           cp /tmp/universal/vitruvian-code-tool "$folder/bin/tool"
           chmod 755 "$folder/bin/tool"
           cp macos/Sources/VitruvianCodeUI/Resources/mermaid.min.js "$folder/bin/"
-          # TODO(brand step 3): catalog/sources.json asset name stays nexus-agent-tool-{version}.zip
-          asset="nexus-agent-tool-${VERSION}.zip"
+          asset="vitruvian-code-tool-${VERSION}.zip"
           (cd "$folder" && zip -r -X "${GITHUB_WORKSPACE}/${asset}" .)
           cd "${GITHUB_WORKSPACE}"
           shasum -a 256 "$asset" > "$asset.sha256"
@@ -249,7 +292,7 @@ jobs:
         run: |
           VERSION="${{ needs.detect.outputs.version }}"
           TAG="v${VERSION}"
-          asset="nexus-agent-tool-${VERSION}.zip"
+          asset="vitruvian-code-tool-${VERSION}.zip"
           size="$(stat -f %z "$asset")"
           sha256="$(cut -d' ' -f1 "$asset.sha256")"
           notes="$(gh release view "$TAG" --json body -q .body)"
@@ -261,9 +304,9 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
         run: |
           VERSION="${{ needs.detect.outputs.version }}"
-          DMG_FILE="VitruvianCode-${VERSION}-universal.dmg"
+          DMG_FILE="VitruvianCode-${VERSION}-macos.dmg"
 
-          # Calculate SHA256 of the universal dmg
+          # Calculate SHA256 of the macOS (all Macs) dmg
           SHA256=$(shasum -a 256 "$DMG_FILE" | awk '{print $1}')
 
           # Clone the tap repository

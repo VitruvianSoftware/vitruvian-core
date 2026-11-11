@@ -326,22 +326,20 @@ pub fn sync_catalog(
         ("universal.zip", "Universal ZIP"),
     ];
 
-    // 1. NexusAgent
-    if let Some(rel) = get_latest_release("VitruvianSoftware/nexus-agent", None, token)? {
+    // 1. Vitruvian Code
+    if let Some(rel) = get_latest_release("VitruvianSoftware/vitruvian-code", None, token)? {
         if rel.truthy() {
             let tag = str_of(&rel, "tag_name", "lstrip")?
                 .trim_start_matches('v')
                 .to_string();
-            say(&format!("✓ NexusAgent: v{}", tag));
-            cat.version("nexus-agent", &tag)?;
+            say(&format!("✓ Vitruvian Code: v{}", tag));
+            cat.version("vitruvian-code", &tag)?;
             for a in assets(&rel)? {
                 let Some(asset) = read_asset(&a, true)? else {
                     continue;
                 };
                 let name = name_str(&asset);
-                if let Some((_, label)) =
-                    DMG_LABELS.iter().find(|(needle, _)| name.contains(needle))
-                {
+                if let Some(label) = code_label(&name) {
                     cat.asset("", label, &asset.url, &asset.size)?;
                 }
             }
@@ -555,6 +553,25 @@ pub fn sync_catalog(
     Ok(0)
 }
 
+/// The label of one of Vitruvian Code's release assets that is a download.
+/// The mirror names them VitruvianCode-<v>-macos.dmg (the build for every Mac),
+/// -arm64.dmg, -x86_64.dmg and -macos.zip (what the app updates itself from).
+/// No new asset says "universal": the one zip that does is the bridge for old
+/// Nexus Agent installs, which is no download. The `.sha256` files beside the
+/// zip are not either, so a name must END with what identifies it.
+pub fn code_label(name: &str) -> Option<&'static str> {
+    const LABELS: [(&str, &str); 4] = [
+        ("arm64.dmg", "Apple Silicon DMG"),
+        ("macos.dmg", "Universal DMG"),
+        ("x86_64.dmg", "Intel x86_64 DMG"),
+        ("macos.zip", "Universal ZIP"),
+    ];
+    LABELS
+        .iter()
+        .find(|(needle, _)| name.ends_with(needle))
+        .map(|(_, label)| *label)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -606,6 +623,30 @@ mod tests {
         )
         .unwrap();
         assert_eq!(cat.content, original);
+    }
+
+    #[test]
+    fn vitruvian_codes_downloads_are_the_dmgs_and_the_macos_zip_only() {
+        assert_eq!(
+            code_label("VitruvianCode-1.33.0-macos.dmg"),
+            Some("Universal DMG")
+        );
+        assert_eq!(
+            code_label("VitruvianCode-1.33.0-arm64.dmg"),
+            Some("Apple Silicon DMG")
+        );
+        assert_eq!(
+            code_label("VitruvianCode-1.33.0-x86_64.dmg"),
+            Some("Intel x86_64 DMG")
+        );
+        assert_eq!(
+            code_label("VitruvianCode-1.33.0-macos.zip"),
+            Some("Universal ZIP")
+        );
+        // The checksum beside the zip, the bridge, and the tool are no downloads.
+        assert_eq!(code_label("VitruvianCode-1.33.0-macos.zip.sha256"), None);
+        assert_eq!(code_label("NexusAgent-1.33.0-universal.zip"), None);
+        assert_eq!(code_label("vitruvian-code-tool-1.33.0.zip"), None);
     }
 
     #[test]

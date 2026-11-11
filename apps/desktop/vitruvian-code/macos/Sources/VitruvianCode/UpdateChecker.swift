@@ -70,15 +70,16 @@ class UpdateChecker: ObservableObject {
                 releaseNotes = (json["body"] as? String) ?? ""
                 dismissed = false
 
-                // Find the universal ZIP asset for auto-update
+                // Find the app's ZIP for auto-update: exactly
+                // VitruvianCode-<version>-macos.zip. The release's "universal"
+                // zip is the bridge for old Nexus Agent installs, not this app.
+                downloadAssetURL = nil
                 if let assets = json["assets"] as? [[String: Any]] {
-                    for asset in assets {
-                        if let name = asset["name"] as? String,
-                           name.contains("universal") && name.hasSuffix(".zip"),
-                           let downloadURL = asset["browser_download_url"] as? String {
-                            downloadAssetURL = URL(string: downloadURL)
-                            break
-                        }
+                    let names = assets.compactMap { $0["name"] as? String }
+                    if let name = VersionCompare.updateAsset(in: names, version: remoteVersion),
+                       let asset = assets.first(where: { $0["name"] as? String == name }),
+                       let downloadURL = asset["browser_download_url"] as? String {
+                        downloadAssetURL = URL(string: downloadURL)
                     }
                 }
 

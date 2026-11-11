@@ -700,14 +700,14 @@ fn additional() -> Vec<Ext> {
             claude_marketplace_source: s("./apps/mcp/roborock/plugin"),
         },
         Ext {
-            id: s("nexus-agent"),
-            name: s("NexusAgent"),
+            id: s("vitruvian-code"),
+            name: s("Vitruvian Code"),
             kind: s("plugin"),
             category: s("Remote Agent Bridge"),
             status: s("mirror"),
             summary: s("A macOS menu bar app and Telegram bot that forwards your messages to a locally installed AI coding CLI, so a full agent session is reachable from your phone."),
-            repo: s("https://github.com/VitruvianSoftware/nexus-agent"),
-            mirror_repo: s("https://github.com/VitruvianSoftware/nexus-agent"),
+            repo: s("https://github.com/VitruvianSoftware/vitruvian-code"),
+            mirror_repo: s("https://github.com/VitruvianSoftware/vitruvian-code"),
             source: s("apps/desktop/vitruvian-code"),
             ecosystems: ecos(&["antigravity", "claude-code", "vitruvian-desktop"]),
             capabilities: caps(&["2 Skills", "macOS Menu Bar", "Telegram Bridge"]),
@@ -718,7 +718,7 @@ fn additional() -> Vec<Ext> {
             needs: s("Node.js and a Telegram account"),
             note: s("Installing adds a setup guide to Antigravity. Then ask the agent to \"help me set up the Telegram bot\" and it walks you through creating the bot and starting it."),
             installs: vec![
-                install("Antigravity", "antigravity", "Install in Antigravity", "agy plugin install https://github.com/VitruvianSoftware/nexus-agent"),
+                install("Antigravity", "antigravity", "Install in Antigravity", "agy plugin install https://github.com/VitruvianSoftware/vitruvian-code"),
             ],
             claude_marketplace_source: s(""),
         },
@@ -1123,7 +1123,7 @@ mod tests {
                 "alpha",
                 "zeta",
                 "mcp-roborock",
-                "nexus-agent",
+                "vitruvian-code",
                 "mcp-slack",
                 "devx"
             ]

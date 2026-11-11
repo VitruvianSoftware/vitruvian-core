@@ -3,20 +3,24 @@ layout: null
 permalink: /downloads/latest/nexus-agent.dmg
 sitemap: false
 ---
+{%- comment -%}
+  The address Nexus Agent was downloaded from, kept so old links still land on
+  Vitruvian Code (downloads/vitruvian-code-latest.html is the same page).
+{%- endcomment -%}
 {%- assign desktop = site.data.downloads.categories | where: "id", "desktop" | first -%}
-{%- assign app = desktop.items | where: "id", "nexus-agent" | first -%}
+{%- assign app = desktop.items | where: "id", "vitruvian-code" | first -%}
 {%- assign dl = app.downloads | where: "arch", "Universal" | first -%}
 <!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <title>Downloading NexusAgent...</title>
+    <title>Downloading Vitruvian Code...</title>
     <link rel="canonical" href="{{ dl.url }}">
     <meta http-equiv="refresh" content="0; url={{ dl.url }}">
     <meta name="robots" content="noindex">
   </head>
   <body>
-    <p>Downloading latest NexusAgent release (v{{ app.version }})...</p>
+    <p>Downloading latest Vitruvian Code release (v{{ app.version }})...</p>
     <p>If your download does not start automatically, <a href="{{ dl.url }}">click here to download</a>.</p>
     <script>window.location.replace("{{ dl.url }}");</script>
   </body>

@@ -71,7 +71,9 @@ const REHEARSAL_ONLY: &[&str] = &[
     "Show the toolchain the mirror builds with",
     "Run the tests",
     "Show what was downloaded",
-    "Check the three apps",
+    "Check the apps",
+    // The bridge is a package of its own: its tests are run apart.
+    "Run the bridge's tests",
     // The rehearsal starts the app it packaged; a release starts nothing.
     "Start the packaged app",
     "Check the app inside the ZIP",
@@ -96,10 +98,16 @@ const CHECKOUTS: &str = ".build/checkouts";
 
 fn shared_steps(release_job: &str) -> &'static [&'static str] {
     match release_job {
-        "build-macos" => &["Build for ${{ matrix.arch }}", "Upload arch binary"],
+        "build-macos" => &[
+            "Build for ${{ matrix.arch }}",
+            "Upload arch binary",
+            "Build the bridge for ${{ matrix.arch }}",
+            "Upload bridge binary",
+        ],
         "package" => &[
             "Download arm64 binary",
             "Download x86_64 binary",
+            "Download the bridge binaries",
             "Create universal binary",
             "Assemble .app bundles",
             "Install create-dmg",
@@ -534,7 +542,32 @@ pub fn looked_at_what_matters(release_text: &str) -> Vec<String> {
         .iter()
         .filter(|l| l.starts_with("\"$RUNNER_TEMP/bundle-app\" "))
         .count();
-    expect("three bundle-app calls", calls == 3);
+    expect(
+        "four bundle-app calls: the three apps and the bridge",
+        calls == 4,
+    );
+    expect(
+        "the bridge bundled with --bridge",
+        body("Assemble .app bundles")
+            .iter()
+            .any(|l| l.starts_with("\"$RUNNER_TEMP/bundle-app\" ") && l.ends_with(" --bridge")),
+    );
+    let zips = body("Create ZIP for auto-updater");
+    expect(
+        "the new app's zip, which says macos and never universal",
+        zips.iter()
+            .any(|l| l.contains("VitruvianCode-${VERSION}-macos.zip\" \"Vitruvian Code.app\"")),
+    );
+    expect(
+        "the bridge's zip, the one asset that says universal",
+        zips.iter()
+            .any(|l| l.contains("NexusAgent-${VERSION}-universal.zip\" NexusAgent.app")),
+    );
+    expect(
+        "the new app's checksum file",
+        zips.iter()
+            .any(|l| l.contains("> \"VitruvianCode-${VERSION}-macos.zip.sha256\"")),
+    );
     expect(
         "the tool's zip, with the manifest at its top",
         body("Zip the tool's folder")

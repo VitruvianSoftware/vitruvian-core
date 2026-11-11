@@ -35,6 +35,17 @@ final class VersionCompareTests: XCTestCase {
         XCTAssertEqual(VersionCompare.extractVersion(from: "1.2.3"), "1.2.3")
     }
 
+    func testTheUpdateAssetIsExactlyTheMacosZip() {
+        XCTAssertEqual(VersionCompare.updateAssetName(version: "1.33.0"), "VitruvianCode-1.33.0-macos.zip")
+        let names = ["NexusAgent-1.33.0-universal.zip", "VitruvianCode-1.33.0-macos.dmg", "VitruvianCode-1.33.0-macos.zip.sha256",
+                     "VitruvianCode-1.33.0-macos.zip", "VitruvianCode-1.32.0-macos.zip"]
+        XCTAssertEqual(VersionCompare.updateAsset(in: names, version: "1.33.0"), "VitruvianCode-1.33.0-macos.zip")
+        // The bridge's zip is the one that says "universal", and is never the update.
+        XCTAssertNil(VersionCompare.updateAsset(in: ["NexusAgent-1.33.0-universal.zip"], version: "1.33.0"))
+        XCTAssertNil(VersionCompare.updateAsset(in: names, version: "1.34.0"))
+        XCTAssertFalse(VersionCompare.updateAssetName(version: "1.33.0").contains("universal"))
+    }
+
     func testIsNewerVersionDetectsPatchMinorMajorBumps() {
         XCTAssertTrue(VersionCompare.isNewerVersion(remote: "1.10.2", current: "1.9.0"))
         XCTAssertTrue(VersionCompare.isNewerVersion(remote: "2.0.0", current: "1.99.99"))

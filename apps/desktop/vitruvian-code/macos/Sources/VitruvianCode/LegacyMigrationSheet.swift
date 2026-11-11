@@ -36,8 +36,10 @@ struct LegacyMigrationSheet: View {
             Text("Nexus Agent is now Vitruvian Code")
                 .font(.title3.weight(.semibold))
 
-            if outcome.completed {
-                Text("Your settings, history, Telegram bot and scheduled automations came with you.")
+            if outcome.failures.isEmpty {
+                Text(outcome.deferrals.isEmpty
+                     ? "Your settings, history, Telegram bot and scheduled automations came with you."
+                     : "Your settings, history and Telegram bot came with you.")
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -55,6 +57,16 @@ struct LegacyMigrationSheet: View {
                             .foregroundColor(.secondary)
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+
+            if !outcome.deferrals.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("One step is waiting for you", systemImage: "folder.badge.gearshape")
+                        .font(.headline)
+                    ForEach(Array(outcome.deferrals.enumerated()), id: \.offset) { _, text in
+                        Text(text).fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }

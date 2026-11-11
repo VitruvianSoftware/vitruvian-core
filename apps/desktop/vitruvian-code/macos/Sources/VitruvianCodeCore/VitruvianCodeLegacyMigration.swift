@@ -102,6 +102,9 @@ public struct VitruvianCodeLegacyMigration {
         public let step: Step
         public var changes: [String] = []
         public var failures: [Failure] = []
+        /// What was left for later on purpose, and why. Not a failure: the
+        /// person has something to do, and the next launch tries again.
+        public var deferrals: [String] = []
 
         public init(step: Step) { self.step = step }
     }
@@ -181,13 +184,15 @@ public struct VitruvianCodeLegacyMigration {
 
         public var failures: [Failure] { reports.flatMap(\.failures) }
         public var changes: [String] { reports.flatMap(\.changes) }
-        /// True when every step worked.
-        public var completed: Bool { failures.isEmpty }
+        public var deferrals: [String] { reports.flatMap(\.deferrals) }
+        /// True when every step worked and none was put off.
+        public var completed: Bool { failures.isEmpty && deferrals.isEmpty }
 
         /// Whether the app has something to tell the person: a step that
-        /// failed, or permissions they have not been told about yet.
+        /// failed or was put off, or permissions they have not been told
+        /// about yet.
         public var needsNotice: Bool {
-            !failures.isEmpty || (!permissions.isEmpty && !permissionsExplained)
+            !failures.isEmpty || !deferrals.isEmpty || (!permissions.isEmpty && !permissionsExplained)
         }
     }
 
@@ -202,6 +207,11 @@ public struct VitruvianCodeLegacyMigration {
         public var readLegacyDefaults: () -> [String: Any]
         public var launchctl: (_ arguments: [String]) -> LaunchctlResult
         public var log: (String) -> Void
+        /// Whether the running app is where a LaunchAgent may point at it:
+        /// installed in an Applications folder and not run from a quarantined
+        /// download (macOS copies those to a temporary, translocated path that
+        /// is gone after a restart). When it is not, the automations wait.
+        public var canRewriteAutomations: Bool
 
         public init(home: String,
                     userID: UInt32,
@@ -209,7 +219,8 @@ public struct VitruvianCodeLegacyMigration {
                     settings: Settings,
                     readLegacyDefaults: @escaping () -> [String: Any],
                     launchctl: @escaping ([String]) -> LaunchctlResult,
-                    log: @escaping (String) -> Void) {
+                    log: @escaping (String) -> Void,
+                    canRewriteAutomations: Bool = true) {
             self.home = home
             self.userID = userID
             self.executablePath = executablePath
@@ -217,7 +228,23 @@ public struct VitruvianCodeLegacyMigration {
             self.readLegacyDefaults = readLegacyDefaults
             self.launchctl = launchctl
             self.log = log
+            self.canRewriteAutomations = canRewriteAutomations
         }
+
+        /// Whether an app at `bundlePath` is installed in an Applications
+        /// folder (the system's or the person's) and not translocated.
+        public static func isInstalledForAutomations(bundlePath: String, home: String) -> Bool {
+            guard !bundlePath.contains("/AppTranslocation/") else { return false }
+            return bundlePath.hasPrefix("/Applications/")
+                || bundlePath.hasPrefix((home as NSString).appendingPathComponent("Applications") + "/")
+        }
+    }
+
+    /// What `begin()` found, to be handed to `finish(_:)`.
+    public struct Prelude {
+        public let alreadyDone: Bool
+        public let oldInstallFound: Bool
+        let settings: Report?
     }
 
     public var environment: Environment
@@ -232,23 +259,36 @@ public struct VitruvianCodeLegacyMigration {
 
     /// Does whatever is left to do. Safe on every launch: once the done flag
     /// is set it only reports what the person still has to be told.
-    public func run() -> Outcome {
+    public func run() -> Outcome { finish(begin()) }
+
+    /// The quick part, to run on the launching thread: is there anything to
+    /// move, and the saved settings, which the app reads as soon as it starts.
+    public func begin() -> Prelude {
+        if environment.settings.bool(Self.doneKey) {
+            return Prelude(alreadyDone: true, oldInstallFound: false, settings: nil)
+        }
+        let found = oldInstallExists()
+        environment.log(found ? "found an earlier Nexus Agent install; moving it over"
+                              : "no earlier Nexus Agent install; nothing to move")
+        return Prelude(alreadyDone: false, oldInstallFound: found, settings: found ? migrateSettings() : nil)
+    }
+
+    /// The rest: the folders (which can be big, so an app calls this off its
+    /// main thread), the automations and the notice about permissions.
+    public func finish(_ prelude: Prelude) -> Outcome {
         let settings = environment.settings
         let explained = settings.bool(Self.permissionsExplainedKey)
 
-        if settings.bool(Self.doneKey) {
+        if prelude.alreadyDone {
             let stored = settings.strings(Self.permissionsKey).compactMap(Permission.init(rawValue:))
             return Outcome(alreadyDone: true, oldInstallFound: !stored.isEmpty, reports: [],
                            permissions: stored, permissionsExplained: explained)
         }
 
-        let found = oldInstallExists()
-        environment.log(found ? "found an earlier Nexus Agent install; moving it over"
-                              : "no earlier Nexus Agent install; nothing to move")
-
+        let found = prelude.oldInstallFound
         var reports: [Report] = []
-        if found {
-            reports.append(migrateSettings())
+        if found, let first = prelude.settings {
+            reports.append(first)
             reports.append(migrateFolders())
             reports.append(migrateAutomations())
         }
@@ -264,6 +304,7 @@ public struct VitruvianCodeLegacyMigration {
             environment.log("done: \(outcome.changes.count) change(s)")
         } else {
             for failure in outcome.failures { environment.log("FAILED, will retry next launch: \(failure.line)") }
+            for text in outcome.deferrals { environment.log("put off until the next launch: \(text)") }
         }
         return outcome
     }
@@ -343,10 +384,27 @@ public struct VitruvianCodeLegacyMigration {
             guard fileManager.fileExists(atPath: source, isDirectory: &isDirectory), isDirectory.boolValue else {
                 continue
             }
+            removeStaleTemporaries(in: destination, report: &report)
             copyTree(from: source, to: destination, isTop: true, report: &report)
         }
         for change in report.changes { environment.log(change) }
         return report
+    }
+
+    /// A copy that was cut short leaves its half-written file under a name
+    /// of its own (`<name>.migrating-<uuid>`). Nothing else reads those, and
+    /// the next run writes the file again, so they go.
+    private func removeStaleTemporaries(in folder: String, report: inout Report) {
+        guard let paths = try? fileManager.subpathsOfDirectory(atPath: folder) else { return }
+        for sub in paths {
+            let name = (sub as NSString).lastPathComponent
+            guard let range = name.range(of: ".migrating-", options: .backwards),
+                  UUID(uuidString: String(name[range.upperBound...])) != nil else { continue }
+            let path = (folder as NSString).appendingPathComponent(sub)
+            if (try? fileManager.removeItem(atPath: path)) != nil {
+                report.changes.append("removed unfinished copy \(path)")
+            }
+        }
     }
 
     /// Copies what `destination` does not have. A file that is there is left
@@ -361,6 +419,7 @@ public struct VitruvianCodeLegacyMigration {
             switch type {
             case .typeDirectory:
                 var isDirectory: ObjCBool = false
+                var created = false
                 if fm.fileExists(atPath: destination, isDirectory: &isDirectory) {
                     guard isDirectory.boolValue else {
                         report.failures.append(Failure(step: .folders, item: destination,
@@ -368,8 +427,12 @@ public struct VitruvianCodeLegacyMigration {
                         return
                     }
                 } else {
+                    // Writable for its owner while it is filled, whatever the
+                    // old folder allowed; its own mode goes on at the end.
+                    let writable = NSNumber(value: (mode?.intValue ?? 0o755) | 0o700)
                     try fm.createDirectory(atPath: destination, withIntermediateDirectories: true,
-                                           attributes: mode.map { [.posixPermissions: $0] })
+                                           attributes: [.posixPermissions: writable])
+                    created = true
                     report.changes.append("created folder \(destination)")
                 }
                 let names = try fm.contentsOfDirectory(atPath: source).sorted()
@@ -378,6 +441,15 @@ public struct VitruvianCodeLegacyMigration {
                     copyTree(from: (source as NSString).appendingPathComponent(name),
                              to: (destination as NSString).appendingPathComponent(name),
                              isTop: false, report: &report)
+                }
+                if let mode {
+                    let want = mode.intValue
+                    let have = (try? fm.attributesOfItem(atPath: destination))?[.posixPermissions] as? Int
+                    // Ours to finish: made by this run, or by one cut short
+                    // before it got here.
+                    if created || (have == (want | 0o700) && have != want) {
+                        try fm.setAttributes([.posixPermissions: mode], ofItemAtPath: destination)
+                    }
                 }
 
             case .typeSymbolicLink:
@@ -414,7 +486,13 @@ public struct VitruvianCodeLegacyMigration {
 
     func migrateAutomations() -> Report {
         var report = Report(step: .automations)
-        for file in legacyLaunchAgentFiles() {
+        let files = legacyLaunchAgentFiles()
+        if !files.isEmpty && !environment.canRewriteAutomations {
+            report.deferrals.append("Your scheduled automations will move once Vitruvian Code is in your Applications folder. "
+                + "Move it there, then open it again.")
+            return report
+        }
+        for file in files {
             migrateAutomation(file: file, report: &report)
         }
         for change in report.changes { environment.log(change) }
@@ -472,7 +550,15 @@ public struct VitruvianCodeLegacyMigration {
         _ = environment.launchctl(["bootout", "\(domain)/\(newLabel)"])
         let loaded = environment.launchctl(["bootstrap", domain, newPath])
         guard loaded.status == 0 else {
-            fail("could not load \(newLabel): \(loaded.output.trimmingCharacters(in: .whitespacesAndNewlines))")
+            var message = "could not load \(newLabel): \(loaded.output.trimmingCharacters(in: .whitespacesAndNewlines))"
+            // The old one was running before this began; it still is after.
+            if unloaded.status == 0 {
+                let restored = environment.launchctl(["bootstrap", domain, oldPath])
+                message += restored.status == 0
+                    ? "; the old one is loaded again"
+                    : "; the old one could not be loaded again: \(restored.output.trimmingCharacters(in: .whitespacesAndNewlines))"
+            }
+            fail(message)
             return
         }
 

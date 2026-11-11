@@ -63,6 +63,11 @@ final class LegacyMigrationTests: XCTestCase {
     }
 
     override func tearDown() {
+        // A read-only folder cannot be emptied until it is let be written in.
+        for sub in (fm.subpaths(atPath: home) ?? []) {
+            try? fm.setAttributes([.posixPermissions: NSNumber(value: 0o700)],
+                                  ofItemAtPath: (home as NSString).appendingPathComponent(sub))
+        }
         try? fm.removeItem(atPath: home)
         defaults.removePersistentDomain(forName: suite)
         super.tearDown()
@@ -148,7 +153,7 @@ final class LegacyMigrationTests: XCTestCase {
         try write("<plist/>", to: "Library/LaunchAgents/com.example.other.plist")
     }
 
-    private func migration(old: [String: Any]? = nil) -> Migration {
+    private func migration(old: [String: Any]? = nil, canRewriteAutomations: Bool = true) -> Migration {
         let legacy = old ?? oldSettings
         return Migration(environment: .init(
             home: home,
@@ -158,7 +163,8 @@ final class LegacyMigrationTests: XCTestCase {
                             set: { [defaults] in defaults?.set($0, forKey: $1) }),
             readLegacyDefaults: { legacy },
             launchctl: { [launchctl] in launchctl.run($0) },
-            log: { _ in }))
+            log: { _ in },
+            canRewriteAutomations: canRewriteAutomations))
     }
 
     // MARK: - Everything arrives
@@ -407,29 +413,156 @@ final class LegacyMigrationTests: XCTestCase {
         XCTAssertTrue(Migration.Permission.accessibility.settingsURL.hasSuffix("Privacy_Accessibility"))
     }
 
+    // MARK: - launchd
+
+    func testAFailedLoadOfTheNewJobLoadsTheOldOneAgain() throws {
+        try seedOldInstall()
+        let oldPath = "\(home)/Library/LaunchAgents/nexus-agent.automation.\(firstTask).plist"
+        launchctl.respond = { arguments in
+            arguments.first == "bootstrap" && (arguments.last ?? "").contains("com.vitruviansoftware.code.automation.\(self.firstTask)")
+                ? .init(status: 5, output: "Bootstrap failed: 5: Input/output error") : .init(status: 0)
+        }
+        let outcome = migration().run()
+
+        XCTAssertFalse(defaults.bool(forKey: "migratedFromNexusAgent"), "the flag waits")
+        XCTAssertEqual(outcome.failures.map(\.step), [.automations])
+        XCTAssertTrue(exists("Library/LaunchAgents/nexus-agent.automation.\(firstTask).plist"), "the old file is kept")
+        let calls = launchctl.calls
+        let failedNew = try XCTUnwrap(calls.firstIndex { $0.first == "bootstrap" && ($0.last ?? "").contains("com.vitruviansoftware.code.automation.\(firstTask)") })
+        let reloaded = try XCTUnwrap(calls.lastIndex(of: ["bootstrap", "gui/501", oldPath]))
+        XCTAssertGreaterThan(reloaded, failedNew, "the old job is loaded again after the new one failed")
+        XCTAssertTrue(outcome.failures.first?.message.contains("the old one is loaded again") ?? false, "\(outcome.failures)")
+        // The other automation moved on its own.
+        XCTAssertFalse(exists("Library/LaunchAgents/nexus-agent.automation.\(secondTask).plist"))
+    }
+
+    func testAnOldJobThatWasNotLoadedIsNotLoadedByAFailure() throws {
+        try seedOldInstall()
+        launchctl.respond = { arguments in
+            if arguments.first == "bootout" { return .init(status: 113, output: "Could not find service") }
+            return arguments.first == "bootstrap" ? .init(status: 5, output: "no") : .init(status: 0)
+        }
+        _ = migration().run()
+        XCTAssertFalse(launchctl.calls.contains { $0.first == "bootstrap" && ($0.last ?? "").contains("nexus-agent.automation") },
+                       "what was not running is not started by a failure")
+    }
+
+    func testAutomationsWaitWhenTheAppIsNotInstalled() throws {
+        try seedOldInstall()
+        let waiting = migration(canRewriteAutomations: false).run()
+
+        XCTAssertFalse(waiting.completed)
+        XCTAssertTrue(waiting.needsNotice)
+        XCTAssertEqual(waiting.failures.count, 0, "waiting is not failing")
+        XCTAssertEqual(waiting.deferrals.count, 1)
+        XCTAssertTrue(waiting.deferrals[0].contains("Applications"), "\(waiting.deferrals)")
+        XCTAssertFalse(defaults.bool(forKey: "migratedFromNexusAgent"))
+        XCTAssertTrue(launchctl.calls.isEmpty)
+        XCTAssertTrue(exists("Library/LaunchAgents/nexus-agent.automation.\(firstTask).plist"))
+        XCTAssertFalse(exists("Library/LaunchAgents/com.vitruviansoftware.code.automation.\(firstTask).plist"))
+        // The rest moved all the same.
+        XCTAssertEqual(defaults.string(forKey: "hotkeyKey"), "k")
+        XCTAssertEqual(read(".config/vitruvian-code/bot.js"), "module.exports = {}\n")
+
+        let installed = migration().run()
+        XCTAssertTrue(installed.completed, "\(installed.failures.map(\.line)) \(installed.deferrals)")
+        XCTAssertTrue(defaults.bool(forKey: "migratedFromNexusAgent"))
+        XCTAssertFalse(exists("Library/LaunchAgents/nexus-agent.automation.\(firstTask).plist"))
+    }
+
+    func testOnlyAnAppInApplicationsMayHaveAgentsPointAtIt() {
+        typealias Env = Migration.Environment
+        XCTAssertTrue(Env.isInstalledForAutomations(bundlePath: "/Applications/Vitruvian Code.app", home: "/Users/a"))
+        XCTAssertTrue(Env.isInstalledForAutomations(bundlePath: "/Users/a/Applications/Vitruvian Code.app", home: "/Users/a"))
+        XCTAssertFalse(Env.isInstalledForAutomations(
+            bundlePath: "/private/var/folders/x/T/AppTranslocation/ABC/d/Vitruvian Code.app", home: "/Users/a"))
+        XCTAssertFalse(Env.isInstalledForAutomations(bundlePath: "/Applications/AppTranslocation/x/Vitruvian Code.app", home: "/Users/a"))
+        XCTAssertFalse(Env.isInstalledForAutomations(bundlePath: "/Users/a/Downloads/Vitruvian Code.app", home: "/Users/a"))
+        XCTAssertFalse(Env.isInstalledForAutomations(bundlePath: "/Volumes/Disk/Vitruvian Code.app", home: "/Users/a"))
+    }
+
+    // MARK: - Folder copy details
+
+    func testUnfinishedCopiesAreCleanedUpAndTheFileIsCopiedAgain() throws {
+        try seedOldInstall()
+        let stale = ".config/vitruvian-code/.env.migrating-\(UUID().uuidString)"
+        try write("half", to: stale)
+        let notOurs = ".config/vitruvian-code/notes.migrating-today"
+        try write("someone's", to: notOurs)
+
+        let outcome = migration().run()
+        XCTAssertTrue(outcome.completed, "\(outcome.failures.map(\.line))")
+        XCTAssertFalse(exists(stale), "an unfinished copy of ours is removed")
+        XCTAssertTrue(exists(notOurs), "a file that merely looks like one is not")
+        XCTAssertEqual(read(".config/vitruvian-code/.env")?.hasPrefix("TELEGRAM_BOT_TOKEN=123:abc"), true)
+    }
+
+    func testAReadOnlyFolderIsFilledAndThenGivenItsMode() throws {
+        try seedOldInstall()
+        try write("locale", to: ".config/nexus-agent/vendor/locale/en.txt")
+        try write("more", to: ".config/nexus-agent/vendor/locale/deep/fr.txt")
+        for folder in ["vendor/locale/deep", "vendor/locale"] {
+            try fm.setAttributes([.posixPermissions: NSNumber(value: 0o500)],
+                                 ofItemAtPath: "\(home)/.config/nexus-agent/\(folder)")
+        }
+        let outcome = migration().run()
+        XCTAssertTrue(outcome.completed, "\(outcome.failures.map(\.line))")
+        XCTAssertEqual(read(".config/vitruvian-code/vendor/locale/en.txt"), "locale")
+        XCTAssertEqual(read(".config/vitruvian-code/vendor/locale/deep/fr.txt"), "more")
+        XCTAssertEqual(mode(".config/vitruvian-code/vendor/locale"), 0o500)
+        XCTAssertEqual(mode(".config/vitruvian-code/vendor/locale/deep"), 0o500)
+    }
+
+    func testAFolderLeftWritableByACutShortRunIsGivenItsModeNow() throws {
+        try seedOldInstall()
+        try write("x", to: ".config/nexus-agent/ro/a.txt")
+        try fm.setAttributes([.posixPermissions: NSNumber(value: 0o500)], ofItemAtPath: "\(home)/.config/nexus-agent/ro")
+        // What a run cut short leaves: the folder, still owner-writable, with its file.
+        try write("x", to: ".config/vitruvian-code/ro/a.txt")
+        try fm.setAttributes([.posixPermissions: NSNumber(value: 0o700)], ofItemAtPath: "\(home)/.config/vitruvian-code/ro")
+        _ = migration().run()
+        XCTAssertEqual(mode(".config/vitruvian-code/ro"), 0o500)
+    }
+
     // MARK: - A real install, by hand
 
-    /// Not run unless `VITRUVIAN_CODE_REAL_HOME` names a folder laid out like a
-    /// home (`Library/Preferences/com.vitruviansoftware.nexusagent.plist`,
-    /// `Library/Application Support/NexusAgent`, `.config/nexus-agent`) that
-    /// holds a copy of a real Nexus Agent install. It is copied into the test's
-    /// own temporary home first, so the folder named is only ever read, and the
-    /// move is run over that copy. Run it with
+    /// An install shaped like a real one, in this test's own home: every
+    /// saved setting the old app's sources name (read from `ConfigManager` and
+    /// `StandaloneHost`, so a key added there is in it), in a preferences file
+    /// as macOS writes it; Application Support with its state; and a bot folder
+    /// with the private `.env`, a `node_modules` with links, a program and a
+    /// read-only folder.
+    ///
+    /// Set `VITRUVIAN_CODE_REAL_HOME` to a folder laid out like a home that
+    /// holds a copy of a real install, and that is used instead, copied in
+    /// first, so the folder named is only ever read. Run it with
     /// `bazel test ... --test_env=VITRUVIAN_CODE_REAL_HOME=<folder>`.
-    func testACopyOfARealInstallArrivesWhole() throws {
-        guard let source = ProcessInfo.processInfo.environment["VITRUVIAN_CODE_REAL_HOME"], !source.isEmpty else {
-            throw XCTSkip("VITRUVIAN_CODE_REAL_HOME is not set")
+    func testAnInstallShapedLikeARealOneArrivesWhole() throws {
+        var keys: Set<String> = []
+        for name in ["ConfigManager.swift", "StandaloneHost.swift"] {
+            keys.formUnion(try savedKeys(inAppSource: name))
         }
-        for relative in ["Library/Application Support/NexusAgent", ".config/nexus-agent"] {
-            let from = (source as NSString).appendingPathComponent(relative)
-            guard fm.fileExists(atPath: from) else { continue }
-            let to = (home as NSString).appendingPathComponent(relative)
-            try fm.createDirectory(atPath: (to as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
-            try fm.copyItem(atPath: from, toPath: to)
+        for sentinel in ["autoStart", "hotkeyKey", "hotkeyModifiers", "autoCheckUpdates", "planMode", "chosenModels",
+                         "promptHistory", "customProviders", "builtInProviders_v3", "activeProviderId"] {
+            XCTAssertTrue(keys.contains(sentinel), "the key list read from the app's sources lacks \(sentinel)")
         }
-        let plistPath = source + "/Library/Preferences/com.vitruviansoftware.nexusagent.plist"
-        let plistData = try XCTUnwrap(fm.contents(atPath: plistPath), "no old preferences file in the copy")
+
+        let plistPath: String
+        if let source = ProcessInfo.processInfo.environment["VITRUVIAN_CODE_REAL_HOME"], !source.isEmpty {
+            for relative in ["Library/Application Support/NexusAgent", ".config/nexus-agent"] {
+                let from = (source as NSString).appendingPathComponent(relative)
+                guard fm.fileExists(atPath: from) else { continue }
+                let to = (home as NSString).appendingPathComponent(relative)
+                try fm.createDirectory(atPath: (to as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+                try fm.copyItem(atPath: from, toPath: to)
+            }
+            plistPath = source + "/Library/Preferences/com.vitruviansoftware.nexusagent.plist"
+        } else {
+            plistPath = try writeRealShapedInstall(keys: keys.union(["nexusAgent.pinnedSessionIDs", "nexusAgent.renamedSessionTitles"]))
+        }
+        let plistData = try XCTUnwrap(fm.contents(atPath: plistPath), "no old preferences file")
         let old = try XCTUnwrap(PropertyListSerialization.propertyList(from: plistData, options: [], format: nil) as? [String: Any])
+        XCTAssertGreaterThan(old.count, 10)
 
         let outcome = migration(old: old).run()
         XCTAssertTrue(outcome.completed, "\(outcome.failures.map(\.line))")
@@ -456,15 +589,78 @@ final class LegacyMigrationTests: XCTestCase {
                 let newAttributes = try fm.attributesOfItem(atPath: newPath)
                 XCTAssertEqual(newAttributes[.type] as? FileAttributeType, oldAttributes[.type] as? FileAttributeType, sub)
                 XCTAssertEqual(newAttributes[.posixPermissions] as? Int, oldAttributes[.posixPermissions] as? Int, "mode of \(sub)")
+                if oldAttributes[.type] as? FileAttributeType == .typeSymbolicLink {
+                    XCTAssertEqual(try fm.destinationOfSymbolicLink(atPath: newPath), try fm.destinationOfSymbolicLink(atPath: oldPath), sub)
+                }
                 if oldAttributes[.type] as? FileAttributeType == .typeRegular {
                     XCTAssertEqual(fm.contents(atPath: newPath), fm.contents(atPath: oldPath), "bytes of \(sub)")
                     files += 1
                 }
             }
         }
-        // Counts only; the files hold a bot token.
-        print("real-install check: \(copied) settings and \(files) files arrived; flag set: \(defaults.bool(forKey: "migratedFromNexusAgent"))")
+        XCTAssertGreaterThan(files, 20)
+        XCTAssertEqual(mode(".config/vitruvian-code/.env"), 0o600)
+        XCTAssertEqual((fm.subpaths(atPath: home) ?? []).filter { $0.contains(".migrating-") }, [])
+        // Counts only; a real install's files hold a bot token.
+        print("real-shaped install check: \(copied) settings and \(files) files arrived")
         XCTAssertTrue(defaults.bool(forKey: "migratedFromNexusAgent"))
+    }
+
+    /// The names a source file of the app saves settings under.
+    private func savedKeys(inAppSource name: String) throws -> Set<String> {
+        let relative = "apps/desktop/vitruvian-code/macos/Sources/VitruvianCode/\(name)"
+        let environment = ProcessInfo.processInfo.environment
+        var candidates: [String] = []
+        if let runfiles = environment["TEST_SRCDIR"] {
+            for workspace in [environment["TEST_WORKSPACE"], "_main"].compactMap({ $0 }) {
+                candidates.append("\(runfiles)/\(workspace)/\(relative)")
+            }
+        }
+        let here = (#filePath as NSString).deletingLastPathComponent
+        candidates.append((here as NSString).deletingLastPathComponent + "/Sources/VitruvianCode/\(name)")
+        let path = try XCTUnwrap(candidates.first { fm.fileExists(atPath: $0) }, "cannot find \(name)")
+        let text = try String(contentsOfFile: path, encoding: .utf8)
+        let pattern = try NSRegularExpression(pattern: #"(?:forKey|set\(|object\(forKey):\s*"([A-Za-z0-9_.]+)""#)
+        let found = pattern.matches(in: text, range: NSRange(text.startIndex..., in: text))
+            .compactMap { Range($0.range(at: 1), in: text).map { String(text[$0]) } }
+        return Set(found)
+    }
+
+    /// Writes the install into `home` and returns the old preferences file.
+    private func writeRealShapedInstall(keys: Set<String>) throws -> String {
+        var settings: [String: Any] = ["AppleLanguages": ["en"]]
+        for (index, key) in keys.sorted().enumerated() {
+            switch index % 4 {
+            case 0: settings[key] = true
+            case 1: settings[key] = "value of \(key)"
+            case 2: settings[key] = ["a \(index)", "b \(index)"]
+            default: settings[key] = Data("blob \(key)".utf8)
+            }
+        }
+        let preferences = (home as NSString).appendingPathComponent("Library/Preferences")
+        try fm.createDirectory(atPath: preferences, withIntermediateDirectories: true)
+        let plistPath = preferences + "/com.vitruviansoftware.nexusagent.plist"
+        try PropertyListSerialization.data(fromPropertyList: settings, format: .binary, options: 0)
+            .write(to: URL(fileURLWithPath: plistPath))
+
+        try write("log\n", to: "Library/Application Support/NexusAgent/bot.log")
+        try write("[]", to: "Library/Application Support/NexusAgent/automations.json")
+        try write("{}", to: "Library/Application Support/NexusAgent/accounts.json", mode: 0o600)
+
+        let bot = ".config/nexus-agent"
+        try write("TELEGRAM_BOT_TOKEN=123:abc\nALLOWED_USER_IDS=7\nAGY_WORKING_DIR=\(home)/code\n", to: bot + "/.env", mode: 0o600)
+        try write("TELEGRAM_BOT_TOKEN=\n", to: bot + "/.env.example")
+        try write("{\"name\":\"bot\"}", to: bot + "/package.json")
+        for index in 0..<40 {
+            try write("module \(index)\n", to: bot + "/node_modules/pkg\(index)/index.js")
+            try write("{\"v\":\(index)}", to: bot + "/node_modules/pkg\(index)/package.json")
+        }
+        try write("#!/usr/bin/env node\n", to: bot + "/node_modules/pkg0/cli.js", mode: 0o755)
+        try fm.createDirectory(atPath: "\(home)/\(bot)/node_modules/.bin", withIntermediateDirectories: true)
+        try fm.createSymbolicLink(atPath: "\(home)/\(bot)/node_modules/.bin/pkg0", withDestinationPath: "../pkg0/cli.js")
+        try write("locale", to: bot + "/node_modules/pkg1/locale/en.txt")
+        try fm.setAttributes([.posixPermissions: NSNumber(value: 0o500)], ofItemAtPath: "\(home)/\(bot)/node_modules/pkg1/locale")
+        return plistPath
     }
 
     // MARK: - The new names

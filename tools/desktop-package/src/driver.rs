@@ -117,7 +117,7 @@ Produces the full 6-point distribution contract:
 Options:
   --app-path <path>       Path to built .app bundle (e.g. dist/HomeSpeaker.app)
   --archive <path>        Path to Bazel-produced .zip archive containing .app bundle
-  --app-name <name>       Application name (e.g. HomeSpeaker, Vitruvian, NexusAgent)
+  --app-name <name>       Application name (e.g. HomeSpeaker, Vitruvian, Vitruvian Code)
   --version <version>     Release version (e.g. 1.11.0). Inferred from Info.plist if omitted.
   --dist-dir <dir>        Directory to store release artifacts (default: ./dist)
   --cask-name <name>      Homebrew Cask name (default: kebab-case of app-name)

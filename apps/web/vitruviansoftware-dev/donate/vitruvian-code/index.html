@@ -1,0 +1,18 @@
+---
+layout: page
+title: Support Vitruvian Code
+permalink: /donate/vitruvian-code/
+hero: false
+sitemap: false
+description: >-
+  Donate to Vitruvian Code, the free and open-source macOS menu bar app and Telegram bot from Vitruvian Software.
+  Payments are handled by Stripe.
+---
+{%- comment -%}
+  Vitruvian Code's address after the rename. Its Payment Link is still the
+  `nexus-agent` key of _data/donations.yml (the Stripe key is renamed with the
+  infrastructure, later), so this is the same page as /donate/nexus-agent/.
+  It sits in a folder, not donate/*.html, because the stripe stack's test
+  holds every donate/<key>.html to a key of the stack.
+{%- endcomment -%}
+{%- include donate-app.html key="nexus-agent" -%}

@@ -33,6 +33,19 @@ public enum VersionCompare {
         return tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
     }
 
+    /// The release asset the app updates itself from: exactly
+    /// `VitruvianCode-<version>-macos.zip`, which holds `Vitruvian Code.app`.
+    /// No new asset says "universal": the release's one zip that does is the
+    /// bridge for old Nexus Agent installs, and is not this app.
+    public static func updateAssetName(version: String) -> String { "VitruvianCode-\(version)-macos.zip" }
+
+    /// The asset to update from, among a release's asset names; nil when the
+    /// release has none (it is then offered as a page to download from).
+    public static func updateAsset(in names: [String], version: String) -> String? {
+        let wanted = updateAssetName(version: version)
+        return names.first { $0 == wanted }
+    }
+
     /// True when `remote` is a strictly newer dotted version than `current`.
     /// Missing trailing components compare as 0 (so "1.2" == "1.2.0").
     public static func isNewerVersion(remote: String, current: String) -> Bool {

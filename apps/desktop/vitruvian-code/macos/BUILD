@@ -237,6 +237,7 @@ swift_test(
     # TimelineTests reads the standalone host and its Settings to prove the
     # timeline's edge is kept under one key.
     data = [
+        "Sources/VitruvianCode/ConfigManager.swift",
         "Sources/VitruvianCode/SettingsView.swift",
         "Sources/VitruvianCode/StandaloneHost.swift",
         ":shared_sources",

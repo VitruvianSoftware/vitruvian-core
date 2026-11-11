@@ -40,6 +40,8 @@ extension VitruvianCodeLegacyMigration.Environment {
             log: { message in
                 logger.notice("\(message, privacy: .public)")
                 print("legacy-migration: \(message)")
-            })
+            },
+            canRewriteAutomations: Self.isInstalledForAutomations(bundlePath: Bundle.main.bundleURL.path,
+                                                                  home: NSHomeDirectory()))
     }
 }
