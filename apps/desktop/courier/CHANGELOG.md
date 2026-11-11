@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.16](https://github.com/VitruvianSoftware/vitruvian-core/compare/courier-v0.3.15...courier-v0.3.16) (2026-11-11)
+
+
+### Features
+
+* **courier:** Talk to Type and voice-note transcription ([#4571](https://github.com/VitruvianSoftware/vitruvian-core/issues/4571)) ([1a3186a](https://github.com/VitruvianSoftware/vitruvian-core/commit/1a3186ad13d1edafa3178b14478397d152d89c39))
+
 ## [0.3.15](https://github.com/VitruvianSoftware/vitruvian-core/compare/courier-v0.3.14...courier-v0.3.15) (2026-11-10)
 
 
