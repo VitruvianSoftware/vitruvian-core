@@ -21,6 +21,7 @@
 package copybara_sync
 
 import (
+	"slices"
 	"sync"
 	"testing"
 
@@ -29,8 +30,11 @@ import (
 )
 
 type seen struct {
-	typeToken string
-	inputs    resource.PropertyMap
+	typeToken     string
+	inputs        resource.PropertyMap
+	importID      string
+	protect       bool
+	ignoreChanges []string
 }
 
 // Pulumi registers resources concurrently, so the mock serialises its own
@@ -41,8 +45,14 @@ type mocks struct {
 }
 
 func (m mocks) NewResource(args pulumi.MockResourceArgs) (string, resource.PropertyMap, error) {
+	s := seen{typeToken: args.TypeToken, inputs: args.Inputs}
+	if rpc := args.RegisterRPC; rpc != nil {
+		s.importID = rpc.GetImportId()
+		s.protect = rpc.GetProtect()
+		s.ignoreChanges = rpc.GetIgnoreChanges()
+	}
 	m.mu.Lock()
-	m.got[args.Name] = seen{typeToken: args.TypeToken, inputs: args.Inputs}
+	m.got[args.Name] = s
 	m.mu.Unlock()
 	return args.Name + "_id", args.Inputs, nil
 }
@@ -214,6 +224,144 @@ func TestOnlyOneWayMirrorsHoldATapKey(t *testing.T) {
 		}
 		if p.HomebrewTapKey && !p.OneWay {
 			t.Errorf("%s holds a tap key but is not a one-way mirror", p.Name)
+		}
+	}
+}
+
+func flag(t *testing.T, got map[string]seen, resourceName, field string) bool {
+	t.Helper()
+	r, ok := got[resourceName]
+	if !ok {
+		t.Fatalf("no resource %q was declared", resourceName)
+	}
+	v, ok := r.inputs[resource.PropertyKey(field)]
+	if !ok {
+		t.Fatalf("%s has no %s", resourceName, field)
+	}
+	if !v.IsBool() {
+		t.Fatalf("%s.%s is %v, not bool", resourceName, field, v)
+	}
+	return v.BoolValue()
+}
+
+// The nexus-agent mirror is imported into Pulumi state with its exact live
+// GitHub settings and protected against replacement so the follow-up PR can
+// rename it to vitruvian-code in place without losing releases, stars or tags.
+func TestNexusAgentMirrorIsAdoptedProtectedWithLiveSettings(t *testing.T) {
+	got := run(t)
+	r, ok := got["nexus-agent"]
+	if !ok {
+		t.Fatal("nexus-agent repository resource was not declared")
+	}
+	if r.typeToken != "github:index/repository:Repository" {
+		t.Fatalf("nexus-agent is %q, want github:index/repository:Repository", r.typeToken)
+	}
+	if r.importID != "nexus-agent" {
+		t.Errorf("nexus-agent importID = %q, want %q", r.importID, "nexus-agent")
+	}
+	if !r.protect {
+		t.Error("nexus-agent must be protected so a later rename cannot replace or delete it")
+	}
+	for _, mutable := range []string{"name", "description", "topics"} {
+		if slices.Contains(r.ignoreChanges, mutable) {
+			t.Errorf("nexus-agent ignoreChanges contains %q; PR 2 must be able to update it in place", mutable)
+		}
+	}
+	if _, hasAutoInit := r.inputs["autoInit"]; hasAutoInit {
+		t.Error("nexus-agent must not set autoInit on an imported repository")
+	}
+	if v := text(t, got, "nexus-agent", "name"); v != "nexus-agent" {
+		t.Errorf("name = %q, want nexus-agent (rename belongs to PR 2)", v)
+	}
+	if v := text(t, got, "nexus-agent", "visibility"); v != "public" {
+		t.Errorf("visibility = %q, want public", v)
+	}
+	if v := text(t, got, "nexus-agent", "squashMergeCommitTitle"); v != "COMMIT_OR_PR_TITLE" {
+		t.Errorf("squashMergeCommitTitle = %q, want COMMIT_OR_PR_TITLE", v)
+	}
+	if v := text(t, got, "nexus-agent", "squashMergeCommitMessage"); v != "COMMIT_MESSAGES" {
+		t.Errorf("squashMergeCommitMessage = %q, want COMMIT_MESSAGES", v)
+	}
+	for _, want := range []struct {
+		field string
+		val   bool
+	}{
+		{"deleteBranchOnMerge", true},
+		{"hasIssues", true},
+		{"hasProjects", true},
+		{"hasWiki", false},
+		{"hasDiscussions", false},
+		{"allowSquashMerge", true},
+		{"allowMergeCommit", false},
+		{"allowRebaseMerge", false},
+		{"allowAutoMerge", false},
+		{"allowUpdateBranch", false},
+		{"allowForking", true},
+		{"isTemplate", false},
+		{"archived", false},
+		{"webCommitSignoffRequired", false},
+	} {
+		if gotVal := flag(t, got, "nexus-agent", want.field); gotVal != want.val {
+			t.Errorf("nexus-agent.%s = %v, want %v", want.field, gotVal, want.val)
+		}
+	}
+	topicsVal, ok := r.inputs["topics"]
+	if !ok || !topicsVal.IsArray() {
+		t.Fatalf("nexus-agent.topics = %v, want array", topicsVal)
+	}
+	var topics []string
+	for _, elem := range topicsVal.ArrayValue() {
+		topics = append(topics, elem.StringValue())
+	}
+	wantTopics := []string{"ai-agent", "cli", "gemini", "llm", "macos", "menubar-app", "ollama", "telegram-bot"}
+	if !slices.Equal(topics, wantTopics) {
+		t.Errorf("nexus-agent.topics = %v, want %v", topics, wantTopics)
+	}
+
+	// Existing sync auth resources stay untouched on nexus-agent in PR 1.
+	if v := text(t, got, "nexus-agent-standalone-deploy-key", "repository"); v != "nexus-agent" {
+		t.Errorf("deploy key repository = %q, want nexus-agent", v)
+	}
+	if v := text(t, got, "nexus-agent-sync-ssh-key-secret", "secretName"); v != "NEXUS_AGENT_SYNC_SSH_KEY" {
+		t.Errorf("sync ssh secret = %q, want NEXUS_AGENT_SYNC_SSH_KEY", v)
+	}
+	if v := text(t, got, "nexus-agent-dispatch-app-id-secret", "secretName"); v != "NEXUS_AGENT_DISPATCH_APP_ID" {
+		t.Errorf("dispatch app id secret = %q, want NEXUS_AGENT_DISPATCH_APP_ID", v)
+	}
+	if _, ok := got["nexus-agent-mirror-readonly"]; ok {
+		t.Error("nexus-agent is two-way today and must not declare one-way branch protection in PR 1")
+	}
+}
+
+func TestRepositoryDeclarationMatchesCreateOrAdoptMode(t *testing.T) {
+	got := run(t)
+	for _, p := range syncedProjects {
+		if p.CreateRepo && p.Adopt != nil {
+			t.Fatalf("%s sets both CreateRepo and Adopt", p.Name)
+		}
+		r, declared := got[p.StandaloneRepo]
+		switch {
+		case p.CreateRepo:
+			if !declared || r.typeToken != "github:index/repository:Repository" {
+				t.Errorf("%s: CreateRepo=true must declare github:index/repository:Repository", p.Name)
+			}
+			if r.importID != "" {
+				t.Errorf("%s: CreateRepo=true must not set importID (%q)", p.Name, r.importID)
+			}
+		case p.Adopt != nil:
+			if !declared || r.typeToken != "github:index/repository:Repository" {
+				t.Errorf("%s: Adopt!=nil must declare github:index/repository:Repository", p.Name)
+			}
+			if r.importID != p.StandaloneRepo {
+				t.Errorf("%s: importID = %q, want %q", p.Name, r.importID, p.StandaloneRepo)
+			}
+			if !r.protect {
+				t.Errorf("%s: adopted repository must be protected", p.Name)
+			}
+		default:
+			if declared && r.typeToken == "github:index/repository:Repository" {
+				t.Errorf("%s: declared unexpected Repository resource without CreateRepo or Adopt", p.Name)
+			}
 		}
 	}
 }
