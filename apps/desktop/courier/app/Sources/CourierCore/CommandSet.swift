@@ -1558,7 +1558,7 @@ public enum CommandSet {
                 subtitle: String(localized: "Dictation / voice transcription"),
                 category: .aiAndStubs,
                 keywords: ["talk to type", "dictation", "transcribe", "voice"],
-                icon: "Waveform.and.mic",
+                icon: "waveform.and.mic",
                 shortcut: "⌘⇧D"
             ) {
                 if let activeComposer, activeComposer.roomID != nil {

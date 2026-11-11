@@ -47,8 +47,8 @@ Where each action lives:
 
 - **Draft a reply** and **Rewrite…** (tones): the **+** menu in the message box, or type `/draft`. The result shows above your text with **Replace**, **Insert** and **Discard**.
 - **Translate**: right-click a message. It uses *Preferred response language*; a submenu offers your other enabled languages.
-- **Summarize**: the chat's ⓘ menu or the command bar (⌘K). The summary opens in the AI pane.
-- **Talk to Type**: `⌘⇧D`, the **+** menu in the message box, or the command bar (⌘K). Words go in at the cursor.
+- **Summarize**: the chat's ⓘ menu or the command bar (⌘J). The summary opens in the AI pane.
+- **Talk to Type**: `⌘⇧D`, the **+** menu in the message box, or the command bar (⌘J). Words go in at the cursor.
 - **Transcribe a voice note**: right-click the voice note or click **Transcribe** next to its waveform.
 
 ### Providers and setup
@@ -68,7 +68,7 @@ Pick a provider in **Settings ▸ AI**. Choosing one turns AI on; choosing **Off
 
 ### Talk to Type and voice notes
 
-Speak into the message box instead of typing (Talk to Type). Start it with `⌘⇧D`, the **+** menu in the message box, or the command bar (⌘K). Press **Stop** or `⌘⇧D` again to finish, or press `Esc` to cancel. Spoken text is inserted at the cursor without replacing your draft. Nothing is ever sent automatically.
+Speak into the message box instead of typing (Talk to Type). Start it with `⌘⇧D`, the **+** menu in the message box, or the command bar (⌘J). Press **Stop** or `⌘⇧D` again to finish, or press `Esc` to cancel. Spoken text is inserted at the cursor without replacing your draft. Nothing is ever sent automatically.
 
 Turn voice notes into readable text. Right-click any voice note or click **Transcribe** next to its waveform. You can also turn on automatic transcription in **Settings ▸ AI** (off by default). When enabled, Courier automatically transcribes voice notes sent by other people as they appear on screen.
 
