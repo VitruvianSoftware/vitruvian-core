@@ -166,9 +166,33 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     /// Called when an agent turn completes, in place of telling the host
     /// directly: the engine sets it, to add whether its chat is on screen.
     var onTurnFinished: ((VitruvianCodeTurnNotice) -> Void)?
-    /// Turns run with `--mode plan` (read-only) while on. Remembered.
+    /// Per-chat approval mode override; nil uses `configuration.approvalMode`.
+    @Published public var chatApprovalMode: VitruvianCodeApprovalMode? = nil {
+        didSet {
+            guard !isApplyingChatModeState else { return }
+            persistCurrentChatMode()
+        }
+    }
+    /// Per-chat plan switch override; nil uses `host.planMode`.
+    @Published public var chatPlanMode: Bool? = nil {
+        didSet {
+            guard !isApplyingChatModeState else { return }
+            syncPlanModeFromEffective()
+            persistCurrentChatMode()
+        }
+    }
+    /// Turns run with `--mode plan` (read-only) while on. This is the plan
+    /// switch the chat shows: setting it (the plan button, `/plan`) sets this
+    /// chat's own override and never the host's plan mode, which only gives
+    /// new chats their starting value.
     @Published public var planMode: Bool {
-        didSet { host.planMode = planMode }
+        didSet {
+            guard !isSyncingPlanMode else { return }
+            isApplyingChatModeState = true
+            chatPlanMode = planMode
+            isApplyingChatModeState = false
+            persistCurrentChatMode()
+        }
     }
     /// Turns run with `-w` (isolated git worktree) while on. Remembered.
     @Published public var worktreeMode: Bool {
@@ -194,7 +218,9 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     private let environment: VitruvianCodeEngine.Environment
     /// The app's settings, text and notices. Asked each time, never kept.
     private let host: any VitruvianCodeHost
-    private var connection: CommandLineConnection?
+    private var connection: (any AgentConnection)?
+    private var isApplyingChatModeState = false
+    private var isSyncingPlanMode = false
     private var replyID: UUID?
     /// When this turn's first thought arrived, for the "Thought for" timer.
     private var thinkingStartedAt: Date?
@@ -313,16 +339,22 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         self.worktreeMode = host.worktreeMode
         self.timelineOnLeft = host.timelineOnLeft
         self.promptHistory = host.promptHistory
+        let paths = VitruvianCodeSupport.statePaths(
+            configuredBotDirectory: host.configuredBotDirectory,
+            home: environment.home,
+            defaultStateDirectory: environment.stateDirectory,
+            stateDirectoryOverride: environment.stateDirectoryOverride
+        )
         self.accountManager = VitruvianCodeAccountManager(
-            stateDirectory: environment.stateDirectory,
+            stateDirectory: paths.stateDirectory,
             readFile: environment.readFile,
             writePrivateFile: environment.writePrivateFile
         )
         self.automationManager = VitruvianCodeAutomationManager(
-            stateDirectory: URL(fileURLWithPath: environment.stateDirectory)
+            stateDirectory: URL(fileURLWithPath: paths.stateDirectory)
         )
         self.orchestrationCoordinator = VitruvianCodeOrchestrationCoordinator(
-            worktreeRoot: (environment.home as NSString).appendingPathComponent(".vitruvian-code/worktrees")
+            worktreeRoot: paths.worktreesDirectory
         )
         self.workspaceNoteStore = VitruvianCodeWorkspaceNoteStore(
             worktreePath: environment.home,
@@ -584,6 +616,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         // The last conversation's subagents are not this one's.
         activeSubagents = []
         conversationID = summary.id
+        restoreChatModes(for: summary.id)
         let effectiveTitle = summary.title.isEmpty
             ? (summary.preview.split(separator: "\n").first.map(String.init) ?? "")
             : summary.title
@@ -611,9 +644,133 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         startTranscriptFollower(provider: configuration.activeProvider)
     }
 
-    /// The agy flags for this turn: plan mode overrides the bot's approval mode.
+    /// Effective approval mode for this chat before the plan switch overrides it.
+    public func effectiveApprovalMode(for configuration: VitruvianCodeConfiguration) -> VitruvianCodeApprovalMode {
+        chatApprovalMode ?? configuration.approvalMode
+    }
+
+    /// Effective plan mode for this chat: per-chat override when set, else the host's default.
+    public var effectivePlanMode: Bool {
+        chatPlanMode ?? host.planMode
+    }
+
+    /// Encodes a chat's two overrides for `host.chatModes`, each on its own:
+    /// the mode's raw value (empty when only the plan switch is overridden,
+    /// so the mode keeps following the global default), then `|plan` or
+    /// `|noplan` when the plan switch is overridden. Nothing overridden is nil.
+    public nonisolated static func encodeChatMode(mode: VitruvianCodeApprovalMode?, plan: Bool?) -> String? {
+        guard mode != nil || plan != nil else { return nil }
+        let modeWord = mode?.rawValue ?? ""
+        guard let plan else { return modeWord }
+        return modeWord + (plan ? "|plan" : "|noplan")
+    }
+
+    /// Decodes a `host.chatModes` entry back into its two overrides; nil for
+    /// one that is not understood.
+    public nonisolated static func decodeChatMode(_ raw: String) -> (mode: VitruvianCodeApprovalMode?, plan: Bool?)? {
+        let parts = raw.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+        guard let modeWord = parts.first, parts.count <= 2 else { return nil }
+        var mode: VitruvianCodeApprovalMode?
+        if !modeWord.isEmpty {
+            guard let known = VitruvianCodeApprovalMode(rawValue: modeWord) else { return nil }
+            mode = known
+        }
+        var plan: Bool?
+        if parts.count == 2 {
+            switch parts[1] {
+            case "plan": plan = true
+            case "noplan": plan = false
+            default: return nil
+            }
+        }
+        guard mode != nil || plan != nil else { return nil }
+        return (mode, plan)
+    }
+
+    /// Takes in a plan mode the host changed (the Settings page): a chat with
+    /// its own plan switch keeps it, any other follows the host.
+    public func hostPlanModeDidChange() {
+        syncPlanModeFromEffective()
+    }
+
+    private func syncPlanModeFromEffective() {
+        let target = effectivePlanMode
+        guard planMode != target else { return }
+        isSyncingPlanMode = true
+        planMode = target
+        isSyncingPlanMode = false
+    }
+
+    private func persistCurrentChatMode() {
+        guard let id = conversationID, !id.isEmpty else { return }
+        var stored = host.chatModes
+        if let value = Self.encodeChatMode(mode: chatApprovalMode, plan: chatPlanMode) {
+            guard stored[id] != value else { return }
+            stored[id] = value
+        } else if stored.removeValue(forKey: id) == nil {
+            return
+        }
+        host.chatModes = stored
+    }
+
+    private func restoreChatModes(for id: String) {
+        isApplyingChatModeState = true
+        if let raw = host.chatModes[id], let decoded = Self.decodeChatMode(raw) {
+            chatApprovalMode = decoded.mode
+            chatPlanMode = decoded.plan
+        } else {
+            chatApprovalMode = nil
+            chatPlanMode = nil
+        }
+        isApplyingChatModeState = false
+        syncPlanModeFromEffective()
+    }
+
+    private func clearChatModesForNewChat() {
+        isApplyingChatModeState = true
+        chatApprovalMode = nil
+        chatPlanMode = nil
+        isApplyingChatModeState = false
+        syncPlanModeFromEffective()
+    }
+
+    fileprivate func setChatPlanMode(_ next: Bool) {
+        isApplyingChatModeState = true
+        chatPlanMode = next
+        isApplyingChatModeState = false
+        syncPlanModeFromEffective()
+        persistCurrentChatMode()
+    }
+
+    private func assignConversationID(_ id: String) {
+        guard !id.isEmpty else { return }
+        conversationID = id
+        if chatApprovalMode != nil || chatPlanMode != nil {
+            persistCurrentChatMode()
+        }
+    }
+
+    /// Builds `PromptBlock`s for a turn: attachments first (`.image(path:)` for images,
+    /// `@path` text for other files), followed by the prompt text.
+    public nonisolated static func promptBlocks(
+        text: String,
+        attachments: [VitruvianCodeAttachment]
+    ) -> [PromptBlock] {
+        var blocks: [PromptBlock] = attachments.map { attachment in
+            if attachment.isImage {
+                return .image(path: attachment.url.path)
+            }
+            return .text("@" + attachment.url.path)
+        }
+        blocks.append(.text(text))
+        return blocks
+    }
+
+    /// The agy flags for this turn: plan mode overrides the effective approval mode.
     public func turnConfiguration(_ configuration: VitruvianCodeConfiguration) -> VitruvianCodeConfiguration {
-        Self.turnConfiguration(configuration, planMode: planMode)
+        var effective = configuration
+        effective.approvalMode = effectiveApprovalMode(for: configuration)
+        return Self.turnConfiguration(effective, planMode: effectivePlanMode)
     }
 
     /// The same rule for a plan mode taken earlier than now.
@@ -651,10 +808,26 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         let fork = forkNextTurn && conversationID != nil
         attachments = []
         forkNextTurn = false
+
+        var effectiveConfig = configuration
+        effectiveConfig.approvalMode = effectiveApprovalMode(for: configuration)
+        let effectivePlan = effectivePlanMode
+        let modes = AgentTurnModes(
+            plan: effectivePlan,
+            worktree: worktreeMode,
+            attachments: turnAttachments,
+            fork: fork
+        )
+
         // A command of the user's own is not agy: it has its own program,
         // found from its template, and its own way of answering.
         if configuration.activeProvider.route == .custom {
-            sendCommand(VitruvianCodeSupport.promptWithAttachments(text, turnAttachments), configuration: configuration)
+            sendCommand(
+                text: text,
+                fullPrompt: VitruvianCodeSupport.promptWithAttachments(text, turnAttachments),
+                configuration: effectiveConfig,
+                modes: modes
+            )
             return
         }
         guard let agentPath else {
@@ -672,12 +845,11 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         // the prompt is sent. A turn that has to wait before it starts (see
         // below) runs with these, whatever is switched while it waits: a
         // prompt sent in plan mode must not start outside it.
-        let modes = TurnModes(plan: planMode, worktree: worktreeMode, attachments: turnAttachments, fork: fork)
-        let current = beginTurn(configuration: configuration, followsTranscript: true)
-        let model = configuration.model.trimmingCharacters(in: .whitespaces)
+        let current = beginTurn(configuration: effectiveConfig, planMode: effectivePlan, followsTranscript: true)
+        let model = effectiveConfig.model.trimmingCharacters(in: .whitespaces)
         // Whatever is run as Ollama needs a model, not the built-in provider alone.
-        guard configuration.activeProvider.route == .ollama, model.isEmpty else {
-            launch(text, configuration: configuration, agentPath: agentPath, modes: modes,
+        guard effectiveConfig.activeProvider.route == .ollama, model.isEmpty else {
+            launch(text, configuration: effectiveConfig, agentPath: agentPath, modes: modes,
                    ollamaDefaultModel: VitruvianCodeSupport.ollamaFallbackModel, turn: current)
             return
         }
@@ -690,25 +862,19 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             let listing = await runProgram("ollama", ["list"])
             guard let self, self.awaitingModel, current == self.turn else { return }
             self.awaitingModel = false
-            self.launch(text, configuration: configuration, agentPath: agentPath, modes: modes,
+            self.launch(text, configuration: effectiveConfig, agentPath: agentPath, modes: modes,
                         ollamaDefaultModel: VitruvianCodeSupport.ollamaDefaultModel(fromList: listing), turn: current)
         }
-    }
-
-    /// The two switches of the chat as they stood when a prompt was sent.
-    private struct TurnModes: Sendable {
-        var plan: Bool
-        var worktree: Bool
-        /// What was attached when the prompt was sent, and whether it was
-        /// to go to a copy of the conversation.
-        var attachments: [VitruvianCodeAttachment] = []
-        var fork = false
     }
 
     /// Puts a new turn on screen as running: an empty reply to fill, the
     /// clock started. Returns the turn's number, which its callbacks carry
     /// so that those of a turn since stopped or replaced are dropped.
-    private func beginTurn(configuration: VitruvianCodeConfiguration, followsTranscript: Bool) -> Int {
+    private func beginTurn(
+        configuration: VitruvianCodeConfiguration,
+        planMode: Bool,
+        followsTranscript: Bool
+    ) -> Int {
         turn += 1
         noise = []
         stoppedByUser = false
@@ -748,13 +914,18 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     /// prompt as part of exactly one of them; the program is started
     /// directly, never through a shell. A plain command has no plan flag,
     /// so in plan mode the rules go in front of the prompt instead.
-    private func sendCommand(_ text: String, configuration: VitruvianCodeConfiguration) {
+    private func sendCommand(
+        text: String,
+        fullPrompt: String,
+        configuration: VitruvianCodeConfiguration,
+        modes: AgentTurnModes
+    ) {
         let template = configuration.activeProvider.commandTemplate
         guard let command = VitruvianCodeSupport.providerCommand(
             template: template,
-            prompt: planMode ? VitruvianCodeSupport.planModePrompt(text) : text,
+            prompt: modes.plan ? VitruvianCodeSupport.planModePrompt(fullPrompt) : fullPrompt,
             model: configuration.model) else {
-            refuse(text, saying: strings.invalidCommandTemplate(template))
+            refuse(fullPrompt, saying: strings.invalidCommandTemplate(template))
             return
         }
         // A template that would take its program's name from the prompt has
@@ -769,41 +940,22 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                   pathVariable: environment.processEnvironment["PATH"] ?? "",
                   isExecutable: environment.isExecutable,
                   fileExists: environment.fileExists) else {
-            refuse(text, saying: strings.missingProgram(of: configuration.activeProvider,
-                                                        model: configuration.model))
+            refuse(fullPrompt, saying: strings.missingProgram(of: configuration.activeProvider,
+                                                              model: configuration.model))
             return
         }
         // A plain command keeps no transcript to follow.
-        let current = beginTurn(configuration: configuration, followsTranscript: false)
-        let directory = workingDirectory(for: configuration)
-        let turnConnection = CommandLineConnection(environment: environment)
-        connection = turnConnection
-        do {
-            try turnConnection.startCommandTurn(
-                executablePath: path,
-                arguments: command.arguments,
-                workingDirectory: directory,
-                onPartialOutput: { [weak self] printed in
-                    guard let self, current == self.turn else { return }
-                    self.replace(reply: printed, isError: false)
-                },
-                onExit: { [weak self] status, outcome, printed in
-                    self?.commandDidExit(status, outcome: outcome, printed: printed, turn: current)
-                }
-            )
-        } catch {
-            connection = nil
-            isRunning = false
-            elapsedTimer?.invalidate()
-            elapsedTimer = nil
-            // The system's own words for why, as the standalone shows them.
-            let reason = error.localizedDescription
-            replace(reply: reason, isError: true)
-            lastFailedPrompt = text
-            replyID = nil
-            report(VitruvianCodeTurnNotice(providerName: providerName, text: "", failed: true, endedCleanly: false,
-                                        failureDetail: reason))
-        }
+        let current = beginTurn(configuration: configuration, planMode: modes.plan, followsTranscript: false)
+        launch(
+            text,
+            configuration: configuration,
+            agentPath: path,
+            modes: modes,
+            ollamaDefaultModel: VitruvianCodeSupport.ollamaFallbackModel,
+            isCustomCommand: true,
+            fullPromptForFailure: fullPrompt,
+            turn: current
+        )
     }
 
     /// A command that cannot even start says why in the conversation, and
@@ -903,51 +1055,193 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
 
     /// Starts the agent for a turn `send` has already put on screen, in
     /// the modes the prompt was sent in, not the ones set by now.
-    private func launch(_ text: String, configuration: VitruvianCodeConfiguration, agentPath: String,
-                        modes: TurnModes, ollamaDefaultModel: String, turn current: Int) {
+    private func launch(
+        _ text: String,
+        configuration: VitruvianCodeConfiguration,
+        agentPath: String,
+        modes: AgentTurnModes,
+        ollamaDefaultModel: String,
+        isCustomCommand: Bool = false,
+        fullPromptForFailure: String? = nil,
+        turn current: Int
+    ) {
         let turnConfiguration = Self.turnConfiguration(configuration, planMode: modes.plan)
         let directory = workingDirectory(for: configuration)
-        let turnConnection = CommandLineConnection(environment: environment)
+        let spec = AgentConnectionSpec(
+            provider: configuration.activeProvider,
+            configuration: turnConfiguration,
+            agentPath: agentPath,
+            workingDirectory: directory,
+            ollamaDefaultModel: ollamaDefaultModel,
+            turnModes: modes,
+            environment: environment.processEnvironment
+        )
+        let turnConnection = environment.makeConnection(spec)
         connection = turnConnection
-        do {
-            try turnConnection.startAgentTurn(
-                prompt: text,
-                configuration: turnConfiguration,
-                agentPath: agentPath,
-                workingDirectory: directory,
-                conversationID: conversationID,
-                planMode: modes.plan,
-                worktreeMode: modes.worktree,
-                ollamaDefaultModel: ollamaDefaultModel,
-                attachments: modes.attachments,
-                forkSession: modes.fork,
-                onEvent: { [weak self] event in
-                    guard let self, current == self.turn else { return }
-                    self.handle(event: event)
-                },
-                onNoise: { [weak self] trimmed in
-                    guard let self, current == self.turn else { return }
-                    self.noise = Array((self.noise + [trimmed]).suffix(5))
-                },
-                onExit: { [weak self] status in
-                    self?.agentDidExit(status, turn: current)
+        let blocks = Self.promptBlocks(text: text, attachments: modes.attachments)
+        let sessionRequest = AgentSessionRequest(
+            workingDirectory: directory,
+            resumeSessionID: isCustomCommand ? nil : conversationID
+        )
+
+        if let immediate = turnConnection as? any _ImmediateAgentConnection {
+            do {
+                let startedID = immediate.beginImmediateSession(sessionRequest)
+                if !startedID.isEmpty, !isCustomCommand {
+                    assignConversationID(startedID)
                 }
-            )
-        } catch {
-            connection = nil
-            isRunning = false
-            stopTranscriptFollower()
-            elapsedTimer?.invalidate()
-            elapsedTimer = nil
-            let reason = strings.agentFailed
-            replace(reply: reason, isError: true)
-            replyID = nil
-            // A turn that could not start is a failed turn to the host, in
-            // the bubble's words: with the chat out of sight the bubble is
-            // seen by nobody, and the app would otherwise say nothing.
-            report(VitruvianCodeTurnNotice(providerName: providerName, text: "", failed: true, endedCleanly: false,
-                                        failureDetail: reason))
+                try immediate.beginImmediatePrompt(
+                    blocks,
+                    onEvent: { [weak self] event in
+                        guard let self, current == self.turn else { return }
+                        self.handle(event: event)
+                    },
+                    onNoise: { [weak self] trimmed in
+                        guard let self, current == self.turn else { return }
+                        self.noise = Array((self.noise + [trimmed]).suffix(5))
+                    },
+                    onAgentExit: { [weak self] status in
+                        self?.agentDidExit(status, turn: current)
+                    },
+                    onCommandPartial: { [weak self] printed in
+                        guard let self, current == self.turn else { return }
+                        self.replace(reply: printed, isError: false)
+                    },
+                    onCommandExit: { [weak self] status, outcome, printed in
+                        self?.commandDidExit(status, outcome: outcome, printed: printed, turn: current)
+                    }
+                )
+            } catch {
+                launchDidFail(
+                    error: error,
+                    isCustomCommand: isCustomCommand,
+                    fullPromptForFailure: fullPromptForFailure
+                )
+            }
+            return
         }
+
+        // A connection used only through the protocol. Its events are drained
+        // to the end of the stream, which the connection ends when the turn
+        // does, so that every event it sent is handled, in order, before the
+        // turn is completed.
+        let drain = Task { @MainActor [weak self] () -> DrainedTurn in
+            var drained = DrainedTurn()
+            for await event in turnConnection.events {
+                guard let self, current == self.turn else { continue }
+                if isCustomCommand {
+                    // A command of the user's own prints text: what it printed
+                    // is the reply, as for the command-line turn.
+                    switch event {
+                    case .text(let delta):
+                        drained.printed += delta
+                        self.replace(reply: drained.printed, isError: false)
+                    case .finished(_, let response, let error, _, _):
+                        drained.response = response
+                        drained.error = error
+                    default:
+                        break
+                    }
+                } else {
+                    self.handle(event: event)
+                }
+            }
+            return drained
+        }
+        Task { @MainActor [weak self] in
+            guard let self, current == self.turn else {
+                drain.cancel()
+                return
+            }
+            do {
+                let startedID = try await turnConnection.start(sessionRequest)
+                guard current == self.turn else {
+                    drain.cancel()
+                    return
+                }
+                if !startedID.isEmpty, !isCustomCommand {
+                    self.assignConversationID(startedID)
+                }
+                let stopReason = try await turnConnection.prompt(blocks)
+                // The connection ends its stream when the turn ends. Take in
+                // everything it sent, to the end, before completing the turn.
+                let drained = await drain.value
+                await turnConnection.stop()
+                guard current == self.turn else { return }
+                if let cli = turnConnection as? CommandLineConnection, !cli.noiseLines.isEmpty {
+                    self.noise = Array((self.noise + cli.noiseLines).suffix(5))
+                }
+                if stopReason == .cancelled {
+                    self.stoppedByUser = true
+                }
+                if isCustomCommand {
+                    let printed = drained.printed.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let text = printed.isEmpty
+                        ? (drained.response ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                        : printed
+                    let status: Int32
+                    let outcome: VitruvianCodeCommandOutcome
+                    if stopReason == .cancelled {
+                        status = 15
+                        outcome = .stopped
+                    } else if stopReason == .error || drained.error != nil {
+                        status = 1
+                        outcome = text.isEmpty
+                            ? .failed(status: 1, errors: String((drained.error ?? "").prefix(300)))
+                            : .reply(text)
+                    } else {
+                        status = 0
+                        outcome = text.isEmpty ? .noOutput : .reply(text)
+                    }
+                    self.commandDidExit(status, outcome: outcome, printed: text, turn: current)
+                } else {
+                    // A refusal is a turn that ended, as a command-line agent's
+                    // exit 0; only an error is a bad exit.
+                    self.agentDidExit(stopReason == .error ? 1 : 0, turn: current)
+                }
+            } catch {
+                await turnConnection.stop()
+                _ = await drain.value
+                guard current == self.turn else { return }
+                self.launchDidFail(
+                    error: error,
+                    isCustomCommand: isCustomCommand,
+                    fullPromptForFailure: fullPromptForFailure
+                )
+            }
+        }
+    }
+
+    /// What the events of a custom command's turn came to, when drained.
+    private struct DrainedTurn: Sendable {
+        var printed = ""
+        var response: String?
+        var error: String?
+    }
+
+    private func launchDidFail(
+        error: any Error,
+        isCustomCommand: Bool,
+        fullPromptForFailure: String?
+    ) {
+        connection = nil
+        isRunning = false
+        if !isCustomCommand {
+            stopTranscriptFollower()
+        }
+        elapsedTimer?.invalidate()
+        elapsedTimer = nil
+        let reason = isCustomCommand ? error.localizedDescription : strings.agentFailed
+        replace(reply: reason, isError: true)
+        if isCustomCommand, let fullPromptForFailure {
+            lastFailedPrompt = fullPromptForFailure
+        }
+        replyID = nil
+        // A turn that could not start is a failed turn to the host, in
+        // the bubble's words: with the chat out of sight the bubble is
+        // seen by nobody, and the app would otherwise say nothing.
+        report(VitruvianCodeTurnNotice(providerName: providerName, text: "", failed: true, endedCleanly: false,
+                                    failureDetail: reason))
     }
 
     /// Ends the turn in flight; what arrived so far stays.
@@ -957,7 +1251,15 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         stopTranscriptFollower()
         elapsedTimer?.invalidate()
         elapsedTimer = nil
-        connection?.terminate()
+        if let active = connection {
+            if let immediate = active as? any _ImmediateAgentConnection {
+                immediate.cancelImmediateTurn()
+            } else {
+                Task { @MainActor in
+                    await active.cancel()
+                }
+            }
+        }
         refreshPendingApproval()
         if awaitingModel {
             // The agent has not started, so nothing will report an exit:
@@ -1014,6 +1316,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         activity = nil
         replyID = nil
         conversationID = nil
+        clearChatModesForNewChat()
         sessionAllowedTools = []
         sessionTitle = nil
         isResumed = false
@@ -1073,7 +1376,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     private func handle(event: AgentEvent) {
         switch event {
         case .started(let id):
-            if let id { conversationID = id }
+            if let id { assignConversationID(id) }
         case .text(let delta):
             activity = nil
             appendToReply(delta)
@@ -1174,8 +1477,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             // until its input ends; the turn is over, so it is ended.
             turnInputClosed = true
             awaitingAnswers = []
-            connection?.closeInput()
-            if let id { conversationID = id }
+            if let id { assignConversationID(id) }
             if let response, currentReplyText.isEmpty { appendToReply(response) }
             if let replyID, let idx = messages.firstIndex(where: { $0.id == replyID }) {
                 if let metrics {
@@ -1229,9 +1531,26 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     /// Sends a decision to the agent, once, if this turn's agent is the
     /// one waiting on it.
     private func answer(_ request: VitruvianCodeApprovalRequest, decision: VitruvianCodeApprovalRequest.Status) {
-        guard let requestID = request.requestID, awaitingAnswers.remove(requestID) != nil,
-              let line = VitruvianCodeSupport.approvalResponseJSON(for: request, decision: decision) else { return }
-        connection?.sendInput(line)
+        guard let requestID = request.requestID, awaitingAnswers.remove(requestID) != nil else { return }
+        let choice: AgentAnswer
+        switch decision {
+        case .pending:
+            return
+        case .approved:
+            choice = .option("allow")
+        case .sessionAllowed:
+            choice = .option("allow_always")
+        case .denied:
+            choice = .cancelled
+        }
+        guard let active = connection else { return }
+        if let immediate = active as? any _ImmediateAgentConnection {
+            immediate.sendImmediateAnswer(requestID, choice)
+        } else {
+            Task { @MainActor in
+                try? await active.answer(requestID, choice)
+            }
+        }
     }
 
     private func agentDidExit(_ status: Int32, turn current: Int) {
@@ -1669,11 +1988,12 @@ extension VitruvianCodeQuickPromptSession {
             return done(.newChat)
         case "plan":
             if !argument.isEmpty {
-                planMode = true
+                setChatPlanMode(true)
                 return dispatchPrompt(argument)
             }
-            planMode.toggle()
-            return done(.planMode(planMode))
+            let next = !effectivePlanMode
+            setChatPlanMode(next)
+            return done(.planMode(next))
         case "worktree":
             if !argument.isEmpty {
                 worktreeMode = true

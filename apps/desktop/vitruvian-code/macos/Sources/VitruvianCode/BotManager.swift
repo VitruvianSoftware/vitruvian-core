@@ -41,9 +41,12 @@ class BotManager: ObservableObject {
 
     private var cancellables: Set<AnyCancellable> = []
 
-    init() {
+    init(stateDirectoryOverride: String? = nil) {
         let host = StandaloneHost()
-        let engine = StandaloneEngine(environment: .live, host: host)
+        var environment = VitruvianCodeEngine.Environment.live(stateDirectoryOverride: stateDirectoryOverride)
+        // The engine and the host keep their settings in the same place.
+        environment.defaults = AppPreferences.defaults
+        let engine = StandaloneEngine(environment: environment, host: host)
         // A notification about a finished turn carries the conversation it
         // was in, so a click on it can come back to that one.
         host.openConversation = { [weak engine] in

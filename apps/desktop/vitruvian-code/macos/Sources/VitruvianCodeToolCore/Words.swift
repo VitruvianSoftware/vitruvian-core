@@ -113,6 +113,7 @@ public enum Words {
         "timelineWaitingForReply",
         "timelineMoveLeft",
         "timelineMoveRight",
+        "approvalAuto",
     ]
 
     public static func text(_ key: String, _ language: String) -> String {
@@ -211,6 +212,7 @@ public enum Words {
             "timelineWaitingForReply": "Waiting for reply…",
             "timelineMoveLeft": "Move timeline to left edge",
             "timelineMoveRight": "Move timeline to right edge",
+            "approvalAuto": "Auto",
         ],
         "pt-BR": [
             "quickPromptTitle": "Prompt rápido do agente",
@@ -291,6 +293,7 @@ public enum Words {
             "timelineWaitingForReply": "Aguardando resposta…",
             "timelineMoveLeft": "Mover a linha do tempo para a borda esquerda",
             "timelineMoveRight": "Mover a linha do tempo para a borda direita",
+            "approvalAuto": "Auto",
         ],
         "tr": [
             "quickPromptTitle": "Ajan Hızlı İstemi",
@@ -371,6 +374,7 @@ public enum Words {
             "timelineWaitingForReply": "Yanıt bekleniyor…",
             "timelineMoveLeft": "Zaman çizelgesini sol kenara taşı",
             "timelineMoveRight": "Zaman çizelgesini sağ kenara taşı",
+            "approvalAuto": "Otomatik",
         ],
         "ru": [
             "quickPromptTitle": "Быстрый запрос к агенту",
@@ -451,6 +455,7 @@ public enum Words {
             "timelineWaitingForReply": "Ожидание ответа…",
             "timelineMoveLeft": "Переместить хронологию к левому краю",
             "timelineMoveRight": "Переместить хронологию к правому краю",
+            "approvalAuto": "Авто",
         ],
         "es": [
             "quickPromptTitle": "Prompt rápido del agente",
@@ -531,6 +536,7 @@ public enum Words {
             "timelineWaitingForReply": "Esperando respuesta…",
             "timelineMoveLeft": "Mover la línea de tiempo al borde izquierdo",
             "timelineMoveRight": "Mover la línea de tiempo al borde derecho",
+            "approvalAuto": "Auto",
         ],
         "sk": [
             "quickPromptTitle": "Rýchla výzva agentovi",
@@ -611,6 +617,7 @@ public enum Words {
             "timelineWaitingForReply": "Čaká sa na odpoveď…",
             "timelineMoveLeft": "Presunúť časovú os k ľavému okraju",
             "timelineMoveRight": "Presunúť časovú os k pravému okraju",
+            "approvalAuto": "Auto",
         ],
         "de": [
             "quickPromptTitle": "Agent-Schnell-Prompt",
@@ -691,6 +698,7 @@ public enum Words {
             "timelineWaitingForReply": "Warte auf Antwort…",
             "timelineMoveLeft": "Zeitleiste an den linken Rand verschieben",
             "timelineMoveRight": "Zeitleiste an den rechten Rand verschieben",
+            "approvalAuto": "Auto",
         ],
         "fr": [
             "quickPromptTitle": "Prompt rapide de l’agent",
@@ -771,6 +779,7 @@ public enum Words {
             "timelineWaitingForReply": "En attente de réponse…",
             "timelineMoveLeft": "Déplacer la chronologie vers le bord gauche",
             "timelineMoveRight": "Déplacer la chronologie vers le bord droit",
+            "approvalAuto": "Auto",
         ],
         "it": [
             "quickPromptTitle": "Prompt rapido dell’agente",
@@ -851,6 +860,7 @@ public enum Words {
             "timelineWaitingForReply": "In attesa di risposta…",
             "timelineMoveLeft": "Sposta la cronologia sul bordo sinistro",
             "timelineMoveRight": "Sposta la cronologia sul bordo destro",
+            "approvalAuto": "Auto",
         ],
         "ja": [
             "quickPromptTitle": "エージェントのクイックプロンプト",
@@ -931,6 +941,7 @@ public enum Words {
             "timelineWaitingForReply": "返信を待っています…",
             "timelineMoveLeft": "タイムラインを左端に移動",
             "timelineMoveRight": "タイムラインを右端に移動",
+            "approvalAuto": "自動",
         ],
         "ko": [
             "quickPromptTitle": "에이전트 빠른 프롬프트",
@@ -1011,6 +1022,7 @@ public enum Words {
             "timelineWaitingForReply": "답장을 기다리는 중…",
             "timelineMoveLeft": "타임라인을 왼쪽 가장자리로 이동",
             "timelineMoveRight": "타임라인을 오른쪽 가장자리로 이동",
+            "approvalAuto": "자동",
         ],
         "uk": [
             "quickPromptTitle": "Швидкий запит до агента",
@@ -1091,6 +1103,7 @@ public enum Words {
             "timelineWaitingForReply": "Очікування відповіді…",
             "timelineMoveLeft": "Перемістити хронологію до лівого краю",
             "timelineMoveRight": "Перемістити хронологію до правого краю",
+            "approvalAuto": "Авто",
         ],
         "zh-Hans": [
             "quickPromptTitle": "智能体快速提问",
@@ -1171,6 +1184,7 @@ public enum Words {
             "timelineWaitingForReply": "正在等待回复…",
             "timelineMoveLeft": "将时间线移到左侧边缘",
             "timelineMoveRight": "将时间线移到右侧边缘",
+            "approvalAuto": "自动",
         ],
         "zh-TW": [
             "quickPromptTitle": "代理程式快速提問",
@@ -1251,6 +1265,7 @@ public enum Words {
             "timelineWaitingForReply": "正在等待回覆…",
             "timelineMoveLeft": "將時間軸移到左側邊緣",
             "timelineMoveRight": "將時間軸移到右側邊緣",
+            "approvalAuto": "自動",
         ],
         "zh-HK": [
             "quickPromptTitle": "代理程式快速提問",
@@ -1331,6 +1346,7 @@ public enum Words {
             "timelineWaitingForReply": "正在等待回覆…",
             "timelineMoveLeft": "將時間軸移到左側邊緣",
             "timelineMoveRight": "將時間軸移到右側邊緣",
+            "approvalAuto": "自動",
         ],
     ]
 }
