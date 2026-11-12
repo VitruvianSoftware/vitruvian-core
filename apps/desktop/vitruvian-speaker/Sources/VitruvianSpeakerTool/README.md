@@ -1,7 +1,7 @@
-# Homespeakertool
+# Vitruvianspeakertool
 
 ## Overview
-Component package providing implementation for `apps/desktop/home-speaker/Sources/HomeSpeakerTool`.
+Component package providing implementation for `apps/desktop/vitruvian-speaker/Sources/VitruvianSpeakerTool`.
 
 ## Interface
 - `[main.swift:KitLink]`
@@ -14,4 +14,4 @@ Component package providing implementation for `apps/desktop/home-speaker/Source
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/home-speaker/Sources/HomeSpeakerTool/...`
+- Run: `bazel test //apps/desktop/vitruvian-speaker/Sources/VitruvianSpeakerTool/...`

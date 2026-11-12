@@ -20,18 +20,18 @@
 
 import XCTest
 
-import HomeSpeakerCore
-import HomeSpeakerToolCore
+import VitruvianSpeakerCore
+import VitruvianSpeakerToolCore
 import VitruvianToolKit
 import VitruvianToolProtocol
 
 /// The settings panel's General and Speakers sections, driven as the app
-/// drives them: pages opened, blocks tapped, HomeSpeaker's program answering.
+/// drives them: pages opened, blocks tapped, Vitruvian Speaker's program answering.
 final class SettingsTests: XCTestCase {
-    typealias Link = HomeSpeakerToolTests.Link
-    typealias Store = HomeSpeakerToolTests.Store
-    typealias Driver = HomeSpeakerToolTests.Driver
-    typealias Account = HomeSpeakerToolTests.Account
+    typealias Link = VitruvianSpeakerToolTests.Link
+    typealias Store = VitruvianSpeakerToolTests.Store
+    typealias Driver = VitruvianSpeakerToolTests.Driver
+    typealias Account = VitruvianSpeakerToolTests.Account
 
     private var link: Link!
     private var store: Store!
@@ -55,15 +55,15 @@ final class SettingsTests: XCTestCase {
                                                "office": SpeakerDevice(id: "d2", type: "SpeakerDevice", name: "Office")])
     }
 
-    private func tool() -> HomeSpeakerTool {
+    private func tool() -> VitruvianSpeakerTool {
         let voices = self.voices
-        return HomeSpeakerTool(parts: .init(link: link, store: store, driver: driver, later: later, account: account,
+        return VitruvianSpeakerTool(parts: .init(link: link, store: store, driver: driver, later: later, account: account,
                                             voices: { voices }, previewVoice: previewVoice,
-                                            historyURL: HomeSpeakerToolTests.noHistory))
+                                            historyURL: VitruvianSpeakerToolTests.noHistory))
     }
 
     /// Settings opened.
-    private func opened(choice: Bool = false) -> HomeSpeakerTool {
+    private func opened(choice: Bool = false) -> VitruvianSpeakerTool {
         link.features = choice ? [.choice] : []
         let tool = tool()
         _ = tool.settingsPage()
@@ -78,11 +78,11 @@ final class SettingsTests: XCTestCase {
         return tree
     }
 
-    private func event(_ tool: HomeSpeakerTool, _ block: String, _ kind: UIEventKind, _ value: JSONValue? = nil) -> UITree {
+    private func event(_ tool: VitruvianSpeakerTool, _ block: String, _ kind: UIEventKind, _ value: JSONValue? = nil) -> UITree {
         page(tool.settingsEvent(PanelEvent(block: block, kind: kind, value: value)))
     }
 
-    private func show(_ tool: HomeSpeakerTool, _ section: Pages.Section) -> UITree {
+    private func show(_ tool: VitruvianSpeakerTool, _ section: Pages.Section) -> UITree {
         event(tool, Pages.Block.section, .tap, .string(section.rawValue))
     }
 
@@ -338,7 +338,7 @@ final class SettingsTests: XCTestCase {
         XCTAssertTrue(texts(tree).contains { $0.contains("Nothing is saved until it reads again") })
         XCTAssertEqual(store.saves, 0, "a file that does not read is never written")
         XCTAssertTrue(link.logged.contains { $0.contains("refusing to save") })
-        XCTAssertThrowsError(try tool.run(command: HomeSpeakerTool.Command.toggleQuietHours))
+        XCTAssertThrowsError(try tool.run(command: VitruvianSpeakerTool.Command.toggleQuietHours))
         XCTAssertEqual(store.saves, 0)
         // Mended, the banner goes and saving works again.
         store.corrupt = nil
@@ -379,7 +379,7 @@ final class SettingsTests: XCTestCase {
         XCTAssertNil(content(tree, Pages.Block.importAntigravity))
     }
 
-    func testSignInRunsHomeSpeakersBrowserSignIn() {
+    func testSignInRunsVitruvianSpeakersBrowserSignIn() {
         let tool = opened()
         var tree = event(tool, Pages.Block.signIn, .tap)
         XCTAssertEqual(driver.jobs.last, .signIn(chatOnly: false))
@@ -394,7 +394,7 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(driver.jobs.count, 1, "speakers known already: nothing discovered")
         tree = tool.settingsPage()
         XCTAssertTrue(texts(tree).contains("me@example.com · Signed in"))
-        XCTAssertEqual(link.rendered.last?.panel, HomeSpeakerTool.settingsPanel, "the open panel is drawn again")
+        XCTAssertEqual(link.rendered.last?.panel, VitruvianSpeakerTool.settingsPanel, "the open panel is drawn again")
         // A failed sign-in says why, without "error:".
         account.isSignedIn = false
         _ = event(tool, Pages.Block.signIn, .tap)
@@ -409,7 +409,7 @@ final class SettingsTests: XCTestCase {
         _ = event(tool, Pages.Block.signIn, .tap)
         account.isSignedIn = true
         driver.answer(.signIn(chatOnly: false), .done(["signed in as unknown"]))
-        XCTAssertEqual(driver.jobs.last, .app(.discover(save: true, home: nil)), "as HomeSpeaker's Settings does")
+        XCTAssertEqual(driver.jobs.last, .app(.discover(save: true, home: nil)), "as Vitruvian Speaker's Settings does")
     }
 
     func testSignOutSignsOutOfEveryGoogleLogin() {
@@ -462,14 +462,14 @@ final class SettingsTests: XCTestCase {
                        "Settings asks nothing about a login item")
     }
 
-    func testWithoutHomeSpeakerTheSetupControlsAreOff() {
+    func testWithoutVitruvianSpeakerTheSetupControlsAreOff() {
         driver.isInstalled = false
         let tool = tool()
         let tree = tool.settingsPage()
         XCTAssertTrue(driver.jobs.isEmpty)
         XCTAssertEqual(button(tree, Pages.Block.signIn)?.enabled, false)
         _ = event(tool, Pages.Block.signIn, .tap)
-        XCTAssertEqual(tool.setupNotice, "HomeSpeaker is not installed")
+        XCTAssertEqual(tool.setupNotice, "Vitruvian Speaker is not installed")
     }
 
     func testPauseMediaHasItsResumeDelayAndATest() {
@@ -491,7 +491,7 @@ final class SettingsTests: XCTestCase {
         for bad in ["25", "-3", "soon"] {
             _ = event(tool, Pages.Block.pauseExtra, .submit, .string(bad))
             XCTAssertEqual(store.config?.pauseMediaExtraSeconds, 0, bad)
-            XCTAssertEqual(tool.setupNotice, HomeSpeakerTool.Invalid.pauseExtra, bad)
+            XCTAssertEqual(tool.setupNotice, VitruvianSpeakerTool.Invalid.pauseExtra, bad)
         }
 
         tree = event(tool, Pages.Block.testMediaPause, .tap)
@@ -525,7 +525,7 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(store.config?.announceVolume, 75)
         _ = event(tool, Pages.Block.announceLevel, .submit, .string("140"))
         XCTAssertEqual(store.config?.announceVolume, 75, "out of range: refused, not held to 100")
-        XCTAssertEqual(tool.setupNotice, HomeSpeakerTool.Invalid.announceLevel)
+        XCTAssertEqual(tool.setupNotice, VitruvianSpeakerTool.Invalid.announceLevel)
     }
 
     // MARK: - Speakers
@@ -558,7 +558,7 @@ final class SettingsTests: XCTestCase {
         _ = event(tool, Pages.Block.discover, .tap)
         XCTAssertEqual(driver.jobs.last, .app(.discover(save: true, home: "h1")))
         XCTAssertEqual(ProcessDriver.arguments(for: driver.jobs.last!), ["--discover", "--save", "--home", "h1"])
-        // HomeSpeaker writes the file; the tool reads it when it is done.
+        // Vitruvian Speaker writes the file; the tool reads it when it is done.
         store.config?.applyDiscovery(structureId: "h1", structureName: "Lake House (Annex)",
                                      targets: ["lake": SpeakerDevice(id: "d9", type: "SpeakerDevice", name: "Lake")])
         driver.answer(.app(.discover(save: true, home: "h1")),
@@ -740,13 +740,13 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(tool.busy, .say("dinner"))
         XCTAssertEqual(tool.setupBusy, .signIn(chatOnly: false))
         driver.answer(.say("dinner"), .spoke("sent to Kitchen"))
-        try tool.run(command: HomeSpeakerTool.Command.mute)
+        try tool.run(command: VitruvianSpeakerTool.Command.mute)
         XCTAssertEqual(tool.busy, .mute)
         // A second setup job waits for the first; a second speaker job for its own.
         let tree = event(tool, Pages.Block.testMediaPause, .tap)
         XCTAssertTrue(tool.setupNotice?.contains("busy") == true, "\(String(describing: tool.setupNotice))")
         XCTAssertTrue(texts(tree).contains("Finish signing in in your browser…"))
-        XCTAssertThrowsError(try tool.run(command: HomeSpeakerTool.Command.unmute))
+        XCTAssertThrowsError(try tool.run(command: VitruvianSpeakerTool.Command.unmute))
         driver.answer(.mute, .volume(Volume(speaker: "Kitchen", percent: 30, muted: true)))
         XCTAssertEqual(tool.setupBusy, .signIn(chatOnly: false), "the speaker's answer leaves the sign-in running")
         driver.answer(.signIn(chatOnly: false), .done(["signed in as unknown"]))
@@ -754,12 +754,12 @@ final class SettingsTests: XCTestCase {
         XCTAssertNil(tool.busy)
     }
 
-    func testSetupNeedsHomeSpeakerButNoSpeaker() {
+    func testSetupNeedsVitruvianSpeakerButNoSpeaker() {
         store.config = SpeakerConfig()
         let tool = opened()
         _ = event(tool, Pages.Block.signIn, .tap)
         XCTAssertEqual(tool.setupBusy, .signIn(chatOnly: false), "no default speaker is needed to sign in")
-        XCTAssertThrowsError(try tool.run(command: HomeSpeakerTool.Command.mute), "but a mute needs one")
+        XCTAssertThrowsError(try tool.run(command: VitruvianSpeakerTool.Command.mute), "but a mute needs one")
     }
 }
 

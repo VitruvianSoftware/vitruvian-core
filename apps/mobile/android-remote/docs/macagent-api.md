@@ -290,19 +290,19 @@ whole server after one slow tap would be worse than one that sees the sentence a
 Wrong or missing bearer → `401`. A caller that is not on loopback → `403`, checked before the token
 so a tailnet peer learns nothing about whether it guessed one.
 
-# HomeSpeaker (v1.4 and later)
+# Vitruvian Speaker (v1.4 and later)
 
-The full HomeSpeaker contract (`/v1/homespeaker`, `/v1/homespeaker/say`, `/v1/homespeaker/volume`)
+The full Vitruvian Speaker contract (`/v1/speaker`, `/v1/speaker/say`, `/v1/speaker/volume`)
 is in [`macagent/API.md`](https://github.com/VitruvianSoftware/vitruvian-core/blob/main/apps/mobile/android-remote/macagent/API.md).
 The newest additions are repeated here.
 
-## v1.10 additions: HomeSpeaker sources and replay
+## v1.10 additions: Vitruvian Speaker sources and replay
 
-HomeSpeaker 1.23 can switch each sender on and off under its master switch (`enabled`): the two
+Vitruvian Speaker 1.23 can switch each sender on and off under its master switch (`enabled`): the two
 coding agents, and the chat apps it watches. The phone gets the same switches, and a list of recent
 broadcasts it can replay with a tap.
 
-`GET /v1/homespeaker` gains:
+`GET /v1/speaker` gains:
 
 | Field | Read from the config file | When the key is absent |
 |---|---|---|
@@ -314,33 +314,33 @@ broadcasts it can replay with a tap.
 | `beeper_enabled` (bool) | `chat_monitor.beeper_enabled` | `false` |
 | `recent` (`[{text, target, source, at}]`) | the newest 5 of `~/.gemini/speaker_history.json`, newest first | `[]` |
 
-The defaults are HomeSpeaker's own: a config written before the agent switches existed still speaks
+The defaults are Vitruvian Speaker's own: a config written before the agent switches existed still speaks
 for both agents, and no chat app is read until someone turns it on. All six fields are always
 present from a v1.10 agent. `last` stays, and is `recent[0]` whenever both are present.
 
-`POST /v1/homespeaker` accepts the five switches as optional bools. The two agent switches are
+`POST /v1/speaker` accepts the five switches as optional bools. The two agent switches are
 written at the top level; the three chat switches are written **inside** `chat_monitor`, editing
-that object in place so every other key HomeSpeaker keeps there (poll interval, Beeper's URL and
+that object in place so every other key Vitruvian Speaker keeps there (poll interval, Beeper's URL and
 token, …) survives. A missing `chat_monitor` is created. As before, only the keys sent are written,
 and a body with none of the recognised fields is 400.
 
-**Replay** is `POST /v1/homespeaker/say` with the broadcast's `text`; no new endpoint. Two notes:
+**Replay** is `POST /v1/speaker/say` with the broadcast's `text`; no new endpoint. Two notes:
 
 - The agent runs `--say` with `CLAUDECODE`, `ANTIGRAVITY_AGENT` and `AI_AGENT` removed from the
-  child's environment. HomeSpeaker 1.23 infers who is speaking from those, so an agent started
+  child's environment. Vitruvian Speaker 1.23 infers who is speaking from those, so an agent started
   from a coding agent's shell would otherwise have a replay held by that agent's switch. Removing
-  them works on every HomeSpeaker version; passing `--source user` would be refused by one older
+  them works on every Vitruvian Speaker version; passing `--source user` would be refused by one older
   than 1.23.
-- HomeSpeaker's CLI has no flag that leaves its history alone, so a replay is listed again, as
+- Vitruvian Speaker's CLI has no flag that leaves its history alone, so a replay is listed again, as
   "Say".
 
 The phone reads a reply without the five switches as an agent older than v1.10 and hides them. With
 no `recent` it falls back to `last` as a one-row list.
 
-## HomeSpeaker parity additions
+## Vitruvian Speaker parity additions
 
-- **Door routing.** The HomeSpeaker door (`active_door`: `"app"` vs `"extension"`) is offered on the phone only when the extension is installed. Choosing `"extension"` without the extension installed returns 400. Switching doors copies nothing and repoints only stale hooks when choosing the extension.
+- **Door routing.** The Vitruvian Speaker door (`active_door`: `"app"` vs `"extension"`) is offered on the phone only when the extension is installed. Choosing `"extension"` without the extension installed returns 400. Switching doors copies nothing and repoints only stale hooks when choosing the extension.
 - **Google Cloud OAuth.** Google Cloud OAuth setup is always shown on the phone so custom client ID and secret can be configured directly.
 - **Chat access.** Chat access (`has_chat_access`) reflects Google Chat consent only (backed by `has_google_chat_token`). Slack and Beeper tokens have their own flags and do not grant Google Chat access.
-- **Agent hooks.** The phone can view and install, update, or remove HomeSpeaker hooks for Antigravity and OpenCode in addition to Claude Code (`agent_hook_action`: `"install:<agent>"`, `"remove:<agent>"`).
-- **Settings catalog pass-through.** `GET /v1/homespeaker` (and `POST /v1/homespeaker` read-back) relays Home Speaker's `settings[]` array (`{key, kind, label, value, shown, choices?, limits?}`), `outputs_label`, `outputs_footer`, and `targets[].display_line` verbatim from `--state --json` when `available: true`. Legacy top-level fields stay for older phones; current phones render labels, choices, numeric limits, and visibility from `settings[]` (substituting `"This phone"` for `"Your phone"`).
+- **Agent hooks.** The phone can view and install, update, or remove Vitruvian Speaker hooks for Antigravity and OpenCode in addition to Claude Code (`agent_hook_action`: `"install:<agent>"`, `"remove:<agent>"`).
+- **Settings catalog pass-through.** `GET /v1/speaker` (and `POST /v1/speaker` read-back) relays Vitruvian Speaker's `settings[]` array (`{key, kind, label, value, shown, choices?, limits?}`), `outputs_label`, `outputs_footer`, and `targets[].display_line` verbatim from `--state --json` when `available: true`. Legacy top-level fields stay for older phones; current phones render labels, choices, numeric limits, and visibility from `settings[]` (substituting `"This phone"` for `"Your phone"`).

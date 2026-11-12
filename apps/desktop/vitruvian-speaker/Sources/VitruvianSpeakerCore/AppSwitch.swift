@@ -41,7 +41,7 @@ public final class AppSwitch: ObservableObject {
     public struct Offers: Equatable, Sendable {
         /// Turn off the app's Open at Login. Ticked by default.
         public var loginItem = true
-        /// Move HomeSpeaker.app to the Trash. Not ticked by default.
+        /// Move Vitruvian Speaker.app to the Trash. Not ticked by default.
         public var trash = false
         public init(loginItem: Bool = true, trash: Bool = false) {
             self.loginItem = loginItem
@@ -51,15 +51,15 @@ public final class AppSwitch: ObservableObject {
 
     public struct Parts {
         /// The app's files.
-        public var appProfile: HomeSpeakerProfile
+        public var appProfile: VitruvianSpeakerProfile
         /// Where the coding agents keep their files.
         public var home: URL
         public var now: () -> Date
         /// `DoorCopy.copy`.
-        public var copy: (HomeSpeakerProfile, HomeSpeakerProfile) throws -> CopyReport
+        public var copy: (VitruvianSpeakerProfile, VitruvianSpeakerProfile) throws -> CopyReport
         /// Tells the side that took a copy to re-read its sign-ins, under
         /// that side's names.
-        public var credentialsChangedIn: (HomeSpeakerProfile) -> Void
+        public var credentialsChangedIn: (VitruvianSpeakerProfile) -> Void
         public var turnOffLoginItem: () throws -> Void
         /// Moves this app to the Trash, never deleting it.
         public var moveToTrash: () throws -> Void
@@ -68,9 +68,9 @@ public final class AppSwitch: ObservableObject {
         public var openVitruvian: () -> Bool
 
         public init(
-            appProfile: HomeSpeakerProfile, home: URL, now: @escaping () -> Date,
-            copy: @escaping (HomeSpeakerProfile, HomeSpeakerProfile) throws -> CopyReport,
-            credentialsChangedIn: @escaping (HomeSpeakerProfile) -> Void,
+            appProfile: VitruvianSpeakerProfile, home: URL, now: @escaping () -> Date,
+            copy: @escaping (VitruvianSpeakerProfile, VitruvianSpeakerProfile) throws -> CopyReport,
+            credentialsChangedIn: @escaping (VitruvianSpeakerProfile) -> Void,
             turnOffLoginItem: @escaping () throws -> Void, moveToTrash: @escaping () throws -> Void,
             quit: @escaping () -> Void, openVitruvian: @escaping () -> Bool
         ) {
@@ -107,12 +107,12 @@ public final class AppSwitch: ObservableObject {
     }
 
     /// The one in use, once the person has chosen and both are installed.
-    public var inUse: HomeSpeakerProfile.Door? {
+    public var inUse: VitruvianSpeakerProfile.Door? {
         guard door.extensionInstalled, door.record?.chosen != nil else { return nil }
         return door.plan.role.isQuiet ? .extension : .app
     }
 
-    private static func other(of side: HomeSpeakerProfile.Door) -> HomeSpeakerProfile.Door {
+    private static func other(of side: VitruvianSpeakerProfile.Door) -> VitruvianSpeakerProfile.Door {
         side == .app ? .extension : .app
     }
 
@@ -121,7 +121,7 @@ public final class AppSwitch: ObservableObject {
     }
 
     /// Step 2 for choosing `side`: what the other one has, beside it.
-    public func choose(_ side: HomeSpeakerProfile.Door) {
+    public func choose(_ side: VitruvianSpeakerProfile.Door) {
         begin(from: Self.other(of: side), into: side, purpose: .choose)
     }
 
@@ -131,7 +131,7 @@ public final class AppSwitch: ObservableObject {
         begin(from: Self.other(of: inUse), into: inUse, purpose: .copyOnly)
     }
 
-    private func begin(from: HomeSpeakerProfile.Door, into: HomeSpeakerProfile.Door, purpose: DoorCompare.Purpose) {
+    private func begin(from: VitruvianSpeakerProfile.Door, into: VitruvianSpeakerProfile.Door, purpose: DoorCompare.Purpose) {
         guard !door.plan.inTrash, canChooseExtension else { return }
         do {
             guard let compare = try SettingsActions.beginSwitch(
@@ -218,8 +218,8 @@ public final class AppSwitch: ObservableObject {
         let door: AppDoor
         let parts: Parts
 
-        var me: HomeSpeakerProfile.Door { .app }
-        var chosenBy: String { "HomeSpeaker app \(HomeSpeakerVersion.current)" }
+        var me: VitruvianSpeakerProfile.Door { .app }
+        var chosenBy: String { "Vitruvian Speaker app \(VitruvianSpeakerVersion.current)" }
 
         func now() -> Date { parts.now() }
 
@@ -231,11 +231,11 @@ public final class AppSwitch: ObservableObject {
             OtherDoorPresence.extensionInstalled(record: record, fileExists: door.check.fileExists)
         }
 
-        func profile(for side: HomeSpeakerProfile.Door, record: DoorRecord?) -> HomeSpeakerProfile? {
+        func profile(for side: VitruvianSpeakerProfile.Door, record: DoorRecord?) -> VitruvianSpeakerProfile? {
             side == .app ? parts.appProfile : AppStartup.extensionProfile(record: record)
         }
 
-        func program(for side: HomeSpeakerProfile.Door, record: DoorRecord?) -> String? {
+        func program(for side: VitruvianSpeakerProfile.Door, record: DoorRecord?) -> String? {
             switch side {
             case .app:
                 // When choosing `.app` from the app, `door.refresh()` runs
@@ -249,15 +249,15 @@ public final class AppSwitch: ObservableObject {
             }
         }
 
-        func copy(from source: HomeSpeakerProfile, to destination: HomeSpeakerProfile) throws -> CopyReport {
+        func copy(from source: VitruvianSpeakerProfile, to destination: VitruvianSpeakerProfile) throws -> CopyReport {
             try parts.copy(source, destination)
         }
 
-        func credentialsChanged(in destination: HomeSpeakerProfile) {
+        func credentialsChanged(in destination: VitruvianSpeakerProfile) {
             parts.credentialsChangedIn(destination)
         }
 
-        func writeChoice(_ side: HomeSpeakerProfile.Door, at date: Date, chosenBy: String) throws {
+        func writeChoice(_ side: VitruvianSpeakerProfile.Door, at date: Date, chosenBy: String) throws {
             try door.check.file.update {
                 $0.chosen = side
                 $0.chosenAt = date
@@ -265,7 +265,7 @@ public final class AppSwitch: ObservableObject {
             }
         }
 
-        func repointHooks(to side: HomeSpeakerProfile.Door, program: String) -> [String] {
+        func repointHooks(to side: VitruvianSpeakerProfile.Door, program: String) -> [String] {
             SettingsActions.repointStaleHooks(home: parts.home, to: program)
         }
 

@@ -20,10 +20,10 @@
 
 import Foundation
 import Testing
-@testable import HomeSpeakerCore
+@testable import VitruvianSpeakerCore
 
 /// Tests `--state --json` and `--apply --json '<changes>'` through the
-/// command-line functions (`HomeSpeakerCommandLine.action`, `.state`, `.apply`)
+/// command-line functions (`VitruvianSpeakerCommandLine.action`, `.state`, `.apply`)
 /// over scratch files and injected seams — never spawning a process or
 /// touching real user directories.
 @Suite("State & Apply CLI Contract")
@@ -41,10 +41,10 @@ struct StateContractTests {
         let history: BroadcastHistory
         let monitorStatusFile: ChatMonitorStatusFile
         let doorFile: DoorFile
-        let appProfile: HomeSpeakerProfile
-        let extProfile: HomeSpeakerProfile
-        let hookExecutablePath = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
-        let extExecutablePath = "/Users/test/Library/Application Support/Vitruvian/Tools/dev.vitruvian.homespeaker/bin/tool"
+        let appProfile: VitruvianSpeakerProfile
+        let extProfile: VitruvianSpeakerProfile
+        let hookExecutablePath = "/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker"
+        let extExecutablePath = "/Users/test/Library/Application Support/Vitruvian/Tools/dev.vitruvian.speaker/bin/tool"
 
         static let systemVoices: [LocalVoice] = [
             LocalVoice(id: "com.apple.voice.premium.en-US.Ava", name: "Ava", language: "en-US", quality: .premium),
@@ -65,7 +65,7 @@ struct StateContractTests {
 
         init() throws {
             root = FileManager.default.temporaryDirectory
-                .appendingPathComponent("homespeaker-state-contract-\(UUID().uuidString)", isDirectory: true)
+                .appendingPathComponent("vitruvian-speaker-state-contract-\(UUID().uuidString)", isDirectory: true)
             appDir = root.appendingPathComponent("app-data", isDirectory: true)
             extDir = root.appendingPathComponent("ext-data", isDirectory: true)
             agentHome = root.appendingPathComponent("agent-home", isDirectory: true)
@@ -79,21 +79,21 @@ struct StateContractTests {
             monitorStatusFile = ChatMonitorStatusFile(url: appDir.appendingPathComponent("speaker_monitor_status.json"))
             doorFile = DoorFile(url: root.appendingPathComponent("speaker_door.json"))
 
-            appProfile = HomeSpeakerProfile(
+            appProfile = VitruvianSpeakerProfile(
                 door: .app,
                 settingsURL: configFile.url,
                 historyURL: history.fileURL,
                 secretsURL: secrets.fileURL,
-                messagePrefix: "com.vitruviansoftware.homespeaker.test.\(UUID().uuidString)",
+                messagePrefix: "com.vitruviansoftware.speaker.test.\(UUID().uuidString)",
                 liveLockURL: nil,
                 toolFolder: nil
             )
-            extProfile = HomeSpeakerProfile(
+            extProfile = VitruvianSpeakerProfile(
                 door: .extension,
                 settingsURL: extDir.appendingPathComponent("speaker_broadcast.json"),
                 historyURL: extDir.appendingPathComponent("speaker_history.json"),
                 secretsURL: extDir.appendingPathComponent("secrets.json"),
-                messagePrefix: "com.vitruviansoftware.homespeaker.ext.test.\(UUID().uuidString)",
+                messagePrefix: "com.vitruviansoftware.speaker.ext.test.\(UUID().uuidString)",
                 liveLockURL: extDir.appendingPathComponent("running.lock"),
                 toolFolder: extDir.appendingPathComponent("tool", isDirectory: true)
             )
@@ -109,7 +109,7 @@ struct StateContractTests {
         }
 
         func makeSeam(
-            program: HomeSpeakerProfile.Door = .app,
+            program: VitruvianSpeakerProfile.Door = .app,
             otherInstalled: Bool = true,
             appRunning: Bool = true,
             extensionRunning: Bool = false,
@@ -120,10 +120,10 @@ struct StateContractTests {
             doorSwitchSeam: (any SettingsActions.DoorSwitchSeam)? = nil,
             credentialsChanged: @escaping @Sendable () -> Void = {},
             launchctlBootout: @escaping @Sendable (String) -> Void = { _ in }
-        ) -> HomeSpeakerStateContract.Seam {
-            HomeSpeakerStateContract.Seam(
+        ) -> VitruvianSpeakerStateContract.Seam {
+            VitruvianSpeakerStateContract.Seam(
                 program: program,
-                homeSpeakerVersion: { "1.19.1" },
+                vitruvianSpeakerVersion: { "1.19.1" },
                 configFile: configFile,
                 secrets: secrets,
                 history: history,
@@ -261,7 +261,7 @@ struct StateContractTests {
             try doorFile.update {
                 $0.chosen = .app
                 $0.chosenAt = Self.fixedDate.addingTimeInterval(-3600)
-                $0.chosenBy = "HomeSpeaker app 1.19.1"
+                $0.chosenBy = "Vitruvian Speaker app 1.19.1"
                 $0.installedExtension = DoorRecord.ExtensionEntry(
                     program: extExecutablePath,
                     dataFolder: extDir.path,
@@ -320,7 +320,7 @@ struct StateContractTests {
             let workspace = env["TEST_WORKSPACE"] ?? "_main"
             let bazel = URL(fileURLWithPath: runfiles)
                 .appendingPathComponent(workspace)
-                .appendingPathComponent("apps/desktop/home-speaker/testdata")
+                .appendingPathComponent("apps/desktop/vitruvian-speaker/testdata")
                 .appendingPathComponent(filename)
             if FileManager.default.fileExists(atPath: bazel.path) {
                 return bazel
@@ -336,7 +336,7 @@ struct StateContractTests {
 
     // MARK: - 1. Golden `--state --json` Document & Both Programs Answering
 
-    @Test("Golden --state --json output matches testdata/state_v1.json and runs through HomeSpeakerCommandLine.action")
+    @Test("Golden --state --json output matches testdata/state_v1.json and runs through VitruvianSpeakerCommandLine.action")
     @MainActor
     func goldenStateMatchesTestdata() throws {
         let rig = try ScratchRig()
@@ -344,10 +344,10 @@ struct StateContractTests {
         try rig.seedGoldenFixture()
 
         let seam = rig.makeSeam(program: .app)
-        let engine = HomeSpeakerEngine(profile: rig.appProfile)
-        let parts = HomeSpeakerCommandLine.Parts.app(stateSeam: { _ in seam })
+        let engine = VitruvianSpeakerEngine(profile: rig.appProfile)
+        let parts = VitruvianSpeakerCommandLine.Parts.app(stateSeam: { _ in seam })
 
-        guard case .now(let out) = HomeSpeakerCommandLine.action(
+        guard case .now(let out) = VitruvianSpeakerCommandLine.action(
             for: ["--state", "--json"],
             engine: engine,
             parts: parts
@@ -370,7 +370,7 @@ struct StateContractTests {
         let actualDict = try #require(
             JSONSerialization.jsonObject(with: Data(actualJSON.utf8)) as? [String: Any]
         )
-        #expect(actualJSON == HomeSpeakerStateContract.encodeJSON(expectedDict))
+        #expect(actualJSON == VitruvianSpeakerStateContract.encodeJSON(expectedDict))
         #expect(NSDictionary(dictionary: actualDict) == NSDictionary(dictionary: expectedDict))
     }
 
@@ -380,10 +380,10 @@ struct StateContractTests {
         defer { rig.cleanup() }
         try rig.seedGoldenFixture()
 
-        for chosen in [HomeSpeakerProfile.Door?.some(.app), .some(.extension), nil] {
+        for chosen in [VitruvianSpeakerProfile.Door?.some(.app), .some(.extension), nil] {
             try rig.doorFile.update { $0.chosen = chosen }
-            for program in [HomeSpeakerProfile.Door.app, .extension] {
-                let out = HomeSpeakerCommandLine.state(seam: rig.makeSeam(program: program))
+            for program in [VitruvianSpeakerProfile.Door.app, .extension] {
+                let out = VitruvianSpeakerCommandLine.state(seam: rig.makeSeam(program: program))
                 #expect(out.exitCode == 0)
                 let parsed = try #require(
                     JSONSerialization.jsonObject(with: Data(out.stdout[0].utf8)) as? [String: Any]
@@ -411,7 +411,7 @@ struct StateContractTests {
         try rig.seedGoldenFixture()
 
         let seam = rig.makeSeam()
-        let stateOut = HomeSpeakerCommandLine.state(seam: seam)
+        let stateOut = VitruvianSpeakerCommandLine.state(seam: seam)
         let stateText = (stateOut.stdout + stateOut.stderr).joined(separator: "\n")
 
         for canary in ScratchRig.secretCanaries {
@@ -419,7 +419,7 @@ struct StateContractTests {
         }
 
         let applyPayload = #"{"contract_version":1,"operations":[{"op":"set","key":"speech_length","value":"full"}]}"#
-        let applyOut = HomeSpeakerCommandLine.apply(applyPayload, seam: seam)
+        let applyOut = VitruvianSpeakerCommandLine.apply(applyPayload, seam: seam)
         #expect(applyOut.exitCode == 0)
         let applyText = (applyOut.stdout + applyOut.stderr).joined(separator: "\n")
 
@@ -455,7 +455,7 @@ struct StateContractTests {
 
         let switchSeam = SettingsActions.RecordingDoorSwitchSeam(
             me: .app,
-            chosenBy: "HomeSpeaker app 1.19.1",
+            chosenBy: "Vitruvian Speaker app 1.19.1",
             doorFile: rig.doorFile,
             home: rig.agentHome,
             appProfile: rig.appProfile,
@@ -467,8 +467,8 @@ struct StateContractTests {
             otherRunning: true
         )
         let seam = rig.makeSeam(program: .app, doorSwitchSeam: switchSeam)
-        let engine = HomeSpeakerEngine(profile: rig.appProfile)
-        let parts = HomeSpeakerCommandLine.Parts.app(stateSeam: { _ in seam })
+        let engine = VitruvianSpeakerEngine(profile: rig.appProfile)
+        let parts = VitruvianSpeakerCommandLine.Parts.app(stateSeam: { _ in seam })
 
         // Batch 1: set (bool, choice, number with clamp warning, time, text), setDefaultSpeaker, removeSpeaker, clearChatToken
         let batch1 = """
@@ -488,7 +488,7 @@ struct StateContractTests {
         }
         """
 
-        guard case .headless(let timeout, let timedOut, let body1) = HomeSpeakerCommandLine.action(
+        guard case .headless(let timeout, let timedOut, let body1) = VitruvianSpeakerCommandLine.action(
             for: ["--apply", "--json", batch1],
             engine: engine,
             parts: parts
@@ -544,7 +544,7 @@ struct StateContractTests {
           ]
         }
         """
-        let out2 = HomeSpeakerCommandLine.apply(batch2, seam: seam)
+        let out2 = VitruvianSpeakerCommandLine.apply(batch2, seam: seam)
         #expect(out2.exitCode == 0)
         let resp2 = try #require(JSONSerialization.jsonObject(with: Data(out2.stdout[0].utf8)) as? [String: Any])
         #expect(resp2["ok"] as? Bool == true)
@@ -565,7 +565,7 @@ struct StateContractTests {
           ]
         }
         """
-        let out3 = HomeSpeakerCommandLine.apply(batch3, seam: seam)
+        let out3 = VitruvianSpeakerCommandLine.apply(batch3, seam: seam)
         #expect(out3.exitCode == 0)
         let resp3 = try #require(JSONSerialization.jsonObject(with: Data(out3.stdout[0].utf8)) as? [String: Any])
         #expect(resp3["ok"] as? Bool == true)
@@ -595,7 +595,7 @@ struct StateContractTests {
 
         let switchNotInstalledSeam = SettingsActions.RecordingDoorSwitchSeam(
             me: .app,
-            chosenBy: "HomeSpeaker app 1.19.1",
+            chosenBy: "Vitruvian Speaker app 1.19.1",
             doorFile: rig.doorFile,
             home: rig.agentHome,
             appProfile: rig.appProfile,
@@ -633,7 +633,7 @@ struct StateContractTests {
               ]
             }
             """
-            let out = HomeSpeakerCommandLine.apply(payload, seam: seam)
+            let out = VitruvianSpeakerCommandLine.apply(payload, seam: seam)
             #expect(out.exitCode == 1, "Expected exitCode 1 for \(expectedCode)")
             let parsed = try #require(JSONSerialization.jsonObject(with: Data(out.stdout[0].utf8)) as? [String: Any])
             #expect(parsed["ok"] as? Bool == false)
@@ -647,7 +647,7 @@ struct StateContractTests {
         }
 
         // Also verify standalone switchTo when target side is not installed refuses with switch_refused at op_index 0.
-        let switchAloneOut = HomeSpeakerCommandLine.apply(
+        let switchAloneOut = VitruvianSpeakerCommandLine.apply(
             #"{"contract_version":1,"operations":[{"op":"switchTo","side":"extension"}]}"#,
             seam: seam
         )
@@ -672,7 +672,7 @@ struct StateContractTests {
         // 1. Extension is chosen in speaker_door.json; running --apply on app refuses.
         try rig.doorFile.update { $0.chosen = .extension }
         let appSeam = rig.makeSeam(program: .app)
-        let appOut = HomeSpeakerCommandLine.apply(
+        let appOut = VitruvianSpeakerCommandLine.apply(
             #"{"contract_version":1,"operations":[{"op":"set","key":"enabled","value":false}]}"#,
             seam: appSeam
         )
@@ -688,7 +688,7 @@ struct StateContractTests {
         // 2. App is chosen in speaker_door.json; running --apply on extension refuses.
         try rig.doorFile.update { $0.chosen = .app }
         let extSeam = rig.makeSeam(program: .extension)
-        let extOut = HomeSpeakerCommandLine.apply(
+        let extOut = VitruvianSpeakerCommandLine.apply(
             #"{"contract_version":1,"operations":[{"op":"set","key":"enabled","value":false}]}"#,
             seam: extSeam
         )
@@ -721,7 +721,7 @@ struct StateContractTests {
         ]
 
         for (input, expectedCode) in badInputs {
-            let out = HomeSpeakerCommandLine.apply(input, seam: seam)
+            let out = VitruvianSpeakerCommandLine.apply(input, seam: seam)
             #expect(out.exitCode == 1, "Expected exit 1 for \(expectedCode)")
             let parsed = try #require(JSONSerialization.jsonObject(with: Data(out.stdout[0].utf8)) as? [String: Any])
             #expect(parsed["ok"] as? Bool == false)
@@ -773,7 +773,7 @@ struct StateContractTests {
         let seam = rig.makeSeam()
 
         // Apply a set operation
-        let setOut = HomeSpeakerCommandLine.apply(
+        let setOut = VitruvianSpeakerCommandLine.apply(
             #"{"contract_version":1,"operations":[{"op":"set","key":"speech_length","value":"headline"}]}"#,
             seam: seam
         )
@@ -792,7 +792,7 @@ struct StateContractTests {
         #expect(voicesAfterSet?.first?["future_voice_field"] as? String == "keep-voice-field")
 
         // Apply a reset operation — top-level, target, and chat_monitor unknown keys still survive!
-        let resetOut = HomeSpeakerCommandLine.apply(
+        let resetOut = VitruvianSpeakerCommandLine.apply(
             #"{"contract_version":1,"operations":[{"op":"reset"}]}"#,
             seam: seam
         )
@@ -875,7 +875,7 @@ struct StateContractTests {
                         lock.unlock()
                         return
                     }
-                    let out = HomeSpeakerCommandLine.apply(payload, seam: seam)
+                    let out = VitruvianSpeakerCommandLine.apply(payload, seam: seam)
                     lock.lock()
                     exitCodes[idx] = out.exitCode
                     lock.unlock()
@@ -959,7 +959,7 @@ struct StateContractTests {
         let seam = rig.makeSeam()
 
         // (a) Apply {"op":"set","key":"custom_style_prompt","value":""}
-        let clearPromptOut = HomeSpeakerCommandLine.apply(
+        let clearPromptOut = VitruvianSpeakerCommandLine.apply(
             #"{"contract_version":1,"operations":[{"op":"set","key":"custom_style_prompt","value":""}]}"#,
             seam: seam
         )
@@ -973,7 +973,7 @@ struct StateContractTests {
         #expect(promptOnDisk != "Pirate voice")
 
         // (b) Apply {"op":"reset"}
-        let resetOut = HomeSpeakerCommandLine.apply(
+        let resetOut = VitruvianSpeakerCommandLine.apply(
             #"{"contract_version":1,"operations":[{"op":"reset"}]}"#,
             seam: seam
         )
@@ -1004,7 +1004,7 @@ struct StateContractTests {
         for key in keys {
             for rawVal in rawValues {
                 let payload = #"{"contract_version":1,"operations":[{"op":"set","key":"\#(key)","value":\#(rawVal)}]}"#
-                let out = HomeSpeakerCommandLine.apply(payload, seam: seam)
+                let out = VitruvianSpeakerCommandLine.apply(payload, seam: seam)
                 #expect(out.exitCode == 0 || out.exitCode == 1)
                 #expect(!out.stdout.isEmpty)
                 let parsed = try #require(
@@ -1028,7 +1028,7 @@ struct StateContractTests {
             appInstalled: { true },
             fileExists: { path in path == rig.extExecutablePath }
         )
-        let bundleDir = rig.root.appendingPathComponent("HomeSpeaker.app", isDirectory: true)
+        let bundleDir = rig.root.appendingPathComponent("Vitruvian Speaker.app", isDirectory: true)
         try FileManager.default.createDirectory(at: bundleDir, withIntermediateDirectories: true)
 
         let parts = AppStartup.commandLineParts(
@@ -1049,13 +1049,13 @@ struct StateContractTests {
         // Run --apply switchTo extension with copy: true using the real CommandLineSwitchSeam.
         var testSeam = rig.makeSeam()
         testSeam.doorSwitchSeam = liveSeam.doorSwitchSeam
-        let out = HomeSpeakerCommandLine.apply(
+        let out = VitruvianSpeakerCommandLine.apply(
             #"{"contract_version":1,"operations":[{"op":"switchTo","side":"extension","copy":true}]}"#,
             seam: testSeam
         )
         #expect(out.exitCode == 0)
         #expect(rig.doorFile.read()?.chosen == .extension)
-        #expect(rig.doorFile.read()?.chosenBy == "HomeSpeaker app \(HomeSpeakerVersion.current)")
+        #expect(rig.doorFile.read()?.chosenBy == "Vitruvian Speaker app \(VitruvianSpeakerVersion.current)")
         let extIntegration = AgentIntegration(home: rig.agentHome, executablePath: rig.extExecutablePath, bootout: { _ in })
         #expect(extIntegration.status(of: .claudeCode).hook == .installed)
     }
@@ -1070,7 +1070,7 @@ struct StateContractTests {
 
         let switchSeam = SettingsActions.RecordingDoorSwitchSeam(
             me: .app,
-            chosenBy: "HomeSpeaker app 1.19.1",
+            chosenBy: "Vitruvian Speaker app 1.19.1",
             doorFile: rig.doorFile,
             home: rig.agentHome,
             appProfile: rig.appProfile,
@@ -1095,7 +1095,7 @@ struct StateContractTests {
           ]
         }
         """
-        let outTwo = HomeSpeakerCommandLine.apply(twoSwitches, seam: seam)
+        let outTwo = VitruvianSpeakerCommandLine.apply(twoSwitches, seam: seam)
         #expect(outTwo.exitCode == 1)
         let parsedTwo = try #require(JSONSerialization.jsonObject(with: Data(outTwo.stdout[0].utf8)) as? [String: Any])
         #expect(parsedTwo["ok"] as? Bool == false)
@@ -1115,7 +1115,7 @@ struct StateContractTests {
           ]
         }
         """
-        let outSetAndSwitch = HomeSpeakerCommandLine.apply(setAndSwitch, seam: seam)
+        let outSetAndSwitch = VitruvianSpeakerCommandLine.apply(setAndSwitch, seam: seam)
         #expect(outSetAndSwitch.exitCode == 1)
         let parsedSetAndSwitch = try #require(JSONSerialization.jsonObject(with: Data(outSetAndSwitch.stdout[0].utf8)) as? [String: Any])
         #expect(parsedSetAndSwitch["ok"] as? Bool == false)
@@ -1139,7 +1139,7 @@ struct StateContractTests {
           ]
         }
         """
-        let outFail = HomeSpeakerCommandLine.apply(failingSwitchAlone, seam: seam)
+        let outFail = VitruvianSpeakerCommandLine.apply(failingSwitchAlone, seam: seam)
         #expect(outFail.exitCode == 1)
         let parsedFail = try #require(JSONSerialization.jsonObject(with: Data(outFail.stdout[0].utf8)) as? [String: Any])
         #expect(parsedFail["ok"] as? Bool == false)
@@ -1172,7 +1172,7 @@ struct StateContractTests {
             return ScratchRig.systemVoices
         }
 
-        let applyOut = HomeSpeakerCommandLine.apply(
+        let applyOut = VitruvianSpeakerCommandLine.apply(
             #"{"contract_version":1,"operations":[{"op":"saveOAuthClient","client_id":"cli-client-id.apps.googleusercontent.com","client_secret":"cli-secret"},{"op":"set","key":"local_voice","value":"com.apple.voice.premium.en-US.Ava"}]}"#,
             seam: seam
         )
@@ -1190,7 +1190,7 @@ struct StateContractTests {
     func liveSeamTakesAntigravityTokensFromItsAgentHome() throws {
         let rig = try ScratchRig()
         defer { rig.cleanup() }
-        let seam = HomeSpeakerStateContract.Seam.live(
+        let seam = VitruvianSpeakerStateContract.Seam.live(
             for: rig.appProfile, agentHome: rig.agentHome, doorSwitchSeam: { nil })
         #expect(seam.antigravityTokensURL.path.hasPrefix(rig.agentHome.path))
     }
@@ -1224,7 +1224,7 @@ struct StateContractTests {
             """,
         ]
         for payload in payloads {
-            let out = HomeSpeakerCommandLine.apply(payload, seam: seam)
+            let out = VitruvianSpeakerCommandLine.apply(payload, seam: seam)
             #expect(out.exitCode == 1)
             let parsed = try #require(JSONSerialization.jsonObject(with: Data(out.stdout[0].utf8)) as? [String: Any])
             let err = try #require(parsed["error"] as? [String: Any])
@@ -1241,7 +1241,7 @@ struct StateContractTests {
 
         let switchSeam = SettingsActions.RecordingDoorSwitchSeam(
             me: .app,
-            chosenBy: "HomeSpeaker app 1.19.1",
+            chosenBy: "Vitruvian Speaker app 1.19.1",
             doorFile: rig.doorFile,
             home: rig.agentHome,
             appProfile: rig.appProfile,
@@ -1279,7 +1279,7 @@ struct StateContractTests {
         ]
 
         for (payload, expectedIndex) in batches {
-            let out = HomeSpeakerCommandLine.apply(payload, seam: seam)
+            let out = VitruvianSpeakerCommandLine.apply(payload, seam: seam)
             #expect(out.exitCode == 1)
             let parsed = try #require(JSONSerialization.jsonObject(with: Data(out.stdout[0].utf8)) as? [String: Any])
             #expect(parsed["ok"] as? Bool == false)
@@ -1314,7 +1314,7 @@ struct StateContractTests {
           ]
         }
         """
-        let out = HomeSpeakerCommandLine.apply(payload, seam: seam)
+        let out = VitruvianSpeakerCommandLine.apply(payload, seam: seam)
         #expect(out.exitCode == 1)
         let parsed = try #require(JSONSerialization.jsonObject(with: Data(out.stdout[0].utf8)) as? [String: Any])
         #expect(parsed["ok"] as? Bool == false)
@@ -1344,7 +1344,7 @@ struct StateContractTests {
         ]
 
         for (payload, expectedExit) in payloads {
-            let out = HomeSpeakerCommandLine.apply(payload, seam: seam)
+            let out = VitruvianSpeakerCommandLine.apply(payload, seam: seam)
             #expect(out.exitCode == expectedExit)
             let combined = (out.stdout + out.stderr).joined(separator: "\n")
             for canary in allCanaries {
@@ -1377,7 +1377,7 @@ struct StateContractTests {
         ]
 
         for (input, expectedCode) in cases {
-            let out = HomeSpeakerCommandLine.apply(input, seam: seam)
+            let out = VitruvianSpeakerCommandLine.apply(input, seam: seam)
             #expect(out.exitCode == 1, "Expected exit 1 for \(input)")
             let parsed = try #require(JSONSerialization.jsonObject(with: Data(out.stdout[0].utf8)) as? [String: Any])
             #expect(parsed["ok"] as? Bool == false)
@@ -1416,7 +1416,7 @@ struct StateContractTests {
           ]
         }
         """
-        let outSet = HomeSpeakerCommandLine.apply(setPayload, seam: seam)
+        let outSet = VitruvianSpeakerCommandLine.apply(setPayload, seam: seam)
         #expect(outSet.exitCode == 0)
         let combinedSet = (outSet.stdout + outSet.stderr).joined(separator: "\n")
         for canary in canaries {
@@ -1449,7 +1449,7 @@ struct StateContractTests {
           ]
         }
         """
-        let outClear = HomeSpeakerCommandLine.apply(clearPayload, seam: seam)
+        let outClear = VitruvianSpeakerCommandLine.apply(clearPayload, seam: seam)
         #expect(outClear.exitCode == 0)
         let combinedClear = (outClear.stdout + outClear.stderr).joined(separator: "\n")
         for canary in canaries {
@@ -1475,7 +1475,7 @@ struct StateContractTests {
             (#"{"contract_version":1,"operations":[{"op":"setSecret","name":"slack","value":123}]}"#, "missing_value"),
         ]
         for (payload, expectedCode) in refusalCases {
-            let out = HomeSpeakerCommandLine.apply(payload, seam: seam)
+            let out = VitruvianSpeakerCommandLine.apply(payload, seam: seam)
             #expect(out.exitCode == 1)
             let combined = (out.stdout + out.stderr).joined(separator: "\n")
             for canary in canaries {
@@ -1510,7 +1510,7 @@ struct StateContractTests {
           ]
         }
         """
-        let outFailSecond = HomeSpeakerCommandLine.apply(failSecond, seam: seam)
+        let outFailSecond = VitruvianSpeakerCommandLine.apply(failSecond, seam: seam)
         #expect(outFailSecond.exitCode == 1)
         #expect(!(outFailSecond.stdout + outFailSecond.stderr).joined(separator: "\n").contains("SECRET-BATCH-COURIER-1"))
         #expect(try Data(contentsOf: rig.configFile.url) == beforeConfigBytes)
@@ -1526,7 +1526,7 @@ struct StateContractTests {
           ]
         }
         """
-        let outFailSecret = HomeSpeakerCommandLine.apply(failSecret, seam: seam)
+        let outFailSecret = VitruvianSpeakerCommandLine.apply(failSecret, seam: seam)
         #expect(outFailSecret.exitCode == 1)
         #expect(!(outFailSecret.stdout + outFailSecret.stderr).joined(separator: "\n").contains("SECRET-BATCH-COURIER-2"))
         #expect(try Data(contentsOf: rig.configFile.url) == beforeConfigBytes)
@@ -1542,7 +1542,7 @@ struct StateContractTests {
           ]
         }
         """
-        let outBoth = HomeSpeakerCommandLine.apply(succeedBoth, seam: seam)
+        let outBoth = VitruvianSpeakerCommandLine.apply(succeedBoth, seam: seam)
         #expect(outBoth.exitCode == 0)
         #expect(!(outBoth.stdout + outBoth.stderr).joined(separator: "\n").contains("SECRET-BATCH-COURIER-OK"))
         #expect(rig.secrets.load().courierToken == "SECRET-BATCH-COURIER-OK")
@@ -1558,7 +1558,7 @@ struct StateContractTests {
         let seam = rig.makeSeam(program: .app)
 
         // Set snooze for 45 minutes from fixedDate (2026-11-10T23:15:00Z -> 2026-11-11T00:00:00Z)
-        let outSnooze = HomeSpeakerCommandLine.apply(
+        let outSnooze = VitruvianSpeakerCommandLine.apply(
             #"{"contract_version":1,"operations":[{"op":"snooze","minutes":45}]}"#,
             seam: seam
         )
@@ -1569,7 +1569,7 @@ struct StateContractTests {
         #expect(rig.readConfig()?.snoozeUntil == ScratchRig.fixedDate.addingTimeInterval(45 * 60))
 
         // Clear snooze
-        let outClear = HomeSpeakerCommandLine.apply(
+        let outClear = VitruvianSpeakerCommandLine.apply(
             #"{"contract_version":1,"operations":[{"op":"snooze","clear":true}]}"#,
             seam: seam
         )
@@ -1591,7 +1591,7 @@ struct StateContractTests {
             (#"{"contract_version":1,"operations":[{"op":"snooze","clear":true,"minutes":30}]}"#, "invalid_snooze"),
         ]
         for (payload, expectedCode) in refusalCases {
-            let out = HomeSpeakerCommandLine.apply(payload, seam: seam)
+            let out = VitruvianSpeakerCommandLine.apply(payload, seam: seam)
             #expect(out.exitCode == 1, "Expected exit 1 for \(payload)")
             let parsed = try #require(JSONSerialization.jsonObject(with: Data(out.stdout[0].utf8)) as? [String: Any])
             let err = try #require(parsed["error"] as? [String: Any])
@@ -1618,7 +1618,7 @@ struct StateContractTests {
           ]
         }
         """
-        let out = HomeSpeakerCommandLine.apply(payload, seam: seam)
+        let out = VitruvianSpeakerCommandLine.apply(payload, seam: seam)
         #expect(out.exitCode == 0)
         let cfg = try #require(rig.readConfig())
         #expect(cfg.effectiveChatMonitor.beeperMutedNetworks == ["whatsapp"])
@@ -1644,7 +1644,7 @@ struct StateContractTests {
             (#"{"contract_version":1,"operations":[{"op":"setReadAnyway","key":"slack","on":1}]}"#, "wrong_kind"),
         ]
         for (payload, expectedCode) in refusalCases {
-            let outRefusal = HomeSpeakerCommandLine.apply(payload, seam: seam)
+            let outRefusal = VitruvianSpeakerCommandLine.apply(payload, seam: seam)
             #expect(outRefusal.exitCode == 1)
             let parsedRefusal = try #require(JSONSerialization.jsonObject(with: Data(outRefusal.stdout[0].utf8)) as? [String: Any])
             let err = try #require(parsedRefusal["error"] as? [String: Any])
@@ -1664,7 +1664,7 @@ struct StateContractTests {
         seam.antigravityTokensURL = tokensURL
 
         // 1. Missing token file -> refuse with no_antigravity_tokens
-        let outMissing = HomeSpeakerCommandLine.apply(
+        let outMissing = VitruvianSpeakerCommandLine.apply(
             #"{"contract_version":1,"operations":[{"op":"importAntigravity"}]}"#,
             seam: seam
         )
@@ -1691,7 +1691,7 @@ struct StateContractTests {
         ]
         try JSONSerialization.data(withJSONObject: tokenJSON, options: [.prettyPrinted, .sortedKeys]).write(to: tokensURL)
 
-        let outImport = HomeSpeakerCommandLine.apply(
+        let outImport = VitruvianSpeakerCommandLine.apply(
             #"{"contract_version":1,"operations":[{"op":"importAntigravity"}]}"#,
             seam: seam
         )
@@ -1744,7 +1744,7 @@ struct StateContractTests {
         ]
         var outInstall = CLIOutput(stdout: [], exitCode: -1)
         for op in installOps {
-            outInstall = HomeSpeakerCommandLine.apply(#"{"contract_version": 1, "operations": ["# + op + "]}", seam: appSeam)
+            outInstall = VitruvianSpeakerCommandLine.apply(#"{"contract_version": 1, "operations": ["# + op + "]}", seam: appSeam)
             #expect(outInstall.exitCode == 0, "install failed: \(op)")
         }
         #expect(outInstall.exitCode == 0)
@@ -1763,7 +1763,7 @@ struct StateContractTests {
         #expect(ocAfterInstall["configured_by_instruction"] as? Bool == true)
 
         // 2. Remove claude_code hook and verify settings.json is byte-for-byte identical to beforeBytes!
-        let outRemove = HomeSpeakerCommandLine.apply(
+        let outRemove = VitruvianSpeakerCommandLine.apply(
             #"{"contract_version":1,"operations":[{"op":"agentHook","agent":"claude_code","action":"remove"}]}"#,
             seam: appSeam
         )
@@ -1778,7 +1778,7 @@ struct StateContractTests {
             $0.chosenBy = "test"
         }
         let extSeam = rig.makeSeam(program: .extension)
-        let outExtInstall = HomeSpeakerCommandLine.apply(
+        let outExtInstall = VitruvianSpeakerCommandLine.apply(
             #"{"contract_version":1,"operations":[{"op":"agentHook","agent":"claude_code","action":"install"}]}"#,
             seam: extSeam
         )
@@ -1791,20 +1791,20 @@ struct StateContractTests {
         #expect(ccExt["hook_program"] as? String == rig.extExecutablePath)
 
         // Remove again -> still byte-for-byte identical to beforeBytes
-        let outExtRemove = HomeSpeakerCommandLine.apply(
+        let outExtRemove = VitruvianSpeakerCommandLine.apply(
             #"{"contract_version":1,"operations":[{"op":"agentHook","agent":"claude_code","action":"remove"}]}"#,
             seam: extSeam
         )
         #expect(outExtRemove.exitCode == 0)
         #expect(try Data(contentsOf: claudeSettingsURL) == beforeBytes)
 
-        // 4. Refusals: invalid agent, invalid action, non-HomeSpeaker executable
+        // 4. Refusals: invalid agent, invalid action, non-Vitruvian Speaker executable
         let refusalCases: [(payload: String, expectedCode: String)] = [
             (#"{"contract_version":1,"operations":[{"op":"agentHook","agent":"cursor","action":"install"}]}"#, "invalid_agent"),
             (#"{"contract_version":1,"operations":[{"op":"agentHook","agent":"claude_code","action":"toggle"}]}"#, "invalid_action"),
         ]
         for (payload, expectedCode) in refusalCases {
-            let outRef = HomeSpeakerCommandLine.apply(payload, seam: extSeam)
+            let outRef = VitruvianSpeakerCommandLine.apply(payload, seam: extSeam)
             #expect(outRef.exitCode == 1)
             let parsedRef = try #require(JSONSerialization.jsonObject(with: Data(outRef.stdout[0].utf8)) as? [String: Any])
             let errRef = try #require(parsedRef["error"] as? [String: Any])
@@ -1813,7 +1813,7 @@ struct StateContractTests {
 
         var badExeSeam = extSeam
         badExeSeam.hookExecutablePath = "/usr/bin/true"
-        let outBadExe = HomeSpeakerCommandLine.apply(
+        let outBadExe = VitruvianSpeakerCommandLine.apply(
             #"{"contract_version":1,"operations":[{"op":"agentHook","agent":"claude_code","action":"install"}]}"#,
             seam: badExeSeam
         )
@@ -1842,7 +1842,7 @@ struct StateContractTests {
             #"{"op":"removeLegacyAgent"}"#,
         ]
         for op in ops {
-            let out = HomeSpeakerCommandLine.apply(
+            let out = VitruvianSpeakerCommandLine.apply(
                 #"{"contract_version":1,"operations":[\#(op)]}"#,
                 seam: unchosenSeam
             )
@@ -1855,7 +1855,7 @@ struct StateContractTests {
         }
     }
 
-    // MARK: - Running Home Speaker notices secret changes; rival hook; legacy agent
+    // MARK: - Running Vitruvian Speaker notices secret changes; rival hook; legacy agent
 
     private final class Recorder: @unchecked Sendable {
         private let lock = NSLock()
@@ -1864,8 +1864,8 @@ struct StateContractTests {
         var all: [String] { lock.lock(); defer { lock.unlock() }; return items }
     }
 
-    private func applyJSON(_ ops: [String], seam: HomeSpeakerStateContract.Seam) -> CLIOutput {
-        HomeSpeakerCommandLine.apply(#"{"contract_version":1,"operations":[\#(ops.joined(separator: ","))]}"#, seam: seam)
+    private func applyJSON(_ ops: [String], seam: VitruvianSpeakerStateContract.Seam) -> CLIOutput {
+        VitruvianSpeakerCommandLine.apply(#"{"contract_version":1,"operations":[\#(ops.joined(separator: ","))]}"#, seam: seam)
     }
 
     @Test("A successful batch that changed a secret tells the running app once; failed or secret-free batches stay silent")
@@ -1927,7 +1927,7 @@ struct StateContractTests {
         let rig = try ScratchRig()
         defer { rig.cleanup() }
         try rig.seedGoldenFixture()
-        let seam = HomeSpeakerStateContract.Seam(
+        let seam = VitruvianSpeakerStateContract.Seam(
             program: .app, configFile: rig.configFile, secrets: rig.secrets, history: rig.history,
             monitorStatusFile: rig.monitorStatusFile, doorFile: rig.doorFile,
             otherInstalled: { _ in true }, appRunning: { true }, extensionRunning: { _ in false },
@@ -1961,7 +1961,7 @@ struct StateContractTests {
         let out = applyJSON([disableRival], seam: seam)
         #expect(out.exitCode == 0, "\(out.stdout)")
         #expect(!FileManager.default.fileExists(atPath: rival.path))
-        #expect(FileManager.default.fileExists(atPath: rival.path + ".disabled-by-homespeaker"))
+        #expect(FileManager.default.fileExists(atPath: rival.path + ".disabled-by-vitruvian-speaker"))
         let parsed = try #require(JSONSerialization.jsonObject(with: Data(out.stdout[0].utf8)) as? [String: Any])
         let results = try #require(parsed["results"] as? [[String: Any]])
         #expect(results[0]["action"] as? String == "disableRival")
@@ -1982,7 +1982,7 @@ struct StateContractTests {
         try FileManager.default.createDirectory(at: plist.deletingLastPathComponent(), withIntermediateDirectories: true)
         try "<plist/>".write(to: plist, atomically: true, encoding: .utf8)
         func legacyFlag() throws -> Bool? {
-            let state = HomeSpeakerStateContract.stateObject(seam: seam)
+            let state = VitruvianSpeakerStateContract.stateObject(seam: seam)
             return (state["hooks"] as? [String: Any])?["legacy_launch_agent"] as? Bool
                 ?? (state["legacy_launch_agent"] as? Bool)
         }
@@ -2008,7 +2008,7 @@ struct StateContractTests {
         #expect(boots.all.count == 1, "bootout ran with no legacy agent installed")
     }
 
-    @Test("Table of every operation --apply accepts matches HomeSpeakerStateContract.supportedOperations and each row executes")
+    @Test("Table of every operation --apply accepts matches VitruvianSpeakerStateContract.supportedOperations and each row executes")
     func applySupportedOperationsTableCompleteness() throws {
         let rig = try ScratchRig()
         defer { rig.cleanup() }
@@ -2031,7 +2031,7 @@ struct StateContractTests {
 
         let switchSeam = SettingsActions.RecordingDoorSwitchSeam(
             me: .app,
-            chosenBy: "HomeSpeaker app 1.19.1",
+            chosenBy: "Vitruvian Speaker app 1.19.1",
             doorFile: rig.doorFile,
             home: rig.agentHome,
             appProfile: rig.appProfile,
@@ -2046,7 +2046,7 @@ struct StateContractTests {
         seam.antigravityTokensURL = tokensURL
 
         // Every op `--apply` accepts must have a row in this table; adding an op to
-        // HomeSpeakerStateContract.supportedOperations without a row here fails the test.
+        // VitruvianSpeakerStateContract.supportedOperations without a row here fails the test.
         let rows: [(op: String, payload: String)] = [
             ("set", #"{"op":"set","key":"speech_length","value":"full"}"#),
             ("setDefaultSpeaker", #"{"op":"setDefaultSpeaker","key":"kitchen"}"#),
@@ -2065,12 +2065,12 @@ struct StateContractTests {
         ]
 
         let testedOps = Set(rows.map(\.op))
-        let declaredOps = Set(HomeSpeakerStateContract.supportedOperations)
-        #expect(testedOps == declaredOps, "Every op in HomeSpeakerStateContract.supportedOperations must have a test row")
-        #expect(rows.count == HomeSpeakerStateContract.supportedOperations.count)
+        let declaredOps = Set(VitruvianSpeakerStateContract.supportedOperations)
+        #expect(testedOps == declaredOps, "Every op in VitruvianSpeakerStateContract.supportedOperations must have a test row")
+        #expect(rows.count == VitruvianSpeakerStateContract.supportedOperations.count)
 
         for row in rows {
-            let out = HomeSpeakerCommandLine.apply(
+            let out = VitruvianSpeakerCommandLine.apply(
                 #"{"contract_version":1,"operations":[\#(row.payload)]}"#,
                 seam: seam
             )
@@ -2106,9 +2106,9 @@ struct StateContractTests {
             {"op":"setSecret","name":"geminiKey","value":"\(needles[3].value)"}
         ]}
         """
-        let setOut = HomeSpeakerCommandLine.apply(setBatch, seam: seam)
+        let setOut = VitruvianSpeakerCommandLine.apply(setBatch, seam: seam)
         #expect(setOut.exitCode == 0)
-        let stateOut = HomeSpeakerCommandLine.state(seam: seam)
+        let stateOut = VitruvianSpeakerCommandLine.state(seam: seam)
         #expect(stateOut.exitCode == 0)
 
         let errorBatch = """
@@ -2117,7 +2117,7 @@ struct StateContractTests {
             {"op":"setSecret","name":"unknown","value":"\(needles[1].value)"}
         ]}
         """
-        let errOut = HomeSpeakerCommandLine.apply(errorBatch, seam: seam)
+        let errOut = VitruvianSpeakerCommandLine.apply(errorBatch, seam: seam)
         #expect(errOut.exitCode == 1)
 
         let allOutputs = (setOut.stdout + setOut.stderr + stateOut.stdout + stateOut.stderr + errOut.stdout + errOut.stderr)
@@ -2135,7 +2135,7 @@ struct StateContractTests {
             {"op":"setSecret","name":"geminiKey","value":""}
         ]}
         """
-        let clearNonCourierOut = HomeSpeakerCommandLine.apply(clearNonCourier, seam: seam)
+        let clearNonCourierOut = VitruvianSpeakerCommandLine.apply(clearNonCourier, seam: seam)
         #expect(clearNonCourierOut.exitCode == 0)
         let configAfterNonCourierClear = try Data(contentsOf: rig.configFile.url)
         #expect(configAfterNonCourierClear == configBeforeNonCourierClear)
@@ -2160,7 +2160,7 @@ struct StateContractTests {
             {"op":"snooze","minutes":241}
         ]}
         """
-        let out = HomeSpeakerCommandLine.apply(payload, seam: seam)
+        let out = VitruvianSpeakerCommandLine.apply(payload, seam: seam)
         #expect(out.exitCode == 1)
         let joined = (out.stdout + out.stderr).joined(separator: "\n")
         #expect(!joined.contains(canary))
@@ -2189,21 +2189,21 @@ struct StateContractTests {
         seam.antigravityTokensURL = tokensURL
 
         // Boundary 1 minute -> 2026-11-10T23:16:00Z
-        let s1 = HomeSpeakerCommandLine.apply(#"{"contract_version":1,"operations":[{"op":"snooze","minutes":1}]}"#, seam: seam)
+        let s1 = VitruvianSpeakerCommandLine.apply(#"{"contract_version":1,"operations":[{"op":"snooze","minutes":1}]}"#, seam: seam)
         #expect(s1.exitCode == 0)
-        let st1 = try #require(JSONSerialization.jsonObject(with: Data(HomeSpeakerCommandLine.state(seam: seam).stdout[0].utf8)) as? [String: Any])
+        let st1 = try #require(JSONSerialization.jsonObject(with: Data(VitruvianSpeakerCommandLine.state(seam: seam).stdout[0].utf8)) as? [String: Any])
         #expect(st1["snooze_until"] as? String == "2026-11-10T23:16:00Z")
 
         // Boundary 240 minutes -> 2026-11-11T03:15:00Z
-        let s240 = HomeSpeakerCommandLine.apply(#"{"contract_version":1,"operations":[{"op":"snooze","minutes":240}]}"#, seam: seam)
+        let s240 = VitruvianSpeakerCommandLine.apply(#"{"contract_version":1,"operations":[{"op":"snooze","minutes":240}]}"#, seam: seam)
         #expect(s240.exitCode == 0)
-        let st240 = try #require(JSONSerialization.jsonObject(with: Data(HomeSpeakerCommandLine.state(seam: seam).stdout[0].utf8)) as? [String: Any])
+        let st240 = try #require(JSONSerialization.jsonObject(with: Data(VitruvianSpeakerCommandLine.state(seam: seam).stdout[0].utf8)) as? [String: Any])
         #expect(st240["snooze_until"] as? String == "2026-11-11T03:15:00Z")
 
         // Corrupt JSON token file -> no_antigravity_tokens, secrets.json untouched
         try Data("{not valid json".utf8).write(to: tokensURL)
         let secretsBefore = try Data(contentsOf: rig.secrets.fileURL)
-        let badJSONOut = HomeSpeakerCommandLine.apply(#"{"contract_version":1,"operations":[{"op":"importAntigravity"}]}"#, seam: seam)
+        let badJSONOut = VitruvianSpeakerCommandLine.apply(#"{"contract_version":1,"operations":[{"op":"importAntigravity"}]}"#, seam: seam)
         #expect(badJSONOut.exitCode == 1)
         let badErr = try #require((JSONSerialization.jsonObject(with: Data(badJSONOut.stdout[0].utf8)) as? [String: Any])?["error"] as? [String: Any])
         #expect(badErr["code"] as? String == "no_antigravity_tokens")
@@ -2211,7 +2211,7 @@ struct StateContractTests {
 
         // Valid JSON missing Google Home MCP entry -> no_antigravity_tokens
         try Data(#"{"https://other.example.com/mcp":{}}"#.utf8).write(to: tokensURL)
-        let missingKeyOut = HomeSpeakerCommandLine.apply(#"{"contract_version":1,"operations":[{"op":"importAntigravity"}]}"#, seam: seam)
+        let missingKeyOut = VitruvianSpeakerCommandLine.apply(#"{"contract_version":1,"operations":[{"op":"importAntigravity"}]}"#, seam: seam)
         #expect(missingKeyOut.exitCode == 1)
         let missingErr = try #require((JSONSerialization.jsonObject(with: Data(missingKeyOut.stdout[0].utf8)) as? [String: Any])?["error"] as? [String: Any])
         #expect(missingErr["code"] as? String == "no_antigravity_tokens")

@@ -23,7 +23,7 @@ import Foundation
 /// The "Recent Broadcasts" list, kept in `~/.gemini/speaker_history.json`.
 ///
 /// Several processes add to it: the menu bar app (Quick Announce, chat
-/// messages), `HomeSpeaker --say`, the Stop hook's detached `--announce`, and
+/// messages), `VitruvianSpeaker --say`, the Stop hook's detached `--announce`, and
 /// the Stop hook itself when it broadcasts in-process. Each `append` is one
 /// read-modify-write under an exclusive `flock` on
 /// `speaker_history.json.lock` (see `FileLock`), so two writers never

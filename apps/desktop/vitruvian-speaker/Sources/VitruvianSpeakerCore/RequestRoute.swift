@@ -21,40 +21,40 @@
 
 import Foundation
 
-// Where a short-lived HomeSpeaker process sends what only a long-lived one
+// Where a short-lived Vitruvian Speaker process sends what only a long-lived one
 // can do: hold paused media, put a speaker back.
 //
-// `speaker-broadcast` always runs the app's program (`HomeSpeaker --say`),
-// whichever HomeSpeaker the person picked. With the extension picked, the
+// `speaker-broadcast` always runs the app's program (`VitruvianSpeaker --say`),
+// whichever Vitruvian Speaker the person picked. With the extension picked, the
 // app is quiet or not running, so a pause posted under the app's names
 // reached nobody and the media never paused. A request now goes to the
-// HomeSpeaker that is in use and alive, under that one's names.
+// Vitruvian Speaker that is in use and alive, under that one's names.
 
 /// Picks the long-lived process that takes a request meant for a profile.
 public struct RequestRoute: Sendable {
     /// The profiles whose long-lived process may take `profile`'s requests,
     /// best first.
-    public var candidates: @Sendable (HomeSpeakerProfile) -> [HomeSpeakerProfile]
+    public var candidates: @Sendable (VitruvianSpeakerProfile) -> [VitruvianSpeakerProfile]
     /// Is that profile's long-lived process running and listening?
-    public var alive: @Sendable (HomeSpeakerProfile) -> Bool
+    public var alive: @Sendable (VitruvianSpeakerProfile) -> Bool
 
     public init(
-        candidates: @escaping @Sendable (HomeSpeakerProfile) -> [HomeSpeakerProfile],
-        alive: @escaping @Sendable (HomeSpeakerProfile) -> Bool
+        candidates: @escaping @Sendable (VitruvianSpeakerProfile) -> [VitruvianSpeakerProfile],
+        alive: @escaping @Sendable (VitruvianSpeakerProfile) -> Bool
     ) {
         self.candidates = candidates
         self.alive = alive
     }
 
     /// The first candidate that is alive; nil when none is.
-    public func listener(for profile: HomeSpeakerProfile) -> HomeSpeakerProfile? {
+    public func listener(for profile: VitruvianSpeakerProfile) -> VitruvianSpeakerProfile? {
         candidates(profile).first(where: alive)
     }
 
     /// The real one: the choice file decides the order, and the running
     /// app or the extension's live lock decides who is alive.
     public static func live(
-        runningApps: @escaping @Sendable () -> [HomeSpeakerProfile.RunningApp] = HomeSpeakerProfile.runningApps
+        runningApps: @escaping @Sendable () -> [VitruvianSpeakerProfile.RunningApp] = VitruvianSpeakerProfile.runningApps
     ) -> RequestRoute {
         RequestRoute(
             candidates: { profile in
@@ -68,7 +68,7 @@ public struct RequestRoute: Sendable {
     /// The choice file a profile reads: beside the app's settings for the
     /// app (so a test's scratch home has its own), the person's for the
     /// extension.
-    static func doorURL(for profile: HomeSpeakerProfile) -> URL {
+    static func doorURL(for profile: VitruvianSpeakerProfile) -> URL {
         switch profile.door {
         case .app: return profile.settingsURL.deletingLastPathComponent().appendingPathComponent(DoorFile.fileName)
         case .extension: return DoorFile.defaultURL()
@@ -88,15 +88,15 @@ public struct RequestRoute: Sendable {
     /// A profile under names of its own (every test's) only ever reaches
     /// itself, so a test never pauses the Mac's real media.
     static func candidates(
-        for profile: HomeSpeakerProfile, record: DoorRecord?, fileExists: (String) -> Bool
-    ) -> [HomeSpeakerProfile] {
+        for profile: VitruvianSpeakerProfile, record: DoorRecord?, fileExists: (String) -> Bool
+    ) -> [VitruvianSpeakerProfile] {
         switch (profile.door, profile.messagePrefix) {
-        case (.app, HomeSpeakerProfile.appMessagePrefix):
+        case (.app, VitruvianSpeakerProfile.appMessagePrefix):
             let ext = AppStartup.extensionProfile(record: record)
             if AppStartup.role(record: record, fileExists: fileExists).isQuiet, let ext { return [ext] }
             return [profile] + (ext.map { [$0] } ?? [])
-        case (.extension, HomeSpeakerProfile.extensionMessagePrefix):
-            let app = HomeSpeakerProfile.app(
+        case (.extension, VitruvianSpeakerProfile.extensionMessagePrefix):
+            let app = VitruvianSpeakerProfile.app(
                 home: DoorFile.defaultURL().deletingLastPathComponent().deletingLastPathComponent())
             switch record?.chosen {
             case .app?: return [app, profile]

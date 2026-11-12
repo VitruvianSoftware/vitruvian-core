@@ -10,7 +10,7 @@ import VitruvianUI
 
 /// Text typed in a tool's field reaches the tool before the click that
 /// uses it. On macOS a click on a button leaves the field focused, so a
-/// field that sent its text only when left never sent it: HomeSpeaker's
+/// field that sent its text only when left never sent it: Vitruvian Speaker's
 /// "Save Token" then saw no token and said "Paste the Beeper token first".
 @MainActor
 enum BlockFieldPendingTests {

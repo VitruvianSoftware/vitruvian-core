@@ -25,7 +25,7 @@
 //! longer exists, and every presubmit stays green: actionlint does not know
 //! Bazel, and the lane that runs the label may be path-filtered, main-only or
 //! release-only. Two planted strings proved it (`//tools/conformance:check-rs`
-//! in conformance-check.yaml, `home-speaker:publish-rs` in ci.yaml).
+//! in conformance-check.yaml, `vitruvian-speaker:publish-rs` in ci.yaml).
 //!
 //! What counts as a reference: a label inside a `bazel|bazelisk <verb>` command
 //! (build, test, run, query, cquery, aquery, coverage), and a YAML value that
@@ -537,16 +537,16 @@ mod tests {
         let c = r#"
       - run: |
           bazel run "${cache[@]}" //tools/conformance:check
-          bazel test "${cache[@]}" --config=macos-app //apps/desktop/home-speaker:HomeSpeakerTests //apps/x:y
-          bazel run "${cache[@]}" //apps/desktop/home-speaker:publish-rs -- --dry-run
+          bazel test "${cache[@]}" --config=macos-app //apps/desktop/vitruvian-speaker:VitruvianSpeakerTests //apps/x:y
+          bazel run "${cache[@]}" //apps/desktop/vitruvian-speaker:publish-rs -- --dry-run
 "#;
         assert_eq!(
             labels(c),
             vec![
                 "//tools/conformance:check",
-                "//apps/desktop/home-speaker:HomeSpeakerTests",
+                "//apps/desktop/vitruvian-speaker:VitruvianSpeakerTests",
                 "//apps/x:y",
-                "//apps/desktop/home-speaker:publish-rs",
+                "//apps/desktop/vitruvian-speaker:publish-rs",
             ]
         );
     }

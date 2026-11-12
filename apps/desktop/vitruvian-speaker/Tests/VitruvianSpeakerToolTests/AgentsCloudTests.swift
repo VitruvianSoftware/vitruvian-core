@@ -20,8 +20,8 @@
 
 import XCTest
 
-import HomeSpeakerCore
-import HomeSpeakerToolCore
+import VitruvianSpeakerCore
+import VitruvianSpeakerToolCore
 import VitruvianToolKit
 import VitruvianToolProtocol
 
@@ -29,10 +29,10 @@ import VitruvianToolProtocol
 /// app drives them, against a home folder of its own and a launchctl that
 /// only records: nothing here touches this Mac's agents or login session.
 final class AgentsCloudTests: XCTestCase {
-    typealias Link = HomeSpeakerToolTests.Link
-    typealias Store = HomeSpeakerToolTests.Store
-    typealias Driver = HomeSpeakerToolTests.Driver
-    typealias Account = HomeSpeakerToolTests.Account
+    typealias Link = VitruvianSpeakerToolTests.Link
+    typealias Store = VitruvianSpeakerToolTests.Store
+    typealias Driver = VitruvianSpeakerToolTests.Driver
+    typealias Account = VitruvianSpeakerToolTests.Account
 
     /// launchctl, as the tests see it: what it was asked to stop.
     final class Bootouts: @unchecked Sendable {
@@ -48,8 +48,8 @@ final class AgentsCloudTests: XCTestCase {
     private var account: Account!
     private var bootouts: Bootouts!
     private var home: URL!
-    private var homeSpeakerVersion: String?
-    private let appProgram = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
+    private var vitruvianSpeakerVersion: String?
+    private let appProgram = "/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker"
 
     override func setUpWithError() throws {
         link = Link()
@@ -57,8 +57,8 @@ final class AgentsCloudTests: XCTestCase {
         driver = Driver()
         account = Account()
         bootouts = Bootouts()
-        homeSpeakerVersion = "1.13.2"
-        home = FileManager.default.temporaryDirectory.appendingPathComponent("homespeaker-agents-\(UUID().uuidString)")
+        vitruvianSpeakerVersion = "1.13.2"
+        home = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-speaker-agents-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
         store.config = SpeakerConfig(enabled: true, defaultTarget: "kitchen",
                                      targets: ["kitchen": SpeakerDevice(id: "d1", type: "SpeakerDevice", name: "Kitchen")])
@@ -68,19 +68,19 @@ final class AgentsCloudTests: XCTestCase {
         try? FileManager.default.removeItem(at: home)
     }
 
-    private func tool() -> HomeSpeakerTool {
+    private func tool() -> VitruvianSpeakerTool {
         let bootouts = self.bootouts!
-        return HomeSpeakerTool(parts: .init(
+        return VitruvianSpeakerTool(parts: .init(
             link: link, store: store, driver: driver, later: { $0() }, account: account, home: home,
             settingsURL: URL(fileURLWithPath: "/u/.gemini/speaker_broadcast.json"),
-            secretsURL: URL(fileURLWithPath: "/u/Library/Application Support/HomeSpeaker/secrets.json"),
-            homeSpeakerVersion: { [unowned self] in homeSpeakerVersion },
+            secretsURL: URL(fileURLWithPath: "/u/Library/Application Support/Vitruvian Speaker/secrets.json"),
+            vitruvianSpeakerVersion: { [unowned self] in vitruvianSpeakerVersion },
             launchctlBootout: { bootouts.record($0) }))
     }
 
     /// Settings opened on `section`, the login item answered when there
-    /// is a HomeSpeaker to ask.
-    private func opened(_ section: Pages.Section) -> HomeSpeakerTool {
+    /// is a Vitruvian Speaker to ask.
+    private func opened(_ section: Pages.Section) -> VitruvianSpeakerTool {
         let tool = tool()
         _ = tool.settingsPage()
         _ = event(tool, Pages.Block.section, .tap, .string(section.rawValue))
@@ -97,12 +97,12 @@ final class AgentsCloudTests: XCTestCase {
     }
 
     @discardableResult
-    private func event(_ tool: HomeSpeakerTool, _ block: String, _ kind: UIEventKind, _ value: JSONValue? = nil,
+    private func event(_ tool: VitruvianSpeakerTool, _ block: String, _ kind: UIEventKind, _ value: JSONValue? = nil,
                        file: StaticString = #filePath, line: UInt = #line) -> UITree {
         page(tool.settingsEvent(PanelEvent(block: block, kind: kind, value: value)), file: file, line: line)
     }
 
-    private func answer(_ tool: HomeSpeakerTool, _ block: String, _ kind: UIEventKind, _ text: String) -> PanelAnswer {
+    private func answer(_ tool: VitruvianSpeakerTool, _ block: String, _ kind: UIEventKind, _ text: String) -> PanelAnswer {
         tool.settingsEvent(PanelEvent(block: block, kind: kind, value: .string(text)))
     }
 
@@ -145,7 +145,7 @@ final class AgentsCloudTests: XCTestCase {
 
     private func exists(_ path: String) -> Bool { FileManager.default.fileExists(atPath: home.appendingPathComponent(path).path) }
 
-    /// Claude Code is on this Mac, with HomeSpeaker's hook pointed at `program`.
+    /// Claude Code is on this Mac, with Vitruvian Speaker's hook pointed at `program`.
     private func claudeHook(_ program: String) throws {
         let settings = AgentIntegration.mergeHook(into: [:], command: AgentIntegration.hookCommand(executable: program), agent: .claudeCode)
         let data = try JSONSerialization.data(withJSONObject: settings, options: [.prettyPrinted, .sortedKeys])
@@ -262,7 +262,7 @@ final class AgentsCloudTests: XCTestCase {
         XCTAssertEqual(tool.draftClientId, "typed", "a redraw keeps what is typed")
         XCTAssertEqual(tool.draftClientSecret, "typed-secret")
 
-        tool.panelClosed(HomeSpeakerTool.settingsPanel)
+        tool.panelClosed(VitruvianSpeakerTool.settingsPanel)
         _ = tool.settingsPage()
         XCTAssertEqual(tool.draftClientId, "saved", "opened again: the saved id")
         XCTAssertEqual(tool.draftClientSecret, "", "and no secret")
@@ -290,23 +290,23 @@ final class AgentsCloudTests: XCTestCase {
         XCTAssertTrue(said.contains("Open Google Cloud Console"))
         XCTAssertTrue(said.contains("One-time setup. Your client ID and secret never leave this Mac."))
         XCTAssertTrue(said.contains("Settings · /u/.gemini/speaker_broadcast.json"))
-        XCTAssertTrue(said.contains("Secrets · /u/Library/Application Support/HomeSpeaker/secrets.json"))
+        XCTAssertTrue(said.contains("Secrets · /u/Library/Application Support/Vitruvian Speaker/secrets.json"))
         XCTAssertTrue(said.contains("Tool version · \(ToolVersion.current)"))
-        XCTAssertTrue(said.contains("HomeSpeaker version · 1.13.2"))
+        XCTAssertTrue(said.contains("Vitruvian Speaker version · 1.13.2"))
 
         account.hasBundledOAuthClient = true
         XCTAssertTrue(texts(tool.settingsPage()).contains { $0.hasPrefix("This build also ships with a shared OAuth client") })
-        homeSpeakerVersion = nil
-        XCTAssertTrue(texts(tool.settingsPage()).contains("HomeSpeaker version · Unknown"))
+        vitruvianSpeakerVersion = nil
+        XCTAssertTrue(texts(tool.settingsPage()).contains("Vitruvian Speaker version · Unknown"))
     }
 
-    func testFilesShowsHomeSpeakersVersionOnlyWhenItIsInstalled() {
+    func testFilesShowsVitruvianSpeakersVersionOnlyWhenItIsInstalled() {
         driver.isInstalled = false
         let tool = opened(.googleCloud)
         let said = texts(tool.settingsPage())
         XCTAssertTrue(said.contains("Tool version · \(ToolVersion.current)"))
-        XCTAssertFalse(said.contains { $0.hasPrefix("HomeSpeaker version") })
-        XCTAssertNotNil(content(tool.settingsPage(), Pages.Block.saveOAuthClient), "the client is saved without HomeSpeaker too")
+        XCTAssertFalse(said.contains { $0.hasPrefix("Vitruvian Speaker version") })
+        XCTAssertNotNil(content(tool.settingsPage(), Pages.Block.saveOAuthClient), "the client is saved without Vitruvian Speaker too")
     }
 
     func testTheSecretStoreAccountSavesBothInOneWriteAndKeepsTheSecret() throws {
@@ -373,7 +373,7 @@ final class AgentsCloudTests: XCTestCase {
         XCTAssertTrue(tool.status().agents.legacyLaunchAgent)
     }
 
-    func testWithHomeSpeakerAHookIsInstalledShownAndRemoved() throws {
+    func testWithVitruvianSpeakerAHookIsInstalledShownAndRemoved() throws {
         try FileManager.default.createDirectory(at: home.appendingPathComponent(".claude"), withIntermediateDirectories: true)
         let tool = opened(.agents)
         var tree = tool.settingsPage()
@@ -382,7 +382,7 @@ final class AgentsCloudTests: XCTestCase {
         XCTAssertNotEqual(button(tree, install)?.enabled, false)
 
         tree = event(tool, install, .tap)
-        XCTAssertEqual(installedHookCommand(), "\"\(appProgram)\" --claude-stop-hook", "pointed at HomeSpeaker, never bin/tool")
+        XCTAssertEqual(installedHookCommand(), "\"\(appProgram)\" --claude-stop-hook", "pointed at Vitruvian Speaker, never bin/tool")
         XCTAssertTrue(texts(tree).contains("Claude Code hook · Installed"))
         XCTAssertTrue(texts(tree).contains("\"\(appProgram)\" --claude-stop-hook"), "the command it runs is shown")
         XCTAssertTrue(texts(tree).contains("Claude Code hook installed"))
@@ -392,8 +392,8 @@ final class AgentsCloudTests: XCTestCase {
         XCTAssertTrue(texts(tree).contains("Claude Code hook removed"))
     }
 
-    func testWithHomeSpeakerAnOldHookNeedsAnUpdateAndTwoHooksAreFlagged() throws {
-        try claudeHook("/Users/someone/Downloads/HomeSpeaker.app/Contents/MacOS/HomeSpeaker")
+    func testWithVitruvianSpeakerAnOldHookNeedsAnUpdateAndTwoHooksAreFlagged() throws {
+        try claudeHook("/Users/someone/Downloads/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker")
         let tool = opened(.agents)
         var tree = tool.settingsPage()
         XCTAssertTrue(texts(tree).contains("Claude Code hook · Needs update"))
@@ -407,16 +407,16 @@ final class AgentsCloudTests: XCTestCase {
         XCTAssertEqual(button(tree, turnOff)?.title.text(for: "en"), "Turn it off")
         tree = event(tool, turnOff, .tap)
         XCTAssertFalse(exists(".claude/skills/google-home/hooks/hooks.json"))
-        XCTAssertTrue(exists(".claude/skills/google-home/hooks/hooks.json.disabled-by-homespeaker"))
+        XCTAssertTrue(exists(".claude/skills/google-home/hooks/hooks.json.disabled-by-vitruvian-speaker"))
         XCTAssertFalse(texts(tree).contains { $0.hasPrefix("Every reply is spoken twice") })
     }
 
-    func testWithoutHomeSpeakerALeftoverHookSaysItCannotSpeakAndCanBeRemoved() throws {
+    func testWithoutVitruvianSpeakerALeftoverHookSaysItCannotSpeakAndCanBeRemoved() throws {
         driver.isInstalled = false
         try claudeHook(appProgram)
         let tool = opened(.agents)
         var tree = tool.settingsPage()
-        XCTAssertTrue(texts(tree).contains("Claude Code hook · Points at HomeSpeaker, which isn't installed — it can't speak"))
+        XCTAssertTrue(texts(tree).contains("Claude Code hook · Points at Vitruvian Speaker, which isn't installed — it can't speak"))
         XCTAssertFalse(texts(tree).contains { $0.contains("Needs update") }, "there is nothing to update it to")
         XCTAssertNil(button(tree, Pages.Block.agent(.installHook, .claudeCode)))
         let remove = Pages.Block.agent(.removeHook, .claudeCode)
@@ -428,14 +428,14 @@ final class AgentsCloudTests: XCTestCase {
         XCTAssertNil(installedHookCommand())
         XCTAssertTrue(texts(tree).contains("Claude Code hook · Not installed"))
         let install = Pages.Block.agent(.installHook, .claudeCode)
-        XCTAssertEqual(button(tree, install)?.enabled, false, "a hook needs HomeSpeaker to run")
-        XCTAssertTrue(texts(tree).contains("Install HomeSpeaker first: the hook runs it."))
+        XCTAssertEqual(button(tree, install)?.enabled, false, "a hook needs Vitruvian Speaker to run")
+        XCTAssertTrue(texts(tree).contains("Install Vitruvian Speaker first: the hook runs it."))
         tree = event(tool, install, .tap)
         XCTAssertNil(installedHookCommand(), "refused, writing nothing")
-        XCTAssertTrue(texts(tree).contains("HomeSpeaker is not installed"))
+        XCTAssertTrue(texts(tree).contains("Vitruvian Speaker is not installed"))
     }
 
-    func testWithoutHomeSpeakerTheInstructionTheRivalAndTheLegacyAgentStillWork() throws {
+    func testWithoutVitruvianSpeakerTheInstructionTheRivalAndTheLegacyAgentStillWork() throws {
         driver.isInstalled = false
         try FileManager.default.createDirectory(at: home.appendingPathComponent(".gemini/antigravity-cli"), withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: home.appendingPathComponent(".claude"), withIntermediateDirectories: true)
@@ -444,11 +444,11 @@ final class AgentsCloudTests: XCTestCase {
         let tool = opened(.agents)
         var tree = tool.settingsPage()
 
-        // Antigravity's plugin runs HomeSpeaker too, so it waits for it.
+        // Antigravity's plugin runs Vitruvian Speaker too, so it waits for it.
         let installPlugin = Pages.Block.agent(.installHook, .antigravity)
-        XCTAssertEqual(button(tree, installPlugin)?.enabled, false, "a plugin needs HomeSpeaker to run")
+        XCTAssertEqual(button(tree, installPlugin)?.enabled, false, "a plugin needs Vitruvian Speaker to run")
         tree = event(tool, installPlugin, .tap)
-        XCTAssertFalse(exists(".gemini/config/plugins/home-speaker"), "refused, writing nothing")
+        XCTAssertFalse(exists(".gemini/config/plugins/vitruvian-speaker"), "refused, writing nothing")
 
         tree = event(tool, Pages.Block.agent(.disableRival, .claudeCode), .tap)
         XCTAssertFalse(exists(".claude/skills/google-home/hooks/hooks.json"))
@@ -464,31 +464,31 @@ final class AgentsCloudTests: XCTestCase {
     }
 
     /// Antigravity and OpenCode get the same Install, Update and Remove as
-    /// Claude Code, each writing its own plugin, pointed at HomeSpeaker.
-    func testWithHomeSpeakerEachAgentsPluginIsInstalledUpdatedAndRemoved() throws {
+    /// Claude Code, each writing its own plugin, pointed at Vitruvian Speaker.
+    func testWithVitruvianSpeakerEachAgentsPluginIsInstalledUpdatedAndRemoved() throws {
         try FileManager.default.createDirectory(at: home.appendingPathComponent(".gemini/config"), withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: home.appendingPathComponent(".config/opencode"), withIntermediateDirectories: true)
         let tool = opened(.agents)
         var tree = tool.settingsPage()
         XCTAssertTrue(texts(tree).contains("Antigravity plugin · Not installed"))
         XCTAssertTrue(texts(tree).contains("OpenCode plugin · Not installed"))
-        XCTAssertTrue(texts(tree).contains { $0.contains("~/.gemini/config/plugins/home-speaker") }, "says where it goes")
-        XCTAssertTrue(texts(tree).contains { $0.contains("~/.config/opencode/plugins/home-speaker.ts") })
+        XCTAssertTrue(texts(tree).contains { $0.contains("~/.gemini/config/plugins/vitruvian-speaker") }, "says where it goes")
+        XCTAssertTrue(texts(tree).contains { $0.contains("~/.config/opencode/plugins/vitruvian-speaker.ts") })
 
         tree = event(tool, Pages.Block.agent(.installHook, .antigravity), .tap)
-        let hooks = try XCTUnwrap(read(".gemini/config/plugins/home-speaker/hooks.json"))
+        let hooks = try XCTUnwrap(read(".gemini/config/plugins/vitruvian-speaker/hooks.json"))
         XCTAssertTrue(hooks.contains("\"\\\"\(appProgram)\\\" --antigravity-hook\""), hooks)
-        XCTAssertTrue(exists(".gemini/config/plugins/home-speaker/plugin.json"))
+        XCTAssertTrue(exists(".gemini/config/plugins/vitruvian-speaker/plugin.json"))
         XCTAssertTrue(texts(tree).contains("Antigravity plugin · Installed"))
         XCTAssertTrue(texts(tree).contains("Antigravity plugin installed"))
 
         tree = event(tool, Pages.Block.agent(.installHook, .opencode), .tap)
-        let plugin = try XCTUnwrap(read(".config/opencode/plugins/home-speaker.ts"))
-        XCTAssertTrue(plugin.contains("// Command: \"\(appProgram)\" --opencode-hook"), "pointed at HomeSpeaker, never bin/tool")
+        let plugin = try XCTUnwrap(read(".config/opencode/plugins/vitruvian-speaker.ts"))
+        XCTAssertTrue(plugin.contains("// Command: \"\(appProgram)\" --opencode-hook"), "pointed at Vitruvian Speaker, never bin/tool")
         XCTAssertTrue(texts(tree).contains("OpenCode plugin · Installed"))
 
         // An older plugin of the same program is one to update.
-        try write("// Command: \"\(appProgram)\" --opencode-hook\n// an older plugin\n", ".config/opencode/plugins/home-speaker.ts")
+        try write("// Command: \"\(appProgram)\" --opencode-hook\n// an older plugin\n", ".config/opencode/plugins/vitruvian-speaker.ts")
         tree = tool.settingsPage()
         XCTAssertTrue(texts(tree).contains("OpenCode plugin · Needs update"))
         XCTAssertEqual(button(tree, Pages.Block.agent(.installHook, .opencode))?.title.text(for: "en"), "Update Hook")
@@ -496,10 +496,10 @@ final class AgentsCloudTests: XCTestCase {
         XCTAssertTrue(texts(tree).contains("OpenCode plugin · Installed"))
 
         tree = event(tool, Pages.Block.agent(.removeHook, .antigravity), .tap)
-        XCTAssertFalse(exists(".gemini/config/plugins/home-speaker"))
+        XCTAssertFalse(exists(".gemini/config/plugins/vitruvian-speaker"))
         XCTAssertTrue(texts(tree).contains("Antigravity plugin removed"))
         tree = event(tool, Pages.Block.agent(.removeHook, .opencode), .tap)
-        XCTAssertFalse(exists(".config/opencode/plugins/home-speaker.ts"))
+        XCTAssertFalse(exists(".config/opencode/plugins/vitruvian-speaker.ts"))
         XCTAssertTrue(texts(tree).contains("OpenCode plugin · Not installed"))
     }
 

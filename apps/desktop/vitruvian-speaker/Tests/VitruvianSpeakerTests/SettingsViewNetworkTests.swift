@@ -21,7 +21,7 @@
 
 import Foundation
 import Testing
-@testable import HomeSpeakerCore
+@testable import VitruvianSpeakerCore
 
 // The Mac app's Settings › Chats › Beeper network switches: which rows
 // show (`BeeperNetworkList`, shared with the extension's pages) and what a
@@ -31,7 +31,7 @@ import Testing
 
 private func scratchDir() throws -> URL {
     let dir = FileManager.default.temporaryDirectory
-        .appendingPathComponent("homespeaker-settings-networks-\(UUID().uuidString)")
+        .appendingPathComponent("vitruvian-speaker-settings-networks-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir
 }

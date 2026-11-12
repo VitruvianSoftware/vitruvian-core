@@ -20,7 +20,7 @@
 
 import Foundation
 import Testing
-@testable import HomeSpeakerCore
+@testable import VitruvianSpeakerCore
 
 // The chat monitor reads Google Chat with the sign-in of the engine it is
 // given, not the app's. Without that, the extension's monitor would read Chat
@@ -34,7 +34,7 @@ import Testing
 
 private func scratchDir() throws -> URL {
     let dir = FileManager.default.temporaryDirectory
-        .appendingPathComponent("homespeaker-monitor-engine-\(UUID().uuidString)")
+        .appendingPathComponent("vitruvian-speaker-monitor-engine-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir
 }
@@ -99,9 +99,9 @@ private final class StandInChat: URLProtocol {
     @Test func theMonitorReadsChatWithItsEnginesSignIn() async throws {
         let root = try scratchDir()
         defer { try? FileManager.default.removeItem(at: root) }
-        let profile = HomeSpeakerProfile.extension(
+        let profile = VitruvianSpeakerProfile.extension(
             dataFolder: root.appendingPathComponent("data"), toolFolder: nil,
-            messagePrefix: "test.\(UUID().uuidString).homespeaker")
+            messagePrefix: "test.\(UUID().uuidString).vitruvian-speaker")
         // Stop before an engine is built if any of the profile's files is
         // not in the scratch folder: it would be someone's real one.
         for url in [profile.settingsURL, profile.historyURL, profile.secretsURL, profile.monitorStatusURL] {
@@ -109,7 +109,7 @@ private final class StandInChat: URLProtocol {
         }
 
         let session = StandInChat.session
-        let engine = HomeSpeakerEngine(profile: profile, session: session, local: SilentLocal())
+        let engine = VitruvianSpeakerEngine(profile: profile, session: session, local: SilentLocal())
 
         // The extension's own Chat login, with a token that is good for a
         // day, so nothing needs refreshing.

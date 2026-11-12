@@ -26,7 +26,7 @@ import FoundationModels
 
 // Rewording a coding agent's reply before it is spoken
 // (`announcement_style`): "As written" reads the reply cleaned for speech,
-// as HomeSpeaker always has; the other styles have a language model say it
+// as Vitruvian Speaker always has; the other styles have a language model say it
 // again in a sentence or two. The model is the user's choice
 // (`style_model`): Gemini with the saved key, else Apple's on-device model,
 // else the reply as written. Whatever comes back is cleaned for speech
@@ -59,7 +59,7 @@ public enum StyleRewriteError: LocalizedError, Equatable {
 }
 
 public struct AnnouncementStylist: AnnouncementStyling {
-    public static let logger = Logger(subsystem: "com.vitruviansoftware.homespeaker", category: "style")
+    public static let logger = Logger(subsystem: "com.vitruviansoftware.speaker", category: "style")
 
     /// Each model gets this long before the next one is tried.
     public static let modelTimeout: Double = 4

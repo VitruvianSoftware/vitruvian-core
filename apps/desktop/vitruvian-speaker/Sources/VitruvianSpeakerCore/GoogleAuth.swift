@@ -52,8 +52,8 @@ public enum GoogleAuthError: LocalizedError, Equatable {
 
 /// OAuth client id/secret, resolved in this order:
 ///  1. a user override saved in the secret store (Settings > Advanced),
-///  2. the client shipped with this HomeSpeaker (`shipped`, from
-///     `HomeSpeakerProfile.shippedClient`): the app's Info.plist values
+///  2. the client shipped with this Vitruvian Speaker (`shipped`, from
+///     `VitruvianSpeakerProfile.shippedClient`): the app's Info.plist values
 ///     (`GoogleOAuthClientID` / `GoogleOAuthClientSecret`) set at packaging
 ///     time, or the extension's `google-oauth-client.json`,
 ///  3. the client that issued the credentials we already hold — an imported
@@ -133,14 +133,14 @@ public actor GoogleAuth {
     /// settings, the sign-in and the speakers all use one file.
     public nonisolated let store: SecretStore
     private let session: URLSession
-    /// The client shipped with this HomeSpeaker, asked for at each sign-in.
+    /// The client shipped with this Vitruvian Speaker, asked for at each sign-in.
     private let shippedClient: @Sendable () -> OAuthClient?
 
     /// `shippedClient` is the profile's: the app's default reads its own
     /// Info.plist, an extension passes its file's.
     public init(
         store: SecretStore = .shared, session: URLSession = .shared,
-        shippedClient: @escaping @Sendable () -> OAuthClient? = { HomeSpeakerProfile.app().shippedClient }
+        shippedClient: @escaping @Sendable () -> OAuthClient? = { VitruvianSpeakerProfile.app().shippedClient }
     ) {
         self.store = store
         self.session = session
@@ -358,7 +358,7 @@ public actor GoogleAuth {
 final class LoopbackListener: @unchecked Sendable {
     let port: UInt16
     private let listener: NWListener
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.homespeaker.oauth")
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.speaker.oauth")
     private var continuation: CheckedContinuation<(code: String?, state: String?, error: String?), Error>?
     private var connections: [NWConnection] = []
 
@@ -430,10 +430,10 @@ final class LoopbackListener: @unchecked Sendable {
     }
 
     private static func page(success: Bool) -> String {
-        let title = success ? "Signed in to HomeSpeaker" : "Sign-in not completed"
+        let title = success ? "Signed in to Vitruvian Speaker" : "Sign-in not completed"
         let body = success
-            ? "You can close this tab and return to HomeSpeaker."
-            : "HomeSpeaker did not receive permission. Close this tab and try again from the app."
+            ? "You can close this tab and return to Vitruvian Speaker."
+            : "Vitruvian Speaker did not receive permission. Close this tab and try again from the app."
         return """
         <!doctype html><html><head><meta charset="utf-8"><title>\(title)</title>
         <style>body{font-family:-apple-system,system-ui,sans-serif;display:grid;place-items:center;height:100vh;margin:0;color:#1d1d1f;background:#f5f5f7}

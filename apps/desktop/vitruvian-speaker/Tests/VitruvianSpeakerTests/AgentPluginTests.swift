@@ -21,15 +21,15 @@
 
 import Foundation
 import Testing
-@testable import HomeSpeakerCore
+@testable import VitruvianSpeakerCore
 
 private func scratch() -> URL {
-    let url = FileManager.default.temporaryDirectory.appendingPathComponent("homespeaker-plugins-\(UUID().uuidString)")
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-speaker-plugins-\(UUID().uuidString)")
     try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
 }
 
-private let app = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
+private let app = "/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker"
 
 /// Installing, updating and removing the Antigravity and OpenCode plugins:
 /// each in its own place, each found again, and nothing else touched.
@@ -40,11 +40,11 @@ private let app = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
         #expect(a.status(of: .antigravity).hook == .notInstalled)
 
         try a.installHook(for: .antigravity)
-        let folder = home.appendingPathComponent(".gemini/config/plugins/home-speaker")
+        let folder = home.appendingPathComponent(".gemini/config/plugins/vitruvian-speaker")
         let manifest = try JSONSerialization.jsonObject(with: Data(contentsOf: folder.appendingPathComponent("plugin.json"))) as? [String: Any]
-        #expect(manifest?["name"] as? String == "home-speaker")
+        #expect(manifest?["name"] as? String == "vitruvian-speaker")
         let hooks = try JSONSerialization.jsonObject(with: Data(contentsOf: folder.appendingPathComponent("hooks.json"))) as? [String: Any]
-        let stop = (hooks?["home-speaker"] as? [String: Any])?["Stop"] as? [[String: Any]]
+        let stop = (hooks?["vitruvian-speaker"] as? [String: Any])?["Stop"] as? [[String: Any]]
         // agy's own hook docs: Stop takes handler objects directly, no matcher group.
         #expect(stop?.count == 1)
         #expect(stop?.first?["matcher"] == nil)
@@ -60,7 +60,7 @@ private let app = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
 
     @Test func anAntigravityPluginOfAnotherProgramOrAnOlderShapeNeedsAnUpdate() throws {
         let home = scratch()
-        let old = "/Users/me/Downloads/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
+        let old = "/Users/me/Downloads/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker"
         try AgentIntegration(home: home, executablePath: old).installHook(for: .antigravity)
         let a = AgentIntegration(home: home, executablePath: app)
         #expect(a.status(of: .antigravity).hook == .stale("\"\(old)\" --antigravity-hook"))
@@ -69,8 +69,8 @@ private let app = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
         #expect(a.status(of: .antigravity).hook == .installed)
 
         // Same program, older files (an earlier grouped shape): Update.
-        let hooks = home.appendingPathComponent(".gemini/config/plugins/home-speaker/hooks.json")
-        try #"{"home-speaker":{"Stop":[{"matcher":"*","hooks":[{"type":"command","command":"\"\#(app)\" --antigravity-hook"}]}]}}"#
+        let hooks = home.appendingPathComponent(".gemini/config/plugins/vitruvian-speaker/hooks.json")
+        try #"{"vitruvian-speaker":{"Stop":[{"matcher":"*","hooks":[{"type":"command","command":"\"\#(app)\" --antigravity-hook"}]}]}}"#
             .write(to: hooks, atomically: true, encoding: .utf8)
         #expect(a.status(of: .antigravity).hook == .stale("\"\(app)\" --antigravity-hook"))
     }
@@ -79,12 +79,12 @@ private let app = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
         let home = scratch()
         let a = AgentIntegration(home: home, executablePath: app)
         try a.installHook(for: .opencode)
-        let file = home.appendingPathComponent(".config/opencode/plugins/home-speaker.ts")
+        let file = home.appendingPathComponent(".config/opencode/plugins/vitruvian-speaker.ts")
         let text = try String(contentsOf: file, encoding: .utf8)
         #expect(text.contains("// Command: \"\(app)\" --opencode-hook"))
         #expect(text.contains("const PROGRAM = \"\(app)\""))
         #expect(text.contains("export default {"))
-        #expect(text.contains("id: \"home-speaker\""))
+        #expect(text.contains("id: \"vitruvian-speaker\""))
         #expect(text.contains("setup(ctx)"))
         #expect(text.contains("event.data && event.data.sessionID"))
         #expect(text.contains("ctx.session.context({ sessionID })"))
@@ -104,12 +104,12 @@ private let app = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
     @Test func aFileOfTheSameNameSomeoneElseWroteIsLeftAlone() throws {
         let home = scratch()
         let a = AgentIntegration(home: home, executablePath: app)
-        let file = home.appendingPathComponent(".config/opencode/plugins/home-speaker.ts")
+        let file = home.appendingPathComponent(".config/opencode/plugins/vitruvian-speaker.ts")
         try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
         try "export const Mine = async () => ({})\n".write(to: file, atomically: true, encoding: .utf8)
-        let folder = home.appendingPathComponent(".gemini/config/plugins/home-speaker")
+        let folder = home.appendingPathComponent(".gemini/config/plugins/vitruvian-speaker")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        try #"{"home-speaker":{"Stop":[{"command":"say done"}]}}"#
+        try #"{"vitruvian-speaker":{"Stop":[{"command":"say done"}]}}"#
             .write(to: folder.appendingPathComponent("hooks.json"), atomically: true, encoding: .utf8)
 
         #expect(a.status(of: .opencode).hook == .notInstalled)
@@ -136,17 +136,17 @@ private let app = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
     }
 
     @Test(arguments: [CodingAgent.antigravity, .opencode])
-    func onlyHomeSpeakerIsEverInstalled(agent: CodingAgent) throws {
+    func onlyVitruvianSpeakerIsEverInstalled(agent: CodingAgent) throws {
         let home = scratch()
         let a = AgentIntegration(home: home, executablePath: "/usr/bin/true")
-        #expect(throws: AgentIntegration.IntegrationError.notHomeSpeaker("/usr/bin/true")) { try a.installHook(for: agent) }
+        #expect(throws: AgentIntegration.IntegrationError.notVitruvianSpeaker("/usr/bin/true")) { try a.installHook(for: agent) }
         #expect(!FileManager.default.fileExists(atPath: agent.settingsURL(home: home).path))
     }
 
     @Test(arguments: [CodingAgent.antigravity, .opencode])
     func aMovedAppRepairsEveryPlugin(agent: CodingAgent) throws {
         let home = scratch()
-        try AgentIntegration(home: home, executablePath: "/gone/HomeSpeaker.app/Contents/MacOS/HomeSpeaker").installHook(for: agent)
+        try AgentIntegration(home: home, executablePath: "/gone/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker").installHook(for: agent)
         let a = AgentIntegration(home: home, executablePath: app)
         a.repairHookIfMoved(choice: nil)
         #expect(a.status(of: agent).hook == .installed)
@@ -154,8 +154,8 @@ private let app = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
 
     @Test func eachAgentSaysWhereItsHookGoes() {
         #expect(CodingAgent.claudeCode.hookFootnote.contains("~/.claude/settings.json"))
-        #expect(CodingAgent.antigravity.hookFootnote.contains("~/.gemini/config/plugins/home-speaker"))
-        #expect(CodingAgent.opencode.hookFootnote.contains("~/.config/opencode/plugins/home-speaker.ts"))
+        #expect(CodingAgent.antigravity.hookFootnote.contains("~/.gemini/config/plugins/vitruvian-speaker"))
+        #expect(CodingAgent.opencode.hookFootnote.contains("~/.config/opencode/plugins/vitruvian-speaker.ts"))
     }
 }
 
@@ -273,7 +273,7 @@ private let app = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
         #expect(DetachedAnnouncement.arguments(text: "hi", agent: .antigravity) == ["--announce", "hi", "--source", "antigravity"])
         #expect(DetachedAnnouncement.arguments(text: "hi", agent: .opencode) == ["--announce", "hi", "--source", "opencode"])
         for agent in CodingAgent.allCases {
-            #expect(HomeSpeakerCommandLine.parse(DetachedAnnouncement.arguments(text: "hi", agent: agent)) == .announce("hi", agent))
+            #expect(VitruvianSpeakerCommandLine.parse(DetachedAnnouncement.arguments(text: "hi", agent: agent)) == .announce("hi", agent))
         }
     }
 
@@ -380,7 +380,7 @@ private let app = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
 
     private static func runAntigravity(_ dir: URL, _ payload: [String: Any], manager: ConfigManager) async throws -> [String] {
         let home = Calls()
-        let output = await HomeSpeakerCommandLine.stopHook(
+        let output = await VitruvianSpeakerCommandLine.stopHook(
             .antigravity, input: try JSONSerialization.data(withJSONObject: payload), config: { manager },
             history: BroadcastHistory(fileURL: dir.appendingPathComponent("hist.json")), standsAside: false,
             lockDirectory: dir, launchDetached: { _ in Issue.record("nothing goes detached here") }
@@ -440,7 +440,7 @@ private let app = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
         let input = try JSONSerialization.data(withJSONObject: payload)
         let history = BroadcastHistory(fileURL: dir.appendingPathComponent("hist.json"))
         let home = Calls()
-        let output = await HomeSpeakerCommandLine.stopHook(
+        let output = await VitruvianSpeakerCommandLine.stopHook(
             .opencode, input: input, config: { manager }, history: history, standsAside: false, lockDirectory: dir,
             launchDetached: { _ in }
         ) { text, _, _, _ in
@@ -455,7 +455,7 @@ private let app = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
         await MainActor.run { manager.config.effectiveAnnouncementStyle = .plain }
         let other = scratch()
         let detached = Calls()
-        _ = await HomeSpeakerCommandLine.stopHook(
+        _ = await VitruvianSpeakerCommandLine.stopHook(
             .opencode, input: input, config: { manager }, history: history, standsAside: false, lockDirectory: other,
             launchDetached: { detached.add($0) }
         ) { _, _, _, _ in
@@ -468,7 +468,7 @@ private let app = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
     @Test(arguments: [CodingAgent.antigravity, .opencode])
     func badInputAnswersAndSaysNothing(agent: CodingAgent) async {
         for input in [Data(), Data("garbage".utf8), Data("{}".utf8)] {
-            let output = await HomeSpeakerCommandLine.stopHook(
+            let output = await VitruvianSpeakerCommandLine.stopHook(
                 agent, input: input, config: { Issue.record("settings read for bad input"); return .shared },
                 history: BroadcastHistory(fileURL: scratch().appendingPathComponent("h.json")), standsAside: false
             ) { _, _, _, _ in
@@ -492,7 +492,7 @@ private let app = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
         ]]
         let input = try JSONSerialization.data(withJSONObject: payload)
         let detached = Calls()
-        let output = await HomeSpeakerCommandLine.stopHook(
+        let output = await VitruvianSpeakerCommandLine.stopHook(
             .opencode, input: input, config: { manager },
             history: BroadcastHistory(fileURL: dir.appendingPathComponent("hist.json")),
             standsAside: false, lockDirectory: dir, speechLockURL: speechLockURL,

@@ -226,7 +226,7 @@ impl Catalog {
     }
 
     /// The url and size lines under a label, inside the block that starts
-    /// with `scope` (a regex prefix such as `id:\s*home-speaker[\s\S]*?`).
+    /// with `scope` (a regex prefix such as `id:\s*vitruvian-speaker[\s\S]*?`).
     fn asset(&mut self, scope: &str, label: &str, url: &str, size: &str) -> Result<(), Crash> {
         self.sub(
             &format!(
@@ -392,12 +392,12 @@ pub fn sync_catalog(
         }
     }
 
-    // 3. HomeSpeaker
-    if let Some(rel) = get_latest_release(CORE, Some("home-speaker-v"), token)? {
+    // 3. Vitruvian Speaker
+    if let Some(rel) = get_latest_release(CORE, Some("vitruvian-speaker-v"), token)? {
         if rel.truthy() {
-            let tag = str_of(&rel, "tag_name", "replace")?.replace("home-speaker-v", "");
-            say(&format!("✓ HomeSpeaker: v{}", tag));
-            cat.version("home-speaker", &tag)?;
+            let tag = str_of(&rel, "tag_name", "replace")?.replace("vitruvian-speaker-v", "");
+            say(&format!("✓ Vitruvian Speaker: v{}", tag));
+            cat.version("vitruvian-speaker", &tag)?;
             let list = assets(&rel)?;
             let mut has_universal_zip = false;
             for a in &list {
@@ -407,7 +407,7 @@ pub fn sync_catalog(
                     break;
                 }
             }
-            let scope = r"id:\s*home-speaker[\s\S]*?";
+            let scope = r"id:\s*vitruvian-speaker[\s\S]*?";
             for a in list {
                 let Some(asset) = read_asset(&a, true)? else {
                     continue;
@@ -428,7 +428,7 @@ pub fn sync_catalog(
         }
     }
 
-    // 3b. Courier: the same release shape as HomeSpeaker (both are packaged by
+    // 3b. Courier: the same release shape as Vitruvian Speaker (both are packaged by
     // //tools/desktop-package). Until the catalog has a `courier` entry, which
     // is added by hand once the first release exists, nothing here matches and
     // the catalog is left alone.
@@ -584,7 +584,7 @@ mod tests {
     // The cases in sync_downloads_test.py.
     #[test]
     fn courier_links_update_only_courier() {
-        let original = "      - id: home-speaker\n        version: \"1.0.0\"\n        downloads:\n          - label: Universal DMG\n            url: https://example.invalid/hs.dmg\n            size: 1 MB\n      - id: courier\n        version: \"0.3.0\"\n        downloads:\n          - label: Universal DMG\n            url: https://example.invalid/old.dmg\n            size: 1 MB\n          - label: Apple Silicon DMG\n            url: https://example.invalid/old-arm64.dmg\n            size: 1 MB\n";
+        let original = "      - id: vitruvian-speaker\n        version: \"1.0.0\"\n        downloads:\n          - label: Universal DMG\n            url: https://example.invalid/hs.dmg\n            size: 1 MB\n      - id: courier\n        version: \"0.3.0\"\n        downloads:\n          - label: Universal DMG\n            url: https://example.invalid/old.dmg\n            size: 1 MB\n          - label: Apple Silicon DMG\n            url: https://example.invalid/old-arm64.dmg\n            size: 1 MB\n";
         let mut cat = Catalog {
             content: original.to_string(),
         };
@@ -602,7 +602,7 @@ mod tests {
         assert!(cat
             .content
             .contains("url: https://example.invalid/new.dmg\n            size: 2 MB"));
-        // HomeSpeaker's block, before Courier's, is untouched.
+        // Vitruvian Speaker's block, before Courier's, is untouched.
         assert!(cat.content.contains("version: \"1.0.0\""));
         assert!(cat.content.contains("https://example.invalid/hs.dmg"));
         assert!(cat.content.contains("old-arm64.dmg"));
@@ -610,7 +610,7 @@ mod tests {
 
     #[test]
     fn courier_without_a_catalog_entry_changes_nothing() {
-        let original = "      - id: home-speaker\n        version: \"1.0.0\"\n        downloads:\n          - label: Universal DMG\n            url: https://example.invalid/hs.dmg\n            size: 1 MB\n";
+        let original = "      - id: vitruvian-speaker\n        version: \"1.0.0\"\n        downloads:\n          - label: Universal DMG\n            url: https://example.invalid/hs.dmg\n            size: 1 MB\n";
         let mut cat = Catalog {
             content: original.to_string(),
         };
@@ -652,7 +652,7 @@ mod tests {
     #[test]
     fn test_parse_semver() {
         assert_eq!(semver("v1.2.3"), (1, 2, 3));
-        assert_eq!(semver("home-speaker-v1.11.0"), (1, 11, 0));
+        assert_eq!(semver("vitruvian-speaker-v1.11.0"), (1, 11, 0));
         assert_eq!(semver("vitruvian-v3.37.1"), (3, 37, 1));
         assert_eq!(semver("nexus-agent-1.20.1"), (1, 20, 1));
         assert_eq!(semver("0.1.2"), (0, 1, 2));

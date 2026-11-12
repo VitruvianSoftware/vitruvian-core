@@ -21,8 +21,8 @@
 
 import XCTest
 
-import HomeSpeakerCore
-import HomeSpeakerToolCore
+import VitruvianSpeakerCore
+import VitruvianSpeakerToolCore
 import VitruvianToolKit
 import VitruvianToolProtocol
 
@@ -62,14 +62,14 @@ final class SharedFileTests: XCTestCase {
     }
 
     private let url = URL(fileURLWithPath: "/fake/.gemini/speaker_broadcast.json")
-    private let appProgram = URL(fileURLWithPath: "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker")
+    private let appProgram = URL(fileURLWithPath: "/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker")
 
     private func object(_ files: MemoryFiles) -> [String: Any] {
         (files[url].flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }) ?? [:]
     }
 
-    private func tool(_ files: MemoryFiles, program: URL? = nil) -> HomeSpeakerTool {
-        HomeSpeakerTool(parts: .init(link: Link(), store: FileConfigStore(url: url, fileSystem: files),
+    private func tool(_ files: MemoryFiles, program: URL? = nil) -> VitruvianSpeakerTool {
+        VitruvianSpeakerTool(parts: .init(link: Link(), store: FileConfigStore(url: url, fileSystem: files),
                                      driver: Driver(program: program ?? appProgram), later: { $0() }))
     }
 
@@ -80,7 +80,7 @@ final class SharedFileTests: XCTestCase {
          "targets":{"kitchen":{"id":"d1","type":"SPEAKER","name":"Kitchen","phone_icon":"speaker"}},
          "chat_monitor":{"slack_enabled":true,"phone_only":1},"macagent_version":"2.1"}
         """.utf8)
-        try tool(files).run(command: HomeSpeakerTool.Command.toggleQuietHours)
+        try tool(files).run(command: VitruvianSpeakerTool.Command.toggleQuietHours)
         let disk = object(files)
         XCTAssertEqual(disk["quiet_hours_enabled"] as? Bool, true, "the tool's change landed")
         XCTAssertEqual(disk["macagent_version"] as? String, "2.1", "a top-level key the tool does not know survives")
@@ -92,7 +92,7 @@ final class SharedFileTests: XCTestCase {
         let files = MemoryFiles()
         files[url] = Data("{ broken".utf8)
         let tool = tool(files)
-        XCTAssertThrowsError(try tool.run(command: HomeSpeakerTool.Command.toggleBroadcasting))
+        XCTAssertThrowsError(try tool.run(command: VitruvianSpeakerTool.Command.toggleBroadcasting))
         _ = tool.settingsPage()
         _ = tool.settingsEvent(PanelEvent(block: Pages.Block.speakLocal, kind: .toggle, value: .bool(true)))
         XCTAssertEqual(files.writes, 0, "nothing written")
@@ -100,14 +100,14 @@ final class SharedFileTests: XCTestCase {
     }
 
     func testHooksFromTheToolPointAtTheAppNotAtBinTool() throws {
-        let home = FileManager.default.temporaryDirectory.appendingPathComponent("homespeaker-tool-home-\(UUID().uuidString)")
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-speaker-tool-home-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: home) }
         let agents = try XCTUnwrap(tool(MemoryFiles()).agentIntegration(home: home))
         XCTAssertEqual(agents.hookCommand(for: .claudeCode), "\"\(appProgram.path)\" --claude-stop-hook")
         XCTAssertFalse(agents.hookCommand(for: .claudeCode).contains(CommandLine.arguments[0]), "never the running program")
-        let missing = HomeSpeakerTool(parts: .init(link: Link(), store: FileConfigStore(url: url, fileSystem: MemoryFiles()),
+        let missing = VitruvianSpeakerTool(parts: .init(link: Link(), store: FileConfigStore(url: url, fileSystem: MemoryFiles()),
                                                    driver: Driver(program: nil), later: { $0() }))
-        XCTAssertNil(missing.agentIntegration(home: home), "no HomeSpeaker, nothing to point a hook at")
+        XCTAssertNil(missing.agentIntegration(home: home), "no Vitruvian Speaker, nothing to point a hook at")
     }
 
     func testTheDriverReportsTheProgramItRuns() {
@@ -120,26 +120,26 @@ final class SharedFileTests: XCTestCase {
     /// home, change nothing it shows.
     @MainActor
     func testTheExtensionNeverReadsTheAppsSettings() throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent("homespeaker-shared-file-\(UUID().uuidString)")
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-speaker-shared-file-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
         let home = root.appendingPathComponent("home")
         let appsFile = home.appendingPathComponent(".gemini/speaker_broadcast.json")
         try FileManager.default.createDirectory(at: appsFile.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data(#"{"enabled": false, "default_target": "attic", "targets": {"attic": {"id": "a1", "type": "SPEAKER", "name": "Attic"}}}"#.utf8)
             .write(to: appsFile)
-        let profile = HomeSpeakerProfile.extension(
+        let profile = VitruvianSpeakerProfile.extension(
             dataFolder: root.appendingPathComponent("data"), toolFolder: nil,
-            messagePrefix: "test.\(UUID().uuidString).homespeaker")
-        let engine = HomeSpeakerEngine(profile: profile)
+            messagePrefix: "test.\(UUID().uuidString).vitruvian-speaker")
+        let engine = VitruvianSpeakerEngine(profile: profile)
         engine.config.config = SpeakerConfig(enabled: true, defaultTarget: "kitchen",
                                              targets: ["kitchen": SpeakerDevice(id: "d1", type: "SPEAKER", name: "Kitchen")])
         try engine.config.trySaveConfig()
-        let parts = HomeSpeakerTool.Parts.extension(
+        let parts = VitruvianSpeakerTool.Parts.extension(
             engine: engine, program: root.appendingPathComponent("bin/tool"), link: Link(), later: { $0() },
             driverParts: EngineDriver.Parts(engine: engine, otherSecrets: { nil }), monitor: GatedMonitor(NoMonitor()),
             holdsLiveLock: true, check: DoorCheck(file: DoorFile(url: DoorFile.defaultURL(home: home)), appInstalled: { false }),
             appProgram: { nil },
-            appProfile: HomeSpeakerProfile(
+            appProfile: VitruvianSpeakerProfile(
                 door: .app, settingsURL: appsFile, historyURL: home.appendingPathComponent(".gemini/speaker_history.json"),
                 secretsURL: root.appendingPathComponent("app-secrets.json"), messagePrefix: "test.\(UUID().uuidString).app",
                 liveLockURL: nil, toolFolder: nil),
@@ -153,9 +153,9 @@ final class SharedFileTests: XCTestCase {
                 return false
             },
             home: home, onMain: { work in MainActor.assumeIsolated { work() } })
-        let tool = HomeSpeakerTool(parts: parts)
+        let tool = VitruvianSpeakerTool(parts: parts)
         // Read and saved, with no page drawn: a page would start jobs.
-        try tool.run(command: HomeSpeakerTool.Command.toggleQuietHours)
+        try tool.run(command: VitruvianSpeakerTool.Command.toggleQuietHours)
         XCTAssertTrue(tool.config.enabled, "the app's broadcasting switch is not the extension's")
         XCTAssertEqual(tool.config.defaultTarget, "kitchen", "nor is its speaker")
         XCTAssertEqual(tool.status().config.targets.keys.sorted(), ["kitchen"])

@@ -30,7 +30,7 @@
 #     merged bump changes that file, and so can stop the other open bump pull
 #     requests from merging: they edit the same lines. This run rebuilds them
 #     at once. Without it, on 2026-10-19 Vitruvian Remote's bump sat broken
-#     for about three hours after HomeSpeaker's merged first, waiting for an
+#     for about three hours after Vitruvian Speaker's merged first, waiting for an
 #     hourly run that GitHub kept dropping. GitHub needs a few seconds after a
 #     push to work out whether a pull request still merges, so the plan asks
 #     again for up to half a minute before it gives up until the next run.
@@ -52,7 +52,7 @@
 # Why not other ways to hear of a release:
 #   - `release: published` fires too early. release-please publishes the
 #     release, and the zip is uploaded minutes later by the release
-#     workflow's publishing job (HomeSpeaker 1.20.0: published 08:45:31,
+#     workflow's publishing job (Vitruvian Speaker 1.20.0: published 08:45:31,
 #     zip attached 08:50:08).
 #   - Uploading the zip makes no event that starts a workflow: it is uploaded
 #     with GITHUB_TOKEN, and GitHub starts no workflow for what that token
@@ -104,7 +104,7 @@ on:
   # does.
   workflow_run:
     workflows:
-      - home-speaker-release
+      - vitruvian-speaker-release
       - android-remote-release
       - vitruvian-tool-tv-release
     types: [completed]
@@ -123,11 +123,11 @@ on:
   workflow_dispatch:
     inputs:
       id:
-        description: "Catalog entry, e.g. dev.vitruvian.homespeaker. Empty with an empty tag: every tool behind its newest release."
+        description: "Catalog entry, e.g. dev.vitruvian.speaker. Empty with an empty tag: every tool behind its newest release."
         required: false
         type: string
       tag:
-        description: "Release tag, e.g. home-speaker-v1.20.0 (v1.4.1 for the GitHub tool). Needs the id."
+        description: "Release tag, e.g. vitruvian-speaker-v1.20.0 (v1.4.1 for the GitHub tool). Needs the id."
         required: false
         type: string
 

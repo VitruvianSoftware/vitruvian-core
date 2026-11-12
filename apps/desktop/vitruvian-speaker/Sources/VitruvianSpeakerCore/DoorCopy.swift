@@ -22,7 +22,7 @@ import Foundation
 
 // MARK: - One side, in plain facts
 
-/// One HomeSpeaker's state in plain facts, for showing the app and the
+/// One Vitruvian Speaker's state in plain facts, for showing the app and the
 /// extension side by side before a copy (design 7.4, step 2).
 ///
 /// It holds no token, by construction: only whether a login is there, and
@@ -93,7 +93,7 @@ public struct DoorSnapshot: Equatable {
     /// `SpeakerConfigFile.read` (not `ConfigManager`, which writes the
     /// defaults when there is no file), the sign-ins through
     /// `SecretStore.load`, and the history's length.
-    public init(profile: HomeSpeakerProfile) {
+    public init(profile: VitruvianSpeakerProfile) {
         let read = SpeakerConfigFile(url: profile.settingsURL).read()
         let secrets = SecretStore(fileURL: profile.secretsURL).load()
         // A file that is missing or does not read: what this side would
@@ -257,7 +257,7 @@ public enum DoorCopy {
     /// A write that fails after the first one throws `DoorCopyPartial`,
     /// which says what was copied and what was not; the caller still tells
     /// the destination when its sign-ins were replaced.
-    public static func copy(from source: HomeSpeakerProfile, to destination: HomeSpeakerProfile) throws -> CopyReport {
+    public static func copy(from source: VitruvianSpeakerProfile, to destination: VitruvianSpeakerProfile) throws -> CopyReport {
         let from = name(source.door)
 
         // Read and check everything first.
@@ -318,7 +318,7 @@ public enum DoorCopy {
         }
         lines.append("History: \(count) \(count == 1 ? "entry" : "entries"), \(added) of them from \(from).")
 
-        lines.append("Not copied: the hooks, which are pointed at the HomeSpeaker in use, and the app's Open at Login.")
+        lines.append("Not copied: the hooks, which are pointed at the Vitruvian Speaker in use, and the app's Open at Login.")
         lines.append(copyNote)
         return CopyReport(lines: lines, settingsCopied: settingsCopied, historyCount: count, historyAdded: added)
     }
@@ -335,7 +335,7 @@ public enum DoorCopy {
         return Array(ordered.map(\.element).prefix(BroadcastHistory.limit))
     }
 
-    private static func name(_ door: HomeSpeakerProfile.Door) -> String {
+    private static func name(_ door: VitruvianSpeakerProfile.Door) -> String {
         switch door {
         case .app: return "the app"
         case .extension: return "the extension"

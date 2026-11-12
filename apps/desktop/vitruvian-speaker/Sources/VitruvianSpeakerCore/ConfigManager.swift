@@ -23,7 +23,7 @@ import Foundation
 @MainActor
 public class ConfigManager: ObservableObject {
     /// The app's settings, on the app's history and secrets: the parts of
-    /// `HomeSpeakerEngine.app`.
+    /// `VitruvianSpeakerEngine.app`.
     public static let shared = ConfigManager(
         configPath: ConfigManager.defaultConfigURL(), history: .shared, secrets: .shared)
 
@@ -309,7 +309,7 @@ public class ConfigManager: ObservableObject {
         setNetwork(key, of: .beeper, reading: reading)
     }
 
-    /// Reads one of Courier's networks although HomeSpeaker's own Slack or
+    /// Reads one of Courier's networks although Vitruvian Speaker's own Slack or
     /// Google Chat reader covers it, or leaves it to that reader again,
     /// and saves. The monitor restarts so the accounts are sorted again.
     @discardableResult
@@ -385,7 +385,7 @@ public class ConfigManager: ObservableObject {
         }
     }
 
-    /// Re-reads the history file, so entries `HomeSpeaker --say`, the Stop
+    /// Re-reads the history file, so entries `VitruvianSpeaker --say`, the Stop
     /// hook or another copy of the app wrote show up. The menu calls this
     /// each time it opens.
     public func reloadHistory() {

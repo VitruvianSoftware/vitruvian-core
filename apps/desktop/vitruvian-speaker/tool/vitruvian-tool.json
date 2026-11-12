@@ -1,7 +1,7 @@
 {
   "id": "dev.vitruvian.speaker",
   "name": {
-    "en": "Speaker"
+    "en": "Vitruvian Speaker"
   },
   "description": {
     "en": "Speaks what you type, or the clipboard, on your Google Home speakers, and keeps broadcasting, quiet hours and the volume at hand."
@@ -74,7 +74,7 @@
       {
         "id": "speaker",
         "title": {
-          "en": "Speaker"
+          "en": "Vitruvian Speaker"
         },
         "placement": "island",
         "icon": "hifispeaker.2"
@@ -82,7 +82,7 @@
       {
         "id": "settings",
         "title": {
-          "en": "Speaker"
+          "en": "Vitruvian Speaker"
         },
         "placement": "settings"
       }

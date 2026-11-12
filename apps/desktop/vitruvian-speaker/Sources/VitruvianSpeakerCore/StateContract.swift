@@ -21,11 +21,11 @@
 import Foundation
 
 /// Machine-readable `--state --json` and `--apply --json '<changes>'` contract
-/// shared by the standalone `HomeSpeaker` app binary and the Vitruvian
+/// shared by the standalone `VitruvianSpeaker` app binary and the Vitruvian
 /// extension's `bin/tool`.
 ///
-/// Design: `docs/superpowers/specs/2026-11-10-homespeaker-one-rulebook-design.md` (§3).
-public enum HomeSpeakerStateContract {
+/// Design: `docs/superpowers/specs/2026-11-10-vitruvian-speaker-one-rulebook-design.md` (§3).
+public enum VitruvianSpeakerStateContract {
     public static let contractVersion = 1
 
     /// Every operation name accepted by `--apply`. Tested against an explicit
@@ -54,8 +54,8 @@ public enum HomeSpeakerStateContract {
     /// Tests construct a `Seam` pointing exclusively at scratch files and fake
     /// closures so no real user file or running process is ever touched.
     public struct Seam: Sendable {
-        public var program: HomeSpeakerProfile.Door
-        public var homeSpeakerVersion: @Sendable () -> String
+        public var program: VitruvianSpeakerProfile.Door
+        public var vitruvianSpeakerVersion: @Sendable () -> String
         public var configFile: SpeakerConfigFile
         public var secrets: SecretStore
         public var history: BroadcastHistory
@@ -76,7 +76,7 @@ public enum HomeSpeakerStateContract {
         public var doorSwitchSeam: @Sendable () -> (any SettingsActions.DoorSwitchSeam)?
         public var now: @Sendable () -> Date
         public var calendar: Calendar
-        /// Tells a running HomeSpeaker of this program that secrets changed,
+        /// Tells a running Vitruvian Speaker of this program that secrets changed,
         /// so it re-reads its login and restarts its chat monitor. Called once
         /// after a successful `--apply` that changed any secret. Silent unless
         /// the live seam sets it, so tests never post a real notification.
@@ -87,8 +87,8 @@ public enum HomeSpeakerStateContract {
         public var launchctlBootout: @Sendable (String) -> Void
 
         public init(
-            program: HomeSpeakerProfile.Door,
-            homeSpeakerVersion: @escaping @Sendable () -> String = { HomeSpeakerVersion.current },
+            program: VitruvianSpeakerProfile.Door,
+            vitruvianSpeakerVersion: @escaping @Sendable () -> String = { VitruvianSpeakerVersion.current },
             configFile: SpeakerConfigFile,
             secrets: SecretStore,
             history: BroadcastHistory,
@@ -113,7 +113,7 @@ public enum HomeSpeakerStateContract {
             launchctlBootout: @escaping @Sendable (String) -> Void = { _ in }
         ) {
             self.program = program
-            self.homeSpeakerVersion = homeSpeakerVersion
+            self.vitruvianSpeakerVersion = vitruvianSpeakerVersion
             self.configFile = configFile
             self.secrets = secrets
             self.history = history
@@ -142,7 +142,7 @@ public enum HomeSpeakerStateContract {
         /// Builds the default seam for `engine` on the standalone app or the
         /// extension when no custom seam was injected.
         public static func live(
-            for profile: HomeSpeakerProfile,
+            for profile: VitruvianSpeakerProfile,
             doorFile: DoorFile = DoorFile(),
             otherInstalled: @escaping @Sendable (DoorRecord?) -> Bool = { record in
                 OtherDoorPresence.extensionInstalled(
@@ -161,14 +161,14 @@ public enum HomeSpeakerStateContract {
             let antigravityURL = agentHome.appendingPathComponent(".gemini/antigravity/mcp_oauth_tokens.json")
             return Seam(
                 program: profile.door,
-                homeSpeakerVersion: { HomeSpeakerVersion.current },
+                vitruvianSpeakerVersion: { VitruvianSpeakerVersion.current },
                 configFile: SpeakerConfigFile(url: profile.settingsURL),
                 secrets: SecretStore(fileURL: profile.secretsURL),
                 history: BroadcastHistory(fileURL: profile.historyURL),
                 monitorStatusFile: ChatMonitorStatusFile(url: profile.monitorStatusURL),
                 doorFile: doorFile,
                 otherInstalled: otherInstalled,
-                appRunning: { HomeSpeakerProfile.isAppRunning(among: HomeSpeakerProfile.runningApps()) },
+                appRunning: { VitruvianSpeakerProfile.isAppRunning(among: VitruvianSpeakerProfile.runningApps()) },
                 extensionRunning: { record in
                     let extProfile = profile.door == .extension ? profile : AppStartup.extensionProfile(record: record)
                     guard let lockURL = extProfile?.liveLockURL else { return false }
@@ -218,7 +218,7 @@ public enum HomeSpeakerStateContract {
         let extensionInstalled = seam.program == .extension ? selfInstalled : otherInstalled
         let chosen = doorRecord?.chosen
         let role = DoorRole.decide(me: seam.program, otherInstalled: otherInstalled, chosen: chosen)
-        let activeDoor: HomeSpeakerProfile.Door
+        let activeDoor: VitruvianSpeakerProfile.Door
         if case .quiet(let other) = role {
             activeDoor = other
         } else {
@@ -527,7 +527,7 @@ public enum HomeSpeakerStateContract {
 
         return [
             "contract_version": Self.contractVersion,
-            "home_speaker_version": seam.homeSpeakerVersion(),
+            "speaker_version": seam.vitruvianSpeakerVersion(),
             "program": seam.program.rawValue,
             "chosen": chosen?.rawValue ?? NSNull(),
             "chosen_running": chosenRunning,
@@ -580,7 +580,7 @@ public enum HomeSpeakerStateContract {
 
     private struct PendingSwitch {
         let opIndex: Int
-        let side: HomeSpeakerProfile.Door
+        let side: VitruvianSpeakerProfile.Door
         let copy: Bool
         let compare: DoorCompare
         let switchSeam: any SettingsActions.DoorSwitchSeam
@@ -648,7 +648,7 @@ public enum HomeSpeakerStateContract {
                 IndexedApplyError(
                     opIndex: 0,
                     code: "not_chosen",
-                    message: "The HomeSpeaker \(chosen.rawValue) is the chosen program; run --apply on \(chosen.rawValue) instead.",
+                    message: "The Vitruvian Speaker \(chosen.rawValue) is the chosen program; run --apply on \(chosen.rawValue) instead.",
                     chosen: chosen.rawValue
                 )
             )
@@ -852,7 +852,7 @@ public enum HomeSpeakerStateContract {
                             )
                         }
                         guard let sideRaw = opDict["side"] as? String,
-                              let targetSide = HomeSpeakerProfile.Door(rawValue: sideRaw) else {
+                              let targetSide = VitruvianSpeakerProfile.Door(rawValue: sideRaw) else {
                             throw IndexedApplyError(
                                 opIndex: index,
                                 code: "invalid_side",
@@ -867,7 +867,7 @@ public enum HomeSpeakerStateContract {
                                 message: "Door switching is not configured on this command-line seam."
                             )
                         }
-                        let sourceSide: HomeSpeakerProfile.Door = targetSide == .app ? .extension : .app
+                        let sourceSide: VitruvianSpeakerProfile.Door = targetSide == .app ? .extension : .app
                         do {
                             guard let compare = try SettingsActions.beginSwitch(
                                 from: sourceSide,
@@ -880,7 +880,7 @@ public enum HomeSpeakerStateContract {
                                     opIndex: index,
                                     code: "switch_refused",
                                     message: switchSeam.inTrash()
-                                        ? "This copy of HomeSpeaker is in the Trash and cannot switch doors."
+                                        ? "This copy of Vitruvian Speaker is in the Trash and cannot switch doors."
                                         : notFound
                                 )
                             }
@@ -1112,11 +1112,11 @@ public enum HomeSpeakerStateContract {
                                 message: "\"agentHook\" requires \"action\" to be one of: install, remove, addInstruction, disableRival."
                             )
                         }
-                        if action == .install, !AgentIntegration.isHomeSpeakerProgram(seam.hookExecutablePath) {
+                        if action == .install, !AgentIntegration.isVitruvianSpeakerProgram(seam.hookExecutablePath) {
                             throw IndexedApplyError(
                                 opIndex: index,
                                 code: "invalid_hook_program",
-                                message: "Refusing to install a hook pointing to a non-HomeSpeaker executable."
+                                message: "Refusing to install a hook pointing to a non-Vitruvian Speaker executable."
                             )
                         }
                         hookMutations.append {
@@ -1188,7 +1188,7 @@ public enum HomeSpeakerStateContract {
                         throw IndexedApplyError(
                             opIndex: pending.opIndex,
                             code: "switch_refused",
-                            message: "This copy of HomeSpeaker is in the Trash and cannot switch doors."
+                            message: "This copy of Vitruvian Speaker is in the Trash and cannot switch doors."
                         )
                     case .stayOnCompare(let cmp, let report):
                         throw IndexedApplyError(
@@ -1223,7 +1223,7 @@ public enum HomeSpeakerStateContract {
                 return opResults
             }
 
-            // A running HomeSpeaker of this program learns of new secrets
+            // A running Vitruvian Speaker of this program learns of new secrets
             // only after the batch has succeeded.
             if secretsChanged { seam.credentialsChanged() }
 

@@ -94,7 +94,7 @@ public enum LocalSpeechError: LocalizedError, Equatable {
 public final class LocalSpeaker: Sendable {
     public static let shared = LocalSpeaker()
 
-    public static let logger = Logger(subsystem: "com.vitruviansoftware.homespeaker", category: "local-speech")
+    public static let logger = Logger(subsystem: "com.vitruviansoftware.speaker", category: "local-speech")
 
     private let synthesizer: SpeechSynthesizing
     private let log: @Sendable (String) -> Void

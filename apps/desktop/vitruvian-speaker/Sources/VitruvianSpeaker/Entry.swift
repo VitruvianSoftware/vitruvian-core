@@ -19,27 +19,27 @@
 // SOFTWARE.
 
 import Foundation
-import HomeSpeakerCore
+import VitruvianSpeakerCore
 
 // The same binary is both the menu bar app and its command line, the
-// Claude Code Stop hook included. Claude Code runs `HomeSpeaker
+// Claude Code Stop hook included. Claude Code runs `VitruvianSpeaker
 // --claude-stop-hook` with JSON on stdin; that path must never bring up a
 // UI, so it is decided before SwiftUI starts. The command line itself is in
-// Core (HomeSpeakerCommandLine), on the app's engine. (An explicit @main
+// Core (VitruvianSpeakerCommandLine), on the app's engine. (An explicit @main
 // type rather than top-level code in main.swift, because Bazel's
 // swift_library compiles with -parse-as-library.)
 @main
 enum Entry {
     static func main() {
         let arguments = Array(CommandLine.arguments.dropFirst())
-        if HomeSpeakerCommandLine.recognizes(arguments) {
+        if VitruvianSpeakerCommandLine.recognizes(arguments) {
             MainActor.assumeIsolated {
                 // The Stop hook and `--announce` stand aside while the
                 // extension is chosen and installed, or this app is in the
                 // Trash, so a stale hook never says a reply twice.
-                HomeSpeakerCommandLine.run(arguments, engine: .app, parts: AppStartup.commandLineParts())
+                VitruvianSpeakerCommandLine.run(arguments, engine: .app, parts: AppStartup.commandLineParts())
             }
         }
-        HomeSpeakerApp.main()
+        VitruvianSpeakerApp.main()
     }
 }

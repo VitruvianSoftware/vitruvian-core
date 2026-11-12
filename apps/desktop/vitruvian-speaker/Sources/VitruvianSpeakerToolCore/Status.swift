@@ -19,12 +19,12 @@
 // SOFTWARE.
 
 import Foundation
-import HomeSpeakerCore
+import VitruvianSpeakerCore
 import VitruvianToolProtocol
 
 /// What the tool knows that decides the mark on the closed island.
 public struct StatusInputs: Equatable {
-    /// What this HomeSpeaker does, given the other and the person's choice.
+    /// What this Vitruvian Speaker does, given the other and the person's choice.
     public var role: DoorRole
     /// A sign-in that stopped working, when there is one.
     public var signInProblem: String?
@@ -72,7 +72,7 @@ public struct MarkChoice: Equatable {
 public enum IslandStatus {
     /// The first row that applies wins, and the order is the precedence:
     ///
-    /// 1. The other HomeSpeaker is chosen: no mark at all.
+    /// 1. The other Vitruvian Speaker is chosen: no mark at all.
     /// 2. A sign-in stopped working, then the chat monitor has a problem.
     /// 3. Both installed and nobody has picked.
     /// 4. Not set up.
@@ -90,12 +90,12 @@ public enum IslandStatus {
         }
         switch inputs.role {
         case .activeAsking, .waitingAsking:
-            return MarkChoice(state: .attention, icon: "exclamationmark.circle", text: "Pick which HomeSpeaker to use")
+            return MarkChoice(state: .attention, icon: "exclamationmark.circle", text: "Pick which Vitruvian Speaker to use")
         case .active, .quiet:
             break
         }
         if !inputs.setUp {
-            return MarkChoice(state: .attention, icon: "hifispeaker.2", text: "Set up HomeSpeaker")
+            return MarkChoice(state: .attention, icon: "hifispeaker.2", text: "Set up Vitruvian Speaker")
         }
         if inputs.speaking {
             return MarkChoice(state: .busy, icon: "waveform", text: "Speaking")

@@ -115,13 +115,13 @@ public struct Secrets: Codable, Equatable {
 ///
 /// Why not the Keychain: the app ships ad-hoc signed (no Developer ID), so its
 /// code identity changes with every build. Keychain ACLs are keyed to that
-/// identity, which would mean a "HomeSpeaker wants to use your keychain"
+/// identity, which would mean a "Vitruvian Speaker wants to use your keychain"
 /// prompt after every update. A 0600 file in the user's own Application
 /// Support folder is what gcloud and gh do, and it is what the Claude Code
 /// hook process (a second copy of this binary) can read without prompts.
 ///
 /// Several processes write it: the running app refreshing a Google token,
-/// `HomeSpeaker --sign-in` / `--sign-out`, and the Vitruvian tool saving a
+/// `VitruvianSpeaker --sign-in` / `--sign-out`, and the Vitruvian tool saving a
 /// Slack token. So every write -- above all `update`'s read-modify-write --
 /// holds an exclusive `flock` on `secrets.json.lock` beside it; without it,
 /// the app's token refresh could write back a copy read a moment before the
@@ -140,7 +140,7 @@ public final class SecretStore: @unchecked Sendable {
     public static let shared = SecretStore()
 
     public let fileURL: URL
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.homespeaker.secrets")
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.speaker.secrets")
 
     /// The file `flock` is taken on: `secrets.json.lock`, next to it. Its
     /// own file, so the atomic replace of `secrets.json` never swaps the
@@ -150,7 +150,7 @@ public final class SecretStore: @unchecked Sendable {
     public static func defaultURL() -> URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
-        return base.appendingPathComponent("HomeSpeaker/secrets.json")
+        return base.appendingPathComponent("Vitruvian Speaker/secrets.json")
     }
 
     public init(fileURL: URL = SecretStore.defaultURL()) {

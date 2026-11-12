@@ -20,9 +20,9 @@
 
 import AppKit
 import Foundation
-import HomeSpeakerCore
+import VitruvianSpeakerCore
 
-/// One thing the tool asks HomeSpeaker's program to do, as its flags do.
+/// One thing the tool asks Vitruvian Speaker's program to do, as its flags do.
 public enum Job: Equatable, Sendable {
     case say(String)
     /// Speaks again what Recent Broadcasts lists, as `say` does (the master
@@ -33,13 +33,13 @@ public enum Job: Equatable, Sendable {
     case setVolume(Int)
     case mute
     case unmute
-    /// One of the commands that must run as HomeSpeaker.app: sign out,
+    /// One of the commands that must run as Vitruvian Speaker.app: sign out,
     /// discover, the login item, the media-pause test.
     case app(AppCommand)
     /// `--sign-in [--chat]`: the browser sign-in, which can take minutes.
     case signIn(chatOnly: Bool)
 
-    /// Setting HomeSpeaker up, not speaking: these run beside a speaker
+    /// Setting Vitruvian Speaker up, not speaking: these run beside a speaker
     /// job, so a slow sign-in never holds up a mute.
     public var isSetup: Bool {
         switch self {
@@ -57,7 +57,7 @@ public enum Job: Equatable, Sendable {
     }
 }
 
-/// The default speaker's volume, as `HomeSpeaker --volume` prints it.
+/// The default speaker's volume, as `VitruvianSpeaker --volume` prints it.
 public struct Volume: Equatable, Sendable {
     public var speaker: String
     public var percent: Int?
@@ -73,34 +73,34 @@ public struct Volume: Equatable, Sendable {
 }
 
 public enum JobResult: Equatable, Sendable {
-    /// Spoken; the line HomeSpeaker printed says where.
+    /// Spoken; the line Vitruvian Speaker printed says where.
     case spoke(String)
-    /// Not spoken, and why, in HomeSpeaker's words.
+    /// Not spoken, and why, in Vitruvian Speaker's words.
     case notSpoken(String)
     case volume(Volume)
-    /// The volume could not be read or set: why, in HomeSpeaker's words.
+    /// The volume could not be read or set: why, in Vitruvian Speaker's words.
     case unavailable(String)
     /// A setup job ran; the lines it printed.
     case done([String])
-    /// A setup job failed: why, in HomeSpeaker's words.
+    /// A setup job failed: why, in Vitruvian Speaker's words.
     case failed(String)
     /// The homes `--discover` (without `--save`) listed.
     case homes([HomeStructure])
     /// What `--login-item` said the login item is, and, when switching it
-    /// failed, why: HomeSpeaker still prints the state it ended in.
+    /// failed, why: Vitruvian Speaker still prints the state it ended in.
     case loginItem(LoginItemState, problem: String? = nil)
 }
 
-/// Runs jobs on HomeSpeaker's program and answers later, from any thread.
+/// Runs jobs on Vitruvian Speaker's program and answers later, from any thread.
 public protocol SpeakerDriver: AnyObject {
-    /// HomeSpeaker is on this Mac.
+    /// Vitruvian Speaker is on this Mac.
     var isInstalled: Bool { get }
-    /// The HomeSpeaker program the jobs run; nil when it is not installed.
+    /// The Vitruvian Speaker program the jobs run; nil when it is not installed.
     var program: URL? { get }
     func run(_ job: Job, then: @escaping @Sendable (JobResult) -> Void)
 }
 
-/// Drives the HomeSpeaker that is installed, through its program, as the
+/// Drives the Vitruvian Speaker that is installed, through its program, as the
 /// Mac agent does for the phone: `--say` speaks with the person's sign-in
 /// and default speaker, `--volume` and the rest answer with JSON. The
 /// program is started and not waited for; its end is reported to `then`
@@ -115,8 +115,8 @@ public protocol SpeakerDriver: AnyObject {
 /// A job it is given runs through `run`, the one place a program of the
 /// app's is started (`SystemOtherApp.runProgram` by default).
 public final class ProcessDriver: SpeakerDriver {
-    public static let bundleID = HomeSpeakerProfile.appBundleID
-    public static let usualPlaces = ["/Applications/HomeSpeaker.app", "~/Applications/HomeSpeaker.app"]
+    public static let bundleID = VitruvianSpeakerProfile.appBundleID
+    public static let usualPlaces = ["/Applications/Vitruvian Speaker.app", "~/Applications/Vitruvian Speaker.app"]
 
     public let binary: URL?
     private let runProgram: ProgramRunning
@@ -126,27 +126,27 @@ public final class ProcessDriver: SpeakerDriver {
         runProgram = run
     }
 
-    /// HomeSpeaker.app is running as an app, by the app profile's own check
-    /// (`HomeSpeakerProfile.isAppRunning(among:)`): a command-line run of
+    /// Vitruvian Speaker.app is running as an app, by the app profile's own check
+    /// (`VitruvianSpeakerProfile.isAppRunning(among:)`): a command-line run of
     /// the app's program does not count.
-    public static func isAppRunning(_ apps: [HomeSpeakerProfile.RunningApp]) -> Bool {
-        HomeSpeakerProfile.isAppRunning(among: apps)
+    public static func isAppRunning(_ apps: [VitruvianSpeakerProfile.RunningApp]) -> Bool {
+        VitruvianSpeakerProfile.isAppRunning(among: apps)
     }
 
     /// `isAppRunning(_:)` over this Mac's running applications.
     public static func isAppRunning() -> Bool {
-        isAppRunning(HomeSpeakerProfile.runningApps())
+        isAppRunning(VitruvianSpeakerProfile.runningApps())
     }
 
     public var isInstalled: Bool { binary != nil }
     public var program: URL? { binary }
 
     /// The environment variable that names the program to drive instead of
-    /// the installed app: a build of HomeSpeaker's, or, set and empty, no
-    /// HomeSpeaker at all, which is how a test keeps the tool off this Mac's.
-    public static let programVariable = "HOMESPEAKER_PROGRAM"
+    /// the installed app: a build of Vitruvian Speaker's, or, set and empty, no
+    /// Vitruvian Speaker at all, which is how a test keeps the tool off this Mac's.
+    public static let programVariable = "VITRUVIAN_SPEAKER_PROGRAM"
 
-    /// HomeSpeaker's program: the one the environment names, else the app
+    /// Vitruvian Speaker's program: the one the environment names, else the app
     /// Launch Services knows by its bundle id, else the app in one of the
     /// usual places; nil with none. A copy in the Trash is passed over:
     /// Launch Services still knows apps there, and one found first must not
@@ -161,7 +161,7 @@ public final class ProcessDriver: SpeakerDriver {
         if let known = known() { candidates.append(known) }
         candidates += usualPlaces.map { URL(fileURLWithPath: $0.replacingOccurrences(of: "~", with: home)) }
         for app in candidates where !OtherDoorPresence.isInTrash(app.path) {
-            let program = app.appendingPathComponent("Contents/MacOS/HomeSpeaker")
+            let program = app.appendingPathComponent("Contents/MacOS/VitruvianSpeaker")
             if isExecutable(program.path) { return program }
         }
         return nil
@@ -206,7 +206,7 @@ public final class ProcessDriver: SpeakerDriver {
         return nil
     }
 
-    /// A failure's words without the "error: " each of HomeSpeaker's
+    /// A failure's words without the "error: " each of Vitruvian Speaker's
     /// complaints starts with.
     static func complaint(_ text: String) -> String {
         text.split(whereSeparator: \.isNewline)
@@ -229,7 +229,7 @@ public final class ProcessDriver: SpeakerDriver {
         case .volume, .setVolume, .mute, .unmute:
             guard let data = said.data(using: .utf8),
                   let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                return .unavailable(complained.isEmpty ? "HomeSpeaker printed no answer" : complained)
+                return .unavailable(complained.isEmpty ? "Vitruvian Speaker printed no answer" : complained)
             }
             guard object["available"] as? Bool == true else {
                 return .unavailable(object["reason"] as? String ?? "the speaker is not available")
@@ -239,7 +239,7 @@ public final class ProcessDriver: SpeakerDriver {
         case .app, .signIn:
             guard status == 0 else {
                 let why = complaint(complained.isEmpty ? said : complained)
-                let problem = why.isEmpty ? "HomeSpeaker stopped with status \(status)" : why
+                let problem = why.isEmpty ? "Vitruvian Speaker stopped with status \(status)" : why
                 if case .app(.loginItem) = job, let state = loginItemState(in: said) {
                     return .loginItem(state, problem: problem)
                 }
@@ -247,7 +247,7 @@ public final class ProcessDriver: SpeakerDriver {
             }
             if case .app(.discover(save: false, _)) = job { return .homes(homes(in: said)) }
             if case .app(.loginItem) = job {
-                guard let state = loginItemState(in: said) else { return .failed("HomeSpeaker did not say what the login item is") }
+                guard let state = loginItemState(in: said) else { return .failed("Vitruvian Speaker did not say what the login item is") }
                 return .loginItem(state)
             }
             return .done(said.split(whereSeparator: \.isNewline).map(String.init))
@@ -258,7 +258,7 @@ public final class ProcessDriver: SpeakerDriver {
     /// `then` on a thread of the system's. A program that could not be
     /// started reads as `runProgram` says (status -1, "could not be started").
     public func run(_ job: Job, then: @escaping @Sendable (JobResult) -> Void) {
-        guard let binary else { return then(job.isSetup ? .failed("HomeSpeaker is not installed") : .unavailable("HomeSpeaker is not installed")) }
+        guard let binary else { return then(job.isSetup ? .failed("Vitruvian Speaker is not installed") : .unavailable("Vitruvian Speaker is not installed")) }
         let runProgram = runProgram
         let arguments = Self.arguments(for: job)
         Task.detached {

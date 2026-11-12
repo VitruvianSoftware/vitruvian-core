@@ -20,7 +20,7 @@
 
 import Foundation
 import Testing
-@testable import HomeSpeakerCore
+@testable import VitruvianSpeakerCore
 
 // The menu bar app learns the choice (design 7.3 to 7.7, plan Task 15): what
 // it starts at launch and on a change, what it shows, its hook, its monitor's
@@ -36,12 +36,12 @@ import Testing
 
 private func scratchDir() throws -> URL {
     let dir = FileManager.default.temporaryDirectory
-        .appendingPathComponent("homespeaker-app-role-\(UUID().uuidString)")
+        .appendingPathComponent("vitruvian-speaker-app-role-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir
 }
 
-private func testPrefix() -> String { "test.\(UUID().uuidString).homespeaker" }
+private func testPrefix() -> String { "test.\(UUID().uuidString).vitruvian-speaker" }
 
 /// Answers every request with 200 and remembers each revoke's token, so a
 /// sign-out never reaches Google.
@@ -105,11 +105,11 @@ private final class AppRig {
     let home: URL
     /// The app's program, as a hook names it.
     let appProgram: URL
-    /// HomeSpeaker.app, as the running app finds its own bundle.
+    /// Vitruvian Speaker.app, as the running app finds its own bundle.
     var bundlePath: String
     let extensionProgram: URL
     let extensionData: URL
-    let appProfile: HomeSpeakerProfile
+    let appProfile: VitruvianSpeakerProfile
     /// Everything the app was asked to do, in order.
     var calls: [String] = []
     let monitor = FakeChatMonitor(running: false)
@@ -122,19 +122,19 @@ private final class AppRig {
         root = try scratchDir()
         door = DoorFile(url: root.appendingPathComponent("gemini").appendingPathComponent(DoorFile.fileName))
         home = root.appendingPathComponent("home")
-        let bundle = root.appendingPathComponent("Applications/HomeSpeaker.app")
+        let bundle = root.appendingPathComponent("Applications/Vitruvian Speaker.app")
         bundlePath = bundle.path
-        appProgram = bundle.appendingPathComponent("Contents/MacOS/HomeSpeaker")
+        appProgram = bundle.appendingPathComponent("Contents/MacOS/VitruvianSpeaker")
         try FileManager.default.createDirectory(at: appProgram.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data().write(to: appProgram)
         let vitruvian = root.appendingPathComponent("Vitruvian")
-        extensionProgram = vitruvian.appendingPathComponent("Tools/dev.vitruvian.homespeaker/bin/tool")
-        extensionData = vitruvian.appendingPathComponent("ToolData/dev.vitruvian.homespeaker")
-        appProfile = HomeSpeakerProfile(
+        extensionProgram = vitruvian.appendingPathComponent("Tools/dev.vitruvian.speaker/bin/tool")
+        extensionData = vitruvian.appendingPathComponent("ToolData/dev.vitruvian.speaker")
+        appProfile = VitruvianSpeakerProfile(
             door: .app,
             settingsURL: root.appendingPathComponent("gemini/speaker_broadcast.json"),
             historyURL: root.appendingPathComponent("gemini/speaker_history.json"),
-            secretsURL: root.appendingPathComponent("AppSupport/HomeSpeaker/secrets.json"),
+            secretsURL: root.appendingPathComponent("AppSupport/Vitruvian Speaker/secrets.json"),
             messagePrefix: testPrefix(), liveLockURL: nil, toolFolder: nil)
         for url in [appProfile.settingsURL, appProfile.historyURL, appProfile.secretsURL, door.url] {
             try #require(url.path.hasPrefix(root.path + "/"), "\(url.path) is outside the scratch folder")
@@ -143,7 +143,7 @@ private final class AppRig {
 
     /// The extension as a 1.19+ one leaves it: its program, its data folder,
     /// and its block in the choice file. `mark` nil is an older extension.
-    func installExtension(mark: Int? = DoorRecord.ExtensionEntry.runsAlone, chosen: HomeSpeakerProfile.Door? = nil) throws {
+    func installExtension(mark: Int? = DoorRecord.ExtensionEntry.runsAlone, chosen: VitruvianSpeakerProfile.Door? = nil) throws {
         try FileManager.default.createDirectory(at: extensionProgram.deletingLastPathComponent(), withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: extensionData, withIntermediateDirectories: true)
         try Data().write(to: extensionProgram)
@@ -155,7 +155,7 @@ private final class AppRig {
         }
     }
 
-    func choose(_ chosen: HomeSpeakerProfile.Door) throws {
+    func choose(_ chosen: VitruvianSpeakerProfile.Door) throws {
         try door.update {
             $0.chosen = chosen
             $0.chosenAt = Date()
@@ -194,7 +194,7 @@ private final class AppRig {
         for work in due { work() }
     }
 
-    var copied: [HomeSpeakerProfile.Door] = []
+    var copied: [VitruvianSpeakerProfile.Door] = []
     var copyFails: DoorCopyPartial?
 
     func makeSwitch(_ appDoor: AppDoor) -> AppSwitch {
@@ -388,7 +388,7 @@ private final class AppRig {
         let rig = try AppRig()
         try rig.installExtension(chosen: .extension)
         // The hook runs a copy of the app that has moved away.
-        let moved = rig.root.appendingPathComponent("Downloads/HomeSpeaker.app/Contents/MacOS/HomeSpeaker").path
+        let moved = rig.root.appendingPathComponent("Downloads/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker").path
         try rig.installHook(running: moved)
         let before = try Data(contentsOf: rig.claudeSettings)
 
@@ -468,12 +468,12 @@ private final class AppRig {
 
         // The real wiring: the Stop hook on an engine of the app's shape
         // answers "{}" and speaks nothing, before reading a transcript.
-        let engine = HomeSpeakerEngine(profile: rig.appProfile, session: AppRoleGoogle.session, local: SilentMac())
+        let engine = VitruvianSpeakerEngine(profile: rig.appProfile, session: AppRoleGoogle.session, local: SilentMac())
         let transcript = rig.root.appendingPathComponent("t.jsonl")
         try #"{"message":{"role":"assistant","content":[{"type":"text","text":"Done."}]}}"#
             .write(to: transcript, atomically: true, encoding: .utf8)
         let input = try JSONSerialization.data(withJSONObject: ["transcript_path": transcript.path])
-        guard case .headless(_, _, let body) = HomeSpeakerCommandLine.action(
+        guard case .headless(_, _, let body) = VitruvianSpeakerCommandLine.action(
             for: [ClaudeStopHook.argument], engine: engine, parts: parts, standardInput: { input }) else {
             Issue.record("the Stop hook does not run headless")
             return
@@ -483,7 +483,7 @@ private final class AppRig {
 
         // An app in the Trash stands aside too, whatever the file says.
         try FileManager.default.removeItem(at: rig.door.url)
-        let trashed = rig.root.appendingPathComponent(".Trash/HomeSpeaker.app").path
+        let trashed = rig.root.appendingPathComponent(".Trash/Vitruvian Speaker.app").path
         parts = AppStartup.commandLineParts(check: rig.check, bundlePath: { trashed })
         #expect(parts.standsAside())
     }
@@ -525,7 +525,7 @@ private final class AppRig {
         let extensionProfile = try #require(AppStartup.extensionProfile(record: rig.door.read()))
         try SecretStore(fileURL: extensionProfile.secretsURL).save(Secrets(google: login))
         let theirs = try Data(contentsOf: extensionProfile.secretsURL)
-        let engine = HomeSpeakerEngine(profile: rig.appProfile, session: AppRoleGoogle.session, local: SilentMac())
+        let engine = VitruvianSpeakerEngine(profile: rig.appProfile, session: AppRoleGoogle.session, local: SilentMac())
         try engine.secrets.save(Secrets(google: login))
 
         let door = rig.makeDoor()
@@ -557,7 +557,7 @@ private final class AppRig {
         let extensionProfile = try #require(AppStartup.extensionProfile(record: rig.door.read()))
         try SecretStore(fileURL: extensionProfile.secretsURL).save(Secrets(google: shared))
         let theirs = try Data(contentsOf: extensionProfile.secretsURL)
-        let engine = HomeSpeakerEngine(profile: rig.appProfile, session: AppRoleGoogle.session, local: SilentMac())
+        let engine = VitruvianSpeakerEngine(profile: rig.appProfile, session: AppRoleGoogle.session, local: SilentMac())
         try engine.secrets.save(Secrets(google: shared))
         var posted: [String] = []
         let lock = NSLock()
@@ -567,7 +567,7 @@ private final class AppRig {
             postSignedOut: { chatOnly, name in lock.withLock { posted.append("\(name.rawValue) \(chatOnly)") } })
 
         func signOut() async -> CLIOutput {
-            guard case .headless(_, _, let body) = HomeSpeakerCommandLine.action(
+            guard case .headless(_, _, let body) = VitruvianSpeakerCommandLine.action(
                 for: ["--sign-out"], engine: engine, parts: parts) else {
                 Issue.record("--sign-out does not run headless")
                 return CLIOutput()
@@ -595,7 +595,7 @@ private final class AppRig {
 
     @Test func sayInTheTrashSaysWhyItStandsAside() async throws {
         let rig = try AppRig()
-        let trashed = rig.root.appendingPathComponent(".Trash/HomeSpeaker.app").path
+        let trashed = rig.root.appendingPathComponent(".Trash/Vitruvian Speaker.app").path
         let parts = AppStartup.commandLineParts(check: rig.check, bundlePath: { trashed })
         let rigHistory = BroadcastHistory(fileURL: rig.appProfile.historyURL)
         let announcer = Announcer(home: GoogleHomeClient(
@@ -604,20 +604,20 @@ private final class AppRig {
         var off = SpeakerConfig()
         off.enabled = false
         func say() async -> [String] {
-            await HomeSpeakerCommandLine.say(
+            await VitruvianSpeakerCommandLine.say(
                 "hello", config: off, announcer: announcer, history: rigHistory,
                 standsAside: parts.standsAside(), door: .app, note: parts.asideNote()).stderr
         }
 
         // In the Trash, no extension: not "the extension is in use".
         #expect(parts.standsAside())
-        #expect(await say().first == "note: this copy of the HomeSpeaker app is in the Trash, so it stays quiet")
+        #expect(await say().first == "note: this copy of the Vitruvian Speaker app is in the Trash, so it stays quiet")
         // An extension installed but not chosen: still only the Trash.
         try rig.installExtension(chosen: nil)
         #expect(await say().first == AppStartup.inTheTrashNote)
         // The extension chosen and installed: that is why.
         try rig.choose(.extension)
-        #expect(await say().first == "note: the HomeSpeaker extension is the one in use")
+        #expect(await say().first == "note: the Vitruvian Speaker extension is the one in use")
         // Not in the Trash: the same.
         let home = rig.bundlePath
         let usual = AppStartup.commandLineParts(check: rig.check, bundlePath: { home })
@@ -626,9 +626,9 @@ private final class AppRig {
 
     @Test func anAppInTheTrashStaysQuietAndWritesNothing() throws {
         let rig = try AppRig()
-        try rig.installHook(running: rig.root.appendingPathComponent("gone/HomeSpeaker").path)
+        try rig.installHook(running: rig.root.appendingPathComponent("gone/VitruvianSpeaker").path)
         let hookBefore = try Data(contentsOf: rig.claudeSettings)
-        rig.bundlePath = rig.root.appendingPathComponent(".Trash/HomeSpeaker.app").path
+        rig.bundlePath = rig.root.appendingPathComponent(".Trash/Vitruvian Speaker.app").path
 
         let plan = AppStartup.plan(check: rig.check, bundlePath: rig.bundlePath)
         #expect(plan.inTrash)
@@ -647,11 +647,11 @@ private final class AppRig {
         #expect(try Data(contentsOf: rig.claudeSettings) == hookBefore)
 
         // Dragged there while it runs: the next look stops it.
-        rig.bundlePath = rig.root.appendingPathComponent("Applications/HomeSpeaker.app").path
+        rig.bundlePath = rig.root.appendingPathComponent("Applications/Vitruvian Speaker.app").path
         let running = rig.makeDoor()
         running.refresh()
         rig.calls = []
-        rig.bundlePath = rig.root.appendingPathComponent(".Trash/HomeSpeaker.app").path
+        rig.bundlePath = rig.root.appendingPathComponent(".Trash/Vitruvian Speaker.app").path
         running.refresh()
         #expect(rig.calls == ["stopMonitor", "stopListening"])
     }
@@ -677,7 +677,7 @@ private final class AppRig {
                 "the copy, then the destination told: \(rig.calls)")
         #expect(rig.calls.contains("stopMonitor"), "choosing the extension leaves the app reading chat")
         #expect(rig.door.read()?.chosen == .extension)
-        #expect(rig.door.read()?.chosenBy == "HomeSpeaker app \(HomeSpeakerVersion.current)")
+        #expect(rig.door.read()?.chosenBy == "Vitruvian Speaker app \(VitruvianSpeakerVersion.current)")
         #expect(door.plan.role == .quiet(other: .extension))
         #expect(side.report.contains("Settings: copied from the app."))
         guard case .extensionChosen(let offers)? = side.step else { Issue.record("no offers"); return }
@@ -706,7 +706,7 @@ private final class AppRig {
         #expect(rig.calls.contains("startMonitor"))
         #expect(side.step == .appChosen)
         #expect(DoorWords.appChosen ==
-                "The extension is quiet now. To remove it: Vitruvian > Settings > Extensions > HomeSpeaker > Remove.")
+                "The extension is quiet now. To remove it: Vitruvian > Settings > Extensions > Vitruvian Speaker > Remove.")
         side.openVitruvian()
         #expect(rig.calls.last == "openVitruvian")
         #expect(!rig.calls.contains("quit"))
@@ -869,7 +869,7 @@ private final class AppRig {
 
     @Test func theAppSaysWhereToApproveItsLoginItem() {
         #expect(AppCommandRunner.approveLoginItem.hasSuffix("System Settings > General > Login Items & Extensions"))
-        #expect(DoorWords.approveLoginItem == "Approve HomeSpeaker under System Settings > General > Login Items & Extensions.")
+        #expect(DoorWords.approveLoginItem == "Approve Vitruvian Speaker under System Settings > General > Login Items & Extensions.")
     }
 
     @Test func passiveAppSayDelegatesToActiveExtensionsSettingsEngineAndTimeLimit() async throws {
@@ -889,13 +889,13 @@ private final class AppRig {
         extConfig.effectiveSpeakLocal = true
         try SpeakerConfigFile(url: extensionProfile.settingsURL).write(extConfig)
 
-        let appEngine = HomeSpeakerEngine(profile: rig.appProfile, session: AppRoleGoogle.session, local: SilentMac())
+        let appEngine = VitruvianSpeakerEngine(profile: rig.appProfile, session: AppRoleGoogle.session, local: SilentMac())
         let bundlePath = rig.bundlePath
         let parts = AppStartup.commandLineParts(
             check: rig.check, bundlePath: { bundlePath },
-            makeInUseEngine: { HomeSpeakerEngine(profile: $0, session: AppRoleGoogle.session, local: SilentMac()) })
+            makeInUseEngine: { VitruvianSpeakerEngine(profile: $0, session: AppRoleGoogle.session, local: SilentMac()) })
 
-        guard case .headless(let timeout, _, let body) = HomeSpeakerCommandLine.action(
+        guard case .headless(let timeout, _, let body) = VitruvianSpeakerCommandLine.action(
             for: ["--say", "hello from passive app"], engine: appEngine, parts: parts) else {
             Issue.record("--say must run headless")
             return
@@ -904,7 +904,7 @@ private final class AppRig {
         let out = await body()
         #expect(out.exitCode == 0)
         #expect(out.stdout == ["spoke on this Mac"])
-        #expect(out.stderr.first == "note: the HomeSpeaker extension is the one in use")
+        #expect(out.stderr.first == "note: the Vitruvian Speaker extension is the one in use")
         #expect(BroadcastHistory(fileURL: extensionProfile.historyURL).load().map(\.text) == ["hello from passive app"],
                 "must record into the active extension's history")
         #expect(BroadcastHistory(fileURL: rig.appProfile.historyURL).load().isEmpty,

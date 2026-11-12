@@ -100,7 +100,7 @@
   ],
   "extension_installed": true,
   "extension_running": false,
-  "home_speaker_version": "1.19.1",
+  "speaker_version": "1.19.1",
   "homes": [
     {
       "id": "home-structure-1",
@@ -123,7 +123,7 @@
       "agent": "claude-code",
       "configured_by_instruction": false,
       "display_name": "Claude Code",
-      "hook_program": "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker",
+      "hook_program": "/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker",
       "hook_state": "installed",
       "is_installed": true,
       "speaks_twice": false,

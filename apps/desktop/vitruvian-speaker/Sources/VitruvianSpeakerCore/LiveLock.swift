@@ -20,7 +20,7 @@
 
 import Foundation
 
-/// "This HomeSpeaker's long-lived process is alive": an exclusive BSD
+/// "This Vitruvian Speaker's long-lived process is alive": an exclusive BSD
 /// `flock` on a file of its own (the extension's `<data>/running.lock`),
 /// held for as long as that process runs.
 ///

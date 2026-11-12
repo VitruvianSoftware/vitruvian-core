@@ -20,7 +20,7 @@
 
 import Foundation
 
-// The chat monitor runs inside HomeSpeaker.app. Other processes -- the
+// The chat monitor runs inside Vitruvian Speaker.app. Other processes -- the
 // Vitruvian tool above all -- could only guess at it from the settings file:
 // "a source is on" said nothing about whether anything was polling, when it
 // last did, or what went wrong. So the app writes what it is doing to a file
@@ -41,17 +41,17 @@ public struct ChatMonitorStatus: Codable, Equatable, Sendable {
     /// How Google Chat is being read: "api" or "gws"; nil when it is not.
     public var activeGoogleChatBackend: String?
     /// The Beeper networks being read ("WhatsApp", "Signal"), and the ones
-    /// skipped because HomeSpeaker reads them itself ("Slack (acme)"); nil
+    /// skipped because Vitruvian Speaker reads them itself ("Slack (acme)"); nil
     /// while Beeper is not read or has not listed its accounts yet. Absent
-    /// from a file an older HomeSpeaker wrote.
+    /// from a file an older Vitruvian Speaker wrote.
     public var beeperNetworks: [String]?
     public var beeperSkippedNetworks: [String]?
     /// Every Beeper network once, by its key, and whether it is read,
-    /// skipped (HomeSpeaker reads it itself) or muted; nil as the lists
-    /// above are. Absent from a file an older HomeSpeaker wrote.
+    /// skipped (Vitruvian Speaker reads it itself) or muted; nil as the lists
+    /// above are. Absent from a file an older Vitruvian Speaker wrote.
     public var beeperNetworkStates: [BeeperNetworkState]?
     /// The same three for Courier, read the same way; absent from a file
-    /// an older HomeSpeaker wrote.
+    /// an older Vitruvian Speaker wrote.
     public var courierNetworks: [String]?
     public var courierSkippedNetworks: [String]?
     public var courierNetworkStates: [BeeperNetworkState]?
@@ -109,7 +109,7 @@ public struct ChatMonitorStatus: Codable, Equatable, Sendable {
         pid = try c.decode(Int32.self, forKey: .pid)
     }
 
-    /// Read entry by entry: one a newer HomeSpeaker writes, with a state
+    /// Read entry by entry: one a newer Vitruvian Speaker writes, with a state
     /// this one does not know, is skipped, and the rest are kept. A list
     /// none of whose entries reads (or that is not a list) is as if it
     /// were not there; it never costs the file.
@@ -157,7 +157,7 @@ public struct BeeperNetworkState: Codable, Equatable, Sendable {
     public enum State: String, Codable, Sendable {
         /// Read, and spoken by the Announce rules.
         case reading
-        /// Left to HomeSpeaker's own Slack or Google Chat reader.
+        /// Left to Vitruvian Speaker's own Slack or Google Chat reader.
         case skipped
         /// Switched off by the person (`ChatMonitorConfig.beeperMutedNetworks`).
         case muted
@@ -189,7 +189,7 @@ public struct BeeperNetworkList: Equatable, Sendable {
     /// The ones the running monitor listed, then the saved mutes it did
     /// not list (named by their key), sorted by name. On or off follows
     /// what is saved, not the last poll, so a switch just flipped stays
-    /// where it was put; a network HomeSpeaker reads itself stays skipped.
+    /// where it was put; a network Vitruvian Speaker reads itself stays skipped.
     public let rows: [BeeperNetworkState]
     /// The running monitor has listed Beeper's networks. Until it has,
     /// the page says where the others will show (`othersLater`).
@@ -270,16 +270,16 @@ public struct ChatMonitorStatusFile: Sendable {
     }
 }
 
-/// Start or stop the monitor in a running HomeSpeaker.
+/// Start or stop the monitor in a running Vitruvian Speaker.
 public enum ChatMonitorAction: String, CaseIterable, Sendable {
     case start, stop
 }
 
 /// The request, over a distributed notification: from the Vitruvian tool,
-/// or from `HomeSpeaker --chat-monitor start|stop`.
+/// or from `VitruvianSpeaker --chat-monitor start|stop`.
 public enum ChatMonitorControlNotice {
     /// The name the request travels under for `profile`.
-    public static func notificationName(for profile: HomeSpeakerProfile) -> Notification.Name {
+    public static func notificationName(for profile: VitruvianSpeakerProfile) -> Notification.Name {
         profile.messageName(.chatMonitorControl)
     }
 
@@ -339,6 +339,6 @@ public enum ChatMonitorControlNotice {
 
     /// What the CLI prints once it has asked.
     public static func askedLine(_ action: ChatMonitorAction) -> String {
-        "asked a running HomeSpeaker to \(action.rawValue) the chat monitor"
+        "asked a running Vitruvian Speaker to \(action.rawValue) the chat monitor"
     }
 }

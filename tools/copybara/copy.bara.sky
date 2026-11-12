@@ -619,20 +619,20 @@ COMPONENTS = [
         ],
         "export_only": True,
     },
-    # home-speaker: EXPORT-ONLY mirror of apps/desktop/home-speaker (MIT).
+    # home-speaker: EXPORT-ONLY mirror of apps/desktop/vitruvian-speaker (MIT).
     {
         "name": "home-speaker",
         "repo": "home-speaker",
-        "subtree": "apps/desktop/home-speaker",
+        "subtree": "apps/desktop/vitruvian-speaker",
         "standalone_rev_id": "HOME_SPEAKER_REV_ID",
         "mode": "SQUASH",
         "standalone_only": [],
         # release-please (monorepo paths) and the secrets sync, which writes into
         # the monorepo.
         "origin_only_exclude": [
-            "apps/desktop/home-speaker/release-please-config.json",
-            "apps/desktop/home-speaker/.release-please-manifest.json",
-            "apps/desktop/home-speaker/scripts/src/sync_secrets/**",
+            "apps/desktop/vitruvian-speaker/release-please-config.json",
+            "apps/desktop/vitruvian-speaker/.release-please-manifest.json",
+            "apps/desktop/vitruvian-speaker/scripts/src/sync_secrets/**",
         ],
         "export_only": True,
     },

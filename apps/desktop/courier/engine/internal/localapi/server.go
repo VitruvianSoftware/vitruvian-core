@@ -134,7 +134,7 @@ func New(s *store.Store, d Dispatcher, p Publisher, log zerolog.Logger) *Server 
 	authed := auth.RequireBearerToken(srv.verify, &auth.RequireBearerTokenOptions{AllowMissingExpiration: true})(streamable)
 	mux := http.NewServeMux()
 	mux.Handle(MCPPath, srv.requireToken(authed))
-	// The two read-only REST endpoints HomeSpeaker reads (rest.go), behind the same token check and guards.
+	// The two read-only REST endpoints Vitruvian Speaker reads (rest.go), behind the same token check and guards.
 	mux.Handle(AccountsPath, srv.requireToken(srv.rest("accounts", srv.restAccounts)))
 	mux.Handle(MessagesSearchPath, srv.requireToken(srv.rest("messages.search", srv.restSearchMessages)))
 	mux.HandleFunc(PairPath, srv.servePair)

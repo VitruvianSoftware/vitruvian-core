@@ -22,7 +22,7 @@ import CryptoKit
 import Foundation
 
 /// The Claude Code `Stop` hook, built into the app binary so nothing outside
-/// the bundle is needed. Claude Code runs `HomeSpeaker --claude-stop-hook`
+/// the bundle is needed. Claude Code runs `VitruvianSpeaker --claude-stop-hook`
 /// with the hook payload on stdin; this reads the transcript, picks the last
 /// assistant reply of the current turn, and speaks a one-to-two-sentence
 /// summary on the default speaker.
@@ -30,7 +30,7 @@ import Foundation
 /// It never blocks Claude Code: every failure path is silent and exits 0.
 public enum ClaudeStopHook {
     public static let argument = "--claude-stop-hook"
-    /// `HomeSpeaker --announce <text>`: the whole announcement, quiet hours
+    /// `VitruvianSpeaker --announce <text>`: the whole announcement, quiet hours
     /// honoured, in a process of its own. See `run` for why.
     public static let announceArgument = "--announce"
 
@@ -154,7 +154,7 @@ public enum ClaudeStopHook {
 
     /// True when this `tool_use` block is the agent actually announcing
     /// something on the speakers — the Home MCP broadcast action, the
-    /// `speaker-broadcast` CLI, or `HomeSpeaker --say`.
+    /// `speaker-broadcast` CLI, or `VitruvianSpeaker --say`.
     ///
     /// It deliberately does NOT fire on the mere presence of those words
     /// anywhere in the tool input. A turn that edits or greps this very file
@@ -182,12 +182,12 @@ public enum ClaudeStopHook {
     /// inside a quoted string.
     static func commandBroadcasts(_ command: String) -> Bool {
         func invokes(_ tool: String) -> Bool {
-            let pattern = "(?:^|[\\n;&|`]|\\$\\()[ \\t]*(?:[\\w./-]*/)?\(tool)\\b"
+            let pattern = "(?:^|[\\n;&|`]|\\$\\()[ \\t]*(?:[\\w./-]*/)?(?:[\\w .-]*\\.app/Contents/MacOS/)?\(tool)\\b"
             return command.range(of: pattern, options: [.regularExpression]) != nil
         }
         if invokes("speaker-broadcast") { return true }
         // The app binary does many things; only --say speaks.
-        if invokes("HomeSpeaker") && command.range(of: "(?:^|\\s)--say(?:\\s|$)", options: .regularExpression) != nil {
+        if invokes("VitruvianSpeaker") && command.range(of: "(?:^|\\s)--say(?:\\s|$)", options: .regularExpression) != nil {
             return true
         }
         return false
@@ -253,10 +253,10 @@ public enum ClaudeStopHook {
         }
     }
 
-    /// The app's speakers (`HomeSpeakerEngine.app`'s).
+    /// The app's speakers (`VitruvianSpeakerEngine.app`'s).
     public static let googleHomeBroadcaster: Broadcaster = broadcaster(for: .shared)
 
-    /// Entry point for `HomeSpeaker --claude-stop-hook`. Reads the hook JSON
+    /// Entry point for `VitruvianSpeaker --claude-stop-hook`. Reads the hook JSON
     /// from `input`, speaks if appropriate, and always returns normally.
     ///
     /// A broadcast it sends itself goes into `history`. One it hands to the
@@ -375,7 +375,7 @@ public enum ClaudeStopHook {
 /// Starts `<this program> --announce <text>` in its own session with no
 /// terminal, so ending (or killing) the hook's process does not end it.
 public enum DetachedAnnouncement {
-    /// This process's own program: the app's `HomeSpeaker`, or for the
+    /// This process's own program: the app's `VitruvianSpeaker`, or for the
     /// extension, its `bin/tool`. Either runs `--announce` on its own
     /// engine, so the announcement is made by the side the hook ran for.
     public static var defaultExecutable: String? { Bundle.main.executablePath }

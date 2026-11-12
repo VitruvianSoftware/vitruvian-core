@@ -53,7 +53,7 @@ A single, global instruction document inevitably rots. In `vitruvian-core`, we u
 
 - Root `/AGENTS.md`: Defines repo-wide architectural tenets, commit conventions, identity setup, and the One Version Rule.
 - Subtree `apps/cli/devx/AGENTS.md`: Contains localized CLI design standards and Go build tags.
-- Subtree `apps/desktop/home-speaker/AGENTS.md`: Contains audio hardware constraints and WebRTC protocol patterns.
+- Subtree `apps/desktop/vitruvian-speaker/AGENTS.md`: Contains audio hardware constraints and WebRTC protocol patterns.
 
 Because an agent only loads the `AGENTS.md` relevant to its working subtree, its prompt context remains focused on the exact code it is touching, preventing token waste and hallucinations.
 

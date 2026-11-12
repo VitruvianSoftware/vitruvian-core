@@ -22,9 +22,9 @@ import (
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
 )
 
-// HomeSpeaker (apps/desktop/home-speaker, BeeperClient.swift) reads GET /v1/accounts and GET /v1/messages/search.
+// Vitruvian Speaker (apps/desktop/vitruvian-speaker, BeeperClient.swift) reads GET /v1/accounts and GET /v1/messages/search.
 // The functions below port its reading of the answers, rule for rule (parseAccounts, parseSearch, shouldAnnounce,
-// spokenText, allMessages's paging), so these tests hold Courier's answers to what HomeSpeaker actually does with
+// spokenText, allMessages's paging), so these tests hold Courier's answers to what Vitruvian Speaker actually does with
 // them. A change on either side that breaks the other should break here: keep them in step with the Swift.
 
 type hsAccount struct{ accountID, bridgeType, network, userID string }
@@ -225,8 +225,8 @@ func restGet(t *testing.T, w *world, method, path string, query url.Values, head
 	return resp.StatusCode, b
 }
 
-// homeSpeakerQuery is the query HomeSpeaker sends each poll (BeeperClient.messages), with mute_own_messages on.
-func homeSpeakerQuery(after time.Time, limit int) url.Values {
+// vitruvianSpeakerQuery is the query Vitruvian Speaker sends each poll (BeeperClient.messages), with mute_own_messages on.
+func vitruvianSpeakerQuery(after time.Time, limit int) url.Values {
 	return url.Values{
 		"dateAfter":          {after.UTC().Format("2006-01-02T15:04:05.000Z07:00")},
 		"limit":              {fmt.Sprint(limit)},
@@ -333,9 +333,9 @@ func searchPage(t *testing.T, w *world, secret string, q url.Values) hsSearch {
 	return hsParseSearch(m)
 }
 
-// GET /v1/accounts answers in the shape HomeSpeaker reads: its accounts, each with the network's bridge type and
-// me as the user, so HomeSpeaker can tell my mentions and my messages.
-func TestRESTAccountsReadAsHomeSpeakerReadsThem(t *testing.T) {
+// GET /v1/accounts answers in the shape Vitruvian Speaker reads: its accounts, each with the network's bridge type and
+// me as the user, so Vitruvian Speaker can tell my mentions and my messages.
+func TestRESTAccountsReadAsVitruvianSpeakerReadsThem(t *testing.T) {
 	w := newWorld(t, 1)
 	_, secret := w.token(t, false)
 	code, body := restGet(t, w, http.MethodGet, localapi.AccountsPath, nil, map[string]string{"Authorization": "Bearer " + secret})
@@ -355,10 +355,10 @@ func TestRESTAccountsReadAsHomeSpeakerReadsThem(t *testing.T) {
 	require.Equal(t, map[string]any{"id": "whatsapp", "type": "whatsapp", "provider": "local"}, raw[0]["bridge"])
 }
 
-// One poll's query, as HomeSpeaker sends it, read as HomeSpeaker reads the answer: the messages strictly after
+// One poll's query, as Vitruvian Speaker sends it, read as Vitruvian Speaker reads the answer: the messages strictly after
 // dateAfter from chats that aren't muted or low priority, others' only, each as it reads now (an edit's latest
-// words; a deleted one never), with its type and mentions; and what HomeSpeaker would then say.
-func TestRESTSearchReadsAsHomeSpeakerReadsIt(t *testing.T) {
+// words; a deleted one never), with its type and mentions; and what Vitruvian Speaker would then say.
+func TestRESTSearchReadsAsVitruvianSpeakerReadsIt(t *testing.T) {
 	w := newRESTWorld(t)
 	_, secret := w.token(t, false)
 	code, body := restGet(t, w.world, http.MethodGet, localapi.AccountsPath, nil, map[string]string{"Authorization": "Bearer " + secret})
@@ -370,7 +370,7 @@ func TestRESTSearchReadsAsHomeSpeakerReadsIt(t *testing.T) {
 		own[a.userID] = true
 	}
 
-	page := searchPage(t, w.world, secret, homeSpeakerQuery(w.start, 20))
+	page := searchPage(t, w.world, secret, vitruvianSpeakerQuery(w.start, 20))
 	require.False(t, page.hasMore)
 	require.True(t, page.newestFirst, "newest first, as the reference app sends it")
 	var got []string
@@ -411,7 +411,7 @@ func TestRESTSearchReadsAsHomeSpeakerReadsIt(t *testing.T) {
 	}, spoken, "direct messages and the group messages that mention me; not the group's other chatter")
 
 	// Without sender=others, includeMuted=false and excludeLowPriority, those come back too: the filters are
-	// Courier's, not HomeSpeaker's.
+	// Courier's, not Vitruvian Speaker's.
 	all := searchPage(t, w.world, secret, url.Values{"dateAfter": {w.start.UTC().Format(time.RFC3339Nano)}, "excludeLowPriority": {"false"}})
 	var ids []string
 	for _, m := range all.messages {
@@ -425,18 +425,18 @@ func TestRESTSearchReadsAsHomeSpeakerReadsIt(t *testing.T) {
 	require.NotContains(t, ids, w.deleted)
 }
 
-// HomeSpeaker reads a poll page by page (BeeperClient.allMessages): it carries on from each page's oldest cursor
+// Vitruvian Speaker reads a poll page by page (BeeperClient.allMessages): it carries on from each page's oldest cursor
 // going before (the pages come newest first) until hasMore is false. Read so, small pages give every message
 // once, the same as one big page.
-func TestRESTSearchPagesAsHomeSpeakerPagesIt(t *testing.T) {
+func TestRESTSearchPagesAsVitruvianSpeakerPagesIt(t *testing.T) {
 	w := newRESTWorld(t)
 	_, secret := w.token(t, false)
-	whole := searchPage(t, w.world, secret, homeSpeakerQuery(w.start, 20))
+	whole := searchPage(t, w.world, secret, vitruvianSpeakerQuery(w.start, 20))
 
 	seen := map[string]bool{}
 	var order []string
 	used := map[string]bool{}
-	q := homeSpeakerQuery(w.start, 2)
+	q := vitruvianSpeakerQuery(w.start, 2)
 	for pages := 0; ; pages++ {
 		require.Less(t, pages, 20, "paging must end")
 		p := searchPage(t, w.world, secret, q)
@@ -467,7 +467,7 @@ func TestRESTSearchPagesAsHomeSpeakerPagesIt(t *testing.T) {
 	require.ElementsMatch(t, want, order)
 
 	// The reference app's most is 20 a page: more is read as 20.
-	q = homeSpeakerQuery(w.start.Add(-24*time.Hour), 500)
+	q = vitruvianSpeakerQuery(w.start.Add(-24*time.Hour), 500)
 	q.Set("sender", "")
 	q.Set("excludeLowPriority", "false")
 	q.Set("includeMuted", "true")
@@ -517,7 +517,7 @@ func TestRESTSearchParameters(t *testing.T) {
 		var e map[string]string
 		require.NoError(t, json.Unmarshal(body, &e))
 		require.Equal(t, "bad_request", e["error"])
-		require.Contains(t, e["message"], tc.want, "HomeSpeaker shows message")
+		require.Contains(t, e["message"], tc.want, "Vitruvian Speaker shows message")
 	}
 
 	// Read only: nothing but GET (and HEAD).
@@ -535,7 +535,7 @@ func TestRESTSearchParameters(t *testing.T) {
 }
 
 // The REST endpoints take the MCP endpoint's tokens, and nothing else: no token, a wrong one, another scheme or a
-// revoked one is 401, as HomeSpeaker reads it (its "token refused").
+// revoked one is 401, as Vitruvian Speaker reads it (its "token refused").
 func TestRESTNeedsAToken(t *testing.T) {
 	w := storeOnly(t)
 	tok, secret := w.token(t, false)

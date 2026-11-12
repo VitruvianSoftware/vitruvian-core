@@ -68,8 +68,8 @@ public enum FileLock {
 /// descriptor across the `async` announcement body and unlocks/closes it
 /// when the announcement finishes (or automatically if the process exits).
 public enum SpeechLock {
-    /// Shared across both HomeSpeaker doors and all agent hooks on this Mac.
-    public static let defaultURL = URL(fileURLWithPath: "/tmp/homespeaker_speech.lock")
+    /// Shared across both Vitruvian Speaker doors and all agent hooks on this Mac.
+    public static let defaultURL = URL(fileURLWithPath: "/tmp/vitruvian_speaker_speech.lock")
 
     /// Maximum extra timeout allowance granted to a CLI process that spent
     /// time waiting in the speech queue behind earlier announcements.
@@ -121,7 +121,7 @@ public enum SpeechLock {
         let key = lockURL.standardizedFileURL.path
         return stateLock.withLock {
             if let existing = queues[key] { return existing }
-            let created = DispatchQueue(label: "com.vitruviansoftware.homespeaker.speech-lock.\(queues.count)")
+            let created = DispatchQueue(label: "com.vitruviansoftware.speaker.speech-lock.\(queues.count)")
             queues[key] = created
             return created
         }
@@ -129,7 +129,7 @@ public enum SpeechLock {
 
     /// Attempts to acquire the speech lock immediately without waiting.
     /// Returns `nil` when another process/task holds the lock or when a
-    /// home-speaker broadcast cooldown is still active on `lockURL`.
+    /// vitruvian-speaker broadcast cooldown is still active on `lockURL`.
     public static func tryAcquire(at lockURL: URL?, now: Date = Date()) -> Lease? {
         guard let lockURL else { return nil }
         try? FileManager.default.createDirectory(
@@ -150,7 +150,7 @@ public enum SpeechLock {
     }
 
     /// True when `lockURL` is currently held by an announcement or within an
-    /// active home-speaker broadcast cooldown window.
+    /// active vitruvian-speaker broadcast cooldown window.
     public static func isBusy(at lockURL: URL?, now: Date = Date()) -> Bool {
         guard let lockURL else { return false }
         guard let lease = tryAcquire(at: lockURL, now: now) else { return true }
@@ -170,7 +170,7 @@ public enum SpeechLock {
     }
 
     /// Runs `body` while holding an exclusive `flock` on `lockURL` and, if
-    /// `body` returns a future `cooldownUntil` timestamp (for a home-speaker
+    /// `body` returns a future `cooldownUntil` timestamp (for a vitruvian-speaker
     /// broadcast that continues playing after its HTTP request returns),
     /// records that deadline in `lockURL` before unlocking so the next
     /// announcement waits for the speaker to finish.

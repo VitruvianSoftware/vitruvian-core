@@ -1,7 +1,7 @@
-# Homespeakerviewtests
+# Vitruvianspeakerviewtests
 
 ## Overview
-Component package providing implementation for `apps/desktop/home-speaker/Tests/HomeSpeakerViewTests`.
+Component package providing implementation for `apps/desktop/vitruvian-speaker/Tests/VitruvianSpeakerViewTests`.
 
 ## Interface
 - `[ChatAppSectionSnapshotTests.swift:Snapshot]`
@@ -15,4 +15,4 @@ Component package providing implementation for `apps/desktop/home-speaker/Tests/
 - [ChatAppSectionSnapshotTests.swift:157]: `section(.courier, isOn: true, hasToken: true, address: "http://example.com:23...`
 
 ## Verification
-- Run: `bazel test //apps/desktop/home-speaker/Tests/HomeSpeakerViewTests/...`
+- Run: `bazel test //apps/desktop/vitruvian-speaker/Tests/VitruvianSpeakerViewTests/...`

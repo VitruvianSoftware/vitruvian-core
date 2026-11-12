@@ -329,7 +329,7 @@ public final class VolumeRestoreCoordinator: ObservableObject {
 /// extension's) from any process of the same profile.
 public enum VolumeRestoreRequest {
     /// The name requests travel under for `profile`.
-    public static func notificationName(for profile: HomeSpeakerProfile) -> Notification.Name {
+    public static func notificationName(for profile: VitruvianSpeakerProfile) -> Notification.Name {
         profile.messageName(.volumeRestore)
     }
 
@@ -337,20 +337,20 @@ public enum VolumeRestoreRequest {
     @MainActor private static var coordinators: [String: VolumeRestoreCoordinator] = [:]
 
     /// The coordinator this process holds for `profile`, if it listens.
-    @MainActor public static func inProcess(for profile: HomeSpeakerProfile) -> VolumeRestoreCoordinator? {
+    @MainActor public static func inProcess(for profile: VitruvianSpeakerProfile) -> VolumeRestoreCoordinator? {
         coordinators[profile.messagePrefix]
     }
 
     /// Whether anything will be alive to put the volume back. The Stop hook
     /// and --say exit seconds after announcing; with nothing alive, raising
     /// the volume would leave it raised. This process, when it listens;
-    /// otherwise the long-lived process of the HomeSpeaker in use
+    /// otherwise the long-lived process of the Vitruvian Speaker in use
     /// (`RequestRoute`): the running app for the app, the live lock for the
     /// extension -- the extension's while it is the one chosen, even for
     /// the app's `--say`.
     public static func canRestore(
-        profile: HomeSpeakerProfile = .current,
-        runningApps: @escaping @Sendable () -> [HomeSpeakerProfile.RunningApp] = HomeSpeakerProfile.runningApps,
+        profile: VitruvianSpeakerProfile = .current,
+        runningApps: @escaping @Sendable () -> [VitruvianSpeakerProfile.RunningApp] = VitruvianSpeakerProfile.runningApps,
         route: RequestRoute? = nil
     ) async -> Bool {
         if await MainActor.run(body: { inProcess(for: profile) != nil }) { return true }
@@ -360,7 +360,7 @@ public enum VolumeRestoreRequest {
     /// Hands `boost` to whoever puts it back: this process's coordinator,
     /// else the long-lived process `route` finds alive, under its names.
     public static func schedule(
-        _ boost: VolumeBoost, after seconds: Double, profile: HomeSpeakerProfile = .current,
+        _ boost: VolumeBoost, after seconds: Double, profile: VitruvianSpeakerProfile = .current,
         route: RequestRoute = .live()
     ) async {
         if let c = await MainActor.run(body: { inProcess(for: profile) }) {
@@ -395,10 +395,10 @@ public enum VolumeRestoreRequest {
         return (VolumeBoost(target: target, structureId: structureId, restoreTo: restoreTo, announceLevel: level), seconds)
     }
 
-    /// The long-lived process's side: take restores from other HomeSpeaker
+    /// The long-lived process's side: take restores from other Vitruvian Speaker
     /// processes of `profile`.
     @MainActor public static func listen(
-        with coordinator: VolumeRestoreCoordinator, profile: HomeSpeakerProfile = .current
+        with coordinator: VolumeRestoreCoordinator, profile: VitruvianSpeakerProfile = .current
     ) -> NSObjectProtocol {
         coordinators[profile.messagePrefix] = coordinator
         return DistributedNotificationCenter.default().addObserver(

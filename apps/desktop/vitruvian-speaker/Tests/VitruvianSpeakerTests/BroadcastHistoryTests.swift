@@ -20,16 +20,16 @@
 
 import Foundation
 import Testing
-@testable import HomeSpeakerCore
+@testable import VitruvianSpeakerCore
 
-// Guards for the broadcast history, which the app, `HomeSpeaker --say`, the
+// Guards for the broadcast history, which the app, `VitruvianSpeaker --say`, the
 // Stop hook's detached `--announce` and the Stop hook itself all add to:
 // no writer loses another's entry, the list stays newest-first and 30 long,
 // files written before BroadcastHistory existed still read, and a bad file
 // never stops a broadcast being recorded.
 
 private func scratchDir() throws -> URL {
-    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("homespeaker-history-\(UUID().uuidString)")
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-speaker-history-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir
 }

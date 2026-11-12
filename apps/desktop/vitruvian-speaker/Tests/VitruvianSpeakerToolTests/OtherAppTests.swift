@@ -21,14 +21,14 @@
 import AppKit
 import XCTest
 
-import HomeSpeakerCore
-import HomeSpeakerToolCore
+import VitruvianSpeakerCore
+import VitruvianSpeakerToolCore
 
 // Closing the app when the person picks the extension (design 7.4, step 3).
 // Every part here is a stand-in: the running apps, the program run and the
 // file manager. The "app" is a folder in the temporary folder, its program
 // an empty file that is never run. Nothing here reaches this Mac's
-// HomeSpeaker.
+// Vitruvian Speaker.
 
 /// A running application, as `NSRunningApplication` describes it.
 private final class StandInApp: RunningAppHandle, @unchecked Sendable {
@@ -39,7 +39,7 @@ private final class StandInApp: RunningAppHandle, @unchecked Sendable {
     let quitsWhenAsked: Bool
     private(set) var askedToQuit = false
 
-    init(_ policy: NSApplication.ActivationPolicy, bundleIdentifier: String? = HomeSpeakerProfile.appBundleID,
+    init(_ policy: NSApplication.ActivationPolicy, bundleIdentifier: String? = VitruvianSpeakerProfile.appBundleID,
          at bundleURL: URL? = nil, quitsWhenAsked: Bool = true) {
         self.bundleIdentifier = bundleIdentifier
         activationPolicy = policy
@@ -109,7 +109,7 @@ final class OtherAppTests: XCTestCase {
     private var workspace: StandInWorkspace!
 
     override func setUpWithError() throws {
-        folder = FileManager.default.temporaryDirectory.appendingPathComponent("homespeaker-other-app-\(UUID().uuidString)")
+        folder = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-speaker-other-app-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         mac = StandInMac()
         workspace = StandInWorkspace()
@@ -119,20 +119,20 @@ final class OtherAppTests: XCTestCase {
         try? FileManager.default.removeItem(at: folder)
     }
 
-    /// `<folder>/<place>/HomeSpeaker.app` with `version` in its Info.plist
+    /// `<folder>/<place>/Vitruvian Speaker.app` with `version` in its Info.plist
     /// (none when nil), and its program: an empty file, never run.
     private func makeApp(version: String?, in place: String = "Applications") throws -> URL {
-        let bundle = folder.appendingPathComponent(place).appendingPathComponent("HomeSpeaker.app")
+        let bundle = folder.appendingPathComponent(place).appendingPathComponent("Vitruvian Speaker.app")
         let macOS = bundle.appendingPathComponent("Contents/MacOS")
         try FileManager.default.createDirectory(at: macOS, withIntermediateDirectories: true)
         if let version { try writeVersion(version, to: bundle) }
-        let program = macOS.appendingPathComponent("HomeSpeaker")
+        let program = macOS.appendingPathComponent("VitruvianSpeaker")
         try Data().write(to: program)
         return program
     }
 
     private func writeVersion(_ version: String, to bundle: URL) throws {
-        let plist: [String: Any] = ["CFBundleIdentifier": HomeSpeakerProfile.appBundleID,
+        let plist: [String: Any] = ["CFBundleIdentifier": VitruvianSpeakerProfile.appBundleID,
                                     "CFBundleShortVersionString": version]
         try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
             .write(to: bundle.appendingPathComponent("Contents/Info.plist"))
@@ -148,7 +148,7 @@ final class OtherAppTests: XCTestCase {
 
     // MARK: Quitting
 
-    /// `HomeSpeaker.app` for the program `makeApp` made.
+    /// `Vitruvian Speaker.app` for the program `makeApp` made.
     private func bundle(of program: URL) -> URL {
         program.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
     }
@@ -171,8 +171,8 @@ final class OtherAppTests: XCTestCase {
         XCTAssertFalse(other.isRunning)
     }
 
-    /// With no app found, as in a test that sets `HOMESPEAKER_PROGRAM=""`,
-    /// a HomeSpeaker running on this Mac is never asked to quit.
+    /// With no app found, as in a test that sets `VITRUVIAN_SPEAKER_PROGRAM=""`,
+    /// a Vitruvian Speaker running on this Mac is never asked to quit.
     func testQuitAsksNothingWhenNoAppIsFound() async throws {
         let menuBar = StandInApp(.accessory)
         mac.apps = [menuBar]
@@ -329,7 +329,7 @@ final class OtherAppTests: XCTestCase {
         mac.answer = ProgramRun(status: 0, output: "", error: "")
         result = await other.turnOffLoginItem()
         XCTAssertEqual(result.failure?.sentence,
-                       "Open at Login could not be turned off: HomeSpeaker did not say what the login item is. "
+                       "Open at Login could not be turned off: Vitruvian Speaker did not say what the login item is. "
                            + SystemOtherApp.whereToLook)
 
         mac.answer = ProgramRun(status: 2, output: "", error: "error: unexpected argument \"disable\" for --login-item\n")
@@ -379,7 +379,7 @@ final class OtherAppTests: XCTestCase {
 
         let trashed = try other.moveToTrash()
 
-        XCTAssertEqual(trashed.path, "/stand-in/.Trash/HomeSpeaker.app")
+        XCTAssertEqual(trashed.path, "/stand-in/.Trash/Vitruvian Speaker.app")
         XCTAssertEqual(workspace.calls, ["recycle \(bundle.path)"], "the app is moved to the Trash, and nothing is removed")
     }
 
@@ -406,7 +406,7 @@ final class OtherAppTests: XCTestCase {
     }
 
     func testOnlyAnAppIsEverMoved() throws {
-        let bare = folder.appendingPathComponent("build/HomeSpeaker")
+        let bare = folder.appendingPathComponent("build/VitruvianSpeaker")
         try FileManager.default.createDirectory(at: bare.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data().write(to: bare)
 
@@ -446,9 +446,9 @@ final class OtherAppTests: XCTestCase {
     func testTheStepsSayThePlansWords() {
         XCTAssertEqual(OtherAppPlan.Step.quit.text, "The app has quit.")
         XCTAssertEqual(OtherAppPlan.Step.turnOffLoginItem(ticked: true, optional: true).text, "Turn off the app's Open at Login")
-        XCTAssertEqual(OtherAppPlan.Step.moveToTrash(ticked: false).text, "Move HomeSpeaker.app to the Trash")
+        XCTAssertEqual(OtherAppPlan.Step.moveToTrash(ticked: false).text, "Move Vitruvian Speaker.app to the Trash")
         XCTAssertEqual(OtherAppPlan.Step.moveToTrash(ticked: false).warning,
-                       "Your phone remote and scripts that call HomeSpeaker.app will stop working until they are pointed at the extension.")
+                       "Your phone remote and scripts that call Vitruvian Speaker.app will stop working until they are pointed at the extension.")
         XCTAssertEqual(OtherAppPlan.Step.oldAppWarning.text,
                        "This copy of the app is older than 1.19 and will take the Claude Code hook back if it is opened again. Move it to the Trash, or update it.")
         XCTAssertNil(OtherAppPlan.Step.quit.warning)

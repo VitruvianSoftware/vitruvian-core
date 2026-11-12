@@ -20,7 +20,7 @@
 
 import Foundation
 
-// Which HomeSpeaker is in use, when the app and the Vitruvian extension are
+// Which Vitruvian Speaker is in use, when the app and the Vitruvian extension are
 // both on this Mac (design section 7).
 //
 // One file, `~/.gemini/speaker_door.json`, records the person's choice and
@@ -37,7 +37,7 @@ import Foundation
 ///   "version": 1,
 ///   "chosen": "extension",
 ///   "chosen_at": "2026-10-20T09:12:00Z",
-///   "chosen_by": "HomeSpeaker extension 1.19.0",
+///   "chosen_by": "Vitruvian Speaker extension 1.19.0",
 ///   "extension": { "program": "…/bin/tool", "data_folder": "…", "version": "1.19.0", "door": 1 }
 /// }
 /// ```
@@ -48,8 +48,8 @@ import Foundation
 public struct DoorRecord: Codable, Equatable, Sendable {
     /// The file's format. Always 1 so far.
     public var version: Int
-    /// The HomeSpeaker the person picked; nil while nobody has.
-    public var chosen: HomeSpeakerProfile.Door?
+    /// The Vitruvian Speaker the person picked; nil while nobody has.
+    public var chosen: VitruvianSpeakerProfile.Door?
     /// When they picked.
     public var chosenAt: Date?
     /// Which program recorded the pick, in words, for display.
@@ -102,7 +102,7 @@ public struct DoorRecord: Codable, Equatable, Sendable {
     public static let currentVersion = 1
 
     public init(
-        version: Int = DoorRecord.currentVersion, chosen: HomeSpeakerProfile.Door? = nil, chosenAt: Date? = nil,
+        version: Int = DoorRecord.currentVersion, chosen: VitruvianSpeakerProfile.Door? = nil, chosenAt: Date? = nil,
         chosenBy: String? = nil, installedExtension: ExtensionEntry? = nil
     ) {
         self.version = version
@@ -123,7 +123,7 @@ public struct DoorRecord: Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         version = (try? c.decodeIfPresent(Int.self, forKey: .version)) ?? Self.currentVersion
-        chosen = ((try? c.decodeIfPresent(String.self, forKey: .chosen)) ?? nil).flatMap(HomeSpeakerProfile.Door.init(rawValue:))
+        chosen = ((try? c.decodeIfPresent(String.self, forKey: .chosen)) ?? nil).flatMap(VitruvianSpeakerProfile.Door.init(rawValue:))
         chosenAt = ((try? c.decodeIfPresent(String.self, forKey: .chosenAt)) ?? nil).flatMap(Self.dates.date(from:))
         chosenBy = try? c.decodeIfPresent(String.self, forKey: .chosenBy)
         installedExtension = try? c.decodeIfPresent(ExtensionEntry.self, forKey: .installedExtension)
@@ -153,7 +153,7 @@ public enum DoorFileError: Error, Equatable, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .unreadable(let path):
-            return "\(path) could not be read. HomeSpeaker will not save over it until it reads again; fix or remove the file."
+            return "\(path) could not be read. Vitruvian Speaker will not save over it until it reads again; fix or remove the file."
         }
     }
 }
@@ -264,7 +264,7 @@ public struct DoorFile: Sendable {
 
 // MARK: - Who runs
 
-/// What one HomeSpeaker does, given the other and the choice (design 7.3).
+/// What one Vitruvian Speaker does, given the other and the choice (design 7.3).
 public enum DoorRole: Equatable, Sendable {
     /// Runs: the hook, the chat monitor, listening.
     case active
@@ -276,7 +276,7 @@ public enum DoorRole: Equatable, Sendable {
     /// start the chat monitor.
     case waitingAsking
     /// The other one is chosen: no hook, no monitor, no listening.
-    case quiet(other: HomeSpeakerProfile.Door)
+    case quiet(other: VitruvianSpeakerProfile.Door)
 
     /// Design table 7.3:
     ///
@@ -287,7 +287,7 @@ public enum DoorRole: Equatable, Sendable {
     /// | Yes | the other | quiet |
     /// | Yes | absent | the app: active, asking. The extension: waiting, asking |
     public static func decide(
-        me: HomeSpeakerProfile.Door, otherInstalled: Bool, chosen: HomeSpeakerProfile.Door?
+        me: VitruvianSpeakerProfile.Door, otherInstalled: Bool, chosen: VitruvianSpeakerProfile.Door?
     ) -> DoorRole {
         guard otherInstalled else { return .active }
         switch chosen {
@@ -367,7 +367,7 @@ public struct DoorCheck: Sendable {
     }
 
     /// What `me` does now.
-    public func role(me: HomeSpeakerProfile.Door) -> DoorRole {
+    public func role(me: VitruvianSpeakerProfile.Door) -> DoorRole {
         let record = file.read()
         let otherInstalled: Bool
         switch me {
@@ -377,10 +377,10 @@ public struct DoorCheck: Sendable {
         return DoorRole.decide(me: me, otherInstalled: otherInstalled, chosen: record?.chosen)
     }
 
-    /// The command line's stand-aside check (`HomeSpeakerCommandLine.Parts`):
+    /// The command line's stand-aside check (`VitruvianSpeakerCommandLine.Parts`):
     /// true exactly when `role(me:)` is quiet, so the hook and `--announce`
     /// say nothing while the other one is chosen and installed.
-    public func standsAside(me: HomeSpeakerProfile.Door) -> Bool {
+    public func standsAside(me: VitruvianSpeakerProfile.Door) -> Bool {
         role(me: me).isQuiet
     }
 }

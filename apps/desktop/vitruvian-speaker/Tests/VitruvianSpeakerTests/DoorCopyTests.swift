@@ -20,7 +20,7 @@
 
 import Foundation
 import Testing
-@testable import HomeSpeakerCore
+@testable import VitruvianSpeakerCore
 
 // Comparing the app and the extension, and copying one into the other
 // (design sections 7.4, 7.5 and 7.7).
@@ -32,27 +32,27 @@ import Testing
 
 private func scratchDir() throws -> URL {
     let dir = FileManager.default.temporaryDirectory
-        .appendingPathComponent("homespeaker-door-copy-\(UUID().uuidString)")
+        .appendingPathComponent("vitruvian-speaker-door-copy-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir
 }
 
-private func testPrefix() -> String { "test.\(UUID().uuidString).homespeaker" }
+private func testPrefix() -> String { "test.\(UUID().uuidString).vitruvian-speaker" }
 
 /// The app's files, but all inside `root`.
-private func appShaped(_ root: URL) throws -> HomeSpeakerProfile {
-    let profile = HomeSpeakerProfile(
+private func appShaped(_ root: URL) throws -> VitruvianSpeakerProfile {
+    let profile = VitruvianSpeakerProfile(
         door: .app,
         settingsURL: root.appendingPathComponent("gemini/speaker_broadcast.json"),
         historyURL: root.appendingPathComponent("gemini/speaker_history.json"),
-        secretsURL: root.appendingPathComponent("HomeSpeaker/secrets.json"),
+        secretsURL: root.appendingPathComponent("Vitruvian Speaker/secrets.json"),
         messagePrefix: testPrefix(), liveLockURL: nil, toolFolder: nil)
     try requireInside(root, profile)
     return profile
 }
 
-private func extensionShaped(_ root: URL) throws -> HomeSpeakerProfile {
-    let profile = HomeSpeakerProfile.extension(
+private func extensionShaped(_ root: URL) throws -> VitruvianSpeakerProfile {
+    let profile = VitruvianSpeakerProfile.extension(
         dataFolder: root.appendingPathComponent("data"), toolFolder: nil, messagePrefix: testPrefix())
     try requireInside(root, profile)
     return profile
@@ -60,7 +60,7 @@ private func extensionShaped(_ root: URL) throws -> HomeSpeakerProfile {
 
 /// Stops the test before anything is read or written if a path is not in
 /// the scratch folder: it would be someone's real file.
-private func requireInside(_ root: URL, _ profile: HomeSpeakerProfile) throws {
+private func requireInside(_ root: URL, _ profile: VitruvianSpeakerProfile) throws {
     for url in [profile.settingsURL, profile.historyURL, profile.secretsURL, profile.monitorStatusURL] {
         try #require(url.path.hasPrefix(root.path + "/"), "\(url.path) is outside the scratch folder")
     }
@@ -132,14 +132,14 @@ private func entries(_ count: Int, from start: Int, prefix: String) -> [Broadcas
     }
 }
 
-private func writeHistory(_ items: [BroadcastLogItem], to profile: HomeSpeakerProfile) throws {
+private func writeHistory(_ items: [BroadcastLogItem], to profile: VitruvianSpeakerProfile) throws {
     try FileManager.default.createDirectory(
         at: profile.historyURL.deletingLastPathComponent(), withIntermediateDirectories: true)
     try JSONEncoder().encode(items).write(to: profile.historyURL)
 }
 
 /// One side, fully set up: settings, every kind of sign-in, and history.
-private func fill(_ profile: HomeSpeakerProfile, _ planted: Planted, history: [BroadcastLogItem]) throws {
+private func fill(_ profile: VitruvianSpeakerProfile, _ planted: Planted, history: [BroadcastLogItem]) throws {
     try SpeakerConfigFile(url: profile.settingsURL).write(setUpConfig())
     try SecretStore(fileURL: profile.secretsURL).save(planted.secrets)
     try writeHistory(history, to: profile)
@@ -516,7 +516,7 @@ private struct QuietLocal: LocalSpeaking {
         let quiet = try extensionShaped(root)
         if let theirs { try SecretStore(fileURL: active.secretsURL).save(theirs) }
         let activeBefore = bytes(active.secretsURL)
-        let engine = HomeSpeakerEngine(profile: quiet, session: StandInGoogle.session, local: QuietLocal())
+        let engine = VitruvianSpeakerEngine(profile: quiet, session: StandInGoogle.session, local: QuietLocal())
         try engine.secrets.save(mine)
 
         let out = await engine.signOut(

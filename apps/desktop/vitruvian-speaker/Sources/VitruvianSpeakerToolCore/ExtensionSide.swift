@@ -20,7 +20,7 @@
 
 import Combine
 import Foundation
-@preconcurrency import HomeSpeakerCore
+@preconcurrency import VitruvianSpeakerCore
 
 // The extension's program on its own engine (plan Task 12): where its files
 // are, its chat monitor in its own process, and the tool's parts, every one
@@ -32,16 +32,16 @@ import Foundation
 /// Where the extension keeps its files, worked out when the program starts.
 public struct ExtensionLocation: Equatable, Sendable {
     /// Names the data folder outright: a test's, or a build run by hand.
-    public static let dataFolderVariable = "HOMESPEAKER_DATA_FOLDER"
+    public static let dataFolderVariable = "VITRUVIAN_SPEAKER_DATA_FOLDER"
     /// The message prefix a test runs under, so a real extension on this
     /// Mac never hears it.
-    public static let messagePrefixVariable = "HOMESPEAKER_MESSAGE_PREFIX"
+    public static let messagePrefixVariable = "VITRUVIAN_SPEAKER_MESSAGE_PREFIX"
     /// What the command line says when it cannot tell where the files are.
-    public static let noProfile = "run the installed extension, or set HOMESPEAKER_DATA_FOLDER"
+    public static let noProfile = "run the installed extension, or set VITRUVIAN_SPEAKER_DATA_FOLDER"
 
     /// Where the data folder came from.
     public enum Source: Equatable, Sendable {
-        /// `HOMESPEAKER_DATA_FOLDER`.
+        /// `VITRUVIAN_SPEAKER_DATA_FOLDER`.
         case variable
         /// The program's own path, `…/Tools/<id>/bin/tool`.
         case programPath
@@ -50,7 +50,7 @@ public struct ExtensionLocation: Equatable, Sendable {
         case workingDirectory
     }
 
-    public let profile: HomeSpeakerProfile
+    public let profile: VitruvianSpeakerProfile
     public let source: Source
 
     /// The data folder, in this order: the variable; the program's own
@@ -60,17 +60,17 @@ public struct ExtensionLocation: Equatable, Sendable {
     /// applies. `program` is the program's real path.
     public static func locate(environment: [String: String], program: URL, workingDirectory: URL?) -> ExtensionLocation? {
         let prefix = environment[messagePrefixVariable].flatMap { $0.isEmpty ? nil : $0 }
-            ?? HomeSpeakerProfile.extensionMessagePrefix
+            ?? VitruvianSpeakerProfile.extensionMessagePrefix
         // `bin/tool`'s grandparent: the tool's own folder.
         let toolFolder = program.deletingLastPathComponent().deletingLastPathComponent()
         if let named = environment[dataFolderVariable], !named.isEmpty {
-            let folders = HomeSpeakerProfile.extensionFolders(program: program)
+            let folders = VitruvianSpeakerProfile.extensionFolders(program: program)
             return ExtensionLocation(
                 profile: .extension(dataFolder: URL(fileURLWithPath: named, isDirectory: true),
                                     toolFolder: folders?.tool ?? toolFolder, messagePrefix: prefix),
                 source: .variable)
         }
-        if let folders = HomeSpeakerProfile.extensionFolders(program: program) {
+        if let folders = VitruvianSpeakerProfile.extensionFolders(program: program) {
             return ExtensionLocation(
                 profile: .extension(dataFolder: folders.data, toolFolder: folders.tool, messagePrefix: prefix),
                 source: .programPath)
@@ -93,7 +93,7 @@ public struct ExtensionLocation: Equatable, Sendable {
         guard source != .variable else { return nil }
         func canonical(_ url: URL) -> String { url.standardizedFileURL.resolvingSymlinksInPath().path }
         guard canonical(helloFolder) != canonical(dataFolder) else { return nil }
-        return "Vitruvian gave HomeSpeaker the data folder \(helloFolder.path), but it worked out \(dataFolder.path). "
+        return "Vitruvian gave Vitruvian Speaker the data folder \(helloFolder.path), but it worked out \(dataFolder.path). "
             + "It will not keep its settings and sign-ins in a folder it was not given, so it stops."
     }
 
@@ -103,7 +103,7 @@ public struct ExtensionLocation: Equatable, Sendable {
     }
 }
 
-// MARK: - The chat monitor, in this process (its gate, `GatedMonitor`, is HomeSpeakerCore's)
+// MARK: - The chat monitor, in this process (its gate, `GatedMonitor`, is VitruvianSpeakerCore's)
 
 /// The last thing the engine said when it put a speaker back
 /// (`VolumeRestoreCoordinator.lastReport`), kept where the kit's thread can
@@ -131,11 +131,11 @@ public enum ExtensionSide {
     /// settings, secrets, speakers, announcer and sign-in, and its own
     /// status file, `<data>/speaker_monitor_status.json`. Beeper is read
     /// through `beeperSession` (nil: its own short-timeout session), at
-    /// `ChatAppClient.defaultBaseURL` unless `HOMESPEAKER_BEEPER_URL` names
+    /// `ChatAppClient.defaultBaseURL` unless `VITRUVIAN_SPEAKER_BEEPER_URL` names
     /// another address on this Mac.
     @MainActor
     public static func chatMonitor(
-        engine: HomeSpeakerEngine, chatSession: URLSession = .shared, beeperSession: URLSession? = nil
+        engine: VitruvianSpeakerEngine, chatSession: URLSession = .shared, beeperSession: URLSession? = nil
     ) -> ChatMonitorService {
         ChatMonitorService(
             configManager: engine.config, secrets: engine.secrets, home: engine.home, announcer: engine.announcer,
@@ -150,7 +150,7 @@ public enum ExtensionSide {
     /// Keep the tokens to stop listening.
     @MainActor
     public static func watch(
-        engine: HomeSpeakerEngine, monitor: GatedMonitor, onFolderChange: (() -> Void)? = nil
+        engine: VitruvianSpeakerEngine, monitor: GatedMonitor, onFolderChange: (() -> Void)? = nil
     ) -> [NSObjectProtocol] {
         engine.config.chatMonitor = monitor
         engine.config.onFolderChange = onFolderChange
@@ -166,7 +166,7 @@ public enum ExtensionSide {
     /// mark that says it runs without the app. Nothing else is touched:
     /// the choice is the person's, made on a page.
     public static func recordInDoor(
-        _ door: DoorFile, program: URL, profile: HomeSpeakerProfile, version: String = ToolVersion.current
+        _ door: DoorFile, program: URL, profile: VitruvianSpeakerProfile, version: String = ToolVersion.current
     ) throws {
         try door.update {
             $0.installedExtension = DoorRecord.ExtensionEntry(
@@ -177,7 +177,7 @@ public enum ExtensionSide {
 
     /// The app's sign-ins, read only and only while the app is installed:
     /// what a sign-out here checks so it never revokes a login the app
-    /// shares (`HomeSpeakerEngine.signOut`). Nil when there is no app.
+    /// shares (`VitruvianSpeakerEngine.signOut`). Nil when there is no app.
     public static func appSecrets(check: DoorCheck, appSecretsURL: URL) -> @Sendable () -> Secrets? {
         { check.appInstalled() ? SecretStore(fileURL: appSecretsURL).load() : nil }
     }
@@ -190,27 +190,27 @@ public enum ExtensionSide {
     /// `appProfile`).
     public static func commandLineParts(
         check: DoorCheck, appSecretsURL: URL, appSettingsURL: URL? = nil,
-        appProfile: HomeSpeakerProfile? = nil,
+        appProfile: VitruvianSpeakerProfile? = nil,
         program: URL = ExtensionLocation.ownProgram(),
         appProgram: @escaping @Sendable () -> URL? = { nil },
         other: (any OtherAppControlling)? = nil,
         home: URL = FileManager.default.homeDirectoryForCurrentUser,
         now: @escaping @Sendable () -> Date = { Date() },
         launchctlBootout: @escaping @Sendable (String) -> Void = { _ in },
-        makeInUseEngine: @escaping @MainActor @Sendable (HomeSpeakerProfile) -> HomeSpeakerEngine = {
-            HomeSpeakerEngine(profile: $0)
+        makeInUseEngine: @escaping @MainActor @Sendable (VitruvianSpeakerProfile) -> VitruvianSpeakerEngine = {
+            VitruvianSpeakerEngine(profile: $0)
         },
         postSignedOut: @escaping @Sendable (_ chatOnly: Bool, Notification.Name) -> Void = {
             SignOutNotice.post(chatOnly: $0, name: $1)
         }
-    ) -> HomeSpeakerCommandLine.Parts {
+    ) -> VitruvianSpeakerCommandLine.Parts {
         let settingsURL = appSettingsURL ?? appProfile?.settingsURL
-        let resolvedAppProfile = appProfile ?? HomeSpeakerProfile(
+        let resolvedAppProfile = appProfile ?? VitruvianSpeakerProfile(
             door: .app,
-            settingsURL: settingsURL ?? HomeSpeakerProfile.app(home: home).settingsURL,
-            historyURL: HomeSpeakerProfile.app(home: home).historyURL,
+            settingsURL: settingsURL ?? VitruvianSpeakerProfile.app(home: home).settingsURL,
+            historyURL: VitruvianSpeakerProfile.app(home: home).historyURL,
             secretsURL: appSecretsURL,
-            messagePrefix: HomeSpeakerProfile.appMessagePrefix,
+            messagePrefix: VitruvianSpeakerProfile.appMessagePrefix,
             liveLockURL: nil,
             toolFolder: nil
         )
@@ -255,7 +255,7 @@ public enum ExtensionSide {
     }
 
     /// Real `DoorSwitchSeam` for `--apply` on the extension's command line,
-    /// built from the same pieces as `HomeSpeakerTool`'s `ExtensionSwitchSeam`
+    /// built from the same pieces as `VitruvianSpeakerTool`'s `ExtensionSwitchSeam`
     /// (`DoorCheck`, profiles, programs, `SystemOtherApp`, `DoorCopy.copy`,
     /// `CredentialsChangedNotice`, and `SettingsActions.repointStaleHooks`).
     ///
@@ -266,31 +266,31 @@ public enum ExtensionSide {
     /// is not running.
     public struct CommandLineSwitchSeam: SettingsActions.DoorSwitchSeam, Sendable {
         public let check: DoorCheck
-        public let extensionProfile: HomeSpeakerProfile
-        public let appProfile: HomeSpeakerProfile
+        public let extensionProfile: VitruvianSpeakerProfile
+        public let appProfile: VitruvianSpeakerProfile
         public let program: URL
         public let appProgram: @Sendable () -> URL?
         public let other: any OtherAppControlling
         public let home: URL
         public let nowClosure: @Sendable () -> Date
         public let launchctlBootout: @Sendable (String) -> Void
-        public let copyClosure: @Sendable (HomeSpeakerProfile, HomeSpeakerProfile) throws -> CopyReport
-        public let credentialsChangedIn: @Sendable (HomeSpeakerProfile) -> Void
+        public let copyClosure: @Sendable (VitruvianSpeakerProfile, VitruvianSpeakerProfile) throws -> CopyReport
+        public let credentialsChangedIn: @Sendable (VitruvianSpeakerProfile) -> Void
 
         public init(
             check: DoorCheck,
-            extensionProfile: HomeSpeakerProfile,
-            appProfile: HomeSpeakerProfile,
+            extensionProfile: VitruvianSpeakerProfile,
+            appProfile: VitruvianSpeakerProfile,
             program: URL,
             appProgram: @escaping @Sendable () -> URL?,
             other: any OtherAppControlling,
             home: URL,
             now: @escaping @Sendable () -> Date = { Date() },
             launchctlBootout: @escaping @Sendable (String) -> Void = { _ in },
-            copy: @escaping @Sendable (HomeSpeakerProfile, HomeSpeakerProfile) throws -> CopyReport = {
+            copy: @escaping @Sendable (VitruvianSpeakerProfile, VitruvianSpeakerProfile) throws -> CopyReport = {
                 try DoorCopy.copy(from: $0, to: $1)
             },
-            credentialsChangedIn: @escaping @Sendable (HomeSpeakerProfile) -> Void = {
+            credentialsChangedIn: @escaping @Sendable (VitruvianSpeakerProfile) -> Void = {
                 CredentialsChangedNotice.post(name: CredentialsChangedNotice.notificationName(for: $0))
             }
         ) {
@@ -307,8 +307,8 @@ public enum ExtensionSide {
             self.credentialsChangedIn = credentialsChangedIn
         }
 
-        public var me: HomeSpeakerProfile.Door { .extension }
-        public var chosenBy: String { "HomeSpeaker extension \(ToolVersion.current)" }
+        public var me: VitruvianSpeakerProfile.Door { .extension }
+        public var chosenBy: String { "Vitruvian Speaker extension \(ToolVersion.current)" }
 
         public func now() -> Date { nowClosure() }
 
@@ -324,11 +324,11 @@ public enum ExtensionSide {
             check.appInstalled()
         }
 
-        public func profile(for side: HomeSpeakerProfile.Door, record: DoorRecord?) -> HomeSpeakerProfile? {
+        public func profile(for side: VitruvianSpeakerProfile.Door, record: DoorRecord?) -> VitruvianSpeakerProfile? {
             side == .extension ? extensionProfile : appProfile
         }
 
-        public func program(for side: HomeSpeakerProfile.Door, record: DoorRecord?) -> String? {
+        public func program(for side: VitruvianSpeakerProfile.Door, record: DoorRecord?) -> String? {
             switch side {
             case .extension:
                 return program.path
@@ -338,15 +338,15 @@ public enum ExtensionSide {
             }
         }
 
-        public func copy(from source: HomeSpeakerProfile, to destination: HomeSpeakerProfile) throws -> CopyReport {
+        public func copy(from source: VitruvianSpeakerProfile, to destination: VitruvianSpeakerProfile) throws -> CopyReport {
             try copyClosure(source, destination)
         }
 
-        public func credentialsChanged(in destination: HomeSpeakerProfile) {
+        public func credentialsChanged(in destination: VitruvianSpeakerProfile) {
             credentialsChangedIn(destination)
         }
 
-        public func writeChoice(_ side: HomeSpeakerProfile.Door, at date: Date, chosenBy: String) throws {
+        public func writeChoice(_ side: VitruvianSpeakerProfile.Door, at date: Date, chosenBy: String) throws {
             try check.file.update {
                 $0.chosen = side
                 $0.chosenAt = date
@@ -354,7 +354,7 @@ public enum ExtensionSide {
             }
         }
 
-        public func repointHooks(to side: HomeSpeakerProfile.Door, program: String) -> [String] {
+        public func repointHooks(to side: VitruvianSpeakerProfile.Door, program: String) -> [String] {
             SettingsActions.repointStaleHooks(home: home, to: program, bootout: launchctlBootout)
         }
 
@@ -411,7 +411,7 @@ public enum ExtensionSide {
 
 // MARK: - The tool's parts
 
-extension HomeSpeakerTool.Parts {
+extension VitruvianSpeakerTool.Parts {
     /// The tool's parts on the extension's engine. Every file is the
     /// profile's: its settings, secrets, history and monitor status, never
     /// the app's in `~/.gemini`; every message goes under its names.
@@ -419,7 +419,7 @@ extension HomeSpeakerTool.Parts {
     /// - `driverParts` run the jobs in this process (`EngineDriver`).
     /// - `monitor` is this process's chat monitor: Start and Stop call it
     ///   on the main actor (`onMain`); nothing is posted to the app.
-    /// - `check` says which HomeSpeaker runs.
+    /// - `check` says which Vitruvian Speaker runs.
     /// - `appProgram`, `runningApps`, `runProgram` and `openApp` are the app
     ///   as the extension sees it (`SystemOtherApp`): `appProgram` finds it
     ///   afresh each time it is asked; `runProgram` is the one way a program
@@ -434,7 +434,7 @@ extension HomeSpeakerTool.Parts {
     ///   the role: the process that holds the lock is the one that reads.
     @MainActor
     public static func `extension`(
-        engine: HomeSpeakerEngine,
+        engine: VitruvianSpeakerEngine,
         program: URL,
         link: ToolLink,
         later: @escaping @Sendable (@escaping @Sendable () -> Void) -> Void,
@@ -443,7 +443,7 @@ extension HomeSpeakerTool.Parts {
         holdsLiveLock: Bool,
         check: DoorCheck,
         appProgram: @escaping @Sendable () -> URL?,
-        appProfile: HomeSpeakerProfile,
+        appProfile: VitruvianSpeakerProfile,
         runningApps: @escaping @Sendable () -> [any RunningAppHandle],
         runProgram: @escaping ProgramRunning,
         openApp: @escaping @Sendable (URL) async -> Bool,
@@ -476,7 +476,7 @@ extension HomeSpeakerTool.Parts {
             home: home,
             settingsURL: profile.settingsURL,
             secretsURL: profile.secretsURL,
-            homeSpeakerVersion: { HomeSpeakerVersion.current },
+            vitruvianSpeakerVersion: { VitruvianSpeakerVersion.current },
             historyURL: profile.historyURL,
             monitorStatusURL: profile.monitorStatusURL,
             controlChatMonitor: { action in onMain { ChatMonitorControlNotice.apply(action, monitor: monitor) } },

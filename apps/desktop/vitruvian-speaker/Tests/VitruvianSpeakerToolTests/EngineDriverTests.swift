@@ -20,36 +20,36 @@
 
 import XCTest
 
-import HomeSpeakerCore
-import HomeSpeakerToolCore
+import VitruvianSpeakerCore
+import VitruvianSpeakerToolCore
 
 // The extension's jobs on its own engine, in the tool's own process
 // (`EngineDriver`). Each job must answer the `JobResult` that
-// `ProcessDriver.result` gives for what HomeSpeaker's program printed for
+// `ProcessDriver.result` gives for what Vitruvian Speaker's program printed for
 // the same flag, so the tool's state machine needs no change.
 //
 // Every engine here is on an extension profile in a scratch folder, under a
-// message prefix of its own (`test.<uuid>.homespeaker`). Google's sign-out
+// message prefix of its own (`test.<uuid>.vitruvian-speaker`). Google's sign-out
 // is answered by a stand-in in this process; the home speaker, this Mac's
 // speech, media, the volume and the homes are stand-ins too. Nothing here
-// reaches this Mac's HomeSpeaker, its files, Google, a speaker or a browser.
+// reaches this Mac's Vitruvian Speaker, its files, Google, a speaker or a browser.
 
 // MARK: - Scratch files
 
 private func scratchDir() throws -> URL {
     let dir = FileManager.default.temporaryDirectory
-        .appendingPathComponent("homespeaker-engine-driver-\(UUID().uuidString)")
+        .appendingPathComponent("vitruvian-speaker-engine-driver-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir
 }
 
 /// A message prefix no real app or extension on this Mac listens on.
-private func testPrefix() -> String { "test.\(UUID().uuidString).homespeaker" }
+private func testPrefix() -> String { "test.\(UUID().uuidString).vitruvian-speaker" }
 
 /// The extension's files, all inside `root`; stops the test before anything
 /// is read or written when one is not.
-private func extensionProfile(in root: URL) throws -> HomeSpeakerProfile {
-    let profile = HomeSpeakerProfile.extension(
+private func extensionProfile(in root: URL) throws -> VitruvianSpeakerProfile {
+    let profile = VitruvianSpeakerProfile.extension(
         dataFolder: root.appendingPathComponent("data"), toolFolder: nil, messagePrefix: testPrefix())
     for url in [profile.settingsURL, profile.historyURL, profile.secretsURL] {
         XCTAssertTrue(url.path.hasPrefix(root.path + "/"), "\(url.path) is outside the scratch folder")
@@ -259,7 +259,7 @@ private func logins(account: String) -> Secrets {
 
 // MARK: - What the program printed
 
-/// What HomeSpeaker's program printed for a flag, as Task 4's goldens hold
+/// What Vitruvian Speaker's program printed for a flag, as Task 4's goldens hold
 /// it, read the way `ProcessDriver` reads the program's end.
 private func asTheProgramAnswered(_ job: Job, _ printed: CLIOutput) -> JobResult {
     ProcessDriver.result(
@@ -267,7 +267,7 @@ private func asTheProgramAnswered(_ job: Job, _ printed: CLIOutput) -> JobResult
         output: printed.stdout.map { $0 + "\n" }.joined(), error: printed.stderr.map { $0 + "\n" }.joined())
 }
 
-private let noSpeaker = "no default speaker; open HomeSpeaker and pick one"
+private let noSpeaker = "no default speaker; open Vitruvian Speaker and pick one"
 
 // MARK: - The tests
 
@@ -278,7 +278,7 @@ final class EngineDriverTests: XCTestCase {
     @MainActor
     private struct Rig {
         let root: URL
-        let engine: HomeSpeakerEngine
+        let engine: VitruvianSpeakerEngine
         let home = StandInHome()
         let local = StandInLocal()
         let speaker = StandInVolume()
@@ -287,7 +287,7 @@ final class EngineDriverTests: XCTestCase {
         var parts: EngineDriver.Parts
         var driver: EngineDriver { EngineDriver(engine: engine, program: Rig.program, parts: parts) }
 
-        static let program = URL(fileURLWithPath: "/Tools/dev.vitruvian.homespeaker/bin/tool")
+        static let program = URL(fileURLWithPath: "/Tools/dev.vitruvian.speaker/bin/tool")
     }
 
     /// A rig whose settings are `config`, saved to the extension's file;
@@ -296,7 +296,7 @@ final class EngineDriverTests: XCTestCase {
         let root = try scratchDir()
         addTeardownBlock { try? FileManager.default.removeItem(at: root) }
         let profile = try extensionProfile(in: root)
-        let engine = HomeSpeakerEngine(profile: profile, session: StandInGoogle.session, local: StandInLocal())
+        let engine = VitruvianSpeakerEngine(profile: profile, session: StandInGoogle.session, local: StandInLocal())
         var parts = EngineDriver.Parts(engine: engine, otherSecrets: { nil })
         parts.browser = { _ in XCTFail("opened this Mac's browser") }
         parts.signIn = { _, _ in throw StandInFailure("no sign-in in this test") }
@@ -580,7 +580,7 @@ final class EngineDriverTests: XCTestCase {
         let rig = try rig()
         for action in [LoginItemAction.status, .enable, .disable] {
             let answer = await run(rig.driver, .app(.loginItem(action)))
-            XCTAssertEqual(answer, .failed(HomeSpeakerCommandLine.Parts.extensionHasNoLoginItem), "\(action)")
+            XCTAssertEqual(answer, .failed(VitruvianSpeakerCommandLine.Parts.extensionHasNoLoginItem), "\(action)")
         }
     }
 

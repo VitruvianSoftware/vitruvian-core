@@ -20,12 +20,12 @@
 
 import Foundation
 
-/// Who asked `HomeSpeaker --say` to speak: a person, or a coding agent.
+/// Who asked `VitruvianSpeaker --say` to speak: a person, or a coding agent.
 /// An agent's announcement is spoken only while that agent's switch is on
 /// (`SpeakerConfig.announces`), under the master switch.
 ///
 /// The `speaker-broadcast` command both agents are told to run (the
-/// `home-speaker-broadcast` instruction line) calls `--say` with no way to
+/// `vitruvian-speaker-broadcast` instruction line) calls `--say` with no way to
 /// say who it is for. So the source is, in order:
 /// 1. `--source <name>` before `--say`, when the caller says;
 /// 2. otherwise the agent whose shell the command runs in, from the

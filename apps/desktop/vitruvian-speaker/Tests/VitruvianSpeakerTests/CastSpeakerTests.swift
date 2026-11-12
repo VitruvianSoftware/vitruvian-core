@@ -21,7 +21,7 @@
 import Foundation
 import Network
 import Testing
-@testable import HomeSpeakerCore
+@testable import VitruvianSpeakerCore
 
 // Playing the Gemini voice on the Home speakers over Google Cast
 // (`home_cast_voice`). Nothing here reaches a real speaker: the wire format

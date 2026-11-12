@@ -23,7 +23,7 @@ import Foundation
 // MARK: - The chat monitor, behind the role
 
 /// Whether this side's chat monitor may start now. The extension's tool
-/// sets it from its role check (`HomeSpeakerTool.refreshRole`), on the kit's
+/// sets it from its role check (`VitruvianSpeakerTool.refreshRole`), on the kit's
 /// thread; the app sets it from `AppDoor.refresh`. Read on the main actor.
 public final class MonitorPermission: @unchecked Sendable {
     private let lock = NSLock()

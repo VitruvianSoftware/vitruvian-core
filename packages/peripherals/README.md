@@ -1,7 +1,7 @@
 # peripherals
 
 Turns the RGB light on a GravaStar mouse into a status light for the Mac.
-Anything that runs on the Mac (a Claude Code hook, a CI watcher, HomeSpeaker)
+Anything that runs on the Mac (a Claude Code hook, a CI watcher, Vitruvian Speaker)
 can make the mouse glow **blue while working, green on success, red on
 failure**, then put back the lighting you had before.
 

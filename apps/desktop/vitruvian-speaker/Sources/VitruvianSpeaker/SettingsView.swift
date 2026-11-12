@@ -19,7 +19,7 @@
 // SOFTWARE.
 
 import SwiftUI
-import HomeSpeakerCore
+import VitruvianSpeakerCore
 
 @MainActor
 public class SettingsViewModel: ObservableObject {
@@ -77,7 +77,7 @@ public class SettingsViewModel: ObservableObject {
         showReplaceGeminiKey = false
         oauthClientId = s.oauthClientIdOverride ?? ""
         oauthClientSecret = s.oauthClientSecretOverride ?? ""
-        hasBundledOAuthClient = HomeSpeakerProfile.current.shippedClient != nil
+        hasBundledOAuthClient = VitruvianSpeakerProfile.current.shippedClient != nil
         macVoices = LocalSpeaker.shared.englishVoices()
     }
 }
@@ -247,7 +247,7 @@ public struct SettingsView: View {
                         .textSelection(.enabled)
                 }
             }
-            WhichHomeSpeakerSection(door: door, switcher: switcher)
+            WhichVitruvianSpeakerSection(door: door, switcher: switcher)
             Section("Google Home Account") {
                 LabeledContent("Status") {
                     HStack(spacing: 8) {
@@ -269,7 +269,7 @@ public struct SettingsView: View {
                     }
                 }
                 if !configManager.isConnectedToGoogle {
-                    if OAuthClient.resolve(secrets: SecretStore.shared.load(), shipped: HomeSpeakerProfile.current.shippedClient) == nil {
+                    if OAuthClient.resolve(secrets: SecretStore.shared.load(), shipped: VitruvianSpeakerProfile.current.shippedClient) == nil {
                         HStack(alignment: .firstTextBaseline) {
                             Text("Sign In needs a Google Cloud project of your own (Home API enabled) — a few minutes, once.")
                                 .font(.caption)
@@ -295,7 +295,7 @@ public struct SettingsView: View {
                 ))
                     .accessibilityHint("Turns all spoken announcements on or off")
 
-                Toggle("Open HomeSpeaker at Login", isOn: Binding(
+                Toggle("Open Vitruvian Speaker at Login", isOn: Binding(
                     get: { viewModel.launchAtLogin },
                     set: { on in
                         do {
@@ -356,7 +356,7 @@ public struct SettingsView: View {
                                 .font(.caption.monospacedDigit())
                                 .frame(width: 40, alignment: .trailing)
                         }
-                        Text(volumeRestore.lastReport ?? "The speaker goes back to its own volume when the announcement ends -- unless someone changes it in the meantime. Needs HomeSpeaker running to put it back.")
+                        Text(volumeRestore.lastReport ?? "The speaker goes back to its own volume when the announcement ends -- unless someone changes it in the meantime. Needs Vitruvian Speaker running to put it back.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -387,7 +387,7 @@ public struct SettingsView: View {
                             .fixedSize(horizontal: false, vertical: true)
                         Spacer()
                         // Pauses what is playing now for three seconds. Also
-                        // where macOS asks, once, to let HomeSpeaker control
+                        // where macOS asks, once, to let Vitruvian Speaker control
                         // each app -- better here than mid-announcement.
                         Button(mediaPause.isHolding ? "Paused…" : "Test") {
                             Task { await mediaPause.pause(for: 3) }
@@ -974,7 +974,7 @@ public struct SettingsView: View {
                                     Button("Remove") { removeHook(st.agent) }.controlSize(.small)
                                 }
                             case .stale where quiet:
-                                Label("Installed on the HomeSpeaker extension", systemImage: "checkmark.circle")
+                                Label("Installed on the Vitruvian Speaker extension", systemImage: "checkmark.circle")
                                     .foregroundStyle(.secondary)
                             case .stale:
                                 HStack(spacing: 8) {
@@ -1024,7 +1024,7 @@ public struct SettingsView: View {
                         .controlSize(.small)
                     } label: {
                         Text("Legacy chat-monitor launch agent")
-                        Text("Installed by HomeSpeaker 1.x. Chat monitoring now runs inside the app.")
+                        Text("Installed by Vitruvian Speaker 1.x. Chat monitoring now runs inside the app.")
                     }
                 }
             }
@@ -1078,7 +1078,7 @@ public struct SettingsView: View {
             Section("Files") {
                 LabeledContent("Settings", value: ConfigManager.defaultConfigURL().path)
                 LabeledContent("Secrets", value: SecretStore.defaultURL().path)
-                LabeledContent("Version", value: HomeSpeakerVersion.current)
+                LabeledContent("Version", value: VitruvianSpeakerVersion.current)
             }
             .font(.caption)
 
@@ -1140,7 +1140,7 @@ public struct SettingsView: View {
         }
     }
 
-    /// Through the one sign-out rule (`HomeSpeakerEngine.signOut`): a login
+    /// Through the one sign-out rule (`VitruvianSpeakerEngine.signOut`): a login
     /// the extension shares is removed here only, never revoked at Google,
     /// so signing out of a quiet app never signs the extension out.
     private func signOut() {
@@ -1259,7 +1259,7 @@ public struct SettingsView: View {
 
     private func installHook(_ agent: CodingAgent) {
         if case .quiet(let other) = door.plan.role {
-            status("The HomeSpeaker \(other.rawValue) is in use, so its hooks are the ones that run.", isError: true)
+            status("The Vitruvian Speaker \(other.rawValue) is in use, so its hooks are the ones that run.", isError: true)
             return
         }
         do {

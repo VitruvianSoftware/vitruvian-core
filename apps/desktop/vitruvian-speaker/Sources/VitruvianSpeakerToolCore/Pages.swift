@@ -19,12 +19,12 @@
 // SOFTWARE.
 
 import Foundation
-import HomeSpeakerCore
+import VitruvianSpeakerCore
 import VitruvianToolKit
 import VitruvianToolProtocol
 
 /// The tool's two pages, pure functions of what it knows. English, as
-/// HomeSpeaker is.
+/// Vitruvian Speaker is.
 public enum Pages {
     /// The parts of the settings panel: one shown at a time, or every one
     /// under its own heading for an app that draws sections.
@@ -51,7 +51,7 @@ public enum Pages {
         /// The person's own OAuth client id, if one is saved. Never its secret.
         public var customOAuthClientId: String?
         public var hasCustomOAuthClientSecret = false
-        /// HomeSpeaker.app was packaged with a shared OAuth client.
+        /// Vitruvian Speaker.app was packaged with a shared OAuth client.
         public var hasBundledOAuthClient = false
 
         public init(isSignedIn: Bool = false, email: String? = nil, hasOAuthClient: Bool = false, hasAntigravityTokens: Bool = false,
@@ -70,7 +70,7 @@ public enum Pages {
     public struct Agents: Equatable {
         /// Each agent's state, read from its files.
         public var statuses: [AgentIntegration.AgentStatus] = []
-        /// The command a hook runs, by agent: only while HomeSpeaker is
+        /// The command a hook runs, by agent: only while Vitruvian Speaker is
         /// installed, since without it there is nothing a hook could run.
         public var hookCommands: [CodingAgent: String] = [:]
         /// The 1.x chat-monitor launch agent is still on this Mac.
@@ -84,22 +84,22 @@ public enum Pages {
         }
     }
 
-    /// Where HomeSpeaker keeps things, and the versions, as Files lists them.
+    /// Where Vitruvian Speaker keeps things, and the versions, as Files lists them.
     public struct Files: Equatable, Sendable {
         public var settings = ""
         public var secrets = ""
         public var history = ""
         public var toolVersion = ToolVersion.current
-        /// The installed HomeSpeaker's version; nil when it cannot be read.
-        public var homeSpeakerVersion: String?
+        /// The installed Vitruvian Speaker's version; nil when it cannot be read.
+        public var vitruvianSpeakerVersion: String?
 
         public init(settings: String = "", secrets: String = "", history: String = "", toolVersion: String = ToolVersion.current,
-                    homeSpeakerVersion: String? = nil) {
+                    vitruvianSpeakerVersion: String? = nil) {
             self.settings = settings
             self.secrets = secrets
             self.history = history
             self.toolVersion = toolVersion
-            self.homeSpeakerVersion = homeSpeakerVersion
+            self.vitruvianSpeakerVersion = vitruvianSpeakerVersion
         }
     }
 
@@ -116,7 +116,7 @@ public enum Pages {
         public var hasChatAccess = false
         /// Where the `gws` command is; nil when it is not installed.
         public var gwsPath: String?
-        /// The process that runs the chat monitor (HomeSpeaker.app, for the
+        /// The process that runs the chat monitor (Vitruvian Speaker.app, for the
         /// app) is running, and so can read messages.
         public var ownerRunning = false
         /// What the monitor last wrote about itself (`ChatMonitorStatusFile`),
@@ -160,7 +160,7 @@ public enum Pages {
         public var installed = true
         public var config = SpeakerConfig()
         public var volume: Volume?
-        /// What HomeSpeaker is doing for the tool right now, if anything.
+        /// What Vitruvian Speaker is doing for the tool right now, if anything.
         public var busy: Job?
         /// The last thing worth saying: where a text was spoken, or why not.
         public var notice: String?
@@ -173,8 +173,8 @@ public enum Pages {
         public var offersChips = false
         /// The app groups a page into sections (`ProtocolFeature.sections`).
         public var offersSections = false
-        /// The app opens HomeSpeaker's settings panel when the tool's answer
-        /// names it (`HomeSpeakerTool.openSettingsFeature`): the island's
+        /// The app opens Vitruvian Speaker's settings panel when the tool's answer
+        /// names it (`VitruvianSpeakerTool.openSettingsFeature`): the island's
         /// last line is then a "More settings…" button, not where to look.
         public var opensSettings = false
         /// Why the settings file does not read, while it does not. Nothing
@@ -182,7 +182,7 @@ public enum Pages {
         public var configProblem: String?
         /// The section picked, for an app that does not draw sections.
         public var section = Section.general
-        /// The setup job HomeSpeaker is running, beside any speaker job.
+        /// The setup job Vitruvian Speaker is running, beside any speaker job.
         public var setupBusy: Job?
         /// Courier's switch was turned on from the island with no token
         /// saved: the island asks for the token under it, and Courier goes
@@ -210,9 +210,9 @@ public enum Pages {
         /// always drawn empty: a secret goes in and never comes back out.
         public var draftClientSecretTyped = false
         /// The shared history (`BroadcastHistory`), newest first: what the
-        /// app, `HomeSpeaker --say` and the Stop hook have spoken.
+        /// app, `VitruvianSpeaker --say` and the Stop hook have spoken.
         public var recentBroadcasts: [BroadcastLogItem] = []
-        /// Which HomeSpeaker is in use, and the step the person is on.
+        /// Which Vitruvian Speaker is in use, and the step the person is on.
         public var door = DoorState()
         /// What the engine said when it last put a speaker back
         /// (`VolumeRestoreCoordinator.lastReport`); nil until it has.
@@ -227,7 +227,7 @@ public enum Pages {
         public var effectiveNow: Date { now ?? Date() }
     }
 
-    public static let releases = "https://github.com/VitruvianSoftware/vitruvian-core/releases?q=home-speaker"
+    public static let releases = "https://github.com/VitruvianSoftware/vitruvian-core/releases?q=vitruvian-speaker"
     public static let maxSpeakerRows = 20
     /// How many of the history's entries the island lists: the island has
     /// little room, and the menu bar app keeps the rest.
@@ -235,22 +235,22 @@ public enum Pages {
     /// How many homes the island's setup offers as buttons.
     public static let maxSetupHomes = 10
     public static let noRecentBroadcasts = "No recent announcements"
-    public static let homeSpeakersOff = "Home speakers are off"
+    public static let vitruvianSpeakersOff = "Home speakers are off"
     /// A volume or mute that waited, dropped: it was for the old speaker.
     public static let pendingDropped = "The waiting volume or mute change was dropped: the speaker changed"
-    /// Where to fix a chat problem, for an app that cannot open HomeSpeaker's
+    /// Where to fix a chat problem, for an app that cannot open Vitruvian Speaker's
     /// settings (3.57 and before): the Section menu's Chats.
-    public static let fixChatInSettings = "Fix it in Vitruvian Settings › Extensions › HomeSpeaker › Section: Chats"
+    public static let fixChatInSettings = "Fix it in Vitruvian Settings › Extensions › Vitruvian Speaker › Section: Chats"
     /// The same, for an app that draws every section on one page: there is
     /// no Section menu, only Chats on the page.
-    public static let fixChatInSettingsOnOnePage = "Fix it in Vitruvian Settings › Extensions › HomeSpeaker › Chats"
-    /// The warning's button, for an app that can: opens HomeSpeaker's
+    public static let fixChatInSettingsOnOnePage = "Fix it in Vitruvian Settings › Extensions › Vitruvian Speaker › Chats"
+    /// The warning's button, for an app that can: opens Vitruvian Speaker's
     /// settings on Chats.
     public static let openChatSettingsButton = "Open Chats…"
     /// The same button for an app that draws every section on one page:
     /// the answer opens Settings at its top and cannot name a section.
     public static let openSettingsButton = "Open Settings…"
-    /// The token fields' save buttons, as HomeSpeaker's own Settings has.
+    /// The token fields' save buttons, as Vitruvian Speaker's own Settings has.
     public static let saveTokenButton = "Save Token"
     public static let slackTokenTitle = "User token (xoxp-…)"
     public static let beeperTokenTitle = "Access token"
@@ -259,7 +259,7 @@ public enum Pages {
     public static let pasteBeeperToken = "Paste Beeper token and press Return"
     public static let pasteCourierToken = "Paste Courier token and press Return"
     /// Under Courier's switch while no token is saved: Courier stays off
-    /// until one is, as in HomeSpeaker's own Settings.
+    /// until one is, as in Vitruvian Speaker's own Settings.
     public static let courierTokenFirst = "Save a token to turn Courier on."
     /// Under the island's Courier token field: where the token comes from.
     public static let courierTokenSteps = "Make a token in Courier: Settings › Integrations › New connection…, then paste it here."
@@ -280,9 +280,9 @@ public enum Pages {
     public static let geminiKeyHelp = "Make a key at aistudio.google.com › Get API key. "
         + "With Gemini TTS, what this Mac says is sent to Google to be spoken; "
         + "with no key, or when Gemini fails, this Mac uses the Mac voice below."
-    /// Where the rest of HomeSpeaker's settings are, at the foot of the
+    /// Where the rest of Vitruvian Speaker's settings are, at the foot of the
     /// island, for an app that cannot open them (3.57 and before).
-    public static let moreSettings = "More settings: Vitruvian Settings › Extensions › HomeSpeaker"
+    public static let moreSettings = "More settings: Vitruvian Settings › Extensions › Vitruvian Speaker"
     /// The button that opens them, for an app that can.
     public static let moreSettingsButton = "More settings…"
     /// The island's button that speaks what is on the clipboard.
@@ -378,10 +378,10 @@ public enum Pages {
         public static let startChatMonitor = "startChatMonitor"
         public static let stopChatMonitor = "stopChatMonitor"
         /// The island's last line, as a button: opens Settings on
-        /// HomeSpeaker's detail.
+        /// Vitruvian Speaker's detail.
         public static let moreSettings = "moreSettings"
         /// The island's chat warning, as a button: opens Settings on
-        /// HomeSpeaker's Chats.
+        /// Vitruvian Speaker's Chats.
         public static let openChatSettings = "openChatSettings"
         // The island's first-run setup and its outputs. Their own ids, so
         // the island never answers to a settings control's.
@@ -541,7 +541,7 @@ public enum Pages {
         /// The id of a list row, or the value of a choice's option, that
         /// stands for `value`: a speaker's key, a home's id, a voice. The
         /// value itself when the protocol takes it as a name
-        /// (`ManifestRules.isWellFormedName`), as every value HomeSpeaker
+        /// (`ManifestRules.isWellFormedName`), as every value Vitruvian Speaker
         /// makes is. Else, for one written by hand (`Living Room`,
         /// `den:2`, one too long), `row.` and 16 hex digits made from it,
         /// the same every time: Vitruvian refuses a whole page over one id
@@ -573,7 +573,7 @@ public enum Pages {
         /// `<action>.<agent>`, e.g. `installHook.claudeCode`. Never a colon:
         /// a block id is a protocol name (letters, digits, `.`, `-`, `_`),
         /// and Vitruvian refuses the whole page over one that is not
-        /// (HomeSpeaker 1.27.1's `installHook:claudeCode` did that).
+        /// (Vitruvian Speaker 1.27.1's `installHook:claudeCode` did that).
         public enum AgentAction: String, CaseIterable, Sendable {
             case installHook, removeHook, disableRival, addInstruction
         }
@@ -597,12 +597,12 @@ public enum Pages {
 
     // MARK: - The island page
 
-    /// The island. While the other HomeSpeaker is in use, the quiet card
+    /// The island. While the other Vitruvian Speaker is in use, the quiet card
     /// (or the step the person started from it) is all there is; otherwise
     /// the choice card, when there is one, comes first. No heading: the
     /// island's header, and the menu bar panel's card, already name it.
     public static func island(_ status: Status) -> UITree {
-        var quietFor: HomeSpeakerProfile.Door?
+        var quietFor: VitruvianSpeakerProfile.Door?
         if case .quiet(let other) = status.door.role { quietFor = other }
         if let other = quietFor {
             return UITree {
@@ -860,7 +860,7 @@ public enum Pages {
                 button(Block.saveBeeperToken, UIText.plain(saveTokenButton))
             }
             islandBeeperBlocks(status)
-            // Courier stays off until a token is saved, as in HomeSpeaker's
+            // Courier stays off until a token is saved, as in Vitruvian Speaker's
             // own Settings: turned on without one, the island asks for it
             // here and turns Courier on once it is saved.
             toggle(Block.courierEnabled, "Courier", isOn: chat.courierEnabled)
@@ -924,17 +924,17 @@ public enum Pages {
         return status.chat.monitor?.networks(for: app).states
     }
 
-    /// A Courier network HomeSpeaker's own Slack or Google Chat reader
+    /// A Courier network Vitruvian Speaker's own Slack or Google Chat reader
     /// covers, or one read through Courier anyway: its switch is the
     /// "read it here as well" choice (`ChatMonitorConfig.courierReadAnyway`),
-    /// not a mute, as in HomeSpeaker's own Settings. Never for Beeper,
+    /// not a mute, as in Vitruvian Speaker's own Settings. Never for Beeper,
     /// whose skipped networks stay greyed.
     static func readsAnywaySwitch(_ app: ChatApp, _ row: BeeperNetworkState, _ monitor: ChatMonitorConfig) -> Bool {
         app == .courier && (row.state == .skipped || monitor.readsAnyway(app).contains(row.key))
     }
 
     /// A switch for each Beeper network, under a caption: on reads it, off
-    /// mutes it. A network HomeSpeaker reads itself is shown off and
+    /// mutes it. A network Vitruvian Speaker reads itself is shown off and
     /// greyed. With Beeper on and its networks not being read, the caption
     /// and the saved mutes, then where the others will show, even with no
     /// mutes saved. Nothing once the running monitor has listed none, nor
@@ -944,7 +944,7 @@ public enum Pages {
         networkBlocks(.beeper, status)
     }
 
-    /// The same for either app. Courier's networks that HomeSpeaker reads
+    /// The same for either app. Courier's networks that Vitruvian Speaker reads
     /// itself are not greyed: their switch reads them through Courier as
     /// well (`readsAnywaySwitch`).
     static func networkBlocks(_ app: ChatApp, _ status: Status) -> [UIBlock] {
@@ -997,15 +997,15 @@ public enum Pages {
 
     /// Over Beeper's networks: the caption, or the chips' title.
     static let beeperNetworksTitle = "Networks"
-    /// Why a network HomeSpeaker reads itself cannot be muted.
+    /// Why a network Vitruvian Speaker reads itself cannot be muted.
     static let beeperReadDirectly = "Read directly"
-    /// A Courier network HomeSpeaker reads itself, read through Courier
-    /// as well, as HomeSpeaker's own Settings says it.
+    /// A Courier network Vitruvian Speaker reads itself, read through Courier
+    /// as well, as Vitruvian Speaker's own Settings says it.
     static let alsoReadHere = "Also read here"
 
     /// Beeper's networks as one `chips` block titled Networks, for an app
     /// that draws chips: a chip a network, by name, on while it is read.
-    /// A network HomeSpeaker reads itself is a dimmed chip that says so.
+    /// A network Vitruvian Speaker reads itself is a dimmed chip that says so.
     /// Nil for an app without chips, with no network to show (the block
     /// needs one), with more than the block may carry, with two rows of
     /// one key, or with a key longer than a chip's value may be (a saved
@@ -1015,7 +1015,7 @@ public enum Pages {
         networkChips(.beeper, status, rows: rows)
     }
 
-    /// The same for either app. A Courier network HomeSpeaker reads itself
+    /// The same for either app. A Courier network Vitruvian Speaker reads itself
     /// is a chip that reads it through Courier as well.
     static func networkChips(_ app: ChatApp, _ status: Status, rows: [BeeperNetworkState]) -> UIBlock? {
         guard status.offersChips, (1...UILimits.maxChoiceOptions).contains(rows.count),
@@ -1042,9 +1042,9 @@ public enum Pages {
 
     /// Saves a change of the `beeperNetworks` chips into `monitor`, for the
     /// island and Settings alike: `values` are the chips now on, `rows` the
-    /// networks as they were drawn, with any HomeSpeaker now reads itself
+    /// networks as they were drawn, with any Vitruvian Speaker now reads itself
     /// marked skipped. Every row whose chip
-    /// is off is muted and every other read, except a network HomeSpeaker
+    /// is off is muted and every other read, except a network Vitruvian Speaker
     /// reads itself, whose saved mute is left as it is; a saved mute with
     /// no row is kept. True when the mutes changed.
     static func saveBeeperNetworkChips(_ values: [String], rows: [BeeperNetworkState],
@@ -1052,9 +1052,9 @@ public enum Pages {
         saveNetworkChips(.beeper, values, rows: rows, into: &monitor)
     }
 
-    /// The same for either app. A Courier network HomeSpeaker reads
+    /// The same for either app. A Courier network Vitruvian Speaker reads
     /// itself (`readsAnywaySwitch`) is read through Courier as well while
-    /// its chip is on, and left to HomeSpeaker's reader while it is off;
+    /// its chip is on, and left to Vitruvian Speaker's reader while it is off;
     /// it is never muted.
     static func saveNetworkChips(_ app: ChatApp, _ values: [String], rows: [BeeperNetworkState],
                                  into monitor: inout ChatMonitorConfig) -> Bool {
@@ -1177,7 +1177,7 @@ public enum Pages {
     }
 
     /// The chat warnings, then where to fix them: a button that opens
-    /// Chats, for an app that can open HomeSpeaker's settings;
+    /// Chats, for an app that can open Vitruvian Speaker's settings;
     /// otherwise where that is. An app that draws sections has no Section
     /// menu: Chats is on the one page.
     static func chatWarningBlocks(_ status: Status) -> [UIBlock] {
@@ -1200,7 +1200,7 @@ public enum Pages {
 
     /// The newest of the shared history, as the menu bar's Recent
     /// Broadcasts lists it. A tap on a row speaks it again (`Job.replay`),
-    /// once HomeSpeaker can: installed, and not quiet for the other one.
+    /// once Vitruvian Speaker can: installed, and not quiet for the other one.
     static func recentBroadcastBlocks(_ status: Status) -> [UIBlock] {
         let replays = status.installed
         return UITree {
@@ -1521,23 +1521,23 @@ public enum Pages {
 
     /// What the chat monitor does with messages, and where they go.
     public static func monitorPrivacyLine(_ config: SpeakerConfig) -> String {
-        "HomeSpeaker reads new messages in the background while Slack, Google Chat, Beeper or Courier is on, "
+        "Vitruvian Speaker reads new messages in the background while Slack, Google Chat, Beeper or Courier is on, "
             + "and announces them on your speakers. " + config.chatMessagesSentTo
     }
 
     /// Where the token comes from, and what is skipped.
     public static let beeperHelp = "In Beeper Desktop: Settings › Integrations, turn on the Desktop API, then + next to Approved connections. "
-        + "Beeper Desktop must be running; HomeSpeaker only talks to it on this Mac. "
+        + "Beeper Desktop must be running; Vitruvian Speaker only talks to it on this Mac. "
         + "Slack and Google Chat chats in Beeper are skipped while their own switches above are on."
 
     /// Where Courier's token comes from, what it does with Beeper on as
-    /// well, and how it shares Slack: HomeSpeaker's own Settings' words, in
+    /// well, and how it shares Slack: Vitruvian Speaker's own Settings' words, in
     /// two captions, since the app cuts a caption at four lines. Two, not
     /// one a sentence: a page may carry 200 blocks, and every network can
     /// be a switch of its own.
     public static let courierHelpLines = [
         "In Courier: Settings › Integrations › New connection…, then paste the token here. "
-            + "Courier must be running; HomeSpeaker only talks to it on this Mac. "
+            + "Courier must be running; Vitruvian Speaker only talks to it on this Mac. "
             + "With Beeper on as well, a message that comes through both is read out once.",
         "Courier can't say which Slack workspace is which, so while the Slack switch above is on, Courier's Slack is left to it. "
             + "To hear another workspace through Courier, switch its Slack on here; messages from the workspace above may then be read twice.",
@@ -1556,7 +1556,7 @@ public enum Pages {
                                                 hasCourierToken: status.chat.hasCourierToken)
     }
 
-    /// Chats, as HomeSpeaker's tab of that name: what reads the
+    /// Chats, as Vitruvian Speaker's tab of that name: what reads the
     /// messages, the two sources and their credentials, and the options.
     /// The Slack token field is always empty: a token goes in, and only
     /// whether one is saved comes back out.
@@ -1567,9 +1567,9 @@ public enum Pages {
         return UITree {
             heading("Background Monitoring")
             if chat.ownerRunning {
-                row(nil, "HomeSpeaker is running", icon: "bolt.fill")
+                row(nil, "Vitruvian Speaker is running", icon: "bolt.fill")
             } else {
-                row(nil, "HomeSpeaker is not running", icon: "moon.fill")
+                row(nil, "Vitruvian Speaker is not running", icon: "moon.fill")
             }
             text(UIText.plain(monitorPrivacyLine(status.config)), style: .caption)
             if !chat.ownerRunning && monitor.anySourceEnabled {
@@ -1653,7 +1653,7 @@ public enum Pages {
         }.blocks
     }
 
-    /// Settings › Chats' Courier, as HomeSpeaker's own Settings has it: its
+    /// Settings › Chats' Courier, as Vitruvian Speaker's own Settings has it: its
     /// switch, which stays off until a token is saved; while it is on, its
     /// Announce choice and its networks; its token while it is on or none
     /// is saved; and where the token comes from.
@@ -1691,7 +1691,7 @@ public enum Pages {
     }
 
     /// The monitor itself, as the app's Settings shows it: Running or
-    /// Stopped, Start or Stop while HomeSpeaker runs and a source is on, and
+    /// Stopped, Start or Stop while Vitruvian Speaker runs and a source is on, and
     /// while it runs, when it last polled, who Slack says we are, how
     /// Google Chat is read and which Beeper networks are read.
     static func monitorRunBlocks(_ status: Status) -> [UIBlock] {
@@ -1747,12 +1747,12 @@ public enum Pages {
     public static let agentSwitchesHelp =
         "Each agent's announcements, under Enable Voice Broadcasting. Off, the hook or instruction stays as it is and nothing is spoken."
 
-    /// What a hook says when it is there but HomeSpeaker, which it runs, is not.
-    public static let hookWithoutHomeSpeaker = "Points at HomeSpeaker, which isn't installed — it can't speak"
+    /// What a hook says when it is there but Vitruvian Speaker, which it runs, is not.
+    public static let hookWithoutVitruvianSpeaker = "Points at Vitruvian Speaker, which isn't installed — it can't speak"
 
-    /// AI Agents, as HomeSpeaker's tab of that name: each coding agent's
+    /// AI Agents, as Vitruvian Speaker's tab of that name: each coding agent's
     /// hook or instruction, and the 1.x launch agent to clean up. Reading
-    /// state, removing and the instruction need no HomeSpeaker; installing
+    /// state, removing and the instruction need no Vitruvian Speaker; installing
     /// a hook does, since a hook runs it.
     static func agents(_ status: Status) -> [UIBlock] {
         UITree {
@@ -1767,7 +1767,7 @@ public enum Pages {
             }
             if status.agents.legacyLaunchAgent {
                 heading("Cleanup")
-                row(nil, "Legacy chat-monitor launch agent", subtitle: "Installed by HomeSpeaker 1.x. Chat monitoring now runs inside the app.",
+                row(nil, "Legacy chat-monitor launch agent", subtitle: "Installed by Vitruvian Speaker 1.x. Chat monitoring now runs inside the app.",
                     icon: "trash")
                 button(Block.removeLegacyAgent, "Remove")
             }
@@ -1785,7 +1785,7 @@ public enum Pages {
             case .instructionDriven:
                 if st.configuredByInstruction {
                     row(nil, UIText.plain("\(name) announcements"), subtitle: "Configured", icon: "checkmark.circle.fill")
-                    text(UIText.plain("\(file) tells \(name) to speak each reply through HomeSpeaker's speaker settings."), style: .caption)
+                    text(UIText.plain("\(file) tells \(name) to speak each reply through Vitruvian Speaker's speaker settings."), style: .caption)
                 } else {
                     row(nil, UIText.plain("\(name) announcements"), subtitle: "Not set up", icon: "exclamationmark.circle")
                     button(Block.agent(.addInstruction, st.agent), "Add Instruction", style: .prominent)
@@ -1799,8 +1799,8 @@ public enum Pages {
         }.blocks
     }
 
-    /// An agent HomeSpeaker hooks: the "spoken twice" warning, the hook's
-    /// state and what it runs. A hook left behind by a HomeSpeaker that is
+    /// An agent Vitruvian Speaker hooks: the "spoken twice" warning, the hook's
+    /// state and what it runs. A hook left behind by a Vitruvian Speaker that is
     /// gone says so and offers Remove, never an update it cannot make.
     static func hookBlocks(_ st: AgentIntegration.AgentStatus, _ status: Status) -> [UIBlock] {
         let name = st.agent.displayName
@@ -1816,10 +1816,10 @@ public enum Pages {
                 row(nil, title, subtitle: "Installed", icon: "checkmark.circle.fill")
                 button(Block.agent(.removeHook, st.agent), "Remove")
             case .stale where !status.installed:
-                row(nil, title, subtitle: UIText.plain(hookWithoutHomeSpeaker), icon: "exclamationmark.triangle.fill")
+                row(nil, title, subtitle: UIText.plain(hookWithoutVitruvianSpeaker), icon: "exclamationmark.triangle.fill")
                 button(Block.agent(.removeHook, st.agent), "Remove", enabled: true)
             case .stale where quiet:
-                row(nil, title, subtitle: "Installed on the HomeSpeaker app", icon: "checkmark.circle")
+                row(nil, title, subtitle: "Installed on the Vitruvian Speaker app", icon: "checkmark.circle")
             case .stale:
                 row(nil, title, subtitle: "Needs update", icon: "arrow.triangle.2.circlepath")
                 button(Block.agent(.installHook, st.agent), "Update Hook", style: .prominent)
@@ -1828,7 +1828,7 @@ public enum Pages {
                 if !quiet {
                     button(Block.agent(.installHook, st.agent), "Install Hook", style: .prominent, enabled: status.installed)
                 }
-                if !status.installed { text("Install HomeSpeaker first: the hook runs it.", style: .caption) }
+                if !status.installed { text("Install Vitruvian Speaker first: the hook runs it.", style: .caption) }
             }
             text("Speaks a one-sentence summary of each reply when a turn finishes.", style: .caption)
             if status.installed, let command = status.agents.hookCommands[st.agent] {
@@ -1845,7 +1845,7 @@ public enum Pages {
 
     public static let cloudConsole = "https://console.cloud.google.com/apis/credentials"
 
-    /// Google Cloud, as HomeSpeaker's tab of that name: the five steps to
+    /// Google Cloud, as Vitruvian Speaker's tab of that name: the five steps to
     /// a project of one's own, the client pasted in and saved with one
     /// button, and where the files are. The secret field is always drawn
     /// empty; what is typed there is held until Save.
@@ -1890,7 +1890,7 @@ public enum Pages {
             row(nil, "History", subtitle: UIText.plain(status.files.history))
             row(nil, "Tool version", subtitle: UIText.plain(status.files.toolVersion))
             if status.installed {
-                row(nil, "HomeSpeaker version", subtitle: UIText.plain(status.files.homeSpeakerVersion ?? "Unknown"))
+                row(nil, "Vitruvian Speaker version", subtitle: UIText.plain(status.files.vitruvianSpeakerVersion ?? "Unknown"))
             }
         }.blocks
     }
@@ -1923,7 +1923,7 @@ public enum Pages {
 
     public static let homeCastVoiceHelp = "Casts the Gemini voice to your Home speakers over this Wi-Fi network. When the speaker can't be found, is playing something else, or the cast fails, Google Assistant Broadcast says it instead."
 
-    /// What the outputs mean together, as HomeSpeaker's Settings says it.
+    /// What the outputs mean together, as Vitruvian Speaker's Settings says it.
     public static func outputsFooter(_ config: SpeakerConfig) -> String {
         config.outputsFooter
     }

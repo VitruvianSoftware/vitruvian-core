@@ -20,7 +20,7 @@
 
 import Foundation
 import Testing
-@testable import HomeSpeakerCore
+@testable import VitruvianSpeakerCore
 
 // The helpers the Vitruvian tool's Settings shares with the app: the
 // arguments for each app-identity command, and removing a speaker.
@@ -96,7 +96,7 @@ import Testing
 
     @Test @MainActor func theConfigManagerRemovesThroughTheConfigAndSaves() {
         let files = MemoryFiles()
-        let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("homespeaker-remove-\(UUID().uuidString)")
+        let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-speaker-remove-\(UUID().uuidString)")
         let url = scratch.appendingPathComponent("speaker_broadcast.json")
         let manager = ConfigManager(configPath: url, historyPath: scratch.appendingPathComponent("history.json"),
                                     secrets: SecretStore(fileURL: scratch.appendingPathComponent("secrets.json")),

@@ -5,7 +5,7 @@
 
 # Speaking on this Mac
 
-HomeSpeaker can speak an announcement on the Mac it runs on, in a natural Siri voice, as well as
+Vitruvian Speaker can speak an announcement on the Mac it runs on, in a natural Siri voice, as well as
 (or instead of) the Google Home speakers.
 
 ## Settings (`~/.gemini/speaker_broadcast.json`)
@@ -28,7 +28,7 @@ HomeSpeaker can speak an announcement on the Mac it runs on, in a natural Siri v
 
 The Gemini API key is not a setting: it lives in `secrets.json` as `geminiApiKey` (0600, beside
 the Slack and Beeper tokens), saved from Settings or with
-`bazel run //apps/desktop/home-speaker:sync-secrets -- --gemini [--extension]`.
+`bazel run //apps/desktop/vitruvian-speaker:sync-secrets -- --gemini [--extension]`.
 
 Absent keys keep today's behaviour exactly (home only), so an older config or an older phone app
 changes nothing.
@@ -38,7 +38,7 @@ changes nothing.
 Download **Aaron (Enhanced)** once: System Settings → Accessibility → **Read & Speak** → System
 voice → ⓘ → Voice → English (United States) → Aaron (Enhanced) → download (about 130 MB). The
 Siri voices listed as "Voice 1…" (`com.apple.siri.natural.*`) are reserved for Apple-signed
-processes and are invisible to HomeSpeaker; the "(Enhanced)" bundles are the same voices made
+processes and are invisible to Vitruvian Speaker; the "(Enhanced)" bundles are the same voices made
 available to apps.
 
 ## Rules, in order
@@ -56,7 +56,7 @@ available to apps.
 8. Voice: `local_voice`; if that voice is not installed, the best installed `en-US` voice by
    quality (premium > enhanced > default), and the choice is logged. Never silence because a
    voice is missing.
-9. The HomeSpeaker process started by `speaker-broadcast` must not exit before the Mac has
+9. The Vitruvian Speaker process started by `speaker-broadcast` must not exit before the Mac has
    finished speaking.
 10. `local_engine: gemini`: the announcement is sent to Gemini and the audio it returns plays from
     memory. No key, an error, or no answer within 12 s → the `local_voice` rule above speaks it
@@ -68,8 +68,8 @@ available to apps.
     comes back is cleaned for speech again. With a style on, the Stop hook always hands the whole
     reply to a detached `--announce`, since rewording can outlast Claude Code's 10 s hook limit.
 
-## Phone (Vitruvian Remote → Apps → HomeSpeaker)
+## Phone (Vitruvian Remote → Apps → Vitruvian Speaker)
 
 Two switches, "Home speakers" and "This Mac", plus the Mac's voice name. The Mac agent reads and
 writes the three keys above in the same file, the same way it already writes `enabled`,
-`pause_media` and the volume (see `apps/mobile/android-remote/macagent/homespeaker.go`).
+`pause_media` and the volume (see `apps/mobile/android-remote/macagent/vitruvian-speaker.go`).

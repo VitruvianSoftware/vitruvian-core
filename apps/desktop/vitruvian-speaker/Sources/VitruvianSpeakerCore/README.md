@@ -1,7 +1,7 @@
-# Homespeakercore
+# Vitruvianspeakercore
 
 ## Overview
-Component package providing implementation for `apps/desktop/home-speaker/Sources/HomeSpeakerCore`.
+Component package providing implementation for `apps/desktop/vitruvian-speaker/Sources/VitruvianSpeakerCore`.
 
 ## Interface
 - `[AgentHooks.swift:AntigravityHook]`
@@ -37,8 +37,8 @@ Component package providing implementation for `apps/desktop/home-speaker/Source
 - [Announcer.swift:143]: `session === URLSession.shared ? AnnouncementTiming.seconds(for: text, extra: ...`
 - [CastSpeaker.swift:34]: `//   3. serve the WAV from memory on a one-off HTTP URL on this Mac, at the`
 - [CastSpeaker.swift:454]: `/// A one-off HTTP server for one WAV, at one unguessable path, on every`
-- [CastSpeaker.swift:459]: `private let queue = DispatchQueue(label: "com.vitruviansoftware.homespeaker.c...`
+- [CastSpeaker.swift:459]: `private let queue = DispatchQueue(label: "com.vitruviansoftware.speaker.c...`
 - [ChatApp.swift:48]: `/// App Transport Security refuses plain HTTP to an address written as`
 
 ## Verification
-- Run: `bazel test //apps/desktop/home-speaker/Sources/HomeSpeakerCore/...`
+- Run: `bazel test //apps/desktop/vitruvian-speaker/Sources/VitruvianSpeakerCore/...`

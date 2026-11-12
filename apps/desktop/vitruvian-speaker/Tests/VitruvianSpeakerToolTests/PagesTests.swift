@@ -20,8 +20,8 @@
 
 import XCTest
 
-import HomeSpeakerCore
-import HomeSpeakerToolCore
+import VitruvianSpeakerCore
+import VitruvianSpeakerToolCore
 import VitruvianToolKit
 import VitruvianToolProtocol
 
@@ -47,11 +47,11 @@ final class PagesTests: XCTestCase {
                       quietHoursEnabled: true, quietHoursStart: "22:00", quietHoursEnd: "07:00")
     }
 
-    /// The extension is HomeSpeaker: no page sends the person to get the
+    /// The extension is Vitruvian Speaker: no page sends the person to get the
     /// app, or says the app must run, and Open at Login is Vitruvian's.
-    func testNoPageSaysHomeSpeakerIsMissing() {
-        let gone = ["is not installed on this Mac", "Get HomeSpeaker", "Needs HomeSpeaker running",
-                    "isn't running, so nothing is reading chat", "Open HomeSpeaker at Login"]
+    func testNoPageSaysVitruvianSpeakerIsMissing() {
+        let gone = ["is not installed on this Mac", "Get Vitruvian Speaker", "Needs Vitruvian Speaker running",
+                    "isn't running, so nothing is reading chat", "Open Vitruvian Speaker at Login"]
         for installed in [true, false] {
             var status = Pages.Status()
             status.installed = installed
@@ -133,7 +133,7 @@ final class PagesTests: XCTestCase {
         var status = Pages.Status()
         status.section = .googleCloud
         status.files = Pages.Files(settings: "/data/settings.json", secrets: "/data/secrets.json", history: "/data/history.json",
-                                   homeSpeakerVersion: "1.19.0")
+                                   vitruvianSpeakerVersion: "1.19.0")
         let lines = texts(Pages.settings(status))
         XCTAssertTrue(lines.contains("Settings · /data/settings.json"))
         XCTAssertTrue(lines.contains("Secrets · /data/secrets.json"))
@@ -153,7 +153,7 @@ final class PagesTests: XCTestCase {
                                      "snooze", "speakers", "volume", "mute", "output.home", "output.local", "output.phone",
                                      "claudeCodeEnabled", "antigravityEnabled", "opencodeEnabled", "slackEnabled", "googleChatEnabled", "beeperEnabled",
                                      "courierEnabled"])
-        XCTAssertFalse(texts(page).contains("HomeSpeaker"), "the island's header names it already")
+        XCTAssertFalse(texts(page).contains("Vitruvian Speaker"), "the island's header names it already")
         XCTAssertTrue(texts(page).contains("Quiet hours until 07:00: what you type still plays"))
         XCTAssertFalse(page.blocks.contains { if case .choice = $0.content { return true } else { return false } },
                        "an app without the choice block gets none")
@@ -245,7 +245,7 @@ final class PagesTests: XCTestCase {
     }
 
     func testTheIslandEndsWithWhereTheOtherSettingsAre() {
-        XCTAssertEqual(Pages.moreSettings, "More settings: Vitruvian Settings › Extensions › HomeSpeaker")
+        XCTAssertEqual(Pages.moreSettings, "More settings: Vitruvian Settings › Extensions › Vitruvian Speaker")
         var status = Pages.Status()
         status.config = configured
         status.account = Pages.Account(isSignedIn: true, hasOAuthClient: true)
@@ -253,12 +253,12 @@ final class PagesTests: XCTestCase {
             status.offersChoice = offersChoice
             XCTAssertEqual(texts(Pages.island(status)).last, Pages.moreSettings)
         }
-        // Before setup, and while the other HomeSpeaker is in use, too.
+        // Before setup, and while the other Vitruvian Speaker is in use, too.
         status.account.isSignedIn = false
         XCTAssertEqual(texts(Pages.island(status)).last, Pages.moreSettings)
         status.door = Pages.DoorState(role: .quiet(other: .app), otherInstalled: true)
         XCTAssertEqual(texts(Pages.island(status)).last, Pages.moreSettings)
-        XCTAssertFalse(texts(Pages.island(status)).contains("HomeSpeaker"), "no heading on the quiet card either")
+        XCTAssertFalse(texts(Pages.island(status)).contains("Vitruvian Speaker"), "no heading on the quiet card either")
         XCTAssertFalse(texts(Pages.settings(status)).contains(Pages.moreSettings), "Settings is where it points")
     }
 
@@ -286,7 +286,7 @@ final class PagesTests: XCTestCase {
         status.account.isSignedIn = false
         endsWithTheButton(Pages.island(status), "before setup")
         status.door = Pages.DoorState(role: .quiet(other: .app), otherInstalled: true)
-        endsWithTheButton(Pages.island(status), "the other HomeSpeaker in use")
+        endsWithTheButton(Pages.island(status), "the other Vitruvian Speaker in use")
         XCTAssertFalse(ids(Pages.settings(status)).contains(Pages.Block.moreSettings), "Settings is where it opens")
     }
 
@@ -304,7 +304,7 @@ final class PagesTests: XCTestCase {
         XCTAssertTrue(texts(Pages.island(status)).contains("Setting the volume to 50 %…"))
     }
 
-    func testTheGeneralSectionDrawsTheFileAsHomeSpeakersPageDoes() {
+    func testTheGeneralSectionDrawsTheFileAsVitruvianSpeakersPageDoes() {
         var status = Pages.Status()
         status.config = configured
         status.config.effectiveAnnounceVolumeEnabled = true
@@ -384,7 +384,7 @@ final class PagesTests: XCTestCase {
                                                     "saveCourierToken", "muteOwnMessages", "pollInterval"])
         XCTAssertTrue(texts(Pages.settings(status)).contains("Beeper token saved · "))
         XCTAssertTrue(texts(Pages.settings(status)).contains("Slack token saved · "))
-        XCTAssertTrue(texts(Pages.settings(status)).contains("HomeSpeaker is running · "))
+        XCTAssertTrue(texts(Pages.settings(status)).contains("Vitruvian Speaker is running · "))
         // The API only, or gws only.
         status.config.effectiveChatMonitor.googleChatSource = .api
         XCTAssertFalse(ids(Pages.settings(status)).contains("gwsAccount"))
@@ -457,7 +457,7 @@ final class PagesTests: XCTestCase {
                                       hasBundledOAuthClient: true)
         cloud.draftClientId = String(repeating: "d", count: 300)
         cloud.files = Pages.Files(settings: String(repeating: "s", count: 1_000), secrets: String(repeating: "s", count: 1_000),
-                                  homeSpeakerVersion: "1.14.0")
+                                  vitruvianSpeakerVersion: "1.14.0")
         // Both installed: the card at each step, on both pages.
         let snapshot = DoorSnapshot(settingsChanged: Date(), googleEmail: String(repeating: "e", count: 300), hasHomeLogin: true,
                                     homeName: String(repeating: "h", count: 300), speakerCount: 40,
@@ -544,7 +544,7 @@ final class PagesTests: XCTestCase {
         status.draftClientId = long("d")
         status.draftClientSecretTyped = true
         status.files = Pages.Files(settings: String(repeating: "s", count: 1_000), secrets: String(repeating: "s", count: 1_000),
-                                   history: String(repeating: "h", count: 1_000), homeSpeakerVersion: "1.26.0")
+                                   history: String(repeating: "h", count: 1_000), vitruvianSpeakerVersion: "1.26.0")
         let snapshot = DoorSnapshot(settingsChanged: Date(), googleEmail: long("e"), hasHomeLogin: true, homeName: long("h"),
                                     speakerCount: 40, defaultSpeaker: long("d"), quietHours: "22:00 to 07:00",
                                     chatSources: ["Slack", "Google Chat", "Beeper"])
@@ -573,12 +573,12 @@ final class PagesTests: XCTestCase {
         XCTAssertTrue(ids(page).contains { $0.hasPrefix("door.") }, "the compare step is drawn")
 
         let bytes = try JSONEncoder().encode(page).count
-        print("HomeSpeaker settings, every section on one page, worst case: \(page.blocks.count) blocks of \(UILimits.maxBlocks), "
+        print("Vitruvian Speaker settings, every section on one page, worst case: \(page.blocks.count) blocks of \(UILimits.maxBlocks), "
               + "\(bytes) bytes of \(UILimits.maxTreeBytes)")
         XCTAssertLessThanOrEqual(page.blocks.count, UILimits.maxBlocks)
         XCTAssertLessThanOrEqual(bytes, UILimits.maxTreeBytes)
         // And read back as Vitruvian reads it, which refuses the whole
-        // page over one id (HomeSpeaker 1.27.1's `installHook:claudeCode`).
+        // page over one id (Vitruvian Speaker 1.27.1's `installHook:claudeCode`).
         XCTAssertNil(PageIdsTests.whyTheAppRefuses(page))
 
         // The same without chips: a switch a network instead.
@@ -587,7 +587,7 @@ final class PagesTests: XCTestCase {
         let fallback = Pages.settings(switches)
         let fallbackBytes = try JSONEncoder().encode(fallback).count
         XCTAssertEqual(ids(fallback).filter { Pages.Block.beeperNetworkKey($0) != nil }.count, 30)
-        print("HomeSpeaker settings, every section on one page, switches for chips: \(fallback.blocks.count) blocks, "
+        print("Vitruvian Speaker settings, every section on one page, switches for chips: \(fallback.blocks.count) blocks, "
               + "\(fallbackBytes) bytes")
         XCTAssertLessThanOrEqual(fallback.blocks.count, UILimits.maxBlocks)
         XCTAssertLessThanOrEqual(fallbackBytes, UILimits.maxTreeBytes)

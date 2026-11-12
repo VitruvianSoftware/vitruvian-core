@@ -139,7 +139,7 @@ Notarization and the DMG are the release's, below.
 
 ### Releases
 
-A release goes through the desktop pipeline, the same way as HomeSpeaker. release-please opens a release PR from conventional commits under `apps/desktop/courier/` (config: `../release-please-config.json`; the version lives in `version.bzl`). When that PR merges, `.github/workflows/courier-release.yaml` runs, on a Mac:
+A release goes through the desktop pipeline, the same way as Vitruvian Speaker. release-please opens a release PR from conventional commits under `apps/desktop/courier/` (config: `../release-please-config.json`; the version lives in `version.bzl`). When that PR merges, `.github/workflows/courier-release.yaml` runs, on a Mac:
 
 ```sh
 bazel run //apps/desktop/courier/app:publish              # with RELEASE_TAG=courier-vX.Y.Z, in CI

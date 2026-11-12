@@ -257,7 +257,7 @@ enum ToolPanelHostTests {
 
     /// A page the app refuses is never drawn. Until one is, the panel says
     /// it could not be shown and why, in place of a spinner that never ends:
-    /// in 3.64.0 HomeSpeaker's settings spun forever, its page refused for
+    /// in 3.64.0 Vitruvian Speaker's settings spun forever, its page refused for
     /// `blocks[76].id is not well formed`, and only its log said so. Once a
     /// page is drawn, a refused one leaves it, as before.
     static func aRefusedFirstPageSaysWhy(_ suite: TestSuite) {
@@ -292,9 +292,9 @@ enum ToolPanelHostTests {
         drawn.render("deploys", String(repeating: "x", count: UILimits.maxTreeBytes))
         suite.expect(text(drawn.host.shown[key("deploys")]) == "first" && drawn.logged.filter { $0.contains("was not drawn") }.count == 2,
                      "a refused page after one was drawn keeps that page, and the log says why each time")
-        let named = Bench(name: "HomeSpeaker")
+        let named = Bench(name: "Vitruvian Speaker")
         suite.expect(drawn.host.name(of: id, language: "en") == "Deploys"
-                         && named.host.name(of: id, language: "en") == "HomeSpeaker"
+                         && named.host.name(of: id, language: "en") == "Vitruvian Speaker"
                          && drawn.host.name(of: ToolID("com.acme.other")!, language: "en") == "com.acme.other",
                      "the panel names the tool as its manifest does, or by its id when the app knows no name")
     }

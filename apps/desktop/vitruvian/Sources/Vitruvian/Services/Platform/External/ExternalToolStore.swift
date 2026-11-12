@@ -279,23 +279,23 @@ package final class ExternalToolStore {
         }
     }
 
-    /// Clears the HomeSpeaker extension entry from `speaker_door.json` when
-    /// `dev.vitruvian.homespeaker` is removed, and resets `chosen` when it
+    /// Clears the Vitruvian Speaker extension entry from `speaker_door.json` when
+    /// `dev.vitruvian.speaker` is removed, and resets `chosen` when it
     /// named the extension.
-    nonisolated package static func clearHomeSpeakerDoorOnRemove(
+    nonisolated package static func clearVitruvianSpeakerDoorOnRemove(
         toolID: ToolID,
         doorFileURL: URL = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".gemini/speaker_door.json")
     ) {
-        clearHomeSpeakerDoorOnRemove(toolID: toolID.rawValue, doorFileURL: doorFileURL)
+        clearVitruvianSpeakerDoorOnRemove(toolID: toolID.rawValue, doorFileURL: doorFileURL)
     }
 
-    nonisolated package static func clearHomeSpeakerDoorOnRemove(
+    nonisolated package static func clearVitruvianSpeakerDoorOnRemove(
         toolID: String,
         doorFileURL: URL = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".gemini/speaker_door.json")
     ) {
-        guard toolID == "dev.vitruvian.homespeaker",
+        guard toolID == "dev.vitruvian.speaker",
               FileManager.default.fileExists(atPath: doorFileURL.path) else {
             return
         }
@@ -704,7 +704,7 @@ package final class ExternalToolStore {
             logger.error("some files of the removed tool \(id.rawValue, privacy: .public) could not be deleted")
             left = parts.folders?.undeleted(id, data: data) ?? []
         }
-        Self.clearHomeSpeakerDoorOnRemove(toolID: id)
+        Self.clearVitruvianSpeakerDoorOnRemove(toolID: id)
         // A tool's preferences stay exactly as long as the folder of what
         // it saved does, whatever kept the folder.
         let dataFolder = parts.folders?.place(for: id)?.data

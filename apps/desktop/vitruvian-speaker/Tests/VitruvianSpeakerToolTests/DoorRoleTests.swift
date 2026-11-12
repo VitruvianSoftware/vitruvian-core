@@ -20,8 +20,8 @@
 
 import XCTest
 
-import HomeSpeakerCore
-import HomeSpeakerToolCore
+import VitruvianSpeakerCore
+import VitruvianSpeakerToolCore
 import VitruvianToolKit
 import VitruvianToolProtocol
 
@@ -31,21 +31,21 @@ import VitruvianToolProtocol
 // is the extension's own.
 //
 // Engines are on extension profiles in scratch folders, under message
-// prefixes of their own (`test.<uuid>.homespeaker`). The app, its program,
+// prefixes of their own (`test.<uuid>.vitruvian-speaker`). The app, its program,
 // Google, the speakers and this Mac's speech and media are stand-ins:
-// nothing here reaches this Mac's HomeSpeaker, its files or its home.
+// nothing here reaches this Mac's Vitruvian Speaker, its files or its home.
 
 // MARK: - Scratch
 
 private func scratchDir() throws -> URL {
     let dir = FileManager.default.temporaryDirectory
-        .appendingPathComponent("homespeaker-door-role-\(UUID().uuidString)")
+        .appendingPathComponent("vitruvian-speaker-door-role-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir
 }
 
 /// A message prefix no real app or extension on this Mac listens on.
-private func testPrefix() -> String { "test.\(UUID().uuidString).homespeaker" }
+private func testPrefix() -> String { "test.\(UUID().uuidString).vitruvian-speaker" }
 
 // MARK: - Stand-ins
 
@@ -198,10 +198,10 @@ private final class StandInChat: URLProtocol {
 
 @MainActor
 final class DoorRoleTests: XCTestCase {
-    typealias Link = HomeSpeakerToolTests.Link
-    typealias Store = HomeSpeakerToolTests.Store
-    typealias Driver = HomeSpeakerToolTests.Driver
-    typealias Account = HomeSpeakerToolTests.Account
+    typealias Link = VitruvianSpeakerToolTests.Link
+    typealias Store = VitruvianSpeakerToolTests.Store
+    typealias Driver = VitruvianSpeakerToolTests.Driver
+    typealias Account = VitruvianSpeakerToolTests.Account
 
     private var root: URL!
     private var link: Link!
@@ -236,10 +236,10 @@ final class DoorRoleTests: XCTestCase {
         store.config = config
     }
 
-    private func tool() -> HomeSpeakerTool {
-        HomeSpeakerTool(parts: .init(
+    private func tool() -> VitruvianSpeakerTool {
+        VitruvianSpeakerTool(parts: .init(
             link: link, store: store, driver: driver, later: { $0() }, now: { [unowned self] in now },
-            account: account, historyURL: HomeSpeakerToolTests.noHistory,
+            account: account, historyURL: VitruvianSpeakerToolTests.noHistory,
             monitorStatusURL: root.appendingPathComponent("data/speaker_monitor_status.json"),
             controlChatMonitor: { [unowned self] in asked.append($0) },
             role: { [unowned self] in role }, other: app, door: door,
@@ -247,7 +247,7 @@ final class DoorRoleTests: XCTestCase {
             monitorMayRun: { [unowned self] in mayRun.append($0) }))
     }
 
-    private func choose(_ chosen: HomeSpeakerProfile.Door, at date: Date) throws {
+    private func choose(_ chosen: VitruvianSpeakerProfile.Door, at date: Date) throws {
         try door.update {
             $0.chosen = chosen
             $0.chosenAt = date
@@ -264,7 +264,7 @@ final class DoorRoleTests: XCTestCase {
         }
     }
 
-    static let quietWords = "The HomeSpeaker app is in use, so this one stays quiet"
+    static let quietWords = "The Vitruvian Speaker app is in use, so this one stays quiet"
 
     // MARK: Speaking by hand
 
@@ -279,10 +279,10 @@ final class DoorRoleTests: XCTestCase {
         _ = tool.islandEvent(PanelEvent(block: Pages.Block.say, kind: .submit, value: .string("dinner")))
         XCTAssertEqual(tool.notice, Self.quietWords)
         link.clipboard = "read me"
-        XCTAssertThrowsError(try tool.run(command: HomeSpeakerTool.Command.sayClipboard)) {
+        XCTAssertThrowsError(try tool.run(command: VitruvianSpeakerTool.Command.sayClipboard)) {
             XCTAssertEqual(($0 as? CommandRefused)?.message, Self.quietWords)
         }
-        XCTAssertThrowsError(try tool.run(command: HomeSpeakerTool.Command.mute)) {
+        XCTAssertThrowsError(try tool.run(command: VitruvianSpeakerTool.Command.mute)) {
             XCTAssertEqual(($0 as? CommandRefused)?.message, Self.quietWords)
         }
         _ = tool.settingsEvent(PanelEvent(block: Pages.Block.signIn, kind: .tap))
@@ -298,7 +298,7 @@ final class DoorRoleTests: XCTestCase {
         _ = tool.islandEvent(PanelEvent(block: Pages.Block.say, kind: .submit, value: .string("dinner")))
         XCTAssertEqual(driver.jobs.last, .say("dinner"), "a person's own request is not a duplicate")
         driver.answer(.spoke("sent to Kitchen"))
-        try tool.run(command: HomeSpeakerTool.Command.mute)
+        try tool.run(command: VitruvianSpeakerTool.Command.mute)
         XCTAssertEqual(driver.jobs.last, .mute)
     }
 
@@ -306,16 +306,16 @@ final class DoorRoleTests: XCTestCase {
         store.config = SpeakerConfig(enabled: true)
         let tool = tool()
         link.clipboard = "read me"
-        XCTAssertThrowsError(try tool.run(command: HomeSpeakerTool.Command.sayClipboard)) {
-            XCTAssertEqual(($0 as? CommandRefused)?.message, HomeSpeakerTool.notSetUp)
+        XCTAssertThrowsError(try tool.run(command: VitruvianSpeakerTool.Command.sayClipboard)) {
+            XCTAssertEqual(($0 as? CommandRefused)?.message, VitruvianSpeakerTool.notSetUp)
         }
         _ = tool.islandPage()
         _ = tool.islandEvent(PanelEvent(block: Pages.Block.say, kind: .submit, value: .string("dinner")))
-        XCTAssertEqual(tool.notice, HomeSpeakerTool.notSetUp.capitalizingFirstForTests)
-        XCTAssertEqual(driver.jobs, [], "nothing asked of a HomeSpeaker with nowhere to speak")
+        XCTAssertEqual(tool.notice, VitruvianSpeakerTool.notSetUp.capitalizingFirstForTests)
+        XCTAssertEqual(driver.jobs, [], "nothing asked of a Vitruvian Speaker with nowhere to speak")
 
         store.config?.effectiveSpeakLocal = true
-        try tool.run(command: HomeSpeakerTool.Command.sayClipboard)
+        try tool.run(command: VitruvianSpeakerTool.Command.sayClipboard)
         XCTAssertEqual(driver.jobs.last, .say("read me"), "this Mac alone is somewhere to speak")
     }
 
@@ -417,10 +417,10 @@ final class DoorRoleTests: XCTestCase {
         _ = tool.settingsPage()
         _ = tool.settingsEvent(PanelEvent(block: Pages.Block.section, kind: .tap, value: .string(Pages.Section.monitor.rawValue)))
         _ = tool.settingsEvent(PanelEvent(block: Pages.Block.startChatMonitor, kind: .tap))
-        XCTAssertEqual(tool.setupNotice, "The HomeSpeaker app is in use, so its monitor is the one that runs")
+        XCTAssertEqual(tool.setupNotice, "The Vitruvian Speaker app is in use, so its monitor is the one that runs")
         role = .waitingAsking
         _ = tool.settingsEvent(PanelEvent(block: Pages.Block.startChatMonitor, kind: .tap))
-        XCTAssertEqual(tool.setupNotice, HomeSpeakerTool.pickFirst)
+        XCTAssertEqual(tool.setupNotice, VitruvianSpeakerTool.pickFirst)
         XCTAssertEqual(asked, [])
     }
 
@@ -433,7 +433,7 @@ final class DoorRoleTests: XCTestCase {
         XCTAssertEqual(marks.last, MarkChoice(state: .ok, icon: "dot.radiowaves.left.and.right", text: "Broadcasting to Kitchen"))
         role = .waitingAsking
         tool.refreshRole()
-        XCTAssertEqual(marks.last, MarkChoice(state: .attention, icon: "exclamationmark.circle", text: "Pick which HomeSpeaker to use"))
+        XCTAssertEqual(marks.last, MarkChoice(state: .attention, icon: "exclamationmark.circle", text: "Pick which Vitruvian Speaker to use"))
         role = .quiet(other: .app)
         tool.refreshRole()
         XCTAssertEqual(marks.last, MarkChoice(state: .none))
@@ -484,7 +484,7 @@ final class DoorRoleTests: XCTestCase {
 
         XCTAssertEqual(
             link.rendered.map(\.panel),
-            [HomeSpeakerTool.islandPanel, HomeSpeakerTool.settingsPanel],
+            [VitruvianSpeakerTool.islandPanel, VitruvianSpeakerTool.settingsPanel],
             "open panels must redraw when settings change externally"
         )
         XCTAssertTrue(texts(link.rendered[0].tree).contains("Speaking on Lounge + This Mac"))
@@ -543,19 +543,19 @@ final class ExtensionPartsTests: XCTestCase {
     private struct Rig {
         let root: URL
         let home: URL
-        let profile: HomeSpeakerProfile
-        let engine: HomeSpeakerEngine
+        let profile: VitruvianSpeakerProfile
+        let engine: VitruvianSpeakerEngine
         let monitor: RecordingMonitor
         let gate: GatedMonitor
-        let parts: HomeSpeakerTool.Parts
+        let parts: VitruvianSpeakerTool.Parts
         let program: URL
         let ran: Calls<[String]>
         let broadcasts: Calls<String>
     }
 
-    static let program = "Tools/dev.vitruvian.homespeaker/bin/tool"
+    static let program = "Tools/dev.vitruvian.speaker/bin/tool"
     /// Where the app would be. Nothing is there, and nothing may run it.
-    static let appProgram = URL(fileURLWithPath: "/nonexistent/HomeSpeaker.app/Contents/MacOS/HomeSpeaker")
+    static let appProgram = URL(fileURLWithPath: "/nonexistent/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker")
 
     private func rig(
         appInstalled: Bool = false, holdsLiveLock: Bool = true, session: URLSession = StandInChat.session
@@ -564,13 +564,13 @@ final class ExtensionPartsTests: XCTestCase {
         addTeardownBlock { try? FileManager.default.removeItem(at: root) }
         let home = root.appendingPathComponent("home")
         try FileManager.default.createDirectory(at: home.appendingPathComponent(".gemini"), withIntermediateDirectories: true)
-        let profile = HomeSpeakerProfile.extension(
-            dataFolder: root.appendingPathComponent("ToolData/dev.vitruvian.homespeaker"),
-            toolFolder: root.appendingPathComponent("Tools/dev.vitruvian.homespeaker"), messagePrefix: testPrefix())
+        let profile = VitruvianSpeakerProfile.extension(
+            dataFolder: root.appendingPathComponent("ToolData/dev.vitruvian.speaker"),
+            toolFolder: root.appendingPathComponent("Tools/dev.vitruvian.speaker"), messagePrefix: testPrefix())
         for url in [profile.settingsURL, profile.historyURL, profile.secretsURL, profile.monitorStatusURL] {
             guard url.path.hasPrefix(root.path + "/") else { throw StandInFailure("\(url.path) is outside the scratch folder") }
         }
-        let engine = HomeSpeakerEngine(profile: profile, session: session, local: SilentLocal())
+        let engine = VitruvianSpeakerEngine(profile: profile, session: session, local: SilentLocal())
         var config = SpeakerConfig(enabled: true, defaultTarget: "kitchen", structureId: "h1",
                                    targets: ["kitchen": SpeakerDevice(id: "d1", type: "SPEAKER", name: "Kitchen")])
         config.pauseMedia = false
@@ -594,14 +594,14 @@ final class ExtensionPartsTests: XCTestCase {
             fileExists: { _ in false })
         let ran = Calls<[String]>()
         let program = root.appendingPathComponent(Self.program)
-        let parts = HomeSpeakerTool.Parts.extension(
+        let parts = VitruvianSpeakerTool.Parts.extension(
             // A job's end waits for the main queue, so it never lands
             // while a test is reading the tool.
-            engine: engine, program: program, link: HomeSpeakerToolTests.Link(),
+            engine: engine, program: program, link: VitruvianSpeakerToolTests.Link(),
             later: { work in DispatchQueue.main.async(execute: work) },
             driverParts: driverParts, monitor: gate, holdsLiveLock: holdsLiveLock, check: check,
             appProgram: { Self.appProgram },
-            appProfile: HomeSpeakerProfile(
+            appProfile: VitruvianSpeakerProfile(
                 door: .app, settingsURL: home.appendingPathComponent(".gemini/speaker_broadcast.json"),
                 historyURL: home.appendingPathComponent(".gemini/speaker_history.json"),
                 secretsURL: root.appendingPathComponent("app-secrets.json"), messagePrefix: testPrefix(),
@@ -688,7 +688,7 @@ final class ExtensionPartsTests: XCTestCase {
         let rig = try rig()
         rig.engine.config.config.effectiveChatMonitor.slackEnabled = true
         try rig.engine.config.trySaveConfig()
-        let tool = HomeSpeakerTool(parts: rig.parts)
+        let tool = VitruvianSpeakerTool(parts: rig.parts)
         tool.start()
         XCTAssertEqual(rig.monitor.calls, ["start"], "active, with a source on: started here")
         _ = tool.settingsPage()
@@ -708,7 +708,7 @@ final class ExtensionPartsTests: XCTestCase {
             rig.engine.config.stopWatchingConfigFile()
             tokens.forEach(DistributedNotificationCenter.default().removeObserver)
         }
-        let tool = HomeSpeakerTool(parts: rig.parts)
+        let tool = VitruvianSpeakerTool(parts: rig.parts)
         tool.start()
         XCTAssertEqual(tool.role, .active, "the role alone would let it run")
         XCTAssertFalse(rig.gate.permission.value, "a second process, without the lock, may not read chat")
@@ -724,7 +724,7 @@ final class ExtensionPartsTests: XCTestCase {
         let holder = try self.rig(holdsLiveLock: true)
         holder.engine.config.config.effectiveChatMonitor.slackEnabled = true
         try holder.engine.config.trySaveConfig()
-        HomeSpeakerTool(parts: holder.parts).start()
+        VitruvianSpeakerTool(parts: holder.parts).start()
         XCTAssertEqual(holder.monitor.calls, ["start"])
     }
 
@@ -794,12 +794,12 @@ final class ExtensionPartsTests: XCTestCase {
         let door = DoorFile(url: DoorFile.defaultURL(home: rig.home))
         try door.update {
             $0.chosen = .app
-            $0.chosenBy = "HomeSpeaker 1.19.0"
+            $0.chosenBy = "Vitruvian Speaker 1.19.0"
         }
         try ExtensionSide.recordInDoor(door, program: rig.program, profile: rig.profile)
         let record = try XCTUnwrap(door.read())
         XCTAssertEqual(record.chosen, .app, "the app's choice is not the extension's to change")
-        XCTAssertEqual(record.chosenBy, "HomeSpeaker 1.19.0")
+        XCTAssertEqual(record.chosenBy, "Vitruvian Speaker 1.19.0")
         XCTAssertEqual(record.installedExtension, DoorRecord.ExtensionEntry(
             program: rig.program.path, dataFolder: rig.profile.settingsURL.deletingLastPathComponent().path,
             version: ToolVersion.current, door: DoorRecord.ExtensionEntry.runsAlone))
@@ -856,9 +856,9 @@ final class ExtensionCommandLineTests: XCTestCase {
     func testTheCommandLineSignOutNeverRevokesALoginTheAppShares() async throws {
         let root = try scratchDir()
         addTeardownBlock { try? FileManager.default.removeItem(at: root) }
-        let profile = HomeSpeakerProfile.extension(
-            dataFolder: root.appendingPathComponent("ToolData/dev.vitruvian.homespeaker"),
-            toolFolder: root.appendingPathComponent("Tools/dev.vitruvian.homespeaker"), messagePrefix: testPrefix())
+        let profile = VitruvianSpeakerProfile.extension(
+            dataFolder: root.appendingPathComponent("ToolData/dev.vitruvian.speaker"),
+            toolFolder: root.appendingPathComponent("Tools/dev.vitruvian.speaker"), messagePrefix: testPrefix())
         // The app's sign-ins, beside the extension's, in the scratch folder.
         let appSecretsURL = root.appendingPathComponent("home/.gemini/speaker_secrets.json")
         try FileManager.default.createDirectory(
@@ -877,7 +877,7 @@ final class ExtensionCommandLineTests: XCTestCase {
         // The copy left the same login on both sides.
         try SecretStore(fileURL: appSecretsURL).save(Secrets(google: shared))
         let theirs = try Data(contentsOf: appSecretsURL)
-        let engine = HomeSpeakerEngine(profile: profile, session: RevokeRecorder.session, local: SilentLocal())
+        let engine = VitruvianSpeakerEngine(profile: profile, session: RevokeRecorder.session, local: SilentLocal())
         try engine.secrets.save(Secrets(google: shared))
         let posted = Calls<String>()
         let parts = ExtensionSide.commandLineParts(
@@ -885,7 +885,7 @@ final class ExtensionCommandLineTests: XCTestCase {
             postSignedOut: { chatOnly, name in posted.add("\(name.rawValue) \(chatOnly)") })
 
         func signOut() async -> CLIOutput {
-            guard case .headless(_, _, let body) = HomeSpeakerCommandLine.action(
+            guard case .headless(_, _, let body) = VitruvianSpeakerCommandLine.action(
                 for: ["--sign-out"], engine: engine, parts: parts) else {
                 XCTFail("--sign-out does not run headless")
                 return CLIOutput()
@@ -916,22 +916,22 @@ final class ExtensionCommandLineTests: XCTestCase {
     func testTheCommandLineApplySwitchToUsesARealSwitchSeamAndOpensTheAppWhenNotRunning() throws {
         let root = try scratchDir()
         addTeardownBlock { try? FileManager.default.removeItem(at: root) }
-        let extData = root.appendingPathComponent("ToolData/dev.vitruvian.homespeaker", isDirectory: true)
-        let extTool = root.appendingPathComponent("Tools/dev.vitruvian.homespeaker", isDirectory: true)
+        let extData = root.appendingPathComponent("ToolData/dev.vitruvian.speaker", isDirectory: true)
+        let extTool = root.appendingPathComponent("Tools/dev.vitruvian.speaker", isDirectory: true)
         let home = root.appendingPathComponent("home", isDirectory: true)
         let geminiDir = home.appendingPathComponent(".gemini", isDirectory: true)
-        let appSupportDir = home.appendingPathComponent("Library/Application Support/HomeSpeaker", isDirectory: true)
+        let appSupportDir = home.appendingPathComponent("Library/Application Support/Vitruvian Speaker", isDirectory: true)
         for dir in [extData, extTool, geminiDir, appSupportDir] {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         }
         let extProg = extTool.appendingPathComponent("bin/tool")
-        let appProg = root.appendingPathComponent("HomeSpeaker.app/Contents/MacOS/HomeSpeaker")
-        let profile = HomeSpeakerProfile.extension(
+        let appProg = root.appendingPathComponent("Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker")
+        let profile = VitruvianSpeakerProfile.extension(
             dataFolder: extData,
             toolFolder: extTool,
             messagePrefix: testPrefix()
         )
-        let appProfile = HomeSpeakerProfile(
+        let appProfile = VitruvianSpeakerProfile(
             door: .app,
             settingsURL: geminiDir.appendingPathComponent("speaker_broadcast.json"),
             historyURL: appSupportDir.appendingPathComponent("speaker_history.json"),
@@ -950,7 +950,7 @@ final class ExtensionCommandLineTests: XCTestCase {
         try door.update {
             $0.chosen = .extension
             $0.chosenAt = Date(timeIntervalSince1970: 1_700_000_000)
-            $0.chosenBy = "HomeSpeaker extension 0.1.0"
+            $0.chosenBy = "Vitruvian Speaker extension 0.1.0"
             $0.installedExtension = DoorRecord.ExtensionEntry(
                 program: extProg.path,
                 dataFolder: extData.path,
@@ -1002,9 +1002,9 @@ final class ExtensionCommandLineTests: XCTestCase {
         XCTAssertTrue(switchSeam is ExtensionSide.CommandLineSwitchSeam)
         XCTAssertFalse(String(describing: type(of: switchSeam)).contains("Recording"))
 
-        let testSeam = HomeSpeakerStateContract.Seam(
+        let testSeam = VitruvianSpeakerStateContract.Seam(
             program: .extension,
-            homeSpeakerVersion: { "1.19.1" },
+            vitruvianSpeakerVersion: { "1.19.1" },
             configFile: SpeakerConfigFile(url: profile.settingsURL),
             secrets: SecretStore(fileURL: profile.secretsURL),
             history: BroadcastHistory(fileURL: profile.historyURL),
@@ -1017,7 +1017,7 @@ final class ExtensionCommandLineTests: XCTestCase {
             hookExecutablePath: extProg.path,
             doorSwitchSeam: liveSeam.doorSwitchSeam
         )
-        let out = HomeSpeakerCommandLine.apply(
+        let out = VitruvianSpeakerCommandLine.apply(
             #"{"contract_version":1,"operations":[{"op":"switchTo","side":"app"}]}"#,
             seam: testSeam
         )
@@ -1033,8 +1033,8 @@ final class ExtensionCommandLineTests: XCTestCase {
 // MARK: - Where the extension's files are
 
 final class ExtensionLocationTests: XCTestCase {
-    private let installed = URL(fileURLWithPath: "/Users/someone/Library/Application Support/Vitruvian/Tools/dev.vitruvian.homespeaker/bin/tool")
-    private let built = URL(fileURLWithPath: "/private/var/scratch/homespeaker/bin/tool")
+    private let installed = URL(fileURLWithPath: "/Users/someone/Library/Application Support/Vitruvian/Tools/dev.vitruvian.speaker/bin/tool")
+    private let built = URL(fileURLWithPath: "/private/var/scratch/vitruvian-speaker/bin/tool")
 
     func testTheVariableComesFirst() throws {
         let located = try XCTUnwrap(ExtensionLocation.locate(
@@ -1043,15 +1043,15 @@ final class ExtensionLocationTests: XCTestCase {
         XCTAssertEqual(located.profile.settingsURL.path, "/tmp/hs-data/settings.json")
         XCTAssertEqual(located.source, .variable)
         XCTAssertEqual(located.profile.door, .extension)
-        XCTAssertEqual(located.profile.messagePrefix, HomeSpeakerProfile.extensionMessagePrefix)
+        XCTAssertEqual(located.profile.messagePrefix, VitruvianSpeakerProfile.extensionMessagePrefix)
     }
 
     func testThenTheProgramsOwnPath() throws {
         let located = try XCTUnwrap(ExtensionLocation.locate(environment: [:], program: installed, workingDirectory: nil))
         XCTAssertEqual(located.profile.settingsURL.path,
-                       "/Users/someone/Library/Application Support/Vitruvian/ToolData/dev.vitruvian.homespeaker/settings.json")
+                       "/Users/someone/Library/Application Support/Vitruvian/ToolData/dev.vitruvian.speaker/settings.json")
         XCTAssertEqual(located.profile.toolFolder?.path,
-                       "/Users/someone/Library/Application Support/Vitruvian/Tools/dev.vitruvian.homespeaker")
+                       "/Users/someone/Library/Application Support/Vitruvian/Tools/dev.vitruvian.speaker")
         XCTAssertEqual(located.source, .programPath)
     }
 
@@ -1061,22 +1061,22 @@ final class ExtensionLocationTests: XCTestCase {
         let located = try XCTUnwrap(ExtensionLocation.locate(
             environment: [:], program: built, workingDirectory: URL(fileURLWithPath: "/tmp/given")))
         XCTAssertEqual(located.profile.settingsURL.path, "/tmp/given/settings.json")
-        XCTAssertEqual(located.profile.toolFolder?.path, "/private/var/scratch/homespeaker", "the program's grandparent")
+        XCTAssertEqual(located.profile.toolFolder?.path, "/private/var/scratch/vitruvian-speaker", "the program's grandparent")
         XCTAssertEqual(located.source, .workingDirectory)
     }
 
     func testATestsMessagePrefixIsKept() throws {
         let located = try XCTUnwrap(ExtensionLocation.locate(
             environment: [ExtensionLocation.dataFolderVariable: "/tmp/hs-data",
-                          ExtensionLocation.messagePrefixVariable: "test.abc.homespeaker"],
+                          ExtensionLocation.messagePrefixVariable: "test.abc.vitruvian-speaker"],
             program: built, workingDirectory: nil))
-        XCTAssertEqual(located.profile.messagePrefix, "test.abc.homespeaker")
+        XCTAssertEqual(located.profile.messagePrefix, "test.abc.vitruvian-speaker")
     }
 
     func testAFolderThatIsNotTheHellosIsRefused() throws {
         let fromPath = try XCTUnwrap(ExtensionLocation.locate(environment: [:], program: installed, workingDirectory: nil))
         XCTAssertNil(fromPath.refusal(helloFolder: URL(fileURLWithPath:
-            "/Users/someone/Library/Application Support/Vitruvian/ToolData/dev.vitruvian.homespeaker", isDirectory: true)))
+            "/Users/someone/Library/Application Support/Vitruvian/ToolData/dev.vitruvian.speaker", isDirectory: true)))
         let refusal = try XCTUnwrap(fromPath.refusal(helloFolder: URL(fileURLWithPath: "/Users/someone/Other")))
         XCTAssertTrue(refusal.contains("/Users/someone/Other"), refusal)
         let fromVariable = try XCTUnwrap(ExtensionLocation.locate(

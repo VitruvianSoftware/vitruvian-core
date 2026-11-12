@@ -28,60 +28,60 @@ import Foundation
 /// What the card and the row say ("The strings"; the extension's and
 /// the app's use the same sentences).
 public enum DoorWords {
-    public static let heading = "HomeSpeaker is installed twice"
-    public static let body = "The HomeSpeaker app and the Vitruvian extension can both speak on your speakers. Use one, so nothing is said twice."
-    public static func use(_ door: HomeSpeakerProfile.Door) -> String { "Use the \(door.rawValue)" }
-    public static func copyFrom(_ door: HomeSpeakerProfile.Door) -> String { "Copy from the \(door.rawValue)" }
+    public static let heading = "Vitruvian Speaker is installed twice"
+    public static let body = "The Vitruvian Speaker app and the Vitruvian extension can both speak on your speakers. Use one, so nothing is said twice."
+    public static func use(_ door: VitruvianSpeakerProfile.Door) -> String { "Use the \(door.rawValue)" }
+    public static func copyFrom(_ door: VitruvianSpeakerProfile.Door) -> String { "Copy from the \(door.rawValue)" }
     public static let keep = "Keep what this one has"
     public static let done = "Done"
-    public static func quiet(other: HomeSpeakerProfile.Door) -> String {
-        "The HomeSpeaker \(other.rawValue) is in use, so this one stays quiet."
+    public static func quiet(other: VitruvianSpeakerProfile.Door) -> String {
+        "The Vitruvian Speaker \(other.rawValue) is in use, so this one stays quiet."
     }
     public static let useThis = "Use this one instead"
-    public static let which = "Which HomeSpeaker"
-    public static func uses(_ door: HomeSpeakerProfile.Door) -> String { "This Mac uses the \(door.rawValue)." }
-    public static func useInstead(_ door: HomeSpeakerProfile.Door) -> String { "Use the \(door.rawValue) instead" }
-    public static func copySettingsFrom(_ door: HomeSpeakerProfile.Door) -> String { "Copy settings from the \(door.rawValue)" }
+    public static let which = "Which Vitruvian Speaker"
+    public static func uses(_ door: VitruvianSpeakerProfile.Door) -> String { "This Mac uses the \(door.rawValue)." }
+    public static func useInstead(_ door: VitruvianSpeakerProfile.Door) -> String { "Use the \(door.rawValue) instead" }
+    public static func copySettingsFrom(_ door: VitruvianSpeakerProfile.Door) -> String { "Copy settings from the \(door.rawValue)" }
     public static let runsWithVitruvian = "Runs whenever Vitruvian runs. To start it at login, turn on Vitruvian's Open at Login."
 
     // Not in the plan's table; in the same voice (listed in the task's report).
-    public static func signsOut(from: HomeSpeakerProfile.Door, into: HomeSpeakerProfile.Door) -> String {
+    public static func signsOut(from: VitruvianSpeakerProfile.Door, into: VitruvianSpeakerProfile.Door) -> String {
         "The \(from.rawValue) has no sign-ins, so copying from it signs the \(into.rawValue) out."
     }
     public static let quitting = "Asking the app to quit…"
     public static let didNotQuit = "The app did not quit. Quit it from its menu bar icon."
     public static let loginItemOff = "The app's Open at Login is off."
-    public static let inTheTrash = "HomeSpeaker.app is in the Trash."
+    public static let inTheTrash = "Vitruvian Speaker.app is in the Trash."
     public static let back = "Back"
     public static let quitAgain = "Quit the app"
     public static let opening = "Opening the app…"
-    public static let starting = "The HomeSpeaker app is starting, so this one stays quiet."
-    public static let couldNotOpen = "HomeSpeaker.app could not be opened. Open it from Applications."
+    public static let starting = "The Vitruvian Speaker app is starting, so this one stays quiet."
+    public static let couldNotOpen = "Vitruvian Speaker.app could not be opened. Open it from Applications."
     public static let loginItemOn = "The app's Open at Login is on."
-    public static let appNotFound = "HomeSpeaker.app can't be found, so nothing was changed."
-    public static let choiceChanged = "The choice changed in the other HomeSpeaker, so nothing was changed here."
+    public static let appNotFound = "Vitruvian Speaker.app can't be found, so nothing was changed."
+    public static let choiceChanged = "The choice changed in the other Vitruvian Speaker, so nothing was changed here."
 
     // Step 3's offers, as the extension makes them and the app makes them
     // of itself ("The strings").
     public static let turnOffLoginItem = "Turn off the app's Open at Login"
-    public static let moveToTrash = "Move HomeSpeaker.app to the Trash"
+    public static let moveToTrash = "Move Vitruvian Speaker.app to the Trash"
     public static let trashWarning =
-        "Your phone remote and scripts that call HomeSpeaker.app will stop working until they are pointed at the extension."
+        "Your phone remote and scripts that call Vitruvian Speaker.app will stop working until they are pointed at the extension."
 
     // The app's own ("The strings", "App, after choosing it").
     public static let appChosen =
-        "The extension is quiet now. To remove it: Vitruvian > Settings > Extensions > HomeSpeaker > Remove."
+        "The extension is quiet now. To remove it: Vitruvian > Settings > Extensions > Vitruvian Speaker > Remove."
     public static let openVitruvian = "Open Vitruvian"
     // Not in the plan's table; in the same voice (listed in the task's report).
     public static let quit = "Quit"
-    public static let extensionNotFound = "The HomeSpeaker extension can't be found, so nothing was changed."
+    public static let extensionNotFound = "The Vitruvian Speaker extension can't be found, so nothing was changed."
     public static let couldNotOpenVitruvian = "Vitruvian could not be opened. Open it from Applications."
     /// The app's login item needs the person's approval (macOS 15 on names
     /// the pane "Login Items & Extensions").
-    public static let approveLoginItem = "Approve HomeSpeaker under System Settings > General > Login Items & Extensions."
+    public static let approveLoginItem = "Approve Vitruvian Speaker under System Settings > General > Login Items & Extensions."
 }
 
-/// Step 2 of the choice, in either HomeSpeaker: one side copied into the
+/// Step 2 of the choice, in either Vitruvian Speaker: one side copied into the
 /// other, or not (design 7.4).
 public struct DoorCompare: Equatable {
     public enum Purpose: Equatable, Sendable {
@@ -92,20 +92,20 @@ public struct DoorCompare: Equatable {
     }
 
     public var purpose: Purpose
-    public var from: HomeSpeakerProfile.Door
-    public var into: HomeSpeakerProfile.Door
+    public var from: VitruvianSpeakerProfile.Door
+    public var into: VitruvianSpeakerProfile.Door
     public var source: DoorSnapshot
     public var destination: DoorSnapshot
     /// Why the last copy or choice did not happen.
     public var problem: String?
     /// The choice file's choice, and when it was made, as this step
     /// found them. A choice made elsewhere since is never overridden.
-    public var seenChoice: HomeSpeakerProfile.Door?
+    public var seenChoice: VitruvianSpeakerProfile.Door?
     public var seenChosenAt: Date?
 
-    public init(purpose: Purpose, from: HomeSpeakerProfile.Door, into: HomeSpeakerProfile.Door,
+    public init(purpose: Purpose, from: VitruvianSpeakerProfile.Door, into: VitruvianSpeakerProfile.Door,
                 source: DoorSnapshot, destination: DoorSnapshot, problem: String? = nil,
-                seenChoice: HomeSpeakerProfile.Door? = nil, seenChosenAt: Date? = nil) {
+                seenChoice: VitruvianSpeakerProfile.Door? = nil, seenChosenAt: Date? = nil) {
         self.purpose = purpose
         self.from = from
         self.into = into

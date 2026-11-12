@@ -20,7 +20,7 @@
 
 import Foundation
 import Testing
-@testable import HomeSpeakerCore
+@testable import VitruvianSpeakerCore
 
 // Rewording agents' replies (`announcement_style`) and the Gemini voice on
 // this Mac (`local_engine: gemini`). Nothing here reaches the network or
@@ -29,7 +29,7 @@ import Testing
 // MARK: - Fakes
 
 private func scratch() throws -> URL {
-    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("homespeaker-style-\(UUID().uuidString)")
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-speaker-style-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir
 }
@@ -114,7 +114,7 @@ private let reply = """
         #expect(back.effectiveCustomStylePrompt == "like a pirate")
     }
 
-    /// A newer HomeSpeaker's choice must not stop this one reading the file.
+    /// A newer Vitruvian Speaker's choice must not stop this one reading the file.
     @Test func unknownChoicesReadAsTheDefaults() throws {
         let json = #"{"enabled":true,"default_target":"","structure_id":"","targets":{},"announcement_style":"haiku","style_model":"claude","local_engine":"elevenlabs","speech_length":"summary"}"#
         let c = try JSONDecoder().decode(SpeakerConfig.self, from: Data(json.utf8))
@@ -698,12 +698,12 @@ private func macConfig(engine: LocalVoiceEngine = .gemini, home: Bool = false, p
 
     @Test func theTimeLimitCoversTheRewordingAndGemini() {
         var c = macConfig(engine: .apple)
-        let base = HomeSpeakerCommandLine.announceTimeout("Hello there.", config: c, restyle: true)
+        let base = VitruvianSpeakerCommandLine.announceTimeout("Hello there.", config: c, restyle: true)
         c.effectiveAnnouncementStyle = .plain
-        #expect(HomeSpeakerCommandLine.announceTimeout("Hello there.", config: c, restyle: true) == base + AnnouncementStylist.worstCaseSeconds)
-        #expect(HomeSpeakerCommandLine.announceTimeout("Hello there.", config: c) == base, "--say is never reworded")
+        #expect(VitruvianSpeakerCommandLine.announceTimeout("Hello there.", config: c, restyle: true) == base + AnnouncementStylist.worstCaseSeconds)
+        #expect(VitruvianSpeakerCommandLine.announceTimeout("Hello there.", config: c) == base, "--say is never reworded")
         c.effectiveLocalEngine = .gemini
-        #expect(HomeSpeakerCommandLine.announceTimeout("Hello there.", config: c) > base + GeminiSpeaker.synthesisTimeout)
+        #expect(VitruvianSpeakerCommandLine.announceTimeout("Hello there.", config: c) > base + GeminiSpeaker.synthesisTimeout)
     }
 }
 

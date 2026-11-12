@@ -20,7 +20,7 @@
 
 import Foundation
 import Testing
-@testable import HomeSpeakerCore
+@testable import VitruvianSpeakerCore
 
 // A poll cut off by stop() or a restart (saving a Beeper token restarts the
 // monitor). Its Slack request ends in URLError(.cancelled); that must not
@@ -86,12 +86,12 @@ private struct SilentLocal: LocalSpeaking {
 
     @Test(arguments: Interruption.allCases)
     func aCancelledPollRecordsNoCancellation(_ interruption: Interruption) async throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent("homespeaker-cancel-\(UUID().uuidString)")
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-speaker-cancel-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
-        let profile = HomeSpeakerProfile.extension(
+        let profile = VitruvianSpeakerProfile.extension(
             dataFolder: root.appendingPathComponent("data"), toolFolder: nil,
-            messagePrefix: "test.\(UUID().uuidString).homespeaker")
+            messagePrefix: "test.\(UUID().uuidString).vitruvian-speaker")
         for url in [profile.settingsURL, profile.historyURL, profile.secretsURL, profile.monitorStatusURL] {
             try #require(url.path.hasPrefix(root.path + "/"), "\(url.path) is outside the scratch folder")
         }
@@ -99,7 +99,7 @@ private struct SilentLocal: LocalSpeaking {
 
         let slackToken = "fake-slack-cancel-\(UUID().uuidString)" // gitleaks:allow (made-up test token)
         let beeperToken = "fake-beeper-cancel-\(UUID().uuidString)" // gitleaks:allow (made-up test token)
-        let engine = HomeSpeakerEngine(profile: profile, session: HangingSlack.session, local: SilentLocal())
+        let engine = VitruvianSpeakerEngine(profile: profile, session: HangingSlack.session, local: SilentLocal())
         var config = SpeakerConfig(enabled: true, quietHoursEnabled: false,
                                    chatMonitor: ChatMonitorConfig(slackEnabled: true, beeperEnabled: true))
         config.speakHome = false

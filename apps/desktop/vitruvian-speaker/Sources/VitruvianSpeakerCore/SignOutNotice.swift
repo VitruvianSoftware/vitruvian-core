@@ -20,7 +20,7 @@
 
 import Foundation
 
-// `HomeSpeaker --sign-out` runs as a second, short-lived copy of the app: it
+// `VitruvianSpeaker --sign-out` runs as a second, short-lived copy of the app: it
 // clears the stored login, but the menu bar app that is already running
 // would go on showing "Connected" and polling Google Chat with a login that
 // is gone. So the CLI tells it, with a distributed notification, the same way
@@ -28,11 +28,11 @@ import Foundation
 
 public enum SignOutNotice {
     /// The name the notice travels under for `profile`.
-    public static func notificationName(for profile: HomeSpeakerProfile) -> Notification.Name {
+    public static func notificationName(for profile: VitruvianSpeakerProfile) -> Notification.Name {
         profile.messageName(.signedOut)
     }
 
-    /// The CLI's side: tell a running HomeSpeaker that the login changed.
+    /// The CLI's side: tell a running Vitruvian Speaker that the login changed.
     /// `name` is the process's profile's unless given; tests give their own,
     /// so they never reach a real running app.
     public static func post(chatOnly: Bool, name: Notification.Name = notificationName(for: .current)) {
@@ -76,7 +76,7 @@ public enum SignOutNotice {
 }
 
 // The other way round: a login or token was ADDED or changed by another
-// process -- `HomeSpeaker --sign-in [--chat]`, or the Vitruvian tool saving
+// process -- `VitruvianSpeaker --sign-in [--chat]`, or the Vitruvian tool saving
 // or clearing the Slack token or importing the Antigravity login. The
 // running app re-reads the login and gets the chat monitor going with what
 // is now there: a monitor that could not start for want of a Slack token
@@ -84,7 +84,7 @@ public enum SignOutNotice {
 
 public enum CredentialsChangedNotice {
     /// The name the notice travels under for `profile`.
-    public static func notificationName(for profile: HomeSpeakerProfile) -> Notification.Name {
+    public static func notificationName(for profile: VitruvianSpeakerProfile) -> Notification.Name {
         profile.messageName(.credentialsChanged)
     }
 

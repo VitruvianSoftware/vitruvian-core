@@ -46,16 +46,16 @@ public protocol PhoneSpeaking: Sendable {
 }
 
 /// Speaks an announcement on the paired Android phone via the local
-/// `vitruvian-remote-agent` daemon (`POST /v1/homespeaker/phone-say`).
+/// `vitruvian-remote-agent` daemon (`POST /v1/speaker/phone-say`).
 public struct PhoneSpeaker: PhoneSpeaking {
     public static let shared = PhoneSpeaker()
 
-    public static let logger = Logger(subsystem: "com.vitruviansoftware.homespeaker", category: "phone-speech")
+    public static let logger = Logger(subsystem: "com.vitruviansoftware.speaker", category: "phone-speech")
 
-    public static let fallbackEndpoint = URL(string: "http://127.0.0.1:7411/v1/homespeaker/phone-say")!
+    public static let fallbackEndpoint = URL(string: "http://127.0.0.1:7411/v1/speaker/phone-say")!
 
     public static var defaultEndpoint: URL {
-        let raw = ProcessInfo.processInfo.environment["HOMESPEAKER_REMOTE_AGENT_URL"]?
+        let raw = ProcessInfo.processInfo.environment["VITRUVIAN_SPEAKER_REMOTE_AGENT_URL"]?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if !raw.isEmpty, let url = URL(string: raw), url.scheme != nil {
             return url

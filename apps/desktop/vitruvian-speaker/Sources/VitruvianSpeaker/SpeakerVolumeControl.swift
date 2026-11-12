@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-import HomeSpeakerCore
+import VitruvianSpeakerCore
 import SwiftUI
 
 /// The selected speaker's volume: a mute button, a slider and the level.

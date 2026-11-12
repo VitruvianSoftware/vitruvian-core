@@ -353,7 +353,10 @@ mod tests {
         assert_eq!(all[13], "TestApp-1.0.0-tool.zip.sha256");
         let spaced = required_release_assets("Vitruvian Speaker", "1.0.0", false, true, &[]);
         assert_eq!(spaced[0], "VitruvianSpeaker-1.0.0-universal.zip");
-        assert_eq!(expected_artifact_names("Vitruvian Speaker", "1.0.0")[0], "VitruvianSpeaker-1.0.0-universal.dmg");
+        assert_eq!(
+            expected_artifact_names("Vitruvian Speaker", "1.0.0")[0],
+            "VitruvianSpeaker-1.0.0-universal.dmg"
+        );
         assert_eq!(required_release_assets("A", "1", true, false, &[]).len(), 4);
         assert_eq!(required_release_assets("A", "1", false, true, &[]).len(), 8);
         assert_eq!(expected_artifact_names("A", "1").len(), 5);

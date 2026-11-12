@@ -1,7 +1,7 @@
-# Homespeakertooltests
+# Vitruvianspeakertooltests
 
 ## Overview
-Component package providing implementation for `apps/desktop/home-speaker/Tests/HomeSpeakerToolTests`.
+Component package providing implementation for `apps/desktop/vitruvian-speaker/Tests/VitruvianSpeakerToolTests`.
 
 ## Interface
 - `[AccountTests.swift:AccountTests]`
@@ -17,7 +17,7 @@ Component package providing implementation for `apps/desktop/home-speaker/Tests/
 - `[DoorRoleTests.swift:ExtensionLocationTests]`
 - `[DriverTests.swift:DriverTests]`
 - `[EngineDriverTests.swift:EngineDriverTests]`
-- `[HomeSpeakerToolTests.swift:HomeSpeakerToolTests]`
+- `[VitruvianSpeakerToolTests.swift:VitruvianSpeakerToolTests]`
 - `[IslandTests.swift:IslandTests]`
 - `[MonitorRuntimeTests.swift:MonitorRuntimeTests]`
 - `[OtherAppTests.swift:OtherAppTests]`
@@ -39,4 +39,4 @@ Component package providing implementation for `apps/desktop/home-speaker/Tests/
 - [MonitorRuntimeTests.swift:297]: `XCTAssertEqual(store.config?.effectiveChatMonitor.beeperAddress, "http://127....`
 
 ## Verification
-- Run: `bazel test //apps/desktop/home-speaker/Tests/HomeSpeakerToolTests/...`
+- Run: `bazel test //apps/desktop/vitruvian-speaker/Tests/VitruvianSpeakerToolTests/...`

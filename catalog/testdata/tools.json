@@ -109,9 +109,9 @@
       "panels": ["island", "settings"]
     },
     {
-      "id": "dev.vitruvian.homespeaker",
+      "id": "dev.vitruvian.speaker",
       "name": {
-        "en": "HomeSpeaker"
+        "en": "Vitruvian Speaker"
       },
       "publisher": "VitruvianSoftware",
       "summary": {
@@ -120,9 +120,9 @@
       "version": "1.19.1",
       "protocol": "2",
       "minimumAppVersion": "3.45.0",
-      "source": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/home-speaker",
+      "source": "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-speaker",
       "download": {
-        "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.19.1/HomeSpeaker-1.19.1-tool.zip",
+        "url": "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-speaker-v1.19.1/VitruvianSpeaker-1.19.1-tool.zip",
         "sha256": "0301fbf7bc26dd65b4922be2dfd2863694b715ab5a97f6752d59ee0dbd3f1324",
         "size": 2757993
       },

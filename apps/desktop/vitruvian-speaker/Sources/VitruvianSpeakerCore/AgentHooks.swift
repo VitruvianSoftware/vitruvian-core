@@ -22,8 +22,8 @@
 import Foundation
 
 /// The Antigravity `Stop` hook. Antigravity (agy 1.4) runs every enabled
-/// plugin's `hooks.json`; ours, at `~/.gemini/config/plugins/home-speaker/`,
-/// runs `HomeSpeaker --antigravity-hook` with the hook payload on stdin
+/// plugin's `hooks.json`; ours, at `~/.gemini/config/plugins/vitruvian-speaker/`,
+/// runs `VitruvianSpeaker --antigravity-hook` with the hook payload on stdin
 /// (camelCase protojson: `transcriptPath`, `terminationReason`, `fullyIdle`).
 /// Antigravity waits for the hook and expects a JSON answer, so this always
 /// answers `{}` and leaves anything slow to the detached `--announce`.
@@ -123,7 +123,7 @@ public enum AntigravityHook {
         }
     }
 
-    /// Entry point for `HomeSpeaker --antigravity-hook`.
+    /// Entry point for `VitruvianSpeaker --antigravity-hook`.
     public static func run(
         input: Data,
         config makeConfig: @MainActor @Sendable () -> ConfigManager,
@@ -184,10 +184,10 @@ public enum AntigravityHook {
 }
 
 /// The OpenCode end-of-turn hook. OpenCode (2.x) loads every file in
-/// `~/.config/opencode/plugins/`; ours, `home-speaker.ts`, waits for
+/// `~/.config/opencode/plugins/`; ours, `vitruvian-speaker.ts`, waits for
 /// `session.idle`, reads the session's latest messages through
 /// `ctx.session.context({ sessionID })` and pipes them to
-/// `HomeSpeaker --opencode-hook` as `{"sessionID": …, "messages": [...]}`.
+/// `VitruvianSpeaker --opencode-hook` as `{"sessionID": …, "messages": [...]}`.
 /// Supports both OpenCode 2.x (`Session.Message.Info` from `session.context`,
 /// with top-level `type` and `content`) and 1.x (`info.role` and `parts`).
 public enum OpenCodeHook {
@@ -263,7 +263,7 @@ public enum OpenCodeHook {
         }
     }
 
-    /// Entry point for `HomeSpeaker --opencode-hook`.
+    /// Entry point for `VitruvianSpeaker --opencode-hook`.
     public static func run(
         input: Data,
         config makeConfig: @MainActor @Sendable () -> ConfigManager,

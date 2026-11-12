@@ -55,7 +55,7 @@ public enum ConfigFileError: Error, Equatable, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .unreadable(let path, let reason):
-            return "\(path) could not be read (\(reason)). HomeSpeaker will not save over it until it reads again; fix or remove the file."
+            return "\(path) could not be read (\(reason)). Vitruvian Speaker will not save over it until it reads again; fix or remove the file."
         }
     }
 }

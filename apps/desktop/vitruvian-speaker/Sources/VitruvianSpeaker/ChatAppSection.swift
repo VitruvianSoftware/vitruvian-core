@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-import HomeSpeakerCore
+import VitruvianSpeakerCore
 import SwiftUI
 
 /// Settings › Chats for one chat app read over its local API: Beeper or
@@ -46,7 +46,7 @@ struct ChatAppSection: View {
     /// "Reading Courier: WhatsApp", while the monitor reads it.
     let readingLine: String?
     /// Courier only: a network's "read it here as well" switch, for one
-    /// HomeSpeaker's own Slack or Google Chat reader covers; and the
+    /// Vitruvian Speaker's own Slack or Google Chat reader covers; and the
     /// networks it is on for. Nil for Beeper, whose skipped rows stay greyed.
     var readAnyway: ((String) -> Binding<Bool>)? = nil
     var readAnywayKeys: [String] = []
@@ -95,9 +95,9 @@ struct ChatAppSection: View {
     private var help: String {
         switch app {
         case .beeper:
-            return "In Beeper Desktop: Settings › Integrations, turn on the Desktop API, then + next to Approved connections. Beeper Desktop must be running; HomeSpeaker only talks to it on this Mac. Slack and Google Chat chats in Beeper are skipped while their own switches above are on."
+            return "In Beeper Desktop: Settings › Integrations, turn on the Desktop API, then + next to Approved connections. Beeper Desktop must be running; Vitruvian Speaker only talks to it on this Mac. Slack and Google Chat chats in Beeper are skipped while their own switches above are on."
         case .courier:
-            return "In Courier: Settings › Integrations › New connection…, then paste the token here. Courier must be running; HomeSpeaker only talks to it on this Mac. With Beeper on as well, a message that comes through both is read out once. Courier can't say which Slack workspace is which, so while the Slack switch above is on, Courier's Slack is left to it. To hear another workspace through Courier, switch its Slack on here; messages from the workspace above may then be read twice."
+            return "In Courier: Settings › Integrations › New connection…, then paste the token here. Courier must be running; Vitruvian Speaker only talks to it on this Mac. With Beeper on as well, a message that comes through both is read out once. Courier can't say which Slack workspace is which, so while the Slack switch above is on, Courier's Slack is left to it. To hear another workspace through Courier, switch its Slack on here; messages from the workspace above may then be read twice."
         }
     }
 
@@ -152,7 +152,7 @@ struct ChatAppSection: View {
     }
 
     /// A switch for each network, under a "Networks" caption: on reads it,
-    /// off mutes it. A network HomeSpeaker reads itself is shown off and
+    /// off mutes it. A network Vitruvian Speaker reads itself is shown off and
     /// greyed. Before the monitor has read the app, the saved mutes and
     /// where the others will show.
     @ViewBuilder
@@ -163,11 +163,11 @@ struct ChatAppSection: View {
                 if let readAnyway, row.state == .skipped || readAnywayKeys.contains(row.key) {
                     Toggle(readAnywayKeys.contains(row.key) ? "\(row.name) · Also read here" : "\(row.name) · Read directly",
                            isOn: readAnyway(row.key))
-                        .accessibilityHint("On reads this network through \(app.name) too, although HomeSpeaker reads it itself")
+                        .accessibilityHint("On reads this network through \(app.name) too, although Vitruvian Speaker reads it itself")
                 } else if row.state == .skipped {
                     Toggle("\(row.name) · Read directly", isOn: .constant(false))
                         .disabled(true)
-                        .accessibilityHint("Read by HomeSpeaker's own reader while its switch is on")
+                        .accessibilityHint("Read by Vitruvian Speaker's own reader while its switch is on")
                 } else {
                     Toggle(row.name, isOn: networkSwitch(row.key))
                         .accessibilityHint("Off mutes this \(app.name) network")

@@ -20,15 +20,15 @@
 
 import XCTest
 
-import HomeSpeakerCore
-import HomeSpeakerToolCore
+import VitruvianSpeakerCore
+import VitruvianSpeakerToolCore
 import VitruvianToolKit
 import VitruvianToolProtocol
 
-final class HomeSpeakerToolTests: XCTestCase {
+final class VitruvianSpeakerToolTests: XCTestCase {
     /// A history file that is never there: the tests never read this
     /// Mac's `~/.gemini/speaker_history.json`.
-    static let noHistory = URL(fileURLWithPath: "/nonexistent/homespeaker-tool-tests/speaker_history.json")
+    static let noHistory = URL(fileURLWithPath: "/nonexistent/vitruvian-speaker-tool-tests/speaker_history.json")
 
     final class Link: ToolLink {
         var rendered: [(panel: String, tree: UITree)] = []
@@ -38,7 +38,7 @@ final class HomeSpeakerToolTests: XCTestCase {
         /// What the app named at hello; none, as before 3.48.
         var features: Set<ProtocolFeature> = []
         /// Names the app gave at hello that the kit may not know yet, such
-        /// as `HomeSpeakerTool.openSettingsFeature`.
+        /// as `VitruvianSpeakerTool.openSettingsFeature`.
         var featureNames: Set<String> = []
         func render(panel: String, _ tree: UITree) { rendered.append((panel, tree)) }
         func showMessage(_ message: String, icon: String) { messages.append(message) }
@@ -100,10 +100,10 @@ final class HomeSpeakerToolTests: XCTestCase {
         }
     }
 
-    /// A HomeSpeaker that records what it was asked and answers when told.
+    /// A Vitruvian Speaker that records what it was asked and answers when told.
     final class Driver: SpeakerDriver {
         var isInstalled = true
-        var program: URL? { isInstalled ? URL(fileURLWithPath: "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker") : nil }
+        var program: URL? { isInstalled ? URL(fileURLWithPath: "/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker") : nil }
         var jobs: [Job] = []
         var pending: [(Job, @Sendable (JobResult) -> Void)] = []
         func run(_ job: Job, then: @escaping @Sendable (JobResult) -> Void) {
@@ -136,12 +136,12 @@ final class HomeSpeakerToolTests: XCTestCase {
                                                "office": SpeakerDevice(id: "d2", type: "SpeakerDevice", name: "Office")])
     }
 
-    private func tool() -> HomeSpeakerTool {
-        HomeSpeakerTool(parts: .init(link: link, store: store, driver: driver, later: { $0() }, now: { [now] in now },
+    private func tool() -> VitruvianSpeakerTool {
+        VitruvianSpeakerTool(parts: .init(link: link, store: store, driver: driver, later: { $0() }, now: { [now] in now },
                                      historyURL: Self.noHistory))
     }
 
-    func testStartReadsTheVolumeOnceAndSaysWhenHomeSpeakerIsMissing() {
+    func testStartReadsTheVolumeOnceAndSaysWhenVitruvianSpeakerIsMissing() {
         let tool = tool()
         tool.start()
         XCTAssertEqual(driver.jobs, [.volume])
@@ -152,12 +152,12 @@ final class HomeSpeakerToolTests: XCTestCase {
         driver.isInstalled = false
         let missing = self.tool()
         missing.start()
-        XCTAssertEqual(driver.jobs.count, 1, "nothing asked of a HomeSpeaker that is not there")
+        XCTAssertEqual(driver.jobs.count, 1, "nothing asked of a Vitruvian Speaker that is not there")
         XCTAssertTrue(link.logged.contains { $0.contains("not installed") })
         XCTAssertThrowsError(try missing.run(command: "mute"))
     }
 
-    func testSayingGoesThroughHomeSpeakerAndIsToldWhereItWasHeard() throws {
+    func testSayingGoesThroughVitruvianSpeakerAndIsToldWhereItWasHeard() throws {
         let tool = tool()
         tool.start()
         driver.answer(.volume(Volume(speaker: "Kitchen", percent: 30)))
@@ -173,7 +173,7 @@ final class HomeSpeakerToolTests: XCTestCase {
         XCTAssertEqual(tool.notice, "Sent to Kitchen")
         XCTAssertEqual(link.messages.last, "Sent to Kitchen")
         XCTAssertEqual(link.rendered.last?.panel, "speaker", "the open page is drawn again")
-        // Quiet hours hold an automated announcement; what is typed is deliberate, and HomeSpeaker says what it did.
+        // Quiet hours hold an automated announcement; what is typed is deliberate, and Vitruvian Speaker says what it did.
         _ = tool.islandEvent(PanelEvent(block: "say", kind: .submit, value: .string("again")))
         driver.answer(.notSpoken("Quiet hours active until 07:00. Nothing spoken."))
         XCTAssertEqual(link.messages.last, "Quiet hours active until 07:00. Nothing spoken.")
@@ -218,7 +218,7 @@ final class HomeSpeakerToolTests: XCTestCase {
         XCTAssertEqual(driver.jobs.last, .say("read me"), "the same job the command sends")
     }
 
-    func testSwitchesAndVolumeChangeTheFileAndHomeSpeaker() throws {
+    func testSwitchesAndVolumeChangeTheFileAndVitruvianSpeaker() throws {
         let tool = tool()
         tool.start()
         driver.answer(.volume(Volume(speaker: "Kitchen", percent: 30, muted: false)))
@@ -269,7 +269,7 @@ final class HomeSpeakerToolTests: XCTestCase {
         guard case .page = tool.settingsEvent(PanelEvent(block: "quietEnd", kind: .submit, value: .string("soon"))) else {
             return XCTFail("a refusal is drawn")
         }
-        XCTAssertEqual(tool.setupNotice, HomeSpeakerTool.Invalid.quietHour)
+        XCTAssertEqual(tool.setupNotice, VitruvianSpeakerTool.Invalid.quietHour)
         XCTAssertEqual(store.config?.effectiveSpeechLength, .full)
         XCTAssertEqual(store.config?.effectiveSpeakLocal, true)
         XCTAssertEqual(store.config?.quietHoursStart, "23:15")

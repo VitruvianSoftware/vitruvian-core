@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-// The HomeSpeaker extension's program. With one of HomeSpeaker's flags
+// The Vitruvian Speaker extension's program. With one of Vitruvian Speaker's flags
 // (`--say`, `--claude-stop-hook`, …) it is the command line, on the
 // extension's engine, and exits. Otherwise it is the tool: it holds the
 // extension's `running.lock`, listens for its own messages, runs its chat
@@ -35,8 +35,8 @@
 
 import AppKit
 import Foundation
-import HomeSpeakerCore
-import HomeSpeakerToolCore
+import VitruvianSpeakerCore
+import VitruvianSpeakerToolCore
 import VitruvianToolKit
 import VitruvianToolProtocol
 
@@ -65,12 +65,12 @@ final class KitLink: ToolLink, @unchecked Sendable {
 final class KitThread: @unchecked Sendable {
     let tool: Tool
     let link: KitLink
-    let speaker: HomeSpeakerTool
+    let speaker: VitruvianSpeakerTool
     let located: ExtensionLocation
     let program: URL
     let door: DoorFile
 
-    init(tool: Tool, link: KitLink, speaker: HomeSpeakerTool, located: ExtensionLocation, program: URL, door: DoorFile) {
+    init(tool: Tool, link: KitLink, speaker: VitruvianSpeakerTool, located: ExtensionLocation, program: URL, door: DoorFile) {
         self.tool = tool
         self.link = link
         self.speaker = speaker
@@ -88,21 +88,21 @@ final class KitThread: @unchecked Sendable {
         let located = located
         let program = program
         let door = door
-        link.panels[HomeSpeakerTool.islandPanel] = tool.panel(HomeSpeakerTool.islandPanel, onOpen: { app, _ in
+        link.panels[VitruvianSpeakerTool.islandPanel] = tool.panel(VitruvianSpeakerTool.islandPanel, onOpen: { app, _ in
             link.app = app
             return speaker.islandPage()
         }, onEvent: { app, _, event in
             link.app = app
             return speaker.islandEvent(event)
         })
-        link.panels[HomeSpeakerTool.settingsPanel] = tool.panel(HomeSpeakerTool.settingsPanel, onOpen: { app, _ in
+        link.panels[VitruvianSpeakerTool.settingsPanel] = tool.panel(VitruvianSpeakerTool.settingsPanel, onOpen: { app, _ in
             link.app = app
             return speaker.settingsPage()
         }, onEvent: { app, _, event in
             link.app = app
             return speaker.settingsEvent(event)
         })
-        for command in HomeSpeakerTool.Command.all {
+        for command in VitruvianSpeakerTool.Command.all {
             tool.command(command) { app in
                 link.app = app
                 try speaker.run(command: command)
@@ -134,14 +134,14 @@ final class KitThread: @unchecked Sendable {
             speaker.refreshRole()
         }
         let thread = Thread { tool.run() }
-        thread.name = "HomeSpeaker tool"
+        thread.name = "Vitruvian Speaker tool"
         thread.stackSize = 8 << 20
         thread.start()
     }
 }
 
-/// HomeSpeaker.app's program, as Launch Services or the usual places find
-/// it (`HOMESPEAKER_PROGRAM` names another, or none when empty).
+/// Vitruvian Speaker.app's program, as Launch Services or the usual places find
+/// it (`VITRUVIAN_SPEAKER_PROGRAM` names another, or none when empty).
 @Sendable func locateApp() -> URL? {
     ProcessDriver.locate(
         environment: ProcessInfo.processInfo.environment,
@@ -161,18 +161,18 @@ func runProgram() -> Never {
     let standsAside: @Sendable () -> Bool = { check.standsAside(me: .extension) }
     // The app's sign-ins, read only, so a sign-out here (the command line's
     // or a page's) never revokes a login the app shares.
-    let appSecrets = HomeSpeakerProfile.app().secretsURL
+    let appSecrets = VitruvianSpeakerProfile.app().secretsURL
 
     // The command line: no Vitruvian, so no hello to name the folder.
-    if HomeSpeakerCommandLine.recognizes(arguments) {
+    if VitruvianSpeakerCommandLine.recognizes(arguments) {
         guard let located = ExtensionLocation.locate(environment: environment, program: program, workingDirectory: nil) else {
             FileHandle.standardError.write(Data("error: \(ExtensionLocation.noProfile)\n".utf8))
             exit(1)
         }
-        HomeSpeakerProfile.useForThisProcess(located.profile)
-        let appProfile = HomeSpeakerProfile.app(home: home)
-        HomeSpeakerCommandLine.run(
-            arguments, engine: HomeSpeakerEngine(profile: located.profile),
+        VitruvianSpeakerProfile.useForThisProcess(located.profile)
+        let appProfile = VitruvianSpeakerProfile.app(home: home)
+        VitruvianSpeakerCommandLine.run(
+            arguments, engine: VitruvianSpeakerEngine(profile: located.profile),
             parts: ExtensionSide.commandLineParts(
                 check: check, appSecretsURL: appSecrets, appSettingsURL: appProfile.settingsURL,
                 appProfile: appProfile, program: program, appProgram: { locateApp() }, home: home))
@@ -187,8 +187,8 @@ func runProgram() -> Never {
         exit(1)
     }
     let profile = located.profile
-    HomeSpeakerProfile.useForThisProcess(profile)
-    let engine = HomeSpeakerEngine(profile: profile)
+    VitruvianSpeakerProfile.useForThisProcess(profile)
+    let engine = VitruvianSpeakerEngine(profile: profile)
 
     // One long-lived process per side: it puts volumes back and holds
     // paused media for the hook's runs, which ask whether it is alive.
@@ -200,13 +200,13 @@ func runProgram() -> Never {
             tokens += engine.listen()
         } catch {
             FileHandle.standardError.write(Data(
-                ("another HomeSpeaker extension holds \(lockURL.path): this one does not listen "
+                ("another Vitruvian Speaker extension holds \(lockURL.path): this one does not listen "
                     + "or read chat\n").utf8))
         }
     }
 
     // The chat monitor, in this process, on the engine; it starts only
-    // while this side may run (`HomeSpeakerTool.refreshRole`), and never
+    // while this side may run (`VitruvianSpeakerTool.refreshRole`), and never
     // in a process that does not hold the lock above.
     let monitor = ExtensionSide.chatMonitor(engine: engine)
     let gate = GatedMonitor(monitor)
@@ -220,15 +220,15 @@ func runProgram() -> Never {
         // The sign-in page opens through the app, on the kit's thread.
         link: { url in waker.later { app in _ = try app.open(url.absoluteString) } },
         standsAside: standsAside)
-    let speaker = HomeSpeakerTool(parts: .extension(
+    let speaker = VitruvianSpeakerTool(parts: .extension(
         engine: engine, program: program, link: link,
         later: { work in waker.later { _ in work() } },
         driverParts: driverParts, monitor: gate, holdsLiveLock: live != nil, check: check,
         // Found afresh at each switch: the app may be installed, moved or
         // put in the Trash while the extension runs.
         appProgram: { locateApp() },
-        appProfile: HomeSpeakerProfile.app(home: home),
-        runningApps: { NSRunningApplication.runningApplications(withBundleIdentifier: HomeSpeakerProfile.appBundleID) },
+        appProfile: VitruvianSpeakerProfile.app(home: home),
+        runningApps: { NSRunningApplication.runningApplications(withBundleIdentifier: VitruvianSpeakerProfile.appBundleID) },
         runProgram: SystemOtherApp.runProgram,
         openApp: SystemOtherApp.openWithWorkspace,
         home: home,

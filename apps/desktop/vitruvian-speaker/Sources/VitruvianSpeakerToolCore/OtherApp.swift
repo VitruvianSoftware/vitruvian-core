@@ -20,7 +20,7 @@
 
 import AppKit
 import Foundation
-import HomeSpeakerCore
+import VitruvianSpeakerCore
 
 // Closing the app, when the person picks the extension (design 7.4, step 3).
 // The app is asked to quit, then, as the person ticks them, its Open at
@@ -66,24 +66,24 @@ public struct OtherAppProblem: Error, Equatable, Sendable, LocalizedError {
 
 /// Why the app was not moved to the Trash.
 public enum OtherAppError: Error, Equatable, LocalizedError {
-    /// There is no HomeSpeaker.app: no program, or a program outside an app.
+    /// There is no Vitruvian Speaker.app: no program, or a program outside an app.
     case notAnApp
     /// It is in the Trash already, so it is not installed.
     case alreadyInTrash
-    /// It is still running. Moved now, both HomeSpeakers could speak until
+    /// It is still running. Moved now, both VitruvianSpeakers could speak until
     /// it quit: it is quit first.
     case stillRunning
 
     public var errorDescription: String? {
         switch self {
-        case .notAnApp: return "HomeSpeaker.app was not found."
-        case .alreadyInTrash: return "HomeSpeaker.app is in the Trash already."
-        case .stillRunning: return "HomeSpeaker.app is still open. Quit it, then move it to the Trash."
+        case .notAnApp: return "Vitruvian Speaker.app was not found."
+        case .alreadyInTrash: return "Vitruvian Speaker.app is in the Trash already."
+        case .stillRunning: return "Vitruvian Speaker.app is still open. Quit it, then move it to the Trash."
         }
     }
 }
 
-/// The installed HomeSpeaker app, as the extension closes it.
+/// The installed Vitruvian Speaker app, as the extension closes it.
 public protocol OtherAppControlling: Sendable {
     /// The app is running as the menu bar app. A command-line run of its
     /// program, such as a script's `--say`, does not count.
@@ -104,7 +104,7 @@ public protocol OtherAppControlling: Sendable {
     /// Opens the menu bar app, as the Finder does: the app as it is found
     /// now, never a copy in the Trash. True when it was opened.
     func open() async -> Bool
-    /// Moves HomeSpeaker.app to the Trash, never deleting it, and says where
+    /// Moves Vitruvian Speaker.app to the Trash, never deleting it, and says where
     /// it went. Refused while the app is running.
     func moveToTrash() throws -> URL
 }
@@ -160,7 +160,7 @@ public final class SystemOtherApp: OtherAppControlling, @unchecked Sendable {
     /// Trash, and the Finder's way of opening an app.
     public static func onThisMac(locate: @escaping @Sendable () -> URL?) -> SystemOtherApp {
         SystemOtherApp(locate: locate,
-                       runningApps: { NSRunningApplication.runningApplications(withBundleIdentifier: HomeSpeakerProfile.appBundleID) },
+                       runningApps: { NSRunningApplication.runningApplications(withBundleIdentifier: VitruvianSpeakerProfile.appBundleID) },
                        run: runProgram, fileManager: .default,
                        wait: { try? await Task.sleep(for: .seconds($0)) },
                        openApp: openWithWorkspace)
@@ -173,7 +173,7 @@ public final class SystemOtherApp: OtherAppControlling, @unchecked Sendable {
         return found
     }
 
-    /// `HomeSpeaker.app`, when the program is `HomeSpeaker.app/Contents/MacOS/<name>`.
+    /// `Vitruvian Speaker.app`, when the program is `Vitruvian Speaker.app/Contents/MacOS/<name>`.
     /// A bare program, such as a build's, is no app: it has no version and
     /// is never moved.
     public var bundle: URL? {
@@ -187,7 +187,7 @@ public final class SystemOtherApp: OtherAppControlling, @unchecked Sendable {
     }
 
     public var isRunning: Bool {
-        HomeSpeakerProfile.isAppRunning(among: runningApps().map { ($0.bundleIdentifier, $0.activationPolicy) })
+        VitruvianSpeakerProfile.isAppRunning(among: runningApps().map { ($0.bundleIdentifier, $0.activationPolicy) })
     }
 
     public var version: String? {
@@ -202,8 +202,8 @@ public final class SystemOtherApp: OtherAppControlling, @unchecked Sendable {
     public func quit(timeout: Double) async -> Bool {
         // Only the app this controller found is asked, matched by where it
         // runs from, never by its bundle id alone: with none found (a test's
-        // `HOMESPEAKER_PROGRAM=""`, say), or a copy elsewhere running, no
-        // HomeSpeaker that happens to run on this Mac is quit.
+        // `VITRUVIAN_SPEAKER_PROGRAM=""`, say), or a copy elsewhere running, no
+        // Vitruvian Speaker that happens to run on this Mac is quit.
         guard let bundle else { return !isRunning }
         let targets = menuBarApps(at: bundle)
         guard !targets.isEmpty else { return true }
@@ -222,7 +222,7 @@ public final class SystemOtherApp: OtherAppControlling, @unchecked Sendable {
     private func menuBarApps(at bundle: URL) -> [any RunningAppHandle] {
         let wanted = Self.canonical(bundle)
         return runningApps().filter {
-            $0.bundleIdentifier == HomeSpeakerProfile.appBundleID && $0.activationPolicy != .prohibited
+            $0.bundleIdentifier == VitruvianSpeakerProfile.appBundleID && $0.activationPolicy != .prohibited
                 && $0.bundleURL.map(Self.canonical) == wanted
         }
     }
@@ -324,7 +324,7 @@ public final class SystemOtherApp: OtherAppControlling, @unchecked Sendable {
                 try process.run()
             } catch {
                 finished.resume(returning: ProgramRun(
-                    status: -1, output: "", error: "error: HomeSpeaker could not be started: \(error.localizedDescription)"))
+                    status: -1, output: "", error: "error: Vitruvian Speaker could not be started: \(error.localizedDescription)"))
             }
         }
     }

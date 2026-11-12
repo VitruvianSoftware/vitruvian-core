@@ -1,7 +1,7 @@
 # Scripts
 
 ## Overview
-Component package providing implementation for `apps/desktop/home-speaker/scripts`.
+Component package providing implementation for `apps/desktop/vitruvian-speaker/scripts`.
 
 ## Interface
 - `[install.sh:script entrypoint]`
@@ -16,4 +16,4 @@ Component package providing implementation for `apps/desktop/home-speaker/script
 - [install.sh:64]: `curl -fsSL -o "${WORK}/${ZIP}" "${BASE}/${ZIP}"`
 
 ## Verification
-- Run: `bazel test //apps/desktop/home-speaker/scripts/...`
+- Run: `bazel test //apps/desktop/vitruvian-speaker/scripts/...`

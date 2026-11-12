@@ -20,21 +20,21 @@
 
 import XCTest
 
-import HomeSpeakerCore
-import HomeSpeakerToolCore
+import VitruvianSpeakerCore
+import VitruvianSpeakerToolCore
 import VitruvianToolKit
 import VitruvianToolProtocol
 
-/// Courier on the extension's pages, as HomeSpeaker's own Settings has it
+/// Courier on the extension's pages, as Vitruvian Speaker's own Settings has it
 /// (#4237): its own switch, which stays off until a token is saved; its
-/// Announce choice; its network switches, where a network HomeSpeaker
+/// Announce choice; its network switches, where a network Vitruvian Speaker
 /// reads itself is "read it here as well", not a mute; and its token,
 /// which goes in and never comes back out.
 final class CourierPagesTests: XCTestCase {
-    typealias Link = HomeSpeakerToolTests.Link
-    typealias Store = HomeSpeakerToolTests.Store
-    typealias Driver = HomeSpeakerToolTests.Driver
-    typealias Account = HomeSpeakerToolTests.Account
+    typealias Link = VitruvianSpeakerToolTests.Link
+    typealias Store = VitruvianSpeakerToolTests.Store
+    typealias Driver = VitruvianSpeakerToolTests.Driver
+    typealias Account = VitruvianSpeakerToolTests.Account
     typealias Chat = ChatSlackTests.Chat
 
     private var link: Link!
@@ -50,7 +50,7 @@ final class CourierPagesTests: XCTestCase {
         chat = Chat()
         appRunning = false
         posted = 0
-        folder = FileManager.default.temporaryDirectory.appendingPathComponent("homespeaker-courier-\(UUID().uuidString)")
+        folder = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-speaker-courier-\(UUID().uuidString)")
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         store.config = SpeakerConfig(enabled: true, defaultTarget: "kitchen", structureId: "s1",
                                      targets: ["kitchen": SpeakerDevice(id: "d1", type: "SpeakerDevice", name: "Kitchen")])
@@ -63,10 +63,10 @@ final class CourierPagesTests: XCTestCase {
     private var settingsURL: URL { folder.appendingPathComponent("speaker_broadcast.json") }
     private var monitor: ChatMonitorConfig { store.config?.effectiveChatMonitor ?? ChatMonitorConfig() }
 
-    private func tool() -> HomeSpeakerTool {
+    private func tool() -> VitruvianSpeakerTool {
         let account = Account()
         account.isSignedIn = true
-        return HomeSpeakerTool(parts: .init(
+        return VitruvianSpeakerTool(parts: .init(
             link: link, store: store, driver: Driver(), later: { $0() }, account: account, chat: chat,
             gwsLocation: { nil }, ownerRunning: { [unowned self] in appRunning },
             credentialsChanged: { [unowned self] in posted += 1 }, settingsURL: settingsURL))
@@ -156,7 +156,7 @@ final class CourierPagesTests: XCTestCase {
         XCTAssertTrue(texts(settings).contains("Courier"), "its own heading")
         let announce = try XCTUnwrap(toggle(settings, Pages.Block.courierEnabled))
         XCTAssertEqual(announce.title.text(for: "en"), "Announce Courier messages")
-        XCTAssertEqual(announce.enabled, false, "off until a token is saved, as in HomeSpeaker's own Settings")
+        XCTAssertEqual(announce.enabled, false, "off until a token is saved, as in Vitruvian Speaker's own Settings")
         XCTAssertEqual(field(settings, Pages.Block.courierToken)?.kind, .secret)
         XCTAssertEqual(field(settings, Pages.Block.courierToken)?.value, "")
         XCTAssertTrue(texts(settings).contains("No Courier token saved"))
@@ -210,7 +210,7 @@ final class CourierPagesTests: XCTestCase {
         XCTAssertEqual(Pages.chatWarnings(status), [])
     }
 
-    func testANetworkHomeSpeakerReadsItselfIsReadHereAsWellNotMuted() throws {
+    func testANetworkVitruvianSpeakerReadsItselfIsReadHereAsWellNotMuted() throws {
         var status = ready()
         status.config.effectiveChatMonitor.courierEnabled = true
         status.config.effectiveChatMonitor.courierMutedNetworks = ["telegram"]
@@ -316,10 +316,10 @@ final class CourierPagesTests: XCTestCase {
         _ = tool.settingsEvent(PanelEvent(block: Pages.Block.courierAnnounce, kind: .change, value: .string("all")))
         XCTAssertEqual(monitor.courierAnnounce, .all)
         _ = tool.settingsEvent(PanelEvent(block: Pages.Block.courierAnnounce, kind: .change, value: .string("vips")))
-        XCTAssertEqual(monitor.courierAnnounce, .all, "a mode HomeSpeaker does not have is not saved")
+        XCTAssertEqual(monitor.courierAnnounce, .all, "a mode Vitruvian Speaker does not have is not saved")
         XCTAssertFalse(monitor.beeperEnabled, "Beeper is left alone")
 
-        // Cleared: Courier goes off with it, as in HomeSpeaker's own Settings.
+        // Cleared: Courier goes off with it, as in Vitruvian Speaker's own Settings.
         settings = page(tool.settingsEvent(PanelEvent(block: Pages.Block.clearCourierToken, kind: .tap)))
         XCTAssertEqual(chat.courierCleared, 1)
         XCTAssertFalse(monitor.courierEnabled)
@@ -343,7 +343,7 @@ final class CourierPagesTests: XCTestCase {
         XCTAssertEqual(monitor.courierReadAnyway, ["slack"], "read through Courier as well")
         XCTAssertEqual(monitor.courierMutedNetworks, [], "never muted")
         _ = tool.settingsEvent(PanelEvent(block: "courier.network.slack", kind: .toggle, value: .bool(false)))
-        XCTAssertEqual(monitor.courierReadAnyway, [], "left to HomeSpeaker's own Slack again")
+        XCTAssertEqual(monitor.courierReadAnyway, [], "left to Vitruvian Speaker's own Slack again")
         XCTAssertEqual(monitor.courierMutedNetworks, [])
     }
 

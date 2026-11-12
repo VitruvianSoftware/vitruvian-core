@@ -20,7 +20,7 @@
 
 import Foundation
 
-/// A chat app on this Mac that HomeSpeaker reads over the same local API:
+/// A chat app on this Mac that Vitruvian Speaker reads over the same local API:
 /// Beeper Desktop, and Courier, which serves the same two endpoints
 /// (`GET v1/accounts`, `GET v1/messages/search`) in the same shape on a
 /// port and with a token of its own. One `ChatAppClient` reads either.
@@ -59,8 +59,8 @@ public enum ChatApp: String, CaseIterable, Codable, Sendable {
     /// `env`), so a test that forgets its stand-in never reaches the app.
     public var urlVariable: String {
         switch self {
-        case .beeper: return "HOMESPEAKER_BEEPER_URL"
-        case .courier: return "HOMESPEAKER_COURIER_URL"
+        case .beeper: return "VITRUVIAN_SPEAKER_BEEPER_URL"
+        case .courier: return "VITRUVIAN_SPEAKER_COURIER_URL"
         }
     }
 

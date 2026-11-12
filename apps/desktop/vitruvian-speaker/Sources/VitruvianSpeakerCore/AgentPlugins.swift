@@ -21,20 +21,20 @@
 
 import Foundation
 
-/// The plugin files HomeSpeaker writes for Antigravity and OpenCode. Each
+/// The plugin files Vitruvian Speaker writes for Antigravity and OpenCode. Each
 /// is generated from the hook command alone, so the same program always
 /// gives the same bytes: Settings compares them to tell an installed plugin
-/// from one an older HomeSpeaker wrote (shown as "Update").
+/// from one an older Vitruvian Speaker wrote (shown as "Update").
 public enum AgentPlugins {
     /// The plugin's name in both agents.
-    public static let name = "home-speaker"
+    public static let name = "vitruvian-speaker"
 
     // MARK: Antigravity
 
     public static let antigravityManifestFile = "plugin.json"
     public static let antigravityHooksFile = "hooks.json"
 
-    /// `plugin.json` and `hooks.json` for `~/.gemini/config/plugins/home-speaker/`.
+    /// `plugin.json` and `hooks.json` for `~/.gemini/config/plugins/vitruvian-speaker/`.
     /// Antigravity enables a plugin it finds there unless its `config.json`
     /// says `"enabled": false` for it, so nothing else is written. Its `Stop`
     /// event takes a flat list of handlers (no `matcher`), its timeout is
@@ -43,7 +43,7 @@ public enum AgentPlugins {
         let manifest: [String: Any] = [
             "name": name,
             "version": "1.0.0",
-            "description": "Speaks each finished Antigravity reply on your Google Home speakers or this Mac, through HomeSpeaker.",
+            "description": "Speaks each finished Antigravity reply on your Google Home speakers or this Mac, through Vitruvian Speaker.",
             "author": ["name": "VitruvianSoftware", "url": "https://github.com/VitruvianSoftware"],
             "license": "MIT",
         ]
@@ -56,7 +56,7 @@ public enum AgentPlugins {
         ]
     }
 
-    /// The command of the HomeSpeaker `Stop` handler in an Antigravity
+    /// The command of the Vitruvian Speaker `Stop` handler in an Antigravity
     /// `hooks.json`, whichever named hook holds it, in the flat form or a
     /// `matcher` group; nil when there is none.
     public static func antigravityCommand(inHooks data: Data) -> String? {
@@ -83,7 +83,7 @@ public enum AgentPlugins {
     /// The line that records the hook command in the plugin file.
     static let openCodeCommandPrefix = "// Command: "
 
-    /// `~/.config/opencode/plugins/home-speaker.ts`. OpenCode 2.x requires a
+    /// `~/.config/opencode/plugins/vitruvian-speaker.ts`. OpenCode 2.x requires a
     /// default export with `{ id, setup(ctx) }`. On `session.idle` of a
     /// top-level session (`event.data.sessionID`, or `event.properties.sessionID`
     /// in 1.x), it reads the session's active context messages through
@@ -95,9 +95,9 @@ public enum AgentPlugins {
         let quoted = String(data: (try? JSONSerialization.data(
             withJSONObject: program, options: [.fragmentsAllowed, .withoutEscapingSlashes])) ?? Data(), encoding: .utf8) ?? "\"\""
         return """
-        // HomeSpeaker: speaks each finished OpenCode reply on your Google Home
-        // speakers or this Mac. Written by HomeSpeaker; install, update or
-        // remove it from HomeSpeaker's Settings, AI Agents.
+        // Vitruvian Speaker: speaks each finished OpenCode reply on your Google Home
+        // speakers or this Mac. Written by Vitruvian Speaker; install, update or
+        // remove it from Vitruvian Speaker's Settings, AI Agents.
         \(openCodeCommandPrefix)\(command)
         import { spawn } from "node:child_process"
 
@@ -140,7 +140,7 @@ public enum AgentPlugins {
         """
     }
 
-    /// The hook command recorded in an OpenCode plugin file HomeSpeaker
+    /// The hook command recorded in an OpenCode plugin file Vitruvian Speaker
     /// wrote; nil for any other file.
     public static func openCodeCommand(inPlugin text: String) -> String? {
         for line in text.split(separator: "\n").prefix(10) where line.hasPrefix(openCodeCommandPrefix) {

@@ -20,7 +20,7 @@
 
 import Foundation
 import Testing
-@testable import HomeSpeakerCore
+@testable import VitruvianSpeakerCore
 
 @Suite("SettingsActions Unified Engine Actions")
 struct SettingsActionsTests {
@@ -31,19 +31,19 @@ struct SettingsActionsTests {
         let secretStore: SecretStore
         let doorFile: DoorFile
         let home: URL
-        let appProfile: HomeSpeakerProfile
-        let extensionProfile: HomeSpeakerProfile
+        let appProfile: VitruvianSpeakerProfile
+        let extensionProfile: VitruvianSpeakerProfile
         let appProgram: URL
         let extensionProgram: URL
 
         init() throws {
             root = FileManager.default.temporaryDirectory
-                .appendingPathComponent("homespeaker-settings-actions-\(UUID().uuidString)", isDirectory: true)
+                .appendingPathComponent("vitruvian-speaker-settings-actions-\(UUID().uuidString)", isDirectory: true)
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
 
             let settingsURL = root.appendingPathComponent("gemini/speaker_broadcast.json")
             let historyURL = root.appendingPathComponent("gemini/speaker_history.json")
-            let secretsURL = root.appendingPathComponent("AppSupport/HomeSpeaker/secrets.json")
+            let secretsURL = root.appendingPathComponent("AppSupport/Vitruvian Speaker/secrets.json")
             let doorURL = root.appendingPathComponent("gemini/\(DoorFile.fileName)")
             home = root.appendingPathComponent("home", isDirectory: true)
             try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
@@ -52,7 +52,7 @@ struct SettingsActionsTests {
             secretStore = SecretStore(fileURL: secretsURL)
             doorFile = DoorFile(url: doorURL)
 
-            appProgram = root.appendingPathComponent("Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker")
+            appProgram = root.appendingPathComponent("Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker")
             try FileManager.default.createDirectory(
                 at: appProgram.deletingLastPathComponent(),
                 withIntermediateDirectories: true
@@ -60,9 +60,9 @@ struct SettingsActionsTests {
             try Data().write(to: appProgram)
 
             let vitruvian = root.appendingPathComponent("Vitruvian", isDirectory: true)
-            extensionProgram = vitruvian.appendingPathComponent("Tools/dev.vitruvian.homespeaker/bin/tool")
-            let extensionData = vitruvian.appendingPathComponent("ToolData/dev.vitruvian.homespeaker", isDirectory: true)
-            let extensionTool = vitruvian.appendingPathComponent("Tools/dev.vitruvian.homespeaker", isDirectory: true)
+            extensionProgram = vitruvian.appendingPathComponent("Tools/dev.vitruvian.speaker/bin/tool")
+            let extensionData = vitruvian.appendingPathComponent("ToolData/dev.vitruvian.speaker", isDirectory: true)
+            let extensionTool = vitruvian.appendingPathComponent("Tools/dev.vitruvian.speaker", isDirectory: true)
             try FileManager.default.createDirectory(
                 at: extensionProgram.deletingLastPathComponent(),
                 withIntermediateDirectories: true
@@ -70,12 +70,12 @@ struct SettingsActionsTests {
             try FileManager.default.createDirectory(at: extensionData, withIntermediateDirectories: true)
             try Data().write(to: extensionProgram)
 
-            appProfile = HomeSpeakerProfile(
+            appProfile = VitruvianSpeakerProfile(
                 door: .app,
                 settingsURL: settingsURL,
                 historyURL: historyURL,
                 secretsURL: secretsURL,
-                messagePrefix: "test.\(UUID().uuidString).homespeaker",
+                messagePrefix: "test.\(UUID().uuidString).vitruvian-speaker",
                 liveLockURL: nil,
                 toolFolder: nil
             )
@@ -390,7 +390,7 @@ struct SettingsActionsTests {
         // 1. Switch from app to extension (with copy + post-switch offers)
         let appSeam = SettingsActions.RecordingDoorSwitchSeam(
             me: .app,
-            chosenBy: "HomeSpeaker app 1.19.0",
+            chosenBy: "Vitruvian Speaker app 1.19.0",
             doorFile: rig.doorFile,
             home: rig.home,
             appProfile: rig.appProfile,
@@ -421,7 +421,7 @@ struct SettingsActionsTests {
         )
         #expect(extReport.contains("Settings: copied from the app."))
         #expect(rig.doorFile.read()?.chosen == .extension)
-        #expect(rig.doorFile.read()?.chosenBy == "HomeSpeaker app 1.19.0")
+        #expect(rig.doorFile.read()?.chosenBy == "Vitruvian Speaker app 1.19.0")
         #expect(appIntegration.status(of: .claudeCode).hookProgram == rig.extensionProgram.path)
 
         appSeam.resetSteps()
@@ -435,7 +435,7 @@ struct SettingsActionsTests {
         // 2. Switch from extension to app when app is not running (opens app + enables login item)
         let extSeam = SettingsActions.RecordingDoorSwitchSeam(
             me: .extension,
-            chosenBy: "HomeSpeaker extension 1.19.0",
+            chosenBy: "Vitruvian Speaker extension 1.19.0",
             doorFile: rig.doorFile,
             home: rig.home,
             appProfile: rig.appProfile,
@@ -472,7 +472,7 @@ struct SettingsActionsTests {
         // 3. Switch from extension to extension (asks running app to quit via quitOther)
         let extChooseSelfSeam = SettingsActions.RecordingDoorSwitchSeam(
             me: .extension,
-            chosenBy: "HomeSpeaker extension 1.19.0",
+            chosenBy: "Vitruvian Speaker extension 1.19.0",
             doorFile: rig.doorFile,
             home: rig.home,
             appProfile: rig.appProfile,
@@ -852,7 +852,7 @@ struct SettingsActionsTests {
         let rig = try ScratchRig()
         defer { rig.cleanup() }
 
-        let appExe = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
+        let appExe = "/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker"
         #expect(SettingsActions.codingAgent(for: "claude_code") == .claudeCode)
         #expect(SettingsActions.codingAgent(for: "antigravity") == .antigravity)
         #expect(SettingsActions.codingAgent(for: "opencode") == .opencode)
@@ -875,12 +875,12 @@ extension SettingsActions {
     /// Records every step in exact order and never quits, opens, or trashes
     /// any real application.
     final class RecordingDoorSwitchSeam: DoorSwitchSeam {
-        let me: HomeSpeakerProfile.Door
+        let me: VitruvianSpeakerProfile.Door
         let chosenBy: String
         let doorFile: DoorFile
         let home: URL
-        let appProfile: HomeSpeakerProfile
-        let extensionProfile: HomeSpeakerProfile?
+        let appProfile: VitruvianSpeakerProfile
+        let extensionProfile: VitruvianSpeakerProfile?
         var appProgram: String?
         var extensionProgram: String?
         var fixedNow: Date
@@ -893,18 +893,18 @@ extension SettingsActions {
         var turnOffLoginItemError: Error?
         var moveToTrashError: Error?
         var openVitruvianSucceeded: Bool
-        var copyOverride: ((HomeSpeakerProfile, HomeSpeakerProfile) throws -> CopyReport)?
+        var copyOverride: ((VitruvianSpeakerProfile, VitruvianSpeakerProfile) throws -> CopyReport)?
 
         /// Every effect recorded in order.
         private(set) var steps: [String] = []
 
         init(
-            me: HomeSpeakerProfile.Door = .app,
-            chosenBy: String = "HomeSpeaker test 1.0",
+            me: VitruvianSpeakerProfile.Door = .app,
+            chosenBy: String = "Vitruvian Speaker test 1.0",
             doorFile: DoorFile,
             home: URL,
-            appProfile: HomeSpeakerProfile,
-            extensionProfile: HomeSpeakerProfile?,
+            appProfile: VitruvianSpeakerProfile,
+            extensionProfile: VitruvianSpeakerProfile?,
             appProgram: String? = nil,
             extensionProgram: String? = nil,
             now: Date = Date(timeIntervalSince1970: 1_900_000_000),
@@ -917,7 +917,7 @@ extension SettingsActions {
             turnOffLoginItemError: Error? = nil,
             moveToTrashError: Error? = nil,
             openVitruvianSucceeded: Bool = true,
-            copyOverride: ((HomeSpeakerProfile, HomeSpeakerProfile) throws -> CopyReport)? = nil
+            copyOverride: ((VitruvianSpeakerProfile, VitruvianSpeakerProfile) throws -> CopyReport)? = nil
         ) {
             self.me = me
             self.chosenBy = chosenBy
@@ -957,11 +957,11 @@ extension SettingsActions {
             otherIsInstalled
         }
 
-        func profile(for side: HomeSpeakerProfile.Door, record: DoorRecord?) -> HomeSpeakerProfile? {
+        func profile(for side: VitruvianSpeakerProfile.Door, record: DoorRecord?) -> VitruvianSpeakerProfile? {
             side == .app ? appProfile : (extensionProfile ?? AppStartup.extensionProfile(record: record))
         }
 
-        func program(for side: HomeSpeakerProfile.Door, record: DoorRecord?) -> String? {
+        func program(for side: VitruvianSpeakerProfile.Door, record: DoorRecord?) -> String? {
             switch side {
             case .app:
                 return appProgram
@@ -970,7 +970,7 @@ extension SettingsActions {
             }
         }
 
-        func copy(from source: HomeSpeakerProfile, to destination: HomeSpeakerProfile) throws -> CopyReport {
+        func copy(from source: VitruvianSpeakerProfile, to destination: VitruvianSpeakerProfile) throws -> CopyReport {
             steps.append("copy(\(source.door.rawValue)->\(destination.door.rawValue))")
             if let copyOverride {
                 return try copyOverride(source, destination)
@@ -978,11 +978,11 @@ extension SettingsActions {
             return try DoorCopy.copy(from: source, to: destination)
         }
 
-        func credentialsChanged(in destination: HomeSpeakerProfile) {
+        func credentialsChanged(in destination: VitruvianSpeakerProfile) {
             steps.append("credentialsChanged(\(destination.door.rawValue))")
         }
 
-        func writeChoice(_ side: HomeSpeakerProfile.Door, at date: Date, chosenBy: String) throws {
+        func writeChoice(_ side: VitruvianSpeakerProfile.Door, at date: Date, chosenBy: String) throws {
             steps.append("writeChoice(\(side.rawValue))")
             try doorFile.update {
                 $0.chosen = side
@@ -991,7 +991,7 @@ extension SettingsActions {
             }
         }
 
-        func repointHooks(to side: HomeSpeakerProfile.Door, program: String) -> [String] {
+        func repointHooks(to side: VitruvianSpeakerProfile.Door, program: String) -> [String] {
             steps.append("repointHooks(\(side.rawValue))")
             return SettingsActions.repointStaleHooks(home: home, to: program)
         }

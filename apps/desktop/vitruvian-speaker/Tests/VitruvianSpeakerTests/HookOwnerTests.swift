@@ -20,22 +20,22 @@
 
 import Foundation
 import Testing
-@testable import HomeSpeakerCore
+@testable import VitruvianSpeakerCore
 
 // Who owns the agents' hook. A hook may run the app's program or the
-// extension's (`…/Tools/dev.vitruvian.homespeaker/bin/tool`), and the app's
+// extension's (`…/Tools/dev.vitruvian.speaker/bin/tool`), and the app's
 // launch-time repair must never take the hook back from an extension that
 // is installed, unless the person chose the app.
 //
 // Every test works on agent settings inside its own temporary folder.
 
 @Suite struct HookOwnerTests {
-    let appProgram = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
+    let appProgram = "/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker"
 
     /// A temporary home, and a Vitruvian folder inside it.
     private func scratch() throws -> (home: URL, vitruvian: URL) {
         let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("homespeaker-hook-owner-\(UUID().uuidString)")
+            .appendingPathComponent("vitruvian-speaker-hook-owner-\(UUID().uuidString)")
         let home = root.appendingPathComponent("home")
         let vitruvian = root.appendingPathComponent("Vitruvian")
         try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
@@ -45,7 +45,7 @@ import Testing
 
     /// The extension's program under `vitruvian`; created on disk when `exists`.
     private func extensionProgram(in vitruvian: URL, exists: Bool) throws -> String {
-        let bin = vitruvian.appendingPathComponent("Tools/dev.vitruvian.homespeaker/bin")
+        let bin = vitruvian.appendingPathComponent("Tools/dev.vitruvian.speaker/bin")
         let program = bin.appendingPathComponent("tool")
         if exists {
             try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
@@ -75,22 +75,22 @@ import Testing
         try JSONSerialization.jsonObject(with: settingsBytes(home: home)) as? [String: Any] ?? [:]
     }
 
-    @Test func theExtensionsProgramIsAHomeSpeaker() {
-        #expect(AgentIntegration.isHomeSpeakerProgram(
-            "/Users/me/Library/Application Support/Vitruvian/Tools/dev.vitruvian.homespeaker/bin/tool"))
-        #expect(AgentIntegration.isHomeSpeakerProgram(appProgram), "the app's program still is")
+    @Test func theExtensionsProgramIsAVitruvianSpeaker() {
+        #expect(AgentIntegration.isVitruvianSpeakerProgram(
+            "/Users/me/Library/Application Support/Vitruvian/Tools/dev.vitruvian.speaker/bin/tool"))
+        #expect(AgentIntegration.isVitruvianSpeakerProgram(appProgram), "the app's program still is")
     }
 
     @Test func aRandomToolIsNot() {
-        #expect(!AgentIntegration.isHomeSpeakerProgram(
+        #expect(!AgentIntegration.isVitruvianSpeakerProgram(
             "/Users/me/Library/Application Support/Vitruvian/Tools/other.tool/bin/tool"))
-        #expect(!AgentIntegration.isHomeSpeakerProgram("tool"))
-        #expect(!AgentIntegration.isHomeSpeakerProgram(
-            "/Users/me/Library/Application Support/Vitruvian/Tools/dev.vitruvian.homespeaker/tool"))
+        #expect(!AgentIntegration.isVitruvianSpeakerProgram("tool"))
+        #expect(!AgentIntegration.isVitruvianSpeakerProgram(
+            "/Users/me/Library/Application Support/Vitruvian/Tools/dev.vitruvian.speaker/tool"))
     }
 
-    @Test(arguments: [nil, HomeSpeakerProfile.Door.extension])
-    func theAppLeavesTheExtensionsHookAlone(choice: HomeSpeakerProfile.Door?) throws {
+    @Test(arguments: [nil, VitruvianSpeakerProfile.Door.extension])
+    func theAppLeavesTheExtensionsHookAlone(choice: VitruvianSpeakerProfile.Door?) throws {
         let (home, vitruvian) = try scratch()
         let ext = try extensionProgram(in: vitruvian, exists: true)
         let before = try writeHook(home: home, program: ext)
@@ -145,8 +145,8 @@ import Testing
         #expect(AgentIntegration.installedHookCommand(in: try settings(home: home)) == app.hookCommand)
     }
 
-    @Test(arguments: [nil, HomeSpeakerProfile.Door.app, HomeSpeakerProfile.Door.extension])
-    func theExtensionsProgramNeverRepairs(choice: HomeSpeakerProfile.Door?) throws {
+    @Test(arguments: [nil, VitruvianSpeakerProfile.Door.app, VitruvianSpeakerProfile.Door.extension])
+    func theExtensionsProgramNeverRepairs(choice: VitruvianSpeakerProfile.Door?) throws {
         let (home, vitruvian) = try scratch()
         let ext = try extensionProgram(in: vitruvian, exists: true)
         let before = try writeHook(home: home, program: appProgram)
@@ -167,7 +167,7 @@ import Testing
         let groups = try #require((try settings(home: home)["hooks"] as? [String: Any])?["Stop"] as? [[String: Any]])
         let commands = groups.flatMap { ($0["hooks"] as? [[String: Any]]) ?? [] }.compactMap { $0["command"] as? String }
         let ours = commands.filter { $0.contains(ClaudeStopHook.argument) }
-        #expect(ours == [fromExtension.hookCommand], "exactly one HomeSpeaker hook, the extension's")
+        #expect(ours == [fromExtension.hookCommand], "exactly one Vitruvian Speaker hook, the extension's")
         #expect(fromExtension.hookStatus() == .installed)
     }
 
@@ -185,9 +185,9 @@ import Testing
     }
 
     @Test(arguments: [
-        "/Volumes/HomeSpeaker/HomeSpeaker.app/Contents/MacOS/HomeSpeaker",
-        "/private/var/folders/xx/yy/T/AppTranslocation/1234/d/HomeSpeaker.app/Contents/MacOS/HomeSpeaker",
-        "/Users/x/.Trash/HomeSpeaker.app/Contents/MacOS/HomeSpeaker",
+        "/Volumes/VitruvianSpeaker/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker",
+        "/private/var/folders/xx/yy/T/AppTranslocation/1234/d/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker",
+        "/Users/x/.Trash/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker",
     ])
     func anAppOnATemporaryVolumeOrInTrashNeverRepairsHooks(path: String) throws {
         let (home, _) = try scratch()

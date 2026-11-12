@@ -1,7 +1,7 @@
-# Homespeakertests
+# Vitruvianspeakertests
 
 ## Overview
-Component package providing implementation for `apps/desktop/home-speaker/Tests/HomeSpeakerTests`.
+Component package providing implementation for `apps/desktop/vitruvian-speaker/Tests/VitruvianSpeakerTests`.
 
 ## Interface
 - `[CastSpeakerTests.swift:FakeCast]`
@@ -50,4 +50,4 @@ Component package providing implementation for `apps/desktop/home-speaker/Tests/
 - [ChatMonitorTests.swift:34]: `private let standInBeeperBase = URL(string: "http://localhost:47998")!`
 
 ## Verification
-- Run: `bazel test //apps/desktop/home-speaker/Tests/HomeSpeakerTests/...`
+- Run: `bazel test //apps/desktop/vitruvian-speaker/Tests/VitruvianSpeakerTests/...`

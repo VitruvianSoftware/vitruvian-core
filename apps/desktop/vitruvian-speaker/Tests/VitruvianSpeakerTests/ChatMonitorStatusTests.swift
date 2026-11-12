@@ -21,10 +21,10 @@
 import Foundation
 import Testing
 
-@testable import HomeSpeakerCore
+@testable import VitruvianSpeakerCore
 
 private func scratchDir() throws -> URL {
-    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("homespeaker-monitor-\(UUID().uuidString)")
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-speaker-monitor-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir
 }
@@ -69,12 +69,12 @@ private final class RecordingMonitor: ChatMonitorControlling {
         let text = try String(contentsOf: file.url, encoding: .utf8)
         #expect(text.contains("\"beeper_network_states\""))
         for word in ["\"reading\"", "\"skipped\"", "\"muted\""] { #expect(text.contains(word), "\(word)") }
-        // A file without the key, as an older HomeSpeaker writes it.
+        // A file without the key, as an older Vitruvian Speaker writes it.
         try Data(#"{"is_running": true, "beeper_networks": ["Signal"], "pid": 7}"#.utf8).write(to: file.url)
         let older = try #require(file.read())
         #expect(older.beeperNetworkStates == nil)
         #expect(older.beeperNetworks == ["Signal"])
-        // A state from a newer HomeSpeaker drops the list, not the file.
+        // A state from a newer Vitruvian Speaker drops the list, not the file.
         try Data(#"{"is_running": true, "beeper_network_states": [{"key": "x", "name": "X", "state": "paused"}], "pid": 7}"#.utf8)
             .write(to: file.url)
         let newer = try #require(file.read())
@@ -82,7 +82,7 @@ private final class RecordingMonitor: ChatMonitorControlling {
         #expect(newer.beeperNetworkStates == nil)
     }
 
-    /// One entry a newer HomeSpeaker writes, with a state this one does
+    /// One entry a newer Vitruvian Speaker writes, with a state this one does
     /// not know, costs that entry only: the others are still read, and so
     /// are the name lists beside them.
     @Test func anUnknownStateDropsOnlyItsOwnEntry() throws {
@@ -224,14 +224,14 @@ private final class RecordingMonitor: ChatMonitorControlling {
         ChatMonitorControlNotice.apply(.start, monitor: monitor)
         ChatMonitorControlNotice.apply(.stop, monitor: monitor)
         #expect(monitor.calls == ["start", "stop"])
-        #expect(ChatMonitorControlNotice.askedLine(.start) == "asked a running HomeSpeaker to start the chat monitor")
+        #expect(ChatMonitorControlNotice.askedLine(.start) == "asked a running Vitruvian Speaker to start the chat monitor")
     }
 }
 
 // MARK: - Heard here, not on the speaker
 
 @Suite struct PartialBroadcastTests {
-    @Test func heardOnThisMacWithTheHomeSpeakerFailedSaysBoth() {
+    @Test func heardOnThisMacWithTheVitruvianSpeakerFailedSaysBoth() {
         let outcome = AnnounceOutcome.announced(home: .failed("speaker offline"), local: .spoken)
         #expect(outcome.spokenLines(homeName: "Kitchen") == ["Spoke on this Mac (Home speaker failed: speaker offline)"])
         #expect(AnnounceOutcome.spokeLocallyHomeFailed("x") == "Spoke on this Mac (Home speaker failed: x)")

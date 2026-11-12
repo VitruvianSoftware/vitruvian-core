@@ -1,16 +1,16 @@
-# Homespeaker
+# Vitruvianspeaker
 
 ## Overview
-Component package providing implementation for `apps/desktop/home-speaker/Sources/HomeSpeaker`.
+Component package providing implementation for `apps/desktop/vitruvian-speaker/Sources/VitruvianSpeaker`.
 
 ## Interface
-- `[App.swift:HomeSpeakerApp]`
+- `[App.swift:VitruvianSpeakerApp]`
 - `[App.swift:AppSide]`
 - `[ChatAppSection.swift:ChatAppSection]`
 - `[DoorWindow.swift:DoorWindow]`
 - `[DoorWindow.swift:DoorCard]`
 - `[DoorWindow.swift:CompareStep]`
-- `[DoorWindow.swift:WhichHomeSpeakerSection]`
+- `[DoorWindow.swift:WhichVitruvianSpeakerSection]`
 - `[Entry.swift:Entry]`
 - `[MenuBarView.swift:MenuBarViewModel]`
 - `[MenuBarView.swift:MenuBarView]`
@@ -26,4 +26,4 @@ Component package providing implementation for `apps/desktop/home-speaker/Source
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/home-speaker/Sources/HomeSpeaker/...`
+- Run: `bazel test //apps/desktop/vitruvian-speaker/Sources/VitruvianSpeaker/...`

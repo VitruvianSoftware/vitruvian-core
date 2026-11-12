@@ -20,13 +20,13 @@
 
 import Foundation
 
-/// One HomeSpeaker's working parts, built from one profile so they agree:
+/// One Vitruvian Speaker's working parts, built from one profile so they agree:
 /// the settings, the secrets, the history, the Google sign-in on those
 /// secrets, the speakers on that sign-in, the announcer on those speakers,
 /// and the media-pause and volume-restore coordinators. Two engines on two
 /// profiles share no file, and send each other no message.
 ///
-/// `HomeSpeakerEngine.app` is the app's engine. Its parts are the existing
+/// `VitruvianSpeakerEngine.app` is the app's engine. Its parts are the existing
 /// `.shared` singletons themselves, so every caller of `.shared` keeps
 /// using exactly the objects it did.
 ///
@@ -35,8 +35,8 @@ import Foundation
 /// defaults (no file) or print a problem (a file that does not read), and a
 /// command such as `--version` must do neither.
 @MainActor
-public final class HomeSpeakerEngine {
-    public let profile: HomeSpeakerProfile
+public final class VitruvianSpeakerEngine {
+    public let profile: VitruvianSpeakerProfile
     /// The settings, read on first use.
     public private(set) lazy var config: ConfigManager = {
         configLoaded = true
@@ -56,7 +56,7 @@ public final class HomeSpeakerEngine {
     public let volumeRestore: VolumeRestoreCoordinator
 
     /// The app's engine: today's files, and the `.shared` singletons.
-    public static let app = HomeSpeakerEngine(
+    public static let app = VitruvianSpeakerEngine(
         profile: .app(),
         config: { .shared },
         secrets: .shared,
@@ -71,7 +71,7 @@ public final class HomeSpeakerEngine {
     /// carries the sign-in's and the speakers' requests; `local` speaks on
     /// this Mac.
     public convenience init(
-        profile: HomeSpeakerProfile,
+        profile: VitruvianSpeakerProfile,
         session: URLSession = .shared,
         local: LocalSpeaking = LocalSpeaker.shared
     ) {
@@ -94,7 +94,7 @@ public final class HomeSpeakerEngine {
     }
 
     private init(
-        profile: HomeSpeakerProfile,
+        profile: VitruvianSpeakerProfile,
         config: @escaping @MainActor () -> ConfigManager,
         secrets: SecretStore,
         history: BroadcastHistory,
@@ -126,10 +126,10 @@ public final class HomeSpeakerEngine {
         ]
     }
 
-    /// Signs this HomeSpeaker out of every Google login, or only Google
+    /// Signs this Vitruvian Speaker out of every Google login, or only Google
     /// Chat's, through the one sign-out path (`AppCommandRunner.signOut`).
     ///
-    /// `otherSecrets` is the other HomeSpeaker's sign-ins, when it is
+    /// `otherSecrets` is the other Vitruvian Speaker's sign-ins, when it is
     /// installed. Each login is decided on its own (design 7.7): one the
     /// other side shares (`sharedLogins`) is removed here only and never
     /// revoked at Google, because revoking it would end the other side's

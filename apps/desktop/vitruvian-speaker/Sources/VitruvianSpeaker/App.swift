@@ -19,9 +19,9 @@
 // SOFTWARE.
 
 import SwiftUI
-import HomeSpeakerCore
+import VitruvianSpeakerCore
 
-struct HomeSpeakerApp: App {
+struct VitruvianSpeakerApp: App {
     @StateObject private var configManager = ConfigManager.shared
     @StateObject private var monitor = ChatMonitorService.shared
 
@@ -38,8 +38,8 @@ struct HomeSpeakerApp: App {
             // extension reaches the app within a second.
             ConfigManager.shared.onFolderChange = { side.door.refresh() }
             ConfigManager.shared.startWatchingConfigFile()
-            let engine = HomeSpeakerEngine.app
-            // `HomeSpeaker --sign-out` runs as another process; without
+            let engine = VitruvianSpeakerEngine.app
+            // `VitruvianSpeaker --sign-out` runs as another process; without
             // this the menu bar kept showing "Connected" and kept polling.
             // And `--sign-in`, or the Vitruvian tool saving a Slack token:
             // re-read the login and start or restart the monitor with it.
@@ -87,7 +87,7 @@ final class AppSide {
     private var timer: Timer?
 
     private init() {
-        let engine = HomeSpeakerEngine.app
+        let engine = VitruvianSpeakerEngine.app
         // The app's bundle as it is now: a reference follows the bundle when
         // the person drags it, to the Trash say, while it runs.
         let reference = (Bundle.main.bundleURL as NSURL).fileReferenceURL() as NSURL?

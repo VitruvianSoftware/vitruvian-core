@@ -497,7 +497,7 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
     @Published public var slackUser: String?
     /// Which Google Chat reader is active while running ("api" / "gws").
     @Published public var googleChatVia: String?
-    /// The Beeper networks read and the ones left to HomeSpeaker's own
+    /// The Beeper networks read and the ones left to Vitruvian Speaker's own
     /// readers ("Slack (acme)"), once Beeper has listed its accounts.
     @Published public var beeperNetworks: [String]?
     @Published public var beeperSkippedNetworks: [String]?
@@ -602,7 +602,7 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
         app == .beeper ? beeperNetworks : courierNetworks
     }
 
-    /// The networks of `app`'s left to HomeSpeaker's own readers.
+    /// The networks of `app`'s left to Vitruvian Speaker's own readers.
     public func skippedNetworks(for app: ChatApp) -> [String]? {
         app == .beeper ? beeperSkippedNetworks : courierSkippedNetworks
     }
@@ -894,7 +894,7 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
 
     /// One poll of a chat app: every page of messages after the window's
     /// start (up to `ChatAppClient.maxPages`), less the ones handled
-    /// already, the accounts HomeSpeaker reads itself, and anything not to
+    /// already, the accounts Vitruvian Speaker reads itself, and anything not to
     /// be spoken. Each is handled once, spoken or not. `truncated`: the
     /// window held more than the pages read.
     private func poll(
@@ -961,7 +961,7 @@ public class ChatMonitorService: ObservableObject, ChatMonitorControlling {
     }
 
     /// Lists a chat app's accounts and says which networks are read, which
-    /// are left to HomeSpeaker's own Slack or Google Chat reader, and
+    /// are left to Vitruvian Speaker's own Slack or Google Chat reader, and
     /// which are muted.
     private func readAccounts(_ reader: ChatAppReader, _ client: ChatAppClient, config: ChatMonitorConfig, run: Int) async throws {
         let list = try await client.accounts()
@@ -1049,7 +1049,7 @@ private final class ChatAppReader {
     var accounts: [String: BeeperAccount]?
     /// The accounts as last listed, in the app's order, each with the
     /// label it is skipped under ("Slack (acme)"), or nil when it is not
-    /// left to HomeSpeaker's own reader. Mutes are applied to it as each
+    /// left to Vitruvian Speaker's own reader. Mutes are applied to it as each
     /// status is written, so one saved between polls shows without a restart.
     var listing: [(account: BeeperAccount, skipped: String?)]?
     /// When the monitor started: no message from before is spoken.

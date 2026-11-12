@@ -20,7 +20,7 @@
 
 import Foundation
 import Testing
-@testable import HomeSpeakerCore
+@testable import VitruvianSpeakerCore
 
 // Courier as a second chat source beside Beeper: the same API on its own
 // port with its own token. Nothing here reaches the network, and never the
@@ -146,7 +146,7 @@ private final class StandInApps: URLProtocol {
         }
         let seen = Request(method: request.httpMethod ?? "GET", host: url.host ?? "", port: url.port, path: url.path,
                            bearer: bearer)
-        // HomeSpeaker's own Slack reader: who the token is, and nothing new.
+        // Vitruvian Speaker's own Slack reader: who the token is, and nothing new.
         if url.host == "slack.com" {
             switch url.path {
             case "/api/auth.test": finish(200, #"{"ok":true,"user_id":"UME1","user":"me","team_id":"TNATIVE","team":"acme"}"#)
@@ -190,7 +190,7 @@ private func fakeToken(_ app: String) -> String { "fake-\(app)-test-token-\(UUID
 @MainActor
 private struct Rig {
     let root: URL
-    let engine: HomeSpeakerEngine
+    let engine: VitruvianSpeakerEngine
     let monitor: ChatMonitorService
     let beeperToken: String
     let courierToken: String
@@ -198,15 +198,15 @@ private struct Rig {
 
     init(_ monitorConfig: ChatMonitorConfig, beeper: StandInApps.App?, courier: StandInApps.App?,
          courierToken: Bool = true, slackToken: String? = nil) throws {
-        root = FileManager.default.temporaryDirectory.appendingPathComponent("homespeaker-courier-\(UUID().uuidString)")
+        root = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-speaker-courier-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        let profile = HomeSpeakerProfile.extension(
+        let profile = VitruvianSpeakerProfile.extension(
             dataFolder: root.appendingPathComponent("data"), toolFolder: nil,
-            messagePrefix: "test.\(UUID().uuidString).homespeaker")
+            messagePrefix: "test.\(UUID().uuidString).vitruvian-speaker")
         for url in [profile.settingsURL, profile.historyURL, profile.secretsURL, profile.monitorStatusURL] {
             try #require(url.path.hasPrefix(root.path + "/"), "\(url.path) is outside the scratch folder")
         }
-        engine = HomeSpeakerEngine(profile: profile, session: StandInApps.session, local: QuietLocal())
+        engine = VitruvianSpeakerEngine(profile: profile, session: StandInApps.session, local: QuietLocal())
         var config = SpeakerConfig(enabled: true, quietHoursEnabled: false, chatMonitor: monitorConfig)
         config.speakHome = false
         config.speakLocal = true
@@ -374,10 +374,10 @@ private func courierSlackSearch() -> String {
 
 @MainActor
 @Suite struct CourierSlackTests {
-    /// HomeSpeaker's own Slack reader on: Courier cannot say which
+    /// Vitruvian Speaker's own Slack reader on: Courier cannot say which
     /// workspace its Slack is, so it is left to that reader, and shows as
     /// such, until the person switches it on in Courier's list.
-    @Test func courierSlackIsLeftToHomeSpeakerUntilSwitchedOn() async throws {
+    @Test func courierSlackIsLeftToVitruvianSpeakerUntilSwitchedOn() async throws {
         for readAnyway in [false, true] {
             let courier = StandInApps.App(accounts: courierSlackAccounts, searches: [.body(courierSlackSearch())])
             let rig = try Rig(
@@ -541,7 +541,7 @@ private func courierSlackSearch() -> String {
     }
 
     @Test func theTokenIsKeptBesideBeepers() throws {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("homespeaker-courier-secrets-\(UUID().uuidString)")
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-speaker-courier-secrets-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: dir) }
         let store = SecretStore(fileURL: dir.appendingPathComponent("secrets.json"))
         try store.save(Secrets(beeperToken: "fake-beeper")) // gitleaks:allow (made-up test token)
@@ -560,9 +560,9 @@ private func courierSlackSearch() -> String {
                 == .success(URL(string: "http://localhost:5001")!))
         // The test variable wins over Settings, and Beeper's is not Courier's.
         #expect(ChatAppClient.baseURL(for: .courier, configured: "http://localhost:5001",
-                                      environment: ["HOMESPEAKER_COURIER_URL": "http://localhost:9"])
+                                      environment: ["VITRUVIAN_SPEAKER_COURIER_URL": "http://localhost:9"])
                 == .success(URL(string: "http://localhost:9")!))
-        #expect(ChatAppClient.baseURL(for: .courier, environment: ["HOMESPEAKER_BEEPER_URL": "http://localhost:9"])
+        #expect(ChatAppClient.baseURL(for: .courier, environment: ["VITRUVIAN_SPEAKER_BEEPER_URL": "http://localhost:9"])
                 == .success(ChatApp.courier.defaultBaseURL))
         for bad in ["http://example.com:23390", "https://localhost:23390", "localhost:23390", "http://192.168.1.10:23390"] {
             guard case .failure(let why) = ChatAppClient.baseURL(for: .courier, configured: bad, environment: [:]) else {
@@ -581,6 +581,6 @@ private func courierSlackSearch() -> String {
     /// can never reach the real Courier.
     @Test func testRunsNeverPointAtTheRealCourier() throws {
         let url = try ChatAppClient.baseURL(for: .courier, environment: ProcessInfo.processInfo.environment).get()
-        #expect(url.port != 23390, "run the tests through Bazel, whose env sets HOMESPEAKER_COURIER_URL")
+        #expect(url.port != 23390, "run the tests through Bazel, whose env sets VITRUVIAN_SPEAKER_COURIER_URL")
     }
 }

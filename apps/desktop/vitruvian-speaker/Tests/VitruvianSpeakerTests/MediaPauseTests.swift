@@ -20,7 +20,7 @@
 
 import Foundation
 import Testing
-@testable import HomeSpeakerCore
+@testable import VitruvianSpeakerCore
 
 /// Stands in for osascript: answers each script by what it is, and records
 /// every script it was asked to run.
@@ -54,7 +54,7 @@ final class FakeRunner: ScriptRunner, @unchecked Sendable {
 
     @Test func spokenWordsCountsNumbersCompoundIdentifiersAndSentencePauses() {
         #expect(AnnouncementTiming.spokenWords(in: "don't") == 1, "contractions stay one word")
-        #expect(AnnouncementTiming.spokenWords(in: "feat/homespeaker-system-media-remote") == 5,
+        #expect(AnnouncementTiming.spokenWords(in: "feat/speaker-system-media-remote") == 5,
                 "slash and hyphen segments are each spoken")
         #expect(AnnouncementTiming.spokenWords(in: "MediaPause.swift") == 3,
                 "camelCase and file extensions are spoken as separate words")
@@ -699,12 +699,12 @@ final class FakeNowPlaying: NowPlayingRunner, @unchecked Sendable {
         #expect(runner.ran.isEmpty, "and none on resume either")
     }
 
-    @Test func appsHomeSpeakerCannotScriptArePausedAndResumed() async {
+    @Test func appsVitruvianSpeakerCannotScriptArePausedAndResumed() async {
         let runner = FakeRunner(), np = FakeNowPlaying([Self.vlc, Self.firefox])
         let c = make(runner, np, audio: ["org.videolan.vlc", "org.mozilla.firefox"])
         await c.pause(for: 30)
         #expect(c.isHolding)
-        #expect(c.lastReport == "Paused VLC, Firefox (Lo-fi).", "not 'HomeSpeaker does not know how to control it'")
+        #expect(c.lastReport == "Paused VLC, Firefox (Lo-fi).", "not 'Vitruvian Speaker does not know how to control it'")
         #expect(!c.lastPauseHadProblems)
         #expect(runner.ran.isEmpty)
         await c.resumeNow()
@@ -756,7 +756,7 @@ final class FakeNowPlaying: NowPlayingRunner, @unchecked Sendable {
         let runner = FakeRunner(), np = FakeNowPlaying([Self.vlc])
         let c = make(runner, np, audio: ["org.videolan.vlc", "us.zoom.xos"])
         await c.pause(for: 30)
-        #expect(c.lastReport == "Paused VLC. Could not pause us.zoom.xos -- HomeSpeaker does not know how to control it.")
+        #expect(c.lastReport == "Paused VLC. Could not pause us.zoom.xos -- Vitruvian Speaker does not know how to control it.")
         #expect(c.lastPauseHadProblems)
         await c.resumeNow()
     }
@@ -805,9 +805,9 @@ final class FakeNowPlaying: NowPlayingRunner, @unchecked Sendable {
         setenv("PERL5OPT", "-Mevil", 1)
         defer { unsetenv("PERL5OPT") }
         let env = PerlNowPlayingRunner.environment(action: "resume", sessions: [Self.chrome, Self.vlc])
-        #expect(env["HOMESPEAKER_MR_ACTION"] == "resume")
-        #expect(env["HOMESPEAKER_MR_PIDS"] == "1373,4242")
-        let titles = try JSONSerialization.jsonObject(with: Data(try #require(env["HOMESPEAKER_MR_TITLES"]).utf8))
+        #expect(env["VITRUVIAN_SPEAKER_MR_ACTION"] == "resume")
+        #expect(env["VITRUVIAN_SPEAKER_MR_PIDS"] == "1373,4242")
+        let titles = try JSONSerialization.jsonObject(with: Data(try #require(env["VITRUVIAN_SPEAKER_MR_TITLES"]).utf8))
         #expect(titles as? [String: String] == ["1373": "Water Cribs"])
         #expect(env["PERL5OPT"] == nil)
     }
@@ -850,7 +850,7 @@ final class FakeNowPlaying: NowPlayingRunner, @unchecked Sendable {
     }
 
     @Test func aHungOrBrokenPerlFailsWithAReason() async {
-        let r = PerlNowPlayingRunner(deadline: 3, image: "/nonexistent/HomeSpeaker")
+        let r = PerlNowPlayingRunner(deadline: 3, image: "/nonexistent/VitruvianSpeaker")
         guard case .failure(let e) = await r.pausePlaying() else { Issue.record("must fail"); return }
         #expect(e.message.contains("cannot load"))
     }
@@ -859,19 +859,19 @@ final class FakeNowPlaying: NowPlayingRunner, @unchecked Sendable {
 // MARK: - Who holds the pause
 
 private func scratch() throws -> URL {
-    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("homespeaker-route-\(UUID().uuidString)")
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-speaker-route-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir
 }
 
-private func testProfile(_ root: URL) -> HomeSpeakerProfile {
+private func testProfile(_ root: URL) -> VitruvianSpeakerProfile {
     .extension(dataFolder: root.appendingPathComponent("data"), toolFolder: nil,
-               messagePrefix: "test.\(UUID().uuidString).homespeaker")
+               messagePrefix: "test.\(UUID().uuidString).vitruvian-speaker")
 }
 
 private func extensionChosen(dataFolder: URL) -> DoorRecord {
     DoorRecord(chosen: .extension, installedExtension: .init(
-        program: "/Applications/Vitruvian.app/Tools/dev.vitruvian.homespeaker/bin/tool",
+        program: "/Applications/Vitruvian.app/Tools/dev.vitruvian.speaker/bin/tool",
         dataFolder: dataFolder.path, version: "1.22.0", door: DoorRecord.ExtensionEntry.runsAlone))
 }
 
@@ -881,11 +881,11 @@ private func extensionChosen(dataFolder: URL) -> DoorRecord {
     /// chosen, the app is quiet: its pause must go to the extension.
     @Test func theAppsSayGoesToTheExtensionWhileItIsChosen() throws {
         let home = try scratch()
-        let app = HomeSpeakerProfile.app(home: home)
-        let data = home.appendingPathComponent("ToolData/dev.vitruvian.homespeaker")
+        let app = VitruvianSpeakerProfile.app(home: home)
+        let data = home.appendingPathComponent("ToolData/dev.vitruvian.speaker")
         let chosen = RequestRoute.candidates(for: app, record: extensionChosen(dataFolder: data), fileExists: { _ in true })
         #expect(chosen.map(\.door) == [.extension], "the quiet app does not listen")
-        #expect(chosen.first?.messagePrefix == HomeSpeakerProfile.extensionMessagePrefix)
+        #expect(chosen.first?.messagePrefix == VitruvianSpeakerProfile.extensionMessagePrefix)
         #expect(chosen.first?.settingsURL == data.appendingPathComponent("settings.json"))
 
         var undecided = extensionChosen(dataFolder: data)
@@ -898,12 +898,12 @@ private func extensionChosen(dataFolder: URL) -> DoorRecord {
     }
 
     @Test func theExtensionsSayGoesToTheAppWhileItIsChosen() throws {
-        let ext = HomeSpeakerProfile.extension(dataFolder: try scratch(), toolFolder: nil)
+        let ext = VitruvianSpeakerProfile.extension(dataFolder: try scratch(), toolFolder: nil)
         #expect(RequestRoute.candidates(for: ext, record: DoorRecord(chosen: .app), fileExists: { _ in true }).map(\.door) == [.app, .extension])
         #expect(RequestRoute.candidates(for: ext, record: DoorRecord(chosen: .extension), fileExists: { _ in true }).map(\.door) == [.extension])
     }
 
-    @Test func aTestsOwnNamesNeverReachARealHomeSpeaker() throws {
+    @Test func aTestsOwnNamesNeverReachARealVitruvianSpeaker() throws {
         let mine = testProfile(try scratch())
         #expect(RequestRoute.candidates(for: mine, record: DoorRecord(chosen: .app), fileExists: { _ in true }) == [mine])
     }
@@ -914,7 +914,7 @@ private func extensionChosen(dataFolder: URL) -> DoorRecord {
         guard case .post(let to) = MediaPauseRequest.destination(for: me, route: route) else {
             Issue.record("posted nowhere"); return
         }
-        #expect(to == other, "posted under the names of a HomeSpeaker nobody runs")
+        #expect(to == other, "posted under the names of a Vitruvian Speaker nobody runs")
     }
 
     /// Nobody alive (neither the app nor Vitruvian running): `--say` pauses
@@ -1022,10 +1022,10 @@ private final class SlowGoogle: URLProtocol {
     @Test func aLoneSayHasTimeToWaitOutTheHold() {
         var config = SpeakerConfig()
         config.pauseMedia = false
-        let without = HomeSpeakerCommandLine.announceTimeout("hello there", config: config)
+        let without = VitruvianSpeakerCommandLine.announceTimeout("hello there", config: config)
         config.pauseMedia = true
         config.pauseMediaExtraSeconds = 1
-        let with = HomeSpeakerCommandLine.announceTimeout("hello there", config: config)
+        let with = VitruvianSpeakerCommandLine.announceTimeout("hello there", config: config)
         #expect(abs((with - without) - AnnouncementTiming.seconds(for: "hello there", extra: 1)) < 0.001)
     }
 }
@@ -1074,7 +1074,7 @@ private struct QuietMac: LocalSpeaking {
     @Test func sayWaitsForAHoldItHoldsItself() async throws {
         let media = MediaLog()
         let history = BroadcastHistory(fileURL: try scratch().appendingPathComponent("history.json"))
-        _ = await HomeSpeakerCommandLine.say(
+        _ = await VitruvianSpeakerCommandLine.say(
             "hello there", config: config(), announcer: Announcer(home: AcceptingHome(), local: QuietMac(), media: media),
             history: history, standsAside: false, door: .app)
         #expect(media.events.first == "pause")

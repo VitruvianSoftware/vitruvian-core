@@ -20,7 +20,7 @@
 
 import Foundation
 import Testing
-@testable import HomeSpeakerCore
+@testable import VitruvianSpeakerCore
 
 // Speaking on this Mac (docs/local-speech.md). Nothing here makes a sound:
 // the home speakers, this Mac's voice and the media pause are all fakes.
@@ -481,7 +481,7 @@ final class FakeSynth: SpeechSynthesizing, @unchecked Sendable {
 
     @Test func postsPayloadToRemoteAgentAndHandlesSpokenAndSkipped() async throws {
         let box = CapturedRequest()
-        let speaker = PhoneSpeaker(endpoint: URL(string: "http://127.0.0.1:7411/v1/homespeaker/phone-say")!) { req in
+        let speaker = PhoneSpeaker(endpoint: URL(string: "http://127.0.0.1:7411/v1/speaker/phone-say")!) { req in
             box.request = req
             let json = #"{"ok":true,"spoken":true}"#
             return (Data(json.utf8), HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
@@ -497,14 +497,14 @@ final class FakeSynth: SpeechSynthesizing, @unchecked Sendable {
         #expect(body["pause_media"] as? Bool == true)
         #expect(body["headphones_only"] as? Bool == true)
 
-        let skipping = PhoneSpeaker(endpoint: URL(string: "http://127.0.0.1:7411/v1/homespeaker/phone-say")!) { req in
+        let skipping = PhoneSpeaker(endpoint: URL(string: "http://127.0.0.1:7411/v1/speaker/phone-say")!) { req in
             let json = #"{"ok":true,"spoken":false,"skipped":true,"reason":"no headphones connected"}"#
             return (Data(json.utf8), HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
         }
         let skipped = try await skipping.speak("Hello", wav: nil, pauseMedia: false, headphonesOnly: true)
         #expect(skipped == .skipped("no headphones connected"))
 
-        let skippingString = PhoneSpeaker(endpoint: URL(string: "http://127.0.0.1:7411/v1/homespeaker/phone-say")!) { req in
+        let skippingString = PhoneSpeaker(endpoint: URL(string: "http://127.0.0.1:7411/v1/speaker/phone-say")!) { req in
             let json = #"{"ok":true,"spoken":false,"skipped":"no_headphones"}"#
             return (Data(json.utf8), HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
         }
@@ -648,16 +648,16 @@ final class FakeSynth: SpeechSynthesizing, @unchecked Sendable {
 
     @Test func profileSpeechLockURLSharesDefaultAcrossProductionDoorsAndIsolatesScratch() {
         let home = FileManager.default.homeDirectoryForCurrentUser
-        let prodApp = HomeSpeakerProfile.app(home: home)
-        let prodExt = HomeSpeakerProfile.extension(
-            dataFolder: home.appendingPathComponent("Library/Application Support/com.vitruviansoftware.vitruvian/Data/dev.vitruvian.homespeaker"),
+        let prodApp = VitruvianSpeakerProfile.app(home: home)
+        let prodExt = VitruvianSpeakerProfile.extension(
+            dataFolder: home.appendingPathComponent("Library/Application Support/com.vitruviansoftware.vitruvian/Data/dev.vitruvian.speaker"),
             toolFolder: nil)
         #expect(prodApp.speechLockURL == SpeechLock.defaultURL)
         #expect(prodExt.speechLockURL == SpeechLock.defaultURL)
 
         let scratchDir = FileManager.default.temporaryDirectory.appendingPathComponent("profile-lock-test")
-        let testApp = HomeSpeakerProfile.app(home: scratchDir)
-        let testExt = HomeSpeakerProfile.extension(dataFolder: scratchDir.appendingPathComponent("data"), toolFolder: nil)
+        let testApp = VitruvianSpeakerProfile.app(home: scratchDir)
+        let testExt = VitruvianSpeakerProfile.extension(dataFolder: scratchDir.appendingPathComponent("data"), toolFolder: nil)
         #expect(testApp.speechLockURL != SpeechLock.defaultURL)
         #expect(testExt.speechLockURL != SpeechLock.defaultURL)
         #expect(testApp.speechLockURL.path.hasPrefix(scratchDir.path))

@@ -1,7 +1,7 @@
-# HomeSpeaker
+# Vitruvian Speaker
 
 <p align="center">
-  <img src="docs/hero_banner.jpg" alt="HomeSpeaker Hero Banner" width="100%" />
+  <img src="docs/hero_banner.jpg" alt="Vitruvian Speaker Hero Banner" width="100%" />
 </p>
 
 A macOS menu bar app (and Vitruvian extension) that reads things aloud across
@@ -20,7 +20,7 @@ to local Chromecast speakers on your LAN), and needs nothing else installed.
 
 ### 1. Control Surfaces, Mac Agent & Audio Outputs (Including Android Remote)
 
-HomeSpeaker can be controlled from **five UI surfaces**—two in the standalone
+Vitruvian Speaker can be controlled from **five UI surfaces**—two in the standalone
 macOS app, two in the Vitruvian desktop extension, and **from your phone via
 [Vitruvian Remote (`android-remote`)](../../mobile/android-remote/README.md)**—and
 can speak across **three independent audio outputs** (Google Home speakers, this
@@ -33,14 +33,14 @@ flowchart LR
         S2["macOS Settings Window\n(SettingsView.swift)"]
         S3["Vitruvian Dynamic Island\n(Pages.swift · island)"]
         S4["Vitruvian Extension Settings\n(Pages.swift · settings)"]
-        S5["Android Remote App\n(Apps → HomeSpeaker\nRemoteState.kt / AppsScreen.kt)"]
+        S5["Android Remote App\n(Apps → Vitruvian Speaker\nRemoteState.kt / AppsScreen.kt)"]
     end
 
     subgraph Agent["Mac Agent Bridge"]
-        MA["macagent (homespeaker.go)\nGET/POST /v1/homespeaker\nPOST /v1/homespeaker/say\nPOST /v1/homespeaker/phone-say"]
+        MA["macagent (vitruvian-speaker.go)\nGET/POST /v1/speaker\nPOST /v1/speaker/say\nPOST /v1/speaker/phone-say"]
     end
 
-    subgraph Core["HomeSpeaker Active Door (App or Extension)"]
+    subgraph Core["Vitruvian Speaker Active Door (App or Extension)"]
         CFG["Shared Config Contract\n(speaker_broadcast.json /\nToolData settings.json)"]
         ENG["Announcer + Stylist\n(Coding Agents · Slack ·\nGoogle Chat · Beeper · --say)"]
     end
@@ -58,7 +58,7 @@ flowchart LR
     CFG --> ENG
     ENG --> O1
     ENG --> O2
-    ENG -->|"POST /v1/homespeaker/phone-say"| MA -->|"WebSocket phone.speak"| O3
+    ENG -->|"POST /v1/speaker/phone-say"| MA -->|"WebSocket phone.speak"| O3
 ```
 
 ### 2. Progressive-Disclosure Configuration Hierarchy
@@ -104,16 +104,16 @@ flowchart TD
 
 ---
 
-## Two ways to run HomeSpeaker
+## Two ways to run Vitruvian Speaker
 
-You can use HomeSpeaker as this menu bar app, as a Vitruvian extension, or
+You can use Vitruvian Speaker as this menu bar app, as a Vitruvian extension, or
 both installed, though only one of them speaks.
 
 | | The app | The Vitruvian extension |
 |---|---|---|
 | What you see | A menu bar icon and a Settings window | A mark on Vitruvian's closed island, and pages in its island and Settings |
 | Needs the other one installed | No | No. It runs on its own and does not use the app's files, except to copy them when you ask |
-| Keeps its files in | `~/.gemini/` and `~/Library/Application Support/HomeSpeaker/` | The extension's own data folder (see [What's stored where](#whats-stored-where)) |
+| Keeps its files in | `~/.gemini/` and `~/Library/Application Support/Vitruvian Speaker/` | The extension's own data folder (see [What's stored where](#whats-stored-where)) |
 
 With only one installed, nothing changes. With both installed, both ask which
 one to use, and nothing is announced twice. Until you answer, the app keeps
@@ -128,7 +128,7 @@ the updated extension has run once.)
 
 Once you have chosen, only that one speaks on its own, reads chat and answers
 the Claude Code hook. You can change your mind from either one's *Which
-HomeSpeaker* row in Settings.
+Vitruvian Speaker* row in Settings.
 
 ---
 
@@ -154,9 +154,9 @@ Optional, only for the features you turn on:
 ## From your phone (Vitruvian Remote on Android)
 
 If you also run [Vitruvian Remote](../../mobile/android-remote/README.md), its
-**HomeSpeaker** module (`Apps → HomeSpeaker`) is a first-class remote control
-and audio endpoint for HomeSpeaker through the paired Mac agent
-([`macagent/homespeaker.go`](../../mobile/android-remote/macagent/homespeaker.go)):
+**Vitruvian Speaker** module (`Apps → Vitruvian Speaker`) is a first-class remote control
+and audio endpoint for Vitruvian Speaker through the paired Mac agent
+([`macagent/vitruvian-speaker.go`](../../mobile/android-remote/macagent/vitruvian-speaker.go)):
 
 - **Full remote configuration with dropdowns & progressive disclosure**: toggle
   master `Broadcasting`, switch outputs (`Home speakers`, `This Mac`, `Your
@@ -168,13 +168,13 @@ and audio endpoint for HomeSpeaker through the paired Mac agent
   per-agent and per-chat sources (including Beeper network filters), and send or
   replay announcements.
 - **Phone as an audio output (`speak_phone`)**: when **Your phone** is turned
-  on, HomeSpeaker streams synthesized audio (or text fallback) through
-  `POST /v1/homespeaker/phone-say` over the active phone bridge so your Android
+  on, Vitruvian Speaker streams synthesized audio (or text fallback) through
+  `POST /v1/speaker/phone-say` over the active phone bridge so your Android
   phone speaks announcements aloud—with optional **Pause media on your phone**
   and **Only with headphones on** controls.
 - **Zero-lag file sync**: `macagent` reads and atomically rewrites the active
   door's config (`~/.gemini/speaker_broadcast.json` or the Vitruvian extension's
-  `ToolData/dev.vitruvian.homespeaker/settings.json`), and HomeSpeaker watches
+  `ToolData/dev.vitruvian.speaker/settings.json`), and Vitruvian Speaker watches
   that file, so changes made on the phone appear in the Mac menu bar / Dynamic
   Island within a second.
 
@@ -197,7 +197,7 @@ Not every speaker offers volume control through Google Home, and "Whole Home"
 has no single volume; the menu says so rather than showing a number. An offline
 speaker shows as offline, not with its last known level.
 
-From a script: `HomeSpeaker --volume`, `--set-volume 0-100`, `--mute` and
+From a script: `VitruvianSpeaker --volume`, `--set-volume 0-100`, `--mute` and
 `--unmute` print the default speaker's volume as JSON.
 
 ---
@@ -205,7 +205,7 @@ From a script: `HomeSpeaker --volume`, `--set-volume 0-100`, `--mute` and
 ## Pause media while announcing
 
 Optional, off by default: *Settings → General → Pause media while announcing*.
-When HomeSpeaker is about to speak, it pauses whatever this Mac is playing —
+When Vitruvian Speaker is about to speak, it pauses whatever this Mac is playing —
 YouTube in a browser, Music, Spotify, QuickTime — and resumes it once the
 speaker has finished. Only what was actually playing is paused, and only that
 is resumed; a video you restart by hand in the meantime is left alone.
@@ -214,21 +214,21 @@ is resumed; a video you restart by hand in the meantime is left alone.
   scripts: Chrome, Brave, Edge, Arc and Vivaldi — *View → Developer → Allow
   JavaScript from Apple Events*; Safari — *Settings → Advanced → Show features
   for web developers*, then *Develop → Allow JavaScript from Apple Events*.
-- **macOS asks once per app** ("HomeSpeaker wants to control Google Chrome").
+- **macOS asks once per app** ("Vitruvian Speaker wants to control Google Chrome").
   The *Test* button next to the setting pauses whatever is playing for three
   seconds, so you can answer those prompts before a real announcement.
 - **Only sound counts.** A muted or silent video (the autoplay previews on
-  GitHub, X, Reddit or YouTube's home page) is never paused; HomeSpeaker
+  GitHub, X, Reddit or YouTube's home page) is never paused; Vitruvian Speaker
   looks past it, in the tab in front and in background tabs, for what is
   actually playing.
 - **Resume time is an estimate.** Google reports when it accepted an
-  announcement, not when the speaker stopped talking, so HomeSpeaker allows
+  announcement, not when the speaker stopped talking, so Vitruvian Speaker allows
   for the chime and the speech, counted from the moment Google accepts it,
   and adds the *Resume N s after* margin. Raise it if media comes back before
   the speaker is done.
 - Works for every announcement — Claude Code replies, Slack and Google Chat
-  messages, Quick Announce and `HomeSpeaker --say` (so `speaker-broadcast`).
-  `--say` hands the pause to whichever HomeSpeaker is in use, the app or the
+  messages, Quick Announce and `VitruvianSpeaker --say` (so `speaker-broadcast`).
+  `--say` hands the pause to whichever Vitruvian Speaker is in use, the app or the
   Vitruvian extension; with neither running, it pauses and resumes the media
   itself and returns once the media is back.
 
@@ -236,7 +236,7 @@ is resumed; a video you restart by hand in the meantime is left alone.
 
 ## Speaking on this Mac
 
-HomeSpeaker can read announcements aloud on this Mac too, or instead of the
+Vitruvian Speaker can read announcements aloud on this Mac too, or instead of the
 Google speakers: *Settings → Speakers → Where to speak* has two switches,
 **Home speakers** and **This Mac**, and a voice picker with a *Preview* button.
 The menu bar shows where announcements go ("Speaking on Lake Office + This Mac").
@@ -250,7 +250,7 @@ The menu bar shows where announcements go ("Speaking on Lake Office + This Mac")
 - If the chosen voice is not installed, the best installed US English voice is
   used instead. More voices: *System Settings → Accessibility → Spoken Content
   → System Voice → Manage Voices*.
-- `HomeSpeaker --say` waits until the Mac has finished speaking before it exits.
+- `VitruvianSpeaker --say` waits until the Mac has finished speaking before it exits.
 
 The settings, the rules and the phone side are in
 [docs/local-speech.md](docs/local-speech.md).
@@ -259,27 +259,27 @@ The settings, the rules and the phone side are in
 
 ## Install
 
-HomeSpeaker is **not notarized** — there is no paid Apple Developer ID behind
+Vitruvian Speaker is **not notarized** — there is no paid Apple Developer ID behind
 it — so macOS blocks a normal browser download on first launch. Use the
 install script, which downloads the release, checks its published SHA-256,
 and clears the quarantine flag:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/VitruvianSoftware/vitruvian-core/main/apps/desktop/home-speaker/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/VitruvianSoftware/vitruvian-core/main/apps/desktop/vitruvian-speaker/scripts/install.sh | bash
 ```
 
-Prefer to do it by hand? Download `HomeSpeaker-x.y.z-macOS.zip` from the
-[Releases page](https://github.com/VitruvianSoftware/vitruvian-core/releases?q=home-speaker),
-unzip it, drag `HomeSpeaker.app` to Applications, then **either**:
+Prefer to do it by hand? Download `VitruvianSpeaker-x.y.z-macOS.zip` from the
+[Releases page](https://github.com/VitruvianSoftware/vitruvian-core/releases?q=vitruvian-speaker),
+unzip it, drag `Vitruvian Speaker.app` to Applications, then **either**:
 
 - open the app once, dismiss the warning, and click **Open Anyway** under
   *System Settings → Privacy & Security*; **or**
-- run `/usr/bin/xattr -dr com.apple.quarantine /Applications/HomeSpeaker.app`
+- run `/usr/bin/xattr -dr com.apple.quarantine "/Applications/Vitruvian Speaker.app"`
   (the full path matters: the `xattr` Python package shadows the system one
   and does not support `-r`).
 
 You only do this once per install. Verify a download with
-`shasum -a 256 -c HomeSpeaker-x.y.z-macOS.zip.sha256`.
+`shasum -a 256 -c VitruvianSpeaker-x.y.z-macOS.zip.sha256`.
 
 ---
 
@@ -295,7 +295,7 @@ press Return.
 
 ### Signing in
 
-HomeSpeaker talks to Google as *you*, through an OAuth client you control.
+Vitruvian Speaker talks to Google as *you*, through an OAuth client you control.
 That is deliberate: a shared client would make one project the gatekeeper for
 everyone's home, cap it at 100 users until Google verifies it, and put every
 user's consent on someone else's screen. So the normal path is your own
@@ -320,7 +320,7 @@ Two shortcuts, when they apply:
 - **Reuse an Antigravity login.** If the Antigravity Google Home connector is
   already signed in on this Mac, *Settings → General → Import Antigravity
   login* copies that session — and the OAuth client behind it — into
-  HomeSpeaker's own owner-only secrets file. Nothing else is needed; the
+  Vitruvian Speaker's own owner-only secrets file. Nothing else is needed; the
   login refreshes on its own. (That client was registered with Antigravity's
   callback, so the in-app **Sign In** and Chat **Grant…** buttons will be
   refused until you add the loopback callbacks above to it.)
@@ -336,12 +336,12 @@ Google.
 
 - **Speaker switching** — one click in the menu bar; *Whole Home* broadcasts everywhere.
 - **Master switch + quiet hours** — automated announcements are held during quiet hours; things you type yourself still play.
-- **Coding agents (Claude Code, Antigravity, OpenCode)** — each agent has its own switch under *Broadcasting*. For Claude Code, *Settings → AI Agents → Install Hook* adds one `Stop` hook to `~/.claude/settings.json` that runs `HomeSpeaker --claude-stop-hook` (existing hooks are left alone; the entry is updated automatically if you move the app). For Antigravity, *Install Hook* writes a `home-speaker` plugin to `~/.gemini/config/plugins/home-speaker/` (`plugin.json` plus a `hooks.json` whose `Stop` hook runs `HomeSpeaker --antigravity-hook`). For OpenCode, it writes `~/.config/opencode/plugins/home-speaker.ts`, which runs `HomeSpeaker --opencode-hook` when a session goes idle. *Remove* deletes only the plugin HomeSpeaker wrote. Every hook skips a turn that already announced itself (`speaker-broadcast` or `HomeSpeaker --say`), and the same words are never spoken twice within 10 seconds.
+- **Coding agents (Claude Code, Antigravity, OpenCode)** — each agent has its own switch under *Broadcasting*. For Claude Code, *Settings → AI Agents → Install Hook* adds one `Stop` hook to `~/.claude/settings.json` that runs `VitruvianSpeaker --claude-stop-hook` (existing hooks are left alone; the entry is updated automatically if you move the app). For Antigravity, *Install Hook* writes a `vitruvian-speaker` plugin to `~/.gemini/config/plugins/vitruvian-speaker/` (`plugin.json` plus a `hooks.json` whose `Stop` hook runs `VitruvianSpeaker --antigravity-hook`). For OpenCode, it writes `~/.config/opencode/plugins/vitruvian-speaker.ts`, which runs `VitruvianSpeaker --opencode-hook` when a session goes idle. *Remove* deletes only the plugin Vitruvian Speaker wrote. Every hook skips a turn that already announced itself (`speaker-broadcast` or `VitruvianSpeaker --say`), and the same words are never spoken twice within 10 seconds.
 - **Slack / Google Chat** — off by default. Turn on under *Settings → Chats*; polling runs inside the app. Google Chat can be read through the app's own Google login (a separate "Grant" from Home — Google will not combine the two) or, if you already have it, the `gws` command-line tool; *Automatic* picks whichever is ready.
-- **Beeper** — off by default, under the same tab. HomeSpeaker asks Beeper Desktop on this Mac (`http://localhost:23373`, read only) for new messages each poll and speaks direct messages and messages that mention you ("WhatsApp message from Alice: …"), or every message if you pick *Every message*. Muted and low-priority chats, reactions and your own messages are left out, and each Beeper network (WhatsApp, Signal, …) can be muted on its own with its switch under *Announce*, on the island, in *Settings → Chats* and in the Mac app's Settings. So nothing is said twice, Beeper's Slack chats for the workspace HomeSpeaker's own Slack token reads are skipped while the Slack switch is on (every Beeper Slack account, if that workspace is not known yet), and Beeper's Google Chat while the Google Chat switch is on; Google Messages (texts) is never skipped. If Beeper Desktop is not running the monitor says so and picks it up when it is. Each poll reads up to 200 new messages; if more arrive at once (after the Mac sleeps, say), Settings says some may have been missed, and muting busy chats in Beeper keeps them off the count.
+- **Beeper** — off by default, under the same tab. Vitruvian Speaker asks Beeper Desktop on this Mac (`http://localhost:23373`, read only) for new messages each poll and speaks direct messages and messages that mention you ("WhatsApp message from Alice: …"), or every message if you pick *Every message*. Muted and low-priority chats, reactions and your own messages are left out, and each Beeper network (WhatsApp, Signal, …) can be muted on its own with its switch under *Announce*, on the island, in *Settings → Chats* and in the Mac app's Settings. So nothing is said twice, Beeper's Slack chats for the workspace Vitruvian Speaker's own Slack token reads are skipped while the Slack switch is on (every Beeper Slack account, if that workspace is not known yet), and Beeper's Google Chat while the Google Chat switch is on; Google Messages (texts) is never skipped. If Beeper Desktop is not running the monitor says so and picks it up when it is. Each poll reads up to 200 new messages; if more arrive at once (after the Mac sleeps, say), Settings says some may have been missed, and muting busy chats in Beeper keeps them off the count.
 - **Open at Login** — a standard macOS login item, toggled under *Settings → General*.
-- **Command line** — `HomeSpeaker --say "dinner is ready"` announces from a script (exit 1 on failure); `HomeSpeaker --say "dinner is ready" --no-history` speaks exactly the same but does not add it to the history (for a replay, and only valid with `--say`); `HomeSpeaker --discover` lists what the signed-in account can see, for troubleshooting an empty speaker list; `HomeSpeaker --chat-monitor start|stop` asks the running app to start or stop reading chat. The binary is at `/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker`.
-- **For other programs: `--state` and `--apply`** — `HomeSpeaker --state --json` prints one JSON document with every setting (its current value, label, choices and whether it is shown), the speakers, sign-in and chat state, the coding-agent hooks and any warnings. It never contains a token or key, only whether one is saved. `HomeSpeaker --apply --json '{"contract_version":1,"operations":[…]}'` changes settings, secrets, snooze, chat networks, Antigravity token imports and coding-agent hooks through the same rules the Settings window uses (`set`, `setDefaultSpeaker`, `removeSpeaker`, `setSecret`, `snooze`, `setNetwork`, `setReadAnyway`, `importAntigravity`, `agentHook`, `removeLegacyAgent`, `saveOAuthClient`, `clearChatToken`, `reset`, `switchTo`) and answers with the new state. `agentHook` takes `"action"` of `install`, `remove`, `addInstruction` or `disableRival` (renames a second hook that makes every reply play twice, keeping the original beside it); `removeLegacyAgent` stops and deletes the old `com.james.chat-monitor` launch agent (and succeeds without doing anything when there is none), after which `--state`'s `legacy_launch_agent` is false. A bad value, an unknown key or any failing operation changes nothing; a `switchTo`, an `agentHook` or a `removeLegacyAgent` must be sent on its own, because they change files outside the settings. When a batch that saved, cleared or imported a secret succeeds, a running Home Speaker is told, so it re-reads its login and restarts its chat monitor. Only the HomeSpeaker you chose (the app or the Vitruvian extension's `bin/tool`, which takes the same flags) accepts `--apply`; the other one refuses and names the chosen one. Failures are JSON with exit 1. The document's shape is pinned by `testdata/state_v1.json`. Use these rather than editing Home Speaker's files directly.
+- **Command line** — `VitruvianSpeaker --say "dinner is ready"` announces from a script (exit 1 on failure); `VitruvianSpeaker --say "dinner is ready" --no-history` speaks exactly the same but does not add it to the history (for a replay, and only valid with `--say`); `VitruvianSpeaker --discover` lists what the signed-in account can see, for troubleshooting an empty speaker list; `VitruvianSpeaker --chat-monitor start|stop` asks the running app to start or stop reading chat. The binary is at `/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker`.
+- **For other programs: `--state` and `--apply`** — `VitruvianSpeaker --state --json` prints one JSON document with every setting (its current value, label, choices and whether it is shown), the speakers, sign-in and chat state, the coding-agent hooks and any warnings. It never contains a token or key, only whether one is saved. `VitruvianSpeaker --apply --json '{"contract_version":1,"operations":[…]}'` changes settings, secrets, snooze, chat networks, Antigravity token imports and coding-agent hooks through the same rules the Settings window uses (`set`, `setDefaultSpeaker`, `removeSpeaker`, `setSecret`, `snooze`, `setNetwork`, `setReadAnyway`, `importAntigravity`, `agentHook`, `removeLegacyAgent`, `saveOAuthClient`, `clearChatToken`, `reset`, `switchTo`) and answers with the new state. `agentHook` takes `"action"` of `install`, `remove`, `addInstruction` or `disableRival` (renames a second hook that makes every reply play twice, keeping the original beside it); `removeLegacyAgent` stops and deletes the old `com.james.chat-monitor` launch agent (and succeeds without doing anything when there is none), after which `--state`'s `legacy_launch_agent` is false. A bad value, an unknown key or any failing operation changes nothing; a `switchTo`, an `agentHook` or a `removeLegacyAgent` must be sent on its own, because they change files outside the settings. When a batch that saved, cleared or imported a secret succeeds, a running Vitruvian Speaker is told, so it re-reads its login and restarts its chat monitor. Only the Vitruvian Speaker you chose (the app or the Vitruvian extension's `bin/tool`, which takes the same flags) accepts `--apply`; the other one refuses and names the chosen one. Failures are JSON with exit 1. The document's shape is pinned by `testdata/state_v1.json`. Use these rather than editing Vitruvian Speaker's files directly.
 
 ---
 
@@ -350,13 +350,13 @@ Google.
 | File | Contents |
 |---|---|
 | `~/.gemini/speaker_broadcast.json` | The app's non-secret settings: speakers, default target, quiet hours, monitor toggles (the extension keeps its own, below). Shared with the `speaker-broadcast` CLI and Gemini/Antigravity skills. |
-| `~/Library/Application Support/HomeSpeaker/secrets.json` | Google tokens, Slack token, Beeper token, OAuth client override. Mode `0600`. |
+| `~/Library/Application Support/Vitruvian Speaker/secrets.json` | Google tokens, Slack token, Beeper token, OAuth client override. Mode `0600`. |
 | `~/.gemini/speaker_history.json` | The last 30 announcements shown in the menu. |
 | `~/.gemini/speaker_door.json` | Which of the two, app or extension, you chose to use, and where the extension keeps its files. The one file both read. |
 | `~/.gemini/speaker_monitor_status.json` | What the app's chat monitor is doing (running, last poll, last error, Slack identity, Google Chat reader, the Beeper networks read and skipped, the app's pid), written by the app. The extension writes its own, below, and its Vitruvian tool reads that one. Not settings: a crashed app leaves it saying "running", so a reader checks the app is up. |
 
 The extension keeps the same four things in its own data folder instead,
-`~/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/dev.vitruvian.homespeaker/`:
+`~/Library/Application Support/com.vitruviansoftware.vitruvian/ToolData/dev.vitruvian.speaker/`:
 `settings.json`, `secrets.json` (mode `0600`), `history.json` and
 `speaker_monitor_status.json`. The formats are the same as the app's. To
 move settings or sign-ins between the two, use the copy offered in the
@@ -364,7 +364,7 @@ choice (or *Copy settings from…* in Settings), not a hand copy: it follows
 rules a plain file copy does not.
 
 To put the Slack token on this Mac from Bitwarden, run
-`bazel run //apps/desktop/home-speaker:sync-secrets` for the app, or add
+`bazel run //apps/desktop/vitruvian-speaker:sync-secrets` for the app, or add
 `-- --extension` for the extension. `--extension` finds the extension's folder
 in `speaker_door.json`, and stops without writing anything if the extension
 has not recorded itself there yet. Add `--beeper` (with or without
@@ -384,28 +384,28 @@ every update. An owner-only file is what `gcloud` and `gh` do.
 ## Building from source
 
 ```bash
-cd apps/desktop/home-speaker
+cd apps/desktop/vitruvian-speaker
 
 # Tests
-bazel test --config=macos-app //apps/desktop/home-speaker:HomeSpeakerTests //apps/desktop/home-speaker:HomeSpeakerToolTests //apps/desktop/home-speaker:HomeSpeakerViewTests //apps/desktop/home-speaker:tool_conformance_test //apps/desktop/home-speaker:tool_version_test
+bazel test --config=macos-app //apps/desktop/vitruvian-speaker:VitruvianSpeakerTests //apps/desktop/vitruvian-speaker:VitruvianSpeakerToolTests //apps/desktop/vitruvian-speaker:VitruvianSpeakerViewTests //apps/desktop/vitruvian-speaker:tool_conformance_test //apps/desktop/vitruvian-speaker:tool_version_test
 
 # Debug build, run directly
-swift build && .build/debug/HomeSpeaker
+swift build && .build/debug/VitruvianSpeaker
 
 # Release package exactly as CI produces it (universal .app + zip + sha256)
 ./scripts/publish.sh --dry-run
 
 # Bazel (monorepo)
-bazel build //apps/desktop/home-speaker:HomeSpeaker
+bazel build //apps/desktop/vitruvian-speaker:VitruvianSpeaker
 ```
 
 To embed an OAuth client in a package you build yourself, set
-`HOMESPEAKER_GOOGLE_CLIENT_ID` and `HOMESPEAKER_GOOGLE_CLIENT_SECRET` before
+`VITRUVIAN_SPEAKER_GOOGLE_CLIENT_ID` and `VITRUVIAN_SPEAKER_GOOGLE_CLIENT_SECRET` before
 running `publish.sh`; CI reads them from repository secrets of the same name.
 
 Releases are cut by release-please from conventional commits under this
-directory (tag `home-speaker-vX.Y.Z`). The version is stamped into
-`Sources/HomeSpeakerCore/Version.swift` and `Resources/Info.plist` together;
+directory (tag `vitruvian-speaker-vX.Y.Z`). The version is stamped into
+`Sources/VitruvianSpeakerCore/Version.swift` and `Resources/Info.plist` together;
 a test fails if they drift.
 
 ---
@@ -436,4 +436,4 @@ Copyright (c) 2026 VitruvianSoftware. MIT Licensed.
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/home-speaker/...`
+- Run: `bazel test //apps/desktop/vitruvian-speaker/...`

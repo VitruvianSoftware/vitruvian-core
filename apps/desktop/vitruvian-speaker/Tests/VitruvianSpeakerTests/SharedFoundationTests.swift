@@ -21,7 +21,7 @@
 
 import Foundation
 import Testing
-@testable import HomeSpeakerCore
+@testable import VitruvianSpeakerCore
 
 // Guards for the shared-foundation fixes: the config file is never clobbered
 // and keeps other writers' keys, hooks point at the app, the "spoken twice"
@@ -162,7 +162,7 @@ private let foreignFile = """
     }
 
     @Test func twoWritersBothLand() throws {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("homespeaker-config-\(UUID().uuidString)")
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-speaker-config-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
         let url = dir.appendingPathComponent("speaker_broadcast.json")
@@ -248,7 +248,7 @@ final class FakeChatMonitor: ChatMonitorControlling {
 
 @MainActor
 private func manager(_ files: MemoryFiles) -> ConfigManager {
-    let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("homespeaker-foundation-\(UUID().uuidString)")
+    let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-speaker-foundation-\(UUID().uuidString)")
     return ConfigManager(
         configPath: configURL,
         historyPath: scratch.appendingPathComponent("history.json"),
@@ -385,19 +385,19 @@ private func manager(_ files: MemoryFiles) -> ConfigManager {
 // MARK: - Hooks
 
 private func scratchHome() -> URL {
-    let url = FileManager.default.temporaryDirectory.appendingPathComponent("homespeaker-home-\(UUID().uuidString)")
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-speaker-home-\(UUID().uuidString)")
     try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
 }
 
 @Suite struct HookPathTests {
-    let app = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
-    let tool = "/Users/me/Library/Application Support/Vitruvian/tools/homespeaker/bin/tool"
+    let app = "/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker"
+    let tool = "/Users/me/Library/Application Support/Vitruvian/tools/vitruvian-speaker/bin/tool"
 
     @Test func aHookIsNeverPointedAtTheTool() throws {
         let home = scratchHome()
         let fromTool = AgentIntegration(home: home, executablePath: tool)
-        #expect(throws: AgentIntegration.IntegrationError.notHomeSpeaker(tool)) { try fromTool.installHook(for: .claudeCode) }
+        #expect(throws: AgentIntegration.IntegrationError.notVitruvianSpeaker(tool)) { try fromTool.installHook(for: .claudeCode) }
         #expect(!FileManager.default.fileExists(atPath: CodingAgent.claudeCode.settingsURL(home: home).path), "nothing written")
     }
 
@@ -410,11 +410,11 @@ private func scratchHome() -> URL {
 
     @Test func theRunningProgramIsAnAbsolutePath() {
         #expect(AgentIntegration.runningExecutable(bundleExecutable: app, argv0: "x", currentDirectory: "/") == app)
-        #expect(AgentIntegration.runningExecutable(bundleExecutable: nil, argv0: ".build/debug/HomeSpeaker", currentDirectory: "/src/hs")
-                == "/src/hs/.build/debug/HomeSpeaker")
-        #expect(AgentIntegration.runningExecutable(bundleExecutable: nil, argv0: "/opt/HomeSpeaker", currentDirectory: "/tmp") == "/opt/HomeSpeaker")
-        #expect(AgentIntegration.isHomeSpeakerProgram(app))
-        #expect(!AgentIntegration.isHomeSpeakerProgram(tool))
+        #expect(AgentIntegration.runningExecutable(bundleExecutable: nil, argv0: ".build/debug/VitruvianSpeaker", currentDirectory: "/src/hs")
+                == "/src/hs/.build/debug/VitruvianSpeaker")
+        #expect(AgentIntegration.runningExecutable(bundleExecutable: nil, argv0: "/opt/VitruvianSpeaker", currentDirectory: "/tmp") == "/opt/VitruvianSpeaker")
+        #expect(AgentIntegration.isVitruvianSpeakerProgram(app))
+        #expect(!AgentIntegration.isVitruvianSpeakerProgram(tool))
     }
 }
 
@@ -434,7 +434,7 @@ private func scratchHome() -> URL {
 
     @Test(arguments: [
         (CodingAgent.claudeCode, AgentIntegration.HookStatus.notInstalled, true),
-        (CodingAgent.claudeCode, AgentIntegration.HookStatus.stale("\"/old/HomeSpeaker\" --claude-stop-hook"), true),
+        (CodingAgent.claudeCode, AgentIntegration.HookStatus.stale("\"/old/VitruvianSpeaker\" --claude-stop-hook"), true),
         (CodingAgent.claudeCode, AgentIntegration.HookStatus.installed, false),
         (CodingAgent.antigravity, AgentIntegration.HookStatus.notInstalled, true),
         (CodingAgent.antigravity, AgentIntegration.HookStatus.installed, false),
@@ -691,7 +691,7 @@ final class Saved: @unchecked Sendable {
 
     @Test func nothingPlaying() async {
         let out = await AppCommandRunner.testMediaPause(coordinator: coordinator(FakeRunner(), audio: []), wait: { _ in })
-        #expect(out == CLIOutput(stdout: ["nothing was playing that HomeSpeaker can pause"]))
+        #expect(out == CLIOutput(stdout: ["nothing was playing that Vitruvian Speaker can pause"]))
     }
 
     @Test func aRefusingPlayerExitsOne() async {
@@ -702,17 +702,17 @@ final class Saved: @unchecked Sendable {
         #expect(out.exitCode == 1)
         #expect(out.stdout.first?.contains("Allow JavaScript from Apple Events") == true)
         let unknown = await AppCommandRunner.testMediaPause(coordinator: coordinator(FakeRunner(), audio: ["us.zoom.xos"]), wait: { _ in })
-        #expect(unknown.exitCode == 1, "a player HomeSpeaker cannot drive is a failed test, not a pass")
+        #expect(unknown.exitCode == 1, "a player Vitruvian Speaker cannot drive is a failed test, not a pass")
     }
 }
 
-/// `HomeSpeaker --sign-out` runs as a second process; the running menu bar
+/// `VitruvianSpeaker --sign-out` runs as a second process; the running menu bar
 /// app has to hear about it, re-read the login and stop polling Chat.
 @MainActor
 @Suite(.serialized) struct SignOutNoticeTests {
     /// A store with a Home login, and a manager that has read it.
     private func signedIn() throws -> (ConfigManager, SecretStore) {
-        let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("homespeaker-signout-\(UUID().uuidString)")
+        let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-speaker-signout-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
         let secrets = SecretStore(fileURL: scratch.appendingPathComponent("secrets.json"))
         try secrets.save(Secrets(google: GoogleCredentials(
@@ -758,9 +758,9 @@ final class Saved: @unchecked Sendable {
     }
 
     /// The real distributed notification, under a name of its own so a
-    /// HomeSpeaker running on this Mac never sees it.
+    /// Vitruvian Speaker running on this Mac never sees it.
     @Test func aPostedNoticeReachesTheListener() async throws {
-        let name = Notification.Name("com.vitruviansoftware.homespeaker.test.signed-out.\(UUID().uuidString)")
+        let name = Notification.Name("com.vitruviansoftware.speaker.test.signed-out.\(UUID().uuidString)")
         var heard: [Bool] = []
         let token = SignOutNotice.listen(name: name) { heard.append($0) }
         defer { DistributedNotificationCenter.default().removeObserver(token) }

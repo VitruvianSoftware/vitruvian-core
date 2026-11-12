@@ -17,8 +17,8 @@ import (
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 )
 
-// The REST part of the local API: two read-only endpoints of the reference app's /v1 API, the two HomeSpeaker
-// reads (apps/desktop/home-speaker, BeeperClient.swift), in the reference app's shape. They sit behind the same
+// The REST part of the local API: two read-only endpoints of the reference app's /v1 API, the two Vitruvian Speaker
+// reads (apps/desktop/vitruvian-speaker, BeeperClient.swift), in the reference app's shape. They sit behind the same
 // guards as the MCP endpoint (guard: no browser, a loopback Host unless Remote Access is on; requireToken: a token
 // the person approved, looked up on every request), and answer from the same code the MCP tools run: get_accounts's
 // accounts.list, and search_messages's search (findMessages), so a message reads as it does now (its latest edit)
@@ -131,7 +131,7 @@ func restStatus(err error) int {
 	return http.StatusInternalServerError
 }
 
-// restError answers with status and {"error": a short code, "message": msg in plain words}. HomeSpeaker shows
+// restError answers with status and {"error": a short code, "message": msg in plain words}. Vitruvian Speaker shows
 // message; error is the same short code the guards answer with.
 func restError(w http.ResponseWriter, status int, msg string) {
 	code := "internal_error"

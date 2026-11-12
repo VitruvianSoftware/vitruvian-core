@@ -59,10 +59,10 @@ public actor GoogleHomeClient {
     public nonisolated let auth: GoogleAuth
     nonisolated let session: URLSession
     /// Whose names the media pause and the volume restore go under. Nil is
-    /// the process's (`HomeSpeakerProfile.current`), read at each call.
-    public nonisolated let messages: HomeSpeakerProfile?
+    /// the process's (`VitruvianSpeakerProfile.current`), read at each call.
+    public nonisolated let messages: VitruvianSpeakerProfile?
 
-    public init(auth: GoogleAuth = .shared, session: URLSession = .shared, messages: HomeSpeakerProfile? = nil) {
+    public init(auth: GoogleAuth = .shared, session: URLSession = .shared, messages: VitruvianSpeakerProfile? = nil) {
         self.auth = auth
         self.session = session
         self.messages = messages

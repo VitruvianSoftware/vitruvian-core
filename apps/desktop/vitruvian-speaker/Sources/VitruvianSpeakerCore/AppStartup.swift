@@ -38,7 +38,7 @@ public enum AppStartup {
         /// (`ChatMonitorService.startIfConfigured`).
         case chatMonitor
         /// Holding paused media and putting speakers back for the hook and
-        /// `--say` (`HomeSpeakerEngine.listen`).
+        /// `--say` (`VitruvianSpeakerEngine.listen`).
         case listeners
     }
 
@@ -105,7 +105,7 @@ public enum AppStartup {
     /// - `--say` (both human and agent) follows the extension's settings,
     ///   secrets, announcer and history while the extension is in use
     ///   (`inUseSettings`, `inUseEngine`): `speaker-broadcast` runs this
-    ///   program whichever HomeSpeaker the person picked;
+    ///   program whichever Vitruvian Speaker the person picked;
     /// - `--sign-out` never revokes a login the extension shares.
     public static func commandLineParts(
         check: DoorCheck = DoorCheck(appInstalled: { false }),
@@ -113,13 +113,13 @@ public enum AppStartup {
         appProgram: @escaping @Sendable () -> String = { AgentIntegration.runningExecutable() },
         home: URL = FileManager.default.homeDirectoryForCurrentUser,
         now: @escaping @Sendable () -> Date = { Date() },
-        makeInUseEngine: @escaping @MainActor @Sendable (HomeSpeakerProfile) -> HomeSpeakerEngine = {
-            HomeSpeakerEngine(profile: $0)
+        makeInUseEngine: @escaping @MainActor @Sendable (VitruvianSpeakerProfile) -> VitruvianSpeakerEngine = {
+            VitruvianSpeakerEngine(profile: $0)
         },
         postSignedOut: @escaping @Sendable (_ chatOnly: Bool, Notification.Name) -> Void = {
             SignOutNotice.post(chatOnly: $0, name: $1)
         }
-    ) -> HomeSpeakerCommandLine.Parts {
+    ) -> VitruvianSpeakerCommandLine.Parts {
         .app(
             standsAside: { plan(check: check, bundlePath: bundlePath()).role.isQuiet },
             asideNote: { asideNote(record: check.file.read(), fileExists: check.fileExists, bundlePath: bundlePath()) },
@@ -165,25 +165,25 @@ public enum AppStartup {
     /// choice).
     public struct CommandLineSwitchSeam: SettingsActions.DoorSwitchSeam, Sendable {
         public let check: DoorCheck
-        public let appProfile: HomeSpeakerProfile
+        public let appProfile: VitruvianSpeakerProfile
         public let bundlePath: @Sendable () -> String
         public let appProgram: @Sendable () -> String
         public let home: URL
         public let nowClosure: @Sendable () -> Date
-        public let copyClosure: @Sendable (HomeSpeakerProfile, HomeSpeakerProfile) throws -> CopyReport
-        public let credentialsChangedIn: @Sendable (HomeSpeakerProfile) -> Void
+        public let copyClosure: @Sendable (VitruvianSpeakerProfile, VitruvianSpeakerProfile) throws -> CopyReport
+        public let credentialsChangedIn: @Sendable (VitruvianSpeakerProfile) -> Void
 
         public init(
             check: DoorCheck,
-            appProfile: HomeSpeakerProfile,
+            appProfile: VitruvianSpeakerProfile,
             bundlePath: @escaping @Sendable () -> String = { Bundle.main.bundlePath },
             appProgram: @escaping @Sendable () -> String = { AgentIntegration.runningExecutable() },
             home: URL = FileManager.default.homeDirectoryForCurrentUser,
             now: @escaping @Sendable () -> Date = { Date() },
-            copy: @escaping @Sendable (HomeSpeakerProfile, HomeSpeakerProfile) throws -> CopyReport = {
+            copy: @escaping @Sendable (VitruvianSpeakerProfile, VitruvianSpeakerProfile) throws -> CopyReport = {
                 try DoorCopy.copy(from: $0, to: $1)
             },
-            credentialsChangedIn: @escaping @Sendable (HomeSpeakerProfile) -> Void = {
+            credentialsChangedIn: @escaping @Sendable (VitruvianSpeakerProfile) -> Void = {
                 CredentialsChangedNotice.post(name: CredentialsChangedNotice.notificationName(for: $0))
             }
         ) {
@@ -197,8 +197,8 @@ public enum AppStartup {
             self.credentialsChangedIn = credentialsChangedIn
         }
 
-        public var me: HomeSpeakerProfile.Door { .app }
-        public var chosenBy: String { "HomeSpeaker app \(HomeSpeakerVersion.current)" }
+        public var me: VitruvianSpeakerProfile.Door { .app }
+        public var chosenBy: String { "Vitruvian Speaker app \(VitruvianSpeakerVersion.current)" }
 
         public func now() -> Date { nowClosure() }
 
@@ -214,11 +214,11 @@ public enum AppStartup {
             OtherDoorPresence.extensionInstalled(record: record, fileExists: check.fileExists)
         }
 
-        public func profile(for side: HomeSpeakerProfile.Door, record: DoorRecord?) -> HomeSpeakerProfile? {
+        public func profile(for side: VitruvianSpeakerProfile.Door, record: DoorRecord?) -> VitruvianSpeakerProfile? {
             side == .app ? appProfile : AppStartup.extensionProfile(record: record)
         }
 
-        public func program(for side: HomeSpeakerProfile.Door, record: DoorRecord?) -> String? {
+        public func program(for side: VitruvianSpeakerProfile.Door, record: DoorRecord?) -> String? {
             switch side {
             case .app:
                 let path = appProgram()
@@ -231,15 +231,15 @@ public enum AppStartup {
             }
         }
 
-        public func copy(from source: HomeSpeakerProfile, to destination: HomeSpeakerProfile) throws -> CopyReport {
+        public func copy(from source: VitruvianSpeakerProfile, to destination: VitruvianSpeakerProfile) throws -> CopyReport {
             try copyClosure(source, destination)
         }
 
-        public func credentialsChanged(in destination: HomeSpeakerProfile) {
+        public func credentialsChanged(in destination: VitruvianSpeakerProfile) {
             credentialsChangedIn(destination)
         }
 
-        public func writeChoice(_ side: HomeSpeakerProfile.Door, at date: Date, chosenBy: String) throws {
+        public func writeChoice(_ side: VitruvianSpeakerProfile.Door, at date: Date, chosenBy: String) throws {
             try check.file.update {
                 $0.chosen = side
                 $0.chosenAt = date
@@ -247,7 +247,7 @@ public enum AppStartup {
             }
         }
 
-        public func repointHooks(to side: HomeSpeakerProfile.Door, program: String) -> [String] {
+        public func repointHooks(to side: VitruvianSpeakerProfile.Door, program: String) -> [String] {
             SettingsActions.repointStaleHooks(home: home, to: program)
         }
 
@@ -268,16 +268,16 @@ public enum AppStartup {
         public func openVitruvian() -> Bool { false }
     }
 
-    /// The extension's profile while it is the HomeSpeaker in use (chosen
+    /// The extension's profile while it is the Vitruvian Speaker in use (chosen
     /// and installed, and the app is not in the Trash); nil otherwise.
-    public static func inUseProfile(check: DoorCheck, bundlePath: String = Bundle.main.bundlePath) -> HomeSpeakerProfile? {
+    public static func inUseProfile(check: DoorCheck, bundlePath: String = Bundle.main.bundlePath) -> VitruvianSpeakerProfile? {
         guard !OtherDoorPresence.isInTrash(bundlePath + "/") else { return nil }
         let record = check.file.read()
         guard role(record: record, fileExists: check.fileExists).isQuiet else { return nil }
         return extensionProfile(record: record)
     }
 
-    /// The extension's settings while it is the HomeSpeaker in use (chosen
+    /// The extension's settings while it is the Vitruvian Speaker in use (chosen
     /// and installed); nil otherwise, or when its file does not read. Read
     /// afresh, never written.
     public static func inUseSettings(check: DoorCheck) -> SpeakerConfig? {
@@ -290,10 +290,10 @@ public enum AppStartup {
 
     /// What `--say` notes when the app is in the Trash and the extension is
     /// not the one in use (so "the extension is in use" would be untrue).
-    public static let inTheTrashNote = "note: this copy of the HomeSpeaker app is in the Trash, so it stays quiet"
+    public static let inTheTrashNote = "note: this copy of the Vitruvian Speaker app is in the Trash, so it stays quiet"
 
     /// `--say`'s note while the app stands aside: nil for the usual "the
-    /// HomeSpeaker extension is the one in use", which holds whenever the
+    /// Vitruvian Speaker extension is the one in use", which holds whenever the
     /// extension is chosen and installed; `inTheTrashNote` when the app
     /// stands aside only because it is in the Trash.
     public static func asideNote(record: DoorRecord?, fileExists: (String) -> Bool, bundlePath: String) -> String? {
@@ -305,7 +305,7 @@ public enum AppStartup {
     /// long-lived process holds its lock (`profile.liveLockURL`) and its
     /// status file says the monitor runs: a status left behind by a crash,
     /// with nobody holding the lock, does not count. Read, never written.
-    public static func extensionReadsChat(_ profile: HomeSpeakerProfile) -> Bool {
+    public static func extensionReadsChat(_ profile: VitruvianSpeakerProfile) -> Bool {
         guard let lock = profile.liveLockURL, LiveLock.isHeld(at: lock) else { return false }
         return ChatMonitorStatusFile(url: profile.monitorStatusURL).read()?.isRunning == true
     }
@@ -331,9 +331,9 @@ public enum AppStartup {
     /// The extension's files, from its block in the choice file: its data
     /// folder as written there, else worked out from its program. Nil when
     /// there is no block.
-    public static func extensionProfile(record: DoorRecord?) -> HomeSpeakerProfile? {
+    public static func extensionProfile(record: DoorRecord?) -> VitruvianSpeakerProfile? {
         guard let entry = record?.installedExtension else { return nil }
-        let folders = HomeSpeakerProfile.extensionFolders(program: URL(fileURLWithPath: entry.program))
+        let folders = VitruvianSpeakerProfile.extensionFolders(program: URL(fileURLWithPath: entry.program))
         guard let data = entry.dataFolder.map({ URL(fileURLWithPath: $0, isDirectory: true) }) ?? folders?.data else {
             return nil
         }
@@ -351,14 +351,14 @@ public final class AppDoor: ObservableObject {
     /// What starting and stopping the parts does: the real ones in the app,
     /// recorded in a test.
     public struct Effects {
-        public var repairHooks: @MainActor (HomeSpeakerProfile.Door?) -> Void
+        public var repairHooks: @MainActor (VitruvianSpeakerProfile.Door?) -> Void
         public var startMonitorIfConfigured: @MainActor () -> Void
         public var stopMonitor: @MainActor () -> Void
         public var startListening: @MainActor () -> Void
         public var stopListening: @MainActor () -> Void
 
         public init(
-            repairHooks: @escaping @MainActor (HomeSpeakerProfile.Door?) -> Void,
+            repairHooks: @escaping @MainActor (VitruvianSpeakerProfile.Door?) -> Void,
             startMonitorIfConfigured: @escaping @MainActor () -> Void,
             stopMonitor: @escaping @MainActor () -> Void,
             startListening: @escaping @MainActor () -> Void,
@@ -383,7 +383,7 @@ public final class AppDoor: ObservableObject {
     private let bundlePath: () -> String
     private let effects: Effects
     /// Is the extension's monitor reading chat (`AppStartup.extensionReadsChat`)?
-    private let extensionReadsChat: (HomeSpeakerProfile) -> Bool
+    private let extensionReadsChat: (VitruvianSpeakerProfile) -> Bool
     /// Runs `work` again a moment later, while the monitor waits.
     private let later: (@escaping @MainActor () -> Void) -> Void
     /// What runs now, as started here; nothing until the first refresh.
@@ -394,13 +394,13 @@ public final class AppDoor: ObservableObject {
     /// A re-check is already asked for.
     private var recheckAsked = false
     /// The choice the hooks were last repaired for, while running.
-    private var repairedFor: HomeSpeakerProfile.Door??
+    private var repairedFor: VitruvianSpeakerProfile.Door??
 
     /// `later` runs its work again a second later by default; a test runs
     /// it by hand.
     public init(
         check: DoorCheck, bundlePath: @escaping () -> String, monitor: any ChatMonitorControlling, effects: Effects,
-        extensionReadsChat: @escaping (HomeSpeakerProfile) -> Bool = AppStartup.extensionReadsChat,
+        extensionReadsChat: @escaping (VitruvianSpeakerProfile) -> Bool = AppStartup.extensionReadsChat,
         later: @escaping (@escaping @MainActor () -> Void) -> Void = { work in
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { MainActor.assumeIsolated { work() } }
         }
@@ -477,9 +477,9 @@ public final class AppDoor: ObservableObject {
     }
 
     /// Signs the app out, by the one rule for both sides
-    /// (`HomeSpeakerEngine.signOut`): a login the extension shares is
+    /// (`VitruvianSpeakerEngine.signOut`): a login the extension shares is
     /// removed here only, never revoked at Google.
-    public func signOut(engine: HomeSpeakerEngine, chatOnly: Bool) async -> CLIOutput {
+    public func signOut(engine: VitruvianSpeakerEngine, chatOnly: Bool) async -> CLIOutput {
         await engine.signOut(chatOnly: chatOnly, otherSecrets: otherSecrets())
     }
 }

@@ -19,24 +19,24 @@
 // SOFTWARE.
 
 import Foundation
-@preconcurrency import HomeSpeakerCore
+@preconcurrency import VitruvianSpeakerCore
 
 /// Runs the tool's jobs on the extension's own engine, in the tool's own
-/// process: no HomeSpeaker program is started.
+/// process: no Vitruvian Speaker program is started.
 ///
 /// Each job goes through the same Core function the command line runs for
-/// that flag (`HomeSpeakerCommandLine.say`, `.volume`, `.signIn`,
+/// that flag (`VitruvianSpeakerCommandLine.say`, `.volume`, `.signIn`,
 /// `.loginItem`, `AppCommandRunner.discover`, `.testMediaPause`; sign-out
-/// through `HomeSpeakerEngine.signOut`). What the function printed is read
+/// through `VitruvianSpeakerEngine.signOut`). What the function printed is read
 /// by `ProcessDriver.result`, exactly as the program's printing was, so the
-/// tool's state machine (`HomeSpeakerTool.finished`) gets the `JobResult`
+/// tool's state machine (`VitruvianSpeakerTool.finished`) gets the `JobResult`
 /// it always got and needs no change.
 ///
 /// The settings, the history and the sign-ins are the engine's: the
 /// extension's own files, never the app's.
 ///
 /// Each job has the command line's time limit for its flag
-/// (`HomeSpeakerCommandLine.timeLimit(for:settings:)`): when it runs out, the
+/// (`VitruvianSpeakerCommandLine.timeLimit(for:settings:)`): when it runs out, the
 /// job answers what the program printed when it gave up, so a call to Google
 /// or a speaker that never returns cannot hold the tool's slot forever. The
 /// job itself is asked to stop; its later answer is dropped.
@@ -65,7 +65,7 @@ public final class EngineDriver: SpeakerDriver, Sendable {
         /// This Mac's browser: the command line's own (`NSWorkspace`).
         public var browser: @Sendable (URL) -> Void
         /// The app's sign-ins, when it is installed, so a sign-out never
-        /// revokes a login the app shares (`HomeSpeakerEngine.signOut`).
+        /// revokes a login the app shares (`VitruvianSpeakerEngine.signOut`).
         public var otherSecrets: @Sendable () -> Secrets?
         /// True when the app is the one chosen: `--say` then says so on
         /// standard error, and still speaks.
@@ -85,7 +85,7 @@ public final class EngineDriver: SpeakerDriver, Sendable {
         /// uses, under the engine's message names.
         @MainActor
         public init(
-            engine: HomeSpeakerEngine,
+            engine: VitruvianSpeakerEngine,
             otherSecrets: @escaping @Sendable () -> Secrets?,
             link: (@Sendable (URL) -> Void)? = nil,
             standsAside: @escaping @Sendable () -> Bool = { false }
@@ -97,7 +97,7 @@ public final class EngineDriver: SpeakerDriver, Sendable {
             homes = engine.home
             signIn = { try await auth.signIn(purpose: $0, openBrowser: $1) }
             self.link = link
-            browser = HomeSpeakerCommandLine.Parts.extension().openBrowser
+            browser = VitruvianSpeakerCommandLine.Parts.extension().openBrowser
             self.otherSecrets = otherSecrets
             self.standsAside = standsAside
             signedIn = { CredentialsChangedNotice.post(name: CredentialsChangedNotice.notificationName(for: profile)) }
@@ -108,13 +108,13 @@ public final class EngineDriver: SpeakerDriver, Sendable {
 
     /// The tool's own program, which the agents' hooks run.
     public let program: URL?
-    private let engine: HomeSpeakerEngine
-    private let door: HomeSpeakerProfile.Door
+    private let engine: VitruvianSpeakerEngine
+    private let door: VitruvianSpeakerProfile.Door
     private let history: BroadcastHistory
     private let parts: Parts
 
     @MainActor
-    public init(engine: HomeSpeakerEngine, program: URL, parts: Parts) {
+    public init(engine: VitruvianSpeakerEngine, program: URL, parts: Parts) {
         self.program = program
         self.engine = engine
         door = engine.profile.door
@@ -138,7 +138,7 @@ public final class EngineDriver: SpeakerDriver, Sendable {
         Task.detached {
             let command = Self.command(for: job)
             let limit = await MainActor.run {
-                HomeSpeakerCommandLine.timeLimit(for: command, settings: { engine.config.config })
+                VitruvianSpeakerCommandLine.timeLimit(for: command, settings: { engine.config.config })
             }
             // The clock starts before the work does, so work that answers at
             // once cannot get ahead of it.
@@ -155,7 +155,7 @@ public final class EngineDriver: SpeakerDriver, Sendable {
 
     /// The command line's command for `job`, as `ProcessDriver.arguments`
     /// would ask for it.
-    static func command(for job: Job) -> HomeSpeakerCommandLine.Command {
+    static func command(for job: Job) -> VitruvianSpeakerCommandLine.Command {
         switch job {
         case .say(let text), .replay(let text): return .say(text)
         case .volume, .setVolume, .mute, .unmute: return .volume(volumeRequest(job))
@@ -166,24 +166,24 @@ public final class EngineDriver: SpeakerDriver, Sendable {
 
     /// What the flag for `job` prints, run on the engine.
     static func output(
-        of job: Job, engine: HomeSpeakerEngine, door: HomeSpeakerProfile.Door,
+        of job: Job, engine: VitruvianSpeakerEngine, door: VitruvianSpeakerProfile.Door,
         history: BroadcastHistory, parts: Parts
     ) async -> CLIOutput {
         switch job {
         case .say(let text):
             let settings = await settings(of: engine)
-            return await HomeSpeakerCommandLine.say(
+            return await VitruvianSpeakerCommandLine.say(
                 text, config: settings, announcer: parts.announcer, history: history,
                 standsAside: parts.standsAside(), door: door)
         case .replay(let text):
             // Already in the history: spoken again, not listed again.
             let settings = await settings(of: engine)
-            return await HomeSpeakerCommandLine.say(
+            return await VitruvianSpeakerCommandLine.say(
                 text, config: settings, announcer: parts.announcer, history: history,
                 standsAside: parts.standsAside(), door: door, records: false)
         case .volume, .setVolume, .mute, .unmute:
             let settings = await settings(of: engine)
-            return await HomeSpeakerCommandLine.volume(volumeRequest(job), config: settings, speaker: parts.speaker)
+            return await VitruvianSpeakerCommandLine.volume(volumeRequest(job), config: settings, speaker: parts.speaker)
         case .app(.signOut(let chatOnly)):
             return await signOut(chatOnly: chatOnly, engine: engine, parts: parts)
         case .app(.discover(let save, let wanted)):
@@ -198,14 +198,14 @@ public final class EngineDriver: SpeakerDriver, Sendable {
         case .app(.loginItem(let action)):
             // The extension has no login item of its own: the command
             // line's refusal, in its words.
-            return HomeSpeakerCommandLine.loginItem(action, item: HomeSpeakerCommandLine.Parts.extension().loginItem)
+            return VitruvianSpeakerCommandLine.loginItem(action, item: VitruvianSpeakerCommandLine.Parts.extension().loginItem)
         case .app(.testMediaPause):
             return await testMediaPause()
         case .signIn(let chatOnly):
             // The program printed the line it waits on before who signed
             // in; the tool reads both, so they are kept in that order.
             let progress = Printed()
-            var out = await HomeSpeakerCommandLine.signIn(
+            var out = await VitruvianSpeakerCommandLine.signIn(
                 purpose: chatOnly ? .chat : .home, signIn: parts.signIn,
                 openBrowser: parts.link ?? parts.browser,
                 progress: { progress.add($0) }, notify: parts.signedIn)
@@ -215,7 +215,7 @@ public final class EngineDriver: SpeakerDriver, Sendable {
     }
 
     /// The flag's request, held to 0 to 100 as `ProcessDriver.arguments` holds it.
-    static func volumeRequest(_ job: Job) -> HomeSpeakerCommandLine.VolumeRequest {
+    static func volumeRequest(_ job: Job) -> VitruvianSpeakerCommandLine.VolumeRequest {
         switch job {
         case .setVolume(let level): return .set(min(100, max(0, level)))
         case .mute: return .mute
@@ -226,13 +226,13 @@ public final class EngineDriver: SpeakerDriver, Sendable {
 
     /// The engine's settings, read on the main actor as the command line
     /// reads them.
-    private static func settings(of engine: HomeSpeakerEngine) async -> SpeakerConfig {
+    private static func settings(of engine: VitruvianSpeakerEngine) async -> SpeakerConfig {
         await MainActor.run { engine.config.config }
     }
 
     /// `--sign-out [--chat]`: the engine's one sign-out path.
     @MainActor
-    private static func signOut(chatOnly: Bool, engine: HomeSpeakerEngine, parts: Parts) async -> CLIOutput {
+    private static func signOut(chatOnly: Bool, engine: VitruvianSpeakerEngine, parts: Parts) async -> CLIOutput {
         await engine.signOut(chatOnly: chatOnly, otherSecrets: parts.otherSecrets(), notify: parts.signedOut)
     }
 

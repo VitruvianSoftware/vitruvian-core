@@ -20,7 +20,7 @@
 
 import Foundation
 import Testing
-@testable import HomeSpeakerCore
+@testable import VitruvianSpeakerCore
 
 // Beeper as a chat source. Nothing here reaches the network, and above all
 // never the real Beeper Desktop on this Mac (port 23373): every request goes
@@ -359,7 +359,7 @@ private final class RecordingLocal: LocalSpeaking, @unchecked Sendable {
 @MainActor
 private struct Rig {
     let root: URL
-    let engine: HomeSpeakerEngine
+    let engine: VitruvianSpeakerEngine
     let monitor: ChatMonitorService
     let beeper: StandInBeeper.Scenario
     let token: String
@@ -370,17 +370,17 @@ private struct Rig {
     /// "this Mac", reading Beeper through the stand-in with `token`.
     init(monitorConfig: ChatMonitorConfig, beeperToken: String?, slackToken: String? = nil,
          beeper: StandInBeeper.Scenario) throws {
-        root = FileManager.default.temporaryDirectory.appendingPathComponent("homespeaker-beeper-\(UUID().uuidString)")
+        root = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-speaker-beeper-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        let profile = HomeSpeakerProfile.extension(
+        let profile = VitruvianSpeakerProfile.extension(
             dataFolder: root.appendingPathComponent("data"), toolFolder: nil,
-            messagePrefix: "test.\(UUID().uuidString).homespeaker")
+            messagePrefix: "test.\(UUID().uuidString).vitruvian-speaker")
         for url in [profile.settingsURL, profile.historyURL, profile.secretsURL, profile.monitorStatusURL] {
             try #require(url.path.hasPrefix(root.path + "/"), "\(url.path) is outside the scratch folder")
         }
         // Never the real Beeper: the address the monitor is given is not its port.
         try #require(standInBase.port != 23373 && ChatAppClient.isLoopback(standInBase))
-        engine = HomeSpeakerEngine(profile: profile, session: StandInSlack.session, local: local)
+        engine = VitruvianSpeakerEngine(profile: profile, session: StandInSlack.session, local: local)
         var config = SpeakerConfig(enabled: true, quietHoursEnabled: false, chatMonitor: monitorConfig)
         config.speakHome = false
         config.speakLocal = true
@@ -614,13 +614,13 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
     /// else reads nothing rather than falling back to the real Beeper.
     @Test func theAddressStaysOnThisMac() {
         #expect(ChatAppClient.baseURL(environment: [:]) == .success(URL(string: "http://localhost:23373")!))
-        #expect(ChatAppClient.baseURL(environment: ["HOMESPEAKER_BEEPER_URL": ""]) == .success(ChatAppClient.defaultBaseURL))
+        #expect(ChatAppClient.baseURL(environment: ["VITRUVIAN_SPEAKER_BEEPER_URL": ""]) == .success(ChatAppClient.defaultBaseURL))
         for good in ["http://localhost:5000", "http://127.0.0.1:5000", "http://[::1]:5000"] {
-            #expect(ChatAppClient.baseURL(environment: ["HOMESPEAKER_BEEPER_URL": good]) == .success(URL(string: good)!), "\(good)")
+            #expect(ChatAppClient.baseURL(environment: ["VITRUVIAN_SPEAKER_BEEPER_URL": good]) == .success(URL(string: good)!), "\(good)")
         }
         for bad in ["http://example.com:23373", "https://localhost:5000", "http://192.168.1.10:23373", "localhost:5000",
                     "http://localhost.example.com"] {
-            guard case .failure = ChatAppClient.baseURL(environment: ["HOMESPEAKER_BEEPER_URL": bad]) else {
+            guard case .failure = ChatAppClient.baseURL(environment: ["VITRUVIAN_SPEAKER_BEEPER_URL": bad]) else {
                 Issue.record("\(bad) was taken")
                 continue
             }
@@ -632,7 +632,7 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
     /// forgets its stand-in can never reach the real Beeper Desktop.
     @Test func testRunsNeverPointAtTheRealBeeper() throws {
         let url = try ChatAppClient.baseURL(environment: ProcessInfo.processInfo.environment).get()
-        #expect(url.port != 23373, "run the tests through the Bazel targets, which set HOMESPEAKER_BEEPER_URL")
+        #expect(url.port != 23373, "run the tests through the Bazel targets, which set VITRUVIAN_SPEAKER_BEEPER_URL")
         #expect(url != ChatAppClient.defaultBaseURL)
     }
 
@@ -724,7 +724,7 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
     }
 
     @Test func theTokenIsKeptBesideTheOthers() throws {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("homespeaker-beeper-secrets-\(UUID().uuidString)")
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-speaker-beeper-secrets-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: dir) }
         let store = SecretStore(fileURL: dir.appendingPathComponent("secrets.json"))
         try store.save(Secrets(slackToken: "fake-slack")) // gitleaks:allow (made-up test token)
@@ -737,7 +737,7 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
     }
 
     @Test func theStatusFileCarriesTheNetworksAndOlderFilesRead() throws {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("homespeaker-beeper-status-\(UUID().uuidString)")
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-speaker-beeper-status-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
         let file = ChatMonitorStatusFile(url: dir.appendingPathComponent(ChatMonitorStatusFile.fileName))
@@ -1247,7 +1247,7 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
 
     /// Google Chat's own switch on and WhatsApp muted: every network once,
     /// by its key, read, skipped or muted. The older lists keep their
-    /// meaning: networks read, and networks HomeSpeaker reads itself.
+    /// meaning: networks read, and networks Vitruvian Speaker reads itself.
     @Test func statesListReadingSkippedAndMuted() async throws {
         let scenario = StandInBeeper.Scenario(searches: [.messages([])])
         var rig = try Rig(

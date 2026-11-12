@@ -22,7 +22,6 @@
 
 pub mod antigravity;
 pub mod exec;
-pub mod homespeaker;
 pub mod hook;
 pub mod http_util;
 pub mod mcp;
@@ -33,6 +32,7 @@ pub mod permission;
 pub mod phone;
 pub mod sampler;
 pub mod server;
+pub mod speaker;
 pub mod stream;
 pub mod tailnet;
 pub mod tv;

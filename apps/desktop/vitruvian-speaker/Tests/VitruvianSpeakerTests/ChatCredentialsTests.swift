@@ -20,14 +20,14 @@
 
 import Foundation
 import Testing
-@testable import HomeSpeakerCore
+@testable import VitruvianSpeakerCore
 
 // Guards for credentials written by more than one process: the secrets file
 // keeps every writer's change, a saved token or sign-in reaches the running
 // app's chat monitor, and the app and the tool judge setup by one rule.
 
 private func scratchDir() throws -> URL {
-    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("homespeaker-creds-\(UUID().uuidString)")
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-speaker-creds-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir
 }
@@ -109,7 +109,7 @@ private func creds(_ refresh: String, scopes: [String] = []) -> GoogleCredential
 
     @Test func theLockFileSitsBesideTheSecretsAndIsOwnerOnly() throws {
         let dir = try scratchDir()
-        let store = SecretStore(fileURL: dir.appendingPathComponent("HomeSpeaker/secrets.json"))
+        let store = SecretStore(fileURL: dir.appendingPathComponent("Vitruvian Speaker/secrets.json"))
         #expect(store.lockURL.lastPathComponent == "secrets.json.lock")
         #expect(store.lockURL.deletingLastPathComponent() == store.fileURL.deletingLastPathComponent())
         try store.update { $0.slackToken = "x" }
@@ -310,7 +310,7 @@ final class GatedChatMonitor: ChatMonitorControlling {
         monitor.start()
         #expect(!monitor.isRunning, "no token: Slack cannot run")
 
-        let name = Notification.Name("com.vitruviansoftware.homespeaker.test.credentials-changed.\(UUID().uuidString)")
+        let name = Notification.Name("com.vitruviansoftware.speaker.test.credentials-changed.\(UUID().uuidString)")
         let token = CredentialsChangedNotice.listen(name: name, config: manager, monitor: monitor)
         defer { DistributedNotificationCenter.default().removeObserver(token) }
 
@@ -322,7 +322,7 @@ final class GatedChatMonitor: ChatMonitorControlling {
     }
 
     @Test func aPostedNoticeReachesTheListener() async throws {
-        let name = Notification.Name("com.vitruviansoftware.homespeaker.test.credentials-changed.\(UUID().uuidString)")
+        let name = Notification.Name("com.vitruviansoftware.speaker.test.credentials-changed.\(UUID().uuidString)")
         var heard = 0
         let token = CredentialsChangedNotice.listen(name: name) { heard += 1 }
         defer { DistributedNotificationCenter.default().removeObserver(token) }

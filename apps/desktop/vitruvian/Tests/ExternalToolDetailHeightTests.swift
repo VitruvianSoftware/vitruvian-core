@@ -14,7 +14,7 @@ import VitruvianUI
 /// and row of links over the scrolling region (taller for an extension with
 /// a Settings panel). It still fits a 13-inch display, about 800 points
 /// under the menu bar and above the Dock, in every language, with the links
-/// of an extension with as many sections as HomeSpeaker, which wrap onto a
+/// of an extension with as many sections as Vitruvian Speaker, which wrap onto a
 /// second row so that every one is in view.
 enum ExternalToolDetailHeightTests {
     static func run(_ suite: TestSuite) {
@@ -27,9 +27,9 @@ enum ExternalToolDetailHeightTests {
     /// less its margins.
     static let listsWidth: CGFloat = 480 - 22 * 2
 
-    /// HomeSpeaker's eight links in `language`: Vitruvian's own rows, its
+    /// Vitruvian Speaker's eight links in `language`: Vitruvian's own rows, its
     /// five sections, its commands and what it uses.
-    static func homeSpeakerLinks(_ language: AppLanguage) -> [(title: String, anchor: SettingsSheetIndex.Anchor)] {
+    static func vitruvianSpeakerLinks(_ language: AppLanguage) -> [(title: String, anchor: SettingsSheetIndex.Anchor)] {
         let text = FeatureStrings.externalTools(language)
         let titles = [text.vitruvianSection, "General", "Speakers", "Chats", "AI Agents", "Google Cloud",
                       text.commandsTitle, text.usesTitle]
@@ -137,10 +137,10 @@ enum ExternalToolDetailHeightTests {
                   let plain = tallest(settingsPanel: false, language: language, suite) else { return }
             let name = language.rawValue
             // The sheet drawn has a link for each of its four parts; one with
-            // HomeSpeaker's eight wraps them onto more rows.
+            // Vitruvian Speaker's eight wraps them onto more rows.
             let text = FeatureStrings.externalTools(language)
             let own = SettingsSheetIndex(detail: page.detail, panel: nil, panelIsWeb: false, strings: text).kept("").links
-            let more = drawn(homeSpeakerLinks(language)).height - drawn(own).height
+            let more = drawn(vitruvianSpeakerLinks(language)).height - drawn(own).height
             // Both draw the same around their region, search field and row of
             // links included; the one with a Settings panel gives its region
             // the room that is left, at least its least.
@@ -152,7 +152,7 @@ enum ExternalToolDetailHeightTests {
                              + "\(Int(ToolAgreementContent.detailHeight)) points, \(Int(page.height)), with a region of "
                              + "\(Int(region)), at least \(Int(ToolAgreementContent.pageListsHeight))")
             suite.expect(around + more + ToolAgreementContent.pageListsHeight < room,
-                         "\(name): with HomeSpeaker's links its region keeps its least and the detail is under "
+                         "\(name): with Vitruvian Speaker's links its region keeps its least and the detail is under "
                              + "\(Int(room)) points: \(Int(around + more + ToolAgreementContent.pageListsHeight)) "
                              + "(\(Int(more)) for the links' extra rows)")
             suite.expect(!plain.detail.fillsHeight && plain.detail.listsHeight == ToolAgreementContent.listsHeight
@@ -182,11 +182,11 @@ enum ExternalToolDetailHeightTests {
     /// No link is hidden past the sheet's edge: they wrap onto rows.
     static func everyLinkIsInView(_ suite: TestSuite) {
         for language in AppLanguage.allCases {
-            let links = homeSpeakerLinks(language)
+            let links = vitruvianSpeakerLinks(language)
             let row = drawn(links)
             let outside = row.frames.filter { $0.minX < -0.5 || $0.maxX > listsWidth + 0.5 }
             suite.expect(row.frames.count == links.count && outside.isEmpty,
-                         "\(language.rawValue): HomeSpeaker's \(links.count) links all lie within the sheet's "
+                         "\(language.rawValue): Vitruvian Speaker's \(links.count) links all lie within the sheet's "
                              + "\(Int(listsWidth)) points: \(row.frames.count) drawn, "
                              + "\(outside.map { Int($0.maxX) }) past the edge")
             // Drawn with all the room they want, each is as wide as it is here.

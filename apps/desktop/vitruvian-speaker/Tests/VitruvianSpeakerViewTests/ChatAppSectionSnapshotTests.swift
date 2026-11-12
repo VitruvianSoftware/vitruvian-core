@@ -21,8 +21,8 @@
 import AppKit
 import SwiftUI
 import XCTest
-@testable import HomeSpeaker
-@testable import HomeSpeakerCore
+@testable import VitruvianSpeaker
+@testable import VitruvianSpeakerCore
 
 /// Draws a view to `name`-light.png and `name`-dark.png.
 @MainActor
@@ -32,7 +32,7 @@ enum Snapshot {
     static var directory: URL {
         let environment = ProcessInfo.processInfo.environment
         let base = environment["TEST_UNDECLARED_OUTPUTS_DIR"].map { URL(fileURLWithPath: $0) }
-            ?? FileManager.default.temporaryDirectory.appendingPathComponent("HomeSpeakerViewTests")
+            ?? FileManager.default.temporaryDirectory.appendingPathComponent("VitruvianSpeakerViewTests")
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         return base
     }
@@ -131,7 +131,7 @@ final class ChatAppSectionSnapshotTests: XCTestCase {
     }
 
     /// Courier on, read, with its networks: one read, one muted, one left
-    /// to HomeSpeaker's own Slack reader.
+    /// to Vitruvian Speaker's own Slack reader.
     func testCourierOn() throws {
         expectSensible(try Snapshot.render("courier-on", width: 540) {
             section(.courier, isOn: true, hasToken: true, listed: listed, muted: ["signal"],

@@ -20,7 +20,7 @@
 
 import Foundation
 import Testing
-@testable import HomeSpeakerCore
+@testable import VitruvianSpeakerCore
 
 // swift-testing (not XCTest): XCTest is absent from the Command Line Tools
 // toolchain, so `swift test` only works here with the Testing framework.
@@ -73,7 +73,7 @@ import Testing
             var targets: [String] = []
         }
         let asked = Asked()
-        let home = FileManager.default.temporaryDirectory.appendingPathComponent("homespeaker-legacy-\(UUID().uuidString)")
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-speaker-legacy-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: home) }
         let agent = AgentIntegration(home: home, executablePath: "", bootout: { target in
             asked.lock.withLock { asked.targets.append(target) }
@@ -90,11 +90,11 @@ import Testing
     /// An integration pointed at no program reads state and cleans up, but
     /// never installs a hook that could not run.
     @Test func anIntegrationWithNoProgramRefusesToInstall() throws {
-        let home = FileManager.default.temporaryDirectory.appendingPathComponent("homespeaker-noprogram-\(UUID().uuidString)")
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-speaker-noprogram-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: home) }
         let agent = AgentIntegration(home: home, executablePath: "", bootout: { _ in })
         #expect(throws: AgentIntegration.IntegrationError.self) { try agent.installHook(for: .claudeCode) }
-        try AgentIntegration(home: home, executablePath: "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker", bootout: { _ in })
+        try AgentIntegration(home: home, executablePath: "/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker", bootout: { _ in })
             .installHook(for: .claudeCode)
         if case .stale = agent.hookStatus(for: .claudeCode) {} else { Issue.record("an existing hook reads as not this integration's") }
         try agent.removeHook(for: .claudeCode)
@@ -267,18 +267,18 @@ private func sampleTargets() -> [String: SpeakerDevice] {
 /// person's real files.
 private func scratchFolder() throws -> URL {
     let dir = FileManager.default.temporaryDirectory
-        .appendingPathComponent("homespeaker-oauth-\(UUID().uuidString)")
+        .appendingPathComponent("vitruvian-speaker-oauth-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir
 }
 
 /// An app bundle on disk whose Info.plist carries `info`, the way the
-/// packaged HomeSpeaker.app carries its sign-in client.
+/// packaged Vitruvian Speaker.app carries its sign-in client.
 private func bundle(with info: [String: String], in root: URL) throws -> Bundle {
     let contents = root.appendingPathComponent("Fake-\(UUID().uuidString).app/Contents")
     try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
     var plist = info
-    plist["CFBundleIdentifier"] = "test.homespeaker.fake"
+    plist["CFBundleIdentifier"] = "test.vitruvian-speaker.fake"
     try (plist as NSDictionary).write(to: contents.appendingPathComponent("Info.plist"))
     return try #require(Bundle(url: contents.deletingLastPathComponent()))
 }
@@ -338,7 +338,7 @@ private func bundle(with info: [String: String], in root: URL) throws -> Bundle 
         let root = try scratchFolder()
         let tool = root.appendingPathComponent("tool")
         try FileManager.default.createDirectory(at: tool, withIntermediateDirectories: true)
-        let profile = HomeSpeakerProfile.extension(
+        let profile = VitruvianSpeakerProfile.extension(
             dataFolder: root.appendingPathComponent("data"), toolFolder: tool, messagePrefix: "test.oauth")
         #expect(profile.shippedClient == nil, "nothing shipped yet")
         try Data(#"{"client_id": "ext", "client_secret": "ext-secret"}"#.utf8)
@@ -349,7 +349,7 @@ private func bundle(with info: [String: String], in root: URL) throws -> Bundle 
 
     @Test func anExtensionWithNoToolFolderShipsNothing() throws {
         let root = try scratchFolder()
-        let profile = HomeSpeakerProfile.extension(
+        let profile = VitruvianSpeakerProfile.extension(
             dataFolder: root, toolFolder: nil, messagePrefix: "test.oauth")
         #expect(profile.shippedClient == nil)
     }
@@ -360,7 +360,7 @@ private func bundle(with info: [String: String], in root: URL) throws -> Bundle 
             with: ["GoogleOAuthClientID": "app-id", "GoogleOAuthClientSecret": "app-secret"], in: root)
         let tool = root.appendingPathComponent("tool")
         try FileManager.default.createDirectory(at: tool, withIntermediateDirectories: true)
-        let profile = HomeSpeakerProfile.extension(
+        let profile = VitruvianSpeakerProfile.extension(
             dataFolder: root.appendingPathComponent("data"), toolFolder: tool,
             messagePrefix: "test.oauth", bundle: withClient)
         #expect(profile.shippedClient == nil, "a client in the bundle that runs it is not the extension's")
@@ -374,15 +374,15 @@ private func bundle(with info: [String: String], in root: URL) throws -> Bundle 
         let root = try scratchFolder()
         let withClient = try bundle(
             with: ["GoogleOAuthClientID": "app-id", "GoogleOAuthClientSecret": "app-secret"], in: root)
-        #expect(HomeSpeakerProfile.app(bundle: withClient).shippedClient
+        #expect(VitruvianSpeakerProfile.app(bundle: withClient).shippedClient
                 == OAuthClient(clientId: "app-id", clientSecret: "app-secret"))
 
         let idOnly = try bundle(with: ["GoogleOAuthClientID": "app-id"], in: root)
-        #expect(HomeSpeakerProfile.app(bundle: idOnly).shippedClient
+        #expect(VitruvianSpeakerProfile.app(bundle: idOnly).shippedClient
                 == OAuthClient(clientId: "app-id", clientSecret: ""), "a missing secret is empty, as before")
 
         let blank = try bundle(with: ["GoogleOAuthClientID": "  "], in: root)
-        #expect(HomeSpeakerProfile.app(bundle: blank).shippedClient == nil)
-        #expect(HomeSpeakerProfile.app(bundle: try bundle(with: [:], in: root)).shippedClient == nil)
+        #expect(VitruvianSpeakerProfile.app(bundle: blank).shippedClient == nil)
+        #expect(VitruvianSpeakerProfile.app(bundle: try bundle(with: [:], in: root)).shippedClient == nil)
     }
 }

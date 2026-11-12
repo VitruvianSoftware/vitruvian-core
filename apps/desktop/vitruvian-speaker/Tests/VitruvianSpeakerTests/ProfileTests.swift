@@ -20,33 +20,33 @@
 
 import Foundation
 import Testing
-@testable import HomeSpeakerCore
+@testable import VitruvianSpeakerCore
 
-// Guards for where HomeSpeaker keeps its files. The app's profile is today's
+// Guards for where Vitruvian Speaker keeps its files. The app's profile is today's
 // paths exactly, so an app user notices nothing. The extension's profile
 // keeps everything in the data folder Vitruvian gives it, and never the
 // app's files. An engine built on a profile reads and writes one secrets
 // file, for its settings, its sign-in and its speakers alike.
 //
 // No test here reads, writes or checks for the person's real files
-// (`~/.gemini/…`, `~/Library/Application Support/HomeSpeaker/secrets.json`):
+// (`~/.gemini/…`, `~/Library/Application Support/Vitruvian Speaker/secrets.json`):
 // paths are only compared, and every file written is in a scratch folder.
 
 private func scratchDir() throws -> URL {
     let dir = FileManager.default.temporaryDirectory
-        .appendingPathComponent("homespeaker-profile-\(UUID().uuidString)")
+        .appendingPathComponent("vitruvian-speaker-profile-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir
 }
 
 /// A message prefix no real app or extension on this Mac listens on.
-private func testPrefix() -> String { "test.\(UUID().uuidString).homespeaker" }
+private func testPrefix() -> String { "test.\(UUID().uuidString).vitruvian-speaker" }
 
 /// A profile in `root`, checked to be there before any engine is built on
 /// it: if a bug pointed one of its files at the person's real ones, the
 /// test stops here, before an engine could read or write them.
-private func scratchProfile(in root: URL) throws -> HomeSpeakerProfile {
-    let profile = HomeSpeakerProfile.extension(
+private func scratchProfile(in root: URL) throws -> VitruvianSpeakerProfile {
+    let profile = VitruvianSpeakerProfile.extension(
         dataFolder: root.appendingPathComponent("data"), toolFolder: nil, messagePrefix: testPrefix())
     for url in [profile.settingsURL, profile.historyURL, profile.secretsURL, profile.monitorStatusURL] {
         try #require(url.path.hasPrefix(root.path + "/"), "\(url.path) is outside the scratch folder")
@@ -59,29 +59,29 @@ private struct SilentLocal: LocalSpeaking {
     func speak(_ text: String, voiceID: String) async throws {}
 }
 
-@Suite struct HomeSpeakerProfileTests {
+@Suite struct VitruvianSpeakerProfileTests {
     @Test func appProfileIsTodays() {
         let home = FileManager.default.homeDirectoryForCurrentUser
-        let profile = HomeSpeakerProfile.app(home: home)
+        let profile = VitruvianSpeakerProfile.app(home: home)
         #expect(profile.door == .app)
         #expect(profile.settingsURL == ConfigManager.defaultConfigURL())
         #expect(profile.historyURL == BroadcastHistory.defaultURL())
         #expect(profile.secretsURL == SecretStore.defaultURL())
         #expect(profile.monitorStatusURL == ChatMonitorStatusFile.defaultURL())
-        #expect(profile.messagePrefix == "com.vitruviansoftware.homespeaker")
+        #expect(profile.messagePrefix == "com.vitruviansoftware.speaker")
         #expect(profile.liveLockURL == nil)
         #expect(profile.toolFolder == nil)
         // Byte for byte, the paths the app has always used.
         #expect(profile.settingsURL.path == home.path + "/.gemini/speaker_broadcast.json")
         #expect(profile.historyURL.path == home.path + "/.gemini/speaker_history.json")
         #expect(profile.monitorStatusURL.path == home.path + "/.gemini/speaker_monitor_status.json")
-        #expect(profile.secretsURL.path.hasSuffix("/Library/Application Support/HomeSpeaker/secrets.json"))
-        #expect(HomeSpeakerProfile.app() == profile)
+        #expect(profile.secretsURL.path.hasSuffix("/Library/Application Support/Vitruvian Speaker/secrets.json"))
+        #expect(VitruvianSpeakerProfile.app() == profile)
     }
 
     @Test func appProfileFollowsTheHomeItIsGiven() throws {
         let home = try scratchDir()
-        let profile = HomeSpeakerProfile.app(home: home)
+        let profile = VitruvianSpeakerProfile.app(home: home)
         #expect(profile.settingsURL == home.appendingPathComponent(".gemini/speaker_broadcast.json"))
         #expect(profile.historyURL == home.appendingPathComponent(".gemini/speaker_history.json"))
         #expect(profile.monitorStatusURL == home.appendingPathComponent(".gemini/speaker_monitor_status.json"))
@@ -89,10 +89,10 @@ private struct SilentLocal: LocalSpeaking {
 
     @Test func extensionProfileLivesInItsDataFolder() throws {
         let root = try scratchDir()
-        let data = root.appendingPathComponent("ToolData/dev.vitruvian.homespeaker")
-        let tool = root.appendingPathComponent("Tools/dev.vitruvian.homespeaker")
+        let data = root.appendingPathComponent("ToolData/dev.vitruvian.speaker")
+        let tool = root.appendingPathComponent("Tools/dev.vitruvian.speaker")
         let prefix = testPrefix()
-        let profile = HomeSpeakerProfile.extension(dataFolder: data, toolFolder: tool, messagePrefix: prefix)
+        let profile = VitruvianSpeakerProfile.extension(dataFolder: data, toolFolder: tool, messagePrefix: prefix)
 
         #expect(profile.door == .extension)
         #expect(profile.settingsURL == data.appendingPathComponent("settings.json"))
@@ -103,52 +103,52 @@ private struct SilentLocal: LocalSpeaking {
         #expect(profile.toolFolder == tool)
         #expect(profile.messagePrefix == prefix)
 
-        let app = HomeSpeakerProfile.app()
+        let app = VitruvianSpeakerProfile.app()
         let urls = [profile.settingsURL, profile.historyURL, profile.secretsURL,
                     profile.monitorStatusURL, profile.liveLockURL].compactMap { $0 }
         #expect(urls.count == 5)
         for url in urls {
             #expect(url.path.hasPrefix(data.path + "/"), "\(url.path) is outside the data folder")
             #expect(!url.path.contains("/.gemini/"), "\(url.path) is the app's settings folder")
-            #expect(!url.path.contains("Application Support/HomeSpeaker/"), "\(url.path) is the app's secrets folder")
+            #expect(!url.path.contains("Application Support/Vitruvian Speaker/"), "\(url.path) is the app's secrets folder")
             #expect(![app.settingsURL, app.historyURL, app.secretsURL, app.monitorStatusURL].contains(url))
         }
     }
 
     @Test func extensionProfileHasItsOwnMessagesByDefault() {
-        let profile = HomeSpeakerProfile.extension(dataFolder: URL(fileURLWithPath: "/x/data"), toolFolder: nil)
-        #expect(profile.messagePrefix == "dev.vitruvian.homespeaker")
-        #expect(profile.messagePrefix != HomeSpeakerProfile.app().messagePrefix)
+        let profile = VitruvianSpeakerProfile.extension(dataFolder: URL(fileURLWithPath: "/x/data"), toolFolder: nil)
+        #expect(profile.messagePrefix == "dev.vitruvian.speaker")
+        #expect(profile.messagePrefix != VitruvianSpeakerProfile.app().messagePrefix)
         #expect(profile.toolFolder == nil)
     }
 
     @Test func extensionFoldersFromTheProgram() {
         let base = "/Users/someone/Library/Application Support/com.vitruviansoftware.vitruvian"
-        let program = URL(fileURLWithPath: base + "/Tools/dev.vitruvian.homespeaker/bin/tool")
-        let folders = HomeSpeakerProfile.extensionFolders(program: program)
-        #expect(folders?.tool.path == base + "/Tools/dev.vitruvian.homespeaker")
-        #expect(folders?.data.path == base + "/ToolData/dev.vitruvian.homespeaker")
+        let program = URL(fileURLWithPath: base + "/Tools/dev.vitruvian.speaker/bin/tool")
+        let folders = VitruvianSpeakerProfile.extensionFolders(program: program)
+        #expect(folders?.tool.path == base + "/Tools/dev.vitruvian.speaker")
+        #expect(folders?.data.path == base + "/ToolData/dev.vitruvian.speaker")
 
         // Anything else is not the extension's program: no folder is guessed.
         let others: [URL] = [
-            URL(fileURLWithPath: "/Users/someone/repo/bazel-bin/apps/desktop/home-speaker/built/homespeaker/bin/tool"),
-            URL(fileURLWithPath: "Tools/dev.vitruvian.homespeaker/bin/tool"),
-            URL(string: "Tools/dev.vitruvian.homespeaker/bin/tool")!,
-            URL(fileURLWithPath: "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"),
-            URL(fileURLWithPath: base + "/Tools/dev.vitruvian.homespeaker/bin/other"),
-            URL(fileURLWithPath: "/Tools/dev.vitruvian.homespeaker/bin/tool"),
+            URL(fileURLWithPath: "/Users/someone/repo/bazel-bin/apps/desktop/vitruvian-speaker/built/vitruvian-speaker/bin/tool"),
+            URL(fileURLWithPath: "Tools/dev.vitruvian.speaker/bin/tool"),
+            URL(string: "Tools/dev.vitruvian.speaker/bin/tool")!,
+            URL(fileURLWithPath: "/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker"),
+            URL(fileURLWithPath: base + "/Tools/dev.vitruvian.speaker/bin/other"),
+            URL(fileURLWithPath: "/Tools/dev.vitruvian.speaker/bin/tool"),
         ]
         for other in others {
-            #expect(HomeSpeakerProfile.extensionFolders(program: other) == nil, "\(other) gave folders")
+            #expect(VitruvianSpeakerProfile.extensionFolders(program: other) == nil, "\(other) gave folders")
         }
     }
 }
 
 @MainActor
-@Suite struct HomeSpeakerEngineTests {
+@Suite struct VitruvianSpeakerEngineTests {
     @Test func oneEngineOneSecretsFile() async throws {
         let profile = try scratchProfile(in: try scratchDir())
-        let engine = HomeSpeakerEngine(
+        let engine = VitruvianSpeakerEngine(
             profile: profile, session: URLSession(configuration: .ephemeral), local: SilentLocal())
 
         #expect(engine.profile == profile)
@@ -181,7 +181,7 @@ private struct SilentLocal: LocalSpeaking {
 
     @Test func theEngineSettingsAreTheProfiles() throws {
         let profile = try scratchProfile(in: try scratchDir())
-        let engine = HomeSpeakerEngine(
+        let engine = VitruvianSpeakerEngine(
             profile: profile, session: URLSession(configuration: .ephemeral), local: SilentLocal())
         engine.config.config.defaultTarget = "kitchen"
         try engine.config.trySaveConfig()

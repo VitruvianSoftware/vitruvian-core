@@ -331,14 +331,14 @@ projects:
     tags: [CSS, React, Storybook]
     source: packages/design-system
 
-  - name: HomeSpeaker
+  - name: Vitruvian Speaker
     group: lab
     status: in-development
     summary: >-
       A macOS menu bar app that reads short summaries aloud on Google Home and
       Nest speakers: agent replies, new chat messages, or anything you type.
     tags: [Swift, macOS, Google Home]
-    source: apps/desktop/home-speaker
+    source: apps/desktop/vitruvian-speaker
 
   - name: Vitruvian
     group: lab
@@ -355,7 +355,7 @@ projects:
     status: in-development
     summary: >-
       An Android remote and observability console for a Mac, designed for
-      foldables: trackpad, Sony Android TV over wireless ADB and HomeSpeaker
+      foldables: trackpad, Sony Android TV over wireless ADB and Vitruvian Speaker
       controls alongside live CPU, thermals, Lima VM and K3s dashboards.
     tags: [Kotlin, Jetpack Compose, Android]
     source: apps/mobile/android-remote

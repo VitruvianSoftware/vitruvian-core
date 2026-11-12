@@ -1,7 +1,7 @@
 # Publish
 
 ## Overview
-Component package providing implementation for `apps/desktop/home-speaker/scripts/src/publish`.
+Component package providing implementation for `apps/desktop/vitruvian-speaker/scripts/src/publish`.
 
 ## Interface
 - `[lib.rs:Config]`
@@ -30,4 +30,4 @@ Component package providing implementation for `apps/desktop/home-speaker/script
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/home-speaker/scripts/src/publish/...`
+- Run: `bazel test //apps/desktop/vitruvian-speaker/scripts/src/publish/...`

@@ -20,15 +20,15 @@
 
 import XCTest
 
-import HomeSpeakerCore
-import HomeSpeakerToolCore
+import VitruvianSpeakerCore
+import VitruvianSpeakerToolCore
 import VitruvianToolProtocol
 
 /// What the closed island's mark says (design 6): one pure function from
 /// what the tool knows to a mark. Nothing here touches a file, a program
 /// or the Vitruvian app.
 final class StatusTests: XCTestCase {
-    /// A HomeSpeaker with nothing to say: running, set up, broadcasting.
+    /// A Vitruvian Speaker with nothing to say: running, set up, broadcasting.
     private func inputs(
         role: DoorRole = .active, signInProblem: String? = nil, monitorProblem: String? = nil,
         setUp: Bool = true, speaking: Bool = false, quietUntil: String? = nil,
@@ -45,7 +45,7 @@ final class StatusTests: XCTestCase {
 
     func testQuietSideShowsNothing() {
         // Every other thing is wrong, and still the mark is gone: the other
-        // HomeSpeaker is the chosen one and speaks for itself.
+        // Vitruvian Speaker is the chosen one and speaks for itself.
         let everythingWrong = inputs(role: .quiet(other: .app), signInProblem: "expired", monitorProblem: "no token",
                                      setUp: false, speaking: true, quietUntil: "07:00")
         XCTAssertEqual(mark(everythingWrong), MarkChoice(state: .none, icon: nil, text: nil))
@@ -53,7 +53,7 @@ final class StatusTests: XCTestCase {
     }
 
     func testNobodyHasPickedAsksForAChoice() {
-        let asking = MarkChoice(state: .attention, icon: "exclamationmark.circle", text: "Pick which HomeSpeaker to use")
+        let asking = MarkChoice(state: .attention, icon: "exclamationmark.circle", text: "Pick which Vitruvian Speaker to use")
         XCTAssertEqual(mark(inputs(role: .activeAsking)), asking)
         XCTAssertEqual(mark(inputs(role: .waitingAsking)), asking)
     }
@@ -70,7 +70,7 @@ final class StatusTests: XCTestCase {
 
     func testNotSetUpAsksForSetUp() {
         XCTAssertEqual(mark(inputs(setUp: false)),
-                       MarkChoice(state: .attention, icon: "hifispeaker.2", text: "Set up HomeSpeaker"))
+                       MarkChoice(state: .attention, icon: "hifispeaker.2", text: "Set up Vitruvian Speaker"))
     }
 
     func testSpeakingIsBusy() {
@@ -108,7 +108,7 @@ final class StatusTests: XCTestCase {
 
     func testUndecidedBeatsEverythingButFailure() {
         let busyAndUnsetAndQuiet = inputs(role: .waitingAsking, setUp: false, speaking: true, quietUntil: "07:00")
-        XCTAssertEqual(mark(busyAndUnsetAndQuiet).text, "Pick which HomeSpeaker to use")
+        XCTAssertEqual(mark(busyAndUnsetAndQuiet).text, "Pick which Vitruvian Speaker to use")
         // ...but a failure still wins over the request to pick.
         XCTAssertEqual(mark(inputs(role: .activeAsking, signInProblem: "token revoked")).text, "Sign in to Google again")
         XCTAssertEqual(mark(inputs(role: .waitingAsking, monitorProblem: "boom")).text, "boom")
@@ -120,7 +120,7 @@ final class StatusTests: XCTestCase {
     }
 
     func testNotSetUpBeatsSpeakingAndQuietHours() {
-        XCTAssertEqual(mark(inputs(setUp: false, speaking: true, quietUntil: "07:00")).text, "Set up HomeSpeaker")
+        XCTAssertEqual(mark(inputs(setUp: false, speaking: true, quietUntil: "07:00")).text, "Set up Vitruvian Speaker")
     }
 
     func testSpeakingBeatsQuietHoursAndTheBroadcastingRows() {

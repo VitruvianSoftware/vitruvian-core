@@ -18,23 +18,23 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# release-please and asset publisher for HomeSpeaker macOS app:
-# 1. Authors release PRs from conventional commits under apps/desktop/home-speaker/.
-# 2. When the release PR merges, cuts the GitHub Release (tag: home-speaker-vX.Y.Z).
-# 3. Compiles a universal (arm64 + x86_64) HomeSpeaker.app on macOS, zips it
+# release-please and asset publisher for Vitruvian Speaker macOS app:
+# 1. Authors release PRs from conventional commits under apps/desktop/vitruvian-speaker/.
+# 2. When the release PR merges, cuts the GitHub Release (tag: vitruvian-speaker-vX.Y.Z).
+# 3. Compiles a universal (arm64 + x86_64) Vitruvian Speaker.app on macOS, zips it
 #    with a SHA-256 sidecar, and attaches both to the release.
-name: home-speaker-release
+name: vitruvian-speaker-release
 
 on:
   push:
     branches: [main]
     paths:
-      - "apps/desktop/home-speaker/**"
-      - ".github/workflows/home-speaker-release.yaml"
+      - "apps/desktop/vitruvian-speaker/**"
+      - ".github/workflows/vitruvian-speaker-release.yaml"
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to package and upload (e.g. home-speaker-v1.0.0). Empty runs release-please."
+        description: "Release tag to package and upload (e.g. vitruvian-speaker-v1.0.0). Empty runs release-please."
         required: false
         type: string
 
@@ -47,12 +47,12 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 15
     concurrency:
-      group: home-speaker-release-${{ github.ref }}
+      group: vitruvian-speaker-release-${{ github.ref }}
       cancel-in-progress: false
     outputs:
-      release_created: ${{ steps.release.outputs['apps/desktop/home-speaker--release_created'] }}
-      tag_name: ${{ steps.release.outputs['apps/desktop/home-speaker--tag_name'] }}
-      version: ${{ steps.release.outputs['apps/desktop/home-speaker--version'] }}
+      release_created: ${{ steps.release.outputs['apps/desktop/vitruvian-speaker--release_created'] }}
+      tag_name: ${{ steps.release.outputs['apps/desktop/vitruvian-speaker--tag_name'] }}
+      version: ${{ steps.release.outputs['apps/desktop/vitruvian-speaker--version'] }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -69,8 +69,8 @@ jobs:
         if: ${{ inputs.tag == '' }}
         with:
           token: ${{ steps.app-token.outputs.token }}
-          config-file: apps/desktop/home-speaker/release-please-config.json
-          manifest-file: apps/desktop/home-speaker/.release-please-manifest.json
+          config-file: apps/desktop/vitruvian-speaker/release-please-config.json
+          manifest-file: apps/desktop/vitruvian-speaker/.release-please-manifest.json
           target-branch: main
 
   publish-package:
@@ -80,7 +80,7 @@ jobs:
     runs-on: xcode-27
     timeout-minutes: 30
     concurrency:
-      group: home-speaker-publish-${{ inputs.tag || needs.release-please.outputs.tag_name }}
+      group: vitruvian-speaker-publish-${{ inputs.tag || needs.release-please.outputs.tag_name }}
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -109,12 +109,12 @@ jobs:
           # API enabled. When set, users can sign in without registering
           # their own project. Absent, the app still works via Settings >
           # Advanced (bring your own client) or an Antigravity import.
-          HOMESPEAKER_GOOGLE_CLIENT_ID: ${{ secrets.HOMESPEAKER_GOOGLE_CLIENT_ID }}
-          HOMESPEAKER_GOOGLE_CLIENT_SECRET: ${{ secrets.HOMESPEAKER_GOOGLE_CLIENT_SECRET }}
+          VITRUVIAN_SPEAKER_GOOGLE_CLIENT_ID: ${{ secrets.HOMESPEAKER_GOOGLE_CLIENT_ID }}
+          VITRUVIAN_SPEAKER_GOOGLE_CLIENT_SECRET: ${{ secrets.HOMESPEAKER_GOOGLE_CLIENT_SECRET }}
         run: |
-          rustc --edition 2021 --crate-type lib --crate-name publish_lib apps/desktop/home-speaker/scripts/src/publish/lib.rs -o "$RUNNER_TEMP/libpublish_lib.rlib"
-          rustc --edition 2021 apps/desktop/home-speaker/scripts/src/publish/main.rs -L "$RUNNER_TEMP" --extern publish_lib="$RUNNER_TEMP/libpublish_lib.rlib" -o "$RUNNER_TEMP/home-speaker-publish"
-          "$RUNNER_TEMP/home-speaker-publish"
+          rustc --edition 2021 --crate-type lib --crate-name publish_lib apps/desktop/vitruvian-speaker/scripts/src/publish/lib.rs -o "$RUNNER_TEMP/libpublish_lib.rlib"
+          rustc --edition 2021 apps/desktop/vitruvian-speaker/scripts/src/publish/main.rs -L "$RUNNER_TEMP" --extern publish_lib="$RUNNER_TEMP/libpublish_lib.rlib" -o "$RUNNER_TEMP/vitruvian-speaker-publish"
+          "$RUNNER_TEMP/vitruvian-speaker-publish"
 
       # The job's last word, and not the publishing script's: ask GitHub what
       # the release holds. 1.12.0 and 1.13.0 were published with no files while
@@ -126,11 +126,11 @@ jobs:
           TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          version="${TAG#home-speaker-v}"
+          version="${TAG#vitruvian-speaker-v}"
           rustc --edition 2021 --crate-type lib --crate-name package_desktop tools/desktop-package/src/lib.rs -o "$RUNNER_TEMP/libpackage_desktop.rlib"
           rustc --edition 2021 tools/desktop-package/src/main.rs -L "$RUNNER_TEMP" --extern package_desktop="$RUNNER_TEMP/libpackage_desktop.rlib" -o "$RUNNER_TEMP/package-desktop"
           "$RUNNER_TEMP/package-desktop" --verify-only \
-            --app-name HomeSpeaker --version "${version}" --tag "${TAG}" \
-            --require-asset "HomeSpeaker-${version}-tool.zip"
+            --app-name "Vitruvian Speaker" --version "${version}" --tag "${TAG}" \
+            --require-asset "VitruvianSpeaker-${version}-tool.zip"
           gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" --json assets \
             --jq '.assets[] | "\(.name)\t\(.size)"'

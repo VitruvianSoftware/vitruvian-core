@@ -19,7 +19,7 @@
 // SOFTWARE.
 
 import Foundation
-import HomeSpeakerCore
+import VitruvianSpeakerCore
 import VitruvianToolKit
 import VitruvianToolProtocol
 
@@ -32,8 +32,8 @@ public protocol ToolLink: AnyObject {
     func clipboardText() -> String?
     /// Whether the app named this feature in its hello: something a later
     /// protocol release added, such as the `choice` block. By its name on
-    /// the link, so a feature newer than the kit HomeSpeaker builds
-    /// against can still be asked about (`HomeSpeakerTool.openSettingsFeature`).
+    /// the link, so a feature newer than the kit Vitruvian Speaker builds
+    /// against can still be asked about (`VitruvianSpeakerTool.openSettingsFeature`).
     func supports(featureNamed name: String) -> Bool
 }
 
@@ -42,13 +42,13 @@ extension ToolLink {
     public func supports(_ feature: ProtocolFeature) -> Bool { supports(featureNamed: feature.rawValue) }
 }
 
-/// What the tool is: HomeSpeaker's settings file, HomeSpeaker's program,
+/// What the tool is: Vitruvian Speaker's settings file, Vitruvian Speaker's program,
 /// and the app, tied together. Everything a handler of the kit's does
 /// comes here, on the kit's thread; a job's end comes back through
 /// `Parts.later`, which the program hands to the kit's thread. That hop is
 /// the one place the tool is named from another thread, and nothing of it
 /// is read there: hence `@unchecked Sendable`.
-public final class HomeSpeakerTool: @unchecked Sendable {
+public final class VitruvianSpeakerTool: @unchecked Sendable {
     public static let islandPanel = "speaker"
     public static let settingsPanel = "settings"
     /// The hello's name for "an answer's `open` may name the tool's own
@@ -88,20 +88,20 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         public var gwsLocation: () -> String?
         /// The process that runs this side's chat monitor is alive, so it
         /// reads messages: for the extension, its own `running.lock` is held
-        /// (`HomeSpeakerProfile.ownerRunning()`).
+        /// (`VitruvianSpeakerProfile.ownerRunning()`).
         public var ownerRunning: () -> Bool
-        /// Tells this HomeSpeaker's long-lived process that a login or token
+        /// Tells this Vitruvian Speaker's long-lived process that a login or token
         /// changed (`CredentialsChangedNotice`, under the profile's name),
         /// so it re-reads them and starts or restarts its chat monitor.
         public var credentialsChanged: () -> Void
         /// The home folder the coding agents keep their files in.
         public var home: URL
-        /// Where HomeSpeaker's settings and secrets files are, for Files.
+        /// Where Vitruvian Speaker's settings and secrets files are, for Files.
         public var settingsURL: URL
         public var secretsURL: URL
-        /// The HomeSpeaker version Files shows: the engine this tool runs
+        /// The Vitruvian Speaker version Files shows: the engine this tool runs
         /// on. Nil when it does not say.
-        public var homeSpeakerVersion: () -> String?
+        public var vitruvianSpeakerVersion: () -> String?
         /// Stops a launchd job (`AgentIntegration.launchctlBootout`); the
         /// tests record instead, so they never touch the live session.
         public var launchctlBootout: @Sendable (String) -> Void
@@ -109,7 +109,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         /// lists: by default beside the settings file, so a test's
         /// temporary settings never read this Mac's history.
         public var historyURL: URL
-        /// What HomeSpeaker's chat monitor last wrote about itself
+        /// What Vitruvian Speaker's chat monitor last wrote about itself
         /// (`ChatMonitorStatusFile`): by default beside the settings file,
         /// so a test's temporary settings never read this Mac's.
         public var monitorStatusURL: URL
@@ -117,18 +117,18 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         /// one in its own process. The default does nothing, so a test never
         /// reaches a real monitor or a real running app.
         public var controlChatMonitor: (ChatMonitorAction) -> Void
-        /// What this HomeSpeaker does now, given the other one and the
+        /// What this Vitruvian Speaker does now, given the other one and the
         /// person's choice (`DoorCheck.role(me:)`), asked afresh each time.
         public var role: () -> DoorRole
-        /// The other HomeSpeaker, the app, as far as the extension needs it:
+        /// The other Vitruvian Speaker, the app, as far as the extension needs it:
         /// whether it still runs. Nil when there is none to ask.
         public var other: (any OtherAppControlling)?
         /// The choice file (`~/.gemini/speaker_door.json`); nil in a test
         /// that has none.
         public var door: DoorFile?
-        /// Copies one HomeSpeaker's settings and sign-ins into the other's
+        /// Copies one Vitruvian Speaker's settings and sign-ins into the other's
         /// (`DoorCopy.copy`).
-        public var copy: (_ from: HomeSpeakerProfile, _ to: HomeSpeakerProfile) throws -> CopyReport
+        public var copy: (_ from: VitruvianSpeakerProfile, _ to: VitruvianSpeakerProfile) throws -> CopyReport
         /// Shows the mark on the closed island (`ui/status`). Called only
         /// when the app has it, and only with a mark that changed.
         public var sendStatus: (MarkChoice) -> Void
@@ -136,28 +136,28 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         /// longer: the monitor's own triggers (its settings changing on
         /// disk, a sign-in, the control message) start nothing otherwise.
         public var monitorMayRun: (Bool) -> Void
-        /// This HomeSpeaker's files, and the app's: what the choice card
+        /// This Vitruvian Speaker's files, and the app's: what the choice card
         /// compares and copies (design 7.4, 7.5). Nil in a test that has
         /// none, and then nothing is compared or copied.
-        public var profile: HomeSpeakerProfile?
-        public var appProfile: HomeSpeakerProfile?
+        public var profile: VitruvianSpeakerProfile?
+        public var appProfile: VitruvianSpeakerProfile?
         /// The app's program as it is found now (`ProcessDriver.locate`),
         /// asked afresh at each switch: the agents' hooks are pointed at it
         /// when the person picks the app. Nil when there is none; a copy in
         /// the Trash is never used.
         public var appProgram: () -> URL?
-        /// While this side runs, a HomeSpeaker hook left pointing at a
+        /// While this side runs, a Vitruvian Speaker hook left pointing at a
         /// program that is gone or in the Trash is pointed at this side's
         /// program. Only the extension's real parts turn it on: a test's
         /// default home is this Mac's.
         public var repairsHooks: Bool
         /// The app is installed (`DoorCheck.appInstalled`), for General's
-        /// "Which HomeSpeaker" row.
+        /// "Which Vitruvian Speaker" row.
         public var otherInstalled: () -> Bool
-        /// Tells one HomeSpeaker its sign-ins changed, under that profile's
+        /// Tells one Vitruvian Speaker its sign-ins changed, under that profile's
         /// own message names: after a copy, the side that took it (design
         /// 7.5). The default tells no one, so a test never posts.
-        public var credentialsChangedIn: (HomeSpeakerProfile) -> Void
+        public var credentialsChangedIn: (VitruvianSpeakerProfile) -> Void
         /// What the engine said when it last put a speaker back after an
         /// announcement (`VolumeRestoreCoordinator.lastReport`).
         public var volumeRestoreReport: () -> String?
@@ -170,19 +170,19 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                     ownerRunning: @escaping () -> Bool = { false }, credentialsChanged: @escaping () -> Void = {},
                     home: URL = FileManager.default.homeDirectoryForCurrentUser,
                     settingsURL: URL = ConfigManager.defaultConfigURL(), secretsURL: URL = SecretStore.defaultURL(),
-                    homeSpeakerVersion: @escaping () -> String? = { nil },
+                    vitruvianSpeakerVersion: @escaping () -> String? = { nil },
                     launchctlBootout: @escaping @Sendable (String) -> Void = AgentIntegration.launchctlBootout,
                     historyURL: URL? = nil, monitorStatusURL: URL? = nil,
                     controlChatMonitor: @escaping (ChatMonitorAction) -> Void = { _ in },
                     role: @escaping () -> DoorRole = { .active }, other: (any OtherAppControlling)? = nil,
                     door: DoorFile? = nil,
-                    copy: @escaping (HomeSpeakerProfile, HomeSpeakerProfile) throws -> CopyReport = DoorCopy.copy,
+                    copy: @escaping (VitruvianSpeakerProfile, VitruvianSpeakerProfile) throws -> CopyReport = DoorCopy.copy,
                     sendStatus: @escaping (MarkChoice) -> Void = { _ in },
                     monitorMayRun: @escaping (Bool) -> Void = { _ in },
-                    profile: HomeSpeakerProfile? = nil, appProfile: HomeSpeakerProfile? = nil, appProgram: @escaping () -> URL? = { nil },
+                    profile: VitruvianSpeakerProfile? = nil, appProfile: VitruvianSpeakerProfile? = nil, appProgram: @escaping () -> URL? = { nil },
                     repairsHooks: Bool = false,
                     otherInstalled: @escaping () -> Bool = { false },
-                    credentialsChangedIn: @escaping (HomeSpeakerProfile) -> Void = { _ in },
+                    credentialsChangedIn: @escaping (VitruvianSpeakerProfile) -> Void = { _ in },
                     volumeRestoreReport: @escaping () -> String? = { nil }) {
             self.link = link
             self.store = store
@@ -199,7 +199,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             self.home = home
             self.settingsURL = settingsURL
             self.secretsURL = secretsURL
-            self.homeSpeakerVersion = homeSpeakerVersion
+            self.vitruvianSpeakerVersion = vitruvianSpeakerVersion
             self.launchctlBootout = launchctlBootout
             self.historyURL = historyURL ?? Self.historyURL(beside: settingsURL)
             self.monitorStatusURL = monitorStatusURL ?? ChatMonitorStatusFile.url(beside: settingsURL)
@@ -220,7 +220,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         }
 
         /// `speaker_history.json` in the settings file's folder, where
-        /// HomeSpeaker keeps it (`BroadcastHistory.defaultURL()`).
+        /// Vitruvian Speaker keeps it (`BroadcastHistory.defaultURL()`).
         public static func historyURL(beside settingsURL: URL) -> URL {
             settingsURL.deletingLastPathComponent().appendingPathComponent("speaker_history.json")
         }
@@ -234,7 +234,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// The speaker job running: speaking, the volume, muting.
     public private(set) var busy: Job?
     /// The default speaker (its key) a volume or mute job was started
-    /// for. HomeSpeaker reads the default when the job runs, so an answer
+    /// for. Vitruvian Speaker reads the default when the job runs, so an answer
     /// for any other is the old speaker's and is not shown as the new one's.
     private var busyFor: String?
     /// A speaker job asked for while the volume was being read: it runs
@@ -323,19 +323,19 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         self.parts = parts
     }
 
-    /// Agent hooks as HomeSpeaker installs them, pointed at the HomeSpeaker
+    /// Agent hooks as Vitruvian Speaker installs them, pointed at the Vitruvian Speaker
     /// program this tool located. Never at the tool's own `bin/tool`, which
     /// `AgentIntegration`'s default (the running program) would be here;
-    /// nil when HomeSpeaker is not installed, so there is nothing to point at.
+    /// nil when Vitruvian Speaker is not installed, so there is nothing to point at.
     public func agentIntegration(home: URL? = nil) -> AgentIntegration? {
         guard let program = parts.driver.program else { return nil }
         return AgentIntegration(home: home ?? parts.home, executablePath: program.path, bootout: parts.launchctlBootout)
     }
 
-    /// The agents' state and the cleanup, which need no HomeSpeaker: the
+    /// The agents' state and the cleanup, which need no Vitruvian Speaker: the
     /// installing integration when there is one, so its own hook reads as
     /// installed, else one pointed at nothing, which reads every hook as
-    /// not HomeSpeaker's current one and refuses to install any.
+    /// not Vitruvian Speaker's current one and refuses to install any.
     public func agentStatusIntegration() -> AgentIntegration {
         agentIntegration() ?? AgentIntegration(home: parts.home, executablePath: "", bootout: parts.launchctlBootout)
     }
@@ -346,7 +346,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         reload()
         refreshRole()
         if readsVolume { try? run(.volume) }
-        if !parts.driver.isInstalled { parts.link.log("HomeSpeaker is not installed: the tool can only show its settings") }
+        if !parts.driver.isInstalled { parts.link.log("Vitruvian Speaker is not installed: the tool can only show its settings") }
     }
 
     public func run(command: String) throws {
@@ -402,7 +402,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         return Pages.island(status())
     }
 
-    /// The volume is read only where it can answer: HomeSpeaker installed,
+    /// The volume is read only where it can answer: Vitruvian Speaker installed,
     /// a speaker picked, and Home speakers on. With them off a read would
     /// only wait on a Cast speaker nobody is using. A quiet side reads
     /// nothing.
@@ -465,7 +465,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
 
     public func islandEvent(_ event: PanelEvent) -> PanelAnswer {
         if event.block == Pages.Block.moreSettings {
-            // Settings opens on HomeSpeaker's detail; the island's page
+            // Settings opens on Vitruvian Speaker's detail; the island's page
             // stays as it is, so the answer carries no page. An app without
             // the feature never drew the button, and would only log an
             // `open` it cannot do: it gets none.
@@ -582,7 +582,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 try save()
             case Pages.Block.courierEnabled?:
                 // Courier stays off until a token is saved, as in
-                // HomeSpeaker's own Settings: on with none, the island asks
+                // Vitruvian Speaker's own Settings: on with none, the island asks
                 // for it under the switch instead, and saving it turns
                 // Courier on.
                 guard let isOn = event.isOn else { return .keep }
@@ -889,13 +889,13 @@ public final class HomeSpeakerTool: @unchecked Sendable {
 
     /// Starts or stops this side's monitor. The page says Running once the
     /// monitor has written that it is; the request alone changes nothing on
-    /// it. Refused while the other HomeSpeaker is in use: its monitor is the
+    /// it. Refused while the other Vitruvian Speaker is in use: its monitor is the
     /// one that runs. Start is refused, too, while nobody has picked: the
     /// app may be running its own.
     private func controlChatMonitor(_ action: ChatMonitorAction) throws {
         switch parts.role() {
         case .quiet(let other):
-            throw CommandRefused("The HomeSpeaker \(other.rawValue) is in use, so its monitor is the one that runs")
+            throw CommandRefused("The Vitruvian Speaker \(other.rawValue) is in use, so its monitor is the one that runs")
         case .waitingAsking where action == .start:
             throw CommandRefused(Self.pickFirst)
         case .active, .activeAsking, .waitingAsking:
@@ -905,7 +905,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             throw CommandRefused("turn on Slack, Google Chat, Beeper or Courier first")
         }
         parts.controlChatMonitor(action)
-        setupNotice = "Asked HomeSpeaker to \(action.rawValue) the chat monitor"
+        setupNotice = "Asked Vitruvian Speaker to \(action.rawValue) the chat monitor"
     }
 
     /// What a settings field that will not take a value says.
@@ -948,16 +948,16 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         setupNotice = "OAuth client saved. Sign in from General to use it"
     }
 
-    /// What an AI Agents button does. Only installing needs HomeSpeaker,
+    /// What an AI Agents button does. Only installing needs Vitruvian Speaker,
     /// since a hook runs it; the rest work on the files alone.
     private func agentAction(_ action: Pages.Block.AgentAction, _ agent: CodingAgent) throws {
         let name = agent.displayName
         switch action {
         case .installHook:
             if case .quiet(let other) = parts.role() {
-                throw CommandRefused("The HomeSpeaker \(other.rawValue) is in use, so its hooks are the ones that run")
+                throw CommandRefused("The Vitruvian Speaker \(other.rawValue) is in use, so its hooks are the ones that run")
             }
-            guard let integration = agentIntegration() else { throw CommandRefused("HomeSpeaker is not installed") }
+            guard let integration = agentIntegration() else { throw CommandRefused("Vitruvian Speaker is not installed") }
             try integration.installHook(for: agent)
             setupNotice = "\(name) \(agent.hookKind) installed"
         case .removeHook:
@@ -1125,7 +1125,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             guard let text = event.text else { return false }
             _ = try applySetting(.beeperAddress, text)
         case Pages.Block.courierEnabled?:
-            // Off until a token is saved, as in HomeSpeaker's own Settings,
+            // Off until a token is saved, as in Vitruvian Speaker's own Settings,
             // where the switch is greyed: an app may ignore `enabled`.
             guard let isOn = event.isOn else { return false }
             return try applySetting(.courierEnabled, String(isOn))
@@ -1144,11 +1144,11 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         case let id? where Pages.Block.networkKey(id) != nil:
             // Off mutes the network, on reads it again. Read at the
             // monitor's next poll, without a restart. A switch already
-            // where it is put saves nothing, and a network HomeSpeaker
+            // where it is put saves nothing, and a network Vitruvian Speaker
             // reads itself (drawn greyed) is never muted: an app may
             // ignore a toggle's `enabled`. For Courier, that network's
             // switch reads it through Courier as well, or leaves it to
-            // HomeSpeaker's reader again (`courierReadAnyway`); the
+            // Vitruvian Speaker's reader again (`courierReadAnyway`); the
             // engine restarts its monitor to sort the accounts again.
             guard let isOn = event.isOn, let (app, key) = Pages.Block.networkKey(id) else { return false }
             let skipped = networksListed(app)?.contains(where: { $0.key == key && $0.state == .skipped }) == true
@@ -1169,7 +1169,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             // again save nothing. Against the networks as last drawn, not
             // as listed now: one Beeper lists after the page was drawn was
             // never shown, so it stays announced until James mutes it, and
-            // one it stops listing keeps its tap. A network HomeSpeaker now
+            // one it stops listing keeps its tap. A network Vitruvian Speaker now
             // reads itself is still never muted, as for a switch.
             guard let values = event.values else { return false }
             return saveDrawnNetworkChips(.beeper, values)
@@ -1183,7 +1183,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     }
 
     /// Saves a change of `app`'s network chips against the networks as
-    /// last drawn, with any HomeSpeaker now reads itself marked skipped.
+    /// last drawn, with any Vitruvian Speaker now reads itself marked skipped.
     private func saveDrawnNetworkChips(_ app: ChatApp, _ values: [String]) -> Bool {
         let drawn = drawnChat.flatMap { $0.monitorRunning ? $0.monitor?.networks(for: app).states : nil }
         let skippedNow = Set((networksListed(app) ?? []).filter { $0.state == .skipped }.map(\.key))
@@ -1208,16 +1208,16 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         openPanels.remove(panel)
     }
 
-    // MARK: - Which HomeSpeaker runs
+    // MARK: - Which Vitruvian Speaker runs
 
     /// How long a side that has just become the one in use waits for the
     /// other to stop its chat monitor before starting its own (design 7.6).
     public static let otherStopsWithin: TimeInterval = 5
 
-    /// What a refusal says while nobody has picked a HomeSpeaker.
-    public static let pickFirst = "Pick which HomeSpeaker to use first"
+    /// What a refusal says while nobody has picked a Vitruvian Speaker.
+    public static let pickFirst = "Pick which Vitruvian Speaker to use first"
     /// What `say` says with nowhere to speak.
-    public static let notSetUp = "Set up HomeSpeaker first: pick a speaker, or turn on This Mac"
+    public static let notSetUp = "Set up Vitruvian Speaker first: pick a speaker, or turn on This Mac"
 
     /// Reads the settings and the role afresh (the choice file, and whether
     /// the other is installed) and acts on a change: the chat monitor may
@@ -1255,7 +1255,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             if parts.repairsHooks { repairStrandedHooks() }
             let otherRunning = parts.other?.isRunning ?? false
             // Only an app that is found: with none (a test's
-            // `HOMESPEAKER_PROGRAM=""`), there is nothing to wait for or quit.
+            // `VITRUVIAN_SPEAKER_PROGRAM=""`), there is nothing to wait for or quit.
             let appFound = parts.appProgram() != nil
             // An app older than 1.19 never hears the choice and keeps its
             // own monitor: this side's waits until it has quit, however
@@ -1300,13 +1300,13 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         return OtherAppVersion.isOlder(other.version, than: OtherAppPlan.hearsTheChoiceSince)
     }
 
-    /// Points a HomeSpeaker hook stranded on a program that is gone or in
+    /// Points a Vitruvian Speaker hook stranded on a program that is gone or in
     /// the Trash (the app dragged there by hand, say) at this side's own
     /// program, re-points a hook when the extension is explicitly chosen, or
     /// refreshes an older plugin file that already points at this program
     /// after an update, so the replies are spoken again. When nobody has
     /// chosen (`choice == nil`), a hook that runs another program that is
-    /// there is left alone, as is one that is not HomeSpeaker's program.
+    /// there is left alone, as is one that is not Vitruvian Speaker's program.
     private func repairStrandedHooks() {
         guard let program = parts.driver.program,
               !OtherDoorPresence.isInTrash(program.path),
@@ -1315,12 +1315,12 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         let integration = AgentIntegration(home: parts.home, executablePath: program.path, bootout: parts.launchctlBootout)
         for agent in CodingAgent.allCases where agent.supportsHook {
             let status = integration.status(of: agent)
-            guard case .stale = status.hook, let runs = status.hookProgram, AgentIntegration.isHomeSpeakerProgram(runs),
+            guard case .stale = status.hook, let runs = status.hookProgram, AgentIntegration.isVitruvianSpeakerProgram(runs),
                   runs == program.path || choice == .extension || OtherDoorPresence.isInTrash(runs) || !FileManager.default.fileExists(atPath: runs) else { continue }
             do {
                 try integration.installHook(for: agent)
             } catch {
-                parts.link.log("the \(agent.displayName) hook could not be pointed at this HomeSpeaker: \(error.localizedDescription)")
+                parts.link.log("the \(agent.displayName) hook could not be pointed at this Vitruvian Speaker: \(error.localizedDescription)")
             }
         }
     }
@@ -1376,10 +1376,10 @@ public final class HomeSpeakerTool: @unchecked Sendable {
 
     // MARK: - The choice card
 
-    /// This HomeSpeaker: the extension, for the tool.
-    private var me: HomeSpeakerProfile.Door { parts.profile?.door ?? .extension }
+    /// This Vitruvian Speaker: the extension, for the tool.
+    private var me: VitruvianSpeakerProfile.Door { parts.profile?.door ?? .extension }
 
-    /// Which HomeSpeaker is in use, read afresh, and the step the person is on.
+    /// Which Vitruvian Speaker is in use, read afresh, and the step the person is on.
     private func doorState(role: DoorRole? = nil) -> Pages.DoorState {
         let role = role ?? parts.role()
         let oldAppRunning = Self.runs(role) && parts.appProgram() != nil && (parts.other?.isRunning ?? false)
@@ -1400,7 +1400,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         return record?.chosen != compare.seenChoice || record?.chosenAt != compare.seenChosenAt
     }
 
-    private static func other(of door: HomeSpeakerProfile.Door) -> HomeSpeakerProfile.Door {
+    private static func other(of door: VitruvianSpeakerProfile.Door) -> VitruvianSpeakerProfile.Door {
         door == .app ? .extension : .app
     }
 
@@ -1443,11 +1443,11 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     }
 
     /// Step 2 for choosing `door`: what the other one has, beside it.
-    private func compare(choosing door: HomeSpeakerProfile.Door) {
+    private func compare(choosing door: VitruvianSpeakerProfile.Door) {
         compare(from: Self.other(of: door), into: door, purpose: .choose)
     }
 
-    private func compare(from: HomeSpeakerProfile.Door, into: HomeSpeakerProfile.Door,
+    private func compare(from: VitruvianSpeakerProfile.Door, into: VitruvianSpeakerProfile.Door,
                          purpose: Pages.DoorCompare.Purpose) {
         do {
             guard let compare = try SettingsActions.beginSwitch(
@@ -1521,7 +1521,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// Quit, asked again: from step 3, or the line an app older than 1.19
     /// leaves while it still runs.
     private func quitAgain() {
-        // Never a HomeSpeaker this side has not found.
+        // Never a Vitruvian Speaker this side has not found.
         guard let other = parts.other, parts.appProgram() != nil else { return }
         let later = parts.later
         let timeout = Self.otherStopsWithin
@@ -1602,10 +1602,10 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     }
 
     private struct ExtensionSwitchSeam: SettingsActions.DoorSwitchSeam {
-        unowned let tool: HomeSpeakerTool
+        unowned let tool: VitruvianSpeakerTool
 
-        var me: HomeSpeakerProfile.Door { tool.me }
-        var chosenBy: String { "HomeSpeaker extension \(ToolVersion.current)" }
+        var me: VitruvianSpeakerProfile.Door { tool.me }
+        var chosenBy: String { "Vitruvian Speaker extension \(ToolVersion.current)" }
 
         func now() -> Date { tool.parts.now() }
 
@@ -1617,11 +1617,11 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             tool.parts.otherInstalled()
         }
 
-        func profile(for side: HomeSpeakerProfile.Door, record: DoorRecord?) -> HomeSpeakerProfile? {
+        func profile(for side: VitruvianSpeakerProfile.Door, record: DoorRecord?) -> VitruvianSpeakerProfile? {
             side == tool.me ? tool.parts.profile : tool.parts.appProfile
         }
 
-        func program(for side: HomeSpeakerProfile.Door, record: DoorRecord?) -> String? {
+        func program(for side: VitruvianSpeakerProfile.Door, record: DoorRecord?) -> String? {
             switch side {
             case .extension:
                 return tool.parts.driver.program?.path
@@ -1630,15 +1630,15 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             }
         }
 
-        func copy(from source: HomeSpeakerProfile, to destination: HomeSpeakerProfile) throws -> CopyReport {
+        func copy(from source: VitruvianSpeakerProfile, to destination: VitruvianSpeakerProfile) throws -> CopyReport {
             try tool.parts.copy(source, destination)
         }
 
-        func credentialsChanged(in destination: HomeSpeakerProfile) {
+        func credentialsChanged(in destination: VitruvianSpeakerProfile) {
             tool.parts.credentialsChangedIn(destination)
         }
 
-        func writeChoice(_ side: HomeSpeakerProfile.Door, at date: Date, chosenBy: String) throws {
+        func writeChoice(_ side: VitruvianSpeakerProfile.Door, at date: Date, chosenBy: String) throws {
             guard let file = tool.parts.door else {
                 throw CommandRefused("the choice file is not available, so nothing was chosen")
             }
@@ -1649,7 +1649,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             }
         }
 
-        func repointHooks(to side: HomeSpeakerProfile.Door, program: String) -> [String] {
+        func repointHooks(to side: VitruvianSpeakerProfile.Door, program: String) -> [String] {
             SettingsActions.repointStaleHooks(
                 home: tool.parts.home,
                 to: program,
@@ -1685,21 +1685,21 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         let other: any OtherAppControlling
         let loginResult: Result<Void, OtherAppProblem>?
 
-        var me: HomeSpeakerProfile.Door { .extension }
+        var me: VitruvianSpeakerProfile.Door { .extension }
         var chosenBy: String { "" }
 
         func now() -> Date { Date() }
         func inTrash() -> Bool { false }
         func readDoor() -> DoorRecord? { nil }
         func otherInstalled(record: DoorRecord?) -> Bool { false }
-        func profile(for side: HomeSpeakerProfile.Door, record: DoorRecord?) -> HomeSpeakerProfile? { nil }
-        func program(for side: HomeSpeakerProfile.Door, record: DoorRecord?) -> String? { nil }
-        func copy(from source: HomeSpeakerProfile, to destination: HomeSpeakerProfile) throws -> CopyReport {
+        func profile(for side: VitruvianSpeakerProfile.Door, record: DoorRecord?) -> VitruvianSpeakerProfile? { nil }
+        func program(for side: VitruvianSpeakerProfile.Door, record: DoorRecord?) -> String? { nil }
+        func copy(from source: VitruvianSpeakerProfile, to destination: VitruvianSpeakerProfile) throws -> CopyReport {
             try DoorCopy.copy(from: source, to: destination)
         }
-        func credentialsChanged(in destination: HomeSpeakerProfile) {}
-        func writeChoice(_ side: HomeSpeakerProfile.Door, at date: Date, chosenBy: String) throws {}
-        func repointHooks(to side: HomeSpeakerProfile.Door, program: String) -> [String] { [] }
+        func credentialsChanged(in destination: VitruvianSpeakerProfile) {}
+        func writeChoice(_ side: VitruvianSpeakerProfile.Door, at date: Date, chosenBy: String) throws {}
+        func repointHooks(to side: VitruvianSpeakerProfile.Door, program: String) -> [String] { [] }
         func refreshRole() {}
         func quitOther() -> Bool { false }
         func isOtherRunning() -> Bool { false }
@@ -1719,9 +1719,9 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         func openVitruvian() -> Bool { false }
     }
 
-    // MARK: - HomeSpeaker's program
+    // MARK: - Vitruvian Speaker's program
 
-    /// HomeSpeaker's program ended a job: what it said, drawn again.
+    /// Vitruvian Speaker's program ended a job: what it said, drawn again.
     public func finished(_ job: Job, _ result: JobResult) {
         if job.isSetup {
             if setupBusy == job { setupBusy = nil }
@@ -1783,7 +1783,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         case (_, .loginItem(_, let problem)):
             if let problem { setupNotice = problem.capitalizingFirst }
         case (.signIn(chatOnly: true), .done):
-            // HomeSpeaker's `--sign-in --chat` told the running app itself.
+            // Vitruvian Speaker's `--sign-in --chat` told the running app itself.
             setupNotice = "Google Chat access granted"
         case (.app(.signOut(chatOnly: true)), .done(let lines)):
             setupNotice = lines.first?.capitalizingFirst ?? "Signed out of Google Chat"
@@ -1811,7 +1811,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     }
 
     /// A fresh Google Home sign-in: the homes are listed again, and with no
-    /// speakers yet they are found, as HomeSpeaker's Settings does.
+    /// speakers yet they are found, as Vitruvian Speaker's Settings does.
     private func signedInAfresh() {
         homes = nil
         askedHomes = false
@@ -1819,7 +1819,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         if !config.hasSpeakers, setupBusy == nil { try? discover() }
     }
 
-    /// The app opens HomeSpeaker's settings panel when an answer names it.
+    /// The app opens Vitruvian Speaker's settings panel when an answer names it.
     private var opensSettings: Bool { parts.link.supports(featureNamed: Self.openSettingsFeature) }
 
     /// The app draws sections, so Settings is sent every section on one
@@ -1885,7 +1885,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 status.draftClientSecretTyped = !draftClientSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 status.files = Pages.Files(settings: parts.settingsURL.path, secrets: parts.secretsURL.path,
                                            history: parts.historyURL.path,
-                                           homeSpeakerVersion: parts.driver.isInstalled ? parts.homeSpeakerVersion() : nil)
+                                           vitruvianSpeakerVersion: parts.driver.isInstalled ? parts.vitruvianSpeakerVersion() : nil)
             }
             if settingsShows(.agents) {
                 // The agents' files are read here and nowhere else.
@@ -2047,7 +2047,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
 
     /// Saves the Slack token typed, trimmed; nothing typed clears it. The
     /// token goes to the secrets file and nowhere else -- not the page, not
-    /// a notice -- and a running HomeSpeaker is told, so a monitor waiting
+    /// a notice -- and a running Vitruvian Speaker is told, so a monitor waiting
     /// for a token starts.
     private func saveSlackToken(_ typed: String) throws {
         let token = typed.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2080,7 +2080,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
 
     /// Saves the Courier token typed, trimmed; nothing typed clears it, and
     /// switches Courier off: it stays off until a token is saved, as in
-    /// HomeSpeaker's own Settings. To the secrets file only, and the
+    /// Vitruvian Speaker's own Settings. To the secrets file only, and the
     /// running monitor is told, so it starts or restarts with it.
     private func saveCourierToken(_ typed: String) throws {
         let token = typed.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2117,7 +2117,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     }
 
     /// Speaks the preview on this Mac, in the tool's own process: it needs
-    /// no sign-in and no HomeSpeaker.
+    /// no sign-in and no Vitruvian Speaker.
     private func preview() {
         guard !previewing else { return }
         previewing = true
@@ -2142,12 +2142,12 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         refreshOpenPanels()
     }
 
-    /// While the other HomeSpeaker is in use this one does nothing, even
+    /// While the other Vitruvian Speaker is in use this one does nothing, even
     /// asked by hand: the other is the one the person picked. While nobody
     /// has picked, what the person asks for is done.
     private func refuseWhileQuiet() throws {
         if case .quiet(let other) = parts.role() {
-            throw CommandRefused("The HomeSpeaker \(other.rawValue) is in use, so this one stays quiet")
+            throw CommandRefused("The Vitruvian Speaker \(other.rawValue) is in use, so this one stays quiet")
         }
     }
 
@@ -2157,7 +2157,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     }
 
     /// Speaks again the history's broadcast `id`, as Say speaks what is
-    /// typed: the master switch holds, quiet hours do not. HomeSpeaker
+    /// typed: the master switch holds, quiet hours do not. Vitruvian Speaker
     /// leaves the history as it is (`Job.replay`), so it is listed once.
     private func replay(_ id: UUID) throws {
         guard let item = BroadcastHistory(fileURL: parts.historyURL).load().first(where: { $0.id == id }) else {
@@ -2176,7 +2176,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// has waited.
     private func check(_ job: Job) throws {
         try refuseWhileQuiet()
-        guard parts.driver.isInstalled else { throw CommandRefused("HomeSpeaker is not installed") }
+        guard parts.driver.isInstalled else { throw CommandRefused("Vitruvian Speaker is not installed") }
         reload()
         if job.spokenText != nil {
             guard config.defaultDevice != nil || config.effectiveSpeakLocal || config.effectiveSpeakPhone else {
@@ -2184,7 +2184,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             }
             guard config.enabled else { throw CommandRefused("broadcasting is switched off") }
         } else {
-            guard config.defaultDevice != nil else { throw CommandRefused("no default speaker; pick one in HomeSpeaker") }
+            guard config.defaultDevice != nil else { throw CommandRefused("no default speaker; pick one in Vitruvian Speaker") }
         }
     }
 
@@ -2201,7 +2201,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 if next.controlsSpeaker {
                     // Meant for this speaker, with Home speakers on.
                     guard wantedFor == config.defaultTarget else { throw CommandRefused(Pages.pendingDropped) }
-                    guard config.effectiveSpeakHome else { throw CommandRefused(Pages.homeSpeakersOff) }
+                    guard config.effectiveSpeakHome else { throw CommandRefused(Pages.vitruvianSpeakersOff) }
                 }
                 try run(next)
             } catch {
@@ -2215,21 +2215,21 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         }
     }
 
-    /// A setup job needs HomeSpeaker and nothing more: not a speaker, and
+    /// A setup job needs Vitruvian Speaker and nothing more: not a speaker, and
     /// not the speaker slot.
     private func setupJob(_ job: Job) throws {
         try refuseWhileQuiet()
-        guard parts.driver.isInstalled else { throw CommandRefused("HomeSpeaker is not installed") }
+        guard parts.driver.isInstalled else { throw CommandRefused("Vitruvian Speaker is not installed") }
         try run(job)
     }
 
-    /// One job a slot at a time: HomeSpeaker's program takes seconds, and
+    /// One job a slot at a time: Vitruvian Speaker's program takes seconds, and
     /// two speaker jobs at once would read a volume the other is setting. A
     /// second in the same slot is refused, saying what is still running;
     /// a setup job and a speaker job run side by side.
     private func run(_ job: Job, keepingNotice: Bool = false) throws {
         if job.isSetup {
-            if let setupBusy { throw CommandRefused("HomeSpeaker is busy: \(Pages.busyLine(setupBusy))") }
+            if let setupBusy { throw CommandRefused("Vitruvian Speaker is busy: \(Pages.busyLine(setupBusy))") }
             setupBusy = job
             setupNotice = nil
         } else {
@@ -2243,7 +2243,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 // Behind a read of the volume, one job waits; behind
                 // anything else, or a second, it is refused.
                 guard busy == .volume, waiting == nil else {
-                    throw CommandRefused("HomeSpeaker is busy: \(Pages.busyLine(waiting ?? busy))")
+                    throw CommandRefused("Vitruvian Speaker is busy: \(Pages.busyLine(waiting ?? busy))")
                 }
                 waiting = job
                 waitingFor = config.defaultTarget
@@ -2307,7 +2307,7 @@ extension String {
 }
 
 extension Job {
-    /// Reads or changes the default speaker's volume: HomeSpeaker picks the
+    /// Reads or changes the default speaker's volume: Vitruvian Speaker picks the
     /// speaker from the settings when it runs.
     var controlsSpeaker: Bool {
         switch self {

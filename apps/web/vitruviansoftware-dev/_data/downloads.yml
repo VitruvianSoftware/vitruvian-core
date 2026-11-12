@@ -87,14 +87,14 @@ categories:
         extensions_url: /ai/#eco-vitruvian-desktop
         extensions_label: Browse Desktop Extensions
 
-      - id: home-speaker
-        name: HomeSpeaker
+      - id: vitruvian-speaker
+        name: Vitruvian Speaker
         version: "1.41.0"
         summary: >-
           A macOS menu bar app that announces agent summaries, chat notifications, and spoken
           briefings aloud on Google Home, Nest speakers, or local system speech synthesis with quiet hours.
         platforms: ["macOS Universal", "Apple Silicon", "Intel"]
-        brew_cask: vitruviansoftware/tap/home-speaker
+        brew_cask: vitruviansoftware/tap/vitruvian-speaker
         downloads:
           - label: Universal DMG
             url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.41.0/HomeSpeaker-1.41.0-universal.dmg
@@ -112,10 +112,10 @@ categories:
             url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.41.0/HomeSpeaker-1.41.0-universal.zip
             size: 5.7 MB
             arch: Universal
-        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=home-speaker
-        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/home-speaker
-        extensions_url: /ai/#dev.vitruvian.homespeaker
-        extensions_label: HomeSpeaker Extension
+        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=vitruvian-speaker
+        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-speaker
+        extensions_url: /ai/#dev.vitruvian.speaker
+        extensions_label: Vitruvian Speaker Extension
 
       - id: courier
         name: Courier

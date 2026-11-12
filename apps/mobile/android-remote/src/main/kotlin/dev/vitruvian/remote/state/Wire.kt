@@ -291,9 +291,9 @@ public object HostCodec {
   }
 }
 
-// --- HomeSpeaker's sources and recent broadcasts ------------------------
+// --- Vitruvian Speaker's sources and recent broadcasts ------------------------
 
-/** One HomeSpeaker broadcast, as `/v1/homespeaker` lists it in `last` and `recent`. */
+/** One Vitruvian Speaker broadcast, as `/v1/speaker` lists it in `last` and `recent`. */
 public data class AgentLastBroadcast(
     val text: String,
     val target: String,
@@ -302,20 +302,20 @@ public data class AgentLastBroadcast(
     val id: String = "",
 )
 
-/** One system speech voice reported by `GET /v1/homespeaker`. */
+/** One system speech voice reported by `GET /v1/speaker`. */
 public data class AgentVoice(
     val id: String,
     val name: String,
     val lang: String,
 )
 
-/** One Google Home structure reported by `GET /v1/homespeaker`. */
+/** One Google Home structure reported by `GET /v1/speaker`. */
 public data class AgentHome(
     val id: String,
     val name: String,
 )
 
-/** One coding agent's hook and instruction status reported by `GET /v1/homespeaker`. */
+/** One coding agent's hook and instruction status reported by `GET /v1/speaker`. */
 public data class AgentHookStatus(
     val agent: String,
     val hookState: String,
@@ -338,9 +338,9 @@ public data class AgentHookStatus(
 }
 
 /**
- * One Beeper or Courier network reported by `GET /v1/homespeaker` (`reading`, `muted`, or
- * `skipped`). [readAnyway] is Courier's only: read through Courier although HomeSpeaker's own Slack
- * or Google Chat reader covers it.
+ * One Beeper or Courier network reported by `GET /v1/speaker` (`reading`, `muted`, or `skipped`).
+ * [readAnyway] is Courier's only: read through Courier although Vitruvian Speaker's own Slack or
+ * Google Chat reader covers it.
  */
 public data class AgentBeeperNetwork(
     val key: String,
@@ -352,11 +352,11 @@ public data class AgentBeeperNetwork(
 /** One cloned voice from `custom_voices`; its [id] is a valid `gemini_voice`. */
 public data class AgentCustomVoice(val id: String, val name: String)
 
-/** One selectable option in a Home Speaker catalog setting (`choices[]`). */
-public data class HomeSpeakerChoice(val value: String, val label: String)
+/** One selectable option in a Vitruvian Speaker catalog setting (`choices[]`). */
+public data class VitruvianSpeakerChoice(val value: String, val label: String)
 
-/** Numeric range, step and default for a Home Speaker `.number` catalog setting (`limits`). */
-public data class HomeSpeakerLimits(
+/** Numeric range, step and default for a Vitruvian Speaker `.number` catalog setting (`limits`). */
+public data class VitruvianSpeakerLimits(
     val min: Double,
     val max: Double,
     val step: Double,
@@ -372,8 +372,8 @@ public data class HomeSpeakerLimits(
     get() = step.toInt()
 }
 
-/** One entry in Home Speaker's `settings[]` catalog relayed by `GET /v1/homespeaker`. */
-public data class HomeSpeakerSetting(
+/** One entry in Vitruvian Speaker's `settings[]` catalog relayed by `GET /v1/speaker`. */
+public data class VitruvianSpeakerSetting(
     val key: String,
     val kind: String,
     val label: String,
@@ -381,27 +381,29 @@ public data class HomeSpeakerSetting(
     val boolValue: Boolean? = null,
     val numberValue: Double? = null,
     val shown: Boolean = true,
-    val choices: List<HomeSpeakerChoice> = emptyList(),
-    val limits: HomeSpeakerLimits? = null,
+    val choices: List<VitruvianSpeakerChoice> = emptyList(),
+    val limits: VitruvianSpeakerLimits? = null,
 )
 
-/** Lookup wrapper over Home Speaker's `settings[]` catalog. */
-public class HomeSpeakerCatalog(public val settings: List<HomeSpeakerSetting> = emptyList()) {
-  private val byKey: Map<String, HomeSpeakerSetting> = settings.associateBy { it.key }
+/** Lookup wrapper over Vitruvian Speaker's `settings[]` catalog. */
+public class VitruvianSpeakerCatalog(
+    public val settings: List<VitruvianSpeakerSetting> = emptyList()
+) {
+  private val byKey: Map<String, VitruvianSpeakerSetting> = settings.associateBy { it.key }
 
   public val isEmpty: Boolean
     get() = settings.isEmpty()
 
-  public operator fun get(key: String): HomeSpeakerSetting? = byKey[key]
+  public operator fun get(key: String): VitruvianSpeakerSetting? = byKey[key]
 
   override fun equals(other: Any?): Boolean =
-      other is HomeSpeakerCatalog && settings == other.settings
+      other is VitruvianSpeakerCatalog && settings == other.settings
 
   override fun hashCode(): Int = settings.hashCode()
 }
 
-/** Pure-JVM wire representation of one entry in `targets[]` from `GET /v1/homespeaker`. */
-public data class HomeSpeakerTargetWire(
+/** Pure-JVM wire representation of one entry in `targets[]` from `GET /v1/speaker`. */
+public data class VitruvianSpeakerTargetWire(
     val key: String,
     val name: String,
     val room: String,
@@ -411,14 +413,14 @@ public data class HomeSpeakerTargetWire(
 )
 
 /**
- * The parts of `GET /v1/homespeaker` added in agent v1.10+: which senders HomeSpeaker speaks for,
+ * The parts of `GET /v1/speaker` added in agent v1.10+: which senders Vitruvian Speaker speaks for,
  * and its newest broadcasts.
  *
  * Each switch is null when the key is absent -- an agent older than v1.10 -- so the dashboard hides
  * it instead of drawing a guess that the Mac would then refuse. That distinction is the whole
  * point, and it fails silently if wrong, so it is parsed here, where a JVM test reaches it.
  */
-public data class HomeSpeakerSources(
+public data class VitruvianSpeakerSources(
     val announceClaudeCode: Boolean?,
     val announceAntigravity: Boolean?,
     val announceOpenCode: Boolean?,
@@ -444,8 +446,8 @@ public data class HomeSpeakerSources(
     val customVoices: List<AgentCustomVoice> = emptyList(),
     val customStylePrompt: String = "",
     val quietHoursActive: Boolean = false,
-    val quietHoursStart: String = HomeSpeakerWire.DEFAULT_QUIET_START,
-    val quietHoursEnd: String = HomeSpeakerWire.DEFAULT_QUIET_END,
+    val quietHoursStart: String = VitruvianSpeakerWire.DEFAULT_QUIET_START,
+    val quietHoursEnd: String = VitruvianSpeakerWire.DEFAULT_QUIET_END,
     val snoozeUntil: String? = null,
     val availableVoices: List<AgentVoice> = emptyList(),
     val structureId: String = "",
@@ -465,12 +467,12 @@ public data class HomeSpeakerSources(
     val gwsInstalled: Boolean = false,
     val gwsAccount: String = "",
     val googleChatSource: String = "auto",
-    val pollInterval: Int = HomeSpeakerWire.DEFAULT_POLL_INTERVAL,
+    val pollInterval: Int = VitruvianSpeakerWire.DEFAULT_POLL_INTERVAL,
     val agents: List<AgentHookStatus> = emptyList(),
     val legacyLaunchAgent: Boolean = false,
     val customOAuthClientId: String = "",
     val hasCustomOAuthSecret: Boolean = false,
-    val homeSpeakerVersion: String = "",
+    val vitruvianSpeakerVersion: String = "",
     /** Courier's switch; null from an older agent, which does not know Courier. */
     val courierEnabled: Boolean? = null,
     val courierAnnounce: String = "direct_and_mentions",
@@ -483,14 +485,14 @@ public data class HomeSpeakerSources(
      */
     val beeperNetworksListed: Boolean? = null,
     val courierNetworksListed: Boolean? = null,
-    val settings: List<HomeSpeakerSetting> = emptyList(),
-    val catalog: HomeSpeakerCatalog = HomeSpeakerCatalog(settings),
+    val settings: List<VitruvianSpeakerSetting> = emptyList(),
+    val catalog: VitruvianSpeakerCatalog = VitruvianSpeakerCatalog(settings),
     val outputsLabel: String? = null,
     val outputsFooter: String? = null,
-    val targets: List<HomeSpeakerTargetWire> = emptyList(),
+    val targets: List<VitruvianSpeakerTargetWire> = emptyList(),
 )
 
-public object HomeSpeakerWire {
+public object VitruvianSpeakerWire {
   public const val DEFAULT_QUIET_START: String = "22:00"
   public const val DEFAULT_QUIET_END: String = "07:00"
   public const val DEFAULT_POLL_INTERVAL: Int = 15
@@ -499,7 +501,7 @@ public object HomeSpeakerWire {
    * Reads the v1.10+ fields; anything unparseable reads as an older agent (all null, no history,
    * default local engine and style).
    */
-  public fun sources(json: String): HomeSpeakerSources {
+  public fun sources(json: String): VitruvianSpeakerSources {
     val o =
         runCatching { JsonReader(json).readValue() as? Map<*, *> }.getOrNull()
             ?: emptyMap<Any, Any>()
@@ -594,7 +596,7 @@ public object HomeSpeakerWire {
                 val c = ch as? Map<*, *> ?: return@mapNotNull null
                 val v = c["value"] as? String ?: return@mapNotNull null
                 val l = c["label"] as? String ?: v
-                HomeSpeakerChoice(value = v, label = l)
+                VitruvianSpeakerChoice(value = v, label = l)
               }
           val limMap = it["limits"] as? Map<*, *>
           val limits =
@@ -604,10 +606,10 @@ public object HomeSpeakerWire {
                 val step = (limMap["step"] as? Number)?.toDouble()
                 val def = (limMap["default_value"] as? Number)?.toDouble()
                 if (min != null && max != null && step != null && def != null) {
-                  HomeSpeakerLimits(min = min, max = max, step = step, defaultValue = def)
+                  VitruvianSpeakerLimits(min = min, max = max, step = step, defaultValue = def)
                 } else null
               } else null
-          HomeSpeakerSetting(
+          VitruvianSpeakerSetting(
               key = key,
               kind = kind,
               label = label,
@@ -636,7 +638,7 @@ public object HomeSpeakerWire {
           val key = (it["key"] as? String).orEmpty()
           val name = (it["name"] as? String).orEmpty()
           if (key.isEmpty() && name.isEmpty()) return@mapNotNull null
-          HomeSpeakerTargetWire(
+          VitruvianSpeakerTargetWire(
               key = key,
               name = name,
               room = (it["room"] as? String).orEmpty(),
@@ -645,7 +647,7 @@ public object HomeSpeakerWire {
               displayLine = (it["display_line"] as? String).orEmpty(),
           )
         }
-    return HomeSpeakerSources(
+    return VitruvianSpeakerSources(
         announceClaudeCode = flag("announce_claude_code"),
         announceAntigravity = flag("announce_antigravity"),
         announceOpenCode = flag("announce_opencode"),
@@ -697,7 +699,7 @@ public object HomeSpeakerWire {
         legacyLaunchAgent = flag("legacy_launch_agent") ?: false,
         customOAuthClientId = str("custom_oauth_client_id", ""),
         hasCustomOAuthSecret = flag("has_custom_oauth_secret") ?: false,
-        homeSpeakerVersion = str("home_speaker_version", ""),
+        vitruvianSpeakerVersion = str("speaker_version", ""),
         courierEnabled =
             if (o.containsKey("courier_enabled") ||
                 o.containsKey("has_courier_token") ||
@@ -713,7 +715,7 @@ public object HomeSpeakerWire {
         beeperNetworksListed = flag("beeper_networks_listed"),
         courierNetworksListed = flag("courier_networks_listed"),
         settings = settings,
-        catalog = HomeSpeakerCatalog(settings),
+        catalog = VitruvianSpeakerCatalog(settings),
         outputsLabel = outputsLabel,
         outputsFooter = outputsFooter,
         targets = targets,

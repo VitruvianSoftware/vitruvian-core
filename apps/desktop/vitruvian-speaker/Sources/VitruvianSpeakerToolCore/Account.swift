@@ -19,7 +19,7 @@
 // SOFTWARE.
 
 import Foundation
-import HomeSpeakerCore
+import VitruvianSpeakerCore
 
 /// The Google Home sign-in, as far as the tool's Settings needs it: whether
 /// there is one and whose, whether Sign In can work, and the Antigravity
@@ -28,12 +28,12 @@ import HomeSpeakerCore
 public protocol GoogleAccount: AnyObject {
     var isSignedIn: Bool { get }
     var email: String? { get }
-    /// An OAuth client is known (the person's own, HomeSpeaker's, or an
+    /// An OAuth client is known (the person's own, Vitruvian Speaker's, or an
     /// imported login's), so Sign In has something to sign in with.
     var hasOAuthClient: Bool { get }
     /// The Antigravity Google Home connector left a login on this Mac.
     var hasAntigravityTokens: Bool { get }
-    /// Copies that login into HomeSpeaker's secrets. False when the file
+    /// Copies that login into Vitruvian Speaker's secrets. False when the file
     /// holds no usable login.
     func importFromAntigravity() throws -> Bool
     /// The person's own OAuth client id, saved under Google Cloud; nil when
@@ -41,7 +41,7 @@ public protocol GoogleAccount: AnyObject {
     var customOAuthClientId: String? { get }
     /// A secret is saved with that client.
     var hasCustomOAuthClientSecret: Bool { get }
-    /// HomeSpeaker.app was packaged with a shared OAuth client.
+    /// Vitruvian Speaker.app was packaged with a shared OAuth client.
     var hasBundledOAuthClient: Bool { get }
     /// Saves the person's own OAuth client in one write: `id` as given (the
     /// caller trims it), and `secret` too unless it is nil, which keeps the
@@ -51,8 +51,8 @@ public protocol GoogleAccount: AnyObject {
     func clearOAuthClient() throws
 }
 
-/// One HomeSpeaker's secrets file, read afresh on every question, as the
-/// app reads its own: that HomeSpeaker, its tool and its command line all
+/// One Vitruvian Speaker's secrets file, read afresh on every question, as the
+/// app reads its own: that Vitruvian Speaker, its tool and its command line all
 /// sign in and out of it.
 public final class SecretStoreAccount: GoogleAccount {
     /// The secrets file: the extension's engine's, never the app's.
@@ -60,13 +60,13 @@ public final class SecretStoreAccount: GoogleAccount {
     private let antigravityTokens: URL
     /// Says which sign-in client is shipped: the extension's, in its tool
     /// folder.
-    public let profile: HomeSpeakerProfile
+    public let profile: VitruvianSpeakerProfile
 
     /// Every part is named: a default would be the app's secrets, which the
     /// extension must never sign in or out of.
     public init(
         store: SecretStore, antigravityTokens: URL = SecretStore.antigravityTokensURL,
-        profile: HomeSpeakerProfile
+        profile: VitruvianSpeakerProfile
     ) {
         self.store = store
         self.antigravityTokens = antigravityTokens
@@ -147,9 +147,9 @@ public protocol ChatCredentials: AnyObject {
     func clearGeminiKey() throws
 }
 
-/// One HomeSpeaker's secrets file, read afresh on every question, and
+/// One Vitruvian Speaker's secrets file, read afresh on every question, and
 /// written through `SecretStore.update`, under its lock, so that
-/// HomeSpeaker refreshing a Google token never writes over the token saved
+/// Vitruvian Speaker refreshing a Google token never writes over the token saved
 /// here.
 public final class SecretStoreChatCredentials: ChatCredentials {
     /// The secrets file: the extension's engine's, never the app's.

@@ -19,22 +19,22 @@
 // SOFTWARE.
 
 import Foundation
-import HomeSpeakerCore
+import VitruvianSpeakerCore
 import VitruvianToolKit
 import VitruvianToolProtocol
 
-// The extension's pages when the HomeSpeaker app is installed too (design
+// The extension's pages when the Vitruvian Speaker app is installed too (design
 // 7.4 and 7.7): the choice card, the side-by-side summary before a copy,
-// closing the app, the quiet card, and General's "Which HomeSpeaker" row.
+// closing the app, the quiet card, and General's "Which Vitruvian Speaker" row.
 // Pure functions of `Pages.Status.door`, as the rest of the pages are.
 
 extension Pages {
-    /// Which HomeSpeaker is in use, as the pages need it.
+    /// Which Vitruvian Speaker is in use, as the pages need it.
     public struct DoorState: Equatable {
-        /// This HomeSpeaker: the extension, for the tool.
-        public var me: HomeSpeakerProfile.Door
+        /// This Vitruvian Speaker: the extension, for the tool.
+        public var me: VitruvianSpeakerProfile.Door
         public var role: DoorRole
-        /// The other HomeSpeaker is installed.
+        /// The other Vitruvian Speaker is installed.
         public var otherInstalled: Bool
         /// The step the person is on, once they have started one.
         public var step: DoorStep?
@@ -47,7 +47,7 @@ extension Pages {
         /// seen running yet.
         public var otherStarting: Bool
 
-        public init(me: HomeSpeakerProfile.Door = .extension, role: DoorRole = .active, otherInstalled: Bool = false,
+        public init(me: VitruvianSpeakerProfile.Door = .extension, role: DoorRole = .active, otherInstalled: Bool = false,
                     step: DoorStep? = nil, report: [String] = [], oldAppRunning: Bool = false, otherStarting: Bool = false) {
             self.me = me
             self.role = role
@@ -59,7 +59,7 @@ extension Pages {
         }
 
         /// The one in use, once the person has chosen and both are installed.
-        public var inUse: HomeSpeakerProfile.Door? {
+        public var inUse: VitruvianSpeakerProfile.Door? {
             guard otherInstalled else { return nil }
             switch role {
             case .active, .activeAsking: return me
@@ -83,7 +83,7 @@ extension Pages {
     }
 
     /// Step 2: one side copied into the other, or not (shared with the app).
-    public typealias DoorCompare = HomeSpeakerCore.DoorCompare
+    public typealias DoorCompare = VitruvianSpeakerCore.DoorCompare
 
     /// Step 3, as `OtherAppPlan.forChoosingTheExtension` lays it out.
     public struct DoorOffers: Equatable {
@@ -119,7 +119,7 @@ extension Pages {
     }
 
     /// What the card and the row say (shared with the app).
-    public typealias DoorWords = HomeSpeakerCore.DoorWords
+    public typealias DoorWords = VitruvianSpeakerCore.DoorWords
 
     // MARK: - The card
 
@@ -209,18 +209,18 @@ extension Pages {
     }
 
     /// In place of the island's body while the other one is in use.
-    static func quietCardBlocks(other: HomeSpeakerProfile.Door, starting: Bool = false) -> [UIBlock] {
+    static func quietCardBlocks(other: VitruvianSpeakerProfile.Door, starting: Bool = false) -> [UIBlock] {
         [
             row(nil, UIText.plain(starting ? DoorWords.starting : DoorWords.quiet(other: other)), icon: "moon.zzz"),
             button(Block.doorUseThis, UIText.plain(DoorWords.useThis), style: .prominent),
         ]
     }
 
-    /// General's "Which HomeSpeaker" row, while both are installed and the
+    /// General's "Which Vitruvian Speaker" row, while both are installed and the
     /// person has chosen: switch, and copy again (design 7.7).
     static func whichBlocks(_ status: Status) -> [UIBlock] {
         guard status.door.step == nil, let inUse = status.door.inUse else { return [] }
-        let other: HomeSpeakerProfile.Door = inUse == .app ? .extension : .app
+        let other: VitruvianSpeakerProfile.Door = inUse == .app ? .extension : .app
         return UITree {
             heading(UIText.plain(DoorWords.which))
             text(UIText.plain(DoorWords.uses(inUse)))
@@ -266,9 +266,9 @@ extension Pages {
     /// extension is what reads it, so there is no app to open.
     static func notReadingLine(_ role: DoorRole) -> String {
         switch role {
-        case .waitingAsking: return HomeSpeakerTool.pickFirst
+        case .waitingAsking: return VitruvianSpeakerTool.pickFirst
         case .quiet(let other): return DoorWords.quiet(other: other)
-        case .active, .activeAsking: return "Open HomeSpeaker to start: it is what reads the messages."
+        case .active, .activeAsking: return "Open Vitruvian Speaker to start: it is what reads the messages."
         }
     }
 }

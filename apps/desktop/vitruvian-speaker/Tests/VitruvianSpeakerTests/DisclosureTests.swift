@@ -19,20 +19,20 @@
 // SOFTWARE.
 
 import Testing
-@testable import HomeSpeakerCore
+@testable import VitruvianSpeakerCore
 
 // Which settings each surface shows (the menu bar, both Settings, the
 // extension's island): one answer, from the config, for all of them.
 
 @Suite struct DisclosureTests {
-    @Test func homeControlsFollowTheHomeSpeakers() {
+    @Test func homeControlsFollowTheVitruvianSpeakers() {
         var c = SpeakerConfig()
         #expect(c.showsHomeControls, "on unless switched off")
         c.speakHome = false
         #expect(!c.showsHomeControls)
     }
 
-    @Test func castingIsOfferedWithTheHomeSpeakersAndGeminiOnly() {
+    @Test func castingIsOfferedWithTheVitruvianSpeakersAndGeminiOnly() {
         var c = SpeakerConfig()
         #expect(!c.showsHomeCastVoice, "the system voice cannot be cast")
         c.localEngine = .gemini

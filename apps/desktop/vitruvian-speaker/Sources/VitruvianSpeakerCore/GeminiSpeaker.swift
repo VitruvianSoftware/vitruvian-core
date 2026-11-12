@@ -73,7 +73,7 @@ public struct GeminiAudioCache: Sendable {
 
     public static func defaultDirectory() -> URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("com.vitruviansoftware.homespeaker/gemini-tts", isDirectory: true)
+            .appendingPathComponent("com.vitruviansoftware.speaker/gemini-tts", isDirectory: true)
     }
 
     public init(directory: URL = GeminiAudioCache.defaultDirectory(), limit: Int = BroadcastHistory.limit) {
@@ -132,7 +132,7 @@ public struct GeminiAudioCache: Sendable {
 }
 
 public struct GeminiSpeaker: GeminiSpeaking {
-    public static let logger = Logger(subsystem: "com.vitruviansoftware.homespeaker", category: "gemini-speech")
+    public static let logger = Logger(subsystem: "com.vitruviansoftware.speaker", category: "gemini-speech")
 
     /// The current speech model, through the Interactions API. A unary
     /// request answers with a WAV (24 kHz, 16-bit, mono).

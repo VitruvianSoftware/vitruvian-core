@@ -332,7 +332,7 @@ public struct BonjourCastDiscovery: CastDiscovering {
     public func find(_ target: SpeakerDevice, timeout: Double) async throws -> CastDevice {
         let browser = NWBrowser(for: .bonjourWithTXTRecord(type: Self.serviceType, domain: "local."), using: .tcp)
         defer { browser.cancel() }
-        let queue = DispatchQueue(label: "com.vitruviansoftware.homespeaker.cast-browse")
+        let queue = DispatchQueue(label: "com.vitruviansoftware.speaker.cast-browse")
         let once = Once<CastDevice>()
         let seen = Locked<[CastDevice]>([])
         // Whole Home waits to see every group before choosing (unless one is
@@ -456,7 +456,7 @@ final class Once<T>: @unchecked Sendable {
 public final class CastAudioServer: @unchecked Sendable {
     public let path: String
     let wav: Data
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.homespeaker.cast-http")
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.speaker.cast-http")
     private let lock = NSLock()
     private var listener: NWListener?
     private var _requests = 0
@@ -565,7 +565,7 @@ public final class CastAudioServer: @unchecked Sendable {
 /// Heartbeat PINGs are answered here and never reach the reader.
 final class CastChannel: @unchecked Sendable {
     private let connection: NWConnection
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.homespeaker.cast-channel")
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.speaker.cast-channel")
     let messages: AsyncThrowingStream<CastMessage, Error>
     private let sink: AsyncThrowingStream<CastMessage, Error>.Continuation
 
@@ -578,7 +578,7 @@ final class CastChannel: @unchecked Sendable {
             // is no chain to check; the connection stays on the local network.
             sec_protocol_options_set_verify_block(options.securityProtocolOptions, { _, _, complete in
                 complete(true)
-            }, DispatchQueue(label: "com.vitruviansoftware.homespeaker.cast-tls"))
+            }, DispatchQueue(label: "com.vitruviansoftware.speaker.cast-tls"))
             tls = options
         }
         let tcp = NWProtocolTCP.Options()
@@ -685,7 +685,7 @@ final class CastChannel: @unchecked Sendable {
 
 public struct CastSpeaker: CastSpeaking {
     public static let shared = CastSpeaker()
-    public static let logger = Logger(subsystem: "com.vitruviansoftware.homespeaker", category: "cast")
+    public static let logger = Logger(subsystem: "com.vitruviansoftware.speaker", category: "cast")
 
     /// Roughly what connecting, launching the player and loading the audio
     /// add before the speaker makes a sound, for a media pause's length.
@@ -807,7 +807,7 @@ final class CastSession: @unchecked Sendable {
     /// Plays `url` and returns once the speaker reports it finished, or
     /// once its length (plus a margin) has passed since it started.
     func play(url: String, seconds: Double, volume: Double?) async throws {
-        try await send(["type": "CONNECT", "origin": [String: Any](), "userAgent": "HomeSpeaker"], CastNamespace.connection)
+        try await send(["type": "CONNECT", "origin": [String: Any](), "userAgent": "Vitruvian Speaker"], CastNamespace.connection)
         try await send(["type": "GET_STATUS"], CastNamespace.receiver)
 
         let messages = channel.messages
@@ -926,7 +926,7 @@ final class CastSession: @unchecked Sendable {
 
     private func load(_ url: String, transport: String) async throws {
         lock.withLock { transportId = transport }
-        try await send(["type": "CONNECT", "origin": [String: Any](), "userAgent": "HomeSpeaker"],
+        try await send(["type": "CONNECT", "origin": [String: Any](), "userAgent": "Vitruvian Speaker"],
                        CastNamespace.connection, to: transport)
         try await send([
             "type": "LOAD",
@@ -936,7 +936,7 @@ final class CastSession: @unchecked Sendable {
                 "contentId": url,
                 "contentType": "audio/wav",
                 "streamType": "BUFFERED",
-                "metadata": ["metadataType": 0, "title": "HomeSpeaker"],
+                "metadata": ["metadataType": 0, "title": "Vitruvian Speaker"],
             ] as [String: Any],
         ], CastNamespace.media, to: transport)
     }

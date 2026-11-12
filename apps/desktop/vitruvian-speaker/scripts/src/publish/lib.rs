@@ -793,7 +793,10 @@ mod tests {
 
     #[test]
     fn version_from_tag_strips_only_first_prefix() {
-        assert_eq!(derive_version("vitruvian-speaker-v0.1.0-beta"), "0.1.0-beta");
+        assert_eq!(
+            derive_version("vitruvian-speaker-v0.1.0-beta"),
+            "0.1.0-beta"
+        );
         assert_eq!(derive_version("v0.1.0-rc1"), "0.1.0-rc1");
     }
 

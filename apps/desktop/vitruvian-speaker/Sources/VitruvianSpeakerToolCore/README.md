@@ -1,7 +1,7 @@
-# Homespeakertoolcore
+# Vitruvianspeakertoolcore
 
 ## Overview
-Component package providing implementation for `apps/desktop/home-speaker/Sources/HomeSpeakerToolCore`.
+Component package providing implementation for `apps/desktop/vitruvian-speaker/Sources/VitruvianSpeakerToolCore`.
 
 ## Interface
 - `[Account.swift:GoogleAccount]`
@@ -16,8 +16,8 @@ Component package providing implementation for `apps/desktop/home-speaker/Source
 - `[ExtensionSide.swift:ExtensionLocation]`
 - `[ExtensionSide.swift:RestoreReport]`
 - `[ExtensionSide.swift:ExtensionSide]`
-- `[HomeSpeakerTool.swift:ToolLink]`
-- `[HomeSpeakerTool.swift:HomeSpeakerTool]`
+- `[VitruvianSpeakerTool.swift:ToolLink]`
+- `[VitruvianSpeakerTool.swift:VitruvianSpeakerTool]`
 - `[OtherApp.swift:RunningAppHandle]`
 - `[OtherApp.swift:ProgramRun]`
 - `[OtherApp.swift:OtherAppProblem]`
@@ -29,7 +29,7 @@ Component package providing implementation for `apps/desktop/home-speaker/Source
 - None
 
 ## Side Effects
-- [ExtensionSide.swift:138]: `engine: HomeSpeakerEngine, chatSession: URLSession = .shared, beeperSession: ...`
+- [ExtensionSide.swift:138]: `engine: VitruvianSpeakerEngine, chatSession: URLSession = .shared, beeperSession: ...`
 
 ## Verification
-- Run: `bazel test //apps/desktop/home-speaker/Sources/HomeSpeakerToolCore/...`
+- Run: `bazel test //apps/desktop/vitruvian-speaker/Sources/VitruvianSpeakerToolCore/...`

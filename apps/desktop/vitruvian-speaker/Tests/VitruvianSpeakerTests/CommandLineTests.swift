@@ -20,36 +20,36 @@
 
 import Foundation
 import Testing
-@testable import HomeSpeakerCore
+@testable import VitruvianSpeakerCore
 
-// Guards for HomeSpeaker's command line, which now lives in Core and runs
+// Guards for Vitruvian Speaker's command line, which now lives in Core and runs
 // on any engine. What it prints and how it exits is a contract: scripts,
 // the Vitruvian tool and `macagent` (which parses `--volume`'s JSON) read
 // it. So each golden below is today's text, word for word.
 //
-// The goldens were copied from the literals in Sources/HomeSpeaker/Entry.swift
+// The goldens were copied from the literals in Sources/VitruvianSpeaker/Entry.swift
 // at 3409c1b50, before the command line moved: the app's program cannot be
 // linked by a test, so its lines are written out here, not recorded by
 // running it. `--help` and `--version` were also checked against the built
 // program's own output. Only the version is interpolated, so a release
 // never breaks them.
 //
-// Nothing here reaches this Mac's HomeSpeaker, Google, home, speakers or
+// Nothing here reaches this Mac's Vitruvian Speaker, Google, home, speakers or
 // settings: every speaker, sign-in and home is a stand-in, every file is in
 // a scratch folder, and every message name is under a prefix of its own
-// (`test.<uuid>.homespeaker`), recorded, never posted.
+// (`test.<uuid>.vitruvian-speaker`), recorded, never posted.
 
 private func scratchDir() throws -> URL {
     let dir = FileManager.default.temporaryDirectory
-        .appendingPathComponent("homespeaker-cli-\(UUID().uuidString)")
+        .appendingPathComponent("vitruvian-speaker-cli-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir
 }
 
 /// A message prefix no real app or extension on this Mac listens on.
-private func testPrefix() -> String { "test.\(UUID().uuidString).homespeaker" }
+private func testPrefix() -> String { "test.\(UUID().uuidString).vitruvian-speaker" }
 
-private func scratchProfile(in root: URL) -> HomeSpeakerProfile {
+private func scratchProfile(in root: URL) -> VitruvianSpeakerProfile {
     .extension(dataFolder: root.appendingPathComponent("data"), toolFolder: nil, messagePrefix: testPrefix())
 }
 
@@ -150,7 +150,7 @@ private let lateEvening: Date = {
 /// One run's stand-ins and scratch files.
 private struct Rig {
     let root: URL
-    let profile: HomeSpeakerProfile
+    let profile: VitruvianSpeakerProfile
     let home = StandInHome()
     let local = StandInLocal()
     let history: BroadcastHistory
@@ -188,17 +188,17 @@ private final class RevokeStandIn: URLProtocol {
 @MainActor
 private func signOutThroughTheCommandLine(_ arguments: [String], posts: String) async throws -> CLIOutput {
     let rig = try Rig()
-    let engine = HomeSpeakerEngine(profile: rig.profile, session: RevokeStandIn.session, local: StandInLocal())
+    let engine = VitruvianSpeakerEngine(profile: rig.profile, session: RevokeStandIn.session, local: StandInLocal())
     func login(_ refresh: String) -> GoogleCredentials {
         GoogleCredentials(clientId: "client.apps.googleusercontent.test", clientSecret: "made-up", // gitleaks:allow (made-up test token)
                           accessToken: "made-up", refreshToken: refresh) // gitleaks:allow (made-up test token)
     }
     try engine.secrets.save(Secrets(google: login("made-up-home"), googleChat: login("made-up-chat")))
     let posted = Calls<String>()
-    let parts = HomeSpeakerCommandLine.Parts.app(postSignedOut: { chatOnly, name in
+    let parts = VitruvianSpeakerCommandLine.Parts.app(postSignedOut: { chatOnly, name in
         posted.add("\(name.rawValue) chatOnly=\(chatOnly)")
     })
-    guard case .headless(_, _, let body) = HomeSpeakerCommandLine.action(for: arguments, engine: engine, parts: parts) else {
+    guard case .headless(_, _, let body) = VitruvianSpeakerCommandLine.action(for: arguments, engine: engine, parts: parts) else {
         Issue.record("\(arguments) does not run headless")
         return CLIOutput()
     }
@@ -216,14 +216,14 @@ private struct Golden {
     let run: @MainActor () async throws -> CLIOutput
 }
 
-private let noSpeaker = "no default speaker; open HomeSpeaker and pick one"
+private let noSpeaker = "no default speaker; open Vitruvian Speaker and pick one"
 private let badLevel = #"{"available":false,"reason":"--set-volume needs a whole number from 0 to 100"}"#
 
-/// `HomeSpeaker --help`, from Entry.swift's literal and `AppCommandParser.usageLines`.
+/// `VitruvianSpeaker --help`, from Entry.swift's literal and `AppCommandParser.usageLines`.
 private let helpText = """
-HomeSpeaker \(HomeSpeakerVersion.current) — speaks your coding agent's replies on a Google speaker.
+Vitruvian Speaker \(VitruvianSpeakerVersion.current) — speaks your coding agent's replies on a Google speaker.
 
-usage: HomeSpeaker [flag]
+usage: VitruvianSpeaker [flag]
   (no flag)            run the menu bar app
   --say <text>         announce text on the default speaker and/or this Mac
   --say <text> --no-history
@@ -259,14 +259,14 @@ usage: HomeSpeaker [flag]
 /// parser, then the outcome for what it parsed, on `rig`'s stand-ins.
 @MainActor
 private func announcement(_ arguments: [String], _ config: SpeakerConfig, _ rig: Rig, at date: Date = Date()) async throws -> CLIOutput {
-    let command = try #require(HomeSpeakerCommandLine.parse(arguments))
+    let command = try #require(VitruvianSpeakerCommandLine.parse(arguments))
     switch command {
     case .say(let text, let records):
-        return await HomeSpeakerCommandLine.say(
+        return await VitruvianSpeakerCommandLine.say(
             text, config: config, announcer: rig.announcer, history: rig.history,
             standsAside: false, door: rig.profile.door, records: records, at: date)
     case .announce(let text, let agent):
-        return await HomeSpeakerCommandLine.announce(
+        return await VitruvianSpeakerCommandLine.announce(
             text, for: agent, config: config, announcer: rig.announcer, history: rig.history, standsAside: false, at: date)
     default:
         Issue.record("\(arguments) parsed as \(command)")
@@ -276,11 +276,11 @@ private func announcement(_ arguments: [String], _ config: SpeakerConfig, _ rig:
 
 @MainActor
 private func volume(_ arguments: [String], _ config: SpeakerConfig, _ speaker: StandInVolume) async throws -> CLIOutput {
-    guard case .volume(let request) = try #require(HomeSpeakerCommandLine.parse(arguments)) else {
+    guard case .volume(let request) = try #require(VitruvianSpeakerCommandLine.parse(arguments)) else {
         Issue.record("\(arguments) is not a volume command")
         return CLIOutput()
     }
-    return await HomeSpeakerCommandLine.volume(request, config: config, speaker: speaker)
+    return await VitruvianSpeakerCommandLine.volume(request, config: config, speaker: speaker)
 }
 
 private let goldens: [Golden] = [
@@ -375,7 +375,7 @@ private let goldens: [Golden] = [
                "home: City Flat (h2)",
                "  office\tDISPLAY\tNest Hub · Office\td2",
            ])) {
-        guard case .app(.success(.discover(let save, let home))) = try #require(HomeSpeakerCommandLine.parse(["--discover"])) else {
+        guard case .app(.success(.discover(let save, let home))) = try #require(VitruvianSpeakerCommandLine.parse(["--discover"])) else {
             Issue.record("--discover did not parse")
             return CLIOutput()
         }
@@ -383,45 +383,45 @@ private let goldens: [Golden] = [
             save: save, home: home, client: TwoHomes(), currentStructureId: "", apply: { _, _ in })
     },
     Golden(name: "a misplaced command flag",
-           expected: CLIOutput(stderr: ["error: --discover must be the first argument", "run HomeSpeaker --help for usage"],
+           expected: CLIOutput(stderr: ["error: --discover must be the first argument", "run VitruvianSpeaker --help for usage"],
                                exitCode: 2)) {
-        guard case .app(.failure(let usage)) = try #require(HomeSpeakerCommandLine.parse(["--chat", "--discover"])) else {
+        guard case .app(.failure(let usage)) = try #require(VitruvianSpeakerCommandLine.parse(["--chat", "--discover"])) else {
             Issue.record("a misplaced --discover was not a usage error")
             return CLIOutput()
         }
-        return HomeSpeakerCommandLine.usageError(usage)
+        return VitruvianSpeakerCommandLine.usageError(usage)
     },
 
     // --chat-monitor: the line, and the message under the profile's name.
     Golden(name: "--chat-monitor start",
-           expected: CLIOutput(stdout: ["asked a running HomeSpeaker to start the chat monitor"])) {
+           expected: CLIOutput(stdout: ["asked a running Vitruvian Speaker to start the chat monitor"])) {
         try chatMonitor("start")
     },
     Golden(name: "--chat-monitor stop",
-           expected: CLIOutput(stdout: ["asked a running HomeSpeaker to stop the chat monitor"])) {
+           expected: CLIOutput(stdout: ["asked a running Vitruvian Speaker to stop the chat monitor"])) {
         try chatMonitor("stop")
     },
     Golden(name: "--chat-monitor pause",
            expected: CLIOutput(stderr: [#"error: --chat-monitor takes one of start or stop, not "pause""#,
-                                        "run HomeSpeaker --help for usage"], exitCode: 2)) {
-        guard case .chatMonitor(.failure(let usage)) = try #require(HomeSpeakerCommandLine.parse(["--chat-monitor", "pause"])) else {
+                                        "run VitruvianSpeaker --help for usage"], exitCode: 2)) {
+        guard case .chatMonitor(.failure(let usage)) = try #require(VitruvianSpeakerCommandLine.parse(["--chat-monitor", "pause"])) else {
             Issue.record("--chat-monitor pause was not a usage error")
             return CLIOutput()
         }
-        return HomeSpeakerCommandLine.usageError(usage)
+        return VitruvianSpeakerCommandLine.usageError(usage)
     },
 
     // --sign-in: the line printed while it waits, then who signed in.
     Golden(name: "--sign-in --chat",
            expected: CLIOutput(stdout: ["signed in as someone@example.com; scopes: chat.one chat.two"])) {
-        guard case .signIn(let purpose) = try #require(HomeSpeakerCommandLine.parse(["--sign-in", "--chat"])) else {
+        guard case .signIn(let purpose) = try #require(VitruvianSpeakerCommandLine.parse(["--sign-in", "--chat"])) else {
             Issue.record("--sign-in --chat did not parse")
             return CLIOutput()
         }
         let progress = Calls<String>()
         let opened = Calls<String>()
         let notified = Calls<String>()
-        let out = await HomeSpeakerCommandLine.signIn(
+        let out = await VitruvianSpeakerCommandLine.signIn(
             purpose: purpose,
             signIn: { purpose, open in
                 #expect(purpose == .chat)
@@ -438,16 +438,16 @@ private let goldens: [Golden] = [
         return out
     },
     Golden(name: "--sign-in failing", expected: CLIOutput(stderr: ["error: the browser was closed"], exitCode: 1)) {
-        await HomeSpeakerCommandLine.signIn(
+        await VitruvianSpeakerCommandLine.signIn(
             purpose: .home, signIn: { _, _ in throw StandInFailure("the browser was closed") },
-            openBrowser: { _ in }, progress: { _ in }, notify: { Issue.record("told a running HomeSpeaker after a failure") })
+            openBrowser: { _ in }, progress: { _ in }, notify: { Issue.record("told a running Vitruvian Speaker after a failure") })
     },
 
     Golden(name: "--help", expected: CLIOutput(stdout: [helpText])) {
-        #expect(HomeSpeakerCommandLine.parse(["-h"]) == .help)
+        #expect(VitruvianSpeakerCommandLine.parse(["-h"]) == .help)
         return try outcome(of: ["--help"])
     },
-    Golden(name: "--version", expected: CLIOutput(stdout: ["HomeSpeaker \(HomeSpeakerVersion.current)"])) {
+    Golden(name: "--version", expected: CLIOutput(stdout: ["Vitruvian Speaker \(VitruvianSpeakerVersion.current)"])) {
         try outcome(of: ["--version"])
     },
 ]
@@ -458,12 +458,12 @@ private let goldens: [Golden] = [
 private func chatMonitor(_ word: String) throws -> CLIOutput {
     let root = try scratchDir()
     let profile = scratchProfile(in: root)
-    guard case .chatMonitor(.success(let action)) = try #require(HomeSpeakerCommandLine.parse(["--chat-monitor", word])) else {
+    guard case .chatMonitor(.success(let action)) = try #require(VitruvianSpeakerCommandLine.parse(["--chat-monitor", word])) else {
         Issue.record("--chat-monitor \(word) did not parse")
         return CLIOutput()
     }
     let posted = Calls<String>()
-    let out = HomeSpeakerCommandLine.chatMonitor(action, profile: profile) { action, name in
+    let out = VitruvianSpeakerCommandLine.chatMonitor(action, profile: profile) { action, name in
         posted.add("\(name.rawValue) \(action.rawValue)")
     }
     #expect(posted.all == ["\(profile.messagePrefix).chat-monitor-control \(word)"])
@@ -473,9 +473,9 @@ private func chatMonitor(_ word: String) throws -> CLIOutput {
 /// The words-only flags.
 @MainActor
 private func outcome(of arguments: [String]) throws -> CLIOutput {
-    switch try #require(HomeSpeakerCommandLine.parse(arguments)) {
-    case .help: return HomeSpeakerCommandLine.help()
-    case .version: return HomeSpeakerCommandLine.version()
+    switch try #require(VitruvianSpeakerCommandLine.parse(arguments)) {
+    case .help: return VitruvianSpeakerCommandLine.help()
+    case .version: return VitruvianSpeakerCommandLine.version()
     case let other:
         Issue.record("\(arguments) parsed as \(other)")
         return CLIOutput()
@@ -495,7 +495,7 @@ private func outcome(of arguments: [String]) throws -> CLIOutput {
     /// Exactly the arguments Entry used to act on, in Entry's order of
     /// precedence; anything else starts the menu bar app.
     @Test func itRecognizesWhatEntryDid() {
-        typealias C = HomeSpeakerCommandLine.Command
+        typealias C = VitruvianSpeakerCommandLine.Command
         let cases: [([String], C?)] = [
             ([], nil),
             (["--chat"], nil),
@@ -547,8 +547,8 @@ private func outcome(of arguments: [String]) throws -> CLIOutput {
             (["--chat", "--where"], nil),
         ]
         for (arguments, expected) in cases {
-            #expect(HomeSpeakerCommandLine.parse(arguments) == expected, "\(arguments)")
-            #expect(HomeSpeakerCommandLine.recognizes(arguments) == (expected != nil), "\(arguments)")
+            #expect(VitruvianSpeakerCommandLine.parse(arguments) == expected, "\(arguments)")
+            #expect(VitruvianSpeakerCommandLine.recognizes(arguments) == (expected != nil), "\(arguments)")
         }
     }
 
@@ -557,13 +557,13 @@ private func outcome(of arguments: [String]) throws -> CLIOutput {
     @Test func whereSaysTheDataFolder() throws {
         let root = try scratchDir()
         let profile = scratchProfile(in: root)
-        #expect(HomeSpeakerCommandLine.dataFolder(of: profile)
+        #expect(VitruvianSpeakerCommandLine.dataFolder(of: profile)
                 == CLIOutput(stdout: [root.appendingPathComponent("data").path]))
         #expect(!helpText.contains("--where"))
-        #expect(HomeSpeakerCommandLine.help() == CLIOutput(stdout: [helpText]))
+        #expect(VitruvianSpeakerCommandLine.help() == CLIOutput(stdout: [helpText]))
     }
 
-    /// The Stop hook, when the other HomeSpeaker is the one chosen and
+    /// The Stop hook, when the other Vitruvian Speaker is the one chosen and
     /// installed: `{}` and exit 0, and nothing is spoken or launched.
     @Test @MainActor func aHookStandsAsideForTheChosenOther() async throws {
         let root = try scratchDir()
@@ -588,7 +588,7 @@ private func outcome(of arguments: [String]) throws -> CLIOutput {
         let broadcasts = Calls<String>()
         let launches = Calls<String>()
         func hook(standsAside: Bool) async -> CLIOutput {
-            await HomeSpeakerCommandLine.claudeStopHook(
+            await VitruvianSpeakerCommandLine.claudeStopHook(
                 input: input, config: { manager }, history: history, standsAside: standsAside,
                 lockDirectory: locks, launchDetached: { launches.add($0) },
                 broadcaster: { text, _, _, _ in broadcasts.add(text); return true })
@@ -606,7 +606,7 @@ private func outcome(of arguments: [String]) throws -> CLIOutput {
 
         // The detached --announce itself prints nothing and says nothing.
         let rig = try Rig()
-        let announced = await HomeSpeakerCommandLine.announce(
+        let announced = await VitruvianSpeakerCommandLine.announce(
             reply, config: settings(), announcer: rig.announcer, history: rig.history, standsAside: true)
         #expect(announced == CLIOutput())
         #expect(rig.home.calls.all.isEmpty)
@@ -620,14 +620,14 @@ private func outcome(of arguments: [String]) throws -> CLIOutput {
     /// `--say` is someone asking, so it speaks whichever side is chosen,
     /// and says which one is in use.
     @Test @MainActor func aDeliberateSayDoesNotStandAside() async throws {
-        for door in [HomeSpeakerProfile.Door.app, .extension] {
+        for door in [VitruvianSpeakerProfile.Door.app, .extension] {
             let rig = try Rig()
-            let out = await HomeSpeakerCommandLine.say(
+            let out = await VitruvianSpeakerCommandLine.say(
                 "dinner is ready", config: settings(), announcer: rig.announcer, history: rig.history,
                 standsAside: true, door: door)
             let other = door == .app ? "extension" : "app"
             #expect(out == CLIOutput(stdout: ["sent to Office"],
-                                     stderr: ["note: the HomeSpeaker \(other) is the one in use"]), "\(door)")
+                                     stderr: ["note: the Vitruvian Speaker \(other) is the one in use"]), "\(door)")
             #expect(rig.home.calls.all == ["dinner is ready"], "a script's --say was silenced")
         }
     }
@@ -635,10 +635,10 @@ private func outcome(of arguments: [String]) throws -> CLIOutput {
     @Test func theExtensionHasNoLoginItem() {
         let refusal = "the extension runs while Vitruvian runs; it has no login item of its own"
         for action in LoginItemAction.allCases {
-            #expect(HomeSpeakerCommandLine.loginItem(action, item: HomeSpeakerCommandLine.Parts.extension().loginItem)
+            #expect(VitruvianSpeakerCommandLine.loginItem(action, item: VitruvianSpeakerCommandLine.Parts.extension().loginItem)
                     == CLIOutput(stderr: ["error: \(refusal)"], exitCode: 1), "\(action)")
         }
-        guard case .control(let control) = HomeSpeakerCommandLine.Parts.app().loginItem else {
+        guard case .control(let control) = VitruvianSpeakerCommandLine.Parts.app().loginItem else {
             Issue.record("the app's parts have no login item")
             return
         }
@@ -647,8 +647,8 @@ private func outcome(of arguments: [String]) throws -> CLIOutput {
 
     /// Nothing is chosen yet, so today's users never see a hook stand aside.
     @Test func nothingStandsAsideUntilAChoiceIsMade() {
-        #expect(HomeSpeakerCommandLine.Parts.app().standsAside() == false)
-        #expect(HomeSpeakerCommandLine.Parts.extension().standsAside() == false)
+        #expect(VitruvianSpeakerCommandLine.Parts.app().standsAside() == false)
+        #expect(VitruvianSpeakerCommandLine.Parts.extension().standsAside() == false)
     }
 
     /// The Stop hook's detached announcement runs this program again: the
@@ -674,18 +674,18 @@ private func outcome(of arguments: [String]) throws -> CLIOutput {
 /// An engine on an extension profile in a scratch folder, with this Mac's
 /// speech silent. Its settings file holds `settings`, or is absent.
 @MainActor
-private func scratchEngine(settings: String?) throws -> HomeSpeakerEngine {
+private func scratchEngine(settings: String?) throws -> VitruvianSpeakerEngine {
     let profile = scratchProfile(in: try scratchDir())
     let folder = profile.settingsURL.deletingLastPathComponent()
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
     if let settings { try settings.write(to: profile.settingsURL, atomically: true, encoding: .utf8) }
-    return HomeSpeakerEngine(profile: profile, local: StandInLocal())
+    return VitruvianSpeakerEngine(profile: profile, local: StandInLocal())
 }
 
 /// The extension's parts, with no browser.
-private let scratchParts = HomeSpeakerCommandLine.Parts(
+private let scratchParts = VitruvianSpeakerCommandLine.Parts(
     openBrowser: { _ in Issue.record("opened a browser") },
-    loginItem: .none(reason: HomeSpeakerCommandLine.Parts.extensionHasNoLoginItem),
+    loginItem: .none(reason: VitruvianSpeakerCommandLine.Parts.extensionHasNoLoginItem),
     standsAside: { false })
 
 /// A settings file that does not read: reading it prints a problem.
@@ -693,7 +693,7 @@ private let unreadableSettings = "{ not json"
 
 @Suite struct CommandLineDispatchTests {
     /// What the settings file is after a run: its text, or nil when absent.
-    private func settingsText(_ engine: HomeSpeakerEngine) async -> String? {
+    private func settingsText(_ engine: VitruvianSpeakerEngine) async -> String? {
         let url = await MainActor.run { engine.profile.settingsURL }
         return try? String(contentsOf: url, encoding: .utf8)
     }
@@ -704,13 +704,13 @@ private let unreadableSettings = "{ not json"
     /// stdout first); with none, none is written.
     @Test @MainActor func aCommandThatNeverReadTheSettingsStillDoesNot() async throws {
         let commands: [([String], (CLIOutput) -> Bool)] = [
-            (["--version"], { $0 == CLIOutput(stdout: ["HomeSpeaker \(HomeSpeakerVersion.current)"]) }),
-            (["--help"], { $0 == HomeSpeakerCommandLine.help() }),
-            (["-h"], { $0 == HomeSpeakerCommandLine.help() }),
+            (["--version"], { $0 == CLIOutput(stdout: ["Vitruvian Speaker \(VitruvianSpeakerVersion.current)"]) }),
+            (["--help"], { $0 == VitruvianSpeakerCommandLine.help() }),
+            (["-h"], { $0 == VitruvianSpeakerCommandLine.help() }),
             (["--where"], { $0.stdout.count == 1 && $0.stderr.isEmpty }),
-            (["--chat-monitor", "start"], { $0 == CLIOutput(stdout: ["asked a running HomeSpeaker to start the chat monitor"]) }),
+            (["--chat-monitor", "start"], { $0 == CLIOutput(stdout: ["asked a running Vitruvian Speaker to start the chat monitor"]) }),
             (["--chat-monitor", "pause"], { $0.exitCode == 2 }),
-            (["--login-item", "status"], { $0.stderr == ["error: \(HomeSpeakerCommandLine.Parts.extensionHasNoLoginItem)"] }),
+            (["--login-item", "status"], { $0.stderr == ["error: \(VitruvianSpeakerCommandLine.Parts.extensionHasNoLoginItem)"] }),
             (["--chat", "--discover"], { $0.exitCode == 2 }),
             (["--state"], { $0.exitCode == 2 }),
             (["--apply"], { $0.exitCode == 2 }),
@@ -719,7 +719,7 @@ private let unreadableSettings = "{ not json"
         for settings in [unreadableSettings, nil] {
             for (arguments, expected) in commands {
                 let engine = try scratchEngine(settings: settings)
-                guard case .now(let out) = HomeSpeakerCommandLine.action(for: arguments, engine: engine, parts: scratchParts) else {
+                guard case .now(let out) = VitruvianSpeakerCommandLine.action(for: arguments, engine: engine, parts: scratchParts) else {
                     Issue.record("\(arguments) did not print at once")
                     continue
                 }
@@ -736,7 +736,7 @@ private let unreadableSettings = "{ not json"
         for settings in [unreadableSettings, nil] {
             for arguments in [["--sign-in"], ["--sign-out"], ["--test-media-pause"], ["--claude-stop-hook"]] {
                 let engine = try scratchEngine(settings: settings)
-                let action = HomeSpeakerCommandLine.action(
+                let action = VitruvianSpeakerCommandLine.action(
                     for: arguments, engine: engine, parts: scratchParts, standardInput: { Data("not json".utf8) })
                 guard case .headless(_, _, let body) = action else {
                     Issue.record("\(arguments) did not run off the main actor")
@@ -762,17 +762,17 @@ private let unreadableSettings = "{ not json"
     @Test @MainActor func theSettingsAreReadWhereTheyAlwaysWere() async throws {
         for arguments in [["--say", "hi"], ["--announce", "hi"]] {
             let engine = try scratchEngine(settings: nil)
-            _ = HomeSpeakerCommandLine.action(for: arguments, engine: engine, parts: scratchParts)
+            _ = VitruvianSpeakerCommandLine.action(for: arguments, engine: engine, parts: scratchParts)
             #expect(engine.configLoaded, "\(arguments)")
         }
         for arguments in [["--volume"], ["--discover"]] {
             let engine = try scratchEngine(settings: nil)
-            _ = HomeSpeakerCommandLine.action(for: arguments, engine: engine, parts: scratchParts)
+            _ = VitruvianSpeakerCommandLine.action(for: arguments, engine: engine, parts: scratchParts)
             #expect(!engine.configLoaded, "\(arguments) read the settings before running")
         }
         // Running --volume with no speaker picked reaches no speaker.
         let engine = try scratchEngine(settings: nil)
-        guard case .headless(_, _, let body) = HomeSpeakerCommandLine.action(
+        guard case .headless(_, _, let body) = VitruvianSpeakerCommandLine.action(
             for: ["--volume"], engine: engine, parts: scratchParts) else {
             Issue.record("--volume did not run off the main actor")
             return
@@ -786,7 +786,7 @@ private let unreadableSettings = "{ not json"
         let timedOut = CLIOutput(stderr: ["error: timed out"], exitCode: 1)
         let volumeTimedOut = CLIOutput(stdout: [#"{"available":false,"reason":"timed out"}"#], exitCode: 1)
         let applyTimedOut = CLIOutput(
-            stdout: [HomeSpeakerStateContract.encodeJSON(["ok": false, "error": ["code": "timed_out", "message": "timed out"]])],
+            stdout: [VitruvianSpeakerStateContract.encodeJSON(["ok": false, "error": ["code": "timed_out", "message": "timed out"]])],
             exitCode: 1
         )
         let limits: [([String], TimeInterval, CLIOutput)] = [
@@ -806,7 +806,7 @@ private let unreadableSettings = "{ not json"
         ]
         for (arguments, limit, output) in limits {
             let engine = try scratchEngine(settings: nil)
-            guard case .headless(let timeout, let onTimeout, _) = HomeSpeakerCommandLine.action(
+            guard case .headless(let timeout, let onTimeout, _) = VitruvianSpeakerCommandLine.action(
                 for: arguments, engine: engine, parts: scratchParts, standardInput: { Data() }) else {
                 Issue.record("\(arguments) did not run off the main actor")
                 continue
@@ -837,7 +837,7 @@ private let unreadableSettings = "{ not json"
     @Test func aSourceInTheTextIsText() {
         // Everything after --say is what is spoken, flags and all.
         #expect(BroadcastSource.resolve(arguments: ["--say", "use", "--source", "antigravity"], environment: [:]) == .success(.user))
-        #expect(HomeSpeakerCommandLine.parse(["--source", "antigravity", "--say", "use", "--source", "x"])
+        #expect(VitruvianSpeakerCommandLine.parse(["--source", "antigravity", "--say", "use", "--source", "x"])
                 == .say("use --source x"))
     }
 
@@ -915,21 +915,21 @@ private let unreadableSettings = "{ not json"
         let rig = try Rig()
         var config = speaking()
         config.setAnnounces(.antigravity, false)
-        let off = await HomeSpeakerCommandLine.say(
+        let off = await VitruvianSpeakerCommandLine.say(
             "done", config: config, announcer: rig.announcer, history: rig.history,
             standsAside: false, door: rig.profile.door, source: .antigravity)
-        #expect(off == CLIOutput(stderr: [HomeSpeakerCommandLine.agentSwitchedOff(.antigravity)]),
+        #expect(off == CLIOutput(stderr: [VitruvianSpeakerCommandLine.agentSwitchedOff(.antigravity)]),
                 "the person's choice: exit 0, so the agent is not told it failed")
-        #expect(off.stderr == ["Antigravity announcements are switched off in HomeSpeaker. Nothing spoken."])
+        #expect(off.stderr == ["Antigravity announcements are switched off in Vitruvian Speaker. Nothing spoken."])
         #expect(rig.local.calls.all.isEmpty)
         #expect(rig.history.load().isEmpty)
 
         // The other agent, and a person, still speak.
-        let claude = await HomeSpeakerCommandLine.say(
+        let claude = await VitruvianSpeakerCommandLine.say(
             "built", config: config, announcer: rig.announcer, history: rig.history,
             standsAside: false, door: rig.profile.door, source: .claudeCode)
         #expect(claude.exitCode == 0)
-        let person = await HomeSpeakerCommandLine.say(
+        let person = await VitruvianSpeakerCommandLine.say(
             "dinner", config: config, announcer: rig.announcer, history: rig.history,
             standsAside: false, door: rig.profile.door)
         #expect(person.exitCode == 0)
@@ -941,21 +941,21 @@ private let unreadableSettings = "{ not json"
         let rig = try Rig()
         let mine = settings()
         var inUse = speaking()
-        let routed = await HomeSpeakerCommandLine.say(
+        let routed = await VitruvianSpeakerCommandLine.say(
             "on this Mac", config: mine, announcer: rig.announcer, history: rig.history,
             standsAside: true, door: rig.profile.door, source: .opencode, inUse: inUse)
         #expect(routed.exitCode == 0)
-        #expect(rig.local.calls.all == ["on this Mac"], "speaks on the outputs chosen in the active HomeSpeaker")
+        #expect(rig.local.calls.all == ["on this Mac"], "speaks on the outputs chosen in the active Vitruvian Speaker")
         #expect(rig.home.calls.all.isEmpty, "does not fall back to the passive side's home speaker toggle")
 
         inUse.setAnnounces(.claudeCode, false)
-        let refused = await HomeSpeakerCommandLine.say(
+        let refused = await VitruvianSpeakerCommandLine.say(
             "x", config: mine, announcer: rig.announcer, history: rig.history,
             standsAside: true, door: rig.profile.door, source: .claudeCode, inUse: inUse)
-        #expect(refused.stderr == [HomeSpeakerCommandLine.agentSwitchedOff(.claudeCode)])
+        #expect(refused.stderr == [VitruvianSpeakerCommandLine.agentSwitchedOff(.claudeCode)])
         #expect(rig.local.calls.all == ["on this Mac"])
         inUse.enabled = false
-        let masterOff = await HomeSpeakerCommandLine.say(
+        let masterOff = await VitruvianSpeakerCommandLine.say(
             "x", config: mine, announcer: rig.announcer, history: rig.history,
             standsAside: true, door: rig.profile.door, source: .antigravity, inUse: inUse)
         #expect(masterOff == CLIOutput(stderr: ["broadcasting is switched off"], exitCode: 1))
@@ -963,7 +963,7 @@ private let unreadableSettings = "{ not json"
 
     @Test @MainActor func aReplaySpeaksWithoutListingItAgain() async throws {
         let rig = try Rig()
-        let out = await HomeSpeakerCommandLine.say(
+        let out = await VitruvianSpeakerCommandLine.say(
             "again", config: speaking(), announcer: rig.announcer, history: rig.history,
             standsAside: false, door: rig.profile.door, records: false)
         #expect(out.exitCode == 0)
@@ -990,9 +990,9 @@ private let unreadableSettings = "{ not json"
     /// A usage error is exit 2 with the usual message, never the menu bar app.
     @Test @MainActor func noHistoryWithoutSayIsAUsageErrorNotTheMenuBarApp() throws {
         for arguments in [["--no-history"], ["--volume", "--no-history"]] {
-            #expect(HomeSpeakerCommandLine.recognizes(arguments), "\(arguments) would start the menu bar app")
+            #expect(VitruvianSpeakerCommandLine.recognizes(arguments), "\(arguments) would start the menu bar app")
         }
-        let out = HomeSpeakerCommandLine.usageError(UsageError("--no-history is only valid with --say"))
+        let out = VitruvianSpeakerCommandLine.usageError(UsageError("--no-history is only valid with --say"))
         #expect(out.exitCode == 2)
     }
 
@@ -1000,14 +1000,14 @@ private let unreadableSettings = "{ not json"
         let rig = try Rig()
         var config = speaking()
         config.setAnnounces(.claudeCode, false)
-        let off = await HomeSpeakerCommandLine.announce(
+        let off = await VitruvianSpeakerCommandLine.announce(
             "reply", config: config, announcer: rig.announcer, history: rig.history, standsAside: false)
-        #expect(off.stderr == [HomeSpeakerCommandLine.agentSwitchedOff(.claudeCode)])
+        #expect(off.stderr == [VitruvianSpeakerCommandLine.agentSwitchedOff(.claudeCode)])
         #expect(off.exitCode == 0)
         #expect(rig.local.calls.all.isEmpty)
         config.setAnnounces(.claudeCode, true)
         config.setAnnounces(.antigravity, false)
-        let on = await HomeSpeakerCommandLine.announce(
+        let on = await VitruvianSpeakerCommandLine.announce(
             "reply", config: config, announcer: rig.announcer, history: rig.history, standsAside: false)
         #expect(on.exitCode == 0)
         #expect(rig.local.calls.all == ["reply"], "Antigravity's switch is not Claude Code's")
@@ -1016,6 +1016,6 @@ private let unreadableSettings = "{ not json"
     @Test func sourceIsNotAnAppCommand() {
         // `--source` first is a --say line, never "must be the first argument".
         #expect(AppCommandParser.parse(["--source", "claude-code", "--say", "hi"]) == nil)
-        #expect(HomeSpeakerCommandLine.recognizes(["--source", "claude-code", "--say", "hi"]))
+        #expect(VitruvianSpeakerCommandLine.recognizes(["--source", "claude-code", "--say", "hi"]))
     }
 }

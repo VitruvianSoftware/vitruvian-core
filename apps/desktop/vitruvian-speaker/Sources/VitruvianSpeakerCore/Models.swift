@@ -342,7 +342,7 @@ public struct SpeakerConfig: Codable, Equatable {
     /// The Mac voice when `local_voice` is absent: a natural Siri voice.
     /// "Aaron (Enhanced)": the Siri Aaron voice as an installable bundle. The
     /// Siri-only `com.apple.siri.natural.Aaron` is reserved for Apple-signed
-    /// processes -- HomeSpeaker cannot see it and fell back to a novelty voice.
+    /// processes -- Vitruvian Speaker cannot see it and fell back to a novelty voice.
     public static let defaultLocalVoice = "com.apple.ttsbundle.siri_Aaron_en-US_premium"
 
     public init(
@@ -667,7 +667,7 @@ public struct SpeakerConfig: Codable, Equatable {
         return "The Home speakers play the Gemini voice over this Wi-Fi network, falling back to Google Assistant Broadcast when they can't."
     }
 
-    /// What the outputs mean together, as HomeSpeaker's Settings says it.
+    /// What the outputs mean together, as Vitruvian Speaker's Settings says it.
     public static func outputsFooter(_ c: SpeakerConfig) -> String {
         if !c.effectiveSpeakHome && !c.effectiveSpeakLocal && !c.effectiveSpeakPhone {
             return "All outputs are off, so nothing is spoken anywhere."
@@ -983,7 +983,7 @@ public struct ChatMonitorConfig: Codable, Equatable {
     public var courierMutedNetworks: [String]
     /// Where Courier's API is; empty is its default.
     public var courierAddress: String
-    /// Courier networks read through Courier even while HomeSpeaker's own
+    /// Courier networks read through Courier even while Vitruvian Speaker's own
     /// Slack or Google Chat reader is on, by `ChatAppClient.networkKey`
     /// ("slack"). Courier cannot say which Slack workspace an account is,
     /// so without this every Courier Slack account is left to that reader.
@@ -1125,14 +1125,14 @@ public struct ChatMonitorConfig: Codable, Equatable {
     public func mutedNetworks(for app: ChatApp) -> [String] { self[keyPath: Self.mutedNetworksKey(app)] }
     public func address(for app: ChatApp) -> String { self[keyPath: Self.addressKey(app)] }
 
-    /// The networks `app` reads although HomeSpeaker reads them itself:
+    /// The networks `app` reads although Vitruvian Speaker reads them itself:
     /// Courier's choice; Beeper, which can tell Slack workspaces apart,
     /// has none.
     public func readsAnyway(_ app: ChatApp) -> [String] {
         app == .courier ? courierReadAnyway : []
     }
 
-    /// Reads one of Courier's networks although HomeSpeaker's own reader
+    /// Reads one of Courier's networks although Vitruvian Speaker's own reader
     /// covers it (`isOn`), or leaves it to that reader again.
     public mutating func setReadAnyway(_ key: String, _ isOn: Bool) {
         if isOn {

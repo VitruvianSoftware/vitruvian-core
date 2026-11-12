@@ -22,11 +22,11 @@
 import Foundation
 import ServiceManagement
 
-// The flags that must run as one HomeSpeaker itself (the app, or the
+// The flags that must run as one Vitruvian Speaker itself (the app, or the
 // extension): its sign-in file, its TCC Automation grant, its login item.
 // Parsing and the work behind each flag live here, against protocols, so
 // tests drive them without a network, a sign-in or System Settings;
-// HomeSpeakerCommandLine only wires an engine's real parts.
+// VitruvianSpeakerCommandLine only wires an engine's real parts.
 
 /// One of the app-identity commands, parsed.
 public enum AppCommand: Equatable, Sendable {
@@ -105,10 +105,10 @@ public enum AppCommandParser {
                 case "--save" where !save:
                     save = true
                 case "--home" where home == nil:
-                    guard i + 1 < rest.count else { return .failure(UsageError("--home needs a home id (see HomeSpeaker --discover)")) }
+                    guard i + 1 < rest.count else { return .failure(UsageError("--home needs a home id (see VitruvianSpeaker --discover)")) }
                     let id = rest[i + 1].trimmingCharacters(in: .whitespaces)
                     guard !id.isEmpty, !id.hasPrefix("-") else {
-                        return .failure(UsageError("--home needs a home id (see HomeSpeaker --discover), not \"\(rest[i + 1])\""))
+                        return .failure(UsageError("--home needs a home id (see VitruvianSpeaker --discover), not \"\(rest[i + 1])\""))
                     }
                     home = id
                     i += 1
@@ -133,7 +133,7 @@ public enum AppCommandParser {
     }
 
     /// The arguments that `parse` reads back as `command`: how the
-    /// Vitruvian tool asks HomeSpeaker's program to run one.
+    /// Vitruvian tool asks Vitruvian Speaker's program to run one.
     public static func arguments(for command: AppCommand) -> [String] {
         switch command {
         case .signOut(let chatOnly):
@@ -227,8 +227,8 @@ public enum AppCommandRunner {
     /// reach a real running app).
     ///
     /// `revoke` says, per login, whether signing out also ends it at
-    /// Google. It is false only for a login the other HomeSpeaker holds too
-    /// (`HomeSpeakerEngine.signOut`), so signing this one out never signs
+    /// Google. It is false only for a login the other Vitruvian Speaker holds too
+    /// (`VitruvianSpeakerEngine.signOut`), so signing this one out never signs
     /// the other out; every other login is revoked, as always. When every
     /// login gets the same answer, it is one sign-out of all of them, as it
     /// always was; otherwise one sign-out per login.
@@ -305,7 +305,7 @@ public enum AppCommandRunner {
 
     /// What `--login-item enable` adds while macOS waits for the person's
     /// approval; macOS 15 on names the pane "Login Items & Extensions".
-    public static let approveLoginItem = "approve HomeSpeaker under System Settings > General > Login Items & Extensions"
+    public static let approveLoginItem = "approve Vitruvian Speaker under System Settings > General > Login Items & Extensions"
 
     public static func loginItem(_ action: LoginItemAction, control: LoginItemControlling) -> CLIOutput {
         do {
@@ -329,7 +329,7 @@ public enum AppCommandRunner {
             break
         case (.enable, _), (.disable, _):
             out.stderr.append("error: the login item is \(state.rawValue) after \(action.rawValue)"
-                              + (state == .notFound ? "; run HomeSpeaker from its .app bundle" : ""))
+                              + (state == .notFound ? "; run Vitruvian Speaker from its .app bundle" : ""))
             out.exitCode = AppCommandParser.failureExitCode
         }
         return out
@@ -352,7 +352,7 @@ public enum AppCommandRunner {
         if failed {
             return CLIOutput(stdout: report.map { [$0] } ?? [], exitCode: AppCommandParser.failureExitCode)
         }
-        guard let report else { return CLIOutput(stdout: ["nothing was playing that HomeSpeaker can pause"]) }
+        guard let report else { return CLIOutput(stdout: ["nothing was playing that Vitruvian Speaker can pause"]) }
         return CLIOutput(stdout: [report, "resumed"])
     }
 }

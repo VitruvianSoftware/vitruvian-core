@@ -21,7 +21,7 @@
 import AppKit
 import Foundation
 
-/// Where one HomeSpeaker keeps its settings, sign-ins, history and status,
+/// Where one Vitruvian Speaker keeps its settings, sign-ins, history and status,
 /// and the names its processes talk to each other on.
 ///
 /// There are two: the standalone app, which keeps today's files exactly,
@@ -32,13 +32,13 @@ import Foundation
 /// | | `.app` | `.extension` |
 /// |---|---|---|
 /// | Settings | `~/.gemini/speaker_broadcast.json` | `<data>/settings.json` |
-/// | Sign-ins (0600) | `~/Library/Application Support/HomeSpeaker/secrets.json` | `<data>/secrets.json` |
+/// | Sign-ins (0600) | `~/Library/Application Support/Vitruvian Speaker/secrets.json` | `<data>/secrets.json` |
 /// | History | `~/.gemini/speaker_history.json` | `<data>/history.json` |
 /// | Chat monitor status | `~/.gemini/speaker_monitor_status.json` | `<data>/speaker_monitor_status.json` |
-/// | Messages | `com.vitruviansoftware.homespeaker.*` | `dev.vitruvian.homespeaker.*` |
+/// | Messages | `com.vitruviansoftware.speaker.*` | `dev.vitruvian.speaker.*` |
 /// | "Am I alive" | the running app's bundle id | a lock on `<data>/running.lock` |
-public struct HomeSpeakerProfile: Sendable, Equatable {
-    /// Which HomeSpeaker this is.
+public struct VitruvianSpeakerProfile: Sendable, Equatable {
+    /// Which Vitruvian Speaker this is.
     public enum Door: String, Sendable, Equatable {
         /// The standalone menu bar app.
         case app
@@ -47,9 +47,9 @@ public struct HomeSpeakerProfile: Sendable, Equatable {
     }
 
     /// The app's message names, as they have always been.
-    public static let appMessagePrefix = "com.vitruviansoftware.homespeaker"
+    public static let appMessagePrefix = "com.vitruviansoftware.speaker"
     /// The extension's: its tool id, so nothing it posts reaches the app.
-    public static let extensionMessagePrefix = "dev.vitruvian.homespeaker"
+    public static let extensionMessagePrefix = "dev.vitruvian.speaker"
 
     public let door: Door
     public let settingsURL: URL
@@ -57,7 +57,7 @@ public struct HomeSpeakerProfile: Sendable, Equatable {
     public let secretsURL: URL
     /// Cross-process messages are named `<messagePrefix>.<what>`.
     public let messagePrefix: String
-    /// Held while this HomeSpeaker's long-lived process runs, so another
+    /// Held while this Vitruvian Speaker's long-lived process runs, so another
     /// process can tell whether anything is alive. Nil for the app, which
     /// is found by its bundle id instead.
     public let liveLockURL: URL?
@@ -72,7 +72,7 @@ public struct HomeSpeakerProfile: Sendable, Equatable {
     public var monitorStatusURL: URL { ChatMonitorStatusFile.url(beside: settingsURL) }
 
     /// Cross-process speech lock URL: both real doors share
-    /// `/tmp/homespeaker_speech.lock` so an app announcement and an extension
+    /// `/tmp/vitruvian_speaker_speech.lock` so an app announcement and an extension
     /// announcement never talk over each other, while test profiles (whose
     /// files live in a scratch folder) lock inside their own folder so
     /// parallel tests never contend with each other or with this Mac.
@@ -139,7 +139,7 @@ public struct HomeSpeakerProfile: Sendable, Equatable {
             bundle: bundle)
     }
 
-    /// The Google sign-in client shipped with this HomeSpeaker, read each
+    /// The Google sign-in client shipped with this Vitruvian Speaker, read each
     /// time it is asked for. The app's is in its bundle's Info.plist; the
     /// extension's is `google-oauth-client.json` in its tool folder, and
     /// nothing else: a client in whatever bundle runs the extension is not
@@ -180,9 +180,9 @@ public struct HomeSpeakerProfile: Sendable, Equatable {
 
 // MARK: - Messages between processes
 
-/// The messages HomeSpeaker's processes send each other, as distributed
+/// The messages Vitruvian Speaker's processes send each other, as distributed
 /// notifications. Each is named `<messagePrefix>.<rawValue>`.
-public enum HomeSpeakerMessage: String, CaseIterable, Sendable {
+public enum VitruvianSpeakerMessage: String, CaseIterable, Sendable {
     /// Pause, extend or resume media (`MediaPauseRequest`).
     case mediaPause = "media-pause"
     /// Put a speaker back after an announcement (`VolumeRestoreRequest`).
@@ -195,19 +195,19 @@ public enum HomeSpeakerMessage: String, CaseIterable, Sendable {
     case chatMonitorControl = "chat-monitor-control"
 }
 
-extension HomeSpeakerProfile {
-    /// The name `message` travels under for this HomeSpeaker.
-    public func messageName(_ message: HomeSpeakerMessage) -> Notification.Name {
+extension VitruvianSpeakerProfile {
+    /// The name `message` travels under for this Vitruvian Speaker.
+    public func messageName(_ message: VitruvianSpeakerMessage) -> Notification.Name {
         Notification.Name("\(messagePrefix).\(message.rawValue)")
     }
 }
 
 // MARK: - The process's profile
 
-extension HomeSpeakerProfile {
+extension VitruvianSpeakerProfile {
     private final class ProcessProfile: @unchecked Sendable {
         let lock = NSLock()
-        var profile: HomeSpeakerProfile?
+        var profile: VitruvianSpeakerProfile?
     }
 
     private static let processProfile = ProcessProfile()
@@ -215,7 +215,7 @@ extension HomeSpeakerProfile {
     /// The profile this process runs as: whatever the program set with
     /// `useForThisProcess(_:)`, or the app's. Every message a caller posts
     /// or listens for without naming a profile goes by it.
-    public static var current: HomeSpeakerProfile {
+    public static var current: VitruvianSpeakerProfile {
         processProfile.lock.lock()
         defer { processProfile.lock.unlock() }
         return processProfile.profile ?? .app()
@@ -224,7 +224,7 @@ extension HomeSpeakerProfile {
     /// Set once, by the program, at its start, before anything posts or
     /// listens. Only entry points call it (the app, the tool's program);
     /// tests pass their profile instead, so they never change the process's.
-    public static func useForThisProcess(_ profile: HomeSpeakerProfile) {
+    public static func useForThisProcess(_ profile: VitruvianSpeakerProfile) {
         processProfile.lock.lock()
         defer { processProfile.lock.unlock() }
         processProfile.profile = profile
@@ -233,9 +233,9 @@ extension HomeSpeakerProfile {
 
 // MARK: - Is this side's long-lived process alive
 
-extension HomeSpeakerProfile {
+extension VitruvianSpeakerProfile {
     /// The standalone app's bundle id.
-    public static let appBundleID = "com.vitruviansoftware.homespeaker"
+    public static let appBundleID = "com.vitruviansoftware.speaker"
 
     /// One running application, as `NSRunningApplication` describes it.
     public typealias RunningApp = (bundleIdentifier: String?, activationPolicy: NSApplication.ActivationPolicy)
@@ -246,7 +246,7 @@ extension HomeSpeakerProfile {
             .map { ($0.bundleIdentifier, $0.activationPolicy) }
     }
 
-    /// HomeSpeaker.app is running as an app: a process with its bundle id
+    /// Vitruvian Speaker.app is running as an app: a process with its bundle id
     /// whose activation policy is not `.prohibited`. The menu bar app is
     /// `.accessory`; its short-lived command-line runs (`--say`, `--volume`,
     /// the tool's own jobs) carry the same bundle id but never become apps,
@@ -258,7 +258,7 @@ extension HomeSpeakerProfile {
     /// Is the process that runs this side's chat monitor, and puts volumes
     /// back, alive? The app's is its running app; the extension's holds the
     /// lock on `liveLockURL`. `runningApps` is asked only for the app.
-    public func ownerRunning(runningApps: () -> [RunningApp] = HomeSpeakerProfile.runningApps) -> Bool {
+    public func ownerRunning(runningApps: () -> [RunningApp] = VitruvianSpeakerProfile.runningApps) -> Bool {
         switch door {
         case .app:
             return Self.isAppRunning(among: runningApps())

@@ -20,11 +20,11 @@
 
 import XCTest
 
-import HomeSpeakerCore
-import HomeSpeakerToolCore
+import VitruvianSpeakerCore
+import VitruvianSpeakerToolCore
 
 /// What the tool's settings say about the Google sign-in client comes from
-/// the profile it runs as: the client shipped with that HomeSpeaker, or
+/// the profile it runs as: the client shipped with that Vitruvian Speaker, or
 /// none. Every file here is in a folder of the test's own; no test reads
 /// the person's secrets.
 final class AccountTests: XCTestCase {
@@ -32,7 +32,7 @@ final class AccountTests: XCTestCase {
 
     override func setUpWithError() throws {
         root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("homespeaker-account-\(UUID().uuidString)")
+            .appendingPathComponent("vitruvian-speaker-account-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     }
 
@@ -42,14 +42,14 @@ final class AccountTests: XCTestCase {
 
     private var toolFolder: URL { root.appendingPathComponent("tool") }
 
-    private func profile() throws -> HomeSpeakerProfile {
+    private func profile() throws -> VitruvianSpeakerProfile {
         try FileManager.default.createDirectory(at: toolFolder, withIntermediateDirectories: true)
         return .extension(
             dataFolder: root.appendingPathComponent("data"), toolFolder: toolFolder,
-            messagePrefix: "test.\(UUID().uuidString).homespeaker")
+            messagePrefix: "test.\(UUID().uuidString).vitruvian-speaker")
     }
 
-    private func account(_ profile: HomeSpeakerProfile) -> SecretStoreAccount {
+    private func account(_ profile: VitruvianSpeakerProfile) -> SecretStoreAccount {
         SecretStoreAccount(
             store: SecretStore(fileURL: root.appendingPathComponent("secrets.json")),
             antigravityTokens: root.appendingPathComponent("none.json"),

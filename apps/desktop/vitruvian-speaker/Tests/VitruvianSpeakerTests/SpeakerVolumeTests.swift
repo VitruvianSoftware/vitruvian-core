@@ -20,7 +20,7 @@
 
 import Foundation
 import Testing
-@testable import HomeSpeakerCore
+@testable import VitruvianSpeakerCore
 
 /// A speaker that remembers its volume and every level it was set to.
 final class FakeSpeaker: VolumeControlling, @unchecked Sendable {

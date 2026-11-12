@@ -19,7 +19,7 @@
 // SOFTWARE.
 
 import SwiftUI
-import HomeSpeakerCore
+import VitruvianSpeakerCore
 
 @MainActor
 public class MenuBarViewModel: ObservableObject {
@@ -91,7 +91,7 @@ public struct MenuBarView: View {
 
     public var body: some View {
         VStack(spacing: 12) {
-            // Which HomeSpeaker (design 7.4): a line at the top while the
+            // Which Vitruvian Speaker (design 7.4): a line at the top while the
             // app asks or is quiet, not only the window, which is easy to miss.
             if door.plan.asks || door.plan.showsQuiet || door.plan.inTrash || switcher.step != nil {
                 DoorCard(door: door, switcher: switcher, compact: true)
@@ -268,7 +268,7 @@ public struct MenuBarView: View {
                     setupStep(
                         icon: "person.crop.circle.badge.exclamationmark",
                         title: "Sign in to Google Home",
-                        detail: "HomeSpeaker needs permission to talk to your speakers.",
+                        detail: "Vitruvian Speaker needs permission to talk to your speakers.",
                         button: "Sign in…") { signIn() }
                 } else if !configManager.config.hasSpeakers {
                     setupStep(
@@ -521,7 +521,7 @@ public struct MenuBarView: View {
             .font(.caption)
             .foregroundStyle(.secondary)
             .keyboardShortcut("q", modifiers: .command)
-            .accessibilityLabel("Quit HomeSpeaker")
+            .accessibilityLabel("Quit Vitruvian Speaker")
         }
     }
 

@@ -21,16 +21,16 @@
 import AppKit
 import Foundation
 
-/// HomeSpeaker's command line, on any engine: `--say`, the volume flags,
+/// Vitruvian Speaker's command line, on any engine: `--say`, the volume flags,
 /// `--sign-in`, the app-identity commands, `--chat-monitor`, the Claude Code
 /// Stop hook and its detached `--announce`, `--help` and `--version`.
 ///
-/// The app's program runs it on `HomeSpeakerEngine.app`, so what it prints
+/// The app's program runs it on `VitruvianSpeakerEngine.app`, so what it prints
 /// and how it exits is exactly what it always was. Each flag's work is an
 /// `async` function that returns a `CLIOutput`, so tests drive it with
 /// stand-ins; `run` only reads the arguments, wires the engine's real parts
 /// and prints.
-public enum HomeSpeakerCommandLine {
+public enum VitruvianSpeakerCommandLine {
     /// One run of the command line, parsed. Anything else is not the
     /// command line's: the app's program starts the menu bar app.
     public enum Command: Equatable, Sendable {
@@ -184,34 +184,34 @@ public enum HomeSpeakerCommandLine {
         /// Opens the Google sign-in page.
         public var openBrowser: @Sendable (URL) -> Void
         public var loginItem: LoginItem
-        /// True when the other HomeSpeaker is the one chosen, and installed:
+        /// True when the other Vitruvian Speaker is the one chosen, and installed:
         /// the Stop hook and its `--announce` then do nothing, so a stale
         /// hook entry never says a reply twice. `--say` still speaks.
         public var standsAside: @Sendable () -> Bool
         /// What `--say` notes while this side stands aside; nil for the
         /// usual "the other one is in use".
         public var asideNote: @Sendable () -> String?
-        /// The other HomeSpeaker's sign-ins, while it is installed:
+        /// The other Vitruvian Speaker's sign-ins, while it is installed:
         /// `--sign-out` never revokes a login it shares
-        /// (`HomeSpeakerEngine.signOut`). Nil when there is no other.
+        /// (`VitruvianSpeakerEngine.signOut`). Nil when there is no other.
         public var otherSecrets: @Sendable () -> Secrets?
-        /// Tells a running HomeSpeaker its login was removed.
+        /// Tells a running Vitruvian Speaker its login was removed.
         public var postSignedOut: @Sendable (_ chatOnly: Bool, Notification.Name) -> Void
-        /// The settings of the HomeSpeaker in use when that is the other
+        /// The settings of the Vitruvian Speaker in use when that is the other
         /// one; nil when it is this one, or they do not read. `--say` and
         /// `--announce` read their time limit, switches and outputs from
         /// these: `speaker-broadcast` always runs the app's program, while
         /// the settings the person turns are the side in use's.
         public var inUseSettings: @Sendable () -> SpeakerConfig?
-        /// The engine of the HomeSpeaker in use when that is the other one
+        /// The engine of the Vitruvian Speaker in use when that is the other one
         /// (its `Announcer`, `SecretStore` and `BroadcastHistory`); nil when
         /// it is this one. `--say` speaks through and records into this
         /// engine so the active door's Gemini API key, Google Home login and
         /// history file are used.
-        public var inUseEngine: @MainActor @Sendable () -> HomeSpeakerEngine?
+        public var inUseEngine: @MainActor @Sendable () -> VitruvianSpeakerEngine?
         /// Seam for `--state --json` and `--apply --json <changes>`. When nil,
-        /// `HomeSpeakerStateContract.Seam.live(for: engine.profile)` is used.
-        public var stateSeam: (@Sendable (HomeSpeakerProfile) -> HomeSpeakerStateContract.Seam)?
+        /// `VitruvianSpeakerStateContract.Seam.live(for: engine.profile)` is used.
+        public var stateSeam: (@Sendable (VitruvianSpeakerProfile) -> VitruvianSpeakerStateContract.Seam)?
 
         public init(
             openBrowser: @escaping @Sendable (URL) -> Void,
@@ -223,8 +223,8 @@ public enum HomeSpeakerCommandLine {
                 SignOutNotice.post(chatOnly: $0, name: $1)
             },
             inUseSettings: @escaping @Sendable () -> SpeakerConfig? = { nil },
-            inUseEngine: @escaping @MainActor @Sendable () -> HomeSpeakerEngine? = { nil },
-            stateSeam: (@Sendable (HomeSpeakerProfile) -> HomeSpeakerStateContract.Seam)? = nil
+            inUseEngine: @escaping @MainActor @Sendable () -> VitruvianSpeakerEngine? = { nil },
+            stateSeam: (@Sendable (VitruvianSpeakerProfile) -> VitruvianSpeakerStateContract.Seam)? = nil
         ) {
             self.openBrowser = openBrowser
             self.loginItem = loginItem
@@ -253,8 +253,8 @@ public enum HomeSpeakerCommandLine {
                 SignOutNotice.post(chatOnly: $0, name: $1)
             },
             inUseSettings: @escaping @Sendable () -> SpeakerConfig? = { nil },
-            inUseEngine: @escaping @MainActor @Sendable () -> HomeSpeakerEngine? = { nil },
-            stateSeam: (@Sendable (HomeSpeakerProfile) -> HomeSpeakerStateContract.Seam)? = nil
+            inUseEngine: @escaping @MainActor @Sendable () -> VitruvianSpeakerEngine? = { nil },
+            stateSeam: (@Sendable (VitruvianSpeakerProfile) -> VitruvianSpeakerStateContract.Seam)? = nil
         ) -> Parts {
             Parts(openBrowser: browser, loginItem: .control(SystemLoginItem()), standsAside: standsAside,
                   asideNote: asideNote, otherSecrets: otherSecrets, postSignedOut: postSignedOut,
@@ -270,8 +270,8 @@ public enum HomeSpeakerCommandLine {
                 SignOutNotice.post(chatOnly: $0, name: $1)
             },
             inUseSettings: @escaping @Sendable () -> SpeakerConfig? = { nil },
-            inUseEngine: @escaping @MainActor @Sendable () -> HomeSpeakerEngine? = { nil },
-            stateSeam: (@Sendable (HomeSpeakerProfile) -> HomeSpeakerStateContract.Seam)? = nil
+            inUseEngine: @escaping @MainActor @Sendable () -> VitruvianSpeakerEngine? = { nil },
+            stateSeam: (@Sendable (VitruvianSpeakerProfile) -> VitruvianSpeakerStateContract.Seam)? = nil
         ) -> Parts {
             Parts(openBrowser: browser, loginItem: .none(reason: extensionHasNoLoginItem), standsAside: standsAside,
                   otherSecrets: otherSecrets, postSignedOut: postSignedOut, inUseSettings: inUseSettings,
@@ -294,7 +294,7 @@ public enum HomeSpeakerCommandLine {
     /// Runs `arguments` on `engine` and exits with the command's code. For
     /// arguments it does not recognize, prints a usage error and exits 2.
     @MainActor
-    public static func run(_ arguments: [String], engine: HomeSpeakerEngine, parts: Parts) -> Never {
+    public static func run(_ arguments: [String], engine: VitruvianSpeakerEngine, parts: Parts) -> Never {
         let extendsQueue: Bool
         switch parse(arguments) {
         case .announce, .say: extendsQueue = true
@@ -319,12 +319,12 @@ public enum HomeSpeakerCommandLine {
     /// (`BroadcastSource`); a test's is empty, so it speaks as a person.
     @MainActor
     public static func action(
-        for arguments: [String], engine: HomeSpeakerEngine, parts: Parts,
+        for arguments: [String], engine: VitruvianSpeakerEngine, parts: Parts,
         standardInput: () -> Data = { FileHandle.standardInput.readDataToEndOfFile() },
         environment: [String: String] = [:]
     ) -> Action {
         guard let command = parse(arguments) else {
-            return .now(usageError(UsageError("no HomeSpeaker command in: \(arguments.joined(separator: " "))")))
+            return .now(usageError(UsageError("no Vitruvian Speaker command in: \(arguments.joined(separator: " "))")))
         }
         let profile = engine.profile
         let history = engine.history
@@ -335,7 +335,7 @@ public enum HomeSpeakerCommandLine {
         let asideNote = parts.asideNote
         // Read at once for --say and --announce only: their limit grows
         // with this Mac's speech, using the settings of whichever
-        // HomeSpeaker is in use.
+        // Vitruvian Speaker is in use.
         let limit = timeLimit(for: command, settings: { parts.inUseSettings() ?? engine.config.config })
         /// Runs `body` under the command's own time limit.
         func headless(_ body: @escaping @Sendable () async -> CLIOutput) -> Action {
@@ -399,7 +399,7 @@ public enum HomeSpeakerCommandLine {
         case .say(let text, let records):
             // Deliberate, like Quick Announce: it overrides quiet hours but
             // still honours the master switch. An agent's also needs its
-            // own switch on, in the settings of the HomeSpeaker in use.
+            // own switch on, in the settings of the Vitruvian Speaker in use.
             let source: BroadcastSource
             switch BroadcastSource.resolve(arguments: arguments, environment: environment) {
             case .success(let resolved): source = resolved
@@ -503,7 +503,7 @@ public enum HomeSpeakerCommandLine {
         case .signIn:
             return TimeLimit(seconds: 300, timedOut: timedOut)
         case .apply(.success):
-            return TimeLimit(seconds: 60, timedOut: HomeSpeakerStateContract.timedOutOutput())
+            return TimeLimit(seconds: 60, timedOut: VitruvianSpeakerStateContract.timedOutOutput())
         case .app(.success(.loginItem)), .app(.failure), .chatMonitor, .state, .apply(.failure), .help, .version, .location, .usage:
             return nil
         }
@@ -567,18 +567,18 @@ public enum HomeSpeakerCommandLine {
 
     // MARK: - Each flag's outcome
 
-    /// `--say <text>`: speaks, whichever HomeSpeaker is chosen, because
+    /// `--say <text>`: speaks, whichever Vitruvian Speaker is chosen, because
     /// someone asked. When the other one (`door`'s other) is in use, says
     /// so on standard error.
     ///
     /// For a coding agent's `source`, the master switch and that agent's
-    /// own switch are read from `inUse` (the other HomeSpeaker's settings,
+    /// own switch are read from `inUse` (the other Vitruvian Speaker's settings,
     /// while it is the one in use), else from `config`; either off says so
     /// and speaks nothing (`agentRefusal`). `records` false speaks without
     /// adding to the history: a replay of what is already in it.
     public static func say(
         _ text: String, config: SpeakerConfig, announcer: Announcer, history: BroadcastHistory,
-        standsAside: Bool, door: HomeSpeakerProfile.Door, note: String? = nil,
+        standsAside: Bool, door: VitruvianSpeakerProfile.Door, note: String? = nil,
         source: BroadcastSource = .user, inUse: SpeakerConfig? = nil, records: Bool = true, at date: Date = Date()
     ) async -> CLIOutput {
         let active = inUse ?? config
@@ -590,7 +590,7 @@ public enum HomeSpeakerCommandLine {
             history: history, at: date)
         if standsAside {
             let other = door == .app ? "extension" : "app"
-            out.stderr.insert(note ?? "note: the HomeSpeaker \(other) is the one in use", at: 0)
+            out.stderr.insert(note ?? "note: the Vitruvian Speaker \(other) is the one in use", at: 0)
         }
         return out
     }
@@ -622,13 +622,13 @@ public enum HomeSpeakerCommandLine {
         guard config.enabled else { return CLIOutput(stderr: ["broadcasting is switched off"], exitCode: 1) }
         // Home only with no speaker picked: the same message as before.
         if config.effectiveSpeakHome && !config.effectiveSpeakLocal && !config.effectiveSpeakPhone && config.defaultDevice == nil {
-            return CLIOutput(stderr: ["no default speaker; open HomeSpeaker and pick one"], exitCode: 1)
+            return CLIOutput(stderr: ["no default speaker; open Vitruvian Speaker and pick one"], exitCode: 1)
         }
         let (outcome, spoken) = await announcer.announceReporting(
             text, config: config, force: force, restyle: restyle, at: date)
         // A reworded reply is listed as it was heard.
         let heardText = restyle && AnnouncementStylist.rewrites(config) ? (spoken ?? text) : text
-        // With no long-lived HomeSpeaker alive, this process paused the
+        // With no long-lived Vitruvian Speaker alive, this process paused the
         // media itself: stay until it is resumed, never exit holding it.
         await announcer.media.waitUntilReleased()
         var out = CLIOutput()
@@ -675,7 +675,7 @@ public enum HomeSpeakerCommandLine {
 
     /// What an agent's announcement says while its switch is off.
     public static func agentSwitchedOff(_ agent: CodingAgent) -> String {
-        "\(agent.displayName) announcements are switched off in HomeSpeaker. Nothing spoken."
+        "\(agent.displayName) announcements are switched off in Vitruvian Speaker. Nothing spoken."
     }
 
     /// How long `--say` or `--announce` may take: 20 s covered a home
@@ -763,7 +763,7 @@ public enum HomeSpeakerCommandLine {
     ) async -> CLIOutput {
         if request == .invalidLevel { return volumeFailure(badLevelReason) }
         guard let target = config.defaultDevice else {
-            return volumeFailure("no default speaker; open HomeSpeaker and pick one")
+            return volumeFailure("no default speaker; open Vitruvian Speaker and pick one")
         }
         do {
             var confirmed: SpeakerVolume?
@@ -806,7 +806,7 @@ public enum HomeSpeakerCommandLine {
     /// `--sign-in [--chat]`: the browser sign-in the Settings buttons run.
     /// `--chat` signs in for Google Chat instead of Home (Google refuses
     /// both scopes in one grant, so they are separate logins). `progress`
-    /// prints as it goes; `notify` tells a running HomeSpeaker to re-read
+    /// prints as it goes; `notify` tells a running Vitruvian Speaker to re-read
     /// the login and start or restart the chat monitor with it.
     public static func signIn(
         purpose: GoogleAuth.Purpose,
@@ -835,10 +835,10 @@ public enum HomeSpeakerCommandLine {
         }
     }
 
-    /// `--chat-monitor start|stop`: asks the running HomeSpeaker, which is
+    /// `--chat-monitor start|stop`: asks the running Vitruvian Speaker, which is
     /// where the monitor lives, under `profile`'s names. Only posts.
     public static func chatMonitor(
-        _ action: ChatMonitorAction, profile: HomeSpeakerProfile,
+        _ action: ChatMonitorAction, profile: VitruvianSpeakerProfile,
         post: (ChatMonitorAction, Notification.Name) -> Void
     ) -> CLIOutput {
         post(action, ChatMonitorControlNotice.notificationName(for: profile))
@@ -846,19 +846,19 @@ public enum HomeSpeakerCommandLine {
     }
 
     /// `--state --json`: prints the full state document and exits 0.
-    public static func state(seam: HomeSpeakerStateContract.Seam) -> CLIOutput {
-        HomeSpeakerStateContract.stateOutput(seam: seam)
+    public static func state(seam: VitruvianSpeakerStateContract.Seam) -> CLIOutput {
+        VitruvianSpeakerStateContract.stateOutput(seam: seam)
     }
 
     /// `--apply --json <changes>`: applies settings changes through
     /// `SettingsActions` and prints the resulting state document as JSON.
-    public static func apply(_ changes: String, seam: HomeSpeakerStateContract.Seam) -> CLIOutput {
-        HomeSpeakerStateContract.applyOutput(changes, seam: seam)
+    public static func apply(_ changes: String, seam: VitruvianSpeakerStateContract.Seam) -> CLIOutput {
+        VitruvianSpeakerStateContract.applyOutput(changes, seam: seam)
     }
 
     /// A flag used wrongly: the caller's mistake, exit 2.
     public static func usageError(_ usage: UsageError) -> CLIOutput {
-        CLIOutput(stderr: ["error: \(usage.message)", "run HomeSpeaker --help for usage"],
+        CLIOutput(stderr: ["error: \(usage.message)", "run VitruvianSpeaker --help for usage"],
                   exitCode: AppCommandParser.usageExitCode)
     }
 
@@ -866,9 +866,9 @@ public enum HomeSpeakerCommandLine {
     /// hung a terminal on a second copy of it.
     public static func help() -> CLIOutput {
         CLIOutput(stdout: ["""
-        HomeSpeaker \(HomeSpeakerVersion.current) — speaks your coding agent's replies on a Google speaker.
+        Vitruvian Speaker \(VitruvianSpeakerVersion.current) — speaks your coding agent's replies on a Google speaker.
 
-        usage: HomeSpeaker [flag]
+        usage: VitruvianSpeaker [flag]
           (no flag)            run the menu bar app
           --say <text>         announce text on the default speaker and/or this Mac
           --say <text> --no-history
@@ -896,12 +896,12 @@ public enum HomeSpeakerCommandLine {
 
     /// `--version`.
     public static func version() -> CLIOutput {
-        CLIOutput(stdout: ["HomeSpeaker \(HomeSpeakerVersion.current)"])
+        CLIOutput(stdout: ["Vitruvian Speaker \(VitruvianSpeakerVersion.current)"])
     }
 
     /// `--where`: the folder `profile` keeps its settings in. The
     /// extension's data folder; for the app, `~/.gemini`.
-    public static func dataFolder(of profile: HomeSpeakerProfile) -> CLIOutput {
+    public static func dataFolder(of profile: VitruvianSpeakerProfile) -> CLIOutput {
         CLIOutput(stdout: [profile.settingsURL.deletingLastPathComponent().path])
     }
 }

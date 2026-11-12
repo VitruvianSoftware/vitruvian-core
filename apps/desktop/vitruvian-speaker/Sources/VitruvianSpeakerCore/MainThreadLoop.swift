@@ -27,7 +27,7 @@ import Foundation
 /// Not `dispatchMain()`. That ends the main thread (`pthread_exit`) and
 /// leaves the main queue to a worker thread, where
 /// `MainActor.assumeIsolated` can trap ("Incorrect actor executor
-/// assumption"), as HomeSpeaker extension 1.19.0 did on every start once
+/// assumption"), as Vitruvian Speaker extension 1.19.0 did on every start once
 /// its chat monitor started, and where nothing services the main thread's
 /// run loop (distributed notifications, timers on it).
 public enum MainThreadLoop {

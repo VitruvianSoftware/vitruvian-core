@@ -19,16 +19,16 @@
 // SOFTWARE.
 
 import Foundation
-import HomeSpeakerCore
+import VitruvianSpeakerCore
 
-/// One HomeSpeaker's settings file: the extension's `<data>/settings.json`.
+/// One Vitruvian Speaker's settings file: the extension's `<data>/settings.json`.
 /// The tool reads it before each page and writes it back through
 /// `SpeakerConfigFile`, as the app does its own: merged into what is there,
 /// so keys the tool does not know survive, and never over a file that does
 /// not read. The extension's engine watches the folder and follows within a
 /// second.
 public protocol ConfigStore: AnyObject {
-    /// The file: missing, read, or there but not readable as HomeSpeaker's
+    /// The file: missing, read, or there but not readable as Vitruvian Speaker's
     /// settings, and why.
     func read() -> ConfigFileRead
     func save(_ config: SpeakerConfig) throws
@@ -57,7 +57,7 @@ public final class FileConfigStore: ConfigStore {
     }
 
     /// Throws, writing nothing, when the file there does not read as
-    /// HomeSpeaker's settings: the tool would otherwise save its defaults
+    /// Vitruvian Speaker's settings: the tool would otherwise save its defaults
     /// over them.
     public func save(_ config: SpeakerConfig) throws {
         try file.write(config)

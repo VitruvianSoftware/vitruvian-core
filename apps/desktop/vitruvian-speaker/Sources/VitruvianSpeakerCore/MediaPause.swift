@@ -39,7 +39,7 @@ import Foundation
 // playing in the system's Now Playing, with an explicit Pause, never the
 // toggle. Then CoreAudio says, with no permission prompt, which apps are
 // still producing sound that Now Playing did not cover; each of those that
-// HomeSpeaker knows is paused through its own scripting interface, which can
+// Vitruvian Speaker knows is paused through its own scripting interface, which can
 // also tell us whether it was playing. So only what was actually playing is
 // paused, and only that is resumed -- and only if it is still paused when the
 // announcement ends, so a video the user restarted by hand is left alone.
@@ -47,7 +47,7 @@ import Foundation
 // The pausing lives in the long-lived process (the menu bar app, or the
 // extension's), which outlives an announcement. The Claude Code Stop hook and
 // `--say` are short-lived and hand the request over with a distributed
-// notification, to whichever HomeSpeaker is in use (`RequestRoute`). With
+// notification, to whichever Vitruvian Speaker is in use (`RequestRoute`). With
 // none alive, the short-lived process pauses itself and waits out the hold
 // before it exits.
 
@@ -91,7 +91,7 @@ public enum AudioActivity {
 
 // MARK: - The players we know how to pause
 
-/// One app HomeSpeaker can pause and resume through its scripting interface.
+/// One app Vitruvian Speaker can pause and resume through its scripting interface.
 public enum MediaPlayer: String, CaseIterable, Sendable {
     case chrome = "Google Chrome"
     case brave = "Brave Browser"
@@ -144,7 +144,7 @@ public enum MediaPlayer: String, CaseIterable, Sendable {
     private var isWebKitShared: Bool { self == .safari }
 }
 
-/// Something HomeSpeaker paused, with what it needs to resume exactly that.
+/// Something Vitruvian Speaker paused, with what it needs to resume exactly that.
 public struct PausedMedia: Equatable, Sendable {
     public var player: MediaPlayer
     /// Browser tabs as "windowID:tabID" (Safari: window ids); QuickTime
@@ -471,8 +471,8 @@ public protocol ScriptRunner: Sendable {
 }
 
 /// `osascript` in a child process: off the main thread, so a slow browser
-/// cannot stall the menu bar, and still attributed to HomeSpeaker for the
-/// macOS Automation prompt ("HomeSpeaker wants to control Google Chrome").
+/// cannot stall the menu bar, and still attributed to Vitruvian Speaker for the
+/// macOS Automation prompt ("Vitruvian Speaker wants to control Google Chrome").
 public struct OSAScriptRunner: ScriptRunner {
     /// Seconds before a hung script is killed.
     let deadline: TimeInterval
@@ -556,12 +556,12 @@ public struct OSAScriptRunner: ScriptRunner {
 // nothing" here before. /usr/bin/perl is Apple-signed, and it may load this
 // very binary (an app, the tool, the test bundle: dyld loads a
 // position-independent executable without running its main) and call
-// `homespeaker_media_remote_entry`, which then speaks to MediaRemote with
+// `vitruvian_speaker_media_remote_entry`, which then speaks to MediaRemote with
 // perl's standing. So no helper file ships: the image that holds this code
 // is the one perl loads, found with `dladdr`. The same trick is proven in
 // the Vitruvian app (apps/desktop/vitruvian/Sources/NowPlayingAdapter).
 
-/// One Now Playing session HomeSpeaker paused through MediaRemote.
+/// One Now Playing session Vitruvian Speaker paused through MediaRemote.
 public struct NowPlayingSession: Equatable, Sendable {
     public var pid: Int32
     /// The app's bundle identifier (`com.google.Chrome`, `org.videolan.vlc`).
@@ -633,7 +633,7 @@ public struct NoNowPlaying: NowPlayingRunner {
 }
 
 /// MediaRemote through `/usr/bin/perl`, which loads the image this code is
-/// in and calls `homespeaker_media_remote_entry`.
+/// in and calls `vitruvian_speaker_media_remote_entry`.
 public struct PerlNowPlayingRunner: NowPlayingRunner {
     /// Seconds before a hung perl is killed. What it paused before then is
     /// kept: each pause is written out as it lands.
@@ -692,9 +692,9 @@ public struct PerlNowPlayingRunner: NowPlayingRunner {
     static let perlProgram = """
     use DynaLoader;
     my $h = DynaLoader::dl_load_file($ARGV[0], 0) or die "cannot load: " . DynaLoader::dl_error() . "\\n";
-    my $s = DynaLoader::dl_find_symbol($h, "homespeaker_media_remote_entry") or die "no entry: " . DynaLoader::dl_error() . "\\n";
-    DynaLoader::dl_install_xsub("main::homespeaker_media_remote", $s);
-    homespeaker_media_remote();
+    my $s = DynaLoader::dl_find_symbol($h, "vitruvian_speaker_media_remote_entry") or die "no entry: " . DynaLoader::dl_error() . "\\n";
+    DynaLoader::dl_install_xsub("main::vitruvian_speaker_media_remote", $s);
+    vitruvian_speaker_media_remote();
     """
 
     /// The environment perl runs with: this process's, without anything that
@@ -703,20 +703,20 @@ public struct PerlNowPlayingRunner: NowPlayingRunner {
         var env = ProcessInfo.processInfo.environment.filter { key, _ in
             !key.hasPrefix("PERL") && !key.hasPrefix("DYLD_")
         }
-        env["HOMESPEAKER_MR_ACTION"] = action
-        env["HOMESPEAKER_MR_PIDS"] = sessions.map { String($0.pid) }.joined(separator: ",")
+        env["VITRUVIAN_SPEAKER_MR_ACTION"] = action
+        env["VITRUVIAN_SPEAKER_MR_PIDS"] = sessions.map { String($0.pid) }.joined(separator: ",")
         let titles = Dictionary(sessions.compactMap { s in s.title.map { (String(s.pid), $0) } },
                                 uniquingKeysWith: { a, _ in a })
         if !titles.isEmpty, let data = try? JSONSerialization.data(withJSONObject: titles),
            let text = String(data: data, encoding: .utf8) {
-            env["HOMESPEAKER_MR_TITLES"] = text
+            env["VITRUVIAN_SPEAKER_MR_TITLES"] = text
         }
         return env
     }
 
     /// Runs one action; answers the JSON lines it wrote.
     func run(action: String, sessions: [NowPlayingSession] = []) async -> Result<[[String: Any]], ScriptFailure> {
-        guard let image else { return .failure(ScriptFailure("cannot find HomeSpeaker's own program file")) }
+        guard let image else { return .failure(ScriptFailure("cannot find Vitruvian Speaker's own program file")) }
         let deadline = self.deadline
         return await withCheckedContinuation { cont in
             DispatchQueue.global(qos: .userInitiated).async {
@@ -761,7 +761,7 @@ enum NowPlayingRemote {
     /// The image holding this code: the app, the tool or the test bundle.
     static func imagePath() -> String? {
         var info = Dl_info()
-        let entry = unsafeBitCast(homespeakerMediaRemoteEntry as @convention(c) () -> Void, to: UnsafeRawPointer.self)
+        let entry = unsafeBitCast(vitruvianSpeakerMediaRemoteEntry as @convention(c) () -> Void, to: UnsafeRawPointer.self)
         guard dladdr(entry, &info) != 0, let name = info.dli_fname else { return nil }
         let path = String(cString: name)
         return path.hasPrefix("/") ? path : nil
@@ -774,7 +774,7 @@ enum NowPlayingRemote {
     static let statePaused: UInt32 = 2
 
     private static let handle = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_LAZY)
-    private static let callbacks = DispatchQueue(label: "dev.vitruvian.homespeaker.media-remote", attributes: .concurrent)
+    private static let callbacks = DispatchQueue(label: "dev.vitruvian.speaker.media-remote", attributes: .concurrent)
     private static let output = NSLock()
 
     private static func function<T>(_ name: String, as type: T.Type) -> T? {
@@ -1084,18 +1084,18 @@ enum NowPlayingRemote {
     }
 }
 
-/// Called by `/usr/bin/perl` (`PerlNowPlayingRunner`), never by HomeSpeaker
-/// itself. `HOMESPEAKER_MR_ACTION` is `pause`, `resume` (the processes in
-/// `HOMESPEAKER_MR_PIDS`, with their titles in `HOMESPEAKER_MR_TITLES`) or
+/// Called by `/usr/bin/perl` (`PerlNowPlayingRunner`), never by Vitruvian Speaker
+/// itself. `VITRUVIAN_SPEAKER_MR_ACTION` is `pause`, `resume` (the processes in
+/// `VITRUVIAN_SPEAKER_MR_PIDS`, with their titles in `VITRUVIAN_SPEAKER_MR_TITLES`) or
 /// `list`; the answer is JSON lines on stdout.
-@_cdecl("homespeaker_media_remote_entry")
-public func homespeakerMediaRemoteEntry() {
+@_cdecl("vitruvian_speaker_media_remote_entry")
+public func vitruvianSpeakerMediaRemoteEntry() {
     let env = ProcessInfo.processInfo.environment
-    let pids = (env["HOMESPEAKER_MR_PIDS"] ?? "").split(separator: ",")
+    let pids = (env["VITRUVIAN_SPEAKER_MR_PIDS"] ?? "").split(separator: ",")
         .compactMap { Int32($0.trimmingCharacters(in: .whitespaces)) }
-    let titles = (env["HOMESPEAKER_MR_TITLES"]?.data(using: .utf8))
+    let titles = (env["VITRUVIAN_SPEAKER_MR_TITLES"]?.data(using: .utf8))
         .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: String] } ?? [:]
-    switch env["HOMESPEAKER_MR_ACTION"] {
+    switch env["VITRUVIAN_SPEAKER_MR_ACTION"] {
     case "pause": NowPlayingRemote.pauseAll()
     case "resume": NowPlayingRemote.resume(pids: pids, titles: titles)
     case "list": NowPlayingRemote.list()
@@ -1241,7 +1241,7 @@ public enum AnnouncementTiming {
     }
 
     /// Spoken word-equivalents in `spoken`, accounting for compound tokens
-    /// (`feat/homespeaker-system`, `MediaPause.swift`), multi-digit numbers
+    /// (`feat/vitruvian-speaker-system`, `MediaPause.swift`), multi-digit numbers
     /// (`#3484` -> "number three thousand four hundred eighty-four"), and
     /// prosodic pauses between sentences and clauses.
     public static func spokenWords(in spoken: String) -> Int {
@@ -1334,7 +1334,7 @@ public final class MediaPauseCoordinator: ObservableObject {
     @Published public private(set) var lastReport: String?
     @Published public private(set) var isHolding = false
     /// The last pause met a player it could not pause (refused, or one
-    /// HomeSpeaker cannot drive). For `--test-media-pause`'s exit code.
+    /// Vitruvian Speaker cannot drive). For `--test-media-pause`'s exit code.
     public private(set) var lastPauseHadProblems = false
 
     /// One announcement's hold lease in the active queue.
@@ -1600,7 +1600,7 @@ public final class MediaPauseCoordinator: ObservableObject {
             return "turn on Settings › Developer › Allow JavaScript from Apple Events"
         }
         if why.contains("-1743") || why.localizedCaseInsensitiveContains("not authorized") {
-            return "allow HomeSpeaker under System Settings › Privacy & Security › Automation"
+            return "allow Vitruvian Speaker under System Settings › Privacy & Security › Automation"
         }
         return why
     }
@@ -1616,7 +1616,7 @@ public final class MediaPauseCoordinator: ObservableObject {
         if !names.isEmpty { parts.append("Paused " + names.joined(separator: ", ") + ".") }
         if !problems.isEmpty { parts.append("Could not pause " + problems.joined(separator: "; ") + ".") }
         if !unsupported.isEmpty {
-            parts.append("Could not pause \(unsupported.joined(separator: ", ")) -- HomeSpeaker does not know how to control it.")
+            parts.append("Could not pause \(unsupported.joined(separator: ", ")) -- Vitruvian Speaker does not know how to control it.")
         }
         return parts.isEmpty ? nil : parts.joined(separator: " ")
     }
@@ -1627,7 +1627,7 @@ public final class MediaPauseCoordinator: ObservableObject {
 public enum MediaPauseRequest {
     /// The name requests travel under for `profile`: the app's for the app,
     /// the extension's for the extension, so neither pauses for the other.
-    public static func notificationName(for profile: HomeSpeakerProfile) -> Notification.Name {
+    public static func notificationName(for profile: VitruvianSpeakerProfile) -> Notification.Name {
         profile.messageName(.mediaPause)
     }
 
@@ -1643,7 +1643,7 @@ public enum MediaPauseRequest {
         /// `--say`'s own when no long-lived process is alive.
         case coordinator(MediaPauseCoordinator)
         /// The long-lived process of this profile, over a notification.
-        case post(HomeSpeakerProfile)
+        case post(VitruvianSpeakerProfile)
     }
 
     @MainActor private static var destinations: [String: Destination] = [:]
@@ -1652,17 +1652,17 @@ public enum MediaPauseRequest {
     @MainActor private static var ownHolds: [String: MediaPauseCoordinator] = [:]
 
     /// The coordinator this process holds for `profile`, if it listens.
-    @MainActor public static func inProcess(for profile: HomeSpeakerProfile) -> MediaPauseCoordinator? {
+    @MainActor public static func inProcess(for profile: VitruvianSpeakerProfile) -> MediaPauseCoordinator? {
         coordinators[profile.messagePrefix]
     }
 
     /// Where a pause for `profile` goes now: this process's coordinator when
     /// it listens; else the long-lived process `route` finds alive (the
-    /// HomeSpeaker in use, which may be the other one); else, with nobody
+    /// Vitruvian Speaker in use, which may be the other one); else, with nobody
     /// alive, a coordinator of this process's own, which the caller then
     /// waits on (`waitForOwnHold`) so the media is resumed before it exits.
     @MainActor static func destination(
-        for profile: HomeSpeakerProfile, route: RequestRoute,
+        for profile: VitruvianSpeakerProfile, route: RequestRoute,
         makeOwn: @MainActor () -> MediaPauseCoordinator = { MediaPauseCoordinator() }
     ) -> Destination {
         if let c = coordinators[profile.messagePrefix] { return .coordinator(c) }
@@ -1678,7 +1678,7 @@ public enum MediaPauseRequest {
 
     /// Pause media for `seconds`, through whichever process can hold it.
     public static func pause(
-        seconds: Double, id: String? = nil, profile: HomeSpeakerProfile = .current, route: RequestRoute = .live(),
+        seconds: Double, id: String? = nil, profile: VitruvianSpeakerProfile = .current, route: RequestRoute = .live(),
         makeOwn: @escaping @MainActor () -> MediaPauseCoordinator = { MediaPauseCoordinator() }
     ) async {
         let destination = await MainActor.run { () -> Destination in
@@ -1700,7 +1700,7 @@ public enum MediaPauseRequest {
 
     /// Keep media paused `seconds` longer, if anything is paused.
     public static func extend(
-        seconds: Double, id: String? = nil, profile: HomeSpeakerProfile = .current, route: RequestRoute = .live()
+        seconds: Double, id: String? = nil, profile: VitruvianSpeakerProfile = .current, route: RequestRoute = .live()
     ) async {
         switch await sentTo(profile, route: route) {
         case .coordinator(let c): await c.extend(for: seconds, id: id)
@@ -1712,7 +1712,7 @@ public enum MediaPauseRequest {
         }
     }
 
-    public static func resumeNow(id: String? = nil, profile: HomeSpeakerProfile = .current, route: RequestRoute = .live()) async {
+    public static func resumeNow(id: String? = nil, profile: VitruvianSpeakerProfile = .current, route: RequestRoute = .live()) async {
         switch await sentTo(profile, route: route) {
         case .coordinator(let c): await c.resumeNow(id: id)
         case .post(let listener):
@@ -1726,7 +1726,7 @@ public enum MediaPauseRequest {
     /// Waits until a pause this process holds itself for `profile` is
     /// over; at once when it holds none. A lone `--say` or `--announce`
     /// calls it before exiting.
-    public static func waitForOwnHold(profile: HomeSpeakerProfile = .current) async {
+    public static func waitForOwnHold(profile: VitruvianSpeakerProfile = .current) async {
         guard let own = await MainActor.run(body: { ownHolds[profile.messagePrefix] }) else { return }
         await own.waitUntilReleased()
     }
@@ -1734,7 +1734,7 @@ public enum MediaPauseRequest {
     /// Where `profile`'s last pause went; with none, where one would go now
     /// -- never a new coordinator of this process's own, which would hold
     /// nothing.
-    private static func sentTo(_ profile: HomeSpeakerProfile, route: RequestRoute) async -> Destination? {
+    private static func sentTo(_ profile: VitruvianSpeakerProfile, route: RequestRoute) async -> Destination? {
         await MainActor.run { () -> Destination? in
             if let d = destinations[profile.messagePrefix] { return d }
             if let c = coordinators[profile.messagePrefix] { return .coordinator(c) }
@@ -1744,15 +1744,15 @@ public enum MediaPauseRequest {
         }
     }
 
-    private static func post(_ info: [String: Any], to profile: HomeSpeakerProfile) {
+    private static func post(_ info: [String: Any], to profile: VitruvianSpeakerProfile) {
         DistributedNotificationCenter.default().postNotificationName(
             notificationName(for: profile), object: nil, userInfo: info, deliverImmediately: true)
     }
 
-    /// The long-lived process's side: listen for other HomeSpeaker
+    /// The long-lived process's side: listen for other Vitruvian Speaker
     /// processes of `profile` asking.
     @MainActor public static func listen(
-        with coordinator: MediaPauseCoordinator, profile: HomeSpeakerProfile = .current
+        with coordinator: MediaPauseCoordinator, profile: VitruvianSpeakerProfile = .current
     ) -> NSObjectProtocol {
         coordinators[profile.messagePrefix] = coordinator
         return DistributedNotificationCenter.default().addObserver(

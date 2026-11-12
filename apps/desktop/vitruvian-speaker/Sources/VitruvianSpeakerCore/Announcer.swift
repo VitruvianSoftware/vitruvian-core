@@ -84,7 +84,7 @@ public enum AnnounceOutcome: Equatable, Sendable {
         "Spoke on this Mac (Home speaker failed: \(why))"
     }
 
-    /// What `HomeSpeaker --say` prints for what was heard, a line an
+    /// What `VitruvianSpeaker --say` prints for what was heard, a line an
     /// output. Failures alone go to standard error, as `failureMessages`.
     public func spokenLines(homeName: String) -> [String] {
         guard case .announced(let home, let local, let phone) = self else { return [] }
@@ -173,11 +173,11 @@ extension MediaPausing {
 /// The real pause: the long-lived process's coordinator (the menu bar
 /// app's, or the extension's), in process or over a distributed
 /// notification under `profile`'s names. A nil profile is the process's
-/// (`HomeSpeakerProfile.current`), read at each call.
+/// (`VitruvianSpeakerProfile.current`), read at each call.
 public struct SharedMediaPause: MediaPausing {
-    public let profile: HomeSpeakerProfile?
-    public init(profile: HomeSpeakerProfile? = nil) { self.profile = profile }
-    private var messages: HomeSpeakerProfile { profile ?? .current }
+    public let profile: VitruvianSpeakerProfile?
+    public init(profile: VitruvianSpeakerProfile? = nil) { self.profile = profile }
+    private var messages: VitruvianSpeakerProfile { profile ?? .current }
     public func pause(seconds: Double) async { await MediaPauseRequest.pause(seconds: seconds, profile: messages) }
     public func pause(seconds: Double, id: String?) async { await MediaPauseRequest.pause(seconds: seconds, id: id, profile: messages) }
     public func extend(seconds: Double) async { await MediaPauseRequest.extend(seconds: seconds, profile: messages) }
@@ -192,7 +192,7 @@ public struct SharedMediaPause: MediaPausing {
 public struct Announcer: Sendable {
     public static let shared = Announcer(speechLockURL: SpeechLock.defaultURL)
 
-    public static let logger = Logger(subsystem: "com.vitruviansoftware.homespeaker", category: "announcer")
+    public static let logger = Logger(subsystem: "com.vitruviansoftware.speaker", category: "announcer")
 
     let home: HomeBroadcasting
     let local: LocalSpeaking

@@ -20,19 +20,19 @@
 
 import XCTest
 
-import HomeSpeakerCore
-import HomeSpeakerToolCore
+import VitruvianSpeakerCore
+import VitruvianSpeakerToolCore
 import VitruvianToolKit
 import VitruvianToolProtocol
 
-/// The island as HomeSpeaker's menu bar has it: the settings file's
+/// The island as Vitruvian Speaker's menu bar has it: the settings file's
 /// warning, first-run setup, where to speak, the chat monitor's problems
 /// and the shared Recent Broadcasts.
 final class IslandTests: XCTestCase {
-    typealias Link = HomeSpeakerToolTests.Link
-    typealias Store = HomeSpeakerToolTests.Store
-    typealias Driver = HomeSpeakerToolTests.Driver
-    typealias Account = HomeSpeakerToolTests.Account
+    typealias Link = VitruvianSpeakerToolTests.Link
+    typealias Store = VitruvianSpeakerToolTests.Store
+    typealias Driver = VitruvianSpeakerToolTests.Driver
+    typealias Account = VitruvianSpeakerToolTests.Account
     typealias Chat = ChatSlackTests.Chat
 
     private var link: Link!
@@ -53,7 +53,7 @@ final class IslandTests: XCTestCase {
         account.isSignedIn = true
         chat = Chat()
         appRunning = false
-        folder = FileManager.default.temporaryDirectory.appendingPathComponent("homespeaker-island-\(UUID().uuidString)")
+        folder = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-speaker-island-\(UUID().uuidString)")
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         store.config = SpeakerConfig(enabled: true, defaultTarget: "kitchen", structureId: "s1",
                                      targets: ["kitchen": SpeakerDevice(id: "d1", type: "SpeakerDevice", name: "Kitchen")])
@@ -66,8 +66,8 @@ final class IslandTests: XCTestCase {
     private var settingsURL: URL { folder.appendingPathComponent("speaker_broadcast.json") }
     private var historyURL: URL { folder.appendingPathComponent("speaker_history.json") }
 
-    private func tool() -> HomeSpeakerTool {
-        HomeSpeakerTool(parts: .init(link: link, store: store, driver: driver, later: { $0() }, now: { [unowned self] in now },
+    private func tool() -> VitruvianSpeakerTool {
+        VitruvianSpeakerTool(parts: .init(link: link, store: store, driver: driver, later: { $0() }, now: { [unowned self] in now },
                                      account: account, chat: chat,
                                      gwsLocation: { nil }, ownerRunning: { [unowned self] in appRunning },
                                      settingsURL: settingsURL))
@@ -127,7 +127,7 @@ final class IslandTests: XCTestCase {
         XCTAssertTrue(texts(Pages.settings(status)).contains("The settings file does not read · line 3: expected a value"))
         status.installed = false
         XCTAssertTrue(texts(Pages.island(status)).contains("The settings file does not read · line 3: expected a value"),
-                      "said even without HomeSpeaker: the file is shared")
+                      "said even without Vitruvian Speaker: the file is shared")
     }
 
     func testTheToolsIslandCarriesTheFilesProblem() {
@@ -247,7 +247,7 @@ final class IslandTests: XCTestCase {
         XCTAssertEqual(driver.jobs.last, .app(.discover(save: true, home: nil)))
         driver.answer(.app(.discover(save: true, home: nil)), .done(["saved 1 target(s) from Lake House"]))
         XCTAssertEqual(tool.setupNotice, "Saved 1 target(s) from Lake House")
-        XCTAssertEqual(link.rendered.last?.panel, HomeSpeakerTool.islandPanel, "the island is drawn again when setup answers")
+        XCTAssertEqual(link.rendered.last?.panel, VitruvianSpeakerTool.islandPanel, "the island is drawn again when setup answers")
     }
 
     func testTheIslandListsTheHomesOnceAndFindsTheOnePicked() {
@@ -291,7 +291,7 @@ final class IslandTests: XCTestCase {
         XCTAssertFalse(ids(page).contains(Pages.Block.speakers))
         XCTAssertFalse(ids(page).contains(Pages.Block.mute))
         XCTAssertFalse(ids(page).contains(Pages.Block.volume))
-        XCTAssertFalse(texts(page).contains(Pages.homeSpeakersOff), "no note for controls that are not there")
+        XCTAssertFalse(texts(page).contains(Pages.vitruvianSpeakersOff), "no note for controls that are not there")
         XCTAssertTrue(texts(page).contains("Speaking on This Mac"))
         status.config.effectiveSpeakLocal = false
         XCTAssertTrue(texts(Pages.island(status)).contains("All outputs are off, so nothing is spoken anywhere."))
@@ -310,7 +310,7 @@ final class IslandTests: XCTestCase {
         XCTAssertEqual(store.saves, 2)
     }
 
-    func testWithHomeSpeakersOffTheVolumeIsNeverRead() {
+    func testWithVitruvianSpeakersOffTheVolumeIsNeverRead() {
         store.config?.effectiveSpeakHome = false
         let tool = tool()
         tool.start()
@@ -331,7 +331,7 @@ final class IslandTests: XCTestCase {
 
     /// Signed in with two speakers, the volume read once: the tool as the
     /// island finds it.
-    private func openedWithTwoSpeakers(choice: Bool) -> HomeSpeakerTool {
+    private func openedWithTwoSpeakers(choice: Bool) -> VitruvianSpeakerTool {
         store.config?.targets["office"] = SpeakerDevice(id: "d2", type: "SpeakerDevice", name: "Office")
         link.features = choice ? [.choice] : []
         let tool = tool()
@@ -431,15 +431,15 @@ final class IslandTests: XCTestCase {
         driver.answer(.volume, .volume(Volume(speaker: "Kitchen", percent: 40)))
         // Opened and closed quickly: Google's Home API is not asked again.
         for _ in 0..<3 {
-            tool.panelClosed(HomeSpeakerTool.islandPanel)
+            tool.panelClosed(VitruvianSpeakerTool.islandPanel)
             now += 9
             _ = tool.islandPage()
         }
         XCTAssertEqual(driver.jobs, [.volume], "within 30 seconds of the last read, nothing is asked")
-        XCTAssertEqual(HomeSpeakerTool.volumeFreshFor, 30)
+        XCTAssertEqual(VitruvianSpeakerTool.volumeFreshFor, 30)
         // Someone turned it up on the speaker meanwhile; a later opening sees it.
-        tool.panelClosed(HomeSpeakerTool.islandPanel)
-        now += HomeSpeakerTool.volumeFreshFor
+        tool.panelClosed(VitruvianSpeakerTool.islandPanel)
+        now += VitruvianSpeakerTool.volumeFreshFor
         _ = tool.islandPage()
         XCTAssertEqual(driver.jobs, [.volume, .volume], "read again once the last read is 30 seconds old")
         XCTAssertFalse(texts(Pages.island(tool.status())).contains("Reading the volume…"), "quietly, with a level shown")
@@ -457,10 +457,10 @@ final class IslandTests: XCTestCase {
     }
 
     /// Opened again once the last read is old, so a read is running.
-    private func reopenedWhileReading(choice: Bool = true) -> HomeSpeakerTool {
+    private func reopenedWhileReading(choice: Bool = true) -> VitruvianSpeakerTool {
         let tool = openedWithTwoSpeakers(choice: choice)
-        tool.panelClosed(HomeSpeakerTool.islandPanel)
-        now += HomeSpeakerTool.volumeFreshFor
+        tool.panelClosed(VitruvianSpeakerTool.islandPanel)
+        now += VitruvianSpeakerTool.volumeFreshFor
         _ = tool.islandPage()
         XCTAssertEqual(tool.busy, .volume)
         return tool
@@ -476,7 +476,7 @@ final class IslandTests: XCTestCase {
         XCTAssertTrue(texts(Pages.island(tool.status())).contains("Setting the volume to 80 %…"))
         // A second waits for nobody: one is enough.
         XCTAssertNotNil(page(tool.islandEvent(PanelEvent(block: Pages.Block.mute, kind: .toggle, value: .bool(true)))))
-        XCTAssertEqual(tool.notice, "HomeSpeaker is busy: Setting the volume to 80 %…")
+        XCTAssertEqual(tool.notice, "Vitruvian Speaker is busy: Setting the volume to 80 %…")
         driver.answer(.volume, .volume(Volume(speaker: "Kitchen", percent: 40)))
         XCTAssertEqual(driver.jobs.last, .setVolume(80), "run once the read ends")
         XCTAssertNil(tool.waiting)
@@ -485,7 +485,7 @@ final class IslandTests: XCTestCase {
     }
 
     /// A volume picked during the read, then another speaker: the volume
-    /// was meant for the old speaker, and HomeSpeaker would set it on the
+    /// was meant for the old speaker, and Vitruvian Speaker would set it on the
     /// new one, so it is dropped and said to be. The old speaker's read is
     /// not shown as the new one's, and the new one is read.
     func testASpeakerChangeDropsAWaitingVolumeAndReadsTheNewSpeaker() {
@@ -538,7 +538,7 @@ final class IslandTests: XCTestCase {
         let tool = openedWithTwoSpeakers(choice: true)
         XCTAssertEqual(tool.volume?.percent, 40)
         store.config?.defaultTarget = "office"
-        tool.panelClosed(HomeSpeakerTool.islandPanel)
+        tool.panelClosed(VitruvianSpeakerTool.islandPanel)
         now += 5
         let page = tool.islandPage()
         XCTAssertEqual(driver.jobs, [.volume, .volume], "Office is read, however recent Kitchen's reading")
@@ -598,7 +598,7 @@ final class IslandTests: XCTestCase {
         _ = tool.islandEvent(PanelEvent(block: Pages.Block.outputHome, kind: .toggle, value: .bool(false)))
         driver.answer(.volume, .volume(Volume(speaker: "Kitchen", percent: 40)))
         XCTAssertFalse(driver.jobs.contains(.setVolume(80)), "not set with Home speakers off")
-        XCTAssertEqual(tool.notice, Pages.homeSpeakersOff)
+        XCTAssertEqual(tool.notice, Pages.vitruvianSpeakersOff)
         XCTAssertNil(tool.busy)
 
         // Broadcasting switched off while a typed message waited.
@@ -620,7 +620,7 @@ final class IslandTests: XCTestCase {
 
     func testAnAppThatOpensSettingsGetsAMoreSettingsButton() {
         link.features = Self.before358
-        link.featureNames = [HomeSpeakerTool.openSettingsFeature]
+        link.featureNames = [VitruvianSpeakerTool.openSettingsFeature]
         let page = tool().islandPage()
         XCTAssertEqual(page.blocks.last?.id, Pages.Block.moreSettings)
         XCTAssertEqual(button(page, Pages.Block.moreSettings)?.title.text(for: "en"), "More settings…")
@@ -630,7 +630,7 @@ final class IslandTests: XCTestCase {
     func testTheFeatureIsAskedForByItsNameOnTheLink() {
         // The kit's name for it, from 1.6.0 (ProtocolFeature.openSettings):
         // the protocol's, which an app sends in its hello.
-        XCTAssertEqual(HomeSpeakerTool.openSettingsFeature, "ui.open.settings")
+        XCTAssertEqual(VitruvianSpeakerTool.openSettingsFeature, "ui.open.settings")
     }
 
     func testAnAppWithoutItKeepsTheCaption() {
@@ -645,17 +645,17 @@ final class IslandTests: XCTestCase {
     /// The tap is answered with `open` naming the settings panel, and no
     /// page: the island stays as it is, and nothing else happens.
     func testTheTapOpensTheSettingsPanel() {
-        link.featureNames = [HomeSpeakerTool.openSettingsFeature]
+        link.featureNames = [VitruvianSpeakerTool.openSettingsFeature]
         let tool = tool()
         _ = tool.islandPage()
         let saves = store.saves
         let jobs = driver.jobs
         let answer = tool.islandEvent(PanelEvent(block: Pages.Block.moreSettings, kind: .tap))
-        XCTAssertEqual(answer, .open(HomeSpeakerTool.settingsPanel))
-        XCTAssertEqual(HomeSpeakerTool.settingsPanel, "settings", "the manifest's settings panel")
+        XCTAssertEqual(answer, .open(VitruvianSpeakerTool.settingsPanel))
+        XCTAssertEqual(VitruvianSpeakerTool.settingsPanel, "settings", "the manifest's settings panel")
         XCTAssertTrue(link.rendered.isEmpty, "nothing redrawn")
         XCTAssertEqual(store.saves, saves, "nothing saved")
-        XCTAssertEqual(driver.jobs, jobs, "nothing more asked of HomeSpeaker than the opening's read")
+        XCTAssertEqual(driver.jobs, jobs, "nothing more asked of Vitruvian Speaker than the opening's read")
         XCTAssertTrue(link.messages.isEmpty)
     }
 
@@ -673,7 +673,7 @@ final class IslandTests: XCTestCase {
                 let tool = self.tool()
                 for id in ids(tool.islandPage()) {
                     if case .open = tool.islandEvent(PanelEvent(block: id, kind: .tap)) {
-                        XCTFail("a tap on \(id) answered open for an app without \(HomeSpeakerTool.openSettingsFeature)")
+                        XCTFail("a tap on \(id) answered open for an app without \(VitruvianSpeakerTool.openSettingsFeature)")
                     }
                 }
             }
@@ -740,20 +740,20 @@ final class IslandTests: XCTestCase {
         XCTAssertEqual(listed.first, "message 0 · Claude Code · Kitchen + This Mac · \(time)", "newest first: source, where, when")
         XCTAssertEqual(listed.last, "message 2 · Say · Kitchen + This Mac · \(time)")
         status.installed = false
-        XCTAssertTrue(texts(Pages.island(status)).contains("Recent Broadcasts"), "the history is there without HomeSpeaker too")
+        XCTAssertTrue(texts(Pages.island(status)).contains("Recent Broadcasts"), "the history is there without Vitruvian Speaker too")
     }
 
     // MARK: - The shared history
 
     func testTheHistoryIsBesideTheSettingsFileUnlessNamed() {
         let settings = URL(fileURLWithPath: "/tmp/somewhere/.gemini/speaker_broadcast.json")
-        XCTAssertEqual(HomeSpeakerTool.Parts(link: link, store: store, driver: driver, later: { $0() }, settingsURL: settings).historyURL.path,
+        XCTAssertEqual(VitruvianSpeakerTool.Parts(link: link, store: store, driver: driver, later: { $0() }, settingsURL: settings).historyURL.path,
                        "/tmp/somewhere/.gemini/speaker_history.json")
         let named = URL(fileURLWithPath: "/tmp/elsewhere/history.json")
-        XCTAssertEqual(HomeSpeakerTool.Parts(link: link, store: store, driver: driver, later: { $0() }, settingsURL: settings,
+        XCTAssertEqual(VitruvianSpeakerTool.Parts(link: link, store: store, driver: driver, later: { $0() }, settingsURL: settings,
                                              historyURL: named).historyURL, named)
-        XCTAssertEqual(HomeSpeakerTool.Parts.historyURL(beside: ConfigManager.defaultConfigURL()), BroadcastHistory.defaultURL(),
-                       "the real one is where HomeSpeaker keeps it")
+        XCTAssertEqual(VitruvianSpeakerTool.Parts.historyURL(beside: ConfigManager.defaultConfigURL()), BroadcastHistory.defaultURL(),
+                       "the real one is where Vitruvian Speaker keeps it")
     }
 
     func testTheIslandReadsTheSharedHistory() throws {
@@ -767,9 +767,9 @@ final class IslandTests: XCTestCase {
         XCTAssertEqual(tool.status().recentBroadcasts.map(\.text), ["from the Stop hook", "from the menu bar"], "read afresh, newest first")
     }
 
-    /// `HomeSpeaker --say`, which the tool runs, writes what was heard to
+    /// `VitruvianSpeaker --say`, which the tool runs, writes what was heard to
     /// the history itself; the tool writing it too would list it twice.
-    func testSayingLeavesTheHistoryToHomeSpeaker() throws {
+    func testSayingLeavesTheHistoryToVitruvianSpeaker() throws {
         let tool = tool()
         _ = tool.islandPage()
         driver.answer(.volume, .volume(Volume(speaker: "Kitchen", percent: 30)))
@@ -777,7 +777,7 @@ final class IslandTests: XCTestCase {
         driver.answer(.say("dinner"), .notSpoken("Quiet hours active until 07:00. Nothing spoken."))
         XCTAssertFalse(FileManager.default.fileExists(atPath: historyURL.path), "nothing heard, nothing written")
         _ = tool.islandEvent(PanelEvent(block: Pages.Block.say, kind: .submit, value: .string("dinner")))
-        // What HomeSpeaker's --say does when it is heard, then the answer.
+        // What Vitruvian Speaker's --say does when it is heard, then the answer.
         try BroadcastHistory(fileURL: historyURL).append(BroadcastLogItem(text: "dinner", targetName: "Kitchen", source: "Say"))
         driver.answer(.say("dinner"), .spoke("sent to Kitchen"))
         XCTAssertEqual(BroadcastHistory(fileURL: historyURL).load().map(\.text), ["dinner"], "once, not twice")
@@ -969,20 +969,20 @@ final class IslandTests: XCTestCase {
         _ = tool.islandPage()
         link.rendered = []
         _ = tool.islandEvent(PanelEvent(block: Pages.Block.beeperToken, kind: .submit, value: .string("tok")))
-        XCTAssertEqual(link.rendered.map(\.panel), [HomeSpeakerTool.settingsPanel])
+        XCTAssertEqual(link.rendered.map(\.panel), [VitruvianSpeakerTool.settingsPanel])
     }
 
-    /// The warning's way to the fix: a button that opens HomeSpeaker's
+    /// The warning's way to the fix: a button that opens Vitruvian Speaker's
     /// settings on Chats, for an app that can open them.
     func testTheChatWarningOpensChatAndSlack() throws {
-        link.featureNames = [HomeSpeakerTool.openSettingsFeature]
+        link.featureNames = [VitruvianSpeakerTool.openSettingsFeature]
         store.config?.effectiveChatMonitor.slackEnabled = true
         let tool = tool()
         let page = tool.islandPage()
         XCTAssertEqual(button(page, Pages.Block.openChatSettings)?.title.text(for: "en"), "Open Chats…")
         XCTAssertFalse(texts(page).contains(Pages.fixChatInSettings), "the button replaces the caption")
         XCTAssertEqual(tool.section, .general)
-        XCTAssertEqual(tool.islandEvent(PanelEvent(block: Pages.Block.openChatSettings, kind: .tap)), .open(HomeSpeakerTool.settingsPanel))
+        XCTAssertEqual(tool.islandEvent(PanelEvent(block: Pages.Block.openChatSettings, kind: .tap)), .open(VitruvianSpeakerTool.settingsPanel))
         XCTAssertEqual(tool.section, .monitor, "Settings opens on Chats")
         guard case .choice(let section)? = tool.settingsPage().blocks.first(where: { $0.id == Pages.Block.section })?.content else {
             // Without a choice the section is a picker of another kind; the
@@ -993,14 +993,14 @@ final class IslandTests: XCTestCase {
     }
 
     func testTheChatWarningRedrawsAnOpenSettingsPanelOnChatAndSlack() {
-        link.featureNames = [HomeSpeakerTool.openSettingsFeature]
+        link.featureNames = [VitruvianSpeakerTool.openSettingsFeature]
         store.config?.effectiveChatMonitor.slackEnabled = true
         let tool = tool()
         _ = tool.settingsPage()
         _ = tool.islandPage()
         link.rendered = []
-        XCTAssertEqual(tool.islandEvent(PanelEvent(block: Pages.Block.openChatSettings, kind: .tap)), .open(HomeSpeakerTool.settingsPanel))
-        XCTAssertEqual(link.rendered.map(\.panel), [HomeSpeakerTool.settingsPanel])
+        XCTAssertEqual(tool.islandEvent(PanelEvent(block: Pages.Block.openChatSettings, kind: .tap)), .open(VitruvianSpeakerTool.settingsPanel))
+        XCTAssertEqual(link.rendered.map(\.panel), [VitruvianSpeakerTool.settingsPanel])
         XCTAssertTrue(link.rendered.last.map { $0.tree.blocks.contains { $0.id == Pages.Block.slackEnabled } } ?? false,
                       "redrawn on Chats")
     }
@@ -1016,7 +1016,7 @@ final class IslandTests: XCTestCase {
             let page = tool.islandPage()
             XCTAssertNil(button(page, Pages.Block.openChatSettings), "\(features)")
             XCTAssertTrue(texts(page).contains(Pages.fixChatInSettings), "\(features)")
-            XCTAssertTrue(Pages.fixChatInSettings.contains("Vitruvian Settings › Extensions › HomeSpeaker"))
+            XCTAssertTrue(Pages.fixChatInSettings.contains("Vitruvian Settings › Extensions › Vitruvian Speaker"))
             XCTAssertTrue(Pages.fixChatInSettings.hasSuffix("Section: Chats"))
             XCTAssertEqual(tool.islandEvent(PanelEvent(block: Pages.Block.openChatSettings, kind: .tap)), .keep, "\(features)")
             XCTAssertEqual(tool.section, .general)
@@ -1181,7 +1181,7 @@ final class IslandTests: XCTestCase {
             XCTAssertNotNil(page(answer), "\(event.block ?? "")")
             let config = try XCTUnwrap(store.config)
             XCTAssertTrue(saved(config), "\(event.block ?? "") saved as Settings saves it")
-            XCTAssertEqual(link.rendered.map(\.panel), [HomeSpeakerTool.settingsPanel], "\(event.block ?? "") redraws the open Settings")
+            XCTAssertEqual(link.rendered.map(\.panel), [VitruvianSpeakerTool.settingsPanel], "\(event.block ?? "") redraws the open Settings")
         }
         // The list's answer, for an app without the choice, is the row.
         _ = tool.islandEvent(PanelEvent(block: Pages.Block.speechLength, kind: .tap, value: .string("headline")))
@@ -1207,8 +1207,8 @@ final class IslandTests: XCTestCase {
         _ = tool.islandPage()
         let page = page(tool.islandEvent(PanelEvent(block: Pages.Block.quietStart, kind: .submit, value: .string("25:99"))))
         XCTAssertEqual(store.config?.quietHoursStart, "22:00", "not saved")
-        XCTAssertEqual(tool.notice, HomeSpeakerTool.Invalid.quietHour)
-        XCTAssertTrue(page.map(texts)?.contains(HomeSpeakerTool.Invalid.quietHour) == true)
+        XCTAssertEqual(tool.notice, VitruvianSpeakerTool.Invalid.quietHour)
+        XCTAssertTrue(page.map(texts)?.contains(VitruvianSpeakerTool.Invalid.quietHour) == true)
     }
 
     func testWithoutChoiceTheIslandFallsBack() throws {
@@ -1279,7 +1279,7 @@ final class IslandTests: XCTestCase {
         let slack = try XCTUnwrap(toggle(page, "beeper.network.slackgo"))
         XCTAssertEqual(slack.title.text(for: "en"), "Slack · Read directly")
         XCTAssertFalse(slack.value)
-        XCTAssertEqual(slack.enabled, false, "HomeSpeaker reads it itself: not Beeper's to mute")
+        XCTAssertEqual(slack.enabled, false, "Vitruvian Speaker reads it itself: not Beeper's to mute")
         let telegram = try XCTUnwrap(toggle(page, "beeper.network.telegram"))
         XCTAssertEqual(telegram.title.text(for: "en"), "Telegram")
         XCTAssertFalse(telegram.value)
@@ -1347,7 +1347,7 @@ final class IslandTests: XCTestCase {
         let off = page(tool.islandEvent(PanelEvent(block: "beeper.network.whatsapp", kind: .toggle, value: .bool(false))))
         XCTAssertEqual(store.config?.effectiveChatMonitor.beeperMutedNetworks, ["whatsapp"])
         XCTAssertEqual(off.flatMap { toggle($0, "beeper.network.whatsapp") }?.value, false, "the island shows it muted")
-        XCTAssertEqual(link.rendered.map(\.panel), [HomeSpeakerTool.settingsPanel], "and redraws the open Settings")
+        XCTAssertEqual(link.rendered.map(\.panel), [VitruvianSpeakerTool.settingsPanel], "and redraws the open Settings")
         _ = tool.islandEvent(PanelEvent(block: "beeper.network.whatsapp", kind: .toggle, value: .bool(true)))
         XCTAssertEqual(store.config?.effectiveChatMonitor.beeperMutedNetworks, [])
         // A tap with no value, or an id that names no network, changes nothing.
@@ -1446,7 +1446,7 @@ final class IslandTests: XCTestCase {
 
     /// Beeper on and its monitor running, having listed `states`.
     private func beeperRunning(_ states: [BeeperNetworkState], muted: [String] = [],
-                               features: Set<ProtocolFeature> = [.choice, .chips]) throws -> HomeSpeakerTool {
+                               features: Set<ProtocolFeature> = [.choice, .chips]) throws -> VitruvianSpeakerTool {
         link.features = features
         appRunning = true
         store.config?.effectiveChatMonitor.beeperEnabled = true
@@ -1470,7 +1470,7 @@ final class IslandTests: XCTestCase {
         XCTAssertEqual(store.config?.effectiveChatMonitor.beeperMutedNetworks, ["whatsapp"], "every chip off is muted")
         XCTAssertEqual(page.flatMap { chips($0, Pages.Block.beeperNetworks) }?.options.map(\.on), [true, false],
                        "the island shows it: Signal on, WhatsApp off")
-        XCTAssertEqual(link.rendered.map(\.panel), [HomeSpeakerTool.settingsPanel], "and redraws the open Settings")
+        XCTAssertEqual(link.rendered.map(\.panel), [VitruvianSpeakerTool.settingsPanel], "and redraws the open Settings")
 
         // The same values again change nothing, and save nothing.
         let saves = store.saves
@@ -1488,7 +1488,7 @@ final class IslandTests: XCTestCase {
         XCTAssertEqual(Set(store.config?.effectiveChatMonitor.beeperMutedNetworks ?? []), ["whatsapp", "signal"])
     }
 
-    /// A network HomeSpeaker reads itself is a dimmed chip; an app that
+    /// A network Vitruvian Speaker reads itself is a dimmed chip; an app that
     /// sends it off anyway mutes nothing, and one saved muted before is
     /// left as it is. A saved mute stays until its chip is turned on.
     func testAChipsEventNeverMutesASkippedNetwork() throws {
@@ -1504,7 +1504,7 @@ final class IslandTests: XCTestCase {
         _ = tool.islandEvent(chipsEvent(["telegram", "whatsapp"]))
         XCTAssertEqual(store.config?.effectiveChatMonitor.beeperMutedNetworks, [])
 
-        // Saved muted before HomeSpeaker read it itself: left as it is.
+        // Saved muted before Vitruvian Speaker read it itself: left as it is.
         store.config?.effectiveChatMonitor.beeperMutedNetworks = ["slackgo"]
         let saves = store.saves
         XCTAssertEqual(tool.islandEvent(chipsEvent(["whatsapp"])), .keep)
@@ -1559,7 +1559,7 @@ final class IslandTests: XCTestCase {
         XCTAssertEqual(store.config?.effectiveChatMonitor.beeperMutedNetworks, ["signal"], "Discord, listed since, not muted")
     }
 
-    /// A network drawn as read that HomeSpeaker has since started reading
+    /// A network drawn as read that Vitruvian Speaker has since started reading
     /// itself is not muted: the live listing's skips win, as for a switch.
     func testAChipsEventNeverMutesANetworkSkippedSinceItWasDrawn() throws {
         let tool = try beeperRunning([BeeperNetworkState(key: "slackgo", name: "Slack", state: .reading),
@@ -1649,7 +1649,7 @@ final class IslandTests: XCTestCase {
         XCTAssertTrue(link.rendered.isEmpty, "nothing changed, nothing drawn")
         try ChatMonitorStatusFile(url: statusFileURL).write(ChatMonitorStatus(isRunning: true, pid: 99))
         tool.refreshMonitorStatus()
-        XCTAssertEqual(link.rendered.map(\.panel), [HomeSpeakerTool.settingsPanel])
+        XCTAssertEqual(link.rendered.map(\.panel), [VitruvianSpeakerTool.settingsPanel])
         XCTAssertTrue(link.rendered.first.map { texts($0.tree).contains("Chat monitor running · ") } ?? false)
     }
 
@@ -1657,7 +1657,7 @@ final class IslandTests: XCTestCase {
     /// warning's button opens Settings, at its top, and Chats is on it.
     func testWithSectionsTheChatWarningOpensSettings() throws {
         link.features = [.choice, .sections]
-        link.featureNames = [HomeSpeakerTool.openSettingsFeature]
+        link.featureNames = [VitruvianSpeakerTool.openSettingsFeature]
         store.config?.effectiveChatMonitor.slackEnabled = true
         let tool = tool()
         _ = tool.settingsPage()
@@ -1667,7 +1667,7 @@ final class IslandTests: XCTestCase {
         XCTAssertEqual(button(page, Pages.Block.openChatSettings)?.title.text(for: "en"), "Open Settings…")
         XCTAssertEqual(Pages.openSettingsButton, "Open Settings…")
         link.rendered = []
-        XCTAssertEqual(tool.islandEvent(PanelEvent(block: Pages.Block.openChatSettings, kind: .tap)), .open(HomeSpeakerTool.settingsPanel))
+        XCTAssertEqual(tool.islandEvent(PanelEvent(block: Pages.Block.openChatSettings, kind: .tap)), .open(VitruvianSpeakerTool.settingsPanel))
         XCTAssertEqual(tool.section, .general, "no section to pick")
         let settings = tool.settingsPage()
         XCTAssertNil(settings.blocks.first { $0.id == Pages.Block.section })
@@ -1748,7 +1748,7 @@ final class IslandTests: XCTestCase {
         XCTAssertEqual(driver.jobs.last, .replay("hello"))
         // One at a time, as Say.
         page = self.page(tool.islandEvent(PanelEvent(block: Pages.Block.replayBroadcast(id), kind: .tap)))
-        XCTAssertTrue(page.map(texts)?.contains("HomeSpeaker is busy: Speaking it again…") == true)
+        XCTAssertTrue(page.map(texts)?.contains("Vitruvian Speaker is busy: Speaking it again…") == true)
     }
 }
 

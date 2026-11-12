@@ -35,7 +35,6 @@ use crate::exec::{
     is_valid_power_action, pbcopy, pbpaste, power_action, run_act, run_argv, run_cmd_simple,
     set_volume, ExecRequest, CLAUDE_RESUME_TIMEOUT_SEC, MAX_OUTPUT,
 };
-use crate::homespeaker::HomeSpeaker;
 use crate::hook::{default_claude_settings, hook_command_line_for_dir};
 use crate::http_util::{
     http_request, is_loopback_addr, log_act, log_line, parse_bearer, url_encode, HttpHandler,
@@ -55,6 +54,7 @@ use crate::sampler::{
     screenshot_jpeg, Sampler, ScreenRegion, DEFAULT_SCREEN_WIDTH, ERR_SCREEN_RECORDING_DENIED,
     MAX_SCREEN_WIDTH, MIN_SCREEN_WIDTH, NOT_CONFIGURED_KUBE, SCREEN_DENIED_REASON,
 };
+use crate::speaker::VitruvianSpeaker;
 use crate::stream::handle_exec_stream;
 use crate::tv::{handle_tv_get, handle_tv_post, TVController};
 
@@ -88,7 +88,7 @@ pub struct Server {
     pub prom_url: String,
     pub prom_token: String,
     pub capture: ScreenCaptureFn,
-    pub speaker: Arc<HomeSpeaker>,
+    pub speaker: Arc<VitruvianSpeaker>,
     pub tv: Arc<TVController>,
     pub phone: Arc<PhoneBridge>,
     pub perms: Arc<PermissionBroker>,
@@ -138,7 +138,7 @@ impl Server {
             prom_url,
             prom_token,
             capture: Arc::new(|width, region| screenshot_jpeg(width, region)),
-            speaker: Arc::new(HomeSpeaker::new()),
+            speaker: Arc::new(VitruvianSpeaker::new()),
             tv: Arc::new(TVController::default_controller()),
             phone: Arc::new(PhoneBridge::new()),
             perms: Arc::new(PermissionBroker::new()),
@@ -179,11 +179,11 @@ impl Server {
             }),
             "/v1/tools" => self.get_only(req, |_| {
                 let mut tools = self.sampler.tools();
-                // The sampler only sees /Applications/HomeSpeaker.app; HomeSpeaker also knows
+                // The sampler only sees /Applications/Vitruvian Speaker.app; Vitruvian Speaker also knows
                 // the Vitruvian extension door.
                 tools
                     .tools
-                    .insert("homespeaker".to_string(), self.speaker.tool());
+                    .insert("speaker".to_string(), self.speaker.tool());
                 HttpResponse::json(200, &tools.to_json())
             }),
             "/v1/antigravity" => self.get_only(req, |_| {
@@ -260,19 +260,19 @@ impl Server {
             }
             "/v1/phone" => self.get_only(req, |_| self.phone.handle_status()),
 
-            // --- v1.4: HomeSpeaker ---
-            "/v1/homespeaker" => match req.method.as_str() {
+            // --- v1.4: Vitruvian Speaker ---
+            "/v1/speaker" => match req.method.as_str() {
                 "GET" | "HEAD" => self.speaker.handle_get(&self.phone),
                 "POST" => self.act(req, |r| self.speaker.handle_set(r, &self.phone)),
                 _ => HttpResponse::method_not_allowed("GET, HEAD, POST"),
             },
-            "/v1/homespeaker/say" => {
+            "/v1/speaker/say" => {
                 self.post_only(req, |r| self.act(r, |r2| self.speaker.handle_say(r2)))
             }
-            "/v1/homespeaker/phone-say" => self.post_only(req, |r| {
+            "/v1/speaker/phone-say" => self.post_only(req, |r| {
                 self.act_or_loopback(r, |r2| self.speaker.handle_phone_say(r2, &self.phone))
             }),
-            "/v1/homespeaker/volume" => match req.method.as_str() {
+            "/v1/speaker/volume" => match req.method.as_str() {
                 "GET" | "HEAD" => self.speaker.handle_get_volume(),
                 "POST" => self.act(req, |r| self.speaker.handle_set_volume(r)),
                 _ => HttpResponse::method_not_allowed("GET, HEAD, POST"),

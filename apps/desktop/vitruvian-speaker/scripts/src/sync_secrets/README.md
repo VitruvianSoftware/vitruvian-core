@@ -1,7 +1,7 @@
 # Sync Secrets
 
 ## Overview
-Component package providing implementation for `apps/desktop/home-speaker/scripts/src/sync_secrets`.
+Component package providing implementation for `apps/desktop/vitruvian-speaker/scripts/src/sync_secrets`.
 
 ## Interface
 - `[lib.rs:read_env_file]`
@@ -21,4 +21,4 @@ Component package providing implementation for `apps/desktop/home-speaker/script
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/home-speaker/scripts/src/sync_secrets/...`
+- Run: `bazel test //apps/desktop/vitruvian-speaker/scripts/src/sync_secrets/...`

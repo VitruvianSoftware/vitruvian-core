@@ -20,8 +20,8 @@
 
 import XCTest
 
-import HomeSpeakerCore
-import HomeSpeakerToolCore
+import VitruvianSpeakerCore
+import VitruvianSpeakerToolCore
 import VitruvianToolKit
 import VitruvianToolProtocol
 
@@ -29,9 +29,9 @@ import VitruvianToolProtocol
 /// in a temporary folder), Start and Stop sent to a recorder, and the
 /// settings fields that refuse what they cannot hold.
 final class MonitorRuntimeTests: XCTestCase {
-    typealias Link = HomeSpeakerToolTests.Link
-    typealias Store = HomeSpeakerToolTests.Store
-    typealias Driver = HomeSpeakerToolTests.Driver
+    typealias Link = VitruvianSpeakerToolTests.Link
+    typealias Store = VitruvianSpeakerToolTests.Store
+    typealias Driver = VitruvianSpeakerToolTests.Driver
     typealias Chat = ChatSlackTests.Chat
 
     private var link: Link!
@@ -50,7 +50,7 @@ final class MonitorRuntimeTests: XCTestCase {
         chat.token = "xoxp-test"
         appRunning = true
         asked = []
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("homespeaker-tool-monitor-\(UUID().uuidString)")
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-speaker-tool-monitor-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         statusFile = ChatMonitorStatusFile(url: dir.appendingPathComponent(ChatMonitorStatusFile.fileName))
         var config = SpeakerConfig(enabled: true, defaultTarget: "kitchen",
@@ -59,15 +59,15 @@ final class MonitorRuntimeTests: XCTestCase {
         store.config = config
     }
 
-    private func tool() -> HomeSpeakerTool {
-        HomeSpeakerTool(parts: .init(
+    private func tool() -> VitruvianSpeakerTool {
+        VitruvianSpeakerTool(parts: .init(
             link: link, store: store, driver: driver, later: { $0() }, chat: chat,
-            ownerRunning: { [unowned self] in appRunning }, historyURL: HomeSpeakerToolTests.noHistory,
+            ownerRunning: { [unowned self] in appRunning }, historyURL: VitruvianSpeakerToolTests.noHistory,
             monitorStatusURL: statusFile.url, controlChatMonitor: { [unowned self] in asked.append($0) }))
     }
 
     /// Settings opened on Chats, the login item answered.
-    private func opened() -> HomeSpeakerTool {
+    private func opened() -> VitruvianSpeakerTool {
         let tool = tool()
         _ = tool.settingsPage()
         _ = event(tool, Pages.Block.section, .tap, .string(Pages.Section.monitor.rawValue))
@@ -75,7 +75,7 @@ final class MonitorRuntimeTests: XCTestCase {
     }
 
     @discardableResult
-    private func event(_ tool: HomeSpeakerTool, _ block: String, _ kind: UIEventKind, _ value: JSONValue? = nil,
+    private func event(_ tool: VitruvianSpeakerTool, _ block: String, _ kind: UIEventKind, _ value: JSONValue? = nil,
                        file: StaticString = #filePath, line: UInt = #line) -> UITree {
         guard case .page(let tree) = tool.settingsEvent(PanelEvent(block: block, kind: kind, value: value)) else {
             XCTFail("no page", file: file, line: line)
@@ -216,12 +216,12 @@ final class MonitorRuntimeTests: XCTestCase {
         let tool = opened()
         var tree = event(tool, Pages.Block.startChatMonitor, .tap)
         XCTAssertEqual(asked, [.start])
-        XCTAssertEqual(tool.setupNotice, "Asked HomeSpeaker to start the chat monitor")
-        XCTAssertTrue(texts(tree).contains("Asked HomeSpeaker to start the chat monitor"))
+        XCTAssertEqual(tool.setupNotice, "Asked Vitruvian Speaker to start the chat monitor")
+        XCTAssertTrue(texts(tree).contains("Asked Vitruvian Speaker to start the chat monitor"))
         try running()
         tree = event(tool, Pages.Block.stopChatMonitor, .tap)
         XCTAssertEqual(asked, [.start, .stop])
-        XCTAssertEqual(tool.setupNotice, "Asked HomeSpeaker to stop the chat monitor")
+        XCTAssertEqual(tool.setupNotice, "Asked Vitruvian Speaker to stop the chat monitor")
     }
 
     func testStartNeedsNoRunningAppButIsRefusedWithoutASource() {
@@ -244,11 +244,11 @@ final class MonitorRuntimeTests: XCTestCase {
         XCTAssertTrue(link.rendered.isEmpty, "nothing changed, nothing drawn")
         try running()
         tool.refreshMonitorStatus()
-        XCTAssertEqual(link.rendered.map(\.panel), [HomeSpeakerTool.settingsPanel])
+        XCTAssertEqual(link.rendered.map(\.panel), [VitruvianSpeakerTool.settingsPanel])
         XCTAssertTrue(texts(link.rendered[0].tree).contains("Chat monitor running"))
         tool.refreshMonitorStatus()
         XCTAssertEqual(link.rendered.count, 1, "drawn once a change")
-        tool.panelClosed(HomeSpeakerTool.settingsPanel)
+        tool.panelClosed(VitruvianSpeakerTool.settingsPanel)
         try running(error: "Slack: boom")
         tool.refreshMonitorStatus()
         XCTAssertEqual(link.rendered.count, 1, "a closed page is not drawn")
@@ -262,15 +262,15 @@ final class MonitorRuntimeTests: XCTestCase {
         let tool = opened()
         _ = event(tool, Pages.Block.section, .tap, .string(Pages.Section.general.rawValue))
         let cases: [(String, String, String)] = [
-            (Pages.Block.quietStart, "25:99", HomeSpeakerTool.Invalid.quietHour),
-            (Pages.Block.quietEnd, "soon", HomeSpeakerTool.Invalid.quietHour),
-            (Pages.Block.announceLevel, "140", HomeSpeakerTool.Invalid.announceLevel),
-            (Pages.Block.announceLevel, "loud", HomeSpeakerTool.Invalid.announceLevel),
-            (Pages.Block.pauseExtra, "25", HomeSpeakerTool.Invalid.pauseExtra),
-            (Pages.Block.pauseExtra, "-3", HomeSpeakerTool.Invalid.pauseExtra),
-            (Pages.Block.pollInterval, "1", HomeSpeakerTool.Invalid.pollInterval),
-            (Pages.Block.pollInterval, "100000", HomeSpeakerTool.Invalid.pollInterval),
-            (Pages.Block.pollInterval, "soon", HomeSpeakerTool.Invalid.pollInterval),
+            (Pages.Block.quietStart, "25:99", VitruvianSpeakerTool.Invalid.quietHour),
+            (Pages.Block.quietEnd, "soon", VitruvianSpeakerTool.Invalid.quietHour),
+            (Pages.Block.announceLevel, "140", VitruvianSpeakerTool.Invalid.announceLevel),
+            (Pages.Block.announceLevel, "loud", VitruvianSpeakerTool.Invalid.announceLevel),
+            (Pages.Block.pauseExtra, "25", VitruvianSpeakerTool.Invalid.pauseExtra),
+            (Pages.Block.pauseExtra, "-3", VitruvianSpeakerTool.Invalid.pauseExtra),
+            (Pages.Block.pollInterval, "1", VitruvianSpeakerTool.Invalid.pollInterval),
+            (Pages.Block.pollInterval, "100000", VitruvianSpeakerTool.Invalid.pollInterval),
+            (Pages.Block.pollInterval, "soon", VitruvianSpeakerTool.Invalid.pollInterval),
         ]
         for (block, value, notice) in cases {
             let saves = store.saves
@@ -279,7 +279,7 @@ final class MonitorRuntimeTests: XCTestCase {
             XCTAssertTrue(texts(tree).contains(notice), "\(block) = \(value): said on the page")
             XCTAssertEqual(store.saves, saves, "\(block) = \(value): nothing saved")
         }
-        XCTAssertTrue(HomeSpeakerTool.Invalid.pollInterval.contains("\(ChatMonitorConfig.minPollInterval) to \(ChatMonitorConfig.maxPollInterval)"))
+        XCTAssertTrue(VitruvianSpeakerTool.Invalid.pollInterval.contains("\(ChatMonitorConfig.minPollInterval) to \(ChatMonitorConfig.maxPollInterval)"))
         // A good value is saved and takes the complaint away.
         _ = event(tool, Pages.Block.pollInterval, .submit, .string("60"))
         XCTAssertEqual(store.config?.effectiveChatMonitor.pollIntervalSeconds, 60)
@@ -330,7 +330,7 @@ final class MonitorRuntimeTests: XCTestCase {
         XCTAssertEqual(store.config?.effectiveChatMonitor.beeperMutedNetworks, ["whatsapp", "telegram"], "order kept")
     }
 
-    /// A network HomeSpeaker reads itself is drawn greyed; an app that
+    /// A network Vitruvian Speaker reads itself is drawn greyed; an app that
     /// ignores that and sends the toggle anyway mutes nothing.
     func testASkippedNetworkIsNotMuted() throws {
         store.config?.effectiveChatMonitor.beeperEnabled = true

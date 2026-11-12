@@ -65,7 +65,7 @@
 		<string>_googlecast._tcp</string>
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Vitruvian lets the HomeSpeaker extension find your Google Home and Nest speakers on this network to play announcements in the voice you chose.</string>
+	<string>Vitruvian lets the Vitruvian Speaker extension find your Google Home and Nest speakers on this network to play announcements in the voice you chose.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Vitruvian records your microphone only when you turn it on for a screen recording. The audio stays on your Mac unless you choose to create a temporary link.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>

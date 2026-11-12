@@ -20,10 +20,10 @@
 
 import Foundation
 import Testing
-@testable import HomeSpeakerCore
+@testable import VitruvianSpeakerCore
 
-/// Verifies `SettingsCatalog` and the `HomeSpeakerCore` engine against every
-/// shared JSON case file in `apps/desktop/home-speaker/testdata/`.
+/// Verifies `SettingsCatalog` and the `VitruvianSpeakerCore` engine against every
+/// shared JSON case file in `apps/desktop/vitruvian-speaker/testdata/`.
 @Suite("Shared Rulebook Cases")
 struct SharedRulebookCasesTests {
 
@@ -35,7 +35,7 @@ struct SharedRulebookCasesTests {
             let workspace = env["TEST_WORKSPACE"] ?? "_main"
             let bazel = URL(fileURLWithPath: runfiles)
                 .appendingPathComponent(workspace)
-                .appendingPathComponent("apps/desktop/home-speaker/testdata")
+                .appendingPathComponent("apps/desktop/vitruvian-speaker/testdata")
             if FileManager.default.fileExists(atPath: bazel.path) {
                 return bazel
             }
@@ -654,7 +654,7 @@ struct SharedRulebookCasesTests {
         #expect(spec.suite == "oauth_client_override")
 
         let scratch = FileManager.default.temporaryDirectory
-            .appendingPathComponent("homespeaker-oauth-rule-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("vitruvian-speaker-oauth-rule-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: scratch) }
 

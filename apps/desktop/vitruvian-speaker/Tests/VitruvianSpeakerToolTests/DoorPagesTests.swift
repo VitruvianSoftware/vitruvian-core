@@ -20,19 +20,19 @@
 
 import XCTest
 
-import HomeSpeakerCore
-import HomeSpeakerToolCore
+import VitruvianSpeakerCore
+import VitruvianSpeakerToolCore
 import VitruvianToolKit
 import VitruvianToolProtocol
 
 // The extension's pages when the app is installed too (plan Task 14, design
 // 7.4): the choice card, the side-by-side summary, the copy, closing the
-// app, the quiet card and General's "Which HomeSpeaker" row.
+// app, the quiet card and General's "Which Vitruvian Speaker" row.
 //
 // Both sides' files are in a scratch folder: the extension's profile, and an
 // app-shaped profile beside it. The app itself is a stand-in that records
 // what it is asked; the hooks are a scratch home's `.claude/settings.json`.
-// Nothing here quits, switches off or moves this Mac's HomeSpeaker, and no
+// Nothing here quits, switches off or moves this Mac's Vitruvian Speaker, and no
 // message is posted: telling a side its sign-ins changed is recorded.
 
 /// What was done, in order, from any thread.
@@ -106,7 +106,7 @@ private final class RecordingApp: OtherAppControlling, @unchecked Sendable {
 
     func moveToTrash() throws -> URL {
         order.add("trash")
-        return URL(fileURLWithPath: "/nonexistent/.Trash/HomeSpeaker.app")
+        return URL(fileURLWithPath: "/nonexistent/.Trash/Vitruvian Speaker.app")
     }
 }
 
@@ -122,13 +122,13 @@ private final class OwnDriver: SpeakerDriver {
 
 @MainActor
 final class DoorPagesTests: XCTestCase {
-    typealias Link = HomeSpeakerToolTests.Link
-    typealias Account = HomeSpeakerToolTests.Account
+    typealias Link = VitruvianSpeakerToolTests.Link
+    typealias Account = VitruvianSpeakerToolTests.Account
 
     private var root: URL!
     private var home: URL!
-    private var mine: HomeSpeakerProfile!
-    private var app: HomeSpeakerProfile!
+    private var mine: VitruvianSpeakerProfile!
+    private var app: VitruvianSpeakerProfile!
     private var door: DoorFile!
     private var link: Link!
     private var account: Account!
@@ -137,7 +137,7 @@ final class DoorPagesTests: XCTestCase {
     private var appRunning: Flag!
     private var otherApp: RecordingApp!
     private var driver: OwnDriver!
-    private var told: [HomeSpeakerProfile.Door] = []
+    private var told: [VitruvianSpeakerProfile.Door] = []
     private var asked: [ChatMonitorAction] = []
     private var ownerRunning = true
     private var now = Date(timeIntervalSince1970: 1_800_000_000)
@@ -146,8 +146,8 @@ final class DoorPagesTests: XCTestCase {
     /// What the copy throws instead of copying; nil: it copies.
     private var copyStops: DoorCopyPartial?
 
-    private var appProgram: URL { root.appendingPathComponent("Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker") }
-    private var extensionProgram: URL { root.appendingPathComponent("Tools/dev.vitruvian.homespeaker/bin/tool") }
+    private var appProgram: URL { root.appendingPathComponent("Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker") }
+    private var extensionProgram: URL { root.appendingPathComponent("Tools/dev.vitruvian.speaker/bin/tool") }
 
     /// Made-up sign-ins: nothing on a page may ever show them.
     static let appRefresh = "app-refresh-made-up-1" // gitleaks:allow (made-up test token)
@@ -157,16 +157,16 @@ final class DoorPagesTests: XCTestCase {
     static let extensionRefresh = "extension-refresh-made-up-5" // gitleaks:allow (made-up test token)
 
     override func setUpWithError() throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent("homespeaker-door-pages-\(UUID().uuidString)")
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-speaker-door-pages-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: root) }
         self.root = root
         home = root.appendingPathComponent("home")
-        let prefix = "test.\(UUID().uuidString).homespeaker"
-        mine = .extension(dataFolder: root.appendingPathComponent("ToolData/dev.vitruvian.homespeaker"),
-                          toolFolder: root.appendingPathComponent("Tools/dev.vitruvian.homespeaker"), messagePrefix: prefix)
+        let prefix = "test.\(UUID().uuidString).vitruvian-speaker"
+        mine = .extension(dataFolder: root.appendingPathComponent("ToolData/dev.vitruvian.speaker"),
+                          toolFolder: root.appendingPathComponent("Tools/dev.vitruvian.speaker"), messagePrefix: prefix)
         let gemini = root.appendingPathComponent("app/.gemini")
-        app = HomeSpeakerProfile(
+        app = VitruvianSpeakerProfile(
             door: .app, settingsURL: gemini.appendingPathComponent("speaker_broadcast.json"),
             historyURL: gemini.appendingPathComponent("speaker_history.json"),
             secretsURL: root.appendingPathComponent("app/secrets.json"), messagePrefix: "test.app.\(prefix)",
@@ -200,10 +200,10 @@ final class DoorPagesTests: XCTestCase {
             slackToken: Self.slackToken))
     }
 
-    private func tool() -> HomeSpeakerTool {
+    private func tool() -> VitruvianSpeakerTool {
         let check = DoorCheck(file: door, appInstalled: { [appInstalled] in appInstalled!.value }, fileExists: { _ in false })
         let order = self.order!
-        return HomeSpeakerTool(parts: .init(
+        return VitruvianSpeakerTool(parts: .init(
             link: link, store: FileConfigStore(url: mine.settingsURL), driver: driver,
             later: { work in DispatchQueue.main.async(execute: work) }, now: { [unowned self] in now },
             account: account, ownerRunning: { [unowned self] in ownerRunning },
@@ -248,7 +248,7 @@ final class DoorPagesTests: XCTestCase {
         return toggle
     }
 
-    private func tap(_ tool: HomeSpeakerTool, _ id: String, island: Bool = true) -> UITree {
+    private func tap(_ tool: VitruvianSpeakerTool, _ id: String, island: Bool = true) -> UITree {
         let answer = island ? tool.islandEvent(PanelEvent(block: id, kind: .tap))
             : tool.settingsEvent(PanelEvent(block: id, kind: .tap))
         guard case .page(let tree) = answer else {
@@ -258,7 +258,7 @@ final class DoorPagesTests: XCTestCase {
         return tree
     }
 
-    private func flip(_ tool: HomeSpeakerTool, _ id: String, _ isOn: Bool) {
+    private func flip(_ tool: VitruvianSpeakerTool, _ id: String, _ isOn: Bool) {
         _ = tool.islandEvent(PanelEvent(block: id, kind: .toggle, value: .bool(isOn)))
     }
 
@@ -267,14 +267,14 @@ final class DoorPagesTests: XCTestCase {
         for _ in 0..<300 where !done() { try? await Task.sleep(for: .milliseconds(10)) }
     }
 
-    private func offersShown(_ tool: HomeSpeakerTool) -> Bool {
+    private func offersShown(_ tool: VitruvianSpeakerTool) -> Bool {
         if case .offers? = tool.doorStep { return true }
         return false
     }
 
     /// The extension picked, the app's settings kept or copied, and the
     /// app closed: the page with the two offers.
-    private func chooseTheExtension(_ tool: HomeSpeakerTool, copy: Bool) async -> UITree {
+    private func chooseTheExtension(_ tool: VitruvianSpeakerTool, copy: Bool) async -> UITree {
         _ = tool.islandPage()
         _ = tap(tool, Pages.Block.doorUseExtension)
         _ = tap(tool, copy ? Pages.Block.doorCopy : Pages.Block.doorKeep)
@@ -283,7 +283,7 @@ final class DoorPagesTests: XCTestCase {
     }
 
     /// Done, with the offers as they are.
-    private func done(_ tool: HomeSpeakerTool) async {
+    private func done(_ tool: VitruvianSpeakerTool) async {
         _ = tap(tool, Pages.Block.doorDone)
         await settle { tool.doorStep == nil }
     }
@@ -295,9 +295,9 @@ final class DoorPagesTests: XCTestCase {
         let island = tool.islandPage()
         let card = Array(words(island).prefix(4))
         XCTAssertEqual(card, [Pages.DoorWords.heading, Pages.DoorWords.body, "Use the extension", "Use the app"])
-        XCTAssertEqual(Pages.DoorWords.heading, "HomeSpeaker is installed twice")
+        XCTAssertEqual(Pages.DoorWords.heading, "Vitruvian Speaker is installed twice")
         XCTAssertEqual(Pages.DoorWords.body,
-                       "The HomeSpeaker app and the Vitruvian extension can both speak on your speakers. Use one, so nothing is said twice.")
+                       "The Vitruvian Speaker app and the Vitruvian extension can both speak on your speakers. Use one, so nothing is said twice.")
         XCTAssertEqual(Array(ids(island).prefix(2)), [Pages.Block.doorUseExtension, Pages.Block.doorUseApp], "at the top")
         XCTAssertTrue(ids(island).contains(Pages.Block.broadcasting), "a waiting extension still does what is asked by hand")
 
@@ -314,12 +314,12 @@ final class DoorPagesTests: XCTestCase {
         let tool = tool()
         let island = tool.islandPage()
         XCTAssertEqual(ids(island), [Pages.Block.doorUseThis], "the card is all there is")
-        XCTAssertEqual(words(island), ["The HomeSpeaker app is in use, so this one stays quiet.", "Use this one instead", Pages.moreSettings])
+        XCTAssertEqual(words(island), ["The Vitruvian Speaker app is in use, so this one stays quiet.", "Use this one instead", Pages.moreSettings])
 
         let general = tool.settingsPage()
-        let which = try XCTUnwrap(words(general).firstIndex(of: "Which HomeSpeaker"))
+        let which = try XCTUnwrap(words(general).firstIndex(of: "Which Vitruvian Speaker"))
         XCTAssertEqual(Array(words(general)[which...].prefix(4)),
-                       ["Which HomeSpeaker", "This Mac uses the app.", "Use the extension instead", "Copy settings from the extension"])
+                       ["Which Vitruvian Speaker", "This Mac uses the app.", "Use the extension instead", "Copy settings from the extension"])
         XCTAssertNotNil(button(general, Pages.Block.doorSwitch))
         XCTAssertNotNil(button(general, Pages.Block.doorCopyAgain))
 
@@ -415,9 +415,9 @@ final class DoorPagesTests: XCTestCase {
         XCTAssertEqual(Array(words(page).prefix(2)), [Pages.DoorWords.heading, "The app has quit."])
         XCTAssertEqual(toggle(page, Pages.Block.doorLoginItem)?.title.text(for: "en"), "Turn off the app's Open at Login")
         XCTAssertEqual(toggle(page, Pages.Block.doorLoginItem)?.value, true)
-        XCTAssertEqual(toggle(page, Pages.Block.doorTrash)?.title.text(for: "en"), "Move HomeSpeaker.app to the Trash")
+        XCTAssertEqual(toggle(page, Pages.Block.doorTrash)?.title.text(for: "en"), "Move Vitruvian Speaker.app to the Trash")
         XCTAssertTrue(words(page).contains(
-            "Your phone remote and scripts that call HomeSpeaker.app will stop working until they are pointed at the extension."))
+            "Your phone remote and scripts that call Vitruvian Speaker.app will stop working until they are pointed at the extension."))
         XCTAssertEqual(button(page, Pages.Block.doorDone)?.title.text(for: "en"), "Done")
         XCTAssertTrue(tool.monitorMayRun, "the app has quit: this side's monitor may run")
     }
@@ -520,7 +520,7 @@ final class DoorPagesTests: XCTestCase {
         XCTAssertEqual(try installed(), AgentIntegration.hookCommand(executable: appProgram.path))
         XCTAssertTrue(try stillMine())
         XCTAssertFalse(FileManager.default.fileExists(atPath: home.appendingPathComponent(".gemini/antigravity-cli/settings.json").path),
-                       "an agent with no HomeSpeaker hook gets none")
+                       "an agent with no Vitruvian Speaker hook gets none")
         // The app was quit when the extension was picked: picking it again
         // opens it, so something reads chat (review round 1, critical 2).
         await settle { tool.doorStep == nil }
@@ -549,15 +549,15 @@ final class DoorPagesTests: XCTestCase {
         }
         var page = monitorPage()
         XCTAssertFalse(ids(page).contains(Pages.Block.startChatMonitor), "waiting: nothing to start")
-        XCTAssertTrue(words(page).contains(HomeSpeakerTool.pickFirst), "and it says why")
+        XCTAssertTrue(words(page).contains(VitruvianSpeakerTool.pickFirst), "and it says why")
         try door.update { $0.chosen = .app }
         page = monitorPage()
         XCTAssertFalse(ids(page).contains(Pages.Block.startChatMonitor), "quiet: the app's monitor runs")
-        XCTAssertTrue(words(page).contains("The HomeSpeaker app is in use, so this one stays quiet."))
+        XCTAssertTrue(words(page).contains("The Vitruvian Speaker app is in use, so this one stays quiet."))
         try door.update { $0.chosen = .extension }
         page = monitorPage()
         XCTAssertTrue(ids(page).contains(Pages.Block.startChatMonitor), "active: Start")
-        XCTAssertFalse(words(page).contains { $0.hasPrefix("Open HomeSpeaker") })
+        XCTAssertFalse(words(page).contains { $0.hasPrefix("Open Vitruvian Speaker") })
     }
 
     // MARK: - Review round 1
@@ -572,7 +572,7 @@ final class DoorPagesTests: XCTestCase {
 
     private func hooksFile() -> URL { home.appendingPathComponent(".claude/settings.json") }
 
-    /// A Claude Code settings file whose HomeSpeaker hook runs `program`.
+    /// A Claude Code settings file whose Vitruvian Speaker hook runs `program`.
     private func hook(at program: URL) throws {
         let ours: [String: Any] = ["type": "command", "command": AgentIntegration.hookCommand(executable: program.path), "timeout": 10]
         let settings: [String: Any] = ["hooks": ["Stop": [["hooks": [ours]]] as [[String: Any]]]]
@@ -620,7 +620,7 @@ final class DoorPagesTests: XCTestCase {
         XCTAssertFalse(ids(tool.islandPage()).contains(Pages.Block.doorQuitAgain))
     }
 
-    /// An app running but not found (a test's `HOMESPEAKER_PROGRAM=""`
+    /// An app running but not found (a test's `VITRUVIAN_SPEAKER_PROGRAM=""`
     /// beside a real one on this Mac): no line, no button, no quit.
     func testAnAppThatIsNotFoundIsNeverOfferedToQuit() throws {
         appInstalled.value = false
@@ -662,13 +662,13 @@ final class DoorPagesTests: XCTestCase {
         XCTAssertEqual(door.read()?.chosen, .app)
         var island = tool.islandPage()
         XCTAssertEqual(ids(island), [Pages.Block.doorUseThis])
-        XCTAssertTrue(words(island).contains("The HomeSpeaker app is starting, so this one stays quiet."), "\(words(island))")
+        XCTAssertTrue(words(island).contains("The Vitruvian Speaker app is starting, so this one stays quiet."), "\(words(island))")
         XCTAssertTrue(words(island).contains(Pages.DoorWords.loginItemOn))
 
         appRunning.value = true
         tool.refreshRole()
         island = tool.islandPage()
-        XCTAssertTrue(words(island).contains("The HomeSpeaker app is in use, so this one stays quiet."))
+        XCTAssertTrue(words(island).contains("The Vitruvian Speaker app is in use, so this one stays quiet."))
     }
 
     func testAnAppThatCannotBeOpenedOrSwitchedOnSaysSo() async throws {
@@ -694,7 +694,7 @@ final class DoorPagesTests: XCTestCase {
         _ = tap(tool, Pages.Block.doorKeep)
         await settle { tool.doorStep == nil }
         XCTAssertEqual(order.all, [])
-        XCTAssertTrue(words(tool.islandPage()).contains("The HomeSpeaker app is in use, so this one stays quiet."))
+        XCTAssertTrue(words(tool.islandPage()).contains("The Vitruvian Speaker app is in use, so this one stays quiet."))
     }
 
     func testTheAppIsNeverOfferedWhenItIsNotInstalled() throws {
@@ -775,7 +775,7 @@ final class DoorPagesTests: XCTestCase {
         XCTAssertEqual(try installedHook(), AgentIntegration.hookCommand(executable: extensionProgram.path))
 
         // Only a copy in the Trash: the same.
-        appFound = root.appendingPathComponent(".Trash/HomeSpeaker.app/Contents/MacOS/HomeSpeaker")
+        appFound = root.appendingPathComponent(".Trash/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker")
         _ = tap(tool, Pages.Block.doorBack)
         page = tap(tool, Pages.Block.doorUseApp)
         XCTAssertTrue(words(page).contains(Pages.DoorWords.appNotFound))
@@ -787,7 +787,7 @@ final class DoorPagesTests: XCTestCase {
         let tool = tool()
         _ = tool.islandPage()
         // Moved since the extension started.
-        appFound = root.appendingPathComponent("Elsewhere/HomeSpeaker.app/Contents/MacOS/HomeSpeaker")
+        appFound = root.appendingPathComponent("Elsewhere/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker")
         _ = tap(tool, Pages.Block.doorUseApp)
         _ = tap(tool, Pages.Block.doorKeep)
         XCTAssertEqual(try installedHook(), AgentIntegration.hookCommand(executable: try XCTUnwrap(appFound).path))
@@ -823,13 +823,13 @@ final class DoorPagesTests: XCTestCase {
 
     func testAStrandedHookIsPointedHereWhileThisSideRuns() throws {
         appInstalled.value = false
-        try hook(at: root.appendingPathComponent("Gone/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"))
+        try hook(at: root.appendingPathComponent("Gone/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker"))
         let tool = tool()
         tool.start()
         XCTAssertEqual(try installedHook(), AgentIntegration.hookCommand(executable: extensionProgram.path))
 
         // Dragged to the Trash by hand, seen on the tick.
-        let trashed = root.appendingPathComponent(".Trash/HomeSpeaker.app/Contents/MacOS/HomeSpeaker")
+        let trashed = root.appendingPathComponent(".Trash/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker")
         try FileManager.default.createDirectory(at: trashed.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data().write(to: trashed)
         try hook(at: trashed)
@@ -849,9 +849,9 @@ final class DoorPagesTests: XCTestCase {
 
     func testAnOlderPluginPointedHereIsUpdatedOnStart() throws {
         appInstalled.value = false
-        let plugin = home.appendingPathComponent(".config/opencode/plugins/home-speaker.ts")
+        let plugin = home.appendingPathComponent(".config/opencode/plugins/vitruvian-speaker.ts")
         try FileManager.default.createDirectory(at: plugin.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try "// Command: \"\(extensionProgram.path)\" --opencode-hook\nexport const HomeSpeaker = async () => ({})\n"
+        try "// Command: \"\(extensionProgram.path)\" --opencode-hook\nexport const Vitruvian Speaker = async () => ({})\n"
             .write(to: plugin, atomically: true, encoding: .utf8)
         let integration = AgentIntegration(home: home, executablePath: extensionProgram.path, bootout: { _ in })
         XCTAssertEqual(integration.status(of: .opencode).hook, .stale("\"\(extensionProgram.path)\" --opencode-hook"))
@@ -863,7 +863,7 @@ final class DoorPagesTests: XCTestCase {
 
     func testAQuietSideRepairsNoHook() throws {
         try door.update { $0.chosen = .app }
-        let gone = root.appendingPathComponent("Gone/HomeSpeaker.app/Contents/MacOS/HomeSpeaker")
+        let gone = root.appendingPathComponent("Gone/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker")
         try hook(at: gone)
         let tool = tool()
         tool.start()
@@ -894,9 +894,9 @@ final class DoorPagesTests: XCTestCase {
         }
         XCTAssertNil(button(agentsPage, Pages.Block.agent(.installHook, .claudeCode)),
                      "a quiet extension must not offer Update Hook when the app owns the hook")
-        XCTAssertTrue(words(agentsPage).contains("Claude Code hook · Installed on the HomeSpeaker app"))
+        XCTAssertTrue(words(agentsPage).contains("Claude Code hook · Installed on the Vitruvian Speaker app"))
         let refused = tap(quietTool, Pages.Block.agent(.installHook, .claudeCode), island: false)
-        XCTAssertTrue(words(refused).contains("The HomeSpeaker app is in use, so its hooks are the ones that run"))
+        XCTAssertTrue(words(refused).contains("The Vitruvian Speaker app is in use, so its hooks are the ones that run"))
         XCTAssertEqual(try installedHook(), AgentIntegration.hookCommand(executable: appProgram.path))
     }
 

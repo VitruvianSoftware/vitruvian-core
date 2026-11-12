@@ -21,7 +21,7 @@
 import Foundation
 import ServiceManagement
 
-/// The coding agents HomeSpeaker can announce for. Each one has a hooks
+/// The coding agents Vitruvian Speaker can announce for. Each one has a hooks
 /// file, an event that fires when a turn ends, and its own entry shape.
 public enum CodingAgent: String, CaseIterable, Sendable {
     case claudeCode
@@ -59,8 +59,8 @@ public enum CodingAgent: String, CaseIterable, Sendable {
     public var hookLocationName: String {
         switch self {
         case .claudeCode: return "~/.claude/settings.json"
-        case .antigravity: return "~/.gemini/config/plugins/home-speaker"
-        case .opencode: return "~/.config/opencode/plugins/home-speaker.ts"
+        case .antigravity: return "~/.gemini/config/plugins/vitruvian-speaker"
+        case .opencode: return "~/.config/opencode/plugins/vitruvian-speaker.ts"
         }
     }
 
@@ -70,9 +70,9 @@ public enum CodingAgent: String, CaseIterable, Sendable {
         case .claudeCode:
             return "Adds one entry to the Stop hooks in ~/.claude/settings.json. Other hooks you have are left untouched."
         case .antigravity:
-            return "Installs the home-speaker plugin in ~/.gemini/config/plugins/home-speaker (plugin.json and hooks.json); its Stop hook runs HomeSpeaker when a turn ends. Remove deletes that folder only. New Antigravity sessions pick it up."
+            return "Installs the vitruvian-speaker plugin in ~/.gemini/config/plugins/vitruvian-speaker (plugin.json and hooks.json); its Stop hook runs Vitruvian Speaker when a turn ends. Remove deletes that folder only. New Antigravity sessions pick it up."
         case .opencode:
-            return "Writes the plugin file ~/.config/opencode/plugins/home-speaker.ts, which runs HomeSpeaker when a session goes idle. Remove deletes that file only. OpenCode loads it the next time it starts."
+            return "Writes the plugin file ~/.config/opencode/plugins/vitruvian-speaker.ts, which runs Vitruvian Speaker when a session goes idle. Remove deletes that file only. OpenCode loads it the next time it starts."
         }
     }
 
@@ -101,7 +101,7 @@ public enum CodingAgent: String, CaseIterable, Sendable {
     /// identical to what the google-home skill documents so existing
     /// setups are recognised.
     public static let broadcastInstruction = """
-    - Follow the `home-speaker-broadcast` skill: Accompany top-level conversational responses to the user with a concise spoken broadcast (1-2 sentences) by executing the CLI tool `speaker-broadcast "<summary>"` (never run `speaker-broadcast` from a background subagent or a delegated `claude -p` helper call). Always use the CLI rather than manual `home_mcp` calls with device IDs, because `speaker-broadcast` dynamically resolves the live `default_target` from `~/.gemini/speaker_broadcast.json`, checks quiet hours, and verifies enabled status on every execution without caching state. When the user asks to turn speaker broadcasts on/off or change the target room, update `~/.gemini/speaker_broadcast.json` (or run `speaker-broadcast --set-target <room>`) and confirm.
+    - Follow the `vitruvian-speaker-broadcast` skill: Accompany top-level conversational responses to the user with a concise spoken broadcast (1-2 sentences) by executing the CLI tool `speaker-broadcast "<summary>"` (never run `speaker-broadcast` from a background subagent or a delegated `claude -p` helper call). Always use the CLI rather than manual `home_mcp` calls with device IDs, because `speaker-broadcast` dynamically resolves the live `default_target` from `~/.gemini/speaker_broadcast.json`, checks quiet hours, and verifies enabled status on every execution without caching state. When the user asks to turn speaker broadcasts on/off or change the target room, update `~/.gemini/speaker_broadcast.json` (or run `speaker-broadcast --set-target <room>`) and confirm.
     """
 
     /// The file (Claude Code) or folder (Antigravity's plugin) or file
@@ -178,9 +178,9 @@ public struct AgentIntegration {
     /// Injected so tests never stop a job in the live login session.
     private let bootout: @Sendable (String) -> Void
 
-    /// `executablePath` is the HomeSpeaker program the hooks will run. A
+    /// `executablePath` is the Vitruvian Speaker program the hooks will run. A
     /// process other than the app (the Vitruvian tool's `bin/tool`) must pass
-    /// the HomeSpeaker it located: the default is whatever is running, and a
+    /// the Vitruvian Speaker it located: the default is whatever is running, and a
     /// hook pointed at another program would never speak. An empty path
     /// gives an integration that can read the agents' state and clean up,
     /// but never install a hook (`installHook` refuses it).
@@ -208,7 +208,7 @@ public struct AgentIntegration {
 
     /// The running program as an absolute path: the bundle's executable, else
     /// argv[0] made absolute against the working directory (a bare
-    /// `.build/debug/HomeSpeaker` would otherwise be written as a relative
+    /// `.build/debug/VitruvianSpeaker` would otherwise be written as a relative
     /// hook that only works from this one folder).
     public static func runningExecutable(
         bundleExecutable: String? = Bundle.main.executablePath,
@@ -221,17 +221,17 @@ public struct AgentIntegration {
         return url.standardizedFileURL.path
     }
 
-    /// The program's file name every HomeSpeaker build has: the app bundle's
-    /// `Contents/MacOS/HomeSpeaker`, SwiftPM's `.build/*/HomeSpeaker`.
-    public static let programName = "HomeSpeaker"
+    /// The program's file name every Vitruvian Speaker build has: the app bundle's
+    /// `Contents/MacOS/VitruvianSpeaker`, SwiftPM's `.build/*/VitruvianSpeaker`.
+    public static let programName = "VitruvianSpeaker"
 
     /// The Vitruvian extension's tool id. Its program is
     /// `…/Tools/<extensionToolID>/bin/tool`.
-    public static let extensionToolID = "dev.vitruvian.homespeaker"
+    public static let extensionToolID = "dev.vitruvian.speaker"
 
-    /// True when `path` is a HomeSpeaker program, the only thing a hook may
+    /// True when `path` is a Vitruvian Speaker program, the only thing a hook may
     /// run: a copy of the app's program, or the extension's.
-    public static func isHomeSpeakerProgram(_ path: String) -> Bool {
+    public static func isVitruvianSpeakerProgram(_ path: String) -> Bool {
         isAppProgram(path) || isExtensionProgram(path)
     }
 
@@ -241,23 +241,23 @@ public struct AgentIntegration {
     }
 
     /// True when `path` is the extension's program, the whole shape
-    /// `/…/Tools/dev.vitruvian.homespeaker/bin/tool`. Any other tool's
-    /// `bin/tool` is not HomeSpeaker.
+    /// `/…/Tools/dev.vitruvian.speaker/bin/tool`. Any other tool's
+    /// `bin/tool` is not Vitruvian Speaker.
     public static func isExtensionProgram(_ path: String) -> Bool {
         guard path.hasPrefix("/"),
-              let folders = HomeSpeakerProfile.extensionFolders(program: URL(fileURLWithPath: path)) else { return false }
+              let folders = VitruvianSpeakerProfile.extensionFolders(program: URL(fileURLWithPath: path)) else { return false }
         return folders.tool.lastPathComponent == extensionToolID
     }
 
     public enum IntegrationError: Error, Equatable, LocalizedError {
-        /// The hook would run something that is not HomeSpeaker.
-        case notHomeSpeaker(String)
+        /// The hook would run something that is not Vitruvian Speaker.
+        case notVitruvianSpeaker(String)
         case corruptSettingsFile(String)
 
         public var errorDescription: String? {
             switch self {
-            case .notHomeSpeaker(let path):
-                return "\(path) is not the HomeSpeaker app, so a hook pointing at it would never speak. Install the hook from HomeSpeaker itself."
+            case .notVitruvianSpeaker(let path):
+                return "\(path) is not the Vitruvian Speaker app, so a hook pointing at it would never speak. Install the hook from Vitruvian Speaker itself."
             case .corruptSettingsFile(let path):
                 return "Refusing to modify corrupt settings file: \(path)"
             }
@@ -362,7 +362,7 @@ public struct AgentIntegration {
     /// True when the text tells an agent to broadcast on its own (the
     /// prompt-driven setup that predates hooks).
     public static func mentionsBroadcastInstruction(_ text: String) -> Bool {
-        text.contains("speaker_broadcast.json") || text.contains("home-speaker-broadcast") || text.contains("speaker-broadcast")
+        text.contains("speaker_broadcast.json") || text.contains("vitruvian-speaker-broadcast") || text.contains("speaker-broadcast")
     }
 
     // MARK: Status
@@ -386,9 +386,9 @@ public struct AgentIntegration {
         /// A second, independent hook file that also speaks replies. With
         /// ours installed as well, every answer is announced twice.
         public var rivalHook: URL?
-        /// The program the agent's HomeSpeaker hook runs, whichever program
+        /// The program the agent's Vitruvian Speaker hook runs, whichever program
         /// that is (this one, another copy of the app, the extension's).
-        /// Nil when no HomeSpeaker hook is installed.
+        /// Nil when no Vitruvian Speaker hook is installed.
         public var hookProgram: String?
 
         /// Announcements will happen one way or another.
@@ -479,7 +479,7 @@ public struct AgentIntegration {
     public func installClaudeHook() throws { try installHook(for: .claudeCode) }
 
     public func installHook(for agent: CodingAgent) throws {
-        guard Self.isHomeSpeakerProgram(executablePath) else { throw IntegrationError.notHomeSpeaker(executablePath) }
+        guard Self.isVitruvianSpeakerProgram(executablePath) else { throw IntegrationError.notVitruvianSpeaker(executablePath) }
         switch agent {
         case .claudeCode:
             try writeSettings(Self.mergeHook(into: try readSettings(agent), command: hookCommand(for: agent), agent: agent), agent)
@@ -509,7 +509,7 @@ public struct AgentIntegration {
         }
     }
 
-    /// The command of the agent's installed HomeSpeaker hook, wherever that
+    /// The command of the agent's installed Vitruvian Speaker hook, wherever that
     /// agent keeps it; nil when there is none.
     private func installedCommand(_ agent: CodingAgent) -> String? {
         switch agent {
@@ -549,7 +549,7 @@ public struct AgentIntegration {
     public func disableRivalHook(for agent: CodingAgent) throws {
         guard let url = status(of: agent).rivalHook else { return }
         let disabled = url.deletingLastPathComponent()
-            .appendingPathComponent(url.lastPathComponent + ".disabled-by-homespeaker")
+            .appendingPathComponent(url.lastPathComponent + ".disabled-by-vitruvian-speaker")
         try? fileManager.removeItem(at: disabled)
         try fileManager.moveItem(at: url, to: disabled)
     }
@@ -567,7 +567,7 @@ public struct AgentIntegration {
     /// whether the extension's program at a path is there.
     public func repairHookIfMoved(
         extensionProgramExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
-        choice: HomeSpeakerProfile.Door?
+        choice: VitruvianSpeakerProfile.Door?
     ) {
         // Only the app repairs, and never from the Trash, a mounted DMG, or a
         // Gatekeeper AppTranslocation mount. From any other program every

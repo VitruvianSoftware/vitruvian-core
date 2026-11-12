@@ -24,7 +24,7 @@ import Foundation
 // which serves the same two endpoints in the same shape (`ChatApp`). Each
 // bridges WhatsApp, Signal, Telegram, Google Messages, Slack and more into
 // one app on this Mac, and serves them on localhost to whoever holds a
-// token made in its Settings › Integrations. HomeSpeaker asks it two
+// token made in its Settings › Integrations. Vitruvian Speaker asks it two
 // things, both GET: the accounts (once at start, and again when a message
 // names one it has not seen), and the messages after a date (once a poll).
 // It never sends anything else, and never sends the token anywhere but this
@@ -344,7 +344,7 @@ public struct ChatAppClient: Sendable {
         case 401: throw ChatMonitorError.chatAppTokenRefused(app)
         case 429: throw ChatMonitorError.chatAppSlowDown(app)
         case 300..<400:
-            throw ChatMonitorError.chatApp(app, "\(app.programName) answered with a redirect, which HomeSpeaker does not follow")
+            throw ChatMonitorError.chatApp(app, "\(app.programName) answered with a redirect, which Vitruvian Speaker does not follow")
         default:
             let message = ((json as? [String: Any])?["message"] as? String).flatMap { $0.isEmpty ? nil : $0 }
             throw ChatMonitorError.chatApp(app, message ?? "HTTP \(status)")
@@ -457,7 +457,7 @@ public struct ChatAppClient: Sendable {
     }
 
     /// `slackgo.T0123-U0456` → `T0123`; nil for any other shape, which
-    /// the duplicates rule treats as the workspace HomeSpeaker reads.
+    /// the duplicates rule treats as the workspace Vitruvian Speaker reads.
     public static func slackTeam(accountID: String) -> String? {
         let prefix = "slackgo."
         guard accountID.lowercased().hasPrefix(prefix) else { return nil }
@@ -467,7 +467,7 @@ public struct ChatAppClient: Sendable {
         return team.isEmpty ? nil : team
     }
 
-    /// The accounts HomeSpeaker leaves to its own reader, so nothing is
+    /// The accounts Vitruvian Speaker leaves to its own reader, so nothing is
     /// spoken twice: while its Slack switch is on, Beeper's Slack accounts
     /// for the workspace the Slack token reads (`nativeSlackTeam`), or every
     /// Slack account when that workspace is not known; while its Google
@@ -477,10 +477,10 @@ public struct ChatAppClient: Sendable {
     /// may carry its grid's id where the team goes.
     ///
     /// Courier's account ids do not say which Slack workspace they are, so
-    /// all its Slack accounts look like the one HomeSpeaker reads and are
+    /// all its Slack accounts look like the one Vitruvian Speaker reads and are
     /// left to it. A network the person switched on in Courier's list
     /// (`ChatMonitorConfig.courierReadAnyway`) is read through Courier all
-    /// the same: the way to hear a second workspace that HomeSpeaker's own
+    /// the same: the way to hear a second workspace that Vitruvian Speaker's own
     /// reader does not cover.
     public static func isSkipped(
         _ account: BeeperAccount, config: ChatMonitorConfig, nativeSlackTeam: String?, nativeSlackUser: String? = nil,

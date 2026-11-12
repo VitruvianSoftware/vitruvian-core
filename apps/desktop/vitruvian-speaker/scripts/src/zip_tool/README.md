@@ -1,7 +1,7 @@
 # Zip Tool
 
 ## Overview
-Component package providing implementation for `apps/desktop/home-speaker/scripts/src/zip_tool`.
+Component package providing implementation for `apps/desktop/vitruvian-speaker/scripts/src/zip_tool`.
 
 ## Interface
 - `[lib.rs:Config]`
@@ -22,4 +22,4 @@ Component package providing implementation for `apps/desktop/home-speaker/script
 - [lib.rs:472]: `let tmp = make_temp("exec-bit");`
 
 ## Verification
-- Run: `bazel test //apps/desktop/home-speaker/scripts/src/zip_tool/...`
+- Run: `bazel test //apps/desktop/vitruvian-speaker/scripts/src/zip_tool/...`

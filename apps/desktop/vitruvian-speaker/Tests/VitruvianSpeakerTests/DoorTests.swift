@@ -20,9 +20,9 @@
 
 import Foundation
 import Testing
-@testable import HomeSpeakerCore
+@testable import VitruvianSpeakerCore
 
-// Which HomeSpeaker is in use, when both the app and the Vitruvian extension
+// Which Vitruvian Speaker is in use, when both the app and the Vitruvian extension
 // are on this Mac (design section 7). One file records the choice; each side
 // works out from it, and from whether the other is installed, whether it
 // runs, asks, waits or stays quiet.
@@ -31,12 +31,12 @@ import Testing
 // or writes the real one.
 
 @Suite struct DoorTests {
-    typealias Door = HomeSpeakerProfile.Door
+    typealias Door = VitruvianSpeakerProfile.Door
 
     /// A choice file in a new temporary folder.
     private func scratchFile() -> DoorFile {
         let folder = FileManager.default.temporaryDirectory
-            .appendingPathComponent("homespeaker-door-\(UUID().uuidString)")
+            .appendingPathComponent("vitruvian-speaker-door-\(UUID().uuidString)")
         return DoorFile(url: folder.appendingPathComponent(DoorFile.fileName))
     }
 
@@ -87,7 +87,7 @@ import Testing
 
     @Test func theAppStandsAsideOnlyForAnExtensionThatCanRunAlone() throws {
         let file = scratchFile()
-        let program = "/Users/x/Library/Application Support/Vitruvian/Tools/dev.vitruvian.homespeaker/bin/tool"
+        let program = "/Users/x/Library/Application Support/Vitruvian/Tools/dev.vitruvian.speaker/bin/tool"
         try file.update {
             $0.chosen = .extension
             $0.installedExtension = .init(program: program, dataFolder: "/d", version: "1.19.0", door: 1)
@@ -102,18 +102,18 @@ import Testing
     // MARK: - Is the other one installed (design 7.2)
 
     @Test func theAppInTheTrashIsNotInstalled() {
-        for app in ["/Users/x/.Trash/HomeSpeaker.app", "/Users/x/.Trash/HomeSpeaker 2.app",
-                    "/Volumes/Disk/.Trashes/501/HomeSpeaker.app"] {
-            let program = URL(fileURLWithPath: app).appendingPathComponent("Contents/MacOS/HomeSpeaker")
+        for app in ["/Users/x/.Trash/Vitruvian Speaker.app", "/Users/x/.Trash/VitruvianSpeaker 2.app",
+                    "/Volumes/Disk/.Trashes/501/Vitruvian Speaker.app"] {
+            let program = URL(fileURLWithPath: app).appendingPathComponent("Contents/MacOS/VitruvianSpeaker")
             #expect(!OtherDoorPresence.appInstalled(locate: { program }), "\(app) is in the Trash")
         }
-        let installed = URL(fileURLWithPath: "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker")
+        let installed = URL(fileURLWithPath: "/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker")
         #expect(OtherDoorPresence.appInstalled(locate: { installed }))
         #expect(!OtherDoorPresence.appInstalled(locate: { nil }))
     }
 
-    @Test func anOldExtensionIsNotASecondHomeSpeaker() {
-        let program = "/Users/x/Library/Application Support/Vitruvian/Tools/dev.vitruvian.homespeaker/bin/tool"
+    @Test func anOldExtensionIsNotASecondVitruvianSpeaker() {
+        let program = "/Users/x/Library/Application Support/Vitruvian/Tools/dev.vitruvian.speaker/bin/tool"
         let exists: (String) -> Bool = { $0 == program }
         // A 1.17 or 1.18 extension never writes its block (design section 8).
         #expect(!OtherDoorPresence.extensionInstalled(record: nil, fileExists: exists))
@@ -130,13 +130,13 @@ import Testing
     }
 
     @Test func aMissingExtensionProgramIsNotInstalled() {
-        let program = "/Users/x/Library/Application Support/Vitruvian/Tools/dev.vitruvian.homespeaker/bin/tool"
+        let program = "/Users/x/Library/Application Support/Vitruvian/Tools/dev.vitruvian.speaker/bin/tool"
         let record = DoorRecord(installedExtension: .init(program: program, dataFolder: "/d", version: "1.19.0", door: 1))
         #expect(!OtherDoorPresence.extensionInstalled(record: record, fileExists: { _ in false }))
         #expect(OtherDoorPresence.extensionInstalled(record: record, fileExists: { $0 == program }))
 
         let trashed = DoorRecord(installedExtension: .init(
-            program: "/Users/x/.Trash/dev.vitruvian.homespeaker/bin/tool", dataFolder: "/d", version: "1.19.0", door: 1))
+            program: "/Users/x/.Trash/dev.vitruvian.speaker/bin/tool", dataFolder: "/d", version: "1.19.0", door: 1))
         #expect(!OtherDoorPresence.extensionInstalled(record: trashed, fileExists: { _ in true }), "in the Trash")
     }
 
@@ -154,10 +154,10 @@ import Testing
           "version": 1,
           "chosen": "extension",
           "chosen_at": "2026-10-20T09:12:00Z",
-          "chosen_by": "HomeSpeaker extension 1.19.0",
+          "chosen_by": "Vitruvian Speaker extension 1.19.0",
           "extension": {
-            "program": "/Users/x/Tools/dev.vitruvian.homespeaker/bin/tool",
-            "data_folder": "/Users/x/ToolData/dev.vitruvian.homespeaker",
+            "program": "/Users/x/Tools/dev.vitruvian.speaker/bin/tool",
+            "data_folder": "/Users/x/ToolData/dev.vitruvian.speaker",
             "version": "1.19.0",
             "door": 1
           }
@@ -168,10 +168,10 @@ import Testing
         #expect(record.version == 1)
         #expect(record.chosen == .extension)
         #expect(record.chosenAt == ISO8601DateFormatter().date(from: "2026-10-20T09:12:00Z"))
-        #expect(record.chosenBy == "HomeSpeaker extension 1.19.0")
+        #expect(record.chosenBy == "Vitruvian Speaker extension 1.19.0")
         #expect(record.installedExtension == .init(
-            program: "/Users/x/Tools/dev.vitruvian.homespeaker/bin/tool",
-            dataFolder: "/Users/x/ToolData/dev.vitruvian.homespeaker", version: "1.19.0", door: 1))
+            program: "/Users/x/Tools/dev.vitruvian.speaker/bin/tool",
+            dataFolder: "/Users/x/ToolData/dev.vitruvian.speaker", version: "1.19.0", door: 1))
     }
 
     @Test func anUnknownChoiceReadsAsNone() throws {
@@ -189,13 +189,13 @@ import Testing
         try file.update {
             $0.chosen = .app
             $0.chosenAt = when
-            $0.chosenBy = "HomeSpeaker 1.19.0"
+            $0.chosenBy = "Vitruvian Speaker 1.19.0"
         }
         let written = try object(at: file.url)
         #expect(written["version"] as? Int == 1)
         #expect(written["chosen"] as? String == "app")
         #expect(written["chosen_at"] as? String == "2026-10-20T09:12:00Z")
-        #expect(written["chosen_by"] as? String == "HomeSpeaker 1.19.0")
+        #expect(written["chosen_by"] as? String == "Vitruvian Speaker 1.19.0")
         #expect(written["extension"] == nil)
         #expect(FileManager.default.fileExists(atPath: file.lockURL.path))
         #expect(file.lockURL.lastPathComponent == "speaker_door.json.lock")
@@ -325,7 +325,7 @@ import Testing
         let home = URL(fileURLWithPath: "/tmp/somebody")
         #expect(DoorFile.defaultURL(home: home).path == "/tmp/somebody/.gemini/speaker_door.json")
         #expect(DoorFile.defaultURL(home: home).deletingLastPathComponent()
-            == HomeSpeakerProfile.app(home: home).settingsURL.deletingLastPathComponent())
+            == VitruvianSpeakerProfile.app(home: home).settingsURL.deletingLastPathComponent())
     }
 }
 

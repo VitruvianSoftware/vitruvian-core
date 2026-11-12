@@ -20,15 +20,15 @@
 
 import XCTest
 
-import HomeSpeakerCore
-import HomeSpeakerToolCore
+import VitruvianSpeakerCore
+import VitruvianSpeakerToolCore
 
 final class ConfigTests: XCTestCase {
     private var folder: URL!
 
     override func setUp() {
         folder = FileManager.default.temporaryDirectory
-            .appendingPathComponent("homespeaker-tool-config-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("vitruvian-speaker-tool-config-\(UUID().uuidString)", isDirectory: true)
     }
 
     override func tearDown() {

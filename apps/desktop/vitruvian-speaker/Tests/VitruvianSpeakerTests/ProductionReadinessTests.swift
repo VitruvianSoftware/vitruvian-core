@@ -21,14 +21,14 @@
 import CryptoKit
 import Foundation
 import Testing
-@testable import HomeSpeakerCore
+@testable import VitruvianSpeakerCore
 
 // Guards for the consumer-readiness fixes: no personal defaults, a real
 // sign-in, in-app discovery, a self-contained Claude hook, and secrets kept
 // out of the plain-text config.
 
 private func tempDir() -> URL {
-    let url = FileManager.default.temporaryDirectory.appendingPathComponent("homespeaker-tests-\(UUID().uuidString)")
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-speaker-tests-\(UUID().uuidString)")
     try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
 }
@@ -83,8 +83,8 @@ private func json(_ text: String) -> [String: Any] {
     }
 
     @Test func hookCommandPointsAtThisBinaryNotAUserPath() {
-        let cmd = AgentIntegration.hookCommand(executable: "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker")
-        #expect(cmd == "\"/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker\" --claude-stop-hook")
+        let cmd = AgentIntegration.hookCommand(executable: "/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker")
+        #expect(cmd == "\"/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker\" --claude-stop-hook")
         #expect(!cmd.contains("/Users/"))
         #expect(!cmd.contains("python"))
     }
@@ -395,7 +395,7 @@ private final class SentinelClass {}
 }
 
 @Suite struct ClaudeHookMergeTests {
-    let ours = AgentIntegration.hookCommand(executable: "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker")
+    let ours = AgentIntegration.hookCommand(executable: "/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker")
 
     @Test func preservesExistingStopHooks() {
         let existing: [String: Any] = ["hooks": ["Stop": [["hooks": [["type": "command", "command": "say done"]]]]], "model": "opus"]
@@ -407,7 +407,7 @@ private final class SentinelClass {}
     }
 
     @Test func isIdempotentAndReplacesStalePaths() {
-        let stale = AgentIntegration.hookCommand(executable: "/Users/someone/Downloads/HomeSpeaker.app/Contents/MacOS/HomeSpeaker")
+        let stale = AgentIntegration.hookCommand(executable: "/Users/someone/Downloads/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker")
         var s = AgentIntegration.mergeStopHook(into: [:], command: stale)
         s = AgentIntegration.mergeStopHook(into: s, command: ours)
         s = AgentIntegration.mergeStopHook(into: s, command: ours)
@@ -438,12 +438,12 @@ private final class SentinelClass {}
 
     @Test func statusDistinguishesStaleFromInstalled() throws {
         let dir = tempDir()
-        let here = AgentIntegration(home: dir, executablePath: "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker")
+        let here = AgentIntegration(home: dir, executablePath: "/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker")
         #expect(here.hookStatus() == .notInstalled)
         try here.installClaudeCodeHook()
         #expect(here.hookStatus() == .installed)
 
-        let moved = AgentIntegration(home: dir, executablePath: "/opt/HomeSpeaker.app/Contents/MacOS/HomeSpeaker")
+        let moved = AgentIntegration(home: dir, executablePath: "/opt/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker")
         #expect(moved.hookStatus() == .stale(here.hookCommand))
         moved.repairHookIfMoved(choice: nil)
         #expect(moved.hookStatus() == .installed)
@@ -455,7 +455,7 @@ private final class SentinelClass {}
 }
 
 @Suite struct AntigravityIntegrationTests {
-    let exe = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
+    let exe = "/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker"
 
     @Test func everyAgentIsHooked() {
         #expect(CodingAgent.antigravity.supportsHook, "agy 1.4 runs a plugin's Stop hook")
@@ -494,7 +494,7 @@ private final class SentinelClass {}
         try a.addBroadcastInstruction(for: .antigravity)
         try a.addBroadcastInstruction(for: .antigravity)
         let text = try String(contentsOf: home.appendingPathComponent(".gemini/AGENTS.md"), encoding: .utf8)
-        #expect(text.components(separatedBy: "home-speaker-broadcast").count == 2, "instruction present exactly once")
+        #expect(text.components(separatedBy: "vitruvian-speaker-broadcast").count == 2, "instruction present exactly once")
         st = a.status(of: .antigravity)
         #expect(st.configuredByInstruction)
         #expect(st.isConfigured)
@@ -515,7 +515,7 @@ private final class SentinelClass {}
         try a.addBroadcastInstruction(for: .opencode)
         try a.addBroadcastInstruction(for: .opencode)
         let opencodeMd = try String(contentsOf: home.appendingPathComponent(".config/opencode/AGENTS.md"), encoding: .utf8)
-        #expect(opencodeMd.components(separatedBy: "home-speaker-broadcast").count == 2)
+        #expect(opencodeMd.components(separatedBy: "vitruvian-speaker-broadcast").count == 2)
         #expect(a.status(of: .opencode).configuredByInstruction)
         #expect(a.status(of: .opencode).isConfigured)
     }
@@ -527,7 +527,7 @@ private final class SentinelClass {}
         try #"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"python3 stop_broadcast.py"}]}]}}"#
             .write(to: rival, atomically: true, encoding: .utf8)
 
-        let a = AgentIntegration(home: home, executablePath: "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker")
+        let a = AgentIntegration(home: home, executablePath: "/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker")
         try a.installClaudeCodeHook()
         let st = a.status(of: .claudeCode)
         #expect(st.rivalHook == rival)
@@ -535,7 +535,7 @@ private final class SentinelClass {}
 
         try a.disableRivalHook(for: .claudeCode)
         #expect(!FileManager.default.fileExists(atPath: rival.path))
-        #expect(FileManager.default.fileExists(atPath: rival.path + ".disabled-by-homespeaker"), "reversible")
+        #expect(FileManager.default.fileExists(atPath: rival.path + ".disabled-by-vitruvian-speaker"), "reversible")
         #expect(!a.status(of: .claudeCode).speaksTwice)
     }
 }
@@ -716,9 +716,9 @@ private final class SentinelClass {}
     @Test func onlyRealInvocationsCountAsBroadcasts() {
         #expect(ClaudeStopHook.commandBroadcasts("speaker-broadcast hi"))
         #expect(ClaudeStopHook.commandBroadcasts("cd /tmp && speaker-broadcast hi"))
-        #expect(ClaudeStopHook.commandBroadcasts("/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker --say hi"))
+        #expect(ClaudeStopHook.commandBroadcasts("/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker --say hi"))
         #expect(!ClaudeStopHook.commandBroadcasts(#"grep -n "speaker-broadcast" f.swift"#))
-        #expect(!ClaudeStopHook.commandBroadcasts("HomeSpeaker --claude-stop-hook"))
+        #expect(!ClaudeStopHook.commandBroadcasts("VitruvianSpeaker --claude-stop-hook"))
         #expect(!ClaudeStopHook.commandBroadcasts("ls /tmp/claude_broadcast_*.lock"))
     }
 
@@ -849,12 +849,12 @@ private final class SentinelClass {}
 
     /// Exercises the real gws binary when one is installed on the machine
     /// running the tests (skips cleanly on CI, which has none, and in the Bazel sandbox).
-    /// The signed-in account comes from HOMESPEAKER_GWS_ACCOUNT, so no one's address
+    /// The signed-in account comes from VITRUVIAN_SPEAKER_GWS_ACCOUNT, so no one's address
     /// lives in the source; without it the test does nothing.
     @Test(.enabled(if: !inBazelSandbox, "no Chat login, network or gws in the Bazel sandbox"))
     func gwsListsSpacesWhenInstalled() async throws {
         guard let path = GwsChatClient.locate(),
-              let account = ProcessInfo.processInfo.environment["HOMESPEAKER_GWS_ACCOUNT"],
+              let account = ProcessInfo.processInfo.environment["VITRUVIAN_SPEAKER_GWS_ACCOUNT"],
               !account.isEmpty
         else { return }
         let client = GwsChatClient(executable: path, account: account)
@@ -871,9 +871,9 @@ private final class SentinelClass {}
         let root = packageRoot()
         let plist = try Data(contentsOf: root.appendingPathComponent("Resources/Info.plist"))
         let dict = try #require(PropertyListSerialization.propertyList(from: plist, format: nil) as? [String: Any])
-        #expect(dict["CFBundleShortVersionString"] as? String == HomeSpeakerVersion.current,
+        #expect(dict["CFBundleShortVersionString"] as? String == VitruvianSpeakerVersion.current,
                 "Resources/Info.plist is release-please managed; it must track Version.swift")
-        #expect(dict["CFBundleIdentifier"] as? String == "com.vitruviansoftware.homespeaker")
+        #expect(dict["CFBundleIdentifier"] as? String == "com.vitruviansoftware.speaker")
     }
 }
 
@@ -883,7 +883,7 @@ private final class SentinelClass {}
     /// through the file manager they hand in; this catches a delete that
     /// goes around it, by any of the ways a file can be removed.
     @Test func closingTheAppHasNoWayToDelete() throws {
-        let file = packageRoot().appendingPathComponent("Sources/HomeSpeakerToolCore/OtherApp.swift")
+        let file = packageRoot().appendingPathComponent("Sources/VitruvianSpeakerToolCore/OtherApp.swift")
         let text = try String(contentsOf: file, encoding: .utf8)
         for delete in ["removeItem", "unlink(", "rmdir(", "remove(", "removefile", "DestroyOperation", "emptyTrash", "rm -"] {
             #expect(!text.contains(delete), "OtherApp.swift can delete (\(delete)); it must only move to the Trash")

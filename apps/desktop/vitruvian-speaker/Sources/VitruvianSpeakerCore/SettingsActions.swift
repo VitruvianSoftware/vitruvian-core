@@ -20,7 +20,7 @@
 
 import Foundation
 
-/// One set of settings and secret actions for the Home Speaker engine.
+/// One set of settings and secret actions for the Vitruvian Speaker engine.
 ///
 /// Every surface (the macOS menu-bar app, the Vitruvian extension, and the
 /// Android remote bridge) changes settings, secrets, and the active door
@@ -691,7 +691,7 @@ public enum SettingsActions {
     /// quitting/opening the other program, login item, Trash, and Vitruvian).
     public protocol DoorSwitchSeam {
         /// Which side is driving this switch (`app` or `extension`).
-        var me: HomeSpeakerProfile.Door { get }
+        var me: VitruvianSpeakerProfile.Door { get }
         /// Attribution written to `chosen_by` in `speaker_door.json`.
         var chosenBy: String { get }
         /// Current timestamp for `chosen_at`.
@@ -703,18 +703,18 @@ public enum SettingsActions {
         /// True when the other side is installed and usable.
         func otherInstalled(record: DoorRecord?) -> Bool
         /// Resolves the profile for `side`, or nil when unavailable.
-        func profile(for side: HomeSpeakerProfile.Door, record: DoorRecord?) -> HomeSpeakerProfile?
+        func profile(for side: VitruvianSpeakerProfile.Door, record: DoorRecord?) -> VitruvianSpeakerProfile?
         /// Resolves the executable path for `side` when `repointHooks` or
         /// presence validation should run for it.
-        func program(for side: HomeSpeakerProfile.Door, record: DoorRecord?) -> String?
+        func program(for side: VitruvianSpeakerProfile.Door, record: DoorRecord?) -> String?
         /// Copies settings, secrets, and history from `source` to `destination`.
-        func copy(from source: HomeSpeakerProfile, to destination: HomeSpeakerProfile) throws -> CopyReport
+        func copy(from source: VitruvianSpeakerProfile, to destination: VitruvianSpeakerProfile) throws -> CopyReport
         /// Tells `destination` that its sign-ins changed.
-        func credentialsChanged(in destination: HomeSpeakerProfile)
+        func credentialsChanged(in destination: VitruvianSpeakerProfile)
         /// Writes `chosen`, `chosenAt`, and `chosenBy` to `speaker_door.json` under its lock.
-        func writeChoice(_ side: HomeSpeakerProfile.Door, at date: Date, chosenBy: String) throws
+        func writeChoice(_ side: VitruvianSpeakerProfile.Door, at date: Date, chosenBy: String) throws
         /// Re-points stale coding-agent hooks to `program`, returning any failure sentences.
-        func repointHooks(to side: HomeSpeakerProfile.Door, program: String) -> [String]
+        func repointHooks(to side: VitruvianSpeakerProfile.Door, program: String) -> [String]
         /// Refreshes the caller's own active/quiet role after a choice change.
         func refreshRole()
         /// When the extension chooses itself, asks the running app to quit.
@@ -727,7 +727,7 @@ public enum SettingsActions {
         func openOtherAndEnableLoginItem() -> [String]
         /// Turns off the app's Open at Login (step 3 offer).
         func turnOffLoginItem() throws
-        /// Moves `HomeSpeaker.app` to the Trash (step 3 offer).
+        /// Moves `Vitruvian Speaker.app` to the Trash (step 3 offer).
         func moveToTrash() throws
         /// Quits the calling app after step 3 offers succeed.
         func quitSelf()
@@ -765,8 +765,8 @@ public enum SettingsActions {
     /// Step 2 of switching or copying: builds a `DoorCompare` snapshot when
     /// the caller is not in the Trash and the other side is installed.
     public static func beginSwitch(
-        from: HomeSpeakerProfile.Door,
-        into: HomeSpeakerProfile.Door,
+        from: VitruvianSpeakerProfile.Door,
+        into: VitruvianSpeakerProfile.Door,
         purpose: DoorCompare.Purpose,
         seam: any DoorSwitchSeam
     ) throws -> DoorCompare? {
@@ -841,7 +841,7 @@ public enum SettingsActions {
         }
 
         // 3. Verify the other side is present and profiles/programs resolve.
-        let otherSide: HomeSpeakerProfile.Door = seam.me == .app ? .extension : .app
+        let otherSide: VitruvianSpeakerProfile.Door = seam.me == .app ? .extension : .app
         let notFoundWord = otherSide == .extension ? DoorWords.extensionNotFound : DoorWords.appNotFound
         guard seam.otherInstalled(record: record),
               let source = seam.profile(for: compare.from, record: record),
@@ -908,7 +908,7 @@ public enum SettingsActions {
     }
 
     /// Executes the post-switch step 3 offers (turning off the app's Open at
-    /// Login first, then moving `HomeSpeaker.app` to the Trash, and when run
+    /// Login first, then moving `Vitruvian Speaker.app` to the Trash, and when run
     /// from the app with no failures, quitting the app).
     public static func applySwitchOffers(
         _ offers: AppSwitch.Offers,
@@ -940,8 +940,8 @@ public enum SettingsActions {
         return SwitchOffersResult(report: lines, failed: failed)
     }
 
-    /// Re-points every coding agent's stale HomeSpeaker hook in `home` to
-    /// `program`. Agents without an existing HomeSpeaker hook are untouched.
+    /// Re-points every coding agent's stale Vitruvian Speaker hook in `home` to
+    /// `program`. Agents without an existing Vitruvian Speaker hook are untouched.
     public static func repointStaleHooks(
         home: URL,
         to program: String,

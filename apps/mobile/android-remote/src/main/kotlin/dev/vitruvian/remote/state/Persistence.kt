@@ -46,8 +46,8 @@ private const val KEY_SELECTED_HOST_ID = "selectedHostId"
 private const val KEY_BRIDGE_ENABLED = "bridgeEnabled"
 private const val KEY_BRIDGE_TRUST_UNTIL = "bridgeTrustUntil"
 private const val KEY_BRIDGE_AUDIT = "bridgeAudit"
-private const val KEY_HOMESPEAKER_SETTINGS_EXPANDED = "homeSpeakerSettingsExpanded"
-private const val KEY_HOMESPEAKER_MIRROR = "homeSpeakerMirror"
+private const val KEY_SPEAKER_SETTINGS_EXPANDED = "vitruvianSpeakerSettingsExpanded"
+private const val KEY_SPEAKER_MIRROR = "vitruvianSpeakerMirror"
 
 /** How many console commands are remembered. Beyond this the oldest fall off. */
 private const val RECENT_COMMAND_LIMIT = 20
@@ -189,9 +189,9 @@ public class Persistence(context: Context) {
     get() = prefs.getBoolean(KEY_DOCK, true)
     set(value) = prefs.edit().putBoolean(KEY_DOCK, value).apply()
 
-  public var homeSpeakerSettingsExpanded: Boolean
-    get() = prefs.getBoolean(KEY_HOMESPEAKER_SETTINGS_EXPANDED, false)
-    set(value) = prefs.edit().putBoolean(KEY_HOMESPEAKER_SETTINGS_EXPANDED, value).apply()
+  public var vitruvianSpeakerSettingsExpanded: Boolean
+    get() = prefs.getBoolean(KEY_SPEAKER_SETTINGS_EXPANDED, false)
+    set(value) = prefs.edit().putBoolean(KEY_SPEAKER_SETTINGS_EXPANDED, value).apply()
 
   /**
    * Which of the Remote screen's collapsible sections are open.
@@ -283,9 +283,9 @@ public class Persistence(context: Context) {
       prefs.edit().putString(KEY_MACROS, encoded).apply()
     }
 
-  public var homeSpeakerMirror: Boolean
-    get() = prefs.getBoolean(KEY_HOMESPEAKER_MIRROR, false)
-    set(value) = prefs.edit().putBoolean(KEY_HOMESPEAKER_MIRROR, value).apply()
+  public var vitruvianSpeakerMirror: Boolean
+    get() = prefs.getBoolean(KEY_SPEAKER_MIRROR, false)
+    set(value) = prefs.edit().putBoolean(KEY_SPEAKER_MIRROR, value).apply()
 
   private companion object {
     const val FIELD_COUNT = 5

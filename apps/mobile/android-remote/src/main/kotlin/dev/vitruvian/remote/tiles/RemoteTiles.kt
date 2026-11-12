@@ -41,7 +41,7 @@ import kotlinx.coroutines.withTimeout
  * The Quick Settings tiles.
  *
  * Sleep display and Lock Mac are HID key presses, so they work with no agent and no pairing -- the
- * phone IS the keyboard. SpeakerMuteTile talks directly to the Mac agent's `/v1/homespeaker/volume`
+ * phone IS the keyboard. SpeakerMuteTile talks directly to the Mac agent's `/v1/speaker/volume`
  * endpoint without launching the activity.
  */
 public abstract class RemoteActionTile : TileService() {
@@ -82,8 +82,8 @@ public class LockMacTile : RemoteActionTile() {
 }
 
 /**
- * Quick Settings tile that mutes or unmutes HomeSpeaker on the selected Mac without launching the
- * app or unlocking the phone.
+ * Quick Settings tile that mutes or unmutes Vitruvian Speaker on the selected Mac without launching
+ * the app or unlocking the phone.
  */
 public class SpeakerMuteTile : TileService() {
   private var listenScope: CoroutineScope? = null
@@ -107,7 +107,7 @@ public class SpeakerMuteTile : TileService() {
           runCatching {
                 withTimeout(TILE_TIMEOUT_MS) {
                   AgentClient(host.url, host.token)
-                      .homeSpeakerVolume(readTimeoutMs = TILE_READ_TIMEOUT_MS)
+                      .vitruvianSpeakerVolume(readTimeoutMs = TILE_READ_TIMEOUT_MS)
                 }
               }
               .getOrNull()
@@ -158,7 +158,8 @@ public class SpeakerMuteTile : TileService() {
           runCatching {
                 withTimeout(TILE_TIMEOUT_MS) {
                   AgentClient(host.url, host.token)
-                      .setHomeSpeakerVolume(muted = nextMuted, readTimeoutMs = TILE_READ_TIMEOUT_MS)
+                      .setVitruvianSpeakerVolume(
+                          muted = nextMuted, readTimeoutMs = TILE_READ_TIMEOUT_MS)
                 }
               }
               .getOrNull()

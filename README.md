@@ -49,7 +49,7 @@ Each application type has its own conventions — see the
 │   ├── web/                         # Containerized web apps (oauth-user-inspector, backstage, gods-eye-view)
 │   ├── cli/                         # Developer & platform CLIs (devx, homelab)
 │   ├── mcp/                         # Model Context Protocol servers (slack)
-│   ├── desktop/                     # Native desktop applications (vitruvian-code, home-speaker, vitruvian)
+│   ├── desktop/                     # Native desktop applications (vitruvian-code, vitruvian-speaker, vitruvian)
 │   ├── mobile/                      # Mobile apps (android-remote)
 │   └── embedded/                    # Embedded firmware (esp32-s3)
 ├── packages/                        # Shared packages (packages/pulumi, design-system)

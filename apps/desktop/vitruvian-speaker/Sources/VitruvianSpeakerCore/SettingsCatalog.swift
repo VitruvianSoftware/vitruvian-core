@@ -20,11 +20,11 @@
 
 import Foundation
 
-/// One settings catalog for the Home Speaker macOS app, the Vitruvian extension,
+/// One settings catalog for the Vitruvian Speaker macOS app, the Vitruvian extension,
 /// and the Android remote.
 ///
 /// Every choice list, numeric range, and visibility rule comes from the
-/// existing `HomeSpeakerCore` model types (`SpeechLength`, `AnnouncementStyle`,
+/// existing `VitruvianSpeakerCore` model types (`SpeechLength`, `AnnouncementStyle`,
 /// `StyleModel`, `LocalVoiceEngine`, `GeminiVoice`, `CodingAgent`,
 /// `ChatMonitorConfig`, and `SpeakerConfig`) so there is one place that defines
 /// what each setting is called, what values it accepts, and when it appears.

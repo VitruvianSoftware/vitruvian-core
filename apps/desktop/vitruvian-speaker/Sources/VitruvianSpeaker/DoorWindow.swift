@@ -21,11 +21,11 @@
 import AppKit
 import Combine
 import SwiftUI
-import HomeSpeakerCore
+import VitruvianSpeakerCore
 
 // The choice, in the app (design 7.4): a small window at launch while the
 // app asks or is quiet, a line at the top of the menu bar's window, and
-// Settings > General's "Which HomeSpeaker" row. Every sentence is
+// Settings > General's "Which Vitruvian Speaker" row. Every sentence is
 // `DoorWords`, the same as the extension's pages.
 
 /// The window that asks, and carries the steps.
@@ -58,7 +58,7 @@ final class DoorWindow {
                 .padding(20)
                 .frame(width: 460))
             let window = NSWindow(contentViewController: host)
-            window.title = "HomeSpeaker"
+            window.title = "Vitruvian Speaker"
             window.styleMask = [.titled, .closable]
             window.isReleasedWhenClosed = false
             window.center()
@@ -224,7 +224,7 @@ struct CompareStep: View {
 /// (design 7.7), quiet or not: a quiet app is where the person changed
 /// something they now want copied. While nobody has picked, or a step is
 /// under way, or the app is in the Trash, the card.
-struct WhichHomeSpeakerSection: View {
+struct WhichVitruvianSpeakerSection: View {
     @ObservedObject var door: AppDoor
     @ObservedObject var switcher: AppSwitch
 
@@ -234,7 +234,7 @@ struct WhichHomeSpeakerSection: View {
                 DoorCard(door: door, switcher: switcher, compact: true)
             }
         } else if let inUse = switcher.inUse {
-            let other: HomeSpeakerProfile.Door = inUse == .app ? .extension : .app
+            let other: VitruvianSpeakerProfile.Door = inUse == .app ? .extension : .app
             Section(DoorWords.which) {
                 Text(DoorWords.uses(inUse))
                 HStack {

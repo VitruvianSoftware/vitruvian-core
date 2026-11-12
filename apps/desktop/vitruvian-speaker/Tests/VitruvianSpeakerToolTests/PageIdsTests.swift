@@ -20,26 +20,26 @@
 
 import XCTest
 
-import HomeSpeakerCore
-import HomeSpeakerToolCore
+import VitruvianSpeakerCore
+import VitruvianSpeakerToolCore
 import VitruvianToolKit
 import VitruvianToolProtocol
 
-/// Every page HomeSpeaker can send, read the way Vitruvian reads it.
+/// Every page Vitruvian Speaker can send, read the way Vitruvian reads it.
 ///
 /// Vitruvian refuses a WHOLE page when one block id, or one list row id,
 /// breaks the protocol's name rule (`ManifestRules.isWellFormedName`):
-/// the panel then spins, and only the app's log says why. HomeSpeaker
+/// the panel then spins, and only the app's log says why. Vitruvian Speaker
 /// 1.27.1's AI Agents buttons were `installHook:claudeCode`, and the
 /// colon took Settings down. The tests elsewhere drew those pages and
 /// measured them but never read them back, so nothing saw it. Here each
 /// page goes through `UITree(from:)`, the decoder the app uses, which
 /// refuses exactly what the app refuses.
 final class PageIdsTests: XCTestCase {
-    typealias Link = HomeSpeakerToolTests.Link
-    typealias Store = HomeSpeakerToolTests.Store
-    typealias Driver = HomeSpeakerToolTests.Driver
-    typealias Account = HomeSpeakerToolTests.Account
+    typealias Link = VitruvianSpeakerToolTests.Link
+    typealias Store = VitruvianSpeakerToolTests.Store
+    typealias Driver = VitruvianSpeakerToolTests.Driver
+    typealias Account = VitruvianSpeakerToolTests.Account
 
     // MARK: - Reading a page as Vitruvian does
 
@@ -104,7 +104,7 @@ final class PageIdsTests: XCTestCase {
     }
 
     /// `status` as every app might ask for it: with and without the
-    /// choice and chips blocks, and HomeSpeaker installed or not. Sections
+    /// choice and chips blocks, and Vitruvian Speaker installed or not. Sections
     /// are covered by `pages`.
     static func everyApp(_ status: Pages.Status) -> [(String, Pages.Status)] {
         var out: [(String, Pages.Status)] = []
@@ -135,13 +135,13 @@ final class PageIdsTests: XCTestCase {
         quietHoursEnabled: true, quietHoursStart: "22:00", quietHoursEnd: "07:00")
 
     /// The AI Agents states that draw every button that section has: for
-    /// Claude Code, which HomeSpeaker hooks, Install Hook, Update Hook,
-    /// Remove (installed, and left behind by a HomeSpeaker that is gone)
+    /// Claude Code, which Vitruvian Speaker hooks, Install Hook, Update Hook,
+    /// Remove (installed, and left behind by a Vitruvian Speaker that is gone)
     /// and Turn it off (a second hook speaks too); for Antigravity, which
     /// has no hook, Add Instruction. Then both set up, and both missing.
     static func agentFixtures() -> [(String, Pages.Agents)] {
         let rival = URL(fileURLWithPath: "/u/.claude/skills/google-home/hooks/hooks.json")
-        let hookCommands: [CodingAgent: String] = [.claudeCode: "\"/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker\" --claude-stop-hook"]
+        let hookCommands: [CodingAgent: String] = [.claudeCode: "\"/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker\" --claude-stop-hook"]
         func agents(_ claude: AgentIntegration.HookStatus, rival claudeRival: URL? = nil, claudeInstruction: Bool = false,
                     antigravityInstruction: Bool = false, installed: Bool = true, legacy: Bool = true) -> Pages.Agents {
             Pages.Agents(
@@ -156,7 +156,7 @@ final class PageIdsTests: XCTestCase {
         return [
             ("install hook, add instruction", agents(.notInstalled)),
             ("remove hook, disable rival", agents(.installed, rival: rival, claudeInstruction: true)),
-            ("update hook", agents(.stale("/Users/someone/Downloads/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"))),
+            ("update hook", agents(.stale("/Users/someone/Downloads/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker"))),
             ("both set up", agents(.installed, antigravityInstruction: true, legacy: false)),
             ("neither on this Mac", agents(.notInstalled, installed: false, legacy: false)),
         ]
@@ -208,7 +208,7 @@ final class PageIdsTests: XCTestCase {
         full.draftClientId = "draft"
         full.draftClientSecretTyped = true
         full.files = Pages.Files(settings: "/u/settings.json", secrets: "/u/secrets.json", history: "/u/history.json",
-                                 homeSpeakerVersion: "1.27.1")
+                                 vitruvianSpeakerVersion: "1.27.1")
         var removing = full
         removing.removingSpeakers = true
         removing.configProblem = "line 3 is not JSON"
@@ -413,7 +413,7 @@ final class PageIdsTests: XCTestCase {
         driver = Driver()
         account = Account()
         account.isSignedIn = true
-        folder = FileManager.default.temporaryDirectory.appendingPathComponent("homespeaker-ids-\(UUID().uuidString)")
+        folder = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-speaker-ids-\(UUID().uuidString)")
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         var config = SpeakerConfig(enabled: true, defaultTarget: "kitchen", structureId: "s1",
                                    targets: ["kitchen": SpeakerDevice(id: "d1", type: "SpeakerDevice", name: "Kitchen"),
@@ -428,9 +428,9 @@ final class PageIdsTests: XCTestCase {
         try? FileManager.default.removeItem(at: folder)
     }
 
-    private func tool() -> HomeSpeakerTool {
+    private func tool() -> VitruvianSpeakerTool {
         let voices = self.voices
-        return HomeSpeakerTool(parts: .init(link: link, store: store, driver: driver, later: { $0() }, account: account,
+        return VitruvianSpeakerTool(parts: .init(link: link, store: store, driver: driver, later: { $0() }, account: account,
                                             voices: { voices }, home: folder,
                                             settingsURL: folder.appendingPathComponent("speaker_broadcast.json"),
                                             historyURL: folder.appendingPathComponent("speaker_history.json")))

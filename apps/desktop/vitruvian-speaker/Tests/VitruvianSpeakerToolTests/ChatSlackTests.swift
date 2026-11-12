@@ -21,18 +21,18 @@
 import AppKit
 import XCTest
 
-import HomeSpeakerCore
-import HomeSpeakerToolCore
+import VitruvianSpeakerCore
+import VitruvianSpeakerToolCore
 import VitruvianToolKit
 import VitruvianToolProtocol
 
 /// The settings panel's Chats section, driven as the app drives it,
 /// with credentials that record and a running app the test decides on.
 final class ChatSlackTests: XCTestCase {
-    typealias Link = HomeSpeakerToolTests.Link
-    typealias Store = HomeSpeakerToolTests.Store
-    typealias Driver = HomeSpeakerToolTests.Driver
-    typealias Account = HomeSpeakerToolTests.Account
+    typealias Link = VitruvianSpeakerToolTests.Link
+    typealias Store = VitruvianSpeakerToolTests.Store
+    typealias Driver = VitruvianSpeakerToolTests.Driver
+    typealias Account = VitruvianSpeakerToolTests.Account
 
     /// Credentials that say what they are told and record what is saved.
     final class Chat: ChatCredentials {
@@ -122,16 +122,16 @@ final class ChatSlackTests: XCTestCase {
                                      targets: ["kitchen": SpeakerDevice(id: "d1", type: "SpeakerDevice", name: "Kitchen")])
     }
 
-    private func tool() -> HomeSpeakerTool {
-        HomeSpeakerTool(parts: .init(
+    private func tool() -> VitruvianSpeakerTool {
+        VitruvianSpeakerTool(parts: .init(
             link: link, store: store, driver: driver, later: { $0() }, account: account, chat: chat,
             gwsLocation: { [unowned self] in gwsAsked += 1; return gwsPath },
             ownerRunning: { [unowned self] in runningAsked += 1; return appRunning },
-            credentialsChanged: { [unowned self] in posted += 1 }, historyURL: HomeSpeakerToolTests.noHistory))
+            credentialsChanged: { [unowned self] in posted += 1 }, historyURL: VitruvianSpeakerToolTests.noHistory))
     }
 
     /// Settings opened on Chats, the login item answered.
-    private func opened(choice: Bool = false) -> HomeSpeakerTool {
+    private func opened(choice: Bool = false) -> VitruvianSpeakerTool {
         link.features = choice ? [.choice] : []
         let tool = tool()
         _ = tool.settingsPage()
@@ -149,7 +149,7 @@ final class ChatSlackTests: XCTestCase {
     }
 
     @discardableResult
-    private func event(_ tool: HomeSpeakerTool, _ block: String, _ kind: UIEventKind, _ value: JSONValue? = nil) -> UITree {
+    private func event(_ tool: VitruvianSpeakerTool, _ block: String, _ kind: UIEventKind, _ value: JSONValue? = nil) -> UITree {
         page(tool.settingsEvent(PanelEvent(block: block, kind: kind, value: value)))
     }
 
@@ -239,19 +239,19 @@ final class ChatSlackTests: XCTestCase {
 
     // MARK: - Background monitoring
 
-    func testItSaysWhetherHomeSpeakerIsRunning() {
+    func testItSaysWhetherVitruvianSpeakerIsRunning() {
         appRunning = true
         let tool = opened()
         var tree = tool.settingsPage()
-        XCTAssertTrue(texts(tree).contains("HomeSpeaker is running · "))
-        XCTAssertEqual(icons(tree)["HomeSpeaker is running"], "bolt.fill")
-        XCTAssertTrue(texts(tree).contains { $0.hasPrefix("HomeSpeaker reads new messages in the background while Slack, Google Chat, Beeper or Courier is on") })
+        XCTAssertTrue(texts(tree).contains("Vitruvian Speaker is running · "))
+        XCTAssertEqual(icons(tree)["Vitruvian Speaker is running"], "bolt.fill")
+        XCTAssertTrue(texts(tree).contains { $0.hasPrefix("Vitruvian Speaker reads new messages in the background while Slack, Google Chat, Beeper or Courier is on") })
         appRunning = false
         tree = tool.settingsPage()
-        XCTAssertTrue(texts(tree).contains("HomeSpeaker is not running · "))
-        XCTAssertFalse(texts(tree).contains { $0.contains("Open HomeSpeaker to start") }, "nothing is on, so nothing waits for it")
+        XCTAssertTrue(texts(tree).contains("Vitruvian Speaker is not running · "))
+        XCTAssertFalse(texts(tree).contains { $0.contains("Open Vitruvian Speaker to start") }, "nothing is on, so nothing waits for it")
         setMonitor { $0.slackEnabled = true }
-        XCTAssertTrue(texts(tool.settingsPage()).contains { $0.contains("Open HomeSpeaker to start") })
+        XCTAssertTrue(texts(tool.settingsPage()).contains { $0.contains("Open Vitruvian Speaker to start") })
     }
 
     func testProblemsShowOnlyWhileASourceIsOn() {
@@ -383,7 +383,7 @@ final class ChatSlackTests: XCTestCase {
         XCTAssertEqual(posted, 0)
     }
 
-    /// As HomeSpeaker's own Settings has: paste, then Save Token. The
+    /// As Vitruvian Speaker's own Settings has: paste, then Save Token. The
     /// paste is held (no redraw, which would wipe the field) until then.
     func testSaveTokenSavesWhatWasPasted() throws {
         store.config?.effectiveChatMonitor.slackEnabled = true
@@ -484,7 +484,7 @@ final class ChatSlackTests: XCTestCase {
     func testADraftDoesNotOutliveClosingSettings() {
         let tool = opened()
         _ = tool.settingsEvent(PanelEvent(block: Pages.Block.slackToken, kind: .change, value: .string("xoxp-half")))
-        tool.panelClosed(HomeSpeakerTool.settingsPanel)
+        tool.panelClosed(VitruvianSpeakerTool.settingsPanel)
         _ = tool.settingsPage()
         XCTAssertEqual(tool.draftSlackToken, "")
     }
@@ -495,7 +495,7 @@ final class ChatSlackTests: XCTestCase {
         _ = tool.islandPage()
         link.rendered = []
         event(tool, Pages.Block.slackToken, .submit, .string("xoxp-1"))
-        XCTAssertEqual(link.rendered.map(\.panel), [HomeSpeakerTool.islandPanel])
+        XCTAssertEqual(link.rendered.map(\.panel), [VitruvianSpeakerTool.islandPanel])
         XCTAssertFalse(link.rendered.last?.tree.blocks.contains { $0.id == Pages.Block.slackToken } ?? true,
                        "the island's token field goes")
     }
@@ -536,7 +536,7 @@ final class ChatSlackTests: XCTestCase {
         XCTAssertEqual(tool.settingsEvent(PanelEvent(block: Pages.Block.beeperAnnounce, kind: .change, value: .string("vips"))), .keep)
         XCTAssertEqual(monitor.beeperAnnounce, .all)
         XCTAssertEqual(store.saves, 2)
-        XCTAssertEqual(posted, 0, "a settings change reaches HomeSpeaker through the file, not the notice")
+        XCTAssertEqual(posted, 0, "a settings change reaches Vitruvian Speaker through the file, not the notice")
         // On with no token: the monitor's own setup problem.
         XCTAssertTrue(texts(tool.settingsPage()).contains { $0.hasPrefix(ChatMonitorError.beeperTokenMissing.localizedDescription) })
     }
@@ -642,7 +642,7 @@ final class ChatSlackTests: XCTestCase {
         XCTAssertNotNil(content(tool.settingsPage(), Pages.Block.grantChat))
     }
 
-    func testWithoutHomeSpeakerGrantAndDisconnectAreOff() {
+    func testWithoutVitruvianSpeakerGrantAndDisconnectAreOff() {
         driver.isInstalled = false
         store.config?.effectiveChatMonitor.googleChatEnabled = true
         store.config?.effectiveChatMonitor.slackEnabled = true
@@ -652,7 +652,7 @@ final class ChatSlackTests: XCTestCase {
         XCTAssertEqual(button(tree, Pages.Block.grantChat)?.enabled, false)
         chat.hasChatAccess = true
         XCTAssertEqual(button(tool.settingsPage(), Pages.Block.disconnectChat)?.enabled, false)
-        // The Slack token needs no HomeSpeaker: it is the secrets file.
+        // The Slack token needs no Vitruvian Speaker: it is the secrets file.
         _ = event(tool, Pages.Block.slackToken, .submit, .string("xoxp-1"))
         XCTAssertEqual(chat.saved, ["xoxp-1"])
     }
@@ -721,7 +721,7 @@ final class ChatSlackTests: XCTestCase {
         for bad in ["1", "100000", "soon"] {
             let tree = event(tool, Pages.Block.pollInterval, .change, .string(bad))
             XCTAssertEqual(monitor.pollIntervalSeconds, 60, bad)
-            XCTAssertEqual(tool.setupNotice, HomeSpeakerTool.Invalid.pollInterval, bad)
+            XCTAssertEqual(tool.setupNotice, VitruvianSpeakerTool.Invalid.pollInterval, bad)
             XCTAssertEqual(field(tree, Pages.Block.pollInterval)?.value, "60", "\(bad): the field shows what is saved")
         }
         XCTAssertEqual(store.saves, saves, "nothing saved")
@@ -772,9 +772,9 @@ final class ChatSlackTests: XCTestCase {
 
     // MARK: - The general footer
 
-    func testTheGeneralPageNoLongerSendsAnythingToHomeSpeaker() {
+    func testTheGeneralPageNoLongerSendsAnythingToVitruvianSpeaker() {
         let page = Pages.settings(Pages.Status())
-        XCTAssertFalse(texts(page).contains { $0.contains("set up in HomeSpeaker") }, "agents and Google Cloud are set up here now")
+        XCTAssertFalse(texts(page).contains { $0.contains("set up in Vitruvian Speaker") }, "agents and Google Cloud are set up here now")
         XCTAssertFalse(texts(page).contains { $0.contains("coding-agent hooks") })
     }
 
@@ -909,7 +909,7 @@ final class ChatSlackTests: XCTestCase {
 
     // MARK: Announcement style and the Gemini voice
 
-    private func settings(on section: Pages.Section, sections: Bool = false) -> HomeSpeakerTool {
+    private func settings(on section: Pages.Section, sections: Bool = false) -> VitruvianSpeakerTool {
         link.features = sections ? [.sections] : []
         let tool = tool()
         _ = tool.settingsPage()
@@ -1156,7 +1156,7 @@ extension ChatSlackTests {
 
 final class ChatCredentialsSeamTests: XCTestCase {
     private func store() throws -> SecretStore {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("homespeaker-tool-chat-\(UUID().uuidString)")
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-speaker-tool-chat-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return SecretStore(fileURL: dir.appendingPathComponent("secrets.json"))
     }
@@ -1216,10 +1216,10 @@ final class ChatCredentialsSeamTests: XCTestCase {
         XCTAssertFalse(none.hasSlackToken)
     }
 
-    /// The menu bar app is an accessory; HomeSpeaker's own command-line
+    /// The menu bar app is an accessory; Vitruvian Speaker's own command-line
     /// runs carry its bundle id but are prohibited from being apps, and do
     /// not count.
-    func testOnlyHomeSpeakerRunningAsAnAppCounts() {
+    func testOnlyVitruvianSpeakerRunningAsAnAppCounts() {
         let id = ProcessDriver.bundleID
         XCTAssertTrue(ProcessDriver.isAppRunning([(id, .accessory)]))
         XCTAssertTrue(ProcessDriver.isAppRunning([(id, .regular)]))

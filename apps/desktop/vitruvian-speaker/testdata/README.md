@@ -1,10 +1,10 @@
-# Home Speaker Shared Rulebook Test Cases
+# Vitruvian Speaker Shared Rulebook Test Cases
 
-These JSON files capture the single rulebook for Home Speaker's settings catalog, choice lists, numeric limits, visibility rules, quiet hours, speaker ordering, active outputs summary, and chat monitor status belief rules.
+These JSON files capture the single rulebook for Vitruvian Speaker's settings catalog, choice lists, numeric limits, visibility rules, quiet hours, speaker ordering, active outputs summary, and chat monitor status belief rules.
 
 ## Who reads these files
 
-- **Swift engine tests (now):** `//apps/desktop/home-speaker:HomeSpeakerTests` (`Tests/HomeSpeakerTests/SharedRulebookCasesTests.swift`) loads every `.json` file in this directory and checks `HomeSpeakerCore` (`SettingsCatalog`, `SpeakerConfig`, `SpeakerDevice`, `ChatMonitorConfig`, `ChatMonitorStatus`) against it.
+- **Swift engine tests (now):** `//apps/desktop/vitruvian-speaker:VitruvianSpeakerTests` (`Tests/VitruvianSpeakerTests/SharedRulebookCasesTests.swift`) loads every `.json` file in this directory and checks `VitruvianSpeakerCore` (`SettingsCatalog`, `SpeakerConfig`, `SpeakerDevice`, `ChatMonitorConfig`, `ChatMonitorStatus`) against it.
 - **Android remote tests (follow-up PRs):**
   - Rust Mac helper tests: `//apps/mobile/android-remote/macagent:macagent_test`
   - Kotlin state & derivation tests: `//apps/mobile/android-remote:derive_test` and `//apps/mobile/android-remote:wire_test`
