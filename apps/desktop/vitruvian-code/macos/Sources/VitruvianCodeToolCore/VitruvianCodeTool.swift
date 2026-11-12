@@ -190,10 +190,8 @@ public final class VitruvianCodeTool {
             draft = parts.engine.configuration
             refreshOpenPanels()
         }
-        if !before.planMode, parts.settings.values.planMode != before.planMode {
-            parts.engine.session.planMode = parts.settings.values.planMode
-        } else if before.planMode != parts.settings.values.planMode {
-            parts.engine.session.planMode = parts.settings.values.planMode
+        if before.planMode != parts.settings.values.planMode {
+            parts.engine.session.hostPlanModeDidChange()
         }
         if before.worktreeMode != parts.settings.values.worktreeMode {
             parts.engine.session.worktreeMode = parts.settings.values.worktreeMode

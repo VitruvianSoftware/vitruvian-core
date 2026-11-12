@@ -49,4 +49,17 @@ public enum CommandAnswer {
         }
         try main.sync { try MainActor.assumeIsolated { try run(command) } }
     }
+
+    /// The app's slot for the chat showed, moved or went. That is a notice,
+    /// with nothing to answer, so it never holds the kit's thread: the kit
+    /// reads one message at a time, and a request behind it (a command, say)
+    /// would wait for the chat window to be built and drawn, which takes the
+    /// longest the first time. The work runs on the main thread just after,
+    /// in order with the commands that follow it, since both are queued there.
+    public static func slotChanged(
+        main: DispatchQueue = .main,
+        run: @escaping @Sendable @MainActor () -> Void
+    ) {
+        main.async { MainActor.assumeIsolated { run() } }
+    }
 }

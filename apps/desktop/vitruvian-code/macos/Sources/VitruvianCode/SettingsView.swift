@@ -20,12 +20,15 @@
 
 import SwiftUI
 import VitruvianCodeCore
+import VitruvianCodeUI
 
 /// Settings window for configuring the bot's .env file.
 struct SettingsView: View {
     @ObservedObject var configManager: ConfigManager
     @ObservedObject var botManager: BotManager
+    @ObservedObject var host: StandaloneHost
     @ObservedObject var updateChecker: UpdateChecker
+    private let chatStrings = VitruvianCodeChatStrings()
     @State private var showSaveConfirmation = false
     /// What the last Save returned; decides which message the confirmation shows.
     @State private var saveSucceeded = true
@@ -149,10 +152,9 @@ struct SettingsView: View {
                                 .frame(width: 120, alignment: .trailing)
                             VStack(alignment: .leading, spacing: 4) {
                                 Picker("", selection: $configManager.approvalMode) {
-                                    Text("YOLO — auto-approve everything").tag("yolo")
-                                    Text("Accept Edits — file edits only").tag("accept-edits")
-                                    Text("Plan — read-only").tag("plan")
-                                    Text("Default — ask for each tool").tag("default")
+                                    ForEach(VitruvianCodeApprovalMode.globalChoices) { mode in
+                                        Text(approvalModeLabel(mode)).tag(mode.rawValue)
+                                    }
                                 }
                                 .labelsHidden()
                                 Text(approvalModeHelp)
@@ -246,6 +248,8 @@ struct SettingsView: View {
                         ProviderRow(
                             provider: $provider,
                             isActive: configManager.activeProviderId == provider.id,
+                            showsConnectionSetting: host.showsConnectionSetting,
+                            strings: chatStrings,
                             onDelete: provider.isBuiltIn ? nil : {
                                 configManager.providers.removeAll { $0.id == provider.id }
                                 if configManager.activeProviderId == provider.id {
@@ -406,6 +410,15 @@ struct SettingsView: View {
         return "Could not save .env: \(reason)"
     }
 
+    private func approvalModeLabel(_ mode: VitruvianCodeApprovalMode) -> String {
+        switch mode {
+        case .yolo: return "YOLO — auto-approve everything"
+        case .acceptEdits: return "Accept Edits — file edits only"
+        case .plan: return "Plan — read-only"
+        case .standard, .auto: return "Default — ask for each tool"
+        }
+    }
+
     private var approvalModeHelp: String {
         switch configManager.approvalMode {
         case "yolo": return "Runs with --dangerously-skip-permissions: every file edit and command is executed without asking."
@@ -464,11 +477,31 @@ struct TimelineSideToggle: View {
 struct ProviderRow: View {
     @Binding var provider: CLIProvider
     let isActive: Bool
+    let showsConnectionSetting: Bool
+    let strings: VitruvianCodeChatStrings
     let onDelete: (() -> Void)?
 
     @State private var isEditing: Bool = false
     @State private var draftTemplate: String = ""
     @FocusState private var isFieldFocused: Bool
+
+    private var connectionChoices: [AgentConnectionKind?] {
+        var choices = provider.shared.availableConnections
+        if let current = provider.connection, !choices.contains(current) {
+            choices.append(current)
+        }
+        return choices
+    }
+
+    private func connectionLabel(_ kind: AgentConnectionKind?) -> String {
+        switch kind {
+        case nil: return strings.connectionDefault
+        case .commandLine: return strings.connectionCommandLine
+        case .acp: return strings.connectionACP
+        case .claudeSDK: return strings.connectionClaudeSDK
+        case .claudeACP: return strings.connectionClaudeACP
+        }
+    }
 
     /// The actual command Vitruvian Code runs for built-in providers (not the stored template).
     private var actualCommand: String {
@@ -507,6 +540,17 @@ struct ProviderRow: View {
                 }
 
                 Spacer()
+
+                if showsConnectionSetting {
+                    Picker(strings.connectionPreviewLabel, selection: $provider.connection) {
+                        ForEach(Array(connectionChoices.enumerated()), id: \.offset) { _, choice in
+                            Text(connectionLabel(choice))
+                                .tag(choice as AgentConnectionKind?)
+                        }
+                    }
+                    .controlSize(.small)
+                    .fixedSize()
+                }
 
                 // Only custom providers can be edited
                 if !provider.isBuiltIn {

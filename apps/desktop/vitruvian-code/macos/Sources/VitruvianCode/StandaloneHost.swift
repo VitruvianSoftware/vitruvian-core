@@ -30,7 +30,7 @@ import VitruvianCodeCore
 /// providers through this host and the engine, so the chat and Settings
 /// cannot overwrite each other's choice.
 @MainActor
-final class StandaloneHost: VitruvianCodeHost {
+final class StandaloneHost: VitruvianCodeHost, ObservableObject {
     /// The conversation the chat has open, for a notification's click to
     /// come back to. Set by whoever builds the engine; the host itself
     /// knows no engine.
@@ -45,41 +45,41 @@ final class StandaloneHost: VitruvianCodeHost {
     /// This app has no setting for the bot folder: it is always the standard one.
     var configuredBotDirectory: String { "" }
 
-    var startsBotAtLaunch: Bool { UserDefaults.standard.bool(forKey: "autoStart") }
+    var startsBotAtLaunch: Bool { AppPreferences.defaults.bool(forKey: "autoStart") }
 
     /// The key this app's chat has always kept plan mode under.
     var planMode: Bool {
-        get { UserDefaults.standard.bool(forKey: "planMode") }
-        set { UserDefaults.standard.set(newValue, forKey: "planMode") }
+        get { AppPreferences.defaults.bool(forKey: "planMode") }
+        set { AppPreferences.defaults.set(newValue, forKey: "planMode") }
     }
 
     /// The same key Settings' toggle keeps it under.
     var timelineOnLeft: Bool {
-        get { UserDefaults.standard.bool(forKey: "timelineOnLeft") }
-        set { UserDefaults.standard.set(newValue, forKey: "timelineOnLeft") }
+        get { AppPreferences.defaults.bool(forKey: "timelineOnLeft") }
+        set { AppPreferences.defaults.set(newValue, forKey: "timelineOnLeft") }
     }
 
     var hiddenClaudeSessionIDs: [String] {
-        get { UserDefaults.standard.stringArray(forKey: "hiddenClaudeSessionIds") ?? [] }
-        set { UserDefaults.standard.set(newValue, forKey: "hiddenClaudeSessionIds") }
+        get { AppPreferences.defaults.stringArray(forKey: "hiddenClaudeSessionIds") ?? [] }
+        set { AppPreferences.defaults.set(newValue, forKey: "hiddenClaudeSessionIds") }
     }
 
     /// The same key Settings keeps the selected provider under, as the same
     /// text: the id's capitals-and-dashes form.
     var chosenProviderID: UUID? {
-        get { UserDefaults.standard.string(forKey: "activeProviderId").flatMap(UUID.init(uuidString:)) }
+        get { AppPreferences.defaults.string(forKey: "activeProviderId").flatMap(UUID.init(uuidString:)) }
         set {
             if let newValue {
-                UserDefaults.standard.set(newValue.uuidString, forKey: "activeProviderId")
+                AppPreferences.defaults.set(newValue.uuidString, forKey: "activeProviderId")
             } else {
-                UserDefaults.standard.removeObject(forKey: "activeProviderId")
+                AppPreferences.defaults.removeObject(forKey: "activeProviderId")
             }
         }
     }
 
     var chosenModels: [UUID: String] {
         get {
-            guard let raw = UserDefaults.standard.dictionary(forKey: "chosenModels") as? [String: String] else {
+            guard let raw = AppPreferences.defaults.dictionary(forKey: "chosenModels") as? [String: String] else {
                 return [:]
             }
             var result: [UUID: String] = [:]
@@ -95,7 +95,7 @@ final class StandaloneHost: VitruvianCodeHost {
             for (key, value) in newValue {
                 raw[key.uuidString] = value
             }
-            UserDefaults.standard.set(raw, forKey: "chosenModels")
+            AppPreferences.defaults.set(raw, forKey: "chosenModels")
         }
     }
 
@@ -108,13 +108,13 @@ final class StandaloneHost: VitruvianCodeHost {
     /// a built-in out keeps the one already stored.
     var savedProviders: [VitruvianCodeCLIProvider] {
         get {
-            VitruvianCodeCLIProvider.saved(builtIn: UserDefaults.standard.data(forKey: "builtInProviders_v3"),
-                                        custom: UserDefaults.standard.data(forKey: "customProviders"))
+            VitruvianCodeCLIProvider.saved(builtIn: AppPreferences.defaults.data(forKey: "builtInProviders_v3"),
+                                        custom: AppPreferences.defaults.data(forKey: "customProviders"))
         }
         set {
             let lists = VitruvianCodeCLIProvider.storedLists(
                 saving: newValue,
-                over: VitruvianCodeCLIProvider.stored(UserDefaults.standard.data(forKey: "builtInProviders_v3")))
+                over: VitruvianCodeCLIProvider.stored(AppPreferences.defaults.data(forKey: "builtInProviders_v3")))
             Self.save(lists.builtIn, forKey: "builtInProviders_v3")
             Self.save(lists.custom, forKey: "customProviders")
         }
@@ -122,25 +122,25 @@ final class StandaloneHost: VitruvianCodeHost {
 
     private static func save(_ providers: [VitruvianCodeCLIProvider], forKey key: String) {
         guard let data = try? JSONEncoder().encode(providers) else { return }
-        UserDefaults.standard.set(data, forKey: key)
+        AppPreferences.defaults.set(data, forKey: key)
     }
 
     /// The keys this app's chat has always kept its prompt history and
     /// worktree mode under, in the same shape: a list of text, oldest
     /// first, and a yes or no.
     var promptHistory: [String] {
-        get { UserDefaults.standard.stringArray(forKey: "promptHistory") ?? [] }
-        set { UserDefaults.standard.set(newValue, forKey: "promptHistory") }
+        get { AppPreferences.defaults.stringArray(forKey: "promptHistory") ?? [] }
+        set { AppPreferences.defaults.set(newValue, forKey: "promptHistory") }
     }
 
     var worktreeMode: Bool {
-        get { UserDefaults.standard.bool(forKey: "worktreeMode") }
-        set { UserDefaults.standard.set(newValue, forKey: "worktreeMode") }
+        get { AppPreferences.defaults.bool(forKey: "worktreeMode") }
+        set { AppPreferences.defaults.set(newValue, forKey: "worktreeMode") }
     }
 
     var sessionPreferences: VitruvianCodeSessionPreferences {
         get {
-            let defaults = UserDefaults.standard
+            let defaults = AppPreferences.defaults
             return VitruvianCodeSessionPreferences(stored: [
                 VitruvianCodeSessionPreferences.pinnedKey:
                     defaults.stringArray(forKey: VitruvianCodeSessionPreferences.pinnedKey) ?? [],
@@ -149,8 +149,19 @@ final class StandaloneHost: VitruvianCodeHost {
             ])
         }
         set {
-            for (key, value) in newValue.stored { UserDefaults.standard.set(value, forKey: key) }
+            for (key, value) in newValue.stored { AppPreferences.defaults.set(value, forKey: key) }
         }
+    }
+
+    var chatModes: [String: String] {
+        get { AppPreferences.defaults.dictionary(forKey: "chatModes") as? [String: String] ?? [:] }
+        set { AppPreferences.defaults.set(newValue, forKey: "chatModes") }
+    }
+
+    /// Kept on this instance only: Settings sets it while it is open (Option
+    /// held at open) and it is off at every launch.
+    var showsConnectionSetting = false {
+        willSet { objectWillChange.send() }
     }
 
     var strings: VitruvianCodeHostStrings { VitruvianCodeHostStrings() }
