@@ -773,6 +773,21 @@ the program's `--state` (the agent reads no history file) and its text is said w
 
 ---
 
+## Say who an announcement is from
+
+Home Speaker can start each announcement with the app it came from ("Claude: …"), or the app and
+the session when several sessions of one app are talking ("Claude, Courier: …"). It is one choice
+setting, `announce_source`, off by default.
+
+`GET /v1/homespeaker` adds `announce_source` (`"off"` \| `"app"` \| `"app_and_session"`), read
+from the document's settings. An older Home Speaker sends nothing; the phone reads that as off and
+hides the row, because the catalog has no `announce_source` entry.
+
+`POST /v1/homespeaker` accepts `announce_source` with the same values; it is a `set` operation, and
+Home Speaker rejects any other value.
+
+---
+
 # Sony Google TV (`/v1/tv`)
 
 Drives a Sony Google TV over wireless ADB from the Mac.

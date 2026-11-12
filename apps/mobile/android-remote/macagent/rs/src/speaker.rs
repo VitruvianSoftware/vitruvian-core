@@ -390,6 +390,9 @@ pub struct VitruvianSpeakerState {
     pub announce_claude_code: Option<bool>,
     pub announce_antigravity: Option<bool>,
     pub announce_opencode: Option<bool>,
+    /// Whether announcements say which app (and session) they came from:
+    /// "off", "app" or "app_and_session". Empty on a Mac too old to have it.
+    pub announce_source: String,
     pub slack_enabled: Option<bool>,
     pub google_chat_enabled: Option<bool>,
     pub beeper_enabled: Option<bool>,
@@ -486,6 +489,7 @@ impl Default for VitruvianSpeakerState {
             announce_claude_code: None,
             announce_antigravity: None,
             announce_opencode: None,
+            announce_source: String::new(),
             slack_enabled: None,
             google_chat_enabled: None,
             beeper_enabled: None,
@@ -780,6 +784,10 @@ impl VitruvianSpeakerState {
             },
         );
         m.insert(
+            "announce_source".to_string(),
+            JsonValue::String(self.announce_source.clone()),
+        );
+        m.insert(
             "slack_enabled".to_string(),
             match self.slack_enabled {
                 Some(b) => JsonValue::Bool(b),
@@ -920,6 +928,7 @@ pub struct VitruvianSpeakerUpdate {
     pub announce_claude_code: Option<bool>,
     pub announce_antigravity: Option<bool>,
     pub announce_opencode: Option<bool>,
+    pub announce_source: Option<String>,
     pub slack_enabled: Option<bool>,
     pub google_chat_enabled: Option<bool>,
     pub beeper_enabled: Option<bool>,
@@ -985,6 +994,7 @@ impl VitruvianSpeakerUpdate {
             && self.announce_claude_code.is_none()
             && self.announce_antigravity.is_none()
             && self.announce_opencode.is_none()
+            && self.announce_source.is_none()
             && self.slack_enabled.is_none()
             && self.google_chat_enabled.is_none()
             && self.beeper_enabled.is_none()
@@ -1092,6 +1102,7 @@ impl VitruvianSpeakerUpdate {
         u.announce_claude_code = opt_bool(obj, "announce_claude_code")?;
         u.announce_antigravity = opt_bool(obj, "announce_antigravity")?;
         u.announce_opencode = opt_bool(obj, "announce_opencode")?;
+        u.announce_source = opt_str(obj, "announce_source")?;
         u.slack_enabled = opt_bool(obj, "slack_enabled")?;
         u.google_chat_enabled = opt_bool(obj, "google_chat_enabled")?;
         u.beeper_enabled = opt_bool(obj, "beeper_enabled")?;
@@ -1917,7 +1928,7 @@ impl VitruvianSpeaker {
         if body.empty() {
             return HttpResponse::error(
                 400,
-                "nothing to change: give enabled, default_target, speech_length, quiet_hours_enabled, pause_media, pause_media_extra_seconds, announce_volume_enabled, announce_volume, speak_home, speak_local, speak_phone, phone_pause_media, phone_headphones_only, local_engine, gemini_voice, announcement_style, style_model, announce_claude_code, announce_antigravity, announce_opencode, slack_enabled, google_chat_enabled, beeper_enabled, beeper_announce, beeper_network, courier_enabled, courier_announce, courier_network, courier_read_anyway or mute_own_messages",
+                "nothing to change: give enabled, default_target, speech_length, quiet_hours_enabled, pause_media, pause_media_extra_seconds, announce_volume_enabled, announce_volume, speak_home, speak_local, speak_phone, phone_pause_media, phone_headphones_only, local_engine, gemini_voice, announcement_style, style_model, announce_claude_code, announce_antigravity, announce_opencode, announce_source, slack_enabled, google_chat_enabled, beeper_enabled, beeper_announce, beeper_network, courier_enabled, courier_announce, courier_network, courier_read_anyway or mute_own_messages",
             );
         }
         let mut verified = Vec::new();
@@ -2455,6 +2466,7 @@ fn map_state_doc(
     st.announce_claude_code = s.bool("announce_claude_code");
     st.announce_antigravity = s.bool("announce_antigravity");
     st.announce_opencode = s.bool("announce_opencode");
+    st.announce_source = s.str("announce_source");
     st.slack_enabled = s.bool("slack_enabled");
     st.google_chat_enabled = s.bool("google_chat_enabled");
     st.beeper_enabled = s.bool("beeper_enabled");
@@ -2762,6 +2774,7 @@ pub fn plan_ops_with(
         ("style_model", &u.style_model),
         ("google_chat_source", &u.google_chat_source),
         ("gws_account", &u.gws_account),
+        ("announce_source", &u.announce_source),
         ("beeper_announce", &u.beeper_announce),
         ("courier_announce", &u.courier_announce),
     ] {
@@ -3035,6 +3048,7 @@ mod tests {
         assert_eq!(b.get_opt_bool("announce_claude_code"), Some(true));
         assert_eq!(b.get_opt_bool("announce_antigravity"), Some(true));
         assert_eq!(b.get_opt_bool("announce_opencode"), Some(false));
+        assert_eq!(b.get_str("announce_source"), "off");
         assert_eq!(b.get_opt_bool("slack_enabled"), Some(true));
         assert_eq!(b.get_opt_bool("google_chat_enabled"), Some(true));
         assert_eq!(b.get_opt_bool("beeper_enabled"), Some(true));
@@ -3307,6 +3321,7 @@ mod tests {
             "style_model",
             "google_chat_source",
             "gws_account",
+            "announce_source",
             "beeper_announce",
             "courier_announce",
         ];
