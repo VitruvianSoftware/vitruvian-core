@@ -1,0 +1,73 @@
+# Copyright (c) 2026 VitruvianSoftware
+# SPDX-License-Identifier: MIT
+#
+# Restore drill: rebuild Zitadel's database from its MinIO backups into a
+# throwaway cluster, to prove the backups can actually be restored and to
+# measure how long it takes and how much data is lost.
+#
+# Run it with the runbook (README.md next to this file), never by hand:
+#   bazel run //gitops/drills/cnpg-restore-zitadel:apply
+#   bazel run //gitops/drills/cnpg-restore-zitadel:delete
+#
+# Safety, read before changing anything:
+# - READ-ONLY on the backups. There is no spec.plugins and no spec.backup, so
+#   this cluster never archives WAL. A restored cluster that archived into
+#   s3://zitadel-db-backups/ under the source's server name would corrupt the
+#   real backup history.
+# - It lives in the zitadel namespace only because the Barman Cloud plugin
+#   needs the ObjectStore (zitadel-db-cluster-backups) and its MinIO login in
+#   the same namespace. Its name differs from the live cluster, so every
+#   Service (-rw/-ro/-r), Secret and PVC it creates differs too. Zitadel keeps
+#   using zitadel-db-cluster-rw.
+# - Not managed by Argo CD: gitops/drills/ is outside gitops/argocd/, so
+#   app-of-platform never sees it and nothing re-creates it after :delete.
+# - :delete removes the PVC with the cluster. That is intended: this copy is
+#   scratch. The live cluster's PVCs are named zitadel-db-cluster-N and are not
+#   touched.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: zitadel-db-restore-drill
+  namespace: zitadel
+  labels:
+    vitruvian.dev/restore-drill: "true"
+spec:
+  instances: 1
+  # Same major version as the source (a restore needs it).
+  imageName: ghcr.io/cloudnative-pg/postgresql:16
+  # The node with the most free disk on 2026-11-12 (610 GiB free on /; the
+  # other wired nodes had 13-44 GiB). local-path writes to the node's own disk.
+  affinity:
+    nodeSelector:
+      kubernetes.io/hostname: nuc9i9
+  storage:
+    size: 8Gi
+    storageClass: local-path
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      memory: 1Gi
+  bootstrap:
+    recovery:
+      # No recoveryTarget: replay every WAL file in the archive, which is the
+      # "latest possible" restore an outage would want. Data lost is then
+      # whatever the primary had not archived yet (archive_timeout is 5min).
+      source: zitadel-db-source
+      database: zitadel
+      owner: zitadel
+      # Without this CNPG would generate a new password and set it on the
+      # restored zitadel role. Pointing at the live secret keeps the restored
+      # password identical, so the verify job logs in to both with one login.
+      secret:
+        name: zitadel-db-app-credentials
+  externalClusters:
+    - name: zitadel-db-source
+      plugin:
+        name: barman-cloud.cloudnative-pg.io
+        parameters:
+          barmanObjectName: zitadel-db-cluster-backups
+          # The live cluster's name: its backups and WAL sit under
+          # s3://zitadel-db-backups/zitadel-db-cluster/.
+          serverName: zitadel-db-cluster

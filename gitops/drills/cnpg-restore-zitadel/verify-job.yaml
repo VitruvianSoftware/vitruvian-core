@@ -1,0 +1,79 @@
+# Copyright (c) 2026 VitruvianSoftware
+# SPDX-License-Identifier: MIT
+#
+# Compares the restored copy with the live database, using only read queries.
+# Waits for the drill cluster to accept connections, then prints the same
+# numbers from both, so the logs show what survived the restore:
+#   bazel run //tools/gitops:logs -- -n zitadel job/zitadel-db-restore-drill-verify
+#
+# A restore keeps the roles and passwords of the source, so Zitadel's own
+# login (zitadel-db-app-credentials) works on both. It reads the live
+# database through zitadel-db-cluster-ro (a replica), never the primary.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: zitadel-db-restore-drill-verify
+  namespace: zitadel
+  labels:
+    vitruvian.dev/restore-drill: "true"
+spec:
+  backoffLimit: 2
+  # A restore of a few GiB should finish well inside this; past it, the drill
+  # itself has failed and the runbook says to read the cluster's events.
+  activeDeadlineSeconds: 14400
+  template:
+    metadata:
+      labels:
+        vitruvian.dev/restore-drill: "true"
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: verify
+          image: ghcr.io/cloudnative-pg/postgresql:16
+          env:
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef:
+                  name: zitadel-db-app-credentials
+                  key: username
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: zitadel-db-app-credentials
+                  key: password
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -u
+              drill=zitadel-db-restore-drill-rw
+              echo "verify: waiting for $drill from $(date -u +%FT%TZ)"
+              until pg_isready -q -h "$drill" -p 5432; do sleep 15; done
+              echo "verify: $drill accepts connections at $(date -u +%FT%TZ)"
+              # CNPG restarts the new primary once, right after recovery ends,
+              # to apply its own settings (first drill: ~10s after it first
+              # accepted connections). Retry each query through that restart.
+              q() {
+                for attempt in 1 2 3 4 5 6 7 8 9 10; do
+                  if psql "host=$1 port=5432 dbname=zitadel sslmode=require" -XAtq -F ' | ' -c "$2"; then
+                    return 0
+                  fi
+                  sleep 15
+                done
+                echo "verify: FAILED after 10 tries on $1: $2"
+                return 1
+              }
+              for h in zitadel-db-cluster-ro "$drill"; do
+                echo "== $h at $(date -u +%FT%TZ)"
+                q "$h" "select 'in_recovery', pg_is_in_recovery()"
+                q "$h" "select 'db_size_bytes', pg_database_size('zitadel')"
+                q "$h" "select 'user_tables', count(*) from information_schema.tables where table_schema not in ('pg_catalog','information_schema')"
+                q "$h" "select 'events2_rows', count(*) from eventstore.events2"
+                q "$h" "select 'events2_newest', max(created_at) from eventstore.events2"
+              done
+              echo "verify: done at $(date -u +%FT%TZ)"

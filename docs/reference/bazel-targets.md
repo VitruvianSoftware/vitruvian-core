@@ -131,6 +131,7 @@ Additional tooling:
 | `//tools/gitops:{apply,delete,diff,get,patch,status,helm,kubeseal}` | kubectl/helm/kubeseal passthroughs with the right kubeconfig baked in |
 | `//tools/gitops:{describe,logs,events,top,explain,api-resources}` | Read-only kubectl passthroughs (agent-guard sends raw `kubectl` reads here) |
 | `//gitops/argocd/platform/<component>:{apply,diff,delete}` | Per-component manifest ops (cert-manager, cilium, cnpg, prometheus, grafana, …) |
+| `//gitops/drills/cnpg-restore-zitadel:{apply,diff,delete}` | Restore drill: rebuild Zitadel's database from its MinIO backups into a scratch cluster and compare it with live ([runbook](../../gitops/drills/cnpg-restore-zitadel/README.md)) |
 | `//tools/gitops:sealed-secrets-{backup,restore,verify}` | Bitwarden-backed custody of the sealed-secrets controller keys — **losing these loses every sealed secret** |
 | `//tools/gitops:argocd-secret-{backup,restore,verify}` | Same custody pattern for the ArgoCD server secret |
 | `//tools/gitops:headscale` | Full operational CLI for Headscale tailnet control plane (`-- <args...>`) |
