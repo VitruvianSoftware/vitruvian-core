@@ -22,12 +22,12 @@
 import PackageDescription
 
 let package = Package(
-    name: "HomeSpeaker",
+    name: "VitruvianSpeaker",
     platforms: [.macOS(.v14)],
     products: [
         // The tool for the Vitruvian app; the app itself is the executable
         // target below, built by `swift build` as before.
-        .executable(name: "homespeaker-tool", targets: ["HomeSpeakerTool"]),
+        .executable(name: "vitruvian-speaker-tool", targets: ["VitruvianSpeakerTool"]),
     ],
     dependencies: [
         // The Vitruvian tool kit, for the tool targets below. The kit's
@@ -38,39 +38,39 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "HomeSpeakerCore",
-            path: "Sources/HomeSpeakerCore"
+            name: "VitruvianSpeakerCore",
+            path: "Sources/VitruvianSpeakerCore"
         ),
         .executableTarget(
-            name: "HomeSpeaker",
-            dependencies: ["HomeSpeakerCore"],
-            path: "Sources/HomeSpeaker"
+            name: "VitruvianSpeaker",
+            dependencies: ["VitruvianSpeakerCore"],
+            path: "Sources/VitruvianSpeaker"
         ),
-        // The HomeSpeaker tool for the Vitruvian app: its core, its
+        // The Speaker tool for the Vitruvian app: its core, its
         // program and its tests. MUST MIRROR BUILD, target for target.
         .target(
-            name: "HomeSpeakerToolCore",
+            name: "VitruvianSpeakerToolCore",
             dependencies: [
-                "HomeSpeakerCore",
+                "VitruvianSpeakerCore",
                 .product(name: "VitruvianToolKit", package: "vitruvian-sdk"),
                 .product(name: "VitruvianToolProtocol", package: "vitruvian-sdk"),
             ],
-            path: "Sources/HomeSpeakerToolCore"
+            path: "Sources/VitruvianSpeakerToolCore"
         ),
         .executableTarget(
-            name: "HomeSpeakerTool",
-            dependencies: ["HomeSpeakerCore", "HomeSpeakerToolCore"],
-            path: "Sources/HomeSpeakerTool"
+            name: "VitruvianSpeakerTool",
+            dependencies: ["VitruvianSpeakerCore", "VitruvianSpeakerToolCore"],
+            path: "Sources/VitruvianSpeakerTool"
         ),
         .testTarget(
-            name: "HomeSpeakerToolTests",
-            dependencies: ["HomeSpeakerCore", "HomeSpeakerToolCore"],
-            path: "Tests/HomeSpeakerToolTests"
+            name: "VitruvianSpeakerToolTests",
+            dependencies: ["VitruvianSpeakerCore", "VitruvianSpeakerToolCore"],
+            path: "Tests/VitruvianSpeakerToolTests"
         ),
         .testTarget(
-            name: "HomeSpeakerTests",
-            dependencies: ["HomeSpeakerCore"],
-            path: "Tests/HomeSpeakerTests"
+            name: "VitruvianSpeakerTests",
+            dependencies: ["VitruvianSpeakerCore"],
+            path: "Tests/VitruvianSpeakerTests"
         ),
     ]
 )

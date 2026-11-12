@@ -78,7 +78,7 @@ fn semver_match_at(b: &[u8], start: usize) -> Option<usize> {
 
 /// cask_name_for_app: PascalCase to kebab-case, through the script's two
 /// `sed -E` passes and `tr '[:upper:]' '[:lower:]'`:
-/// HomeSpeaker -> home-speaker, HTTPServer -> http-server.
+/// VitruvianSpeaker -> vitruvian-speaker, HTTPServer -> http-server.
 pub fn cask_name_for_app(name: &str) -> String {
     let b = name.as_bytes();
     // s/([A-Z]+)([A-Z][a-z])/\1-\2/g
@@ -148,9 +148,16 @@ pub fn generate_cask_ruby(
     )
 }
 
+/// artifact_stem: release artifact filename prefix for an app display name
+/// ("Vitruvian Speaker" -> "VitruvianSpeaker").
+pub fn artifact_stem(app_name: &str) -> String {
+    app_name.replace(' ', "")
+}
+
 /// expected_artifact_names: the five DMG/ZIP names of a release.
 pub fn expected_artifact_names(app_name: &str, version: &str) -> Vec<String> {
-    let base = format!("{app_name}-{version}");
+    let stem = artifact_stem(app_name);
+    let base = format!("{stem}-{version}");
     vec![
         format!("{base}-universal.dmg"),
         format!("{base}-arm64.dmg"),
@@ -171,7 +178,8 @@ pub fn required_release_assets(
     skip_thinning: bool,
     extra: &[String],
 ) -> Vec<String> {
-    let base = format!("{app_name}-{version}");
+    let stem = artifact_stem(app_name);
+    let base = format!("{stem}-{version}");
     let mut names = vec![format!("{base}-universal.zip"), format!("{base}-macOS.zip")];
     if !skip_dmg {
         names.push(format!("{base}-universal.dmg"));
@@ -288,7 +296,7 @@ mod tests {
     #[test]
     fn clean_version_matches_the_script_cases() {
         for (tag, want) in [
-            ("home-speaker-v1.11.0", "1.11.0"),
+            ("vitruvian-speaker-v1.11.0", "1.11.0"),
             ("vitruvian-v3.37.1", "3.37.1"),
             ("nexus-agent-v1.20.1", "1.20.1"),
             ("vitruvian-code-v1.33.0", "1.33.0"),
@@ -313,7 +321,7 @@ mod tests {
     #[test]
     fn cask_names() {
         for (app, want) in [
-            ("HomeSpeaker", "home-speaker"),
+            ("VitruvianSpeaker", "vitruvian-speaker"),
             ("NexusAgent", "nexus-agent"),
             ("Vitruvian", "vitruvian"),
             ("MyNewDesktopClient", "my-new-desktop-client"),
@@ -343,6 +351,9 @@ mod tests {
         assert_eq!(all[0], "TestApp-1.0.0-universal.zip");
         assert_eq!(all[1], "TestApp-1.0.0-universal.zip.sha256");
         assert_eq!(all[13], "TestApp-1.0.0-tool.zip.sha256");
+        let spaced = required_release_assets("Vitruvian Speaker", "1.0.0", false, true, &[]);
+        assert_eq!(spaced[0], "VitruvianSpeaker-1.0.0-universal.zip");
+        assert_eq!(expected_artifact_names("Vitruvian Speaker", "1.0.0")[0], "VitruvianSpeaker-1.0.0-universal.dmg");
         assert_eq!(required_release_assets("A", "1", true, false, &[]).len(), 4);
         assert_eq!(required_release_assets("A", "1", false, true, &[]).len(), 8);
         assert_eq!(expected_artifact_names("A", "1").len(), 5);

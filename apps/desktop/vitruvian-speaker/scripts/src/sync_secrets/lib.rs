@@ -38,7 +38,7 @@ Usage: sync-secrets [--out <path>] (--from-env | --env-file <path>) [-h|--help]
 Reads secrets and generates GeneratedSecrets.swift.
 
 Options:
-  --out <path>       Output file path (default: <workspace>/apps/desktop/home-speaker/Sources/HomeSpeakerCore/GeneratedSecrets.swift)
+  --out <path>       Output file path (default: <workspace>/apps/desktop/vitruvian-speaker/Sources/VitruvianSpeakerCore/GeneratedSecrets.swift)
   --from-env         Read secrets from environment variables
   --env-file <path>  Read secrets from a dotenv-style file
   -h, --help         Show this help message";
@@ -212,7 +212,7 @@ fn resolve_out_path(config: &Config) -> Result<String, String> {
         "error: BUILD_WORKSPACE_DIRECTORY not set and --out not provided".to_string()
     })?;
     Ok(format!(
-        "{ws}/apps/desktop/home-speaker/Sources/HomeSpeakerCore/GeneratedSecrets.swift"
+        "{ws}/apps/desktop/vitruvian-speaker/Sources/VitruvianSpeakerCore/GeneratedSecrets.swift"
     ))
 }
 
@@ -299,7 +299,7 @@ pub fn run(args: &[String]) -> i32 {
         return 1;
     }
 
-    println!("Synced HomeSpeaker secrets -> {out_path} (source: {source_label})");
+    println!("Synced Vitruvian Speaker secrets -> {out_path} (source: {source_label})");
     0
 }
 

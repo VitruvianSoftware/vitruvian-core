@@ -25,6 +25,7 @@
 # infrastructure/pulumi/platform/repo-config/sponsor-button-repos.txt.
 # This folder is exported to the root of the public mirror repository, so the
 # file lands in the mirror's own .github/ (tools/copybara/copy.bara.sky).
-# It opens HomeSpeaker's own page, so donations through it are counted for
-# HomeSpeaker in Stripe, not for Vitruvian Software as a whole.
+# It opens Vitruvian Speaker's donate page (keyed under Stripe's home-speaker
+# Payment Link), so donations through it are counted for Vitruvian Speaker in
+# Stripe, not for Vitruvian Software as a whole.
 custom: ["https://vitruviansoftware.dev/donate/home-speaker/"]

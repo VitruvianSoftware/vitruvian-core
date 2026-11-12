@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! The built HomeSpeaker tool is a tool the app can add, and it speaks the
+//! The built Vitruvian Speaker tool is a tool the app can add, and it speaks the
 //! protocol: validate, conformance, end-to-end page driving, scratch folder
 //! isolation, and chat monitor startup with a stand-in Beeper HTTP server.
 
@@ -58,11 +58,11 @@ const APP_FILES: &[&str] = &[
     "speaker_monitor_status.json",
 ];
 const DOOR_FILE: &str = "speaker_door.json";
-const NOT_SET_UP: &str = "sayClipboard: refused, Set up HomeSpeaker first";
+const NOT_SET_UP: &str = "sayClipboard: refused, Set up Vitruvian Speaker first";
 
 const MORE_SETTINGS: &str = "moreSettings";
 const MORE_SETTINGS_CAPTION: &str =
-    "More settings: Vitruvian Settings \u{203a} Extensions \u{203a} HomeSpeaker";
+    "More settings: Vitruvian Settings \u{203a} Extensions \u{203a} Speaker";
 const QUIT_AGAIN: &str = "door.quitAgain";
 const OLD_APP: &str = "This copy of the app is older than 1.19";
 
@@ -181,7 +181,7 @@ fn block<'a>(tree: &'a CValue, block_id: &str) -> Option<&'a CValue> {
 fn offers_no_quit(tree: &CValue, where_: &str) -> Result<(), E2EFailure> {
     if block(tree, QUIT_AGAIN).is_some() || says(tree, OLD_APP) {
         fail!(
-            "{}: the page offers to quit a HomeSpeaker app, though none was found",
+            "{}: the page offers to quit a Vitruvian Speaker app, though none was found",
             where_
         );
     }
@@ -236,7 +236,7 @@ fn unique_prefix() -> String {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default();
     format!(
-        "test.{:x}{:x}.homespeaker",
+        "test.{:x}{:x}.speaker",
         now.as_secs(),
         now.subsec_nanos()
     )
@@ -717,7 +717,7 @@ fn end_to_end(
         let island = app.open("speaker")?;
         offers_no_quit(&island, "speaker, first page")?;
         if says(&island, "not installed") {
-            fail!("the island says HomeSpeaker is not installed");
+            fail!("the island says Vitruvian Speaker is not installed");
         }
         app.act(
             "speaker",
@@ -1367,23 +1367,23 @@ fn monitor_starts(folder: &Path, scratch: &Path) -> Result<Vec<String>, E2EFailu
         home.to_string_lossy().to_string(),
     );
     env.insert(
-        "HOMESPEAKER_DATA_FOLDER".into(),
+        "VITRUVIAN_SPEAKER_DATA_FOLDER".into(),
         data.to_string_lossy().to_string(),
     );
-    env.insert("HOMESPEAKER_PROGRAM".into(), String::new());
-    env.insert("HOMESPEAKER_MESSAGE_PREFIX".into(), unique_prefix());
+    env.insert("VITRUVIAN_SPEAKER_PROGRAM".into(), String::new());
+    env.insert("VITRUVIAN_SPEAKER_MESSAGE_PREFIX".into(), unique_prefix());
     env.insert(
         "SWIFT_IS_CURRENT_EXECUTOR_LEGACY_MODE_OVERRIDE".into(),
         "legacy".into(),
     );
-    env.insert("HOMESPEAKER_BEEPER_URL".into(), beeper.url());
+    env.insert("VITRUVIAN_SPEAKER_BEEPER_URL".into(), beeper.url());
 
     if env
-        .get("HOMESPEAKER_BEEPER_URL")
+        .get("VITRUVIAN_SPEAKER_BEEPER_URL")
         .map(|u| u.contains(&format!(":{}", REAL_BEEPER_PORT)))
         .unwrap_or(false)
     {
-        fail!("HOMESPEAKER_BEEPER_URL names the real Beeper's port");
+        fail!("VITRUVIAN_SPEAKER_BEEPER_URL names the real Beeper's port");
     }
 
     let settings_json = serde_json::json!({
@@ -1655,7 +1655,7 @@ fn conformance_test() {
     let scratch_dir = TempDir::new("vitruvian-hs-conformance-").expect("cannot create scratch dir");
     let scratch = scratch_dir.path();
 
-    let folder = scratch.join("homespeaker");
+    let folder = scratch.join("vitruvian-speaker");
     copy_dir_deref(built, &folder).expect("cannot copy built folder");
 
     let home = scratch.join("home");
@@ -1672,11 +1672,11 @@ fn conformance_test() {
         home.to_string_lossy().to_string(),
     );
     env.insert(
-        "HOMESPEAKER_DATA_FOLDER".into(),
+        "VITRUVIAN_SPEAKER_DATA_FOLDER".into(),
         data.to_string_lossy().to_string(),
     );
-    env.insert("HOMESPEAKER_PROGRAM".into(), String::new());
-    env.insert("HOMESPEAKER_MESSAGE_PREFIX".into(), unique_prefix());
+    env.insert("VITRUVIAN_SPEAKER_PROGRAM".into(), String::new());
+    env.insert("VITRUVIAN_SPEAKER_MESSAGE_PREFIX".into(), unique_prefix());
 
     let program = folder.join("bin").join("tool");
     let validate_abs = fs::canonicalize(&validate_bin).unwrap_or_else(|_| validate_bin.clone());
@@ -1757,7 +1757,7 @@ fn conformance_test() {
     }
 
     println!(
-        "the built HomeSpeaker tool validates, passes the conformance script, \
+        "the built Vitruvian Speaker tool validates, passes the conformance script, \
          draws and saves its pages end to end, keeps to its scratch folder, \
          and stays up when its chat monitor starts"
     );

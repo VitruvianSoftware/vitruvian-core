@@ -5,30 +5,30 @@ load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("//tools/swift-test-preferences:defs.bzl", "swift_test")
 
 swift_library(
-    name = "HomeSpeakerCore",
-    srcs = glob(["Sources/HomeSpeakerCore/**/*.swift"]),
-    module_name = "HomeSpeakerCore",
+    name = "VitruvianSpeakerCore",
+    srcs = glob(["Sources/VitruvianSpeakerCore/**/*.swift"]),
+    module_name = "VitruvianSpeakerCore",
     target_compatible_with = ["@platforms//os:macos"],
 )
 
 swift_library(
-    name = "HomeSpeakerLib",
-    srcs = glob(["Sources/HomeSpeaker/**/*.swift"]),
-    module_name = "HomeSpeaker",
+    name = "VitruvianSpeakerLib",
+    srcs = glob(["Sources/VitruvianSpeaker/**/*.swift"]),
+    module_name = "VitruvianSpeaker",
     target_compatible_with = ["@platforms//os:macos"],
-    deps = [":HomeSpeakerCore"],
+    deps = [":VitruvianSpeakerCore"],
 )
 
 swift_test(
-    name = "HomeSpeakerTests",
+    name = "VitruvianSpeakerTests",
     # The tool's tests and the view snapshots are targets of their own,
     # below: they link the tool's core and the app's views, which this
     # target does not.
     srcs = glob(
         ["Tests/**/*.swift"],
         exclude = [
-            "Tests/HomeSpeakerToolTests/**",
-            "Tests/HomeSpeakerViewTests/**",
+            "Tests/VitruvianSpeakerToolTests/**",
+            "Tests/VitruvianSpeakerViewTests/**",
         ],
     ),
     # ProductionReadinessTests reads Sources/Info.plist; SharedRulebookCasesTests
@@ -39,106 +39,106 @@ swift_test(
     ]) + ["Resources/Info.plist"],
     # Never the real Beeper Desktop (23373) or Courier (23390).
     env = {
-        "HOMESPEAKER_BEEPER_URL": "http://localhost:9",
-        "HOMESPEAKER_COURIER_URL": "http://localhost:9",
+        "VITRUVIAN_SPEAKER_BEEPER_URL": "http://localhost:9",
+        "VITRUVIAN_SPEAKER_COURIER_URL": "http://localhost:9",
     },
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
-    deps = [":HomeSpeakerCore"],
+    deps = [":VitruvianSpeakerCore"],
 )
 
 # The app's views without Entry.swift (whose @main no test can link), as the
-# module HomeSpeaker, compiled for @testable import: HomeSpeakerViewTests
-# renders them. Test-only; the app itself is HomeSpeakerLib.
+# module VitruvianSpeaker, compiled for @testable import: VitruvianSpeakerViewTests
+# renders them. Test-only; the app itself is VitruvianSpeakerLib.
 swift_library(
-    name = "HomeSpeakerViews",
+    name = "VitruvianSpeakerViews",
     testonly = True,
     srcs = glob(
-        ["Sources/HomeSpeaker/**/*.swift"],
-        exclude = ["Sources/HomeSpeaker/Entry.swift"],
+        ["Sources/VitruvianSpeaker/**/*.swift"],
+        exclude = ["Sources/VitruvianSpeaker/Entry.swift"],
     ),
     features = ["swift.enable_testing"],
-    module_name = "HomeSpeaker",
+    module_name = "VitruvianSpeaker",
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
-    deps = [":HomeSpeakerCore"],
+    deps = [":VitruvianSpeakerCore"],
 )
 
 # A render harness, not a test of how anything looks: it draws Settings ›
 # Chats' Beeper and Courier sections, light and dark, to PNGs in the test's
-# undeclared outputs (bazel-testlogs/.../HomeSpeakerViewTests/test.outputs),
+# undeclared outputs (bazel-testlogs/.../VitruvianSpeakerViewTests/test.outputs),
 # and asserts only that each drew at a sensible size. A person reads the
 # PNGs before a view change ships: green tests have shipped a broken layout
 # before. Nothing here reads or writes this Mac's settings or secrets.
 swift_test(
-    name = "HomeSpeakerViewTests",
+    name = "VitruvianSpeakerViewTests",
     size = "small",
-    srcs = glob(["Tests/HomeSpeakerViewTests/**/*.swift"]),
+    srcs = glob(["Tests/VitruvianSpeakerViewTests/**/*.swift"]),
     env = {
-        "HOMESPEAKER_BEEPER_URL": "http://localhost:9",
-        "HOMESPEAKER_COURIER_URL": "http://localhost:9",
+        "VITRUVIAN_SPEAKER_BEEPER_URL": "http://localhost:9",
+        "VITRUVIAN_SPEAKER_COURIER_URL": "http://localhost:9",
     },
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
     deps = [
-        ":HomeSpeakerCore",
-        ":HomeSpeakerViews",
+        ":VitruvianSpeakerCore",
+        ":VitruvianSpeakerViews",
     ],
 )
 
-# The HomeSpeaker tool for the Vitruvian app (docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-f.md):
+# The Speaker tool for the Vitruvian app (docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-f.md):
 # a second door to this app. What it knows, apart from the link to the
-# app: the settings file both share, HomeSpeaker's program and its flags,
+# app: the settings file both share, Vitruvian Speaker's program and its flags,
 # the two pages, and the state machine behind a link protocol, so the tests
 # drive it without a process. It links the MIT kit and protocol
-# (packages/vitruvian-sdk) and HomeSpeakerCore, for the settings' shape.
+# (packages/vitruvian-sdk) and VitruvianSpeakerCore, for the settings' shape.
 swift_library(
-    name = "HomeSpeakerToolCore",
-    srcs = glob(["Sources/HomeSpeakerToolCore/**/*.swift"]),
+    name = "VitruvianSpeakerToolCore",
+    srcs = glob(["Sources/VitruvianSpeakerToolCore/**/*.swift"]),
     features = ["swift.enable_v6"],
-    module_name = "HomeSpeakerToolCore",
+    module_name = "VitruvianSpeakerToolCore",
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
     deps = [
-        ":HomeSpeakerCore",
+        ":VitruvianSpeakerCore",
         "//packages/vitruvian-sdk:VitruvianToolKit",
         "//packages/vitruvian-sdk:VitruvianToolProtocol",
     ],
 )
 
 # Against a settings file in the temporary folder, a driver that answers
-# itself and a link that records. Nothing here starts HomeSpeaker.
+# itself and a link that records. Nothing here starts Vitruvian Speaker.
 swift_test(
-    name = "HomeSpeakerToolTests",
+    name = "VitruvianSpeakerToolTests",
     size = "small",
-    srcs = glob(["Tests/HomeSpeakerToolTests/**/*.swift"]),
+    srcs = glob(["Tests/VitruvianSpeakerToolTests/**/*.swift"]),
     # Never the real Beeper Desktop (23373) or Courier (23390).
     env = {
-        "HOMESPEAKER_BEEPER_URL": "http://localhost:9",
-        "HOMESPEAKER_COURIER_URL": "http://localhost:9",
+        "VITRUVIAN_SPEAKER_BEEPER_URL": "http://localhost:9",
+        "VITRUVIAN_SPEAKER_COURIER_URL": "http://localhost:9",
     },
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
     deps = [
-        ":HomeSpeakerCore",
-        ":HomeSpeakerToolCore",
+        ":VitruvianSpeakerCore",
+        ":VitruvianSpeakerToolCore",
         "//packages/vitruvian-sdk:VitruvianToolKit",
         "//packages/vitruvian-sdk:VitruvianToolProtocol",
     ],
 )
 
-# The tool's program: the kit's loop around HomeSpeakerToolCore, and
+# The tool's program: the kit's loop around VitruvianSpeakerToolCore, and
 # nothing else.
 swift_binary(
-    name = "homespeaker-tool",
-    srcs = glob(["Sources/HomeSpeakerTool/*.swift"]),
+    name = "vitruvian-speaker-tool",
+    srcs = glob(["Sources/VitruvianSpeakerTool/*.swift"]),
     features = ["swift.enable_v6"],
-    module_name = "HomeSpeakerToolProgram",
+    module_name = "VitruvianSpeakerToolProgram",
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
     deps = [
-        ":HomeSpeakerCore",
-        ":HomeSpeakerToolCore",
+        ":VitruvianSpeakerCore",
+        ":VitruvianSpeakerToolCore",
         "//packages/vitruvian-sdk:VitruvianToolKit",
         "//packages/vitruvian-sdk:VitruvianToolProtocol",
     ],
@@ -149,27 +149,27 @@ swift_binary(
 # which only the release's zip holds (scripts/zip-tool.sh): CI has no
 # secrets, and the tests need no sign-in client.
 #
-#   bazel build --config=macos-app //apps/desktop/home-speaker:tool-folder
+#   bazel build --config=macos-app //apps/desktop/vitruvian-speaker:tool-folder
 #
-# leaves bazel-bin/apps/desktop/home-speaker/built/homespeaker/.
+# leaves bazel-bin/apps/desktop/vitruvian-speaker/built/vitruvian-speaker/.
 genrule(
     name = "tool-folder",
     srcs = [
         "tool/vitruvian-tool.json",
-        ":homespeaker-tool",
+        ":vitruvian-speaker-tool",
     ],
     outs = [
-        "built/homespeaker/vitruvian-tool.json",
-        "built/homespeaker/bin/tool",
+        "built/vitruvian-speaker/vitruvian-tool.json",
+        "built/vitruvian-speaker/bin/tool",
     ],
-    cmd = "cp $(location tool/vitruvian-tool.json) $(RULEDIR)/built/homespeaker/vitruvian-tool.json && cp $(location :homespeaker-tool) $(RULEDIR)/built/homespeaker/bin/tool",
+    cmd = "cp $(location tool/vitruvian-tool.json) $(RULEDIR)/built/vitruvian-speaker/vitruvian-tool.json && cp $(location :vitruvian-speaker-tool) $(RULEDIR)/built/vitruvian-speaker/bin/tool",
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
 )
 
 # The built folder through `vitruvian-tool validate` and the conformance
 # script, in a scratch folder of its own: its home, its data folder
-# (HOMESPEAKER_DATA_FOLDER), no HomeSpeaker app (HOMESPEAKER_PROGRAM empty)
+# (VITRUVIAN_SPEAKER_DATA_FOLDER), no Vitruvian Speaker app (VITRUVIAN_SPEAKER_PROGRAM empty)
 # and messages under a prefix of its own. The program's `--where` must name
 # that data folder first. Then the handshake, a command refused as not set
 # up, an unknown command, the island panel opened and tapped, refusals, a
@@ -188,14 +188,14 @@ rust_test(
     size = "medium",
     srcs = ["tool/src/conformance_test.rs"],
     data = [
-        "built/homespeaker/vitruvian-tool.json",
+        "built/vitruvian-speaker/vitruvian-tool.json",
         ":tool-folder",
         "//packages/vitruvian-sdk:conformance",
         "//packages/vitruvian-sdk:vitruvian-tool",
     ],
     edition = "2021",
     env = {
-        "MANIFEST_PATH": "$(rootpath built/homespeaker/vitruvian-tool.json)",
+        "MANIFEST_PATH": "$(rootpath built/vitruvian-speaker/vitruvian-tool.json)",
         "CONFORMANCE_BIN": "$(rootpath //packages/vitruvian-sdk:conformance)",
         "VALIDATE_BIN": "$(rootpath //packages/vitruvian-sdk:vitruvian-tool)",
     },
@@ -218,8 +218,8 @@ rust_test(
     srcs = ["tool/src/version_test.rs"],
     data = [
         "Package.swift",
-        "Sources/HomeSpeakerCore/Version.swift",
-        "Sources/HomeSpeakerToolCore/Version.swift",
+        "Sources/VitruvianSpeakerCore/Version.swift",
+        "Sources/VitruvianSpeakerToolCore/Version.swift",
         "release-please-config.json",
         "tool/vitruvian-tool.json",
     ],
@@ -231,17 +231,19 @@ rust_test(
 )
 
 macos_application(
-    name = "HomeSpeaker",
-    bundle_id = "com.vitruviansoftware.homespeaker",
+    name = "VitruvianSpeaker",
+    bundle_id = "com.vitruviansoftware.speaker",
+    bundle_name = "Vitruvian Speaker",
+    executable_name = "VitruvianSpeaker",
     infoplists = ["Resources/Info.plist"],
     minimum_os_version = "14.0",
     resources = ["Resources/AppIcon.icns"],
     tags = ["manual"],
     visibility = ["//visibility:public"],
-    deps = [":HomeSpeakerLib"],
+    deps = [":VitruvianSpeakerLib"],
 )
 
-# `bazel run //apps/desktop/home-speaker:sync-secrets` -- put HomeSpeaker's
+# `bazel run //apps/desktop/vitruvian-speaker:sync-secrets` -- put Vitruvian Speaker's
 # Slack user token on this Mac from Bitwarden, so the vault is the only place
 # it lives. Uses the session //tools/sync-env-secrets:unlock caches.
 rust_binary(

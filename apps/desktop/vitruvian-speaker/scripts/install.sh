@@ -19,42 +19,42 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Installs the latest HomeSpeaker release into /Applications.
+# Installs the latest Vitruvian Speaker release into /Applications.
 #
-#   curl -fsSL https://raw.githubusercontent.com/VitruvianSoftware/vitruvian-core/main/apps/desktop/home-speaker/scripts/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/VitruvianSoftware/vitruvian-core/main/apps/desktop/vitruvian-speaker/scripts/install.sh | bash
 #
-# HomeSpeaker is not notarized (no paid Apple Developer ID), so a browser
+# Vitruvian Speaker is not notarized (no paid Apple Developer ID), so a browser
 # download is blocked by Gatekeeper. This script downloads it directly,
 # verifies the published SHA-256, and clears the quarantine flag so it opens.
-# Set HOMESPEAKER_VERSION=x.y.z to pin a version.
+# Set VITRUVIAN_SPEAKER_VERSION=x.y.z to pin a version.
 
 set -euo pipefail
 
 REPO="VitruvianSoftware/vitruvian-core"
-DEST="${HOMESPEAKER_DEST:-/Applications}"
+DEST="${VITRUVIAN_SPEAKER_DEST:-/Applications}"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
-	echo "HomeSpeaker is a macOS app." >&2
+	echo "Vitruvian Speaker is a macOS app." >&2
 	exit 1
 fi
 if [[ "$(sw_vers -productVersion | cut -d. -f1)" -lt 14 ]]; then
-	echo "HomeSpeaker needs macOS 14 (Sonoma) or newer." >&2
+	echo "Vitruvian Speaker needs macOS 14 (Sonoma) or newer." >&2
 	exit 1
 fi
 
-if [[ -n "${HOMESPEAKER_VERSION:-}" ]]; then
-	TAG="home-speaker-v${HOMESPEAKER_VERSION#v}"
+if [[ -n "${VITRUVIAN_SPEAKER_VERSION:-}" ]]; then
+	TAG="vitruvian-speaker-v${VITRUVIAN_SPEAKER_VERSION#v}"
 else
-	echo "==> Finding the latest HomeSpeaker release"
+	echo "==> Finding the latest Vitruvian Speaker release"
 	TAG="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases?per_page=50" |
-		sed -n 's/.*"tag_name": *"\(home-speaker-v[^"]*\)".*/\1/p' | head -1)"
+		sed -n 's/.*"tag_name": *"\(vitruvian-speaker-v[^"]*\)".*/\1/p' | head -1)"
 	if [[ -z "${TAG}" ]]; then
-		echo "Could not find a home-speaker release on ${REPO}." >&2
+		echo "Could not find a vitruvian-speaker release on ${REPO}." >&2
 		exit 1
 	fi
 fi
-VERSION="${TAG#home-speaker-v}"
-ZIP="HomeSpeaker-${VERSION}-macOS.zip"
+VERSION="${TAG#vitruvian-speaker-v}"
+ZIP="VitruvianSpeaker-${VERSION}-macOS.zip"
 BASE="https://github.com/${REPO}/releases/download/${TAG}"
 
 WORK="$(mktemp -d)"
@@ -69,21 +69,21 @@ else
 	echo "==> No checksum published for this release; skipping verification"
 fi
 
-echo "==> Installing to ${DEST}/HomeSpeaker.app"
+echo "==> Installing to ${DEST}/Vitruvian Speaker.app"
 ditto -x -k "${WORK}/${ZIP}" "${WORK}/unpacked"
-if pgrep -xq HomeSpeaker; then
-	osascript -e 'tell application "HomeSpeaker" to quit' >/dev/null 2>&1 || true
+if pgrep -xq VitruvianSpeaker; then
+	osascript -e 'tell application "Vitruvian Speaker" to quit' >/dev/null 2>&1 || true
 	sleep 1
 fi
-rm -rf "${DEST}/HomeSpeaker.app"
-ditto "${WORK}/unpacked/HomeSpeaker.app" "${DEST}/HomeSpeaker.app"
+rm -rf "${DEST}/Vitruvian Speaker.app"
+ditto "${WORK}/unpacked/Vitruvian Speaker.app" "${DEST}/Vitruvian Speaker.app"
 # The zip was fetched by curl, not a browser, so it is normally not quarantined;
 # clear it anyway in case the user downloaded it by hand first. Use the system
 # xattr by full path: the `xattr` PyPI package shadows it on many machines and
 # its build has no -r flag.
-/usr/bin/xattr -dr com.apple.quarantine "${DEST}/HomeSpeaker.app" 2>/dev/null ||
-	find "${DEST}/HomeSpeaker.app" -print0 | xargs -0 /usr/bin/xattr -c 2>/dev/null || true
+/usr/bin/xattr -dr com.apple.quarantine "${DEST}/Vitruvian Speaker.app" 2>/dev/null ||
+	find "${DEST}/Vitruvian Speaker.app" -print0 | xargs -0 /usr/bin/xattr -c 2>/dev/null || true
 
-echo "==> Launching HomeSpeaker ${VERSION}"
-open "${DEST}/HomeSpeaker.app"
+echo "==> Launching Vitruvian Speaker ${VERSION}"
+open "${DEST}/Vitruvian Speaker.app"
 echo "Done. Look for the speaker icon in your menu bar."

@@ -34,7 +34,7 @@ pub struct Config {
 }
 
 pub fn derive_version(tag: &str) -> String {
-    if let Some(v) = tag.strip_prefix("home-speaker-v") {
+    if let Some(v) = tag.strip_prefix("vitruvian-speaker-v") {
         return v.to_string();
     }
     if let Some(v) = tag.strip_prefix("v") {
@@ -110,7 +110,7 @@ pub fn parse_config() -> Result<Config, String> {
     let is_beta = std::env::var("IS_BETA").unwrap_or_default() == "true";
     let dry_run = std::env::var("DRY_RUN").unwrap_or_default() == "true";
     let skip_build = std::env::var("PUBLISH_SKIP_BUILD").unwrap_or_default() == "1";
-    let zip_out_dir = std::env::var("HOME_SPEAKER_ZIP_OUT_DIR").ok();
+    let zip_out_dir = std::env::var("VITRUVIAN_SPEAKER_ZIP_OUT_DIR").ok();
 
     if version.is_empty() && !tag_name.is_empty() {
         version = derive_version(&tag_name);
@@ -118,7 +118,7 @@ pub fn parse_config() -> Result<Config, String> {
 
     if version.is_empty() {
         let app_dir = resolve_app_dir(&workspace);
-        let version_swift = app_dir.join("Sources/HomeSpeakerCore/Version.swift");
+        let version_swift = app_dir.join("Sources/VitruvianSpeakerCore/Version.swift");
         if version_swift.is_file() {
             version = read_version_from_swift(&version_swift)?;
         }
@@ -140,13 +140,13 @@ pub fn parse_config() -> Result<Config, String> {
 }
 
 pub fn resolve_app_dir(workspace: &Path) -> PathBuf {
-    let candidate = workspace.join("apps/desktop/home-speaker");
+    let candidate = workspace.join("apps/desktop/vitruvian-speaker");
     if candidate.join("Package.swift").is_file() {
         return candidate;
     }
     if workspace.join("Package.swift").is_file()
         && workspace
-            .join("Sources/HomeSpeakerCore/Version.swift")
+            .join("Sources/VitruvianSpeakerCore/Version.swift")
             .is_file()
     {
         return workspace.to_path_buf();
@@ -293,9 +293,9 @@ pub fn zip_tool_bundle(
         ));
     }
 
-    let stage = make_temp_dir("hs-tool-stage")?;
+    let stage = make_temp_dir("vs-tool-stage")?;
     let result = (|| -> Result<PathBuf, String> {
-        let hs_dir = stage.join("homespeaker");
+        let hs_dir = stage.join("vitruvian-speaker");
         let bin_dir = hs_dir.join("bin");
         fs::create_dir_all(&bin_dir)
             .map_err(|e| format!("cannot create {}: {e}", bin_dir.display()))?;
@@ -306,11 +306,11 @@ pub fn zip_tool_bundle(
         fs::set_permissions(&dst_tool, fs::Permissions::from_mode(0o755))
             .map_err(|e| format!("cannot chmod tool binary: {e}"))?;
 
-        if let Ok(client_id) = std::env::var("HOMESPEAKER_GOOGLE_CLIENT_ID") {
+        if let Ok(client_id) = std::env::var("VITRUVIAN_SPEAKER_GOOGLE_CLIENT_ID") {
             if !client_id.is_empty() {
                 println!("==> Shipping the Google OAuth client in the tool");
                 let client_secret =
-                    std::env::var("HOMESPEAKER_GOOGLE_CLIENT_SECRET").unwrap_or_default();
+                    std::env::var("VITRUVIAN_SPEAKER_GOOGLE_CLIENT_SECRET").unwrap_or_default();
                 let oauth_json = format!(
                     "{{\"client_id\": \"{}\", \"client_secret\": \"{}\"}}\n",
                     json_escape(&client_id),
@@ -325,7 +325,7 @@ pub fn zip_tool_bundle(
             .map_err(|e| format!("cannot create {}: {e}", dist_dir.display()))?;
         let dist_abs = fs::canonicalize(dist_dir)
             .map_err(|e| format!("cannot canonicalize {}: {e}", dist_dir.display()))?;
-        let asset = dist_abs.join(format!("HomeSpeaker-{version}-tool.zip"));
+        let asset = dist_abs.join(format!("VitruvianSpeaker-{version}-tool.zip"));
         let _ = fs::remove_file(&asset);
 
         let asset_str = asset.to_str().ok_or("invalid asset path")?;
@@ -352,14 +352,15 @@ pub fn bundle_app(
     output_dir: &Path,
     require_universal: bool,
 ) -> Result<PathBuf, String> {
-    let app_name = "HomeSpeaker";
-    let app_bundle = output_dir.join(format!("{app_name}.app"));
+    let bundle_name = "Vitruvian Speaker";
+    let exe_name = "VitruvianSpeaker";
+    let app_bundle = output_dir.join(format!("{bundle_name}.app"));
     let plist = app_bundle.join("Contents/Info.plist");
 
-    println!("==> Assembling {app_name}.app v{version}");
+    println!("==> Assembling {bundle_name}.app v{version}");
 
     let req_univ = require_universal
-        || std::env::var("HOMESPEAKER_REQUIRE_UNIVERSAL").unwrap_or_default() == "1";
+        || std::env::var("VITRUVIAN_SPEAKER_REQUIRE_UNIVERSAL").unwrap_or_default() == "1";
     if req_univ {
         check_universal_archs(executable, "binary")?;
     }
@@ -372,7 +373,7 @@ pub fn bundle_app(
     fs::create_dir_all(&resources_dir)
         .map_err(|e| format!("cannot create {}: {e}", resources_dir.display()))?;
 
-    let dst_exe = macos_dir.join(app_name);
+    let dst_exe = macos_dir.join(exe_name);
     fs::copy(executable, &dst_exe)
         .map_err(|e| format!("cannot copy executable {}: {e}", executable.display()))?;
     fs::set_permissions(&dst_exe, fs::Permissions::from_mode(0o755))
@@ -402,11 +403,11 @@ pub fn bundle_app(
         None,
     )?;
 
-    if let Ok(client_id) = std::env::var("HOMESPEAKER_GOOGLE_CLIENT_ID") {
+    if let Ok(client_id) = std::env::var("VITRUVIAN_SPEAKER_GOOGLE_CLIENT_ID") {
         if !client_id.is_empty() {
             println!("==> Embedding Google OAuth client id");
             let client_secret =
-                std::env::var("HOMESPEAKER_GOOGLE_CLIENT_SECRET").unwrap_or_default();
+                std::env::var("VITRUVIAN_SPEAKER_GOOGLE_CLIENT_SECRET").unwrap_or_default();
             let set_cid = format!("Set :GoogleOAuthClientID {client_id}");
             let set_csec = format!("Set :GoogleOAuthClientSecret {client_secret}");
             run_command_in(
@@ -455,11 +456,11 @@ pub fn bundle_app(
 
 pub fn expected_dist_files(version: &str) -> Vec<String> {
     let artifacts = [
-        format!("HomeSpeaker-{version}-universal.dmg"),
-        format!("HomeSpeaker-{version}-arm64.dmg"),
-        format!("HomeSpeaker-{version}-x86_64.dmg"),
-        format!("HomeSpeaker-{version}-universal.zip"),
-        format!("HomeSpeaker-{version}-tool.zip"),
+        format!("VitruvianSpeaker-{version}-universal.dmg"),
+        format!("VitruvianSpeaker-{version}-arm64.dmg"),
+        format!("VitruvianSpeaker-{version}-x86_64.dmg"),
+        format!("VitruvianSpeaker-{version}-universal.zip"),
+        format!("VitruvianSpeaker-{version}-tool.zip"),
     ];
     let mut files = Vec::with_capacity(artifacts.len() * 2);
     for artifact in &artifacts {
@@ -491,7 +492,7 @@ pub fn run(args: &[String]) -> i32 {
         if arg == "--help" || arg == "-h" {
             eprintln!(
                 "Usage: publish [--dry-run]\n\n\
-                 Builds universal HomeSpeaker.app + homespeaker-tool, packages DMGs/zips,\n\
+                 Builds universal Vitruvian Speaker.app + vitruvian-speaker-tool, packages DMGs/zips,\n\
                  and publishes release assets via tools/desktop-package."
             );
             return 0;
@@ -517,9 +518,9 @@ pub fn run(args: &[String]) -> i32 {
     let tag = &config.tag_name;
 
     if tag.is_empty() {
-        println!("==> Packaging HomeSpeaker release v{version}");
+        println!("==> Packaging Vitruvian Speaker release v{version}");
     } else {
-        println!("==> Packaging HomeSpeaker release v{version} (tag: {tag})");
+        println!("==> Packaging Vitruvian Speaker release v{version} (tag: {tag})");
     }
 
     println!("==> Building universal release binary with SwiftPM");
@@ -563,15 +564,15 @@ pub fn run(args: &[String]) -> i32 {
     };
 
     let bin_dir = PathBuf::from(&show_bin);
-    let bin = bin_dir.join("HomeSpeaker");
+    let bin = bin_dir.join("VitruvianSpeaker");
     let bin_str = bin.to_str().unwrap_or("");
     if let Err(e) = run_command_in("lipo", &["-info", bin_str], Some(&app_dir)) {
         eprintln!("error: {e}");
         return 1;
     }
 
-    let bin_arm64 = bin_dir.join("HomeSpeaker-arm64");
-    let bin_x86_64 = bin_dir.join("HomeSpeaker-x86_64");
+    let bin_arm64 = bin_dir.join("VitruvianSpeaker-arm64");
+    let bin_x86_64 = bin_dir.join("VitruvianSpeaker-x86_64");
     if let Err(e) = run_command_in(
         "lipo",
         &[
@@ -601,7 +602,7 @@ pub fn run(args: &[String]) -> i32 {
         return 1;
     }
 
-    println!("==> Assembling standalone HomeSpeaker.app bundles (universal, arm64, x86_64)");
+    println!("==> Assembling standalone Vitruvian Speaker.app bundles (universal, arm64, x86_64)");
     let dist_dir = app_dir.join("dist");
     let _ = fs::remove_dir_all(&dist_dir);
     let stage_universal = dist_dir.join("stage-universal");
@@ -614,8 +615,8 @@ pub fn run(args: &[String]) -> i32 {
         }
     }
 
-    println!("==> Zipping the HomeSpeaker tool for the Vitruvian app");
-    let tool_bin = bin_dir.join("homespeaker-tool");
+    println!("==> Zipping the Vitruvian Speaker tool for the Vitruvian app");
+    let tool_bin = bin_dir.join("vitruvian-speaker-tool");
     if let Err(e) = run_command_in(
         "lipo",
         &["-info", tool_bin.to_str().unwrap_or("")],
@@ -642,8 +643,8 @@ pub fn run(args: &[String]) -> i32 {
         return 1;
     }
 
-    let universal_app = stage_universal.join("HomeSpeaker.app");
-    let dist_app = dist_dir.join("HomeSpeaker.app");
+    let universal_app = stage_universal.join("Vitruvian Speaker.app");
+    let dist_app = dist_dir.join("Vitruvian Speaker.app");
     if let Err(e) = run_command_in(
         "ditto",
         &[
@@ -657,12 +658,12 @@ pub fn run(args: &[String]) -> i32 {
     }
 
     let root = resolve_repo_root(&app_dir);
-    let tool_zip = format!("HomeSpeaker-{version}-tool.zip");
+    let tool_zip = format!("VitruvianSpeaker-{version}-tool.zip");
 
     println!(
         "==> Invoking shared tools/desktop-package helper for packaging and release distribution"
     );
-    let pkg_tmp = match make_temp_dir("hs-pkg-desktop") {
+    let pkg_tmp = match make_temp_dir("vs-pkg-desktop") {
         Ok(d) => d,
         Err(e) => {
             eprintln!("error: {e}");
@@ -719,15 +720,15 @@ pub fn run(args: &[String]) -> i32 {
         "--app-path".into(),
         dist_app.display().to_string(),
         "--app-name".into(),
-        "HomeSpeaker".into(),
+        "Vitruvian Speaker".into(),
         "--version".into(),
         version.clone(),
         "--cask-name".into(),
-        "home-speaker".into(),
+        "vitruvian-speaker".into(),
         "--cask-desc".into(),
         "macOS menu bar app for speech notifications and smart speaker announcements".into(),
         "--cask-homepage".into(),
-        "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/home-speaker"
+        "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-speaker"
             .into(),
         "--dist-dir".into(),
         dist_dir.display().to_string(),
@@ -761,11 +762,13 @@ pub fn run(args: &[String]) -> i32 {
         for file in missing {
             eprintln!("error: packaging left no {file} in dist");
         }
-        eprintln!("error: HomeSpeaker {version} was NOT packaged; see the helper's output above");
+        eprintln!(
+            "error: Vitruvian Speaker {version} was NOT packaged; see the helper's output above"
+        );
         return 1;
     }
 
-    println!("==> HomeSpeaker release packaging completed successfully.");
+    println!("==> Vitruvian Speaker release packaging completed successfully.");
     0
 }
 
@@ -774,8 +777,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn version_from_tag_home_speaker() {
-        assert_eq!(derive_version("home-speaker-v1.2.3"), "1.2.3");
+    fn version_from_tag_vitruvian_speaker() {
+        assert_eq!(derive_version("vitruvian-speaker-v1.2.3"), "1.2.3");
     }
 
     #[test]
@@ -790,18 +793,18 @@ mod tests {
 
     #[test]
     fn version_from_tag_strips_only_first_prefix() {
-        assert_eq!(derive_version("home-speaker-v0.1.0-beta"), "0.1.0-beta");
+        assert_eq!(derive_version("vitruvian-speaker-v0.1.0-beta"), "0.1.0-beta");
         assert_eq!(derive_version("v0.1.0-rc1"), "0.1.0-rc1");
     }
 
     #[test]
     fn dry_run_message_format() {
-        let zip = Path::new("/tmp/dist/home-speaker-tool-1.2.3.zip");
-        let sha = Path::new("/tmp/dist/home-speaker-tool-1.2.3.zip.sha256");
+        let zip = Path::new("/tmp/dist/vitruvian-speaker-tool-1.2.3.zip");
+        let sha = Path::new("/tmp/dist/vitruvian-speaker-tool-1.2.3.zip.sha256");
         let msg = dry_run_message(zip, sha);
         assert!(msg.starts_with("[DRY RUN]"));
-        assert!(msg.contains("/tmp/dist/home-speaker-tool-1.2.3.zip"));
-        assert!(msg.contains("/tmp/dist/home-speaker-tool-1.2.3.zip.sha256"));
+        assert!(msg.contains("/tmp/dist/vitruvian-speaker-tool-1.2.3.zip"));
+        assert!(msg.contains("/tmp/dist/vitruvian-speaker-tool-1.2.3.zip.sha256"));
         assert!(msg.contains("skipping GitHub release upload"));
     }
 
@@ -809,7 +812,7 @@ mod tests {
     fn is_beta_flag_creates_prerelease() {
         let zip = Path::new("tool.zip");
         let sha = Path::new("tool.zip.sha256");
-        let args = build_gh_create_args("home-speaker-v1.0.0", true, zip, sha);
+        let args = build_gh_create_args("vitruvian-speaker-v1.0.0", true, zip, sha);
         assert!(args.contains(&"--prerelease".to_string()));
         assert!(!args.contains(&"--latest".to_string()));
     }
@@ -818,7 +821,7 @@ mod tests {
     fn non_beta_creates_latest() {
         let zip = Path::new("tool.zip");
         let sha = Path::new("tool.zip.sha256");
-        let args = build_gh_create_args("home-speaker-v1.0.0", false, zip, sha);
+        let args = build_gh_create_args("vitruvian-speaker-v1.0.0", false, zip, sha);
         assert!(args.contains(&"--latest".to_string()));
         assert!(!args.contains(&"--prerelease".to_string()));
     }
@@ -827,18 +830,18 @@ mod tests {
     fn upload_args_include_clobber() {
         let zip = Path::new("tool.zip");
         let sha = Path::new("tool.zip.sha256");
-        let args = build_gh_upload_args("home-speaker-v1.0.0", zip, sha);
+        let args = build_gh_upload_args("vitruvian-speaker-v1.0.0", zip, sha);
         assert!(args.contains(&"--clobber".to_string()));
-        assert!(args.contains(&"home-speaker-v1.0.0".to_string()));
+        assert!(args.contains(&"vitruvian-speaker-v1.0.0".to_string()));
     }
 
     #[test]
     fn create_args_include_title() {
         let zip = Path::new("tool.zip");
         let sha = Path::new("tool.zip.sha256");
-        let args = build_gh_create_args("home-speaker-v2.0.0", false, zip, sha);
+        let args = build_gh_create_args("vitruvian-speaker-v2.0.0", false, zip, sha);
         let title_idx = args.iter().position(|a| a == "--title").unwrap();
-        assert_eq!(args[title_idx + 1], "home-speaker-v2.0.0");
+        assert_eq!(args[title_idx + 1], "vitruvian-speaker-v2.0.0");
     }
 
     #[test]
@@ -852,11 +855,11 @@ mod tests {
 
     #[test]
     fn read_version_from_swift_extracts_current() {
-        let dir = make_temp_dir("hs-ver-swift-test").unwrap();
+        let dir = make_temp_dir("vs-ver-swift-test").unwrap();
         let file = dir.join("Version.swift");
         fs::write(
             &file,
-            "public enum HomeSpeakerVersion {\n    public static let current = \"1.36.1\" // x-release-please-version\n}\n",
+            "public enum VitruvianSpeakerVersion {\n    public static let current = \"1.36.1\" // x-release-please-version\n}\n",
         )
         .unwrap();
         assert_eq!(read_version_from_swift(&file).unwrap(), "1.36.1");

@@ -24,8 +24,8 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const TOOL_ID: &str = "com.vitruviansoftware.vitruvian.home-speaker";
-const BINARY_NAME: &str = "home-speaker-tool";
+const TOOL_ID: &str = "dev.vitruvian.speaker";
+const BINARY_NAME: &str = "vitruvian-speaker-tool";
 
 #[derive(Debug)]
 pub struct Config {
@@ -106,15 +106,15 @@ pub fn determine_pkg_dir() -> Result<PathBuf, String> {
 }
 
 pub fn find_binary(pkg_dir: &Path) -> Result<PathBuf, String> {
-    if let Ok(val) = env::var("HOME_SPEAKER_TOOL_BIN") {
+    if let Ok(val) = env::var("VITRUVIAN_SPEAKER_TOOL_BIN") {
         let p = PathBuf::from(&val);
         if p.exists() {
             return Ok(p);
         }
-        return Err(format!("HOME_SPEAKER_TOOL_BIN={val} does not exist"));
+        return Err(format!("VITRUVIAN_SPEAKER_TOOL_BIN={val} does not exist"));
     }
 
-    let runfiles_rel = Path::new("_main/apps/desktop/home-speaker/home-speaker-tool");
+    let runfiles_rel = Path::new("_main/apps/desktop/vitruvian-speaker/vitruvian-speaker-tool");
     if let Ok(rd) = env::var("RUNFILES_DIR") {
         let candidate = PathBuf::from(&rd).join(runfiles_rel);
         if candidate.exists() {
@@ -131,8 +131,8 @@ pub fn find_binary(pkg_dir: &Path) -> Result<PathBuf, String> {
     }
 
     if let Ok(ws) = env::var("BUILD_WORKSPACE_DIRECTORY") {
-        let candidate =
-            PathBuf::from(&ws).join("bazel-bin/apps/desktop/home-speaker/home-speaker-tool");
+        let candidate = PathBuf::from(&ws)
+            .join("bazel-bin/apps/desktop/vitruvian-speaker/vitruvian-speaker-tool");
         if candidate.exists() {
             return Ok(candidate);
         }
@@ -142,14 +142,14 @@ pub fn find_binary(pkg_dir: &Path) -> Result<PathBuf, String> {
         .parent()
         .and_then(|p| p.parent())
         .and_then(|p| p.parent())
-        .map(|root| root.join("bazel-bin/apps/desktop/home-speaker/home-speaker-tool"));
+        .map(|root| root.join("bazel-bin/apps/desktop/vitruvian-speaker/vitruvian-speaker-tool"));
     if let Some(candidate) = bazel_bin {
         if candidate.exists() {
             return Ok(candidate);
         }
     }
 
-    Err("cannot find home-speaker-tool binary: set HOME_SPEAKER_TOOL_BIN or run from a Bazel context".to_string())
+    Err("cannot find vitruvian-speaker-tool binary: set VITRUVIAN_SPEAKER_TOOL_BIN or run from a Bazel context".to_string())
 }
 
 pub fn stage_files(
@@ -273,15 +273,15 @@ pub fn compute_sha256(path: &Path) -> Result<String, String> {
 fn print_help() {
     println!("Usage: zip-tool [--version <ver>] [-h|--help]");
     println!();
-    println!("Packages the HomeSpeaker tool binary into a versioned zip.");
+    println!("Packages the Vitruvian Speaker tool binary into a versioned zip.");
     println!();
     println!("Options:");
     println!("  --version <ver>  Override the version from manifest.json");
     println!("  -h, --help       Show this help message");
     println!();
     println!("Environment:");
-    println!("  HOME_SPEAKER_ZIP_OUT_DIR  Output directory (default: <pkg_dir>/dist)");
-    println!("  HOME_SPEAKER_TOOL_BIN     Path to the tool binary");
+    println!("  VITRUVIAN_SPEAKER_ZIP_OUT_DIR  Output directory (default: <pkg_dir>/dist)");
+    println!("  VITRUVIAN_SPEAKER_TOOL_BIN     Path to the tool binary");
 }
 
 pub fn run(args: &[String]) -> i32 {
@@ -328,7 +328,7 @@ pub fn run(args: &[String]) -> i32 {
         }
     };
 
-    let out_dir = env::var("HOME_SPEAKER_ZIP_OUT_DIR")
+    let out_dir = env::var("VITRUVIAN_SPEAKER_ZIP_OUT_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| pkg_dir.join("dist"));
 
@@ -431,7 +431,7 @@ mod tests {
         let manifest = tmp.join("manifest.json");
         fs::write(
             &manifest,
-            r#"{"name": "home-speaker", "version": "1.2.3", "description": "test"}"#,
+            r#"{"name": "vitruvian-speaker", "version": "1.2.3", "description": "test"}"#,
         )
         .unwrap();
         let ver = read_manifest_version(&manifest).unwrap();
@@ -528,7 +528,7 @@ mod tests {
     #[test]
     fn missing_binary_error() {
         let tmp = make_temp("miss-bin");
-        env::remove_var("HOME_SPEAKER_TOOL_BIN");
+        env::remove_var("VITRUVIAN_SPEAKER_TOOL_BIN");
         let saved_runfiles = env::var("RUNFILES_DIR").ok();
         let saved_ws = env::var("BUILD_WORKSPACE_DIRECTORY").ok();
         env::remove_var("RUNFILES_DIR");

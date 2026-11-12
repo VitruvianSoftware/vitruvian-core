@@ -22,15 +22,15 @@
 //!
 //! Checks tool/vitruvian-tool.json layout (2-space indented JSON matching
 //! release-please) and version X.Y.Z, matches
-//! Sources/HomeSpeakerToolCore/Version.swift and
-//! Sources/HomeSpeakerCore/Version.swift, checks release-please-config.json
+//! Sources/VitruvianSpeakerToolCore/Version.swift and
+//! Sources/VitruvianSpeakerCore/Version.swift, checks release-please-config.json
 //! extra-files, and checks Package.swift vitruvian-sdk >= 1.8.0 (with 1.1.0,
 //! 1.3.0, 1.8.0 thresholds).
 
 use std::fs;
 use std::path::PathBuf;
 
-const PKG: &str = "apps/desktop/home-speaker";
+const PKG: &str = "apps/desktop/vitruvian-speaker";
 
 const KIT_WITH_WAKER: (u32, u32, u32) = (1, 1, 0);
 const KIT_WITH_CHOICE: (u32, u32, u32) = (1, 3, 0);
@@ -156,11 +156,11 @@ fn tool_version_matches_app() {
         .to_string();
 
     let tool_version = version_line(&rlocation(&format!(
-        "{}/Sources/HomeSpeakerToolCore/Version.swift",
+        "{}/Sources/VitruvianSpeakerToolCore/Version.swift",
         PKG
     )));
     let app_version = version_line(&rlocation(&format!(
-        "{}/Sources/HomeSpeakerCore/Version.swift",
+        "{}/Sources/VitruvianSpeakerCore/Version.swift",
         PKG
     )));
 
@@ -211,7 +211,7 @@ fn tool_version_matches_app() {
 
     for needed in &[
         "tool/vitruvian-tool.json",
-        "Sources/HomeSpeakerToolCore/Version.swift",
+        "Sources/VitruvianSpeakerToolCore/Version.swift",
     ] {
         if !extra_files.iter().any(|f| f == needed) {
             problems.push(format!(
