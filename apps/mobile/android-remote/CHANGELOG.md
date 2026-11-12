@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.37](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.36...android-remote-v0.1.37) (2026-11-12)
+
+
+### Features
+
+* **android-remote:** every Home Speaker option on the phone, with checks that stop them drifting ([#4634](https://github.com/VitruvianSoftware/vitruvian-core/issues/4634)) ([354cabf](https://github.com/VitruvianSoftware/vitruvian-core/commit/354cabf056119f83307f0afbc96581860bc5ed85))
+
 ## [0.1.36](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.35...android-remote-v0.1.36) (2026-11-12)
 
 
