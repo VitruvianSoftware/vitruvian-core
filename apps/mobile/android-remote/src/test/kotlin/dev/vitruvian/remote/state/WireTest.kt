@@ -797,6 +797,18 @@ public class WireTest {
     assertEquals(39, s.settings.size)
     assertFalse(s.catalog.isEmpty)
 
+    // "Say who it's from": a choice the phone shows and sends back by its catalog key.
+    assertEquals("off", s.announceSource)
+    val source = s.catalog["announce_source"]!!
+    assertEquals("choice", source.kind)
+    assertTrue(source.shown)
+    assertEquals(listOf("off", "app", "app_and_session"), source.choices.map { it.value })
+    assertEquals(
+        "app_and_session",
+        HomeSpeakerWire.sources("""{"announce_source":"app_and_session"}""").announceSource)
+    // An older Mac sends nothing; the phone reads that as off.
+    assertEquals("off", HomeSpeakerWire.sources("{}").announceSource)
+
     val speech = s.catalog["speech_length"]!!
     assertEquals("choice", speech.kind)
     assertEquals("Speak", speech.label)
