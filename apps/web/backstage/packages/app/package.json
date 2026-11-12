@@ -6,7 +6,6 @@
   "backstage": {
     "role": "frontend"
   },
-  "configSchema": "config.d.ts",
   "scripts": {
     "build": "backstage-cli package build",
     "clean": "backstage-cli package clean",

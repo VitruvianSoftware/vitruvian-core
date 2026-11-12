@@ -32,7 +32,6 @@ npm_package(
         [
             "src/**",
             "tsconfig.json",
-            "config.d.ts",
         ],
         allow_empty = True,
     ),
