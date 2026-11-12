@@ -656,7 +656,7 @@ COMPONENTS = [
         "export_only": True,
     },
     # esp32-desk-companion: EXPORT-ONLY mirror of apps/embedded/vitruvian-deck (MIT),
-    # the Vitruvian Deck firmware and its host companion.
+    # the Desk Companion firmware and its host companion.
     {
         "name": "esp32-desk-companion",
         "repo": "esp32-desk-companion",

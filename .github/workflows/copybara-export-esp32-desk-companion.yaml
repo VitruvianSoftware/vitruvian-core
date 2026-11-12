@@ -20,7 +20,7 @@
 
 name: Copybara Export (esp32-desk-companion)
 
-# EXPORT-ONLY mirror of the ESP32-S3 Desk Companion firmware: monorepo apps/embedded/esp32-s3/ ->
+# EXPORT-ONLY mirror of the ESP32-S3 Desk Companion firmware: monorepo apps/embedded/vitruvian-deck/ ->
 # VitruvianSoftware/esp32-desk-companion (repo root) on every push under that subtree. Thin
 # caller -- logic lives in _copybara-export.yaml; the export_esp32_desk_companion workflow is
 # defined in tools/copybara/copy.bara.sky.

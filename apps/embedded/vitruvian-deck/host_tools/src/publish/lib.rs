@@ -22,7 +22,7 @@
 //! to a GitHub Release.
 //!
 //! ONE tool, TWO triggers: the generated `delivery-vitruvian-deck.yaml` runs it for the
-//! `vitruvian-deck` unit, and the break-glass path is `bazel run //apps/embedded/vitruvian-deck:publish`.
+//! `esp32-s3` unit, and the break-glass path is `bazel run //apps/embedded/vitruvian-deck:publish`.
 //! `GRADE` selects the rung:
 //!
 //!   GRADE=beta        (push to main)  rolling prerelease `vitruvian-deck-beta-latest`;
@@ -33,7 +33,7 @@
 //! Stamping happens HERE and not in the Bazel genrule: a genrule's action sees
 //! neither the workflow's env nor `.git`. The genrule produces the three raw
 //! images; this tool wraps them with `build_info.json` and the Rust flash helper
-//! sources into `vitruvian-deck.zip`.
+//! sources into `vitruvian-deck-mac-controller.zip`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -45,11 +45,11 @@ pub const PKG: &str = "apps/embedded/vitruvian-deck";
 
 /// The flash helper that ships inside the zip (std-only; `rustc` builds it).
 pub const FLASH_SOURCES: [(&str, &str); 2] = [
-    ("host-companion/src/flash/main.rs", "flash/main.rs"),
-    ("host-companion/src/flash/lib.rs", "flash/lib.rs"),
+    ("host_tools/src/flash/main.rs", "flash/main.rs"),
+    ("host_tools/src/flash/lib.rs", "flash/lib.rs"),
 ];
 
-pub const FLASH_README: &str = "Flashing Vitruvian Deck\n\
+pub const FLASH_README: &str = "Flashing the Vitruvian Deck\n\
 \n\
 This folder holds the three images (bootloader.bin, partitions.bin, firmware.bin)\n\
 and the flasher source in flash/. Build the flasher beside the images and run it:\n\
@@ -168,7 +168,7 @@ pub fn resolve_config(r: &dyn Runner) -> Result<PublishConfig, String> {
             }
             if !tag.starts_with(TAG_PREFIX) {
                 return Err(format!(
-                    "publish: RELEASE_TAG={} is not a {}* release; another component's release reached this rung",
+                    "publish: RELEASE_TAG={} is not an {}* release; another component's release reached this rung",
                     tag, TAG_PREFIX
                 ));
             }
@@ -226,7 +226,7 @@ pub fn build_info_json(cfg: &PublishConfig, built_at: &str) -> String {
 
 pub fn beta_notes(cfg: &PublishConfig, built_at: &str) -> String {
     format!(
-        "Latest Beta Firmware Build: {}\nCommit: {}\nBuilt: {}\n\nArtifacts Included:\n* firmware.bin: Application binary (Flash at 0x10000)\n* bootloader.bin: ESP32-S3 second-stage bootloader (Flash at 0x0000)\n* partitions.bin: 16MB partition table (Flash at 0x8000)\n* build_info.json: version / grade / commit stamp\n* vitruvian-deck.zip: Full flashable archive with the Rust flash helper (flash/).",
+        "Latest Beta Firmware Build: {}\nCommit: {}\nBuilt: {}\n\nArtifacts Included:\n* firmware.bin: Application binary (Flash at 0x10000)\n* bootloader.bin: ESP32-S3 second-stage bootloader (Flash at 0x0000)\n* partitions.bin: 16MB partition table (Flash at 0x8000)\n* build_info.json: version / grade / commit stamp\n* vitruvian-deck-mac-controller.zip: Full flashable archive with the Rust flash helper (flash/).",
         cfg.version, cfg.sha, built_at
     )
 }
@@ -246,11 +246,7 @@ fn work_dir(r: &dyn Runner) -> PathBuf {
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_nanos())
                 .unwrap_or(0);
-            std::env::temp_dir().join(format!(
-                "vitruvian-deck-publish-{}-{}",
-                std::process::id(),
-                nanos
-            ))
+            std::env::temp_dir().join(format!("vitruvian-deck-publish-{}-{}", std::process::id(), nanos))
         }
     };
     base.join("vitruvian-deck-dist")
@@ -267,7 +263,7 @@ fn make_writable(p: &Path) -> Result<(), String> {
 
 pub fn publish(cfg: &PublishConfig, r: &dyn Runner) -> Result<(), String> {
     eprintln!(
-        "=== vitruvian-deck publish: grade={} version={} tag={} commit={} ===",
+        "=== esp32-s3 publish: grade={} version={} tag={} commit={} ===",
         cfg.grade, cfg.version, cfg.tag, cfg.sha
     );
     let root = &cfg.root;
@@ -308,7 +304,7 @@ pub fn publish(cfg: &PublishConfig, r: &dyn Runner) -> Result<(), String> {
     )
     .map_err(|e| format!("write build_info.json: {}", e))?;
 
-    let zip = work.join("vitruvian-deck.zip");
+    let zip = work.join("vitruvian-deck-mac-controller.zip");
     let mut zip_args = sv(&["-q", zip.to_str().unwrap_or("")]);
     zip_args.extend(sv(&[
         "firmware.bin",
@@ -391,7 +387,7 @@ pub fn publish(cfg: &PublishConfig, r: &dyn Runner) -> Result<(), String> {
     }
 
     eprintln!(
-        "=== vitruvian-deck publish complete: {} ({}, {}) ===",
+        "=== esp32-s3 publish complete: {} ({}, {}) ===",
         cfg.tag, cfg.version, cfg.grade
     );
     Ok(())
@@ -485,14 +481,14 @@ mod tests {
     fn workspace(name: &str) -> PathBuf {
         let root = tmpdir(name);
         let pkg = root.join(PKG);
-        fs::create_dir_all(pkg.join("host-companion/src/flash")).unwrap();
+        fs::create_dir_all(pkg.join("host_tools/src/flash")).unwrap();
         fs::write(
             pkg.join(".release-please-manifest.json"),
             "{\n  \"apps/embedded/vitruvian-deck\": \"0.1.12\"\n}\n",
         )
         .unwrap();
-        fs::write(pkg.join("host-companion/src/flash/main.rs"), "// main").unwrap();
-        fs::write(pkg.join("host-companion/src/flash/lib.rs"), "// lib").unwrap();
+        fs::write(pkg.join("host_tools/src/flash/main.rs"), "// main").unwrap();
+        fs::write(pkg.join("host_tools/src/flash/lib.rs"), "// lib").unwrap();
         root
     }
 
@@ -541,10 +537,7 @@ mod tests {
         let root = workspace("prod-cfg");
         let c = resolve_config(&envs(
             &root,
-            &[
-                ("GRADE", "production"),
-                ("RELEASE_TAG", "vitruvian-deck-v3.1.0"),
-            ],
+            &[("GRADE", "production"), ("RELEASE_TAG", "vitruvian-deck-v3.1.0")],
         ))
         .unwrap();
         assert!(!c.is_beta);
@@ -553,13 +546,10 @@ mod tests {
         assert!(e.contains("refusing to guess"));
         let e = resolve_config(&envs(
             &root,
-            &[
-                ("GRADE", "production"),
-                ("RELEASE_TAG", "vitruvian-tabs-v1.0.0"),
-            ],
+            &[("GRADE", "production"), ("RELEASE_TAG", "tabula-v1.0.0")],
         ))
         .unwrap_err();
-        assert!(e.contains("is not a vitruvian-deck-v*"));
+        assert!(e.contains("is not an vitruvian-deck-v*"));
         let e = resolve_config(&envs(&root, &[("GRADE", "staging")])).unwrap_err();
         assert!(e.contains("unknown GRADE=staging"));
     }
@@ -596,7 +586,7 @@ mod tests {
         assert_eq!(l[0], format!("bazel build //{}:firmware", PKG));
         // zip bundles images + stamp + flash helper (c: the old zip shipped flash.sh)
         let zip = l.iter().find(|x| x.starts_with("zip ")).expect("zip step");
-        assert!(zip.contains("vitruvian-deck.zip firmware.bin bootloader.bin partitions.bin build_info.json flash/main.rs flash/lib.rs flash/README.txt"), "{}", zip);
+        assert!(zip.contains("vitruvian-deck-mac-controller.zip firmware.bin bootloader.bin partitions.bin build_info.json flash/main.rs flash/lib.rs flash/README.txt"), "{}", zip);
         // release view -> create (release absent)
         assert!(l.contains(&format!("gh release view {}", BETA_TAG)));
         assert!(l.iter().any(|x| x.starts_with(&format!("gh release create {} --prerelease --target {} --title Vitruvian Deck Firmware (Beta Rolling Release) --notes", BETA_TAG, sha))));
@@ -610,7 +600,7 @@ mod tests {
             "bootloader.bin",
             "partitions.bin",
             "build_info.json",
-            "vitruvian-deck.zip",
+            "vitruvian-deck-mac-controller.zip",
             "--clobber",
         ] {
             assert!(up.contains(n), "upload missing {}: {}", n, up);
@@ -632,7 +622,7 @@ mod tests {
             .expect("release edit");
         assert!(iu < ip && ip < ie);
         assert!(l[ie].contains("Built: 2026-01-02T03:04:05Z"));
-        assert!(l[ie].contains("vitruvian-deck.zip"));
+        assert!(l[ie].contains("vitruvian-deck-mac-controller.zip"));
     }
 
     #[test]

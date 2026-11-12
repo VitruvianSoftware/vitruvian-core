@@ -150,9 +150,9 @@
     "packages": {
       "apps/embedded/vitruvian-deck": {
         "changelog-path": "CHANGELOG.md",
-        "component": "vitruvian-deck",
+        "component": "esp32-s3",
         "extra-files": ["include/version.h"],
-        "package-name": "vitruvian-deck"
+        "package-name": "esp32-s3"
       }
     },
     "release-type": "simple",

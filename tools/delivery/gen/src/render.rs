@@ -485,8 +485,8 @@ fn render_vitruvian_deck_publish_steps(b: &mut String, _u: &Unit, env: &str, opt
     b.push_str("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n");
     b.push_str("        run: |\n");
     b.push_str("          # replaces apps/embedded/vitruvian-deck/publish.sh\n");
-    b.push_str("          rustc --edition 2021 --crate-type lib --crate-name publish apps/embedded/vitruvian-deck/host-companion/src/publish/lib.rs -o \"$RUNNER_TEMP/libpublish.rlib\"\n");
-    b.push_str("          rustc --edition 2021 apps/embedded/vitruvian-deck/host-companion/src/publish/main.rs -L \"$RUNNER_TEMP\" --extern publish=\"$RUNNER_TEMP/libpublish.rlib\" -o \"$RUNNER_TEMP/vitruvian-deck-publish\"\n");
+    b.push_str("          rustc --edition 2021 --crate-type lib --crate-name publish apps/embedded/vitruvian-deck/host_tools/src/publish/lib.rs -o \"$RUNNER_TEMP/libpublish.rlib\"\n");
+    b.push_str("          rustc --edition 2021 apps/embedded/vitruvian-deck/host_tools/src/publish/main.rs -L \"$RUNNER_TEMP\" --extern publish=\"$RUNNER_TEMP/libpublish.rlib\" -o \"$RUNNER_TEMP/vitruvian-deck-publish\"\n");
     b.push_str("          \"$RUNNER_TEMP/vitruvian-deck-publish\"\n");
     Ok(())
 }

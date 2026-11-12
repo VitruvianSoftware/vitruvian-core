@@ -25,7 +25,7 @@
 // ---------------------------------------------------------------------------
 // Autonomous GitHub Actions poller.
 //
-// Turns the companion into a standalone build beacon: when it is on Wi-Fi and
+// Turns the Deck into a standalone build beacon: when it is on Wi-Fi and
 // no Mac daemon is streaming (USB or LAN), it queries the Actions REST API
 // itself, drives the Agent & CI deck, and chimes on every conclusion change.
 //

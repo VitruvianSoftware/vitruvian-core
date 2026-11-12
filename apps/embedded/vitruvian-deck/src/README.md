@@ -22,4 +22,4 @@ Component package providing implementation for `apps/embedded/vitruvian-deck/src
 - [wifi_manager.cpp:39]: `// Base portal window; every HTTP request re-arms it so the user is never cut`
 
 ## Verification
-- Run: `bazel test //apps/embedded/vitruvian-deck/...`
+- Run: `bazel test //apps/embedded/vitruvian-deck/src/...`

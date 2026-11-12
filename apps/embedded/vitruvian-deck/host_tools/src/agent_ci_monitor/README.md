@@ -1,7 +1,7 @@
 # Agent Ci Monitor
 
 ## Overview
-Component package providing implementation for `apps/embedded/vitruvian-deck/host-companion/src/agent-ci-monitor`.
+Component package providing implementation for `apps/embedded/vitruvian-deck/host_tools/src/agent_ci_monitor`.
 
 ## Interface
 - `[lib.rs:AGENT_STATE_IDLE]`
@@ -32,4 +32,4 @@ Component package providing implementation for `apps/embedded/vitruvian-deck/hos
 - None
 
 ## Verification
-- Run: `bazel test //apps/embedded/vitruvian-deck:agent_ci_monitor_test`
+- Run: `bazel test //apps/embedded/vitruvian-deck/host_tools/src/agent_ci_monitor/...`

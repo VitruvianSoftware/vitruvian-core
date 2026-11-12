@@ -26,7 +26,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Pins the HID wire format to what `iot/esp32-s3/src/ble_hid.cpp` actually sends.
+ * Pins the HID wire format to what `apps/embedded/vitruvian-deck/src/ble_hid.cpp` actually sends.
  *
  * Why this test is worth more than it looks: a wrong byte here produces a device that pairs,
  * connects, reports no error and does nothing. There is no crash and no log line -- the Mac simply

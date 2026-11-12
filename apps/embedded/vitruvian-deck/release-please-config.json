@@ -6,6 +6,7 @@
   "include-component-in-tag": true,
   "include-v-in-tag": true,
   "tag-separator": "-",
+  "bootstrap-sha": "a82223460d5973c7661966b3a7cf2a061bc89868",
   "packages": {
     "apps/embedded/vitruvian-deck": {
       "package-name": "vitruvian-deck",

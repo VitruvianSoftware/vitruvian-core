@@ -487,7 +487,9 @@ pub fn sync_catalog(
             for a in assets(&rel)? {
                 let asset = read_asset(&a, false)?.unwrap();
                 let label = match &asset.name {
-                    Value::Str(n) if n == "vitruvian-deck.zip" => Some("Deck Bundle ZIP"),
+                    Value::Str(n) if n == "vitruvian-deck-mac-controller.zip" => {
+                        Some("Mac Controller ZIP")
+                    }
                     Value::Str(n) if n == "firmware.bin" => Some("Firmware Binary"),
                     Value::Str(n) if n == "bootloader.bin" => Some("Bootloader Binary"),
                     Value::Str(n) if n == "partitions.bin" => Some("Partition Table"),

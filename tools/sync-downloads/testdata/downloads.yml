@@ -201,7 +201,7 @@ categories:
           metrics and a USB and Bluetooth shortcut macro pad.
         platforms: ["ESP32-S3", "macOS"]
         downloads:
-          - label: Deck Bundle ZIP
+          - label: Mac Controller ZIP
             url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/esp32-s3-v0.1.12/esp32-s3-mac-controller.zip
             size: 994 KB
           - label: Firmware Binary

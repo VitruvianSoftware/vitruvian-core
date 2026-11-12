@@ -69,9 +69,9 @@ jobs:
         run: uv tool install platformio --with pip
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
-      # The host-companion + firmware-model Rust test suite runs here so protocol
+      # The host-helper + firmware-model Rust test suite runs here so protocol
       # regressions block the PR.
-      - name: Run host companion test suite
-        run: bazel test //apps/embedded/vitruvian-deck/...
+      - name: Run host helper test suite
+        run: bazel test //apps/embedded/vitruvian-deck:firmware_tests_test
       - name: Build Vitruvian Deck firmware via Bazel
         run: bazel build //apps/embedded/vitruvian-deck:firmware

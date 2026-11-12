@@ -1,7 +1,7 @@
 # Flash
 
 ## Overview
-Component package providing implementation for `apps/embedded/vitruvian-deck/host-companion/src/flash`.
+Component package providing implementation for `apps/embedded/vitruvian-deck/host_tools/src/flash`.
 
 ## Interface
 - `[lib.rs:Runner]`
@@ -25,4 +25,4 @@ Component package providing implementation for `apps/embedded/vitruvian-deck/hos
 - None
 
 ## Verification
-- Run: `bazel test //apps/embedded/vitruvian-deck:flash_test`
+- Run: `bazel test //apps/embedded/vitruvian-deck/host_tools/src/flash/...`

@@ -23,15 +23,15 @@ kind: Component
 metadata:
   name: vitruvian-deck
   title: Vitruvian Deck
-  description: Mac desk companion and touch macro controller running on Waveshare ESP32-S3-Touch-LCD-1.69 with native USB CDC serial & HID composite mode, dynamic context-aware Smart Deck shortcuts, AI agent monitoring, and CI/CD workflow status.
+  description: Vitruvian Deck, an embedded desktop display and macro controller, running on Waveshare ESP32-S3-Touch-LCD-1.69 with native USB CDC serial & HID composite mode, dynamic context-aware Smart Deck shortcuts, AI agent monitoring, and CI/CD workflow status.
   tags:
-    - vitruvian-deck
     - esp32-s3
     - embedded
     - hardware
     - macos
     - lvgl
     - macro-deck
+    - vitruvian-deck
     - iot
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core

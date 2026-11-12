@@ -1,6 +1,6 @@
-# Vitruvian Deck Hardware & BOM Specification
+# mac-controller Hardware & BOM Specification
 
-This document provides the hardware bill of materials, complete pinout tables, display and touch controller specifications, power characteristics, and enclosure guidelines for **Vitruvian Deck**.
+This document provides the hardware bill of materials, complete pinout tables, display and touch controller specifications, power characteristics, and enclosure guidelines for the Vitruvian Deck.
 
 ---
 
@@ -97,7 +97,7 @@ The onboard QMI8658 6-axis IMU shares the touch controller's I2C bus (`IIC_SDA` 
   | `0x08` | `CTRL7` | `0x01` — `aEN=1`, accelerometer enabled (gyroscope stays off). |
   | `0x35`–`0x3A` | `AX_L`..`AZ_H` | Accelerometer output, three little-endian signed 16-bit words (one 6-byte burst read). |
 - **Scale**: ±4g full scale → 1g ≈ 8192 LSB.
-- **Orientation Logic** (`src/qmi8658.cpp`, modeled in `tests/src/test_orientation.rs`):
+- **Orientation Logic** (`src/qmi8658.cpp`, modeled in `tests/test_orientation.py`):
   - **Classification**: gravity projected onto the panel's long axis (the IMU's $X$ axis on this board) decides the orientation — `Ax ≥ +0.5g` (4096 LSB) with `|Ax| > |Ay|` → orientation `0` (portrait, USB down); `Ax ≤ −0.5g` → orientation `2` (inverted portrait, USB up). The `|Ax| > |Ay|` dominance guard keeps sideways tilts from flipping the UI.
   - **Flat-table suppression**: when `|Az| > 0.8g` (≈6553 LSB) and `|Ax|`, `|Ay|` are inside a 0.35g deadband, the device is lying on the desk — the current orientation is held to prevent jitter.
   - **Debounce**: a candidate orientation must persist for ≥ 300 ms (polled every 100 ms from the main loop) before the display, touch remap, and LVGL are rotated.

@@ -27,7 +27,7 @@
 #define FIRMWARE_VERSION "0.1.12"  // x-release-please-version
 
 // mDNS identity. `MDNS.begin(MDNS_HOSTNAME)` publishes
-// "vitruvian-deck.local"; the service is what the Mac companion browses
+// "vitruvian-deck.local"; the service is what the Mac helper browses
 // for when it has no --wifi-host pinned.
 #define MDNS_HOSTNAME     "vitruvian-deck"
 #define MDNS_SERVICE      "vitruvian"

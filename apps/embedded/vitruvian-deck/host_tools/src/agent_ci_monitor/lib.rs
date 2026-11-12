@@ -446,7 +446,7 @@ pub fn get_active_agents() -> (Option<String>, usize) {
     }
 }
 
-pub fn get_companion_payload(repo_dir: &str) -> String {
+pub fn get_helper_payload(repo_dir: &str) -> String {
     let (agent_name, agent_count) = get_active_agents();
     let agent_name_str = agent_name.as_deref().unwrap_or("None");
     let state = if agent_name.is_some() {

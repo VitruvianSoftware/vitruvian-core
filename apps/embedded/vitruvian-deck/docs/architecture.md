@@ -1,6 +1,6 @@
-# Vitruvian Deck Architecture & Subsystems
+# mac-controller Architecture & Subsystems
 
-This document describes the architectural design of **Vitruvian Deck**, detailing the composite USB OTG stack, graphics rendering pipeline, capacitive touch driver, haptic feedback mechanism, dynamic carousel navigation engine, and host companion architecture.
+This document describes the architectural design of the Vitruvian Deck, detailing the composite USB OTG stack, graphics rendering pipeline, capacitive touch driver, haptic feedback mechanism, dynamic carousel navigation engine, and host helper architecture.
 
 ---
 
@@ -20,7 +20,7 @@ The system operates across two asynchronous domains. They communicate over a USB
 │            │                            │              │
 │            ▼                            ▼              │
 │  ┌──────────────────────────────────────────────────┐  │
-│  │         vitruvian-deck (Host Companion)          │  │
+│  │        mac_stats_daemon.py (Host Daemon)         │  │
 │  └────────────────────────┬─────────────────────────┘  │
 └───────────────────────────┼────────────────────────────┘
                             │ Channel A: USB-C Cable (OTG Full Speed)
@@ -54,7 +54,7 @@ The system operates across two asynchronous domains. They communicate over a USB
 │  │ - Settings Deck (Tile 3) │──►│ ST7789V2 IPS LCD  │  │
 │  └──────────────────────────┘   │ (SPI + DMA)       │  │
 │                                 └───────────────────┘  │
-│                   ESP32-S3 Firmware                    │
+│                   Deck Firmware                        │
 └────────────────────────────────────────────────────────┘
 ```
 
@@ -182,23 +182,23 @@ When any deck toggle switch is altered in the Settings Deck or received via a se
 5. **Contextual Hint Update**: The navigation label at the bottom of each tile dynamically updates its text to show available swipe directions:
    - Example: `< System | Agent & CI >` or `< Swipe Right for System`.
 6. **Zero-Jitter Viewport Preservation**: If the currently active tile was not disabled, the viewport remains pinned to that tile; if the active tile was disabled, the view immediately snaps to the invariant Settings Deck (`DECK_SETTINGS`).
-7. **NVS Persistence**: Deck toggle states and brightness are written to ESP32 Non-Volatile Storage (`Preferences` namespace `"vitruvian-deck"`, keys `"deck_sys"`, `"deck_smart"`, `"deck_agent"`, `"brightness"`).
+7. **NVS Persistence**: Deck toggle states and brightness are written to ESP32 Non-Volatile Storage (`Preferences` namespace `"mac_ctrl"`, keys `"deck_sys"`, `"deck_smart"`, `"deck_agent"`, `"brightness"`).
 
 ---
 
-## 7. Host Companion Daemon Architecture
+## 7. Host Helper Daemon Architecture
 
-The host software is a Rust daemon (`vitruvian-deck`) structured into modular subsystems:
+The host software is a Python daemon (`mac_stats_daemon.py`) structured into modular subsystems:
 
 ```
-vitruvian-deck (Main Thread)
+mac_stats_daemon.py (Main Thread)
   │
-  ├── FrontmostAppDetector (app-profiles)
+  ├── FrontmostAppDetector (app_profiles.py)
   │     ├── /usr/bin/lsappinfo (<20ms query)
   │     ├── osascript (fallback query)
   │     └── 250ms Debounce State Machine
   │
-  ├── AgentCIMonitor (agent-ci-monitor - Worker Thread)
+  ├── AgentCIMonitor (agent_ci_monitor.py - Worker Thread)
   │     ├── Process Scanner: pgrep -fl "antigravity|claude|agy"
   │     ├── Workspace Scanner: .agents/*/progress.md mtime & error detection
   │     ├── Git Status: git status --porcelain -b
@@ -206,7 +206,7 @@ vitruvian-deck (Main Thread)
   │     └── Thread-Safe Atomic Cached Payload
   │
   └── StreamSession (transport-agnostic)
-        ├── SerialTransport              -- /dev/cu.usbmodem*, preferred
+        ├── SerialTransport (pyserial)   -- /dev/cu.usbmodem*, preferred
         ├── UdpTransport (socket)        -- :8266, mDNS-discovered fallback
         ├── 1 Hz System Telemetry Loop
         ├── 5 Hz Agent/CI Telemetry Loop (with instant change trigger)

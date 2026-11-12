@@ -1,6 +1,6 @@
 # Vitruvian Deck
 
-Custom firmware for the **Waveshare ESP32-S3-Touch-LCD-1.69** development board, turning it into **Vitruvian Deck** — a desk companion that streams live Mac hardware metrics and triggers native macOS desktop shortcuts via USB HID or BLE HID.
+Custom firmware for the **Waveshare ESP32-S3-Touch-LCD-1.69** development board, turning it into a Vitruvian Deck that streams live Mac hardware metrics and triggers native macOS desktop shortcuts via USB HID.
 
 ## Hardware Specifications
 - **MCU**: ESP32-S3 Xtensa Dual-Core @ 240MHz (16MB Flash, 8MB PSRAM)
@@ -11,7 +11,7 @@ Custom firmware for the **Waveshare ESP32-S3-Touch-LCD-1.69** development board,
 - **Haptics/Audio**: Onboard buzzer (GPIO 42, LEDC PWM) for tactile clicks and CI pass/fail chimes
 
 ## Documentation Hub
-- [User Guide & Operator Manual](user-guide.md): Physical hardware controls, battery & power management, tethered vs. untethered operations, Bluetooth pairing, Wi-Fi companion daemon setup, 4-way screen rotation, and troubleshooting.
+- [User Guide & Operator Manual](user-guide.md): Physical hardware controls, battery & power management, tethered vs. untethered operations, Bluetooth pairing, Wi-Fi helper daemon setup, 4-way screen rotation, and troubleshooting.
 - [System Architecture](architecture.md): Deep dive into the subsystems, composite USB OTG mode, graphics rendering pipeline, and dual-transport packet router.
 - [Hardware & BOM](hardware.md): Bill of materials, complete GPIO pinout table, power circuitry, and enclosure guidelines.
 - [Wire Protocol](protocol.md): Serial and UDP JSON packet structures, commands, and telemetry payloads.

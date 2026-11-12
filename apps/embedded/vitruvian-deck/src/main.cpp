@@ -206,7 +206,7 @@ void setup() {
     Serial.begin(115200);
     delay(100);
     Serial.println("\n\n========================================");
-    Serial.println("[BOOT] Starting Vitruvian Deck setup()...");
+    Serial.println("[BOOT] Starting ESP32-S3 setup()...");
     Serial.println("========================================");
 
     // 0. Hardware Power Latch (SYS_EN_PIN 41): Must engage immediately so
@@ -320,7 +320,7 @@ void loop() {
         }
     }
 
-    // Channel 1: USB CDC from the tethered Mac companion.
+    // Channel 1: USB CDC from the tethered Mac helper.
     ingest_usb_serial();
 
     // Wireless radio state machines (portal HTTP serving, station reconnect,
@@ -341,7 +341,7 @@ void loop() {
         net_telemetry_stop();
     }
 
-    // Channel 2: UDP telemetry from an untethered Mac companion.
+    // Channel 2: UDP telemetry from an untethered Mac helper.
     net_telemetry_loop();
     ota_manager_loop();
 
@@ -357,7 +357,7 @@ void loop() {
     }
     was_driving = driving;
 
-    // Periodic radio telemetry for the companion daemon (5s cadence, over
+    // Periodic radio telemetry for the helper daemon (5s cadence, over
     // whichever channel the host is actually reachable on).
     if ((mac_hid_usb_ready() || net_telemetry_has_client()) &&
         millis() - last_radio_telemetry_ms > 5000) {

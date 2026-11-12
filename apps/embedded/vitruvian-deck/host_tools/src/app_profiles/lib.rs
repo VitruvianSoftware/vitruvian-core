@@ -283,11 +283,7 @@ pub static PROFILES: &[AppProfile] = &[
     AppProfile {
         name: "default",
         app: "Default",
-        bundle_ids: &[
-            "com.apple.finder",
-            "com.vitruviansoftware.atrium",
-            "default",
-        ],
+        bundle_ids: &["com.apple.finder", "default"],
         color: "0x0A84FF",
         buttons: [
             MacroKey {
@@ -685,12 +681,6 @@ mod tests {
     #[test]
     fn test_finder_bundle_maps_to_default() {
         let p = get_profile_for_bundle_and_name("com.apple.finder", "");
-        assert_eq!(p.name, "default");
-    }
-
-    #[test]
-    fn test_atrium_bundle_maps_to_default() {
-        let p = get_profile_for_bundle_and_name("com.vitruviansoftware.atrium", "Vitruvian Atrium");
         assert_eq!(p.name, "default");
     }
 

@@ -1319,7 +1319,7 @@ exports_files(
 # Declared here because this package owns the artifact. The release-please
 # machinery that cuts the production tag lives in
 # .github/workflows/vitruvian-release.yaml (release machinery, not delivery --
-# the same split as iot-esp32-s3-release.yaml vs delivery-esp32-s3.yaml).
+# the same split as iot-vitruvian-deck-release.yaml vs delivery-vitruvian-deck.yaml).
 delivery(
     name = "vitruvian",
     app = "vitruvian",

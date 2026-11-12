@@ -1,7 +1,7 @@
-# Vitruvian Deck Daemon
+# Mac Stats Daemon
 
 ## Overview
-Component package providing implementation for `apps/embedded/vitruvian-deck/host-companion/src/vitruvian-deck`.
+Component package providing implementation for `apps/embedded/vitruvian-deck/host_tools/src/mac_stats_daemon`.
 
 ## Interface
 - `[lib.rs:MDNS_HOSTNAME]`
@@ -33,4 +33,4 @@ Component package providing implementation for `apps/embedded/vitruvian-deck/hos
 - [main.rs:103]: `"http" => {`
 
 ## Verification
-- Run: `bazel test //apps/embedded/vitruvian-deck:vitruvian_deck_test`
+- Run: `bazel test //apps/embedded/vitruvian-deck/host_tools/src/mac_stats_daemon/...`

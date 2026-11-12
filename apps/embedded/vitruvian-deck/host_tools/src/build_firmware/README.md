@@ -1,7 +1,7 @@
 # Build Firmware
 
 ## Overview
-Component package providing implementation for `apps/embedded/vitruvian-deck/host-companion/src/build-firmware`.
+Component package providing implementation for `apps/embedded/vitruvian-deck/host_tools/src/build_firmware`.
 
 ## Interface
 - `[lib.rs:Runner]`
@@ -22,4 +22,4 @@ Component package providing implementation for `apps/embedded/vitruvian-deck/hos
 - None
 
 ## Verification
-- Run: `bazel test //apps/embedded/vitruvian-deck:build_firmware_test`
+- Run: `bazel test //apps/embedded/vitruvian-deck/host_tools/src/build_firmware/...`

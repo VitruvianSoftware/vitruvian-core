@@ -25,7 +25,7 @@ package(default_visibility = ["//apps/embedded/vitruvian-deck:__subpackages__"])
 
 # The three flashable images, compiled by PlatformIO. NOT stamped: a genrule's
 # action sees no HOME/USER/git and none of the caller's env (see
-# host-companion/src/build-firmware/lib.rs), so version/grade/commit are applied
+# host_tools/src/build_firmware/lib.rs), so version/grade/commit are applied
 # by :publish, outside Bazel, where the release context exists.
 genrule(
     name = "firmware",
@@ -51,7 +51,7 @@ genrule(
 # PlatformIO build, the body of :firmware.
 rust_binary(
     name = "builder",
-    srcs = ["host-companion/src/build-firmware/main.rs"],
+    srcs = ["host_tools/src/build_firmware/main.rs"],
     crate_name = "builder",
     edition = "2021",
     deps = [":build_firmware_lib"],
@@ -63,11 +63,11 @@ rust_binary(
 rust_binary(
     name = "flash",
     srcs = [
-        "host-companion/src/flash/lib.rs",
-        "host-companion/src/flash/main.rs",
+        "host_tools/src/flash/lib.rs",
+        "host_tools/src/flash/main.rs",
     ],
     crate_name = "flash_main",
-    crate_root = "host-companion/src/flash/main.rs",
+    crate_root = "host_tools/src/flash/main.rs",
     data = [":firmware"],
     edition = "2021",
     tags = [
@@ -81,7 +81,7 @@ rust_binary(
 # the delivery() below names as `run`.
 rust_binary(
     name = "publish",
-    srcs = ["host-companion/src/publish/main.rs"],
+    srcs = ["host_tools/src/publish/main.rs"],
     crate_name = "publish_main",
     edition = "2021",
     tags = ["manual"],
@@ -119,12 +119,12 @@ delivery(
 )
 
 # ---------------------------------------------------------------------------
-# Native Rust build/flash/publish & host companion tools
+# Native Rust build/flash/publish & host helper tools
 # ---------------------------------------------------------------------------
 
 rust_library(
     name = "build_firmware_lib",
-    srcs = ["host-companion/src/build-firmware/lib.rs"],
+    srcs = ["host_tools/src/build_firmware/lib.rs"],
     crate_name = "build_firmware",
     edition = "2021",
 )
@@ -138,7 +138,7 @@ rust_test(
 
 rust_library(
     name = "flash_lib",
-    srcs = ["host-companion/src/flash/lib.rs"],
+    srcs = ["host_tools/src/flash/lib.rs"],
     crate_name = "flash",
     edition = "2021",
 )
@@ -152,7 +152,7 @@ rust_test(
 
 rust_library(
     name = "publish_lib",
-    srcs = ["host-companion/src/publish/lib.rs"],
+    srcs = ["host_tools/src/publish/lib.rs"],
     crate_name = "publish",
     edition = "2021",
 )
@@ -166,14 +166,14 @@ rust_test(
 
 rust_library(
     name = "app_profiles_lib",
-    srcs = ["host-companion/src/app-profiles/lib.rs"],
+    srcs = ["host_tools/src/app_profiles/lib.rs"],
     crate_name = "app_profiles",
     edition = "2021",
 )
 
 rust_binary(
-    name = "app-profiles",
-    srcs = ["host-companion/src/app-profiles/main.rs"],
+    name = "app_profiles",
+    srcs = ["host_tools/src/app_profiles/main.rs"],
     edition = "2021",
     deps = [":app_profiles_lib"],
 )
@@ -187,14 +187,14 @@ rust_test(
 
 rust_library(
     name = "agent_ci_monitor_lib",
-    srcs = ["host-companion/src/agent-ci-monitor/lib.rs"],
+    srcs = ["host_tools/src/agent_ci_monitor/lib.rs"],
     crate_name = "agent_ci_monitor",
     edition = "2021",
 )
 
 rust_binary(
-    name = "agent-ci-monitor",
-    srcs = ["host-companion/src/agent-ci-monitor/main.rs"],
+    name = "agent_ci_monitor",
+    srcs = ["host_tools/src/agent_ci_monitor/main.rs"],
     edition = "2021",
     deps = [":agent_ci_monitor_lib"],
 )
@@ -207,23 +207,23 @@ rust_test(
 )
 
 rust_library(
-    name = "vitruvian_deck_lib",
-    srcs = ["host-companion/src/vitruvian-deck/lib.rs"],
-    crate_name = "vitruvian_deck",
+    name = "mac_stats_daemon_lib",
+    srcs = ["host_tools/src/mac_stats_daemon/lib.rs"],
+    crate_name = "mac_stats_daemon",
     edition = "2021",
 )
 
 rust_binary(
-    name = "vitruvian-deck",
-    srcs = ["host-companion/src/vitruvian-deck/main.rs"],
+    name = "mac_stats_daemon",
+    srcs = ["host_tools/src/mac_stats_daemon/main.rs"],
     edition = "2021",
-    deps = [":vitruvian_deck_lib"],
+    deps = [":mac_stats_daemon_lib"],
 )
 
 rust_test(
-    name = "vitruvian_deck_test",
+    name = "mac_stats_daemon_test",
     size = "small",
-    crate = ":vitruvian_deck_lib",
+    crate = ":mac_stats_daemon_lib",
     edition = "2021",
 )
 
@@ -238,7 +238,7 @@ rust_library(
     data = glob([
         "src/**",
         "include/**",
-        "host-companion/**",
+        "host_tools/**",
         "docs/**",
     ]) + [
         "OWNERS",
@@ -250,12 +250,12 @@ rust_library(
     deps = [
         ":agent_ci_monitor_lib",
         ":app_profiles_lib",
-        ":vitruvian_deck_lib",
+        ":mac_stats_daemon_lib",
     ],
 )
 
 rust_binary(
-    name = "firmware-tests",
+    name = "firmware_tests",
     srcs = ["tests/src/main.rs"],
     edition = "2021",
     deps = [":firmware_tests_lib"],

@@ -392,7 +392,7 @@ pub fn serialize_wifi_set_packet(ssid: &str, password: &str) -> Vec<u8> {
     line.into_bytes()
 }
 
-pub fn resolve_companion_host(host: Option<&str>) -> Option<String> {
+pub fn resolve_deck_host(host: Option<&str>) -> Option<String> {
     let target = host
         .map(str::trim)
         .filter(|h| !h.is_empty())
@@ -643,7 +643,7 @@ pub fn parse_daemon_args(args: &[String]) -> Result<DaemonArgs, String> {
 }
 
 pub fn usage() -> &'static str {
-    "Usage: vitruvian-deck [OPTIONS]\n\
+    "Usage: mac_stats_daemon [OPTIONS]\n\
      \n\
      Options:\n\
        --mode <serial|http>  Transport mode (default: serial)\n\

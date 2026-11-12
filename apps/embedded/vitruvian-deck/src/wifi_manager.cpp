@@ -69,9 +69,9 @@ static char mdns_fqdn[48] = MDNS_HOSTNAME ".local";
 //
 // Started on every DHCP lease (the responder binds to the station netif, so it
 // has to be re-created after each reconnect) and advertises the untethered
-// link so the Mac companion can find the device without a pinned IP:
+// link so the Mac helper can find the device without a pinned IP:
 //
-//     vitruvian-deck.local             A record
+//     vitruvian-deck.local        A record
 //     _vitruvian._tcp  port 8266       service + version/chip/id TXT
 // ---------------------------------------------------------------------------
 static void mdns_start() {
@@ -172,7 +172,7 @@ static void radio_off() {
 static const char PORTAL_HTML[] PROGMEM = R"HTML(<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Vitruvian Deck Setup</title>
+<title>Vitruvian Setup</title>
 <style>
 body{font-family:-apple-system,Helvetica,Arial,sans-serif;background:#000;color:#fff;
 margin:0;padding:24px;max-width:420px;margin:0 auto}
@@ -262,7 +262,7 @@ static void portal_handle_save() {
     // Let the HTTP response flush before tearing the AP down.
     portal_shutdown_at_ms = millis() + 1500;
     portal_server->send(200, "text/plain",
-                        "Saved. Vitruvian Deck is now joining '" + ssid + "' - you can close this page.");
+                        "Saved. The Deck is now joining '" + ssid + "' - you can close this page.");
     Serial.printf("[WIFI] Portal saved credentials for '%s'\n", sta_ssid);
 }
 
@@ -283,7 +283,7 @@ void wifi_manager_start_portal() {
 
     uint8_t mac[6];
     WiFi.macAddress(mac);
-    snprintf(ap_name, sizeof(ap_name), "Vitruvian-Deck-%02X%02X", mac[4], mac[5]);
+    snprintf(ap_name, sizeof(ap_name), "Vitruvian-Setup-%02X%02X", mac[4], mac[5]);
 
     // AP+STA so /scan can enumerate nearby networks while the AP is serving.
     WiFi.mode(WIFI_AP_STA);

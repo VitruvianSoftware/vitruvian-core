@@ -25,7 +25,7 @@ use std::time::Duration;
 
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
-    let daemon_args = match vitruvian_deck::parse_daemon_args(&args) {
+    let daemon_args = match mac_stats_daemon::parse_daemon_args(&args) {
         Ok(a) => a,
         Err(e) => {
             eprintln!("Error: {}", e);
@@ -34,23 +34,23 @@ fn main() {
     };
 
     if daemon_args.help {
-        println!("{}", vitruvian_deck::usage());
+        println!("{}", mac_stats_daemon::usage());
         return;
     }
 
     if daemon_args.once {
-        let stats = vitruvian_deck::collect_all_stats(true, &daemon_args.repo);
+        let stats = mac_stats_daemon::collect_all_stats(true, &daemon_args.repo);
         let packet = format!("{}\n", stats);
 
         match daemon_args.mode.as_str() {
             "serial" => {
                 let port = daemon_args
                     .port
-                    .or_else(vitruvian_deck::find_esp32_serial_port);
+                    .or_else(mac_stats_daemon::find_esp32_serial_port);
                 match port {
                     Some(p) => {
                         if let Err(e) =
-                            vitruvian_deck::send_over_serial(&p, daemon_args.baud, &packet)
+                            mac_stats_daemon::send_over_serial(&p, daemon_args.baud, &packet)
                         {
                             eprintln!("Error: {}", e);
                             process::exit(1);
@@ -62,9 +62,11 @@ fn main() {
                 }
             }
             "http" => {
-                if let Err(e) =
-                    vitruvian_deck::send_over_http(&daemon_args.host, daemon_args.udp_port, &packet)
-                {
+                if let Err(e) = mac_stats_daemon::send_over_http(
+                    &daemon_args.host,
+                    daemon_args.udp_port,
+                    &packet,
+                ) {
                     eprintln!("Error: {}", e);
                     process::exit(1);
                 }
@@ -77,12 +79,12 @@ fn main() {
     }
 
     eprintln!(
-        "Vitruvian Deck Host Companion Daemon starting (mode={}, interval={}s)...",
+        "Vitruvian Deck Mac Helper starting (mode={}, interval={}s)...",
         daemon_args.mode, daemon_args.interval
     );
 
     loop {
-        let stats = vitruvian_deck::collect_all_stats(true, &daemon_args.repo);
+        let stats = mac_stats_daemon::collect_all_stats(true, &daemon_args.repo);
         let packet = format!("{}\n", stats);
 
         match daemon_args.mode.as_str() {
@@ -90,17 +92,20 @@ fn main() {
                 let port = daemon_args
                     .port
                     .clone()
-                    .or_else(vitruvian_deck::find_esp32_serial_port);
+                    .or_else(mac_stats_daemon::find_esp32_serial_port);
                 if let Some(ref p) = port {
-                    if let Err(e) = vitruvian_deck::send_over_serial(p, daemon_args.baud, &packet) {
+                    if let Err(e) = mac_stats_daemon::send_over_serial(p, daemon_args.baud, &packet)
+                    {
                         eprintln!("Serial error: {}", e);
                     }
                 }
             }
             "http" => {
-                if let Err(e) =
-                    vitruvian_deck::send_over_http(&daemon_args.host, daemon_args.udp_port, &packet)
-                {
+                if let Err(e) = mac_stats_daemon::send_over_http(
+                    &daemon_args.host,
+                    daemon_args.udp_port,
+                    &packet,
+                ) {
                     eprintln!("UDP error: {}", e);
                 }
             }

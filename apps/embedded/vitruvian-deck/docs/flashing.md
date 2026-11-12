@@ -1,6 +1,6 @@
-# Vitruvian Deck Firmware Flashing & Host Setup Guide
+# mac-controller Firmware Flashing & Host Setup Guide
 
-This guide provides step-by-step instructions for building and flashing **Vitruvian Deck** firmware using Bazel, PlatformIO, or esptool, setting up the macOS companion daemon, and troubleshooting common issues.
+This guide provides step-by-step instructions for building and flashing the Vitruvian Deck firmware using Bazel, PlatformIO, or esptool, setting up the macOS helper daemon, and troubleshooting common issues.
 
 ---
 
@@ -30,8 +30,9 @@ Outputs are compiled in `bazel-bin/apps/embedded/vitruvian-deck/`:
 - `firmware.bin` (Application binary)
 - `bootloader.bin` (ESP32-S3 second-stage bootloader)
 - `partitions.bin` (Partition layout)
+- `vitruvian-deck-mac-controller.zip` (Self-contained release zip)
 
-### Step 2: Flash to Connected Vitruvian Deck
+### Step 2: Flash to a Connected Vitruvian Deck
 Plug your board into a USB-C port on your Mac, then run:
 ```bash
 bazel run //apps/embedded/vitruvian-deck:flash
@@ -97,8 +98,8 @@ For flashing distributed binary release zips without compiling from source:
 
 ```bash
 # Extract distribution zip
-unzip vitruvian-deck.zip -d vitruvian-deck-release
-cd vitruvian-deck-release
+unzip vitruvian-deck-mac-controller.zip -d mac-ctrl-release
+cd mac-ctrl-release
 
 # Build the std-only flasher beside the images, then run it
 rustc --edition 2021 -O flash/main.rs -o flash-vitruvian-deck
@@ -115,16 +116,16 @@ esptool.py -p /dev/cu.usbmodemXXXX -b 460800 --before default_reset --after hard
 
 ---
 
-## 5. Running the macOS Companion Daemon
+## 5. Running the macOS Helper Daemon
 
 ### Interactive Execution:
 ```bash
-bazel run //apps/embedded/vitruvian-deck:vitruvian-deck
+bazel run //apps/embedded/vitruvian-deck:mac_stats_daemon
 ```
 
 ### Expected Startup Output:
 ```
-Vitruvian Deck Companion Daemon starting...
+Vitruvian Deck Mac Helper starting...
 Connected to Vitruvian Deck over USB CDC /dev/cu.usbmodem1101
 [APP] Focus -> VS Code (com.microsoft.VSCode) via usb
 [INIT] Primed USB CDC /dev/cu.usbmodem1101: app=VS Code, agent=idle, ci=passing
@@ -132,7 +133,7 @@ Connected to Vitruvian Deck over USB CDC /dev/cu.usbmodem1101
 
 Unplug the cable and the same daemon finds the device on the LAN instead:
 ```
-Waiting for Vitruvian Deck on USB (/dev/cu.usbmodem*) or vitruvian-deck.local...
+Waiting for the Vitruvian Deck on USB (/dev/cu.usbmodem*) or vitruvian-deck.local...
 Connected to Vitruvian Deck over Wi-Fi UDP 192.168.1.42:8266
 [INIT] Primed Wi-Fi UDP 192.168.1.42:8266: app=VS Code, agent=idle, ci=passing
 ```
@@ -160,16 +161,16 @@ To run the daemon automatically in the background whenever you log into macOS, c
     <string>com.vitruviansoftware.deck</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/YOUR_USERNAME/Workspace/gh/application/vitruvian/vitruvian-core/bazel-bin/apps/embedded/vitruvian-deck/vitruvian-deck</string>
+        <string>/Users/YOUR_USERNAME/Workspace/gh/application/vitruvian/vitruvian-core/bazel-bin/apps/embedded/vitruvian-deck/mac_stats_daemon</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>/tmp/vitruvian-deck.log</string>
+    <string>/tmp/vitruvian_deck.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/vitruvian-deck.err</string>
+    <string>/tmp/vitruvian_deck.err</string>
 </dict>
 </plist>
 ```
@@ -183,7 +184,7 @@ launchctl load ~/Library/LaunchAgents/com.vitruviansoftware.deck.plist
 ## 6. Troubleshooting & Recovery
 
 ### Issue 1: Serial Port Not Detected (`/dev/cu.usbmodem*` missing)
-- **Cause**: Cable is power-only, or the ESP32-S3 is in a sleep or unconfigured USB state.
+- **Cause**: Cable is power-only, or the Vitruvian Deck is in a sleep or unconfigured USB state.
 - **Solution**:
   1. Replace cable with a high-speed data-rated USB-C cable.
   2. Put the board into **ROM Bootloader Mode**:

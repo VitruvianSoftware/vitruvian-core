@@ -152,7 +152,7 @@ static void save_config() {
 // NimBLE server callbacks. These run on the NimBLE host task, so they only
 // flip flags; UI notification happens from ble_hid_loop().
 // ---------------------------------------------------------------------------
-class CompanionServerCallbacks : public NimBLEServerCallbacks {
+class DeckServerCallbacks : public NimBLEServerCallbacks {
     void onConnect(NimBLEServer* server, ble_gap_conn_desc* desc) override {
         connected = true;
         advertising = false;
@@ -193,7 +193,7 @@ static void stack_start() {
     NimBLEDevice::setSecurityAuth(true /* bond */, false /* mitm */, true /* sc */);
 
     ble_server = NimBLEDevice::createServer();
-    ble_server->setCallbacks(new CompanionServerCallbacks());
+    ble_server->setCallbacks(new DeckServerCallbacks());
     ble_server->advertiseOnDisconnect(false);
 
     hid_device = new NimBLEHIDDevice(ble_server);
@@ -214,7 +214,7 @@ static void stack_start() {
     Serial.printf("[BLE] Stack up as '%s'\n", BLE_DEVICE_NAME);
 
     // A previously bonded Mac reconnects on its own schedule — advertise
-    // open-endedly so the companion is always reachable when enabled.
+    // open-endedly so the Deck is always reachable when enabled.
     if (paired_mac[0] != '\0') {
         start_advertising_internal(false);
     }

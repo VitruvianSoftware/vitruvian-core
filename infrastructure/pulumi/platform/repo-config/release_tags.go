@@ -82,7 +82,7 @@ var environmentTagPatterns = []string{
 //
 // Where each is set:
 //   - vitruvian-beta-latest: apps/desktop/vitruvian/bazel/src/publish/lib.rs
-//   - vitruvian-deck-beta-latest: apps/embedded/vitruvian-deck/host-companion/src/publish/lib.rs
+//   - vitruvian-deck-beta-latest: apps/embedded/vitruvian-deck/host_tools/src/publish/lib.rs
 //   - gravastar-mouse-beta-latest: packages/peripherals/scripts/src/lib.rs
 //   - tabula-extension-dev-latest: apps/suites/tabula/extension/scripts/src/publish_dev_latest.rs
 //

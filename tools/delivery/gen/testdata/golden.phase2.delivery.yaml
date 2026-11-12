@@ -1813,8 +1813,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # replaces apps/embedded/vitruvian-deck/publish.sh
-          rustc --edition 2021 --crate-type lib --crate-name publish apps/embedded/vitruvian-deck/host-companion/src/publish/lib.rs -o "$RUNNER_TEMP/libpublish.rlib"
-          rustc --edition 2021 apps/embedded/vitruvian-deck/host-companion/src/publish/main.rs -L "$RUNNER_TEMP" --extern publish="$RUNNER_TEMP/libpublish.rlib" -o "$RUNNER_TEMP/vitruvian-deck-publish"
+          rustc --edition 2021 --crate-type lib --crate-name publish apps/embedded/vitruvian-deck/host_tools/src/publish/lib.rs -o "$RUNNER_TEMP/libpublish.rlib"
+          rustc --edition 2021 apps/embedded/vitruvian-deck/host_tools/src/publish/main.rs -L "$RUNNER_TEMP" --extern publish="$RUNNER_TEMP/libpublish.rlib" -o "$RUNNER_TEMP/vitruvian-deck-publish"
           "$RUNNER_TEMP/vitruvian-deck-publish"
 
   # PROMOTION rung 1/1 — release-gated on a vitruvian-deck-v* release, never reached by a push.
@@ -1865,6 +1865,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # replaces apps/embedded/vitruvian-deck/publish.sh
-          rustc --edition 2021 --crate-type lib --crate-name publish apps/embedded/vitruvian-deck/host-companion/src/publish/lib.rs -o "$RUNNER_TEMP/libpublish.rlib"
-          rustc --edition 2021 apps/embedded/vitruvian-deck/host-companion/src/publish/main.rs -L "$RUNNER_TEMP" --extern publish="$RUNNER_TEMP/libpublish.rlib" -o "$RUNNER_TEMP/vitruvian-deck-publish"
+          rustc --edition 2021 --crate-type lib --crate-name publish apps/embedded/vitruvian-deck/host_tools/src/publish/lib.rs -o "$RUNNER_TEMP/libpublish.rlib"
+          rustc --edition 2021 apps/embedded/vitruvian-deck/host_tools/src/publish/main.rs -L "$RUNNER_TEMP" --extern publish="$RUNNER_TEMP/libpublish.rlib" -o "$RUNNER_TEMP/vitruvian-deck-publish"
           "$RUNNER_TEMP/vitruvian-deck-publish"

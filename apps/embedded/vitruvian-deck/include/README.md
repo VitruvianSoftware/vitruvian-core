@@ -14,4 +14,4 @@ Component package providing implementation for `apps/embedded/vitruvian-deck/inc
 - None
 
 ## Verification
-- Run: `bazel test //apps/embedded/vitruvian-deck/...`
+- Run: `bazel test //apps/embedded/vitruvian-deck/include/...`

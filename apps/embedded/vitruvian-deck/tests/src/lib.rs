@@ -41,10 +41,7 @@ pub mod test_wifi_provisioning;
 /// Bazel test sandboxes (`TEST_SRCDIR`), `bazel run` (`BUILD_WORKSPACE_DIRECTORY`),
 /// or direct execution from the repository/package root.
 pub fn component_dir() -> PathBuf {
-    let candidates = [
-        PathBuf::from("apps/embedded/vitruvian-deck"),
-        PathBuf::from("."),
-    ];
+    let candidates = [PathBuf::from("apps/embedded/vitruvian-deck"), PathBuf::from(".")];
     for c in &candidates {
         if c.join("platformio.ini").is_file() && c.join("src").is_dir() {
             return c.clone();

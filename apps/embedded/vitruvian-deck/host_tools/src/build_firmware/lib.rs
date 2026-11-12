@@ -374,10 +374,7 @@ mod tests {
             &f,
         )
         .unwrap();
-        assert_eq!(
-            cfg.project_dir,
-            PathBuf::from("apps/embedded/vitruvian-deck")
-        );
+        assert_eq!(cfg.project_dir, PathBuf::from("apps/embedded/vitruvian-deck"));
         assert_eq!(cfg.out_firmware, "o/firmware.bin");
         assert_eq!(cfg.out_bootloader, "o/bootloader.bin");
         assert_eq!(cfg.out_partitions, "o/partitions.bin");

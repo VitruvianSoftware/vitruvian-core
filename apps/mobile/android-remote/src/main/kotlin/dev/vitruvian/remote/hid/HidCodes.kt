@@ -21,7 +21,7 @@
 package dev.vitruvian.remote.hid
 
 /**
- * The HID wire format, ported from `iot/esp32-s3/src/ble_hid.cpp`.
+ * The HID wire format, ported from `apps/embedded/vitruvian-deck/src/ble_hid.cpp`.
  *
  * The ESP32 board already drives a Mac as a Bluetooth keyboard, with no software installed on the
  * Mac at all. This file is that same report map and the same key codes, so the phone presents
@@ -96,7 +96,7 @@ public object HidCodes {
    * I first blamed the transport -- the board is BLE, this is Bluetooth Classic. James's read is
    * simpler and fits better: that button probably never worked on the board either, and 0x30 is
    * just the wrong code. Either way, this chord is the one verified against a real Mac, and
-   * iot/esp32-s3 likely wants the same correction.
+   * apps/embedded/vitruvian-deck likely wants the same correction.
    *
    * Note 0x66 is 102, one past the 0..101 key array this descriptor declares. macOS accepts it
    * regardless; verified on hardware. Do not "fix" the range to make it legal -- that is an

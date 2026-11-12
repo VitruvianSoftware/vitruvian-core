@@ -226,7 +226,7 @@ bool packet_router_handle(const char* json, size_t len, LinkChannel channel) {
         const char* ssid = doc["ssid"] | "";
         const char* pass = doc["pass"] | "";
         if (wifi_manager_set_credentials(ssid, pass)) {
-            Serial.printf("[WIFI] Companion provisioned SSID '%s'\n", ssid);
+            Serial.printf("[WIFI] Helper provisioned SSID '%s'\n", ssid);
             packet_router_send_wifi_status();
         } else {
             Serial.println("[WIFI] Rejected wifi_set: invalid ssid/pass length");

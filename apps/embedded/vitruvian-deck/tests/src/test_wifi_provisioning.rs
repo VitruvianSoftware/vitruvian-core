@@ -21,7 +21,7 @@
 
 //! Rust migration of `test_wifi_provisioning.py`:
 //! macOS Keychain & CoreWLAN Wi-Fi provisioning, `wifi_set` serialization,
-//! Zero-Typing Companion Sync (`wifi_sync` -> `wifi_set` / `wifi_sync_error`),
+//! Zero-Typing Helper Sync (`wifi_sync` -> `wifi_set` / `wifi_sync_error`),
 //! IEEE 802.11 32-byte SSID / 63-byte WPA2 bounds, and firmware NVS simulation.
 
 use crate::{json_escape_str, json_extract_str};
@@ -235,16 +235,17 @@ pub fn test_ssid_and_payload_serialization() {
         Some("p\"a\\ss")
     );
 
-    // Also verify vitruvian_deck's exported helpers directly
+    // Also verify mac_stats_daemon's exported helpers directly
     assert_eq!(
-        vitruvian_deck::parse_networksetup_ssid("Current Wi-Fi Network: Vitruvian-5G\n").as_deref(),
+        mac_stats_daemon::parse_networksetup_ssid("Current Wi-Fi Network: Vitruvian-5G\n")
+            .as_deref(),
         Some("Vitruvian-5G")
     );
     assert_eq!(
-        vitruvian_deck::parse_ipconfig_ssid("  SSID : BackupLabWiFi\n").as_deref(),
+        mac_stats_daemon::parse_ipconfig_ssid("  SSID : BackupLabWiFi\n").as_deref(),
         Some("BackupLabWiFi")
     );
-    let daemon_payload = vitruvian_deck::build_wifi_set_payload("HomeNet", "p\"a\\ss");
+    let daemon_payload = mac_stats_daemon::build_wifi_set_payload("HomeNet", "p\"a\\ss");
     assert_eq!(
         json_extract_str(&daemon_payload, "cmd").as_deref(),
         Some("wifi_set")
@@ -257,12 +258,12 @@ pub fn test_ssid_and_payload_serialization() {
         json_extract_str(&daemon_payload, "pass").as_deref(),
         Some("p\"a\\ss")
     );
-    let daemon_pkt = vitruvian_deck::serialize_wifi_set_packet("HomeNet", "pw");
+    let daemon_pkt = mac_stats_daemon::serialize_wifi_set_packet("HomeNet", "pw");
     assert!(daemon_pkt.ends_with(b"\n"));
     assert!(daemon_pkt.len() < 1024);
 }
 
-pub fn test_zero_typing_companion_sync() {
+pub fn test_zero_typing_helper_sync() {
     let mut actions = Vec::new();
     let resp = handle_incoming_serial_line(
         "{\"type\":\"cmd\",\"action\":\"wifi_sync\"}",
@@ -326,7 +327,7 @@ pub fn test_firmware_nvs_and_80211_bounds() {
     // Power-cycle persistence, reprovisioning, and radio disable
     let mut nvs_sim = FirmwareNvsSim::new();
     assert!(
-        nvs_sim.handle_serial_line(&vitruvian_deck::build_wifi_set_payload(
+        nvs_sim.handle_serial_line(&mac_stats_daemon::build_wifi_set_payload(
             "OfficeWiFi",
             "hunter2"
         ))
@@ -335,7 +336,7 @@ pub fn test_firmware_nvs_and_80211_bounds() {
     nvs_sim.power_cycle();
     assert_eq!(nvs_sim.connected_ssid.as_deref(), Some("OfficeWiFi"));
     assert!(
-        nvs_sim.handle_serial_line(&vitruvian_deck::build_wifi_set_payload(
+        nvs_sim.handle_serial_line(&mac_stats_daemon::build_wifi_set_payload(
             "HomeWiFi",
             "newsecret"
         ))
@@ -372,7 +373,7 @@ pub fn test_firmware_nvs_and_80211_bounds() {
 
 pub fn run_suite() -> usize {
     test_ssid_and_payload_serialization();
-    test_zero_typing_companion_sync();
+    test_zero_typing_helper_sync();
     test_firmware_nvs_and_80211_bounds();
     3
 }

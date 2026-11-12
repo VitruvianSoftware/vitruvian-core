@@ -375,6 +375,12 @@ pub fn test_buzzer_firmware_source() {
     assert_ne!(buzz_ch, bl_ch);
 
     assert!(mac_hid_cpp.contains("buzzer_play_click()"));
+
+    // The name the Mac shows for the USB device and for the Bluetooth pairing
+    // entry is the product name (the VID/PID numbers are not part of the name).
+    assert!(mac_hid_cpp.contains("USB.productName(\"Vitruvian Deck\")"));
+    let ble_hid_cpp = read_component_file("src/ble_hid.cpp");
+    assert!(ble_hid_cpp.contains("BLE_DEVICE_NAME = \"Vitruvian Deck\""));
 }
 
 pub fn test_poll_scheduling_and_tls() {

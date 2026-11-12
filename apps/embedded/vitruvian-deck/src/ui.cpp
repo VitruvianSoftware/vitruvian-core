@@ -126,7 +126,7 @@ static void smart_btn_action_cb(lv_event_t * e) {
 }
 
 static Preferences prefs;
-static const char* NVS_NAMESPACE = "vitruvian-deck";
+static const char* NVS_NAMESPACE = "mac_ctrl";
 // Device-behaviour flags share the "settings" namespace with the buzzer mute
 // (docs/protocol.md lists the full key map).
 static const char* NVS_SETTINGS_NS = "settings";
@@ -252,7 +252,7 @@ static void connectivity_btn_action_cb(lv_event_t * e) {
 
     switch (action_id) {
         case ACTION_WIFI_SYNC:
-            // Least-friction default: ask the tethered Mac companion to beam
+            // Least-friction default: ask the tethered Mac helper to beam
             // its current network credentials over USB CDC.
             wifi_sync_pending_until_ms = millis() + 10000;
             if (!wifi_manager_is_enabled()) {
@@ -980,7 +980,7 @@ void ui_init() {
 
     // Time Label
     label_time = lv_label_create(header);
-    lv_label_set_text(label_time, "Vitruvian Deck");
+    lv_label_set_text(label_time, "Mac Desk");
     lv_obj_set_style_text_color(label_time, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_text_font(label_time, &lv_font_montserrat_14, 0);
     lv_obj_set_pos(label_time, 2, -2);
@@ -1563,7 +1563,7 @@ void ui_init() {
     lv_obj_set_width(label_wifi_status, 206);
     lv_label_set_long_mode(label_wifi_status, LV_LABEL_LONG_DOT);
 
-    // Multiple options, least friction first: companion sync is the primary
+    // Multiple options, least friction first: helper sync is the primary
     // (default) path, the standalone web portal is the fallback.
     create_conn_button(card_wifi, "Sync from\nMac", 0x0A84FF, 2, 40, 102, 44, ACTION_WIFI_SYNC);
     create_conn_button(card_wifi, "Web\nPortal", 0x5E5CE6, 110, 40, 102, 44, ACTION_WIFI_PORTAL);
@@ -1619,7 +1619,7 @@ void ui_init() {
     const char *info_text =
         "ESP32-S3 @ 240MHz (16MB/8MB)\n"
         "Wi-Fi 2.4GHz | BT5 LE HID | USB CDC\n"
-        "Firmware: Vitruvian Deck v" FIRMWARE_VERSION;
+        "Firmware: vitruvian-core v1.1";
 
     lv_obj_t *info_lbl = lv_label_create(card_info);
     lv_label_set_text(info_lbl, info_text);
@@ -2195,7 +2195,7 @@ void ui_update_wifi_status(const char* state, const char* ip, const char* ssid) 
             wifi_sync_pending_until_ms = 0;
             // `ip` carries the SoftAP SSID while the portal is up.
             lv_label_set_text_fmt(label_wifi_status, "AP: %s @ 192.168.4.1",
-                                  (ip && ip[0]) ? ip : "Vitruvian-Deck");
+                                  (ip && ip[0]) ? ip : "Vitruvian-Setup");
             lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(0x0A84FF), 0);
         } else if (wifi_sync_pending_until_ms > 0 && millis() < wifi_sync_pending_until_ms) {
             // Retain sync status while waiting for host response

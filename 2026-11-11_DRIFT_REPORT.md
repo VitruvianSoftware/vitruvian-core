@@ -1590,35 +1590,35 @@ No drift detected.
 
 No drift detected.
 
-## apps/embedded/vitruvian-deck/host-companion/README.md
+## apps/embedded/vitruvian-deck/host_tools/README.md
 
 No drift detected.
 
-## apps/embedded/vitruvian-deck/host-companion/src/README.md
+## apps/embedded/vitruvian-deck/host_tools/src/README.md
 
 No drift detected.
 
-## apps/embedded/vitruvian-deck/host-companion/src/agent-ci-monitor/README.md
+## apps/embedded/vitruvian-deck/host_tools/src/agent_ci_monitor/README.md
 
 No drift detected.
 
-## apps/embedded/vitruvian-deck/host-companion/src/app-profiles/README.md
+## apps/embedded/vitruvian-deck/host_tools/src/app_profiles/README.md
 
 No drift detected.
 
-## apps/embedded/vitruvian-deck/host-companion/src/build-firmware/README.md
+## apps/embedded/vitruvian-deck/host_tools/src/build_firmware/README.md
 
 No drift detected.
 
-## apps/embedded/vitruvian-deck/host-companion/src/flash/README.md
+## apps/embedded/vitruvian-deck/host_tools/src/flash/README.md
 
 No drift detected.
 
-## apps/embedded/vitruvian-deck/host-companion/src/publish/README.md
+## apps/embedded/vitruvian-deck/host_tools/src/mac_stats_daemon/README.md
 
 No drift detected.
 
-## apps/embedded/vitruvian-deck/host-companion/src/vitruvian-deck/README.md
+## apps/embedded/vitruvian-deck/host_tools/src/publish/README.md
 
 No drift detected.
 

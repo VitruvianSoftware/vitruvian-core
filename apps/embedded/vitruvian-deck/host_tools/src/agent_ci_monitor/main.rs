@@ -34,7 +34,7 @@ fn main() {
     };
 
     if cli.once {
-        let payload = agent_ci_monitor::get_companion_payload(&cli.repo);
+        let payload = agent_ci_monitor::get_helper_payload(&cli.repo);
         print!("{}", agent_ci_monitor::serialize_packet(&payload));
         return;
     }
@@ -44,7 +44,7 @@ fn main() {
         cli.interval, cli.repo
     );
     loop {
-        let payload = agent_ci_monitor::get_companion_payload(&cli.repo);
+        let payload = agent_ci_monitor::get_helper_payload(&cli.repo);
         print!("{}", agent_ci_monitor::serialize_packet(&payload));
         thread::sleep(Duration::from_secs_f64(cli.interval));
     }

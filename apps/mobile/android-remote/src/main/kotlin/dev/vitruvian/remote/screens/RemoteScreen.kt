@@ -622,7 +622,7 @@ public fun Trackpad(
   // Glass has no travel, so vibration is the only thing that can confirm a
   // press without looking down -- and looking down is the thing this surface
   // should never ask you to do. KEYBOARD_TAP is the light tick, not the heavy
-  // long-press thud. Same idea as the esp32-s3's haptic_click().
+  // long-press thud. Same idea as the Vitruvian Deck's haptic_click().
   fun tick() = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
   // Remembered, NOT allocated inline: `trackpadGestures` cannot key its pointer
   // loop on this object (see its docs), and a fresh instance every recomposition

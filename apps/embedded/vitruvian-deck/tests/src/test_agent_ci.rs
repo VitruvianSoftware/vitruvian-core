@@ -63,7 +63,7 @@ impl Default for MockMonitorState {
     }
 }
 
-/// Simulates `handle_esp_command` from `vitruvian_deck` for ESP32 touch button actions.
+/// Simulates `handle_esp_command` from `mac_stats_daemon` for ESP32 touch button actions.
 pub fn dispatch_esp_command(line: &str, monitor: &mut MockMonitorState) -> DispatchedAction {
     let trimmed = line.trim();
     if !trimmed.starts_with('{') || !trimmed.ends_with('}') {
@@ -285,14 +285,14 @@ pub fn run_suite() -> usize {
 
     // 4. Git status parsing
     let (branch, dirty, count) =
-        parse_git_status("## feat/vitruvian-deck...origin/feat/vitruvian-deck\n");
-    assert_eq!(branch, "feat/vitruvian-deck");
+        parse_git_status("## feat/mac-controller...origin/feat/mac-controller\n");
+    assert_eq!(branch, "feat/mac-controller");
     assert!(!dirty);
     assert_eq!(count, 0);
     checks += 1;
 
     let (branch, dirty, count) = parse_git_status(
-        "## main...origin/main [ahead 2, behind 1]\n M apps/embedded/vitruvian-deck/src/main.cpp\n M apps/embedded/vitruvian-deck/src/ui.cpp\n?? apps/embedded/vitruvian-deck/tests/src/test_agent_ci.rs\n",
+        "## main...origin/main [ahead 2, behind 1]\n M mac-controller/src/main.cpp\n M mac-controller/src/ui.cpp\n?? mac-controller/tests/test_agent_ci.py\n",
     );
     assert_eq!(branch, "main");
     assert!(dirty);
@@ -546,15 +546,15 @@ mod tests {
     #[test]
     fn test_git_status_parsing() {
         let (branch, dirty, count) =
-            parse_git_status("## feat/vitruvian-deck...origin/feat/vitruvian-deck\n");
-        assert_eq!(branch, "feat/vitruvian-deck");
+            parse_git_status("## feat/mac-controller...origin/feat/mac-controller\n");
+        assert_eq!(branch, "feat/mac-controller");
         assert!(!dirty);
         assert_eq!(count, 0);
 
         let out = "## main...origin/main [ahead 2, behind 1]\n\
-                    M apps/embedded/vitruvian-deck/src/main.cpp\n\
-                    M apps/embedded/vitruvian-deck/src/ui.cpp\n\
-                   ?? apps/embedded/vitruvian-deck/tests/src/test_agent_ci.rs\n";
+                    M mac-controller/src/main.cpp\n\
+                    M mac-controller/src/ui.cpp\n\
+                   ?? mac-controller/tests/test_agent_ci.py\n";
         let (branch, dirty, count) = parse_git_status(out);
         assert_eq!(branch, "main");
         assert!(dirty);
