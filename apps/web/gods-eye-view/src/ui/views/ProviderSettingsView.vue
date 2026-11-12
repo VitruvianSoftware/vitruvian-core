@@ -30,6 +30,30 @@ import { vStatusText } from '../rail/statusText.js';
 import { useLocaleStore } from '../stores/locale.js';
 import { useProviderSettingsStore } from '../stores/providerSettings.js';
 import LocalePicker from './panels/LocalePicker.vue';
+import { triggerClientTestException, isDiagnosticsEnabled, isClientSentryInitialized, onDiagnosticsChange } from '../../sentry.js';
+
+const sentryStatus = shallowRef('');
+const showSentryTest = shallowRef(isDiagnosticsEnabled() || isClientSentryInitialized());
+let diagnosticsUnsub = null;
+
+async function triggerSentryTest() {
+  try {
+    sentryStatus.value = 'TESTING...';
+    triggerClientTestException();
+    const res = await fetch('/api/diagnostics/sentry-test');
+    if (res.ok) {
+      sentryStatus.value = 'SENTRY OK';
+    } else {
+      sentryStatus.value = 'CLIENT SENT';
+    }
+  } catch {
+    sentryStatus.value = 'TEST SENT';
+  } finally {
+    setTimeout(() => {
+      sentryStatus.value = '';
+    }, 3000);
+  }
+}
 
 const { picker } = storeToRefs(useLocaleStore());
 // The key setup owner (src/keySetup.js) presents the chip, the dialog and its
@@ -45,6 +69,9 @@ const dialog = computed(() => view.value?.dialog ?? { hidden: true, visible: fal
 const cyber = shallowRef(false);
 let themeObserver = null;
 onMounted(() => {
+  diagnosticsUnsub = onDiagnosticsChange((active) => {
+    showSentryTest.value = active;
+  });
   const theme = document.documentElement;
   const sync = () => {
     cyber.value =
@@ -55,7 +82,10 @@ onMounted(() => {
   themeObserver.observe(theme, { attributes: true, attributeFilter: ['data-ui-theme'] });
   sync();
 });
-onBeforeUnmount(() => themeObserver?.disconnect());
+onBeforeUnmount(() => {
+  themeObserver?.disconnect();
+  diagnosticsUnsub?.();
+});
 
 // The status line is a live region; vStatusText re-announces repeats.
 const statusText = computed(() => ({
@@ -118,6 +148,7 @@ const removeTitle = (title) =>
     </div>
     <div class="key-setup-footer">
       <button type="button" class="key-setup-apply" data-key-setup-apply :aria-disabled="view?.saving == null ? undefined : String(view.saving)" @click="controls?.apply()">{{ t('SAVE KEYS') }}</button>
+      <button v-if="showSentryTest" type="button" class="key-setup-sentry-test" data-sentry-test-btn translate="no" title="Trigger test exception to verify Sentry error tracking" @click="triggerSentryTest()">{{ sentryStatus || 'TEST SENTRY' }}</button>
       <span class="key-setup-hint">{{ t('ESC to close') }}</span>
     </div>
     <p class="key-setup-note" data-key-setup-status role="status" aria-live="polite" v-status-text="statusText"></p>

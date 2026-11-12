@@ -377,6 +377,28 @@
   pointer-events: none;
 }
 
+.key-setup-sentry-test {
+  margin-left: 0.5rem;
+  padding: 0.5rem 0.85rem;
+  color: #ff6b6b;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.09rem;
+  background: rgba(255, 107, 107, 0.12);
+  border: 1px solid rgba(255, 107, 107, 0.35);
+  border-radius: 0.38rem;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.key-setup-sentry-test:hover,
+.key-setup-sentry-test:focus-visible {
+  background: rgba(255, 107, 107, 0.22);
+  border-color: rgba(255, 107, 107, 0.6);
+  outline: none;
+}
+
 .key-setup-note {
   min-height: 1.1rem;
   margin-top: 0.5rem;

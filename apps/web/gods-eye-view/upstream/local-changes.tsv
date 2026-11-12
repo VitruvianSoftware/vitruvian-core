@@ -79,3 +79,11 @@ src/i18n/locales/pt.json	modified	The startup status line names HOME_VIEW's city
 src/i18n/locales/uk.json	modified	The startup status line names HOME_VIEW's city through a {place} message, in place of upstream's Austin one.
 src/i18n/locales/zh-Hant.json	modified	The startup status line names HOME_VIEW's city through a {place} message, in place of upstream's Austin one.
 src/i18n/locales/zh-CN.json	modified	The startup status line names HOME_VIEW's city through a {place} message, in place of upstream's Austin one.
+server/standalone/sentry.js	added	Server-side Sentry error monitoring and diagnostics endpoint (/api/diagnostics/sentry-test).
+server/standalone/sentry.test.mjs	added	Unit tests for server-side Sentry initialization, error capture, and diagnostics plugin.
+src/sentry.js	added	Client-side Sentry SDK initialization and error reporting sending to public Relay ingest.
+src/sentry.test.mjs	added	Unit tests for client-side Sentry initialization, safe fallbacks, and test exception trigger.
+src/sentry.ts	added	TypeScript re-exports and interface for client-side Sentry.
+src/main.js	modified	Initializes client-side Sentry error monitoring and captures startup failures.
+src/ui/styles/provider-settings.css	modified	Adds styles for key-setup-sentry-test diagnostic button.
+src/ui/views/ProviderSettingsView.vue	modified	Adds Sentry diagnostic test button to trigger client and server exceptions.
