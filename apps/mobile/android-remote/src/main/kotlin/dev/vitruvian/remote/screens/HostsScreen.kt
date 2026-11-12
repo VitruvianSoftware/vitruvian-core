@@ -93,7 +93,10 @@ public fun ColumnScope.HostsScreen(state: RemoteState) {
   // The permission answers change while this app is in the background -- the
   // user grants one from the system settings, or revokes it -- so they are
   // re-read every time the screen appears rather than once at construction.
-  LaunchedEffect(Unit) { state.refreshBridgePermissions() }
+  LaunchedEffect(Unit) {
+    state.refreshBridgePermissions()
+    state.refreshNotificationPermission()
+  }
 
   Row(
       modifier =
@@ -436,6 +439,32 @@ private fun PhoneBridgePlate(state: RemoteState) {
           label = "Run the bridge",
           enabled = state.bridgeAvailable,
       )
+      state.bridgeNotificationSpec?.let { notif ->
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Space.s3),
+        ) {
+          VText(
+              text = notif.note,
+              modifier = Modifier.weight(1f),
+              style = VitruvianType.listSub,
+              color = colors.warn,
+          )
+          VButton(
+              label = notif.actionLabel,
+              onClick = {
+                when (notif.action) {
+                  Derive.NotificationPermissionAction.Allow ->
+                      state.requestNotificationsPermission()
+                  Derive.NotificationPermissionAction.OpenSettings ->
+                      state.openNotificationSettings()
+                  Derive.NotificationPermissionAction.None -> Unit
+                }
+              },
+          )
+        }
+      }
       // The link's own words. "not linked" with no reason is the one state
       // nobody can act on, so the reason is always on screen.
       VText(
@@ -581,7 +610,7 @@ private fun PhoneBridgePlate(state: RemoteState) {
   }
 }
 
-/** Connection, appearance and refresh settings. */
+/** Connection, notifications, appearance and refresh settings. */
 @Composable
 private fun ConnectionPlate(state: RemoteState) {
   Plate(modifier = Modifier.fillMaxWidth()) {
@@ -601,6 +630,27 @@ private fun ConnectionPlate(state: RemoteState) {
           label = "Typed confirmation for restart / destroy",
       )
       Rule(modifier = Modifier.fillMaxWidth().height(1.dp))
+      val notif = state.notificationsRowSpec
+      ListItem(
+          title = notif.title,
+          subtitle = notif.subtitle,
+          status =
+              when {
+                notif.statusLabel != null -> StatusTone.Ok
+                notif.permanentlyBlocked -> StatusTone.Warn
+                else -> StatusTone.Neutral
+              },
+          contentPadding = PaddingValues(vertical = Space.s3),
+      ) {
+        when (notif.action) {
+          Derive.NotificationPermissionAction.None ->
+              notif.statusLabel?.let { Tag(text = it, tone = TagTone.Ok) }
+          Derive.NotificationPermissionAction.Allow ->
+              VButton(notif.actionLabel ?: "Allow", { state.requestNotificationsPermission() })
+          Derive.NotificationPermissionAction.OpenSettings ->
+              VButton(notif.actionLabel ?: "Open settings", state::openNotificationSettings)
+        }
+      }
       Label("Appearance")
       VSwitch(
           checked = !state.darkTheme,
