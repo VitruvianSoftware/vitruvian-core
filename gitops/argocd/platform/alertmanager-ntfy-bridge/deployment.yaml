@@ -41,6 +41,11 @@ spec:
     metadata:
       labels:
         app: alertmanager-ntfy-bridge
+      annotations:
+        # server.py is read once at start, and a ConfigMap edit alone does
+        # not restart the pod. Bump this with every server.py change so the
+        # rollout picks the new code up. 2 = self-clearing alerts.
+        vitruvian.dev/bridge-code-version: "2"
     spec:
       # Pin to a wired node, same convention as zitadel-db
       # (gitops/argocd/platform/zitadel-db/applicationset.yaml): WiFi nodes on
