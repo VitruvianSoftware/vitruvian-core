@@ -122,7 +122,11 @@ struct ControlsManifestTests {
                 #expect(Self.isValidCLIVia(entry.via), "Unrecognized CLI flag(s) in via '\(entry.via)' on \(entry.id)")
             } else if entry.via == "extension-ui" {
                 #expect(entry.phone == "excluded", "Only excluded controls may use 'extension-ui' via (\(entry.id))")
-            } else if entry.via != "say -v" {
+            } else if entry.via.hasPrefix("helper:") {
+                // Done by the Mac helper itself (e.g. voice preview runs macOS `say`), so
+                // there is no Home Speaker op to check; macagent_test checks the helper side.
+                #expect(entry.via.count > "helper:".count, "Empty helper name in via on \(entry.id)")
+            } else {
                 #expect(supportedOpSet.contains(entry.via), "Unknown --apply op '\(entry.via)' on \(entry.id)")
             }
         }
