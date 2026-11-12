@@ -71,8 +71,7 @@ class UpdateChecker: ObservableObject {
                 dismissed = false
 
                 // Find the app's ZIP for auto-update: exactly
-                // VitruvianCode-<version>-macos.zip. The release's "universal"
-                // zip is the migration bridge for old installs, not this app.
+                // VitruvianCode-<version>-macos.zip.
                 downloadAssetURL = nil
                 if let assets = json["assets"] as? [[String: Any]] {
                     let names = assets.compactMap { $0["name"] as? String }
