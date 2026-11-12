@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright (c) 2026 VitruvianSoftware -->
+<resources>
+    <string name="app_name">Vitruvian Wand</string>
+    <string name="accessibility_service_label">Vitruvian Wand</string>
+    <string name="accessibility_service_description">Turns a Google Daydream controller into an air-mouse pointer, gesture controller, and Android TV remote.</string>
+</resources>

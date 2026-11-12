@@ -38,9 +38,9 @@
 /apps/mcp/vitruvian-roborock-mcp/ @VitruvianSoftware/platform-team
 /apps/mcp/vitruvian-slack-mcp/ @VitruvianSoftware/mcp-slack-team @VitruvianSoftware/platform-team
 /apps/mobile/android-remote/ @VitruvianSoftware/platform-team
-/apps/mobile/wearos/ @VitruvianSoftware/platform-team
+/apps/mobile/vitruvian-watch/ @VitruvianSoftware/platform-team
 /apps/suites/vitruvian-tabs/ @VitruvianSoftware/tabula-team @VitruvianSoftware/platform-team
-/apps/suites/wand/ @VitruvianSoftware/platform-team
+/apps/suites/vitruvian-wand/ @VitruvianSoftware/platform-team
 /apps/web/backstage/ @VitruvianSoftware/platform-team
 /apps/web/gods-eye-view/ @VitruvianSoftware/gods-eye-view-team @VitruvianSoftware/platform-team
 /apps/web/oauth-user-inspector/ @VitruvianSoftware/oauth-user-inspector-team @VitruvianSoftware/platform-team

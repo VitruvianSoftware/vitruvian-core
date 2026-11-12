@@ -63,7 +63,7 @@ spec:
     - ./apps/web/vitruviansoftware-dev/catalog-info.yaml
     - ./apps/mobile/android-remote/catalog-info.yaml
     - ./apps/suites/vitruvian-tabs/catalog-info.yaml
-    - ./apps/suites/wand/catalog-info.yaml
+    - ./apps/suites/vitruvian-wand/catalog-info.yaml
     - ./packages/design-system-android/catalog-info.yaml
     - ./tools/catalog-info.yaml
     - ./infrastructure/catalog-info.yaml

@@ -1,0 +1,95 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# gazelle:ignore
+
+load("//tools/doctor:defs.bzl", "doctor")
+load("//tools/pipeline:defs.bzl", "pipeline_unit")
+
+package(default_visibility = ["//apps/suites/vitruvian-wand:__subpackages__"])
+
+exports_files([
+    "Cargo.lock",
+    "Cargo.toml",
+])
+
+# Alias to the shared Rust 1.98.1 config_setting so Vitruvian Wand packages can reference
+# //apps/suites/vitruvian-wand:rust_1_98_1_enabled without adding a //visibility:public
+# hole to this app's package boundary.
+alias(
+    name = "rust_1_98_1_enabled",
+    actual = "//apps/desktop/courier/libsignal:rust_1_98_1_enabled",
+)
+
+doctor(
+    name = "doctor",
+    label = "vitruvian-wand",
+    optional = ["direnv"],
+    required = [
+        "bazel",
+        "git",
+    ],
+)
+
+pipeline_unit(
+    name = "vitruvian-wand-macos",
+    persona = "frontend",
+    runner = "xcode-27",
+    test_targets = ["//apps/suites/vitruvian-wand/..."],
+    tier = "L1",
+    timeout_minutes = 20,
+)
+
+pipeline_unit(
+    name = "vitruvian-wand-linux",
+    persona = "backend",
+    runner = "ubuntu-26.04",
+    test_targets = [
+        "//apps/suites/vitruvian-wand/build/smoke:smoke_test",
+        "//apps/suites/vitruvian-wand/core:integration_test",
+        "//apps/suites/vitruvian-wand/core:vitruvian_wand_core_clippy",
+        "//apps/suites/vitruvian-wand/core:vitruvian_wand_core_unit_test",
+        "//apps/suites/vitruvian-wand/desktop:vitruvian-wand",
+        "//apps/suites/vitruvian-wand/desktop:vitruvian_wand_clippy",
+        "//apps/suites/vitruvian-wand/desktop:vitruvian_wand_desktop_test",
+    ],
+    tier = "L1",
+    timeout_minutes = 20,
+)
+
+pipeline_unit(
+    name = "vitruvian-wand-android",
+    artifacts = {
+        "vitruvian-wand-apk": "apps/suites/vitruvian-wand/android/vitruvian_wand_apk.apk",
+    },
+    persona = "frontend",
+    runner = "ubuntu-26.04",
+    test_targets = [
+        "//apps/suites/vitruvian-wand/android:actions_test",
+        "//apps/suites/vitruvian-wand/android:gesture_planner_test",
+        "//apps/suites/vitruvian-wand/android:native_engine_test",
+        "//apps/suites/vitruvian-wand/android:stroke_coordinator_test",
+        "//apps/suites/vitruvian-wand/android:vitruvian_wand_apk",
+        "//apps/suites/vitruvian-wand/android/jni:vitruvian_wand_jni_lib",
+        "//apps/suites/vitruvian-wand/android/jni:vitruvian_wand_jni_test",
+    ],
+    tier = "L1",
+    timeout_minutes = 20,
+)

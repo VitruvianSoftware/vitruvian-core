@@ -19,7 +19,7 @@
 # SOFTWARE.
 
 # release-please and asset publisher for the Daytona Platinum 126506 Wear OS watch face:
-# 1. Authors release PRs from conventional commits under apps/mobile/wearos/faces/daytona-platinum/.
+# 1. Authors release PRs from conventional commits under apps/mobile/vitruvian-watch/faces/daytona-platinum/.
 # 2. When the release PR merges, cuts the GitHub Release (tag: daytona-platinum-vX.Y.Z).
 # 3. Packages and signs the Declarative Watch Face Format (WFF) APK on Linux,
 #    computes its SHA-256 sidecar, and attaches both to the GitHub Release so
@@ -31,7 +31,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "apps/mobile/wearos/faces/daytona-platinum/**"
+      - "apps/mobile/vitruvian-watch/faces/daytona-platinum/**"
       - ".github/workflows/daytona-platinum-release.yaml"
   workflow_dispatch:
     inputs:
@@ -52,9 +52,9 @@ jobs:
       group: daytona-platinum-release-${{ github.ref }}
       cancel-in-progress: false
     outputs:
-      release_created: ${{ steps.release.outputs['apps/mobile/wearos/faces/daytona-platinum--release_created'] }}
-      tag_name: ${{ steps.release.outputs['apps/mobile/wearos/faces/daytona-platinum--tag_name'] }}
-      version: ${{ steps.release.outputs['apps/mobile/wearos/faces/daytona-platinum--version'] }}
+      release_created: ${{ steps.release.outputs['apps/mobile/vitruvian-watch/faces/daytona-platinum--release_created'] }}
+      tag_name: ${{ steps.release.outputs['apps/mobile/vitruvian-watch/faces/daytona-platinum--tag_name'] }}
+      version: ${{ steps.release.outputs['apps/mobile/vitruvian-watch/faces/daytona-platinum--version'] }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -71,8 +71,8 @@ jobs:
         if: ${{ inputs.tag == '' }}
         with:
           token: ${{ steps.app-token.outputs.token }}
-          config-file: apps/mobile/wearos/faces/daytona-platinum/release-please-config.json
-          manifest-file: apps/mobile/wearos/faces/daytona-platinum/.release-please-manifest.json
+          config-file: apps/mobile/vitruvian-watch/faces/daytona-platinum/release-please-config.json
+          manifest-file: apps/mobile/vitruvian-watch/faces/daytona-platinum/.release-please-manifest.json
           target-branch: main
 
   publish-package:
@@ -95,8 +95,8 @@ jobs:
           VERSION: ${{ needs.release-please.outputs.version || '' }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          rustc --edition 2021 --crate-name daytona_scripts_lib --crate-type lib apps/mobile/wearos/faces/daytona-platinum/scripts/src/lib.rs -o /tmp/libdaytona_scripts_lib.rlib
-          rustc --edition 2021 apps/mobile/wearos/faces/daytona-platinum/scripts/src/publish_main.rs --extern daytona_scripts_lib=/tmp/libdaytona_scripts_lib.rlib -o /tmp/daytona-publish
+          rustc --edition 2021 --crate-name daytona_scripts_lib --crate-type lib apps/mobile/vitruvian-watch/faces/daytona-platinum/scripts/src/lib.rs -o /tmp/libdaytona_scripts_lib.rlib
+          rustc --edition 2021 apps/mobile/vitruvian-watch/faces/daytona-platinum/scripts/src/publish_main.rs --extern daytona_scripts_lib=/tmp/libdaytona_scripts_lib.rlib -o /tmp/daytona-publish
           BUILD_WORKSPACE_DIRECTORY="$GITHUB_WORKSPACE" /tmp/daytona-publish
 
   check-release:

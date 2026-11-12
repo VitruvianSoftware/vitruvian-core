@@ -1798,199 +1798,199 @@ No drift detected.
 
 No drift detected.
 
-## apps/mobile/wearos/README.md
+## apps/mobile/vitruvian-watch/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/README.md
+## apps/mobile/vitruvian-watch/apps/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/common/README.md
+## apps/mobile/vitruvian-watch/apps/common/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/common/src/README.md
+## apps/mobile/vitruvian-watch/apps/common/src/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/common/src/main/README.md
+## apps/mobile/vitruvian-watch/apps/common/src/main/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/common/src/main/kotlin/README.md
+## apps/mobile/vitruvian-watch/apps/common/src/main/kotlin/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/common/src/main/kotlin/dev/README.md
+## apps/mobile/vitruvian-watch/apps/common/src/main/kotlin/com/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/common/src/main/kotlin/dev/vitruvian/README.md
+## apps/mobile/vitruvian-watch/apps/common/src/main/kotlin/com/vitruviansoftware/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/common/src/main/kotlin/dev/vitruvian/wear/README.md
+## apps/mobile/vitruvian-watch/apps/common/src/main/kotlin/com/vitruviansoftware/watch/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/common/src/main/kotlin/dev/vitruvian/wear/common/README.md
+## apps/mobile/vitruvian-watch/apps/common/src/main/kotlin/com/vitruviansoftware/watch/common/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/home-control/README.md
+## apps/mobile/vitruvian-watch/apps/home-control/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/home-control/src/README.md
+## apps/mobile/vitruvian-watch/apps/home-control/src/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/home-control/src/main/README.md
+## apps/mobile/vitruvian-watch/apps/home-control/src/main/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/home-control/src/main/kotlin/README.md
+## apps/mobile/vitruvian-watch/apps/home-control/src/main/kotlin/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/home-control/src/main/kotlin/dev/README.md
+## apps/mobile/vitruvian-watch/apps/home-control/src/main/kotlin/com/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/home-control/src/main/kotlin/dev/vitruvian/README.md
+## apps/mobile/vitruvian-watch/apps/home-control/src/main/kotlin/com/vitruviansoftware/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/home-control/src/main/kotlin/dev/vitruvian/wear/README.md
+## apps/mobile/vitruvian-watch/apps/home-control/src/main/kotlin/com/vitruviansoftware/watch/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/home-control/src/main/kotlin/dev/vitruvian/wear/home/README.md
+## apps/mobile/vitruvian-watch/apps/home-control/src/main/kotlin/com/vitruviansoftware/watch/home/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/nexus-wrist/README.md
+## apps/mobile/vitruvian-watch/apps/nexus-wrist/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/nexus-wrist/src/README.md
+## apps/mobile/vitruvian-watch/apps/nexus-wrist/src/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/nexus-wrist/src/main/README.md
+## apps/mobile/vitruvian-watch/apps/nexus-wrist/src/main/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/nexus-wrist/src/main/kotlin/README.md
+## apps/mobile/vitruvian-watch/apps/nexus-wrist/src/main/kotlin/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/nexus-wrist/src/main/kotlin/dev/README.md
+## apps/mobile/vitruvian-watch/apps/nexus-wrist/src/main/kotlin/com/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/nexus-wrist/src/main/kotlin/dev/vitruvian/README.md
+## apps/mobile/vitruvian-watch/apps/nexus-wrist/src/main/kotlin/com/vitruviansoftware/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/nexus-wrist/src/main/kotlin/dev/vitruvian/wear/README.md
+## apps/mobile/vitruvian-watch/apps/nexus-wrist/src/main/kotlin/com/vitruviansoftware/watch/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/nexus-wrist/src/main/kotlin/dev/vitruvian/wear/nexus/README.md
+## apps/mobile/vitruvian-watch/apps/nexus-wrist/src/main/kotlin/com/vitruviansoftware/watch/nexus/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/remote/README.md
+## apps/mobile/vitruvian-watch/apps/remote/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/remote/src/README.md
+## apps/mobile/vitruvian-watch/apps/remote/src/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/remote/src/main/README.md
+## apps/mobile/vitruvian-watch/apps/remote/src/main/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/remote/src/main/kotlin/README.md
+## apps/mobile/vitruvian-watch/apps/remote/src/main/kotlin/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/remote/src/main/kotlin/dev/README.md
+## apps/mobile/vitruvian-watch/apps/remote/src/main/kotlin/com/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/remote/src/main/kotlin/dev/vitruvian/README.md
+## apps/mobile/vitruvian-watch/apps/remote/src/main/kotlin/com/vitruviansoftware/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/remote/src/main/kotlin/dev/vitruvian/wear/README.md
+## apps/mobile/vitruvian-watch/apps/remote/src/main/kotlin/com/vitruviansoftware/watch/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/remote/src/main/kotlin/dev/vitruvian/wear/remote/README.md
+## apps/mobile/vitruvian-watch/apps/remote/src/main/kotlin/com/vitruviansoftware/watch/remote/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/scripts/README.md
+## apps/mobile/vitruvian-watch/apps/scripts/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/scripts/src/README.md
+## apps/mobile/vitruvian-watch/apps/scripts/src/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/vitruvian-pulse/README.md
+## apps/mobile/vitruvian-watch/apps/vitruvian-pulse/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/vitruvian-pulse/src/README.md
+## apps/mobile/vitruvian-watch/apps/vitruvian-pulse/src/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/vitruvian-pulse/src/main/README.md
+## apps/mobile/vitruvian-watch/apps/vitruvian-pulse/src/main/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/vitruvian-pulse/src/main/kotlin/README.md
+## apps/mobile/vitruvian-watch/apps/vitruvian-pulse/src/main/kotlin/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/vitruvian-pulse/src/main/kotlin/dev/README.md
+## apps/mobile/vitruvian-watch/apps/vitruvian-pulse/src/main/kotlin/com/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/vitruvian-pulse/src/main/kotlin/dev/vitruvian/README.md
+## apps/mobile/vitruvian-watch/apps/vitruvian-pulse/src/main/kotlin/com/vitruviansoftware/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/vitruvian-pulse/src/main/kotlin/dev/vitruvian/wear/README.md
+## apps/mobile/vitruvian-watch/apps/vitruvian-pulse/src/main/kotlin/com/vitruviansoftware/watch/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/apps/vitruvian-pulse/src/main/kotlin/dev/vitruvian/wear/pulse/README.md
+## apps/mobile/vitruvian-watch/apps/vitruvian-pulse/src/main/kotlin/com/vitruviansoftware/watch/pulse/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/faces/README.md
+## apps/mobile/vitruvian-watch/faces/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/faces/daytona-platinum/README.md
+## apps/mobile/vitruvian-watch/faces/daytona-platinum/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/faces/daytona-platinum/scripts/README.md
+## apps/mobile/vitruvian-watch/faces/daytona-platinum/scripts/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/faces/daytona-platinum/scripts/src/README.md
+## apps/mobile/vitruvian-watch/faces/daytona-platinum/scripts/src/README.md
 
 No drift detected.
 
-## apps/mobile/wearos/faces/daytona-platinum/src/README.md
+## apps/mobile/vitruvian-watch/faces/daytona-platinum/src/README.md
 
 No drift detected.
 
@@ -2310,75 +2310,75 @@ No drift detected.
 
 No drift detected.
 
-## apps/suites/wand/README.md
+## apps/suites/vitruvian-wand/README.md
 
 No drift detected.
 
-## apps/suites/wand/android/README.md
+## apps/suites/vitruvian-wand/android/README.md
 
 No drift detected.
 
-## apps/suites/wand/android/jni/README.md
+## apps/suites/vitruvian-wand/android/jni/README.md
 
 No drift detected.
 
-## apps/suites/wand/android/jni/src/README.md
+## apps/suites/vitruvian-wand/android/jni/src/README.md
 
 No drift detected.
 
-## apps/suites/wand/android/src/README.md
+## apps/suites/vitruvian-wand/android/src/README.md
 
 No drift detected.
 
-## apps/suites/wand/android/src/main/README.md
+## apps/suites/vitruvian-wand/android/src/main/README.md
 
 No drift detected.
 
-## apps/suites/wand/android/src/main/kotlin/README.md
+## apps/suites/vitruvian-wand/android/src/main/kotlin/README.md
 
 No drift detected.
 
-## apps/suites/wand/android/src/main/kotlin/dev/README.md
+## apps/suites/vitruvian-wand/android/src/main/kotlin/com/README.md
 
 No drift detected.
 
-## apps/suites/wand/android/src/main/kotlin/dev/vitruvian/README.md
+## apps/suites/vitruvian-wand/android/src/main/kotlin/com/vitruviansoftware/README.md
 
 No drift detected.
 
-## apps/suites/wand/android/src/main/kotlin/dev/vitruvian/wand/README.md
+## apps/suites/vitruvian-wand/android/src/main/kotlin/com/vitruviansoftware/wand/README.md
 
 No drift detected.
 
-## apps/suites/wand/android/src/main/kotlin/dev/vitruvian/wand/ble/README.md
+## apps/suites/vitruvian-wand/android/src/main/kotlin/com/vitruviansoftware/wand/ble/README.md
 
 No drift detected.
 
-## apps/suites/wand/android/src/main/kotlin/dev/vitruvian/wand/core/README.md
+## apps/suites/vitruvian-wand/android/src/main/kotlin/com/vitruviansoftware/wand/core/README.md
 
 No drift detected.
 
-## apps/suites/wand/android/src/main/kotlin/dev/vitruvian/wand/service/README.md
+## apps/suites/vitruvian-wand/android/src/main/kotlin/com/vitruviansoftware/wand/service/README.md
 
 No drift detected.
 
-## apps/suites/wand/android/src/main/kotlin/dev/vitruvian/wand/ui/README.md
+## apps/suites/vitruvian-wand/android/src/main/kotlin/com/vitruviansoftware/wand/ui/README.md
 
 No drift detected.
 
-## apps/suites/wand/core/README.md
+## apps/suites/vitruvian-wand/core/README.md
 
 No drift detected.
 
-## apps/suites/wand/core/src/README.md
+## apps/suites/vitruvian-wand/core/src/README.md
 
 No drift detected.
 
-## apps/suites/wand/desktop/README.md
+## apps/suites/vitruvian-wand/desktop/README.md
 
 No drift detected.
 
-## apps/suites/wand/desktop/src/README.md
+## apps/suites/vitruvian-wand/desktop/src/README.md
 
 No drift detected.
 
