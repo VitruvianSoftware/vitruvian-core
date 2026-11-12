@@ -2983,8 +2983,7 @@ public class RemoteState(
                   actions =
                       listOf(
                           RowAction(
-                              if (isSpeakerRemoveArmed(spec.key)) "Tap again to remove"
-                              else "Remove",
+                              if (isSpeakerRemoveArmed(spec.key)) "Confirm" else "Remove",
                               enabled = spec.removeEnabled,
                               danger = isSpeakerRemoveArmed(spec.key),
                               controlId = HomeSpeakerControls.REMOVE_SPEAKER,
@@ -3162,7 +3161,7 @@ public class RemoteState(
                                   controlId = HomeSpeakerControls.CHOOSE_HOME,
                               ) {
                                 setHomeSpeaker(
-                                    "home ${h.name}",
+                                    "switch to ${h.name}",
                                     structureId = h.id,
                                     controlId = "Home structure",
                                 )
@@ -5407,11 +5406,15 @@ public class RemoteState(
               val isSignInGrantOrDisconnect =
                   signIn || signOut || importAntigravity || grantChat || disconnectChat
               if (!isSignInGrantOrDisconnect) {
+                // The same plain sentence the row shows, not the helper's raw wrapper
+                // ("agent: set structure failed: exit status 1"); the log keeps the raw text.
                 homeSpeakerNotice =
-                    "✗ homespeaker · $what: ${
-                      if (it is AgentAuthException) failureText(it) else it.message ?: "failed"
-                    }" to
-                        StatusTone.Crit
+                    "✗ " +
+                        Derive.homeSpeakerInlineError(
+                            what = what,
+                            reason = it.message,
+                            authFailed = it is AgentAuthException,
+                        ) to StatusTone.Crit
               }
               actFailed("homespeaker · $what", it)
             }
