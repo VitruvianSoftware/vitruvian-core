@@ -222,7 +222,8 @@ package struct ToolRefusalMessage: Equatable {
             number.locale = numbers ?? language.formattingLocale()
             message = strings.refusalTooBig(size: "\(bytes / 1_048_576) MB",
                                             items: number.string(from: NSNumber(value: items)) ?? "\(items)")
-        case .noSupportFolder, .files, .alreadyInstalled, .changedSinceOffered, .notRemembered:
+        case .noSupportFolder, .files, .alreadyInstalled, .changedSinceOffered, .notRemembered,
+             .renamedStillRunning, .renamedDataInTheWay:
             message = strings.refusalNotAdded
         }
         self.command = command

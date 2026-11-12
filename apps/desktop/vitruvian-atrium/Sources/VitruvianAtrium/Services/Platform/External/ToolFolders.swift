@@ -167,6 +167,41 @@ package struct ToolFolders: Equatable, Sendable {
         return gone
     }
 
+    /// What moving a renamed tool's data folder did.
+    package enum DataMove: Equatable, Sendable {
+        /// `ToolData/<from>` is now `ToolData/<to>`.
+        case moved
+        /// There was no `ToolData/<from>`: nothing moved.
+        case nothingToMove
+        /// `ToolData/<to>` already holds something, so nothing moved.
+        case inTheWay
+        /// A folder was a link elsewhere, or the move failed: nothing moved.
+        case failed
+    }
+
+    /// Moves what a tool saved under one id to another: `ToolData/<from>`
+    /// becomes `ToolData/<to>`, for a tool that was renamed. An empty
+    /// `ToolData/<to>` is replaced; one that holds anything is never
+    /// written over. Each folder must be the app's own with every link
+    /// followed, and `ToolData/<from>` must be a folder, not a link.
+    package func moveData(from old: ToolID, to new: ToolID, fileManager: FileManager = .default) -> DataMove {
+        guard let from = place(for: old)?.data, let to = place(for: new)?.data else { return .failed }
+        let home = root.resolvingSymlinksInPath().standardizedFileURL.pathComponents
+        var entry = stat()
+        guard lstat(from.path, &entry) == 0 else { return .nothingToMove }
+        guard (entry.st_mode & S_IFMT) == S_IFDIR,
+              stays(from.deletingLastPathComponent(), at: home + ["ToolData"], fileManager),
+              stays(from, at: home + ["ToolData", old.rawValue], fileManager),
+              stays(to, at: home + ["ToolData", new.rawValue], fileManager) else { return .failed }
+        if lstat(to.path, &entry) == 0 {
+            let inside = (try? fileManager.contentsOfDirectory(atPath: to.path)) ?? ["?"]
+            guard (entry.st_mode & S_IFMT) == S_IFDIR, inside.isEmpty, Self.remove(to, fileManager) else {
+                return .inTheWay
+            }
+        }
+        return (try? fileManager.moveItem(at: from, to: to)) != nil ? .moved : .failed
+    }
+
     /// What is still there of a tool that was to be deleted: its copy, and
     /// with `data` the folder of what it saved, the copy first. Empty when
     /// `delete` did all it was asked. Asked of each entry itself, not of
