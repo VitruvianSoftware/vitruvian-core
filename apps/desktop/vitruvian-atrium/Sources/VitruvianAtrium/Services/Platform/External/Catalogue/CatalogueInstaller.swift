@@ -181,7 +181,7 @@ package final class CatalogueInstaller {
         case .failure(let refusal):
             then(.failure(refusal))
         case .success(let tool):
-            switch store().offer(from: tool, catalogue: entry.origin) {
+            switch store().offer(from: tool, catalogue: entry.origin, replacing: entry.replaces) {
             case .success(let offer):
                 then(.success(offer))
             case .failure(let refusal):

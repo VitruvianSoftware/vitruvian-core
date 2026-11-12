@@ -223,6 +223,7 @@ enum TestGroups {
                 CatalogueListTests.run(suite)
                 CatalogueInstallerTests.run(suite)
                 CatalogueWatchTests.run(suite)
+                ToolRenameTests.run(suite)
                 CatalogueScreensTests.run(suite)
                 ExtensionsPageTests.run(suite)
                 NotchExtensionPaneTests.run(suite)

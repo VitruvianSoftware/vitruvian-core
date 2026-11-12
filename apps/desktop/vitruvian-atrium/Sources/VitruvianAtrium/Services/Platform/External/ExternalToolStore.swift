@@ -53,6 +53,12 @@ package final class ExternalToolStore {
         /// The tool could not be written to the file of records, so the
         /// next launch would not have it.
         case notRemembered
+        /// The tool this one replaces under its old id was still running
+        /// after the app asked it to end, so nothing it saved was moved.
+        case renamedStillRunning(ToolID)
+        /// The new id already has a folder of saved things that is not
+        /// empty, so the old one's was not moved onto it.
+        case renamedDataInTheWay(ToolID)
     }
 
     /// What removing a tool did, so that whoever asked can say so.
@@ -180,6 +186,11 @@ package final class ExternalToolStore {
         package var added: @MainActor (Installed, CatalogueOrigin?) -> Void
         /// Told of a tool just removed, after its program is gone.
         package var removed: @MainActor (ToolID) -> Void
+        /// Told that a tool was renamed, from its old id to its new one,
+        /// once its files and what it saved are under the new id and before
+        /// its program starts: moves what the app keeps for it under the old
+        /// id (preferences, shortcuts, pins, island order) to the new one.
+        package var renamed: @MainActor (_ from: ToolID, _ to: ToolID) -> Void
 
         package init(folders: ToolFolders?, host: @escaping @MainActor () -> ToolHost,
                      registry: @escaping @MainActor () -> ToolRegistry,
@@ -196,7 +207,8 @@ package final class ExternalToolStore {
                          ready()
                      },
                      added: @escaping @MainActor (Installed, CatalogueOrigin?) -> Void = { _, _ in },
-                     removed: @escaping @MainActor (ToolID) -> Void = { _ in }) {
+                     removed: @escaping @MainActor (ToolID) -> Void = { _ in },
+                     renamed: @escaping @MainActor (ToolID, ToolID) -> Void = { _, _ in }) {
             self.folders = folders
             self.host = host
             self.registry = registry
@@ -213,6 +225,7 @@ package final class ExternalToolStore {
             self.beforeAdding = beforeAdding
             self.added = added
             self.removed = removed
+            self.renamed = renamed
         }
 
         /// The app as it is. That a tool stopped working is also a line
@@ -233,7 +246,11 @@ package final class ExternalToolStore {
             forgetPreferences: { ExternalToolStore.forgetPreferences(of: $0, in: .standard) },
             forgetShortcuts: { ToolShortcutRegistrar.shared.forget($0) },
             watchLanguage: { ExternalToolStore.watch(L10n.shared.$language, then: $0) },
-            panels: { .shared })
+            panels: { .shared },
+            renamed: { from, to in
+                ToolRename.carryOverDefaults(from: from, to: to, in: .standard)
+                ToolShortcutRegistrar.shared.sync()
+            })
     }
 
     /// Hears each language the app changes to, as its tag, on the main
@@ -461,7 +478,12 @@ package final class ExternalToolStore {
     ///
     /// `catalogue` is the entry a folder the catalog's installer unpacked
     /// came from; nil for a folder the person picked.
-    package func offer(from picked: URL, catalogue: CatalogueOrigin? = nil) -> Result<ToolOffer, Refusal> {
+    ///
+    /// `replacing` is the ids the catalog entry was listed under before it
+    /// was renamed (`CatalogueEntry.replaces`). When the person has no tool
+    /// with the new id and has one with an old id, the offer replaces that.
+    package func offer(from picked: URL, catalogue: CatalogueOrigin? = nil,
+                       replacing formerIDs: [ToolID] = []) -> Result<ToolOffer, Refusal> {
         // A picked folder that is a link is followed first, so that what is
         // read, shown and copied is the folder, never the link to it.
         let folder = picked.resolvingSymlinksInPath().standardizedFileURL
@@ -479,12 +501,20 @@ package final class ExternalToolStore {
         guard ToolFolders.weight(of: folder, within: most) != nil else {
             return .failure(.tooBig(bytes: most.bytes, items: most.items))
         }
-        let known = records.first { $0.id == tool.manifest.id.rawValue }
+        var known = records.first { $0.id == tool.manifest.id.rawValue }
+        var renames: ToolID?
+        if known == nil, catalogue != nil,
+           let former = records.first(where: { record in formerIDs.contains { $0.rawValue == record.id } }) {
+            known = former
+            renames = ToolID(former.id)
+        }
         // A tool added from a folder, offered from the catalog: agreeing
         // moves it onto the catalog.
         let movesFromFolder = catalogue != nil && known?.catalogue == nil ? known?.agreement.source : nil
-        return .success(ToolOffer(folder: folder, tool: tool, fingerprint: fingerprint, replaces: known?.agreement,
-                                  catalogue: catalogue, movesFromFolder: movesFromFolder))
+        var offer = ToolOffer(folder: folder, tool: tool, fingerprint: fingerprint, replaces: known?.agreement,
+                              catalogue: catalogue, movesFromFolder: movesFromFolder)
+        offer.renames = renames
+        return .success(offer)
     }
 
     /// The second step, as the app takes it: `add`, once whatever the app
@@ -538,6 +568,10 @@ package final class ExternalToolStore {
             return .failure(.changedSinceOffered)
         }
         let known = records.firstIndex { $0.id == id.rawValue }
+        if known == nil, let former = offer.renames, former != id,
+           let formerIndex = records.firstIndex(where: { $0.id == former.rawValue }) {
+            return addRenaming(consent, from: former, at: formerIndex)
+        }
         // An id the store does not hold and something else answers to.
         guard installed[id] != nil || (parts.registry().tool(id) == nil && parts.host().manifest(for: id) == nil) else {
             return .failure(.alreadyInstalled(id))
@@ -597,6 +631,94 @@ package final class ExternalToolStore {
         let record = records.first { $0.id == id.rawValue }
         if record?.isOn == false {
             // Updated while switched off: it stays off.
+            resting[id] = tool
+        } else if !activate(entry) {
+            held.insert(id)
+            parts.registry().noteAvailabilityChanged()
+            return .failure(.alreadyInstalled(id))
+        }
+        parts.registry().noteAvailabilityChanged()
+        return .success(entry)
+    }
+
+    /// `add` for a tool from the catalog that was renamed: the person
+    /// agreed to it under its new id, and has it under `former`. The old
+    /// tool is stopped, what it saved is moved to the new id's folder, the
+    /// new files are put in, and its record takes the new id where the old
+    /// one was, keeping its switch and island choices. Only then are the
+    /// old files deleted and the app's own settings for it moved
+    /// (`Parts.renamed`).
+    ///
+    /// Until the record is saved, a failure puts everything back as it was:
+    /// what it saved goes back under the old id, and the old tool is loaded
+    /// again. Nothing is deleted before that.
+    private func addRenaming(_ consent: ToolConsent, from former: ToolID, at formerIndex: Int)
+        -> Result<Installed, Refusal> {
+        let offer = consent.offer
+        let id = offer.tool.manifest.id
+        guard installed[id] == nil, parts.registry().tool(id) == nil, parts.host().manifest(for: id) == nil else {
+            return .failure(.alreadyInstalled(id))
+        }
+        guard let folders = parts.folders else { return .failure(.noSupportFolder) }
+        let formerRecord = records[formerIndex]
+        // Nothing of what it saved moves while its program could still be
+        // writing to it.
+        guard deactivate(former, seeingItOut: true) else {
+            load(formerRecord)
+            parts.registry().noteAvailabilityChanged()
+            return .failure(.renamedStillRunning(former))
+        }
+        var movedData = false
+        func failed(_ refusal: Refusal) -> Result<Installed, Refusal> {
+            folders.delete(id, data: false)
+            if movedData { _ = folders.moveData(from: id, to: former) }
+            load(formerRecord)
+            parts.registry().noteAvailabilityChanged()
+            return .failure(refusal)
+        }
+        switch folders.moveData(from: former, to: id) {
+        case .moved: movedData = true
+        case .nothingToMove: break
+        case .inTheWay: return failed(.renamedDataInTheWay(id))
+        case .failed: return failed(.files(.notCopied))
+        }
+        let place: ToolFolders.Place
+        switch folders.install(id, from: offer.folder) {
+        case .success(let made): place = made
+        case .failure(let problem): return failed(.files(problem))
+        }
+        guard ToolFingerprint.ofManifest(in: place.files) == offer.fingerprint else {
+            return failed(.changedSinceOffered)
+        }
+        let tool: ExternalToolManifest
+        switch ExternalToolManifest.read(folder: place.files) {
+        case .success(let copied) where copied.manifest.id == id: tool = copied
+        case .success: return failed(.manifest(.noManifest))
+        case .failure(let refusal): return failed(.manifest(refusal))
+        }
+        let agreement = ToolAgreement(date: consent.date, name: tool.manifest.tool.name, version: tool.version,
+                                      publisher: tool.publisher, fingerprint: offer.fingerprint,
+                                      source: offer.catalogue?.download ?? offer.folder.path)
+        var next = records
+        next[formerIndex] = ToolRecord(id: id.rawValue, isOn: formerRecord.isOn, agreement: agreement,
+                                       catalogue: offer.catalogue, showsInIsland: formerRecord.showsInIsland,
+                                       showsStatus: formerRecord.showsStatus)
+        guard save(next) else { return failed(.notRemembered) }
+        records = next
+        held.remove(former)
+        resting[former] = nil
+        held.remove(id)
+        resting[id] = nil
+        // The record is saved under the new id, so what is left under the
+        // old one is only its old files: deleting them can fail harmlessly.
+        if folders.delete(former, data: false) != true {
+            Logger(subsystem: Bundle.main.bundleIdentifier ?? "atrium", category: "tools")
+                .error("the old files of the renamed tool \(former.rawValue, privacy: .public) could not be deleted")
+        }
+        parts.renamed(former, id)
+        let entry = Installed(tool: tool, files: place.files, data: place.data)
+        parts.added(entry, offer.catalogue)
+        if !formerRecord.isOn {
             resting[id] = tool
         } else if !activate(entry) {
             held.insert(id)

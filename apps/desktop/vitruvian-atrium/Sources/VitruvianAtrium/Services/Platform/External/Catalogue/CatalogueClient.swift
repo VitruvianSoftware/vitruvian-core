@@ -38,10 +38,15 @@ package struct CatalogueEntry: Equatable, Sendable {
     /// The placements of the panels its manifest names in `contributes.panels`;
     /// nil when the catalog entry predates `panels`.
     package let panels: [String]?
+    /// The ids this tool was listed under before it was renamed. A tool the
+    /// person added under one of them is offered this entry as its update,
+    /// and agreeing moves what it saved over (`ExternalToolStore.add`).
+    /// Empty for a tool that was never renamed.
+    package let replaces: [ToolID]
 
     package init(id: ToolID, name: LocalizedText, publisher: String, summary: LocalizedText, version: String,
                  protocolVersion: String, minimumAppVersion: String, source: URL, download: Download,
-                 uses: [String], commands: [Command], panels: [String]? = nil) {
+                 uses: [String], commands: [Command], panels: [String]? = nil, replaces: [ToolID] = []) {
         self.id = id
         self.name = name
         self.publisher = publisher
@@ -54,6 +59,7 @@ package struct CatalogueEntry: Equatable, Sendable {
         self.uses = uses
         self.commands = commands
         self.panels = panels
+        self.replaces = replaces
     }
 }
 
@@ -101,6 +107,7 @@ package struct Catalogue: Equatable, Sendable {
             let uses: [String]
             let commands: [Command]
             let panels: [String]?
+            let replaces: [String]?
         }
 
         let version: Int
@@ -145,9 +152,31 @@ package struct Catalogue: Equatable, Sendable {
                 protocolVersion: tool.protocol, minimumAppVersion: tool.minimumAppVersion, source: source,
                 download: .init(url: url, sha256: tool.download.sha256, size: tool.download.size),
                 uses: tool.uses, commands: tool.commands.map { .init(id: $0.id, title: $0.title) },
-                panels: tool.panels))
+                panels: tool.panels, replaces: Self.formerIDs(tool.replaces ?? [], of: id)))
+        }
+        // An id that is still listed under its own name replaces nothing:
+        // the tool under it is that entry's to update.
+        let listed = Set(tools.map(\.id))
+        tools = tools.map { entry in
+            let kept = entry.replaces.filter { !listed.contains($0) }
+            guard kept != entry.replaces else { return entry }
+            return CatalogueEntry(
+                id: entry.id, name: entry.name, publisher: entry.publisher, summary: entry.summary,
+                version: entry.version, protocolVersion: entry.protocolVersion,
+                minimumAppVersion: entry.minimumAppVersion, source: entry.source, download: entry.download,
+                uses: entry.uses, commands: entry.commands, panels: entry.panels, replaces: kept)
         }
         return Catalogue(generated: generated, tools: tools)
+    }
+
+    /// The former ids an entry names that can be former ids: an outside
+    /// tool's id, not its own, each once. Any other is left out.
+    private static func formerIDs(_ raw: [String], of id: ToolID) -> [ToolID] {
+        var seen: Set<ToolID> = [id]
+        return raw.compactMap { text in
+            guard let former = ToolID(text), !former.isBundledForm, seen.insert(former).inserted else { return nil }
+            return former
+        }
     }
 
     /// The entries this app can install: each speaks a protocol the app

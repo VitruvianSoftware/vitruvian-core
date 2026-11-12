@@ -135,9 +135,20 @@ package final class CatalogueWatch: ObservableObject {
     /// matched by its id and compared at the version the person agreed to:
     /// updating it from the catalog moves it onto the catalog. The same
     /// version, or an older one, is never offered.
+    ///
+    /// A tool whose id the catalog no longer lists, and that an entry names
+    /// as one it replaces (`CatalogueEntry.replaces`), is offered that
+    /// entry, whatever its version: it is the same tool under its new name,
+    /// and the old name gets no more updates. Not when a tool with the new
+    /// id is added already: the person has both, and each stays as it is.
     package func update(for listed: ExternalToolStore.Listed) -> CatalogueEntry? {
         guard let installed = Self.comparedVersion(of: listed) else { return nil }
-        return entries.first { $0.id == listed.id && Catalogue.isNewer($0.version, than: installed) }
+        let entries = entries
+        if entries.contains(where: { $0.id == listed.id }) {
+            return entries.first { $0.id == listed.id && Catalogue.isNewer($0.version, than: installed) }
+        }
+        let added = Set(parts.listed().map(\.id))
+        return entries.first { $0.replaces.contains(listed.id) && !added.contains($0.id) }
     }
 
     /// The version an added tool is compared with the catalog at; nil for
