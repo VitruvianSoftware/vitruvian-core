@@ -90,7 +90,7 @@ categories:
 
       - id: vitruvian-speaker
         name: Vitruvian Speaker
-        version: "1.41.0"
+        version: "1.42.0"
         summary: >-
           A macOS menu bar app that announces agent summaries, chat notifications, and spoken
           briefings aloud on Google Home, Nest speakers, or local system speech synthesis with quiet hours.
@@ -98,19 +98,19 @@ categories:
         brew_cask: vitruviansoftware/tap/vitruvian-speaker
         downloads:
           - label: Universal DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.41.0/HomeSpeaker-1.41.0-universal.dmg
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-speaker-v1.42.0/VitruvianSpeaker-1.42.0-universal.dmg
             size: 5.7 MB
             arch: Universal
           - label: Apple Silicon DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.41.0/HomeSpeaker-1.41.0-arm64.dmg
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-speaker-v1.42.0/VitruvianSpeaker-1.42.0-arm64.dmg
             size: 3.8 MB
             arch: arm64
           - label: Intel x86_64 DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.41.0/HomeSpeaker-1.41.0-x86_64.dmg
-            size: 3.9 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-speaker-v1.42.0/VitruvianSpeaker-1.42.0-x86_64.dmg
+            size: 4.0 MB
             arch: x86_64
           - label: Universal ZIP
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.41.0/HomeSpeaker-1.41.0-universal.zip
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-speaker-v1.42.0/VitruvianSpeaker-1.42.0-universal.zip
             size: 5.7 MB
             arch: Universal
         releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=vitruvian-speaker
@@ -120,7 +120,7 @@ categories:
 
       - id: vitruvian-courier
         name: Vitruvian Courier
-        version: "0.3.16"
+        version: "0.3.18"
         summary: >-
           Every chat app in one inbox, on this Mac. A native macOS app that brings
           your messaging accounts into one window, signed with Developer ID and notarized.
@@ -128,20 +128,20 @@ categories:
         brew_cask: vitruviansoftware/tap/vitruvian-courier
         downloads:
           - label: Universal DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/courier-v0.3.16/Courier-0.3.16-universal.dmg
-            size: 149.7 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.18/VitruvianCourier-0.3.18-universal.dmg
+            size: 150.0 MB
             arch: Universal
           - label: Apple Silicon DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/courier-v0.3.16/Courier-0.3.16-arm64.dmg
-            size: 72.6 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.18/VitruvianCourier-0.3.18-arm64.dmg
+            size: 72.7 MB
             arch: arm64
           - label: Intel x86_64 DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/courier-v0.3.16/Courier-0.3.16-x86_64.dmg
-            size: 78.0 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.18/VitruvianCourier-0.3.18-x86_64.dmg
+            size: 78.2 MB
             arch: x86_64
           - label: Universal ZIP
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/courier-v0.3.16/Courier-0.3.16-universal.zip
-            size: 150.4 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.3.18/VitruvianCourier-0.3.18-universal.zip
+            size: 150.7 MB
             arch: Universal
         releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=vitruvian-courier
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-courier
