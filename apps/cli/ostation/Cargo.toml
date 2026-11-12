@@ -4,7 +4,7 @@
 # Local (cloud-free) client for the Olight Ostation 2 Pro charger.
 #
 # Its own workspace and Cargo.lock, apart from the root one, like
-# apps/mcp/roborock: Bazel reads this lock through the @ostation_crates hub
+# apps/mcp/vitruvian-roborock-mcp: Bazel reads this lock through the @ostation_crates hub
 # (MODULE.bazel). Re-lock with
 #   bazel run //tools/crates:lock -- --dir apps/cli/ostation
 

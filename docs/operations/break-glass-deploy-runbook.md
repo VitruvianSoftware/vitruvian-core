@@ -107,7 +107,7 @@ bazel run //tools/copybara/sync -- export <component>     # push the bump to the
 ```bash
 bazel run //tools/release:publish-local -- pulumi-library            # dry run: prints the plan
 bazel run //tools/release:publish-local -- pulumi-library --execute  # publish (npm + slash-form go tags)
-bazel run //tools/release:publish-local -- vitruvian-slack-mcp --execute
+bazel run //tools/release:publish-local -- mcp-slack --execute
 #   --package <name> limits to one; already-published versions/tags are skipped.
 ```
 

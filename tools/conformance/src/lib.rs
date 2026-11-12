@@ -120,7 +120,7 @@ impl Context {
         let catalog_names = canonical::catalog_names(&workspace_yaml);
 
         let catalog_exempt: Vec<String> = [
-            "apps/mcp/slack",
+            "apps/mcp/vitruvian-slack-mcp",
             "apps/web/oauth-user-inspector",
             "packages/pulumi/examples/go-foundation/policy-library",
             "packages/pulumi/examples/ts-foundation",

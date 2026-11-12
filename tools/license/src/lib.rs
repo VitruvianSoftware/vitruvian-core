@@ -38,7 +38,7 @@ pub const APPS: &[&str] = &[
     "apps/web/oauth-user-inspector",
     "apps/cli/devx",
     "apps/cli/homelab",
-    "apps/mcp/slack",
+    "apps/mcp/vitruvian-slack-mcp",
     "apps/desktop/vitruvian-code",
     "apps/desktop/home-speaker",
 ];

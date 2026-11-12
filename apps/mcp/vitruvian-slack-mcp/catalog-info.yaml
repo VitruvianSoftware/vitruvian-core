@@ -41,7 +41,7 @@ metadata:
     backstage.io/kubernetes-id: vitruvian-slack-mcp
     backstage.io/kubernetes-namespace: mcp-slack
     backstage.io/kubernetes-label-selector: app.kubernetes.io/name=vitruvian-slack-mcp
-    argocd/app-name: vitruvian-slack-mcp
+    argocd/app-name: mcp-slack
     vitruvian.dev/release-workflow: apps-release.yaml
     vitruvian.dev/release-model: gitops-argocd
     vitruvian.dev/environments: production
@@ -56,7 +56,7 @@ metadata:
     - url: https://github.com/VitruvianSoftware/mcp-slack
       title: GitHub Mirror
       icon: github
-    - url: https://argocd.lab.ipv1337.dev/applications/vitruvian-slack-mcp
+    - url: https://argocd.lab.ipv1337.dev/applications/mcp-slack
       title: ArgoCD Application
       icon: cloud
     - url: https://github.com/VitruvianSoftware/vitruvian-core/pkgs/container/vitruvian-slack-mcp

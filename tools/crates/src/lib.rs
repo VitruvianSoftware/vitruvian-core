@@ -155,7 +155,7 @@ pub fn msrv_problems(workspace: &Path, toolchain: &str) -> Result<Vec<String>, S
     let mut members = workspace_members(&root);
     if members.is_empty() {
         // A single package that is its own workspace (an app with its own
-        // lock, like apps/mcp/slack/rs): the root manifest is the member.
+        // lock, like apps/mcp/vitruvian-slack-mcp/rs): the root manifest is the member.
         if !root.lines().any(|line| line.trim() == "[package]") {
             return Err("no [workspace] members and no [package] in Cargo.toml".into());
         }
@@ -202,7 +202,7 @@ usage: bazel run //tools/crates:lock -- [--dir <path>] [--check | <cargo update 
 
   (no args)   add what Cargo.toml now asks for; leave every other locked version alone
   --dir P     lock the Cargo workspace at P (repo-relative) instead of the root one,
-              for an app that keeps its own Cargo.lock (e.g. apps/mcp/slack/rs)
+              for an app that keeps its own Cargo.lock (e.g. apps/mcp/vitruvian-slack-mcp/rs)
   --check     fail if Cargo.lock does not match Cargo.toml (changes nothing)
   <args>      passed to `cargo update`, e.g. `-p ring` or `--verbose`
 ";
@@ -324,14 +324,17 @@ rust.repository_set(versions = ["1.98.1"])
 resolver = "2"
 # members = ["old/thing"]
 members = [
-    "apps/mcp/slack/rs",
+    "apps/mcp/vitruvian-slack-mcp/rs",
     # "commented/out",
     "packages/kit",  # trailing note
 ]
 "#;
         assert_eq!(
             workspace_members(root),
-            vec!["apps/mcp/slack/rs".to_string(), "packages/kit".to_string()]
+            vec![
+                "apps/mcp/vitruvian-slack-mcp/rs".to_string(),
+                "packages/kit".to_string()
+            ]
         );
         assert!(workspace_members("[workspace]\n").is_empty());
     }
@@ -357,8 +360,16 @@ rust-version = "not this"
     fn splits_a_leading_dir_argument() {
         let args = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         assert_eq!(
-            split_dir_arg(&args(&["--dir", "apps/mcp/slack/rs", "--check"])).unwrap(),
-            (Some(PathBuf::from("apps/mcp/slack/rs")), args(&["--check"]))
+            split_dir_arg(&args(&[
+                "--dir",
+                "apps/mcp/vitruvian-slack-mcp/rs",
+                "--check"
+            ]))
+            .unwrap(),
+            (
+                Some(PathBuf::from("apps/mcp/vitruvian-slack-mcp/rs")),
+                args(&["--check"])
+            )
         );
         assert_eq!(
             split_dir_arg(&args(&["-p", "ring"])).unwrap(),

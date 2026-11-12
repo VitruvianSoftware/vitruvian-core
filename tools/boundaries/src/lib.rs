@@ -148,7 +148,10 @@ mod tests {
 
     #[test]
     fn app_name_mcp_app() {
-        assert_eq!(get_app_name("apps/mcp/slack"), "mcp/slack");
+        assert_eq!(
+            get_app_name("apps/mcp/vitruvian-slack-mcp"),
+            "mcp/vitruvian-slack-mcp"
+        );
     }
 
     #[test]

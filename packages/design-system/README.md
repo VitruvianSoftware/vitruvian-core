@@ -111,7 +111,7 @@ Two constraints are worth knowing before editing the build files:
   store — cannot find this package's framework by bare name. Resolving through
   `require.resolve(...)` is Storybook's documented answer for strict layouts.
 - **The BUILD file is hand-authored and `# gazelle:ignore`d,** like
-  `//apps/mcp/slack` and `//apps/suites/tabula/shared`: gazelle would rewrite it with a broken
+  `//apps/mcp/vitruvian-slack-mcp` and `//apps/suites/tabula/shared`: gazelle would rewrite it with a broken
   empty `src` glob, split out a `src/BUILD`, and try to generate targets for
   `.storybook/`.
 
