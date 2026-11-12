@@ -6,7 +6,7 @@
   "include-component-in-tag": true,
   "include-v-in-tag": true,
   "tag-separator": "-",
-  "bootstrap-sha": "be0a8b14b2e9d302cf1cc22345c19ef7e43f99b0",
+  "bootstrap-sha": "26378bbaf6c78a5279b30f834e3a5acf6913f54e",
   "packages": {
     "apps/desktop/vitruvian-courier": {
       "package-name": "vitruvian-courier",
