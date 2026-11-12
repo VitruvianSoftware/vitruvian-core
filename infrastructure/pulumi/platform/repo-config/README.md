@@ -18,7 +18,7 @@ This module is always shipped and is a standalone `package main` you can `pulumi
 | `github.NewRepository` (adopted via `pulumi.Import`) | Sets `DeleteBranchOnMerge = true` on the existing repo |
 | `github.NewBranchProtection` | Protects the default branch per the config below |
 | `github.NewRepositoryEnvironment` + variables | Per-component `tabula-{development,nonproduction,production}` deploy environments |
-| `github.NewRepositoryEnvironment` + deployment policies (`courier_release.go`) | The `courier-release` environment Courier's release job binds; only `main` and `courier-v*` tags may deploy to it. Its secrets (the Telegram app ID) are set by `//tools/sync-env-secrets`, not here |
+| `github.NewRepositoryEnvironment` + deployment policies (`vitruvian_courier_release.go`) | The `vitruvian-courier-release` environment Vitruvian Courier's release job binds; only `main` and `vitruvian-courier-v*` tags may deploy to it. Its secrets (the Telegram app ID) are set by `//tools/sync-env-secrets`, not here |
 | `github.NewDependabotSecret` (`BUILDBUDDY_API_KEY`) | Gives Dependabot PRs the BuildBuddy key so `build-test` (RBE) doesn't fail `UNAUTHENTICATED` — only created when `buildbuddyApiKey` is configured |
 | `github.NewIssueLabel` (`dependencies`, `go`, `ci`) | The labels `.github/dependabot.yml` applies to dependency PRs (Dependabot warns + skips if they don't exist) |
 | `agent-guard-review` ruleset + `agent-guard-approvers` team (`guard_review.go`) | A PR that changes agent-guard's rules, the hook wiring or the CI definitions (`.github/workflows/**`, `.github/actions/**`) needs James's approval to merge; others are unaffected. Not config-driven, so no config value turns it off. See "Who may do what" in `tools/agent-guard/README.md` |

@@ -1221,7 +1221,7 @@ pub fn check_cache_save(ctx: &Context) {
 // gazelle's go_repository fetches every go.mod dependency with `go mod
 // download` (its fetch_repo tool), outside Bazel's downloader, so Bazel's
 // retry flags and the restored repository cache never cover it. On 2026-11-01
-// a proxy.golang.org "TLS handshake timeout" failed the macOS courier units
+// a proxy.golang.org "TLS handshake timeout" failed the macOS vitruvian-courier units
 // twice in the merge queue (#4187). setup-bazel now sets a GOPROXY list joined
 // with `|`, which Go falls through on ANY error; Go's default joins with `,`,
 // which falls through only on a 404/410 answer. This check keeps the pipe.

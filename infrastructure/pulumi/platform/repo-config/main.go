@@ -470,9 +470,9 @@ func program(ctx *pulumi.Context) error {
 		return err
 	}
 
-	// Courier's release job and the Telegram app ID it builds in
-	// (courier_release.go).
-	if err := courierReleaseEnvironment(ctx, repo); err != nil {
+	// Vitruvian Courier's release job and the Telegram app ID it builds in
+	// (vitruvian_courier_release.go).
+	if err := vitruvianCourierReleaseEnvironment(ctx, repo); err != nil {
 		return err
 	}
 

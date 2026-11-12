@@ -34,8 +34,8 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use crate::helpers::{
-    basename, cask_name_for_app, clean_version, developer_id_from, dirname, first_fields,
-    generate_cask_ruby, missing_assets, required_release_assets,
+    artifact_stem, basename, cask_name_for_app, clean_version, developer_id_from, dirname,
+    first_fields, generate_cask_ruby, missing_assets, required_release_assets,
 };
 use crate::shell::{
     chomp, cmd, cmd_quiet, command_v, env, err, glob, has, is_dir, is_file, is_nonempty,
@@ -902,7 +902,8 @@ impl Driver {
             self.notarize_target(&stage_univ)?;
         }
 
-        let base = format!("{}/{}-{}", o.dist_dir, o.app_name, o.version);
+        let stem = artifact_stem(&o.app_name);
+        let base = format!("{}/{}-{}", o.dist_dir, stem, o.version);
         let universal_dmg = format!("{base}-universal.dmg");
         let legacy_dmg = format!("{base}.dmg");
         let universal_zip = format!("{base}-universal.zip");
@@ -936,7 +937,7 @@ impl Driver {
 
         // 6. Checksums.
         out("==> Computing SHA256 checksums...");
-        let prefix = format!("{}-{}", o.app_name, o.version);
+        let prefix = format!("{}-{}", stem, o.version);
         let mut arts = glob(&o.dist_dir, &prefix, ".dmg");
         arts.extend(glob(&o.dist_dir, &prefix, ".zip"));
         for art in arts {
@@ -974,7 +975,7 @@ impl Driver {
         };
         let download_url = format!(
             "https://github.com/{}/releases/download/{effective_tag}/{}-{}-universal.dmg",
-            o.repo, o.app_name, o.version
+            o.repo, stem, o.version
         );
         let cask = generate_cask_ruby(
             &o.cask_name,

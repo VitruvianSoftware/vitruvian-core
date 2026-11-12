@@ -88,22 +88,22 @@ id = "GO-2026-6911"
 ignoreUntil = 2026-12-23
 reason = "Go github.com/mark3labs/mcp-go (1.5.0) in apps/cli/devx/go.mod. Advisory published 2026-11-05 against client/transport.NewStreamableHTTP following untrusted HTTP redirects with bearer tokens. No fixed release exists upstream (1.5.0 is latest), and devx only uses mcp-go/server (stdio server) and never imports client/transport. Time-boxed to pick up an upstream release when available."
 
-# libsignal (apps/desktop/courier/libsignal/Cargo.lock, added 2026-10-16 for Courier's
+# libsignal (apps/desktop/vitruvian-courier/libsignal/Cargo.lock, added 2026-10-16 for Vitruvian Courier's
 # Signal bridge). Signal's own crate graph pulls in three crates whose only
 # advisory is "unmaintained": no fixed version exists, and they go away only
 # when Signal drops them upstream. The fixable ones (rustls) were bumped.
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2025-0141"
-reason = "PERMANENT: no fixed version exists in any range ('bincode is unmaintained', a notice, not a flaw). crates.io bincode 1.3.3, a dependency of Signal's libsignal crates (apps/desktop/courier/libsignal/Cargo.lock). Not time-boxed because no future date makes it actionable; revisit when libsignal drops it or apps/desktop/courier/libsignal is re-pinned."
+reason = "PERMANENT: no fixed version exists in any range ('bincode is unmaintained', a notice, not a flaw). crates.io bincode 1.3.3, a dependency of Signal's libsignal crates (apps/desktop/vitruvian-courier/libsignal/Cargo.lock). Not time-boxed because no future date makes it actionable; revisit when libsignal drops it or apps/desktop/vitruvian-courier/libsignal is re-pinned."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2024-0436"
-reason = "PERMANENT: no fixed version exists in any range ('paste - no longer maintained', a notice, not a flaw). crates.io paste 1.0.15, a dependency of Signal's libsignal crates (apps/desktop/courier/libsignal/Cargo.lock). Not time-boxed because no future date makes it actionable; revisit when libsignal drops it or apps/desktop/courier/libsignal is re-pinned."
+reason = "PERMANENT: no fixed version exists in any range ('paste - no longer maintained', a notice, not a flaw). crates.io paste 1.0.15, a dependency of Signal's libsignal crates (apps/desktop/vitruvian-courier/libsignal/Cargo.lock). Not time-boxed because no future date makes it actionable; revisit when libsignal drops it or apps/desktop/vitruvian-courier/libsignal is re-pinned."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0173"
-reason = "PERMANENT: no fixed version exists in any range ('proc-macro-error2 is unmaintained', a notice, not a flaw). crates.io proc-macro-error2 2.0.1, a build-time proc macro in Signal's libsignal crate graph (apps/desktop/courier/libsignal/Cargo.lock). Not time-boxed because no future date makes it actionable; revisit when libsignal drops it or apps/desktop/courier/libsignal is re-pinned."
+reason = "PERMANENT: no fixed version exists in any range ('proc-macro-error2 is unmaintained', a notice, not a flaw). crates.io proc-macro-error2 2.0.1, a build-time proc macro in Signal's libsignal crate graph (apps/desktop/vitruvian-courier/libsignal/Cargo.lock). Not time-boxed because no future date makes it actionable; revisit when libsignal drops it or apps/desktop/vitruvian-courier/libsignal is re-pinned."
 
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0192"

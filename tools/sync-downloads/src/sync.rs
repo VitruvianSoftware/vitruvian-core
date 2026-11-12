@@ -203,8 +203,8 @@ pub fn get_latest_release(
     fetch::fetch_json(&format!("repos/{}/releases/tags/{}", repo, latest), token)
 }
 
-/// The catalog block Courier's download links live in.
-const COURIER_SCOPE: &str = r"id:\s*courier[\s\S]*?";
+/// The catalog block Vitruvian Courier's download links live in.
+const VITRUVIAN_COURIER_SCOPE: &str = r"id:\s*vitruvian-courier[\s\S]*?";
 
 struct Catalog {
     content: String,
@@ -428,22 +428,22 @@ pub fn sync_catalog(
         }
     }
 
-    // 3b. Courier: the same release shape as HomeSpeaker (both are packaged by
-    // //tools/desktop-package). Until the catalog has a `courier` entry, which
+    // 3b. Vitruvian Courier: the same release shape as HomeSpeaker (both are packaged by
+    // //tools/desktop-package). Until the catalog has a `vitruvian-courier` entry, which
     // is added by hand once the first release exists, nothing here matches and
     // the catalog is left alone.
-    if let Some(rel) = get_latest_release(CORE, Some("courier-v"), token)? {
+    if let Some(rel) = get_latest_release(CORE, Some("vitruvian-courier-v"), token)? {
         if rel.truthy() {
-            let tag = str_of(&rel, "tag_name", "replace")?.replace("courier-v", "");
-            say(&format!("✓ Courier: v{}", tag));
-            cat.version("courier", &tag)?;
+            let tag = str_of(&rel, "tag_name", "replace")?.replace("vitruvian-courier-v", "");
+            say(&format!("✓ Vitruvian Courier: v{}", tag));
+            cat.version("vitruvian-courier", &tag)?;
             for a in assets(&rel)? {
                 let Some(asset) = read_asset(&a, true)? else {
                     continue;
                 };
                 let name = name_str(&asset);
                 if let Some((_, label)) = DMG_LABELS.iter().find(|(n, _)| name.contains(n)) {
-                    cat.asset(COURIER_SCOPE, label, &asset.url, &asset.size)?;
+                    cat.asset(VITRUVIAN_COURIER_SCOPE, label, &asset.url, &asset.size)?;
                 }
             }
         }
@@ -583,14 +583,14 @@ mod tests {
 
     // The cases in sync_downloads_test.py.
     #[test]
-    fn courier_links_update_only_courier() {
-        let original = "      - id: home-speaker\n        version: \"1.0.0\"\n        downloads:\n          - label: Universal DMG\n            url: https://example.invalid/hs.dmg\n            size: 1 MB\n      - id: courier\n        version: \"0.3.0\"\n        downloads:\n          - label: Universal DMG\n            url: https://example.invalid/old.dmg\n            size: 1 MB\n          - label: Apple Silicon DMG\n            url: https://example.invalid/old-arm64.dmg\n            size: 1 MB\n";
+    fn vitruvian_courier_links_update_only_vitruvian_courier() {
+        let original = "      - id: home-speaker\n        version: \"1.0.0\"\n        downloads:\n          - label: Universal DMG\n            url: https://example.invalid/hs.dmg\n            size: 1 MB\n      - id: vitruvian-courier\n        version: \"0.3.0\"\n        downloads:\n          - label: Universal DMG\n            url: https://example.invalid/old.dmg\n            size: 1 MB\n          - label: Apple Silicon DMG\n            url: https://example.invalid/old-arm64.dmg\n            size: 1 MB\n";
         let mut cat = Catalog {
             content: original.to_string(),
         };
-        cat.version("courier", "0.3.1").unwrap();
+        cat.version("vitruvian-courier", "0.3.1").unwrap();
         cat.asset(
-            COURIER_SCOPE,
+            VITRUVIAN_COURIER_SCOPE,
             "Universal DMG",
             "https://example.invalid/new.dmg",
             "2 MB",
@@ -598,25 +598,25 @@ mod tests {
         .unwrap();
         assert!(cat
             .content
-            .contains("id: courier\n        version: \"0.3.1\""));
+            .contains("id: vitruvian-courier\n        version: \"0.3.1\""));
         assert!(cat
             .content
             .contains("url: https://example.invalid/new.dmg\n            size: 2 MB"));
-        // HomeSpeaker's block, before Courier's, is untouched.
+        // HomeSpeaker's block, before Vitruvian Courier's, is untouched.
         assert!(cat.content.contains("version: \"1.0.0\""));
         assert!(cat.content.contains("https://example.invalid/hs.dmg"));
         assert!(cat.content.contains("old-arm64.dmg"));
     }
 
     #[test]
-    fn courier_without_a_catalog_entry_changes_nothing() {
+    fn vitruvian_courier_without_a_catalog_entry_changes_nothing() {
         let original = "      - id: home-speaker\n        version: \"1.0.0\"\n        downloads:\n          - label: Universal DMG\n            url: https://example.invalid/hs.dmg\n            size: 1 MB\n";
         let mut cat = Catalog {
             content: original.to_string(),
         };
-        cat.version("courier", "0.3.1").unwrap();
+        cat.version("vitruvian-courier", "0.3.1").unwrap();
         cat.asset(
-            COURIER_SCOPE,
+            VITRUVIAN_COURIER_SCOPE,
             "Universal DMG",
             "https://example.invalid/new.dmg",
             "2 MB",

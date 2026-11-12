@@ -256,7 +256,7 @@ mod tests {
     fn a_raw_swift_test_or_suite_fails() {
         let (_, fail, rows) = run(&[
             ("apps/a/BUILD", "load(\"@build_bazel_rules_swift//swift:swift_test.bzl\", \"swift_test\")\n"),
-            ("apps/a/Tests/ATests/ModelTests.swift", "import Foundation\n\nlet d = UserDefaults(suiteName: \"courier-tests-\\(UUID())\")!\n"),
+            ("apps/a/Tests/ATests/ModelTests.swift", "import Foundation\n\nlet d = UserDefaults(suiteName: \"vitruvian-courier-tests-\\(UUID())\")!\n"),
             ("apps/a/Tests/ATests/More.swift", "let d = UserDefaults.init( suiteName : name)\n"),
             ("apps/b/Tests/Prefs.swift", "CFPreferencesSetAppValue(key, value, domain)\n"),
         ]);

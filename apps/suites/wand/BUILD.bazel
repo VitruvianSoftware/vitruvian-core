@@ -35,7 +35,7 @@ exports_files([
 # hole to this app's package boundary.
 alias(
     name = "rust_1_98_1_enabled",
-    actual = "//apps/desktop/courier/libsignal:rust_1_98_1_enabled",
+    actual = "//apps/desktop/vitruvian-courier/libsignal:rust_1_98_1_enabled",
 )
 
 doctor(

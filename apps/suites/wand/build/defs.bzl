@@ -38,7 +38,7 @@ load(
     "TestCrateInfo",
 )
 
-_FLAG = "//apps/desktop/courier/libsignal:rust_1_98_1"
+_FLAG = "//apps/desktop/vitruvian-courier/libsignal:rust_1_98_1"
 _ENABLED = "//apps/suites/wand:rust_1_98_1_enabled"
 
 # Inner targets are only compatible once transitioned onto Rust 1.98.1 so

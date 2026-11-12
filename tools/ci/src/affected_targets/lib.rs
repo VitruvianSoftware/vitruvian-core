@@ -734,7 +734,7 @@ md|png|jpg|jpeg|svg|txt)$|(^|/)(catalog-info\\.yaml|OWNERS|CODEOWNERS)$",
     }
 
     // Every target here is named, and Bazel errors on a named target this runner can't build (a macOS-only test
-    // on the Linux runner, e.g. Courier's gchat_test). Skip those as a //... sweep does; the macOS lane tests them.
+    // on the Linux runner, e.g. Vitruvian Courier's gchat_test). Skip those as a //... sweep does; the macOS lane tests them.
     let mut cmd = Command::new("bazel");
     cmd.arg("test")
         .arg(os(&remote_config))

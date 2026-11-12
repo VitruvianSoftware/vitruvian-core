@@ -148,9 +148,17 @@ pub fn generate_cask_ruby(
     )
 }
 
+/// artifact_stem: the filename prefix for release DMGs and ZIPs, with spaces
+/// removed so multi-word app names ("Vitruvian Courier") produce clean URLs
+/// and GitHub Release asset names ("VitruvianCourier-1.0.0-universal.dmg")
+/// while keeping the `.app` bundle name intact.
+pub fn artifact_stem(app_name: &str) -> String {
+    app_name.replace(' ', "")
+}
+
 /// expected_artifact_names: the five DMG/ZIP names of a release.
 pub fn expected_artifact_names(app_name: &str, version: &str) -> Vec<String> {
-    let base = format!("{app_name}-{version}");
+    let base = format!("{}-{version}", artifact_stem(app_name));
     vec![
         format!("{base}-universal.dmg"),
         format!("{base}-arm64.dmg"),
@@ -171,7 +179,7 @@ pub fn required_release_assets(
     skip_thinning: bool,
     extra: &[String],
 ) -> Vec<String> {
-    let base = format!("{app_name}-{version}");
+    let base = format!("{}-{version}", artifact_stem(app_name));
     let mut names = vec![format!("{base}-universal.zip"), format!("{base}-macOS.zip")];
     if !skip_dmg {
         names.push(format!("{base}-universal.dmg"));
@@ -346,6 +354,10 @@ mod tests {
         assert_eq!(required_release_assets("A", "1", true, false, &[]).len(), 4);
         assert_eq!(required_release_assets("A", "1", false, true, &[]).len(), 8);
         assert_eq!(expected_artifact_names("A", "1").len(), 5);
+        assert_eq!(
+            expected_artifact_names("Vitruvian Courier", "0.4.0")[0],
+            "VitruvianCourier-0.4.0-universal.dmg"
+        );
     }
 
     #[test]

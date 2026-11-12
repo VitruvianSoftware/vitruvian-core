@@ -53,22 +53,22 @@ import (
 // this file does not establish it.
 
 // environmentTagPatterns are the tag patterns GitHub Environments accept
-// deploys from (the deployment policies in main.go and courier_release.go
+// deploys from (the deployment policies in main.go and vitruvian_courier_release.go
 // use these constants). TestDeployTagPatternsNeverMatchExemptTags runs the
 // whole program and fails if the patterns it registers differ from this list
 // or accept an exempt tag.
 const (
-	tabulaAPIReleaseTagPattern          = "tabula-api-v*"
-	tabulaWebReleaseTagPattern          = "tabula-web-v*"
-	oauthUserInspectorReleaseTagPattern = "oauth-user-inspector-v*"
-	courierReleaseTagPattern            = "courier-v*"
+	tabulaAPIReleaseTagPattern                = "tabula-api-v*"
+	tabulaWebReleaseTagPattern                = "tabula-web-v*"
+	oauthUserInspectorReleaseTagPattern       = "oauth-user-inspector-v*"
+	vitruvianCourierReleaseTagPattern         = "vitruvian-courier-v*"
 )
 
 var environmentTagPatterns = []string{
 	tabulaAPIReleaseTagPattern,
 	tabulaWebReleaseTagPattern,
 	oauthUserInspectorReleaseTagPattern,
-	courierReleaseTagPattern,
+	vitruvianCourierReleaseTagPattern,
 }
 
 // rollingTags are moved to main's HEAD by the beta/dev publishers, with the

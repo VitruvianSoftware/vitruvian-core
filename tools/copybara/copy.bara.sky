@@ -599,23 +599,23 @@ COMPONENTS = [
         ],
         "export_only": True,
     },
-    # courier: EXPORT-ONLY mirror of apps/desktop/courier (AGPL-3.0-or-later),
-    # the public source the AGPL owes with every Courier build.
+    # courier: EXPORT-ONLY mirror of apps/desktop/vitruvian-courier (AGPL-3.0-or-later),
+    # the public source the AGPL owes with every Vitruvian Courier build.
     {
         "name": "courier",
         "repo": "courier",
-        "subtree": "apps/desktop/courier",
+        "subtree": "apps/desktop/vitruvian-courier",
         "standalone_rev_id": "COURIER_REV_ID",
         "mode": "SQUASH",
         "standalone_only": [],
         # release-please (monorepo paths) and personal migration and acceptance
         # notes; the build files (.bzl) stay, as part of the AGPL source.
         "origin_only_exclude": [
-            "apps/desktop/courier/release-please-config.json",
-            "apps/desktop/courier/.release-please-manifest.json",
-            "apps/desktop/courier/docs/cutover.md",
-            "apps/desktop/courier/docs/*-acceptance.md",
-            "apps/desktop/courier/engine/docs/gchat-by-hand.md",
+            "apps/desktop/vitruvian-courier/release-please-config.json",
+            "apps/desktop/vitruvian-courier/.release-please-manifest.json",
+            "apps/desktop/vitruvian-courier/docs/cutover.md",
+            "apps/desktop/vitruvian-courier/docs/*-acceptance.md",
+            "apps/desktop/vitruvian-courier/engine/docs/gchat-by-hand.md",
         ],
         "export_only": True,
     },

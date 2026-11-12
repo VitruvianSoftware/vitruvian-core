@@ -53,13 +53,13 @@ const TAP: &str = "vitruviansoftware/tap";
 /// Every formula and cask in VitruvianSoftware/homebrew-tap. A short-name
 /// install of one of these is an instruction that fails on Homebrew 7.
 const OUR_NAMES: &[&str] = &[
-    "courier",
     "devx",
     "gravastar-mouse",
     "home-speaker",
     "homelab",
     "nexus-agent",
     "vitruvian",
+    "vitruvian-courier",
     "vitruvian-tool",
 ];
 
@@ -188,7 +188,7 @@ mod tests {
 
     #[test]
     fn canonical_instructions_pass() {
-        let text = "brew tap vitruviansoftware/tap\nbrew trust vitruviansoftware/tap\nbrew install --cask vitruviansoftware/tap/courier\n";
+        let text = "brew tap vitruviansoftware/tap\nbrew trust vitruviansoftware/tap\nbrew install --cask vitruviansoftware/tap/vitruvian-courier\n";
         assert!(problems(text).is_empty(), "{:?}", problems(text));
         // Homebrew compares tap names case-insensitively, and so does this.
         let text = "`brew trust VitruvianSoftware/tap && brew upgrade VitruvianSoftware/tap/devx`";
@@ -206,7 +206,7 @@ mod tests {
         assert!(got[0].contains("brew install vitruviansoftware/tap/devx"));
         let got = problems("Run `brew trust vitruviansoftware/tap && brew upgrade devx`.");
         assert_eq!(got.len(), 1, "{got:?}");
-        let got = problems("brew trust vitruviansoftware/tap; brew upgrade --cask courier");
+        let got = problems("brew trust vitruviansoftware/tap; brew upgrade --cask vitruvian-courier");
         assert_eq!(got.len(), 1, "{got:?}");
     }
 
@@ -223,7 +223,7 @@ mod tests {
             1
         );
         assert_eq!(
-            problems("`brew install --cask vitruviansoftware/tap/courier`").len(),
+            problems("`brew install --cask vitruviansoftware/tap/vitruvian-courier`").len(),
             1
         );
     }
@@ -234,7 +234,7 @@ mod tests {
         assert!(problems(text).is_empty(), "{:?}", problems(text));
         // A mention of the tap that is not an instruction needs no trust.
         assert!(problems("Casks/<app>.rb in VitruvianSoftware/homebrew-tap").is_empty());
-        assert!(problems("`brew info --cask vitruviansoftware/tap/courier`").is_empty());
+        assert!(problems("`brew info --cask vitruviansoftware/tap/vitruvian-courier`").is_empty());
     }
 
     #[test]

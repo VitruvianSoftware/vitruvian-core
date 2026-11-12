@@ -46,7 +46,7 @@ pulumi_go_test(
         "//apps/web/vitruviansoftware-dev:donate_pages",
         # ...and every Sponsor button opens one of those pages.
         "//:.github/FUNDING.yml",
-        "//:apps/desktop/courier/.github/FUNDING.yml",
+        "//:apps/desktop/vitruvian-courier/.github/FUNDING.yml",
         "//:packages/pulumi/library/.github/FUNDING.yml",
         "//packages/pulumi/examples:go-foundation/.github/FUNDING.yml",
         "//packages/pulumi/examples:ts-foundation/.github/FUNDING.yml",

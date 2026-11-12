@@ -137,7 +137,7 @@ func TestReleaseTagsProtected(t *testing.T) {
 		// release-please's <component>-v<version>, one per family on origin.
 		"tabula-api-v0.30.0",
 		"tabula-web-v0.29.0",
-		"courier-v0.1.0",
+		"vitruvian-courier-v0.1.0",
 		"oauth-user-inspector-v1.4.0",
 		"oauth-user-inspector-infra-v0.9.0",
 		"vitruvian-v4.12.0",
