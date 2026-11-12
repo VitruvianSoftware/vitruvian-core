@@ -2407,6 +2407,130 @@ public class DeriveTest {
   }
 
   @Test
+  public fun `notificationsRowSpec covers granted, not asked, denied once and permanently blocked`() {
+    assertFalse(
+        Derive.isNotificationPermissionBlocked(
+            granted = false, shouldShowRationale = false, asked = false))
+    assertFalse(
+        Derive.isNotificationPermissionBlocked(
+            granted = false, shouldShowRationale = true, asked = true))
+    assertTrue(
+        Derive.isNotificationPermissionBlocked(
+            granted = false, shouldShowRationale = false, asked = true))
+    assertFalse(
+        Derive.isNotificationPermissionBlocked(
+            granted = true, shouldShowRationale = false, asked = true))
+
+    val granted =
+        Derive.notificationsRowSpec(granted = true, asked = true, shouldShowRationale = false)
+    assertEquals("Notifications", granted.title)
+    assertEquals("Mac offline/back alerts and finished commands", granted.subtitle)
+    assertEquals("On", granted.statusLabel)
+    assertEquals(Derive.NotificationPermissionAction.None, granted.action)
+    assertNull(granted.actionLabel)
+    assertFalse(granted.permanentlyBlocked)
+
+    val notAsked =
+        Derive.notificationsRowSpec(granted = false, asked = false, shouldShowRationale = false)
+    assertEquals("Notifications", notAsked.title)
+    assertEquals("Mac offline/back alerts and finished commands", notAsked.subtitle)
+    assertNull(notAsked.statusLabel)
+    assertEquals(Derive.NotificationPermissionAction.Allow, notAsked.action)
+    assertEquals("Allow", notAsked.actionLabel)
+    assertFalse(notAsked.permanentlyBlocked)
+
+    val deniedOnce =
+        Derive.notificationsRowSpec(granted = false, asked = true, shouldShowRationale = true)
+    assertNull(deniedOnce.statusLabel)
+    assertEquals(Derive.NotificationPermissionAction.Allow, deniedOnce.action)
+    assertEquals("Allow", deniedOnce.actionLabel)
+    assertFalse(deniedOnce.permanentlyBlocked)
+
+    val permanentlyBlocked =
+        Derive.notificationsRowSpec(granted = false, asked = true, shouldShowRationale = false)
+    assertNull(permanentlyBlocked.statusLabel)
+    assertEquals(Derive.NotificationPermissionAction.OpenSettings, permanentlyBlocked.action)
+    assertEquals("Open settings", permanentlyBlocked.actionLabel)
+    assertTrue(permanentlyBlocked.permanentlyBlocked)
+  }
+
+  @Test
+  public fun `bridgeNotificationSpec covers off, granted, not asked, denied once and permanently blocked`() {
+    assertNull(
+        Derive.bridgeNotificationSpec(
+            bridgeEnabled = false,
+            granted = false,
+            asked = false,
+            shouldShowRationale = false,
+        ))
+    assertNull(
+        Derive.bridgeNotificationSpec(
+            bridgeEnabled = true,
+            granted = true,
+            asked = true,
+            shouldShowRationale = false,
+        ))
+
+    val notAsked =
+        Derive.bridgeNotificationSpec(
+            bridgeEnabled = true,
+            granted = false,
+            asked = false,
+            shouldShowRationale = false,
+        )!!
+    assertEquals("Approvals can't pop up while notifications are off", notAsked.note)
+    assertEquals(Derive.NotificationPermissionAction.Allow, notAsked.action)
+    assertEquals("Allow", notAsked.actionLabel)
+    assertFalse(notAsked.permanentlyBlocked)
+
+    val deniedOnce =
+        Derive.bridgeNotificationSpec(
+            bridgeEnabled = true,
+            granted = false,
+            asked = true,
+            shouldShowRationale = true,
+        )!!
+    assertEquals("Approvals can't pop up while notifications are off", deniedOnce.note)
+    assertEquals(Derive.NotificationPermissionAction.Allow, deniedOnce.action)
+    assertEquals("Allow", deniedOnce.actionLabel)
+    assertFalse(deniedOnce.permanentlyBlocked)
+
+    val permanentlyBlocked =
+        Derive.bridgeNotificationSpec(
+            bridgeEnabled = true,
+            granted = false,
+            asked = true,
+            shouldShowRationale = false,
+        )!!
+    assertEquals("Approvals can't pop up while notifications are off", permanentlyBlocked.note)
+    assertEquals(Derive.NotificationPermissionAction.OpenSettings, permanentlyBlocked.action)
+    assertEquals("Open settings", permanentlyBlocked.actionLabel)
+    assertTrue(permanentlyBlocked.permanentlyBlocked)
+  }
+
+  @Test
+  public fun `MainActivity never asks for POST_NOTIFICATIONS at launch`() {
+    val main =
+        readRunfile(
+            "apps/mobile/android-remote/src/main/kotlin/dev/vitruvian/remote/MainActivity.kt")
+    assertFalse(
+        "askForNotifications launch helper must be removed", main.contains("askForNotifications"))
+    val launches = Regex("""requestNotifications\.launch\(""").findAll(main).count()
+    assertEquals(
+        "requestNotifications.launch may only be called from ensurePostNotificationsPermission",
+        1,
+        launches,
+    )
+    assertTrue(
+        "ensurePostNotificationsPermission must own the single requestNotifications.launch call",
+        main
+            .substringAfter("private fun ensurePostNotificationsPermission")
+            .substringBefore("override fun ")
+            .contains("requestNotifications.launch(PERMISSION_POST_NOTIFICATIONS)"),
+    )
+  }
+
+  @Test
   public fun `tapReset and resetHomeSpeakerRow enforce a 5 second two-tap confirmation window`() {
     val t0 = 100_000L
     val initialRow = Derive.resetHomeSpeakerRow(armedAtMs = null, nowMs = t0, canAct = true)

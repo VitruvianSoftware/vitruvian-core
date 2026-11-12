@@ -719,6 +719,42 @@ public class RemoteState(
   public var agentNotify: AgentNotifyStatus? by mutableStateOf(null)
     private set
 
+  // --- phone notifications ----------------------------------------------
+
+  /** Whether `POST_NOTIFICATIONS` (and app notifications in system Settings) is granted. */
+  public var notificationsGranted: Boolean by
+      mutableStateOf(notifier?.hasNotificationPermission() != false)
+    private set
+
+  /** Whether this install has already asked for `POST_NOTIFICATIONS` (or Settings blocked it). */
+  public var notificationsAsked: Boolean by
+      mutableStateOf(notifier?.hasAskedNotificationPermission() == true)
+    private set
+
+  /** Whether Android says a permission rationale applies (first runtime denial on API 33+). */
+  public var notificationsShouldShowRationale: Boolean by
+      mutableStateOf(notifier?.shouldShowNotificationRationale() == true)
+    private set
+
+  /** Specification for the Settings screen's "Notifications" row. */
+  public val notificationsRowSpec: Derive.NotificationsRowSpec
+    get() =
+        Derive.notificationsRowSpec(
+            granted = notificationsGranted,
+            asked = notificationsAsked,
+            shouldShowRationale = notificationsShouldShowRationale,
+        )
+
+  /** Inline warning and action for the Phone Bridge row when notifications are off. */
+  public val bridgeNotificationSpec: Derive.BridgeNotificationSpec?
+    get() =
+        Derive.bridgeNotificationSpec(
+            bridgeEnabled = bridgeEnabled,
+            granted = notificationsGranted,
+            asked = notificationsAsked,
+            shouldShowRationale = notificationsShouldShowRationale,
+        )
+
   // --- the phone bridge -------------------------------------------------
 
   /** Whether the bridge service should be running. Off until someone turns it on. */
@@ -2747,7 +2783,7 @@ public class RemoteState(
     val spec =
         Derive.mirrorRowSpec(
             mirrorEnabled = homeSpeakerMirror,
-            permissionGranted = notifier?.hasNotificationPermission() != false,
+            permissionGranted = notificationsGranted,
             permissionBlocked = homeSpeakerMirrorPermissionBlocked,
         )
     return ModuleRow(
@@ -4410,7 +4446,7 @@ public class RemoteState(
       )
       return
     }
-    val applyGranted: (Boolean, Boolean) -> Unit = { granted, shouldShowRationale ->
+    requestNotificationsPermission { granted, shouldShowRationale ->
       homeSpeakerMirrorPermissionBlocked =
           Derive.isNotificationPermissionBlocked(granted, shouldShowRationale)
       val hs = agentHomeSpeaker
@@ -4426,18 +4462,12 @@ public class RemoteState(
           persistToggle = true,
       )
     }
-    val n = notifier
-    if (n == null) {
-      applyGranted(true, false)
-    } else {
-      n.ensureNotificationPermission(applyGranted)
-    }
   }
 
   /** Mirrors a new announcement to a phone notification when the setting is on. */
   private fun observeHomeSpeakerMirror(hs: AgentHomeSpeaker) {
-    val granted = notifier?.hasNotificationPermission() != false
-    if (granted) homeSpeakerMirrorPermissionBlocked = false
+    refreshNotificationPermission()
+    val granted = notificationsGranted
     applyMirrorDecision(
         Derive.observeMirrorAnnouncement(
             state = mirrorState,
@@ -7761,9 +7791,54 @@ public class RemoteState(
   /** Called by the activity: whether anyone is actually looking at this. */
   public fun onForeground(value: Boolean) {
     foreground = value
-    if (value && notifier?.hasNotificationPermission() == true) {
+    if (value) {
+      refreshNotificationPermission()
+    }
+  }
+
+  /**
+   * Re-reads the phone's notification permission state after returning from Settings or dialogs.
+   */
+  public fun refreshNotificationPermission() {
+    val n = notifier
+    val granted = n?.hasNotificationPermission() != false
+    notificationsGranted = granted
+    notificationsAsked = n?.hasAskedNotificationPermission() == true
+    notificationsShouldShowRationale = !granted && (n?.shouldShowNotificationRationale() == true)
+    if (granted) {
       homeSpeakerMirrorPermissionBlocked = false
     }
+  }
+
+  /**
+   * Asks for `POST_NOTIFICATIONS` in context via [Notifier.ensureNotificationPermission], updating
+   * the observable permission state once answered.
+   */
+  public fun requestNotificationsPermission(
+      onResult: ((granted: Boolean, shouldShowRationale: Boolean) -> Unit)? = null,
+  ) {
+    val n = notifier
+    if (n == null) {
+      notificationsGranted = true
+      notificationsAsked = true
+      notificationsShouldShowRationale = false
+      onResult?.invoke(true, false)
+      return
+    }
+    n.ensureNotificationPermission { granted, shouldShowRationale ->
+      notificationsGranted = granted
+      notificationsAsked = n.hasAskedNotificationPermission() || !granted
+      notificationsShouldShowRationale = !granted && shouldShowRationale
+      if (granted) {
+        homeSpeakerMirrorPermissionBlocked = false
+      }
+      onResult?.invoke(granted, shouldShowRationale)
+    }
+  }
+
+  /** Opens the system notification settings screen for this app. */
+  public fun openNotificationSettings() {
+    notifier?.openNotificationSettings()
   }
 
   // --- the phone bridge -------------------------------------------------
@@ -7823,6 +7898,9 @@ public class RemoteState(
     persistence.bridgeEnabled = value
     control.setEnabled(value)
     log(if (value) "ok" else "info", "bridge · ${if (value) "started" else "stopped"}")
+    if (value) {
+      requestNotificationsPermission()
+    }
   }
 
   /**
@@ -7835,12 +7913,16 @@ public class RemoteState(
       log("warn", "bridge · not available in this build")
       return
     }
-    if (!bridgeEnabled) {
+    val turningOn = !bridgeEnabled
+    if (turningOn) {
       bridgeEnabled = true
       persistence.bridgeEnabled = true
     }
     control.reconnect()
     log("info", "bridge · reconnecting to $hostShortName")
+    if (turningOn) {
+      requestNotificationsPermission()
+    }
   }
 
   /**
@@ -7890,7 +7972,9 @@ public class RemoteState(
    * app happened to be.
    */
   private fun post(id: String, title: String, body: String, screen: Screen) {
-    notifier?.notify(id, title, body, DeepLink.uriFor(screen.name.lowercase(Locale.ROOT)))
+    val n = notifier ?: return
+    if (!n.hasNotificationPermission()) return
+    n.notify(id, title, body, DeepLink.uriFor(screen.name.lowercase(Locale.ROOT)))
   }
 
   /**
