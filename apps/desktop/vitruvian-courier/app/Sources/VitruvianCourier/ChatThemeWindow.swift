@@ -711,7 +711,9 @@ public struct ChatWallpaperCanvasView: View {
         case .starfield:
             let count = 48
             for idx in 0 ..< count {
-                let seed = UInt32(idx &* 2_654_435_761)
+                // Multiplied as 32-bit, wrapping on overflow: `UInt32(idx &* …)` multiplied as 64-bit and then stopped
+                // the app because the result didn't fit in 32 bits (from the third star on).
+                let seed = UInt32(truncatingIfNeeded: idx) &* 2_654_435_761
                 let fx = CGFloat(seed % 997) / 997.0
                 let fy = CGFloat((seed >> 10) % 991) / 991.0
                 let radius: CGFloat = (idx % 5 == 0) ? 2.4 : 1.4
