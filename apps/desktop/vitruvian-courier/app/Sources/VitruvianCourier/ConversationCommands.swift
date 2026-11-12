@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// The Message menu: the keys that work in an open chat, even while typing (Task 12's table). Each acts on the

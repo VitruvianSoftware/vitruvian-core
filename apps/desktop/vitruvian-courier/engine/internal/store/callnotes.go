@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-// A call note is a bridge's notice of a call. The app says it in Courier's words, from what the engine reads here;
+// A call note is a bridge's notice of a call. The app says it in Vitruvian Courier's words, from what the engine reads here;
 // the engine never shows or indexes the bridge's English body (as timer notes, Ruling 40). What the pinned bridges
 // send (each a ghost's message, mine only when the network says I made the call):
 //   - WhatsApp: m.text "Incoming call. Use the WhatsApp app to answer.", action {type: call}, call_type "" or
@@ -34,10 +34,10 @@ import (
 // callActionType is the action message type of a call note.
 const callActionType = "call"
 
-// callKey is Courier's reading of a call note, in its content: {state, media} (CallNote).
+// callKey is Vitruvian Courier's reading of a call note, in its content: {state, media} (CallNote).
 const callKey = "fi.courier.call"
 
-// CallState is what happened with a call, as Courier says it.
+// CallState is what happened with a call, as Vitruvian Courier says it.
 type CallState string
 
 const (
@@ -57,7 +57,7 @@ const (
 	CallVideo CallMedia = "video"
 )
 
-// CallNote is a call notice as Courier reads it.
+// CallNote is a call notice as Vitruvian Courier reads it.
 type CallNote struct {
 	State CallState `json:"state"`
 	Media CallMedia `json:"media"`
@@ -80,7 +80,7 @@ const (
 	signalEndedBody   = "Call ended"
 )
 
-// tgRecordOutcomes is Telegram's call record's reason word, and what Courier calls it (handletelegram.go:478-489).
+// tgRecordOutcomes is Telegram's call record's reason word, and what Vitruvian Courier calls it (handletelegram.go:478-489).
 var tgRecordOutcomes = []struct {
 	word  string
 	state CallState
@@ -90,7 +90,7 @@ var tgRecordOutcomes = []struct {
 var tgRecordRE = regexp.MustCompile(`(?s)^(Video call|Call) (missed|disconnected|ended|rejected)(?: \(.*\))?$`)
 
 // AnnotateCallNote reads content, a message from network's bridge, as a call note: when it is one, it is returned
-// with Courier's reading added (see above); anything else, and a note already read, comes back exactly as given.
+// with Vitruvian Courier's reading added (see above); anything else, and a note already read, comes back exactly as given.
 // (SQL twin: annotateCallNoteSQL.)
 func AnnotateCallNote(network, typ string, content json.RawMessage) json.RawMessage {
 	if typ != "m.room.message" || !bytes.Contains(content, []byte("all")) {
@@ -179,7 +179,7 @@ func readCallNotice(network, msgType, body string, rawAction json.RawMessage) (n
 // sqlString is s as an SQL string literal.
 func sqlString(s string) string { return `'` + strings.ReplaceAll(s, `'`, `''`) + `'` }
 
-// annotateCallNoteSQL is AnnotateCallNote in SQL, for migration 6: the content of an m.room.message with Courier's
+// annotateCallNoteSQL is AnnotateCallNote in SQL, for migration 6: the content of an m.room.message with Vitruvian Courier's
 // reading added when it is a call notice, else the content as it is. network and content are SQL expressions.
 func annotateCallNoteSQL(network, content string) string {
 	valid := `json_valid(` + content + `)`
@@ -228,7 +228,7 @@ func globEscape(s string) string {
 }
 
 // parseCallNote reads a call note: an m.room.message whose action message is of type call. What happened is
-// Courier's reading (callKey); a note without one (stored before this engine read call notices) rang, voice or video
+// Vitruvian Courier's reading (callKey); a note without one (stored before this engine read call notices) rang, voice or video
 // as its call_type says. A state or media this engine doesn't know reads as ringing, no media. ok is false for
 // anything else. (The app's twin: CallNote.of.)
 func parseCallNote(typ string, content json.RawMessage) (CallNote, bool) {
@@ -246,7 +246,7 @@ func parseCallNote(typ string, content json.RawMessage) (CallNote, bool) {
 	if json.Unmarshal(content, &c) != nil || c.Action == nil || c.Action.Type != callActionType {
 		return CallNote{}, false
 	}
-	// Courier's reading, when it is an object: each field a string this engine knows, or the plainest.
+	// Vitruvian Courier's reading, when it is an object: each field a string this engine knows, or the plainest.
 	var read map[string]json.RawMessage
 	if json.Unmarshal(c.Note, &read) != nil || read == nil {
 		note := CallNote{State: CallRinging}
@@ -282,7 +282,7 @@ func isCallRecord(e Event) bool {
 }
 
 // isCallRecordSQL is true for content that is a call note that is a record, not news: its action message is of type
-// call and Courier's reading says ended, declined or dropped. content is the column expression. (Go twin:
+// call and Vitruvian Courier's reading says ended, declined or dropped. content is the column expression. (Go twin:
 // isCallRecord; a state this engine doesn't know reads as ringing there, and is not one of these here.)
 func isCallRecordSQL(content string) string {
 	states := make([]string, len(callRecordStates))

@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 import UserNotifications
 import WebKit
 import XCTest
 
-@testable import Courier
+@testable import VitruvianCourier
 
 /// A render harness for Task 12's views: each is drawn light and dark to PNGs for a person to look at
 /// (Snapshot.directory). The asserts check only that the view drew something of a sensible size; how it looks is for
@@ -32,15 +32,15 @@ final class ViewSnapshotTests: XCTestCase {
     /// An app model whose engine never starts: the models it feeds read nothing.
     private func offlineApp() -> AppModel {
         AppModel(supervisor: EngineSupervisor(
-            enginePath: "/nonexistent/courier-engine",
-            dataDir: FileManager.default.temporaryDirectory.appendingPathComponent("courier-snapshots"),
+            enginePath: "/nonexistent/vitruvian-courier-engine",
+            dataDir: FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-courier-snapshots"),
             environment: [:], launcher: FoundationProcessLauncher()))
     }
 
-    private func timeline(_ items: [TimelineItem], ui: MessageUI? = nil, actions: Courier.MessageActions? = nil,
+    private func timeline(_ items: [TimelineItem], ui: MessageUI? = nil, actions: VitruvianCourier.MessageActions? = nil,
                           sent: String? = nil) -> some View {
         let ui = ui ?? MessageUI()
-        let actions = actions ?? Courier.MessageActions(now: { Fixture.now })
+        let actions = actions ?? VitruvianCourier.MessageActions(now: { Fixture.now })
         return VStack(spacing: 0) {
             ForEach(items) { item in
                 TimelineItemView(item: item, isSelected: false, showsSent: item.id == sent, actions: actions, ui: ui)
@@ -130,7 +130,7 @@ final class ViewSnapshotTests: XCTestCase {
         ui.historyOpen = ["$edited"]
         ui.versions["$edited"] = [Version(body: "Meet at nine", ts: Fixture.millis(50)),
                                   Version(body: "Meet at half past nine", ts: Fixture.millis(45))]
-        var actions = Courier.MessageActions()
+        var actions = VitruvianCourier.MessageActions()
         actions.undoHeld = { _ in }
         actions.openThread = { _ in }
         check(try Snapshot.render("thread-queued-edited", width: 560) {
@@ -147,7 +147,7 @@ final class ViewSnapshotTests: XCTestCase {
             Fixture.timerNote("$n", mine: true, ts: 2, timerMS: 86_400_000),
             Fixture.timerNote("$m", mine: false, ts: 1, timerMS: 0),
         ]
-        var actions = Courier.MessageActions()
+        var actions = VitruvianCourier.MessageActions()
         actions.timerNote = { conversation.timerChangeNote(for: $0) }
         actions.disappearsIn = { conversation.disappearsIn($0) }
         check(try Snapshot.render("timer-note", width: 560) {
@@ -169,7 +169,7 @@ final class ViewSnapshotTests: XCTestCase {
             timeline(Fixture.items(events), sent: "$1")
         })
         // In a group: the caller's name beside theirs.
-        var group = Courier.MessageActions()
+        var group = VitruvianCourier.MessageActions()
         group.callCaller = { CallNote.caller(of: $0, direct: false) }
         check(try Snapshot.render("call-notes-group", width: 560) {
             timeline(Fixture.items(events), actions: group, sent: "$1")
@@ -185,7 +185,7 @@ final class ViewSnapshotTests: XCTestCase {
         ])
         let message = try XCTUnwrap(messages.first)
         let sections = MessageMenu.sections(
-            for: message, available: CourierCore.MessageActions.available(for: message, in: Fixture.features,
+            for: message, available: VitruvianCourierCore.MessageActions.available(for: message, in: Fixture.features,
                                                               network: "whatsapp", now: Fixture.now),
             features: Fixture.features, disappearsIn: "Disappears in 6 days, 23 hours", time: { _ in "Oct 20, 1:30 PM" })
         check(try Snapshot.render("message-menu", width: 320) {
@@ -351,7 +351,7 @@ final class ViewSnapshotTests: XCTestCase {
             timeline(Fixture.items(chat(seenByMany)), sent: "$3")
         })
 
-        var actions = Courier.MessageActions()
+        var actions = VitruvianCourier.MessageActions()
         actions.dontSend = { _ in }
         actions.waitingHelp = { StatusLine.waitingHelp(network: "whatsapp") }
         let waiting = [
@@ -537,7 +537,7 @@ final class ViewSnapshotTests: XCTestCase {
             Fixture.text("$1", "Who can bring the projector?", mine: false, ts: 30),
         ]).first)
         let sections = MessageMenu.sections(
-            for: message, available: CourierCore.MessageActions.available(
+            for: message, available: VitruvianCourierCore.MessageActions.available(
                 for: message, in: Fixture.features, network: "whatsapp", now: Fixture.now, isDirect: false,
                 networkRunning: true),
             features: Fixture.features, disappearsIn: nil, time: { _ in "Oct 20, 1:30 PM" })
@@ -591,7 +591,7 @@ final class ViewSnapshotTests: XCTestCase {
         let sizes = try Snapshot.render("timeline-membership-run", width: 520, height: 120) {
             TimelineItemView(
                 item: item, isSelected: false, isHighlighted: false, showsSent: false,
-                actions: Courier.MessageActions(), ui: MessageUI()
+                actions: VitruvianCourier.MessageActions(), ui: MessageUI()
             )
             .padding(16)
         }
@@ -828,7 +828,7 @@ final class ViewSnapshotTests: XCTestCase {
         sigEvent.roomID = "!dm-alice-sig:courier.local"
         var myReply = Fixture.text("$m-me", "Got it, replying on WhatsApp!", mine: true, ts: 5)
         myReply.roomID = "!dm-alice-wa:courier.local"
-        var mergedActions = Courier.MessageActions()
+        var mergedActions = VitruvianCourier.MessageActions()
         mergedActions.messageNetwork = { msg in
             switch msg.roomID {
             case "!dm-alice-wa:courier.local": "whatsapp"
@@ -1274,7 +1274,7 @@ final class ViewSnapshotTests: XCTestCase {
     func testVoiceNoteViewAndGlobalAudioPlayerBarLightAndDark() throws {
         let waveform = [14, 28, 52, 85, 64, 40, 72, 96, 80, 48, 30, 62, 88, 70, 44, 22, 56, 78, 50, 26, 38, 66, 42, 18]
         let audioPath = FileManager.default.temporaryDirectory
-            .appendingPathComponent("courier-snapshot-voice.ogg").path
+            .appendingPathComponent("vitruvian-courier-snapshot-voice.ogg").path
         try Data("OggS-snapshot".utf8).write(to: URL(fileURLWithPath: audioPath), options: .atomic)
 
         var unplayedEvent = Fixture.event(
@@ -1742,7 +1742,7 @@ final class ViewSnapshotTests: XCTestCase {
 
     private func makeTwoPagePDF() throws -> String {
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("courier-snapshot-2page-\(UUID().uuidString).pdf")
+            .appendingPathComponent("vitruvian-courier-snapshot-2page-\(UUID().uuidString).pdf")
         var mediaBox = CGRect(x: 0, y: 0, width: 360, height: 240)
         guard let consumer = CGDataConsumer(url: url as CFURL),
               let context = CGContext(consumer: consumer, mediaBox: &mediaBox, nil)
@@ -1836,7 +1836,7 @@ final class ViewSnapshotTests: XCTestCase {
         let tiff = try XCTUnwrap(image.tiffRepresentation)
         let rep = try XCTUnwrap(NSBitmapImageRep(data: tiff))
         let png = try XCTUnwrap(rep.representation(using: .png, properties: [:]))
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("courier-snapshot-\(width)x\(height).png")
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-courier-snapshot-\(width)x\(height).png")
         try png.write(to: url, options: .atomic)
         return url.path
     }
@@ -2049,7 +2049,7 @@ final class ViewSnapshotTests: XCTestCase {
 
     func testViewOnceSheetPlaysVideoAndVoiceAndNeverMarksPlayedOnLoadFailure() throws {
         let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("courier-vo-test-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("vitruvian-courier-vo-test-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tempDir) }
 
@@ -2134,7 +2134,7 @@ final class ViewSnapshotTests: XCTestCase {
 
     func testNotifierAttachmentSetsTypeHintFromMIMEAndCleansUpTempDirectory() throws {
         let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("courier-notif-src-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("vitruvian-courier-notif-src-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tempDir) }
 
@@ -2171,7 +2171,7 @@ final class ViewSnapshotTests: XCTestCase {
         prepared.cleanup()
         XCTAssertFalse(
             FileManager.default.fileExists(atPath: prepared.tempDirectory.path),
-            "cleanup must remove the courier-notif-* temporary directory"
+            "cleanup must remove the vitruvian-courier-notif-* temporary directory"
         )
     }
 
@@ -2488,7 +2488,7 @@ final class ViewSnapshotTests: XCTestCase {
         let rep = try XCTUnwrap(NSBitmapImageRep(data: tiff))
         let png = try XCTUnwrap(rep.representation(using: .png, properties: [:]))
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("courier-snapshot-sticker-\(width)x\(height).png")
+            .appendingPathComponent("vitruvian-courier-snapshot-sticker-\(width)x\(height).png")
         try png.write(to: url, options: .atomic)
         return url.path
     }
@@ -3028,7 +3028,7 @@ final class ViewSnapshotTests: XCTestCase {
         }
 
         let tempMediaURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("courier-lock-pip-\(UUID().uuidString).mp4")
+            .appendingPathComponent("vitruvian-courier-lock-pip-\(UUID().uuidString).mp4")
         try Data("fake-mp4".utf8).write(to: tempMediaURL)
         defer { try? FileManager.default.removeItem(at: tempMediaURL) }
 
@@ -3199,7 +3199,7 @@ final class ViewSnapshotTests: XCTestCase {
             }
         )
         mainNSWindow.contentView?.layoutSubtreeIfNeeded()
-        mainNSWindow.title = "Courier"
+        mainNSWindow.title = "Vitruvian Courier"
         mainNSWindow.subtitle = "Connected"
 
         let chatInfoNSWindow = NSWindow(
@@ -3299,7 +3299,7 @@ final class ViewSnapshotTests: XCTestCase {
             minimizeToMenuBar: {},
             hotkeys: hotkeys,
             hotkeyDispatcher: dispatcher,
-            updates: UpdateModel(currentVersion: "0.7.0", appURL: URL(fileURLWithPath: "/Applications/Courier.app"),
+            updates: UpdateModel(currentVersion: "0.7.0", appURL: URL(fileURLWithPath: "/Applications/Vitruvian Courier.app"),
                                  environment: SystemUpdateEnvironment(), quit: {}),
             windowOpener: MainWindowOpener()
         )
@@ -3331,14 +3331,14 @@ final class ViewSnapshotTests: XCTestCase {
         lifecycle.lockNow()
         try await Task.sleep(nanoseconds: 20_000_000)
 
-        // LEAK-1 assertions: every window title while locked must be plain "Courier" with empty subtitle.
-        XCTAssertEqual(mainNSWindow.title, "Courier", "Main window title must be 'Courier' while locked")
+        // LEAK-1 assertions: every window title while locked must be plain "Vitruvian Courier" with empty subtitle.
+        XCTAssertEqual(mainNSWindow.title, "Vitruvian Courier", "Main window title must be 'Vitruvian Courier' while locked")
         XCTAssertEqual(mainNSWindow.subtitle, "", "Main window subtitle must be empty while locked")
-        XCTAssertEqual(chatWindow.title, "Courier", "Detached chat window title must be 'Courier' while locked")
-        XCTAssertEqual(spaceWindow.title, "Courier", "Detached space window title must be 'Courier' while locked")
-        XCTAssertEqual(threadWindow.title, "Courier", "Detached thread window title must be 'Courier' while locked")
-        XCTAssertEqual(chatInfoNSWindow.title, "Courier", "Chat Info window title must be 'Courier' while locked")
-        XCTAssertEqual(labelEditorNSWindow.title, "Courier", "Label Editor window title must be 'Courier' while locked")
+        XCTAssertEqual(chatWindow.title, "Vitruvian Courier", "Detached chat window title must be 'Vitruvian Courier' while locked")
+        XCTAssertEqual(spaceWindow.title, "Vitruvian Courier", "Detached space window title must be 'Vitruvian Courier' while locked")
+        XCTAssertEqual(threadWindow.title, "Vitruvian Courier", "Detached thread window title must be 'Vitruvian Courier' while locked")
+        XCTAssertEqual(chatInfoNSWindow.title, "Vitruvian Courier", "Chat Info window title must be 'Vitruvian Courier' while locked")
+        XCTAssertEqual(labelEditorNSWindow.title, "Vitruvian Courier", "Label Editor window title must be 'Vitruvian Courier' while locked")
 
         // LEAK-3 assertions: menu item titles while locked must not reveal chat or inbox state.
         XCTAssertEqual(inboxCommands.spaceBarMenuTitle, "Show Space Bar", "Space Bar menu item title must not leak state while locked")
@@ -3532,7 +3532,7 @@ final class ViewSnapshotTests: XCTestCase {
             "network": "telegram",
             "account_id": "tg-1",
             "sub_id": "!bot1:courier.local",
-            "title": "Courier Helper Bot",
+            "title": "Vitruvian Courier Helper Bot",
             "avatar_uri": "",
             "kind": "bot",
             "enabled": true,
@@ -3604,8 +3604,8 @@ final class ViewSnapshotTests: XCTestCase {
             "{\\"level\\":\\"warn\\",\\"network\\":\\"whatsapp\\",\\"message\\":\\"websocket closed\\",\\"retry_in\\":5}",
             "panic: runtime error: index out of range",
             "goroutine 42 [running]:",
-            "apps/desktop/courier/engine/internal/host.(*Manager).Run()",
-            "\\tapps/desktop/courier/engine/internal/host/manager.go:188 +0x120"
+            "apps/desktop/vitruvian-courier/engine/internal/host.(*Manager).Run()",
+            "\\tapps/desktop/vitruvian-courier/engine/internal/host/manager.go:188 +0x120"
           ],
           "room_details": {
             "room_id": "!room1:courier.local",
@@ -4245,7 +4245,7 @@ final class ViewSnapshotTests: XCTestCase {
             "network": "telegram",
             "account_id": "tg-1",
             "sub_id": "!bot1:courier.local",
-            "title": "Courier Helper Bot",
+            "title": "Vitruvian Courier Helper Bot",
             "avatar_uri": "",
             "kind": "bot",
             "enabled": true,
@@ -4278,7 +4278,7 @@ final class ViewSnapshotTests: XCTestCase {
             "{\\"level\\":\\"warn\\",\\"network\\":\\"whatsapp\\",\\"message\\":\\"websocket closed\\",\\"retry_in\\":5}",
             "panic: [redacted]",
             "goroutine 42 [running]:",
-            "apps/desktop/courier/engine/internal/host.(*Manager).Run(...)",
+            "apps/desktop/vitruvian-courier/engine/internal/host.(*Manager).Run(...)",
             "\\t~/Workspace/courier/engine/internal/host/manager.go:188 +0x120"
           ],
           "room_details": {
@@ -5112,7 +5112,7 @@ final class ViewSnapshotTests: XCTestCase {
                         .font(.headline)
                     MessageTranslationRowView(
                         targetLanguage: "Spanish",
-                        disposition: .unavailable(reason: "Message translation isn’t available yet in Courier.")
+                        disposition: .unavailable(reason: "Message translation isn’t available yet in Vitruvian Courier.")
                     )
                     Spacer()
                 }
@@ -5138,7 +5138,7 @@ final class ViewSnapshotTests: XCTestCase {
         }
 
         try assertLightAndDarkSnapshot("m47-integrations-settings-pane", width: 640, height: 440) {
-            IntegrationsSettingsPane(model: IntegrationsModel(appModel: nil, enginePath: "/nonexistent/courier-engine"))
+            IntegrationsSettingsPane(model: IntegrationsModel(appModel: nil, enginePath: "/nonexistent/vitruvian-courier-engine"))
                 .frame(width: 640, height: 440)
                 .background(Color(nsColor: .windowBackgroundColor))
         }

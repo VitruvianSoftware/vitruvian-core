@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// How a search result's row reads: its date, its place tag, its sender and a person's groups.
 final class SearchPresentationTests: XCTestCase {

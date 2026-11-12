@@ -1,7 +1,7 @@
 # Timers
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/engine/internal/timers`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/engine/internal/timers`.
 
 ## Interface
 - `[timers.go:MaxSleep]`
@@ -24,4 +24,4 @@ Component package providing implementation for `apps/desktop/courier/engine/inte
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/engine/internal/timers/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/engine/internal/timers/...`

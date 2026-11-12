@@ -1,7 +1,7 @@
 # Include
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/gchat/include`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/gchat/include`.
 
 ## Interface
 - Internal implementation components
@@ -13,4 +13,4 @@ Component package providing implementation for `apps/desktop/courier/gchat/inclu
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/gchat/include/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/gchat/include/...`

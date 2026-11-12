@@ -1,7 +1,7 @@
 # Search
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/engine/internal/search`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/engine/internal/search`.
 
 ## Interface
 - `[backfill.go:BackfillBatch]`
@@ -34,4 +34,4 @@ Component package providing implementation for `apps/desktop/courier/engine/inte
 - [search.go:101]: `// Cursor is the Next of a page of the same query, for the page after it. It ...`
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/engine/internal/search/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/engine/internal/search/...`

@@ -1,7 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// Telegram's app credentials: api_id and api_hash from my.telegram.org, checked as the engine checks them, then
@@ -17,7 +17,7 @@ struct TelegramSetupView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(String(localized: "Set up Telegram"))
                 .font(.title3.weight(.semibold))
-            Text(String(localized: "This build of Courier has no Telegram app ID of its own, and Telegram asks every app for one. Sign in at my.telegram.org, open API development tools, create an app, and copy its api_id and api_hash here. Courier keeps them in your Keychain, then goes on to link Telegram."))
+            Text(String(localized: "This build of Vitruvian Courier has no Telegram app ID of its own, and Telegram asks every app for one. Sign in at my.telegram.org, open API development tools, create an app, and copy its api_id and api_hash here. Vitruvian Courier keeps them in your Keychain, then goes on to link Telegram."))
                 .fixedSize(horizontal: false, vertical: true)
             Link(String(localized: "Open my.telegram.org"), destination: TelegramSetup.appsURL)
             // Telegram's own names for the two values: never translated.

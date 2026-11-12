@@ -38,7 +38,7 @@ public struct AccountBanner: Equatable, Identifiable, Sendable {
     public let displayName: String
     public let reason: Reason
     /// The engine's own words: the bridge's message, or why the network did not start. May be empty. Help only,
-    /// never the banner's title (no bridge English reaches a person as Courier's copy).
+    /// never the banner's title (no bridge English reaches a person as Vitruvian Courier's copy).
     public let detail: String
     public let action: Action?
     /// The account that needs the person (a `Login.accountID`): what Reconnect signs in again. Nil for a banner about
@@ -132,7 +132,7 @@ public struct AccountStatusItem: Equatable, Identifiable, Sendable {
 ///
 /// **Actions** act on `targets`: the chats selected while selecting, else the open chat. A bulk action is one call
 /// per 500 chats (the most the engine takes). What can be undone shows a toast with Undo, which reverses exactly the
-/// chats the engine said it changed. Every state here is Courier's own, on this Mac; which of them a network also
+/// chats the engine said it changed. Every state here is Vitruvian Courier's own, on this Mac; which of them a network also
 /// hears is the engine's business (Account.syncs), and an unread mark never reaches one.
 @MainActor
 public final class InboxModel: ObservableObject {
@@ -1940,7 +1940,7 @@ public struct BlastItemResult: Equatable, Sendable, Identifiable {
         self.error = Self.localizeStatusReason(event.statusReason)
     }
 
-    /// Maps a fixed protocol `status_reason` code to localized Courier copy (never raw bridge text).
+    /// Maps a fixed protocol `status_reason` code to localized Vitruvian Courier copy (never raw bridge text).
     public static func localizeStatusReason(_ reason: String) -> String {
         switch reason {
         case "":

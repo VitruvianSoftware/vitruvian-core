@@ -1,7 +1,7 @@
 # Searchtext
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/engine/internal/searchtext`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/engine/internal/searchtext`.
 
 ## Interface
 - `[searchtext.go:MaxQueryRunes]`
@@ -27,4 +27,4 @@ Component package providing implementation for `apps/desktop/courier/engine/inte
 - [searchtext.go:23]: `// MaxQueryRunes is how much of a query is read; the rest of a longer query i...`
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/engine/internal/searchtext/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/engine/internal/searchtext/...`

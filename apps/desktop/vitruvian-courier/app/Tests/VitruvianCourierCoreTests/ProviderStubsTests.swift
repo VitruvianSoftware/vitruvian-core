@@ -4,7 +4,7 @@
 import Foundation
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 @MainActor
 final class ProviderStubsTests: XCTestCase {
@@ -39,7 +39,7 @@ final class ProviderStubsTests: XCTestCase {
         // 1. UnavailableAIProvider
         let ai: any AIProvider = UnavailableAIProvider()
         XCTAssertFalse(ai.isAvailable)
-        XCTAssertTrue(ai.unavailableReason.contains("Courier"))
+        XCTAssertTrue(ai.unavailableReason.contains("Vitruvian Courier"))
         XCTAssertFalse(ai.unavailableReason.localizedCaseInsensitiveContains("Beeper"))
         XCTAssertTrue(ai.availableModels.isEmpty)
 
@@ -55,7 +55,7 @@ final class ProviderStubsTests: XCTestCase {
             switch disp {
             case .unavailable(let reason):
                 XCTAssertFalse(reason.isEmpty)
-                XCTAssertTrue(reason.contains("Courier"))
+                XCTAssertTrue(reason.contains("Vitruvian Courier"))
                 XCTAssertFalse(reason.localizedCaseInsensitiveContains("Beeper"))
             case .text(let value):
                 XCTFail("Expected .unavailable, got .text(\(value))")
@@ -72,7 +72,7 @@ final class ProviderStubsTests: XCTestCase {
         // 2. StubGIFProvider
         let gif: any GIFProvider = StubGIFProvider()
         XCTAssertFalse(gif.isAvailable)
-        XCTAssertTrue(gif.unavailableReason.contains("Courier"))
+        XCTAssertTrue(gif.unavailableReason.contains("Vitruvian Courier"))
         XCTAssertFalse(gif.unavailableReason.localizedCaseInsensitiveContains("Beeper"))
         let gifs = try await gif.search("party")
         XCTAssertTrue(gifs.isEmpty)
@@ -80,7 +80,7 @@ final class ProviderStubsTests: XCTestCase {
         // 3. UnavailableReportUploader
         let uploader: any ReportUploader = UnavailableReportUploader()
         XCTAssertFalse(uploader.isAvailable)
-        XCTAssertTrue(uploader.unavailableReason.contains("Courier"))
+        XCTAssertTrue(uploader.unavailableReason.contains("Vitruvian Courier"))
         XCTAssertFalse(uploader.unavailableReason.localizedCaseInsensitiveContains("Beeper"))
         let uploadDisp = await uploader.upload(
             bundleURL: URL(fileURLWithPath: "/tmp/report.zip"),
@@ -91,7 +91,7 @@ final class ProviderStubsTests: XCTestCase {
         // 4. UnavailableThemeFileLoader
         let themeLoader: any ThemeFileLoader = UnavailableThemeFileLoader()
         XCTAssertFalse(themeLoader.isAvailable)
-        XCTAssertTrue(themeLoader.unavailableReason.contains("Courier"))
+        XCTAssertTrue(themeLoader.unavailableReason.contains("Vitruvian Courier"))
         XCTAssertFalse(themeLoader.unavailableReason.localizedCaseInsensitiveContains("Beeper"))
         XCTAssertEqual(
             themeLoader.loadThemeFile(at: URL(fileURLWithPath: "/tmp/custom.css")),
@@ -103,7 +103,7 @@ final class ProviderStubsTests: XCTestCase {
         // 5. EntitlementProvider planSummary
         let entitled: any EntitlementProvider = AlwaysEntitled()
         XCTAssertEqual(entitled.planSummary.badgeTitle, "Included")
-        XCTAssertTrue(entitled.planSummary.headline.contains("Courier"))
+        XCTAssertTrue(entitled.planSummary.headline.contains("Vitruvian Courier"))
         XCTAssertFalse(entitled.planSummary.headline.localizedCaseInsensitiveContains("Beeper"))
 
         let noPlan: any EntitlementProvider = NoPlan()
@@ -168,7 +168,7 @@ final class ProviderStubsTests: XCTestCase {
         XCTAssertEqual(reloaded.transcriptionLanguage, "English")
         XCTAssertFalse(reloaded.enableSlashCommands)
 
-        // Lock Courier and verify mutations are reverted by AppLockGate
+        // Lock Vitruvian Courier and verify mutations are reverted by AppLockGate
         let lockSuite = "test.courier.ai.lock.\(UUID().uuidString)"
         let lockDefaults = ScratchDefaults.suite(named: lockSuite)!
         defer { lockDefaults.removePersistentDomain(forName: lockSuite) }

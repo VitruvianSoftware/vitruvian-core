@@ -1,7 +1,7 @@
 # Datadir
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/engine/internal/datadir`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/engine/internal/datadir`.
 
 ## Interface
 - `[lock.go:ErrLocked]`
@@ -17,4 +17,4 @@ Component package providing implementation for `apps/desktop/courier/engine/inte
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/engine/internal/datadir/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/engine/internal/datadir/...`

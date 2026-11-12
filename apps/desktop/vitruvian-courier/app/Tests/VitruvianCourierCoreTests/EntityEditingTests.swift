@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// EntityEditing: how the composer's formatting ranges follow the text as it is typed, and what the formatting keys
 /// do. Offsets are UTF-16 code units, as NSString counts them.

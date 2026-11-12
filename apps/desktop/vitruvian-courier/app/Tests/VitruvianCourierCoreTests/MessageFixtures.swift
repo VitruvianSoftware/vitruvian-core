@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// A conversation on an app model on a stand-in engine (a `ConversationScript`), with the composer's settings and
 /// quick replies in a UserDefaults suite of the test's own. For the message actions, the thread pane and the
@@ -80,9 +80,9 @@ func startConversation(_ events: [String: [[String: Any]]],
     let server = try TestEngineServer(handler: script.handle)
     let launcher = FakeLauncher { _, process in process.printReady(socket: server.path) }
     let supervisor = EngineSupervisor(
-        enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",
-        dataDir: URL(fileURLWithPath: "/tmp/courier-test-data"), environment: [:], launcher: launcher,
-        credentials: InMemoryCredentialStore(), clientName: "Courier/test", timing: FakeTime().timing())
+        enginePath: "/Applications/Vitruvian Courier.app/Contents/Helpers/vitruvian-courier-engine",
+        dataDir: URL(fileURLWithPath: "/tmp/vitruvian-courier-test-data"), environment: [:], launcher: launcher,
+        credentials: InMemoryCredentialStore(), clientName: "Vitruvian Courier/test", timing: FakeTime().timing())
     let app = AppModel(supervisor: supervisor)
     let store = TestDefaults()
     let preferences = ComposerPreferences(defaults: store.defaults)
@@ -222,7 +222,7 @@ func timerNote(id: String, room: String, at n: Int64, by sender: String = "@ann:
     ]
 }
 
-/// A bridge's call notice as the engine stores it: the bridge's English body, and Courier's reading beside it
+/// A bridge's call notice as the engine stores it: the bridge's English body, and Vitruvian Courier's reading beside it
 /// (`fi.courier.call`, with the action message of type call). `call` is nil for a notice stored before the engine read
 /// calls (the action message alone).
 func callNote(id: String, room: String, at n: Int64, by sender: String = "@ann:example.test", name: String = "Ann",

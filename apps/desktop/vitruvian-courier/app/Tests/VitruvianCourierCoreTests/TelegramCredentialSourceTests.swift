@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// Where Telegram's app ID comes from: the one built into the app, then the one in the Keychain, then none. Every
 /// value here is made up.

@@ -1,7 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// The Bridges settings pane (`02` §1.7): lists the 5 on-device mautrix bridges with state badge,
@@ -76,7 +76,7 @@ public struct BridgesSettingsPane: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(String(localized: "Bridges"))
                 .font(.title3.weight(.semibold))
-            Text(String(localized: "Each chat network runs inside Courier on this Mac. Expand a bridge to inspect its version, status, or accounts."))
+            Text(String(localized: "Each chat network runs inside Vitruvian Courier on this Mac. Expand a bridge to inspect its version, status, or accounts."))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

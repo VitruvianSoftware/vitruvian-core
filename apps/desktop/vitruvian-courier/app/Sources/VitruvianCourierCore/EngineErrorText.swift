@@ -17,9 +17,9 @@ public enum EngineErrorText {
         case let .rpc(code, _, _):
             return text(for: code, network: network, maxSizeBytes: maxSizeBytes) ?? fallback
         case .timedOut:
-            return String(localized: "Courier’s engine did not answer in time.")
+            return String(localized: "Vitruvian Courier’s engine did not answer in time.")
         case .notConnected:
-            return String(localized: "Courier’s engine is not connected.")
+            return String(localized: "Vitruvian Courier’s engine is not connected.")
         default:
             return fallback
         }

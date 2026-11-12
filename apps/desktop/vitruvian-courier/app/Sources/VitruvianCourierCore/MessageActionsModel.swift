@@ -91,7 +91,7 @@ public enum CopyChoice: Equatable, Sendable {
 ///
 /// **Nothing is shown as done before the engine says so** (Review Focus 1). Unsend, Delete for Me, bookmarks and
 /// votes go to the engine, and the chat is read again for what it stores. A refusal the engine gives at once is a
-/// toast in Courier's words (-32024 is "That message can’t be changed any more.", Ruling 35). An unsend or an edit
+/// toast in Vitruvian Courier's words (-32024 is "That message can’t be changed any more.", Ruling 35). An unsend or an edit
 /// the engine took can still be refused by the network later: the engine marks the redaction, or the edit, failed,
 /// the chat shows the message as it was, and the toast says "Couldn’t unsend: WhatsApp said no." (or "Couldn’t edit:
 /// …"), once. An unsend is followed by its redaction's ID; an edit (sent by the composer) by the status changes the
@@ -205,7 +205,7 @@ public final class MessageActionsModel: ObservableObject {
             translationProvenance.removeValue(forKey: eventID)
             let reason = (aiProvider as? UnavailableAIProvider)?.hasCustomReason == true
                 ? aiProvider.unavailableReason
-                : String(localized: "Message translation isn’t available yet in Courier.")
+                : String(localized: "Message translation isn’t available yet in Vitruvian Courier.")
             translations[eventID] = .unavailable(reason: reason)
             return
         }
@@ -553,7 +553,7 @@ public final class MessageActionsModel: ObservableObject {
             let couldNot = ListFormatter.localizedString(byJoining: failed)
             onToast(String(localized: "Couldn’t forward to \(couldNot). The message may have been forwarded to \(mayHaveGone): check before forwarding it again."))
         } else if !unanswered.isEmpty {
-            onToast(String(localized: "Courier’s engine did not answer. The message may have been forwarded to \(mayHaveGone): check before forwarding it again."))
+            onToast(String(localized: "Vitruvian Courier’s engine did not answer. The message may have been forwarded to \(mayHaveGone): check before forwarding it again."))
         } else if !failed.isEmpty {
             onToast(String(localized: "Couldn’t forward to \(ListFormatter.localizedString(byJoining: failed))"))
         } else if sent == 1 {
@@ -651,7 +651,7 @@ public final class MessageActionsModel: ObservableObject {
         conversation.refresh()
     }
 
-    /// Calls the engine; a refusal is a toast in Courier's words (`fallback` for a code it has none for).
+    /// Calls the engine; a refusal is a toast in Vitruvian Courier's words (`fallback` for a code it has none for).
     private func call(fallback: String, _ body: (EngineClient) async throws -> Void) async {
         guard let client = appModel.client else {
             onToast(EngineErrorText.text(for: EngineError.notConnected, fallback: fallback))
@@ -736,7 +736,7 @@ public final class MessageActionsModel: ObservableObject {
 
     public static func text(for error: QuickReplyError) -> String {
         switch error {
-        case .full: String(localized: "You have as many quick replies as Courier keeps. Delete one to add another.")
+        case .full: String(localized: "You have as many quick replies as Vitruvian Courier keeps. Delete one to add another.")
         case .emptyTitle: String(localized: "Give the quick reply a title.")
         case .titleTooLong: String(localized: "Titles can be up to \(QuickReplies.maxTitle) characters.")
         case .emptyText: String(localized: "Type the quick reply’s text first.")

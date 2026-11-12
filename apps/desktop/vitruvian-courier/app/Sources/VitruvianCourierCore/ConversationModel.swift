@@ -1363,7 +1363,7 @@ public final class ConversationModel: ObservableObject {
 
     private static var couldntChangeTimer: String { String(localized: "Couldn’t change the timer.") }
 
-    /// A refusal in Courier's words: the network said no (-32023), or the engine's own words for anything else.
+    /// A refusal in Vitruvian Courier's words: the network said no (-32023), or the engine's own words for anything else.
     static func describeTimerRefusal(_ error: Error, network: String) -> String {
         if case .rpc(.notSupported, _, _)? = error as? EngineError {
             guard let name = NetworkNames.displayName(of: network) else {
@@ -1747,7 +1747,7 @@ public final class ConversationModel: ObservableObject {
 
     /// "Turn on incognito mode" and "Turn off incognito mode", from Settings and the command bar. On needs the plan.
     /// Turning it on while my typing shows asks whether to hide that too (`asksToHideTyping`). Inferred (inventory
-    /// 01 §7 "asks whether to also hide typing"): the question's wording is Courier's.
+    /// 01 §7 "asks whether to also hide typing"): the question's wording is Vitruvian Courier's.
     public func setIncognito(_ on: Bool) {
         guard !isLocked, let preferences, preferences.incognito != on else { return }
         if on, !isEntitled(.incognito) { return }
@@ -2123,7 +2123,7 @@ public final class ConversationModel: ObservableObject {
     @discardableResult
     public func exportChat(roomID targetRoomID: String? = nil, to url: URL) async throws -> Int {
         guard !isLocked else {
-            throw EngineError.rpc(.badValue, message: "Courier is locked", reason: "locked")
+            throw EngineError.rpc(.badValue, message: "Vitruvian Courier is locked", reason: "locked")
         }
         try AppLockGate.shared.ensureUnlocked(.export, lifecycle: lifecycle)
         guard let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
@@ -2978,9 +2978,9 @@ public final class ConversationModel: ObservableObject {
         after()
     }
 
-    /// Reply Privately on someone's message in a group: the one-to-one chat with them (room.directChat: Courier's own,
+    /// Reply Privately on someone's message in a group: the one-to-one chat with them (room.directChat: Vitruvian Courier's own,
     /// or one the network makes) opens, with the message quoted in its composer (`ComposerModel.startPrivateReply`)
-    /// once that chat's features are read. A refusal is a toast in Courier's words, and the group stays open.
+    /// once that chat's features are read. A refusal is a toast in Vitruvian Courier's words, and the group stays open.
     public func replyPrivately(to messageID: String) async {
         guard !isLocked, let room = roomID, let sender = composer.sender, let message = message(messageID, from: .chat),
               availableActions(for: message).actions.contains(.replyPrivately) else { return }
@@ -3011,8 +3011,8 @@ public final class ConversationModel: ObservableObject {
         composer.startPrivateReply(quoting: pending.message, in: features)
     }
 
-    /// Why a private chat couldn't be had, in Courier's words: the network can't reach the person or start chats
-    /// (-32023), or the person isn't in the group as far as Courier knows (-32020); the engine's words otherwise.
+    /// Why a private chat couldn't be had, in Vitruvian Courier's words: the network can't reach the person or start chats
+    /// (-32023), or the person isn't in the group as far as Vitruvian Courier knows (-32020); the engine's words otherwise.
     static func describeDirectChatRefusal(_ error: Error, network: String) -> String {
         switch error as? EngineError {
         case .rpc(.notSupported, _, _)?:
@@ -3042,6 +3042,6 @@ public final class ConversationModel: ObservableObject {
     }
 
     static func describe(_ error: Error) -> String {
-        EngineErrorText.text(for: error, fallback: String(localized: "Courier’s engine could not do that."))
+        EngineErrorText.text(for: error, fallback: String(localized: "Vitruvian Courier’s engine could not do that."))
     }
 }

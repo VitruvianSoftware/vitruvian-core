@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// The ⌘K search model against a stand-in engine. What search.query answers comes from a `SearchScript` the test
 /// edits; recent searches live in a UserDefaults suite of the test's own; `now` is a clock the test moves.
@@ -735,9 +735,9 @@ func startSearch(rooms: [[String: Any]]) async throws -> SearchHarness {
     let server = try TestEngineServer(handler: script.handle)
     let launcher = FakeLauncher { _, process in process.printReady(socket: server.path) }
     let supervisor = EngineSupervisor(
-        enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",
-        dataDir: URL(fileURLWithPath: "/tmp/courier-test-data"), environment: [:], launcher: launcher,
-        credentials: InMemoryCredentialStore(), clientName: "Courier/test", timing: FakeTime().timing())
+        enginePath: "/Applications/Vitruvian Courier.app/Contents/Helpers/vitruvian-courier-engine",
+        dataDir: URL(fileURLWithPath: "/tmp/vitruvian-courier-test-data"), environment: [:], launcher: launcher,
+        credentials: InMemoryCredentialStore(), clientName: "Vitruvian Courier/test", timing: FakeTime().timing())
     let app = AppModel(supervisor: supervisor)
     let time = FakeTime()
     time.advance(1_760_600_000 - time.now)

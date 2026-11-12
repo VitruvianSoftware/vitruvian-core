@@ -458,7 +458,7 @@ func (g *startGate) Start(ctx context.Context) error {
 	return g.Network.Start(ctx)
 }
 
-// restart stops the world's engine and starts a new one over the same store and data directory, as Courier quitting
+// restart stops the world's engine and starts a new one over the same store and data directory, as Vitruvian Courier quitting
 // and opening does, with the network held in its start: until the returned up is called it is STARTING. up lets the
 // start finish and returns the world with its login, loaded again by the bridge.
 func (w world) restart(t *testing.T, name string) (starting world, up func() world) {
@@ -651,7 +651,7 @@ func TestWaitingActionsWaitForTheChatsOwnLogin(t *testing.T) {
 		reacted <- err
 	}()
 	lt.awaitWait(t, time.Minute)
-	// The wait is Courier's, not the bridge's: nothing is stored or handed over, and React hasn't answered.
+	// The wait is Vitruvian Courier's, not the bridge's: nothing is stored or handed over, and React hasn't answered.
 	none(t, reacted, "React's answer while only A is in")
 	_, staged, err := w.s.FindReaction(ctx, roomB, string(ids.Me), msg, "👍")
 	require.NoError(t, err)
@@ -890,7 +890,7 @@ func TestSendMessageSuppressesLinkPreviewByDefaultAndFetchesOnlyWhenEnabled(t *t
 		}
 		rw.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = fmt.Fprintf(rw, `<!doctype html><html><head>
-			<meta property="og:title" content="Courier Media Plan">
+			<meta property="og:title" content="Vitruvian Courier Media Plan">
 			<meta property="og:description" content="Local-first rich media">
 			<meta property="og:site_name" content="Vitruvian">
 			<meta property="og:url" content="%s/article">
@@ -932,7 +932,7 @@ func TestSendMessageSuppressesLinkPreviewByDefaultAndFetchesOnlyWhenEnabled(t *t
 	stored := w.get(t, idEnabled)
 	store.ExtractEventMedia(&stored, w.m, false)
 	require.Len(t, stored.LinkPreviews, 1)
-	require.Equal(t, "Courier Media Plan", stored.LinkPreviews[0].Title)
+	require.Equal(t, "Vitruvian Courier Media Plan", stored.LinkPreviews[0].Title)
 	require.Equal(t, "Local-first rich media", stored.LinkPreviews[0].Description)
 	require.Equal(t, "Vitruvian", stored.LinkPreviews[0].SiteName)
 	require.NotEmpty(t, stored.LinkPreviews[0].ImagePath)

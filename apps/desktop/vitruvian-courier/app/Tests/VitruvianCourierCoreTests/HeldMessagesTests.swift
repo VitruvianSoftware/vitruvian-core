@@ -3,9 +3,9 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
-/// What HeldMessages remembers stays bounded however long Courier runs. All data here is made up.
+/// What HeldMessages remembers stays bounded however long Vitruvian Courier runs. All data here is made up.
 @MainActor
 final class HeldMessagesTests: XCTestCase {
     /// Final fix wave: the messages that left hold (sent, undone, past their window) are remembered so a stale read

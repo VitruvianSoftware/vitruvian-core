@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// MessageActions.available: what a message offers in its chat, from the chat's features (room.features), and why
 /// an action is greyed. The features here are the ones each network's bridge advertises (the plan's action table);
@@ -549,7 +549,7 @@ final class ChatFeaturesTests: XCTestCase {
         let protoDir = try XCTUnwrap(ProtocolConformanceTests.protocolDirectory())
         let chatFeaturesFile = protoDir
             .deletingLastPathComponent()
-            .appendingPathComponent("app/Sources/CourierCore/ChatFeatures.swift")
+            .appendingPathComponent("app/Sources/VitruvianCourierCore/ChatFeatures.swift")
         let chatFeaturesSource = try String(contentsOf: chatFeaturesFile, encoding: .utf8)
         XCTAssertFalse(chatFeaturesSource.contains("case \"gchat\":"), "ChatFeatures.swift must not gate capabilities by network name")
         XCTAssertFalse(chatFeaturesSource.contains("func forRoom("), "ChatFeatures must come from the engine's room.features wire shape, not a local forRoom factory")

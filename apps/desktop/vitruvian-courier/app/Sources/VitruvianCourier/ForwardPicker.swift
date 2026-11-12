@@ -1,10 +1,10 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
-/// "Forward message" (02 §2.6): find chats by name and choose up to 20; Courier sends each a copy. The person
+/// "Forward message" (02 §2.6): find chats by name and choose up to 20; Vitruvian Courier sends each a copy. The person
 /// forwarded to sees it as from me, not from who wrote it, and the picker says so.
 struct ForwardPicker: View {
     /// Made once, when the picker opens, and kept while it is open.
@@ -47,7 +47,7 @@ struct ForwardPicker: View {
             .listStyle(.plain)
             .frame(minHeight: 220)
             if model.failed {
-                Text(String(localized: "Courier couldn’t search your chats. Try again."))
+                Text(String(localized: "Vitruvian Courier couldn’t search your chats. Try again."))
                     .font(.callout)
                     .foregroundStyle(.red)
             }

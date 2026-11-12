@@ -19,13 +19,13 @@ import (
 	"github.com/VitruvianSoftware/vitruvian-courier/engine/internal/seed"
 )
 
-// These run the test copy's engine (vitruvian-vitruvian-courier-engine-seeded, BUILD's vitruvian-courier-engine_seed_test), started as the app
+// These run the test copy's engine (vitruvian-courier-engine-seeded, BUILD's vitruvian-courier-engine_seed_test), started as the app
 // starts it, with VITRUVIAN_COURIER_SEED naming a scenario file.
 
-// scenarioPath finds name.json among the scenarios BUILD hands over (VITRUVIAN_VITRUVIAN_COURIER_SEED_SCENARIOS, rlocation paths).
+// scenarioPath finds name.json among the scenarios BUILD hands over (VITRUVIAN_COURIER_SEED_SCENARIOS, rlocation paths).
 func scenarioPath(t *testing.T, name string) string {
 	t.Helper()
-	for _, rel := range strings.Fields(os.Getenv("VITRUVIAN_VITRUVIAN_COURIER_SEED_SCENARIOS")) {
+	for _, rel := range strings.Fields(os.Getenv("VITRUVIAN_COURIER_SEED_SCENARIOS")) {
 		if filepath.Base(rel) != name+".json" {
 			continue
 		}
@@ -38,7 +38,7 @@ func scenarioPath(t *testing.T, name string) string {
 			}
 		}
 	}
-	t.Fatalf("scenario %s is not among VITRUVIAN_VITRUVIAN_COURIER_SEED_SCENARIOS %q", name, os.Getenv("VITRUVIAN_VITRUVIAN_COURIER_SEED_SCENARIOS"))
+	t.Fatalf("scenario %s is not among VITRUVIAN_COURIER_SEED_SCENARIOS %q", name, os.Getenv("VITRUVIAN_COURIER_SEED_SCENARIOS"))
 	return ""
 }
 

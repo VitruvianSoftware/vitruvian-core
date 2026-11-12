@@ -1,7 +1,7 @@
 # Storetest
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/engine/internal/store/storetest`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/engine/internal/store/storetest`.
 
 ## Interface
 - `[seed.go:SeedEventID]`
@@ -21,4 +21,4 @@ Component package providing implementation for `apps/desktop/courier/engine/inte
 - [seed.go:70]: `defer db.Close()`
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/engine/internal/store/storetest/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/engine/internal/store/storetest/...`

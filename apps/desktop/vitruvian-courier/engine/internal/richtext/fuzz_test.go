@@ -83,7 +83,7 @@ func keepMask(mask uint16) func(Kind) bool {
 }
 
 // FuzzRender is Review Focus 4 over random input. Whatever the text and ranges, Render returns; the body
-// doesn't depend on what the chat keeps; the HTML uses only Courier's tags, balanced, with every attribute
+// doesn't depend on what the chat keeps; the HTML uses only Vitruvian Courier's tags, balanced, with every attribute
 // value escaped and every link to a safe scheme; stripping its tags gives back the text exactly; reading it
 // with the documented plain forms gives the body; and mautrix's own parser, which the bridges use, reads the
 // same characters. The seeds are the shared cases.
@@ -201,7 +201,7 @@ func checkRender(t *testing.T, text string, ents []Entity, keep func(Kind) bool)
 	}
 }
 
-// node is one element or text of Courier's HTML.
+// node is one element or text of Vitruvian Courier's HTML.
 type node struct {
 	tag      string // "" for text
 	text     string
@@ -216,7 +216,7 @@ var (
 	entityRefs = []string{"&amp;", "&lt;", "&gt;", "&#34;", "&#39;", "&#13;"}
 )
 
-// parseCourierHTML reads the HTML Render writes, and nothing looser: only Courier's tags and attributes, every
+// parseCourierHTML reads the HTML Render writes, and nothing looser: only Vitruvian Courier's tags and attributes, every
 // tag closed in order, text escaped with only the six references Render writes, blocks only at the top level,
 // lists holding only items, a code block holding only code holding only text, and no link inside a link.
 func parseCourierHTML(s string) ([]*node, error) {
@@ -322,7 +322,7 @@ const (
 	plain             // with the plain forms the body uses
 )
 
-// decode is the meaning of Courier's HTML as text. The plain forms the body uses are "• " and "1. " before list
+// decode is the meaning of Vitruvian Courier's HTML as text. The plain forms the body uses are "• " and "1. " before list
 // items, "> " before quoted lines, and " (address)" after a link whose text isn't its address. A block takes
 // lines of its own: a line break separates it from what comes before and after, and a <br> straight after a
 // block is that break.
@@ -426,7 +426,7 @@ func bridgeReads(h string) string {
 // squash is what mautrix's reading and the body must agree on. It keeps line breaks but not how many: mautrix
 // writes a block with a line break either side, so two blocks, or a block and an empty line, get one more. It
 // drops every other space, which mautrix collapses and trims, and every line that is only ">", as mautrix trims a
-// quote's empty first and last lines. It writes mautrix's list bullet as Courier's.
+// quote's empty first and last lines. It writes mautrix's list bullet as Vitruvian Courier's.
 func squash(s string) string {
 	s = strings.Map(func(r rune) rune {
 		switch {

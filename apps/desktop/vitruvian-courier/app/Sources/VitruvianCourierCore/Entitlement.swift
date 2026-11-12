@@ -172,8 +172,8 @@ extension EntitlementProvider {
         if allEntitled {
             return SubscriptionPlanSummary(
                 badgeTitle: String(localized: "Included"),
-                headline: String(localized: "All Courier features are included on this Mac"),
-                detail: String(localized: "Every messaging, scheduling, and inbox organization feature is unlocked in Courier."),
+                headline: String(localized: "All Vitruvian Courier features are included on this Mac"),
+                detail: String(localized: "Every messaging, scheduling, and inbox organization feature is unlocked in Vitruvian Courier."),
                 accountsPerNetworkLimit: String(localized: "Unlimited"),
                 totalAccountsLimit: String(localized: "Unlimited"),
                 mergedChatsLimit: String(localized: "Unlimited"),
@@ -184,7 +184,7 @@ extension EntitlementProvider {
             return SubscriptionPlanSummary(
                 badgeTitle: String(localized: "Free"),
                 headline: String(localized: "Available with a plan"),
-                detail: String(localized: "Plan management isn’t available yet in Courier."),
+                detail: String(localized: "Plan management isn’t available yet in Vitruvian Courier."),
                 accountsPerNetworkLimit: "1",
                 totalAccountsLimit: "5",
                 mergedChatsLimit: "0",

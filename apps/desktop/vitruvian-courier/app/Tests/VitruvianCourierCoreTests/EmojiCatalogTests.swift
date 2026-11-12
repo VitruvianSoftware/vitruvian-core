@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 final class EmojiCatalogTests: XCTestCase {
     func testSearchOrdersPrefixMatchesAheadOfSubstringAndKeywordsAndMergesCustomEmoji() {

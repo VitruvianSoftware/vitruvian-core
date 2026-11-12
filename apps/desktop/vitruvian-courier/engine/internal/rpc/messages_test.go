@@ -30,7 +30,7 @@ import (
 
 const contact = "@whatsapp_contact:courier.local"
 
-// everything is a chat that can do all Courier offers, as WhatsApp's features read with a thread and Slack's @room.
+// everything is a chat that can do all Vitruvian Courier offers, as WhatsApp's features read with a thread and Slack's @room.
 func everything() *event.RoomFeatures {
 	full := event.CapLevelFullySupported
 	return &event.RoomFeatures{

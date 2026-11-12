@@ -4,7 +4,7 @@
 // Package timers is the engine's one timer loop: it fires reminders, carries out auto-archive rules, sends held and
 // scheduled messages (the outbox) and the messages waiting for their network, and deletes disappearing messages when
 // they come due. Everything it waits for is in
-// courier.db, so nothing is lost when the engine stops: what came due while Courier was quit, or the Mac slept,
+// courier.db, so nothing is lost when the engine stops: what came due while Vitruvian Courier was quit, or the Mac slept,
 // happens once at the next chance.
 package timers
 

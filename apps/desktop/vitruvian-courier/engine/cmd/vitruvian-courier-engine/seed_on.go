@@ -23,7 +23,7 @@ import (
 // seedEnv names the scenario file the test copy's engine plays (apps/desktop/vitruvian-courier/seed).
 const seedEnv = "VITRUVIAN_COURIER_SEED"
 
-// seedSetup is the test copy's (vitruvian-vitruvian-courier-engine-seeded, built with the courierseed tag). With VITRUVIAN_COURIER_SEED naming a
+// seedSetup is the test copy's (vitruvian-courier-engine-seeded, built with the courierseed tag). With VITRUVIAN_COURIER_SEED naming a
 // scenario file, and no networks given already (a test's cfg.nets), the engine runs a fake network for each network
 // the scenario names, under that network's real name ("whatsapp", so its icon and name match), instead of the real
 // bridges. Each fake is told the scenario's chats and people on every start, so a later start describes them the

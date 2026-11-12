@@ -4,7 +4,7 @@
 import CoreGraphics
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 final class BlurHashDecoderTests: XCTestCase {
     func testDecodesValidBlurHashAndRejectsInvalid() throws {

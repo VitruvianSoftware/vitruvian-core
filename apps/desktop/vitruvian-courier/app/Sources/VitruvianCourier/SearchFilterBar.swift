@@ -1,7 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// The filters under the search field (01 §12): Accounts, Type, Sent / Received, Chats and Time. Each is a chip

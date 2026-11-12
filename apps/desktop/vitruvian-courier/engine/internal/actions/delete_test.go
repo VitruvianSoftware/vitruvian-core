@@ -98,7 +98,7 @@ func TestUnsendMyReaction(t *testing.T) {
 	require.Empty(t, w.n.Removes, "a reaction isn't a message")
 }
 
-// Review Focus 1: Google Messages' bridge takes a redaction but only deletes from the phone, so Courier never
+// Review Focus 1: Google Messages' bridge takes a redaction but only deletes from the phone, so Vitruvian Courier never
 // offers it as an unsend: Delete for Me reaches the phone instead.
 func TestGoogleMessagesNeverUnsends(t *testing.T) {
 	ctx := context.Background()

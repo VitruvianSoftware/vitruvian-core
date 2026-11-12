@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 import XCTest
 
-@testable import Courier
+@testable import VitruvianCourier
 
 /// How the chat pane lays out as the window is resized with a picture as its wallpaper (Settings ▸ Appearance). A
 /// picture of a different shape from the pane must fill the pane and never size it: a wide picture once made the pane
@@ -40,7 +40,7 @@ final class WindowLayoutTests: XCTestCase {
             path.stroke()
         }
         NSGraphicsContext.restoreGraphicsState()
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("courier-wallpaper-\(UUID().uuidString).png")
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-courier-wallpaper-\(UUID().uuidString).png")
         try XCTUnwrap(rep.representation(using: .png, properties: [:])).write(to: url)
         files.append(url)
         return url.path

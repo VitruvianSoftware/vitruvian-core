@@ -1,7 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// The chat header's Disappearing Messages menu (01 §5): Off, then the chat's timers, the one in use ticked, and the

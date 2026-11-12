@@ -37,7 +37,7 @@ func callOf(t *testing.T, content json.RawMessage) (CallNote, bool) {
 	return parseCallNote("m.room.message", content)
 }
 
-// Every call notice a pinned bridge sends is read as Courier's call note: what happened and, where the bridge says,
+// Every call notice a pinned bridge sends is read as Vitruvian Courier's call note: what happened and, where the bridge says,
 // voice or video. The bridge's English body is never what decides, except for the two notices that have nothing
 // else (Signal's "Call ended", Telegram's call record), and those only on their own network, as the bridge's notice.
 func TestEveryBridgesCallNoticeIsACallNote(t *testing.T) {
@@ -112,7 +112,7 @@ func TestOnlyABridgesOwnCallNoticeIsACallNote(t *testing.T) {
 	}
 }
 
-// An action message of type call that Courier didn't annotate (one stored before this engine) is still a call note:
+// An action message of type call that Vitruvian Courier didn't annotate (one stored before this engine) is still a call note:
 // the action message alone says so, ringing, with voice or video only when its call_type says.
 func TestACallActionMessageAloneIsACallNote(t *testing.T) {
 	note, ok := callOf(t, json.RawMessage(tgRingingVid))
@@ -129,7 +129,7 @@ func TestACallActionMessageAloneIsACallNote(t *testing.T) {
 	require.Equal(t, CallNote{State: CallRinging, Media: CallVoice}, note, "a reading that isn't one is no reading")
 }
 
-// A call note is the chat's newest message like any other, and its preview is Courier's: kind "call", no text (the
+// A call note is the chat's newest message like any other, and its preview is Vitruvian Courier's: kind "call", no text (the
 // bridge's English), and what happened beside it.
 func TestACallNotePreviewsAsACall(t *testing.T) {
 	s := open(t)

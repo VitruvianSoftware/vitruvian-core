@@ -1,7 +1,7 @@
-# Couriercore
+# VitruvianCourierCore
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/app/Sources/CourierCore`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/app/Sources/VitruvianCourierCore`.
 
 ## Interface
 - `[AIProvider.swift:AIRewriteTone]`
@@ -46,4 +46,4 @@ Component package providing implementation for `apps/desktop/courier/app/Sources
 - [CommandBarModel.swift:95]: `query = initialQuery`
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/app/Sources/CourierCore/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/app/Sources/VitruvianCourierCore/...`

@@ -1,7 +1,7 @@
 # Ai
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/app/Sources/CourierCore/AI`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/app/Sources/VitruvianCourierCore/AI`.
 
 ## Interface
 - `[AIChatTurn.swift:AIChatTurn]`
@@ -41,4 +41,4 @@ Component package providing implementation for `apps/desktop/courier/app/Sources
 - [LocalProviderDetector.swift:103]: `return URL(string: "http://127.0.0.1:\(port)/v1")`
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/app/Sources/CourierCore/AI/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/app/Sources/VitruvianCourierCore/AI/...`

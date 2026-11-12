@@ -1,7 +1,7 @@
 # Networks
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/engine/internal/networks`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/engine/internal/networks`.
 
 ## Interface
 - `[networks.go:Network]`
@@ -18,4 +18,4 @@ Component package providing implementation for `apps/desktop/courier/engine/inte
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/engine/internal/networks/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/engine/internal/networks/...`

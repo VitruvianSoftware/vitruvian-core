@@ -1,7 +1,7 @@
 # Src
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/app/scripts/src`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/app/scripts/src`.
 
 ## Interface
 - `[app_holds_engine.rs:resolve_app]`
@@ -47,4 +47,4 @@ Component package providing implementation for `apps/desktop/courier/app/scripts
 - [publish.rs:395]: `query.extend(["--output=files".to_string(), TARGET.to_string()]);`
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/app/scripts/src/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/app/scripts/src/...`

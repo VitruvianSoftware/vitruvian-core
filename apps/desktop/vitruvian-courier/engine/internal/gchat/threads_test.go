@@ -29,7 +29,7 @@ import (
 	"github.com/VitruvianSoftware/vitruvian-courier/engine/internal/store"
 )
 
-// Real Google Chat ids, as stored by a live Courier: a message that starts a conversation is the head of its own
+// Real Google Chat ids, as stored by a live Vitruvian Courier: a message that starts a conversation is the head of its own
 // topic, so its message_id equals its topic_id ("AbC/AbC"). An in-line thread reply keeps the head's topic_id and
 // has its own message_id ("AbC/XyZ"). Flat spaces and DMs give every top-level message its own topic.
 const (
@@ -233,7 +233,7 @@ func relType(t *testing.T, evts []store.Event, eventID string) string {
 }
 
 // TestInboundTopicHeadsStayInTimelineAndDMRepliesLandInThread covers the four real shapes end to end, from the
-// WebChannel event through bridgev2 into Courier's store: a DM's top-level message, an in-line DM thread reply, a
+// WebChannel event through bridgev2 into Vitruvian Courier's store: a DM's top-level message, an in-line DM thread reply, a
 // reply in an in-line-threaded space and a flat space's messages.
 func TestInboundTopicHeadsStayInTimelineAndDMRepliesLandInThread(t *testing.T) {
 	ctx := context.Background()

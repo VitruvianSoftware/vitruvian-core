@@ -1,7 +1,7 @@
 {
-  "name": "Courier engine protocol",
+  "name": "Vitruvian Courier engine protocol",
   "protocol": 12,
-  "doc": "How Courier.app talks to its courier-engine helper. This file is the single definition: the engine's Go tests and the app's Swift tests both check the examples in examples/ against it, and the Swift Codable types are named exactly as the entries in types. Copyright 2026 VitruvianSoftware, SPDX-License-Identifier: AGPL-3.0-or-later.",
+  "doc": "How Vitruvian Courier.app talks to its vitruvian-courier-engine helper. This file is the single definition: the engine's Go tests and the app's Swift tests both check the examples in examples/ against it, and the Swift Codable types are named exactly as the entries in types. Copyright 2026 VitruvianSoftware, SPDX-License-Identifier: AGPL-3.0-or-later.",
 
   "transport": {
     "socket": "A Unix stream socket at <data dir>/engine.sock, mode 0600, in a 0700 directory. This protocol never goes over TCP. (The local API, MCP for other apps, is separate: it listens on TCP only when integrations.update turns it on.)",
@@ -52,7 +52,7 @@
         },
         "client": {
           "type": "string",
-          "doc": "<name>/<version>, for example Courier/0.3.0."
+          "doc": "<name>/<version>, for example Vitruvian Courier/0.3.0."
         }
       }
     },
@@ -117,7 +117,7 @@
         "syncs": {
           "type": "string[]",
           "values": ["pin", "mute", "accept_request"],
-          "doc": "The chat changes Courier also sends to this network, so they show on the phone too. Every other change (archive, low priority, hide, labels, reminders, drafts, unread marks) stays on this Mac, and so does everything when the list is empty: the network isn't running or has no account. Sending is best effort: a network that is offline or refuses keeps the change on this Mac only."
+          "doc": "The chat changes Vitruvian Courier also sends to this network, so they show on the phone too. Every other change (archive, low priority, hide, labels, reminders, drafts, unread marks) stays on this Mac, and so does everything when the list is empty: the network isn't running or has no account. Sending is best effort: a network that is offline or refuses keeps the change on this Mac only."
         },
         "can_create_group": {
           "type": "bool",
@@ -217,7 +217,7 @@
             "call",
             ""
           ],
-          "doc": "What the newest message is. For a poll, preview is its question. timer_change: a note that the chat's disappearing timer changed (a bridge's, or one the engine wrote for a change made in Courier); preview is \"\", and the app words it. call: a bridge's notice of a call; preview is \"\", preview_call says what happened, and the app words it."
+          "doc": "What the newest message is. For a poll, preview is its question. timer_change: a note that the chat's disappearing timer changed (a bridge's, or one the engine wrote for a change made in Vitruvian Courier); preview is \"\", and the app words it. call: a bridge's notice of a call; preview is \"\", preview_call says what happened, and the app words it."
         },
         "preview_mine": {
           "type": "bool",
@@ -312,7 +312,7 @@
       }
     },
     "CallNote": {
-      "doc": "A bridge's notice of a call, as Courier reads it. An event's content carries the same object as fi.courier.call when it is a call notice (com.beeper.action_message of type call); a call notice without it rang. Whether it was mine is the event's (or the row's preview_mine).",
+      "doc": "A bridge's notice of a call, as Vitruvian Courier reads it. An event's content carries the same object as fi.courier.call when it is a call notice (com.beeper.action_message of type call); a call notice without it rang. Whether it was mine is the event's (or the row's preview_mine).",
       "fields": {
         "state": {
           "type": "string",
@@ -771,7 +771,7 @@
         },
         "status_reason": {
           "type": "string",
-          "doc": "Why it failed, for people. \"\" otherwise. Exactly \"may have been sent\" when the engine stopped while the message was pending: the network may have taken it. Exactly \"not sent\" for a held message whose window ended over an hour before the engine could send it, a held or scheduled one whose sending a quit cut short and that is over an hour late when Courier opens again, or a blast message that failed before reaching the network (for example, invalid text or an unknown room): nothing was sent. Exactly \"not connected\" for a held, scheduled or blast message whose network wasn't connected when it was due: nothing was sent. Exactly \"network_refused\" when the network refused a blast message. For a waiting message, exactly \"no account\" when none of my accounts is in the chat any more (the only one that was has been signed out, so a group every account shares has no account to go through): it can't go until one is, so the app says so rather than \"Waiting to send\", and Don't Send still takes it back; \"\" while it is just waiting. The app words these itself."
+          "doc": "Why it failed, for people. \"\" otherwise. Exactly \"may have been sent\" when the engine stopped while the message was pending: the network may have taken it. Exactly \"not sent\" for a held message whose window ended over an hour before the engine could send it, a held or scheduled one whose sending a quit cut short and that is over an hour late when Vitruvian Courier opens again, or a blast message that failed before reaching the network (for example, invalid text or an unknown room): nothing was sent. Exactly \"not connected\" for a held, scheduled or blast message whose network wasn't connected when it was due: nothing was sent. Exactly \"network_refused\" when the network refused a blast message. For a waiting message, exactly \"no account\" when none of my accounts is in the chat any more (the only one that was has been signed out, so a group every account shares has no account to go through): it can't go until one is, so the app says so rather than \"Waiting to send\", and Don't Send still takes it back; \"\" while it is just waiting. The app words these itself."
         },
         "media_path": {
           "type": "string",
@@ -1268,7 +1268,7 @@
       }
     },
     "ChatFeatures": {
-      "doc": "What a person can do in one chat, as its network's bridge says. A greyed action says why from these, in Courier's words.",
+      "doc": "What a person can do in one chat, as its network's bridge says. A greyed action says why from these, in Vitruvian Courier's words.",
       "fields": {
         "reply": { "type": "bool", "doc": "A plain reply." },
         "thread": {
@@ -1770,7 +1770,7 @@
             "complete",
             "unsupported"
           ],
-          "doc": "display_and_wait: show display, then login.wait. user_input: ask for fields, then login.submit. cookies: sign in on a web page, collect cookies, then login.submit. complete: linked; the sign-in is over. unsupported: a step Courier can't do; instructions say what to do instead, and the sign-in is over."
+          "doc": "display_and_wait: show display, then login.wait. user_input: ask for fields, then login.submit. cookies: sign in on a web page, collect cookies, then login.submit. complete: linked; the sign-in is over. unsupported: a step Vitruvian Courier can't do; instructions say what to do instead, and the sign-in is over."
         },
         "instructions": { "type": "string?" },
         "display": { "type": "LoginDisplay?" },
@@ -2557,7 +2557,7 @@
       }
     },
     "PairRequest": {
-      "doc": "A client asking to connect (POST /v0/pair). The app asks the person: \u201c<clientName>\u201d wants to read your chats in Courier. Allow, Allow and Send Messages, Don't Allow.",
+      "doc": "A client asking to connect (POST /v0/pair). The app asks the person: \u201c<clientName>\u201d wants to read your chats in Vitruvian Courier. Allow, Allow and Send Messages, Don't Allow.",
       "fields": {
         "requestID": { "type": "string" },
         "clientName": {
@@ -2579,12 +2579,12 @@
       "fields": {
         "locked": {
           "type": "bool",
-          "doc": "Courier is locked: only its lock screen shows."
+          "doc": "Vitruvian Courier is locked: only its lock screen shows."
         }
       }
     },
     "FocusParams": {
-      "doc": "An MCP client's focus_app: bring Courier to the front, open the chat (if given) at the message (if given), and put draftText and the file at draftAttachmentPath in that chat's composer, unsent. The engine has checked that the chat and message exist and that the file is a readable regular file. A chat the app can't open leaves it on the inbox.",
+      "doc": "An MCP client's focus_app: bring Vitruvian Courier to the front, open the chat (if given) at the message (if given), and put draftText and the file at draftAttachmentPath in that chat's composer, unsent. The engine has checked that the chat and message exist and that the file is a readable regular file. A chat the app can't open leaves it on the inbox.",
       "fields": {
         "chatID": { "type": "string?", "doc": "A room_id." },
         "messageID": { "type": "string?", "doc": "An event_id in that chat." },
@@ -2791,7 +2791,7 @@
       "errors": [-32020, -32023]
     },
     "room.directChat": {
-      "doc": "The one-to-one chat with a person in a group (Reply Privately), on the group's own account: Courier's own chat with them when it has one, with no network needed, else one the network makes. A one-to-one chat (there is nothing more private), an account that can't start chats, or a person the network can't reach is -32023; a person who isn't in the group as far as Courier knows is -32020. Making one needs the network: one that won't run this session is -32016, and one still starting, or whose account doesn't connect in time, is -32018.",
+      "doc": "The one-to-one chat with a person in a group (Reply Privately), on the group's own account: Vitruvian Courier's own chat with them when it has one, with no network needed, else one the network makes. A one-to-one chat (there is nothing more private), an account that can't start chats, or a person the network can't reach is -32023; a person who isn't in the group as far as Vitruvian Courier knows is -32020. Making one needs the network: one that won't run this session is -32016, and one still starting, or whose account doesn't connect in time, is -32018.",
       "params": "DirectChatParams",
       "result": "RoomResult",
       "errors": [-32016, -32018, -32020, -32023, -32027]
@@ -3223,7 +3223,7 @@
       "errors": [-32020]
     },
     "app.setLocked": {
-      "doc": "Whether Courier is locked. The app sends it after each hello and each time it locks or unlocks, and may send it while locked. While locked, focus_app answers its client that Courier is locked, and sends no app.focus. Until the app says, the engine takes it as unlocked.",
+      "doc": "Whether Vitruvian Courier is locked. The app sends it after each hello and each time it locks or unlocks, and may send it while locked. While locked, focus_app answers its client that Vitruvian Courier is locked, and sends no app.focus. Until the app says, the engine takes it as unlocked.",
       "params": "AppLockParams",
       "result": "Empty",
       "errors": []
@@ -3348,7 +3348,7 @@
         "code": -32018,
         "name": "not_connected",
         "message": "the network isn't connected yet",
-        "when": "The chat's account is linked but did not connect in time, for an action that isn't queued (an edit, a reaction, an unsend, a poll, a vote, a timer change, a private chat to make): it would be wrong hours later. Also room.directChat while its network is still starting, when Courier has no one-to-one chat with the person to answer with. Nothing was sent. A new message is never refused this way: it waits."
+        "when": "The chat's account is linked but did not connect in time, for an action that isn't queued (an edit, a reaction, an unsend, a poll, a vote, a timer change, a private chat to make): it would be wrong hours later. Also room.directChat while its network is still starting, when Vitruvian Courier has no one-to-one chat with the person to answer with. Nothing was sent. A new message is never refused this way: it waits."
       },
       {
         "code": -32019,

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// Media tile with sender attribution (`MediaWithSender.tsx`) rendered in the **Media** tab of `MediaViewerView`.

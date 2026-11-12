@@ -1,7 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import CourierCore
+import VitruvianCourierCore
 import Foundation
 import XCTest
 
@@ -13,8 +13,8 @@ final class DetachedWindowModelTests: XCTestCase {
 
     private func makeAppModel() -> AppModel {
         let supervisor = EngineSupervisor(
-            enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",
-            dataDir: URL(fileURLWithPath: "/tmp/courier-test-detached"),
+            enginePath: "/Applications/Vitruvian Courier.app/Contents/Helpers/vitruvian-courier-engine",
+            dataDir: URL(fileURLWithPath: "/tmp/vitruvian-courier-test-detached"),
             environment: [:],
             launcher: FakeLauncher { _, _ in }
         )

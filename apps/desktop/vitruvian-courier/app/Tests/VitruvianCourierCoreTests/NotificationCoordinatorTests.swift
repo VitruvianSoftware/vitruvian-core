@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// The notification coordinator against a stand-in engine and a fake notification centre: live events notify once,
 /// backfill and the chat in front do not, and the buttons on a notification reach the engine.
@@ -67,9 +67,9 @@ final class NotificationCoordinatorTests: XCTestCase {
         servers.append(server)
         let launcher = FakeLauncher { _, process in process.printReady(socket: server.path) }
         let supervisor = EngineSupervisor(
-            enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",
-            dataDir: URL(fileURLWithPath: "/tmp/courier-test-data"), environment: [:], launcher: launcher,
-            credentials: InMemoryCredentialStore(), clientName: "Courier/test", timing: FakeTime().timing())
+            enginePath: "/Applications/Vitruvian Courier.app/Contents/Helpers/vitruvian-courier-engine",
+            dataDir: URL(fileURLWithPath: "/tmp/vitruvian-courier-test-data"), environment: [:], launcher: launcher,
+            credentials: InMemoryCredentialStore(), clientName: "Vitruvian Courier/test", timing: FakeTime().timing())
         let clock = FakeClock(millis: connectedMillis)
         let app = AppModel(supervisor: supervisor, clock: { clock.date })
         let delivery = FakeDelivery()
@@ -801,8 +801,8 @@ final class NotificationCoordinatorTests: XCTestCase {
 
     // MARK: - Send later
 
-    /// Review Focus 3: a scheduled message that was canceled (they wrote first) or missed (Courier was closed) is told
-    /// once, however often its chat's list is read again, and not again after Courier restarts. One rescheduled and
+    /// Review Focus 3: a scheduled message that was canceled (they wrote first) or missed (Vitruvian Courier was closed) is told
+    /// once, however often its chat's list is read again, and not again after Vitruvian Courier restarts. One rescheduled and
     /// then canceled again is a new event, and is told.
     func testCanceledAndMissedScheduledNotifyOnce() async throws {
         let h = try await start()
@@ -832,10 +832,10 @@ final class NotificationCoordinatorTests: XCTestCase {
         try await waitUntil { h.coordinator.scheduledReads == 7 }
         XCTAssertEqual(h.delivery.delivered.map(\.body), [
             "A scheduled message to Chat A wasn’t sent: they wrote first.",
-            "A scheduled message to Chat A missed its time while Courier was closed.",
+            "A scheduled message to Chat A missed its time while Vitruvian Courier was closed.",
         ])
 
-        // Courier restarts: a new engine, a new coordinator, the same settings. Neither is told again, at connect or
+        // Vitruvian Courier restarts: a new engine, a new coordinator, the same settings. Neither is told again, at connect or
         // after.
         let lists = h.script.scheduled
         await finish(h)
@@ -1184,7 +1184,7 @@ final class NotificationCoordinatorTests: XCTestCase {
         h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$lock-imm"])
         try await waitUntil { h.delivery.delivered.count == 1 }
         let immNote = try XCTUnwrap(h.delivery.delivered.last)
-        XCTAssertEqual(immNote.title, "Courier")
+        XCTAssertEqual(immNote.title, "Vitruvian Courier")
         XCTAssertNil(immNote.subtitle)
         XCTAssertEqual(immNote.body, "New message")
         XCTAssertNil(immNote.attachmentPath)
@@ -1209,7 +1209,7 @@ final class NotificationCoordinatorTests: XCTestCase {
         await scheduler.advance(by: 30)
         XCTAssertEqual(h.delivery.delivered.count, 2, "delayed notification must deliver at t=30s")
         let delNote = try XCTUnwrap(h.delivery.delivered.last)
-        XCTAssertEqual(delNote.title, "Courier", "delayed notification firing while locked must redact title")
+        XCTAssertEqual(delNote.title, "Vitruvian Courier", "delayed notification firing while locked must redact title")
         XCTAssertNil(delNote.subtitle, "delayed notification firing while locked must redact sender subtitle")
         XCTAssertEqual(delNote.body, "New message", "delayed notification firing while locked must redact body")
         XCTAssertNil(delNote.attachmentPath, "delayed notification firing while locked must redact media attachment")
@@ -1220,7 +1220,7 @@ final class NotificationCoordinatorTests: XCTestCase {
         await scheduler.advance(by: 120)
         XCTAssertEqual(h.delivery.delivered.count, 3, "repeat-unread must fire 120s after delayed delivery")
         let repNote = try XCTUnwrap(h.delivery.delivered.last)
-        XCTAssertEqual(repNote.title, "Courier")
+        XCTAssertEqual(repNote.title, "Vitruvian Courier")
         XCTAssertNil(repNote.subtitle)
         XCTAssertEqual(repNote.body, "New message")
         XCTAssertNil(repNote.attachmentPath)
@@ -1233,7 +1233,7 @@ final class NotificationCoordinatorTests: XCTestCase {
         h.server.notify(["kind": "typing", "room_id": "!a"])
         try await waitUntil { h.delivery.delivered.count == 4 }
         let typNote = try XCTUnwrap(h.delivery.delivered.last)
-        XCTAssertEqual(typNote.title, "Courier", "typing notification while locked must hide chat name")
+        XCTAssertEqual(typNote.title, "Vitruvian Courier", "typing notification while locked must hide chat name")
         XCTAssertNil(typNote.subtitle)
         XCTAssertEqual(typNote.body, "Someone is typing…", "typing notification while locked must hide sender name")
         XCTAssertEqual(typNote.category, .scheduled)
@@ -1242,7 +1242,7 @@ final class NotificationCoordinatorTests: XCTestCase {
         h.server.notify(["kind": "reminder", "room_id": "!a"])
         try await waitUntil { h.delivery.delivered.count == 5 }
         let remNote = try XCTUnwrap(h.delivery.delivered.last)
-        XCTAssertEqual(remNote.title, "Courier", "reminder notification while locked must hide chat name")
+        XCTAssertEqual(remNote.title, "Vitruvian Courier", "reminder notification while locked must hide chat name")
         XCTAssertNil(remNote.subtitle)
         XCTAssertEqual(remNote.body, "Reminder due")
         XCTAssertEqual(remNote.category, .scheduled)
@@ -1323,7 +1323,7 @@ final class NotificationCoordinatorTests: XCTestCase {
         let initialMarkReadCalls = h.server.receivedMethods().filter { $0 == "room.markRead" }.count
         let initialReminderCalls = h.server.receivedMethods().filter { $0 == "reminder.set" }.count
 
-        // 1. Inline Reply while locked must not send or restore draft; brings Courier forward to lock screen instead.
+        // 1. Inline Reply while locked must not send or restore draft; brings Vitruvian Courier forward to lock screen instead.
         await h.coordinator.reply(roomID: "!a", text: "locked reply")
         XCTAssertEqual(
             h.server.receivedMethods().filter { $0 == "message.send" }.count,
@@ -1331,36 +1331,36 @@ final class NotificationCoordinatorTests: XCTestCase {
             "Notification inline reply while locked must not call message.send"
         )
         XCTAssertTrue(h.window.drafts.isEmpty, "Notification inline reply while locked must not mutate drafts")
-        XCTAssertEqual(h.window.shown, initialShown + 1, "Notification inline reply while locked must bring Courier forward to lock screen")
+        XCTAssertEqual(h.window.shown, initialShown + 1, "Notification inline reply while locked must bring Vitruvian Courier forward to lock screen")
 
-        // 2. Mark as Read while locked must not call room.markRead; brings Courier forward instead.
+        // 2. Mark as Read while locked must not call room.markRead; brings Vitruvian Courier forward instead.
         await h.coordinator.markRead(roomID: "!a")
         XCTAssertEqual(
             h.server.receivedMethods().filter { $0 == "room.markRead" }.count,
             initialMarkReadCalls,
             "Notification Mark as Read while locked must not call room.markRead"
         )
-        XCTAssertEqual(h.window.shown, initialShown + 2, "Notification Mark as Read while locked must bring Courier forward to lock screen")
+        XCTAssertEqual(h.window.shown, initialShown + 2, "Notification Mark as Read while locked must bring Vitruvian Courier forward to lock screen")
 
-        // 3. Remind while locked must not call reminder.set; brings Courier forward instead.
+        // 3. Remind while locked must not call reminder.set; brings Vitruvian Courier forward instead.
         await h.coordinator.remind(roomID: "!a", after: NotificationCoordinator.remindOneHour)
         XCTAssertEqual(
             h.server.receivedMethods().filter { $0 == "reminder.set" }.count,
             initialReminderCalls,
             "Notification Remind while locked must not call reminder.set"
         )
-        XCTAssertEqual(h.window.shown, initialShown + 3, "Notification Remind while locked must bring Courier forward to lock screen")
+        XCTAssertEqual(h.window.shown, initialShown + 3, "Notification Remind while locked must bring Vitruvian Courier forward to lock screen")
 
-        // 4. Copy Code while locked must not copy to clipboard; brings Courier forward instead.
+        // 4. Copy Code while locked must not copy to clipboard; brings Vitruvian Courier forward instead.
         h.coordinator.copyOTPCode(forRoomID: "!a")
         XCTAssertEqual(clipboard.copiedCodes, ["482910"], "Notification Copy Code while locked must not copy OTP to clipboard")
-        XCTAssertEqual(h.window.shown, initialShown + 4, "Notification Copy Code while locked must bring Courier forward to lock screen")
+        XCTAssertEqual(h.window.shown, initialShown + 4, "Notification Copy Code while locked must bring Vitruvian Courier forward to lock screen")
 
-        // 5. Click-to-open while locked must not change selectedRoomID; brings Courier forward instead.
+        // 5. Click-to-open while locked must not change selectedRoomID; brings Vitruvian Courier forward instead.
         XCTAssertNil(h.app.selectedRoomID)
         h.coordinator.open(roomID: "!a")
         XCTAssertNil(h.app.selectedRoomID, "Notification click-to-open while locked must not open chat")
-        XCTAssertEqual(h.window.shown, initialShown + 5, "Notification click-to-open while locked must bring Courier forward to lock screen")
+        XCTAssertEqual(h.window.shown, initialShown + 5, "Notification click-to-open while locked must bring Vitruvian Courier forward to lock screen")
 
         // 6. Incoming OTP message while locked keeps banner content redacted AND skips automatic OTP clipboard copy.
         let ts2 = ts1 + 1000
@@ -1369,7 +1369,7 @@ final class NotificationCoordinatorTests: XCTestCase {
         h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$otp-2"])
         try await waitUntil { h.delivery.delivered.count == 2 }
         let lockedBanner = try XCTUnwrap(h.delivery.delivered.last)
-        XCTAssertEqual(lockedBanner.title, "Courier")
+        XCTAssertEqual(lockedBanner.title, "Vitruvian Courier")
         XCTAssertEqual(lockedBanner.body, "New message")
         XCTAssertEqual(lockedBanner.category, .scheduled)
         XCTAssertEqual(clipboard.copiedCodes, ["482910"], "Automatic OTP clipboard copy must be skipped while locked")
@@ -1443,7 +1443,7 @@ final class NotificationCoordinatorTests: XCTestCase {
             "Locked open chat must still post a content-hidden notification when a new message arrives"
         )
         if let msgNote = h.delivery.delivered.first {
-            XCTAssertEqual(msgNote.title, "Courier", "Locked open chat must still post a content-hidden notification")
+            XCTAssertEqual(msgNote.title, "Vitruvian Courier", "Locked open chat must still post a content-hidden notification")
             XCTAssertNil(msgNote.subtitle)
             XCTAssertEqual(msgNote.body, "New message")
             XCTAssertEqual(msgNote.category, .scheduled)
@@ -1470,7 +1470,7 @@ final class NotificationCoordinatorTests: XCTestCase {
             "Due reminder in open chat while locked must post a content-hidden reminder notification"
         )
         if h.delivery.delivered.count >= 2, let remNote = h.delivery.delivered.last {
-            XCTAssertEqual(remNote.title, "Courier")
+            XCTAssertEqual(remNote.title, "Vitruvian Courier")
             XCTAssertEqual(remNote.body, "Reminder due")
             XCTAssertEqual(remNote.category, .scheduled)
         }
@@ -1494,13 +1494,13 @@ final class NotificationCoordinatorTests: XCTestCase {
         XCTAssertEqual(h.delivery.delivered.count, 1)
         XCTAssertEqual(h.delivery.delivered.first?.body, "Unredacted secret before lock")
 
-        // Locking Courier must remove all delivered notifications from Notification Center.
+        // Locking Vitruvian Courier must remove all delivered notifications from Notification Center.
         lifecycle.lockNow()
         h.window.isLocked = true
         XCTAssertEqual(
             h.delivery.clearAllCount,
             1,
-            "Locking Courier must call clearAll() on NotificationDelivering to remove delivered notifications"
+            "Locking Vitruvian Courier must call clearAll() on NotificationDelivering to remove delivered notifications"
         )
         XCTAssertTrue(
             h.delivery.delivered.isEmpty,
@@ -1515,7 +1515,7 @@ final class NotificationCoordinatorTests: XCTestCase {
         try await settle(h, fetches: 2)
 
         XCTAssertEqual(h.delivery.delivered.count, 1)
-        XCTAssertEqual(h.delivery.delivered.first?.title, "Courier")
+        XCTAssertEqual(h.delivery.delivered.first?.title, "Vitruvian Courier")
         XCTAssertEqual(h.delivery.delivered.first?.body, "New message")
 
         await finish(h)

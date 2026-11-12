@@ -4,12 +4,12 @@
 import Combine
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// The supervisor with a fake launcher: nothing here starts a process. Engines that answer are TestEngineServers
 /// whose socket the fake prints in its ready line.
 final class EngineSupervisorTests: XCTestCase {
-    private let dataDir = URL(fileURLWithPath: "/tmp/courier-test-data")
+    private let dataDir = URL(fileURLWithPath: "/tmp/vitruvian-courier-test-data")
     private var servers: [TestEngineServer] = []
 
     override func tearDown() {
@@ -26,9 +26,9 @@ final class EngineSupervisorTests: XCTestCase {
     private func makeSupervisor(_ launcher: FakeLauncher, time: FakeTime, timing: EngineSupervisor.Timing? = nil,
                                 credentials: CredentialStore = InMemoryCredentialStore(),
                                 environment: [String: String] = ["HOME": "/Users/example", "PATH": "/usr/bin"]) -> EngineSupervisor {
-        EngineSupervisor(enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine", dataDir: dataDir,
+        EngineSupervisor(enginePath: "/Applications/Vitruvian Courier.app/Contents/Helpers/vitruvian-courier-engine", dataDir: dataDir,
                          environment: environment, launcher: launcher, credentials: credentials,
-                         clientName: "Courier/test", timing: timing ?? time.timing())
+                         clientName: "Vitruvian Courier/test", timing: timing ?? time.timing())
     }
 
     func testBackoffSchedule() {
@@ -45,8 +45,8 @@ final class EngineSupervisorTests: XCTestCase {
         try await waitUntil { recorder.last == .connected }
 
         let spec = try XCTUnwrap(launcher.specs.first)
-        XCTAssertEqual(spec.executable.path, "/Applications/Courier.app/Contents/Helpers/courier-engine")
-        XCTAssertEqual(spec.arguments, ["--data", "/tmp/courier-test-data", "--parent-fd", "0"])
+        XCTAssertEqual(spec.executable.path, "/Applications/Vitruvian Courier.app/Contents/Helpers/vitruvian-courier-engine")
+        XCTAssertEqual(spec.arguments, ["--data", "/tmp/vitruvian-courier-test-data", "--parent-fd", "0"])
         XCTAssertEqual(spec.environment["HOME"], "/Users/example")
         XCTAssertEqual(recorder.states.first, .starting)
         XCTAssertEqual(server.receivedMethods().first, "hello")
@@ -187,7 +187,7 @@ final class EngineSupervisorTests: XCTestCase {
 
     func testLockedDataDirectorySaysWhyAndKeepsTrying() async throws {
         let server = try makeServer()
-        let message = "another Courier engine is using /tmp/courier-test-data"
+        let message = "another Vitruvian Courier engine is using /tmp/vitruvian-courier-test-data"
         let launcher = FakeLauncher { index, process in
             guard index < 2 else {
                 process.printReady(socket: server.path)
@@ -195,7 +195,7 @@ final class EngineSupervisorTests: XCTestCase {
             }
             // As the engine does: JSON warnings, then the fatal error as plain text, then exit 3.
             process.printError(#"{"level":"warn","message":"example warning"}"#)
-            process.printError("courier-engine: \(message)")
+            process.printError("vitruvian-courier-engine: \(message)")
             process.exit(3)
         }
         let time = FakeTime()
@@ -228,7 +228,7 @@ final class EngineSupervisorTests: XCTestCase {
             }
             // Not exit 3: any exit before the ready line, with the engine's own last line.
             process.printError(#"{"level":"warn","message":"example warning"}"#)
-            process.printError("courier-engine: \(message)")
+            process.printError("vitruvian-courier-engine: \(message)")
             process.exit(1)
         }
         let time = FakeTime()
@@ -256,7 +256,7 @@ final class EngineSupervisorTests: XCTestCase {
         let recorder = StateRecorder(supervisor)
         supervisor.start()
         try await waitUntil { recorder.last == .connected }
-        launcher.processes[0].printError("courier-engine: something said on the way out")
+        launcher.processes[0].printError("vitruvian-courier-engine: something said on the way out")
         launcher.processes[0].exit(1)
         try await waitUntil { launcher.count == 2 && recorder.last == .connected }
         XCTAssertTrue(recorder.states.contains(.reconnecting(attempt: 1)), "no problem is named")
@@ -265,13 +265,13 @@ final class EngineSupervisorTests: XCTestCase {
     }
 
     func testWhichExitsAreAProblem() {
-        let line = "courier-engine: another Courier engine is using /tmp/x"
+        let line = "vitruvian-courier-engine: another Vitruvian Courier engine is using /tmp/x"
         XCTAssertEqual(EngineSupervisor.problem(status: 3, errors: ["{}", line]),
-                       .dataDirectoryInUse(message: "another Courier engine is using /tmp/x"))
+                       .dataDirectoryInUse(message: "another Vitruvian Courier engine is using /tmp/x"))
         XCTAssertEqual(EngineSupervisor.problem(status: 3, errors: []), .dataDirectoryInUse(message: nil))
         // Before ready, any exit with the engine's own line has it shown; without one, or after ready, none.
-        XCTAssertEqual(EngineSupervisor.problem(status: 1, errors: [line]), .engineFailed(message: "another Courier engine is using /tmp/x"))
-        XCTAssertEqual(EngineSupervisor.problem(status: 2, errors: ["{}", line]), .engineFailed(message: "another Courier engine is using /tmp/x"))
+        XCTAssertEqual(EngineSupervisor.problem(status: 1, errors: [line]), .engineFailed(message: "another Vitruvian Courier engine is using /tmp/x"))
+        XCTAssertEqual(EngineSupervisor.problem(status: 2, errors: ["{}", line]), .engineFailed(message: "another Vitruvian Courier engine is using /tmp/x"))
         XCTAssertNil(EngineSupervisor.problem(status: 1, errors: [line], wasConnected: true))
         XCTAssertNil(EngineSupervisor.problem(status: 2, errors: ["goroutine 1 [running]:"]))
         XCTAssertNil(EngineSupervisor.problem(status: nil, errors: []))
@@ -476,23 +476,23 @@ final class EngineSupervisorTests: XCTestCase {
     func testDataDirAndEnginePathOverrides() {
         let home = URL(fileURLWithPath: "/Users/example")
         XCTAssertEqual(EngineLocation.dataDirectory(environment: [:], home: home).path,
-                       "/Users/example/Library/Application Support/Courier")
-        XCTAssertEqual(EngineLocation.dataDirectory(environment: ["COURIER_DATA_DIR": "/tmp/c"], home: home).path, "/tmp/c")
+                       "/Users/example/Library/Application Support/Vitruvian Courier")
+        XCTAssertEqual(EngineLocation.dataDirectory(environment: ["VITRUVIAN_COURIER_DATA_DIR": "/tmp/c"], home: home).path, "/tmp/c")
         // The test copy keeps away from the installed app's data and Keychain items, even with no override.
         XCTAssertEqual(EngineLocation.dataDirectory(environment: [:], home: home,
                                                     bundleIdentifier: "com.vitruviansoftware.courier").path,
-                       "/Users/example/Library/Application Support/Courier")
+                       "/Users/example/Library/Application Support/Vitruvian Courier")
         XCTAssertEqual(EngineLocation.dataDirectory(environment: [:], home: home,
                                                     bundleIdentifier: TestCopy.bundleIdentifier).path,
-                       "/Users/example/Library/Application Support/Courier Test Copy")
+                       "/Users/example/Library/Application Support/Vitruvian Courier Test Copy")
         XCTAssertEqual(TelegramCredentials.service(for: "com.vitruviansoftware.courier"),
                        "com.vitruviansoftware.courier.telegram")
         XCTAssertNotEqual(TelegramCredentials.service(for: TestCopy.bundleIdentifier),
                           TelegramCredentials.service(for: "com.vitruviansoftware.courier"))
-        let bundle = URL(fileURLWithPath: "/Applications/Courier.app")
+        let bundle = URL(fileURLWithPath: "/Applications/Vitruvian Courier.app")
         XCTAssertEqual(EngineLocation.enginePath(environment: [:], bundleURL: bundle),
-                       "/Applications/Courier.app/Contents/Helpers/courier-engine")
-        XCTAssertEqual(EngineLocation.enginePath(environment: ["COURIER_ENGINE_PATH": "/tmp/e"], bundleURL: bundle), "/tmp/e")
+                       "/Applications/Vitruvian Courier.app/Contents/Helpers/vitruvian-courier-engine")
+        XCTAssertEqual(EngineLocation.enginePath(environment: ["VITRUVIAN_COURIER_ENGINE_PATH": "/tmp/e"], bundleURL: bundle), "/tmp/e")
     }
 
     private static func account(_ state: String) -> [String: Any] {

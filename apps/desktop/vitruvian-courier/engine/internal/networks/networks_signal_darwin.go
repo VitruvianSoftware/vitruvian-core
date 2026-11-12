@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Signal does its encryption through Signal's own Rust library, libsignal_ffi.a, which is built for macOS only
-// (//apps/desktop/vitruvian-courier/libsignal; see docs/m2-libsignal.md). Courier is a macOS app, so Signal is registered here, in a
+// (//apps/desktop/vitruvian-courier/libsignal; see docs/m2-libsignal.md). Vitruvian Courier is a macOS app, so Signal is registered here, in a
 // file only darwin builds. Nothing that Linux CI compiles imports mautrix-signal, so those lanes never look for a
 // library that does not exist there.
 
@@ -27,7 +27,7 @@ func platformNetworks() []Network {
 		{
 			Name: "signal", DisplayName: "Signal",
 			ModulePath: "go.mau.fi/mautrix-signal",
-			// qr is the only flow mautrix-signal has (GetLoginFlows): Courier shows a QR code and the user scans it
+			// qr is the only flow mautrix-signal has (GetLoginFlows): Vitruvian Courier shows a QR code and the user scans it
 			// from Signal on their phone under Settings, Linked devices.
 			Flows: []string{"qr"},
 			Spec:  signalSpec,

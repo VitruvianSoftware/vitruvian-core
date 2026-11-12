@@ -52,19 +52,19 @@ public struct UnavailableAIProvider: AIProvider {
 
     public var isAvailable: Bool { false }
     public var unavailableReason: String {
-        customReason ?? String(localized: "AI features aren’t available yet in Courier. Everything you write stays on this Mac.")
+        customReason ?? String(localized: "AI features aren’t available yet in Vitruvian Courier. Everything you write stays on this Mac.")
     }
     public var availableModels: [String] {
         []
     }
     public func draftResponse(context _: AIChatContext, draft _: String, tone _: AIRewriteTone?) async -> AIProviderDisposition {
-        .unavailable(reason: customReason ?? String(localized: "Drafting with AI isn’t available yet in Courier."))
+        .unavailable(reason: customReason ?? String(localized: "Drafting with AI isn’t available yet in Vitruvian Courier."))
     }
     public func translate(text _: String, targetLanguage _: String) async -> AIProviderDisposition {
-        .unavailable(reason: customReason ?? String(localized: "Message translation isn’t available yet in Courier."))
+        .unavailable(reason: customReason ?? String(localized: "Message translation isn’t available yet in Vitruvian Courier."))
     }
     public func summarize(context _: AIChatContext) async -> AIProviderDisposition {
-        .unavailable(reason: customReason ?? String(localized: "AI chat summaries aren’t available yet in Courier."))
+        .unavailable(reason: customReason ?? String(localized: "AI chat summaries aren’t available yet in Vitruvian Courier."))
     }
 }
 

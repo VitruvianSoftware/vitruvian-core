@@ -292,7 +292,7 @@ func (c *Client) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMe
 		if len(data) > MaxAttachmentBytes {
 			return nil, errors.New("Attachments on iMessage can't be larger than 100 MB.")
 		}
-		tmpDir, err := os.MkdirTemp("", "courier-imessage-att-*")
+		tmpDir, err := os.MkdirTemp("", "vitruvian-courier-imessage-att-*")
 		if err != nil {
 			return nil, fmt.Errorf("create temp attachment dir: %w", err)
 		}

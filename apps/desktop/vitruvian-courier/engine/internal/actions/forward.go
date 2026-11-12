@@ -71,7 +71,7 @@ func (a *Actions) forwardable(ctx context.Context, e store.Event) (*event.Messag
 }
 
 // Forward sends a copy of a message to each of roomIDs (at most MaxForwardRooms; more is ErrBadValue for every one),
-// one at a time, as Send sends one without a hold: Courier's copy carries no attribution, on every network. Text,
+// one at a time, as Send sends one without a hold: Vitruvian Courier's copy carries no attribution, on every network. Text,
 // notices, emotes, images, videos, audio and files are forwarded, a sticker as an image; anything else, a poll
 // included, fails in every chat with ErrNotSupported, as do a deleted message and a timer-change note. Each chat's copy gets that chat's
 // disappearing timer, and loses its formatting where the chat keeps none. A chat whose network isn't connected

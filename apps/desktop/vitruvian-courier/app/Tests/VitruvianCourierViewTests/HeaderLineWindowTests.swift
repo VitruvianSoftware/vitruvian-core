@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 import XCTest
 
-@testable import Courier
+@testable import VitruvianCourier
 
 /// With Liquid Glass, every column's header in the window's toolbar, on the line of the traffic lights: the chat
 /// list's name and menus, the chat's picture and name, and the thread's and Chat Info's titles each over its own pane
@@ -15,15 +15,15 @@ import XCTest
 /// The toolbar only exists in a real window on screen, and glass only draws there, so this opens one, as the app lays
 /// it out (a split view with the list and the chat, a thread and Chat Info open), and saves a picture of it as
 /// `header-line-glass.png` for a person to look at: the titles' line and each pane title's edge against its pane are
-/// what to check. Skipped unless `--test_env=COURIER_GLASS_SNAPSHOTS=1` on a Mac with a display, like the other glass
+/// what to check. Skipped unless `--test_env=VITRUVIAN_COURIER_GLASS_SNAPSHOTS=1` on a Mac with a display, like the other glass
 /// pictures (`LiquidGlassSnapshotTests`).
 @MainActor
 final class HeaderLineWindowTests: XCTestCase {
     private var suites: [String] = []
 
     override func setUpWithError() throws {
-        guard ProcessInfo.processInfo.environment["COURIER_GLASS_SNAPSHOTS"] == "1" else {
-            throw XCTSkip("needs a window on screen: set COURIER_GLASS_SNAPSHOTS=1 on a Mac with a display")
+        guard ProcessInfo.processInfo.environment["VITRUVIAN_COURIER_GLASS_SNAPSHOTS"] == "1" else {
+            throw XCTSkip("needs a window on screen: set VITRUVIAN_COURIER_GLASS_SNAPSHOTS=1 on a Mac with a display")
         }
         guard #available(macOS 26.0, *) else { throw XCTSkip("Liquid Glass needs macOS 26") }
     }
@@ -63,8 +63,8 @@ final class HeaderLineWindowTests: XCTestCase {
 
     private func openWindow(glass: Bool) throws -> (NSWindow, ConversationModel) {
         let app = AppModel(supervisor: EngineSupervisor(
-            enginePath: "/nonexistent/courier-engine",
-            dataDir: FileManager.default.temporaryDirectory.appendingPathComponent("courier-header-line"),
+            enginePath: "/nonexistent/vitruvian-courier-engine",
+            dataDir: FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-courier-header-line"),
             environment: [:], launcher: FoundationProcessLauncher()))
         let store = defaults()
         let inboxPreferences = InboxPreferences(defaults: store)

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// What a message row can ask for. The conversation (or the thread pane) gives each its call; a preview gives none.
@@ -35,7 +35,7 @@ struct MessageActions {
     var vote: (String, [String]) -> Void = { _, _ in }
     /// A thread's root: its replies, in the pane. Nil in the pane itself, which shows them already.
     var openThread: ((String) -> Void)?
-    /// The note for a timer-change message, in Courier's words.
+    /// The note for a timer-change message, in Vitruvian Courier's words.
     var timerNote: (TimelineMessage) -> String? = { _ in nil }
     /// Who to name beside a call note: the caller, in a group; nil in a one-to-one chat.
     var callCaller: (TimelineMessage) -> String? = { _ in nil }
@@ -273,7 +273,7 @@ struct MembershipRunRow: View {
     }
 }
 
-/// The bridge's note that the chat's disappearing timer changed, in Courier's words, as a line across the timeline:
+/// The bridge's note that the chat's disappearing timer changed, in Vitruvian Courier's words, as a line across the timeline:
 /// no bubble, no Sent mark. Its menu has Delete for Me, and "Change Setting" opens the timer's choices.
 private struct TimerNoteRow: View {
     let message: TimelineMessage
@@ -316,7 +316,7 @@ private struct TimerNoteRow: View {
     }
 }
 
-/// A bridge's notice of a call, in Courier's words, as a line across the timeline like a timer note: it is something
+/// A bridge's notice of a call, in Vitruvian Courier's words, as a line across the timeline like a timer note: it is something
 /// that happened, not anyone's words, so no bubble and no Sent mark. In a group, the caller's name is beside it; a
 /// one-to-one chat needs none. Its menu has Delete for Me.
 private struct CallNoteRow: View {

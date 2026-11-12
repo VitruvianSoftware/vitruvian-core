@@ -5,11 +5,11 @@ Status: design, 2026-11-09. Owner: the lead. Builders follow this; change it onl
 
 ## What the person gets
 
-- Courier's AI actions work: **Draft with AI**, **rewrite in a tone**, **translate a message**, **summarize a chat**,
+- Vitruvian Courier's AI actions work: **Draft with AI**, **rewrite in a tone**, **translate a message**, **summarize a chat**,
   and the `/draft`, `/translate`, `/summarize`, `/ai` slash commands.
 - They pick where the AI runs:
   - **On this Mac**: Apple Intelligence (macOS 26 or later, when the Mac supports it), **Ollama**, **LM Studio**,
-    **Unsloth Studio**. Courier finds these by itself.
+    **Unsloth Studio**. Vitruvian Courier finds these by itself.
   - **In the cloud, with their own key**: **Anthropic**, **Google AI Studio** (Gemini), **OpenAI**, or any
     **OpenAI-compatible** endpoint (base URL plus optional key).
 - AI output is never sent for them. It lands in the composer, or in a panel, for the person to edit and send.
@@ -19,7 +19,7 @@ Status: design, 2026-11-09. Owner: the lead. Builders follow this; change it onl
 ## Acceptance criteria (UAT tests these)
 
 1. With AI off (or no provider set), AI actions are disabled with the tooltip "Set up AI in Settings" (and slash
-   commands show the "Set up AI in Settings" notice), and Courier makes **no network request** to any AI host.
+   commands show the "Set up AI in Settings" notice), and Vitruvian Courier makes **no network request** to any AI host.
 2. Settings ▸ AI lists the providers in two groups, **On this Mac** and **Cloud**. A local server that is running
    shows as found with its model count; one that is not shows "Not running". A **Refresh** button re-checks.
 3. With Ollama running (this Mac has it on 127.0.0.1:11434), choosing Ollama fills the Model menu with its
@@ -37,9 +37,9 @@ Status: design, 2026-11-09. Owner: the lead. Builders follow this; change it onl
 9. Switching chats cancels an AI request still running for the old chat; its result never lands in the new chat.
 10. The test copy (`run_test_copy`) keeps its own Keychain items and settings, separate from the installed app.
 
-## Architecture (CourierCore, Swift; the app talks to providers, not the Go engine)
+## Architecture (VitruvianCourierCore, Swift; the app talks to providers, not the Go engine)
 
-Files (new unless noted), all under `apps/desktop/courier/app/Sources/CourierCore/AI/`:
+Files (new unless noted), all under `apps/desktop/vitruvian-courier/app/Sources/VitruvianCourierCore/AI/`:
 
 - `AIProviderKind.swift`: replaces `AIEngineChoice` (keep that name as a `typealias` so nothing else breaks).
   Cases and raw values (raw values are stored in UserDefaults; keep the three existing ones exactly):
@@ -68,7 +68,7 @@ Files (new unless noted), all under `apps/desktop/courier/app/Sources/CourierCor
     (`http://127.0.0.1:<port>/v1`, see detection) and Custom.
   - `AppleOnDeviceClient`: `#if canImport(FoundationModels)` and `if #available(macOS 26, *)`, using
     `SystemLanguageModel.default` (report its availability reason when unavailable). One model: "On-Device".
-    Courier's minimum stays macOS 14; on older systems this client reports unavailable.
+    Vitruvian Courier's minimum stays macOS 14; on older systems this client reports unavailable.
 - Timeouts: model list and detection 2 s (detection probes 0.4 s each); completions 60 s cloud, 180 s local.
   Map 401/403 to `.badKey`, 429 to `.rateLimited`, connection refused / offline to `.unreachable`, and read the
   provider's error message from the body when present.
@@ -99,7 +99,7 @@ Files (new unless noted), all under `apps/desktop/courier/app/Sources/CourierCor
 - `AIPreferences` (existing file): add `customBaseURL: String` and `selectedModelByProvider: [String: String]`
   (remember the model per provider). `selectedEngine` keeps its key. Defaults unchanged: AI off.
 
-## UI (Courier target)
+## UI (Vitruvian Courier target)
 
 - **Settings ▸ AI** (`AISettingsPane.swift`), top to bottom:
   1. Status banner: "AI is off", "Set up a provider", or "<Provider> · <model>" with a green dot.

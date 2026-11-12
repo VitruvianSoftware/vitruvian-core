@@ -4,7 +4,7 @@
 Subsystem blueprint grouping child modules under `apps/desktop`.
 
 ## Subdirectories & Boundaries
-- [courier](./courier/README.md): Subsystem blueprint grouping child modules under apps/desktop/courier.
+- [vitruvian-courier](./vitruvian-courier/README.md): Subsystem blueprint grouping child modules under apps/desktop/vitruvian-courier.
 - [home-speaker](./home-speaker/README.md): Contract for apps/desktop/home-speaker
 - [vitruvian](./vitruvian/README.md): Contract for apps/desktop/vitruvian
 - [vitruvian-code](./vitruvian-code/README.md): Contract for apps/desktop/vitruvian-code

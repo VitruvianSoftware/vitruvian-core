@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// `AppIconPrefsSubView.tsx` — grid of Courier's 8 clean-room vector app icons plus custom PNG/JPG/ICNS upload.
+/// `AppIconPrefsSubView.tsx` — grid of Vitruvian Courier's 8 clean-room vector app icons plus custom PNG/JPG/ICNS upload.
 public struct AppIconPickerView: View {
     @ObservedObject public var appearance: AppearancePreferences
     @State private var errorMessage: String?
@@ -124,7 +124,7 @@ public struct AppIconPickerView: View {
             panel.canChooseDirectories = false
             panel.canChooseFiles = true
             panel.allowedContentTypes = [.png, .jpeg, .icns]
-            panel.message = String(localized: "Choose a PNG, JPG, or ICNS image for Courier’s Dock icon")
+            panel.message = String(localized: "Choose a PNG, JPG, or ICNS image for Vitruvian Courier’s Dock icon")
             panel.prompt = String(localized: "Use Icon")
         }), let url = urls.first else {
             return

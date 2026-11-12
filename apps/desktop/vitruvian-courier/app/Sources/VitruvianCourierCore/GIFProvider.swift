@@ -37,7 +37,7 @@ public protocol GIFProvider: Sendable {
 
 extension GIFProvider {
     public var unavailableReason: String {
-        String(localized: "Online GIF search isn’t available yet in Courier. You can still send GIFs from your recent history or local files on this Mac.")
+        String(localized: "Online GIF search isn’t available yet in Vitruvian Courier. You can still send GIFs from your recent history or local files on this Mac.")
     }
 }
 
@@ -45,7 +45,7 @@ public struct StubGIFProvider: GIFProvider {
     public init() {}
     public var isAvailable: Bool { false }
     public var unavailableReason: String {
-        String(localized: "Online GIF search isn’t available yet in Courier. You can still send GIFs from your recent history or local files on this Mac.")
+        String(localized: "Online GIF search isn’t available yet in Vitruvian Courier. You can still send GIFs from your recent history or local files on this Mac.")
     }
     public func trending() async throws -> [GIFCandidate] { [] }
     public func search(_ query: String) async throws -> [GIFCandidate] { [] }

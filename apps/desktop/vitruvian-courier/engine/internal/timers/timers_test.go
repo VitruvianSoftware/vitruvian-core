@@ -141,7 +141,7 @@ func newRig(t *testing.T, start time.Time, ent entitlement.Provider) *rig {
 }
 
 // newRigAt is newRig on the database at path, so a test can stop the loop, close the store and start again on the
-// same courier.db, as Courier quitting and opening does.
+// same courier.db, as Vitruvian Courier quitting and opening does.
 func newRigAt(t *testing.T, path string, start time.Time, ent entitlement.Provider) *rig {
 	t.Helper()
 	s, err := store.Open(path)
@@ -489,11 +489,11 @@ func TestHeldMessageSentAfterRestartOnce(t *testing.T) {
 	r.t.Poke()
 	require.Equal(t, 5*time.Second, r.clock.settle(t))
 	r.clock.advance(4 * time.Second)
-	stop() // Courier quits a second before the window ends
+	stop() // Vitruvian Courier quits a second before the window ends
 	require.Empty(t, d.handedOff())
 	require.NoError(t, r.s.Close())
 
-	// Courier opens again 10 s after the window ended: the engine fails interrupted sends first (main.go), which
+	// Vitruvian Courier opens again 10 s after the window ended: the engine fails interrupted sends first (main.go), which
 	// leaves a held message alone, and the loop hands it off once.
 	r = newRigAt(t, path, due.Add(10*time.Second), entitlement.Always{})
 	n, err := r.s.FailInterruptedSends(ctx)
@@ -536,7 +536,7 @@ func TestHeldMessageTooLateBecomesNotSent(t *testing.T) {
 	r := newRigAt(t, path, t0, entitlement.Always{})
 	r.chat(t, "!r", t0.Add(-time.Hour))
 	require.NoError(t, r.s.Hold(ctx, heldMessage("!r", "$h", t0), due))
-	require.NoError(t, r.s.Close()) // Courier quits during the window
+	require.NoError(t, r.s.Close()) // Vitruvian Courier quits during the window
 
 	r = newRigAt(t, path, due.Add(2*time.Hour), entitlement.Always{})
 	_, err := r.s.FailInterruptedSends(ctx)

@@ -117,7 +117,7 @@ func TestUnreadFromIsNeverSent(t *testing.T) {
 	none(t, w.n.Unreads, "an unread mark")
 }
 
-// Reply Privately answers Courier's own one-to-one chat with the person first, without the network: on the group's
+// Reply Privately answers Vitruvian Courier's own one-to-one chat with the person first, without the network: on the group's
 // login, even while it is down. A group every account shares looks under the login actually in it (C15), never "".
 func TestDirectChatFindsCourierOwnChatFirst(t *testing.T) {
 	ctx := context.Background()

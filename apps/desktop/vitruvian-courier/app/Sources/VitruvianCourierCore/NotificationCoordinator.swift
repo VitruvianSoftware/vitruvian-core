@@ -16,7 +16,7 @@ public protocol NotificationDelivering: AnyObject {
     func clear(roomID: String)
     /// Takes down one notification, by its id (`NotificationContent.eventID`), if it is shown.
     func remove(notificationID: String)
-    /// Takes down all delivered and pending notifications (e.g. when Courier locks).
+    /// Takes down all delivered and pending notifications (e.g. when Vitruvian Courier locks).
     func clearAll()
     /// Opens the macOS System Settings Notifications pane.
     func openSystemNotificationSettings()
@@ -125,10 +125,10 @@ final class TaskNotificationTimerScheduler: NotificationTimerScheduling {
 ///
 /// **Send later** (Review Focus 3): a scheduled message that won't go by itself is told once. One canceled because
 /// they wrote first says "A scheduled message to Ann wasn’t sent: they wrote first."; one that missed its time while
-/// Courier was closed says it missed its time. Every chat's list is read when the engine is greeted (a message missed
-/// while Courier was closed is found then), and a chat's whenever the engine says its scheduled messages changed.
+/// Vitruvian Courier was closed says it missed its time. Every chat's list is read when the engine is greeted (a message missed
+/// while Vitruvian Courier was closed is found then), and a chat's whenever the engine says its scheduled messages changed.
 /// What was told is kept in UserDefaults, by chat, message, state and when it was last set, so reading the list
-/// again, or Courier starting again, tells nothing twice; a message rescheduled and then canceled again is news. While
+/// again, or Vitruvian Courier starting again, tells nothing twice; a message rescheduled and then canceled again is news. While
 /// the person is looking at that chat there is no banner (its strip says so), and it counts as told.
 ///
 /// **Someone starts typing** ("Notify when someone starts typing", off by default): a `typing` change reads the
@@ -463,7 +463,7 @@ public final class NotificationCoordinator {
             told.removeAll { $0.hasPrefix(Self.toldPrefix(roomID)) && !current.contains($0) }
         }
         if told.count > Self.maxToldScheduled { told.removeFirst(told.count - Self.maxToldScheduled) }
-        // Kept before it is told: a Courier that stops in between tells it never rather than twice.
+        // Kept before it is told: a Vitruvian Courier that stops in between tells it never rather than twice.
         defaults.set(told, forKey: Self.toldScheduledKey)
         for message in news {
             // The chat in front shows it in the strip above its composer: told (kept above), with no banner, as a
@@ -688,7 +688,7 @@ public final class NotificationCoordinator {
     // MARK: - What is done on a notification
 
     /// Copies the most recently extracted OTP code for `roomID` to the clipboard.
-    /// While locked, drops the action and brings Courier forward to the lock screen.
+    /// While locked, drops the action and brings Vitruvian Courier forward to the lock screen.
     public func copyOTPCode(forRoomID roomID: String) {
         guard !isCurrentlyLocked else {
             showWindow()
@@ -715,7 +715,7 @@ public final class NotificationCoordinator {
     }
 
     /// A click: the chat opens in the main window, which comes forward.
-    /// While locked, drops the room selection and brings Courier forward to the lock screen.
+    /// While locked, drops the room selection and brings Vitruvian Courier forward to the lock screen.
     public func open(roomID: String) {
         open(NotificationTarget(roomID: roomID))
     }
@@ -736,7 +736,7 @@ public final class NotificationCoordinator {
         showWindow()
     }
 
-    /// "Mark as Read". While locked, drops the action and brings Courier forward to the lock screen.
+    /// "Mark as Read". While locked, drops the action and brings Vitruvian Courier forward to the lock screen.
     public func markRead(roomID: String) async {
         guard !isCurrentlyLocked else {
             showWindow()
@@ -781,7 +781,7 @@ public final class NotificationCoordinator {
 
     /// "Remind in 1 Hour" and "Remind in 8 Hours": a reminder `seconds` from now, brought back as the person's
     /// default says. Like Mark as Read, a failure is ignored; the buttons are only offered with the plan, and a
-    /// denial or a dead engine changes nothing. While locked, drops the action and brings Courier forward.
+    /// denial or a dead engine changes nothing. While locked, drops the action and brings Vitruvian Courier forward.
     public func remind(roomID: String, after seconds: TimeInterval) async {
         guard !isCurrentlyLocked else {
             showWindow()
@@ -796,7 +796,7 @@ public final class NotificationCoordinator {
     /// The inline "Reply": sends the typed text to the chat. If it cannot be sent (the engine is not up, or refuses),
     /// the text goes into that chat's draft and a notification says so, so the words are never lost. A send the
     /// engine took but stored failed, or waiting for its network, is in the chat already: a notification says that
-    /// it wasn't sent, or that it goes when the network is back. While locked, drops the action and brings Courier forward.
+    /// it wasn't sent, or that it goes when the network is back. While locked, drops the action and brings Vitruvian Courier forward.
     ///
     /// A notification for a reply that stays in its thread replies in that thread (`threadRootID`).
     public func reply(roomID: String, text: String, threadRootID: String? = nil) async {

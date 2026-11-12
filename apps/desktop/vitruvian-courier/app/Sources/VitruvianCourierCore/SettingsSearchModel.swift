@@ -4,7 +4,7 @@
 import Combine
 import Foundation
 
-/// Top-level pane in Courier's two-column Settings window (`⌘,`, `PrefsPanes.tsx`).
+/// Top-level pane in Vitruvian Courier's two-column Settings window (`⌘,`, `PrefsPanes.tsx`).
 public enum SettingsPaneID: String, CaseIterable, Codable, Sendable, Identifiable {
     case general
     case appearance
@@ -32,7 +32,7 @@ public enum SettingsPaneID: String, CaseIterable, Codable, Sendable, Identifiabl
         case .bridges: String(localized: "Bridges")
         case .storage: String(localized: "Storage")
         case .ai: String(localized: "AI")
-        case .plan: String(localized: "Courier Plan")
+        case .plan: String(localized: "Vitruvian Courier Plan")
         case .integrations: String(localized: "Integrations")
         case .about: String(localized: "About")
         }
@@ -73,7 +73,7 @@ public enum SettingBadge: String, Codable, Equatable, Sendable {
     }
 }
 
-/// Metadata entry for a single setting in Courier's Settings catalog (`preference-definitions.tsx`).
+/// Metadata entry for a single setting in Vitruvian Courier's Settings catalog (`preference-definitions.tsx`).
 public struct SettingDefinition: Equatable, Sendable, Identifiable {
     public let id: String
     public let pane: SettingsPaneID
@@ -308,21 +308,21 @@ public final class SettingsNavigationModel: ObservableObject {
             id: "general.openAtLogin",
             pane: .general,
             section: "Startup & Security",
-            title: "Open Courier at login",
+            title: "Open Vitruvian Courier at login",
             keywords: ["login item", "launch at login", "startup", "open at login"]
         ),
         SettingDefinition(
             id: "general.keepMinimizedOnLaunch",
             pane: .general,
             section: "Startup & Security",
-            title: "Keep Courier minimized on launch",
+            title: "Keep Vitruvian Courier minimized on launch",
             keywords: ["minimized", "launch", "startup", "hidden"]
         ),
         SettingDefinition(
             id: "general.quitOnClose",
             pane: .general,
             section: "Startup & Security",
-            title: "Quit Courier when closing the main window",
+            title: "Quit Vitruvian Courier when closing the main window",
             keywords: ["quit", "close window", "tray", "minimize"]
         ),
         SettingDefinition(
@@ -336,7 +336,7 @@ public final class SettingsNavigationModel: ObservableObject {
             id: "general.lockTimeout",
             pane: .general,
             section: "Startup & Security",
-            title: "Lock Courier after",
+            title: "Lock Vitruvian Courier after",
             keywords: ["touch id", "lock timeout", "idle", "auto-lock"]
         ),
         SettingDefinition(
@@ -787,21 +787,21 @@ public final class SettingsNavigationModel: ObservableObject {
         SettingDefinition(
             id: "about.version",
             pane: .about,
-            section: "About Courier",
-            title: "Courier version & build",
-            keywords: ["version", "build", "about courier"]
+            section: "About Vitruvian Courier",
+            title: "Vitruvian Courier version & build",
+            keywords: ["version", "build", "about vitruvian courier"]
         ),
         SettingDefinition(
             id: "about.updates",
             pane: .about,
-            section: "About Courier",
+            section: "About Vitruvian Courier",
             title: "Updates",
             keywords: ["update", "upgrade", "new version", "check for updates", "release", "download"]
         ),
         SettingDefinition(
             id: "about.changelog",
             pane: .about,
-            section: "About Courier",
+            section: "About Vitruvian Courier",
             title: "View Changelog",
             keywords: ["changelog", "release notes", "what's new"]
         ),
@@ -864,11 +864,11 @@ public final class SettingsNavigationModel: ObservableObject {
             keywords: ["slash commands", "/ai", "/translate", "/summarize", "/draft"]
         ),
 
-        // MARK: - Courier Plan (2)
+        // MARK: - Vitruvian Courier Plan (2)
         SettingDefinition(
             id: "plan.overview",
             pane: .plan,
-            section: "Courier Plan",
+            section: "Vitruvian Courier Plan",
             title: "Go Unlimited",
             keywords: ["plan", "subscription", "unlimited", "plus", "available with a plan", "accounts limit"]
         ),

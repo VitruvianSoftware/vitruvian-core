@@ -1,7 +1,7 @@
 # Sqlite
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/engine/internal/sqlite`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/engine/internal/sqlite`.
 
 ## Interface
 - `[open.go:PrivateDir]`
@@ -16,4 +16,4 @@ Component package providing implementation for `apps/desktop/courier/engine/inte
 - [open.go:48]: `if err = os.Chmod(p, 0o600); err != nil && !errors.Is(err, fs.ErrNotExist) {`
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/engine/internal/sqlite/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/engine/internal/sqlite/...`

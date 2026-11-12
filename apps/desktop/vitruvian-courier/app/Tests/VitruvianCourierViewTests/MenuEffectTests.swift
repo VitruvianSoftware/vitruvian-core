@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 import XCTest
 
-@testable import Courier
+@testable import VitruvianCourier
 
 /// The menu bar's items do what their titles say, with the app's own wiring.
 ///
@@ -17,7 +17,7 @@ import XCTest
 /// which SwiftUI ignores since macOS 14 ("Please use SettingsLink for opening the Settings scene").
 ///
 /// What only a running app shows (a window actually on screen) is checked by hand with the test copy
-/// (`bazel run --config=macos-app //apps/desktop/courier/app:run_test_copy`, README.md).
+/// (`bazel run --config=macos-app //apps/desktop/vitruvian-courier/app:run_test_copy`, README.md).
 @MainActor
 final class MenuEffectTests: XCTestCase {
     private var dataDirectory: URL?
@@ -26,7 +26,7 @@ final class MenuEffectTests: XCTestCase {
     /// stand-in for SwiftUI's openSettings and openWindow, which only a running app has.
     private func makeApp() throws -> (delegate: AppDelegate, settingsOpened: () -> Int, mainWindowOpened: () -> Int) {
         _ = NSApplication.shared
-        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("courier-menu-\(UUID().uuidString)")
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-courier-menu-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         dataDirectory = folder
         setenv(EngineLocation.dataDirectoryVariable, folder.path, 1)
@@ -43,13 +43,13 @@ final class MenuEffectTests: XCTestCase {
         if let dataDirectory { try? FileManager.default.removeItem(at: dataDirectory) }
     }
 
-    /// Courier ▸ About Courier, Check for Updates…, Settings… (and ⌘,), Accounts…, Help ▸ Report a Problem…, Privacy
+    /// Vitruvian Courier ▸ About Vitruvian Courier, Check for Updates…, Settings… (and ⌘,), Accounts…, Help ▸ Report a Problem…, Privacy
     /// & Security and Changelog, the ⌘/ sheet's Customize Shortcuts…: each opens the Settings window, at its pane.
     func testEverySettingsItemOpensTheSettingsWindowAtItsPane() throws {
         let app = try makeApp()
         let navigation = app.delegate.settingsNavigation
         let viaCoordinator: [(String, SettingsSection, SettingsPaneID)] = [
-            ("About Courier", .about, .about),
+            ("About Vitruvian Courier", .about, .about),
             ("Check for Updates…", .updates, .about),
             ("Accounts…", .accounts, .accounts),
             ("Help ▸ Privacy & Security", .privacy, .about),
@@ -117,7 +117,7 @@ final class MenuEffectTests: XCTestCase {
         XCTAssertLessThan(delegate.appearance.zoomPercent, 100)
         delegate.appearance.zoomPercent = zoom
 
-        // Courier ▸ Search… and Command Bar…: the panels MainWindow overlays.
+        // Vitruvian Courier ▸ Search… and Command Bar…: the panels MainWindow overlays.
         XCTAssertTrue(dispatcher.perform("Search"))
         XCTAssertNotEqual(delegate.search.phase, .closed)
         delegate.search.close()
@@ -125,7 +125,7 @@ final class MenuEffectTests: XCTestCase {
         XCTAssertTrue(delegate.commandBar.isPresented)
         delegate.commandBar.close()
 
-        // Courier ▸ Focus Courier: the main window is asked for (opened again if it was closed).
+        // Vitruvian Courier ▸ Focus Vitruvian Courier: the main window is asked for (opened again if it was closed).
         let opened = app.mainWindowOpened()
         XCTAssertTrue(dispatcher.perform("Focus App"))
         XCTAssertEqual(app.mainWindowOpened(), opened + 1)

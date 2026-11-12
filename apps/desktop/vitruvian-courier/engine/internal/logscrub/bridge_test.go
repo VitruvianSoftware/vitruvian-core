@@ -128,7 +128,7 @@ func TestBridgeLinesNameNoOne(t *testing.T) {
 	for _, shape := range []*regexp.Regexp{
 		regexp.MustCompile(`\+\d[\d ().-]{5,}\d|\d{6,}|\d{3}[ .-]\d{3}[ .-]\d{4}`), // phone-number-shaped
 		regexp.MustCompile(`[@!#$][^\s"\\]*:courier\.local`),                       // a Matrix user, room or alias
-		regexp.MustCompile(`\$[0-9a-f]{32}`),                                       // a Courier event ID
+		regexp.MustCompile(`\$[0-9a-f]{32}`),                                       // a Vitruvian Courier event ID
 	} {
 		require.Empty(t, shape.FindAllString(out, 5), "the scrubbed log keeps a string shaped like an ID")
 	}

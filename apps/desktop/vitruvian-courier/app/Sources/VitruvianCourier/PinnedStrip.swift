@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// Pinned chats above the list, as compact avatars (Settings ▸ Inbox ▸ "Show pinned chats as full rows" puts them

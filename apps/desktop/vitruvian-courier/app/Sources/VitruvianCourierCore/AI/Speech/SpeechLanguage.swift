@@ -3,7 +3,7 @@
 
 import Foundation
 
-/// Maps Courier's transcription language choices (`"Auto-Detect"` or a named language from
+/// Maps Vitruvian Courier's transcription language choices (`"Auto-Detect"` or a named language from
 /// `AIPreferences.supportedTranslationLanguages`) to an Apple `Locale` or an OpenAI Whisper ISO-639-1 code.
 public enum SpeechLanguage {
     public static let autoDetect = "Auto-Detect"

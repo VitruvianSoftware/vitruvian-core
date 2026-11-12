@@ -1,7 +1,7 @@
 # Host
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/engine/internal/host`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/engine/internal/host`.
 
 ## Interface
 - `[host.go:Host]`
@@ -22,4 +22,4 @@ Component package providing implementation for `apps/desktop/courier/engine/inte
 - [host.go:152]: `// sql.DB.Close does not wait for connections in use.`
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/engine/internal/host/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/engine/internal/host/...`

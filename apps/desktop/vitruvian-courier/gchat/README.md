@@ -1,7 +1,7 @@
 # Gchat
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/gchat`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/gchat`.
 
 ## Interface
 - Internal implementation components
@@ -17,4 +17,4 @@ Component package providing implementation for `apps/desktop/courier/gchat`.
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/gchat/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/gchat/...`

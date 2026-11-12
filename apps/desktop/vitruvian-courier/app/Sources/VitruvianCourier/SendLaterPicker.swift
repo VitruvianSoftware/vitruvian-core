@@ -1,11 +1,11 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// Send Later (02 §2.6, ⌘⇧L): Remind Me's times, or a day and time, and whether it still goes if they write first.
-/// Courier sends it itself, from this Mac, so the footer says the Mac must be awake with Courier running then.
+/// Vitruvian Courier sends it itself, from this Mac, so the footer says the Mac must be awake with Vitruvian Courier running then.
 struct SendLaterPicker: View {
     let composer: ComposerModel
     let preferences: ComposerPreferences
@@ -54,7 +54,7 @@ struct SendLaterPicker: View {
                     .foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Text(String(localized: "Courier sends it from this Mac. It needs to be running, and your Mac awake, at that time."))
+            Text(String(localized: "Vitruvian Courier sends it from this Mac. It needs to be running, and your Mac awake, at that time."))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

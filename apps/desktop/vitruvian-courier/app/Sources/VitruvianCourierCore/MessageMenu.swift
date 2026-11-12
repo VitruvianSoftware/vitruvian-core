@@ -399,7 +399,7 @@ public enum LinkAddress {
         let scheme = text[..<colon]
         guard let first = scheme.first, first.isASCII, first.isLetter,
               scheme.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || "+-.".contains($0)) }) else { return false }
-        // The schemes Courier sends are schemes whatever follows them ("mailto:2fast@example.test").
+        // The schemes Vitruvian Courier sends are schemes whatever follows them ("mailto:2fast@example.test").
         if ["http", "https", "mailto"].contains(scheme.lowercased()) { return true }
         let after = text[text.index(after: colon)...]
         return !(after.first?.isNumber ?? false)

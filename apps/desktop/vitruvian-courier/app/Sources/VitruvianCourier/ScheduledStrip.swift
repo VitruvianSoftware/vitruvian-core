@@ -1,7 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// Above the composer, the open chat's messages to send later (01 §5's ScheduledMessages), from the model.
@@ -142,7 +142,7 @@ private struct ScheduledRow: View {
     private var stateLine: String? {
         switch message.state {
         case .canceled: String(localized: "Canceled: they wrote first")
-        case .missed: String(localized: "Missed its time while Courier was closed")
+        case .missed: String(localized: "Missed its time while Vitruvian Courier was closed")
         default: nil
         }
     }

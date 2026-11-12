@@ -134,7 +134,7 @@ func (b *syncBuffer) String() string {
 }
 
 // Never log who: typing and receipts carry user IDs, and the engine logs none of them (at the level the engine runs
-// at, warn, through its log writer), even when the network refuses typing or a receipt names nothing Courier has. My
+// at, warn, through its log writer), even when the network refuses typing or a receipt names nothing Vitruvian Courier has. My
 // own ID is "@me:courier.local" on every Mac, so it names no one; a contact's ID (their ghost) must never appear.
 //
 // The warnings this reads are bridgev2's own: its handleMatrixTyping answers success whatever the network says and
@@ -161,7 +161,7 @@ func TestTypingNeverLogsWho(t *testing.T) {
 	w.down()
 	require.NoError(t, w.a.SetTyping(ctx, room, true))
 	w.up()
-	// A delivery and a read receipt for a message Courier doesn't have, and the contact's read receipt. bridgev2 itself
+	// A delivery and a read receipt for a message Vitruvian Courier doesn't have, and the contact's read receipt. bridgev2 itself
 	// warns of the second ("No target message found for read receipt") with the contact's network ID and the chat's in
 	// its log context (remote_sender, portal_id): the engine's log writer (logscrub) keeps neither.
 	n.Receipt(w.login, "chat1", "alice", []string{"no-such-message"}, true)

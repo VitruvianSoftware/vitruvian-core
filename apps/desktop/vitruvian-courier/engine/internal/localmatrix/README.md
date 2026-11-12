@@ -1,7 +1,7 @@
 # Localmatrix
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/engine/internal/localmatrix`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/engine/internal/localmatrix`.
 
 ## Interface
 - `[connector.go:Connector]`
@@ -35,4 +35,4 @@ Component package providing implementation for `apps/desktop/courier/engine/inte
 - [intent.go:338]: `defer os.Remove(res.ReplacementFile)`
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/engine/internal/localmatrix/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/engine/internal/localmatrix/...`

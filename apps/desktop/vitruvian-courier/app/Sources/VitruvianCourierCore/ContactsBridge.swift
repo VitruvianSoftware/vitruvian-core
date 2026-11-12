@@ -70,7 +70,7 @@ public struct SenderHoverCardState: Equatable, Sendable {
 ///
 /// Contacts access is requested only when the user opens a hover card's Contacts section or saves a contact,
 /// never at launch. If denied or restricted, it never prompts again. Contact data stays strictly on-device
-/// for matching and display and is never sent to the Courier engine or any network.
+/// for matching and display and is never sent to the Vitruvian Courier engine or any network.
 @MainActor
 public final class ContactsBridge: ObservableObject {
     @Published public private(set) var status: ContactsAuthStatus

@@ -1,7 +1,7 @@
 # Fuzz Targets
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/gchat/fuzz/fuzz_targets`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/gchat/fuzz/fuzz_targets`.
 
 ## Interface
 - Internal implementation components
@@ -20,4 +20,4 @@ Component package providing implementation for `apps/desktop/courier/gchat/fuzz/
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/gchat/fuzz/fuzz_targets/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/gchat/fuzz/fuzz_targets/...`

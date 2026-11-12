@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// Adding a network: the picker, the steps, the sign-in window's ends and Telegram's set-up, against a scripted
 /// engine that answers what the test says and writes down what it was asked. Every value here is made up.
@@ -27,7 +27,7 @@ final class LoginFlowModelTests: XCTestCase {
         var onReload: () -> Void = {}
     }
 
-    /// Courier's own Telegram app ID, as a finished app carries it. Made up.
+    /// Vitruvian Courier's own Telegram app ID, as a finished app carries it. Made up.
     private nonisolated static let builtIn = TelegramCredentials(apiID: "4242424", apiHash: String(repeating: "0a", count: 16))
 
     /// A wait for Telegram of three looks that takes no time.
@@ -44,7 +44,7 @@ final class LoginFlowModelTests: XCTestCase {
         Account(network: "signal", displayName: "Signal", flows: ["qr"], state: .connected, remoteName: "+1 555 0100"),
     ]
 
-    /// - Parameter builtIn: the app ID packaged into the app; by default it has one, like a finished Courier.
+    /// - Parameter builtIn: the app ID packaged into the app; by default it has one, like a finished Vitruvian Courier.
     private func make(accounts: [Account] = LoginFlowModelTests.accounts,
                       builtIn: TelegramCredentials? = LoginFlowModelTests.builtIn,
                       keychain: [String: String] = [:]) -> Harness {
@@ -248,7 +248,7 @@ final class LoginFlowModelTests: XCTestCase {
     }
 
     /// Reconnect on one account's banner signs that account in again (login.start's `account_id`). If the person
-    /// signs in a different account instead, both are kept, and Courier says so in its own words (Ruling 11).
+    /// signs in a different account instead, both are kept, and Vitruvian Courier says so in its own words (Ruling 11).
     func testReconnectStartsWithTheLoginID() async {
         let harness = make()
         var other = step(.complete, remoteName: "+1 555 0109")
@@ -261,7 +261,7 @@ final class LoginFlowModelTests: XCTestCase {
         XCTAssertEqual(harness.caller.calls.first, .start(network: "whatsapp", flow: "qr", accountID: "a1"))
         XCTAssertEqual(harness.model.screen, .linked(network: "whatsapp", remoteName: "+1 555 0109"))
         XCTAssertEqual(harness.model.linkedNote, "That signed in a different account, so both are now linked.",
-                       "the account asked for has no name Courier knows: the plain words")
+                       "the account asked for has no name Vitruvian Courier knows: the plain words")
 
         // The next sign-in starts with no note.
         harness.caller.answer("start", qr("code-2"))
@@ -592,7 +592,7 @@ final class LoginFlowModelTests: XCTestCase {
                        "spaces around a pasted value don't count, as in the engine")
     }
 
-    /// A Courier that carries its own app ID never shows the keys screen: Telegram goes straight to its QR code.
+    /// A Vitruvian Courier that carries its own app ID never shows the keys screen: Telegram goes straight to its QR code.
     func testTelegramWithABuiltInAppIDGoesStraightToTheQRCode() async {
         let harness = make()
         harness.caller.answer("start", qr("tg-code"))

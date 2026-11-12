@@ -120,7 +120,11 @@ pub fn run(args: &[String]) -> i32 {
     let mut failed = 0;
     for (label, paths, want) in [
         ("the released app (:VitruvianCourier)", &release, false),
-        ("the test copy (:VitruvianCourierTestCopy)", &test_copy, true),
+        (
+            "the test copy (:VitruvianCourierTestCopy)",
+            &test_copy,
+            true,
+        ),
     ] {
         let dest = tmp.join(if want { "test-copy" } else { "release" });
         let bytes = match bundled_engine(paths, &dest)

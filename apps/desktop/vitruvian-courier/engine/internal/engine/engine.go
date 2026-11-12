@@ -1,7 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package engine runs one bridge host per chat network over courier's single local store.
+// Package engine runs one bridge host per chat network over Vitruvian Courier's single local store.
 package engine
 
 import (

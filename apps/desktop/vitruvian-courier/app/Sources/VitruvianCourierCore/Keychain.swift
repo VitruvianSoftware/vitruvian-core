@@ -12,7 +12,7 @@ public protocol CredentialStore: Sendable {
     func delete(account: String) throws
 }
 
-/// Telegram's api_id and api_hash. A finished Courier carries its own (TelegramBuiltIn); a build without one asks
+/// Telegram's api_id and api_hash. A finished Vitruvian Courier carries its own (TelegramBuiltIn); a build without one asks
 /// the person once and keeps the pair in the Keychain. Either way the engine gets them only in its environment, at
 /// launch, and nothing ever logs or writes them anywhere else (TelegramCredentialSource says which is used).
 public struct TelegramCredentials: Equatable, Sendable {

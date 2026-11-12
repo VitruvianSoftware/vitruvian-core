@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// How the settings shape a row (Settings ▸ Inbox ▸ Chat list), read once per list draw.

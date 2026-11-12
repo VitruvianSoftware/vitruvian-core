@@ -49,7 +49,7 @@ idle ──⌘⇧D──▶ asking permission ──granted──▶ listening �
   whitespace. The existing draft is never replaced or lost. A failure leaves the draft as it was.
 - Switching chats while listening cancels it and inserts nothing.
 - Permissions: microphone always; speech recognition for the Apple engine where macOS asks for it.
-  Denied → calm notice "Courier needs microphone access for Talk to Type." with an
+  Denied → calm notice "Vitruvian Courier needs microphone access for Talk to Type." with an
   "Open System Settings" action. Recording stops after 5 minutes with the text so far.
 
 ## Voice-note transcription
@@ -69,7 +69,7 @@ Replace "Voice transcription isn't wired up yet" with a status line for the acti
 
 ## Code shape
 
-- `CourierCore/AI/Speech/`: `SpeechEngine` protocol (`transcribe(file:language:)` and
+- `VitruvianCourierCore/AI/Speech/`: `SpeechEngine` protocol (`transcribe(file:language:)` and
   `startLive(language:) -> AsyncThrowingStream<SpeechUpdate>` + `stop()`/`cancel()`),
   `AppleSpeechEngine`, `WhisperClient` (uses the existing `HTTPTransport`), `SpeechEngineFactory`
   (chooses from preferences + key store), `TalkToTypeModel` (the state machine above, owned by the

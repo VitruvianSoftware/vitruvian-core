@@ -1,7 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import CourierCore
+import VitruvianCourierCore
 import Foundation
 import XCTest
 
@@ -437,7 +437,7 @@ final class AccountsAndBridgesModelTests: XCTestCase {
             let text = err.localizedDescription
             XCTAssertFalse(text.isEmpty, "EngineError \(err) must have a non-empty localizedDescription")
             XCTAssertFalse(
-                text.contains("CourierCore.EngineError"),
+                text.contains("VitruvianCourierCore.EngineError"),
                 "EngineError \(err) localizedDescription must be plain English, got: \(text)"
             )
             XCTAssertFalse(
@@ -472,17 +472,17 @@ final class AccountsAndBridgesModelTests: XCTestCase {
 
         await model.removeAccount(network: "telegram", accountID: "tg-missing", logoutRemote: false, deleteChats: false)
         let removeError: String = try XCTUnwrap(model.lastError)
-        XCTAssertFalse(removeError.contains("CourierCore.EngineError"), "Failed Remove Account must show plain English: \(removeError)")
+        XCTAssertFalse(removeError.contains("VitruvianCourierCore.EngineError"), "Failed Remove Account must show plain English: \(removeError)")
         XCTAssertEqual(removeError, "That account or chat is no longer there.")
 
         await model.restartBridge(network: "telegram")
         let restartError: String = try XCTUnwrap(model.lastError)
-        XCTAssertFalse(restartError.contains("CourierCore.EngineError"), "Failed Restart Bridge must show plain English: \(restartError)")
+        XCTAssertFalse(restartError.contains("VitruvianCourierCore.EngineError"), "Failed Restart Bridge must show plain English: \(restartError)")
         XCTAssertEqual(restartError, "This network isn’t running.")
 
         await model.updateSubAccount(network: "telegram", accountID: "tg1", subID: "!folder:courier.local", enabled: true)
         let subAccountError: String = try XCTUnwrap(model.lastError)
-        XCTAssertFalse(subAccountError.contains("CourierCore.EngineError"), "Failed sub-account toggle must show plain English: \(subAccountError)")
+        XCTAssertFalse(subAccountError.contains("VitruvianCourierCore.EngineError"), "Failed sub-account toggle must show plain English: \(subAccountError)")
         XCTAssertEqual(subAccountError, "That isn’t accepted. Check it and try again.")
     }
     /// A failure to read the bridges (an engine restarting, say) goes once a read works: it doesn't stay in red.

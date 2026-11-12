@@ -15,7 +15,7 @@ enum Snapshot {
     static var directory: URL {
         let environment = ProcessInfo.processInfo.environment
         let base = environment["TEST_UNDECLARED_OUTPUTS_DIR"].map { URL(fileURLWithPath: $0) }
-            ?? FileManager.default.temporaryDirectory.appendingPathComponent("CourierViewTests")
+            ?? FileManager.default.temporaryDirectory.appendingPathComponent("VitruvianCourierViewTests")
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         return base
     }

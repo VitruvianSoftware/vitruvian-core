@@ -3,10 +3,10 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// Quitting hands every held message to the engine and waits for its answer (never fire-and-forget), but no longer
-/// than its bound, so a stuck engine can't keep Courier from quitting.
+/// than its bound, so a stuck engine can't keep Vitruvian Courier from quitting.
 @MainActor
 final class QuitTests: XCTestCase {
     private var servers: [TestEngineServer] = []
@@ -24,9 +24,9 @@ final class QuitTests: XCTestCase {
         servers.append(server)
         let launcher = FakeLauncher { _, process in process.printReady(socket: server.path) }
         let supervisor = EngineSupervisor(
-            enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",
-            dataDir: URL(fileURLWithPath: "/tmp/courier-test-data"), environment: [:], launcher: launcher,
-            credentials: InMemoryCredentialStore(), clientName: "Courier/test", timing: FakeTime().timing())
+            enginePath: "/Applications/Vitruvian Courier.app/Contents/Helpers/vitruvian-courier-engine",
+            dataDir: URL(fileURLWithPath: "/tmp/vitruvian-courier-test-data"), environment: [:], launcher: launcher,
+            credentials: InMemoryCredentialStore(), clientName: "Vitruvian Courier/test", timing: FakeTime().timing())
         let app = AppModel(supervisor: supervisor)
         apps.append(app)
         app.start()
@@ -65,9 +65,9 @@ final class QuitTests: XCTestCase {
     func testQuitWithNoEngineDoesNothing() async {
         let launcher = FakeLauncher { _, _ in }
         let supervisor = EngineSupervisor(
-            enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",
-            dataDir: URL(fileURLWithPath: "/tmp/courier-test-data"), environment: [:], launcher: launcher,
-            credentials: InMemoryCredentialStore(), clientName: "Courier/test", timing: FakeTime().timing())
+            enginePath: "/Applications/Vitruvian Courier.app/Contents/Helpers/vitruvian-courier-engine",
+            dataDir: URL(fileURLWithPath: "/tmp/vitruvian-courier-test-data"), environment: [:], launcher: launcher,
+            credentials: InMemoryCredentialStore(), clientName: "Vitruvian Courier/test", timing: FakeTime().timing())
         let app = AppModel(supervisor: supervisor)
         await app.sendHeldMessages()
         XCTAssertNil(app.client)

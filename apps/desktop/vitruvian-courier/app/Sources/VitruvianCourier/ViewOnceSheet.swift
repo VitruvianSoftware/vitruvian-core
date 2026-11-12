@@ -3,7 +3,7 @@
 
 import AppKit
 import AVFoundation
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// Applies `NSWindow.sharingType = .none` to the hosting window while `ViewOnceSheet` is visible,

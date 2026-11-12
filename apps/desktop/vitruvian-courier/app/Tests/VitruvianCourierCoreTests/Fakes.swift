@@ -3,7 +3,7 @@
 
 import Foundation
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// A launcher that starts nothing: each launch makes a FakeProcess and hands it to `script`, which decides what
 /// the "engine" does (print the ready line, crash, ignore SIGTERM).

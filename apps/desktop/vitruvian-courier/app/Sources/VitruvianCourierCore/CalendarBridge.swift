@@ -84,7 +84,7 @@ public protocol CalendarStoreProtocol: Sendable {
 ///
 /// Calendar access is requested only when the user opens the Calendar pane (`⌘⌥K`) or clicks a detected date
 /// in a message, never at launch. If denied or restricted, it never prompts again. Calendar data stays strictly
-/// on this Mac and is never logged or sent to the Courier engine.
+/// on this Mac and is never logged or sent to the Vitruvian Courier engine.
 @MainActor
 public final class CalendarBridge: ObservableObject {
     @Published public private(set) var status: CalendarAuthStatus

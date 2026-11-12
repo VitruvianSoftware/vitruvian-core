@@ -1,7 +1,7 @@
 # Login
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/engine/internal/login`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/engine/internal/login`.
 
 ## Interface
 - `[cookies.go:MaybeURLDecodeCookie]`
@@ -30,7 +30,7 @@ Component package providing implementation for `apps/desktop/courier/engine/inte
 
 ## Side Effects
 - [cookies.go:18]: `// (bridgev2/commands/login.go) and connectors expect the decoded form. Path,...`
-- [steps.go:141]: `// unsupported is the answer for a step Courier can't do (a passkey, a raw HT...`
+- [steps.go:141]: `// unsupported is the answer for a step Vitruvian Courier can't do (a passkey, a raw HT...`
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/engine/internal/login/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/engine/internal/login/...`

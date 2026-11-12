@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// What the inbox's views show that is no model's: the Custom… reminder sheet, the ⌘L Remind Me popover and the
@@ -256,9 +256,9 @@ struct MainWindow: View {
                         onClose: { hotkeys.isShortcutsSheetPresented = false }
                     )
                 }
-                // Always named, so the Window menu, Mission Control and VoiceOver say "Courier"; the empty-chat
+                // Always named, so the Window menu, Mission Control and VoiceOver say "Vitruvian Courier"; the empty-chat
                 // toolbar (courierEmptyChatToolbar) hides the visible caption instead.
-                .navigationTitle("Courier")
+                .navigationTitle("Vitruvian Courier")
                 .navigationSubtitle(lifecycle.isLocked ? "" : StatusText.subtitle(for: model.engineState))
         }
     }
@@ -283,7 +283,7 @@ struct MainWindow: View {
             panes
         case .updateNeeded:
             message(symbol: "exclamationmark.triangle") {
-                Text(String(localized: "This copy of Courier and its engine don’t match. Reinstall Courier to update it."))
+                Text(String(localized: "This copy of Vitruvian Courier and its engine don’t match. Reinstall Vitruvian Courier to update it."))
             }
         case let .reconnecting(_, problem?):
             // The restarts go on; this says why they have not worked yet.
@@ -293,12 +293,12 @@ struct MainWindow: View {
         case .starting, .reconnecting:
             VStack(spacing: 12) {
                 ProgressView()
-                Text(String(localized: "Starting Courier’s engine…"))
+                Text(String(localized: "Starting Vitruvian Courier’s engine…"))
                     .foregroundStyle(.secondary)
             }
             .padding(40)
         case .stopped:
-            Text(String(localized: "Courier’s engine is stopped."))
+            Text(String(localized: "Vitruvian Courier’s engine is stopped."))
                 .foregroundStyle(.secondary)
                 .padding(40)
         }
@@ -618,11 +618,11 @@ enum StatusText {
     static func explanation(of problem: EngineSupervisor.Problem) -> String {
         switch problem {
         case let .dataDirectoryInUse(message?):
-            String(localized: "Courier can’t start its engine: \(message). Quit the other copy of Courier, or the command-line engine, that uses this folder. Courier keeps trying.")
+            String(localized: "Vitruvian Courier can’t start its engine: \(message). Quit the other copy of Vitruvian Courier, or the command-line engine, that uses this folder. Vitruvian Courier keeps trying.")
         case .dataDirectoryInUse(nil):
-            String(localized: "Courier can’t start its engine: another copy of it is using Courier’s data folder. Quit the other copy of Courier, or the command-line engine. Courier keeps trying.")
+            String(localized: "Vitruvian Courier can’t start its engine: another copy of it is using Vitruvian Courier’s data folder. Quit the other copy of Vitruvian Courier, or the command-line engine. Vitruvian Courier keeps trying.")
         case let .engineFailed(message):
-            String(localized: "Courier’s engine stopped while starting: \(message). Courier keeps trying.")
+            String(localized: "Vitruvian Courier’s engine stopped while starting: \(message). Vitruvian Courier keeps trying.")
         }
     }
 }

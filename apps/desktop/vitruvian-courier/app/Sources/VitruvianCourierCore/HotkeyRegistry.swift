@@ -143,7 +143,7 @@ public enum HotkeyConflictError: Error, Equatable, Sendable {
         case let .systemReserved(_, _, msg):
             return msg
         case .appLocked:
-            return "Unlock Courier before recording a keyboard shortcut."
+            return "Unlock Vitruvian Courier before recording a keyboard shortcut."
         }
     }
 }
@@ -180,7 +180,7 @@ public enum HotkeyID {
     public static let resetZoom = "Reset Zoom"
 }
 
-/// Single source of truth for Courier's keyboard shortcuts, read by the macOS menu bar, the `⌘/` Keyboard
+/// Single source of truth for Vitruvian Courier's keyboard shortcuts, read by the macOS menu bar, the `⌘/` Keyboard
 /// Shortcuts sheet, and the Settings ▸ Shortcuts recorder (`01` §17, `02` §1.6, §2.1–2.2).
 @MainActor
 public final class HotkeyRegistry: ObservableObject {
@@ -196,14 +196,14 @@ public final class HotkeyRegistry: ObservableObject {
         // General
         HotkeyDefinition(
             id: "Focus App",
-            title: "Focus Courier",
+            title: "Focus Vitruvian Courier",
             category: "General",
             defaultChords: [],
             supportsGlobal: true
         ),
         HotkeyDefinition(
             id: "Focus App and Command Bar",
-            title: "Focus Courier and Command Bar",
+            title: "Focus Vitruvian Courier and Command Bar",
             category: "General",
             defaultChords: [],
             supportsGlobal: true
@@ -240,7 +240,7 @@ public final class HotkeyRegistry: ObservableObject {
         ),
         HotkeyDefinition(
             id: "Quit App",
-            title: "Quit Courier",
+            title: "Quit Vitruvian Courier",
             category: "General",
             defaultChords: [KeyChord(key: "q", command: true)]
         ),

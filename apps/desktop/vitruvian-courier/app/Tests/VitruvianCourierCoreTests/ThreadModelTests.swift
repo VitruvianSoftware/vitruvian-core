@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// The thread pane against a stand-in engine: it shows the root and its replies, writes in the thread, and reads
 /// again only for changes in its own chat's thread. All data here is made up.

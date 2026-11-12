@@ -56,7 +56,7 @@ public enum ComposerNotice: Equatable, Sendable {
     case attachmentsLeftOut(fileNames: [String])
     /// What was given is a folder, which cannot be sent.
     case notAFile(fileName: String)
-    /// The file could not be read (it is gone, or Courier may not open it).
+    /// The file could not be read (it is gone, or Vitruvian Courier may not open it).
     case cannotRead(fileName: String)
     /// The engine did not answer a send. It may have taken the message: the chat shows what it has.
     case noAnswer
@@ -80,9 +80,9 @@ public enum ComposerNotice: Equatable, Sendable {
                 ? String(localized: "Could not put \(names[0]) back — total size would exceed 90 MB.")
                 : String(localized: "Could not put \(names.count) files back — total size would exceed 90 MB: \(names.joined(separator: ", "))")
         case let .notAFile(name):
-            String(localized: "Could not attach \(name). Courier can send files, not folders.")
+            String(localized: "Could not attach \(name). Vitruvian Courier can send files, not folders.")
         case let .cannotRead(name):
-            String(localized: "Could not read \(name). It may have moved, or Courier may not be allowed to open it.")
+            String(localized: "Could not read \(name). It may have moved, or Vitruvian Courier may not be allowed to open it.")
         case .noAnswer:
             StatusLine.mayHaveBeenSentText
         case let .sendFailed(reason):
@@ -631,7 +631,7 @@ public final class ComposerModel: ObservableObject {
         }
         held.onRestore = { [weak self] room, copy in
             self?.restoreUndone(copy, in: room)
-            self?.showToast(String(localized: "Message unsent from Courier"))
+            self?.showToast(String(localized: "Message unsent from Vitruvian Courier"))
         }
         held.onToast = { [weak self] message in self?.showToast(message) }
         lockCancellable = NotificationCenter.default.publisher(for: SystemLifecycleModel.didLockNotification)
@@ -2666,7 +2666,7 @@ public final class ComposerModel: ObservableObject {
     }
 
     /// ⌘Z: takes back my newest held message in the open chat. True when there was one. What was typed comes back
-    /// into the composer (below anything typed since, after a blank line), and "Message unsent from Courier" says so.
+    /// into the composer (below anything typed since, after a blank line), and "Message unsent from Vitruvian Courier" says so.
     /// If the engine says it already went (-32025), the message's status says whether it really did (Ruling 32):
     /// "Already sent" only then; a message that didn't send says so, and the chat's Retry stands. Nothing comes back
     /// then. If the engine's answer is lost, its status decides, and the copy kept here comes back if it is gone.
@@ -2684,7 +2684,7 @@ public final class ComposerModel: ObservableObject {
             return false
         case let .undone(copy):
             restoreUndone(copy, in: room)
-            showToast(String(localized: "Message unsent from Courier"))
+            showToast(String(localized: "Message unsent from Vitruvian Courier"))
         case let .notUndone(message):
             showToast(message)
         }
@@ -2918,7 +2918,7 @@ public final class ComposerModel: ObservableObject {
         guard provider.isAvailable else {
             let reason = (provider as? UnavailableAIProvider)?.hasCustomReason == true
                 ? provider.unavailableReason
-                : String(localized: "Drafting with AI isn’t available yet in Courier.")
+                : String(localized: "Drafting with AI isn’t available yet in Vitruvian Courier.")
             isAIWriting = false
             aiResult = nil
             aiError = reason

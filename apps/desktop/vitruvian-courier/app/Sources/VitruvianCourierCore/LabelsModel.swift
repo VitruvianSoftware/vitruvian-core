@@ -65,7 +65,7 @@ public final class LabelsModel: ObservableObject {
 
     private func ensureUnlocked() throws {
         guard !isLocked else {
-            throw EngineError.rpc(.badValue, message: "Courier is locked", reason: "locked")
+            throw EngineError.rpc(.badValue, message: "Vitruvian Courier is locked", reason: "locked")
         }
     }
 

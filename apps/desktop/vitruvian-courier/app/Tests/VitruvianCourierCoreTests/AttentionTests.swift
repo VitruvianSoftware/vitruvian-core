@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// "Looking at the chat" is the window being key AND the screen unlocked AND the display awake AND someone having
 /// touched the Mac in the last three minutes.

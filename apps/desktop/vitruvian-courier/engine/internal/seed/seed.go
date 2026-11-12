@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package seed plays a made-up scenario (apps/desktop/vitruvian-courier/seed/scenarios, README.md beside them) into fake
-// networks, so the Courier Test Copy opens already full of chats. Only the test copy's engine links it: the
-// vitruvian-vitruvian-courier-engine-seeded binary, built with the Go build tag courierseed (cmd/vitruvian-courier-engine/seed_on.go). The
+// networks, so the Vitruvian Courier Test Copy opens already full of chats. Only the test copy's engine links it: the
+// vitruvian-courier-engine-seeded binary, built with the Go build tag courierseed (cmd/vitruvian-courier-engine/seed_on.go). The
 // released engine is built without the tag and must not hold this package; the app's
 // release_engine_has_no_seed_test looks for Marker in it.
 package seed

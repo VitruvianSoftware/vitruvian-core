@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// `AIPane.tsx` (`01` §13, `docs/ai-providers.md`): unified pane header (`PaneHeader`), single active provider/model
@@ -28,7 +28,7 @@ public struct AIPane: View {
     /// the pane draws none of its own.
     public var headerInToolbar: Bool = false
 
-    /// Creates the Courier AI side pane.
+    /// Creates the Vitruvian Courier AI side pane.
     /// - Parameter provider: The live `AIProvider` from `AIProviderStore` (for example `composer.aiProvider`).
     ///   Defaults to `UnavailableAIProvider()` only for standalone previews and snapshot tests that do not own a store;
     ///   app callers must pass the store-backed provider so configured providers are reflected.
@@ -274,14 +274,14 @@ public struct AIPane: View {
     }
 }
 
-/// Courier AI pane header: its title and Close button. A strip at the pane's top, or with glass, the pane's item in the
+/// Vitruvian Courier AI pane header: its title and Close button. A strip at the pane's top, or with glass, the pane's item in the
 /// window's toolbar (`inToolbar`), aligned with the chat, thread, and Chat Info headers.
 struct AIPaneHeader: View {
     var onClose: () -> Void = {}
     var inToolbar: Bool
 
     var body: some View {
-        PaneHeader(title: String(localized: "Courier AI"), inToolbar: inToolbar) {
+        PaneHeader(title: String(localized: "Vitruvian Courier AI"), inToolbar: inToolbar) {
             Button(action: onClose) {
                 Image(systemName: "xmark")
             }

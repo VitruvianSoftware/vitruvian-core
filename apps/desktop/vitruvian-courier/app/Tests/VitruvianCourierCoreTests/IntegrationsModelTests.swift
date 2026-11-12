@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// Settings ▸ Integrations' model against a stand-in engine: the status line, the port that saves only when it is
 /// valid, Remote Access that asks first, a new connection's secret that shows once, and the pairing prompt, one at
@@ -66,13 +66,13 @@ final class IntegrationsModelTests: XCTestCase {
         self.server = server
         let launcher = FakeLauncher { _, process in process.printReady(socket: server.path) }
         let supervisor = EngineSupervisor(
-            enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",
-            dataDir: URL(fileURLWithPath: "/tmp/courier-integrations-\(UUID().uuidString)"), environment: [:],
-            launcher: launcher, credentials: InMemoryCredentialStore(), clientName: "Courier/test",
+            enginePath: "/Applications/Vitruvian Courier.app/Contents/Helpers/vitruvian-courier-engine",
+            dataDir: URL(fileURLWithPath: "/tmp/vitruvian-courier-integrations-\(UUID().uuidString)"), environment: [:],
+            launcher: launcher, credentials: InMemoryCredentialStore(), clientName: "Vitruvian Courier/test",
             timing: FakeTime().timing())
         let app = AppModel(supervisor: supervisor)
         self.app = app
-        let model = IntegrationsModel(appModel: app, enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",
+        let model = IntegrationsModel(appModel: app, enginePath: "/Applications/Vitruvian Courier.app/Contents/Helpers/vitruvian-courier-engine",
                                       networkAddress: { address })
         app.start()
         try await waitUntil { model.status != nil }
@@ -157,9 +157,9 @@ final class IntegrationsModelTests: XCTestCase {
         XCTAssertEqual(server!.receivedParams("integrations.createToken").first?["canSend"] as? Bool, true)
 
         let http = model.claudeHTTPCommand(secret: created.secret)
-        XCTAssertEqual(http, "claude mcp add --transport http courier http://127.0.0.1:23390/v0/mcp --header \"Authorization: Bearer \(created.secret)\"")
+        XCTAssertEqual(http, "claude mcp add --transport http vitruvian-courier http://127.0.0.1:23390/v0/mcp --header \"Authorization: Bearer \(created.secret)\"")
         XCTAssertEqual(model.claudeStdioCommand(secret: created.secret),
-                       "claude mcp add courier -e COURIER_TOKEN=\(created.secret) -- /Applications/Courier.app/Contents/Helpers/courier-engine mcp-stdio")
+                       "claude mcp add vitruvian-courier -e VITRUVIAN_COURIER_TOKEN=\(created.secret) -- \"/Applications/Vitruvian Courier.app/Contents/Helpers/vitruvian-courier-engine\" mcp-stdio")
         XCTAssertEqual(model.cursorLink(secret: created.secret)?.scheme, "cursor")
         let vscode = try XCTUnwrap(model.vsCodeLink(secret: created.secret))
         XCTAssertTrue(vscode.absoluteString.hasPrefix("vscode:mcp/install?"))
@@ -238,7 +238,7 @@ final class IntegrationsModelTests: XCTestCase {
         server!.notify(method: "integrations.pairRequest", params: ["requestID": "pair_1", "clientName": "Example app"])
         try await waitUntil { model.pairRequest != nil }
         XCTAssertEqual(IntegrationsModel.pairingQuestion(model.pairRequest!),
-                       "“Example app” wants to read your chats in Courier.")
+                       "“Example app” wants to read your chats in Vitruvian Courier.")
 
         // A second request while the first shows replaces nothing.
         model.receive(.pairRequest(PairRequest(requestID: "pair_2", clientName: "Other app")))

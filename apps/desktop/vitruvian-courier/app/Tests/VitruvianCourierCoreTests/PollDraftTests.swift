@@ -3,9 +3,9 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
-/// A new poll's problems, as the engine would refuse it (actions.CreatePoll): each in Courier's words, so nothing is
+/// A new poll's problems, as the engine would refuse it (actions.CreatePoll): each in Vitruvian Courier's words, so nothing is
 /// sent that would come back as an error.
 final class PollDraftTests: XCTestCase {
     private let whatsApp = PollFeatures(maxOptions: 12, optionMaxLength: 100)

@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// The composer's settings, in a suite-named UserDefaults of the test's own (never the real one).
 final class ComposerPreferencesTests: XCTestCase {

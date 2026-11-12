@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -378,7 +378,7 @@ public struct ChatThemeWindow: View {
     }
 }
 
-/// `ChatThemeBrowserWindow.tsx` — standalone gallery browser of all 8 Courier theme presets and 8 procedural wallpapers
+/// `ChatThemeBrowserWindow.tsx` — standalone gallery browser of all 8 Vitruvian Courier theme presets and 8 procedural wallpapers
 /// with a live conversation preview, "Use as Default Theme", and optional "Apply to <Current Chat>".
 public struct ChatThemeBrowserWindow: View {
     @ObservedObject public var appearance: AppearancePreferences
@@ -411,7 +411,7 @@ public struct ChatThemeBrowserWindow: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(String(localized: "Browse Chat Themes"))
                         .font(.title3.weight(.semibold))
-                    Text(String(localized: "Preview Courier’s built-in colour palettes and procedural vector wallpapers."))
+                    Text(String(localized: "Preview Vitruvian Courier’s built-in colour palettes and procedural vector wallpapers."))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -777,13 +777,13 @@ public struct ChatWallpaperCanvasView: View {
 /// when `appearance.showHoneycombCards` is enabled.
 public struct EmptyStateUnreadCardsView: View {
     public static let featuredHeaderTitle = String(localized: "Unread Highlights")
-    public let unreadRows: [CourierCore.InboxRow]
+    public let unreadRows: [VitruvianCourierCore.InboxRow]
     public var redactNamesAndPictures: Bool = false
     public let onSelectRoom: (String) -> Void
     @Environment(\.themeAccentColor) private var themeAccent
 
     public init(
-        unreadRows: [CourierCore.InboxRow],
+        unreadRows: [VitruvianCourierCore.InboxRow],
         redactNamesAndPictures: Bool = false,
         onSelectRoom: @escaping (String) -> Void = { _ in }
     ) {
@@ -833,7 +833,7 @@ public struct EmptyStateUnreadCardsView: View {
         )
     }
 
-    private func unreadCard(for row: CourierCore.InboxRow) -> some View {
+    private func unreadCard(for row: VitruvianCourierCore.InboxRow) -> some View {
         Button {
             onSelectRoom(row.roomID)
         } label: {

@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// The reminder times Remind Me offers, worked out in London's time zone. October 2026: the clocks go back on
 /// Sunday the 25th, so the week of the 21st crosses the change.

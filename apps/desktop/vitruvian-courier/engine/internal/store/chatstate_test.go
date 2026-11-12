@@ -318,7 +318,7 @@ func TestNetworkTagsMapToPinAndArchive(t *testing.T) {
 
 	require.NoError(t, s.ApplyNetworkTag(ctx, "!r", "m.lowpriority", true))
 	row := inboxByID(t, s)["!r"]
-	require.True(t, row.Archived, "a network's low priority is Courier's archive")
+	require.True(t, row.Archived, "a network's low priority is Vitruvian Courier's archive")
 	require.False(t, row.LowPriority)
 	require.NoError(t, s.ApplyNetworkTag(ctx, "!r", "m.lowpriority", false))
 	require.False(t, inboxByID(t, s)["!r"].Archived)
@@ -686,7 +686,7 @@ func TestDirectRoomWithPrefersTheLoginsOwnChat(t *testing.T) {
 	require.False(t, ok)
 }
 
-// Reply Privately's person is in the chat when Courier has a member row for them, whatever its membership (someone
+// Reply Privately's person is in the chat when Vitruvian Courier has a member row for them, whatever its membership (someone
 // who left still wrote what is being replied to), or a message of theirs: a bridge's member list can leave out a
 // sender (a large Telegram group lists only some). No one else is, nor anyone of another chat.
 func TestInChatIsAMemberOrASender(t *testing.T) {

@@ -371,7 +371,10 @@ pub fn run(args: &[String]) -> i32 {
         }
         Err(e) => {
             eprintln!("publish: {e}");
-            eprintln!("publish: Vitruvian Courier {} was NOT released", plan.version);
+            eprintln!(
+                "publish: Vitruvian Courier {} was NOT released",
+                plan.version
+            );
             1
         }
     }

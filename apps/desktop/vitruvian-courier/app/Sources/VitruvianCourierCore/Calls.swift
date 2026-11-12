@@ -3,7 +3,7 @@
 
 import Foundation
 
-// A bridge's notice of a call, in Courier's words. The bridge's body is its own English ("Incoming call. Use the
+// A bridge's notice of a call, in Vitruvian Courier's words. The bridge's body is its own English ("Incoming call. Use the
 // WhatsApp app to answer.", "Started a video call", "Call ended"), so it is never shown: the engine reads each notice
 // as it arrives and writes what happened into the content (`fi.courier.call`, beside an action message of type call),
 // and the chat, the chat list and notifications say it from that.

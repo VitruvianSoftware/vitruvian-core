@@ -4,17 +4,17 @@
 import Foundation
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
-/// Courier's own updates: reading the release list, choosing the newest, and installing only what passes every check.
+/// Vitruvian Courier's own updates: reading the release list, choosing the newest, and installing only what passes every check.
 /// Nothing here reaches the network, mounts a disk image or replaces an app: FakeUpdates answers instead.
 @MainActor
 final class UpdatesTests: XCTestCase {
     /// The network and the Mac, as the updater sees them, recorded.
     private final class FakeUpdates: UpdateEnvironment, @unchecked Sendable {
         private let lock = NSLock()
-        var tagListReply = UpdateReply(status: 200, body: refList(["courier-v0.6.0", "courier-v0.7.1"]))
-        var checksumReply = UpdateReply(status: 200, body: Data("\(String(repeating: "ab", count: 32))  Courier-0.7.1-universal.dmg\n".utf8))
+        var tagListReply = UpdateReply(status: 200, body: refList(["vitruvian-courier-v0.6.0", "vitruvian-courier-v0.7.1"]))
+        var checksumReply = UpdateReply(status: 200, body: Data("\(String(repeating: "ab", count: 32))  VitruvianCourier-0.7.1-universal.dmg\n".utf8))
         var fileChecksum = String(repeating: "ab", count: 32)
         var signedImage = true
         var signedApp = true
@@ -50,7 +50,7 @@ final class UpdatesTests: XCTestCase {
         func passesGatekeeper(_: URL) -> Bool { notarized }
         func mount(_: URL) throws -> URL {
             lock.withLock { mounted += 1 }
-            return URL(fileURLWithPath: "/Volumes/CourierFake")
+            return URL(fileURLWithPath: "/Volumes/VitruvianCourierFake")
         }
 
         func unmount(_: URL) { lock.withLock { unmounted += 1 } }
@@ -83,7 +83,7 @@ final class UpdatesTests: XCTestCase {
         let suite = "courier.updates.\(UUID().uuidString)"
         suites.append(suite)
         return UpdateModel(currentVersion: version,
-                           appURL: URL(fileURLWithPath: "/Applications/Courier.app"),
+                           appURL: URL(fileURLWithPath: "/Applications/Vitruvian Courier.app"),
                            environment: fake,
                            defaults: ScratchDefaults.suite(named: suite)!,
                            now: { Date(timeIntervalSince1970: 1_800_000_000) },
@@ -93,17 +93,17 @@ final class UpdatesTests: XCTestCase {
 
     func testReadsTheReleaseListAndPicksTheNewestRelease() throws {
         let tags = try XCTUnwrap(CourierReleases.tags(fromRefList: Self.refList(
-            ["courier-v0.9.0", "courier-v0.10.0", "courier-v1.0.0-beta.1", "courier-viewer-v9.0.0", "courier-vjunk"]))
+            ["vitruvian-courier-v0.9.0", "vitruvian-courier-v0.10.0", "vitruvian-courier-v1.0.0-beta.1", "vitruvian-courier-viewer-v9.0.0", "vitruvian-courier-vjunk"]))
         )
         XCTAssertEqual(tags.count, 5)
         XCTAssertEqual(CourierReleases.newestVersion(in: tags)?.description, "0.10.0",
                        "by version, not alphabetically; a pre-release and another product don't count")
         XCTAssertNil(CourierReleases.tags(fromRefList: Data("0010ERR denied\n".utf8)))
         XCTAssertNil(CourierReleases.tags(fromRefList: Data("zzzz".utf8)))
-        XCTAssertNil(CourierReleases.tags(fromRefList: Self.refList(["courier-v1.0.0"]).dropLast(4)),
+        XCTAssertNil(CourierReleases.tags(fromRefList: Self.refList(["vitruvian-courier-v1.0.0"]).dropLast(4)),
                      "a reply cut short is not a list")
         XCTAssertEqual(String(decoding: CourierReleases.tagListRequestBody, as: UTF8.self),
-                       "0014command=ls-refs\n00010023ref-prefix refs/tags/courier-v\n0000")
+                       "0014command=ls-refs\n0001002dref-prefix refs/tags/vitruvian-courier-v\n0000")
         XCTAssertNil(SemanticVersion("1.2"))
         XCTAssertNil(SemanticVersion("1.2.3-beta"))
         XCTAssertNil(SemanticVersion("１.2.3"), "only ASCII digits")
@@ -111,8 +111,8 @@ final class UpdatesTests: XCTestCase {
 
         let version = try XCTUnwrap(SemanticVersion("0.7.1"))
         XCTAssertEqual(CourierReleases.diskImageURL(for: version).absoluteString,
-                       "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/courier-v0.7.1/Courier-0.7.1-universal.dmg")
-        XCTAssertEqual(CourierReleases.checksumURL(for: version).lastPathComponent, "Courier-0.7.1-universal.dmg.sha256")
+                       "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-courier-v0.7.1/VitruvianCourier-0.7.1-universal.dmg")
+        XCTAssertEqual(CourierReleases.checksumURL(for: version).lastPathComponent, "VitruvianCourier-0.7.1-universal.dmg.sha256")
         XCTAssertEqual(CourierReleases.checksum(fromSidecar: Data("\(String(repeating: "AB", count: 32))  x.dmg\n".utf8)),
                        String(repeating: "ab", count: 32))
         XCTAssertNil(CourierReleases.checksum(fromSidecar: Data("not-a-checksum  x.dmg".utf8)))
@@ -168,13 +168,13 @@ final class UpdatesTests: XCTestCase {
         XCTAssertEqual(updates.phase, .installing(version))
         XCTAssertEqual(fake.downloads, [CourierReleases.diskImageURL(for: version)])
         XCTAssertTrue(fake.requests.contains(CourierReleases.checksumURL(for: version)))
-        XCTAssertEqual(fake.copies.first?.0.path, "/Volumes/CourierFake/Courier.app")
-        XCTAssertEqual(fake.copies.first?.1.path, "/Applications/.Courier.app.update-0.7.1")
-        XCTAssertEqual(fake.installer, ["/Applications/Courier.app", "/Applications/.Courier.app.update-0.7.1", "4242",
+        XCTAssertEqual(fake.copies.first?.0.path, "/Volumes/VitruvianCourierFake/Vitruvian Courier.app")
+        XCTAssertEqual(fake.copies.first?.1.path, "/Applications/.Vitruvian Courier.app.update-0.7.1")
+        XCTAssertEqual(fake.installer, ["/Applications/Vitruvian Courier.app", "/Applications/.Vitruvian Courier.app.update-0.7.1", "4242",
                                         "/usr/bin/open"])
         XCTAssertEqual(fake.mounted, 1)
         XCTAssertEqual(fake.unmounted, 1, "the disk image is put away")
-        XCTAssertEqual(quits, 1, "Courier quits so the installer can swap the apps")
+        XCTAssertEqual(quits, 1, "Vitruvian Courier quits so the installer can swap the apps")
     }
 
     func testRefusesWhatFailsAnyCheck() async {
@@ -199,7 +199,7 @@ final class UpdatesTests: XCTestCase {
                 continue
             }
             XCTAssertNil(fake.installer, "\(name): nothing is installed")
-            XCTAssertEqual(quits, 0, "\(name): Courier keeps running")
+            XCTAssertEqual(quits, 0, "\(name): Vitruvian Courier keeps running")
             XCTAssertEqual(fake.mounted, fake.unmounted, "\(name): a mounted image is put away")
         }
     }
@@ -207,10 +207,10 @@ final class UpdatesTests: XCTestCase {
     /// The installer script itself, on two stand-in apps in a temporary folder: it waits for the process, swaps the
     /// apps, and opens the result; when the new one is missing, the old one stays.
     func testInstallerScriptSwapsTheAppsAndKeepsTheOldOneOnFailure() throws {
-        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("courier-installer-\(UUID().uuidString)")
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-courier-installer-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: folder) }
-        let app = folder.appendingPathComponent("Courier.app")
-        let new = folder.appendingPathComponent(".Courier.app.update-0.7.1")
+        let app = folder.appendingPathComponent("Vitruvian Courier.app")
+        let new = folder.appendingPathComponent(".Vitruvian Courier.app.update-0.7.1")
         let opened = folder.appendingPathComponent("opened")
         try FileManager.default.createDirectory(at: app, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: new, withIntermediateDirectories: true)
@@ -223,7 +223,7 @@ final class UpdatesTests: XCTestCase {
         func run(_ arguments: [String]) throws {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/sh")
-            process.arguments = ["-c", UpdateModel.installerScript, "courier-update"] + arguments
+            process.arguments = ["-c", UpdateModel.installerScript, "vitruvian-courier-update"] + arguments
             try process.run()
             process.waitUntilExit()
         }
@@ -241,7 +241,7 @@ final class UpdatesTests: XCTestCase {
     }
 
     func testLaunchInstallerStartsDetachedSession() throws {
-        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("courier-setsid-\(UUID().uuidString)")
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-courier-setsid-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: folder) }
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let marker = folder.appendingPathComponent("sid")
@@ -261,6 +261,6 @@ final class UpdatesTests: XCTestCase {
             Thread.sleep(forTimeInterval: 0.05)
         }
         XCTAssertEqual(try String(contentsOf: marker, encoding: .utf8), "True",
-                       "the installer is its own session leader so launchd does not kill it when Courier quits")
+                       "the installer is its own session leader so launchd does not kill it when Vitruvian Courier quits")
     }
 }

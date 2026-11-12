@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -623,7 +623,7 @@ public struct ChatInfoPane: View {
             ? info.disappearingMS
             : (info.features.currentTimer?.timerMS ?? 0)
         guard ms > 0 else { return String(localized: "Off") }
-        return CourierCore.MessageActions.duration(ms)
+        return VitruvianCourierCore.MessageActions.duration(ms)
     }
 
     private var securityAndTimerSection: some View {

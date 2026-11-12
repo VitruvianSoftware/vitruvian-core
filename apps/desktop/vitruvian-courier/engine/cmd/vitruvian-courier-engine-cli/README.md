@@ -1,7 +1,7 @@
-# Courier Engine Cli
+# Vitruvian Courier Engine Cli
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/engine/cmd/courier-engine-cli`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/engine/cmd/vitruvian-courier-engine-cli`.
 
 ## Interface
 - `[login.go:Line]`
@@ -20,4 +20,4 @@ Component package providing implementation for `apps/desktop/courier/engine/cmd/
 - [main.go:72]: `flow := fs.String("flow", "", "login flow to use (link only; default: the net...`
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/engine/cmd/courier-engine-cli/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/engine/cmd/vitruvian-courier-engine-cli/...`

@@ -4,11 +4,11 @@
 import AppKit
 import AVFoundation
 import AVKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// AppKit `AVPlayerView` wrapper with native controls hidden so `InlineVideoPlayer` and `PictureInPictureView`
-/// render Courier's own SwiftUI transport bar. Enables `allowsPictureInPicturePlayback` on macOS 14.
+/// render Vitruvian Courier's own SwiftUI transport bar. Enables `allowsPictureInPicturePlayback` on macOS 14.
 struct AVPlayerSurfaceView: NSViewRepresentable {
     let player: AVPlayer?
 

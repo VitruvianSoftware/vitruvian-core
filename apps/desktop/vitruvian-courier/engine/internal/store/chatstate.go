@@ -321,7 +321,7 @@ WHERE r.network = $1 AND r.is_direct = 1 AND r.login_id IN ($2, '')
 ORDER BY r.login_id = $2 DESC, r.last_ts DESC, r.created_at DESC
 LIMIT 1`
 
-// DirectRoomWith finds the one-to-one chat Courier already has with userID on network for loginID (Reply
+// DirectRoomWith finds the one-to-one chat Vitruvian Courier already has with userID on network for loginID (Reply
 // Privately): the login's own, else one every login shares, newest first. ok is false when there is none; never
 // another login's chat, a group or another network's.
 func (s *Store) DirectRoomWith(ctx context.Context, network, loginID, userID string) (roomID string, ok bool, err error) {
@@ -332,11 +332,11 @@ func (s *Store) DirectRoomWith(ctx context.Context, network, loginID, userID str
 	return roomID, err == nil, err
 }
 
-// inChatSQL is whether $2 is in chat $1 as far as Courier knows: a member row, whatever its membership, or a message.
+// inChatSQL is whether $2 is in chat $1 as far as Vitruvian Courier knows: a member row, whatever its membership, or a message.
 const inChatSQL = `SELECT EXISTS (SELECT 1 FROM members WHERE room_id = $1 AND user_id = $2)
   OR EXISTS (SELECT 1 FROM events WHERE room_id = $1 AND sender = $2)`
 
-// InChat reports whether userID is in chat roomID as far as Courier knows (Reply Privately's person): a member row,
+// InChat reports whether userID is in chat roomID as far as Vitruvian Courier knows (Reply Privately's person): a member row,
 // whatever its membership (someone who left still wrote what is being replied to), or a message of theirs, since a
 // bridge's member list can leave out a sender (a large Telegram group lists only some). An unknown chat has no one.
 func (s *Store) InChat(ctx context.Context, roomID, userID string) (bool, error) {
@@ -383,7 +383,7 @@ func (s *Store) SetRequest(ctx context.Context, roomID string, request bool) err
 	return err
 }
 
-// ApplyNetworkTag takes in a tag a network reports for a chat. m.favourite is a pin; m.lowpriority is Courier's
+// ApplyNetworkTag takes in a tag a network reports for a chat. m.favourite is a pin; m.lowpriority is Vitruvian Courier's
 // archive (a network's "low priority" is what it shows as archived), except that a pinned chat stays pinned and
 // unarchived. Every other tag is ignored.
 func (s *Store) ApplyNetworkTag(ctx context.Context, roomID, tag string, on bool) error {

@@ -3,11 +3,11 @@
 
 import Foundation
 
-/// Courier's own Telegram app ID, put into the app bundle when it is packaged (scripts/inject-app-credentials.sh):
+/// Vitruvian Courier's own Telegram app ID, put into the app bundle when it is packaged (scripts/inject-app-credentials.sh):
 /// `Contents/Resources/TelegramApp.plist`, with `api_id` as an integer and `api_hash` as a string.
 ///
-/// Telegram wants every app to register its own pair, so a finished Courier carries its own and the person never
-/// types one. An app built without it (a development build) has no such file, and Courier asks instead.
+/// Telegram wants every app to register its own pair, so a finished Vitruvian Courier carries its own and the person never
+/// types one. An app built without it (a development build) has no such file, and Vitruvian Courier asks instead.
 public enum TelegramBuiltIn {
     public static let resourceName = "TelegramApp"
     public static let resourceExtension = "plist"
@@ -15,7 +15,7 @@ public enum TelegramBuiltIn {
     public static let apiHashKey = "api_hash"
 
     /// The pair packaged into `bundle`, or nil when there is none or it does not fit what Telegram hands out
-    /// (the same check the engine makes). A damaged file is the same as no file: Courier falls back to asking.
+    /// (the same check the engine makes). A damaged file is the same as no file: Vitruvian Courier falls back to asking.
     public static func load(from bundle: Bundle = .main) -> TelegramCredentials? {
         guard let url = bundle.url(forResource: resourceName, withExtension: resourceExtension) else { return nil }
         return load(plistAt: url)

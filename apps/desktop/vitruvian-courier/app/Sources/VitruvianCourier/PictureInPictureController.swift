@@ -4,10 +4,10 @@
 import AppKit
 import AVFoundation
 import AVKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
-/// Item displayed in Courier's floating Picture-in-Picture window (`PictureInPictureBrowserWindow.tsx`).
+/// Item displayed in Vitruvian Courier's floating Picture-in-Picture window (`PictureInPictureBrowserWindow.tsx`).
 public struct PiPVideoItem: Equatable, Identifiable, Sendable {
     public let messageID: String
     public let roomID: String
@@ -58,7 +58,7 @@ public struct PiPVideoItem: Equatable, Identifiable, Sendable {
 
 /// Hosts an always-on-top floating `NSPanel` (`level = .floating`, `collectionBehavior = [.canJoinAllSpaces,
 /// .fullScreenAuxiliary]`) with play/pause, scrub bar, Return to Chat button, and Close button so a video keeps
-/// playing while switching or closing chats, and stops when Courier quits.
+/// playing while switching or closing chats, and stops when Vitruvian Courier quits.
 @MainActor
 public final class PictureInPictureController: ObservableObject, PictureInPictureControlling {
     public static let shared = PictureInPictureController()
@@ -210,7 +210,7 @@ public final class PictureInPictureController: ObservableObject, PictureInPictur
         // Intentional no-op: closing the chat must not kill a PiP video the person is watching.
     }
 
-    /// Stops playback and closes the floating window when Courier quits.
+    /// Stops playback and closes the floating window when Vitruvian Courier quits.
     public func stopForApplicationTermination() {
         close()
     }

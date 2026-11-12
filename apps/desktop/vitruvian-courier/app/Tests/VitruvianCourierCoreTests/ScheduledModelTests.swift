@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// The open chat's scheduled messages against a stand-in engine: the list follows the engine's `scheduled`
 /// changes for that chat, and each button sends its method. All data here is made up.
@@ -25,9 +25,9 @@ final class ScheduledModelTests: XCTestCase {
         servers.append(server)
         let launcher = FakeLauncher { _, process in process.printReady(socket: server.path) }
         let supervisor = EngineSupervisor(
-            enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",
-            dataDir: URL(fileURLWithPath: "/tmp/courier-test-data"), environment: [:], launcher: launcher,
-            credentials: InMemoryCredentialStore(), clientName: "Courier/test", timing: FakeTime().timing())
+            enginePath: "/Applications/Vitruvian Courier.app/Contents/Helpers/vitruvian-courier-engine",
+            dataDir: URL(fileURLWithPath: "/tmp/vitruvian-courier-test-data"), environment: [:], launcher: launcher,
+            credentials: InMemoryCredentialStore(), clientName: "Vitruvian Courier/test", timing: FakeTime().timing())
         let app = AppModel(supervisor: supervisor)
         apps.append(app)
         let model = ScheduledModel(appModel: app)
@@ -122,7 +122,7 @@ final class ScheduledModelTests: XCTestCase {
         XCTAssertEqual(dicts(server.receivedParams("scheduled.delete")), dicts([["outbox_id": 1]]))
         XCTAssertTrue(toasts.all.isEmpty)
 
-        // A refusal is a toast in Courier's words; the list is read again either way.
+        // A refusal is a toast in Vitruvian Courier's words; the list is read again either way.
         script.fail = true
         let reads = lists(server).count
         await model.sendNow(1)

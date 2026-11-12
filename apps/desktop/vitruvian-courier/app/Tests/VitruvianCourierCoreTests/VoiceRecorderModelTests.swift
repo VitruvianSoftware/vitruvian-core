@@ -5,7 +5,7 @@ import AVFoundation
 import Foundation
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 @MainActor
 final class VoiceRecorderModelTests: XCTestCase {
@@ -425,7 +425,7 @@ private final class VoiceSpySender: MessageSending, @unchecked Sendable {
 final class VoiceRecorderEngineFileTests: XCTestCase {
     func testEngineFileAcceptsBuffersInTheMicrophonesOwnFormat() throws {
         let micFormat = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 2))
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("courier-voice-test-\(UUID().uuidString).m4a")
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-courier-voice-test-\(UUID().uuidString).m4a")
         defer { try? FileManager.default.removeItem(at: url) }
 
         let file = try AVAudioVoiceRecordingBackend.makeEngineFile(at: url, matching: micFormat)

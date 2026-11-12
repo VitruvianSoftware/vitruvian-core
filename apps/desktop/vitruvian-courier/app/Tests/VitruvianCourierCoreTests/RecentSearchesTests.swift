@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// Recent searches and recent chats, kept in a UserDefaults suite of the test's own.
 final class RecentSearchesTests: XCTestCase {

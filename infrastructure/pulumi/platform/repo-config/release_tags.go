@@ -58,10 +58,10 @@ import (
 // whole program and fails if the patterns it registers differ from this list
 // or accept an exempt tag.
 const (
-	tabulaAPIReleaseTagPattern                = "tabula-api-v*"
-	tabulaWebReleaseTagPattern                = "tabula-web-v*"
-	oauthUserInspectorReleaseTagPattern       = "oauth-user-inspector-v*"
-	vitruvianCourierReleaseTagPattern         = "vitruvian-courier-v*"
+	tabulaAPIReleaseTagPattern          = "tabula-api-v*"
+	tabulaWebReleaseTagPattern          = "tabula-web-v*"
+	oauthUserInspectorReleaseTagPattern = "oauth-user-inspector-v*"
+	vitruvianCourierReleaseTagPattern   = "vitruvian-courier-v*"
 )
 
 var environmentTagPatterns = []string{

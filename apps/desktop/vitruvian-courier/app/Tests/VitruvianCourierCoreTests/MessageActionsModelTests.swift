@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// What a message's menu does, against a stand-in engine: each action reaches its method (Unsend and Delete for Me
 /// only after a yes), a refusal is a toast that names the network and never looks done, Copy and Insert as Draft
@@ -302,7 +302,7 @@ final class MessageActionsModelTests: XCTestCase {
         XCTAssertEqual(unanswered.failed, [], "not failed: the copies may have gone")
         XCTAssertEqual(unanswered.unanswered, ["Chat B", "Chat C"])
         XCTAssertEqual(toasts.all.last,
-                       "Courier’s engine did not answer. The message may have been forwarded to Chat B and Chat C: "
+                       "Vitruvian Courier’s engine did not answer. The message may have been forwarded to Chat B and Chat C: "
                            + "check before forwarding it again.")
         XCTAssertFalse(toasts.all.contains { $0.hasPrefix("Couldn’t forward") })
 
@@ -596,7 +596,7 @@ extension MessageActionsModelTests {
         actions.translateMessage(eventID: "$1", targetLanguage: "Spanish")
         XCTAssertEqual(
             actions.translations["$1"],
-            .unavailable(reason: "Message translation isn’t available yet in Courier.")
+            .unavailable(reason: "Message translation isn’t available yet in Vitruvian Courier.")
         )
         XCTAssertEqual(actions.translationTargetLanguages["$1"], "Spanish")
 

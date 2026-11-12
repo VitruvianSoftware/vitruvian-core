@@ -53,7 +53,7 @@ public struct SpeechUpdate: Equatable, Sendable {
     }
 }
 
-/// Plain-English speech errors shown in Courier without exposing SDK names, URLs, or API keys.
+/// Plain-English speech errors shown in Vitruvian Courier without exposing SDK names, URLs, or API keys.
 public enum SpeechError: Error, Equatable, Sendable, LocalizedError {
     case languageUnavailable(language: String)
     case microphoneAccessDenied
@@ -71,9 +71,9 @@ public enum SpeechError: Error, Equatable, Sendable, LocalizedError {
         case let .languageUnavailable(language):
             String(localized: "Speech recognition for \(language) isn’t available on this Mac.")
         case .microphoneAccessDenied:
-            String(localized: "Courier needs microphone access for Talk to Type.")
+            String(localized: "Vitruvian Courier needs microphone access for Talk to Type.")
         case .speechRecognitionAccessDenied:
-            String(localized: "Courier needs speech recognition access for Talk to Type.")
+            String(localized: "Vitruvian Courier needs speech recognition access for Talk to Type.")
         case .whisperKeyMissing:
             String(localized: "Add an OpenAI key in the Cloud section to use Whisper.")
         case .missingLocalFile:

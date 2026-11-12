@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// Settings ▸ Accounts pane (`02` §1.4, `NetworksSettings.tsx` / `AccountView.tsx`):

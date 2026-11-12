@@ -195,7 +195,7 @@ func (s *Store) MarkThreadsRead(ctx context.Context, roomID string) (bool, error
 
 // readThreadsFromAnotherDevice raises roomID's thread floor to at, the place my read marker from another device
 // (SetRead) moved to: what I read there, threads included, is read here. A network reports one marker per chat, so
-// it can't say whether a thread was opened; the other device showed the chat up to there, and Courier takes it as
+// it can't say whether a thread was opened; the other device showed the chat up to there, and Vitruvian Courier takes it as
 // read. One exception: a marker at the very message this device's own marker is at is most likely the network
 // telling me back the receipt this device sent when the chat was opened (Actions.MarkRead), which reads no thread.
 // It runs inside SetRead's transaction.

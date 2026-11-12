@@ -7,7 +7,7 @@ import Foundation
 import LocalAuthentication
 import ServiceManagement
 
-/// Registration state of Courier's macOS Login Item (`SMAppService.mainApp`).
+/// Registration state of Vitruvian Courier's macOS Login Item (`SMAppService.mainApp`).
 public enum LoginItemRegistrationStatus: String, Equatable, Sendable {
     case enabled
     case notRegistered
@@ -110,7 +110,7 @@ public struct LAContextBiometricService: BiometricAuthService {
     }
 }
 
-/// Idle/background timeout before Courier locks when `autoLockEnabled` is on.
+/// Idle/background timeout before Vitruvian Courier locks when `autoLockEnabled` is on.
 public enum LockTimeoutChoice: Int, CaseIterable, Codable, Sendable {
     case immediate = 0
     case oneMinute = 60
@@ -129,7 +129,7 @@ public enum LockTimeoutChoice: Int, CaseIterable, Codable, Sendable {
     }
 }
 
-/// Injectable abstraction over Courier's floating Picture-in-Picture window (`PictureInPictureController`)
+/// Injectable abstraction over Vitruvian Courier's floating Picture-in-Picture window (`PictureInPictureController`)
 /// so app-lock tests can verify PiP pause/close behavior deterministically.
 @MainActor
 public protocol PictureInPictureControlling: AnyObject {
@@ -146,7 +146,7 @@ public protocol QuickLookPanelControlling: AnyObject {
     func closePreview()
 }
 
-/// Coordinator that presents Quick Look previews and closes them when Courier locks.
+/// Coordinator that presents Quick Look previews and closes them when Vitruvian Courier locks.
 @MainActor
 public protocol QuickLookPreviewCoordinating: AnyObject {
     var currentPreviewURL: URL? { get }
@@ -169,7 +169,7 @@ public enum UserActionKind: String, CaseIterable, Sendable {
     case other
 }
 
-/// Modal panel or alert that can be aborted synchronously when Courier enters App Lock.
+/// Modal panel or alert that can be aborted synchronously when Vitruvian Courier enters App Lock.
 @MainActor
 public protocol LockAbortableModal: AnyObject {
     func abortForAppLock()
@@ -195,7 +195,7 @@ extension NSAlert: LockAbortableModal {
     }
 }
 
-/// Central action-layer lock gate in `CourierCore` that every user-initiated action, modal panel,
+/// Central action-layer lock gate in `VitruvianCourierCore` that every user-initiated action, modal panel,
 /// Picture-in-Picture controller, and Quick Look coordinator routes through.
 @MainActor
 public final class AppLockGate {
@@ -294,13 +294,13 @@ public final class AppLockGate {
         return !resolved.isLocked && !isLocked
     }
 
-    /// Throws `EngineError.rpc(.badValue, message: "Courier is locked", reason: "locked")` if locked.
+    /// Throws `EngineError.rpc(.badValue, message: "Vitruvian Courier is locked", reason: "locked")` if locked.
     public func ensureUnlocked(
         _ action: UserActionKind = .other,
         lifecycle explicitLifecycle: SystemLifecycleModel? = nil
     ) throws {
         guard canPerform(action, lifecycle: explicitLifecycle) else {
-            throw EngineError.rpc(.badValue, message: "Courier is locked", reason: "locked")
+            throw EngineError.rpc(.badValue, message: "Vitruvian Courier is locked", reason: "locked")
         }
     }
 
@@ -676,7 +676,7 @@ public final class SystemLifecycleModel: ObservableObject {
     }
 
     private static var requiresApprovalMessage: String {
-        String(localized: "Approve Courier in System Settings › General › Login Items to finish turning on Launch at Login.")
+        String(localized: "Approve Vitruvian Courier in System Settings › General › Login Items to finish turning on Launch at Login.")
     }
 
     public func refreshLoginItemStatus() {
@@ -710,7 +710,7 @@ public final class SystemLifecycleModel: ObservableObject {
             launchAtLogin = previousValue
             isApplyingLoginState = false
             loginItemStatus = loginItemService.status()
-            lastErrorMessage = String(localized: "Courier couldn’t update your Login Items setting. Check System Settings › General › Login Items.")
+            lastErrorMessage = String(localized: "Vitruvian Courier couldn’t update your Login Items setting. Check System Settings › General › Login Items.")
         }
     }
 
@@ -719,7 +719,7 @@ public final class SystemLifecycleModel: ObservableObject {
         isLocked = true
     }
 
-    /// Registers a callback invoked synchronously on `@MainActor` whenever Courier locks.
+    /// Registers a callback invoked synchronously on `@MainActor` whenever Vitruvian Courier locks.
     public func onLock(_ handler: @escaping @MainActor () -> Void) {
         lockHandlers.append(handler)
         if isLocked {
@@ -790,7 +790,7 @@ public final class SystemLifecycleModel: ObservableObject {
             return false
         }
         do {
-            let success = try await biometricService.authenticate(reason: String(localized: "Unlock Courier"))
+            let success = try await biometricService.authenticate(reason: String(localized: "Unlock Vitruvian Courier"))
             if success {
                 cancelPendingLockTimer()
                 isLocked = false

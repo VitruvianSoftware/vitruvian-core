@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// Tests for `CalendarBridge`, video-meeting URL extraction, noise-free future date detection,
 /// on-demand EventKit authorization, and privacy isolation from the engine. All data is synthetic.

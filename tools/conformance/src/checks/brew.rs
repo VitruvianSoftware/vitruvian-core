@@ -206,7 +206,8 @@ mod tests {
         assert!(got[0].contains("brew install vitruviansoftware/tap/devx"));
         let got = problems("Run `brew trust vitruviansoftware/tap && brew upgrade devx`.");
         assert_eq!(got.len(), 1, "{got:?}");
-        let got = problems("brew trust vitruviansoftware/tap; brew upgrade --cask vitruvian-courier");
+        let got =
+            problems("brew trust vitruviansoftware/tap; brew upgrade --cask vitruvian-courier");
         assert_eq!(got.len(), 1, "{got:?}");
     }
 

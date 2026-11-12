@@ -1,7 +1,7 @@
 # Src
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/gchat/src`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/gchat/src`.
 
 ## Interface
 - `[auth.rs:XSRF_TTL]`
@@ -51,4 +51,4 @@ Component package providing implementation for `apps/desktop/courier/gchat/src`.
 - [ffi.rs:56]: `pub(crate) http: Client,`
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/gchat/src/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/gchat/src/...`

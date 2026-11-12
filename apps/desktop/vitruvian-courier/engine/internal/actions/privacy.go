@@ -21,7 +21,7 @@ import (
 )
 
 // SetUnreadFrom marks the chat roomID unread from its message eventID on (Mark as Unread from a message, 02 §3.4.2
-// item 8): its unread count runs from that message, until the chat is read. Like Courier's whole-chat mark it stays
+// item 8): its unread count runs from that message, until the chat is read. Like Vitruvian Courier's whole-chat mark it stays
 // on this Mac and is never sent to the network (SyncsOf says why). A message of mine is allowed (only other people's
 // messages count); a note (a timer change, a call) is ErrNotSupported (Ruling P2), and a message that isn't in that
 // chat is store.ErrNotFound.
@@ -52,7 +52,7 @@ func (a *Actions) SetUnreadFromEvent(ctx context.Context, eventID string) (roomI
 // DirectChat is Reply Privately's chat (02 §3.4.2 item 5): the one-to-one chat with userID, a person of the group
 // roomID's network who is a member of it, on the group's own account. It answers the chat's room ID.
 //
-//   - Courier's own one-to-one chat with them is answered first (store.DirectRoomWith), with no network needed: on the
+//   - Vitruvian Courier's own one-to-one chat with them is answered first (store.DirectRoomWith), with no network needed: on the
 //     group's login (loginOf), which for a group every account shares is the login actually in it, never "" (C15).
 //   - Otherwise the bridge makes it, as each network does (Global Constraints' Reply Privately row), through the
 //     group's login: GhostDMCreatingNetworkAPI.CreateChatWithGhost, else IdentifierResolvingNetworkAPI's
@@ -161,7 +161,7 @@ func (a *Actions) createDirectChatRoom(ctx context.Context, h *host.Host, login 
 func (a *Actions) ensurePortalRoom(ctx context.Context, h *host.Host, login *bridgev2.UserLogin, portal *bridgev2.Portal, info *bridgev2.ChatInfo, action string) error {
 	if portal.MXID == "" {
 		// Not CleanupOrphanedDM, which provisionutil runs first: it deletes a room whose member list doesn't have me,
-		// and Courier has no server copy of a chat's history to get it back from.
+		// and Vitruvian Courier has no server copy of a chat's history to get it back from.
 		if err := portal.CreateMatrixRoom(h.Bridge.Log.WithContext(ctx), login, info); err != nil {
 			h.Bridge.Log.Warn().Str("network", h.Network).Str("action", action).Str("reason", "room_create_failed").
 				Msg("a one-to-one chat couldn't be made here")
@@ -272,7 +272,7 @@ func (a *Actions) loginForAccount(ctx context.Context, network, accountID string
 }
 
 // memberGhost is the network ID of userID when it is a person of room's network (a ghost) who is in room as far as
-// Courier knows (store.InChat: a member row, whatever its membership, or a message of theirs, since a bridge's member
+// Vitruvian Courier knows (store.InChat: a member row, whatever its membership, or a message of theirs, since a bridge's member
 // list can leave out a sender). Otherwise store.ErrNotFound, naming no one.
 func (a *Actions) memberGhost(ctx context.Context, room store.Room, userID string) (networkid.UserID, error) {
 	ghostID, isGhost := ids.ParseGhostMXID(room.Network, id.UserID(userID))
@@ -289,7 +289,7 @@ func (a *Actions) memberGhost(ctx context.Context, room store.Room, userID strin
 	return ghostID, nil
 }
 
-// ownDirectChat is the one-to-one chat Courier already has with userID on room's account (store.DirectRoomWith). The
+// ownDirectChat is the one-to-one chat Vitruvian Courier already has with userID on room's account (store.DirectRoomWith). The
 // account is room's login (rooms.login_id, else loginOf), or, for a group every account shares whose logins are all
 // down, each of mine the bridge has in the group, in loginOf's order: so a chat that exists opens while the network is
 // down. With the network starting or not running there is no bridge to say which account a shared group is in (every

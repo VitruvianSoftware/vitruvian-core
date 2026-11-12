@@ -3,7 +3,7 @@
 
 import AppKit
 import Combine
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// Wraps any window's root content so locking `SystemLifecycleModel` reactively:
@@ -112,7 +112,7 @@ private final class LockEnforcerNSView: NSView {
         titleCancellable = nil
         subtitleCancellable = nil
         guard let window else { return }
-        let lockedTitle = String(localized: "Courier")
+        let lockedTitle = String(localized: "Vitruvian Courier")
         if window.title != lockedTitle, !window.title.isEmpty {
             savedTitle = window.title
         }
@@ -148,7 +148,7 @@ private final class LockEnforcerNSView: NSView {
 
     func enforceLockOnWindow() {
         guard let window else { return }
-        let lockedTitle = String(localized: "Courier")
+        let lockedTitle = String(localized: "Vitruvian Courier")
         if window.title != lockedTitle, !window.title.isEmpty {
             savedTitle = window.title
         }
@@ -211,7 +211,7 @@ public struct AppLockOverlay: View {
                 }
 
                 VStack(spacing: 6) {
-                    Text("Courier is Locked")
+                    Text("Vitruvian Courier is Locked")
                         .font(.title2.weight(.semibold))
                         .foregroundStyle(.primary)
 
@@ -245,6 +245,6 @@ public struct AppLockOverlay: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(Text("Courier is Locked"))
+        .accessibilityLabel(Text("Vitruvian Courier is Locked"))
     }
 }

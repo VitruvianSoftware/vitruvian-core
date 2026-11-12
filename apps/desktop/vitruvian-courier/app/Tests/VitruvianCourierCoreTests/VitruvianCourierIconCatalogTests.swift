@@ -5,7 +5,7 @@ import AppKit
 import Foundation
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 final class CourierIconCatalogTests: XCTestCase {
     private static let expectedMaterialSymbolRows: [String] = [

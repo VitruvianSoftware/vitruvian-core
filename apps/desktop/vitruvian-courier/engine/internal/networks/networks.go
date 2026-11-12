@@ -1,7 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package networks is the list of chat networks Courier can bridge, and how to build each one's engine spec.
+// Package networks is the list of chat networks Vitruvian Courier can bridge, and how to build each one's engine spec.
 package networks
 
 import (

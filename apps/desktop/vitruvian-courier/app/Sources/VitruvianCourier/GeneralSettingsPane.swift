@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// Tracks rendered and highlighted setting anchors during layout for test verification.
@@ -566,7 +566,7 @@ struct GeneralSettingsPane: View {
                 SettingsNavigationModel.title(for: "general.requireTouchID"),
                 isOn: $lifecycle.autoLockEnabled
             )
-            .help(String(localized: "Locks Courier on launch and after idle time; requires Touch ID or your Mac password."))
+            .help(String(localized: "Locks Vitruvian Courier on launch and after idle time; requires Touch ID or your Mac password."))
             .settingAnchor("general.requireTouchID", highlighted: highlightedSettingID)
 
             Picker(

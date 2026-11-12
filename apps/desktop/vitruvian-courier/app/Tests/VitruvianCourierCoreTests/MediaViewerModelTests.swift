@@ -4,7 +4,7 @@
 import Foundation
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 @MainActor
 final class MediaViewerModelTests: XCTestCase {
@@ -14,7 +14,7 @@ final class MediaViewerModelTests: XCTestCase {
 
     override func setUpWithError() throws {
         tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("courier-mediaviewer-tests-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("vitruvian-courier-mediaviewer-tests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
     }
 
@@ -39,12 +39,12 @@ final class MediaViewerModelTests: XCTestCase {
         servers.append(server)
         let launcher = FakeLauncher { _, process in process.printReady(socket: server.path) }
         let supervisor = EngineSupervisor(
-            enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",
-            dataDir: URL(fileURLWithPath: "/tmp/courier-test-data"),
+            enginePath: "/Applications/Vitruvian Courier.app/Contents/Helpers/vitruvian-courier-engine",
+            dataDir: URL(fileURLWithPath: "/tmp/vitruvian-courier-test-data"),
             environment: [:],
             launcher: launcher,
             credentials: InMemoryCredentialStore(),
-            clientName: "Courier/test",
+            clientName: "Vitruvian Courier/test",
             timing: FakeTime().timing()
         )
         let appModel = AppModel(supervisor: supervisor)

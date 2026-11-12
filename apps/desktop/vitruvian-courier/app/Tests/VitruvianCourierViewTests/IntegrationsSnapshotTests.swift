@@ -2,17 +2,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 import XCTest
 
-@testable import Courier
+@testable import VitruvianCourier
 
 /// Settings ▸ Integrations drawn light and dark for a person to look at: off; on with two connections; the port in
 /// use; Remote Access on; and the new-connection sheet showing a (made-up) secret. All data here is made up.
 @MainActor
 final class IntegrationsSnapshotTests: XCTestCase {
-    private static let enginePath = "/Applications/Courier.app/Contents/Helpers/courier-engine"
+    private static let enginePath = "/Applications/Vitruvian Courier.app/Contents/Helpers/vitruvian-courier-engine"
     private static let madeUpSecret = "courier_Zm9yLXNuYXBzaG90cy1vbmx5LW5vdC1hLXJlYWwtdG9rZW4" // gitleaks:allow (made up)
 
     private func model(_ status: IntegrationsStatus?, tokens: [APIToken] = [],

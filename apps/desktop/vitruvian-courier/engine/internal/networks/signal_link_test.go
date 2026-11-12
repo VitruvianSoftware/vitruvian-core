@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // libsignal_ffi.a is built for macOS only (//apps/desktop/vitruvian-courier/libsignal), and
-// Courier is a macOS app. On other platforms this file is left out, so the
+// Vitruvian Courier is a macOS app. On other platforms this file is left out, so the
 // Linux CI lanes that run every go_test (go-race) compile an empty test rather
 // than fail on a library that does not exist there.
 

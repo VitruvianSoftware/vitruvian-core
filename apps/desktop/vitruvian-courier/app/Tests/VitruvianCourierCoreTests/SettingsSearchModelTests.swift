@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 @MainActor
 final class SettingsSearchModelTests: XCTestCase {
@@ -96,12 +96,12 @@ final class SettingsSearchModelTests: XCTestCase {
 
         let launcher = FakeLauncher { _, process in process.printReady(socket: server.path) }
         let supervisor = EngineSupervisor(
-            enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",
-            dataDir: URL(fileURLWithPath: "/tmp/courier-settings-nav-\(UUID().uuidString)"),
+            enginePath: "/Applications/Vitruvian Courier.app/Contents/Helpers/vitruvian-courier-engine",
+            dataDir: URL(fileURLWithPath: "/tmp/vitruvian-courier-settings-nav-\(UUID().uuidString)"),
             environment: [:],
             launcher: launcher,
             credentials: InMemoryCredentialStore(),
-            clientName: "Courier/test",
+            clientName: "Vitruvian Courier/test",
             timing: FakeTime().timing()
         )
         let app = AppModel(supervisor: supervisor)
@@ -158,12 +158,12 @@ final class SettingsSearchModelTests: XCTestCase {
 
         let launcher = FakeLauncher { _, _ in }
         let supervisor = EngineSupervisor(
-            enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",
-            dataDir: URL(fileURLWithPath: "/tmp/courier-settings-notif-\(UUID().uuidString)"),
+            enginePath: "/Applications/Vitruvian Courier.app/Contents/Helpers/vitruvian-courier-engine",
+            dataDir: URL(fileURLWithPath: "/tmp/vitruvian-courier-settings-notif-\(UUID().uuidString)"),
             environment: [:],
             launcher: launcher,
             credentials: InMemoryCredentialStore(),
-            clientName: "Courier/test",
+            clientName: "Vitruvian Courier/test",
             timing: FakeTime().timing()
         )
         let app = AppModel(supervisor: supervisor)

@@ -205,7 +205,7 @@ type inboxRow struct {
 	PreviewCall      *callJSON     `json:"preview_call"` // null unless preview_kind is call
 }
 
-// callJSON is a CallNote: what a bridge's call notice says, as Courier reads it.
+// callJSON is a CallNote: what a bridge's call notice says, as Vitruvian Courier reads it.
 type callJSON struct {
 	State string `json:"state"`
 	Media string `json:"media"`

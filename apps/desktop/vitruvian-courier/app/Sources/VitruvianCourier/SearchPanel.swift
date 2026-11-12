@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// ⌘K over the main window (01 §12): a light dim, and the panel centred near the top. Clicking the dim closes it.
@@ -277,8 +277,8 @@ private struct SearchSectionView: View {
                 quietLine(line)
             }
             if section.kind == .messages {
-                // The counterpart of 01 §12's limit line, in Courier's words.
-                quietLine(String(localized: "Courier searches the messages on this Mac. Older history appears as each network sends it."))
+                // The counterpart of 01 §12's limit line, in Vitruvian Courier's words.
+                quietLine(String(localized: "Vitruvian Courier searches the messages on this Mac. Older history appears as each network sends it."))
             }
         }
         .padding(.bottom, 6)
@@ -359,7 +359,7 @@ private struct PartialMatchesDivider: View {
     }
 }
 
-/// What the panel says in place of its rows, in Courier's words.
+/// What the panel says in place of its rows, in Vitruvian Courier's words.
 struct SearchNoticeView: View {
     let notice: SearchNotice
     let clearFilters: () -> Void

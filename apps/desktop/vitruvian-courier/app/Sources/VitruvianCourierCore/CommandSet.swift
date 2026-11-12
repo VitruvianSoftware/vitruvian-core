@@ -952,7 +952,7 @@ public enum CommandSet {
             },
             CourierCommand(
                 id: "nav.focusCourier",
-                title: String(localized: "Focus Courier"),
+                title: String(localized: "Focus Vitruvian Courier"),
                 category: .navigation,
                 keywords: ["focus", "bring to front", "activate", "window"],
                 icon: "macwindow",

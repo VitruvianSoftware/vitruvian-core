@@ -21,8 +21,8 @@ public enum EngineError: LocalizedError, Equatable, Sendable {
     /// No answer within the call's time limit. The engine may still do what was asked.
     case timedOut
 
-    /// Typed error thrown when a user-initiated mutation is refused because Courier is locked.
-    public static let appLocked = EngineError.rpc(.badValue, message: "Courier is locked", reason: "locked")
+    /// Typed error thrown when a user-initiated mutation is refused because Vitruvian Courier is locked.
+    public static let appLocked = EngineError.rpc(.badValue, message: "Vitruvian Courier is locked", reason: "locked")
 
     /// Only a refused handshake means the app and engine are of different versions.
     public var isUpdateNeeded: Bool {
@@ -33,20 +33,20 @@ public enum EngineError: LocalizedError, Equatable, Sendable {
     public var errorDescription: String? {
         switch self {
         case .protocolMismatch:
-            return String(localized: "Courier needs an update to talk to its engine.")
+            return String(localized: "Vitruvian Courier needs an update to talk to its engine.")
         case .notConnected:
-            return String(localized: "Courier’s engine is not connected.")
+            return String(localized: "Vitruvian Courier’s engine is not connected.")
         case .disconnected:
-            return String(localized: "Lost connection to Courier’s engine.")
+            return String(localized: "Lost connection to Vitruvian Courier’s engine.")
         case .frameTooLarge:
             return String(localized: "That request is too large.")
         case .badResponse:
-            return String(localized: "Courier’s engine returned an unexpected answer.")
+            return String(localized: "Vitruvian Courier’s engine returned an unexpected answer.")
         case .timedOut:
-            return String(localized: "Courier’s engine did not answer in time.")
+            return String(localized: "Vitruvian Courier’s engine did not answer in time.")
         case let .rpc(code, _, reason):
             if code == .badValue, reason == "locked" {
-                return String(localized: "Courier is locked.")
+                return String(localized: "Vitruvian Courier is locked.")
             }
             return Self.describe(code: code)
         }
@@ -55,13 +55,13 @@ public enum EngineError: LocalizedError, Equatable, Sendable {
     private static func describe(code: RPCErrorCode) -> String {
         switch code {
         case .parseError, .invalidRequest, .methodNotFound, .invalidParams:
-            return String(localized: "Courier’s engine couldn’t understand that request.")
+            return String(localized: "Vitruvian Courier’s engine couldn’t understand that request.")
         case .internalError:
-            return String(localized: "Courier’s engine ran into a problem. Try again.")
+            return String(localized: "Vitruvian Courier’s engine ran into a problem. Try again.")
         case .protocolMismatch:
-            return String(localized: "Courier needs an update to talk to its engine.")
+            return String(localized: "Vitruvian Courier needs an update to talk to its engine.")
         case .helloRequired:
-            return String(localized: "Courier’s engine is still starting up.")
+            return String(localized: "Vitruvian Courier’s engine is still starting up.")
         case .notLinked:
             return String(localized: "This network isn’t linked.")
         case .bridgeCommand:
@@ -101,7 +101,7 @@ public enum EngineError: LocalizedError, Equatable, Sendable {
         case .needsFFmpeg:
             return String(localized: "Sending voice notes on this network needs ffmpeg. Install it with Homebrew (brew install ffmpeg), then try again.")
         case .other:
-            return String(localized: "Courier’s engine could not do that.")
+            return String(localized: "Vitruvian Courier’s engine could not do that.")
         }
     }
 }
@@ -121,10 +121,10 @@ public actor EngineClient {
     /// Methods that wait on a person, and so have no time limit unless the caller gives one.
     public static let untimedMethods: Set<String> = ["login.wait"]
 
-    /// `Courier/<the app's version>`, the client name hello sends.
+    /// `Vitruvian Courier/<the app's version>`, the client name hello sends.
     public static var defaultClientName: String {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-        return "Courier/\(version ?? "dev")"
+        return "Vitruvian Courier/\(version ?? "dev")"
     }
 
     private let socketPath: String

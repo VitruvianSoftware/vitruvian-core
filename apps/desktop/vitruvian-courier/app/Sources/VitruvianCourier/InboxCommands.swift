@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// The Chat menu: the inbox's keys, where the menu bar shows them; the View menu's space bar and labels; Undo,
-/// which undoes the toast's action while it shows; and search: Search… (⌘K) in the Courier menu, Search in Chat…
+/// which undoes the toast's action while it shows; and search: Search… (⌘K) in the Vitruvian Courier menu, Search in Chat…
 /// (⌘F) in the Chat menu. (⌘⌥↓ and ⌘⌥↑ also move between chats; they are in MainWindow,
 /// since a menu item has one key. E, x, ⇧J, ⇧K and ⌘A work on the list itself: see InboxList.)
 struct InboxCommands: Commands {
@@ -24,7 +24,7 @@ struct InboxCommands: Commands {
     let minimizeToMenuBar: @MainActor () -> Void
     @ObservedObject var hotkeys: HotkeyRegistry
     @ObservedObject var hotkeyDispatcher: HotkeyDispatcher
-    /// Courier ▸ Check for Updates…, which names the newer version once a check has found one.
+    /// Vitruvian Courier ▸ Check for Updates…, which names the newer version once a check has found one.
     @ObservedObject var updates: UpdateModel
     /// Opens Settings for the items that show a pane of it (`AppMenuCoordinator.openSettings`): each item hands it
     /// this menu's `openSettings` first, so Settings opens even if the main window never showed.
@@ -34,7 +34,7 @@ struct InboxCommands: Commands {
 
     var body: some Commands {
         CommandGroup(replacing: .appInfo) {
-            Button(String(localized: "About Courier")) {
+            Button(String(localized: "About Vitruvian Courier")) {
                 openSettingsPane(.about)
             }
             .disabled(lifecycle.isLocked)
@@ -73,13 +73,13 @@ struct InboxCommands: Commands {
             .registryShortcut(HotkeyID.commandBar, in: hotkeys)
             .disabled(!hotkeyDispatcher.canPerform(HotkeyID.commandBar))
 
-            Button(String(localized: "Focus Courier")) {
+            Button(String(localized: "Focus Vitruvian Courier")) {
                 dispatch("Focus App")
             }
             .registryShortcut("Focus App", in: hotkeys)
             .disabled(!hotkeyDispatcher.canPerform("Focus App"))
 
-            Button(String(localized: "Focus Courier and Command Bar")) {
+            Button(String(localized: "Focus Vitruvian Courier and Command Bar")) {
                 dispatch("Focus App and Command Bar")
             }
             .registryShortcut("Focus App and Command Bar", in: hotkeys)
@@ -87,7 +87,7 @@ struct InboxCommands: Commands {
 
             Divider()
 
-            Button(lifecycle.isLocked ? String(localized: "Unlock Courier…") : String(localized: "Lock App")) {
+            Button(lifecycle.isLocked ? String(localized: "Unlock Vitruvian Courier…") : String(localized: "Lock App")) {
                 if lifecycle.isLocked {
                     _ = bringMainWindowForward()
                 }
@@ -102,7 +102,7 @@ struct InboxCommands: Commands {
             }
             .registryShortcut("Minimize To Menu Bar", in: hotkeys)
             .disabled(!hotkeyDispatcher.canPerform("Minimize To Menu Bar"))
-            Button(String(localized: "Quit Courier")) {
+            Button(String(localized: "Quit Vitruvian Courier")) {
                 dispatch("Quit App")
             }
             .registryShortcut("Quit App", in: hotkeys)
@@ -247,7 +247,7 @@ struct InboxCommands: Commands {
             spaceKeys
                 .disabled(lifecycle.isLocked)
         }
-        // Courier has no help book, so the standard Help ▸ Courier Help would only say that help isn't available.
+        // Vitruvian Courier has no help book, so the standard Help ▸ Vitruvian Courier Help would only say that help isn't available.
         CommandGroup(replacing: .help) {
             Button(String(localized: "Report a Problem…")) {
                 dispatch("Report a Problem")
@@ -313,7 +313,7 @@ struct InboxCommands: Commands {
         guard !lifecycle.isLocked, case let .available(version) = updates.phase else {
             return String(localized: "Check for Updates…")
         }
-        return String(localized: "Update to Courier \(version.description)…")
+        return String(localized: "Update to Vitruvian Courier \(version.description)…")
     }
 
     // MARK: The open chat (or the chats selected)

@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// The inbox model against a stand-in engine. The engine's answers come from an `InboxScript` the test edits, and
 /// the coalescing window's sleep is one the test opens.
@@ -785,8 +785,8 @@ final class InboxModelTests: XCTestCase {
             process.printReady(socket: index == 0 ? firstServer.path : secondServer.path)
         }
         let supervisor = EngineSupervisor(
-            enginePath: "/x/courier-engine", dataDir: URL(fileURLWithPath: "/tmp/courier-test-data"),
-            environment: [:], launcher: launcher, credentials: InMemoryCredentialStore(), clientName: "Courier/test",
+            enginePath: "/x/vitruvian-courier-engine", dataDir: URL(fileURLWithPath: "/tmp/vitruvian-courier-test-data"),
+            environment: [:], launcher: launcher, credentials: InMemoryCredentialStore(), clientName: "Vitruvian Courier/test",
             timing: FakeTime().timing())
         let app = AppModel(supervisor: supervisor)
         let store = TestDefaults()
@@ -1123,7 +1123,7 @@ final class InboxModelTests: XCTestCase {
     func testNoEmptyStateBeforeTheAccountsAreRead() {
         let supervisor = EngineSupervisor(
             enginePath: "/x", dataDir: URL(fileURLWithPath: "/tmp/x"), environment: [:],
-            launcher: FakeLauncher { _, _ in }, credentials: InMemoryCredentialStore(), clientName: "Courier/test")
+            launcher: FakeLauncher { _, _ in }, credentials: InMemoryCredentialStore(), clientName: "Vitruvian Courier/test")
         let store = TestDefaults()
         defer { store.remove() }
         let inbox = InboxModel(appModel: AppModel(supervisor: supervisor),
@@ -1303,7 +1303,7 @@ final class InboxModelTests: XCTestCase {
         let env = ProcessInfo.processInfo.environment
         guard let runfiles = env["TEST_SRCDIR"] else { return nil }
         for workspace in [env["TEST_WORKSPACE"], "_main"].compactMap({ $0 }) {
-            let candidate = URL(fileURLWithPath: "\(runfiles)/\(workspace)/apps/desktop/courier/engine/internal/gchat/gchat_test_/gchat_test")
+            let candidate = URL(fileURLWithPath: "\(runfiles)/\(workspace)/apps/desktop/vitruvian-courier/engine/internal/gchat/gchat_test_/gchat_test")
             if FileManager.default.isExecutableFile(atPath: candidate.path) {
                 return candidate
             }
@@ -1326,7 +1326,7 @@ final class InboxModelTests: XCTestCase {
         proc.executableURL = bin
         proc.arguments = ["-test.run=^TestServeGChatEngineHelperForAppE2E$"]
         var env = ProcessInfo.processInfo.environment
-        env["COURIER_GCHAT_E2E_SOCKET"] = sockPath
+        env["VITRUVIAN_COURIER_GCHAT_E2E_SOCKET"] = sockPath
         proc.environment = env
         try proc.run()
         defer {
@@ -1338,12 +1338,12 @@ final class InboxModelTests: XCTestCase {
 
         let launcher = FakeLauncher { _, process in process.printReady(socket: sockPath) }
         let supervisor = EngineSupervisor(
-            enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",
+            enginePath: "/Applications/Vitruvian Courier.app/Contents/Helpers/vitruvian-courier-engine",
             dataDir: sockDir,
             environment: [:],
             launcher: launcher,
             credentials: InMemoryCredentialStore(),
-            clientName: "Courier/test",
+            clientName: "Vitruvian Courier/test",
             timing: FakeTime().timing()
         )
         let app = AppModel(supervisor: supervisor)
@@ -1764,7 +1764,7 @@ final class InboxModelTests: XCTestCase {
 
 /// A suite-named UserDefaults of its own, so no test reads or writes the real settings.
 final class TestDefaults {
-    let name = "courier-tests-\(UUID().uuidString)"
+    let name = "vitruvian-courier-tests-\(UUID().uuidString)"
     let defaults: UserDefaults
 
     init() { defaults = ScratchDefaults.suite(named: name)! }
@@ -1806,9 +1806,9 @@ func startInbox(rooms: [[String: Any]] = [], accounts: [[String: Any]] = [accoun
     let server = try TestEngineServer(handler: script.handle)
     let launcher = FakeLauncher { _, process in process.printReady(socket: server.path) }
     let supervisor = EngineSupervisor(
-        enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",
-        dataDir: URL(fileURLWithPath: "/tmp/courier-test-data"), environment: [:], launcher: launcher,
-        credentials: InMemoryCredentialStore(), clientName: "Courier/test", timing: FakeTime().timing())
+        enginePath: "/Applications/Vitruvian Courier.app/Contents/Helpers/vitruvian-courier-engine",
+        dataDir: URL(fileURLWithPath: "/tmp/vitruvian-courier-test-data"), environment: [:], launcher: launcher,
+        credentials: InMemoryCredentialStore(), clientName: "Vitruvian Courier/test", timing: FakeTime().timing())
     let app = AppModel(supervisor: supervisor)
     let sleeps = SleepControl()
     let toastSleeps = SleepControl()

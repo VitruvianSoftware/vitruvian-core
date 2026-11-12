@@ -943,7 +943,7 @@ func prepare(t *testing.T, w *world, name string, params map[string]any) {
 		w.direct(t)
 		params["room_id"], params["user_id"] = group, contact
 		if name == "room.directChat-not-connected" {
-			// Someone Courier has no chat with, and the account down: the network can't be asked in time.
+			// Someone Vitruvian Courier has no chat with, and the account down: the network can't be asked in time.
 			const someone = "@whatsapp_someone:courier.local"
 			require.NoError(t, w.s.SetMember(ctx, group, someone, json.RawMessage(`{"membership":"join"}`)))
 			w.wa.SetLoggedIn(w.waLogin, false)

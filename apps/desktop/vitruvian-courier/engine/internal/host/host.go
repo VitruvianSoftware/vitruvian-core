@@ -1,7 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package host runs one network connector against courier's local store, with its own bridge database.
+// Package host runs one network connector against Vitruvian Courier's local store, with its own bridge database.
 package host
 
 import (
@@ -101,7 +101,7 @@ func Start(ctx context.Context, dataDir, network string, s *store.Store, m *medi
 		// Without this, bridgev2 never names a DM after the contact (portal.go and ghost.go check it).
 		PrivateChatPortalMeta: true,
 		PhoneNumbersInProfile: true,
-		// Courier's only self-leave sender is the explicit Leave / Report as Spam path.
+		// Vitruvian Courier's only self-leave sender is the explicit Leave / Report as Spam path.
 		BridgeMatrixLeave: true,
 		// Connecting a login returns before the network says it is logged in. A send in that gap, or during a
 		// reconnect, waits this long instead of failing at once. The example's 0s is wrong for a local app.
@@ -111,7 +111,7 @@ func Start(ctx context.Context, dataDir, network string, s *store.Store, m *medi
 		UnknownErrorAutoReconnect:     5 * time.Minute,
 		UnknownErrorMaxAutoReconnects: 10,
 		// A chat's pin, archive and mute on the network are taken in when it first arrives and never again, so a
-		// later change on the phone doesn't fight one made in Courier. Only these two tags mean anything to the
+		// later change on the phone doesn't fight one made in Vitruvian Courier. Only these two tags mean anything to the
 		// store (pinned, archived); without the list no tag is taken in at all.
 		TagOnlyOnCreate:  true,
 		MuteOnlyOnCreate: true,

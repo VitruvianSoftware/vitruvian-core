@@ -1,7 +1,7 @@
 # Proto
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/gchat/proto`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/gchat/proto`.
 
 ## Interface
 - `[googlechat.proto:UserType]`
@@ -32,4 +32,4 @@ Component package providing implementation for `apps/desktop/courier/gchat/proto
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/gchat/proto/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/gchat/proto/...`

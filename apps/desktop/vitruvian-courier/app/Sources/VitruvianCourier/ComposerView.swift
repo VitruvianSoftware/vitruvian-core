@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -98,7 +98,7 @@ struct ComposerView: View {
         String(localized: "Send voice note"),
         String(localized: "Voice note ready"),
         String(localized: "Discard recording"),
-        String(localized: "Microphone access is turned off for Courier. Allow microphone access in System Settings to record voice notes."),
+        String(localized: "Microphone access is turned off for Vitruvian Courier. Allow microphone access in System Settings to record voice notes."),
         String(localized: "Open System Settings"),
     ]
 
@@ -1723,7 +1723,7 @@ private struct ComposerVoiceStatusBanner: View {
             HStack(spacing: 10) {
                 Image(systemName: "mic.slash.fill")
                     .foregroundStyle(.orange)
-                Text(String(localized: "Microphone access is turned off for Courier. Allow microphone access in System Settings to record voice notes."))
+                Text(String(localized: "Microphone access is turned off for Vitruvian Courier. Allow microphone access in System Settings to record voice notes."))
                     .font(.callout)
                     .foregroundStyle(.primary)
                     .fixedSize(horizontal: false, vertical: true)

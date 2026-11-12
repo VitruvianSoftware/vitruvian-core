@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 import XCTest
 
-@testable import Courier
+@testable import VitruvianCourier
 
 /// The selected message: its action bar on the bubble's corner, the add-reaction chip, and who reacted. A click (or the
 /// arrow keys) selects a message, and only the selected one shows its bar, so these draw a row with `isSelected`; the
@@ -28,7 +28,7 @@ final class MessageActionBarSnapshotTests: XCTestCase {
 
     private func timeline(_ events: [Event], selected: String, card: String? = nil, bottom: CGFloat = 14) -> some View {
         let ui = MessageUI()
-        let actions = Courier.MessageActions(now: { Fixture.now })
+        let actions = VitruvianCourier.MessageActions(now: { Fixture.now })
         return VStack(spacing: 0) {
             ForEach(Fixture.items(events)) { item in
                 TimelineItemView(item: item, isSelected: item.id == selected, showsSent: false, actions: actions,

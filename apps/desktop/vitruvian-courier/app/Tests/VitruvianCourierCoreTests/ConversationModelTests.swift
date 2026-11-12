@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// The conversation model against a stand-in engine that keeps a few chats' events and pages them as the real
 /// engine does. All data here is made up.
@@ -55,9 +55,9 @@ final class ConversationModelTests: XCTestCase {
         servers.append(server)
         let launcher = FakeLauncher { _, process in process.printReady(socket: server.path) }
         let supervisor = EngineSupervisor(
-            enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",
-            dataDir: URL(fileURLWithPath: "/tmp/courier-test-data"), environment: [:], launcher: launcher,
-            credentials: InMemoryCredentialStore(), clientName: "Courier/test", timing: FakeTime().timing())
+            enginePath: "/Applications/Vitruvian Courier.app/Contents/Helpers/vitruvian-courier-engine",
+            dataDir: URL(fileURLWithPath: "/tmp/vitruvian-courier-test-data"), environment: [:], launcher: launcher,
+            credentials: InMemoryCredentialStore(), clientName: "Vitruvian Courier/test", timing: FakeTime().timing())
         let app = AppModel(supervisor: supervisor)
         apps.append(app)
         let unread = UnreadBox()
@@ -760,8 +760,8 @@ final class ConversationModelTests: XCTestCase {
             process.printReady(socket: index == 0 ? firstServer.path : secondServer.path)
         }
         let supervisor = EngineSupervisor(
-            enginePath: "/x/courier-engine", dataDir: URL(fileURLWithPath: "/tmp/courier-test-data"),
-            environment: [:], launcher: launcher, credentials: InMemoryCredentialStore(), clientName: "Courier/test",
+            enginePath: "/x/vitruvian-courier-engine", dataDir: URL(fileURLWithPath: "/tmp/vitruvian-courier-test-data"),
+            environment: [:], launcher: launcher, credentials: InMemoryCredentialStore(), clientName: "Vitruvian Courier/test",
             timing: FakeTime().timing())
         let app = AppModel(supervisor: supervisor)
         let conversation = ConversationModel(appModel: app)
@@ -1690,7 +1690,7 @@ extension ConversationModelTests {
     }
 
     /// A4: quitting while I type tells the chat I stopped, from the chat's composer and the thread pane's, before the
-    /// held messages go and the engine stops (AppModel.quit, what Courier ▸ Quit runs).
+    /// held messages go and the engine stops (AppModel.quit, what Vitruvian Courier ▸ Quit runs).
     func testQuitStopsTypingOnBothComposersFirst() async throws {
         let (h, _) = try await startWithRows(
             ["!a": [threadRoot(id: "$r", room: "!a", at: 1, replies: 0), textEvent(id: "$2", room: "!a", at: 2)]],
@@ -1911,7 +1911,7 @@ extension ConversationModelTests {
         XCTAssertEqual(h.conversation.composer.entities, [TextEntity(kind: .blockquote, offset: 0, length: 14)])
         XCTAssertEqual(h.conversation.composer.caretRequest?.location, 16)
 
-        // A refusal is a toast in Courier's words, and the group stays open.
+        // A refusal is a toast in Vitruvian Courier's words, and the group stays open.
         try await h.open("!g")
         h.script.overrides["room.directChat"] = .error(code: -32023, message: "this network can't do that")
         await h.conversation.replyPrivately(to: "$1")
@@ -1924,7 +1924,7 @@ extension ConversationModelTests {
         XCTAssertEqual(h.count("room.directChat"), 2)
     }
 
-    /// Ruling 20: each refusal in Courier's words; the quote falls back to "> " lines when the private chat's features
+    /// Ruling 20: each refusal in Vitruvian Courier's words; the quote falls back to "> " lines when the private chat's features
     /// can't be read (C19); and Reply Privately is there only while the network runs, not while it starts or when it
     /// didn't start.
     func testReplyPrivatelyRefusalsFallbackAndANetworkThatDoesNotRun() async throws {
@@ -2190,7 +2190,7 @@ extension ConversationModelTests {
         await h.conversation.refreshChatInfo(force: true)
         XCTAssertEqual(h.server.receivedParams("room.info").last?["refresh"] as? Bool, true)
 
-        let exportURL = URL(fileURLWithPath: "/tmp/courier-export-test.txt")
+        let exportURL = URL(fileURLWithPath: "/tmp/vitruvian-courier-export-test.txt")
         let written = try await h.conversation.exportChat(to: exportURL)
         XCTAssertEqual(written, 2)
         XCTAssertEqual(h.server.receivedParams("room.export").last?["room_id"] as? String, "!a")

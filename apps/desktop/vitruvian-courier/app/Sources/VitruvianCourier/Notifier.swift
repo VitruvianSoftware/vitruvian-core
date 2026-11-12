@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import UniformTypeIdentifiers
 @preconcurrency import UserNotifications
 
 /// The system's notification centre for the coordinator: shows a notification for a message or a reminder, with
 /// "Mark as Read", an inline "Reply" (messages only) and "Remind in 1 Hour" / "Remind in 8 Hours" (with a plan that
 /// includes reminders), and sends a click or a button back to the coordinator. Everything it decides is in
-/// CourierCore; this only carries it out.
+/// VitruvianCourierCore; this only carries it out.
 ///
 /// UNUserNotificationCenter aborts in a process that is not an app bundle (`swift run`, a bare binary), so every
 /// use is behind `isAvailable`, and without a bundle the notifier does nothing.
@@ -152,7 +152,7 @@ final class Notifier: NSObject, NotificationDelivering, UNUserNotificationCenter
         if let resolvedType {
             options[UNNotificationAttachmentOptionsTypeHintKey] = resolvedType.identifier
         }
-        let tempDir = fm.temporaryDirectory.appendingPathComponent("courier-notif-\(UUID().uuidString)", isDirectory: true)
+        let tempDir = fm.temporaryDirectory.appendingPathComponent("vitruvian-courier-notif-\(UUID().uuidString)", isDirectory: true)
         do {
             try fm.createDirectory(at: tempDir, withIntermediateDirectories: true)
             let tempURL = tempDir.appendingPathComponent("attachment.\(ext)")
@@ -239,7 +239,7 @@ final class Notifier: NSObject, NotificationDelivering, UNUserNotificationCenter
 
     // MARK: - UNUserNotificationCenterDelegate
 
-    /// A message for another chat shows even while Courier is in front.
+    /// A message for another chat shows even while Vitruvian Courier is in front.
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification)
         async -> UNNotificationPresentationOptions {
         [.banner, .list, .sound]

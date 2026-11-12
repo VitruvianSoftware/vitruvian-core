@@ -1,7 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import CourierCore
+import VitruvianCourierCore
 import Foundation
 import XCTest
 
@@ -72,7 +72,7 @@ final class SystemLifecycleModelTests: XCTestCase {
         model.launchAtLogin = true
         XCTAssertFalse(model.launchAtLogin)
         let registerError = try XCTUnwrap(model.lastErrorMessage)
-        XCTAssertTrue(registerError.contains("Courier"))
+        XCTAssertTrue(registerError.contains("Vitruvian Courier"))
         XCTAssertFalse(registerError.contains("SMAppService"))
     }
 
@@ -136,7 +136,7 @@ final class SystemLifecycleModelTests: XCTestCase {
         XCTAssertTrue(unlockedOnSuccess)
         XCTAssertFalse(model.isLocked)
         XCTAssertNil(model.lastErrorMessage)
-        XCTAssertEqual(bioService.prompts, ["Unlock Courier", "Unlock Courier", "Unlock Courier"])
+        XCTAssertEqual(bioService.prompts, ["Unlock Vitruvian Courier", "Unlock Vitruvian Courier", "Unlock Vitruvian Courier"])
     }
 
     func testStartMinimizedAndCloseToTrayDecisions() throws {
@@ -205,7 +205,7 @@ final class SystemLifecycleModelTests: XCTestCase {
         )
         XCTAssertTrue(lockedAtLaunch.isLocked)
         _ = await lockedAtLaunch.launchUnlockTask?.value
-        XCTAssertEqual(failingBio.prompts, ["Unlock Courier"], "init must trigger unlockWithTouchID() when requireTouchIDOnLaunch is true")
+        XCTAssertEqual(failingBio.prompts, ["Unlock Vitruvian Courier"], "init must trigger unlockWithTouchID() when requireTouchIDOnLaunch is true")
         XCTAssertTrue(lockedAtLaunch.isLocked, "must remain locked when launch authentication returns false")
 
         // 3. When launch authentication succeeds, model unlocks after launch prompt completes
@@ -216,7 +216,7 @@ final class SystemLifecycleModelTests: XCTestCase {
             biometrics: succeedingBio
         )
         _ = await unlocksAtLaunch.launchUnlockTask?.value
-        XCTAssertEqual(succeedingBio.prompts, ["Unlock Courier"])
+        XCTAssertEqual(succeedingBio.prompts, ["Unlock Vitruvian Courier"])
         XCTAssertFalse(unlocksAtLaunch.isLocked)
     }
 

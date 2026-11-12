@@ -1,10 +1,10 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
-/// `Settings ▸ Courier Plan`: covers `setting:beeper-plus Go Unlimited`, `PlusPill.tsx`, `FreebieNudge.tsx`,
+/// `Settings ▸ Vitruvian Courier Plan`: covers `setting:beeper-plus Go Unlimited`, `PlusPill.tsx`, `FreebieNudge.tsx`,
 /// `SubscriptionExpiryBanners.tsx` and `SecretPrefsSubView.tsx`. Settings ▸ Integrations is
 /// IntegrationsSettingsPane.swift.
 public struct PlusSettingsPane: View {
@@ -41,7 +41,7 @@ public struct PlusSettingsPane: View {
     }
 
     private var planOverviewSection: some View {
-        Section(String(localized: "Courier Plan")) {
+        Section(String(localized: "Vitruvian Courier Plan")) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .center, spacing: 10) {
                     Image(systemName: summary.bannerState == .activeIncluded ? "checkmark.seal.fill" : "sparkles")
@@ -173,7 +173,7 @@ public struct SubscriptionExpiryBannerView: View {
         case let .expiringSoon(dateText):
             String(localized: "Plan expires on \(dateText).")
         case .expired:
-            String(localized: "Available with a plan — subscription management isn’t available yet in Courier.")
+            String(localized: "Available with a plan — subscription management isn’t available yet in Vitruvian Courier.")
         }
     }
 

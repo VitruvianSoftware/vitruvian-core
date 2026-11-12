@@ -1,7 +1,7 @@
 # Ids
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/engine/internal/ids`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/engine/internal/ids`.
 
 ## Interface
 - `[ids.go:ServerName]`
@@ -22,4 +22,4 @@ Component package providing implementation for `apps/desktop/courier/engine/inte
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/engine/internal/ids/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/engine/internal/ids/...`

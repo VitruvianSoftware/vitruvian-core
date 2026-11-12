@@ -38,7 +38,7 @@ import (
 const MaxLate = time.Hour
 
 // ReasonNotSent is the status_reason of a held message whose window ended more than MaxLate before the engine could
-// send it (Courier was closed): nothing was sent. The app words it.
+// send it (Vitruvian Courier was closed): nothing was sent. The app words it.
 const ReasonNotSent = "not sent"
 
 // ErrAlreadySent is Unhold's answer once a message is no longer held: its window ended and it was claimed.
@@ -726,7 +726,7 @@ func (s *Store) putBack(ctx context.Context, eventID, from, to, kind string, atT
 	return ok, nil
 }
 
-// Requeue puts a claimed message of mine back in the outbox, for when its hand-off was cut short (Courier quitting)
+// Requeue puts a claimed message of mine back in the outbox, for when its hand-off was cut short (Vitruvian Courier quitting)
 // before anything reached the network: pending again becomes queued, with an outbox row due at its own time (ts: when
 // it was held, or when its scheduled time claimed it), in one transaction. The next claim (ClaimDue, at this start or
 // the next) then sends it once if it is under MaxLate late, or makes it failed ReasonNotSent if over. Only a pending

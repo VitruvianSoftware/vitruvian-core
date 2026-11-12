@@ -136,7 +136,7 @@ public final class DockAndTrayPreferences: ObservableObject {
     }
 }
 
-/// Sections in the Settings window targeted by menu commands (`About Courier`, `Accounts…`, `Keyboard Shortcuts`, etc.).
+/// Sections in the Settings window targeted by menu commands (`About Vitruvian Courier`, `Accounts…`, `Keyboard Shortcuts`, etc.).
 public enum SettingsSection: String, CaseIterable, Sendable {
     case general
     case accounts
@@ -153,7 +153,7 @@ public enum SettingsSection: String, CaseIterable, Sendable {
     case changelog
     case reportProblem
     case about
-    /// Settings ▸ About ▸ Updates (Courier ▸ Check for Updates…).
+    /// Settings ▸ About ▸ Updates (Vitruvian Courier ▸ Check for Updates…).
     case updates
 }
 

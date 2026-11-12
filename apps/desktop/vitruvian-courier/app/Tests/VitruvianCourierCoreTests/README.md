@@ -1,7 +1,7 @@
-# Couriercoretests
+# VitruvianCourierCoreTests
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/app/Tests/CourierCoreTests`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/app/Tests/VitruvianCourierCoreTests`.
 
 ## Interface
 - `[AIProvidersTests.swift:AIProvidersTests]`
@@ -48,4 +48,4 @@ Component package providing implementation for `apps/desktop/courier/app/Tests/C
 - [CommandBarModelTests.swift:75]: `// Re-opening with an empty query boosts recent commands to the top of displa...`
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/app/Tests/CourierCoreTests/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/app/Tests/VitruvianCourierCoreTests/...`

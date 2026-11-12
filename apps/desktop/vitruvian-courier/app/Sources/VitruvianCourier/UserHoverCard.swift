@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// Popover card shown when hovering a message sender's avatar or name for 0.5s, or pressing ⌘⇧O.

@@ -128,9 +128,9 @@ func TestAfterReadArchivesAfterTheDelay(t *testing.T) {
 	require.True(t, rowOf(t, s, "!phone").Archived)
 }
 
-// Ruling 15: the read markers an account brings in when it first syncs are reads I did on my phone before Courier
+// Ruling 15: the read markers an account brings in when it first syncs are reads I did on my phone before Vitruvian Courier
 // knew the chat. They don't schedule archives, or turning on "after I read" and adding an account would archive
-// every chat already read there. Only a read of a message Courier received live does: one after the chat was
+// every chat already read there. Only a read of a message Vitruvian Courier received live does: one after the chat was
 // first seen (rooms.created_at).
 func TestSyncedReadMarkersDoNotScheduleArchives(t *testing.T) {
 	s, ctx := open(t), context.Background()
@@ -145,7 +145,7 @@ func TestSyncedReadMarkersDoNotScheduleArchives(t *testing.T) {
 
 	require.NoError(t, s.MarkReadLocal(ctx, "!local", "$old!local", firstSeen.Add(-time.Millisecond)))
 	require.NoError(t, s.SetRead(ctx, "!phone", "$old!phone", firstSeen.Add(-time.Millisecond)))
-	require.True(t, dueAt(t, s, "!local").IsZero(), "a read of a message from before Courier saw the chat")
+	require.True(t, dueAt(t, s, "!local").IsZero(), "a read of a message from before Vitruvian Courier saw the chat")
 	require.True(t, dueAt(t, s, "!phone").IsZero(), "the same from the network's sync")
 
 	clock.set(firstSeen.Add(2 * time.Hour))

@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// The plan seam (spec §3): the only provider says yes, and a feature that is denied calls nothing.
 @MainActor

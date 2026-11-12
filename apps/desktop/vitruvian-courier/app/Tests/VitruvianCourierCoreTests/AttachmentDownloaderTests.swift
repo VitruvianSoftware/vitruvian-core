@@ -6,7 +6,7 @@ import Darwin
 import Foundation
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 @MainActor
 final class AttachmentDownloaderTests: XCTestCase {
@@ -18,7 +18,7 @@ final class AttachmentDownloaderTests: XCTestCase {
 
     override func setUpWithError() throws {
         tempRoot = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("courier-downloader-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("vitruvian-courier-downloader-\(UUID().uuidString)", isDirectory: true)
         downloadsDir = tempRoot.appendingPathComponent("Downloads", isDirectory: true)
         mediaStoreDir = tempRoot.appendingPathComponent("media/ab", isDirectory: true)
         try FileManager.default.createDirectory(at: downloadsDir, withIntermediateDirectories: true)

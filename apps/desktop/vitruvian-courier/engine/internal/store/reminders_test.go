@@ -188,7 +188,7 @@ func TestReminderSkippedWhenSomethingCameIn(t *testing.T) {
 	require.ErrorIs(t, s.SetReminder(ctx, []string{"!quiet"}, due.Add(time.Hour), "if_unknown"), ErrBadValue)
 }
 
-// Review Focus 2: a reminder that came due while Courier was quit fires once at the next chance: not zero times,
+// Review Focus 2: a reminder that came due while Vitruvian Courier was quit fires once at the next chance: not zero times,
 // not twice.
 func TestOverdueReminderFiresOnceAfterRestart(t *testing.T) {
 	ctx := context.Background()
@@ -203,7 +203,7 @@ func TestOverdueReminderFiresOnceAfterRestart(t *testing.T) {
 	require.NoError(t, s.SetReminder(ctx, []string{"!r"}, due, "always"))
 	require.NoError(t, s.Close())
 
-	// Courier was quit through the due time; it opens a day later.
+	// Vitruvian Courier was quit through the due time; it opens a day later.
 	s, err = Open(path)
 	require.NoError(t, err)
 	clockAt(s, due.Add(24*time.Hour))

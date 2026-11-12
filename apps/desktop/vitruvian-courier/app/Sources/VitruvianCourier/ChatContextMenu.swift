@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// A chat's right-click menu (02 §3.4.1, the 4.1 part), in its order. It acts on `ids`, the chats it was opened

@@ -1,7 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import CourierCore
+import VitruvianCourierCore
 import Foundation
 import XCTest
 
@@ -221,7 +221,7 @@ final class StorageModelTests: XCTestCase {
         await model.clearMedia(forRoomID: "!wa:1")
         await model.deleteMedia()
 
-        XCTAssertTrue(storageRPCMethods.isEmpty, "No storage.* RPC may be sent while Courier is locked")
+        XCTAssertTrue(storageRPCMethods.isEmpty, "No storage.* RPC may be sent while Vitruvian Courier is locked")
         XCTAssertNil(model.usage)
     }
 

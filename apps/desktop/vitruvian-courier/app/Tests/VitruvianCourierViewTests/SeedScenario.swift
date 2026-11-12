@@ -1,10 +1,10 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import CourierCore
+import VitruvianCourierCore
 import Foundation
 
-/// A scenario of made-up chats (apps/desktop/courier/seed/scenarios), the same files the test copy's engine plays:
+/// A scenario of made-up chats (apps/desktop/vitruvian-courier/seed/scenarios), the same files the test copy's engine plays:
 /// one chat of it becomes the events the engine would send for it, with Fixture.now as "now". Format: the seed
 /// folder's README.md.
 struct SeedScenario: Decodable {
@@ -61,17 +61,17 @@ struct SeedScenario: Decodable {
         }
     }
 
-    /// The scenario folder: Bazel's runfiles (BUILD's data on //apps/desktop/courier/seed:scenarios), or, under
+    /// The scenario folder: Bazel's runfiles (BUILD's data on //apps/desktop/vitruvian-courier/seed:scenarios), or, under
     /// SwiftPM, the source tree beside this file.
     static func directoryCandidates() -> [URL] {
         let environment = ProcessInfo.processInfo.environment
         var candidates: [URL] = []
         if let runfiles = environment["TEST_SRCDIR"] {
             for workspace in [environment["TEST_WORKSPACE"], "_main"].compactMap({ $0 }) {
-                candidates.append(URL(fileURLWithPath: "\(runfiles)/\(workspace)/apps/desktop/courier/seed/scenarios"))
+                candidates.append(URL(fileURLWithPath: "\(runfiles)/\(workspace)/apps/desktop/vitruvian-courier/seed/scenarios"))
             }
         }
-        // Tests/CourierViewTests/SeedScenario.swift → apps/desktop/courier/seed/scenarios
+        // Tests/VitruvianCourierViewTests/SeedScenario.swift → apps/desktop/vitruvian-courier/seed/scenarios
         candidates.append(URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("seed/scenarios"))
         return candidates

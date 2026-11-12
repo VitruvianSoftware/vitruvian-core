@@ -18,7 +18,7 @@ import (
 	"unicode"
 )
 
-// The local API (milestone 5) lets MCP clients use Courier with a bearer token. A token is 32 random bytes, shown
+// The local API (milestone 5) lets MCP clients use Vitruvian Courier with a bearer token. A token is 32 random bytes, shown
 // once as TokenPrefix followed by their base64url; courier.db keeps only the SHA-256 of that whole string, so the
 // database alone can't be used to connect.
 const (

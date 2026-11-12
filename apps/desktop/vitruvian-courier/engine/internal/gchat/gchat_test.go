@@ -4199,7 +4199,7 @@ func TestStartDMByEmailEndToEndThroughRPCActionsAndFakeServer(t *testing.T) {
 		}
 	}
 
-	rpcCall(1, "hello", map[string]any{"protocol": rpc.Protocol, "client": "Courier/0.6.0"})
+	rpcCall(1, "hello", map[string]any{"protocol": rpc.Protocol, "client": "Vitruvian Courier/0.6.0"})
 	accRes := rpcCall(2, "accounts.list", nil)
 	accounts, _ := accRes["accounts"].([]any)
 	require.Len(t, accounts, 1)
@@ -5691,7 +5691,7 @@ func TestPlaceholderChatNameKeepsRealNamesThatLookLikeIDs(t *testing.T) {
 
 // After a restart the first CONNECTED runs the world sync, which moves the stored user revision up to
 // "now". Catch-up must still start from the revision saved before the restart, or whatever arrived while
-// Courier was closed is skipped. A second catch-up (the stream dropping and coming back) must not store the
+// Vitruvian Courier was closed is skipped. A second catch-up (the stream dropping and coming back) must not store the
 // same message twice.
 func TestFirstConnectAfterRestartCatchesUpFromSavedRevision(t *testing.T) {
 	ctx := context.Background()
@@ -5718,7 +5718,7 @@ func TestFirstConnectAfterRestartCatchesUpFromSavedRevision(t *testing.T) {
 			mu.Lock()
 			catchUpFrom = append(catchUpFrom, decodeCatchUpUserFromRevision(body))
 			mu.Unlock()
-			msg := buildSyntheticMessageProto(spaceGID, "topic_gap", "msg_gap_1", "112233445566778899002", "Sent while Courier was closed", 1710000250000000, "", 0, 0)
+			msg := buildSyntheticMessageProto(spaceGID, "topic_gap", "msg_gap_1", "112233445566778899002", "Sent while Vitruvian Courier was closed", 1710000250000000, "", 0, 0)
 			_, _ = w.Write(pb.MustMarshal(&pb.CatchUpResponse{
 				Events: []*pb.Event{{
 					GroupId: spaceGID,
@@ -5739,7 +5739,7 @@ func TestFirstConnectAfterRestartCatchesUpFromSavedRevision(t *testing.T) {
 	})
 
 	client.Disconnect()                                 // only the notifications below drive the client
-	ul.Metadata.(*UserLoginMetadata).UserRevision = 500 // saved before Courier was closed
+	ul.Metadata.(*UserLoginMetadata).UserRevision = 500 // saved before Vitruvian Courier was closed
 	require.NoError(t, ul.Save(ctx))
 
 	client.processStreamNotification(ctx, streamNotification{kind: EventKindConnected})
@@ -5750,7 +5750,7 @@ func TestFirstConnectAfterRestartCatchesUpFromSavedRevision(t *testing.T) {
 	require.Eventually(t, func() bool {
 		m, err := h.Bridge.DB.Message.GetFirstPartByID(ctx, ul.ID, MakeMessageID("topic_gap", "msg_gap_1"))
 		return err == nil && m != nil
-	}, 3*time.Second, 20*time.Millisecond, "the message sent while Courier was closed must arrive")
+	}, 3*time.Second, 20*time.Millisecond, "the message sent while Vitruvian Courier was closed must arrive")
 	require.Equal(t, int64(900), ul.Metadata.(*UserLoginMetadata).UserRevision)
 
 	// The stream drops and comes back: catch-up runs again and must not store the message twice.

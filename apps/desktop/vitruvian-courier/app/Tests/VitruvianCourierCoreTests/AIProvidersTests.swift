@@ -4,7 +4,7 @@
 import Foundation
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 @MainActor
 final class AIProvidersTests: XCTestCase {
@@ -784,7 +784,7 @@ final class AIProvidersTests: XCTestCase {
         _ = await store.provider.translate(text: "Hello", targetLanguage: "French")
         _ = await store.provider.summarize(context: context)
 
-        XCTAssertTrue(transport.requests.isEmpty, "With AI off, Courier must make zero network requests")
+        XCTAssertTrue(transport.requests.isEmpty, "With AI off, Vitruvian Courier must make zero network requests")
     }
 
     func testAIProviderStoreSettingsDetectionRunsLocalhostWhenAIOffAndStopsWhenClosed() async throws {
@@ -1468,7 +1468,7 @@ final class AIProvidersTests: XCTestCase {
 
     private func makeTempUnslothStudioDir(pidFiles: [String]) throws -> URL {
         let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("courier-unsloth-test-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("vitruvian-courier-unsloth-test-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         for name in pidFiles {
             try Data("12345".utf8).write(to: dir.appendingPathComponent(name))

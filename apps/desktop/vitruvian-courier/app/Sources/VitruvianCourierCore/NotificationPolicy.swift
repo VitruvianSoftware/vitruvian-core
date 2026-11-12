@@ -541,7 +541,7 @@ public enum NotificationPolicy {
         let sound = override?.sound ?? baseSound
 
         var title = room.name.isEmpty ? event.senderName : room.name
-        if title.isEmpty { title = String(localized: "Courier") }
+        if title.isEmpty { title = String(localized: "Vitruvian Courier") }
         let sender = event.senderName.trimmingCharacters(in: .whitespaces)
         var subtitle: String? = room.isDirect || sender.isEmpty ? nil : sender
         var textBody: String
@@ -637,7 +637,7 @@ public enum NotificationPolicy {
         room.muted || room.mutedBy != .none
     }
 
-    /// Redacts notification content when Courier is locked (`isLocked == true`), hiding sender name,
+    /// Redacts notification content when Vitruvian Courier is locked (`isLocked == true`), hiding sender name,
     /// chat title, message preview, media attachments, and interactive reply/copy actions across all paths.
     public static func redactIfLocked(_ content: NotificationContent, isLocked: Bool) -> NotificationContent {
         guard isLocked else { return content }
@@ -652,7 +652,7 @@ public enum NotificationPolicy {
         return NotificationContent(
             eventID: content.eventID,
             roomID: content.roomID,
-            title: String(localized: "Courier"),
+            title: String(localized: "Vitruvian Courier"),
             subtitle: nil,
             body: redactedBody,
             category: .scheduled,
@@ -686,7 +686,7 @@ public enum NotificationPolicy {
     public static func typingContent(room: InboxRow) -> NotificationContent {
         NotificationContent(
             eventID: typingID(roomID: room.roomID), roomID: room.roomID,
-            title: room.name.isEmpty ? String(localized: "Courier") : room.name, subtitle: nil,
+            title: room.name.isEmpty ? String(localized: "Vitruvian Courier") : room.name, subtitle: nil,
             body: room.typingLine ?? "", category: .typing)
     }
 
@@ -699,27 +699,27 @@ public enum NotificationPolicy {
     public static func reminderContent(room: InboxRow) -> NotificationContent {
         NotificationContent(
             eventID: "reminder-" + room.roomID + "-" + UUID().uuidString, roomID: room.roomID,
-            title: room.name.isEmpty ? String(localized: "Courier") : room.name, subtitle: nil,
+            title: room.name.isEmpty ? String(localized: "Vitruvian Courier") : room.name, subtitle: nil,
             body: String(localized: "You asked to be reminded about this chat."), category: .reminder)
     }
 
-    /// A scheduled message that won't go by itself: canceled because they wrote first, or missed while Courier was
+    /// A scheduled message that won't go by itself: canceled because they wrote first, or missed while Vitruvian Courier was
     /// closed. The chat's name comes from its row; without one, "the chat".
     public static func scheduledContent(_ message: ScheduledMessage, room: InboxRow?) -> NotificationContent {
         let name = room?.name.isEmpty == false ? room!.name : String(localized: "the chat")
         let body = message.state == .canceled
             ? String(localized: "A scheduled message to \(name) wasn’t sent: they wrote first.")
-            : String(localized: "A scheduled message to \(name) missed its time while Courier was closed.")
+            : String(localized: "A scheduled message to \(name) missed its time while Vitruvian Courier was closed.")
         return NotificationContent(
             eventID: "scheduled-\(message.outboxID)-\(message.state.rawValue)-\(message.setAt)",
-            roomID: message.roomID, title: String(localized: "Courier"), subtitle: nil, body: body,
+            roomID: message.roomID, title: String(localized: "Vitruvian Courier"), subtitle: nil, body: body,
             category: .scheduled)
     }
 
     /// What the notification for `event` says.
     public static func content(for event: Event, room: InboxRow) -> NotificationContent {
         var name = room.name.isEmpty ? event.senderName : room.name
-        if name.isEmpty { name = String(localized: "Courier") }
+        if name.isEmpty { name = String(localized: "Vitruvian Courier") }
         let sender = event.senderName.trimmingCharacters(in: .whitespaces)
         return NotificationContent(
             eventID: event.eventID, roomID: event.roomID, title: name,
@@ -732,7 +732,7 @@ public enum NotificationPolicy {
     public static func replyNotSent(roomID: String, title: String, mayHaveGone: Bool = false) -> NotificationContent {
         NotificationContent(
             eventID: "reply-not-sent-" + UUID().uuidString, roomID: roomID,
-            title: title.isEmpty ? String(localized: "Courier") : title, subtitle: nil,
+            title: title.isEmpty ? String(localized: "Vitruvian Courier") : title, subtitle: nil,
             body: mayHaveGone
                 ? String(localized: "Your reply may not have been sent — check the chat before sending again.")
                 : String(localized: "Your reply wasn’t sent — it’s waiting in the chat."))
@@ -742,7 +742,7 @@ public enum NotificationPolicy {
     public static func replyWaiting(roomID: String, title: String) -> NotificationContent {
         NotificationContent(
             eventID: "reply-waiting-" + UUID().uuidString, roomID: roomID,
-            title: title.isEmpty ? String(localized: "Courier") : title, subtitle: nil,
+            title: title.isEmpty ? String(localized: "Vitruvian Courier") : title, subtitle: nil,
             body: String(localized: "Your reply will be sent when the network is back."))
     }
 

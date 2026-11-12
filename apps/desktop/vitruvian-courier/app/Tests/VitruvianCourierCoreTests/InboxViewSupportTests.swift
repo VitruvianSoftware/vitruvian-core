@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// What the inbox's views ask of the models: acting on the chats a context menu names, ⇧J and ⇧K, ⌃1–⌃9,
 /// paging near the end, the counting sweeps, and how rows and empty lists read.

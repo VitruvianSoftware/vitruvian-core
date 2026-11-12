@@ -1,12 +1,12 @@
 load("@rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
 
 go_library(
-    name = "vitruvian-vitruvian-vitruvian-courier-engine-cli_lib",
+    name = "vitruvian-courier-engine-cli_lib",
     srcs = [
         "login.go",
         "main.go",
     ],
-    importpath = "github.com/VitruvianSoftware/vitruvian-courier/engine/cmd/vitruvian-vitruvian-vitruvian-courier-engine-cli",
+    importpath = "github.com/VitruvianSoftware/vitruvian-courier/engine/cmd/vitruvian-courier-engine-cli",
     visibility = ["//visibility:private"],
     deps = [
         "//apps/desktop/vitruvian-courier/engine/internal/actions",
@@ -29,18 +29,18 @@ go_library(
 )
 
 go_binary(
-    name = "vitruvian-vitruvian-vitruvian-courier-engine-cli",
-    embed = [":vitruvian-vitruvian-vitruvian-courier-engine-cli_lib"],
+    name = "vitruvian-courier-engine-cli",
+    embed = [":vitruvian-courier-engine-cli_lib"],
     visibility = ["//apps/desktop/vitruvian-courier:__subpackages__"],
 )
 
 go_test(
-    name = "vitruvian-vitruvian-vitruvian-courier-engine-cli_test",
+    name = "vitruvian-courier-engine-cli_test",
     srcs = [
         "login_test.go",
         "main_test.go",
     ],
-    embed = [":vitruvian-vitruvian-vitruvian-courier-engine-cli_lib"],
+    embed = [":vitruvian-courier-engine-cli_lib"],
     deps = [
         "//apps/desktop/vitruvian-courier/engine/internal/engine",
         "//apps/desktop/vitruvian-courier/engine/internal/fakenet",

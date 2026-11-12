@@ -1,7 +1,7 @@
 # Actions
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/engine/internal/actions`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/engine/internal/actions`.
 
 ## Interface
 - `[actions.go:MaxFileBytes]`
@@ -41,4 +41,4 @@ Component package providing implementation for `apps/desktop/courier/engine/inte
 - [startchat.go:42]: `func (a *Actions) ListContacts(ctx context.Context, network, accountID, query...`
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/engine/internal/actions/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/engine/internal/actions/...`

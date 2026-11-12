@@ -198,7 +198,7 @@ func reopen(t *testing.T, path string, now time.Time) *Store {
 	return s
 }
 
-// Review Focus 3: a message that came due while Courier was quit fires once at the next start, and never again.
+// Review Focus 3: a message that came due while Vitruvian Courier was quit fires once at the next start, and never again.
 func TestScheduledClaimedOnceAcrossReopen(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "courier.db")
@@ -207,7 +207,7 @@ func TestScheduledClaimedOnceAcrossReopen(t *testing.T) {
 	schedule(t, s, "!r", "$later", "happy birthday", t0.Add(8*time.Hour), condAlways)
 	require.NoError(t, s.Close())
 
-	// Courier was quit through the due time; it starts 10 minutes after it.
+	// Vitruvian Courier was quit through the due time; it starts 10 minutes after it.
 	s = reopen(t, path, t0.Add(8*time.Hour+10*time.Minute))
 	evs, err := s.ClaimDue(ctx)
 	require.NoError(t, err)
@@ -262,7 +262,7 @@ func TestCrashAfterClaimNeverSendsTwice(t *testing.T) {
 	require.ErrorIs(t, err, ErrNotFound)
 }
 
-// Review Focus 3, final fix wave: a held or scheduled message claimed as Courier quits, whose hand-off the quit cut
+// Review Focus 3, final fix wave: a held or scheduled message claimed as Vitruvian Courier quits, whose hand-off the quit cut
 // short before anything reached the network, goes back to the outbox (Requeue). At the next start it fires once if
 // it is under MaxLate late, and is failed "not sent" (Retry, Delete) if it is over.
 func TestRequeuedAtQuitFiresOnceAfterRestart(t *testing.T) {
@@ -294,7 +294,7 @@ func TestRequeuedAtQuitFiresOnceAfterRestart(t *testing.T) {
 	require.Empty(t, claimDue(t, s))
 	require.NoError(t, s.Close())
 
-	// Requeued again, and Courier stays closed past MaxLate: failed "not sent", for the person to Retry or Delete.
+	// Requeued again, and Vitruvian Courier stays closed past MaxLate: failed "not sent", for the person to Retry or Delete.
 	s = reopen(t, path, t0.Add(30*time.Minute))
 	for _, id := range []string{"$h", "$s"} {
 		ok, err := s.Requeue(ctx, id)

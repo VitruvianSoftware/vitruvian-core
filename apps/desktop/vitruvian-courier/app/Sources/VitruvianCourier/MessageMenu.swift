@@ -1,7 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// A message's menu (02 §3.4.2's order, the 4.3 subset), from `MessageMenu.sections`: the sections a divider apart,

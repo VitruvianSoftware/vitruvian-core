@@ -3,16 +3,16 @@
 
 import Foundation
 
-/// An MCP client's focus_app (`app.focus`), in the app: Courier comes to the front with its main window, at the
+/// An MCP client's focus_app (`app.focus`), in the app: Vitruvian Courier comes to the front with its main window, at the
 /// chat and message given, with the draft text and file in that chat's composer.
 ///
 /// The draft is only filled in. Nothing here sends: the person reads it, with the file's chip showing its name, and
 /// presses Send or doesn't. A chat the app can't find leaves it on the inbox with nothing filled in, and so does a
-/// file that can't be attached. While Courier is locked it only comes to the front: the lock screen shows, and no
+/// file that can't be attached. While Vitruvian Courier is locked it only comes to the front: the lock screen shows, and no
 /// chat opens behind it.
 ///
-/// It also tells the engine whether Courier is locked (app.setLocked), after each connect and each time it locks
-/// or unlocks, so that focus_app answers its client "Courier is locked" rather than claim a chat opened.
+/// It also tells the engine whether Vitruvian Courier is locked (app.setLocked), after each connect and each time it locks
+/// or unlocks, so that focus_app answers its client "Vitruvian Courier is locked" rather than claim a chat opened.
 @MainActor
 public final class FocusRouter {
     private let appModel: AppModel
@@ -26,7 +26,7 @@ public final class FocusRouter {
     /// - Parameters:
     ///   - composer: the main window's chat composer.
     ///   - lookUpChat: whether the app can open the chat (the inbox's row for it, loaded or looked up).
-    ///   - activate: bring Courier and its main window to the front.
+    ///   - activate: bring Vitruvian Courier and its main window to the front.
     public init(appModel: AppModel, composer: ComposerModel, lookUpChat: @escaping (String) async -> Bool,
                 activate: @escaping () -> Void) {
         self.appModel = appModel
@@ -58,7 +58,7 @@ public final class FocusRouter {
         for observer in lockObservers { NotificationCenter.default.removeObserver(observer) }
     }
 
-    /// Tells the engine whether Courier is locked now, after whatever was told it before.
+    /// Tells the engine whether Vitruvian Courier is locked now, after whatever was told it before.
     private func reportLock(to client: EngineClient) {
         let locked = appModel.isLocked
         let previous = lastReport

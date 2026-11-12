@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// The client against a stand-in engine on a Unix socket: the handshake, the change feed, typed errors, and
 /// answers matched to requests by id.
@@ -22,13 +22,13 @@ final class EngineClientTests: XCTestCase {
     }
 
     func testHelloSendsOnlyTheDocumentedParams() async throws {
-        let client = EngineClient(socketPath: server.path, client: "Courier/9.9.9")
+        let client = EngineClient(socketPath: server.path, client: "Vitruvian Courier/9.9.9")
         let hello = try await client.connect()
         XCTAssertEqual(hello, HelloResult(protocol: CourierProtocol.version, engine: "test", networks: ["whatsapp", "signal"]))
         let request = try XCTUnwrap(server.received.first)
         XCTAssertEqual(request["method"] as? String, "hello")
         XCTAssertEqual(request["jsonrpc"] as? String, "2.0")
-        XCTAssertEqual(request["params"] as? NSDictionary, ["protocol": CourierProtocol.version, "client": "Courier/9.9.9"] as NSDictionary)
+        XCTAssertEqual(request["params"] as? NSDictionary, ["protocol": CourierProtocol.version, "client": "Vitruvian Courier/9.9.9"] as NSDictionary)
         await client.close()
     }
 
@@ -227,7 +227,7 @@ final class EngineClientTests: XCTestCase {
     }
 
     func testConnectToNothingFails() async {
-        let client = EngineClient(socketPath: "/tmp/courier-test-nothing-\(UUID().uuidString.prefix(8)).sock")
+        let client = EngineClient(socketPath: "/tmp/vitruvian-courier-test-nothing-\(UUID().uuidString.prefix(8)).sock")
         do {
             _ = try await client.connect()
             XCTFail("connected to a socket that does not exist")
@@ -264,7 +264,7 @@ final class EngineClientTests: XCTestCase {
             "scheduled.list",
             "merge.list",
             // The app's own lock state, not the person's data: it must reach the engine while locked, or focus_app
-            // couldn't say Courier is locked.
+            // couldn't say Vitruvian Courier is locked.
             "app.setLocked",
         ]
         // Go handlers that fetch from remote networks or write to SQLite/disk (including people.contacts, room.info,

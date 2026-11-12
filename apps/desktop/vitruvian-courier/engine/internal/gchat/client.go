@@ -241,7 +241,7 @@ func (c *Client) processStreamNotification(ctx context.Context, item streamNotif
 		if needInitial {
 			// The world sync moves the stored user revision up to now, so read the one saved before
 			// this connect (a restart, or a re-login) first and catch up from it once the chats exist.
-			// Otherwise whatever arrived while Courier was closed is never fetched.
+			// Otherwise whatever arrived while Vitruvian Courier was closed is never fetched.
 			savedRev := c.storedUserRevision()
 			if err := c.syncWorld(ctx); err != nil && c.UserLogin != nil {
 				c.UserLogin.Log.Warn().Err(err).Msg("gchat initial world sync failed")

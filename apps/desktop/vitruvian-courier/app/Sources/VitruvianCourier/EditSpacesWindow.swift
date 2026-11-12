@@ -1,7 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// Edit Spaces: the bar's order and what it hides. Drag a space to reorder it, below "Hidden" to hide it (or use

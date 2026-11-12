@@ -4,7 +4,7 @@
 import CoreGraphics
 import XCTest
 
-@testable import Courier
+@testable import VitruvianCourier
 
 /// Where the selected message's action bar goes: beside a bubble with room for it, so the message above stays
 /// readable; over the top corner of one too wide for that, inside the row.

@@ -3,21 +3,21 @@ Copyright 2026 VitruvianSoftware
 SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 
-# Courier milestone 3: acceptance list
+# Vitruvian Courier milestone 3: acceptance list
 
-This is the checklist for the day you use Courier instead of your other chat app. Read and reply in Courier all day, and tick a line when you have seen that thing work. Write down anything wrong, with no names, numbers or message text.
+This is the checklist for the day you use Vitruvian Courier instead of your other chat app. Read and reply in Vitruvian Courier all day, and tick a line when you have seen that thing work. Write down anything wrong, with no names, numbers or message text.
 
-Each line is one row of the inventory (`docs/superpowers/specs/2026-10-15-beeper-desktop-inventory/ledger.tsv`), kept under its row name so you can look it up there. The text after the dash says, in plain words, what Courier does now. A tick means "I saw this work", not "the code exists".
+Each line is one row of the inventory (`docs/superpowers/specs/2026-10-15-beeper-desktop-inventory/ledger.tsv`), kept under its row name so you can look it up there. The text after the dash says, in plain words, what Vitruvian Courier does now. A tick means "I saw this work", not "the code exists".
 
 Milestone 3 is the first usable app: inbox, reading, replying, files, adding a network, notifications. Rows the plan leaves for Milestone 4 are at the end, so nothing is dropped quietly.
 
-One rule for the day: do not open the same chat in the other chat app while testing Courier. It would send a read receipt. Courier's own read receipts are real.
+One rule for the day: do not open the same chat in the other chat app while testing Vitruvian Courier. It would send a read receipt. Vitruvian Courier's own read receipts are real.
 
 ## Before you start
 
-- Install Courier with `bazel run --config=macos-app //apps/desktop/courier/app:install`. It puts Courier in /Applications with Courier's own Telegram app ID built in, so there is nothing to set up for Telegram: Add a Network, then Telegram, goes straight to its QR code. If the install says "this Courier has no Telegram app ID built in", run `bazel run //tools/sync-env-secrets:bw-pull` and install again (`app/README.md` says where the ID lives). A Courier without it asks for an api_id and api_hash from my.telegram.org when you pick Telegram, once, and carries on by itself.
+- Install Vitruvian Courier with `bazel run --config=macos-app //apps/desktop/vitruvian-courier/app:install`. It puts Vitruvian Courier in /Applications with Vitruvian Courier's own Telegram app ID built in, so there is nothing to set up for Telegram: Add a Network, then Telegram, goes straight to its QR code. If the install says "this Vitruvian Courier has no Telegram app ID built in", run `bazel run //tools/sync-env-secrets:bw-pull` and install again (`app/README.md` says where the ID lives). A Vitruvian Courier without it asks for an api_id and api_hash from my.telegram.org when you pick Telegram, once, and carries on by itself.
 - Link all five networks again, from the app (Add a Network). The links made with the command-line tool in Milestone 1 are separate and are not used here.
-- On your phones, unlink the old Courier Milestone 1 devices (WhatsApp and Signal: Settings, Linked devices). Leaving them linked can bring every message in twice.
+- On your phones, unlink the old Vitruvian Courier Milestone 1 devices (WhatsApp and Signal: Settings, Linked devices). Leaving them linked can bring every message in twice.
 - Linking Google Messages here signs out any other web session of Google Messages, in any browser.
 
 ## Before the list: four things the plan was most worried about
@@ -25,8 +25,8 @@ One rule for the day: do not open the same chat in the other chat app while test
 These are not inventory rows. They are what the milestone was built to get right, so look at them first.
 
 - [ ] First start does not shout. After linking a network, the first sync pulls in recent history. You should get no burst of notifications for old messages.
-- [ ] A message that was pending when the engine restarted is still there afterwards, once. If the engine stopped before the network answered, it says "May have been sent", with Retry and Delete; Courier never sends it again by itself. It is never lost or doubled.
-- [ ] Closing the sign-in window half way (Slack or Google Messages) leaves nothing half-linked. Courier says calmly what happened, and you can start again.
+- [ ] A message that was pending when the engine restarted is still there afterwards, once. If the engine stopped before the network answered, it says "May have been sent", with Retry and Delete; Vitruvian Courier never sends it again by itself. It is never lost or doubled.
+- [ ] Closing the sign-in window half way (Slack or Google Messages) leaves nothing half-linked. Vitruvian Courier says calmly what happened, and you can start again.
 - [ ] A big inbox and a long chat stay quick: opening the app and scrolling back through a long chat do not freeze it.
 
 ## Keys
@@ -41,25 +41,25 @@ These are not inventory rows. They are what the milestone was built to get right
 - [ ] `hotkey` Message: Quote & Reply: Select a message and press ⌘R: a reply chip appears above the box. Esc clears it.
 - [ ] `hotkey` Send Message: Enter sends. An empty or all-spaces box sends nothing.
 - [ ] `hotkey` Insert New Line: ⇧Enter, ⌥Enter and ⌃Enter each put a new line in the box.
-- [ ] `hotkey` Quit App: ⌘Q quits Courier and stops its engine. The Add a Network sheet being open must not stop it.
+- [ ] `hotkey` Quit App: ⌘Q quits Vitruvian Courier and stops its engine. The Add a Network sheet being open must not stop it.
 
 ## Notifications
 
 - [ ] `setting:notifications` Message notifications: A new message in a chat that is not muted raises a macOS notification: chat name as the title, the text (or a type label) as the body. Clicking it opens that chat. There is no switch for it yet; it is always on.
 - [ ] `setting:notifications` Group message notifications: A message in a group chat notifies too, and who wrote it is shown under the chat name. No separate switch yet.
-- [ ] `setting:notifications` Notify when app is in focus: With Courier in front, a message in a chat other than the open one still notifies. The chat you are looking at does not. "Looking" means the window is in front, the screen is unlocked and awake, and you touched the Mac in the last three minutes: lock the screen or walk away and the open chat notifies too, and stays unread until you are back. No switch yet.
+- [ ] `setting:notifications` Notify when app is in focus: With Vitruvian Courier in front, a message in a chat other than the open one still notifies. The chat you are looking at does not. "Looking" means the window is in front, the screen is unlocked and awake, and you touched the Mac in the last three minutes: lock the screen or walk away and the open chat notifies too, and stays unread until you are back. No switch yet.
 - [ ] `setting:notifications` Sound: The notification plays the default system sound. Choosing a sound is Milestone 4.
 
 Also part of this, not an inventory row of its own: the Dock icon's badge counts unread chats that are not muted and clears at zero, and the menu-bar icon fills in while anything is unread. The notification itself has Mark as Read and a Reply box.
 
 ## Menus
 
-- [ ] `menu:File` Close Window: File ▸ Close (⌘W) closes the window. Courier keeps running, with its Dock icon and menu-bar icon, and Open Courier in the menu-bar menu brings the window back.
-- [ ] `menu:File` Close All: File ▸ Close All is there and closes every Courier window, the same way.
-- [ ] `menu:Beeper` Hide Beeper: Courier ▸ Hide Courier (⌘H) hides the app.
-- [ ] `menu:Beeper` Hide Others: Courier ▸ Hide Others hides every other app.
-- [ ] `menu:Beeper` Show All: Courier ▸ Show All brings them back.
-- [ ] `menu:Beeper` Quit Beeper: Courier ▸ Quit Courier (and the menu-bar icon's Quit Courier) stops the engine, then exits. Nothing is left running.
+- [ ] `menu:File` Close Window: File ▸ Close (⌘W) closes the window. Vitruvian Courier keeps running, with its Dock icon and menu-bar icon, and Open Vitruvian Courier in the menu-bar menu brings the window back.
+- [ ] `menu:File` Close All: File ▸ Close All is there and closes every Vitruvian Courier window, the same way.
+- [ ] `menu:Beeper` Hide Beeper: Vitruvian Courier ▸ Hide Vitruvian Courier (⌘H) hides the app.
+- [ ] `menu:Beeper` Hide Others: Vitruvian Courier ▸ Hide Others hides every other app.
+- [ ] `menu:Beeper` Show All: Vitruvian Courier ▸ Show All brings them back.
+- [ ] `menu:Beeper` Quit Beeper: Vitruvian Courier ▸ Quit Vitruvian Courier (and the menu-bar icon's Quit Vitruvian Courier) stops the engine, then exits. Nothing is left running.
 
 ## Inbox (§3)
 
@@ -187,7 +187,7 @@ Settings for these (and the Settings window itself) are Milestone 4; Milestone 3
 
 ### Menus
 
-Courier has a few menu items of its own meanwhile (File ▸ Add a Network…, the Chat and Message menus); the rows below are the ones it does not have yet, or has only as the standard macOS item.
+Vitruvian Courier has a few menu items of its own meanwhile (File ▸ Add a Network…, the Chat and Message menus); the rows below are the ones it does not have yet, or has only as the standard macOS item.
 
 - `menu:Beeper` About Beeper
 - `menu:Beeper` Check for Updates…
@@ -284,7 +284,7 @@ Courier has a few menu items of its own meanwhile (File ▸ Add a Network…, th
 - `component` ViewLimitedMediaViewer.tsx
 - `component` index.tsx
 
-### Onboarding (§15): Needs a Beeper account or Beeper's own tour; no Courier equivalent is planned
+### Onboarding (§15): Needs a Beeper account or Beeper's own tour; no Vitruvian Courier equivalent is planned
 
 - `component` AwaitCredentials.tsx
 - `component` AwaitEmailCode.tsx
@@ -323,7 +323,7 @@ Courier has a few menu items of its own meanwhile (File ▸ Add a Network…, th
 - `component` NetworkAccountsMenu.tsx
 - `component` Toggle.tsx
 
-**Not planned: Beeper Cloud, device tabs and Beeper's own icons; Courier runs on this Mac only**
+**Not planned: Beeper Cloud, device tabs and Beeper's own icons; Vitruvian Courier runs on this Mac only**
 
 - `component` CloudIcon.tsx
 - `component` ConnectionPicker.tsx

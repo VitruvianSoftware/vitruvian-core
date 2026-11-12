@@ -18,9 +18,9 @@ import (
 // DisappearingMessageNotice, portal.go:4982–5068; WhatsApp's wa-misc.go:238 and Signal's from-signal.go:211 the
 // same) as an m.notice whose body is the bridge's English and whose com.beeper.action_message is
 // {type: "disappearing_timer", timer (ms), timer_type, implicit}. The app draws the note from the action message in
-// Courier's words; the engine never shows or indexes the body (Ruling 40).
+// Vitruvian Courier's words; the engine never shows or indexes the body (Ruling 40).
 //
-// A change made in Courier gets no note from the bridge: WhatsApp, Signal and Telegram all store the new setting on
+// A change made in Vitruvian Courier gets no note from the bridge: WhatsApp, Signal and Telegram all store the new setting on
 // the portal when they take it (e.g. mautrix-whatsapp handlematrix.go:397), so the network's echo equals it and is
 // dropped (DontBridge, wa-misc.go:218/244), and bridgev2's room-meta handler (portal.go:1818–1858) sends none. So
 // the engine writes the note itself (InsertTimerNote): the same shape, mine, with an empty body and localKey set,

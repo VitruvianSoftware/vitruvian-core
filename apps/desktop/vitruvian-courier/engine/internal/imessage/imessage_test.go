@@ -374,7 +374,7 @@ func TestIMessageConnectorEndToEndSyncTapbacksRepliesAttachmentsAndSend(t *testi
 	require.NotNil(t, login)
 	require.True(t, login.Client.IsLoggedIn())
 
-	// Wait for both the DM room and Group room to be populated in Courier's store.
+	// Wait for both the DM room and Group room to be populated in Vitruvian Courier's store.
 	var dmRoomID, grpRoomID string
 	require.Eventually(t, func() bool {
 		rooms, err := st.ListRooms(ctx)
@@ -482,7 +482,7 @@ func TestIMessageConnectorEndToEndSyncTapbacksRepliesAttachmentsAndSend(t *testi
 		Content: event.Content{
 			Parsed: &event.MessageEventContent{
 				MsgType: event.MsgText,
-				Body:    "Outbound reply from Courier",
+				Body:    "Outbound reply from Vitruvian Courier",
 			},
 		},
 	}
@@ -506,17 +506,17 @@ func TestIMessageConnectorEndToEndSyncTapbacksRepliesAttachmentsAndSend(t *testi
 	require.Len(t, sent, 1)
 	require.Equal(t, "iMessage;-;+15551234567", sent[0].ChatGUID)
 	require.Equal(t, "+15551234567", sent[0].ChatIdentifier)
-	require.Equal(t, "Outbound reply from Courier", sent[0].Text)
+	require.Equal(t, "Outbound reply from Vitruvian Courier", sent[0].Text)
 
 	// Force another sync cycle after the mockSender inserted the outbound row into chat.db;
-	// verify echo deduplication prevents a duplicate copy of "Outbound reply from Courier".
+	// verify echo deduplication prevents a duplicate copy of "Outbound reply from Vitruvian Courier".
 	require.NoError(t, imClient.SyncNow(ctx))
 
 	evsAfterSend, err := st.Events(ctx, dmRoomID, 50)
 	require.NoError(t, err)
 	outboundCount := 0
 	for _, e := range evsAfterSend {
-		if e.Type == event.EventMessage.Type && strings.Contains(string(e.Content), "Outbound reply from Courier") {
+		if e.Type == event.EventMessage.Type && strings.Contains(string(e.Content), "Outbound reply from Vitruvian Courier") {
 			outboundCount++
 		}
 	}

@@ -17,7 +17,7 @@ import Foundation
 ///
 /// Its composer is a composer of its own, in `.thread(rootID)`, that never touches the chat's draft: the engine
 /// keeps one draft per chat, and it is the chat composer's. What is typed in a thread stays with that thread while
-/// the pane goes to another one or closes, for as long as Courier runs.
+/// the pane goes to another one or closes, for as long as Vitruvian Courier runs.
 ///
 /// The pane is what reads a thread: opening the chat leaves a reply that stays in its thread unread. Once the newest
 /// page is in, showing the thread's newest reply, the pane tells the engine (`thread.markRead`), when `mayMarkRead`

@@ -33,7 +33,7 @@ public struct UnavailableThemeFileLoader: ThemeFileLoader {
     public init() {}
     public var isAvailable: Bool { false }
     public var unavailableReason: String {
-        String(localized: "Custom CSS and external theme files aren’t available yet in Courier. Use the built-in themes, colours, and wallpapers above.")
+        String(localized: "Custom CSS and external theme files aren’t available yet in Vitruvian Courier. Use the built-in themes, colours, and wallpapers above.")
     }
     public func loadThemeFile(at _: URL) -> ThemeFileLoaderDisposition {
         .unavailable(reason: unavailableReason)

@@ -154,13 +154,13 @@ func TestScrubPathReplacesUserHomeDirAndRealpath(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(
 		t,
-		"open ~/Library/Courier/courier.db",
-		ScrubPath("open "+resolvedReal+"/Library/Courier/courier.db"),
+		"open ~/Library/Vitruvian Courier/courier.db",
+		ScrubPath("open "+resolvedReal+"/Library/Vitruvian Courier/courier.db"),
 	)
 	require.Equal(
 		t,
-		"open ~/Library/Courier/courier.db",
-		ScrubPath("open "+linkHome+"/Library/Courier/courier.db"),
+		"open ~/Library/Vitruvian Courier/courier.db",
+		ScrubPath("open "+linkHome+"/Library/Vitruvian Courier/courier.db"),
 	)
 }
 

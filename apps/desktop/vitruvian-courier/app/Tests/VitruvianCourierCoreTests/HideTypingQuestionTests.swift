@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// "Also hide that you're typing?" is asked by one presenter, once, however Incognito was turned on.
 @MainActor
@@ -21,9 +21,9 @@ final class HideTypingQuestionTests: XCTestCase {
         suites.append(name)
         let preferences = ComposerPreferences(defaults: ScratchDefaults.suite(named: name)!)
         let supervisor = EngineSupervisor(
-            enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",
-            dataDir: URL(fileURLWithPath: "/tmp/courier-test-data"), environment: [:],
-            launcher: FakeLauncher { _, _ in }, credentials: InMemoryCredentialStore(), clientName: "Courier/test",
+            enginePath: "/Applications/Vitruvian Courier.app/Contents/Helpers/vitruvian-courier-engine",
+            dataDir: URL(fileURLWithPath: "/tmp/vitruvian-courier-test-data"), environment: [:],
+            launcher: FakeLauncher { _, _ in }, credentials: InMemoryCredentialStore(), clientName: "Vitruvian Courier/test",
             timing: FakeTime().timing())
         let conversation = ConversationModel(appModel: AppModel(supervisor: supervisor))
         conversation.preferences = preferences

@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 import XCTest
 
-@testable import Courier
+@testable import VitruvianCourier
 
 /// The group-threads scenario's group chat (the one the test copy opens with `--seed group-threads`), drawn light and
 /// dark as seed-group-threads-*.png: the same made-up chat a person sees in the running copy. Like the other
@@ -26,7 +26,7 @@ final class SeedScenarioSnapshotTests: XCTestCase {
         XCTAssertTrue(events.contains { $0.senderName == "Ann Example" })
 
         let ui = MessageUI()
-        var actions = Courier.MessageActions(now: { Fixture.now })
+        var actions = VitruvianCourier.MessageActions(now: { Fixture.now })
         actions.openThread = { _ in }
         let sizes = try Snapshot.render("seed-group-threads", width: 620) {
             VStack(spacing: 0) {
@@ -55,8 +55,8 @@ final class SeedScenarioSnapshotTests: XCTestCase {
         defer { UserDefaults.standard.removePersistentDomain(forName: suiteName) }
         let store = ScratchDefaults.suite(named: suiteName)!
         let app = AppModel(supervisor: EngineSupervisor(
-            enginePath: "/nonexistent/courier-engine",
-            dataDir: FileManager.default.temporaryDirectory.appendingPathComponent("courier-seed-inbox"),
+            enginePath: "/nonexistent/vitruvian-courier-engine",
+            dataDir: FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-courier-seed-inbox"),
             environment: [:], launcher: FoundationProcessLauncher()))
         let inboxPrefs = InboxPreferences(defaults: store)
         let inbox = InboxModel(appModel: app, preferences: inboxPrefs)
@@ -118,8 +118,8 @@ final class SeedScenarioSnapshotTests: XCTestCase {
         let store = ScratchDefaults.suite(named: suiteName)!
         let preferences = ComposerPreferences(defaults: store)
         let app = AppModel(supervisor: EngineSupervisor(
-            enginePath: "/nonexistent/courier-engine",
-            dataDir: FileManager.default.temporaryDirectory.appendingPathComponent("courier-seed-direct"),
+            enginePath: "/nonexistent/vitruvian-courier-engine",
+            dataDir: FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-courier-seed-direct"),
             environment: [:], launcher: FoundationProcessLauncher()))
         let conversation = ConversationModel(appModel: app, preferences: preferences)
         let directRow = try XCTUnwrap(scenario.inboxRows().first { $0.roomID == "dm-ann" })
@@ -131,7 +131,7 @@ final class SeedScenarioSnapshotTests: XCTestCase {
         composer.text = "On my way!"
 
         let ui = MessageUI()
-        let actions = Courier.MessageActions(now: { Fixture.now })
+        let actions = VitruvianCourier.MessageActions(now: { Fixture.now })
         let recentItems = Array(items.suffix(8))
         let sizes = try Snapshot.render("seed-direct", width: 620) {
             VStack(spacing: 0) {

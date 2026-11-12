@@ -182,7 +182,7 @@ public final class MACAppIconApplier: AppIconApplying {
 }
 
 public enum AppIconRenderer {
-    /// Draws our own clean-room procedural vector Courier app icon (rounded squircle + stacked message cards + speech bubble with forward arrow + accent badge)
+    /// Draws our own clean-room procedural vector Vitruvian Courier app icon (rounded squircle + stacked message cards + speech bubble with forward arrow + accent badge)
     /// at the requested pixel dimension (e.g. 128, 256, 512, 1024). Zero external asset files.
     public static func renderIcon(variant: CourierAppIconVariant, size: Int = 256) -> NSImage {
         let clampedSize = max(32, size)
@@ -276,7 +276,7 @@ public enum AppIconRenderer {
         )
         context.fillPath()
 
-        // 4. Courier forward arrow inside the bubble
+        // 4. Vitruvian Courier forward arrow inside the bubble
         let arrow = CGMutablePath()
         arrow.move(to: CGPoint(x: 370, y: 520))
         arrow.addLine(to: CGPoint(x: 610, y: 520))

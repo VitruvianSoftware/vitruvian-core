@@ -28,7 +28,7 @@ solved; none is open.
 ```mermaid
 flowchart LR
     subgraph rust ["Rust 1.98.1, only under the libsignal flag"]
-        crates["libsignal crates<br/>(rules_rs, from apps/desktop/courier/libsignal/Cargo.lock)"]
+        crates["libsignal crates<br/>(rules_rs, from apps/desktop/vitruvian-courier/libsignal/Cargo.lock)"]
         bssl["BoringSSL<br/>(Bazel-built, PQ patch)"]
         protoc["protoc + well-known types"]
         lib["libsignal_ffi.a"]
@@ -36,7 +36,7 @@ flowchart LR
         protoc --> crates
         crates --> lib
     end
-    lib --> cc["cc_library<br/>//apps/desktop/courier/libsignal:signal_ffi"]
+    lib --> cc["cc_library<br/>//apps/desktop/vitruvian-courier/libsignal:signal_ffi"]
     cc --> go["libsignalgo (mautrix-signal, patched to use it)"]
     go --> test["networks_test: PASSED"]
     sdk["vitruvian-sdk Rust"] --> r175["Rust 1.75.0, unchanged"]
@@ -49,8 +49,8 @@ Green means built or passing on this machine on 2026-10-16.
 
 | Check | Result |
 |---|---|
-| `bazel test //apps/desktop/courier/engine/internal/networks:networks_test` (arm64) | PASSED, with and without `--config=macos-app` |
-| `bazel build //apps/desktop/courier/libsignal:signal_ffi_rust_1_98_1 --platforms=@apple_support//platforms:darwin_x86_64` | builds; `lipo` says x86_64 |
+| `bazel test //apps/desktop/vitruvian-courier/engine/internal/networks:networks_test` (arm64) | PASSED, with and without `--config=macos-app` |
+| `bazel build //apps/desktop/vitruvian-courier/libsignal:signal_ffi_rust_1_98_1 --platforms=@apple_support//platforms:darwin_x86_64` | builds; `lipo` says x86_64 |
 | The test binary for x86_64 | links; not run (this Mac has no Rosetta) |
 | Rust the library is built with | 1.98.1 (`rustc version 1.98.1` inside the archive) |
 | Rust the SDK is built with | 1.75.0; its Rust tests pass |
@@ -58,7 +58,7 @@ Green means built or passing on this machine on 2026-10-16.
 
 ## How it works, in short
 
-- A tiny Cargo workspace (`apps/desktop/courier/libsignal/Cargo.toml`) depends on
+- A tiny Cargo workspace (`apps/desktop/vitruvian-courier/libsignal/Cargo.toml`) depends on
   libsignal's crates at the pinned commit, so the existing Rust crate tool
   (rules_rs) treats them like any other downloaded crate and generates their
   build targets. Its lock file is libsignal's own, so the crate versions match
@@ -73,7 +73,7 @@ Green means built or passing on this machine on 2026-10-16.
 - A small patch to mautrix-signal makes its Go package link this library
   instead of searching for a prebuilt `libsignal_ffi.a`.
 
-`apps/desktop/courier/libsignal/README.md` has the detail and the steps for moving the
+`apps/desktop/vitruvian-courier/libsignal/README.md` has the detail and the steps for moving the
 pin.
 
 ## Blockers hit, and how each was solved
@@ -139,10 +139,10 @@ pin.
 - **Annotations are tied to this libsignal version.** Each one is commented.
   A future libsignal can add or drop crates with build scripts; the first
   build after a re-pin will say which.
-- **CI runs it on macOS.** The presubmit unit `courier-engine-macos`
-  (declared in `apps/desktop/courier/engine/BUILD`) runs
-  `bazel test //apps/desktop/courier/engine/...` on the xcode-27 runner. It is
-  chosen for any change to the engine or to `apps/desktop/courier/libsignal`, and for
+- **CI runs it on macOS.** The presubmit unit `vitruvian-courier-engine-macos`
+  (declared in `apps/desktop/vitruvian-courier/engine/BUILD`) runs
+  `bazel test //apps/desktop/vitruvian-courier/engine/...` on the xcode-27 runner. It is
+  chosen for any change to the engine or to `apps/desktop/vitruvian-courier/libsignal`, and for
   repo-wide changes such as `MODULE.bazel`. The Linux lanes run the same tests
   without Signal.
 
@@ -166,7 +166,7 @@ looks for a library that does not exist.
 The authoritative run is Bazel, which links the library for you:
 
 ```sh
-bazel test //apps/desktop/courier/engine/...
+bazel test //apps/desktop/vitruvian-courier/engine/...
 ```
 
 Plain `go test` works too, but cgo then looks for `-lsignal_ffi` on the
@@ -174,15 +174,15 @@ normal library path and finds nothing. Build the archive with Bazel once, then
 point cgo at the directory it landed in:
 
 ```sh
-bazel build //apps/desktop/courier/libsignal:signal_ffi
+bazel build //apps/desktop/vitruvian-courier/libsignal:signal_ffi
 LIB=$(bazel cquery --output=files \
-  'kind(rust_static_library, deps(//apps/desktop/courier/libsignal:signal_ffi))' \
+  'kind(rust_static_library, deps(//apps/desktop/vitruvian-courier/libsignal:signal_ffi))' \
   2>/dev/null | grep '/libsignal_ffi\.a$')
 if [ "$(printf '%s' "$LIB" | grep -c '')" != 1 ]; then
   echo "expected exactly one libsignal_ffi.a, found: ${LIB:-none}" >&2
 else
   LIBDIR=$(dirname "$(bazel info execution_root)/$LIB")
-  (cd apps/desktop/courier/engine && CGO_LDFLAGS="-L$LIBDIR" go test ./internal/networks/)
+  (cd apps/desktop/vitruvian-courier/engine && CGO_LDFLAGS="-L$LIBDIR" go test ./internal/networks/)
 fi
 ```
 
@@ -190,7 +190,7 @@ The query asks for the Rust static library anywhere below `:signal_ffi`, so
 it doesn't depend on how many wrapper targets sit in between, and it stops
 with a message if it finds none or more than one. The directory has a
 build-configuration hash in its name
-(`bazel-out/darwin_arm64-fastbuild-ST-<hash>/bin/apps/desktop/courier/libsignal`), so
+(`bazel-out/darwin_arm64-fastbuild-ST-<hash>/bin/apps/desktop/vitruvian-courier/libsignal`), so
 look it up each time rather than writing it down. Without `CGO_LDFLAGS` the
 link fails with `ld: library 'signal_ffi' not found`. The `go.mod` entries for
 mautrix-signal's own dependencies come from `go mod tidy` in this directory,

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// Multi-column keyboard shortcuts cheat sheet (`⌘/`, `hotkey Keyboard Shortcuts`,
@@ -44,7 +44,7 @@ struct KeyboardShortcutsSheet: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(String(localized: "Keyboard Shortcuts"))
                     .font(.title3.weight(.semibold))
-                Text(String(localized: "All active shortcuts across Courier"))
+                Text(String(localized: "All active shortcuts across Vitruvian Courier"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

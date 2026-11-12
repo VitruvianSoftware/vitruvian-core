@@ -1,7 +1,7 @@
 # Cc In Execroot
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/libsignal/scripts/src/cc_in_execroot`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/libsignal/scripts/src/cc_in_execroot`.
 
 ## Interface
 - `[lib.rs:CcInvocation]`
@@ -18,4 +18,4 @@ Component package providing implementation for `apps/desktop/courier/libsignal/s
 - [lib.rs:77]: `eprintln!("exec {}: {err}", inv.cc);`
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/libsignal/scripts/src/cc_in_execroot/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/libsignal/scripts/src/cc_in_execroot/...`

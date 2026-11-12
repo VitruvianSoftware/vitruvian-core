@@ -3,7 +3,7 @@
 
 import AppKit
 import Combine
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 private struct OpenDetachedWindowKey: EnvironmentKey {
@@ -428,7 +428,7 @@ final class DetachedWindowManager: NSObject, NSWindowDelegate {
     }
 
     private func applyLockTitleState(isLocked: Bool) {
-        let lockedTitle = String(localized: "Courier")
+        let lockedTitle = String(localized: "Vitruvian Courier")
         for (target, window) in windows {
             if isLocked {
                 if window.title != lockedTitle {
@@ -540,7 +540,7 @@ final class DetachedWindowManager: NSObject, NSWindowDelegate {
             defer: false
         )
         unlockedTitles[target] = title
-        window.title = lifecycle.isLocked ? String(localized: "Courier") : title
+        window.title = lifecycle.isLocked ? String(localized: "Vitruvian Courier") : title
         window.subtitle = ""
         window.identifier = NSUserInterfaceItemIdentifier("courier.detached.\(target.id)")
         window.isReleasedWhenClosed = false

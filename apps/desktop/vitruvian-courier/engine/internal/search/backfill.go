@@ -1,7 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package search is Courier's search over courier.db: messages, chats and people. The index itself is the store's
+// Package search is Vitruvian Courier's search over courier.db: messages, chats and people. The index itself is the store's
 // (migration 4); this package fills it in behind with what was already on disk, and answers queries over it.
 package search
 

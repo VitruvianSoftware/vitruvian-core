@@ -4,7 +4,7 @@
 import Foundation
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 @MainActor
 final class ProblemReportModelTests: XCTestCase {
@@ -39,7 +39,7 @@ final class ProblemReportModelTests: XCTestCase {
         let rawStderr = [
             #"{"level":"warn","bridge":"whatsapp","pn":"+15550100101","token":"xoxc-123-456","time":"2026-10-25T12:00:00Z","message":"syncing +15550100101 with xoxc-123-456 for \"Alice Example\""}"#,
             "arbitrary third-party stderr line with +15550100101 and /Users/alice/secret",
-            "courier-engine: open /Users/alice/Library/Application Support/Courier/courier.db: permission denied (token xoxc-123-456, phone +15550100101)",
+            "vitruvian-courier-engine: open /Users/alice/Library/Application Support/Vitruvian Courier/courier.db: permission denied (token xoxc-123-456, phone +15550100101)",
             #"panic: failed to parse "+15550100101: Alice Example" with token xoxc-123-456"#,
             "goroutine 42 [running]:",
             "maunium.net/go/mautrix/bridgev2.(*Portal).handleRemoteEvent(0x1400012a000, {0x104c92a00, 0x14000180000})",
@@ -168,11 +168,11 @@ final class ProblemReportModelTests: XCTestCase {
     func testWriteBundleScrubsSecretsHomePathsPhonesAndNamesAndRefusesWhenLocked() async throws {
         let rawStderr = [
             #"{"level":"warn","bridge":"slack","time":"2026-10-25T12:00:00Z","message":"auth failed for \"Alice Example\" (+15550100101) token xoxc-123-456"}"#,
-            "courier-engine: cannot open /Users/alice/Library/Application Support/Courier/courier.db for +15550100101",
+            "vitruvian-courier-engine: cannot open /Users/alice/Library/Application Support/Vitruvian Courier/courier.db for +15550100101",
             #"panic: token xoxc-123-456 for "Alice Example" at /Users/alice/secret (+15550100101)"#,
             "goroutine 7 [running]:",
-            "github.com/VitruvianSoftware/courier/engine/internal/host.(*Host).Start(0x1400012a000)",
-            "\t/Users/alice/Workspace/project/apps/desktop/courier/engine/internal/host/host.go:200 +0x88",
+            "github.com/VitruvianSoftware/vitruvian-courier/engine/internal/host.(*Host).Start(0x1400012a000)",
+            "\t/Users/alice/Workspace/project/apps/desktop/vitruvian-courier/engine/internal/host/host.go:200 +0x88",
         ]
 
         let server = try TestEngineServer { method, params in
@@ -195,7 +195,7 @@ final class ProblemReportModelTests: XCTestCase {
                             "version": "v0.2609.1",
                             "mautrix_version": "v0.31.0",
                             "state": "ERROR",
-                            "error": "token xoxc-123-456 rejected at /Users/alice/Library/Courier for \"Alice Example\" +15550100101",
+                            "error": "token xoxc-123-456 rejected at /Users/alice/Library/Vitruvian Courier for \"Alice Example\" +15550100101",
                             "started_at": 1_761_393_600_000,
                             "accounts": [
                                 [
@@ -237,11 +237,11 @@ final class ProblemReportModelTests: XCTestCase {
             contextRoomID: "!r1:courier.local",
             contextEventID: "$ev1"
         )
-        model.descriptionText = "Crash when messaging \"Alice Example\" at +15550100101 from /Users/alice/Library/Application Support/Courier with token xoxc-123-456"
+        model.descriptionText = "Crash when messaging \"Alice Example\" at +15550100101 from /Users/alice/Library/Application Support/Vitruvian Courier with token xoxc-123-456"
         await model.loadDiagnostics()
 
         let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("courier-problem-report-test-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("vitruvian-courier-problem-report-test-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: tempDir) }
 
         try model.writeBundle(to: tempDir)
@@ -263,7 +263,7 @@ final class ProblemReportModelTests: XCTestCase {
             XCTAssertFalse(combined.contains(forbidden), "Bundle leaked forbidden text: \(forbidden)")
         }
         XCTAssertTrue(stderrLog.contains("panic: [redacted]"))
-        XCTAssertTrue(stderrLog.contains("github.com/VitruvianSoftware/courier/engine/internal/host/host.go:200 +0x88"))
+        XCTAssertTrue(stderrLog.contains("github.com/VitruvianSoftware/vitruvian-courier/engine/internal/host/host.go:200 +0x88"))
 
         // Refused while locked
         let lifecycle = SystemLifecycleModel(defaults: ScratchDefaults.suite(named: "test.problemreport.lock.\(UUID().uuidString)")!)
@@ -306,7 +306,7 @@ final class ProblemReportModelTests: XCTestCase {
         await model.attemptUpload()
         XCTAssertFalse(model.isUploading)
         XCTAssertEqual(model.uploadNotice, uploader.unavailableReason)
-        XCTAssertTrue(model.uploadNotice?.contains("Courier") == true)
+        XCTAssertTrue(model.uploadNotice?.contains("Vitruvian Courier") == true)
         XCTAssertFalse(model.uploadNotice?.localizedCaseInsensitiveContains("Beeper") == true)
     }
 }

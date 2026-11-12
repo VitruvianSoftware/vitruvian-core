@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// Two-column Settings shell (`⌘,`, `PrefsPanes.tsx`, `PrefOption.tsx`, `PrefsControls.tsx`,
@@ -63,9 +63,9 @@ struct SettingsWindow: View {
                     Image(systemName: "lock.fill")
                         .font(.system(size: 28, weight: .semibold))
                         .foregroundStyle(.secondary)
-                    Text(String(localized: "Courier is locked"))
+                    Text(String(localized: "Vitruvian Courier is locked"))
                         .font(.headline)
-                    Text(String(localized: "Unlock Courier to view or change settings."))
+                    Text(String(localized: "Unlock Vitruvian Courier to view or change settings."))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }

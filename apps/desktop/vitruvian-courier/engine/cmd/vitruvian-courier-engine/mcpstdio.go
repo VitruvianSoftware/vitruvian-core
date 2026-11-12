@@ -54,7 +54,7 @@ func runMCPStdio(argv []string, stdin io.ReadCloser, stdout io.WriteCloser, stde
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 	endpoint := fmt.Sprintf("http://127.0.0.1:%d%s", *port, localapi.MCPPath)
-	client := mcp.NewClient(&mcp.Implementation{Name: "vitruvian-vitruvian-courier-engine-mcp-stdio", Version: version}, nil)
+	client := mcp.NewClient(&mcp.Implementation{Name: "vitruvian-courier-engine-mcp-stdio", Version: version}, nil)
 	remote, err := client.Connect(ctx, &mcp.StreamableClientTransport{
 		Endpoint:             endpoint,
 		HTTPClient:           &http.Client{Transport: bearerTransport{token: token, base: http.DefaultTransport}},

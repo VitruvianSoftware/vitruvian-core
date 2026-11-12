@@ -10,7 +10,7 @@ import UniformTypeIdentifiers
 /// When a user copies a file in Finder, the pasteboard contains a `file://` URL (alongside a Finder icon `.tiff`
 /// and filename `.string`), so file URLs always take precedence. When no file URLs are present—for example after
 /// taking a macOS screenshot to the clipboard (`⌘⌃⇧4`), choosing **Copy Image** in a browser, Preview, Photos, or
-/// Courier's media lightbox—raw image data on the pasteboard is materialized to a temporary file so the composer
+/// Vitruvian Courier's media lightbox—raw image data on the pasteboard is materialized to a temporary file so the composer
 /// can attach and send it as an inline image.
 public enum PasteboardAttachmentExtractor {
     private static let gifPasteboardType = NSPasteboard.PasteboardType(UTType.gif.identifier)
@@ -211,7 +211,7 @@ public enum PasteboardAttachmentExtractor {
         tempDirectory: URL,
         now: Date
     ) -> URL? {
-        let rootDir = tempDirectory.appendingPathComponent("Courier-Pasted-Images", isDirectory: true)
+        let rootDir = tempDirectory.appendingPathComponent("VitruvianCourier-Pasted-Images", isDirectory: true)
         pruneStaleDirectories(in: rootDir, now: now)
         let baseDir = rootDir.appendingPathComponent(UUID().uuidString, isDirectory: true)
         do {

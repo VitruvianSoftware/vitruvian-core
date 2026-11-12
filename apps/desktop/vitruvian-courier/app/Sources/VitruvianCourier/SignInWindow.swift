@@ -3,7 +3,7 @@
 
 import AppKit
 import Combine
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 import WebKit
 
@@ -166,7 +166,7 @@ final class SignInWindowController: NSObject, NSWindowDelegate, WKNavigationDele
             || (manual && collected.isComplete) {
             hand(collected.values)
         } else if manual {
-            state.notice = String(localized: "Courier hasn’t found everything it needs yet. Finish signing in, then try again.")
+            state.notice = String(localized: "Vitruvian Courier hasn’t found everything it needs yet. Finish signing in, then try again.")
         }
     }
 
@@ -199,7 +199,7 @@ final class SignInWindowController: NSObject, NSWindowDelegate, WKNavigationDele
         }
     }
 
-    /// Reads the step's local storage keys, on the step's own site only, in a world of Courier's own so the
+    /// Reads the step's local storage keys, on the step's own site only, in a world of Vitruvian Courier's own so the
     /// page can't see or change it.
     private func readLocalStorage() async {
         let keys = CookieCollector.localStorageKeys(params)

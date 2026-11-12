@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// Inline voice-note and audio player (`Audio.tsx` / `MSC1767Audio`) with interactive waveform bar scrubbing,

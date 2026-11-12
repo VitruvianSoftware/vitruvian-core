@@ -20,7 +20,7 @@ import (
 // (surprise 4). It is protocol.json's conventions.typing_repeat_ms, and rpc's TestTypingRepeatMatchesTheProtocol pins
 // it there, as the app's own test pins ComposerModel.typingRepeat.
 //
-// Inferred (inventory 01 §4): the 4 s pulse, and the app's stop 5 s after the last change, are Courier's; the
+// Inferred (inventory 01 §4): the 4 s pulse, and the app's stop 5 s after the last change, are Vitruvian Courier's; the
 // inventory says typing shows, not how often it is sent.
 const TypingRepeat = 4 * time.Second
 
@@ -30,7 +30,7 @@ const TypingRepeat = 4 * time.Second
 // TypingRepeat (Ruling C14): the app's pulse that comes a few milliseconds early still renews, rather than waiting a
 // whole second pulse (8 s, past Telegram's timeout).
 //
-// Inferred (inventory 01 §4): the renewal, as a stop then a start, is Courier's answer to bridgev2 sending a start
+// Inferred (inventory 01 §4): the renewal, as a stop then a start, is Vitruvian Courier's answer to bridgev2 sending a start
 // once.
 const typingRenew = TypingRepeat - time.Second
 

@@ -1,7 +1,7 @@
 # Store
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/engine/internal/store`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/engine/internal/store`.
 
 ## Interface
 - `[accounts.go:SubAccount]`
@@ -42,4 +42,4 @@ Component package providing implementation for `apps/desktop/courier/engine/inte
 - [bookmarks.go:25]: `err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {`
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/engine/internal/store/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/engine/internal/store/...`

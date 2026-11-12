@@ -1,7 +1,7 @@
 # Scripts
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/app/scripts`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/app/scripts`.
 
 ## Interface
 - Internal implementation components
@@ -14,4 +14,4 @@ Component package providing implementation for `apps/desktop/courier/app/scripts
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/app/scripts/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/app/scripts/...`

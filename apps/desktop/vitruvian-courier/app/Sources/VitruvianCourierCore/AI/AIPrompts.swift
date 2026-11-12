@@ -8,7 +8,7 @@ public enum AIPrompts {
     public static let maxSummarizeMessages = 100
 
     public static func systemPrompt(
-        base: String = "You are a helpful chat assistant in Courier.",
+        base: String = "You are a helpful chat assistant in Vitruvian Courier.",
         responseLanguage: String = "English",
         customInstructions: String = ""
     ) -> String {
@@ -68,7 +68,7 @@ public enum AIPrompts {
         customInstructions: String = ""
     ) -> [AIChatTurn] {
         let system = systemPrompt(
-            base: "You help draft and rewrite chat messages in Courier.",
+            base: "You help draft and rewrite chat messages in Vitruvian Courier.",
             responseLanguage: responseLanguage,
             customInstructions: customInstructions
         )
@@ -107,7 +107,7 @@ public enum AIPrompts {
         customInstructions: String = ""
     ) -> [AIChatTurn] {
         let system = systemPrompt(
-            base: "You rewrite chat messages in Courier.",
+            base: "You rewrite chat messages in Vitruvian Courier.",
             responseLanguage: responseLanguage,
             customInstructions: customInstructions
         )
@@ -126,7 +126,7 @@ public enum AIPrompts {
         customInstructions: String = ""
     ) -> [AIChatTurn] {
         let system = systemPrompt(
-            base: "You translate chat messages in Courier.",
+            base: "You translate chat messages in Vitruvian Courier.",
             responseLanguage: responseLanguage,
             customInstructions: customInstructions
         )
@@ -144,7 +144,7 @@ public enum AIPrompts {
         customInstructions: String = ""
     ) -> [AIChatTurn] {
         let system = systemPrompt(
-            base: "You summarize chat conversations in Courier.",
+            base: "You summarize chat conversations in Vitruvian Courier.",
             responseLanguage: responseLanguage,
             customInstructions: customInstructions
         )

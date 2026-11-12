@@ -1,7 +1,7 @@
 # Imessage
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/engine/internal/imessage`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/engine/internal/imessage`.
 
 ## Interface
 - `[chatdb.go:DefaultChatDBPath]`
@@ -38,4 +38,4 @@ Component package providing implementation for `apps/desktop/courier/engine/inte
 - [send.go:132]: `cmd := exec.CommandContext(ctx, "/usr/bin/osascript", args...)`
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/engine/internal/imessage/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/engine/internal/imessage/...`

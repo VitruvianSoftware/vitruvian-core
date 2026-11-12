@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 import XCTest
 
-@testable import Courier
+@testable import VitruvianCourier
 
 /// A click selects a message (which shows its action bar), a second click on it deselects it, the second click of a
 /// double click leaves it selected, and a click on the timeline's empty space deselects. The clicks are real mouse
@@ -28,7 +28,7 @@ final class MessageSelectionClickTests: XCTestCase {
         let ui = MessageUI()
 
         var body: some View {
-            let actions = Courier.MessageActions(select: { box.selected = $0 }, deselect: { box.selected = nil },
+            let actions = VitruvianCourier.MessageActions(select: { box.selected = $0 }, deselect: { box.selected = nil },
                                                  now: { Fixture.now })
             ScrollView {
                 LazyVStack(spacing: 0) {

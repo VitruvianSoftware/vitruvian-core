@@ -85,10 +85,7 @@ pub fn run(args: &[String]) -> i32 {
     };
 
     if !archive.exists() {
-        eprintln!(
-            "install: no VitruvianCourier.zip at {}",
-            archive.display()
-        );
+        eprintln!("install: no VitruvianCourier.zip at {}", archive.display());
         return 2;
     }
     if !dest.is_dir() {
@@ -145,7 +142,11 @@ pub fn run(args: &[String]) -> i32 {
     // Build patterns for running process detection
     let installed_str = installed.to_string_lossy().to_string();
     let installed_real = fs::canonicalize(&dest)
-        .map(|d| d.join("Vitruvian Courier.app").to_string_lossy().to_string())
+        .map(|d| {
+            d.join("Vitruvian Courier.app")
+                .to_string_lossy()
+                .to_string()
+        })
         .unwrap_or_else(|_| installed_str.clone());
 
     let mut patterns = Vec::new();

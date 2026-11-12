@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// Quick replies: kept on this Mac in a suite-named UserDefaults of the test's own (never the real one). All the
 /// names and words here are made up.

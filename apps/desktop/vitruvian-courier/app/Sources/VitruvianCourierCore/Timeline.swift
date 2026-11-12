@@ -191,7 +191,7 @@ public struct ReactionChip: Equatable, Identifiable, Sendable {
 
 /// Why a message of mine was never sent: the engine's exact status_reason, which the app words itself.
 public enum NotSentCause: Equatable, Sendable {
-    /// Held for undo send, it came due over an hour before the engine could send it: Courier was closed.
+    /// Held for undo send, it came due over an hour before the engine could send it: Vitruvian Courier was closed.
     case appClosed
     /// Held or scheduled, its network wasn't connected when it was due.
     case notConnected
@@ -216,7 +216,7 @@ public enum StatusLine: Equatable, Sendable {
     case seen(by: [String], at: Int64?)
     /// The network did not take it. `reason` is the engine's own words and may be empty.
     case failed(reason: String)
-    /// Courier's engine stopped while this was being sent, so it may or may not have gone. Retry and Delete are
+    /// Vitruvian Courier's engine stopped while this was being sent, so it may or may not have gone. Retry and Delete are
     /// offered as for a failed one; nothing is sent again unasked.
     case mayHaveBeenSent
     /// Nothing was sent (see the cause): Retry and Delete are offered.
@@ -235,7 +235,7 @@ public enum StatusLine: Equatable, Sendable {
     public static var mayHaveBeenSentLabel: String { String(localized: "May have been sent") }
     /// The same, in full: the composer's words for a send the engine did not answer.
     public static var mayHaveBeenSentText: String {
-        String(localized: "Courier’s engine did not answer. The message may have been sent: check the chat before sending it again.")
+        String(localized: "Vitruvian Courier’s engine did not answer. The message may have been sent: check the chat before sending it again.")
     }
 
     /// What the line says for a held message.
@@ -289,10 +289,10 @@ public enum StatusLine: Equatable, Sendable {
         }
     }
 
-    /// Why a message was never sent, in Courier's words.
+    /// Why a message was never sent, in Vitruvian Courier's words.
     public static func notSentText(_ cause: NotSentCause) -> String {
         switch cause {
-        case .appClosed: String(localized: "Courier was closed when this was due to go. Nothing was sent.")
+        case .appClosed: String(localized: "Vitruvian Courier was closed when this was due to go. Nothing was sent.")
         case .notConnected: String(localized: "The network wasn’t connected when this was due to go. Nothing was sent.")
         }
     }
@@ -449,7 +449,7 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
     /// For the bridge's note that the chat's disappearing timer changed: what changed. The view draws a note from it
     /// (`ConversationModel.timerChangeNote`) in place of the body, which is the bridge's English.
     public let timerChange: TimerChange?
-    /// For a bridge's notice of a call: what happened. The body is then Courier's words for it (`CallNote.words`),
+    /// For a bridge's notice of a call: what happened. The body is then Vitruvian Courier's words for it (`CallNote.words`),
     /// never the bridge's English, and the view draws it as a note.
     public let call: CallNote?
     public internal(set) var reply: ReplyPreview?
@@ -1179,7 +1179,7 @@ public enum Timeline {
     }
 
     /// What a message says: its kind, its text (the edit's, if it has one) and, for a file, what is known of it. A
-    /// call note says Courier's words for the call, never the bridge's body; `mine` is whether I made the call.
+    /// call note says Vitruvian Courier's words for the call, never the bridge's body; `mine` is whether I made the call.
     private static func describe(_ event: Event, edit: Event?, mine: Bool) -> Shown {
         let content = event.content
         if event.type == "m.room.message", let call = CallNote.of(content) {

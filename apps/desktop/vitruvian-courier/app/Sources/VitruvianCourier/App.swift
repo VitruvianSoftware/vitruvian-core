@@ -1,7 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 @main
@@ -9,7 +9,7 @@ struct CourierApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
     var body: some Scene {
-        Window("Courier", id: "main") {
+        Window("Vitruvian Courier", id: "main") {
             MainWindow(model: delegate.model, inbox: delegate.inbox, conversation: delegate.conversation,
                        login: delegate.login, spaces: delegate.spaces, preferences: delegate.inbox.preferences,
                        ui: delegate.inboxUI, search: delegate.search, lifecycle: delegate.lifecycle,
@@ -164,7 +164,7 @@ struct CourierApp: App {
         }
         .defaultSize(width: 820, height: 600)
         // InboxCommands' Settings… is the menu's only one: it follows the shortcut set in Settings ▸ Shortcuts and is
-        // off while Courier is locked. Without this the scene adds its own Settings… (⌘,) beside it.
+        // off while Vitruvian Courier is locked. Without this the scene adds its own Settings… (⌘,) beside it.
         .commandsRemoved()
     }
 }

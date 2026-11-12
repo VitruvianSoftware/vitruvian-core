@@ -1,7 +1,7 @@
 # Pb
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/engine/internal/gchat/pb`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/engine/internal/gchat/pb`.
 
 ## Interface
 - `[helpers.go:Marshal]`
@@ -28,4 +28,4 @@ Component package providing implementation for `apps/desktop/courier/engine/inte
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/engine/internal/gchat/pb/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/engine/internal/gchat/pb/...`

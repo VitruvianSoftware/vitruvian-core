@@ -3,18 +3,18 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
-/// Holds Protocol.swift to apps/desktop/courier/protocol: protocol.json is the definition, and the engine's Go
+/// Holds Protocol.swift to apps/desktop/vitruvian-courier/protocol: protocol.json is the definition, and the engine's Go
 /// tests check the same examples against it, so neither side can drift from the other.
 ///
-/// Under Bazel the files are the test's `data` (runfiles); under SwiftPM scripts/test.sh sets COURIER_PROTOCOL_DIR.
+/// Under Bazel the files are the test's `data` (runfiles); under SwiftPM scripts/test.sh sets VITRUVIAN_COURIER_PROTOCOL_DIR.
 final class ProtocolConformanceTests: XCTestCase {
     private var spec: [String: Any] = [:]
     private var examples: [(name: String, json: [String: Any])] = []
 
     override func setUpWithError() throws {
-        let dir = try XCTUnwrap(Self.protocolDirectory(), "protocol.json not found: run under Bazel, or set COURIER_PROTOCOL_DIR (scripts/test.sh does)")
+        let dir = try XCTUnwrap(Self.protocolDirectory(), "protocol.json not found: run under Bazel, or set VITRUVIAN_COURIER_PROTOCOL_DIR (scripts/test.sh does)")
         let specData = try Data(contentsOf: dir.appendingPathComponent("protocol.json"))
         spec = try XCTUnwrap(JSONSerialization.jsonObject(with: specData) as? [String: Any])
         let exampleDir = dir.appendingPathComponent("examples")
@@ -31,10 +31,10 @@ final class ProtocolConformanceTests: XCTestCase {
     static func protocolDirectory() -> URL? {
         let environment = ProcessInfo.processInfo.environment
         var candidates: [String] = []
-        if let dir = environment["COURIER_PROTOCOL_DIR"] { candidates.append(dir) }
+        if let dir = environment["VITRUVIAN_COURIER_PROTOCOL_DIR"] { candidates.append(dir) }
         if let runfiles = environment["TEST_SRCDIR"] {
             for workspace in [environment["TEST_WORKSPACE"], "_main"].compactMap({ $0 }) {
-                candidates.append("\(runfiles)/\(workspace)/apps/desktop/courier/protocol")
+                candidates.append("\(runfiles)/\(workspace)/apps/desktop/vitruvian-courier/protocol")
             }
         }
         return candidates.map { URL(fileURLWithPath: $0) }
@@ -524,7 +524,7 @@ final class ProtocolConformanceTests: XCTestCase {
 
     func testProtocol12IntegrationsAndFocusDecodeAndRoundTrip() throws {
         XCTAssertEqual(CourierProtocol.version, 12)
-        // Settings, all of it: refused while Courier is locked.
+        // Settings, all of it: refused while Vitruvian Courier is locked.
         for method in ["integrations.status", "integrations.tokens", "integrations.update", "integrations.createToken", "integrations.revokeToken",
                        "integrations.setCanSend", "integrations.answerPairing"] {
             XCTAssertEqual(ProtocolMethods.classification(for: method), .userInitiatedMutation, method)

@@ -1,7 +1,7 @@
 # Rpc
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/engine/internal/rpc`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/engine/internal/rpc`.
 
 ## Interface
 - `[dispatch.go:Dispatcher]`
@@ -42,4 +42,4 @@ Component package providing implementation for `apps/desktop/courier/engine/inte
 - [people.go:35]: `query := ""`
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/engine/internal/rpc/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/engine/internal/rpc/...`

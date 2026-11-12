@@ -29,14 +29,14 @@ const (
 	syncAccept = "accept_request"
 )
 
-// SyncsOf lists the chat changes Courier sends to a network client, out of "pin", "mute" and "accept_request", in
+// SyncsOf lists the chat changes Vitruvian Courier sends to a network client, out of "pin", "mute" and "accept_request", in
 // that order: the bridgev2 interfaces it implements. Never nil.
 //
 // "unread" (MarkedUnreadHandlingNetworkAPI, m.marked_unread) is never listed and never sent, whatever the client
 // implements: an unread mark stays on this Mac. The only bridge that takes one, WhatsApp, inverts it:
 // mautrix-whatsapp's HandleMarkedUnread (pkg/connector/handlematrix.go:667 at v0.2609.0, :696 at v0.2610.0, both
 // checked) passes Content.Unread as whatsmeow's BuildMarkChatAsRead(target, read, ...), so "mark unread" would
-// mark the chat read on the phone and reading it would mark it unread. Courier doesn't invert it itself: that
+// mark the chat read on the phone and reading it would mark it unread. Vitruvian Courier doesn't invert it itself: that
 // would break silently the day the bridge is fixed. TestWhatsAppBridgeVersionIsTheOneCheckedForUnreadMarks
 // (networks) fails when the bridge is bumped, so the handler is looked at again before this is re-enabled.
 func SyncsOf(c bridgev2.NetworkAPI) []string {
@@ -76,7 +76,7 @@ func myLogins(h *host.Host) []*bridgev2.UserLogin {
 	return out
 }
 
-// Syncs lists which of the chat changes Courier makes reach this network, out of "pin", "mute" and
+// Syncs lists which of the chat changes Vitruvian Courier makes reach this network, out of "pin", "mute" and
 // "accept_request", in that order (an unread mark never does: see SyncsOf). It follows the network's login
 // clients, all of them (a change one account's chats take is listed): a network that isn't running or isn't linked
 // has none to ask, and lists nothing. A change to one chat goes through that chat's own login (supported). Never nil.
@@ -140,7 +140,7 @@ func (a *Actions) CanLookupEmail(network, accountID string) bool {
 }
 
 // chatHost is a chat and the running host of its network, nil when that network isn't running: then a change to the
-// chat stays in Courier (and is kept for the network while it starts: tellChange). An unknown chat is
+// chat stays in Vitruvian Courier (and is kept for the network while it starts: tellChange). An unknown chat is
 // store.ErrNotFound.
 func (a *Actions) chatHost(ctx context.Context, roomID string) (store.Room, *host.Host, error) {
 	room, ok, err := a.s.GetRoom(ctx, roomID)
@@ -180,7 +180,7 @@ func supported(ctx context.Context, h *host.Host, room store.Room, change string
 // While the network is still starting nobody can say yet whether it takes it, so the change is kept for when it runs.
 func (a *Actions) tell(ctx context.Context, room store.Room, h *host.Host, change string, typ event.Type, parsed any) {
 	if h != nil && !supported(ctx, h, room, change) {
-		return // a network that doesn't take it: the change is Courier's own
+		return // a network that doesn't take it: the change is Vitruvian Courier's own
 	}
 	a.tellChange(ctx, room, h, change, untoldKey{room: room.ID, change: change},
 		func(c bridgev2.NetworkAPI) bool { return takes(c, change) }, &event.Event{
@@ -467,7 +467,7 @@ func (a *Actions) retellKept(ctx context.Context, h *host.Host, kept map[untoldK
 	}
 }
 
-// SetPinned pins or unpins a chat in Courier, then tells its network if it takes pins (the m.favourite tag).
+// SetPinned pins or unpins a chat in Vitruvian Courier, then tells its network if it takes pins (the m.favourite tag).
 func (a *Actions) SetPinned(ctx context.Context, roomID string, pinned bool) error {
 	room, h, err := a.chatHost(ctx, roomID)
 	if err != nil {
@@ -484,7 +484,7 @@ func (a *Actions) SetPinned(ctx context.Context, roomID string, pinned bool) err
 	return nil
 }
 
-// SetMuted mutes or unmutes a chat in Courier, then tells its network if it takes mutes. A mute is for ever.
+// SetMuted mutes or unmutes a chat in Vitruvian Courier, then tells its network if it takes mutes. A mute is for ever.
 func (a *Actions) SetMuted(ctx context.Context, roomID string, muted bool) error {
 	room, h, err := a.chatHost(ctx, roomID)
 	if err != nil {
@@ -501,10 +501,10 @@ func (a *Actions) SetMuted(ctx context.Context, roomID string, muted bool) error
 	return nil
 }
 
-// SetMarkedUnread marks chats unread (or clears the mark) in Courier, and returns the ones that changed. An
+// SetMarkedUnread marks chats unread (or clears the mark) in Vitruvian Courier, and returns the ones that changed. An
 // unknown chat is store.ErrNotFound and changes none of them.
 //
-// The mark is Courier's own: no m.marked_unread is queued to any network. WhatsApp's bridge, the only one that
+// The mark is Vitruvian Courier's own: no m.marked_unread is queued to any network. WhatsApp's bridge, the only one that
 // takes it, inverts the flag (mautrix-whatsapp pkg/connector/handlematrix.go:667, v0.2609.0; :696, v0.2610.0); the
 // full reason is on SyncsOf.
 func (a *Actions) SetMarkedUnread(ctx context.Context, roomIDs []string, unread bool) ([]string, error) {
@@ -512,7 +512,7 @@ func (a *Actions) SetMarkedUnread(ctx context.Context, roomIDs []string, unread 
 }
 
 // AcceptRequest accepts a message request (someone new writing first). On a network that can't take an accept it
-// is ErrNotSupported and nothing changes. Otherwise the chat stops being a request in Courier first, then the
+// is ErrNotSupported and nothing changes. Otherwise the chat stops being a request in Vitruvian Courier first, then the
 // network is told.
 func (a *Actions) AcceptRequest(ctx context.Context, roomID string) error {
 	room, h, err := a.chatHost(ctx, roomID)

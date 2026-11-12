@@ -1,7 +1,7 @@
 # Logscrub
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/engine/internal/logscrub`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/engine/internal/logscrub`.
 
 ## Interface
 - `[logscrub.go:Writer]`
@@ -34,4 +34,4 @@ Component package providing implementation for `apps/desktop/courier/engine/inte
 - [logscrub.go:284]: `// Google Chat WebChannel query tokens (gsessionid, AID, SID, RID).`
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/engine/internal/logscrub/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/engine/internal/logscrub/...`

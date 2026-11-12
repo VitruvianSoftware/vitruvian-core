@@ -6,7 +6,7 @@ import CoreGraphics
 import Foundation
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 @MainActor
 final class AppearancePreferencesTests: XCTestCase {
@@ -450,7 +450,7 @@ final class AppearancePreferencesTests: XCTestCase {
         XCTAssertEqual(loadDisp, .unavailable(reason: prefs.themeFileLoader.unavailableReason))
         XCTAssertEqual(prefs.lastThemeFileNotice, prefs.themeFileLoader.unavailableReason)
 
-        // Lock Courier via SystemLifecycleModel and verify all mutations are blocked
+        // Lock Vitruvian Courier via SystemLifecycleModel and verify all mutations are blocked
         let lifecycle = SystemLifecycleModel(
             loginItemService: StubLoginItemService(),
             biometricService: FakeLockedBiometricService(),

@@ -143,7 +143,7 @@ public struct TelegramStartWait: Sendable {
 ///
 /// - The picker lists every network the engine knows, each with the flows the app offers for it, its choice
 ///   first (`offeredFlows`).
-/// - Telegram needs an app ID. A finished Courier carries its own (TelegramBuiltIn), so Telegram goes straight to
+/// - Telegram needs an app ID. A finished Vitruvian Courier carries its own (TelegramBuiltIn), so Telegram goes straight to
 ///   its QR code. A build without one asks for the pair first, as the first step of the same flow: it is saved in
 ///   the Keychain, the engine restarts to start Telegram with it, and when Telegram is running the sign-in
 ///   carries on by itself. If Telegram does not start within a minute, the app says so.
@@ -195,7 +195,7 @@ public final class LoginFlowModel: ObservableObject {
     /// A calm word under the current step: the engine refused a value, or the Keychain refused Telegram's.
     @Published public private(set) var notice: String?
     /// Under "Linked as …": a sign-in asked to sign one account in again became another account (Ruling 11). Both are
-    /// kept, and this says so in Courier's words. Nil otherwise, and from the next sign-in on.
+    /// kept, and this says so in Vitruvian Courier's words. Nil otherwise, and from the next sign-in on.
     @Published public private(set) var linkedNote: String?
 
     private let caller: LoginCalling
@@ -451,7 +451,7 @@ public final class LoginFlowModel: ObservableObject {
             self.session += 1
             let name = step.remoteName ?? ""
             // Ruling 11: asked to sign one account in again, the person signed in another (another phone's QR
-            // code, say). The engine kept the first and added this one; say so, in Courier's words.
+            // code, say). The engine kept the first and added this one; say so, in Vitruvian Courier's words.
             linkedNote = step.otherAccount == true ? otherAccountNote(signedIn: name, network: network) : nil
             screen = .linked(network: network, remoteName: name)
             run { await self.reloadAccounts() }
@@ -618,7 +618,7 @@ public final class LoginFlowModel: ObservableObject {
         do {
             try saved.save(to: credentials)
         } catch {
-            notice = String(localized: "Courier couldn’t save these in your Keychain.")
+            notice = String(localized: "Vitruvian Courier couldn’t save these in your Keychain.")
             return false
         }
         session += 1
@@ -660,7 +660,7 @@ public final class LoginFlowModel: ObservableObject {
     // MARK: - Words
 
     static var telegramDidNotStartText: String {
-        String(localized: "Telegram didn’t start. Courier has saved your keys, so try again from Add a network in a minute. If it still doesn’t start, quit Courier and open it again.")
+        String(localized: "Telegram didn’t start. Vitruvian Courier has saved your keys, so try again from Add a network in a minute. If it still doesn’t start, quit Vitruvian Courier and open it again.")
     }
 
     /// Ruling 11's note: the account signed in, and the one asked for, by name when both names are known.
@@ -678,7 +678,7 @@ public final class LoginFlowModel: ObservableObject {
     }
 
     public static var cantDoThisStepText: String {
-        String(localized: "This sign-in needs a step Courier can’t do yet.")
+        String(localized: "This sign-in needs a step Vitruvian Courier can’t do yet.")
     }
 
     public static func windowClosedText(_ name: String) -> String {
@@ -686,7 +686,7 @@ public final class LoginFlowModel: ObservableObject {
     }
 
     static func genericText(_ name: String) -> String {
-        String(localized: "Courier couldn’t sign in to \(name). Try again.")
+        String(localized: "Vitruvian Courier couldn’t sign in to \(name). Try again.")
     }
 
     // MARK: - Tasks

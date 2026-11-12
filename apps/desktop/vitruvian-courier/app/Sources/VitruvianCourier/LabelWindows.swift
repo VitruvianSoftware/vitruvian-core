@@ -1,7 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// What a label window is for: a new label (put on `applyTo` once made, when a chat's menu asked for it), or
@@ -52,7 +52,7 @@ struct LabelEditorWindow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(String(localized: "Pick a name, a colour and an icon. This is how the label looks everywhere in Courier."))
+            Text(String(localized: "Pick a name, a colour and an icon. This is how the label looks everywhere in Vitruvian Courier."))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 10) {
@@ -353,7 +353,7 @@ struct AutoArchiveSection: View {
                 Toggle(isOn: $enabled) {
                     SweepChoice(readOnly: $readOnly, days: $days)
                 }
-                .help(String(localized: "Courier archives chats here by itself once their newest message is this old. They come back when someone writes."))
+                .help(String(localized: "Vitruvian Courier archives chats here by itself once their newest message is this old. They come back when someone writes."))
             } else {
                 Text(String(localized: "Available with a plan"))
                     .foregroundStyle(.secondary)

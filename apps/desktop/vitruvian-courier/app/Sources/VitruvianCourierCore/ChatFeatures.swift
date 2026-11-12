@@ -7,7 +7,7 @@ import Foundation
 //
 // Each network's bridge says what its chats can do, and the engine passes that on as ChatFeatures. An action a chat
 // can't do at all, or can't do any more for this message (too old, edited too often), stays in the menu greyed, with
-// a line that says why in Courier's words and the network's own name: "WhatsApp only lets you edit for 15 minutes",
+// a line that says why in Vitruvian Courier's words and the network's own name: "WhatsApp only lets you edit for 15 minutes",
 // "Google Messages can’t unsend". No error code or bridge word reaches a person.
 
 /// The networks' names for people, by the id the engine gives them (engine/internal/networks: Name and DisplayName).

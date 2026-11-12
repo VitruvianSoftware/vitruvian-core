@@ -1,19 +1,19 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import CourierCore
+import VitruvianCourierCore
 import Foundation
 import XCTest
 
 /// The menu bar has no dead or duplicate items.
 ///
 /// SwiftUI builds the menu bar from the app's `Commands` only inside a running app: no test can ask it for the menus.
-/// So this reads the commands' source (the files that declare the Courier, File, Edit, View, Chat, Message and Help
+/// So this reads the commands' source (the files that declare the Vitruvian Courier, File, Edit, View, Chat, Message and Help
 /// menus' items, and App.swift's scenes) and checks what the running menus showed going wrong:
 /// - every item does something when chosen (it has an action);
 /// - no two items share a title, a shortcut, or the shortcut setting they show;
 /// - no item repeats one that macOS or SwiftUI already puts in the menu (File ▸ Close and Close All, the Settings
-///   scene's own Settings…, Help ▸ Courier Help with no help book behind it);
+///   scene's own Settings…, Help ▸ Vitruvian Courier Help with no help book behind it);
 /// - no item is placed before a standard group the app also replaces, which SwiftUI silently drops (Minimize to Menu
 ///   Bar never showed).
 final class MenuBarAuditTests: XCTestCase {
@@ -29,7 +29,7 @@ final class MenuBarAuditTests: XCTestCase {
     private static func sourceDirectory() throws -> URL {
         let protocolDirectory = try XCTUnwrap(ProtocolConformanceTests.protocolDirectory(),
                                               "the test reads the app's source next to the protocol")
-        return protocolDirectory.deletingLastPathComponent().appendingPathComponent("app/Sources/Courier")
+        return protocolDirectory.deletingLastPathComponent().appendingPathComponent("app/Sources/VitruvianCourier")
     }
 
     private static func source(_ name: String) throws -> String {
@@ -70,7 +70,7 @@ final class MenuBarAuditTests: XCTestCase {
         ("Close All", KeyChord(key: "w", command: true, option: true)),
         ("Minimize", KeyChord(key: "m", command: true)),
         ("Minimize All", KeyChord(key: "m", command: true, option: true)),
-        ("Hide Courier", KeyChord(key: "h", command: true)),
+        ("Hide Vitruvian Courier", KeyChord(key: "h", command: true)),
         ("Hide Others", KeyChord(key: "h", command: true, option: true)),
         ("Cut", KeyChord(key: "x", command: true)),
         ("Copy", KeyChord(key: "c", command: true)),
@@ -87,7 +87,7 @@ final class MenuBarAuditTests: XCTestCase {
         XCTAssertTrue(items.contains { $0.title == "Show Calendar" || $0.title == "calendarMenuTitle" })
     }
 
-    // That each item does what its title says is CourierViewTests' MenuEffectTests, with the app's own wiring:
+    // That each item does what its title says is VitruvianCourierViewTests' MenuEffectTests, with the app's own wiring:
     // an action alone proved nothing (View ▸ Hide Sidebar had one and changed nothing on screen).
     func testEveryMenuItemHasAnAction() throws {
         for item in try Self.items() {
@@ -165,9 +165,9 @@ final class MenuBarAuditTests: XCTestCase {
             XCTAssertTrue(modifiers.contains(".commandsRemoved()"),
                           "the Settings scene must not add its own Settings… beside the app's")
         }
-        // Courier has no help book, so the standard Help ▸ Courier Help says only that help isn't available.
+        // Vitruvian Courier has no help book, so the standard Help ▸ Vitruvian Courier Help says only that help isn't available.
         XCTAssertTrue(SwiftSource.placements(of: "replacing", in: commands).contains("help"),
-                      "Help ▸ Courier Help opens nothing: replace the help group")
+                      "Help ▸ Vitruvian Courier Help opens nothing: replace the help group")
     }
 }
 

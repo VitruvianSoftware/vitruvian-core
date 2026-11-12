@@ -4,7 +4,7 @@
 import Foundation
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 final class GIFProviderTests: XCTestCase {
     private final class NetworkTrapURLProtocol: URLProtocol {
@@ -34,7 +34,7 @@ final class GIFProviderTests: XCTestCase {
         let provider: any GIFProvider = StubGIFProvider()
         XCTAssertFalse(provider.isAvailable)
         XCTAssertFalse(provider.unavailableReason.isEmpty)
-        XCTAssertTrue(provider.unavailableReason.contains("Courier"))
+        XCTAssertTrue(provider.unavailableReason.contains("Vitruvian Courier"))
         XCTAssertFalse(provider.unavailableReason.localizedCaseInsensitiveContains("Beeper"))
 
         let trending = try await provider.trending()

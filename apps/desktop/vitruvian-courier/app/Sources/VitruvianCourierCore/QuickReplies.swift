@@ -92,7 +92,7 @@ public final class QuickReplies: ObservableObject {
             all = read
         } else {
             all = []
-            // Unreadable (written by a newer Courier, say): kept aside once, never overwritten, rather than lost.
+            // Unreadable (written by a newer Vitruvian Courier, say): kept aside once, never overwritten, rather than lost.
             if let stored, defaults.object(forKey: Self.unreadableKey) == nil {
                 defaults.set(stored, forKey: Self.unreadableKey)
             }

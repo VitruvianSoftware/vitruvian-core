@@ -1,7 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// vitruvian-vitruvian-courier-engine-cli drives the engine by hand: link any network, list chats, watch and send.
+// vitruvian-courier-engine-cli drives the engine by hand: link any network, list chats, watch and send.
 package main
 
 import (
@@ -40,7 +40,7 @@ const loginWait = 30 * time.Second
 // errNotConnected means a linked network never became logged in, so nothing was queued.
 var errNotConnected = actions.ErrNotConnected
 
-const usage = "usage: vitruvian-vitruvian-courier-engine-cli [--data DIR] [--network NAME --flow ID] link|chats|tail|send <room-id> <text>"
+const usage = "usage: vitruvian-courier-engine-cli [--data DIR] [--network NAME --flow ID] link|chats|tail|send <room-id> <text>"
 
 // args is the parsed command line. network and flow only apply to link.
 type args struct{ data, network, flow, cmd, room, text string }
@@ -66,7 +66,7 @@ func networkNames() string {
 }
 
 func parseArgs(argv []string) (args, error) {
-	fs := flag.NewFlagSet("vitruvian-vitruvian-courier-engine-cli", flag.ContinueOnError)
+	fs := flag.NewFlagSet("vitruvian-courier-engine-cli", flag.ContinueOnError)
 	data := fs.String("data", "", "data directory (default ~/Library/Application Support/Vitruvian Courier-m1)")
 	network := fs.String("network", "", "network to link (link only): "+networkNames())
 	flow := fs.String("flow", "", "login flow to use (link only; default: the network's first flow)")

@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// How a row reads: its time, initials, preview label, unread count and network badge.
 final class InboxPresentationTests: XCTestCase {
@@ -99,7 +99,7 @@ final class InboxPresentationTests: XCTestCase {
         XCTAssertNil(try row(room("!a", ts: 1, kind: "")).previewLabel)
         XCTAssertEqual(try row(room("!a", ts: 1, kind: "poll")).previewLabel, .poll)
         XCTAssertEqual(PreviewLabel.poll.title, "Poll")
-        // Ruling 40: a timer-change note previews in Courier's words, never the bridge's English (the engine sends no
+        // Ruling 40: a timer-change note previews in Vitruvian Courier's words, never the bridge's English (the engine sends no
         // text for it).
         let note = try row(room("!a", ts: 1, preview: "", kind: "timer_change"))
         XCTAssertEqual(note.previewLabel, .timerChange)

@@ -1,7 +1,7 @@
 # Engine
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/engine/internal/engine`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/engine/internal/engine`.
 
 ## Interface
 - `[engine.go:Spec]`
@@ -36,4 +36,4 @@ Component package providing implementation for `apps/desktop/courier/engine/inte
 - [engine.go:258]: `portals, err := h.Bridge.DB.Portal.GetAllWithMXID(ctx)`
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/engine/internal/engine/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/engine/internal/engine/...`

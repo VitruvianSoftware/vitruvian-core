@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// RichTextHTML reads a message's Matrix HTML back into text and ranges. The shared cases are the ones the engine's
 /// richtext tests render (protocol/richtext/cases.json), so what the engine sends reads back as what was typed.
@@ -219,7 +219,7 @@ final class RichTextTests: XCTestCase {
                        RichText(text: "a < b\nc", entities: [entity(.pre, 0, 7)]))
     }
 
-    /// A numbered list's start comes from the network: the largest number there is must not crash Courier when the
+    /// A numbered list's start comes from the network: the largest number there is must not crash Vitruvian Courier when the
     /// message arrives or its chat opens.
     func testAHugeOrNegativeListStartIsRead() {
         let largest = "<ol start=\"9223372036854775807\"><li>x</li></ol>"

@@ -22,7 +22,7 @@ struct QRCodeView: View {
                 .background(Color.white, in: RoundedRectangle(cornerRadius: 8))
                 .accessibilityLabel(String(localized: "QR code"))
         } else {
-            Text(String(localized: "Courier couldn’t draw this QR code."))
+            Text(String(localized: "Vitruvian Courier couldn’t draw this QR code."))
                 .foregroundStyle(.secondary)
         }
     }

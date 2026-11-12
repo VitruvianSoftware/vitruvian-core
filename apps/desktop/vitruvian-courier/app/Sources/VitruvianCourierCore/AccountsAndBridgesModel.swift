@@ -92,9 +92,9 @@ public struct RemoveAccountConfirmation: Equatable, Identifiable, Sendable {
     public var message: String {
         let remotePart: String
         if logoutRemote {
-            remotePart = String(localized: "This will sign out \(accountLabel) on \(displayName) and remove its login from Courier.")
+            remotePart = String(localized: "This will sign out \(accountLabel) on \(displayName) and remove its login from Vitruvian Courier.")
         } else {
-            remotePart = String(localized: "This will disconnect \(accountLabel) from Courier without signing out your \(displayName) session.")
+            remotePart = String(localized: "This will disconnect \(accountLabel) from Vitruvian Courier without signing out your \(displayName) session.")
         }
         let localPart: String
         if deleteChats {
@@ -259,7 +259,7 @@ public final class AccountsAndBridgesModel: ObservableObject {
     @discardableResult
     public func removeOfficialAppFromDock(network: String) -> Bool {
         guard !isLocked else {
-            lastError = String(localized: "Courier is locked")
+            lastError = String(localized: "Vitruvian Courier is locked")
             return false
         }
         guard let bundleID = Self.officialDockBundleID(for: network) else { return false }
@@ -294,7 +294,7 @@ public final class AccountsAndBridgesModel: ObservableObject {
 
     public func requestRestartBridge(network: String) {
         guard !isLocked else {
-            lastError = String(localized: "Courier is locked")
+            lastError = String(localized: "Vitruvian Courier is locked")
             return
         }
         pendingRestartNetwork = network
@@ -312,7 +312,7 @@ public final class AccountsAndBridgesModel: ObservableObject {
 
     public func restartBridge(network: String) async {
         guard !isLocked else {
-            lastError = String(localized: "Courier is locked")
+            lastError = String(localized: "Vitruvian Courier is locked")
             return
         }
         guard let client = appModel.client else { return }
@@ -336,7 +336,7 @@ public final class AccountsAndBridgesModel: ObservableObject {
         displayName: String? = nil
     ) {
         guard !isLocked else {
-            lastError = String(localized: "Courier is locked")
+            lastError = String(localized: "Vitruvian Courier is locked")
             return
         }
         let resolvedDisplayName = displayName
@@ -386,7 +386,7 @@ public final class AccountsAndBridgesModel: ObservableObject {
         deleteChats: Bool = false
     ) async {
         guard !isLocked else {
-            lastError = String(localized: "Courier is locked")
+            lastError = String(localized: "Vitruvian Courier is locked")
             return
         }
         guard let client = appModel.client else { return }
@@ -442,7 +442,7 @@ public final class AccountsAndBridgesModel: ObservableObject {
         showInInbox: ShowInInbox? = nil
     ) async {
         guard !isLocked else {
-            lastError = String(localized: "Courier is locked")
+            lastError = String(localized: "Vitruvian Courier is locked")
             return
         }
         guard let client = appModel.client else { return }

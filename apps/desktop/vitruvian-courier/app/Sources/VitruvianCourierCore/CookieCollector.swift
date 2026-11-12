@@ -58,7 +58,7 @@ public enum CookieCollector {
         "urn:li:page:d_flagship3_feed;0000000000000000000000=="
 
     /// The source types this window can read. `special` only when the step has an ExtractJS; `request_header`
-    /// only when the header is one Courier can synthesize from the cookie store (`Cookie`, `X-LI-Track`,
+    /// only when the header is one Vitruvian Courier can synthesize from the cookie store (`Cookie`, `X-LI-Track`,
     /// `X-LI-Page-Instance`).
     static func canRead(_ source: LoginCookieSource, extractJS: String?) -> Bool {
         switch source.type {

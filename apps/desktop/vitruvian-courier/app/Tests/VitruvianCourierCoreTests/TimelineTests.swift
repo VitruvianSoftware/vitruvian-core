@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// Timeline.build turns the raw events of room.events (messages, edits, reactions, redactions) into what the
 /// conversation shows. All data here is made up.
@@ -524,7 +524,7 @@ final class TimelineTests: XCTestCase {
     }
 
     /// Review Focus 1: a message waiting for its network shows it the whole time, on every waiting message, never as
-    /// Sent; one no account of mine can send says so, in Courier's words.
+    /// Sent; one no account of mine can send says so, in Vitruvian Courier's words.
     func testWaitingShowsOnEveryWaitingMessage() {
         let shown = messages(build([
             message("$1", ts: at(14, 10, 0), mine: true),
@@ -1045,8 +1045,8 @@ final class TimelineTests: XCTestCase {
                 ts: baseTS + offsetMS,
                 seq: seq,
                 status: .sent,
-                mediaPath: "/tmp/courier-test-\(id).dat",
-                thumbnailPath: "/tmp/courier-test-\(id)-thumb.jpg",
+                mediaPath: "/tmp/vitruvian-courier-test-\(id).dat",
+                thumbnailPath: "/tmp/vitruvian-courier-test-\(id)-thumb.jpg",
                 blurhash: blurhash,
                 durationMS: durationMS,
                 viewOnce: viewOnce

@@ -3,7 +3,7 @@
 
 import AppKit
 import CoreGraphics
-import CourierCore
+import VitruvianCourierCore
 
 /// What macOS says about whether someone is at the Mac: the screen lock (the distributed notifications
 /// com.apple.screenIsLocked / screenIsUnlocked), the display sleeping (NSWorkspace), and the time since the last

@@ -1,7 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// The thread pane (01 §10's ThreadedRepliesPane): the root and its replies, a composer that writes in the thread
@@ -92,7 +92,7 @@ struct ThreadPane: View {
     private var replies: some View {
         if thread.loadFailed, thread.items.isEmpty {
             VStack(spacing: 8) {
-                Text(String(localized: "Courier could not read this thread."))
+                Text(String(localized: "Vitruvian Courier could not read this thread."))
                     .foregroundStyle(.secondary)
                 Button(String(localized: "Try again"), action: thread.refresh)
             }

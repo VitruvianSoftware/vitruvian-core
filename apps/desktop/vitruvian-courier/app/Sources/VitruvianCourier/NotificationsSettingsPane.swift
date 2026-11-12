@@ -1,7 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// Settings ▸ Notifications pane (`NotificationsSettingsPane.swift`):
@@ -277,7 +277,7 @@ struct NotificationsSettingsPane: View {
         switch choice {
         case .default: String(localized: "System Default")
         case .none: String(localized: "None")
-        case .beeper: String(localized: "Courier Chime")
+        case .beeper: String(localized: "Vitruvian Courier Chime")
         case .sounds: String(localized: "Pop")
         case .double: String(localized: "Double Note")
         case .dreams: String(localized: "Dreams")

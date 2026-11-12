@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// What the bubbles, the message menu and the formatting bar show, worked out before any view draws it.
 final class MessagePresentationTests: XCTestCase {
@@ -202,7 +202,7 @@ final class MessagePresentationTests: XCTestCase {
     func testAHostAndPortIsAWebAddress() {
         XCTAssertEqual(LinkAddress.url(from: "example.test:8080/x")?.absoluteString, "https://example.test:8080/x")
         XCTAssertEqual(LinkAddress.url(from: "localhost:3000")?.absoluteString, "https://localhost:3000")
-        XCTAssertNil(LinkAddress.url(from: "javascript:alert(1)"), "a scheme, and not one Courier sends")
+        XCTAssertNil(LinkAddress.url(from: "javascript:alert(1)"), "a scheme, and not one Vitruvian Courier sends")
         XCTAssertEqual(LinkAddress.url(from: "mailto:2fast@x.test")?.absoluteString, "mailto:2fast@x.test",
                        "a known scheme stays one, digit or not")
     }

@@ -7,14 +7,14 @@ SPDX-License-Identifier: AGPL-3.0-only
 
 # libsignal (Signal's Rust library), built by Bazel
 
-Courier's Signal bridge (mautrix-signal) calls Signal's Rust library through
+Vitruvian Courier's Signal bridge (mautrix-signal) calls Signal's Rust library through
 cgo. This directory builds that library, `libsignal_ffi.a`, from source inside
 Bazel, so nothing prebuilt is downloaded and no `cargo` is needed.
 
-What Go links is `//apps/desktop/courier/libsignal:signal_ffi`. It is macOS only
+What Go links is `//apps/desktop/vitruvian-courier/libsignal:signal_ffi`. It is macOS only
 (arm64 and x86_64), built on an Apple-silicon Mac.
 
-The guard is `//apps/desktop/courier/engine/internal/networks:networks_test`:
+The guard is `//apps/desktop/vitruvian-courier/engine/internal/networks:networks_test`:
 it calls into the library and checks a real signature round trip.
 Run it with `bazel test`. Plain `go test ./...` on a Mac fails to link
 `internal/networks` (`ld: library 'signal_ffi' not found`): upstream
@@ -98,4 +98,4 @@ libsignal it wants; the link test fails if it no longer matches.
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/libsignal/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/libsignal/...`

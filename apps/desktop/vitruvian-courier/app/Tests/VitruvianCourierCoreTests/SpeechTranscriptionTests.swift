@@ -7,7 +7,7 @@ import Speech
 #endif
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 @MainActor
 final class SpeechTranscriptionTests: XCTestCase {
@@ -33,7 +33,7 @@ final class SpeechTranscriptionTests: XCTestCase {
     }
 
     private func makeTempAudioFile(named filename: String = "voice-note.ogg", contents: Data = Data("OggS-fake-audio-bytes".utf8)) throws -> URL {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("courier-speech-tests-\(UUID().uuidString)", isDirectory: true)
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-courier-speech-tests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         tempURLs.append(dir)
         let fileURL = dir.appendingPathComponent(filename)
@@ -498,7 +498,7 @@ final class SpeechTranscriptionTests: XCTestCase {
             composer.talkToType.permissionNotice,
             TalkToTypePermissionNotice(
                 kind: .microphone,
-                message: "Courier needs microphone access for Talk to Type."
+                message: "Vitruvian Courier needs microphone access for Talk to Type."
             )
         )
         XCTAssertEqual(
@@ -899,7 +899,7 @@ final class SpeechTranscriptionTests: XCTestCase {
             composer.talkToType.permissionNotice,
             TalkToTypePermissionNotice(
                 kind: .speechRecognition,
-                message: "Courier needs speech recognition access for Talk to Type."
+                message: "Vitruvian Courier needs speech recognition access for Talk to Type."
             )
         )
         XCTAssertEqual(
@@ -1211,7 +1211,7 @@ final class SpeechTranscriptionTests: XCTestCase {
 
     func testVoiceNoteMissingLocalFileClearsAndTranscribesOnceFileAppears() async throws {
         let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("courier-delayed-download-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("vitruvian-courier-delayed-download-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         tempURLs.append(dir)
         let delayedManualURL = dir.appendingPathComponent("delayed-manual.ogg")

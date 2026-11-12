@@ -5,12 +5,12 @@ import Combine
 import Foundation
 
 /// The open chat's messages scheduled to send later (the strip above the composer, 01 §5): waiting, canceled
-/// because they wrote first, or missed while Courier was closed, soonest first.
+/// because they wrote first, or missed while Vitruvian Courier was closed, soonest first.
 ///
 /// The list is the engine's (`scheduled.list`), read when a chat opens, when the engine is greeted or resyncs, and
 /// each time it says the open chat's scheduled messages changed. Nothing is assumed: after Send Now, Reschedule,
 /// Edit or Delete the list is read again, and shows what the engine has, whether the call worked or not. A refusal is
-/// a toast, in Courier's words.
+/// a toast, in Vitruvian Courier's words.
 @MainActor
 public final class ScheduledModel: ObservableObject {
     /// The open chat's, soonest first (by due time, then as scheduled).

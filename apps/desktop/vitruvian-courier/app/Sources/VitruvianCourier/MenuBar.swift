@@ -3,7 +3,7 @@
 
 import AppKit
 import Combine
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// Brings the main window forward, opening it again if it was closed, and opens the Settings window. A clicked
@@ -38,8 +38,8 @@ final class MainWindowOpener {
     /// Whether a way to open Settings has been registered yet.
     var canShowSettings: Bool { openSettingsWindow != nil }
 
-    /// Brings Courier forward and opens Settings (or brings its window forward if it is open). The menu's Settings…,
-    /// About Courier, Accounts…, Check for Updates…, Help's items and the command bar's settings commands all come
+    /// Brings Vitruvian Courier forward and opens Settings (or brings its window forward if it is open). The menu's Settings…,
+    /// About Vitruvian Courier, Accounts…, Check for Updates…, Help's items and the command bar's settings commands all come
     /// here, through `AppMenuCoordinator.openSettings`.
     func showSettings() {
         NSApp.activate()

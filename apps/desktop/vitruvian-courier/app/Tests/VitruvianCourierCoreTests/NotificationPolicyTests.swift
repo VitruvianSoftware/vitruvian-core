@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// When a message notifies, what the notification says, and how the Dock badge reads. All plain values.
 final class NotificationPolicyTests: XCTestCase {
@@ -167,7 +167,7 @@ final class NotificationPolicyTests: XCTestCase {
         XCTAssertEqual(content.roomID, "!a")
         XCTAssertEqual(content.category, .reminder)
         XCTAssertEqual(content.userInfo, ["room_id": "!a"], "no text, no names")
-        XCTAssertEqual(NotificationPolicy.reminderContent(room: row(name: "")).title, "Courier")
+        XCTAssertEqual(NotificationPolicy.reminderContent(room: row(name: "")).title, "Vitruvian Courier")
         // A message is a message.
         XCTAssertEqual(NotificationPolicy.content(for: event(), room: row()).category, .message)
     }
@@ -242,7 +242,7 @@ final class NotificationPolicyTests: XCTestCase {
         XCTAssertEqual(NotificationCategory.typing.actions(entitlement: AlwaysEntitled()), [])
         var unnamed = typing()
         unnamed.name = ""
-        XCTAssertEqual(NotificationPolicy.typingContent(room: unnamed).title, "Courier")
+        XCTAssertEqual(NotificationPolicy.typingContent(room: unnamed).title, "Vitruvian Courier")
     }
 
     // MARK: - The Dock badge
@@ -333,7 +333,7 @@ final class NotificationPolicyTests: XCTestCase {
 
     func testNoNamesAtAllStillGivesATitle() {
         let content = NotificationPolicy.content(for: event(senderName: ""), room: row(name: ""))
-        XCTAssertEqual(content.title, "Courier")
+        XCTAssertEqual(content.title, "Vitruvian Courier")
     }
 
     func testRedactedMessagesInAPageAreFound() {
@@ -569,7 +569,7 @@ final class NotificationPolicyTests: XCTestCase {
         XCTAssertEqual(unlocked, msg)
 
         let lockedMsg = NotificationPolicy.redactIfLocked(msg, isLocked: true)
-        XCTAssertEqual(lockedMsg.title, "Courier")
+        XCTAssertEqual(lockedMsg.title, "Vitruvian Courier")
         XCTAssertNil(lockedMsg.subtitle)
         XCTAssertEqual(lockedMsg.body, "New message")
         XCTAssertNil(lockedMsg.attachmentPath)
@@ -578,13 +578,13 @@ final class NotificationPolicyTests: XCTestCase {
 
         let typing = NotificationPolicy.typingContent(room: row(name: "Alice Example"))
         let lockedTyping = NotificationPolicy.redactIfLocked(typing, isLocked: true)
-        XCTAssertEqual(lockedTyping.title, "Courier")
+        XCTAssertEqual(lockedTyping.title, "Vitruvian Courier")
         XCTAssertEqual(lockedTyping.body, "Someone is typing…")
         XCTAssertEqual(lockedTyping.category, .scheduled)
 
         let reminder = NotificationPolicy.reminderContent(room: row(name: "Alice Example"))
         let lockedReminder = NotificationPolicy.redactIfLocked(reminder, isLocked: true)
-        XCTAssertEqual(lockedReminder.title, "Courier")
+        XCTAssertEqual(lockedReminder.title, "Vitruvian Courier")
         XCTAssertEqual(lockedReminder.body, "Reminder due")
         XCTAssertEqual(lockedReminder.category, .scheduled)
     }

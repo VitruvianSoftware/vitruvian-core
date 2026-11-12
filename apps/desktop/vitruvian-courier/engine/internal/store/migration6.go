@@ -3,7 +3,7 @@
 
 package store
 
-// migration6SQL is migration 6 (call notices in Courier's words) frozen as text: every call notice already on disk
+// migration6SQL is migration 6 (call notices in Vitruvian Courier's words) frozen as text: every call notice already on disk
 // read as a new one is (annotateCallNoteSQL with its chat's network; only a row whose reading differs is written),
 // and the two kinds that had no action message of their own (Signal's "Call ended", Telegram's call record),
 // indexed as text until now, out of the search index.

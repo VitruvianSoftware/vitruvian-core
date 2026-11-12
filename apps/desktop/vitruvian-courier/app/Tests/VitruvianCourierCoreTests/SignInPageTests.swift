@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// What the sign-in window lets its page do, and what its address bar says: the page must never be able to
 /// show a form of its own under another site's name.

@@ -1,7 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// A message's text as its formatting says (01 §5's MessageText, Code, Spoiler, MessageMention): paragraphs, a quote

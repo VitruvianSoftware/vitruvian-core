@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// The inbox's commands, which the command bar (part 4.7) will list.
 @MainActor
@@ -344,7 +344,7 @@ final class CommandSetTests: XCTestCase {
     /// Incognito's and the accounts' commands, by their ledger names (02 §2.6 "Turn on incognito mode", "Add
     /// Account", "Accounts"). "Turn off incognito mode" is the same row's other state: only the one that applies is
     /// on. The ledger's "Account" (its pane is 4.6's) is not registered here, so Task 11's list must not claim it.
-    /// "Focus Courier" shows its keys only when the Focus App hotkey has some: it has no default.
+    /// "Focus Vitruvian Courier" shows its keys only when the Focus App hotkey has some: it has no default.
     func testFocusCourierShowsItsShortcutOnlyWhenOneIsSet() throws {
         let testStore = TestDefaults()
         defer { testStore.remove() }
@@ -755,7 +755,7 @@ final class CommandSetTests: XCTestCase {
             "Attach file",
             "Download attachments",
             "Toggle sidebar",
-            "Focus Courier",
+            "Focus Vitruvian Courier",
             "Load Custom Theme",
             "Reload Custom Theme",
             "Zoom In",

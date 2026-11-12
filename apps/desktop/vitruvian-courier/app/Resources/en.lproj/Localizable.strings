@@ -16,22 +16,22 @@
 "Stopped" = "Stopped";
 
 /* The main window while the engine starts or restarts. */
-"Starting Courier’s engine…" = "Starting Courier’s engine…";
+"Starting Vitruvian Courier’s engine…" = "Starting Vitruvian Courier’s engine…";
 
 /* The main window once the engine has been stopped (while the app quits). */
-"Courier’s engine is stopped." = "Courier’s engine is stopped.";
+"Vitruvian Courier’s engine is stopped." = "Vitruvian Courier’s engine is stopped.";
 
 /* The main window when another engine holds the data folder (the engine exits 3). The argument is the engine's own message, which names the folder. The restarts go on. */
-"Courier can’t start its engine: %@. Quit the other copy of Courier, or the command-line engine, that uses this folder. Courier keeps trying." = "Courier can’t start its engine: %@. Quit the other copy of Courier, or the command-line engine, that uses this folder. Courier keeps trying.";
+"Vitruvian Courier can’t start its engine: %@. Quit the other copy of Vitruvian Courier, or the command-line engine, that uses this folder. Vitruvian Courier keeps trying." = "Vitruvian Courier can’t start its engine: %@. Quit the other copy of Vitruvian Courier, or the command-line engine, that uses this folder. Vitruvian Courier keeps trying.";
 
 /* The main window when the engine stopped before it was ready and said why on standard error (for example, a data folder path that is too long). The argument is the engine's own message. The restarts go on. */
-"Courier’s engine stopped while starting: %@. Courier keeps trying." = "Courier’s engine stopped while starting: %@. Courier keeps trying.";
+"Vitruvian Courier’s engine stopped while starting: %@. Vitruvian Courier keeps trying." = "Vitruvian Courier’s engine stopped while starting: %@. Vitruvian Courier keeps trying.";
 
 /* As above, when the engine said nothing the app could read. */
-"Courier can’t start its engine: another copy of it is using Courier’s data folder. Quit the other copy of Courier, or the command-line engine. Courier keeps trying." = "Courier can’t start its engine: another copy of it is using Courier’s data folder. Quit the other copy of Courier, or the command-line engine. Courier keeps trying.";
+"Vitruvian Courier can’t start its engine: another copy of it is using Vitruvian Courier’s data folder. Quit the other copy of Vitruvian Courier, or the command-line engine. Vitruvian Courier keeps trying." = "Vitruvian Courier can’t start its engine: another copy of it is using Vitruvian Courier’s data folder. Quit the other copy of Vitruvian Courier, or the command-line engine. Vitruvian Courier keeps trying.";
 
 /* The main window when the engine is a different version from the app. */
-"This copy of Courier and its engine don’t match. Reinstall Courier to update it." = "This copy of Courier and its engine don’t match. Reinstall Courier to update it.";
+"This copy of Vitruvian Courier and its engine don’t match. Reinstall Vitruvian Courier to update it." = "This copy of Vitruvian Courier and its engine don’t match. Reinstall Vitruvian Courier to update it.";
 
 /* The menu of the inbox's keys, in the menu bar. */
 "Chat" = "Chat";
@@ -129,7 +129,7 @@
 /* Under a message whose text was changed after it was sent. */
 "Edited" = "Edited";
 
-/* The name of the person using Courier, in a quote and for screen readers. */
+/* The name of the person using Vitruvian Courier, in a quote and for screen readers. */
 "You" = "You";
 
 /* In a reply: the message it answers is older than what is loaded. */
@@ -256,10 +256,10 @@
 "Could not attach %@ — total size would exceed 90 MB." = "Could not attach %@ — total size would exceed 90 MB.";
 
 /* Under the composer when what was dropped is a folder or cannot be read. The argument is its name. */
-"Could not attach %@. Courier can send files, not folders." = "Could not attach %@. Courier can send files, not folders.";
+"Could not attach %@. Vitruvian Courier can send files, not folders." = "Could not attach %@. Vitruvian Courier can send files, not folders.";
 
 /* Under the composer after a send got no answer. */
-"Courier’s engine did not answer. The message may have been sent: check the chat before sending it again." = "Courier’s engine did not answer. The message may have been sent: check the chat before sending it again.";
+"Vitruvian Courier’s engine did not answer. The message may have been sent: check the chat before sending it again." = "Vitruvian Courier’s engine did not answer. The message may have been sent: check the chat before sending it again.";
 
 /* Under the composer when a send was refused with no reason to give. */
 "The message could not be sent." = "The message could not be sent.";
@@ -271,16 +271,16 @@
 "A file is over 90 MB." = "A file is over 90 MB.";
 
 /* A send could not be made because the engine is not up. */
-"Courier’s engine is not connected." = "Courier’s engine is not connected.";
+"Vitruvian Courier’s engine is not connected." = "Vitruvian Courier’s engine is not connected.";
 
 /* A reaction, retry or delete got no answer. */
-"Courier’s engine did not answer in time." = "Courier’s engine did not answer in time.";
+"Vitruvian Courier’s engine did not answer in time." = "Vitruvian Courier’s engine did not answer in time.";
 
 /* A reaction, retry or delete failed for no reason to give. */
-"Courier’s engine could not do that." = "Courier’s engine could not do that.";
+"Vitruvian Courier’s engine could not do that." = "Vitruvian Courier’s engine could not do that.";
 
 /* In a bar above the composer when the newest messages could not be read. */
-"Courier could not read the latest messages." = "Courier could not read the latest messages.";
+"Vitruvian Courier could not read the latest messages." = "Vitruvian Courier could not read the latest messages.";
 
 /* In that bar when a chat was opened at a message (a search result) that has been deleted since: the newest messages show instead. */
 "That message isn’t in this chat any more." = "That message isn’t in this chat any more.";
@@ -316,7 +316,7 @@
 "Jump to Newest Message" = "Jump to Newest Message";
 
 /* Under the composer when a file could not be read. The argument is its name. */
-"Could not read %@. It may have moved, or Courier may not be allowed to open it." = "Could not read %@. It may have moved, or Courier may not be allowed to open it.";
+"Could not read %@. It may have moved, or Vitruvian Courier may not be allowed to open it." = "Could not read %@. It may have moved, or Vitruvian Courier may not be allowed to open it.";
 
 /* Button at the top of a chat when older messages could not be read: try again. */
 "Load older messages" = "Load older messages";
@@ -396,12 +396,12 @@
 "QR code" = "QR code";
 
 /* Shown instead of a QR code that CoreImage could not draw. */
-"Courier couldn’t draw this QR code." = "Courier couldn’t draw this QR code.";
+"Vitruvian Courier couldn’t draw this QR code." = "Vitruvian Courier couldn’t draw this QR code.";
 
 /* A ways-to-sign-in name: signing in with a phone number. */
 "Phone number" = "Phone number";
 
-/* A ways-to-sign-in name for Slack: signing in on Slack's web page in Courier's sign-in window. */
+/* A ways-to-sign-in name for Slack: signing in on Slack's web page in Vitruvian Courier's sign-in window. */
 "Sign in on the web" = "Sign in on the web";
 
 /* A ways-to-sign-in name for Slack: a code Slack emails. */
@@ -432,13 +432,13 @@
 "%@ is already linked." = "%@ is already linked.";
 
 /* A sign-in failed for a reason the app has no better words for. The argument is the network's name. */
-"Courier couldn’t sign in to %@. Try again." = "Courier couldn’t sign in to %@. Try again.";
+"Vitruvian Courier couldn’t sign in to %@. Try again." = "Vitruvian Courier couldn’t sign in to %@. Try again.";
 
-/* The sign-in needs something Courier can't do yet (a value only a raw web request has, a passkey); it was cancelled. */
-"This sign-in needs a step Courier can’t do yet." = "This sign-in needs a step Courier can’t do yet.";
+/* The sign-in needs something Vitruvian Courier can't do yet (a value only a raw web request has, a passkey); it was cancelled. */
+"This sign-in needs a step Vitruvian Courier can’t do yet." = "This sign-in needs a step Vitruvian Courier can’t do yet.";
 
 /* The sheet while the sign-in window is open. The argument is the network's name. */
-"Sign in to %@ in the window that opened. Courier picks up the sign-in when you’re done." = "Sign in to %@ in the window that opened. Courier picks up the sign-in when you’re done.";
+"Sign in to %@ in the window that opened. Vitruvian Courier picks up the sign-in when you’re done." = "Sign in to %@ in the window that opened. Vitruvian Courier picks up the sign-in when you’re done.";
 
 /* The person closed the sign-in window before it was done; the sign-in was cancelled. The argument is the network's name. */
 "The sign-in window was closed, so signing in to %@ was cancelled." = "The sign-in window was closed, so signing in to %@ was cancelled.";
@@ -459,7 +459,7 @@
 "Not a secure page" = "Not a secure page";
 
 /* In the sign-in window, after I've signed in, when a value the network needs is not on the page yet. */
-"Courier hasn’t found everything it needs yet. Finish signing in, then try again." = "Courier hasn’t found everything it needs yet. Finish signing in, then try again.";
+"Vitruvian Courier hasn’t found everything it needs yet. Finish signing in, then try again." = "Vitruvian Courier hasn’t found everything it needs yet. Finish signing in, then try again.";
 
 /* --- Telegram set-up --- */
 
@@ -467,7 +467,7 @@
 "Set up Telegram" = "Set up Telegram";
 
 /* Telegram's keys, the first step of linking Telegram in a build with no app ID of its own. api_id, api_hash and API development tools are Telegram's own names; keep them as they are. */
-"This build of Courier has no Telegram app ID of its own, and Telegram asks every app for one. Sign in at my.telegram.org, open API development tools, create an app, and copy its api_id and api_hash here. Courier keeps them in your Keychain, then goes on to link Telegram." = "This build of Courier has no Telegram app ID of its own, and Telegram asks every app for one. Sign in at my.telegram.org, open API development tools, create an app, and copy its api_id and api_hash here. Courier keeps them in your Keychain, then goes on to link Telegram.";
+"This build of Vitruvian Courier has no Telegram app ID of its own, and Telegram asks every app for one. Sign in at my.telegram.org, open API development tools, create an app, and copy its api_id and api_hash here. Vitruvian Courier keeps them in your Keychain, then goes on to link Telegram." = "This build of Vitruvian Courier has no Telegram app ID of its own, and Telegram asks every app for one. Sign in at my.telegram.org, open API development tools, create an app, and copy its api_id and api_hash here. Vitruvian Courier keeps them in your Keychain, then goes on to link Telegram.";
 
 /* The link to Telegram's site for app credentials. */
 "Open my.telegram.org" = "Open my.telegram.org";
@@ -485,13 +485,13 @@
 "Check both values: api_id is a whole number and api_hash is 32 letters and digits, as shown at my.telegram.org." = "Check both values: api_id is a whole number and api_hash is 32 letters and digits, as shown at my.telegram.org.";
 
 /* The Keychain refused Telegram's credentials. */
-"Courier couldn’t save these in your Keychain." = "Courier couldn’t save these in your Keychain.";
+"Vitruvian Courier couldn’t save these in your Keychain." = "Vitruvian Courier couldn’t save these in your Keychain.";
 
-/* Telegram did not start within a minute of Courier's engine restarting with the saved keys. */
-"Telegram didn’t start. Courier has saved your keys, so try again from Add a network in a minute. If it still doesn’t start, quit Courier and open it again." = "Telegram didn’t start. Courier has saved your keys, so try again from Add a network in a minute. If it still doesn’t start, quit Courier and open it again.";
+/* Telegram did not start within a minute of Vitruvian Courier's engine restarting with the saved keys. */
+"Telegram didn’t start. Vitruvian Courier has saved your keys, so try again from Add a network in a minute. If it still doesn’t start, quit Vitruvian Courier and open it again." = "Telegram didn’t start. Vitruvian Courier has saved your keys, so try again from Add a network in a minute. If it still doesn’t start, quit Vitruvian Courier and open it again.";
 
 /* The menu-bar icon's spoken name, and the app's name. */
-"Courier" = "Courier";
+"Vitruvian Courier" = "Vitruvian Courier";
 
 /* Menu-bar menu: tells there is nothing unread. */
 "No unread chats" = "No unread chats";
@@ -502,11 +502,11 @@
 /* Menu-bar menu: tells how many chats have unread messages. The argument is a number, 2 or more. */
 "%lld unread chats" = "%lld unread chats";
 
-/* Menu-bar menu: brings the Courier window forward, opening it again if it was closed. */
-"Open Courier" = "Open Courier";
+/* Menu-bar menu: brings the Vitruvian Courier window forward, opening it again if it was closed. */
+"Open Vitruvian Courier" = "Open Vitruvian Courier";
 
-/* Menu-bar menu: quits Courier. */
-"Quit Courier" = "Quit Courier";
+/* Menu-bar menu: quits Vitruvian Courier. */
+"Quit Vitruvian Courier" = "Quit Vitruvian Courier";
 
 /* The body of a notification that says a reply typed in another notification could not be sent. The text is waiting in that chat's message box. */
 "Your reply wasn’t sent — it’s waiting in the chat." = "Your reply wasn’t sent — it’s waiting in the chat.";
@@ -1279,7 +1279,7 @@
 "Couldn’t check" = "Couldn’t check";
 
 /* Auto-archive section: help on the rule. */
-"Courier archives chats here by itself once their newest message is this old. They come back when someone writes." = "Courier archives chats here by itself once their newest message is this old. They come back when someone writes.";
+"Vitruvian Courier archives chats here by itself once their newest message is this old. They come back when someone writes." = "Vitruvian Courier archives chats here by itself once their newest message is this old. They come back when someone writes.";
 
 /* Label window: makes the label. */
 "Create Label" = "Create Label";
@@ -1309,7 +1309,7 @@
 "No labels yet" = "No labels yet";
 
 /* The label window's explanation. */
-"Pick a name, a colour and an icon. This is how the label looks everywhere in Courier." = "Pick a name, a colour and an icon. This is how the label looks everywhere in Courier.";
+"Pick a name, a colour and an icon. This is how the label looks everywhere in Vitruvian Courier." = "Pick a name, a colour and an icon. This is how the label looks everywhere in Vitruvian Courier.";
 
 /* Label window: saves the changes. */
 "Save" = "Save";
@@ -1427,7 +1427,7 @@
 /* Notification text when a reminder the person set comes due. The notification's title is the chat's name. */
 "You asked to be reminded about this chat." = "You asked to be reminded about this chat.";
 
-/* Courier menu (⌘K) and a chat's right-click menu (⌘F): opens search. */
+/* Vitruvian Courier menu (⌘K) and a chat's right-click menu (⌘F): opens search. */
 "Search…" = "Search…";
 
 /* Chat menu (⌘F): searches the open chat's messages, or every chat with none open. */
@@ -1473,7 +1473,7 @@
 "Show more" = "Show more";
 
 /* Under the Messages section of search: what search covers. */
-"Courier searches the messages on this Mac. Older history appears as each network sends it." = "Courier searches the messages on this Mac. Older history appears as each network sends it.";
+"Vitruvian Courier searches the messages on this Mac. Older history appears as each network sends it." = "Vitruvian Courier searches the messages on this Mac. Older history appears as each network sends it.";
 
 /* In the title row of the Recent searches section of search. */
 "Clear Recent Searches" = "Clear Recent Searches";
@@ -1655,7 +1655,7 @@
 /* Message menu: deletes a message on this Mac only. */
 "Delete for Me…" = "Delete for Me…";
 
-/* A greyed message action, while Courier can't tell what the chat allows. The argument is the network's name. */
+/* A greyed message action, while Vitruvian Courier can't tell what the chat allows. The argument is the network's name. */
 "Not available until %@ connects" = "Not available until %@ connects";
 
 /* A greyed Edit. The argument is the network's name. */
@@ -1679,13 +1679,13 @@
 /* The line under a message held for undo send. */
 "Queued" = "Queued";
 
-/* Why a held message was never sent: it came due while Courier was closed. */
-"Courier was closed when this was due to go. Nothing was sent." = "Courier was closed when this was due to go. Nothing was sent.";
+/* Why a held message was never sent: it came due while Vitruvian Courier was closed. */
+"Vitruvian Courier was closed when this was due to go. Nothing was sent." = "Vitruvian Courier was closed when this was due to go. Nothing was sent.";
 
 /* Why a held or scheduled message was never sent: its network wasn't connected when it was due. */
 "The network wasn’t connected when this was due to go. Nothing was sent." = "The network wasn’t connected when this was due to go. Nothing was sent.";
 
-/* Greyed message actions in a chat whose network Courier doesn't know by name. */
+/* Greyed message actions in a chat whose network Vitruvian Courier doesn't know by name. */
 "Not available until this network connects" = "Not available until this network connects";
 "This network can’t edit messages" = "This network can’t edit messages";
 "This network only lets you edit for %@" = "This network only lets you edit for %@";
@@ -1698,7 +1698,7 @@
 "This message is too long for this chat. Shorten it, or send it in parts." = "This message is too long for this chat. Shorten it, or send it in parts.";
 
 /* A toast: a message held for undo send was taken back, and its text is in the message box again. */
-"Message unsent from Courier" = "Message unsent from Courier";
+"Message unsent from Vitruvian Courier" = "Message unsent from Vitruvian Courier";
 
 /* A toast: Undo came too late, and the message did go. */
 "Already sent" = "Already sent";
@@ -1706,7 +1706,7 @@
 /* A toast: Undo came too late, but the message didn't go (its network wasn't connected, say). The chat offers Retry. */
 "Too late to undo, and it wasn’t sent. Retry it in the chat." = "Too late to undo, and it wasn’t sent. Retry it in the chat.";
 
-/* A toast: Undo of a held message failed for a reason Courier has no words for. */
+/* A toast: Undo of a held message failed for a reason Vitruvian Courier has no words for. */
 "The message couldn’t be unsent." = "The message couldn’t be unsent.";
 
 /* New Poll: what stops the poll from being sent. The question is empty. */
@@ -1743,7 +1743,7 @@
 "Couldn’t forward to %@" = "Couldn’t forward to %@";
 
 /* A toast: the engine didn't answer a forward (it timed out, or the connection ended), so the copies may have gone. The argument is the chats' names, as a list ("Ann and Book club"). */
-"Courier’s engine did not answer. The message may have been forwarded to %@: check before forwarding it again." = "Courier’s engine did not answer. The message may have been forwarded to %@: check before forwarding it again.";
+"Vitruvian Courier’s engine did not answer. The message may have been forwarded to %@: check before forwarding it again." = "Vitruvian Courier’s engine did not answer. The message may have been forwarded to %@: check before forwarding it again.";
 
 /* A toast: Forward didn't reach some chats (the first argument) and the engine didn't answer for others (the second), whose copies may have gone. Both are chats' names, as lists ("Ann and Book club"). */
 "Couldn’t forward to %@. The message may have been forwarded to %@: check before forwarding it again." = "Couldn’t forward to %1$@. The message may have been forwarded to %2$@: check before forwarding it again.";
@@ -1760,7 +1760,7 @@
 /* A toast: a new poll was refused. */
 "The poll couldn’t be sent." = "The poll couldn’t be sent.";
 
-/* In a toast's list of chats, one Courier has no name for. */
+/* In a toast's list of chats, one Vitruvian Courier has no name for. */
 "a chat" = "a chat";
 
 /* A toast: the network refused an unsend the engine had taken; the message is back. The argument is the network's name. */
@@ -1772,7 +1772,7 @@
 "Couldn’t edit: the network said no." = "Couldn’t edit: the network said no.";
 
 /* Why a quick reply made from the draft wasn't saved. */
-"You have as many quick replies as Courier keeps. Delete one to add another." = "You have as many quick replies as Courier keeps. Delete one to add another.";
+"You have as many quick replies as Vitruvian Courier keeps. Delete one to add another." = "You have as many quick replies as Vitruvian Courier keeps. Delete one to add another.";
 "Give the quick reply a title." = "Give the quick reply a title.";
 "Titles can be up to %lld characters." = "Titles can be up to %lld characters.";
 "Type the quick reply’s text first." = "Type the quick reply’s text first.";
@@ -1788,14 +1788,14 @@
 "Delete for me" = "Delete for me";
 "Reply in thread" = "Reply in thread";
 
-/* A notification about a scheduled message, in a chat Courier has no name for. */
+/* A notification about a scheduled message, in a chat Vitruvian Courier has no name for. */
 "the chat" = "the chat";
 
 /* A notification: a message scheduled with "If no reply" was canceled because someone wrote first. The argument is the chat's name. */
 "A scheduled message to %@ wasn’t sent: they wrote first." = "A scheduled message to %@ wasn’t sent: they wrote first.";
 
-/* A notification: a scheduled message came due over an hour before Courier could send it, and waits. The argument is the chat's name. */
-"A scheduled message to %@ missed its time while Courier was closed." = "A scheduled message to %@ missed its time while Courier was closed.";
+/* A notification: a scheduled message came due over an hour before Vitruvian Courier could send it, and waits. The argument is the chat's name. */
+"A scheduled message to %@ missed its time while Vitruvian Courier was closed." = "A scheduled message to %@ missed its time while Vitruvian Courier was closed.";
 
 /* ⌘K: the section of bookmarked messages. */
 "Bookmarks" = "Bookmarks";
@@ -1835,12 +1835,12 @@
 "Couldn’t change the timer: the network said no." = "Couldn’t change the timer: the network said no.";
 
 /* Strings from earlier parts that had no entry. */
-/* An account banner when a network stopped for a reason Courier can't name. The argument is the network's name. */
+/* An account banner when a network stopped for a reason Vitruvian Courier can't name. The argument is the network's name. */
 "%@ stopped working." = "%@ stopped working.";
 /* Under a message of mine whose send the engine may or may not have finished. */
 "May have been sent" = "May have been sent";
 /* A toast: ⌘Z on a held message got no answer, and the message is still held. */
-"Courier’s engine didn’t answer. The message is still queued: undo it again." = "Courier’s engine didn’t answer. The message is still queued: undo it again.";
+"Vitruvian Courier’s engine didn’t answer. The message is still queued: undo it again." = "Vitruvian Courier’s engine didn’t answer. The message is still queued: undo it again.";
 
 /* ---- Part 4.3, Task 12: the message views ---- */
 
@@ -1884,7 +1884,7 @@
 "Mention" = "Mention";
 /* The formatting bar's tooltip for a kind the chat's network doesn't keep. The arguments are the kind ("Spoiler") and the network's name. */
 "%@ (Unavailable for %@)" = "%@ (Unavailable for %@)";
-/* As above, for a network Courier doesn't know by name. The argument is the kind. */
+/* As above, for a network Vitruvian Courier doesn't know by name. The argument is the kind. */
 "%@ (Unavailable for this network)" = "%@ (Unavailable for this network)";
 /* The formatting bar, for assistive technology. */
 "Formatting" = "Formatting";
@@ -1971,7 +1971,7 @@
 
 /* The link dialog: its address field. */
 "URL" = "URL";
-/* The link dialog, for an address Courier won't send (not a web or email address). */
+/* The link dialog, for an address Vitruvian Courier won't send (not a web or email address). */
 "Enter a web address (https://…) or an email address (mailto:…)." = "Enter a web address (https://…) or an email address (mailto:…).";
 
 /* The mention picker: @room, which reaches everyone (Slack). */
@@ -1990,8 +1990,8 @@
 "Regardless" = "Regardless";
 "Schedule" = "Schedule";
 "“If no reply” doesn’t send it when someone else writes in the chat first." = "“If no reply” doesn’t send it when someone else writes in the chat first.";
-/* The Send Later picker's footer: Courier, not the network, sends a scheduled message. */
-"Courier sends it from this Mac. It needs to be running, and your Mac awake, at that time." = "Courier sends it from this Mac. It needs to be running, and your Mac awake, at that time.";
+/* The Send Later picker's footer: Vitruvian Courier, not the network, sends a scheduled message. */
+"Vitruvian Courier sends it from this Mac. It needs to be running, and your Mac awake, at that time." = "Vitruvian Courier sends it from this Mac. It needs to be running, and your Mac awake, at that time.";
 /* The Send Later picker, when the engine refused the time. */
 "The message couldn’t be scheduled." = "The message couldn’t be scheduled.";
 
@@ -2006,8 +2006,8 @@
 "Delete Without Sending" = "Delete Without Sending";
 /* A scheduled message with "If no reply" that someone answered first. */
 "Canceled: they wrote first" = "Canceled: they wrote first";
-/* A scheduled message that came due over an hour before Courier could send it. */
-"Missed its time while Courier was closed" = "Missed its time while Courier was closed";
+/* A scheduled message that came due over an hour before Vitruvian Courier could send it. */
+"Missed its time while Vitruvian Courier was closed" = "Missed its time while Vitruvian Courier was closed";
 /* The sheet that changes a scheduled message's words. */
 "Edit Scheduled Message" = "Edit Scheduled Message";
 
@@ -2032,7 +2032,7 @@
 /* The forward picker. */
 "Forward message" = "Forward message";
 "The people you forward to won’t see who it came from." = "The people you forward to won’t see who it came from.";
-"Courier couldn’t search your chats. Try again." = "Courier couldn’t search your chats. Try again.";
+"Vitruvian Courier couldn’t search your chats. Try again." = "Vitruvian Courier couldn’t search your chats. Try again.";
 /* The forward picker: how many chats are chosen. The argument is the count. */
 "%lld selected" = "%lld selected";
 /* The forward picker at its limit. The argument is the most (20). */
@@ -2045,7 +2045,7 @@
 "Thread" = "Thread";
 "Close (Esc)" = "Close (Esc)";
 "Close thread" = "Close thread";
-"Courier could not read this thread." = "Courier could not read this thread.";
+"Vitruvian Courier could not read this thread." = "Vitruvian Courier could not read this thread.";
 "Load older replies" = "Load older replies";
 
 /* The chat header's disappearing-messages menu: its title, and the line under its choices. */
@@ -2182,7 +2182,7 @@
 
 /* Under a message of mine waiting for its network to be back (it is starting, down or signing in). */
 "Waiting to send" = "Waiting to send";
-/* The help under "Waiting to send", for a network Courier doesn't know by name. */
+/* The help under "Waiting to send", for a network Vitruvian Courier doesn't know by name. */
 "It goes when the network is back online." = "It goes when the network is back online.";
 /* The help under "Waiting to send". The argument is the network's name ("WhatsApp"). */
 "It goes when %@ is back online." = "It goes when %@ is back online.";
@@ -2208,16 +2208,16 @@
 "From this message. On this Mac only." = "From this message. On this Mac only.";
 /* A toast: Mark as Unread on a message didn't work. */
 "Couldn’t mark the chat unread." = "Couldn’t mark the chat unread.";
-/* A toast: Reply Privately, when the network can't start a chat with the person, for a network Courier doesn't know by name. */
+/* A toast: Reply Privately, when the network can't start a chat with the person, for a network Vitruvian Courier doesn't know by name. */
 "The network can’t start a chat with this person." = "The network can’t start a chat with this person.";
 /* A toast: Reply Privately, when the network can't start a chat with the person. The argument is the network's name. */
 "%@ can’t start a chat with this person." = "%@ can’t start a chat with this person.";
-/* A toast: Reply Privately, when the person isn't in the group any more as far as Courier knows. */
+/* A toast: Reply Privately, when the person isn't in the group any more as far as Vitruvian Courier knows. */
 "That person isn’t in this chat any more." = "That person isn’t in this chat any more.";
-/* A toast: Reply Privately didn't work, for a reason Courier has no words of its own for. */
+/* A toast: Reply Privately didn't work, for a reason Vitruvian Courier has no words of its own for. */
 "Couldn’t open a private chat." = "Couldn’t open a private chat.";
-/* A toast: Don't Send on a waiting message, when Courier's engine didn't answer and the message is still waiting. */
-"Courier’s engine didn’t answer. The message is still waiting: try Don’t Send again." = "Courier’s engine didn’t answer. The message is still waiting: try Don’t Send again.";
+/* A toast: Don't Send on a waiting message, when Vitruvian Courier's engine didn't answer and the message is still waiting. */
+"Vitruvian Courier’s engine didn’t answer. The message is still waiting: try Don’t Send again." = "Vitruvian Courier’s engine didn’t answer. The message is still waiting: try Don’t Send again.";
 /* A toast: Undo or Don't Send on a message that is being sent now (Sending…), so it can't be taken back. If its network goes down again it comes back as waiting, and Don't Send can take it back then. */
 "It’s on its way. If it comes back as waiting, try again." = "It’s on its way. If it comes back as waiting, try again.";
 /* A toast: Don't Send on a waiting message couldn't take it back (it was taken back already, or is being). */
@@ -2294,7 +2294,7 @@
 /* ---- Milestone 4.5: People, groups, chat info and merged chats ---- */
 /* Toast or error when a network refused a group or profile change (-32027). The argument is the network's name. */
 "%@ didn’t accept that change." = "%@ didn’t accept that change.";
-/* Toast or error when a network Courier doesn't know by name refused a group or profile change (-32027). */
+/* Toast or error when a network Vitruvian Courier doesn't know by name refused a group or profile change (-32027). */
 "The network didn’t accept that change." = "The network didn’t accept that change.";
 /* Command bar: shows or hides the chat info pane. */
 "Toggle chat info" = "Toggle chat info";
@@ -2502,8 +2502,8 @@
 "Voice-note transcription failed." = "Voice-note transcription failed.";
 "Download the voice note first." = "Download the voice note first.";
 "Add an OpenAI key in the Cloud section to use Whisper." = "Add an OpenAI key in the Cloud section to use Whisper.";
-"Courier needs microphone access for Talk to Type." = "Courier needs microphone access for Talk to Type.";
-"Courier needs speech recognition access for Talk to Type." = "Courier needs speech recognition access for Talk to Type.";
+"Vitruvian Courier needs microphone access for Talk to Type." = "Vitruvian Courier needs microphone access for Talk to Type.";
+"Vitruvian Courier needs speech recognition access for Talk to Type." = "Vitruvian Courier needs speech recognition access for Talk to Type.";
 "Speech recognition for %@ isn’t available on this Mac." = "Speech recognition for %@ isn’t available on this Mac.";
 "Speech recognition failed on this Mac." = "Speech recognition failed on this Mac.";
 "Speech recognition failed. Try again." = "Speech recognition failed. Try again.";

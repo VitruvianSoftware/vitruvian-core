@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// What the conversation hands its composers and its timeline: the open chat's features and network (read again
 /// when the chat changes), the other person's name, and whether deleted messages leave a placeholder. And older

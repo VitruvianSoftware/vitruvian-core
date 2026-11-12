@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// The composer's state: keys, drafts, the reply chip, attachments and sending, against a sender that only writes
 /// down what it was asked. All data here is made up.
@@ -11,7 +11,7 @@ import XCTest
 final class ComposerModelTests: XCTestCase {
     private static let megabyte: Int64 = 1024 * 1024
 
-    private func file(_ name: String) -> URL { URL(fileURLWithPath: "/tmp/courier-composer-test/\(name)") }
+    private func file(_ name: String) -> URL { URL(fileURLWithPath: "/tmp/vitruvian-courier-composer-test/\(name)") }
 
     /// A composer on a fake sender, where each file is as big as the test says (and a name ending in `/` is a folder).
     private func make(sizes: [String: Int64] = [:]) -> (ComposerModel, FakeSender) {
@@ -558,7 +558,7 @@ extension ComposerModelTests {
     func testHoldIsZeroWhenNotEntitled() async {
         let made = makeComposer(undoMillis: 5000, denied: [.undoSend], sizes: ["a.bin": 10])
         type("not held", into: made.composer)
-        made.composer.attach([URL(fileURLWithPath: "/tmp/courier-composer-test/a.bin")])
+        made.composer.attach([URL(fileURLWithPath: "/tmp/vitruvian-courier-composer-test/a.bin")])
         await made.composer.submit()?.value
         XCTAssertEqual(made.sender.sends.map(\.holdMillis), [0])
         XCTAssertEqual(made.sender.fileSends.map(\.holdMillis), [0], "files are held as text is, or not at all")
@@ -566,7 +566,7 @@ extension ComposerModelTests {
 
         // With the plan, files are held too.
         let entitled = makeComposer(undoMillis: 5000, sizes: ["a.bin": 10])
-        entitled.composer.attach([URL(fileURLWithPath: "/tmp/courier-composer-test/a.bin")])
+        entitled.composer.attach([URL(fileURLWithPath: "/tmp/vitruvian-courier-composer-test/a.bin")])
         await entitled.composer.submit()?.value
         XCTAssertEqual(entitled.sender.fileSends.map(\.holdMillis), [5000])
         XCTAssertEqual(entitled.composer.heldIDs, ["$sent1"])
@@ -621,7 +621,7 @@ extension ComposerModelTests {
         composer.startThread("$root")
         XCTAssertEqual(composer.mode, .thread(rootID: "$root"))
         type("in the thread", into: composer)
-        composer.attach([URL(fileURLWithPath: "/tmp/courier-composer-test/a.bin")])
+        composer.attach([URL(fileURLWithPath: "/tmp/vitruvian-courier-composer-test/a.bin")])
         await composer.submit()?.value
         XCTAssertEqual(made.sender.sends.map(\.threadRoot), ["$root"])
         XCTAssertEqual(made.sender.fileSends.map(\.threadRoot), ["$root"])
@@ -950,7 +950,7 @@ extension ComposerModelTests {
         XCTAssertEqual(composer.entities, [bold(5, 5)])
         XCTAssertEqual(composer.replyTarget?.eventID, "$r", "the reply comes back with it")
         XCTAssertEqual(composer.heldIDs, [])
-        XCTAssertEqual(composer.toast?.message, "Message unsent from Courier")
+        XCTAssertEqual(composer.toast?.message, "Message unsent from Vitruvian Courier")
 
         let again = await composer.undoNewestHeld()
         XCTAssertFalse(again, "nothing held: ⌘Z is the text view's again")
@@ -960,7 +960,7 @@ extension ComposerModelTests {
     func testUndoBringsAFileBack() async {
         let made = makeComposer(undoMillis: 2000, sizes: ["a.bin": 10])
         let composer = made.composer
-        let file = URL(fileURLWithPath: "/tmp/courier-composer-test/a.bin")
+        let file = URL(fileURLWithPath: "/tmp/vitruvian-courier-composer-test/a.bin")
         composer.attach([file])
         await composer.submit()?.value
         XCTAssertEqual(composer.heldIDs, ["$sent1"])
@@ -1009,19 +1009,19 @@ extension ComposerModelTests {
         XCTAssertEqual(made.composer.text, "kept")
         XCTAssertEqual(made.composer.entities, [bold(0, 4)])
         XCTAssertEqual(made.composer.replyTarget, quoted)
-        XCTAssertEqual(made.composer.toast?.message, "Message unsent from Courier")
+        XCTAssertEqual(made.composer.toast?.message, "Message unsent from Vitruvian Courier")
         XCTAssertEqual(made.composer.heldIDs, [])
 
         // Not found when undone: the same.
         made = await held(.rpc(.notFound, message: "gone", reason: nil), status: nil)
         XCTAssertEqual(made.composer.text, "kept")
-        XCTAssertEqual(made.composer.toast?.message, "Message unsent from Courier")
+        XCTAssertEqual(made.composer.toast?.message, "Message unsent from Vitruvian Courier")
 
         // Still held: it can be undone again.
         made = await held(.disconnected, status: .queued)
         XCTAssertEqual(made.composer.text, "")
         XCTAssertEqual(made.composer.heldIDs, ["$sent1"])
-        XCTAssertEqual(made.composer.toast?.message, "Courier’s engine didn’t answer. The message is still queued: undo it again.")
+        XCTAssertEqual(made.composer.toast?.message, "Vitruvian Courier’s engine didn’t answer. The message is still queued: undo it again.")
         made.sender.undoResults["$sent1"] = .success(Draft(text: "kept", entities: [], replyTo: nil, threadRoot: nil))
         let retried = await made.composer.undoNewestHeld()
         XCTAssertTrue(retried)
@@ -1051,7 +1051,7 @@ extension ComposerModelTests {
         made.sender.statusErrors = ["$sent1"]
         _ = await made.composer.undoNewestHeld()
         XCTAssertEqual(made.composer.text, "")
-        XCTAssertEqual(made.composer.toast?.message, "Courier’s engine did not answer in time.")
+        XCTAssertEqual(made.composer.toast?.message, "Vitruvian Courier’s engine did not answer in time.")
         XCTAssertEqual(made.composer.heldIDs, [])
 
         // The next timeline read shows it still queued: it is held again.
@@ -1065,7 +1065,7 @@ extension ComposerModelTests {
         made.composer.updateHeld(from: items([event("$other", body: "x", at: 0)]))
         await made.composer.waitForHeldChecks()
         XCTAssertEqual(made.composer.text, "kept")
-        XCTAssertEqual(made.composer.toast?.message, "Message unsent from Courier")
+        XCTAssertEqual(made.composer.toast?.message, "Message unsent from Vitruvian Courier")
 
         // Shown sent by a later read: settled, and nothing comes back.
         let sent = makeComposer(undoMillis: 5000)
@@ -2897,7 +2897,7 @@ extension ComposerModelTests {
 
     func testThumbnailLoaderResolvesCourierMediaAndMxcCourierLocalURLs() throws {
         let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("courier-thumb-test-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("vitruvian-courier-thumb-test-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: tempDir) }
 
         let hash = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
@@ -2966,12 +2966,12 @@ extension ComposerModelTests {
         composer.triggerTalkToType()
         await composer.talkToType.waitForIdle()
         XCTAssertEqual(composer.text, "Hello team", "draft must never be lost or cleared when Talk to Type lacks permission")
-        XCTAssertEqual(composer.talkToType.permissionNotice?.message, "Courier needs microphone access for Talk to Type.")
+        XCTAssertEqual(composer.talkToType.permissionNotice?.message, "Vitruvian Courier needs microphone access for Talk to Type.")
         XCTAssertTrue(sender.calls.isEmpty)
 
         composer.draftWithAI(tone: .moreConcise)
         XCTAssertEqual(composer.text, "Hello team", "draft must never be lost or cleared by Draft with AI stub")
-        XCTAssertEqual(composer.notice?.displayText, "Drafting with AI isn’t available yet in Courier.")
+        XCTAssertEqual(composer.notice?.displayText, "Drafting with AI isn’t available yet in Vitruvian Courier.")
         XCTAssertTrue(sender.calls.isEmpty)
 
         for slash in ["/ai", "/translate", "/summarize", "/draft"] {

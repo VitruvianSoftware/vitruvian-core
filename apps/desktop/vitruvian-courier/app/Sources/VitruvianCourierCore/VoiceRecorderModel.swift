@@ -196,7 +196,7 @@ public final class AVAudioVoiceRecordingBackend: NSObject, VoiceRecordingBackend
     public func startRecording(deviceUID: String?) async throws -> URL {
         let directory = FileManager.default.temporaryDirectory
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let url = directory.appendingPathComponent("courier-voice-\(UUID().uuidString).m4a")
+        let url = directory.appendingPathComponent("vitruvian-courier-voice-\(UUID().uuidString).m4a")
         let settings: [String: Any] = [
             AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
             AVSampleRateKey: 48_000,

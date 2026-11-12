@@ -1,7 +1,7 @@
 # Richtext
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/engine/internal/richtext`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/engine/internal/richtext`.
 
 ## Interface
 - `[richtext.go:Kind]`
@@ -23,4 +23,4 @@ Component package providing implementation for `apps/desktop/courier/engine/inte
 - [richtext.go:71]: `// pair; an unknown kind; a link whose address isn't http, https or mailto, o...`
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/engine/internal/richtext/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/engine/internal/richtext/...`

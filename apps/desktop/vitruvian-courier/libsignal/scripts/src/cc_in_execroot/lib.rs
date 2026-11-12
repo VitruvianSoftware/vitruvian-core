@@ -41,9 +41,9 @@ pub fn resolve_invocation(
     cc: Option<&str>,
     argv: &[String],
 ) -> Result<CcInvocation, String> {
-    let execroot_str = execroot
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| "VITRUVIAN_COURIER_BAZEL_EXECROOT: parameter not set or empty".to_string())?;
+    let execroot_str = execroot.filter(|s| !s.is_empty()).ok_or_else(|| {
+        "VITRUVIAN_COURIER_BAZEL_EXECROOT: parameter not set or empty".to_string()
+    })?;
     let cc_str = cc
         .filter(|s| !s.is_empty())
         .ok_or_else(|| "CC: parameter not set or empty".to_string())?;

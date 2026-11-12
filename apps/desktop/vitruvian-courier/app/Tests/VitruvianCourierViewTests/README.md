@@ -1,7 +1,7 @@
-# Courierviewtests
+# VitruvianCourierViewTests
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/app/Tests/CourierViewTests`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/app/Tests/VitruvianCourierViewTests`.
 
 ## Interface
 - `[Fixtures.swift:Fixture]`
@@ -34,4 +34,4 @@ Component package providing implementation for `apps/desktop/courier/app/Tests/C
 - [MenuEffectTests.swift:147]: `XCTAssertTrue(delegate.inbox.query.filters.isEmpty)`
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/app/Tests/CourierViewTests/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/app/Tests/VitruvianCourierViewTests/...`

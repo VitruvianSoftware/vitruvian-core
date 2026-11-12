@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
-/// `Settings ▸ Integrations`: the local API that lets Claude and other MCP apps use Courier (Allow connections,
-/// Remote Access, the port, the endpoint), the connections approved for it, and the companions Courier doesn't
+/// `Settings ▸ Integrations`: the local API that lets Claude and other MCP apps use Vitruvian Courier (Allow connections,
+/// Remote Access, the port, the endpoint), the connections approved for it, and the companions Vitruvian Courier doesn't
 /// have yet. Covers `setting:integrations *`, `BrowserExtPrefsSubView.tsx`, `MobileAppsPrefsSubView.tsx` and
 /// `DebugPreferencesIndex.tsx`.
 public struct IntegrationsSettingsPane: View {
@@ -158,14 +158,14 @@ public struct IntegrationsSettingsPane: View {
         }
     }
 
-    // MARK: - Companions Courier doesn't have
+    // MARK: - Companions Vitruvian Courier doesn't have
 
     @ViewBuilder
     private var companionSections: some View {
         Section(String(localized: "Browser extension")) {
             CompanionRow(
                 title: String(localized: "Browser companion extension"),
-                detail: String(localized: "Browser extension pairing isn’t available yet in Courier. Links and attachments open directly on this Mac."),
+                detail: String(localized: "Browser extension pairing isn’t available yet in Vitruvian Courier. Links and attachments open directly on this Mac."),
                 badge: String(localized: "Not available yet")
             )
             .settingAnchor("integrations.browserExtension", highlighted: highlightedSettingID)
@@ -174,7 +174,7 @@ public struct IntegrationsSettingsPane: View {
         Section(String(localized: "Mobile companion apps")) {
             CompanionRow(
                 title: String(localized: "Mobile companion sync"),
-                detail: String(localized: "Courier connects directly to your chat networks on this Mac without a cloud relay or mobile companion app."),
+                detail: String(localized: "Vitruvian Courier connects directly to your chat networks on this Mac without a cloud relay or mobile companion app."),
                 badge: String(localized: "Not available yet")
             )
             .settingAnchor("integrations.mobileApps", highlighted: highlightedSettingID)
@@ -308,7 +308,7 @@ public struct NewConnectionSheet: View {
         return VStack(alignment: .leading, spacing: 14) {
             Text(String(localized: "“\(created.token.name)” is ready"))
                 .font(.headline)
-            Text(String(localized: "Copy the secret now. Courier won’t show it again: if you lose it, revoke this connection and make a new one."))
+            Text(String(localized: "Copy the secret now. Vitruvian Courier won’t show it again: if you lose it, revoke this connection and make a new one."))
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

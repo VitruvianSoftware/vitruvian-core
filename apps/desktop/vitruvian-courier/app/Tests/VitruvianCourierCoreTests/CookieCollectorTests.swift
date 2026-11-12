@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// What the sign-in window collects from a page, as a pure mapping: given the page's cookies, its local storage
 /// and what the step's ExtractJS resolved to, which values go to login.submit. The steps here are shaped like the

@@ -50,11 +50,11 @@ public final class IntegrationsModel: ObservableObject {
     public static let maximumPort = 65535
     /// What the person reads in the confirm before Remote Access goes on.
     public static let remoteAccessWarning = String(
-        localized: "Other devices on your network will be able to connect to Courier with an approved token. Traffic is not encrypted."
+        localized: "Other devices on your network will be able to connect to Vitruvian Courier with an approved token. Traffic is not encrypted."
     )
 
     public let appModel: AppModel?
-    /// Contents/Helpers/courier-engine: the stdio command runs it.
+    /// Contents/Helpers/vitruvian-courier-engine: the stdio command runs it.
     public let enginePath: String
     private let networkAddress: () -> String?
     private let explicitLifecycle: SystemLifecycleModel?
@@ -295,14 +295,14 @@ public final class IntegrationsModel: ObservableObject {
 
     /// Claude Code over HTTP.
     public func claudeHTTPCommand(secret: String) -> String {
-        "claude mcp add --transport http courier \(localEndpoint) --header \"Authorization: Bearer \(secret)\""
+        "claude mcp add --transport http vitruvian-courier \(localEndpoint) --header \"Authorization: Bearer \(secret)\""
     }
 
     /// Claude Code over stdio, through the engine's mcp-stdio.
     public func claudeStdioCommand(secret: String) -> String {
         let engine = enginePath.contains(" ") ? "\"\(enginePath)\"" : enginePath
         let portFlag = port == IntegrationsStatus.defaultPort ? "" : " --port \(port)"
-        return "claude mcp add courier -e COURIER_TOKEN=\(secret) -- \(engine) mcp-stdio\(portFlag)"
+        return "claude mcp add vitruvian-courier -e VITRUVIAN_COURIER_TOKEN=\(secret) -- \(engine) mcp-stdio\(portFlag)"
     }
 
     private func httpConfig(secret: String, extra: [String: String] = [:]) -> Data {
@@ -322,12 +322,12 @@ public final class IntegrationsModel: ObservableObject {
     public func cursorLink(secret: String) -> URL? {
         let config = httpConfig(secret: secret).base64EncodedString()
         let encoded = config.addingPercentEncoding(withAllowedCharacters: Self.queryValue) ?? config
-        return URL(string: "cursor://anysphere.cursor-deeplink/mcp/install?name=courier&config=\(encoded)")
+        return URL(string: "cursor://anysphere.cursor-deeplink/mcp/install?name=vitruvian-courier&config=\(encoded)")
     }
 
     /// VS Code's MCP install link, with the HTTP form.
     public func vsCodeLink(secret: String) -> URL? {
-        let json = String(decoding: httpConfig(secret: secret, extra: ["name": "courier", "type": "http"]), as: UTF8.self)
+        let json = String(decoding: httpConfig(secret: secret, extra: ["name": "vitruvian-courier", "type": "http"]), as: UTF8.self)
         let encoded = json.addingPercentEncoding(withAllowedCharacters: Self.queryValue) ?? json
         return URL(string: "vscode:mcp/install?\(encoded)")
     }
@@ -335,7 +335,7 @@ public final class IntegrationsModel: ObservableObject {
     // MARK: - Pairing
 
     /// A pairing request shows its prompt, unless one already shows (the engine lets one wait at a time, so a
-    /// second is not replaced in) or Courier is locked (it then times out, and the client is refused). Its end,
+    /// second is not replaced in) or Vitruvian Courier is locked (it then times out, and the client is refused). Its end,
     /// however it came, takes the prompt away.
     public func receive(_ notice: EngineNotice) {
         switch notice {
@@ -351,7 +351,7 @@ public final class IntegrationsModel: ObservableObject {
 
     /// The prompt's question. The client's name is text the client chose: it is only ever shown as plain text.
     public static func pairingQuestion(_ request: PairRequest) -> String {
-        String(localized: "“\(request.clientName)” wants to read your chats in Courier.")
+        String(localized: "“\(request.clientName)” wants to read your chats in Vitruvian Courier.")
     }
 
     public func answerPairing(_ answer: PairingAnswer) async {

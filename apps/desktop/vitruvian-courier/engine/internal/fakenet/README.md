@@ -1,7 +1,7 @@
 # Fakenet
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/engine/internal/fakenet`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/engine/internal/fakenet`.
 
 ## Interface
 - `[fakenet.go:Call]`
@@ -32,4 +32,4 @@ Component package providing implementation for `apps/desktop/courier/engine/inte
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/engine/internal/fakenet/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/engine/internal/fakenet/...`

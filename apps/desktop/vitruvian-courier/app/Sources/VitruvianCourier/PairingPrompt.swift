@@ -3,10 +3,10 @@
 
 import AppKit
 import Combine
-import CourierCore
+import VitruvianCourierCore
 
-/// The prompt a client asking to connect raises: an alert on Courier's main window, "“<clientName>” wants to read
-/// your chats in Courier.", with Allow, Allow and Send Messages, and Don't Allow. One shows at a time
+/// The prompt a client asking to connect raises: an alert on Vitruvian Courier's main window, "“<clientName>” wants to read
+/// your chats in Vitruvian Courier.", with Allow, Allow and Send Messages, and Don't Allow. One shows at a time
 /// (`IntegrationsModel.pairRequest`), and it goes away by itself when the engine says the request ended.
 @MainActor
 final class PairingPrompt {

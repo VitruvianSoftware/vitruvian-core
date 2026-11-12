@@ -1,11 +1,11 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// Settings ▸ About pane (`AboutSettingsPane.swift`):
-/// Courier version & build info, `"View Changelog"`, `"Report a Problem…"` (`⌘⇧P`),
+/// Vitruvian Courier version & build info, `"View Changelog"`, `"Report a Problem…"` (`⌘⇧P`),
 /// `"Keyboard Shortcuts"` (`⌘/`), `"Privacy & Security"`, and `"Legal Notices"` (MIT/MPL-2.0/AGPL-3.0 notices for embedded bridges).
 struct AboutSettingsPane: View {
     @ObservedObject var lifecycle: SystemLifecycleModel
@@ -45,30 +45,30 @@ struct AboutSettingsPane: View {
         _showLegalNotices = State(initialValue: showLegalNotices || highlightedSettingID == "about.legalNotices")
     }
 
-    /// The release's page for this version, or every Courier release when the version isn't a release's.
+    /// The release's page for this version, or every Vitruvian Courier release when the version isn't a release's.
     static func releaseNotesURL(version: String) -> URL {
         if let release = SemanticVersion(version) {
             return CourierReleases.releasePageURL(for: release)
         }
-        return URL(string: "https://github.com/\(CourierReleases.owner)/\(CourierReleases.repository)/releases?q=courier-v")!
+        return URL(string: "https://github.com/\(CourierReleases.owner)/\(CourierReleases.repository)/releases?q=vitruvian-courier-v")!
     }
 
     public static let embeddedBridgeNotices: [(component: String, license: String, summary: String)] = [
-        ("Courier Desktop & Engine", "AGPL-3.0-or-later", "On-device unified messaging application and local Matrix store."),
+        ("Vitruvian Courier Desktop & Engine", "AGPL-3.0-or-later", "On-device unified messaging application and local Matrix store."),
         ("mautrix-go (bridgev2)", "MPL-2.0", "Matrix bridge framework and local bridge database layer (maunium.net/go/mautrix v0.31.0)."),
         ("mautrix-whatsapp", "AGPL-3.0-or-later", "On-device WhatsApp multi-device connector (go.mau.fi/mautrix-whatsapp v0.2609.0)."),
         ("mautrix-signal", "AGPL-3.0-or-later", "On-device Signal linked-device connector (go.mau.fi/mautrix-signal v0.2609.0)."),
         ("mautrix-telegram", "AGPL-3.0-or-later", "On-device Telegram MTProto connector (go.mau.fi/mautrix-telegram v0.2609.0)."),
         ("mautrix-slack", "AGPL-3.0-or-later", "On-device Slack workspace connector (go.mau.fi/mautrix-slack v0.2609.1)."),
         ("mautrix-gmessages", "AGPL-3.0-or-later", "On-device Google Messages paired-phone connector (go.mau.fi/mautrix-gmessages v0.2609.0)."),
-        ("mautrix-googlechat", "AGPL-3.0-or-later", "On-device Google Chat connector (github.com/VitruvianSoftware/courier/bridges/googlechat)."),
+        ("mautrix-googlechat", "AGPL-3.0-or-later", "On-device Google Chat connector (github.com/VitruvianSoftware/vitruvian-courier/bridges/googlechat)."),
         ("mautrix-discord", "AGPL-3.0-or-later", "On-device Discord connector (go.mau.fi/mautrix-discord)."),
         ("mautrix-meta", "AGPL-3.0-or-later", "On-device Facebook Messenger and Instagram connector (go.mau.fi/mautrix-meta v0.2609.0)."),
         ("mautrix-twitter", "AGPL-3.0-or-later", "On-device X (Twitter) connector (go.mau.fi/mautrix-twitter v0.2609.0)."),
         ("mautrix-linkedin", "AGPL-3.0-or-later", "On-device LinkedIn Messaging connector (go.mau.fi/mautrix-linkedin v0.2609.0)."),
         ("mautrix-gvoice", "AGPL-3.0-or-later", "On-device Google Voice connector (go.mau.fi/mautrix-gvoice)."),
         ("mautrix-bluesky", "AGPL-3.0-or-later", "On-device Bluesky chat connector (go.mau.fi/mautrix-bluesky)."),
-        ("courier-imessage", "AGPL-3.0-or-later", "On-device macOS iMessage connector (github.com/VitruvianSoftware/courier/engine/internal/imessage)."),
+        ("courier-imessage", "AGPL-3.0-or-later", "On-device macOS iMessage connector (github.com/VitruvianSoftware/vitruvian-courier/engine/internal/imessage)."),
         ("SQLite & FTS5", "Public Domain / MIT", "Embedded relational store and full-text message index."),
     ]
 
@@ -104,7 +104,7 @@ struct AboutSettingsPane: View {
     }
 
     private var headerSection: some View {
-        Section(String(localized: "About Courier")) {
+        Section(String(localized: "About Vitruvian Courier")) {
             HStack(spacing: 14) {
                 Image(systemName: "bubble.left.and.bubble.right.fill")
                     .font(.system(size: 36))
@@ -116,7 +116,7 @@ struct AboutSettingsPane: View {
                     )
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(String(localized: "Courier"))
+                    Text(String(localized: "Vitruvian Courier"))
                         .font(.title3.weight(.semibold))
                     Text(String(localized: "Version \(appVersion) (Protocol \(CourierProtocol.version), Build \(buildNumber))"))
                         .font(.callout)
@@ -134,9 +134,9 @@ struct AboutSettingsPane: View {
                 isExpanded: $showChangelog
             ) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(String(localized: "What changed in each version of Courier is in its release notes."))
+                    Text(String(localized: "What changed in each version of Vitruvian Courier is in its release notes."))
                         .font(.caption)
-                    Link(String(localized: "Release Notes for Courier \(appVersion)"),
+                    Link(String(localized: "Release Notes for Vitruvian Courier \(appVersion)"),
                          destination: AboutSettingsPane.releaseNotesURL(version: appVersion))
                         .font(.caption)
                 }
@@ -172,9 +172,9 @@ struct AboutSettingsPane: View {
                 isExpanded: $showPrivacyDetails
             ) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(String(localized: "• Direct-to-network: Courier connects directly from this Mac to your linked chat networks without any middleman relay."))
+                    Text(String(localized: "• Direct-to-network: Vitruvian Courier connects directly from this Mac to your linked chat networks without any middleman relay."))
                         .font(.caption)
-                    Text(String(localized: "• Local SQLite & media store: Messages, attachments, and search indexes stay in your local Courier data folder."))
+                    Text(String(localized: "• Local SQLite & media store: Messages, attachments, and search indexes stay in your local Vitruvian Courier data folder."))
                         .font(.caption)
                     Text(String(localized: "• Local diagnostics: Problem report bundles are saved to a file you choose on this Mac and scrubbed of tokens, phone numbers, names, and home folder paths."))
                         .font(.caption)
@@ -217,8 +217,8 @@ struct AboutSettingsPane: View {
     }
 }
 
-/// Settings ▸ About ▸ Updates: whether a newer Courier is out, and installing it. The check runs at launch and daily
-/// (unless turned off here), and Courier ▸ Check for Updates… runs it now.
+/// Settings ▸ About ▸ Updates: whether a newer Vitruvian Courier is out, and installing it. The check runs at launch and daily
+/// (unless turned off here), and Vitruvian Courier ▸ Check for Updates… runs it now.
 struct UpdatesSection: View {
     @ObservedObject var updates: UpdateModel
     var highlightedSettingID: String?
@@ -233,7 +233,7 @@ struct UpdatesSection: View {
             .settingAnchor("about.updates", highlighted: highlightedSettingID)
 
             Toggle(String(localized: "Check for updates automatically"), isOn: $updates.checksAutomatically)
-            Text(String(localized: "Courier checks GitHub when it opens and once a day. An update is installed only after its checksum, its Developer ID signature and Apple’s notarization check out; Courier then quits and opens again."))
+            Text(String(localized: "Vitruvian Courier checks GitHub when it opens and once a day. An update is installed only after its checksum, its Developer ID signature and Apple’s notarization check out; Vitruvian Courier then quits and opens again."))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -244,7 +244,7 @@ struct UpdatesSection: View {
     private var status: some View {
         switch updates.phase {
         case .idle:
-            Text(String(localized: "Courier hasn’t checked for updates yet."))
+            Text(String(localized: "Vitruvian Courier hasn’t checked for updates yet."))
                 .foregroundStyle(.secondary)
         case .checking:
             HStack(spacing: 8) {
@@ -253,7 +253,7 @@ struct UpdatesSection: View {
             }
         case .upToDate:
             VStack(alignment: .leading, spacing: 2) {
-                Text(String(localized: "Courier \(updates.currentVersion?.description ?? "") is up to date."))
+                Text(String(localized: "Vitruvian Courier \(updates.currentVersion?.description ?? "") is up to date."))
                 if let lastChecked = updates.lastChecked {
                     Text(String(localized: "Checked \(lastChecked.formatted(date: .abbreviated, time: .shortened))."))
                         .font(.caption)
@@ -261,22 +261,22 @@ struct UpdatesSection: View {
                 }
             }
         case let .available(version):
-            Text(String(localized: "Courier \(version.description) is available. You have \(updates.currentVersion?.description ?? "")."))
+            Text(String(localized: "Vitruvian Courier \(version.description) is available. You have \(updates.currentVersion?.description ?? "")."))
                 .fontWeight(.medium)
         case let .downloading(version, fraction):
             VStack(alignment: .leading, spacing: 4) {
-                Text(String(localized: "Downloading Courier \(version.description)…"))
+                Text(String(localized: "Downloading Vitruvian Courier \(version.description)…"))
                 ProgressView(value: fraction)
             }
         case let .verifying(version):
             HStack(spacing: 8) {
                 ProgressView().controlSize(.small)
-                Text(String(localized: "Checking Courier \(version.description)’s checksum, signature and notarization…"))
+                Text(String(localized: "Checking Vitruvian Courier \(version.description)’s checksum, signature and notarization…"))
             }
         case let .installing(version):
             HStack(spacing: 8) {
                 ProgressView().controlSize(.small)
-                Text(String(localized: "Installing Courier \(version.description). Courier will quit and open again."))
+                Text(String(localized: "Installing Vitruvian Courier \(version.description). Vitruvian Courier will quit and open again."))
             }
         case let .failed(message):
             Label(message, systemImage: "exclamationmark.triangle")

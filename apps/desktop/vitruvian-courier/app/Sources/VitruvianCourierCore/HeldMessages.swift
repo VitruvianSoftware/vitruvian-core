@@ -34,7 +34,7 @@ public struct HeldCopy: Equatable, Sendable {
 enum HeldUndo: Equatable {
     /// Nothing is held in the chat: ⌘Z is the text view's.
     case nothingHeld
-    /// Taken back: this goes back into the composer, and "Message unsent from Courier" says so.
+    /// Taken back: this goes back into the composer, and "Message unsent from Vitruvian Courier" says so.
     case undone(HeldCopy)
     /// Not taken back (it went, it failed, or no one can tell yet): only this is said.
     case notUndone(String)
@@ -243,15 +243,15 @@ final class HeldMessages {
             markUndone(entry.id)
             guard let copy = entry.copy else {
                 // Unsent, but held before this composer knew it: there is nothing here to give back.
-                return .notUndone(String(localized: "Message unsent from Courier"))
+                return .notUndone(String(localized: "Message unsent from Vitruvian Courier"))
             }
             return .undone(copy)
         case .queued:
             restore(entry, in: room)
-            return .notUndone(String(localized: "Courier’s engine didn’t answer. The message is still queued: undo it again."))
+            return .notUndone(String(localized: "Vitruvian Courier’s engine didn’t answer. The message is still queued: undo it again."))
         case .waiting?, .noAccount?:
             restore(entry, in: room)
-            let text = String(localized: "Courier’s engine didn’t answer. The message is still waiting: try Don’t Send again.")
+            let text = String(localized: "Vitruvian Courier’s engine didn’t answer. The message is still waiting: try Don’t Send again.")
             return .notUndone(text)
         default:
             markSettled(entry.id)

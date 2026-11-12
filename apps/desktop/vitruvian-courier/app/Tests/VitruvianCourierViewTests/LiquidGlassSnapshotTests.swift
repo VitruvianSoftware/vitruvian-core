@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 import XCTest
 
-@testable import Courier
+@testable import VitruvianCourier
 
 /// Settings ▸ Appearance ▸ Use Liquid Glass on: a chat pane with the floating composer over the messages, and the
 /// selected message's glass action bar with a who-reacted card. (The chat's name in the window's toolbar can't be drawn
@@ -16,13 +16,13 @@ import XCTest
 /// here, a glass shape comes out as nothing at all (no material, no edge: the message box, its plus and the send button
 /// are invisible, and the card's names sit straight on the row), checked on macOS 27.2; and the messages in the pane's
 /// scroll view don't draw offscreen either, so the pane shows the composer's layout (where the reply and the text sit,
-/// its insets) over an empty pane. Look at the glass itself in the test copy (README). They are skipped unless `--test_env=COURIER_GLASS_SNAPSHOTS=1`, because on CI's headless Mac a
+/// its insets) over an empty pane. Look at the glass itself in the test copy (README). They are skipped unless `--test_env=VITRUVIAN_COURIER_GLASS_SNAPSHOTS=1`, because on CI's headless Mac a
 /// glass render never returned (the view tests timed out, PR #4238).
 @MainActor
 final class LiquidGlassSnapshotTests: XCTestCase {
     override func setUpWithError() throws {
-        guard ProcessInfo.processInfo.environment["COURIER_GLASS_SNAPSHOTS"] == "1" else {
-            throw XCTSkip("glass renders need the window server: set COURIER_GLASS_SNAPSHOTS=1 on a Mac with a display")
+        guard ProcessInfo.processInfo.environment["VITRUVIAN_COURIER_GLASS_SNAPSHOTS"] == "1" else {
+            throw XCTSkip("glass renders need the window server: set VITRUVIAN_COURIER_GLASS_SNAPSHOTS=1 on a Mac with a display")
         }
         guard #available(macOS 26.0, *) else { throw XCTSkip("Liquid Glass needs macOS 26") }
     }
@@ -61,7 +61,7 @@ final class LiquidGlassSnapshotTests: XCTestCase {
     private func pane(composer: ComposerModel, preferences: ComposerPreferences, textHeight: CGFloat,
                       selected: String = "") -> some View {
         let ui = MessageUI()
-        let actions = Courier.MessageActions(now: { Fixture.now })
+        let actions = VitruvianCourier.MessageActions(now: { Fixture.now })
         return ScrollView {
             VStack(spacing: 0) {
                 ForEach(Fixture.items(conversation())) { item in
@@ -116,7 +116,7 @@ final class LiquidGlassSnapshotTests: XCTestCase {
             ], sender: "@\(name.lowercased()):courier.local", name: "\(name) Example"))
         }
         let ui = MessageUI()
-        let actions = Courier.MessageActions(now: { Fixture.now })
+        let actions = VitruvianCourier.MessageActions(now: { Fixture.now })
         let sizes = try Snapshot.render("liquid-glass-on-message-bar", width: 700) {
             VStack(spacing: 0) {
                 ForEach(Fixture.items(events)) { item in

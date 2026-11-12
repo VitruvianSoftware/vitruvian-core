@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// The sheet for adding a network: the picker, then each step of the sign-in, then how it ended. The sign-in
@@ -64,7 +64,7 @@ struct AddNetworkView: View {
             }
         case let .signIn(network, _):
             framed(title: String(localized: "Link \(login.displayName(network))")) {
-                Text(String(localized: "Sign in to \(login.displayName(network)) in the window that opened. Courier picks up the sign-in when you’re done."))
+                Text(String(localized: "Sign in to \(login.displayName(network)) in the window that opened. Vitruvian Courier picks up the sign-in when you’re done."))
                     .fixedSize(horizontal: false, vertical: true)
             } buttons: {
                 cancelButton
@@ -197,7 +197,7 @@ private struct NetworkChoiceRow: View {
 /// A sheet's window stops the app from quitting while it is up: AppKit's `preventsApplicationTerminationWhenModal`
 /// is on for SwiftUI sheets, so Quit, ⌘Q and the menu-bar icon's Quit did nothing while this sheet was open. This
 /// one has only a Cancel or Done to lose, and a sign-in in progress ends when the engine stops, so Quit may go
-/// ahead. Set on the window itself, which works on every macOS Courier runs on (SwiftUI's own
+/// ahead. Set on the window itself, which works on every macOS Vitruvian Courier runs on (SwiftUI's own
 /// `presentationPreventsAppTermination` needs 15.4).
 private struct AllowsQuitWhileShown: NSViewRepresentable {
     final class Probe: NSView {

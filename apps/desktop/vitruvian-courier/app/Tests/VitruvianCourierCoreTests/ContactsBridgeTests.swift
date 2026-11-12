@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// Tests for `ContactsBridge`, E.164 phone/email normalization, on-demand Contacts authorization,
 /// privacy isolation from the engine, and the 0.5s sender hover card controller. All data is synthetic.

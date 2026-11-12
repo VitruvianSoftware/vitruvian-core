@@ -228,10 +228,7 @@ mod tests {
     #[test]
     fn resolve_app_from_zip_name() {
         // resolve_app looks for .zip extension
-        let _paths = vec![
-            "something".to_string(),
-            "VitruvianCourier.zip".to_string(),
-        ];
+        let _paths = vec!["something".to_string(), "VitruvianCourier.zip".to_string()];
         // We cannot actually unzip here, but we can verify the resolution
         // logic finds the .zip path. Since the file doesn't exist, this
         // would fail at unzip; we test the parsing separately.

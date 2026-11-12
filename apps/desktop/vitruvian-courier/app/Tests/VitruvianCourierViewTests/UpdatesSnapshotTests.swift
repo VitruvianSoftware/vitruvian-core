@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 import XCTest
 
-@testable import Courier
+@testable import VitruvianCourier
 
 /// Settings ▸ About with its Updates section, as a check leaves it. Look at settings-about-update-*: an update on
 /// offer (Download and Install, Release Notes), up to date, and a check that failed. Nothing reaches the network.
@@ -48,7 +48,7 @@ final class UpdatesSnapshotTests: XCTestCase {
     private func updates(_ releases: Releases) async -> UpdateModel {
         let suite = "courier.snapshots.updates.\(UUID().uuidString)"
         suites.append(suite)
-        let model = UpdateModel(currentVersion: "0.7.0", appURL: URL(fileURLWithPath: "/Applications/Courier.app"),
+        let model = UpdateModel(currentVersion: "0.7.0", appURL: URL(fileURLWithPath: "/Applications/Vitruvian Courier.app"),
                                 environment: releases, defaults: ScratchDefaults.suite(named: suite)!,
                                 now: { Date(timeIntervalSince1970: 1_800_000_000) }, quit: {})
         await model.check()
@@ -62,8 +62,8 @@ final class UpdatesSnapshotTests: XCTestCase {
             defaults: ScratchDefaults.suite(named: "courier.snapshots.updates.lifecycle.\(UUID().uuidString)")!
         )
         let cases: [(String, Releases)] = [
-            ("available", Releases(tags: ["courier-v0.7.0", "courier-v0.8.0"], status: 200)),
-            ("current", Releases(tags: ["courier-v0.7.0"], status: 200)),
+            ("available", Releases(tags: ["vitruvian-courier-v0.7.0", "vitruvian-courier-v0.8.0"], status: 200)),
+            ("current", Releases(tags: ["vitruvian-courier-v0.7.0"], status: 200)),
             ("failed", Releases(tags: [], status: 429)),
         ]
         for (name, releases) in cases {

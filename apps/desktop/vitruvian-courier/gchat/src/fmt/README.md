@@ -1,7 +1,7 @@
 # Fmt
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/gchat/src/fmt`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/gchat/src/fmt`.
 
 ## Interface
 - `[inbound.rs:ConvertedInboundText]`
@@ -19,4 +19,4 @@ Component package providing implementation for `apps/desktop/courier/gchat/src/f
 - [inbound.rs:42]: `|| trimmed.starts_with("http://")`
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/gchat/src/fmt/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/gchat/src/fmt/...`

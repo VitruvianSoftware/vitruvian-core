@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// Selecting several chats in the inbox and acting on them at once, against a stand-in engine.
 @MainActor
@@ -132,10 +132,10 @@ final class InboxSelectionTests: XCTestCase {
         let fm = FileManager.default
         let candidates: [URL] = [
             ProcessInfo.processInfo.environment["TEST_SRCDIR"].map {
-                URL(fileURLWithPath: $0).appendingPathComponent("_main/apps/desktop/courier/app/Sources")
+                URL(fileURLWithPath: $0).appendingPathComponent("_main/apps/desktop/vitruvian-courier/app/Sources")
             },
             URL(fileURLWithPath: #filePath)
-                .deletingLastPathComponent() // CourierCoreTests
+                .deletingLastPathComponent() // VitruvianCourierCoreTests
                 .deletingLastPathComponent() // Tests
                 .deletingLastPathComponent() // app
                 .appendingPathComponent("Sources"),

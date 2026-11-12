@@ -5,23 +5,23 @@ import CryptoKit
 import Darwin
 import Foundation
 
-// Courier checks for a newer release of itself and installs it (Settings ▸ About ▸ Updates, and Courier ▸ Check for
+// Vitruvian Courier checks for a newer release of itself and installs it (Settings ▸ About ▸ Updates, and Vitruvian Courier ▸ Check for
 // Updates…). The design follows the Vitruvian app's own updater (apps/desktop/vitruvian, VitruvianReleases and its
-// installer), written again here for Courier:
-// - Releases are tags of the public monorepo, `courier-v1.2.3`. That repository releases many products, so GitHub's
-//   "latest release" is usually another product's: the check lists the `courier-v` tags itself, with the request
+// installer), written again here for Vitruvian Courier:
+// - Releases are tags of the public monorepo, `vitruvian-courier-v1.2.3`. That repository releases many products, so GitHub's
+//   "latest release" is usually another product's: the check lists the `vitruvian-courier-v` tags itself, with the request
 //   `git ls-remote` makes, which is not counted against GitHub's API limit.
 // - What it installs is checked before anything is replaced: the SHA-256 the release publishes beside the disk image,
-//   the disk image's and the app's Developer ID signatures (Courier's bundle ID and team), Gatekeeper's verdict that
+//   the disk image's and the app's Developer ID signatures (Vitruvian Courier's bundle ID and team), Gatekeeper's verdict that
 //   the app is notarized, and the version inside the app matching the release's tag.
-// - The new app is copied next to the old one first, then a small script waits for Courier to quit, swaps the two,
-//   puts the old one back if the swap fails, and opens Courier again.
+// - The new app is copied next to the old one first, then a small script waits for Vitruvian Courier to quit, swaps the two,
+//   puts the old one back if the swap fails, and opens Vitruvian Courier again.
 
-/// Where Courier's releases are published, and how they are read.
+/// Where Vitruvian Courier's releases are published, and how they are read.
 public enum CourierReleases {
     public static let owner = "VitruvianSoftware"
     public static let repository = "vitruvian-core"
-    public static let tagPrefix = "courier-v"
+    public static let tagPrefix = "vitruvian-courier-v"
     public static let bundleIdentifier = "com.vitruviansoftware.courier"
     /// The Developer ID team that signs every VitruvianSoftware Mac app.
     public static let teamIdentifier = "Q5MH753M3F"
@@ -31,7 +31,7 @@ public enum CourierReleases {
         "anchor apple generic and certificate leaf[subject.OU] = \"\(teamIdentifier)\""
     }
 
-    /// What the app inside it must be: Courier, signed by the same team.
+    /// What the app inside it must be: Vitruvian Courier, signed by the same team.
     public static var appRequirement: String {
         "identifier \"\(bundleIdentifier)\" and \(diskImageRequirement)"
     }
@@ -45,7 +45,7 @@ public enum CourierReleases {
 
     /// The universal disk image, signed and notarized, that runs on Apple silicon and Intel alike.
     public static func diskImageURL(for version: SemanticVersion) -> URL {
-        URL(string: "https://github.com/\(owner)/\(repository)/releases/download/\(tag(for: version))/Courier-\(version)-universal.dmg")!
+        URL(string: "https://github.com/\(owner)/\(repository)/releases/download/\(tag(for: version))/VitruvianCourier-\(version)-universal.dmg")!
     }
 
     /// The image's SHA-256, which the release publishes beside it (tools/desktop-package).
@@ -58,8 +58,8 @@ public enum CourierReleases {
         URL(string: "https://github.com/\(owner)/\(repository)/releases/tag/\(tag(for: version))")!
     }
 
-    /// Git protocol version 2's `ls-refs`, asking only for the `courier-v` tags: what
-    /// `git ls-remote <repo> 'refs/tags/courier-v*'` sends. Each line is a pkt-line (four hex digits giving its
+    /// Git protocol version 2's `ls-refs`, asking only for the `vitruvian-courier-v` tags: what
+    /// `git ls-remote <repo> 'refs/tags/vitruvian-courier-v*'` sends. Each line is a pkt-line (four hex digits giving its
     /// length, those four included); `0001` ends the command and `0000` the request.
     public static var tagListRequestBody: Data {
         pktLine("command=ls-refs\n") + Data("0001".utf8)
@@ -108,7 +108,7 @@ public enum CourierReleases {
         return nil
     }
 
-    /// The newest release among the tags: a plain `courier-vX.Y.Z` (no pre-release), by version, not by the order
+    /// The newest release among the tags: a plain `vitruvian-courier-vX.Y.Z` (no pre-release), by version, not by the order
     /// listed (which is alphabetical, so 0.9.0 comes after 0.10.0).
     public static func newestVersion(in tags: [String]) -> SemanticVersion? {
         tags.compactMap { tag -> SemanticVersion? in
@@ -129,7 +129,7 @@ public enum CourierReleases {
     }
 }
 
-/// A release's version, `1.2.3`. Only plain releases: a pre-release label is not one Courier installs.
+/// A release's version, `1.2.3`. Only plain releases: a pre-release label is not one Vitruvian Courier installs.
 public struct SemanticVersion: Comparable, Hashable, Sendable, CustomStringConvertible {
     public let major: Int
     public let minor: Int
@@ -185,11 +185,11 @@ public protocol UpdateEnvironment: Sendable {
     func copy(_ source: URL, to destination: URL) throws
     func isWritableDirectory(_ url: URL) -> Bool
     func remove(_ url: URL)
-    /// Starts the script that swaps the apps once Courier has quit; it outlives Courier.
+    /// Starts the script that swaps the apps once Vitruvian Courier has quit; it outlives Vitruvian Courier.
     func launchInstaller(script: String, arguments: [String]) throws
 }
 
-/// Settings ▸ About ▸ Updates and Courier ▸ Check for Updates…: whether a newer Courier is out, and installing it.
+/// Settings ▸ About ▸ Updates and Vitruvian Courier ▸ Check for Updates…: whether a newer Vitruvian Courier is out, and installing it.
 @MainActor
 public final class UpdateModel: ObservableObject {
     public enum Phase: Equatable, Sendable {
@@ -199,7 +199,7 @@ public final class UpdateModel: ObservableObject {
         case available(SemanticVersion)
         case downloading(SemanticVersion, fraction: Double)
         case verifying(SemanticVersion)
-        /// The new app is in place beside the old one; Courier quits and comes back as the new version.
+        /// The new app is in place beside the old one; Vitruvian Courier quits and comes back as the new version.
         case installing(SemanticVersion)
         case failed(String)
     }
@@ -213,7 +213,7 @@ public final class UpdateModel: ObservableObject {
 
     /// The version running now, nil for a build with no release version (which is never offered an update).
     public let currentVersion: SemanticVersion?
-    /// The installed Courier.app the update replaces.
+    /// The installed Vitruvian Courier.app the update replaces.
     public let appURL: URL
     private let environment: any UpdateEnvironment
     private let defaults: UserDefaults
@@ -262,7 +262,7 @@ public final class UpdateModel: ObservableObject {
         }
     }
 
-    /// The check at launch, then one a day while Courier runs, when checking automatically is on.
+    /// The check at launch, then one a day while Vitruvian Courier runs, when checking automatically is on.
     public func startAutomaticChecks() {
         dailyTimer?.invalidate()
         dailyTimer = Timer.scheduledTimer(withTimeInterval: Self.checkInterval, repeats: true) { [weak self] _ in
@@ -277,17 +277,17 @@ public final class UpdateModel: ObservableObject {
         await check()
     }
 
-    /// Asks which Courier releases exist and offers the newest if it is newer than this one.
+    /// Asks which Vitruvian Courier releases exist and offers the newest if it is newer than this one.
     public func check() async {
         guard !isBusy else { return }
         guard let currentVersion else {
-            phase = .failed(String(localized: "This build of Courier has no release version, so it can’t be updated."))
+            phase = .failed(String(localized: "This build of Vitruvian Courier has no release version, so it can’t be updated."))
             return
         }
         phase = .checking
         let reply: UpdateReply
         do {
-            reply = try await environment.send(CourierReleases.tagListRequest(userAgent: "Courier/\(currentVersion)"))
+            reply = try await environment.send(CourierReleases.tagListRequest(userAgent: "Vitruvian Courier/\(currentVersion)"))
         } catch {
             phase = .failed(String(localized: "Couldn’t check for updates: \(error.localizedDescription)"))
             return
@@ -318,7 +318,7 @@ public final class UpdateModel: ObservableObject {
         guard case let .available(version) = phase else { return }
         let parent = appURL.deletingLastPathComponent()
         guard environment.isWritableDirectory(parent) else {
-            phase = .failed(String(localized: "Courier can’t replace itself in \(parent.path). Download Courier \(version.description) from its release page and put it in Applications."))
+            phase = .failed(String(localized: "Vitruvian Courier can’t replace itself in \(parent.path). Download Vitruvian Courier \(version.description) from its release page and put it in Applications."))
             return
         }
         let work = FileManager.default.temporaryDirectory
@@ -351,7 +351,7 @@ public final class UpdateModel: ObservableObject {
         guard sidecar.status == 200, let expected = CourierReleases.checksum(fromSidecar: sidecar.body) else {
             throw UpdateFailure(message: String(localized: "Couldn’t read the update’s checksum, so it wasn’t downloaded."))
         }
-        let diskImage = work.appendingPathComponent("Courier-\(version)-universal.dmg")
+        let diskImage = work.appendingPathComponent("VitruvianCourier-\(version)-universal.dmg")
         try await environment.download(CourierReleases.diskImageURL(for: version), to: diskImage) { fraction in
             Task { @MainActor [weak self] in
                 guard let self, case .downloading(version, _) = self.phase else { return }
@@ -364,35 +364,35 @@ public final class UpdateModel: ObservableObject {
             throw UpdateFailure(message: String(localized: "The download didn’t match its checksum, so nothing was installed."))
         }
         guard environment.satisfies(diskImage, requirement: CourierReleases.diskImageRequirement) else {
-            throw UpdateFailure(message: String(localized: "The download isn’t signed by Courier’s developer, so nothing was installed."))
+            throw UpdateFailure(message: String(localized: "The download isn’t signed by Vitruvian Courier’s developer, so nothing was installed."))
         }
         let mountPoint = try environment.mount(diskImage)
         defer { environment.unmount(mountPoint) }
-        let newApp = mountPoint.appendingPathComponent("Courier.app")
+        let newApp = mountPoint.appendingPathComponent("Vitruvian Courier.app")
         guard environment.satisfies(newApp, requirement: CourierReleases.appRequirement) else {
-            throw UpdateFailure(message: String(localized: "The new Courier isn’t signed by Courier’s developer, so nothing was installed."))
+            throw UpdateFailure(message: String(localized: "The new Vitruvian Courier isn’t signed by Vitruvian Courier’s developer, so nothing was installed."))
         }
         guard environment.passesGatekeeper(newApp) else {
-            throw UpdateFailure(message: String(localized: "macOS didn’t accept the new Courier as notarized, so nothing was installed."))
+            throw UpdateFailure(message: String(localized: "macOS didn’t accept the new Vitruvian Courier as notarized, so nothing was installed."))
         }
         guard environment.bundleVersion(of: newApp) == version.description else {
-            throw UpdateFailure(message: String(localized: "The download isn’t Courier \(version.description), so nothing was installed."))
+            throw UpdateFailure(message: String(localized: "The download isn’t Vitruvian Courier \(version.description), so nothing was installed."))
         }
         // Beside the installed app, on the same disk, so the swap is a rename; hidden, so Spotlight and the Finder
-        // don't show a second Courier while it waits.
-        let staged = parent.appendingPathComponent(".Courier.app.update-\(version)")
+        // don't show a second Vitruvian Courier while it waits.
+        let staged = parent.appendingPathComponent(".Vitruvian Courier.app.update-\(version)")
         environment.remove(staged)
         try environment.copy(newApp, to: staged)
         guard environment.satisfies(staged, requirement: CourierReleases.appRequirement) else {
             environment.remove(staged)
-            throw UpdateFailure(message: String(localized: "The new Courier didn’t copy intact, so nothing was installed."))
+            throw UpdateFailure(message: String(localized: "The new Vitruvian Courier didn’t copy intact, so nothing was installed."))
         }
         return staged
     }
 
-    /// Run with `/bin/sh -c`: $1 the installed app, $2 the verified new app beside it, $3 Courier's process ID, $4 the
-    /// program that opens Courier again (/usr/bin/open). It waits for Courier (and so its engine) to quit, moves the
-    /// old app aside, moves the new one in, puts the old one back if that fails, and opens Courier.
+    /// Run with `/bin/sh -c`: $1 the installed app, $2 the verified new app beside it, $3 Vitruvian Courier's process ID, $4 the
+    /// program that opens Vitruvian Courier again (/usr/bin/open). It waits for Vitruvian Courier (and so its engine) to quit, moves the
+    /// old app aside, moves the new one in, puts the old one back if that fails, and opens Vitruvian Courier.
     public static let installerScript = """
     APP="$1"; NEW="$2"; PID="$3"; OPEN="$4"
     BACKUP="$APP.update-old.$$"
@@ -513,8 +513,8 @@ public struct SystemUpdateEnvironment: UpdateEnvironment {
     }
 
     public func launchInstaller(script: String, arguments: [String]) throws {
-        // POSIX_SPAWN_SETSID puts the installer in its own session so launchd does not sweep it away when Courier
-        // quits; POSIX_SPAWN_CLOEXEC_DEFAULT keeps Courier's open descriptors out of the child.
+        // POSIX_SPAWN_SETSID puts the installer in its own session so launchd does not sweep it away when Vitruvian Courier
+        // quits; POSIX_SPAWN_CLOEXEC_DEFAULT keeps Vitruvian Courier's open descriptors out of the child.
         var attributes: posix_spawnattr_t?
         posix_spawnattr_init(&attributes)
         defer { posix_spawnattr_destroy(&attributes) }
@@ -529,7 +529,7 @@ public struct SystemUpdateEnvironment: UpdateEnvironment {
 
         let executable = "/bin/sh"
         let argv: [UnsafeMutablePointer<CChar>?] =
-            ([executable, "-c", script, "courier-update"] + arguments).map { strdup($0) } + [nil]
+            ([executable, "-c", script, "vitruvian-courier-update"] + arguments).map { strdup($0) } + [nil]
         defer { for argument in argv { free(argument) } }
 
         var pid: pid_t = 0

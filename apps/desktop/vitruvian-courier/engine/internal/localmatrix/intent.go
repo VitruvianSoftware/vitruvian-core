@@ -64,7 +64,7 @@ func (in *Intent) SendMessage(ctx context.Context, roomID id.RoomID, evtType eve
 	if err != nil {
 		return nil, err
 	}
-	// A call notice is stored with Courier's reading of it, which only its network's bridge can say.
+	// A call notice is stored with Vitruvian Courier's reading of it, which only its network's bridge can say.
 	raw = store.AnnotateCallNote(in.c.network, evtType.Type, raw)
 	// A duplicate insert is not an error: the same bridge event always maps to the same event ID.
 	if _, err = in.c.store.InsertEvent(ctx, store.Event{
@@ -216,7 +216,7 @@ func (in *Intent) MarkRead(ctx context.Context, roomID id.RoomID, eventID id.Eve
 // MarkUnread, TagRoom and MuteRoom are my chat list on the network: bridgev2 calls them on my own
 // (double-puppet) intent, so a ghost's or the bot's say nothing about it and are dropped. With the bridge config
 // host.Start sets (tag_only_on_create, mute_only_on_create, only_bridge_tags), tags and mutes come only when a
-// chat first arrives, so a later change on the phone never fights one made in Courier.
+// chat first arrives, so a later change on the phone never fights one made in Vitruvian Courier.
 //
 // The phone's "not marked unread" clears only the chat's marked-unread flag, never a mark made here from a message
 // (Ruling 6: ApplyNetworkUnread).
@@ -289,7 +289,7 @@ func (in *Intent) DownloadMediaToFile(_ context.Context, uri id.ContentURIString
 		}
 		return nil
 	}
-	tmp, err := os.CreateTemp("", "courier-dl-*")
+	tmp, err := os.CreateTemp("", "vitruvian-courier-dl-*")
 	if err != nil {
 		return err
 	}

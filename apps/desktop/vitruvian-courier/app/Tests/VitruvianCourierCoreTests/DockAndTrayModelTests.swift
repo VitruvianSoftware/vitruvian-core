@@ -1,7 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import CourierCore
+import VitruvianCourierCore
 import Foundation
 import XCTest
 
@@ -115,8 +115,8 @@ final class DockAndTrayModelTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let supervisor = EngineSupervisor(
-            enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",
-            dataDir: URL(fileURLWithPath: "/tmp/courier-test-dock"),
+            enginePath: "/Applications/Vitruvian Courier.app/Contents/Helpers/vitruvian-courier-engine",
+            dataDir: URL(fileURLWithPath: "/tmp/vitruvian-courier-test-dock"),
             environment: [:],
             launcher: FakeLauncher { _, _ in }
         )
@@ -186,7 +186,7 @@ final class DockAndTrayModelTests: XCTestCase {
         coordinator.minimizeToMenuBar()
         XCTAssertEqual(hiddenAppCount, 1)
 
-        // 5. Settings sections from Application and Help menus (About Courier, Accounts…, Keyboard Shortcuts, Report a Problem…, Privacy & Security, Changelog)
+        // 5. Settings sections from Application and Help menus (About Vitruvian Courier, Accounts…, Keyboard Shortcuts, Report a Problem…, Privacy & Security, Changelog)
         for section in [SettingsSection.about, .accounts, .shortcuts, .reportProblem, .privacy, .changelog] {
             coordinator.openSettings(section)
             XCTAssertEqual(coordinator.activeSettingsSection, section)
@@ -194,7 +194,7 @@ final class DockAndTrayModelTests: XCTestCase {
         XCTAssertEqual(shownSettingsCount, 6)
 
         // 5b. Help ▸ Privacy & Security and Help ▸ Changelog land on their part of About, not just the pane; About
-        // Courier, and any other section, clears the highlight a Settings search left behind.
+        // Vitruvian Courier, and any other section, clears the highlight a Settings search left behind.
         let navigation = coordinator.settingsNavigation
         coordinator.openSettings(.changelog)
         XCTAssertEqual(navigation.selectedPane, .about)

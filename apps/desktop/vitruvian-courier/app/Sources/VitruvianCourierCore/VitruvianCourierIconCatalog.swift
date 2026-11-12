@@ -34,7 +34,7 @@ public enum CourierIconCategory: String, CaseIterable, Codable, Sendable, Identi
 public struct CourierIconEntry: Equatable, Sendable, Identifiable {
     /// Raw inventory component name from `01-screens-and-flows.md` §22 (e.g. `"ac_unit.tsx"`, `"account_circle.tsx"`).
     public let ledgerComponent: String
-    /// Native macOS SF Symbol name rendered by Courier (e.g. `"snowflake"`, `"person.crop.circle"`).
+    /// Native macOS SF Symbol name rendered by Vitruvian Courier (e.g. `"snowflake"`, `"person.crop.circle"`).
     public let sfSymbol: String
     /// Human-readable label shown in tooltips and search (e.g. `"Snowflake"`, `"Account Circle"`).
     public let title: String

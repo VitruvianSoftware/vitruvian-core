@@ -19,7 +19,7 @@ exports_files(
 # 60 minutes: a cold libsignal build is about 2,000 to 2,700 actions
 # (docs/m2-libsignal.md); the remote cache makes later runs much shorter.
 pipeline_unit(
-    name = "vitruvian-vitruvian-courier-engine-macos",
+    name = "vitruvian-courier-engine-macos",
     persona = "backend",
     runner = "xcode-27",
     test_targets = ["//apps/desktop/vitruvian-courier/engine/..."],

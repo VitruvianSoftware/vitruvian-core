@@ -329,7 +329,7 @@ func resolveFFmpeg(override string) (string, error) {
 }
 
 func transcodeVoice(ctx context.Context, ffmpegBin, inPath, targetExt string) (string, error) {
-	tmp, err := os.CreateTemp("", "courier-voice-*"+targetExt)
+	tmp, err := os.CreateTemp("", "vitruvian-courier-voice-*"+targetExt)
 	if err != nil {
 		return "", err
 	}

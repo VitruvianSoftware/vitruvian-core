@@ -245,7 +245,7 @@ DELETE FROM search_messages WHERE rowid IN (SELECT doc_id FROM events WHERE doc_
   AND content LIKE '%` + actionMessageKey + `%' AND ` + hasActionMessageSQL("content") + `);
 UPDATE events SET doc_id = NULL WHERE doc_id IS NOT NULL
   AND content LIKE '%` + actionMessageKey + `%' AND ` + hasActionMessageSQL("content") + `;`,
-	// 6: call notices in Courier's words (migration6SQL, frozen as it ships).
+	// 6: call notices in Vitruvian Courier's words (migration6SQL, frozen as it ships).
 	migration6SQL,
 	// 7: engine reliability, receipts and typing (milestone 4.4): other people's read markers and deliveries, Mark as
 	// Unread from a message, the account each chat belongs to, and bridge states kept per login. A network can have
@@ -370,7 +370,7 @@ func migrateWith(ctx context.Context, db *dbutil.Database, list []string) error 
 			return fmt.Errorf("read schema version: %w", err)
 		}
 		if v > len(list) {
-			return fmt.Errorf("courier.db is at schema version %d, newer than this engine understands (%d): update Courier", v, len(list))
+			return fmt.Errorf("courier.db is at schema version %d, newer than this engine understands (%d): update Vitruvian Courier", v, len(list))
 		}
 		if v == len(list) {
 			return nil

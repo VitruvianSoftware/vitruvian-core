@@ -1,7 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// One row of the search panel: a chat, a person in a group, a message, or a recent search (01 §12's
@@ -163,7 +163,7 @@ private struct MessageResultRow: View {
                     .foregroundStyle(.secondary)
                     .fixedSize()
             }
-            // The ranges are the engine's UTF-16 offsets, made bold in CourierCore (Ruling 3).
+            // The ranges are the engine's UTF-16 offsets, made bold in VitruvianCourierCore (Ruling 3).
             Text(hit.highlightedSnippet)
                 .font(.callout)
                 .lineLimit(2)

@@ -3,17 +3,17 @@ Copyright 2026 VitruvianSoftware
 SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 
-# Courier milestone 4: acceptance list
+# Vitruvian Courier milestone 4: acceptance list
 
-This is the checklist for milestone 4, one section per part. Each part's section is written by that part's plan, so later parts add theirs below. Use Courier all day, and tick a line when you have seen that thing work. Write down anything wrong, with no names, numbers or message text.
+This is the checklist for milestone 4, one section per part. Each part's section is written by that part's plan, so later parts add theirs below. Use Vitruvian Courier all day, and tick a line when you have seen that thing work. Write down anything wrong, with no names, numbers or message text.
 
-Each ledger line is one row of the inventory (`docs/superpowers/specs/2026-10-15-beeper-desktop-inventory/ledger.tsv`), kept under its row name so you can look it up there. The text after the dash says, in plain words, what Courier does now. A tick means "I saw this work", not "the code exists".
+Each ledger line is one row of the inventory (`docs/superpowers/specs/2026-10-15-beeper-desktop-inventory/ledger.tsv`), kept under its row name so you can look it up there. The text after the dash says, in plain words, what Vitruvian Courier does now. A tick means "I saw this work", not "the code exists".
 
-The same rule as milestone 3 holds for the day: do not open the same chat in the other chat app while testing Courier. It would send a read receipt.
+The same rule as milestone 3 holds for the day: do not open the same chat in the other chat app while testing Vitruvian Courier. It would send a read receipt.
 
 ## Part 4.1: organise the inbox
 
-Spaces, labels, filters, pins, archive, low priority, hide, reminders, message requests and the settings that shape the chat list. Courier's own organising stays on this Mac: archive, labels, spaces, low priority, hide, reminders, marked unread, drafts and auto-archive rules never reach a phone. What does go out is:
+Spaces, labels, filters, pins, archive, low priority, hide, reminders, message requests and the settings that shape the chat list. Vitruvian Courier's own organising stays on this Mac: archive, labels, spaces, low priority, hide, reminders, marked unread, drafts and auto-archive rules never reach a phone. What does go out is:
 
 - a pin and a mute, on WhatsApp and Telegram only;
 - a read mark when you read a chat, on every network, as opening a chat always has;
@@ -23,8 +23,8 @@ Look for nothing else on a phone.
 
 ### Before you start
 
-- Install the build with `bazel run --config=macos-app //apps/desktop/courier/app:install`. Your chats and networks from milestone 3 stay as they are.
-- A pin or mute made on the phone is taken in only when a chat first reaches Courier. If you want to see that, pin one chat on your phone before it first arrives.
+- Install the build with `bazel run --config=macos-app //apps/desktop/vitruvian-courier/app:install`. Your chats and networks from milestone 3 stay as they are.
+- A pin or mute made on the phone is taken in only when a chat first reaches Vitruvian Courier. If you want to see that, pin one chat on your phone before it first arrives.
 - Settings are in Settings ▸ Inbox (⌘,).
 
 ### Check these first
@@ -58,7 +58,7 @@ Some things could not be tried by hand while the app was being built, because th
 - [ ] ⌘A in the chat list selects all the chats in the list. Edit ▸ Select All must not swallow it. If it does, Chat ▸ Select All Chats is the fallback; say so.
 - [ ] The popovers take clicks. ⌘L (Remind Me) shows the suggested times and Custom…, and ⌘⌥A (Filter by Account) shows the accounts. Click an item in each.
 - [ ] ⌘⇧] and ⌘⇧[ move to the next and previous space on the space bar, any kind of space, skipping hidden ones. After the last space ⌘⇧] goes back to the first, and before the first ⌘⇧[ goes to the last.
-- [ ] A notification's buttons work. With Courier in the background, a new message's notification offers Mark as Read, Reply, Remind in 1 Hour and Remind in 8 Hours. Try each one. Then set a reminder a few minutes ahead, close the window, and check that the reminder notification arrives on time.
+- [ ] A notification's buttons work. With Vitruvian Courier in the background, a new message's notification offers Mark as Read, Reply, Remind in 1 Hour and Remind in 8 Hours. Try each one. Then set a reminder a few minutes ahead, close the window, and check that the reminder notification arrives on time.
 
 ### Keys
 
@@ -78,7 +78,7 @@ Some things could not be tried by hand while the app was being built, because th
 
 ### Settings
 
-All of these are in Settings ▸ Inbox. Each takes effect at once, and is still set after you quit and open Courier again.
+All of these are in Settings ▸ Inbox. Each takes effect at once, and is still set after you quit and open Vitruvian Courier again.
 
 **Chat list**
 
@@ -114,7 +114,7 @@ All of these are in Settings ▸ Inbox. Each takes effect at once, and is still 
 - [ ] `component` Badge.tsx: A space's icon in the space bar shows a badge when it has unread chats. Hovering gives its title and "%d chats" ("%d reminders" in Reminders, "%d requests" in Requests).
 - [ ] `component` BrandTypingIndicator.tsx: A chat that someone is typing in shows "Name is typing…" in place of the preview, or "N people are typing…" for several.
 - [ ] `component` CheckboxPlus.tsx: In selection mode each row has a tick mark that shows whether it is selected.
-- [ ] `component` CreateLabelBrowserWindow.tsx: View ▸ New Label… opens a window with a title field, a row of 12 colours and a grid of 24 icons. It reads "Pick a name, a colour and an icon. This is how the label looks everywhere in Courier."
+- [ ] `component` CreateLabelBrowserWindow.tsx: View ▸ New Label… opens a window with a title field, a row of 12 colours and a grid of 24 icons. It reads "Pick a name, a colour and an icon. This is how the label looks everywhere in Vitruvian Courier."
 - [ ] `component` CreateLabelNudgeIcon.tsx: While there are no labels, the space bar shows a dashed "New label" button. It goes away once you have one.
 - [ ] `component` Drag.tsx: In Edit Spaces, a space can be picked up and moved to another place in the list.
 - [ ] `component` Drop.tsx: Dropping it above the "Hidden" divider shows the space, and below it hides the space. The Inbox cannot be moved and stays first.
@@ -126,7 +126,7 @@ All of these are in Settings ▸ Inbox. Each takes effect at once, and is still 
 - [ ] `component` PinnedThreadListItem.tsx: Pinned chats sit at the top of the list as small avatars, or as full rows when "Show pinned chats as full rows" is on.
 - [ ] `component` SelectionModeActions.tsx: In selection mode the action bar offers Mark as Read, Mark as Unread, Move to Inbox or Low Priority, Remind Me, Dismiss Reminder, Archive or Unarchive, and More (Mute, Hide, Label).
 - [ ] `component` SelectionModeHeader.tsx: The list header reads "%d chat selected" with Select All and Cancel. Esc leaves selection first, before anything else closes.
-- [ ] `component` Skeleton.tsx: Opening Courier shows grey placeholder rows until the first page of chats arrives.
+- [ ] `component` Skeleton.tsx: Opening Vitruvian Courier shows grey placeholder rows until the first page of chats arrives.
 - [ ] `component` ThreadPreviewMedia.tsx: A chat whose newest message is a picture shows a small thumbnail in its row.
 - [ ] `component` Toasts.tsx: Archive, reminder and bulk actions show a message at the bottom of the chat list, with Undo where there is one. ⌘Z does the same as pressing Undo while the toast shows.
 - [ ] `component` TypingIndicator.tsx: The typing line in a row has animated dots.
@@ -135,7 +135,7 @@ All of these are in Settings ▸ Inbox. Each takes effect at once, and is still 
 
 ### Commands
 
-These 13 are registered in Courier for the command bar (⌘J), which part 4.7 builds. They have no tick box here: they are "registered; shown in ⌘J by 4.7". The ones with a menu item or key above are checked there.
+These 13 are registered in Vitruvian Courier for the command bar (⌘J), which part 4.7 builds. They have no tick box here: they are "registered; shown in ⌘J by 4.7". The ones with a menu item or key above are checked there.
 
 - `command` Archive all chats
 - `command` Archive all chats older than a week
@@ -158,10 +158,10 @@ The inventory has no row for these, but they are what this part was built to do.
 **The five things to check**
 
 - [ ] Archived chats come back only when they should. An archived chat comes back to the inbox when someone else writes to it. It does not come back for an older message that was only loaded late, a message you sent from your phone, a reaction or an edit. A chat in Low Priority or Hidden stays where it is when new messages arrive.
-- [ ] A reminder fires once, even if Courier was not running. Set a reminder an hour ahead and close the window: it still fires on time. Quit Courier, or let the Mac sleep, past the time: at the next chance the reminder fires once, not never and not twice.
+- [ ] A reminder fires once, even if Vitruvian Courier was not running. Set a reminder an hour ahead and close the window: it still fires on time. Quit Vitruvian Courier, or let the Mac sleep, past the time: at the next chance the reminder fires once, not never and not twice.
 - [ ] A very large inbox stays quick. With thousands of chats, the first page shows at once, the Unread filter is quick, and scrolling down loads more without any chat repeating or going missing.
 - [ ] Undo undoes exactly what it did. "Archive all read chats" on a big inbox, then Undo: it brings back those chats and leaves alone the ones that were archived before, and any chat that a new message already brought back.
-- [ ] A phone that will not take a change does not break it. Pin a WhatsApp chat while WhatsApp is offline: it is pinned in Courier at once, stays pinned, and shows no error. Courier does not try again; the phone catches up the next time you change that chat.
+- [ ] A phone that will not take a change does not break it. Pin a WhatsApp chat while WhatsApp is offline: it is pinned in Vitruvian Courier at once, stays pinned, and shows no error. Vitruvian Courier does not try again; the phone catches up the next time you change that chat.
 
 **What the chat menu does** (right-click a chat, in this order)
 
@@ -184,7 +184,7 @@ The inventory has no row for these, but they are what this part was built to do.
 - [ ] Hide: a hidden chat leaves the inbox and shows only under Filter ▸ Hidden.
 - [ ] Auto-archive rules: on a label or an account space, "Archive [all / read] chats older than [3 days … 1 year]" archives what matches, says "%d chat(s) here already match this rule.", and has an "Archive %d chat(s)" button. In Settings ▸ Inbox, "Archive chats by themselves" (Never / After I reply / After I read them) with a delay archives a chat by itself that long after. Both are behind a plan.
 - [ ] Message requests: a first message from someone new shows in the Requests space and in the inbox row as "Message request" with Accept and Decline buttons.
-- Mark as Unread stays on this Mac. A chat marked unread shows its dot here and is never sent to a phone, on any network. WhatsApp's bridge turns an unread mark the wrong way round (checked up to its newest release), so Courier keeps the mark to itself. Do not look for it on a phone.
+- Mark as Unread stays on this Mac. A chat marked unread shows its dot here and is never sent to a phone, on any network. WhatsApp's bridge turns an unread mark the wrong way round (checked up to its newest release), so Vitruvian Courier keeps the mark to itself. Do not look for it on a phone.
 
 ### Carried to later parts
 
@@ -204,12 +204,12 @@ Search finds chats, people and messages, all on this Mac. Nothing you type is se
 
 - Emoji and punctuation. They are skipped, and a search made of only emoji says so.
 - One letter, in messages. Messages need at least two letters to search, so a one-letter word finds nothing. Chats and people search from the first letter. A single Chinese, Japanese, Korean or Thai character does count.
-- Messages a network never sent Courier. Courier can only search the history it has on this Mac. Older history appears as each network sends it.
+- Messages a network never sent Vitruvian Courier. Vitruvian Courier can only search the history it has on this Mac. Older history appears as each network sends it.
 
 ### Before you start
 
-- Install the build with `bazel run --config=macos-app //apps/desktop/courier/app:install`. Your chats and networks stay as they are.
-- The first time Courier opens after this update, it adds your older messages to search in the background. Search works at once, and new messages are found straight away. Until the older ones are in, a line at the top of the results says "Still adding older messages to search. Some results may be missing."
+- Install the build with `bazel run --config=macos-app //apps/desktop/vitruvian-courier/app:install`. Your chats and networks stay as they are.
+- The first time Vitruvian Courier opens after this update, it adds your older messages to search in the background. Search works at once, and new messages are found straight away. Until the older ones are in, a line at the top of the results says "Still adding older messages to search. Some results may be missing."
 - Do not open the same chat in the other chat app while you test. It would send a read receipt.
 
 ### Check these first
@@ -245,12 +245,12 @@ Not yet checked by eye. The tests cover the logic behind each one. Look at these
 
 ### Keys
 
-- [ ] `hotkey` Search: ⌘K opens search over every chat. Pressing it again closes it. If another Courier window is in front, it brings the main window forward first.
+- [ ] `hotkey` Search: ⌘K opens search over every chat. Pressing it again closes it. If another Vitruvian Courier window is in front, it brings the main window forward first.
 - [ ] `hotkey` Search: Room: ⌘F searches the chat that is open. With no chat open it does the same as ⌘K. It also works while the cursor is in the message box.
 
 ### Menus
 
-- [ ] `menu:Beeper` Search…: Courier ▸ Search… (⌘K), just after Settings. The Chat menu also has "Search in Chat…" (⌘F).
+- [ ] `menu:Beeper` Search…: Vitruvian Courier ▸ Search… (⌘K), just after Settings. The Chat menu also has "Search in Chat…" (⌘F).
 
 ### Components
 
@@ -258,7 +258,7 @@ Not yet checked by eye. The tests cover the logic behind each one. Look at these
 - [ ] `component` GeneralSearchResults.tsx: Before you type, the panel shows Recent (chats you opened lately), Last archived (the chat you archived last), and Recent searches. Once you type it shows Chats, In groups, Media and Messages, whichever have something. A section with more rows has "Show more".
 - [ ] `component` JumpToMessage.tsx: Opening a message result opens its chat at that message, tinted, and "Jump to latest" goes back. See the first list for what to look for.
 - [ ] `component` SearchIcon.tsx: A magnifying glass sits at the left of the search field.
-- [ ] `component` OutlineSearch.tsx: The same magnifying glass, in its outline style. Courier uses one system symbol for both, so there is nothing different to look for.
+- [ ] `component` OutlineSearch.tsx: The same magnifying glass, in its outline style. Vitruvian Courier uses one system symbol for both, so there is nothing different to look for.
 - [ ] `component` search.tsx: The search icon in the library. Same as above.
 - [ ] `component` SelectMessageCommand.tsx: A message row shows who sent it ("You" for yours), the chat, a place tag if the chat is not in the inbox, the date, and the line of text with the matching words in bold. Today shows a time, this year shows day and month, and older shows the whole date. Return opens it.
 - [ ] `component` SelectRecentSearchCommand.tsx: A recent search shows as a clock and the words. Return searches them again. "Clear Recent Searches" sits in that section's title row.
@@ -266,12 +266,12 @@ Not yet checked by eye. The tests cover the logic behind each one. Look at these
 
 ### Commands
 
-These 2 are registered in Courier for the command bar (⌘J), which part 4.7 builds. They have no tick box here: they are "registered; shown in ⌘J by 4.7". The keys above are checked there.
+These 2 are registered in Vitruvian Courier for the command bar (⌘J), which part 4.7 builds. They have no tick box here: they are "registered; shown in ⌘J by 4.7". The keys above are checked there.
 
 - `command` Search chats
 - `command` Search messages in all chats
 
-Courier also registers "Search messages in current chat" (⌘F). It has no ledger row of its own, and is off while no chat is open.
+Vitruvian Courier also registers "Search messages in current chat" (⌘F). It has no ledger row of its own, and is off while no chat is open.
 
 ### Not ledger rows
 
@@ -282,18 +282,18 @@ The inventory has no row for these, but they are what this part was built to do.
 - [ ] Deleted and edited words go away. Delete a message, then search for a word only it had: it does not come back. Edit a message to different words: search finds the new words and not the old ones. A chat that is gone leaves none of its words or its name in search.
 - [ ] Anything you type is safe. Try quotes, `*`, `-`, `(`, the words AND, OR and NOT, `NEAR(`, a single `"`, a colon, a very long paste, and emoji on their own. None gives an error or freezes the app. Each is searched as ordinary words, and emoji alone shows the calm line "Search for a word or a name. Emoji and punctuation aren’t searched." Words in double quotes find that exact run of words.
 - [ ] Accents, capitals, width and scripts do not get in the way. "cafe" and "CAFE" both find "café". Full-width letters find the same word in normal letters. A word in Chinese, Japanese, Korean or Thai is found by part of it as well as the whole of it. A Hindi word is found whole, and is not cut in two. (Only try the scripts you have messages in.)
-- [ ] A big history stays quick after the update. With a very large chat history, Courier opens as fast as before. New messages can be searched at once, older ones fill in behind, and quitting halfway through carries on where it stopped when you open Courier again. With thousands of chats, each search still answers quickly.
+- [ ] A big history stays quick after the update. With a very large chat history, Vitruvian Courier opens as fast as before. New messages can be searched at once, older ones fill in behind, and quitting halfway through carries on where it stopped when you open Vitruvian Courier again. With thousands of chats, each search still answers quickly.
 - [ ] Jumping to an old message is steady. Open a message from last year: the chat opens at it, tinted, not at the bottom. New messages arriving meanwhile do not move the view. "Jump to latest" and sending a message both go back to the newest. (This is the same as the jump lines in the first list.)
 
 **The sections, in order**
 
-- [ ] Before you type: Recent, Last archived, then Recent searches. The chat you are in is left out of Recent and Last archived. Last archived also leaves out hidden chats. Inside one chat, home shows only recent searches, or "Search this chat’s messages." when there are none. What Last archived leaves out is Courier's best reading: if the other chat app behaves differently, say so.
-- [ ] As you type: Chats, In groups, Media, then Messages. A section with nothing in it is left out. Inside one chat there are only Media and Messages. In groups lists only people you have no direct chat with. That is Courier's best reading: if the other chat app behaves differently, say so.
+- [ ] Before you type: Recent, Last archived, then Recent searches. The chat you are in is left out of Recent and Last archived. Last archived also leaves out hidden chats. Inside one chat, home shows only recent searches, or "Search this chat’s messages." when there are none. What Last archived leaves out is Vitruvian Courier's best reading: if the other chat app behaves differently, say so.
+- [ ] As you type: Chats, In groups, Media, then Messages. A section with nothing in it is left out. Inside one chat there are only Media and Messages. In groups lists only people you have no direct chat with. That is Vitruvian Courier's best reading: if the other chat app behaves differently, say so.
 - [ ] Messages and media come newest first, not best match first. Chats and people whose name starts with your first word come first, then the one with the newest message.
 - [ ] Every chat is searched, wherever it is: inbox, Archive, Low Priority, hidden and Requests. A result outside the inbox carries a tag: "Archived", "Low priority", "Hidden" or "Request".
 - [ ] Your own messages are found too. The Sent / Received filter narrows them.
 - [ ] The Chats section stops at 100 chats and says "Showing the first 100 chats. Type more to narrow it down."
-- [ ] The foot of the Messages section reads "Courier searches the messages on this Mac. Older history appears as each network sends it."
+- [ ] The foot of the Messages section reads "Vitruvian Courier searches the messages on this Mac. Older history appears as each network sends it."
 
 **The filters**
 
@@ -307,7 +307,7 @@ The inventory has no row for these, but they are what this part was built to do.
 **Partial matches**
 
 - [ ] Search wants all of your words. The last word you are still typing matches as a start of a word ("meet" finds "meeting") unless it is in quotes or followed by a space.
-- [ ] "Show partial matches" lists, after every full match, messages that have some of the words but not all. They sit under a "Partial matches" divider. That is Courier's best reading of what partial matches are: if the other chat app behaves differently, say so.
+- [ ] "Show partial matches" lists, after every full match, messages that have some of the words but not all. They sit under a "Partial matches" divider. That is Vitruvian Courier's best reading of what partial matches are: if the other chat app behaves differently, say so.
 
 **What the panel says**
 
@@ -330,7 +330,7 @@ The inventory has no row for these, but they are what this part was built to do.
 **Good to know**
 
 - While you read an older part of a chat (after opening an old result), new messages in that chat don't show a banner. The dot on "Jump to latest" tells you something new came.
-- Recent searches are kept in Courier's settings on this Mac, not in the encrypted message database. "Clear Recent Searches" removes them.
+- Recent searches are kept in Vitruvian Courier's settings on this Mac, not in the encrypted message database. "Clear Recent Searches" removes them.
 
 **The chat menu**
 
@@ -361,7 +361,7 @@ Stays on this Mac: bookmarks, edit history, quick replies, send later while it w
 
 ### Before you start
 
-- Install the build with `bazel run --config=macos-app //apps/desktop/courier/app:install`. Your chats and networks stay as they are.
+- Install the build with `bazel run --config=macos-app //apps/desktop/vitruvian-courier/app:install`. Your chats and networks stay as they are.
 - Settings are in Settings ▸ Messages (⌘,), a new tab beside Inbox.
 - Out of the box: undo send is Off, click-to-undo is off, double-click on a message is Reply, "Press ↑ in the composer to" is Move focus to the message list, and the formatting bar is on.
 - Undo send, click-to-undo and the send-later default say "Available with a plan" on a build without one.
@@ -373,11 +373,11 @@ Stays on this Mac: bookmarks, edit history, quick replies, send later while it w
 Nobody could try these by hand while the app was built, because the build had no screen to look at. The tests cover the logic. Look at these before anything else.
 
 - [ ] ⌘C with part of a code block selected copies only that part. If it copies the whole message, say so.
-- [ ] Changing a disappearing timer leaves a note in the chat, in Courier's words. Check it both ways: change it in Courier, and change it on the phone. The inbox row and the notification never show the network's own English for it. Someone else changing it does not notify and does not mark the chat unread.
-- [ ] A call shows in Courier's words, never the network's English ("Incoming call. Use the WhatsApp app to answer.", "Started a video call", "Ended the video chat (1 minute)"). Call yourself from another phone on WhatsApp, Signal and Telegram, once answered and once not. The chat shows a centred line with a phone or camera ("Incoming call", "Missed video call", "Call ended") and, in a group only, the caller's name. The inbox row and the notification say the same. Someone else's call marks the chat unread and notifies once: as it rings, or when it was missed. "Call ended", declined and dropped show in the chat but don't mark it unread, notify or bring it back from the archive. A call you make counts as your reply for "If no reply". A Telegram call you make shows "Call not answered" or "Voice call ended", and it does not mark the chat unread. A Telegram group video chat shows "Video call started" and then "Video call ended". Only Telegram says voice or video, and only Telegram says missed.
+- [ ] Changing a disappearing timer leaves a note in the chat, in Vitruvian Courier's words. Check it both ways: change it in Vitruvian Courier, and change it on the phone. The inbox row and the notification never show the network's own English for it. Someone else changing it does not notify and does not mark the chat unread.
+- [ ] A call shows in Vitruvian Courier's words, never the network's English ("Incoming call. Use the WhatsApp app to answer.", "Started a video call", "Ended the video chat (1 minute)"). Call yourself from another phone on WhatsApp, Signal and Telegram, once answered and once not. The chat shows a centred line with a phone or camera ("Incoming call", "Missed video call", "Call ended") and, in a group only, the caller's name. The inbox row and the notification say the same. Someone else's call marks the chat unread and notifies once: as it rings, or when it was missed. "Call ended", declined and dropped show in the chat but don't mark it unread, notify or bring it back from the archive. A call you make counts as your reply for "If no reply". A Telegram call you make shows "Call not answered" or "Voice call ended", and it does not mark the chat unread. A Telegram group video chat shows "Video call started" and then "Video call ended". Only Telegram says voice or video, and only Telegram says missed.
 - [ ] Taking back a reaction on a real WhatsApp one-to-one chat works. If it does not, you should see "Couldn’t unsend", never a reaction that looks gone but is still there.
 - [ ] A formatted message looks right on the other side. Send bold, italic, a link, a list and a quote on WhatsApp, Signal, Telegram and Slack. Spacing may collapse where the network uses HTML. A message with no formatting arrives exactly as you typed it.
-- [ ] Quit Courier while a message is on hold. After you open it again, the message either went out or shows "Not sent" with Retry. It is never silently gone, and quitting never hangs for more than about 15 seconds.
+- [ ] Quit Vitruvian Courier while a message is on hold. After you open it again, the message either went out or shows "Not sent" with Retry. It is never silently gone, and quitting never hangs for more than about 15 seconds.
 - [ ] Click to undo, double-click and single-click selection do not fight. With undo send on, click a held message and it comes back. Double-click does what Settings says. A single click only selects.
 - [ ] Do the by-hand run on the installed build, once, start to end:
   - format a message and see it drawn back in the chat;
@@ -394,13 +394,13 @@ These are the five things this part was most worried about. Look at them before 
 
 - [ ] A change the network refuses never looks done. Edit or unsend while the phone is offline, or past the network's limit. A refused edit puts the old words back in the chat and in search. A refused unsend brings the message back in the chat, the inbox row and search, and says "Couldn’t unsend". It never looks deleted to you while everyone else still has it. An unsend that is too old is refused before anything is sent.
 - [ ] Undo at the last moment does one thing. Set undo send to 5 seconds, send, and press ⌘Z right as the time runs out. Either nothing was sent and your words are back in the box, or it was sent and Undo says it already went. Never both, never neither. Quitting during the wait loses nothing.
-- [ ] Send later survives quit, sleep and restart. Schedule a message a few minutes ahead and quit, or let the Mac sleep past the time. It goes out once at the next chance: not never, not twice. If it is more than an hour late it waits as "Missed its time while Courier was closed" with Send Now, Reschedule and Delete. With "If no reply", a message from them first cancels it: "Canceled: they wrote first".
+- [ ] Send later survives quit, sleep and restart. Schedule a message a few minutes ahead and quit, or let the Mac sleep past the time. It goes out once at the next chance: not never, not twice. If it is more than an hour late it waits as "Missed its time while Vitruvian Courier was closed" with Send Now, Reschedule and Delete. With "If no reply", a message from them first cancels it: "Canceled: they wrote first".
 - [ ] Plain text stays plain, and formatting reads well where a network can't show it. Send these and check them on the other side: 2*3*4, snake_case_name, <b>hi</b>, #1, C:\path, a web address with underscores, emoji, and right-to-left text. Each arrives exactly as typed. Then send a bold, linked, mentioned, listed message to Google Messages. It should read well as plain text, with no stray marks.
 - [ ] A disappearing message never outlasts its timer. Set the shortest timer the network allows (Signal has 30 seconds, counted from when it is read). Let the Mac sleep past the time and wake it. The message is gone from the chat, the inbox row and search, even though the network's own clean-up is still asleep.
 
 ### What to expect on each network
 
-Courier reads this from each network's own list of what it allows. A button that can't work is greyed, and its help text says why in Courier's words. No error codes reach you.
+Vitruvian Courier reads this from each network's own list of what it allows. A button that can't work is greyed, and its help text says why in Vitruvian Courier's words. No error codes reach you.
 
 | | WhatsApp | Signal | Telegram | Google Messages | Slack |
 |---|---|---|---|---|---|
@@ -440,7 +440,7 @@ The other formatting keys are in the Format menu: code block ⌘⌥C, quote ⌘�
 
 ### Settings
 
-All of these are in Settings ▸ Messages. Each takes effect at once, and is still set after you quit and open Courier again.
+All of these are in Settings ▸ Messages. Each takes effect at once, and is still set after you quit and open Vitruvian Courier again.
 
 **Sending**
 
@@ -469,7 +469,7 @@ All of these are in Settings ▸ Messages. Each takes effect at once, and is sti
 - [ ] `component` draft.tsx: "Insert as Draft" on someone else's message puts its words in your box as a draft. Nothing is sent.
 - [ ] `component` edit_square.tsx: The Edit… item of the message menu, with ⌘T.
 - [ ] `component` forward.tsx: The Forward… item, with ⌘⇧F. The picker is titled "Forward message", searches your chats, and takes up to 20. It says "The people you forward to won’t see who it came from."
-- [ ] `component` icons-compose.tsx: The icons in the composer's bar and plus menu. Courier uses system symbols, so there is nothing different to look for.
+- [ ] `component` icons-compose.tsx: The icons in the composer's bar and plus menu. Vitruvian Courier uses system symbols, so there is nothing different to look for.
 - [ ] `component` OutlineCompose.tsx: The same compose icon, in its outline style. Same as above.
 - [ ] `component` link.tsx: The Link button in the formatting bar, ⌘⇧K. It opens the link dialog.
 - [ ] `component` LinkDialog.tsx: A dialog with Text and Address fields, Save and Cancel. Return saves and Esc cancels.
@@ -484,14 +484,14 @@ All of these are in Settings ▸ Messages. Each takes effect at once, and is sti
 - [ ] `component` schedule.tsx: The clock for Send Later in the plus menu and the picker.
 - [ ] `component` schedule_send.tsx: The same, on the send button's menu and the scheduled strip.
 - [ ] `component` ScheduledMessageDate.tsx: Each scheduled message shows its date and time.
-- [ ] `component` ScheduledMessages.tsx: Above the box, "N Message to Send Later" lists them with Send Now, Edit, Reschedule and Delete Without Sending. A waiting one says nothing more. A canceled one says "Canceled: they wrote first". A missed one says "Missed its time while Courier was closed".
+- [ ] `component` ScheduledMessages.tsx: Above the box, "N Message to Send Later" lists them with Send Now, Edit, Reschedule and Delete Without Sending. A waiting one says nothing more. A canceled one says "Canceled: they wrote first". A missed one says "Missed its time while Vitruvian Courier was closed".
 - [ ] `component` Spoiler.tsx: A spoiler is covered until you click it. See "How it behaves".
 - [ ] `component` ToggleScheduledMessages.tsx: The "N Message to Send Later" line opens and closes that list.
 
 **The timeline**
 
 - [ ] `component` BrandReplyLineSegment.tsx: A reply shows the message it answers above its text, with a line beside it. A thread root shows "N Reply" or "N Replies" and up to three names.
-- [ ] `component` DisappearedMessagesGrouper.tsx: A message past its timer is gone from the chat, not left as a gap. A timer change leaves one note in Courier's words.
+- [ ] `component` DisappearedMessagesGrouper.tsx: A message past its timer is gone from the chat, not left as a gap. A timer change leaves one note in Vitruvian Courier's words.
 
 **Threads**
 
@@ -502,11 +502,11 @@ All of these are in Settings ▸ Messages. Each takes effect at once, and is sti
 **Other**
 
 - [ ] `component` content_copy.tsx: Copy and Copy with Timestamp in the message menu. ⌘C copies the selected message.
-- [ ] `component` chevron_forward.tsx: A small right-pointing arrow marks a row that opens more. Courier uses one system symbol, so there is nothing different to look for.
+- [ ] `component` chevron_forward.tsx: A small right-pointing arrow marks a row that opens more. Vitruvian Courier uses one system symbol, so there is nothing different to look for.
 
 ### Commands
 
-These are registered in Courier for the command bar (⌘J), which part 4.7 builds. They have no tick box here: they are "registered; shown in ⌘J by 4.7". The ones with a menu item or key above are checked there.
+These are registered in Vitruvian Courier for the command bar (⌘J), which part 4.7 builds. They have no tick box here: they are "registered; shown in ⌘J by 4.7". The ones with a menu item or key above are checked there.
 
 - `command` Send later
 - `command` Create quick reply from draft
@@ -543,7 +543,7 @@ The inventory has no row for these, but they are what this part was built to do.
 - [ ] Forward… (⌘⇧F).
 - [ ] Edit History, when the message was edited.
 - [ ] Greyed lines that only say something: "Sent at …" or "Received at …", and "Disappears in …".
-- [ ] A greyed action shows why, as its help text, in Courier's words.
+- [ ] A greyed action shows why, as its help text, in Vitruvian Courier's words.
 - [ ] A timer note has no actions except Delete for Me.
 
 **Polls**
@@ -579,7 +579,7 @@ The inventory has no row for these, but they are what this part was built to do.
 
 **The Send Later picker**
 
-- [ ] The picker offers the same presets as Remind Me, a date and time, and "If no reply" or "Regardless". The footer says "Courier sends it from this Mac. It needs to be running, and your Mac awake, at that time."
+- [ ] The picker offers the same presets as Remind Me, a date and time, and "If no reply" or "Regardless". The footer says "Vitruvian Courier sends it from this Mac. It needs to be running, and your Mac awake, at that time."
 - [ ] A time that has passed says "That time has passed. Choose a later one." A time past five years says "Choose a time within 5 years."
 
 ### Carried to later parts
@@ -600,11 +600,11 @@ Seen and Delivered under your messages, typing in both directions, messages that
 - your typing, which is new and has a setting: a network that shows typing is told while you write;
 - a private chat, when Reply Privately has to create one through the network.
 
-Stays on this Mac: Mark as Unread from a message, Incognito, and who read what. Courier keeps the record of who has read your messages in its own store. It never goes anywhere.
+Stays on this Mac: Mark as Unread from a message, Incognito, and who read what. Vitruvian Courier keeps the record of who has read your messages in its own store. It never goes anywhere.
 
 ### Before you start
 
-- Install the build with `bazel run --config=macos-app //apps/desktop/courier/app:install`. Your chats and networks stay as they are.
+- Install the build with `bazel run --config=macos-app //apps/desktop/vitruvian-courier/app:install`. Your chats and networks stay as they are.
 - Settings are in Settings ▸ Messages ▸ Privacy (⌘,). The typing notification is in Settings ▸ Inbox ▸ Notifications.
 - Out of the box: Incognito is off, "Show recipients I’m typing" is on, the incognito mark in the message box is on, and "Notify me when someone starts typing" is off.
 - Incognito reads "Available with a plan" on a build without one.
@@ -615,7 +615,7 @@ Stays on this Mac: Mark as Unread from a message, Incognito, and who read what. 
 
 Nobody could watch the app while it was built. The tests cover the logic, and the views were checked only as still pictures. This is the first time anyone sees the app live. Look at these before anything else.
 
-- [ ] Send with Wi-Fi off, then turn it on. The message says "Waiting to send" with Don’t Send. When the network is back it goes once. Write down how long Courier takes to notice the network is gone, and what a message sent in that gap shows.
+- [ ] Send with Wi-Fi off, then turn it on. The message says "Waiting to send" with Don’t Send. When the network is back it goes once. Write down how long Vitruvian Courier takes to notice the network is gone, and what a message sent in that gap shows.
 - Do the by-hand run on the installed build, once, start to end. Tick each step as you go:
   - [ ] Send while the network is down, watch the message wait, then watch it go.
   - [ ] See Delivered and then Seen appear under your newest message.
@@ -628,22 +628,22 @@ Nobody could watch the app while it was built. The tests cover the logic, and th
 - [ ] The Seen ticks in the inbox use your Mac’s accent colour (red in the pictures). Is that right?
 - [ ] Dark mode: can you tell the switches in Settings on from off? Is the greyed "Show the incognito mark in the message box" row readable?
 - [ ] In an Incognito chat on Telegram, schedule a message with Send Later and let it go out. The other side must not see that you read the chat: no read receipt goes with it. Only a reply you send from this Mac reads the chat.
-- [ ] Chats that existed before you added a second account (or before this part) show their account tag once Courier has started again. Add a second account on a network, quit Courier and open it: the older chats now have the first account’s tag.
+- [ ] Chats that existed before you added a second account (or before this part) show their account tag once Vitruvian Courier has started again. Add a second account on a network, quit Vitruvian Courier and open it: the older chats now have the first account’s tag.
 - [ ] "Also hide that you’re typing?" shows once, each time Incognito is turned on from Settings, and not when typing is already hidden. Turn Incognito off while it is showing: the question goes away. It is a question for the whole app, so it shows over whichever window is in front. The command bar’s "Turn on incognito mode" arrives with part 4.7.
 
 ### The five things to check
 
 These are the five things this part was most worried about. Look at them before the rest.
 
-- [ ] A message sent while the network is down goes exactly once, in order, and never vanishes. Turn Wi-Fi off and send two or three messages in one chat. Each says "Waiting to send" with Don’t Send, the whole time. Quit Courier and open it again: they are still waiting, never "may have been sent". Turn Wi-Fi on: they go oldest first, once each. A message waits for ever if the network never comes back. There is no cut-off.
-- [ ] "Seen" is never a lie. Slack shows none. Someone reading an older message does not mark your newer ones. Reading a chat on your own phone never shows as Seen. A group’s Seen names the readers and the count is right. A receipt for a message Courier doesn’t have is ignored without any fuss.
-- [ ] Typing never sticks and never leaks. The other side sees you stop when you stop typing, send, clear the box or leave the chat. Someone else’s typing in Courier ends by itself at the network’s own time, even if no stop arrives. Nothing goes out while "Show recipients I’m typing" is off, or to a chat whose network is down.
+- [ ] A message sent while the network is down goes exactly once, in order, and never vanishes. Turn Wi-Fi off and send two or three messages in one chat. Each says "Waiting to send" with Don’t Send, the whole time. Quit Vitruvian Courier and open it again: they are still waiting, never "may have been sent". Turn Wi-Fi on: they go oldest first, once each. A message waits for ever if the network never comes back. There is no cut-off.
+- [ ] "Seen" is never a lie. Slack shows none. Someone reading an older message does not mark your newer ones. Reading a chat on your own phone never shows as Seen. A group’s Seen names the readers and the count is right. A receipt for a message Vitruvian Courier doesn’t have is ignored without any fuss.
+- [ ] Typing never sticks and never leaks. The other side sees you stop when you stop typing, send, clear the box or leave the chat. Someone else’s typing in Vitruvian Courier ends by itself at the network’s own time, even if no stop arrives. Nothing goes out while "Show recipients I’m typing" is off, or to a chat whose network is down.
 - [ ] Incognito keeps its promise. Open an unread chat with Incognito on: the count and the New divider stay, and nobody is told. The chat becomes read when you reply from this Mac, or when you mark it read yourself (⌘⇧U, Mark as Read, or "Mark all chats as read…" in the menu). Turn Incognito off: nothing is sent for the chats you looked at while it was on.
 - [ ] Two accounts never bleed into each other. Each account’s one-to-one chats are its own. A send goes from the chat’s own account. Sign one account out: its banner names it, and sends on the other account still go. Sign one in again: the other’s chats and state are left alone.
 
 ### What to expect on each network
 
-Courier reads this from each network’s own code. Courier shows what arrives and promises nothing more.
+Vitruvian Courier reads this from each network’s own code. Vitruvian Courier shows what arrives and promises nothing more.
 
 | | WhatsApp | Signal | Telegram | Google Messages | Slack |
 |---|---|---|---|---|---|
@@ -658,12 +658,12 @@ Courier reads this from each network’s own code. Courier shows what arrives an
 A bot account (Telegram) or a bot token (Slack) is a sign-in made for a program rather than a person, with a key the network gives that program. Signed in that way, no read receipts go out.
 
 - [ ] Each cell above holds on the real network. Check at least Seen, Delivered and typing on every network you have.
-- [ ] Slack’s own "read" marks are your own reads from another Slack window. Courier stores them as your marker and never shows them as "Seen". Check that a Slack chat never says "Seen".
+- [ ] Slack’s own "read" marks are your own reads from another Slack window. Vitruvian Courier stores them as your marker and never shows them as "Seen". Check that a Slack chat never says "Seen".
 - [ ] "Delivered" never shows in a group, on any network. A group message goes Sent, then Seen by.
 - [ ] On Google Messages, a group "Seen" shows only when the phone is set to English. Whether one-to-one receipts and typing come at all follows the phone’s RCS settings. RCS is the newer kind of text messaging that Google Messages uses between phones that have it; plain SMS has no receipts or typing.
-- [ ] Courier’s typing keeps going while you write, so a network that only hears a start still shows it. Google Messages and Slack never hear a stop, so the other side ends it on its own.
+- [ ] Vitruvian Courier’s typing keeps going while you write, so a network that only hears a start still shows it. Google Messages and Slack never hear a stop, so the other side ends it on its own.
 - [ ] A Telegram group message of yours never says more than "Sent". Telegram has no receipts in groups and none for delivery.
-- [ ] On WhatsApp and Signal, replying marks the chat read whatever Courier does. So Incognito’s "until you reply" is what those networks do anyway.
+- [ ] On WhatsApp and Signal, replying marks the chat read whatever Vitruvian Courier does. So Incognito’s "until you reply" is what those networks do anyway.
 - [ ] A second WhatsApp number shares group chats with the first. A group both numbers are in is one chat, shown once, with no account tag. The network chooses which number sends. The same number signed in twice replaces the first sign-in. It does not add one.
 - [ ] A shared chat whose only account was deleted says "Can’t send: none of your accounts is in this chat", with Don’t Send. It does not wait for ever.
 
@@ -682,8 +682,8 @@ Part 4.4 adds no key. ⌘⇧U (Mark as Read) still works while Incognito is on.
 
 **On a message and in the chat**
 
-- [ ] `component` icons-toolbar.tsx: The small marks for the new states: a clock beside "Waiting to send", an eye with a slash for Incognito, and ticks. Courier uses system symbols, so there is nothing different to look for.
-- [ ] `component` mark_email_unread.tsx: Mark as Unread in a message’s menu, in its own group after Bookmark. Its help says "From this message. On this Mac only." Courier uses a menu line with no special icon.
+- [ ] `component` icons-toolbar.tsx: The small marks for the new states: a clock beside "Waiting to send", an eye with a slash for Incognito, and ticks. Vitruvian Courier uses system symbols, so there is nothing different to look for.
+- [ ] `component` mark_email_unread.tsx: Mark as Unread in a message’s menu, in its own group after Bookmark. Its help says "From this message. On this Mac only." Vitruvian Courier uses a menu line with no special icon.
 - [ ] `component` BrandTypingIndicator.tsx: A line above the message box with pulsing dots and "Ana is typing…" or "3 people are typing…". It is new in the chat. Before this part it was only in the inbox.
 
 **In the inbox**
@@ -700,7 +700,7 @@ Part 4.4 adds no key. ⌘⇧U (Mark as Read) still works while Incognito is on.
 
 ### Commands
 
-These are registered in Courier for the command bar (⌘J), which part 4.7 builds. They have no tick box here.
+These are registered in Vitruvian Courier for the command bar (⌘J), which part 4.7 builds. They have no tick box here.
 
 - `command` Turn on incognito mode: registered; shown in ⌘J by 4.7. Its other state, "Turn off incognito mode", is registered with it.
 - `command` Add Account: registered; shown in ⌘J by 4.7. It opens Add a Network.
@@ -742,12 +742,12 @@ The inventory has no row for these, but they are what this part was built to do.
 **Reply Privately**
 
 - [ ] Reply Privately… opens the one-to-one chat with the sender, creating it through the network if there is none. The message is quoted in the box, with the cursor on a blank line after it. Where the network keeps no quotes, the quote is plain lines starting with "> ".
-- [ ] When the network can’t start the chat, a toast says so in Courier’s words. It names the network.
+- [ ] When the network can’t start the chat, a toast says so in Vitruvian Courier’s words. It names the network.
 
 **Mark as Unread from a message**
 
 - [ ] The chat’s unread count runs from that message on. It is on this Mac only, never sent to a network.
-- [ ] Reading the chat (⌘⇧U, Mark as Read, or a reply) clears it. After it, Courier does what Settings ▸ Inbox says for "After marking the open chat read or unread". With "Stay on it", the open chat is not marked read again until you open it again, someone else writes, or you reply.
+- [ ] Reading the chat (⌘⇧U, Mark as Read, or a reply) clears it. After it, Vitruvian Courier does what Settings ▸ Inbox says for "After marking the open chat read or unread". With "Stay on it", the open chat is not marked read again until you open it again, someone else writes, or you reply.
 
 **Starting**
 
@@ -782,9 +782,9 @@ Stays on this Mac: renaming a chat or changing its picture with "Just for Me" (a
 
 ### Before you start
 
-- Install the build with `bazel run --config=macos-app //apps/desktop/courier/app:install`. Your chats and networks stay as they are.
+- Install the build with `bazel run --config=macos-app //apps/desktop/vitruvian-courier/app:install`. Your chats and networks stay as they are.
 - Out of the box: "Show chat updates in timeline" in Settings ▸ Messages ▸ Messages is on, and Chat Info and Calendar are closed.
-- Neither Contacts nor Calendar asks for permission when Courier opens. Each asks once, only when you open a hover card or the Calendar pane.
+- Neither Contacts nor Calendar asks for permission when Vitruvian Courier opens. Each asks once, only when you open a hover card or the Calendar pane.
 - Do not open the same chat in the other chat app while testing. It would send a read receipt.
 - Never test on a real person’s chat. Use a chat with yourself or a test account. Never open a real chat in Beeper while testing.
 
@@ -801,7 +801,7 @@ All app checks are by hand on real accounts: there is no fake-network app mode, 
 - [ ] ⌘⇧I toggles Chat Info and ⌘I stays Italic. ⌘L stays Remind Me; the reply network is switched from the pill.
 - Do the by-hand run on the installed build, once, start to end. Tick each step as you go:
   - [ ] Press ⌘⇧I in a one-to-one chat and a group chat: check the person’s phone number, username and local time, and the Shared Media, Files, Links, Bookmarks and Disappearing Messages sections.
-  - [ ] Rename a Google Messages chat with "Just for Me", quit Courier and open it again, and check your name stays without changing anything on the phone; rename a WhatsApp or Signal test group with "For Everyone" and check the group name updates on the phone.
+  - [ ] Rename a Google Messages chat with "Just for Me", quit Vitruvian Courier and open it again, and check your name stays without changing anything on the phone; rename a WhatsApp or Signal test group with "For Everyone" and check the group name updates on the phone.
   - [ ] Press ⌘N, look up a phone number or `@username` of someone not in any group with you, and check a one-to-one chat opens; press ⌘⇧N, select two people on different networks, choose "Blast (1:1 to Each)", send a Blast using a quick reply with `{recipient.firstName}`, and check each person receives their own personalized one-to-one message.
   - [ ] Merge two one-to-one chats for the same person across two networks, check the interleaved timeline and click the "Replying via" pill in the message box to switch the reply network, then open "Edit Merged Chat…" and click "Unmerge".
   - [ ] Hold the pointer over a sender’s picture or press ⌘⇧O to check the hover card and Contacts match; press ⌘⌥K to check the Calendar right pane, a "Join" button on a video call, and clicking a dashed-underlined future date in a message bubble.
@@ -810,15 +810,15 @@ All app checks are by hand on real accounts: there is no fake-network app mode, 
 
 These are the five things this part was most worried about. Look at them before the rest.
 
-- [ ] A group or chat change the network refuses never looks done. Rename a group with "For Everyone", change its topic or picture, or add or remove someone while the network refuses it. Courier waits for the network’s answer before updating the chat, and shows "<Network> didn’t accept that change." (or "The network didn’t accept that change."). The old name, topic, picture and member list stay as they were.
+- [ ] A group or chat change the network refuses never looks done. Rename a group with "For Everyone", change its topic or picture, or add or remove someone while the network refuses it. Vitruvian Courier waits for the network’s answer before updating the chat, and shows "<Network> didn’t accept that change." (or "The network didn’t accept that change."). The old name, topic, picture and member list stay as they were.
 - [ ] Report as Spam with the box unticked stays on this Mac. "Report as Spam…" asks "Hide this chat on this Mac and mark it as spam?" with an unticked box ("Also leave the group on <Network>" or "Also delete the chat on <Network>"). With the box unticked, clicking "Report Spam" hides the chat and clears its unread count on this Mac, and changes nothing on the network. Only ticking the box leaves or deletes on the network.
 - [ ] Starting a chat by phone number or `@username` works even when the network gives no chat details back at first. Look up a phone number or `@username` in New Chat (⌘N) and open the chat. It appears in the inbox right away with the phone number or handle as its name so you can write at once, and updates to the person’s name and picture as the network sends them.
 - [ ] Merged chats interleave messages in time order and keep your chosen reply network. Merge two one-to-one chats: their messages sit in one timeline with a small network badge on each bubble, and the inbox row shows stacked network badges and the combined unread count. Replies go on the network shown in the "Replying via" pill, and a message arriving on the other network never switches the pill while you are writing. Unmerging restores the individual one-to-one rows.
-- [ ] Contacts and Calendar stay on this Mac and never ask twice. Opening a hover card asks for Contacts access once; opening the Calendar pane (⌘⌥K) or clicking "Allow Calendar Access" asks for Calendar access once. After "Don’t Allow", Courier never prompts again and shows "Open System Settings". Nothing from Contacts or Calendar is ever sent to a network.
+- [ ] Contacts and Calendar stay on this Mac and never ask twice. Opening a hover card asks for Contacts access once; opening the Calendar pane (⌘⌥K) or clicking "Allow Calendar Access" asks for Calendar access once. After "Don’t Allow", Vitruvian Courier never prompts again and shows "Open System Settings". Nothing from Contacts or Calendar is ever sent to a network.
 
 ### What to expect on each network
 
-Courier reads this from each network’s own bridge code and your role in the group. What a network or your role does not allow is hidden or greyed, and "Just for Me" is always there on every chat.
+Vitruvian Courier reads this from each network’s own bridge code and your role in the group. What a network or your role does not allow is hidden or greyed, and "Just for Me" is always there on every chat.
 
 | | WhatsApp | Signal | Telegram | Google Messages | Slack |
 |---|---|---|---|---|---|
@@ -835,7 +835,7 @@ Courier reads this from each network’s own bridge code and your role in the gr
 | Search people on the network | Yes (your contacts) | No | Yes | No | Yes (your workspace) |
 
 - [ ] Each cell above holds on the real network. Check at least Chat Info, "Just for Me" vs "For Everyone", and New Chat on every network you have.
-- [ ] On Google Messages, a group cannot be renamed, re-pictured or left on the network from Courier. Edit Group opens on "Just for Me", and "For Everyone" is greyed.
+- [ ] On Google Messages, a group cannot be renamed, re-pictured or left on the network from Vitruvian Courier. Edit Group opens on "Just for Me", and "For Everyone" is greyed.
 - [ ] On Slack, New Group makes a group DM of 2 to 8 people, and "Delete Chat…" is not offered. Finding someone needs their Slack user ID or a workspace search.
 - [ ] On WhatsApp, deleting a group chat warns "This also leaves the group." because WhatsApp’s bridge leaves the group before deleting it. On Signal, deleting a group chat deletes it without leaving; on Telegram, deleting is offered on one-to-one chats only.
 - [ ] Only Slack sends a person’s timezone, so "3:27 PM local time" shows on Slack profiles and hover cards.
@@ -903,12 +903,12 @@ Courier reads this from each network’s own bridge code and your role in the gr
 
 ### Commands
 
-These are registered in Courier for the command bar (⌘J), which part 4.7 builds. They have no tick box here: they are "registered; shown in ⌘J by 4.7". The ones with a menu item or key above are checked there.
+These are registered in Vitruvian Courier for the command bar (⌘J), which part 4.7 builds. They have no tick box here: they are "registered; shown in ⌘J by 4.7". The ones with a menu item or key above are checked there.
 
 - `command` Create new chat: opened by File ▸ New Chat… (⌘N).
 - `command` Create new group: registered as "New group or blast chat" (⌘⇧N) and in File ▸ New Group or Blast….
 - `command` Merge chats: opened by "Merge with Another Chat…" / "Edit Merged Chat…" in the chat menu and Chat Info.
-- Courier also registers "Toggle chat info" (⌘⇧I), "Search in chat info" (no shortcut), "Jump to date in chat" (⌘⌥K), and "Show sender profile" (⌘⇧O) in `CommandSet.chatInfo`.
+- Vitruvian Courier also registers "Toggle chat info" (⌘⇧I), "Search in chat info" (no shortcut), "Jump to date in chat" (⌘⌥K), and "Show sender profile" (⌘⇧O) in `CommandSet.chatInfo`.
 
 ### How it behaves
 
@@ -927,7 +927,7 @@ The inventory has no row for these, but they are what this part was built to do.
 
 **Starting a chat with someone who is not in a group with you** (carried from 4.4)
 
-- [ ] Press ⌘N, type a phone number (`+1…`) or `@username` of someone you share no group with, and click "Look up <query> on <Network>". Courier resolves them on the network, creates or opens the one-to-one chat, and selects it.
+- [ ] Press ⌘N, type a phone number (`+1…`) or `@username` of someone you share no group with, and click "Look up <query> on <Network>". Vitruvian Courier resolves them on the network, creates or opens the one-to-one chat, and selects it.
 
 **Local overrides ("Just for Me" vs "For Everyone")**
 
@@ -1001,7 +1001,7 @@ Not in 4.5a, and not expected to work yet:
   - `setting:general` Microphone: recording input device selector for voice notes.
   - `menu:File` Open…: File ▸ Open… (⌘O) attach file menu item.
 - Deferred to later milestones or not planned in iteration 1 (14 ledger rows):
-  - `command` Join a Matrix room: not planned in iteration 1 (Courier runs five non-Matrix bridges with no generic Matrix room join).
+  - `command` Join a Matrix room: not planned in iteration 1 (Vitruvian Courier runs five non-Matrix bridges with no generic Matrix room join).
   - `command` Open space in new window: part 4.6 window management.
   - `command` Profile: not planned in iteration 1 (no Beeper cloud account profile pane).
   - `component` ChangeEmailBrowserWindow.tsx: not planned in iteration 1 (no Beeper cloud account email management).
@@ -1029,9 +1029,9 @@ Stays on this Mac: viewing photos, galleries, videos, Picture in Picture, voice 
 
 ### Before you start
 
-- Install the build with `bazel run --config=macos-app //apps/desktop/courier/app:install`. Your chats and networks stay as they are.
+- Install the build with `bazel run --config=macos-app //apps/desktop/vitruvian-courier/app:install`. Your chats and networks stay as they are.
 - Out of the box in Settings ▸ Messages (⌘,): under **Messages**, "Disable link previews in outgoing messages" is on, "Load external embeds automatically" is off, "Automatically play the next voice note" is on, and "Microphone" is "System Default"; under **Downloads**, "Downloads location" is `~/Downloads` and "Always ask where to save files before downloading" is off.
-- Microphone, Contacts, Calendar and the Downloads folder never ask for permission when Courier opens. Each asks once, only when you use that feature.
+- Microphone, Contacts, Calendar and the Downloads folder never ask for permission when Vitruvian Courier opens. Each asks once, only when you use that feature.
 - Do not open the same chat in the other chat app while testing. It would send a read receipt.
 - Never test on a real person’s chat. Use a chat with yourself or a test account. Never open a real chat in Beeper while testing.
 
@@ -1039,8 +1039,8 @@ Stays on this Mac: viewing photos, galleries, videos, Picture in Picture, voice 
 
 All app checks are by hand on real accounts: there is no fake-network app mode, and views were checked only as PNG snapshots. Look at these before anything else.
 
-- [ ] In the signed installed app: pressing record (⌘⇧A or the microphone button) asks for the microphone once ("Courier records voice notes only while you hold record. Recordings stay on this Mac until you send them."); opening a hover card’s Contacts and the Calendar pane each ask once (the entitlements fix, #3915); after "Don’t Allow" nothing asks again.
-- [ ] Downloading an attachment the first time asks for the Downloads folder, with Courier’s reason ("Courier saves the attachments you download to this folder. Nothing else in it is read or changed.").
+- [ ] In the signed installed app: pressing record (⌘⇧A or the microphone button) asks for the microphone once ("Vitruvian Courier records voice notes only while you hold record. Recordings stay on this Mac until you send them."); opening a hover card’s Contacts and the Calendar pane each ask once (the entitlements fix, #3915); after "Don’t Allow" nothing asks again.
+- [ ] Downloading an attachment the first time asks for the Downloads folder, with Vitruvian Courier’s reason ("Vitruvian Courier saves the attachments you download to this folder. Nothing else in it is read or changed.").
 - [ ] Sending a link with the setting off ("Disable link previews in outgoing messages" left on, its default, so outgoing link previews are off): no preview appears on the other side, and the Mac makes no request to the link (the outgoing preview is suppressed).
 - [ ] An embed shows "Load embed from <host>" and nothing loads until clicked.
 - [ ] A view-once photo opens once, then shows "Opened"; it never appears in the Media Viewer.
@@ -1069,11 +1069,11 @@ These are the five things this part was most worried about. Look at them before 
 
 ### What to expect on each network
 
-Courier reads these limits and formats from each network’s pinned bridge capabilities (`mautrix-whatsapp`, `mautrix-signal`, `mautrix-telegram`, `mautrix-gmessages`, `mautrix-slack`).
+Vitruvian Courier reads these limits and formats from each network’s pinned bridge capabilities (`mautrix-whatsapp`, `mautrix-signal`, `mautrix-telegram`, `mautrix-gmessages`, `mautrix-slack`).
 
 | | WhatsApp | Signal | Telegram | Google Messages | Slack |
 |---|---|---|---|---|---|
-| Max file size | 100 MiB (Courier cap; bridge 2000 MiB) | 100 MiB | 2 GiB (4 GiB Premium; 10 MiB photo) | 100 MiB RCS (1 MiB MMS) | 100 MiB (Courier cap; bridge 1 GB) |
+| Max file size | 100 MiB (Vitruvian Courier cap; bridge 2000 MiB) | 100 MiB | 2 GiB (4 GiB Premium; 10 MiB photo) | 100 MiB RCS (1 MiB MMS) | 100 MiB (Vitruvian Courier cap; bridge 1 GB) |
 | Images and captions | JPEG full, PNG/WebP partial, GIF partial if `ffmpeg`; caption up to 65536 | GIF, PNG, JPEG, WebP, BMP, AVIF full (4096×4096); caption up to 2000 | JPEG full, WebP/PNG/GIF partial (10 MiB photo, larger sent as document); caption 1024 (2048 Premium) | PNG, JPEG, GIF, BMP, WBMP, WebP full; RCS sends caption as a separate text message | JPEG, PNG, GIF, WebP full; caption up to 40000 |
 | Videos | MP4, 3GPP full (100 MiB cap); WebM, QuickTime partial if `ffmpeg`; caption full | MP4, OGG, WebM full (100 MiB); caption full | MP4 full (2 GiB / 4 GiB Premium); caption full | MP4, 3GPP, WebM full (100 MiB RCS) | MP4, WebM full (100 MiB cap); caption full |
 | Audio files | MPEG, MP4, OGG, AAC, AMR full; caption dropped | AAC, MPEG, MP3, FLAC full; caption unsupported | MPEG, MP4 full; caption full | AAC, AMR, MPEG, MP4, MP4-LATM, 3GPP, OGG full | MPEG, WebM, WAV full; caption full |
@@ -1088,7 +1088,7 @@ Courier reads these limits and formats from each network’s pinned bridge capab
 | BlurHash on attachments | Field in shared `FileInfo`; not computed by bridge | Preserved incoming and outgoing (`Blurhash` / `AnoaBlurhash`) | Field in shared `FileInfo`; not computed by bridge | Field in shared `FileInfo`; not computed by bridge | Field in shared `FileInfo`; not computed by bridge |
 
 - [ ] Each cell above holds on the real network. Check at least sending a photo, video, voice note, PDF and link on every network you have.
-- [ ] On WhatsApp, sending a voice note requires `audio/ogg; codecs=opus` (Courier converts recorded `.m4a` voice notes via `ffmpeg` when installed on this Mac at `/opt/homebrew/bin/ffmpeg`, `/usr/local/bin/ffmpeg`, or `/opt/local/bin/ffmpeg`; if `ffmpeg` is missing, Courier shows `"Sending voice notes on WhatsApp needs ffmpeg. Install it with Homebrew (brew install ffmpeg), then try again."`).
+- [ ] On WhatsApp, sending a voice note requires `audio/ogg; codecs=opus` (Vitruvian Courier converts recorded `.m4a` voice notes via `ffmpeg` when installed on this Mac at `/opt/homebrew/bin/ffmpeg`, `/usr/local/bin/ffmpeg`, or `/opt/local/bin/ffmpeg`; if `ffmpeg` is missing, Vitruvian Courier shows `"Sending voice notes on WhatsApp needs ffmpeg. Install it with Homebrew (brew install ffmpeg), then try again."`).
 - [ ] On Google Messages, RCS sends an image caption as a separate text message, and link previews, stickers, view-once media and location messages are not supported by the bridge.
 - [ ] On Signal, outgoing location messages are formatted by the bridge as a text URL, and BlurHash placeholders are preserved both ways.
 - [ ] None of the five bridges send or receive voice-note played receipts, so the blue unplayed dot and "Played" mark on voice notes are tracked on this Mac only.
@@ -1101,7 +1101,7 @@ Courier reads these limits and formats from each network’s pinned bridge capab
 
 ### Settings
 
-- [ ] `setting:appearance` Disable link previews in outgoing messages: Settings ▸ Messages ▸ Messages, "Disable link previews in outgoing messages", on out of the box. When on, Courier never fetches a web address you send and tells the network not to add a preview. When off, Courier fetches the first `https` link on send to attach a preview.
+- [ ] `setting:appearance` Disable link previews in outgoing messages: Settings ▸ Messages ▸ Messages, "Disable link previews in outgoing messages", on out of the box. When on, Vitruvian Courier never fetches a web address you send and tells the network not to add a preview. When off, Vitruvian Courier fetches the first `https` link on send to attach a preview.
 - [ ] `setting:appearance` Load external embeds automatically: Settings ▸ Messages ▸ Messages, "Load external embeds automatically", off out of the box. When off, YouTube, Vimeo, Spotify and Loom links show "Load embed from <host>" until you click "Load Embed".
 - [ ] `setting:general` Automatically play the next voice note: Settings ▸ Messages ▸ Messages, "Automatically play the next voice note", on out of the box. When on, finishing one voice note marks it played and starts the next consecutive voice note in the chat.
 - [ ] `setting:general` Microphone: Settings ▸ Messages ▸ Messages, "Microphone", choosing "System Default" or any connected audio input device for recording voice notes.
@@ -1158,22 +1158,22 @@ Courier reads these limits and formats from each network’s pinned bridge capab
 
 ### Commands
 
-These are registered in Courier for the command bar (⌘J), which part 4.7 builds. They have no tick box here: they are "registered; shown in ⌘J by 4.7". The ones with a menu item or key above are checked there.
+These are registered in Vitruvian Courier for the command bar (⌘J), which part 4.7 builds. They have no tick box here: they are "registered; shown in ⌘J by 4.7". The ones with a menu item or key above are checked there.
 
 - `command` Media viewer: registered as "Media viewer" in `CommandSet.chatInfo` and opened from "See All" in Chat Info’s Shared Media, Files and Links sections.
-- Courier also registers "Attach file" (⌘O), "Download attachments" (⌘D) and "Record voice note" (⌘⇧A) in `CommandSet.messaging`.
+- Vitruvian Courier also registers "Attach file" (⌘O), "Download attachments" (⌘D) and "Record voice note" (⌘⇧A) in `CommandSet.messaging`.
 
 ### How it behaves
 
 Not failures. Do not report these as bugs.
 
 - ⌘O is Message ▸ Attach Files… (and File ▸ Open… also attaches files to the open chat). ⌘D is Message ▸ Download Attachments. ⌘⇧A starts recording a voice note, and pressing ⌘⇧A again while recording or reviewing sends it.
-- "Disable link previews in outgoing messages" is on out of the box so typing or sending a link never contacts the destination website unless you turn that setting off. When you turn it off, Courier fetches only the first `https` link on send (up to 3 seconds) to attach a preview card.
+- "Disable link previews in outgoing messages" is on out of the box so typing or sending a link never contacts the destination website unless you turn that setting off. When you turn it off, Vitruvian Courier fetches only the first `https` link on send (up to 3 seconds) to attach a preview card.
 - "Load external embeds automatically" is off out of the box so YouTube, Vimeo, Spotify and Loom links never contact the embed host or reveal your IP address until you click "Load Embed".
 - Location cards draw an offline coordinate grid on this Mac and never download map tiles; clicking "Open in Apple Maps" or "Open in Google Maps" opens the coordinates in that app or browser.
 - None of the five networks’ bridges send or receive voice-note played receipts. Marking a voice note played (automatically at the end of playback, or via "Mark Played" in the right-click menu) updates the blue dot on this Mac only.
-- View-once enforcement is on this Mac: once you close the "View-once from <Sender>" sheet, Courier marks the item opened in its local database and refuses to return its file path again on this Mac. It also sets the window’s screen-capture sharing type to `.none` so macOS window screenshots and screen recordings omit the sheet, though a camera pointed at the screen cannot be stopped.
-- Sending a voice note on WhatsApp requires `ffmpeg` on this Mac (`/opt/homebrew/bin/ffmpeg`, `/usr/local/bin/ffmpeg`, or `/opt/local/bin/ffmpeg`) so Courier can convert the recorded `.m4a` into `audio/ogg; codecs=opus`. On Signal, Telegram, Google Messages and Slack, `.m4a` (`audio/mp4` / `audio/aac`) is sent directly without `ffmpeg`.
+- View-once enforcement is on this Mac: once you close the "View-once from <Sender>" sheet, Vitruvian Courier marks the item opened in its local database and refuses to return its file path again on this Mac. It also sets the window’s screen-capture sharing type to `.none` so macOS window screenshots and screen recordings omit the sheet, though a camera pointed at the screen cannot be stopped.
+- Sending a voice note on WhatsApp requires `ffmpeg` on this Mac (`/opt/homebrew/bin/ffmpeg`, `/usr/local/bin/ffmpeg`, or `/opt/local/bin/ffmpeg`) so Vitruvian Courier can convert the recorded `.m4a` into `audio/ogg; codecs=opus`. On Signal, Telegram, Google Messages and Slack, `.m4a` (`audio/mp4` / `audio/aac`) is sent directly without `ffmpeg`.
 
 ### Not ledger rows
 
@@ -1181,8 +1181,8 @@ The inventory has no row for these, but they are what this part was built to do.
 
 **macOS privacy prompts and sandbox entitlements (#3915)**
 
-- [ ] The signed `Courier.app` bundle carries `com.apple.security.device.audio-input`, `com.apple.security.personal-information.addressbook` and `com.apple.security.personal-information.calendars` in its entitlements, and `NSMicrophoneUsageDescription`, `NSContactsUsageDescription`, `NSCalendarsFullAccessUsageDescription` and `NSDownloadsFolderUsageDescription` in `Info.plist`.
-- [ ] None of those four permissions are requested on app launch. Each prompts once on first use with Courier’s plain-English reason, and after "Don’t Allow" never prompts again.
+- [ ] The signed `Vitruvian Courier.app` bundle carries `com.apple.security.device.audio-input`, `com.apple.security.personal-information.addressbook` and `com.apple.security.personal-information.calendars` in its entitlements, and `NSMicrophoneUsageDescription`, `NSContactsUsageDescription`, `NSCalendarsFullAccessUsageDescription` and `NSDownloadsFolderUsageDescription` in `Info.plist`.
+- [ ] None of those four permissions are requested on app launch. Each prompts once on first use with Vitruvian Courier’s plain-English reason, and after "Don’t Allow" never prompts again.
 
 **4.5a merged-chat selection and RPC guardrails**
 
@@ -1210,7 +1210,7 @@ Not in 4.5b, and not expected to work yet:
   - `setting:general` Disable automatic replacement of emoticons with emojis: toggle `:)` → `🙂` replacement in the composer.
   - `setting:general` Enable emoji autocomplete: toggle `:` emoji autocomplete in the composer.
 - Deferred to later milestones or not planned in iteration 1 (14 ledger rows):
-  - `command` Join a Matrix room: not planned in iteration 1 (Courier runs five non-Matrix bridges with no generic Matrix room join).
+  - `command` Join a Matrix room: not planned in iteration 1 (Vitruvian Courier runs five non-Matrix bridges with no generic Matrix room join).
   - `command` Open space in new window: part 4.6 window management.
   - `command` Profile: not planned in iteration 1 (no Beeper cloud account profile pane).
   - `component` ChangeEmailBrowserWindow.tsx: not planned in iteration 1 (no Beeper cloud account email management).
@@ -1236,11 +1236,11 @@ Stays on this Mac: typing `:shortcode` in the message box and filtering standard
 
 ### Before you start
 
-- Install the build with `bazel run --config=macos-app //apps/desktop/courier/app:install`. Your chats and networks stay as they are.
+- Install the build with `bazel run --config=macos-app //apps/desktop/vitruvian-courier/app:install`. Your chats and networks stay as they are.
 - Out of the box in Settings ▸ Messages (⌘,) under **Composer** (`MessagesSettingsPane.swift`, `ComposerPreferences.swift`, verified by `ComposerPreferencesTests.testDefaultsMatchTheInventory` in `ComposerPreferencesTests.swift`): "Enable emoji autocomplete" (`enableEmojiAutocomplete`) is **on** (`true`), "Disable automatic replacement of emoticons with emojis" (`disableEmoticonReplacement`) is **off** (`false`), and "Automatically send GIFs after selection" (`autoSendGIFs`) is **off** (`false`).
 - Online GIF search (`StubGIFProvider` in `GIFProvider.swift`, verified by `GIFProviderTests.testStubGIFProviderIsOfflineAndNeverTouchesNetwork` in `GIFProviderTests.swift`) is disabled (`isAvailable == false`) so nothing leaves your Mac when you open or type in the GIF picker.
 - Do not open the same chat in another chat app while testing. It would send a read receipt.
-- Never test on a real person’s chat. Use a chat with yourself or a test account. Never open a real chat in Courier (or another chat app) while testing.
+- Never test on a real person’s chat. Use a chat with yourself or a test account. Never open a real chat in Vitruvian Courier (or another chat app) while testing.
 
 ### Check these first
 
@@ -1255,7 +1255,7 @@ All app checks are by hand on real accounts: there is no fake-network app mode, 
   - [ ] Open Settings ▸ Messages (⌘,) and check the three **Composer** toggles (`MessagesSettingsPane.swift`): "Enable emoji autocomplete" (on out of the box), "Disable automatic replacement of emoticons with emojis" (off out of the box), and "Automatically send GIFs after selection" (off out of the box).
   - [ ] In a test chat, type `let's go :smi`, navigate with `↑`/`↓`, and press `Return` to insert the emoji; then type `:party_parrot` and click "Add :party_parrot: to Custom Emoji" at the bottom of `EmojiAutocompletePicker`, choose a PNG/WebP/GIF/JPEG on your Mac in `StickerImportPicker`, type `:party_p` again, and pick the custom emoji from the list to check that `:party_parrot: ` is inserted into the draft.
   - [ ] Type `:)` and `<3` followed by a space and check they become `🙂 ` and `❤️ `; type `` `:)` `` and `https://example.com/:)` and check neither is replaced; toggle "Disable automatic replacement of emoticons with emojis" on in Settings ▸ Messages and check `:)` stays `:)` when followed by a space.
-  - [ ] Press ⌘⌥⇧S (Message ▸ Send Sticker…), click "Import Sticker…" (`StickerImportPicker.run` in `StickerPickerPopover.swift`) to import a PNG, WebP, GIF, or JPEG image into the "Imported" tab, click "Sync Packs" to refresh bridge packs, search by name in "Search stickers", and click a sticker to send it on WhatsApp, Signal, and Telegram; check on your test chat and phone that the sticker delivers, renders in Courier without a bubble background, quotes "Sticker" when replied to, and shows the reply header above the borderless sticker when replying with a sticker.
+  - [ ] Press ⌘⌥⇧S (Message ▸ Send Sticker…), click "Import Sticker…" (`StickerImportPicker.run` in `StickerPickerPopover.swift`) to import a PNG, WebP, GIF, or JPEG image into the "Imported" tab, click "Sync Packs" to refresh bridge packs, search by name in "Search stickers", and click a sticker to send it on WhatsApp, Signal, and Telegram; check on your test chat and phone that the sticker delivers, renders in Vitruvian Courier without a bubble background, quotes "Sticker" when replied to, and shows the reply header above the borderless sticker when replying with a sticker.
   - [ ] Press ⌘⇧G (Message ▸ Send GIF…), click "Choose GIF from Mac…" (`GIFFilePicker.run` in `GIFPickerPopover.swift`) to pick a `.gif` or `.mp4` loop with "Automatically send GIFs after selection" at its default (off), check that `PendingGIFPillView` ("GIF") stages in the message box, type a caption, and press `Return` to send; then turn "Automatically send GIFs after selection" on in Settings ▸ Messages, open ⌘⇧G, pick the GIF from the recent grid, and check that it sends immediately and loops silently in a 12 pt rounded frame with a top-leading "GIF" badge on WhatsApp, Signal, Telegram, Google Messages, and Slack.
   - [ ] Click the `+` button in the message box (`ComposerView.plusMenu` in `ComposerView.swift`) and check "Add Emoji…" (opens the macOS character palette via `NSApp.orderFrontCharacterPalette`), "Add GIF…" and "Add Sticker…", plus the GIF (`"GIF"`), sticker (`sparkles.rectangle.stack`), and emoji (`face.smiling`) buttons on the right of the message box; switch to a Google Messages chat and a Slack chat and verify the sticker button and menu items are disabled with `"Send Sticker (Unavailable for Google Messages)"` / `"Add Sticker… (Unavailable for Google Messages)"` and `"Send Sticker (Unavailable for Slack)"` / `"Add Sticker… (Unavailable for Slack)"`.
 
@@ -1271,7 +1271,7 @@ These are the five things this part was most worried about. Look at them before 
 
 ### What to expect on each network
 
-Courier reads these sticker and GIF rules from each network’s pinned bridge (`mautrix-whatsapp@v0.2609.0`, `mautrix-signal@v0.2609.0`, `mautrix-telegram@v0.2609.0`, `mautrix-gmessages@v0.2609.0`, `mautrix-slack@v0.2609.1`) via `actions.FeaturesOf` (`engine/internal/actions/features.go`, verified by `TestStickerAndGIFRoomFeatures` in `engine/internal/actions/features_test.go`).
+Vitruvian Courier reads these sticker and GIF rules from each network’s pinned bridge (`mautrix-whatsapp@v0.2609.0`, `mautrix-signal@v0.2609.0`, `mautrix-telegram@v0.2609.0`, `mautrix-gmessages@v0.2609.0`, `mautrix-slack@v0.2609.1`) via `actions.FeaturesOf` (`engine/internal/actions/features.go`, verified by `TestStickerAndGIFRoomFeatures` in `engine/internal/actions/features_test.go`).
 
 | | WhatsApp | Signal | Telegram | Google Messages | Slack |
 |---|---|---|---|---|---|
@@ -1309,16 +1309,16 @@ Courier reads these sticker and GIF rules from each network’s pinned bridge (`
 
 ### Commands
 
-These are registered in Courier for the command bar (⌘J), which part 4.7 builds. They have no tick box here: they are "registered; shown in ⌘J by 4.7". The ones with a menu item or key above are checked there.
+These are registered in Vitruvian Courier for the command bar (⌘J), which part 4.7 builds. They have no tick box here: they are "registered; shown in ⌘J by 4.7". The ones with a menu item or key above are checked there.
 
-- Courier registers `"Send GIF"` (⌘⇧G, `id: "message.sendGIF"`) and `"Send Sticker"` (⌘⌥⇧S, `id: "message.sendSticker"`) in `CommandSet.sendGIF`, `CommandSet.sendSticker`, and `CommandSet.composerMedia` (`CommandSet.swift:345-379`, verified by `CommandSetTests.testSendGIFAndSendStickerCommandsRegisteredUnderMessageCategory` in `CommandSetTests.swift`).
+- Vitruvian Courier registers `"Send GIF"` (⌘⇧G, `id: "message.sendGIF"`) and `"Send Sticker"` (⌘⌥⇧S, `id: "message.sendSticker"`) in `CommandSet.sendGIF`, `CommandSet.sendSticker`, and `CommandSet.composerMedia` (`CommandSet.swift:345-379`, verified by `CommandSetTests.testSendGIFAndSendStickerCommandsRegisteredUnderMessageCategory` in `CommandSetTests.swift`).
 
 ### How it behaves
 
 Not failures. Do not report these as bugs.
 
 - Online GIF search (`GIFProvider` in `GIFProvider.swift`) is an offline stub in 4.5c (`StubGIFProvider`, `isAvailable == false`): typing in `GIFPickerPopover` filters only the recent GIFs already stored on this Mac (`composer.recentGIFs`) and never contacts Tenor, Giphy or any other server. Part 4.7 tracks the online provider stub alongside the other external service stubs.
-- When you pick a custom emoji (`candidate.glyph == nil`) from `:shortcode` autocomplete (`ComposerModel.pickEmoji` in `ComposerModel.swift:956-972`), Courier inserts `:shortcode: ` into the message draft text; to send an imported custom emoji image as a graphical sticker on networks that support `m.sticker`, pick it from `StickerPickerPopover` (⌘⌥⇧S).
+- When you pick a custom emoji (`candidate.glyph == nil`) from `:shortcode` autocomplete (`ComposerModel.pickEmoji` in `ComposerModel.swift:956-972`), Vitruvian Courier inserts `:shortcode: ` into the message draft text; to send an imported custom emoji image as a graphical sticker on networks that support `m.sticker`, pick it from `StickerPickerPopover` (⌘⌥⇧S).
 - On Google Messages and Slack, neither `mautrix-gmessages` nor `mautrix-slack` declares `event.CapMsgSticker` in its `FileFeatures` map; `ComposerModel.canSendSticker` is `false` on both networks, and the Message and `+` menus show `"Send Sticker (Unavailable for Google Messages)"` / `"Add Sticker… (Unavailable for Google Messages)"` and `"Send Sticker (Unavailable for Slack)"` / `"Add Sticker… (Unavailable for Slack)"`.
 
 ### Not ledger rows
@@ -1337,7 +1337,7 @@ All 10 ledger rows carried from 4.5b to 4.5c (`Autocomplete.tsx`, `Emoji.tsx`, `
 
 - A reply-network shortcut (⌘L is Remind Me).
 - Deferred to later milestones or not planned in iteration 1 (14 ledger rows, unchanged from 4.5b):
-  - `command` Join a Matrix room: not planned in iteration 1 (Courier runs five non-Matrix bridges with no generic Matrix room join).
+  - `command` Join a Matrix room: not planned in iteration 1 (Vitruvian Courier runs five non-Matrix bridges with no generic Matrix room join).
   - `command` Open space in new window: part 4.6 window management.
   - `command` Profile: not planned in iteration 1 (no cloud account profile pane).
   - `component` ChangeEmailBrowserWindow.tsx: not planned in iteration 1 (no cloud account email management).
@@ -1359,16 +1359,16 @@ The two-column Settings window (`SettingsWindow.swift`, `SettingsSearchModel.swi
 - removing an account (`accounts.remove` via `Engine.RemoveAccount` in `engine/internal/engine/engine.go:693-741`) when `"Also sign out / unlink on <Network>"` (`logout_remote: true`) is checked, which calls `UserLogin.Delete` (`mautrix@v0.31.0/bridgev2/userlogin.go:289-305`) and invokes `LogoutRemote` on that network’s bridge client to unlink the device or sign out the session;
 - reconnecting an existing bridge session when you click `"Restart Bridge"` (`bridges.restart` via `Engine.RestartNetwork` in `engine/internal/engine/engine.go:621-689`), which disconnects the in-process client (`UserLogin.Disconnect` in `mautrix@v0.31.0/bridgev2/userlogin.go:539-572`) and reloads its stored login (`Bridge.Network.LoadUserLogin` and `ConnectBackground()` in `mautrix@v0.31.0/bridgev2/bridge.go:175`).
 
-Stays on this Mac: searching or changing any setting across the eight Settings panes (`SettingsWindow.swift`, `SettingsNavigationModel` in `SettingsSearchModel.swift`); delaying notifications (`NotificationPreferences.delaySeconds`), repeating unread alerts (`NotificationPreferences.repeatUnreadMinutes`), extracting and copying OTP/2FA codes (`OTPDetector.extractCode` in `NotificationPolicy.swift`), playing send/receive sound effects (`SoundEffectPlayer` in `Notifier.swift`), and applying per-account notification overrides (`NotificationCoordinator.swift`); updating the Dock badge, Dock right-click menu, or menu bar tray icon (`DockAndTrayModel.swift`, `MenuBar.swift`); registering or unregistering `"Open Courier at login"` with macOS (`MACLoginItemService` in `SystemLifecycleModel.swift`); locking and unlocking Courier with Touch ID or your macOS password (`AppLockGate` and `SystemLifecycleModel` in `SystemLifecycleModel.swift`, `EngineClient.call` and `ProtocolMethods.classifications` in `Protocol.swift:4919-5013`, `AppLockOverlay.swift`); opening detached chat, space, or thread windows (`DetachedWindowRegistry` in `DetachedWindowModel.swift`, `DetachedWindows.swift`); recording or resetting keyboard shortcuts (`HotkeyRegistry` in `HotkeyRegistry.swift`, `HotkeysSettingsPane.swift`, `KeyboardShortcutsSheet.swift`); discovering or toggling sub-account spaces and bots (`Engine.RefreshSubAccounts` in `engine/internal/engine/engine.go:745-855`, `Store.SubAccounts` in `engine/internal/store/accounts.go:404-439`) and unpinning duplicate official chat apps from the macOS Dock (`MACDockTileService` in `AccountsAndBridgesModel.swift:19-103`); and saving a scrubbed diagnostic bundle in `"Report a Problem…"` (`ProblemReportModel.writeBundle` and `ProblemReportModel.saveBundle` in `ProblemReportModel.swift`, `logscrub.ScrubStderrExport` in `engine/internal/logscrub/stack.go:165-175`), which writes only to a file or folder you choose in `NSSavePanel` and never uploads anything over the network.
+Stays on this Mac: searching or changing any setting across the eight Settings panes (`SettingsWindow.swift`, `SettingsNavigationModel` in `SettingsSearchModel.swift`); delaying notifications (`NotificationPreferences.delaySeconds`), repeating unread alerts (`NotificationPreferences.repeatUnreadMinutes`), extracting and copying OTP/2FA codes (`OTPDetector.extractCode` in `NotificationPolicy.swift`), playing send/receive sound effects (`SoundEffectPlayer` in `Notifier.swift`), and applying per-account notification overrides (`NotificationCoordinator.swift`); updating the Dock badge, Dock right-click menu, or menu bar tray icon (`DockAndTrayModel.swift`, `MenuBar.swift`); registering or unregistering `"Open Vitruvian Courier at login"` with macOS (`MACLoginItemService` in `SystemLifecycleModel.swift`); locking and unlocking Vitruvian Courier with Touch ID or your macOS password (`AppLockGate` and `SystemLifecycleModel` in `SystemLifecycleModel.swift`, `EngineClient.call` and `ProtocolMethods.classifications` in `Protocol.swift:4919-5013`, `AppLockOverlay.swift`); opening detached chat, space, or thread windows (`DetachedWindowRegistry` in `DetachedWindowModel.swift`, `DetachedWindows.swift`); recording or resetting keyboard shortcuts (`HotkeyRegistry` in `HotkeyRegistry.swift`, `HotkeysSettingsPane.swift`, `KeyboardShortcutsSheet.swift`); discovering or toggling sub-account spaces and bots (`Engine.RefreshSubAccounts` in `engine/internal/engine/engine.go:745-855`, `Store.SubAccounts` in `engine/internal/store/accounts.go:404-439`) and unpinning duplicate official chat apps from the macOS Dock (`MACDockTileService` in `AccountsAndBridgesModel.swift:19-103`); and saving a scrubbed diagnostic bundle in `"Report a Problem…"` (`ProblemReportModel.writeBundle` and `ProblemReportModel.saveBundle` in `ProblemReportModel.swift`, `logscrub.ScrubStderrExport` in `engine/internal/logscrub/stack.go:165-175`), which writes only to a file or folder you choose in `NSSavePanel` and never uploads anything over the network.
 
 ### Before you start
 
-- Install the build with `bazel run --config=macos-app //apps/desktop/courier/app:install -- --allow-missing`. Your chats and networks stay as they are; the engine upgrades local SQLite schema 9 to schema 10 (`store.SchemaVersion = 10` in `engine/internal/store/schema.go:18`, `engine/internal/store/testdata/m10.sql`) and speaks JSON-RPC protocol 9 (`rpc.Protocol = 9` in `engine/internal/rpc/server.go:60`, `CourierProtocol.version = 9` in `Protocol.swift:19`).
+- Install the build with `bazel run --config=macos-app //apps/desktop/vitruvian-courier/app:install -- --allow-missing`. Your chats and networks stay as they are; the engine upgrades local SQLite schema 9 to schema 10 (`store.SchemaVersion = 10` in `engine/internal/store/schema.go:18`, `engine/internal/store/testdata/m10.sql`) and speaks JSON-RPC protocol 9 (`rpc.Protocol = 9` in `engine/internal/rpc/server.go:60`, `CourierProtocol.version = 9` in `Protocol.swift:19`).
 - Out of the box (`NotificationPolicy.swift`, `DockAndTrayModel.swift`, `SystemLifecycleModel.swift`, `InboxPreferences.swift`, `ComposerPreferences.swift`):
   - `"Message notifications"` (`messageNotificationsEnabled`), `"Group notifications"` (`groupNotificationsEnabled`), `"Notify me about message requests"` (`requestNotificationsEnabled`), and `"Notify on reactions"` (`notifyOnReaction`) are **on** (`true`); `"Notify when someone starts typing"` (`typingNotificationsEnabled`), `"Notify even when chat is in focus"` (`notifyWhenInFocus`), and `"Auto copy OTP/2FA codes"` (`autoCopyOTP`) are **off** (`false`); `"Delay notifications for"` (`delaySeconds`) is `0` (`"Off (immediately)"`), `"Repeat unread notifications"` (`repeatUnreadMinutes`) is `0` (`"Never"`), `"Play sound effects"` (`soundEffectsMode`) is `.none` (`"Off"`), and `"Sound effects volume"` (`soundEffectsVolume`) is `0.8` (`80%`).
-  - `"Show menu bar icon"` (`DockAndTrayPreferences.showMenuBarIcon`) is **on** (`true`), `"Dock badge count"` (`DockAndTrayPreferences.badgeMode`) is `.unreadChatsUnmuted` (`"Unread chats (unmuted)"`), `"Open Courier at login"` (`openAtLogin`) is **off** (`false`), `"Keep Courier minimized on launch"` (`startMinimized`) is **off** (`false`), `"Quit Courier when closing the main window"` (`quitOnMainWindowClose`) is **off** (`false`), `"Require Touch ID authentication on launch"` (`requireTouchIDOnLaunch`) is **off** (`false`), and `"Lock Courier after"` (`lockTimeout`) is `.never` (`"Never"`).
+  - `"Show menu bar icon"` (`DockAndTrayPreferences.showMenuBarIcon`) is **on** (`true`), `"Dock badge count"` (`DockAndTrayPreferences.badgeMode`) is `.unreadChatsUnmuted` (`"Unread chats (unmuted)"`), `"Open Vitruvian Courier at login"` (`openAtLogin`) is **off** (`false`), `"Keep Vitruvian Courier minimized on launch"` (`startMinimized`) is **off** (`false`), `"Quit Vitruvian Courier when closing the main window"` (`quitOnMainWindowClose`) is **off** (`false`), `"Require Touch ID authentication on launch"` (`requireTouchIDOnLaunch`) is **off** (`false`), and `"Lock Vitruvian Courier after"` (`lockTimeout`) is `.never` (`"Never"`).
 - Do not open the same chat in another chat app while testing. It would send a read receipt.
-- Never test on a real person’s chat. Use a chat with yourself or a test account. Never open a real chat in Courier (or another chat app) while testing.
+- Never test on a real person’s chat. Use a chat with yourself or a test account. Never open a real chat in Vitruvian Courier (or another chat app) while testing.
 
 ### Check these first
 
@@ -1377,16 +1377,16 @@ All app checks are by hand on real accounts: there is no fake-network app mode, 
 - [ ] Pressing `⌘,` opens the two-column `SettingsWindow` (`SettingsWindow.swift:5-226`, `SettingsNavigationModel` in `SettingsSearchModel.swift:262-358`, verified by `SettingsSearchModelTests` in `SettingsSearchModelTests.swift`, `ViewSnapshotTests.testSettingsWindowGeneralAndSearchSnapshots`, and `ViewSnapshotTests.testSettingsWindowAppearanceAndNotificationsSnapshots` in `ViewSnapshotTests.swift`) with a left sidebar (`"Search Settings"`, `General`, `Appearance`, `Notifications`, `Accounts` with connected-account count pill, `Hotkeys`, `Quick Replies`, `Bridges`, `About`) and a scrollable right detail pane; typing in `"Search Settings"` opens `SearchSuggestions` (`SettingsWindow.swift:127-169`) matching titles, subtitles, section titles and keywords across all eight panes, and picking a suggestion switches to that pane, scrolls to the setting anchor (`SettingAnchorModifier` in `GeneralSettingsPane.swift:562-575`), and highlights the control with a coral outline.
 - [ ] Incoming message, reaction, message-request, and typing alerts pass through `NotificationCoordinator` (`NotificationCoordinator.swift:141-804`) and `Notifier` (`Notifier.swift:83-453`, verified by `NotificationCoordinatorTests` in `NotificationCoordinatorTests.swift` and `NotificationPolicyTests` in `NotificationPolicyTests.swift`): `"Delay notifications for"` waits the configured delay (`delaySeconds`) and cancels the alert if the room turns read first; `"Repeat unread notifications"` re-schedules up to 3 reminders (`maxRepeatCount = 3`) while the message stays unread; `"Auto copy OTP/2FA codes"` (`OTPDetector.extractCode` in `NotificationPolicy.swift:212-304`) copies 4–8 digit verification codes to the clipboard on arrival and attaches a `"Copy Code"` notification action; per-account overrides (`AccountNotificationOverride` in `NotificationPolicy.swift:115-145`) override global alert, sound, and preview settings for that account; and when `AppLockGate.isLocked` is `true`, `NotificationCoordinator` forces `includePreview = false` (`"New message"`) and suppresses OTP auto-copy, while `SystemLifecycleModel.lockNow()` calls `Notifier.clearAll()` (`Notifier.swift:245-248`) to remove delivered banners and pending notification requests.
 - [ ] Settings ▸ Accounts (`AccountsSettingsPane.swift:6-515`) and Settings ▸ Bridges (`BridgesSettingsPane.swift:6-318`, backed by `AccountsAndBridgesModel` in `AccountsAndBridgesModel.swift:146-470` and `Engine.Bridges`, `Engine.RestartNetwork`, `Engine.RemoveAccount`, `Engine.RefreshSubAccounts` in `engine/internal/engine/engine.go:487-855`, verified by `AccountsAndBridgesModelTests` in `AccountsAndBridgesModelTests.swift`, `TestRestartNetworkAndBridgesReport` and `TestRemoveAccountLogoutAndDeleteChats` in `engine/internal/engine/engine_test.go`, `ViewSnapshotTests.testAccountsAndAccountDetailPaneSnapshots`, and `ViewSnapshotTests.testBridgesSettingsPaneSnapshots` in `ViewSnapshotTests.swift`) show plain-English status badges (`"Connected"`, `"Reconnecting…"`, `"Signed out — reconnect"`, `"Disconnected"`), non-destructive `"Restart Bridge"` (preserving every SQLite room and message), `"Copy Account ID"`, `"Copy Bridge ID"`, `"Copy Info as JSON"`, `"Remove Account…"` (`RemoveAccountConfirmationSheet` in `AccountsSettingsPane.swift:440-514` with `"Delete local chat history on this Mac"` off by default and `"Also sign out / unlink on <Network>"` on by default except off on Slack), sub-account `"Spaces"` and `"Bots"` toggles, and `"Remove <App> from macOS Dock"` when the official desktop client is pinned in the Dock.
-- [ ] Locking Courier via Courier ▸ Lock Courier (`⌘⌃L`, `AppMenuCoordinator.lockOrUnlockApp` in `DockAndTrayModel.swift:329-332`), on launch (`requireTouchIDOnLaunch`), or after idle/sleep (`lockTimeout` in `SystemLifecycleModel.swift:114-149`) activates `AppLockGate` (`SystemLifecycleModel.swift:201-355`, `EngineClient.call` in `EngineClient.swift:158-167`, `ProtocolMethods.classifications` in `Protocol.swift:4919-5013`, verified by `SystemLifecycleModelTests` in `SystemLifecycleModelTests.swift`, `EngineClientTests.testEveryProtocolMethodIsClassifiedAndMutatingMethodsAreRefusedWhileLocked` in `EngineClientTests.swift`, `HotkeyRegistryTests.testEveryHotkeyShortcutIsNoOpWhileLockedAndRespectsEntitlements` in `HotkeyRegistryTests.swift`, and `ViewSnapshotTests.testWindowTitlesMenuItemTitlesAndNotifierClearAllWhileLocked` in `ViewSnapshotTests.swift`): every open main, Settings, and detached window is covered by `LockableWindowContent` and `AppLockOverlay` (`AppLockOverlay.swift:8-159`, `LockEnforcerNSView` setting `window.sharingType = .none` and clearing first responder), window titles scrub to `"Courier"`, Dock and tray chat titles scrub to `"Courier Locked"`, `EngineClient` blocks every non-read-only RPC method with `AppLockGateError.locked`, `HotkeyDispatcher` and `GlobalHotkeyMonitor` refuse every shortcut, and unlocking requires `LAContextBiometricService.authenticate` (`SystemLifecycleModel.swift:72-110`).
+- [ ] Locking Vitruvian Courier via Vitruvian Courier ▸ Lock Vitruvian Courier (`⌘⌃L`, `AppMenuCoordinator.lockOrUnlockApp` in `DockAndTrayModel.swift:329-332`), on launch (`requireTouchIDOnLaunch`), or after idle/sleep (`lockTimeout` in `SystemLifecycleModel.swift:114-149`) activates `AppLockGate` (`SystemLifecycleModel.swift:201-355`, `EngineClient.call` in `EngineClient.swift:158-167`, `ProtocolMethods.classifications` in `Protocol.swift:4919-5013`, verified by `SystemLifecycleModelTests` in `SystemLifecycleModelTests.swift`, `EngineClientTests.testEveryProtocolMethodIsClassifiedAndMutatingMethodsAreRefusedWhileLocked` in `EngineClientTests.swift`, `HotkeyRegistryTests.testEveryHotkeyShortcutIsNoOpWhileLockedAndRespectsEntitlements` in `HotkeyRegistryTests.swift`, and `ViewSnapshotTests.testWindowTitlesMenuItemTitlesAndNotifierClearAllWhileLocked` in `ViewSnapshotTests.swift`): every open main, Settings, and detached window is covered by `LockableWindowContent` and `AppLockOverlay` (`AppLockOverlay.swift:8-159`, `LockEnforcerNSView` setting `window.sharingType = .none` and clearing first responder), window titles scrub to `"Vitruvian Courier"`, Dock and tray chat titles scrub to `"Vitruvian Courier Locked"`, `EngineClient` blocks every non-read-only RPC method with `AppLockGateError.locked`, `HotkeyDispatcher` and `GlobalHotkeyMonitor` refuse every shortcut, and unlocking requires `LAContextBiometricService.authenticate` (`SystemLifecycleModel.swift:72-110`).
 - [ ] Choosing Help ▸ Report a Problem… (`⌘⇧P`) or clicking `"Report a Problem… (⌘⇧P)"` in Settings ▸ About opens `ProblemReportSheet` (`ProblemReportSheet.swift:6-225`, `ProblemReportModel` in `ProblemReportModel.swift:92-360`, `logscrub.ScrubStderrExport` in `engine/internal/logscrub/stack.go:165-175`, verified by `ProblemReportModelTests` in `ProblemReportModelTests.swift`, `TestScrubPathAndStartupError`, `TestScrubPathReplacesUserHomeDirAndRealpath`, `TestScrubStderrExport`, and `TestRollingFileBoundsAt256KB` in `engine/internal/logscrub/stack_test.go`, and `ViewSnapshotTests.testProblemReportSheetAndAppLockOverlaySnapshots` in `ViewSnapshotTests.swift`), showing a live `"Scrubbed Diagnostic Preview"` and saving a local `.zip` or folder bundle (`report.json`, `bridges.json`, `stderr-scrubbed.log`, and optional attachments) to the location chosen in `NSSavePanel` with home paths (`/Users/<name>` → `~`), Go stack frame arguments (`(...)`), tokens, phone numbers, emails, and Matrix body fields scrubbed and zero network calls.
 - Do the by-hand run on the installed build, once, start to end. Tick each step as you go (owner's by-hand day):
   - [ ] Press `⌘,` to open `SettingsWindow`, verify the left sidebar lists `General`, `Appearance`, `Notifications`, `Accounts`, `Hotkeys`, `Quick Replies`, `Bridges`, and `About`, type `"Touch ID"`, `"OTP"`, and `"Dock"` in `"Search Settings"`, and click each suggestion to verify it switches panes, scrolls to the target row, and highlights it.
-  - [ ] In Settings ▸ General ▸ Startup & Security, toggle `"Open Courier at login"` on and check macOS System Settings ▸ General ▸ Login Items & Extensions to verify Courier appears under `"Open at Login"`, then toggle it off and verify it is removed; toggle `"Keep Courier minimized on launch"` and `"Quit Courier when closing the main window"` to verify window close (`⌘W`) hides vs quits Courier.
-  - [ ] In Settings ▸ General ▸ Startup & Security, toggle `"Require Touch ID authentication on launch"` on and set `"Lock Courier after"` to `"1 minute"`, then press `⌘⌃L` (Courier ▸ Lock Courier) to check that `AppLockOverlay` covers the main window, Settings window, and any open detached windows, clears delivered Notification Center banners, hides Dock and menu bar chat names, and prompts Touch ID / Apple Watch / macOS password when you click `"Unlock with Touch ID…"`.
+  - [ ] In Settings ▸ General ▸ Startup & Security, toggle `"Open Vitruvian Courier at login"` on and check macOS System Settings ▸ General ▸ Login Items & Extensions to verify Vitruvian Courier appears under `"Open at Login"`, then toggle it off and verify it is removed; toggle `"Keep Vitruvian Courier minimized on launch"` and `"Quit Vitruvian Courier when closing the main window"` to verify window close (`⌘W`) hides vs quits Vitruvian Courier.
+  - [ ] In Settings ▸ General ▸ Startup & Security, toggle `"Require Touch ID authentication on launch"` on and set `"Lock Vitruvian Courier after"` to `"1 minute"`, then press `⌘⌃L` (Vitruvian Courier ▸ Lock Vitruvian Courier) to check that `AppLockOverlay` covers the main window, Settings window, and any open detached windows, clears delivered Notification Center banners, hides Dock and menu bar chat names, and prompts Touch ID / Apple Watch / macOS password when you click `"Unlock with Touch ID…"`.
   - [ ] In Settings ▸ Notifications, check `"Open Notifications in System Settings"` (opens macOS System Settings ▸ Notifications) and `"Restart Notification Center"`; send yourself a test message and check sound effects (`"Sent and received messages"` and volume slider), `"Delay notifications for"` (`"15 seconds"` — read the chat on another device before 15 seconds to verify no banner fires), `"Repeat unread notifications"`, `"Auto copy OTP/2FA codes"` with `"Your verification code is 482910"` (verifying `482910` is copied to the clipboard and the notification banner shows `"Copy Code"`), and per-account overrides.
-  - [ ] Right-click the Courier icon in the macOS Dock and click the Courier icon in the right-hand menu bar tray to check `"New Message…"`, `"Unread Chats (N)"`, `"Pinned Chats"`, `"Show / Hide Courier"`, `"Lock Courier"`, `"Snooze Notifications"` (`"30 minutes"`, `"1 hour"`, `"2 hours"`, `"Until tomorrow (9:00 AM)"`, `"Resume Notifications"`), `"Settings…"`, and `"Quit Courier"`, and switch `"Dock badge count"` in Settings ▸ Appearance ▸ System between `"Off"`, `"Unread messages"`, `"Unread chats (unmuted)"`, and `"Unread chats (all)"`.
+  - [ ] Right-click the Vitruvian Courier icon in the macOS Dock and click the Vitruvian Courier icon in the right-hand menu bar tray to check `"New Message…"`, `"Unread Chats (N)"`, `"Pinned Chats"`, `"Show / Hide Vitruvian Courier"`, `"Lock Vitruvian Courier"`, `"Snooze Notifications"` (`"30 minutes"`, `"1 hour"`, `"2 hours"`, `"Until tomorrow (9:00 AM)"`, `"Resume Notifications"`), `"Settings…"`, and `"Quit Vitruvian Courier"`, and switch `"Dock badge count"` in Settings ▸ Appearance ▸ System between `"Off"`, `"Unread messages"`, `"Unread chats (unmuted)"`, and `"Unread chats (all)"`.
   - [ ] Right-click a chat in the inbox and choose `"Open in New Window"` (or File ▸ Open Chat in New Window), right-click a space in the space bar and choose `"Open in New Window"`, and click the `"Open in New Window"` button in a thread header to verify detached chat, space, and thread windows open independently, reuse an existing window when opened twice for the same target, and lock/unlock in step with the main window.
-  - [ ] Press `⌘/` (or Help ▸ Keyboard Shortcuts) to inspect `KeyboardShortcutsSheet`, click `"Customize Shortcuts…"` to jump to Settings ▸ Hotkeys, click `"Record Shortcut"` on `"Search in Chat"`, try pressing a single letter (verifying the modifier warning) and `⌘K` (verifying `"⌘K is already used by Search"`), record a valid chord, test `"Switch to Texts.app keybindings"` and `"Revert all"`, and toggle `"Global"` on `"Focus Courier"` to check that macOS prompts for Accessibility permission if not yet granted and brings Courier forward from another app.
+  - [ ] Press `⌘/` (or Help ▸ Keyboard Shortcuts) to inspect `KeyboardShortcutsSheet`, click `"Customize Shortcuts…"` to jump to Settings ▸ Hotkeys, click `"Record Shortcut"` on `"Search in Chat"`, try pressing a single letter (verifying the modifier warning) and `⌘K` (verifying `"⌘K is already used by Search"`), record a valid chord, test `"Switch to Texts.app keybindings"` and `"Revert all"`, and toggle `"Global"` on `"Focus Vitruvian Courier"` to check that macOS prompts for Accessibility permission if not yet granted and brings Vitruvian Courier forward from another app.
   - [ ] In Settings ▸ Accounts and Settings ▸ Bridges, expand a bridge row to check its `mautrix-*` module version, creation timestamp, and connected account list; click `"Restart Bridge"` and verify the account reconnects without losing any chats or messages; click `"Refresh List"` under `"Sub-Accounts"` on a Telegram or Slack account and toggle a folder or bot to verify its space pill appears in the space bar; if an official app (`WhatsApp`, `Signal`, `Telegram`, `Slack`) is pinned in your macOS Dock, click `"Remove <App> from macOS Dock"` and check that the Dock refreshes without that duplicate icon; and on a test account, click `"Remove Account…"` to check the confirmation sheet checkboxes before cancelling or unlinking.
   - [ ] Press `⌘⇧P` (Help ▸ Report a Problem…), type a note, toggle `"Include Message Details"` on and off while inspecting `"Scrubbed Diagnostic Preview"` to verify no message bodies, names, phone numbers, tokens, or `/Users/<name>` paths appear, and click `"Save Problem Report…"` to save a `.zip` bundle to your Mac and inspect `report.json`, `bridges.json`, and `stderr-scrubbed.log`.
 
@@ -1402,7 +1402,7 @@ These are the five things this part was most worried about. Look at them before 
 
 ### What to expect on each network
 
-Courier manages account removal (`accounts.remove`, `Engine.RemoveAccount` in `engine/internal/engine/engine.go:693-741`), bridge restarts (`bridges.restart`, `Engine.RestartNetwork` in `engine/internal/engine/engine.go:621-689`), sub-account spaces and bots (`accounts.subAccounts`, `Engine.RefreshSubAccounts` in `engine/internal/engine/engine.go:745-855`), and official macOS Dock cleanup (`AccountsAndBridgesModel.officialDockBundleID` in `AccountsAndBridgesModel.swift:200-217`) across the five pinned bridges (`mautrix-whatsapp@v0.2609.0`, `mautrix-signal@v0.2609.0`, `mautrix-telegram@v0.2609.0`, `mautrix-gmessages@v0.2609.0`, `mautrix-slack@v0.2609.1`).
+Vitruvian Courier manages account removal (`accounts.remove`, `Engine.RemoveAccount` in `engine/internal/engine/engine.go:693-741`), bridge restarts (`bridges.restart`, `Engine.RestartNetwork` in `engine/internal/engine/engine.go:621-689`), sub-account spaces and bots (`accounts.subAccounts`, `Engine.RefreshSubAccounts` in `engine/internal/engine/engine.go:745-855`), and official macOS Dock cleanup (`AccountsAndBridgesModel.officialDockBundleID` in `AccountsAndBridgesModel.swift:200-217`) across the five pinned bridges (`mautrix-whatsapp@v0.2609.0`, `mautrix-signal@v0.2609.0`, `mautrix-telegram@v0.2609.0`, `mautrix-gmessages@v0.2609.0`, `mautrix-slack@v0.2609.1`).
 
 | | WhatsApp | Signal | Telegram | Google Messages | Slack |
 |---|---|---|---|---|---|
@@ -1416,9 +1416,9 @@ Courier manages account removal (`accounts.remove`, `Engine.RemoveAccount` in `e
 - [ ] `hotkey` Settings: `⌘,` opens `SettingsWindow` (`InboxCommands.swift`, `HotkeyRegistry.allDefinitions` in `HotkeyRegistry.swift`, verified by `HotkeyRegistryTests.testEveryHotkeyDefinitionResolvesToWiredCommandHandler` in `HotkeyRegistryTests.swift`).
 - [ ] `hotkey` Keyboard Shortcuts: `⌘/` opens `KeyboardShortcutsSheet` (`InboxCommands.swift`, `KeyboardShortcutsSheet.swift`, `CommandSet.showKeyboardShortcuts` in `CommandSet.swift`).
 - [ ] `hotkey` Report a Problem: `⌘⇧P` opens `ProblemReportSheet` (`InboxCommands.swift`, `ProblemReportSheet.swift`, `CommandSet.reportProblem` in `CommandSet.swift`).
-- [ ] `hotkey` Minimize To Menu Bar: `⌘⌥Q` hides all Courier windows to the menu bar tray (`InboxCommands.swift`, `AppMenuCoordinator.minimizeToMenuBar` in `DockAndTrayModel.swift:320-324`).
-- [ ] `hotkey` Quit App: `⌘Q` quits Courier cleanly (`AppMenuCoordinator.quitApp` in `DockAndTrayModel.swift:326-328`).
-- [ ] `hotkey` Focus App / `hotkey` Focus App and Command Bar: Configurable global shortcuts in Settings ▸ Hotkeys (`HotkeysSettingsPane.swift`, `GlobalHotkeyMonitor` in `HotkeyRegistry.swift:724-842`, unbound by default) that bring Courier to the front from any macOS app (and open the command bar for `"Focus Courier and Command Bar"`).
+- [ ] `hotkey` Minimize To Menu Bar: `⌘⌥Q` hides all Vitruvian Courier windows to the menu bar tray (`InboxCommands.swift`, `AppMenuCoordinator.minimizeToMenuBar` in `DockAndTrayModel.swift:320-324`).
+- [ ] `hotkey` Quit App: `⌘Q` quits Vitruvian Courier cleanly (`AppMenuCoordinator.quitApp` in `DockAndTrayModel.swift:326-328`).
+- [ ] `hotkey` Focus App / `hotkey` Focus App and Command Bar: Configurable global shortcuts in Settings ▸ Hotkeys (`HotkeysSettingsPane.swift`, `GlobalHotkeyMonitor` in `HotkeyRegistry.swift:724-842`, unbound by default) that bring Vitruvian Courier to the front from any macOS app (and open the command bar for `"Focus Vitruvian Courier and Command Bar"`).
 - [ ] `hotkey` Switch to First 9 Spaces Modifier (`⌘1`–`⌘9` by default, configurable between `⌘` and `⌃` via `HotkeyRegistry.allDefinitions` and `HotkeyRegistry.applyTextsAppPreset`) and `hotkey` Switch to First 9 Chats Modifier (`⌃1`–`⌃9` by default): Switch between the first 9 spaces or the first 9 chats in the open list (`HotkeyRegistry.swift:324-335`, `MainWindow.swift`, verified by `HotkeyRegistryTests.testFunctionKeysModifierOnlyAndPresetZeroConflicts` in `HotkeyRegistryTests.swift`).
 
 ### Settings
@@ -1431,11 +1431,11 @@ Courier manages account removal (`accounts.remove`, `Engine.RemoveAccount` in `e
 - [ ] `setting:general` Messages & Composer section (`GeneralSettingsPane.swift:231-355`): `"On double-clicking a message"`, `"Allow undo send (⌘Z) for"`, `"Click pending messages to undo send"`, `"Default for send later"`, `"Press ↑ in the composer to"`, `"Include timestamps when copying messages with ⌘C"`, `"Enable emoji autocomplete"`, `"Disable automatic replacement of emoticons with emojis"`, `"Automatically send GIFs after selection"`, `"Automatically play the next voice note"`, `"Microphone"`, and `"Auto copy OTP/2FA codes"` (`ComposerPreferences.swift`, `NotificationPreferences.autoCopyOTP`).
 - [ ] `setting:general` Downloads section (`GeneralSettingsPane.swift:359-400`): `"Downloads location"` (`~/Downloads` with `"Choose…"`) and `"Always ask where to save files before downloading"` (`ComposerPreferences.swift`).
 - [ ] `setting:general` Startup & Security section (`GeneralSettingsPane.swift:404-496`, `SystemLifecycleModel.swift:360-807`, verified by `SystemLifecycleModelTests` in `SystemLifecycleModelTests.swift`):
-  - `"Open Courier at login"` (`SystemLifecycleModel.openAtLogin`, backed by `MACLoginItemService` / `SMAppService.mainApp`), off out of the box.
-  - `"Keep Courier minimized on launch"` (`SystemLifecycleModel.startMinimized`), off out of the box.
-  - `"Quit Courier when closing the main window"` (`SystemLifecycleModel.quitOnMainWindowClose`), off out of the box.
+  - `"Open Vitruvian Courier at login"` (`SystemLifecycleModel.openAtLogin`, backed by `MACLoginItemService` / `SMAppService.mainApp`), off out of the box.
+  - `"Keep Vitruvian Courier minimized on launch"` (`SystemLifecycleModel.startMinimized`), off out of the box.
+  - `"Quit Vitruvian Courier when closing the main window"` (`SystemLifecycleModel.quitOnMainWindowClose`), off out of the box.
   - `"Require Touch ID authentication on launch"` (`SystemLifecycleModel.requireTouchIDOnLaunch`), off out of the box.
-  - `"Lock Courier after"` (`SystemLifecycleModel.lockTimeout`: `"Never"`, `"1 minute"`, `"5 minutes"`, `"15 minutes"`, `"30 minutes"`, `"1 hour"`, `"When Mac sleeps or screen locks"`), `"Never"` out of the box, plus `"Lock Courier Now"` button when biometrics or timeout is enabled.
+  - `"Lock Vitruvian Courier after"` (`SystemLifecycleModel.lockTimeout`: `"Never"`, `"1 minute"`, `"5 minutes"`, `"15 minutes"`, `"30 minutes"`, `"1 hour"`, `"When Mac sleeps or screen locks"`), `"Never"` out of the box, plus `"Lock Vitruvian Courier Now"` button when biometrics or timeout is enabled.
 
 **Appearance (`AppearanceSettingsPane` in `GeneralSettingsPane.swift:591-784`, `InboxPreferences.swift`, `ComposerPreferences.swift`, `DockAndTrayModel.swift`)**
 
@@ -1456,17 +1456,17 @@ Courier manages account removal (`accounts.remove`, `Engine.RemoveAccount` in `e
 **Accounts, Bridges, Hotkeys, Quick Replies, and About (`AccountsSettingsPane.swift`, `BridgesSettingsPane.swift`, `HotkeysSettingsPane.swift`, `QuickRepliesSettingsPane.swift`, `AboutSettingsPane.swift`)**
 
 - [ ] `setting:accounts` Per-account detail pane (`AccountsSettingsPane.swift:100-436`): `"Show in Space Bar"`, `"Show in Inbox"` (`"All Messages"`, `"Only DMs"`, `"None"`), `"Mute Account Space"`, `"Auto-Archive…"`, `"Notifications for this Account"` (`"Override global notification settings"`, `"Desktop notifications"`, `"Sound"`, `"Include message preview"`), `"Sub-Accounts"` (`"Spaces"` and `"Bots"` with `"Refresh List"`), `"macOS Dock"` (`"Remove <App> from macOS Dock"`), and `"Developer"` (`"Copy Account ID"`, `"Copy Bridge ID"`, `"Copy Info as JSON"`, `"Restart Bridge"`).
-- [ ] `setting:hotkeys` Shortcut customization (`HotkeysSettingsPane.swift:6-360`): `"Search hotkeys..."` filter, `"Switch to Texts.app keybindings"` preset, `"Revert all"` button, per-shortcut enable/disable toggle, `"Global"` checkbox on `"Focus Courier"` and `"Focus Courier and Command Bar"`, and `"Record Shortcut"` capture with conflict and modifier validation.
+- [ ] `setting:hotkeys` Shortcut customization (`HotkeysSettingsPane.swift:6-360`): `"Search hotkeys..."` filter, `"Switch to Texts.app keybindings"` preset, `"Revert all"` button, per-shortcut enable/disable toggle, `"Global"` checkbox on `"Focus Vitruvian Courier"` and `"Focus Vitruvian Courier and Command Bar"`, and `"Record Shortcut"` capture with conflict and modifier validation.
 - [ ] `setting:quick-replies` Quick Replies pane (`QuickRepliesSettingsPane.swift:1-92`, verified by `ViewSnapshotTests.testQuickRepliesAndAboutPanesSnapshots` in `ViewSnapshotTests.swift`): `"Saved quick replies"` list with `"Add Quick Reply…"`, `"Edit…"`, `"Delete"`, and `"Template variables"` reference (`{first_name}`, `{last_name}`, `{full_name}`, `{username}`, `{phone_number}`, `{email}`).
-- [ ] `setting:about` About pane (`AboutSettingsPane.swift:6-275`, verified by `ViewSnapshotTests.testQuickRepliesAndAboutPanesSnapshots` in `ViewSnapshotTests.swift`): app icon, version, protocol and build number, expandable `"View Changelog"`, `"Diagnostics & Reference"` (`"Report a Problem… (⌘⇧P)"`, `"Keyboard Shortcuts (⌘/)"`), expandable `"On-Device Architecture & Data Privacy"`, and expandable `"Open-Source Licenses (MIT / MPL-2.0 / AGPL-3.0)"` listing `Courier Desktop & Engine`, `mautrix-go (bridgev2)`, `mautrix-whatsapp`, `mautrix-signal`, `mautrix-telegram`, `mautrix-slack`, `mautrix-gmessages`, and `SQLite & FTS5`.
+- [ ] `setting:about` About pane (`AboutSettingsPane.swift:6-275`, verified by `ViewSnapshotTests.testQuickRepliesAndAboutPanesSnapshots` in `ViewSnapshotTests.swift`): app icon, version, protocol and build number, expandable `"View Changelog"`, `"Diagnostics & Reference"` (`"Report a Problem… (⌘⇧P)"`, `"Keyboard Shortcuts (⌘/)"`), expandable `"On-Device Architecture & Data Privacy"`, and expandable `"Open-Source Licenses (MIT / MPL-2.0 / AGPL-3.0)"` listing `Vitruvian Courier Desktop & Engine`, `mautrix-go (bridgev2)`, `mautrix-whatsapp`, `mautrix-signal`, `mautrix-telegram`, `mautrix-slack`, `mautrix-gmessages`, and `SQLite & FTS5`.
 
 ### Menus
 
-- [ ] `menu:Courier` Settings… (`⌘,`), Lock Courier (`⌘⌃L`), Minimize to Menu Bar (`⌘⌥Q`), and Quit Courier (`⌘Q`) (`InboxCommands.swift`, `AppMenuCoordinator` in `DockAndTrayModel.swift:217-370`, `SystemLifecycleModel.swift`).
+- [ ] `menu:VitruvianCourier` Settings… (`⌘,`), Lock Vitruvian Courier (`⌘⌃L`), Minimize to Menu Bar (`⌘⌥Q`), and Quit Vitruvian Courier (`⌘Q`) (`InboxCommands.swift`, `AppMenuCoordinator` in `DockAndTrayModel.swift:217-370`, `SystemLifecycleModel.swift`).
 - [ ] `menu:File` Open Chat in New Window (`InboxCommands.swift:72-78`, `AppMenuCoordinator.openChatInNewWindow` in `DockAndTrayModel.swift:318-323`, wired in `AppDelegate.swift`): opens the active chat in `DetachedChatWindowView` (`DetachedWindows.swift`).
 - [ ] `menu:Help` Report a Problem… (`⌘⇧P`) and Keyboard Shortcuts (`⌘/`) (`InboxCommands.swift:120-135`, `AppMenuCoordinator.openSettings` in `DockAndTrayModel.swift:232-253`).
-- [ ] `menu:Dock` Right-clicking the Courier Dock icon (`AppDelegate.applicationDockMenu` in `AppDelegate.swift`, `DockMenuModel` in `DockAndTrayModel.swift:37-122`, verified by `DockAndTrayModelTests.testDockMenuModelPopulatesTop5UnreadAndTop5RecentTruncatesTitlesAndRedactsWhenLocked` in `DockAndTrayModelTests.swift`) shows `"New Message…"`, `"Unread Chats (N)"` (up to 5 unread chats), `"Pinned Chats"` (up to 5 pinned chats), `"Lock Courier"`, and `"Snooze Notifications"`.
-- [ ] `menu:Tray` Clicking the menu bar tray icon (`MenuBarIcon` and `MenuBarMenu` in `MenuBar.swift:8-152`, `AppMenuCoordinator` in `DockAndTrayModel.swift`, verified by `DockAndTrayModelTests.testMenuBarIconPreferenceAndDockBadgeModes` and `DockAndTrayModelTests.testExternalMenuUnlockAndTwinMenuActionsShareOneModelAction` in `DockAndTrayModelTests.swift`) shows `"Show / Hide Courier"`, `"New Message…"`, unread and pinned quick-jump items (hidden when locked), `"Snooze Notifications"` (`"30 minutes"`, `"1 hour"`, `"2 hours"`, `"Until tomorrow (9:00 AM)"`, `"Resume Notifications"`), `"Lock Courier"`, `"Settings…"` (`⌘,`), and `"Quit Courier"` (`⌘Q`).
+- [ ] `menu:Dock` Right-clicking the Vitruvian Courier Dock icon (`AppDelegate.applicationDockMenu` in `AppDelegate.swift`, `DockMenuModel` in `DockAndTrayModel.swift:37-122`, verified by `DockAndTrayModelTests.testDockMenuModelPopulatesTop5UnreadAndTop5RecentTruncatesTitlesAndRedactsWhenLocked` in `DockAndTrayModelTests.swift`) shows `"New Message…"`, `"Unread Chats (N)"` (up to 5 unread chats), `"Pinned Chats"` (up to 5 pinned chats), `"Lock Vitruvian Courier"`, and `"Snooze Notifications"`.
+- [ ] `menu:Tray` Clicking the menu bar tray icon (`MenuBarIcon` and `MenuBarMenu` in `MenuBar.swift:8-152`, `AppMenuCoordinator` in `DockAndTrayModel.swift`, verified by `DockAndTrayModelTests.testMenuBarIconPreferenceAndDockBadgeModes` and `DockAndTrayModelTests.testExternalMenuUnlockAndTwinMenuActionsShareOneModelAction` in `DockAndTrayModelTests.swift`) shows `"Show / Hide Vitruvian Courier"`, `"New Message…"`, unread and pinned quick-jump items (hidden when locked), `"Snooze Notifications"` (`"30 minutes"`, `"1 hour"`, `"2 hours"`, `"Until tomorrow (9:00 AM)"`, `"Resume Notifications"`), `"Lock Vitruvian Courier"`, `"Settings…"` (`⌘,`), and `"Quit Vitruvian Courier"` (`⌘Q`).
 - [ ] `ctx:chat` Open in New Window (`ChatContextMenu.swift`) and `ctx:space-account` / `ctx:space-builtin` Open in New Window (`SpaceBar.swift`): right-clicking a chat in `InboxList` or `PinnedStrip`, or right-clicking a space in `SpaceBar`, offers `"Open in New Window"`.
 
 ### Components
@@ -1493,7 +1493,7 @@ Courier manages account removal (`accounts.remove`, `Engine.RemoveAccount` in `e
 
 ### Commands
 
-These are registered in Courier for the command bar (`⌘J`), which part 4.7 builds. They have no tick box here: they are "registered; shown in `⌘J` by 4.7". The ones with a menu item or key above are checked there.
+These are registered in Vitruvian Courier for the command bar (`⌘J`), which part 4.7 builds. They have no tick box here: they are "registered; shown in `⌘J` by 4.7". The ones with a menu item or key above are checked there.
 
 - `command` Settings (`CommandSet.settings` in `CommandSet.swift`), `command` Account (`CommandSet.account` and `CommandSet.accounts`), `command` Appearance (`CommandSet.appearance`), `command` General (`CommandSet.general`), `command` Hotkeys (`CommandSet.hotkeys`), `command` Notifications (`CommandSet.notifications`), `command` Quick Replies (`CommandSet.quickReplies`), `command` Bridges (`CommandSet.bridges`), `command` About (`CommandSet.about`), and `command` Help (`CommandSet.help` in `CommandSet.swift:436-534`, verified by `SettingsSearchModelTests.testSharedSettingsNavigationModelSelectsAccountAndEverySettingHasMatchingHighlightTarget` in `SettingsSearchModelTests.swift`).
 - `command` Show keyboard shortcuts (`CommandSet.showKeyboardShortcuts` in `CommandSet.swift:403-417`), `command` Report a problem (`CommandSet.reportProblem`), `command` Lock app (`CommandSet.lockApp`), `command` Open space in new window (`CommandSet.openSpaceInNewWindow`), `command` Restart Notification Center (`CommandSet.restartNotificationCenter`), and `CommandSet.settingsAndSystem` (`CommandSet.swift:537-615`).
@@ -1506,8 +1506,8 @@ Not failures. Do not report these as bugs.
 - On Slack, `"Also sign out / unlink on Slack"` in `"Remove Account…"` is unchecked (`false`) by default (`RemoveAccountConfirmation.defaultLogoutRemote(for: "slack") == false` in `AccountsAndBridgesModel.swift:129-133`), because `SlackClient.LogoutRemote` calls `SendAuthSignoutContext()` (`mautrix-slack@v0.2609.1/pkg/connector/client.go:644`), which revokes a browser `xoxc-` session token that is shared with your web browser. On WhatsApp, Signal, Telegram, and Google Messages, each bridge links its own dedicated companion device session, so `"Also sign out / unlink on <Network>"` is checked (`true`) by default.
 - In `"Remove Account…"`, `"Delete local chat history on this Mac"` (`deleteChats`) is unchecked (`false`) by default on all five networks so removing or relinking an account keeps your existing local SQLite rooms, messages, and media unless you explicitly check that box.
 - `"Restart Bridge"` disconnects and reconnects the in-process `bridgev2` network client (`Engine.RestartNetwork` in `engine/internal/engine/engine.go:621-689`) without deleting any portal rooms, messages, or media on this Mac.
-- While Courier is locked (`AppLockGate.isLocked == true`), incoming notifications still alert you with `"New message"` (`includePreview = false`) so you know a message arrived without exposing the sender’s name, message body, or OTP code on a locked screen.
-- Global shortcuts (`"Focus Courier"` and `"Focus Courier and Command Bar"`) use `NSEvent.addGlobalMonitorForEvents(matching: .keyDown)` (`GlobalHotkeyMonitor` in `HotkeyRegistry.swift:724-842`), which requires macOS Accessibility permission (`AXIsProcessTrusted()`) to receive keystrokes while another application is active; when Accessibility permission has not been granted, Courier falls back to local monitoring without crashing.
+- While Vitruvian Courier is locked (`AppLockGate.isLocked == true`), incoming notifications still alert you with `"New message"` (`includePreview = false`) so you know a message arrived without exposing the sender’s name, message body, or OTP code on a locked screen.
+- Global shortcuts (`"Focus Vitruvian Courier"` and `"Focus Vitruvian Courier and Command Bar"`) use `NSEvent.addGlobalMonitorForEvents(matching: .keyDown)` (`GlobalHotkeyMonitor` in `HotkeyRegistry.swift:724-842`), which requires macOS Accessibility permission (`AXIsProcessTrusted()`) to receive keystrokes while another application is active; when Accessibility permission has not been granted, Vitruvian Courier falls back to local monitoring without crashing.
 
 ### Not ledger rows
 
@@ -1532,7 +1532,7 @@ All items carried to 4.6 from earlier parts — the two-column Settings window (
 - A reply-network shortcut (`⌘L` is Remind Me).
 - Delivered in part 4.7 below: `component ChatThemeBrowserWindow.tsx`, `component ChatThemeWindow.tsx`, `hotkey Message: Talk to Type`, and `setting:ai Use OpenAI's Whisper model for Talk to Type and transcribing`.
 - Not planned in iteration 1 (7 non-Courier / bridge-architecture ledger rows; calm informational entries are included in `CommandSet` for `⌘J` searchability):
-  - `command` Join a Matrix room: not planned in iteration 1 (Courier runs non-Matrix bridges with no generic Matrix room join).
+  - `command` Join a Matrix room: not planned in iteration 1 (Vitruvian Courier runs non-Matrix bridges with no generic Matrix room join).
   - `command` Profile: not planned in iteration 1 (no cloud account profile pane).
   - `component` ChangeEmailBrowserWindow.tsx: not planned in iteration 1 (no cloud account email management).
   - `component` DeleteAccountModal.tsx: not planned in iteration 1 (no cloud account deletion).
@@ -1544,7 +1544,7 @@ All items carried to 4.6 from earlier parts — the two-column Settings window (
 
 ## Part 4.7: appearance, command bar and stubs
 
-Command Bar (`⌘J`), Appearance & Themes (8 Courier colour presets, 8 procedural vector wallpapers, per-chat theme overrides, 8 clean-room vector app icons, font size scale, zoom level, reduce transparency, and redact names/pictures mode), §22 Label & Space Icon Catalog (151 Material-Symbol-named icons + 25 UI/hand-drawn icons), Storage Management (`storage.usage`, `storage.cleanup`, `StorageSettingsPane`, and `RemovedMediaPlaceholderView`), and the five offline Provider Stubs (`AIProvider`, `GIFProvider`, `EntitlementProvider`, `ReportUploader`, `ThemeFileLoader`).
+Command Bar (`⌘J`), Appearance & Themes (8 Vitruvian Courier colour presets, 8 procedural vector wallpapers, per-chat theme overrides, 8 clean-room vector app icons, font size scale, zoom level, reduce transparency, and redact names/pictures mode), §22 Label & Space Icon Catalog (151 Material-Symbol-named icons + 25 UI/hand-drawn icons), Storage Management (`storage.usage`, `storage.cleanup`, `StorageSettingsPane`, and `RemovedMediaPlaceholderView`), and the five offline Provider Stubs (`AIProvider`, `GIFProvider`, `EntitlementProvider`, `ReportUploader`, `ThemeFileLoader`).
 
 - **What leaves this Mac:** Nothing. Every feature in part 4.7 is 100% local on this Mac and makes zero network requests (`ProviderStubsTests.testAllFiveProviderStubsAreCalmOfflineAndNeverSayBeeper`).
 - **Out-of-the-box defaults:** `Theme: System`, `Colour theme: Classic Teal`, `Wallpaper: None`, `Font size: Default (100%)`, `Zoom: 100%`, `Reduce transparency: off`, `Redact names and pictures: off`, `App Icon: Classic Teal`, `AI features: unavailable stub`.
@@ -1556,13 +1556,13 @@ Command Bar (`⌘J`), Appearance & Themes (8 Courier colour presets, 8 procedura
 - [x] **Command Bar (`⌘J`) & `SearchPanel` switch**: `CommandBarModel` (`CommandBarModel.swift`), `CommandSet` (`CommandSet.swift`), and `CommandBarOverlay` (`CommandBarOverlay.swift`) aggregate all 74 command-bar commands across 4.1–4.7, support fuzzy search, recent commands, nested sub-command drill-down (`Filter Chats ▸` with `"Filter Chats…"` placeholder and no doubled verb, `Backspace` on empty query to pop), `"Open recently viewed chats"` mode, destructive confirmations, and two-way switching with `SearchPanel` (`"Commands ⌘J"` button and leading `>` trigger; verified by `CommandBarModelTests`, `CommandSetTests`, and `ViewSnapshotTests.testCommandBarOverlaySnapshotsLightAndDark`).
 - [x] **Themes, Wallpapers, Per-Chat Themes & App Icons**: `AppearancePreferences` (`AppearancePreferences.swift`), `AppearanceSettingsPane` (`GeneralSettingsPane.swift`), `AppIconPickerView` (`AppIconPickerView.swift`), `ChatThemeWindow`, `ChatThemeBrowserWindow`, `ChatWallpaperCanvasView`, and `EmptyStateUnreadCardsView` (`ChatThemeWindow.swift`) provide 8 colour presets, 8 procedural vector wallpapers, per-chat overrides (`ChatThemeOverride`), 8 vector app icons (`CourierAppIconRenderer`), `FontSizeScale` (`85%`–`125%`), `zoomPercent` (`75%`–`150%`), `reduceTransparency`, and `redactNamesAndPictures` (verified by `AppearancePreferencesTests`, `ViewSnapshotTests.testAppearanceSettingsAndAppIconPickerSnapshotsLightAndDark`, and `ViewSnapshotTests.testChatThemeWindowAndBrowserSnapshotsLightAndDark`).
 - [x] **Storage Breakdown & Safe Media Cleanup**: `store.StorageUsage` and `store.StorageCleanup` (`engine/internal/store/storage.go`), RPC handlers `storage.usage` and `storage.cleanup` (`engine/internal/rpc/handlers.go`), `StorageModel` (`StorageModel.swift`), `StorageSettingsPane` (`StorageSettingsPane.swift`), and `RemovedMediaPlaceholderView` (`MediaMessageViews.swift`) compute local disk usage by category and chat and safely delete cached media files on disk while keeping message rows and text intact with `media_removed = 1` (`"Removed to free up space"`; verified by `TestStorageUsageAndCleanup` in `storage_test.go`, `TestStorageUsageAndCleanupRPC` in `rpc_test.go`, `StorageModelTests`, and `ViewSnapshotTests.testStorageSettingsPaneSnapshotsLightAndDark`).
-- [x] **The Five Provider Stubs Make Zero Network Calls**: `UnavailableAIProvider` (`AIProvider.swift`), `StubGIFProvider`, `UnavailableReportUploader`, `UnavailableThemeFileLoader` (`ServiceStubs.swift`), and `EntitlementProvider` (`Entitlement.swift`), wired to `AISettingsPane`, `AIPane`, `MessageTranslationRowView`, `PlusSettingsPane`, `IntegrationsSettingsPane`, `ComposerModel`, `MessageActionsModel`, and `ProblemReportSheet`, return calm `"isn’t available yet in Courier"` / `"Available with a plan"` explanations in Courier’s words with zero network requests and zero `"Beeper"` strings (verified by `ProviderStubsTests`, `ComposerModelTests.testTalkToTypeDraftWithAIAndSlashCommandsShowCalmStubNoticeWithoutLosingDraft`, `MessageActionsModelTests.testTranslateMessageStoresCalmUnavailableTranslationOnEvent`, and `ViewSnapshotTests.testAISettingsAIPaneTranslationAndPlusSettingsSnapshotsLightAndDark`).
-- [x] **`AppLockGate` Blocks Every 4.7 Surface While Locked**: Locking Courier (`SystemLifecycleModel.lockApp()`) closes `CommandBarModel`, blocks `StorageModel` (`storage.usage` / `storage.cleanup`), reverts mutations to `AppearancePreferences` and `AIPreferences`, blocks composer AI/slash stubs and message translations, and covers `ChatThemeWindow` and `ChatThemeBrowserWindow` with `LockableWindowContent` (verified by `AppearancePreferencesTests`, `ProviderStubsTests`, `CommandBarModelTests`, and `StorageModelTests.testStorageActionsAreRefusedWhileAppLocked`).
+- [x] **The Five Provider Stubs Make Zero Network Calls**: `UnavailableAIProvider` (`AIProvider.swift`), `StubGIFProvider`, `UnavailableReportUploader`, `UnavailableThemeFileLoader` (`ServiceStubs.swift`), and `EntitlementProvider` (`Entitlement.swift`), wired to `AISettingsPane`, `AIPane`, `MessageTranslationRowView`, `PlusSettingsPane`, `IntegrationsSettingsPane`, `ComposerModel`, `MessageActionsModel`, and `ProblemReportSheet`, return calm `"isn’t available yet in Vitruvian Courier"` / `"Available with a plan"` explanations in Vitruvian Courier’s words with zero network requests and zero `"Beeper"` strings (verified by `ProviderStubsTests`, `ComposerModelTests.testTalkToTypeDraftWithAIAndSlashCommandsShowCalmStubNoticeWithoutLosingDraft`, `MessageActionsModelTests.testTranslateMessageStoresCalmUnavailableTranslationOnEvent`, and `ViewSnapshotTests.testAISettingsAIPaneTranslationAndPlusSettingsSnapshotsLightAndDark`).
+- [x] **`AppLockGate` Blocks Every 4.7 Surface While Locked**: Locking Vitruvian Courier (`SystemLifecycleModel.lockApp()`) closes `CommandBarModel`, blocks `StorageModel` (`storage.usage` / `storage.cleanup`), reverts mutations to `AppearancePreferences` and `AIPreferences`, blocks composer AI/slash stubs and message translations, and covers `ChatThemeWindow` and `ChatThemeBrowserWindow` with `LockableWindowContent` (verified by `AppearancePreferencesTests`, `ProviderStubsTests`, `CommandBarModelTests`, and `StorageModelTests.testStorageActionsAreRefusedWhileAppLocked`).
 
 #### Keys, Settings, Menus, Components & Commands
 
 - [x] `hotkey` Command Bar (`⌘J`), `hotkey` Focus App and Command Bar (no default key; set one in Settings ▸ Hotkeys), `hotkey` Zoom In (`⌘=`), `hotkey` Zoom Out (`⌘-`), `hotkey` Reset Zoom (`⌘0`), and `hotkey` Message: Talk to Type (`⌘⇧D`) (`HotkeyRegistry.swift`, `InboxCommands.swift`, `CommandSet.swift`).
-- [x] `menu:Courier` Command Bar… (`⌘J`) and `menu:View` Zoom In (`⌘+`), Zoom Out (`⌘-`), Actual Size (`⌘0`) (`InboxCommands.swift`).
+- [x] `menu:VitruvianCourier` Command Bar… (`⌘J`) and `menu:View` Zoom In (`⌘+`), Zoom Out (`⌘-`), Actual Size (`⌘0`) (`InboxCommands.swift`).
 - [x] `setting:appearance` Theme (`System` / `Light` / `Dark`), Colour theme, Chat wallpaper, App Icon (`AppIconPrefsSubView.tsx`), Font size, Zoom level, Reduce transparency, Enable message animations, Balance message text, Use pointer cursor for interactive elements, Show feedback widget, Redact names and pictures, and Custom CSS (`ThemeFileLoader`) (`GeneralSettingsPane.swift`, `SettingsSearchModel.swift`, verified by `SettingsSearchModelTests.testAppearanceSettingsCatalogCoversEveryMilestone47AppearanceSetting`).
 - [x] `setting:storage` Storage Overview (`StorageOverviewChart.tsx`), Clean Up Media by Age, and Storage by Chat (`StorageByRoomList.tsx`) (`StorageSettingsPane.swift`, `SettingsSearchModel.swift`, verified by `SettingsSearchModelTests.testStorageSettingsCatalogCoversEveryMilestone47StorageSetting`).
 - [x] `setting:ai` Mention an AI to get answers and help in chat, Translation Languages (`Arabic`, `Spanish`, etc.), Use OpenAI's Whisper model for Talk to Type and transcribing, and Slash Command Triggers (`createSlashCommandTriggerSettings.tsx`), plus `setting:beeper-plus` Go Unlimited (`PlusSettingsPane.swift`) and `setting:integrations` Browser Extension, Mobile Companion Apps, and Local-First Diagnostics (`AISettingsPane.swift`, `PlusSettingsPane.swift`, `SettingsSearchModel.swift`, verified by `SettingsSearchModelTests.testAIPlanAndIntegrationsSettingsCatalogCoversEveryMilestone47Setting`).
@@ -1571,12 +1571,12 @@ Command Bar (`⌘J`), Appearance & Themes (8 Courier colour presets, 8 procedura
 
 ### Owner's by-hand checklist (requires live app launch and visual inspection)
 
-- [ ] **Build and Install**: Run `bazel run --config=macos-app //apps/desktop/courier/app:install -- --allow-missing` and launch `/Applications/Courier.app`.
+- [ ] **Build and Install**: Run `bazel run --config=macos-app //apps/desktop/vitruvian-courier/app:install -- --allow-missing` and launch `/Applications/Vitruvian Courier.app`.
 - [ ] **Command Bar (`⌘J`) & `SearchPanel` Switch**: Press `⌘J` (and the global Focus App and Command Bar hotkey, once one is set), drill into `Filter Chats ▸`, run `Open recently viewed chats`, and switch between `⌘K` Search and `⌘J` Command Bar via `"Commands ⌘J"` or leading `>`.
 - [ ] **Appearance, Wallpapers, Per-Chat Themes, App Icons, Font Size, Zoom & Redact Mode**: Try the 8 colour presets, 8 procedural wallpapers, `ChatThemeWindow` per-chat overrides, `ChatThemeBrowserWindow`, the 8 Dock icons in `Settings ▸ Appearance ▸ App Icon`, `⌘+`/`⌘-`/`⌘0` zoom, `"Redact names and pictures"`, and `"Confetti"`.
 - [ ] **§22 Label & Space Icon Picker**: Search icons (`"snowflake"`, `"kayak"`, `"coffee"`, `"wine"`) in `Edit Labels… ▸ New Label…`.
 - [ ] **Storage Management (`Settings ▸ Storage`)**: Inspect the category chart and per-chat storage list, run `"Clear Media…"` on a test chat, and confirm message text remains intact while media tiles show `"Removed to free up space"`.
-- [ ] **The Five Provider Stubs**: Inspect `Settings ▸ AI`, `AIPane`, `Settings ▸ Courier Plan`, `Settings ▸ Integrations`, `Custom CSS`, `"Report a Problem…"` (`⌘⇧P`), `⌘⇧D` (`Talk to Type`), and `Translate` on a message.
+- [ ] **The Five Provider Stubs**: Inspect `Settings ▸ AI`, `AIPane`, `Settings ▸ Vitruvian Courier Plan`, `Settings ▸ Integrations`, `Custom CSS`, `"Report a Problem…"` (`⌘⇧P`), `⌘⇧D` (`Talk to Type`), and `Translate` on a message.
 
 ---
 
@@ -1584,29 +1584,29 @@ Command Bar (`⌘J`), Appearance & Themes (8 Courier colour presets, 8 procedura
 
 ### Automated verification (synthetic fixtures and loopback fake server only; no `*.google.com` network calls)
 
-- **Rust crate & C-ABI FFI (`apps/desktop/courier/gchat/src/lib.rs`, `apps/desktop/courier/gchat/src/ffi.rs`, `apps/desktop/courier/gchat/include/gchat.h`)**:
-  - `decode_pblite_dynamic` and `encode_pblite_dynamic` (`apps/desktop/courier/gchat/src/pblite.rs:23`, `apps/desktop/courier/gchat/src/pblite.rs:265`, verified by `fuzz_pblite_event_never_panics_on_deep_and_malformed_json` in `apps/desktop/courier/gchat/src/fuzz_tests.rs:243`).
-  - `ChunkParser` (`apps/desktop/courier/gchat/src/channel.rs:165`, verified by `fuzz_chunk_parser_never_panics_on_adversarial_and_random_inputs` in `apps/desktop/courier/gchat/src/fuzz_tests.rs:219`).
-  - `DomainCookieJar` (`apps/desktop/courier/gchat/src/cookies.rs:52`, verified by `fuzz_cookies_never_panics_on_arbitrary_headers_and_maps` in `apps/desktop/courier/gchat/src/fuzz_tests.rs:289`) requires the five verified cookies `COMPASS` and `OSID` on `chat.google.com` (`REQUIRED_CHAT_COOKIES` in `apps/desktop/courier/gchat/src/cookies.rs:12`) plus `SID`, `HSID`, and `SSID` on `.google.com` (`REQUIRED_GOOGLE_COOKIES` in `apps/desktop/courier/gchat/src/cookies.rs:13`), while keeping optional cookies (`OPTIONAL_GOOGLE_COOKIES` in `apps/desktop/courier/gchat/src/cookies.rs:14`) when present.
-  - `annotations_to_matrix_html` (`apps/desktop/courier/gchat/src/fmt/inbound.rs:314`) and `matrix_html_to_annotations` (`apps/desktop/courier/gchat/src/fmt/outbound.rs:742`, verified by `test_inbound_uninvite_mention_does_not_set_mention_all` in `apps/desktop/courier/gchat/src/fmt/inbound.rs:1012` and `fuzz_fmt_annotations_never_splits_surrogate_pairs_or_panics` in `apps/desktop/courier/gchat/src/fuzz_tests.rs:267`).
-  - `validate_url_for_role` (`apps/desktop/courier/gchat/src/netguard.rs:47`, verified by `TestProductionLibraryRejectsLoopbackAndNeverAttachesCookies` in `apps/desktop/courier/engine/internal/networks/gchat_link_test.go:23`) rejects loopback and private IP ranges in production while allowing loopback only under the `test-loopback` test build (`apps/desktop/courier/engine/internal/gchat/loopback_test.go:13`).
-- **Go `bridgev2` connector (`apps/desktop/courier/engine/internal/gchat/connector.go`, `apps/desktop/courier/engine/internal/gchat/rooms.go`, `apps/desktop/courier/engine/internal/gchat/pb/helpers.go`)**:
-  - Cookie login and session validation (`Connector.CreateLogin` and `CookieLogin.SubmitCookies` in `apps/desktop/courier/engine/internal/gchat/connector.go:258`, `apps/desktop/courier/engine/internal/gchat/connector.go:306`, verified by `TestGChatCookieLoginFlowCreatesUserLogin` in `apps/desktop/courier/engine/internal/gchat/gchat_test.go:68`).
-  - Initial `paginated_world` sync, `catch_up_user` / `catch_up_group`, and `list_topics` / `list_messages` backfill (`Client.syncWorld`, `Client.FetchMessages`, `Client.catchUpAfterReconnect`, and `Client.catchUpGroup` in `apps/desktop/courier/engine/internal/gchat/sync.go:178`, `apps/desktop/courier/engine/internal/gchat/sync.go:457`, `apps/desktop/courier/engine/internal/gchat/sync.go:603`, `apps/desktop/courier/engine/internal/gchat/sync.go:665`, verified by `TestPaginatedWorldSyncsDMsAndSpacesWithThreadedMetadata`, `TestBackfillUsesListTopicsForSpacesAndListMessagesForDMs`, `TestCatchUpUserAdvancesUserRevisionWithoutOverwritingGroupRevision`, and `TestEndToEndConnectSyncStreamReconnectCatchUpAndBadCredentials` in `apps/desktop/courier/engine/internal/gchat/gchat_test.go:278`, `apps/desktop/courier/engine/internal/gchat/gchat_test.go:419`, `apps/desktop/courier/engine/internal/gchat/gchat_test.go:502`, `apps/desktop/courier/engine/internal/gchat/gchat_test.go:804`).
-  - Outbound and inbound messages, threaded vs flat Spaces, edits, unsend, reactions, typing, and read receipts (`Client.HandleMatrixMessage`, `Client.HandleMatrixEdit`, `Client.HandleMatrixMessageRemove`, `Client.HandleMatrixReaction`, `Client.HandleMatrixTyping`, `Client.HandleMatrixReadReceipt` in `apps/desktop/courier/engine/internal/gchat/send.go:173`, verified by `TestSendNewTopicInThreadedSpaceAndCreateMessageInThreadOrDM`, `TestSendEditUnsendReactionReceiptAndTyping`, and `TestAdvertisedCapabilitiesAllHaveWorkingHandlers` in `apps/desktop/courier/engine/internal/gchat/gchat_test.go:1180`, `apps/desktop/courier/engine/internal/gchat/gchat_test.go:1459`, `apps/desktop/courier/engine/internal/gchat/gchat_test.go:2200`).
-  - Media upload and authenticated download (`Client.uploadMedia` and `Client.downloadAttachment` in `apps/desktop/courier/engine/internal/gchat/media.go:42`, `apps/desktop/courier/engine/internal/gchat/media.go:56`, verified by `TestMultiAttachmentInboundUsesZeroPaddedPartIDsAndOutboundUploadsViaScotty` and `TestInboundAttachmentFailureAndHTMLBecomePlaceholdersWithoutAbortingBatchAndExtractsField15AndAvatar` in `apps/desktop/courier/engine/internal/gchat/gchat_test.go:2774`, `apps/desktop/courier/engine/internal/gchat/gchat_test.go:3102`).
-  - DM creation by Gaia ID or email (`Client.ResolveIdentifier`, `Client.CreateChatWithGhost`, and `Client.createDM` in `apps/desktop/courier/engine/internal/gchat/rooms.go:48`, `apps/desktop/courier/engine/internal/gchat/rooms.go:89`, `apps/desktop/courier/engine/internal/gchat/rooms.go:104`, plus `Actions.CanLookupEmail` in `apps/desktop/courier/engine/internal/actions/chatstate.go:122`, verified by `TestResolveIdentifierAndCreateDMByGaiaIDOrEmail` and `TestStartDMByEmailEndToEndThroughRPCActionsAndFakeServer` in `apps/desktop/courier/engine/internal/gchat/gchat_test.go:3302`, `apps/desktop/courier/engine/internal/gchat/gchat_test.go:4100`, `TestCanLookupEmailFollowsConnectorAndClient` in `apps/desktop/courier/engine/internal/actions/chatstate_test.go:291`, and `InboxModelTests.testStartNewChatByEmailEndToEndFromAppModelThroughEngineToFakeServerAndInbox` in `apps/desktop/courier/app/Tests/CourierCoreTests/InboxModelTests.swift:1316`), while Space creation (`can_create_group`) remains unadvertised per spec §13.
-  - Space rename and description update preserving `guidelines` (`Client.HandleMatrixRoomName` and `Client.HandleMatrixRoomTopic` in `apps/desktop/courier/engine/internal/gchat/rooms.go:275`, `apps/desktop/courier/engine/internal/gchat/rooms.go:308`, verified by `TestSetChatNameAndSetChatTopicPreservesSpaceGuidelines` in `apps/desktop/courier/engine/internal/gchat/gchat_test.go:3449`).
-  - Permanent mute/unmute sync (timed mute refused), invite accept/decline, Space membership (`create_membership` / `remove_memberships`), and DM hide (`hide_group`) (`Client.HandleMute`, `Client.HandleMatrixMembership`, `Client.HandleMatrixDeleteChat` in `apps/desktop/courier/engine/internal/gchat/rooms.go:380`, `apps/desktop/courier/engine/internal/gchat/rooms.go:422`, `apps/desktop/courier/engine/internal/gchat/rooms.go:521`, verified by `TestMuteSyncAndMembershipAndHideGroup` in `apps/desktop/courier/engine/internal/gchat/gchat_test.go:3604` and `TestGroupAndChatManagementTableMatchesTheBridges` in `apps/desktop/courier/engine/internal/networks/networks_test.go:724`).
-  - Log scrubbing (`logscrub.Redact` in `apps/desktop/courier/engine/internal/logscrub/logscrub.go:280-287`, verified by `TestLogscrubRedactsGoogleChatCookiesTokensGaiaIDsAndWebChannelURLs` in `apps/desktop/courier/engine/internal/logscrub/bridge_test.go:179`).
-- **Swift macOS UI & capabilities (`apps/desktop/courier/app/Sources/CourierCore/LoginFlowModel.swift`, `apps/desktop/courier/app/Sources/CourierCore/ChatFeatures.swift`, `apps/desktop/courier/app/Sources/CourierCore/InboxModel.swift`, `apps/desktop/courier/app/Sources/Courier/SignInWindow.swift`)**:
+- **Rust crate & C-ABI FFI (`apps/desktop/vitruvian-courier/gchat/src/lib.rs`, `apps/desktop/vitruvian-courier/gchat/src/ffi.rs`, `apps/desktop/vitruvian-courier/gchat/include/gchat.h`)**:
+  - `decode_pblite_dynamic` and `encode_pblite_dynamic` (`apps/desktop/vitruvian-courier/gchat/src/pblite.rs:23`, `apps/desktop/vitruvian-courier/gchat/src/pblite.rs:265`, verified by `fuzz_pblite_event_never_panics_on_deep_and_malformed_json` in `apps/desktop/vitruvian-courier/gchat/src/fuzz_tests.rs:243`).
+  - `ChunkParser` (`apps/desktop/vitruvian-courier/gchat/src/channel.rs:165`, verified by `fuzz_chunk_parser_never_panics_on_adversarial_and_random_inputs` in `apps/desktop/vitruvian-courier/gchat/src/fuzz_tests.rs:219`).
+  - `DomainCookieJar` (`apps/desktop/vitruvian-courier/gchat/src/cookies.rs:52`, verified by `fuzz_cookies_never_panics_on_arbitrary_headers_and_maps` in `apps/desktop/vitruvian-courier/gchat/src/fuzz_tests.rs:289`) requires the five verified cookies `COMPASS` and `OSID` on `chat.google.com` (`REQUIRED_CHAT_COOKIES` in `apps/desktop/vitruvian-courier/gchat/src/cookies.rs:12`) plus `SID`, `HSID`, and `SSID` on `.google.com` (`REQUIRED_GOOGLE_COOKIES` in `apps/desktop/vitruvian-courier/gchat/src/cookies.rs:13`), while keeping optional cookies (`OPTIONAL_GOOGLE_COOKIES` in `apps/desktop/vitruvian-courier/gchat/src/cookies.rs:14`) when present.
+  - `annotations_to_matrix_html` (`apps/desktop/vitruvian-courier/gchat/src/fmt/inbound.rs:314`) and `matrix_html_to_annotations` (`apps/desktop/vitruvian-courier/gchat/src/fmt/outbound.rs:742`, verified by `test_inbound_uninvite_mention_does_not_set_mention_all` in `apps/desktop/vitruvian-courier/gchat/src/fmt/inbound.rs:1012` and `fuzz_fmt_annotations_never_splits_surrogate_pairs_or_panics` in `apps/desktop/vitruvian-courier/gchat/src/fuzz_tests.rs:267`).
+  - `validate_url_for_role` (`apps/desktop/vitruvian-courier/gchat/src/netguard.rs:47`, verified by `TestProductionLibraryRejectsLoopbackAndNeverAttachesCookies` in `apps/desktop/vitruvian-courier/engine/internal/networks/gchat_link_test.go:23`) rejects loopback and private IP ranges in production while allowing loopback only under the `test-loopback` test build (`apps/desktop/vitruvian-courier/engine/internal/gchat/loopback_test.go:13`).
+- **Go `bridgev2` connector (`apps/desktop/vitruvian-courier/engine/internal/gchat/connector.go`, `apps/desktop/vitruvian-courier/engine/internal/gchat/rooms.go`, `apps/desktop/vitruvian-courier/engine/internal/gchat/pb/helpers.go`)**:
+  - Cookie login and session validation (`Connector.CreateLogin` and `CookieLogin.SubmitCookies` in `apps/desktop/vitruvian-courier/engine/internal/gchat/connector.go:258`, `apps/desktop/vitruvian-courier/engine/internal/gchat/connector.go:306`, verified by `TestGChatCookieLoginFlowCreatesUserLogin` in `apps/desktop/vitruvian-courier/engine/internal/gchat/gchat_test.go:68`).
+  - Initial `paginated_world` sync, `catch_up_user` / `catch_up_group`, and `list_topics` / `list_messages` backfill (`Client.syncWorld`, `Client.FetchMessages`, `Client.catchUpAfterReconnect`, and `Client.catchUpGroup` in `apps/desktop/vitruvian-courier/engine/internal/gchat/sync.go:178`, `apps/desktop/vitruvian-courier/engine/internal/gchat/sync.go:457`, `apps/desktop/vitruvian-courier/engine/internal/gchat/sync.go:603`, `apps/desktop/vitruvian-courier/engine/internal/gchat/sync.go:665`, verified by `TestPaginatedWorldSyncsDMsAndSpacesWithThreadedMetadata`, `TestBackfillUsesListTopicsForSpacesAndListMessagesForDMs`, `TestCatchUpUserAdvancesUserRevisionWithoutOverwritingGroupRevision`, and `TestEndToEndConnectSyncStreamReconnectCatchUpAndBadCredentials` in `apps/desktop/vitruvian-courier/engine/internal/gchat/gchat_test.go:278`, `apps/desktop/vitruvian-courier/engine/internal/gchat/gchat_test.go:419`, `apps/desktop/vitruvian-courier/engine/internal/gchat/gchat_test.go:502`, `apps/desktop/vitruvian-courier/engine/internal/gchat/gchat_test.go:804`).
+  - Outbound and inbound messages, threaded vs flat Spaces, edits, unsend, reactions, typing, and read receipts (`Client.HandleMatrixMessage`, `Client.HandleMatrixEdit`, `Client.HandleMatrixMessageRemove`, `Client.HandleMatrixReaction`, `Client.HandleMatrixTyping`, `Client.HandleMatrixReadReceipt` in `apps/desktop/vitruvian-courier/engine/internal/gchat/send.go:173`, verified by `TestSendNewTopicInThreadedSpaceAndCreateMessageInThreadOrDM`, `TestSendEditUnsendReactionReceiptAndTyping`, and `TestAdvertisedCapabilitiesAllHaveWorkingHandlers` in `apps/desktop/vitruvian-courier/engine/internal/gchat/gchat_test.go:1180`, `apps/desktop/vitruvian-courier/engine/internal/gchat/gchat_test.go:1459`, `apps/desktop/vitruvian-courier/engine/internal/gchat/gchat_test.go:2200`).
+  - Media upload and authenticated download (`Client.uploadMedia` and `Client.downloadAttachment` in `apps/desktop/vitruvian-courier/engine/internal/gchat/media.go:42`, `apps/desktop/vitruvian-courier/engine/internal/gchat/media.go:56`, verified by `TestMultiAttachmentInboundUsesZeroPaddedPartIDsAndOutboundUploadsViaScotty` and `TestInboundAttachmentFailureAndHTMLBecomePlaceholdersWithoutAbortingBatchAndExtractsField15AndAvatar` in `apps/desktop/vitruvian-courier/engine/internal/gchat/gchat_test.go:2774`, `apps/desktop/vitruvian-courier/engine/internal/gchat/gchat_test.go:3102`).
+  - DM creation by Gaia ID or email (`Client.ResolveIdentifier`, `Client.CreateChatWithGhost`, and `Client.createDM` in `apps/desktop/vitruvian-courier/engine/internal/gchat/rooms.go:48`, `apps/desktop/vitruvian-courier/engine/internal/gchat/rooms.go:89`, `apps/desktop/vitruvian-courier/engine/internal/gchat/rooms.go:104`, plus `Actions.CanLookupEmail` in `apps/desktop/vitruvian-courier/engine/internal/actions/chatstate.go:122`, verified by `TestResolveIdentifierAndCreateDMByGaiaIDOrEmail` and `TestStartDMByEmailEndToEndThroughRPCActionsAndFakeServer` in `apps/desktop/vitruvian-courier/engine/internal/gchat/gchat_test.go:3302`, `apps/desktop/vitruvian-courier/engine/internal/gchat/gchat_test.go:4100`, `TestCanLookupEmailFollowsConnectorAndClient` in `apps/desktop/vitruvian-courier/engine/internal/actions/chatstate_test.go:291`, and `InboxModelTests.testStartNewChatByEmailEndToEndFromAppModelThroughEngineToFakeServerAndInbox` in `apps/desktop/vitruvian-courier/app/Tests/VitruvianCourierCoreTests/InboxModelTests.swift:1316`), while Space creation (`can_create_group`) remains unadvertised per spec §13.
+  - Space rename and description update preserving `guidelines` (`Client.HandleMatrixRoomName` and `Client.HandleMatrixRoomTopic` in `apps/desktop/vitruvian-courier/engine/internal/gchat/rooms.go:275`, `apps/desktop/vitruvian-courier/engine/internal/gchat/rooms.go:308`, verified by `TestSetChatNameAndSetChatTopicPreservesSpaceGuidelines` in `apps/desktop/vitruvian-courier/engine/internal/gchat/gchat_test.go:3449`).
+  - Permanent mute/unmute sync (timed mute refused), invite accept/decline, Space membership (`create_membership` / `remove_memberships`), and DM hide (`hide_group`) (`Client.HandleMute`, `Client.HandleMatrixMembership`, `Client.HandleMatrixDeleteChat` in `apps/desktop/vitruvian-courier/engine/internal/gchat/rooms.go:380`, `apps/desktop/vitruvian-courier/engine/internal/gchat/rooms.go:422`, `apps/desktop/vitruvian-courier/engine/internal/gchat/rooms.go:521`, verified by `TestMuteSyncAndMembershipAndHideGroup` in `apps/desktop/vitruvian-courier/engine/internal/gchat/gchat_test.go:3604` and `TestGroupAndChatManagementTableMatchesTheBridges` in `apps/desktop/vitruvian-courier/engine/internal/networks/networks_test.go:724`).
+  - Log scrubbing (`logscrub.Redact` in `apps/desktop/vitruvian-courier/engine/internal/logscrub/logscrub.go:280-287`, verified by `TestLogscrubRedactsGoogleChatCookiesTokensGaiaIDsAndWebChannelURLs` in `apps/desktop/vitruvian-courier/engine/internal/logscrub/bridge_test.go:179`).
+- **Swift macOS UI & capabilities (`apps/desktop/vitruvian-courier/app/Sources/VitruvianCourierCore/LoginFlowModel.swift`, `apps/desktop/vitruvian-courier/app/Sources/VitruvianCourierCore/ChatFeatures.swift`, `apps/desktop/vitruvian-courier/app/Sources/VitruvianCourierCore/InboxModel.swift`, `apps/desktop/vitruvian-courier/app/Sources/VitruvianCourier/SignInWindow.swift`)**:
   - `NetworkNames.displayName` (`ChatFeatures.swift:22`), `NetworkAppearance.of` (`InboxPresentation.swift:145`), `StartNewChatDraft.isEmailAddress` (`InboxModel.swift:2149`), and `LoginFlowModel.offeredFlows` (`LoginFlowModel.swift:275`, `LoginFlowModel.swift:319`, verified by `ChatFeaturesTests`, `CookieCollectorTests`, `LoginFlowModelTests`, `InboxModelTests`, and `ViewSnapshotTests.testGoogleChatSignInWindowAndChatSnapshotsLightAndDark` in `ViewSnapshotTests.swift:4594`).
 
-### Owner's by-hand verification day (`apps/desktop/courier/engine/docs/gchat-by-hand.md`)
+### Owner's by-hand verification day (`apps/desktop/vitruvian-courier/engine/docs/gchat-by-hand.md`)
 
-Because automated tests never contact `*.google.com`, verify these 11 live-account checks by hand following `apps/desktop/courier/engine/docs/gchat-by-hand.md`:
+Because automated tests never contact `*.google.com`, verify these 11 live-account checks by hand following `apps/desktop/vitruvian-courier/engine/docs/gchat-by-hand.md`:
 
-- [ ] **Build and Install**: Run `bazel run --config=macos-app //apps/desktop/courier/app:install` and launch `/Applications/Courier.app`.
+- [ ] **Build and Install**: Run `bazel run --config=macos-app //apps/desktop/vitruvian-courier/app:install` and launch `/Applications/Vitruvian Courier.app`.
 - [ ] **Cookie Sign-In & Keychain Persistence**: Link Google Chat in `AddNetworkView` / `SignInWindowController`; verify `COMPASS`, `OSID`, `SID`, `HSID`, and `SSID` are collected, the window closes automatically, and the account displays as `Name (email)` and reconnects across app relaunch.
 - [ ] **Initial Sync (`paginated_world`)**: Confirm existing DMs and named Spaces populate with names, avatars, and unread state.
 - [ ] **Single-Page Backfill (`list_messages` & `list_topics`)**: Open a DM and a threaded Space and scroll up to verify single-page backfill.
@@ -1616,4 +1616,4 @@ Because automated tests never contact `*.google.com`, verify these 11 live-accou
 - [ ] **Read Receipts & Typing Indicators**: Verify read receipts and the 6-second typing indicator in both directions.
 - [ ] **Mute/Unmute, Space Rename & Description, and Start DM by Email**: Toggle mute/unmute, rename a Space, update a Space description (verifying Space `guidelines` remain intact), and start a new DM by email address.
 - [ ] **Mac Sleep/Wake (>2 Minutes) Reconnect & Catch-Up Sync**: Put the Mac to sleep for >2 minutes, wake it, and verify WebChannel reconnects and runs `catch_up_user` / `catch_up_group` without missing messages sent while asleep.
-- [ ] **Scrubbed Log Inspection (`~/Library/Logs/Courier/`)**: Inspect `~/Library/Logs/Courier/` and `ProblemReportSheet` export and confirm zero cookie values, XSRF tokens, Gaia IDs, emails, or message bodies appear.
+- [ ] **Scrubbed Log Inspection (`~/Library/Logs/Vitruvian Courier/`)**: Inspect `~/Library/Logs/Vitruvian Courier/` and `ProblemReportSheet` export and confirm zero cookie values, XSRF tokens, Gaia IDs, emails, or message bodies appear.

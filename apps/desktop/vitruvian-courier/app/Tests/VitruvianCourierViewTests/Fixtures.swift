@@ -1,7 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import CourierCore
+import VitruvianCourierCore
 import Foundation
 
 /// Made-up chats and messages for the snapshots. No real names, numbers or messages.
@@ -66,7 +66,7 @@ enum Fixture {
         ])
     }
 
-    /// A bridge's call notice as the engine stores it: the bridge's English body, and Courier's reading beside it.
+    /// A bridge's call notice as the engine stores it: the bridge's English body, and Vitruvian Courier's reading beside it.
     static func callNote(_ id: String, mine: Bool, ts minutesAgo: Int, body: String, state: String,
                          media: String) -> Event {
         event(id, mine: mine, ts: minutesAgo, content: [

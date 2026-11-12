@@ -1,7 +1,7 @@
 # Media
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/engine/internal/media`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/engine/internal/media`.
 
 ## Interface
 - `[blurhash.go:EncodeBlurHash]`
@@ -28,4 +28,4 @@ Component package providing implementation for `apps/desktop/courier/engine/inte
 - [media.go:127]: `if errors.Is(err, fs.ErrNotExist) {`
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/engine/internal/media/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/engine/internal/media/...`

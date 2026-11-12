@@ -103,10 +103,10 @@ public enum StderrExportFilter {
             return scrubJSONObjectLine(stripped)
         }
 
-        // 2. Startup error prefix ("courier-engine: ...")
-        if trimmed.hasPrefix("courier-engine: ") {
-            let suffix = String(trimmed.dropFirst("courier-engine: ".count))
-            return "courier-engine: " + scrubPath(suffix)
+        // 2. Startup error prefix ("vitruvian-courier-engine: ...")
+        if trimmed.hasPrefix("vitruvian-courier-engine: ") {
+            let suffix = String(trimmed.dropFirst("vitruvian-courier-engine: ".count))
+            return "vitruvian-courier-engine: " + scrubPath(suffix)
         }
 
         // 3. Panic / fatal header
@@ -206,17 +206,17 @@ public enum StderrExportFilter {
     // MARK: - Private Helpers
 
     private static func cleanSourcePath(_ path: String) -> String {
-        for marker in ["/go/pkg/mod/", "/external/", "github.com/VitruvianSoftware/courier/"] {
+        for marker in ["/go/pkg/mod/", "/external/", "github.com/VitruvianSoftware/vitruvian-courier/"] {
             if let range = path.range(of: marker) {
-                if marker == "github.com/VitruvianSoftware/courier/" {
+                if marker == "github.com/VitruvianSoftware/vitruvian-courier/" {
                     return String(path[range.lowerBound...])
                 }
                 return String(path[range.upperBound...])
             }
         }
-        if let range = path.range(of: "apps/desktop/courier/") {
+        if let range = path.range(of: "apps/desktop/vitruvian-courier/") {
             let suffix = String(path[range.upperBound...])
-            return "github.com/VitruvianSoftware/courier/" + suffix
+            return "github.com/VitruvianSoftware/vitruvian-courier/" + suffix
         }
         return (path as NSString).lastPathComponent
     }
@@ -503,7 +503,7 @@ public struct UnavailableReportUploader: ReportUploader {
     public init() {}
     public var isAvailable: Bool { false }
     public var unavailableReason: String {
-        String(localized: "Direct report upload isn’t available yet in Courier. Save a scrubbed problem report on this Mac instead.")
+        String(localized: "Direct report upload isn’t available yet in Vitruvian Courier. Save a scrubbed problem report on this Mac instead.")
     }
     public func upload(bundleURL _: URL, description _: String) async -> ReportUploadDisposition {
         .unavailable(reason: unavailableReason)
@@ -624,7 +624,7 @@ public final class ProblemReportModel: ObservableObject {
     /// Builds and writes the local diagnostic bundle off the main thread so the UI never blocks.
     public func saveBundle(to destinationURL: URL) async {
         guard !AppLockGate.shared.isLocked else {
-            errorText = "Courier is locked."
+            errorText = "Vitruvian Courier is locked."
             return
         }
         isSaving = true
@@ -646,7 +646,7 @@ public final class ProblemReportModel: ObservableObject {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd-HHmmss"
-        return "courier-problem-report-\(formatter.string(from: now)).zip"
+        return "vitruvian-courier-problem-report-\(formatter.string(from: now)).zip"
     }
 
     // MARK: - Payload Construction & Off-Main-Thread Writer
@@ -728,7 +728,7 @@ public final class ProblemReportModel: ObservableObject {
         }
 
         if destinationURL.pathExtension.lowercased() == "zip" {
-            let stagingRoot = fm.temporaryDirectory.appendingPathComponent("courier-report-staging-\(UUID().uuidString)", isDirectory: true)
+            let stagingRoot = fm.temporaryDirectory.appendingPathComponent("vitruvian-courier-report-staging-\(UUID().uuidString)", isDirectory: true)
             let bundleFolder = stagingRoot.appendingPathComponent(destinationURL.deletingPathExtension().lastPathComponent, isDirectory: true)
             defer { try? fm.removeItem(at: stagingRoot) }
             try writeFiles(bundleFolder)

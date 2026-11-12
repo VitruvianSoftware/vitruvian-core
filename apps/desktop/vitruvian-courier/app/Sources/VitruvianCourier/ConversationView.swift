@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -1031,7 +1031,7 @@ private struct ProblemBar: View {
 
     private var text: String {
         switch problem {
-        case .loadFailed: String(localized: "Courier could not read the latest messages.")
+        case .loadFailed: String(localized: "Vitruvian Courier could not read the latest messages.")
         case let .actionFailed(reason): reason
         case .messageGone: String(localized: "That message isn’t in this chat any more.")
         }

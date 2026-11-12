@@ -1,7 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// vitruvian-courier-engine is the helper the Courier app runs: it serves the app protocol on a Unix socket in the data
+// vitruvian-courier-engine is the helper the Vitruvian Courier app runs: it serves the app protocol on a Unix socket in the data
 // directory as soon as its store is open, and starts every network's bridge over that store behind it.
 //
 // `vitruvian-courier-engine mcp-stdio [--port N]` is something else: an MCP server on stdin and stdout that forwards to the

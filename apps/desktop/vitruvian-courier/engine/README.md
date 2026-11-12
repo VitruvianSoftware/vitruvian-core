@@ -1,7 +1,7 @@
 # Engine
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/engine`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/engine`.
 
 ## Interface
 - `[gomod.go:GoMod]`
@@ -15,4 +15,4 @@ Component package providing implementation for `apps/desktop/courier/engine`.
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/engine/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/engine/...`

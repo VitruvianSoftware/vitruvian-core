@@ -18,7 +18,7 @@ import (
 // MaxPollQuestion is the most characters a poll's question may have.
 const MaxPollQuestion = 300
 
-// pollKindDisclosed is a poll whose results everyone sees as they come in (MSC3381). Courier makes no other kind:
+// pollKindDisclosed is a poll whose results everyone sees as they come in (MSC3381). Vitruvian Courier makes no other kind:
 // no bridge takes hidden results.
 const pollKindDisclosed = "org.matrix.msc3381.poll.disclosed"
 

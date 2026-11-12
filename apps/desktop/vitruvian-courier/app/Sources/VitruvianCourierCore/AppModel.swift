@@ -139,7 +139,7 @@ public final class AppModel: ObservableObject {
     public nonisolated static let sendHeldAtQuitTimeout: TimeInterval = 5
 
     /// Quitting: hands every chat's held (undo send) messages to the engine now, and waits for its answer, at most
-    /// `timeout` seconds, so a stuck engine can't keep Courier from quitting. Never fire-and-forget: a call dropped as
+    /// `timeout` seconds, so a stuck engine can't keep Vitruvian Courier from quitting. Never fire-and-forget: a call dropped as
     /// the engine stops would leave them to fail as "not connected".
     ///
     /// message.sendHeld claims every held message at once, then hands each to its network, which may wait (up to

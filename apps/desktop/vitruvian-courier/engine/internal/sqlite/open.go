@@ -1,7 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package sqlite opens courier's SQLite files on the cgo driver the bridge stack expects.
+// Package sqlite opens Vitruvian Courier's SQLite files on the cgo driver the bridge stack expects.
 package sqlite
 
 import (

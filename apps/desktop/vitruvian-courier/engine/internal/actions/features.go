@@ -59,7 +59,7 @@ type PollFeatures struct {
 }
 
 // DisappearingFeatures is the disappearing-message timer a chat takes. Type is when the timer starts,
-// "after_send" or "after_read"; Timers are the lengths Courier offers (besides off).
+// "after_send" or "after_read"; Timers are the lengths Vitruvian Courier offers (besides off).
 type DisappearingFeatures struct {
 	Type   string          `json:"type"`
 	Timers []time.Duration `json:"timers_ms"`
@@ -174,7 +174,7 @@ var deleteLeavesGroup = map[string]bool{
 }
 
 // groupDeleteNeedsEveryone lists the bridges whose HandleMatrixDeleteChat refuses group or channel deletion unless
-// DeleteForEveryone is set (which Courier never sets):
+// DeleteForEveryone is set (which Vitruvian Courier never sets):
 //   - mautrix-telegram v0.2609.0 pkg/connector/handlematrix.go:1176-1211 returns an error for PeerTypeChat and
 //     PeerTypeChannel when !msg.Content.DeleteForEveryone.
 var groupDeleteNeedsEveryone = map[string]bool{
@@ -182,7 +182,7 @@ var groupDeleteNeedsEveryone = map[string]bool{
 	"gchat":    true,
 }
 
-// SignalTimers are the disappearing-message lengths Courier offers where the bridge advertises a timer type but no
+// SignalTimers are the disappearing-message lengths Vitruvian Courier offers where the bridge advertises a timer type but no
 // list (Signal: after_read, any length). Inferred (inventory 01 §5): the caps allow any length, so these are the
 // choices Signal's own apps offer.
 var SignalTimers = []time.Duration{30 * time.Second, 5 * time.Minute, time.Hour, 8 * time.Hour, 24 * time.Hour, 7 * 24 * time.Hour, 28 * 24 * time.Hour} // Inferred

@@ -47,7 +47,7 @@ type File struct {
 	MsgType  event.MessageType
 	Body     string
 	FileName string
-	URL      string // the content URI in courier's media store
+	URL      string // the content URI in Vitruvian Courier's media store
 	MimeType string
 	Size     int
 	Width    int

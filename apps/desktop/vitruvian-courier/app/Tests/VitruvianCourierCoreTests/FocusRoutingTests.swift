@@ -3,9 +3,9 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
-/// An MCP client's focus_app in the app: it brings Courier forward at the chat, fills the composer with the draft
+/// An MCP client's focus_app in the app: it brings Vitruvian Courier forward at the chat, fills the composer with the draft
 /// and the file (whose chip shows its name), and never sends. A chat the app can't find, or a file it can't attach,
 /// leaves it on the inbox with nothing filled in. All data here is made up.
 @MainActor
@@ -37,7 +37,7 @@ final class FocusRoutingTests: XCTestCase {
     }
 
     private func makeFile(_ name: String) throws -> URL {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("courier-focus-\(UUID().uuidString)")
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-courier-focus-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let url = dir.appendingPathComponent(name)
         try Data("made-up file".utf8).write(to: url)
@@ -99,7 +99,7 @@ final class FocusRoutingTests: XCTestCase {
         var activated = 0
         await router(h, known: []) { activated += 1 }
             .route(FocusParams(chatID: "!gone", draftText: "Example draft"))
-        XCTAssertEqual(activated, 1, "Courier still comes forward")
+        XCTAssertEqual(activated, 1, "Vitruvian Courier still comes forward")
         XCTAssertNil(h.app.selectedRoomID, "no chat opens")
         try await h.open("!a")
         XCTAssertEqual(h.conversation.composer.text, "", "no draft went anywhere")
@@ -130,7 +130,7 @@ final class FocusRoutingTests: XCTestCase {
         withExtendedLifetime(router) {}
     }
 
-    /// The engine hears whether Courier is locked, in order, so focus_app can tell its client the truth.
+    /// The engine hears whether Vitruvian Courier is locked, in order, so focus_app can tell its client the truth.
     func testTheEngineIsToldWhenCourierLocksAndUnlocks() async throws {
         struct AlwaysBiometric: BiometricAuthService {
             func canEvaluateBiometricsOrWatch() -> Bool { true }

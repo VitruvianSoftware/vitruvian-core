@@ -1,7 +1,7 @@
 # Speech
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/app/Sources/CourierCore/AI/Speech`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/app/Sources/VitruvianCourierCore/AI/Speech`.
 
 ## Interface
 - `[AppleSpeechEngine.swift:AppleSpeechAvailability]`
@@ -30,4 +30,4 @@ Component package providing implementation for `apps/desktop/courier/app/Sources
 - [WhisperClient.swift:128]: `String(localized: "OpenAI transcription failed (HTTP \(httpResponse.statusCod...`
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/app/Sources/CourierCore/AI/Speech/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/app/Sources/VitruvianCourierCore/AI/Speech/...`

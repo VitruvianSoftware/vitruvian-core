@@ -1,7 +1,7 @@
 # Gchat
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/engine/internal/gchat`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/engine/internal/gchat`.
 
 ## Interface
 - `[client.go:Client]`
@@ -43,4 +43,4 @@ Component package providing implementation for `apps/desktop/courier/engine/inte
 - [sync.go:395]: `rows, err := c.UserLogin.Bridge.DB.Query(ctx, `SELECT id, name FROM portal WH...`
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/engine/internal/gchat/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/engine/internal/gchat/...`

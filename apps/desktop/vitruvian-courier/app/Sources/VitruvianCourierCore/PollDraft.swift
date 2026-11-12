@@ -4,7 +4,7 @@
 import Foundation
 
 /// A poll being written in the "New Poll" window (01 §6): its question, its options and whether people may choose
-/// more than one. What it says is wrong is what the engine would refuse (actions.CreatePoll), in Courier's words, so
+/// more than one. What it says is wrong is what the engine would refuse (actions.CreatePoll), in Vitruvian Courier's words, so
 /// a poll that can't go is never sent.
 ///
 /// The engine trims the question and each option, counts characters as Unicode scalars (Go's runes), allows the

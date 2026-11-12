@@ -1,7 +1,7 @@
 # Seed
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/engine/internal/seed`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/engine/internal/seed`.
 
 ## Interface
 - `[seed.go:Marker]`
@@ -31,4 +31,4 @@ Component package providing implementation for `apps/desktop/courier/engine/inte
 - [seed.go:356]: `return os.WriteFile(filepath.Join(dataDir, PlayedFile), []byte(body), 0o600)`
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/engine/internal/seed/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/engine/internal/seed/...`

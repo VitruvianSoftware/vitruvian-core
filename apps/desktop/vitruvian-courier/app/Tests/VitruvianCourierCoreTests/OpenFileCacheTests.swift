@@ -4,7 +4,7 @@
 import Darwin
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// A received file has no name or extension on disk; the copy made to open it has both, and is quarantined.
 final class OpenFileCacheTests: XCTestCase {
@@ -12,7 +12,7 @@ final class OpenFileCacheTests: XCTestCase {
 
     override func setUpWithError() throws {
         directory = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("courier-open-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("vitruvian-courier-open-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     }
 

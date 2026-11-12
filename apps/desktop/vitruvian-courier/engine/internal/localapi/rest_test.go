@@ -24,7 +24,7 @@ import (
 
 // HomeSpeaker (apps/desktop/home-speaker, BeeperClient.swift) reads GET /v1/accounts and GET /v1/messages/search.
 // The functions below port its reading of the answers, rule for rule (parseAccounts, parseSearch, shouldAnnounce,
-// spokenText, allMessages's paging), so these tests hold Courier's answers to what HomeSpeaker actually does with
+// spokenText, allMessages's paging), so these tests hold Vitruvian Courier's answers to what HomeSpeaker actually does with
 // them. A change on either side that breaks the other should break here: keep them in step with the Swift.
 
 type hsAccount struct{ accountID, bridgeType, network, userID string }
@@ -411,7 +411,7 @@ func TestRESTSearchReadsAsHomeSpeakerReadsIt(t *testing.T) {
 	}, spoken, "direct messages and the group messages that mention me; not the group's other chatter")
 
 	// Without sender=others, includeMuted=false and excludeLowPriority, those come back too: the filters are
-	// Courier's, not HomeSpeaker's.
+	// Vitruvian Courier's, not HomeSpeaker's.
 	all := searchPage(t, w.world, secret, url.Values{"dateAfter": {w.start.UTC().Format(time.RFC3339Nano)}, "excludeLowPriority": {"false"}})
 	var ids []string
 	for _, m := range all.messages {

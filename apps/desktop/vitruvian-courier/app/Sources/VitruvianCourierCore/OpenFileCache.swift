@@ -11,9 +11,9 @@ import UniformTypeIdentifiers
 ///
 /// The engine keeps a received file under its content's hash, with no name and no extension (`<dir>/ab/<sha256>`),
 /// so the system cannot tell which app opens it. This makes a copy under the file's real name in a folder of
-/// Courier's cache (a clone on APFS, so it costs no space), marks the copy as downloaded from elsewhere so
+/// Vitruvian Courier's cache (a clone on APFS, so it costs no space), marks the copy as downloaded from elsewhere so
 /// Gatekeeper still checks the kinds of file that can run, and gives back that copy. The cache is emptied when
-/// Courier starts.
+/// Vitruvian Courier starts.
 public struct OpenFileCache: Sendable {
     /// The longest a file's name is made, in bytes of UTF-8, extension included. (A folder entry can be 255.)
     public static let longestNameBytes = 200
@@ -122,7 +122,7 @@ public struct OpenFileCache: Sendable {
         var values = URLResourceValues()
         values.quarantineProperties = [
             kLSQuarantineTypeKey as String: kLSQuarantineTypeOtherDownload as String,
-            kLSQuarantineAgentNameKey as String: "Courier",
+            kLSQuarantineAgentNameKey as String: "Vitruvian Courier",
         ]
         var target = file
         try target.setResourceValues(values)

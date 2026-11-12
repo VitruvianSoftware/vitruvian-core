@@ -1,7 +1,7 @@
-# Courier
+# Vitruvian Courier
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/app/Sources/Courier`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/app/Sources/VitruvianCourier`.
 
 ## Interface
 - `[AIPane.swift:AIPane]`
@@ -41,4 +41,4 @@ Component package providing implementation for `apps/desktop/courier/app/Sources
 - [EditSpacesWindow.swift:45]: `let query = search.trimmingCharacters(in: .whitespaces)`
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/app/Sources/Courier/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/app/Sources/VitruvianCourier/...`

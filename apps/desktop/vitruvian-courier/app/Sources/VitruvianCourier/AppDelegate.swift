@@ -3,10 +3,10 @@
 
 import AppKit
 import Combine
-import CourierCore
+import VitruvianCourierCore
 
 /// Owns the app's model, and so the engine: starts it at launch and stops it before the app quits. Closing the
-/// window does not quit (spec §2): Courier keeps running, with its Dock icon, to keep receiving.
+/// window does not quit (spec §2): Vitruvian Courier keeps running, with its Dock icon, to keep receiving.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let model: AppModel
@@ -111,7 +111,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Whether the person is looking at the open chat: marking it read and keeping its notifications quiet use it.
     let attention: Attention
     let windowOpener = MainWindowOpener()
-    /// Settings ▸ About ▸ Updates and Courier ▸ Check for Updates…: checks at launch and daily, and installs a newer
+    /// Settings ▸ About ▸ Updates and Vitruvian Courier ▸ Check for Updates…: checks at launch and daily, and installs a newer
     /// release only once its checksum, signatures and notarization check out.
     let updates = UpdateModel(
         currentVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
@@ -134,7 +134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var dockBadge: DockBadge?
     private var statusItem: NSStatusItem?
     private var statusItemSubscriptions = Set<AnyCancellable>()
-    /// Held for as long as Courier runs: without it, App Nap slows a Courier whose window is closed or hidden, and
+    /// Held for as long as Vitruvian Courier runs: without it, App Nap slows a Vitruvian Courier whose window is closed or hidden, and
     /// the engine's messages, and so notifications, come late. It still lets the Mac sleep when idle.
     private var appNapActivity: NSObjectProtocol?
     /// "Also hide that you're typing?", for every way Incognito is turned on.
@@ -150,7 +150,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             launcher: FoundationProcessLauncher()
         )
         model = AppModel(supervisor: supervisor, lifecycle: lifecycle)
-        // Telegram's keys: Courier's own, packaged into the app, else the ones the person saved.
+        // Telegram's keys: Vitruvian Courier's own, packaged into the app, else the ones the person saved.
         let telegram = TelegramCredentialSource()
         // The person's plan, one for every model that asks (part 4.7 brings plans; until then, everything).
         let entitlement: any EntitlementProvider = AlwaysEntitled()
@@ -314,7 +314,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         appNapActivity = ProcessInfo.processInfo.beginActivity(
             options: .userInitiatedAllowingIdleSystemSleep,
-            reason: "Courier receives messages and shows notifications while its window is closed")
+            reason: "Vitruvian Courier receives messages and shows notifications while its window is closed")
         // The Dock shows the bundle's icon until the one chosen in Settings ▸ Appearance is put back.
         appearance.applySavedAppIcon()
         // Copies made to open received files last until the next launch.
@@ -414,10 +414,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let button = item.button else { return }
         let count = isLocked ? 0 : SpacesModel.badgeCount(of: spacesList, mode: badgeMode)
         let symbolName = count > 0 ? "bubble.left.and.bubble.right.fill" : "bubble.left.and.bubble.right"
-        let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: String(localized: "Courier"))
+        let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: String(localized: "Vitruvian Courier"))
         image?.isTemplate = true
         button.image = image
-        button.toolTip = String(localized: "Courier")
+        button.toolTip = String(localized: "Vitruvian Courier")
         button.target = self
         button.action = #selector(statusItemClicked(_:))
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -437,12 +437,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func buildStatusItemMenu() -> NSMenu {
-        let menu = NSMenu(title: "Courier")
+        let menu = NSMenu(title: "Vitruvian Courier")
         menu.autoenablesItems = false
 
         let unreadTitle: String
         if lifecycle.isLocked {
-            unreadTitle = String(localized: "Courier is locked")
+            unreadTitle = String(localized: "Vitruvian Courier is locked")
         } else {
             let count = SpacesModel.badgeCount(of: spaces.spaces, mode: dockPreferences.badgeMode)
             switch count {
@@ -489,7 +489,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         menu.addItem(.separator())
-        let openItem = NSMenuItem(title: String(localized: "Open Courier"), action: #selector(openCourierFromMenu(_:)), keyEquivalent: "")
+        let openItem = NSMenuItem(title: String(localized: "Open Vitruvian Courier"), action: #selector(openCourierFromMenu(_:)), keyEquivalent: "")
         openItem.target = self
         openItem.isEnabled = true
         menu.addItem(openItem)
@@ -508,14 +508,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         minItem.isEnabled = !lifecycle.isLocked
         menu.addItem(minItem)
 
-        let lockTitle = lifecycle.isLocked ? String(localized: "Unlock Courier…") : String(localized: "Lock App")
+        let lockTitle = lifecycle.isLocked ? String(localized: "Unlock Vitruvian Courier…") : String(localized: "Lock App")
         let lockItem = NSMenuItem(title: lockTitle, action: #selector(lockOrUnlockFromMenu(_:)), keyEquivalent: "")
         lockItem.target = self
         lockItem.isEnabled = true
         menu.addItem(lockItem)
 
         menu.addItem(.separator())
-        let quitItem = NSMenuItem(title: String(localized: "Quit Courier"), action: #selector(quitFromMenu(_:)), keyEquivalent: "")
+        let quitItem = NSMenuItem(title: String(localized: "Quit Vitruvian Courier"), action: #selector(quitFromMenu(_:)), keyEquivalent: "")
         applyMenuChord(hotkeys.primaryChord(for: "Quit App"), to: quitItem, enabled: !lifecycle.isLocked)
         quitItem.target = self
         quitItem.isEnabled = !lifecycle.isLocked
@@ -563,10 +563,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
         if lifecycle.isLocked {
-            let menu = NSMenu(title: "Courier")
+            let menu = NSMenu(title: "Vitruvian Courier")
             menu.autoenablesItems = false
             let unlockItem = NSMenuItem(
-                title: String(localized: "Unlock Courier…"),
+                title: String(localized: "Unlock Vitruvian Courier…"),
                 action: #selector(lockOrUnlockFromMenu(_:)),
                 keyEquivalent: ""
             )
@@ -584,7 +584,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         guard !dockMenu.isEmpty else { return nil }
 
-        let menu = NSMenu(title: "Courier")
+        let menu = NSMenu(title: "Vitruvian Courier")
         menu.autoenablesItems = false
 
         if !dockMenu.unreadChats.isEmpty {

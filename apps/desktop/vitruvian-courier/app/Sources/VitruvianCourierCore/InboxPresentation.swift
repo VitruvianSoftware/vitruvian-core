@@ -10,7 +10,7 @@ public enum PreviewLabel: Equatable, Sendable {
     case image, video, voiceNote, file, sticker, poll
     /// A note that the disappearing timer changed: the bridge's English is never shown (Ruling 40).
     case timerChange
-    /// A bridge's notice of a call, and whether the call was mine: said in Courier's words.
+    /// A bridge's notice of a call, and whether the call was mine: said in Vitruvian Courier's words.
     case call(CallNote, mine: Bool)
 }
 
@@ -318,7 +318,7 @@ public struct EmptyState: Equatable, Sendable {
 }
 
 /// Whether a change reaches the phone too, for the chats it is made to: every one's network takes it, none does,
-/// or some do. Courier's own state stays on this Mac either way.
+/// or some do. Vitruvian Courier's own state stays on this Mac either way.
 public enum SyncReach: Equatable, Sendable {
     case all, none, some
 

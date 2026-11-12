@@ -1,7 +1,7 @@
 # Entitlement
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/engine/internal/entitlement`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/engine/internal/entitlement`.
 
 ## Interface
 - `[entitlement.go:Feature]`
@@ -20,4 +20,4 @@ Component package providing implementation for `apps/desktop/courier/engine/inte
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/engine/internal/entitlement/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/engine/internal/entitlement/...`

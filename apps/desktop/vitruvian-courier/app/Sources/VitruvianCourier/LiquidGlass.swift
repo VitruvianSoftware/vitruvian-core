@@ -184,7 +184,7 @@ extension View {
         modifier(CourierSidebarList())
     }
 
-    /// With no chat open and the engine connected, hide the window's own title ("Courier", "Connected").
+    /// With no chat open and the engine connected, hide the window's own title ("Vitruvian Courier", "Connected").
     func courierEmptyChatToolbar(isConnected: Bool = true) -> some View {
         modifier(CourierEmptyChatToolbar(isConnected: isConnected))
     }
@@ -260,7 +260,7 @@ private struct CourierChatToolbar<Identity: View, Actions: View, Panes: View>: V
                     ToolbarItem(placement: .automatic) { panes }
                         .sharedBackgroundVisibility(.hidden)
                 }
-                // The chat's name is the title now: the window's own ("Courier", "Connected") would be a second one.
+                // The chat's name is the title now: the window's own ("Vitruvian Courier", "Connected") would be a second one.
                 .toolbar(removing: .title)
         } else {
             content

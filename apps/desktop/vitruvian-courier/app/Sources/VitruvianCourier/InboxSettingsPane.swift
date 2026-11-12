@@ -1,10 +1,10 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
-/// Courier ▸ Settings (`⌘,`): delegates to the two-column `SettingsWindow` shell across all 8 panes.
+/// Vitruvian Courier ▸ Settings (`⌘,`): delegates to the two-column `SettingsWindow` shell across all 8 panes.
 struct SettingsView: View {
     var appModel: AppModel? = nil
     let inbox: InboxModel
@@ -37,8 +37,8 @@ struct SettingsView: View {
         }
         return AppModel(
             supervisor: EngineSupervisor(
-                enginePath: "/nonexistent/courier-engine",
-                dataDir: FileManager.default.temporaryDirectory.appendingPathComponent("courier-settings"),
+                enginePath: "/nonexistent/vitruvian-courier-engine",
+                dataDir: FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-courier-settings"),
                 environment: [:],
                 launcher: FoundationProcessLauncher()
             ),

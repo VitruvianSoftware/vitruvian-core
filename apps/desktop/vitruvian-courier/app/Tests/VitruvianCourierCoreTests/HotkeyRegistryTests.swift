@@ -1,7 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import CourierCore
+import VitruvianCourierCore
 import Foundation
 import XCTest
 
@@ -261,8 +261,8 @@ final class HotkeyRegistryTests: XCTestCase {
 
     func testEveryHotkeyDefinitionResolvesToWiredCommandHandler() {
         let supervisor = EngineSupervisor(
-            enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",
-            dataDir: URL(fileURLWithPath: "/tmp/courier-test-hotkeys"),
+            enginePath: "/Applications/Vitruvian Courier.app/Contents/Helpers/vitruvian-courier-engine",
+            dataDir: URL(fileURLWithPath: "/tmp/vitruvian-courier-test-hotkeys"),
             environment: [:],
             launcher: FakeLauncher { _, _ in }
         )
@@ -396,7 +396,7 @@ final class HotkeyRegistryTests: XCTestCase {
         XCTAssertFalse(dispatcher.canPerform("Chat: Send File")) // No room open yet
 
         // Verify "Download Attachments" actually downloads the selected message's attachment (no empty {} closure).
-        let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent("courier-hotkey-dl-\(UUID().uuidString)")
+        let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent("vitruvian-courier-hotkey-dl-\(UUID().uuidString)")
         let sourceDir = tempRoot.appendingPathComponent("store", isDirectory: true)
         let downloadsDir = tempRoot.appendingPathComponent("downloads", isDirectory: true)
         try? FileManager.default.createDirectory(at: sourceDir, withIntermediateDirectories: true)
@@ -528,8 +528,8 @@ final class HotkeyRegistryTests: XCTestCase {
         }
         let entitlements = MutableEntitlements()
         let supervisor = EngineSupervisor(
-            enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",
-            dataDir: URL(fileURLWithPath: "/tmp/courier-test-hotkeys-locked"),
+            enginePath: "/Applications/Vitruvian Courier.app/Contents/Helpers/vitruvian-courier-engine",
+            dataDir: URL(fileURLWithPath: "/tmp/vitruvian-courier-test-hotkeys-locked"),
             environment: [:],
             launcher: FakeLauncher { _, _ in }
         )
@@ -742,8 +742,8 @@ final class HotkeyRegistryTests: XCTestCase {
         }
 
         let supervisor = EngineSupervisor(
-            enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",
-            dataDir: URL(fileURLWithPath: "/tmp/courier-test-hotkeys-dismiss"),
+            enginePath: "/Applications/Vitruvian Courier.app/Contents/Helpers/vitruvian-courier-engine",
+            dataDir: URL(fileURLWithPath: "/tmp/vitruvian-courier-test-hotkeys-dismiss"),
             environment: [:],
             launcher: FakeLauncher { _, _ in }
         )
@@ -1061,8 +1061,8 @@ final class HotkeyRegistryTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let supervisor = EngineSupervisor(
-            enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",
-            dataDir: URL(fileURLWithPath: "/tmp/courier-test-hotkeys-labels"),
+            enginePath: "/Applications/Vitruvian Courier.app/Contents/Helpers/vitruvian-courier-engine",
+            dataDir: URL(fileURLWithPath: "/tmp/vitruvian-courier-test-hotkeys-labels"),
             environment: [:],
             launcher: FakeLauncher { _, _ in }
         )
@@ -1080,21 +1080,21 @@ final class HotkeyRegistryTests: XCTestCase {
             _ = try await labels.create(title: "Work", color: 1, icon: "tag")
             XCTFail("LabelsModel.create must throw while app is locked")
         } catch let error as EngineError {
-            XCTAssertEqual(error, .rpc(.badValue, message: "Courier is locked", reason: "locked"))
+            XCTAssertEqual(error, .rpc(.badValue, message: "Vitruvian Courier is locked", reason: "locked"))
         }
 
         do {
             try await labels.update(1, title: "Personal", color: 2, icon: "star")
             XCTFail("LabelsModel.update must throw while app is locked")
         } catch let error as EngineError {
-            XCTAssertEqual(error, .rpc(.badValue, message: "Courier is locked", reason: "locked"))
+            XCTAssertEqual(error, .rpc(.badValue, message: "Vitruvian Courier is locked", reason: "locked"))
         }
 
         do {
             try await labels.delete(1)
             XCTFail("LabelsModel.delete must throw while app is locked")
         } catch let error as EngineError {
-            XCTAssertEqual(error, .rpc(.badValue, message: "Courier is locked", reason: "locked"))
+            XCTAssertEqual(error, .rpc(.badValue, message: "Vitruvian Courier is locked", reason: "locked"))
         }
     }
 
@@ -1117,8 +1117,8 @@ final class HotkeyRegistryTests: XCTestCase {
         var openedURLs: [URL] = []
 
         let supervisor = EngineSupervisor(
-            enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",
-            dataDir: URL(fileURLWithPath: "/tmp/courier-test-hotkeys-msgmenu"),
+            enginePath: "/Applications/Vitruvian Courier.app/Contents/Helpers/vitruvian-courier-engine",
+            dataDir: URL(fileURLWithPath: "/tmp/vitruvian-courier-test-hotkeys-msgmenu"),
             environment: [:],
             launcher: FakeLauncher { _, _ in }
         )
@@ -1275,8 +1275,8 @@ final class HotkeyRegistryTests: XCTestCase {
         XCTAssertTrue(lifecycle.isLocked, "SystemLifecycleModel must start locked when autoLockEnabled is stored on launch")
 
         let supervisor = EngineSupervisor(
-            enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",
-            dataDir: URL(fileURLWithPath: "/tmp/courier-test-launchlocked"),
+            enginePath: "/Applications/Vitruvian Courier.app/Contents/Helpers/vitruvian-courier-engine",
+            dataDir: URL(fileURLWithPath: "/tmp/vitruvian-courier-test-launchlocked"),
             environment: [:],
             launcher: FakeLauncher { _, _ in }
         )
@@ -1416,7 +1416,7 @@ final class HotkeyRegistryTests: XCTestCase {
             _ = try await conversation.exportChat(roomID: "!r1", to: exportURL)
             XCTFail("ConversationModel.exportChat must throw while locked")
         } catch let error as EngineError {
-            XCTAssertEqual(error, .rpc(.badValue, message: "Courier is locked", reason: "locked"))
+            XCTAssertEqual(error, .rpc(.badValue, message: "Vitruvian Courier is locked", reason: "locked"))
         }
     }
 
@@ -1509,8 +1509,8 @@ final class HotkeyRegistryTests: XCTestCase {
         XCTAssertEqual(contactsStore.requestAccessCount, 0, "ContactsBridge.loadMatch must be refused while locked")
 
         let supervisor = EngineSupervisor(
-            enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",
-            dataDir: URL(fileURLWithPath: "/tmp/courier-test-localsettings"),
+            enginePath: "/Applications/Vitruvian Courier.app/Contents/Helpers/vitruvian-courier-engine",
+            dataDir: URL(fileURLWithPath: "/tmp/vitruvian-courier-test-localsettings"),
             environment: [:],
             launcher: FakeLauncher { _, _ in }
         )

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 
 /// Settings ▸ Messages (inventory 02 §1.2): the composer's settings, one row each, then privacy (Incognito, typing),

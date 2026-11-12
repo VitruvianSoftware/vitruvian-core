@@ -3,11 +3,11 @@
 
 import Foundation
 
-/// Owns the courier-engine child process: starts it, waits for its ready line, says hello, and when it goes away
+/// Owns the vitruvian-courier-engine child process: starts it, waits for its ready line, says hello, and when it goes away
 /// starts it again after a back-off. One engine at a time; the client of the engine that is up is `client`.
 ///
-/// The engine is started as `courier-engine --data <dataDir> --parent-fd 0`, with the app's environment and
-/// Telegram's app ID (Courier's own, built into the app, else one the person saved in the Keychain). Its
+/// The engine is started as `vitruvian-courier-engine --data <dataDir> --parent-fd 0`, with the app's environment and
+/// Telegram's app ID (Vitruvian Courier's own, built into the app, else one the person saved in the Keychain). Its
 /// standard input is a pipe only the app writes to, so the engine stops when the app closes it, or dies.
 ///
 /// - The ready line may take a while: the engine prints it once its networks have started. Two minutes.
@@ -37,8 +37,8 @@ public final class EngineSupervisor: @unchecked Sendable {
 
     /// Why the engine cannot run, when the person can do something about it.
     public enum Problem: Equatable, Sendable {
-        /// Another engine holds the data directory (exit 3): another copy of Courier, or the CLI, on the same
-        /// folder. `message` is the engine's own line ("another Courier engine is using DIR"), nil when it said
+        /// Another engine holds the data directory (exit 3): another copy of Vitruvian Courier, or the CLI, on the same
+        /// folder. `message` is the engine's own line ("another Vitruvian Courier engine is using DIR"), nil when it said
         /// nothing the app could read.
         case dataDirectoryInUse(message: String?)
         /// The engine stopped before it was ready, and said why on standard error (a socket path that is too
@@ -115,11 +115,11 @@ public final class EngineSupervisor: @unchecked Sendable {
     private var backoffTask: Task<Void, Error>?
 
     /// - Parameters:
-    ///   - enginePath: the courier-engine executable.
+    ///   - enginePath: the vitruvian-courier-engine executable.
     ///   - dataDir: the engine's data directory.
     ///   - environment: the engine's environment, before the Telegram credentials are added: the app's own.
     ///   - credentials: the Keychain the person's own Telegram credentials are in.
-    ///   - builtInCredentials: Courier's own, packaged into the app. They win over the Keychain's. Both are read
+    ///   - builtInCredentials: Vitruvian Courier's own, packaged into the app. They win over the Keychain's. Both are read
     ///     again at every launch.
     public init(enginePath: String, dataDir: URL, environment: [String: String], launcher: ProcessLaunching,
                 credentials: CredentialStore = KeychainStore(service: TelegramCredentials.service),
@@ -266,8 +266,8 @@ public final class EngineSupervisor: @unchecked Sendable {
     /// has its own words shown; one that stopped after it was ready, or said nothing the app can read, is an
     /// ordinary crash and gets the plain restart.
     static func problem(status: Int32?, errors: [String], wasConnected: Bool = false) -> Problem? {
-        // Fatal start-up errors are plain text, "courier-engine: <message>"; warnings before them are JSON.
-        let prefix = "courier-engine: "
+        // Fatal start-up errors are plain text, "vitruvian-courier-engine: <message>"; warnings before them are JSON.
+        let prefix = "vitruvian-courier-engine: "
         let message = errors.last { $0.hasPrefix(prefix) }.map { String($0.dropFirst(prefix.count)) }
         if status == lockedExitStatus { return .dataDirectoryInUse(message: message) }
         if !wasConnected, let message { return .engineFailed(message: message) }
@@ -283,7 +283,7 @@ public final class EngineSupervisor: @unchecked Sendable {
         do {
             engine = try launcher.launch(spec)
         } catch {
-            record("Courier could not start its engine: \(error.localizedDescription)")
+            record("Vitruvian Courier could not start its engine: \(error.localizedDescription)")
             return .ended(connectedAt: nil, status: nil, errors: [])
         }
         let stopNow = lock.withLock { () -> Bool in
@@ -328,7 +328,7 @@ public final class EngineSupervisor: @unchecked Sendable {
             await end(engine)
             return .updateNeeded
         } catch {
-            record("Courier could not connect to its engine: \(error.localizedDescription)")
+            record("Vitruvian Courier could not connect to its engine: \(error.localizedDescription)")
             await end(engine)
             return await ended(connectedAt: nil)
         }
@@ -396,7 +396,7 @@ public final class EngineSupervisor: @unchecked Sendable {
             }
         )
         if !exited {
-            record("Courier's engine did not stop within \(Int(grace)) seconds of SIGTERM, so it was killed.")
+            record("Vitruvian Courier's engine did not stop within \(Int(grace)) seconds of SIGTERM, so it was killed.")
             engine.kill()
             _ = await engine.waitForExit()
         }

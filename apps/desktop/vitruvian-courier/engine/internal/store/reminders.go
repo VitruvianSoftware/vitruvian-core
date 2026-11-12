@@ -188,7 +188,7 @@ var incomingSinceSQL = `SELECT EXISTS (SELECT 1 FROM events WHERE room_id = $1 A
 //     reminder just brought back), and "room" then "reminder" are published.
 //
 // fired_at is written in the same transaction as everything else, so a reminder fires exactly once however often
-// this runs and however the engine stops: one that came due while Courier was quit fires on the first call after
+// this runs and however the engine stops: one that came due while Vitruvian Courier was quit fires on the first call after
 // it starts again. A reminder that fails is reported and left for the next call; the others still run.
 func (s *Store) FireDueReminders(ctx context.Context) (fired []string, err error) {
 	now := s.now().UnixMilli()

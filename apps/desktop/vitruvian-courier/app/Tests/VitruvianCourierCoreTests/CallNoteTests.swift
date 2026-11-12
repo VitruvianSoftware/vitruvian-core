@@ -1,10 +1,10 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 import XCTest
 
-/// A bridge's call notice, in Courier's words: in the chat, in the chat list and in a notification. The bridge's
+/// A bridge's call notice, in Vitruvian Courier's words: in the chat, in the chat list and in a notification. The bridge's
 /// English body is never what a person reads.
 final class CallNoteTests: XCTestCase {
     /// The bridges' own words, none of which may reach a person.
@@ -94,7 +94,7 @@ final class CallNoteTests: XCTestCase {
 
     // MARK: The chat
 
-    /// In the chat a call note is a note (`call`), its text Courier's words; it is a message from them that counts as
+    /// In the chat a call note is a note (`call`), its text Vitruvian Courier's words; it is a message from them that counts as
     /// unread and as a new message, as the engine counts it. Mine is neither.
     func testACallInTheChatIsANoteInCourierWords() throws {
         let events = try [

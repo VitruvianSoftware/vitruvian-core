@@ -1,7 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import CourierCore
+import VitruvianCourierCore
 import Darwin
 import Foundation
 import XCTest
@@ -20,7 +20,7 @@ final class TestEngineServer: @unchecked Sendable {
     typealias Handler = (_ method: String, _ params: [String: Any]?) -> Reply
 
     /// Short enough for sun_path (104 bytes) wherever the test runs.
-    let path = "/tmp/courier-test-\(UUID().uuidString.prefix(8)).sock"
+    let path = "/tmp/vitruvian-courier-test-\(UUID().uuidString.prefix(8)).sock"
     private let listener: Int32
     private let lock = NSLock()
     private var handler: Handler

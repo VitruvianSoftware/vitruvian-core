@@ -214,7 +214,7 @@ func TestASpecThatCantBeBuiltIsNotStartedWithItsReason(t *testing.T) {
 	require.Equal(t, engine.Status{NotStarted: "needs its own app credentials"}, eng.Status("fakebad"))
 }
 
-// WhatsApp tags a chat archived on the phone with its archive_tag, which the example config leaves empty. Courier
+// WhatsApp tags a chat archived on the phone with its archive_tag, which the example config leaves empty. Vitruvian Courier
 // sets it to m.lowpriority, the tag the store reads as archived, so such a chat arrives archived.
 func TestWhatsAppArchivedChatsArriveArchived(t *testing.T) {
 	ctx, dir := context.Background(), t.TempDir()
@@ -242,11 +242,11 @@ func TestWhatsAppArchivedChatsArriveArchived(t *testing.T) {
 		"every other setting keeps the example's value")
 }
 
-// The "sent" rows of the plan's per-network table (what Courier sends each network), and the bridgev2 interfaces
+// The "sent" rows of the plan's per-network table (what Vitruvian Courier sends each network), and the bridgev2 interfaces
 // each pinned bridge's client implements, which is what they rest on. A bridge bump that adds or drops one of
-// these handlers fails here, so the table (and what Courier tells people reaches each network) is looked at again.
+// these handlers fails here, so the table (and what Vitruvian Courier tells people reaches each network) is looked at again.
 //
-// The two differ in one place: WhatsApp's client takes unread marks, but its bridge inverts them, so Courier never
+// The two differ in one place: WhatsApp's client takes unread marks, but its bridge inverts them, so Vitruvian Courier never
 // sends one (actions.SyncsOf; TestWhatsAppBridgeVersionIsTheOneCheckedForUnreadMarks).
 func TestNetworkSyncTableMatchesTheBridges(t *testing.T) {
 	rows := map[string]platformClient{
@@ -272,7 +272,7 @@ func TestNetworkSyncTableMatchesTheBridges(t *testing.T) {
 	require.ElementsMatch(t, registered, keys(rows), "every registered network has a row")
 	for _, name := range registered {
 		r := rows[name]
-		require.Equal(t, r.sent, actions.SyncsOf(r.client), "what Courier sends %s", name)
+		require.Equal(t, r.sent, actions.SyncsOf(r.client), "what Vitruvian Courier sends %s", name)
 		_, pin := r.client.(bridgev2.TagHandlingNetworkAPI)
 		_, mute := r.client.(bridgev2.MuteHandlingNetworkAPI)
 		_, unread := r.client.(bridgev2.MarkedUnreadHandlingNetworkAPI)
@@ -282,9 +282,9 @@ func TestNetworkSyncTableMatchesTheBridges(t *testing.T) {
 	}
 }
 
-// WhatsApp's bridge inverts unread marks at the version Courier pins: HandleMarkedUnread passes Content.Unread as
+// WhatsApp's bridge inverts unread marks at the version Vitruvian Courier pins: HandleMarkedUnread passes Content.Unread as
 // whatsmeow's BuildMarkChatAsRead(target, read, ...) (pkg/connector/handlematrix.go:667 at v0.2609.0; still so at
-// :696 in v0.2610.0). So Courier sends it none (actions.SyncsOf). This fails when the pin moves, to make whoever
+// :696 in v0.2610.0). So Vitruvian Courier sends it none (actions.SyncsOf). This fails when the pin moves, to make whoever
 // bumps it read that handler again before letting unread marks reach WhatsApp.
 func TestWhatsAppBridgeVersionIsTheOneCheckedForUnreadMarks(t *testing.T) {
 	// The engine's go.mod, a data dependency of this test, is what pins the bridge.
@@ -314,7 +314,7 @@ func TestGoogleMessagesBridgeVersionIsTheOneCheckedForUnreachablePeople(t *testi
 
 type platformClient struct {
 	client     bridgev2.NetworkAPI
-	sent       []string // what Courier sends the network (actions.SyncsOf)
+	sent       []string // what Vitruvian Courier sends the network (actions.SyncsOf)
 	implements []string // the chat-change interfaces the bridge's client implements
 }
 
@@ -338,7 +338,7 @@ func pick(pairs ...any) []string {
 }
 
 // actionRow is one chat type of one network in the plan's "What each action reaches" table: the bridge's own
-// client, a portal built with the bridge's own metadata type, and what Courier reads from the room features the
+// client, a portal built with the bridge's own metadata type, and what Vitruvian Courier reads from the room features the
 // client gives that portal.
 type actionRow struct {
 	client bridgev2.NetworkAPI
@@ -514,12 +514,12 @@ func messageActionRows() (map[string]actionRow, map[string]handlerRow) {
 
 // The plan's "What each action reaches" table, read from the pinned bridges themselves: each client's real
 // GetCapabilities, through actions.FeaturesOf, for every chat type the table tells apart. A bridge bump that
-// changes any cell fails here, so the table, and what Courier offers and tells people, is looked at again.
+// changes any cell fails here, so the table, and what Vitruvian Courier offers and tells people, is looked at again.
 //
 // It pins the surprises the table rests on: Google Messages has no unsend, only a delete that reaches the phone
 // (1); Slack and WhatsApp community announcement groups have no plain replies, so a reply becomes a thread reply
 // (2); Google Messages SMS chats have no replies (7). Telegram's 16 timers and Signal's after-read timer with no
-// list (Courier offers actions.SignalTimers) are here too, and no network ends polls or hides their results.
+// list (Vitruvian Courier offers actions.SignalTimers) are here too, and no network ends polls or hides their results.
 //
 // Each row also has to agree with the handlers its client implements: an action the features allow is one the
 // bridge can carry out.
@@ -547,7 +547,7 @@ func TestMessageActionTableMatchesTheBridges(t *testing.T) {
 		gotFeatures.GIF = actions.MediaCapFeature{}
 		gotFeatures.LocationSupported = false
 		gotFeatures.LinkPreviewsSupported = false
-		require.Equal(t, r.want, gotFeatures, "what Courier offers in a %s", name)
+		require.Equal(t, r.want, gotFeatures, "what Vitruvian Courier offers in a %s", name)
 		require.False(t, rf.PollEnd.Partial(), "%s: no network ends polls", name)
 		require.False(t, rf.PollHiddenVotes.Partial(), "%s: no network hides poll results", name)
 
@@ -585,7 +585,7 @@ func handled(c bridgev2.NetworkAPI) []string {
 
 // WhatsApp and Signal bridge a poll as a poll (org.matrix.msc3381.poll.start, with votes) only with extev_polls
 // on; their example configs leave it off, and a poll then arrives as text asking people to vote on the phone.
-// Courier turns it on for both. Telegram's bridge has no setting: its polls stay text.
+// Vitruvian Courier turns it on for both. Telegram's bridge has no setting: its polls stay text.
 func TestPollsArriveAsPolls(t *testing.T) {
 	checks := map[string]func(data any) bool{
 		"whatsapp": func(data any) bool { return data.(*whatsapp.Config).ExtEvPolls },
@@ -663,16 +663,16 @@ type receiptNetwork struct {
 	sends []string
 	// replyPrivately lists how a one-to-one chat with a group member is made, out of "resolve_identifier"
 	// (IdentifierResolvingNetworkAPI) and "create_chat_with_ghost" (GhostDMCreatingNetworkAPI): the client
-	// implements these; the table's "Reply Privately" row names the one Courier uses.
+	// implements these; the table's "Reply Privately" row names the one Vitruvian Courier uses.
 	replyPrivately []string
-	// implicitReads is surprise 7: replying marks the chat read on the network whatever Courier does
+	// implicitReads is surprise 7: replying marks the chat read on the network whatever Vitruvian Courier does
 	// (NetworkGeneralCapabilities.ImplicitReadReceipts).
 	implicitReads bool
 }
 
 // readReceiptsByRow is, for each portal of messageActionRows, whether the client's room features for it say read
 // receipts go (RoomFeatures.ReadReceipts): every network's chats but Slack's, whose receipts are my own reads from
-// another Slack client (surprise 1), so Courier shows no "Seen" there.
+// another Slack client (surprise 1), so Vitruvian Courier shows no "Seen" there.
 var readReceiptsByRow = map[string]bool{
 	"whatsapp dm": true, "whatsapp group": true, "whatsapp community announcement group": true,
 	"telegram dm": true, "telegram group": true,
@@ -720,7 +720,7 @@ var pinnedBridges = map[string]string{
 //     chat is per account); a Slack login's ID is its workspace and user, "T-U" (slackid/id.go:66–68), so the same
 //     user of the same workspace signed in again is the same account and another workspace is another (the table
 //     cites slackid/id.go:116–120, where a chat's key takes that login as its receiver). WhatsApp's own rule
-//     (one-to-one chats per account, groups shared: surprise 8) is unexported (makeWAPortalKey); the half Courier
+//     (one-to-one chats per account, groups shared: surprise 8) is unexported (makeWAPortalKey); the half Vitruvian Courier
 //     controls, split_portals off, is pinned by the host package's tests.
 //
 // The other cells are cited facts only, checked by reading the pinned source at the file:line the table gives, and
@@ -730,7 +730,7 @@ var pinnedBridges = map[string]string{
 // second account is allowed at all (each bridge's login.go). A bump of any pinned module fails here until whoever
 // moves it reads those cells again at the new version.
 //
-// Two rules of Courier's own sit beside the table and are tested where they are built: a receipt from any of my
+// Two rules of Vitruvian Courier's own sit beside the table and are tested where they are built: a receipt from any of my
 // logins counts as my own read, never as "Seen" (localmatrix's MarkRead, through the connector's isMe), so a
 // one-to-one chat between two of my own accounts never shows "Seen"; and only one-to-one chats show "Delivered".
 func TestReceiptsTypingAndAccountsTableMatchTheBridges(t *testing.T) {
@@ -841,7 +841,7 @@ func TestReceiptsTypingAndAccountsTableMatchTheBridges(t *testing.T) {
 		require.NotNil(t, m, "go.mod no longer requires %s", module)
 		require.Equal(t, version, m[1],
 			"%s moved off %s. Read the cited cells of the plan's receipts, typing and accounts table again at the new "+
-				"version (the file:line each gives), fix what Courier shows and sends where one changed, then update "+
+				"version (the file:line each gives), fix what Vitruvian Courier shows and sends where one changed, then update "+
 				"pinnedBridges.", module, version)
 	}
 }

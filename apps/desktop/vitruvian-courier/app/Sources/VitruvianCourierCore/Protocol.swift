@@ -3,7 +3,7 @@
 
 import Foundation
 
-// The app's side of apps/desktop/courier/protocol/protocol.json. That file is the one definition: every type
+// The app's side of apps/desktop/vitruvian-courier/protocol/protocol.json. That file is the one definition: every type
 // here is named exactly as an entry in its "types", with exactly its fields (CodingKeys hold the wire names), and
 // ProtocolConformanceTests holds the two together and round-trips every example through these types.
 //
@@ -184,7 +184,7 @@ public struct Account: ProtocolType, Equatable {
     public var error: String
     public var remoteName: String
     public var notStarted: String
-    /// The chat changes Courier also sends to this network. Everything else stays on this Mac.
+    /// The chat changes Vitruvian Courier also sends to this network. Everything else stays on this Mac.
     public var syncs: [AccountSync]
     /// Whether any linked account on this network can create group chats (`GroupCreatingNetworkAPI`).
     public var canCreateGroup: Bool
@@ -265,7 +265,7 @@ public struct Login: ProtocolType, Equatable, Hashable {
     /// What the network calls the account (a phone number, a workspace's name); "" when it hasn't said.
     public var remoteName: String
     public var state: AccountState
-    /// The bridge's own words, for help only: never shown as Courier's copy. "" when nothing is wrong.
+    /// The bridge's own words, for help only: never shown as Vitruvian Courier's copy. "" when nothing is wrong.
     public var error: String
     /// Whether this account's bridge client implements `GroupCreatingNetworkAPI` and can create group chats.
     public var canCreateGroup: Bool
@@ -312,7 +312,7 @@ public struct Login: ProtocolType, Equatable, Hashable {
     }
 }
 
-/// Account.syncs: a chat change Courier also sends to the network, so it shows on the phone too.
+/// Account.syncs: a chat change Vitruvian Courier also sends to the network, so it shows on the phone too.
 public struct AccountSync: OpenValues {
     public let rawValue: String
     public init(rawValue: String) { self.rawValue = rawValue }
@@ -584,7 +584,7 @@ public struct PreviewStatus: OpenValues {
     public static let known: [Self] = [.none, .sent, .delivered, .seen]
 }
 
-/// A bridge's notice of a call, as Courier reads it (`InboxRow.previewCall`, and an event's content's
+/// A bridge's notice of a call, as Vitruvian Courier reads it (`InboxRow.previewCall`, and an event's content's
 /// `fi.courier.call`: `CallNote.of`). Whether it was mine is the event's, or the row's `previewMine`.
 public struct CallNote: ProtocolType, Equatable, Hashable {
     public static let protocolName = "CallNote"
@@ -2863,7 +2863,7 @@ public typealias MediaCapFeatureWire = MediaCapFeature
 public typealias RoomFeaturesResult = ChatFeatures
 
 /// What a person can do in one chat, as its network's bridge says (room.features). A greyed action says why from
-/// these, in Courier's words (MessageActions).
+/// these, in Vitruvian Courier's words (MessageActions).
 public struct ChatFeatures: ProtocolType, Equatable {
     public static let protocolName = "ChatFeatures"
     public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
@@ -5206,7 +5206,7 @@ public struct SetCanSendParams: ProtocolType, Equatable, Sendable {
     }
 }
 
-/// app.setLocked's params: whether Courier is locked, so the engine's focus_app answers its client truthfully.
+/// app.setLocked's params: whether Vitruvian Courier is locked, so the engine's focus_app answers its client truthfully.
 public struct AppLockParams: ProtocolType, Equatable, Sendable {
     public static let protocolName = "AppLockParams"
     public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
@@ -5274,7 +5274,7 @@ public struct PairEnded: ProtocolType, Equatable, Sendable {
     }
 }
 
-/// An MCP client's focus_app: bring Courier to the front at the chat and message given, with a draft in the chat's
+/// An MCP client's focus_app: bring Vitruvian Courier to the front at the chat and message given, with a draft in the chat's
 /// composer, unsent. The engine has checked that the chat and message exist and that the file is readable.
 public struct FocusParams: ProtocolType, Equatable, Sendable {
     public static let protocolName = "FocusParams"

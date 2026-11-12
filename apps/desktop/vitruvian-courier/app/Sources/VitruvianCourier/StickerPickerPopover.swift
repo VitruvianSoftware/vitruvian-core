@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
-import CourierCore
+import VitruvianCourierCore
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Presents an `NSOpenPanel` for importing a local PNG, WebP, or GIF sticker into Courier's sticker catalog.
+/// Presents an `NSOpenPanel` for importing a local PNG, WebP, or GIF sticker into Vitruvian Courier's sticker catalog.
 @MainActor
 enum StickerImportPicker {
     static func run(into composer: ComposerModel, shortcode: String? = nil) {

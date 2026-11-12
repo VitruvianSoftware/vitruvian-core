@@ -591,7 +591,7 @@ func TestEngineServesWhileTheBackfillRuns(t *testing.T) {
 	require.Equal(t, history, storetest.Indexed(t, db))
 }
 
-// The engine starts the outbox and the disappearing timers: a held message whose window ended while Courier was
+// The engine starts the outbox and the disappearing timers: a held message whose window ended while Vitruvian Courier was
 // closed (less than an hour ago) is handed to its network at start, and a message past its timer is gone. The
 // network here has no account, so the hand-off puts it back to waiting for one, which proves it was attempted;
 // nothing was sent.
@@ -696,7 +696,7 @@ func TestHelloAnswersBeforeTheNetworksStart(t *testing.T) {
 	ctx := context.Background()
 	data := filepath.Join(shortDir(t), "data")
 	require.NoError(t, os.Mkdir(data, 0o700))
-	// The last run: the account was linked, and connected when Courier quit.
+	// The last run: the account was linked, and connected when Vitruvian Courier quit.
 	s, err := store.Open(filepath.Join(data, "courier.db"))
 	require.NoError(t, err)
 	last, errs := engine.Start(ctx, data, s, &media.Store{Dir: filepath.Join(data, "media")}, []engine.Spec{{
@@ -710,7 +710,7 @@ func TestHelloAnswersBeforeTheNetworksStart(t *testing.T) {
 	require.NoError(t, s.SetLoginState(ctx, "fake", string(login.ID), json.RawMessage(fmt.Sprintf(
 		`{"state_event":"CONNECTED","remote_id":%q,"remote_name":"Me","timestamp":%d}`, login.ID, time.Now().Unix(),
 	))))
-	// A message held for undo send whose window ended while Courier was closed.
+	// A message held for undo send whose window ended while Vitruvian Courier was closed.
 	const room = "!held:courier.local"
 	require.NoError(t, s.UpsertRoom(ctx, store.Room{ID: room, Network: "fake", Name: "Test chat"}))
 	now := time.Now()
@@ -785,7 +785,7 @@ func TestHelloAnswersBeforeTheNetworksStart(t *testing.T) {
 	require.NoError(t, <-ran, "stderr:\n%s", stderr.String())
 }
 
-// Review Focus 1: a message waiting for its network when Courier quit is still waiting at the next start. Only a send
+// Review Focus 1: a message waiting for its network when Vitruvian Courier quit is still waiting at the next start. Only a send
 // the last engine handed over and never heard back about (pending) becomes "may have been sent".
 func TestAWaitingMessageIsNotMayHaveBeenSentAfterRestart(t *testing.T) {
 	ctx := context.Background()

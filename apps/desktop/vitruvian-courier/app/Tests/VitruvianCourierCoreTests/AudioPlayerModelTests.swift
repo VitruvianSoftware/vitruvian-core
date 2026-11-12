@@ -4,7 +4,7 @@
 import AppKit
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// Inline voice-note & audio playback (`AudioPlayerModel`), speed cycling & persistence, continuous voice-note
 /// auto-advance within the same chat (stopping at non-voice messages), local-only `message.markPlayed`, and the
@@ -23,7 +23,7 @@ final class AudioPlayerModelTests: XCTestCase {
 
     private func makeLocalAudioFile(name: String = "voice-\(UUID().uuidString).ogg") throws -> String {
         let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("courier-audio-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("vitruvian-courier-audio-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let url = dir.appendingPathComponent(name)
         try Data("OggS-synthetic-audio".utf8).write(to: url, options: .atomic)

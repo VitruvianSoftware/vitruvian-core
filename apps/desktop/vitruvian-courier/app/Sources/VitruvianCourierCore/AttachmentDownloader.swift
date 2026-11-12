@@ -111,7 +111,7 @@ public final class AttachmentDownloader {
         baseFileName: String
     ) throws -> URL {
         let manager = FileManager.default
-        let partial = directory.appendingPathComponent(".courier-download-\(UUID().uuidString).partial")
+        let partial = directory.appendingPathComponent(".vitruvian-courier-download-\(UUID().uuidString).partial")
         do {
             try manager.copyItem(at: source, to: partial)
             try OpenFileCache.quarantine(partial)

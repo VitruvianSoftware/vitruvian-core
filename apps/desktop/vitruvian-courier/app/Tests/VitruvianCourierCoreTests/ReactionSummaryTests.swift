@@ -3,7 +3,7 @@
 
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// What a reaction chip's hover card and accessibility label say about who reacted. All names here are made up.
 final class ReactionSummaryTests: XCTestCase {

@@ -84,7 +84,7 @@ var (
 	ErrBadValue = store.ErrBadValue
 	// ErrNotEntitled means the plan doesn't include the feature (undo send, send later). Nothing was stored.
 	ErrNotEntitled = errors.New("the plan doesn't include that")
-	// ErrNetworkRefused means the network answered no to a change Courier waits on (a disappearing timer), so
+	// ErrNetworkRefused means the network answered no to a change Vitruvian Courier waits on (a disappearing timer), so
 	// nothing changed here. It wraps the bridge's own reason when there is one.
 	ErrNetworkRefused = errors.New("the network refused the change")
 	// ErrUnsupportedFeature aliases ErrNotSupported for callers checking room capability support.

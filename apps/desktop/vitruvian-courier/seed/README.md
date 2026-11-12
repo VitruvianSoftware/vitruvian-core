@@ -5,14 +5,14 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 # Seed scenarios
 
-Made-up chats that fill the Courier Test Copy, so a change to how chats look can be checked by hand or by
+Made-up chats that fill the Vitruvian Courier Test Copy, so a change to how chats look can be checked by hand or by
 screenshot without signing in to any real account:
 
 ```sh
-bazel run --config=macos-app //apps/desktop/courier/app:run_test_copy -- --seed group-threads
+bazel run --config=macos-app //apps/desktop/vitruvian-courier/app:run_test_copy -- --seed group-threads
 ```
 
-The same files feed the Swift view tests (`app/Tests/CourierViewTests/SeedScenario.swift`), so what you see in
+The same files feed the Swift view tests (`app/Tests/VitruvianCourierViewTests/SeedScenario.swift`), so what you see in
 the running copy and what the snapshots draw come from one place.
 
 **Only made-up names, numbers and messages.** Never paste a real chat in here.
@@ -29,8 +29,8 @@ the running copy and what the snapshots draw come from one place.
 
 ## How a scenario gets into the app
 
-The test copy bundles a separate engine binary, `courier-engine-seeded`, built with the Go build tag
-`courierseed`. When the app starts it with `COURIER_SEED=/path/to/scenario.json` in its environment, that engine
+The test copy bundles a separate engine binary, `vitruvian-courier-engine-seeded`, built with the Go build tag
+`courierseed`. When the app starts it with `VITRUVIAN_COURIER_SEED=/path/to/scenario.json` in its environment, that engine
 runs in-memory fake networks (named after the scenario's networks, so the icons and names match) instead of the
 real bridges, and plays the scenario once into the empty data folder: it signs in each account, describes each chat,
 then sends every message at its real past time, oldest first, followed by the reactions and read receipts. A file

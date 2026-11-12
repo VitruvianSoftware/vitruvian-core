@@ -1,7 +1,7 @@
 # Localapi
 
 ## Overview
-Component package providing implementation for `apps/desktop/courier/engine/internal/localapi`.
+Component package providing implementation for `apps/desktop/vitruvian-courier/engine/internal/localapi`.
 
 ## Interface
 - `[pair.go:PairEnded]`
@@ -45,4 +45,4 @@ Component package providing implementation for `apps/desktop/courier/engine/inte
 - [schemas.go:32]: `"query":{"type":"string","description":"Words to look for. Messages need at l...`
 
 ## Verification
-- Run: `bazel test //apps/desktop/courier/engine/internal/localapi/...`
+- Run: `bazel test //apps/desktop/vitruvian-courier/engine/internal/localapi/...`

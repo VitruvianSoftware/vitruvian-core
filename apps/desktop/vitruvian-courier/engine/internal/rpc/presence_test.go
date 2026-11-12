@@ -600,7 +600,7 @@ func TestWaitingInAChatWithNoAccountSaysSo(t *testing.T) {
 }
 
 // room.setTyping reaches the chat's network while it is connected and is nothing (and no error) while it is down;
-// room.setUnreadFrom makes the count run from the message; room.directChat finds Courier's own one-to-one chat.
+// room.setUnreadFrom makes the count run from the message; room.directChat finds Vitruvian Courier's own one-to-one chat.
 func TestPresenceMethodsOverTheSocket(t *testing.T) {
 	w := newWorld(t)
 	c := dial(t, w.path)

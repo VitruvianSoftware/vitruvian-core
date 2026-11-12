@@ -632,7 +632,7 @@ func (c *Client) convertParsedMessage(ctx context.Context, pm parsedMessage) (*b
 // spaces and DMs alike, as the reference does (ref pkg/connector/backfill.go fetchTopicHeadMessages).
 // The request carries only group_id and page_size_for_topics: adding the page_size_for_*replies fields
 // made Google answer HTTP 500, and list_messages cannot list a whole DM because it needs a topic id.
-// Without those fields Google returns essentially each topic's head only (a live Courier stored 567 heads and 4
+// Without those fields Google returns essentially each topic's head only (a live Vitruvian Courier stored 567 heads and 4
 // replies across 15 spaces), so the replies of the topics that have some come from list_messages on each topic id
 // (fetchTopicReplies), at most maxReplyTopicsPerFetch topics a call.
 // A forward backfill keeps only messages newer than the anchor, so a chat resync fills a gap without
@@ -1047,7 +1047,7 @@ func (c *Client) catchUpGroup(ctx context.Context, portal *bridgev2.Portal) erro
 }
 
 // normalizeEmojiForDisplay ensures bare heart "\u2764" (without U+FE0F) is normalized
-// to "❤️" ("\u2764\uFE0F") for Courier display while keeping EmojiID stripped of U+FE0F.
+// to "❤️" ("\u2764\uFE0F") for Vitruvian Courier display while keeping EmojiID stripped of U+FE0F.
 func normalizeEmojiForDisplay(raw string) (bareEmoji string, displayEmoji string) {
 	bare := strings.ReplaceAll(raw, "\uFE0F", "")
 	if bare == "\u2764" {

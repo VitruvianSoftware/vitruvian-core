@@ -6,7 +6,7 @@ import ImageIO
 import UniformTypeIdentifiers
 import XCTest
 
-@testable import CourierCore
+@testable import VitruvianCourierCore
 
 /// Pictures in a chat are made small off the main actor and kept, a bounded number, so scrolling back is cheap.
 final class ThumbnailLoaderTests: XCTestCase {
@@ -14,7 +14,7 @@ final class ThumbnailLoaderTests: XCTestCase {
 
     override func setUpWithError() throws {
         directory = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("courier-thumbnails-\(UUID().uuidString)")
+            .appendingPathComponent("vitruvian-courier-thumbnails-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     }
 
