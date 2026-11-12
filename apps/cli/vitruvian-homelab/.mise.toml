@@ -1,0 +1,72 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+[env]
+BINARY = "homelab"
+CRATE = "vitruvian_homelab_rs"
+
+[tools]
+rust = "stable"
+
+[tasks.build]
+description = "Build the binary for the current platform"
+run = """
+VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo dev)
+COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo none)
+DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+mkdir -p dist
+rustc --edition 2021 --crate-type lib --crate-name $CRATE -Copt-level=3 rs/src/lib.rs -o dist/lib${CRATE}.rlib
+HOMELAB_VERSION="$VERSION" HOMELAB_COMMIT="$COMMIT" HOMELAB_DATE="$DATE" \
+  rustc --edition 2021 -Copt-level=3 --extern ${CRATE}=dist/lib${CRATE}.rlib rs/src/main.rs -o $BINARY
+"""
+
+[tasks.install]
+description = "Build and install to /usr/local/bin"
+run = """
+mise run build
+install -m 0755 $BINARY /usr/local/bin/$BINARY
+"""
+
+[tasks.test]
+description = "Run all tests"
+run = """
+mkdir -p dist
+rustc --edition 2021 --test rs/src/lib.rs -o dist/vitruvian_homelab_test
+./dist/vitruvian_homelab_test
+"""
+
+[tasks.lint]
+description = "Check warnings across library and binary targets"
+run = """
+mkdir -p dist
+rustc --edition 2021 --crate-type lib --crate-name $CRATE -D warnings rs/src/lib.rs -o dist/lib${CRATE}.rlib
+rustc --edition 2021 -D warnings --extern ${CRATE}=dist/lib${CRATE}.rlib rs/src/main.rs --emit=metadata -o dist/main.rmeta
+"""
+
+[tasks.fmt]
+description = "Format all Rust source files"
+run = "rustfmt --edition 2021 rs/src/*.rs"
+
+[tasks.clean]
+description = "Remove build artifacts"
+run = """
+rm -f $BINARY
+rm -rf dist/
+"""

@@ -362,7 +362,7 @@ COMPONENTS = [
     {
         "name": "devx",
         "repo": "devx",
-        "subtree": "apps/cli/devx",
+        "subtree": "apps/cli/vitruvian-devx",
         "standalone_rev_id": "DEVX_REV_ID",
         "standalone_only": [".github/workflows/sync-to-monorepo.yaml"],
         "is_one_way": True,
@@ -370,7 +370,7 @@ COMPONENTS = [
     {
         "name": "homelab",
         "repo": "homelab",
-        "subtree": "apps/cli/homelab",
+        "subtree": "apps/cli/vitruvian-homelab",
         "standalone_rev_id": "HOMELAB_REV_ID",
         "standalone_only": [".github/workflows/sync-to-monorepo.yaml"],
         "is_one_way": True,

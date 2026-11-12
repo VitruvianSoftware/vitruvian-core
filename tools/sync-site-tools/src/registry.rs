@@ -748,22 +748,22 @@ fn additional() -> Vec<Ext> {
             claude_marketplace_source: s(""),
         },
         Ext {
-            id: s("devx"),
-            name: s("devx"),
+            id: s("vitruvian-devx"),
+            name: s("Vitruvian DevX CLI"),
             kind: s("skill"),
             category: s("Local Dev & K3s Skills"),
             status: s("released"),
             summary: s("A local development orchestrator. One CLI provisions container VMs, ephemeral databases and cloud emulators, local K3s clusters and Cloudflare tunnel ingress, and starts everything in dependency order."),
             repo: s("https://github.com/VitruvianSoftware/devx"),
             mirror_repo: s("https://github.com/VitruvianSoftware/devx"),
-            source: s("apps/cli/devx"),
+            source: s("apps/cli/vitruvian-devx"),
             ecosystems: ecos(&["antigravity", "claude-code", "codex-opencode"]),
             capabilities: caps(&["Portable Agent Skills", "Homebrew CLI"]),
             skills: caps(&["devx"]),
             hooks: vec![],
             rules: vec![],
-            keywords: list_of_str(&["devx", "k3s", "lima", "skills"]),
-            needs: s("devx installed (`brew tap vitruviansoftware/tap && brew trust vitruviansoftware/tap && brew install vitruviansoftware/tap/devx`)"),
+            keywords: list_of_str(&["vitruvian-devx", "devx", "k3s", "lima", "skills"]),
+            needs: s("Vitruvian DevX CLI installed (`brew tap vitruviansoftware/tap && brew trust vitruviansoftware/tap && brew install vitruviansoftware/tap/vitruvian-devx`)"),
             note: s(""),
             installs: vec![
                 install("Any agent", "codex-opencode", "Add the skills to your project (Antigravity, Claude Code, Codex, OpenCode)", "devx agent init"),
@@ -1125,7 +1125,7 @@ mod tests {
                 "mcp-roborock",
                 "vitruvian-code",
                 "mcp-slack",
-                "devx"
+                "vitruvian-devx"
             ]
         );
     }

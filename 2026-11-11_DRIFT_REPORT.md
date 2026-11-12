@@ -318,287 +318,287 @@ No drift detected.
 
 No drift detected.
 
-## apps/cli/devx/README.md
+## apps/cli/vitruvian-devx/README.md
 
 No drift detected.
 
-## apps/cli/devx/cmd/README.md
+## apps/cli/vitruvian-devx/cmd/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/README.md
+## apps/cli/vitruvian-devx/internal/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/agent/README.md
+## apps/cli/vitruvian-devx/internal/agent/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/ai/README.md
+## apps/cli/vitruvian-devx/internal/ai/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/audit/README.md
+## apps/cli/vitruvian-devx/internal/audit/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/authproxy/README.md
+## apps/cli/vitruvian-devx/internal/authproxy/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/bridge/README.md
+## apps/cli/vitruvian-devx/internal/bridge/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/ci/README.md
+## apps/cli/vitruvian-devx/internal/ci/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/cloud/README.md
+## apps/cli/vitruvian-devx/internal/cloud/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/cloudflare/README.md
+## apps/cli/vitruvian-devx/internal/cloudflare/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/config/README.md
+## apps/cli/vitruvian-devx/internal/config/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/cron/README.md
+## apps/cli/vitruvian-devx/internal/cron/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/database/README.md
+## apps/cli/vitruvian-devx/internal/database/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/devcontainer/README.md
+## apps/cli/vitruvian-devx/internal/devcontainer/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/devxerr/README.md
+## apps/cli/vitruvian-devx/internal/devxerr/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/doctor/README.md
+## apps/cli/vitruvian-devx/internal/doctor/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/envvault/README.md
+## apps/cli/vitruvian-devx/internal/envvault/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/exposure/README.md
+## apps/cli/vitruvian-devx/internal/exposure/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/github/README.md
+## apps/cli/vitruvian-devx/internal/github/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/ignition/README.md
+## apps/cli/vitruvian-devx/internal/ignition/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/image/README.md
+## apps/cli/vitruvian-devx/internal/image/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/inspector/README.md
+## apps/cli/vitruvian-devx/internal/inspector/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/k8s/README.md
+## apps/cli/vitruvian-devx/internal/k8s/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/logs/README.md
+## apps/cli/vitruvian-devx/internal/logs/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/mcpinstall/README.md
+## apps/cli/vitruvian-devx/internal/mcpinstall/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/mcpserver/README.md
+## apps/cli/vitruvian-devx/internal/mcpserver/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/mock/README.md
+## apps/cli/vitruvian-devx/internal/mock/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/multinode/README.md
+## apps/cli/vitruvian-devx/internal/multinode/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/multinode/cluster/README.md
+## apps/cli/vitruvian-devx/internal/multinode/cluster/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/multinode/config/README.md
+## apps/cli/vitruvian-devx/internal/multinode/config/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/multinode/doctor/README.md
+## apps/cli/vitruvian-devx/internal/multinode/doctor/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/multinode/k3s/README.md
+## apps/cli/vitruvian-devx/internal/multinode/k3s/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/multinode/lima/README.md
+## apps/cli/vitruvian-devx/internal/multinode/lima/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/multinode/logging/README.md
+## apps/cli/vitruvian-devx/internal/multinode/logging/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/multinode/prereqs/README.md
+## apps/cli/vitruvian-devx/internal/multinode/prereqs/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/multinode/provider/README.md
+## apps/cli/vitruvian-devx/internal/multinode/provider/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/multinode/remote/README.md
+## apps/cli/vitruvian-devx/internal/multinode/remote/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/multinode/usb/README.md
+## apps/cli/vitruvian-devx/internal/multinode/usb/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/multinode/util/README.md
+## apps/cli/vitruvian-devx/internal/multinode/util/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/network/README.md
+## apps/cli/vitruvian-devx/internal/network/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/nuke/README.md
+## apps/cli/vitruvian-devx/internal/nuke/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/orchestrator/README.md
+## apps/cli/vitruvian-devx/internal/orchestrator/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/podman/README.md
+## apps/cli/vitruvian-devx/internal/podman/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/prereqs/README.md
+## apps/cli/vitruvian-devx/internal/prereqs/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/preview/README.md
+## apps/cli/vitruvian-devx/internal/preview/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/projectcfg/README.md
+## apps/cli/vitruvian-devx/internal/projectcfg/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/provider/README.md
+## apps/cli/vitruvian-devx/internal/provider/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/scaffold/README.md
+## apps/cli/vitruvian-devx/internal/scaffold/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/scaffold/templates/README.md
+## apps/cli/vitruvian-devx/internal/scaffold/templates/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/scaffold/templates/node-api/README.md
+## apps/cli/vitruvian-devx/internal/scaffold/templates/node-api/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/scaffold/templates/node-api/src/README.md
+## apps/cli/vitruvian-devx/internal/scaffold/templates/node-api/src/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/secrets/README.md
+## apps/cli/vitruvian-devx/internal/secrets/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/ship/README.md
+## apps/cli/vitruvian-devx/internal/ship/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/state/README.md
+## apps/cli/vitruvian-devx/internal/state/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/sync/README.md
+## apps/cli/vitruvian-devx/internal/sync/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/tailscale/README.md
+## apps/cli/vitruvian-devx/internal/tailscale/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/telemetry/README.md
+## apps/cli/vitruvian-devx/internal/telemetry/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/testutil/README.md
+## apps/cli/vitruvian-devx/internal/testutil/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/trafficproxy/README.md
+## apps/cli/vitruvian-devx/internal/trafficproxy/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/tui/README.md
+## apps/cli/vitruvian-devx/internal/tui/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/updater/README.md
+## apps/cli/vitruvian-devx/internal/updater/README.md
 
 No drift detected.
 
-## apps/cli/devx/internal/webhook/README.md
+## apps/cli/vitruvian-devx/internal/webhook/README.md
 
 No drift detected.
 
-## apps/cli/devx/scripts/README.md
+## apps/cli/vitruvian-devx/scripts/README.md
 
 No drift detected.
 
-## apps/cli/devx/scripts/src/README.md
+## apps/cli/vitruvian-devx/scripts/src/README.md
 
 No drift detected.
 
-## apps/cli/devx/tools/README.md
+## apps/cli/vitruvian-devx/tools/README.md
 
 No drift detected.
 
-## apps/cli/devx/tools/bridge-agent/README.md
+## apps/cli/vitruvian-devx/tools/bridge-agent/README.md
 
 No drift detected.
 
-## apps/cli/devx/tools/bridge-agent/src/README.md
+## apps/cli/vitruvian-devx/tools/bridge-agent/src/README.md
 
 No drift detected.
 
-## apps/cli/homelab/README.md
+## apps/cli/vitruvian-homelab/README.md
 
 No drift detected.
 
-## apps/cli/homelab/rs/README.md
+## apps/cli/vitruvian-homelab/rs/README.md
 
 No drift detected.
 
-## apps/cli/homelab/rs/src/README.md
+## apps/cli/vitruvian-homelab/rs/src/README.md
 
 No drift detected.
 

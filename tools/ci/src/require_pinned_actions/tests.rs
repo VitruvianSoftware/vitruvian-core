@@ -130,7 +130,7 @@ fn composite_actions_and_devx_templates_are_checked() {
         "runs:\n  steps:\n    - uses: actions/cache@v4\n",
     );
     write(
-        t.join("apps/cli/devx/internal/scaffold/templates/go/ci.yaml.tmpl"),
+        t.join("apps/cli/vitruvian-devx/internal/scaffold/templates/go/ci.yaml.tmpl"),
         "      - uses: actions/setup-go@v5 # {{ .Version }}\n",
     );
     let o = check(t.path());
@@ -139,7 +139,7 @@ fn composite_actions_and_devx_templates_are_checked() {
         o.stdout,
         format!(
             "{ERROR}.github/actions/a/action.yml:3:    - uses: actions/cache@v4\n\
-             apps/cli/devx/internal/scaffold/templates/go/ci.yaml.tmpl:1:      - uses: actions/setup-go@v5 # {{{{ .Version }}}}\n"
+             apps/cli/vitruvian-devx/internal/scaffold/templates/go/ci.yaml.tmpl:1:      - uses: actions/setup-go@v5 # {{{{ .Version }}}}\n"
         )
     );
 }
@@ -157,7 +157,7 @@ fn files_outside_the_checked_directories_are_ignored() {
     let t = TempDir::new();
     workflow(&t, &format!("  - uses: a/b@{SHA}\n"));
     write(t.join(".github/dependabot.yml"), "uses: a/b@v1\n");
-    write(t.join("apps/cli/devx/other.yaml"), "uses: a/b@v1\n");
+    write(t.join("apps/cli/vitruvian-devx/other.yaml"), "uses: a/b@v1\n");
     let o = check(t.path());
     assert_eq!((o.code, o.all().as_str()), (0, ""));
 }

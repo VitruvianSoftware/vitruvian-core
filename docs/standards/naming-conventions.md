@@ -114,7 +114,7 @@ This specification eliminates ambiguity by providing:
 │                        │                   │ Non-compliant: packages/pulumi/library/go/pkg/cloud-build/ │
 ├────────────────────────┼───────────────────┼────────────────────────────────────────────────────────┤
 │ Python Packages        │ lower_single /    │ Directory MUST match importable Python package name.   │
-│                        │ snake_case        │ Compliant: apps/cli/devx/scripts/, tools/lint_naming/  │
+│                        │ snake_case        │ Compliant: apps/cli/vitruvian-devx/scripts/, tools/lint_naming/ │
 │                        │                   │ Non-compliant: tools/lint-naming/ (if imported as pkg) │
 ├────────────────────────┼───────────────────┼────────────────────────────────────────────────────────┤
 │ Swift macOS Sources    │ PascalCase        │ Apple / SPM convention for source trees.               │

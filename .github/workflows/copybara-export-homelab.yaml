@@ -20,12 +20,12 @@
 
 name: Copybara Export (homelab)
 
-# Exports vitruvian-core/homelab/ to VitruvianSoftware/homelab on every push under
-# homelab/**. Thin caller — logic lives in _copybara-export.yaml.
+# Exports vitruvian-core/apps/cli/vitruvian-homelab/ to VitruvianSoftware/homelab on every push under
+# apps/cli/vitruvian-homelab/**. Thin caller — logic lives in _copybara-export.yaml.
 on:
     push:
         branches: [main]
-        paths: ["apps/cli/homelab/**", "tools/copybara/copy.bara.sky"]
+        paths: ["apps/cli/vitruvian-homelab/**", "tools/copybara/copy.bara.sky"]
     workflow_dispatch:
         inputs:
             copybara-options:

@@ -47,7 +47,7 @@ mindmap
 | Target | What it does |
 |---|---|
 | `//:doctor` | Verifies your core toolchain (bazel, git required; node/pnpm/go/gh/gcloud/docker/direnv advisory) |
-| `//<app>:doctor` | Same check scoped to one app's exact requirements (`//apps/suites/tabula:doctor`, `//apps/cli/devx:doctor`, …) |
+| `//<app>:doctor` | Same check scoped to one app's exact requirements (`//apps/suites/tabula:doctor`, `//apps/cli/vitruvian-devx:doctor`, …) |
 | `//tools/worktree -- <branch>` | Creates an isolated git worktree with its own Bazel server. `-- --detach <ref> <name>` (scratch tree, no branch), `-- --list`, `-- --remove <branch\|name> [--delete-branch]` (also removes its Bazel caches), `-- --lock [reason]` / `-- --unlock`, `-- --prune [--execute]` (removes only clean, landed, unlocked worktrees, and scratch trees unused for a day; dry run by default). Branch work in the primary checkout is blocked — this is the sanctioned path |
 | `//tools/git:commit -- -m <msg> <paths>` | Stages and commits, after a secret scan of what is staged. Refuses on `main`, in the main checkout, with nothing staged, or a non-Conventional message. `--agent <name>` (author and committer = that agent's bot), `--all`, `-F <file>`, `--fixup <sha>`; with no paths during a merge, concludes it (refusing leftover conflict markers) |
 | `//tools/git:push` | Pushes the current branch to `origin` under its own name and sets its upstream, after scanning the unpushed commits. Never `main`, never plain `--force`. `--force-with-lease`, `--agent <name>` (pushes as that agent's App via `//tools/agent-app -- env`), `--dry-run` |
@@ -192,8 +192,8 @@ stack config) is in [CONTRIBUTING §7](../../CONTRIBUTING.md#7-secrets-handling)
 
 ## App binaries (inner loop)
 
-`//apps/suites/tabula/cli:tabcli` · `//apps/suites/tabula/api:api_bin` · `//apps/cli/devx:devx` ·
-`//apps/cli/homelab/cmd/homelab` · `//apps/desktop/nexus-agent:bot` · macOS apps:
+`//apps/suites/tabula/cli:tabcli` · `//apps/suites/tabula/api:api_bin` · `//apps/cli/vitruvian-devx:devx` ·
+`//apps/cli/vitruvian-homelab:homelab` · `//apps/desktop/nexus-agent:bot` · macOS apps:
 `bazel build --config=macos-app //apps/desktop/nexus-agent/macos:NexusAgent`,
 `bazel build --config=macos-app //apps/desktop/vitruvian:Vitruvian` (tests:
 `bazel test --config=macos-app //apps/desktop/vitruvian:unit_tests //apps/desktop/vitruvian:selftest`;

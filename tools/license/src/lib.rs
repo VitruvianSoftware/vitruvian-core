@@ -36,8 +36,8 @@ use std::process::{Command, Stdio};
 pub const APPS: &[&str] = &[
     "apps/suites/tabula",
     "apps/web/oauth-user-inspector",
-    "apps/cli/devx",
-    "apps/cli/homelab",
+    "apps/cli/vitruvian-devx",
+    "apps/cli/vitruvian-homelab",
     "apps/mcp/slack",
     "apps/desktop/vitruvian-code",
     "apps/desktop/home-speaker",

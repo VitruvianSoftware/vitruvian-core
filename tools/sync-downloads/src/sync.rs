@@ -449,15 +449,17 @@ pub fn sync_catalog(
         }
     }
 
-    // 4. devx and 5. homelab: the version only.
+    // 4. Vitruvian DevX CLI and 5. Vitruvian Homelab: the version only.
     for (repo, id) in [
-        ("VitruvianSoftware/devx", "devx"),
-        ("VitruvianSoftware/homelab", "homelab"),
+        ("VitruvianSoftware/devx", "vitruvian-devx"),
+        ("VitruvianSoftware/homelab", "vitruvian-homelab"),
     ] {
         if let Some(rel) = get_latest_release(repo, None, token)? {
             if rel.truthy() {
-                let tag = str_of(&rel, "tag_name", "lstrip")?
-                    .trim_start_matches('v')
+                let raw_tag = str_of(&rel, "tag_name", "lstrip")?;
+                let tag = raw_tag
+                    .strip_prefix(&format!("{}-v", id))
+                    .unwrap_or_else(|| raw_tag.trim_start_matches('v'))
                     .to_string();
                 say(&format!("✓ {}: v{}", id, tag));
                 cat.version(id, &tag)?;

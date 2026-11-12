@@ -429,7 +429,7 @@ first. If the export reaches `main` before the key exists, it has nothing to pus
 
     **GitHub Pages and the custom domain belong to the mirror repo, not the monorepo.** Moving the
     source here changes none of it. `sync.go` does not create any of it either; it is set up with the
-    `devx sites` command (`apps/cli/devx/cmd/sites.go`):
+    `devx sites` command (`apps/cli/vitruvian-devx/cmd/sites.go`):
     - `devx sites init --domain <zone>` enables workflow-based Pages on the repo and creates a
       Cloudflare CNAME (DNS-only) for `<name>.<zone>` pointing at `<org>.github.io`.
     - `devx sites verify` creates the org-level `_github-pages-challenge-<Org>` TXT record that GitHub
@@ -529,7 +529,7 @@ gh api repos/VitruvianSoftware/mcp-slack/contents/<file>?ref=main --jq .content 
 **Context files that must NOT cross the boundary** (already configured in `copy.bara.sky`):
 - export keeps each standalone's `.github/workflows/sync-to-monorepo.yaml` (and `package-lock.json`
   for npm components: mcp-slack, nexus-agent);
-- both directions keep the monorepo-only gazelle `**/BUILD` files (devx alone has 57).
+- both directions keep the monorepo-only gazelle `**/BUILD` files (vitruvian-devx alone has 57).
 
 ---
 
@@ -576,7 +576,7 @@ Dependabot is **centralized in the monorepo** but split by what it can actually 
 to the standalones via the export. You manage every component's Dependabot config from here.
 
 ### Split model (who owns which ecosystem)
-- **The monorepo owns** `gomod` (devx, homelab) **+** root `github-actions` — these live in
+- **The monorepo owns** `gomod` (`apps/cli/vitruvian-devx`) **+** root `github-actions` — these live in
   `.github/dependabot.yml` and are scanned in-tree.
 - **Each component's OWN workflow action pins** (e.g. its `sync-to-monorepo.yaml`) and **npm** are
   updated **per-standalone** — Dependabot can't scan a *subtree's* workflows from the monorepo, so
@@ -588,7 +588,7 @@ to the standalones via the export. You manage every component's Dependabot confi
   onboarding a new component.)
 
 ### Pipeline (a monorepo Go bump, end to end)
-1. A monorepo Dependabot **Go PR** opens (e.g. a `apps/cli/devx/go.mod` bump).
+1. A monorepo Dependabot **Go PR** opens (e.g. a `apps/cli/vitruvian-devx/go.mod` bump).
 2. [`dependabot-bazel-reconcile.yaml`](../../.github/workflows/dependabot-bazel-reconcile.yaml) runs
    `bazel mod tidy` + `bazel run //:gazelle` and **commits any fix to the PR branch via the App
    token** — which **re-triggers CI** (a bot's own `GITHUB_TOKEN` push wouldn't). Version-only bumps
@@ -613,7 +613,7 @@ to the standalones via the export. You manage every component's Dependabot confi
 
 ```mermaid
 flowchart TD
-    DB["Dependabot PR in monorepo (apps/cli/devx/go.mod minor bump)"] --> RC["reconcile: bazel mod tidy + gazelle,<br/>commit via App token (re-triggers CI)"]
+    DB["Dependabot PR in monorepo (apps/cli/vitruvian-devx/go.mod minor bump)"] --> RC["reconcile: bazel mod tidy + gazelle,<br/>commit via App token (re-triggers CI)"]
     RC --> CI{"CI green?"}
     CI -- "no" --> H["human review"]
     CI -- "yes" --> AM{"minor/patch?"}

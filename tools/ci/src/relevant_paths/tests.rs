@@ -132,7 +132,7 @@ fn default_ignore_set_for_the_bazel_build_lanes() {
         &["apps/mobile/android-remote/catalog-info.yaml"],
     );
     case("root OWNERS skips", false, "", &["OWNERS"]);
-    case("app OWNERS skips", false, "", &["apps/cli/devx/OWNERS"]);
+    case("app OWNERS skips", false, "", &["apps/cli/vitruvian-devx/OWNERS"]);
     case("CODEOWNERS skips", false, "", &[".github/CODEOWNERS"]);
     case(
         "site vitruviansoftware-dev skips",

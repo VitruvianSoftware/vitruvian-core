@@ -591,7 +591,7 @@ rust.toolchain(versions = [\"9.9.9\"])\n";
 
     #[test]
     fn canonical_go_reads_version() {
-        let dir = temp_dir_with_file("go.work", "go 1.23.4\n\nuse (\n\t.\n\tapps/cli/devx\n)\n");
+        let dir = temp_dir_with_file("go.work", "go 1.23.4\n\nuse (\n\t.\n\tapps/cli/vitruvian-devx\n)\n");
         let result = canonical_go(dir.to_str().unwrap()).unwrap();
         assert_eq!(result, "1.23.4");
         let _ = fs::remove_dir_all(&dir);

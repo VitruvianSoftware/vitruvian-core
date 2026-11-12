@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "name": "vitruvian-homelab",
+  "package": "apps/cli/vitruvian-homelab",
+  "test_targets": ["//apps/cli/vitruvian-homelab/..."],
+  "tier": "L1",
+  "runner": "ubuntu-26.04",
+  "persona": "infra",
+  "concurrency_group": "pipeline-vitruvian-homelab",
+  "timeout_minutes": 20
+}

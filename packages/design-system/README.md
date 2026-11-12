@@ -5,7 +5,7 @@ self-hosted variable fonts, a React component library built on top of it,
 codex-inspired technical vector illustrations, and the Storybook that documents
 all of them.
 
-Unlike the per-app packages under `apps/suites/tabula/`, `apps/cli/devx/` and friends, this one is
+Unlike the per-app packages under `apps/suites/tabula/`, `apps/cli/vitruvian-devx/` and friends, this one is
 platform-level: every app is meant to depend on it, so it lives in `packages/`
 and its default visibility is `//:__subpackages__` — the whole monorepo, rather
 than a single app. Only `:pkg` is `//visibility:public`, because rules_js roots

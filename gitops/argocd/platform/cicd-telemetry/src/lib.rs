@@ -13,12 +13,12 @@ pub const PKG_DIR: &str = "gitops/argocd/platform/cicd-telemetry";
 
 /// Real Dependabot run names (GitHub 'dynamic' runs, 2026-09-29): one per run.
 pub const DEPENDABOT_RUN_NAMES: &[&str] = &[
-    "Configured Graph Update: go_modules in /apps/cli/devx #1587192811",
+    "Configured Graph Update: go_modules in /apps/cli/vitruvian-devx #1587192811",
     "Configured Graph Update: go_modules in /apps/suites/tabula/infra/app, /apps/suites/tabula/infra/build, /apps/suites/tabula/infra/data, /apps/suites/tabula/infra/identity, /apps/suites/tabula/infra/web, /apps/web/oauth-user-inspector/infra/app, /apps/web/oauth-user-inspector/infra/identity #1587193184",
     "Configured Graph Update: go_modules in /apps/suites/tabula/infra/data, /apps/suites/tabula/infra/identity #1582857905",
-    "github_actions in /., /.github/actions/*, /apps/cli/devx/.github/workflows, /apps/cli/homelab/.github/workflows, /apps/desktop/vitruvian-code/.github/workflows, /apps/mcp/slack/.github/workflows, /apps/web/gods-eye-view/.github/workflows, /packages/pulumi/examples/go-foundation/.github/workflows, /packages/pulumi/examples/go-foundation/build, /packages/pulumi/examples/ts-foundation/.github/workflows, /packages/pulumi/examples/ts-foundation/build, /packages/pulumi/library/.github/workflows - Update #1587170913",
-    "go_modules in /apps/cli/devx - Update #1587170882",
-    "go_modules in /apps/cli/homelab - Update #1587170990",
+    "github_actions in /., /.github/actions/*, /apps/cli/vitruvian-devx/.github/workflows, /apps/cli/vitruvian-homelab/.github/workflows, /apps/desktop/vitruvian-code/.github/workflows, /apps/mcp/slack/.github/workflows, /apps/web/gods-eye-view/.github/workflows, /packages/pulumi/examples/go-foundation/.github/workflows, /packages/pulumi/examples/go-foundation/build, /packages/pulumi/examples/ts-foundation/.github/workflows, /packages/pulumi/examples/ts-foundation/build, /packages/pulumi/library/.github/workflows - Update #1587170913",
+    "go_modules in /apps/cli/vitruvian-devx - Update #1587170882",
+    "go_modules in /apps/cli/vitruvian-homelab - Update #1587170990",
     "go_modules in /apps/suites/tabula/infra/**, /apps/web/oauth-user-inspector/infra/app, /apps/web/oauth-user-inspector/infra/identity, /infrastructure/pulumi/** - Update #1587170918",
     "npm_and_yarn in /. - Update #1587168571",
     "npm_and_yarn in /. for @octokit/plugin-paginate-rest, @octokit/request, @octokit/request-error, @opentelemetry/core, @opentelemetry/propagator-jaeger, adm-zip, adm-zip, body-parser, colord, d3-color, deepmerge-ts, elliptic, extract-zip, extract-zip, file-type, hono, hono, hono, js-yaml, js-yaml, locutus, locutus, locutus, locutus, lodash, lodash, minimatch, minimatch, minimatch, multer, multer, multer, multer, mysql2, mysql2, nanoid, prismjs, react-router, react-router, svgo, svgo, uuid - Update #1582538339",

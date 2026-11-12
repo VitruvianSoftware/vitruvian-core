@@ -20,12 +20,12 @@ The build graph is **Bazel** (Bzlmod, via Bazelisk) with Aspect rulesets. Almost
 | **Bazelisk** (→ Bazel) | Bazel **9.3.0** is pinned by the repo; Bazelisk reads it | The primary build/test/run entrypoint for the whole repo |
 | **pnpm** | **10.20.0** (workspace) | JS/TS workspace package management; not used at build time by Bazel but needed for container builds and local `pnpm dev` |
 | **Node** | **22.21.1**, pinned in `.nvmrc` (and fed into the Bazel node toolchain) | All TS/JS apps. Use `nvm use` (or a manager that reads `.nvmrc`) |
-| **Go** | go.work toolchain (currently **1.26.6**); see note below | `devx`, `homelab`, and all `infrastructure/pulumi/*` programs |
+| **Go** | go.work toolchain (currently **1.26.6**); see note below | `vitruvian-devx`, and all `infrastructure/pulumi/*` programs |
 | **gcloud** | latest | Cloud Run deploys (CI does this for you; needed locally only for a per-app GCP dev project) |
-| **devx** | `brew tap vitruviansoftware/tap && brew trust vitruviansoftware/tap && brew install vitruviansoftware/tap/devx` | Local-dev orchestrator (Lima VMs / devcontainers / ephemeral DBs / local k3s). See Section 3 |
+| **devx** | `brew tap vitruviansoftware/tap && brew trust vitruviansoftware/tap && brew install vitruviansoftware/tap/vitruvian-devx` | Vitruvian DevX CLI local-dev orchestrator (Lima VMs / devcontainers / ephemeral DBs / local k3s). See Section 3 |
 | **gh** | latest | PRs, merge queue, looking at CI runs |
 
-> **Go version drift is real.** `go.work`/`homelab` are on 1.26.6, `infrastructure/pulumi` on 1.26.6, `devx` on 1.26.6. Nothing enforces a single Go version yet. **🎯 Target:** every `go.mod` pins the `go.work` toolchain version with a CI check on drift. Until then, install the highest (1.26.6) and expect `devx` to lag. See the Alignment Gaps doc.
+> **Go version drift is real.** `go.work` is on 1.26.6, `infrastructure/pulumi` on 1.26.6, `vitruvian-devx` on 1.26.6. Nothing enforces a single Go version yet. **🎯 Target:** every `go.mod` pins the `go.work` toolchain version with a CI check on drift. Until then, install the highest (1.26.6) and expect `vitruvian-devx` to lag. See the Alignment Gaps doc.
 
 ### One-time setup
 
@@ -53,11 +53,11 @@ bazel build //...
 #    it, so trust ours once, then install by its full name.
 brew tap vitruviansoftware/tap
 brew trust vitruviansoftware/tap
-brew install vitruviansoftware/tap/devx
+brew install vitruviansoftware/tap/vitruvian-devx
 gh auth login
 ```
 
-> **devx stuck on an old version?** Homebrew skips untrusted taps in `brew upgrade` and `brew outdated` without saying so. Run `brew trust vitruviansoftware/tap && brew upgrade vitruviansoftware/tap/devx`.
+> **devx stuck on an old version?** Homebrew skips untrusted taps in `brew upgrade` and `brew outdated` without saying so. Run `brew trust vitruviansoftware/tap && brew upgrade vitruviansoftware/tap/vitruvian-devx`.
 
 `bazel run //:doctor` checks the core toolchain; `bazel run //<app>:doctor` (e.g. `//apps/suites/tabula:doctor`) checks
 that app's exact requirements and fails if anything is missing or the wrong version. Run it first whenever a
@@ -74,8 +74,8 @@ vitruvian-core/
 ├── apps/
 │   ├── suites/tabula/            # SaaS, multi-component (API→Cloud Run, extension, web, cli, shared)
 │   ├── web/oauth-user-inspector/ # SaaS, single-container web app → Cloud Run
-│   ├── cli/devx/                 # CLI / developer tool (Go)
-│   ├── cli/homelab/              # CLI / infra-ops tool (Go)
+│   ├── cli/vitruvian-devx/       # Vitruvian DevX CLI / developer tool (Go)
+│   ├── cli/vitruvian-homelab/    # Vitruvian Homelab CLI / infra-ops tool (Rust)
 │   ├── mcp/slack/                # Agent / MCP service (Node/TS)
 │   └── desktop/vitruvian-code/   # Agent / MCP service (Node bot + Swift macOS app)
 │
@@ -115,8 +115,8 @@ Each app type has its own inner loop. The table below is the practical per-type 
 |----------|------|---------------|------|
 | **Bazel monorepo (multi-component SaaS)** | `tabula` | `bazel run //apps/suites/tabula/cli:tabcli`; load extension from `bazel-bin/apps/suites/tabula/extension/dist`; backing Postgres/Redis come up as Bazel-managed hermetic test services | `bazel test //apps/suites/tabula/...` |
 | **Containerized SaaS web app** | `oauth-user-inspector` | `pnpm dev` (concurrently Vite + nodemon/tsc backend on `:8080) | `bazel test //apps/web/oauth-user-inspector/...` (jest server suite) |
-| **Go CLI** | `devx` | `bazel run //apps/cli/devx:devx -- <args>` (developer build of record); release builds via goreleaser only | `bazel test //apps/cli/devx/...` |
-| **Go CLI (infra/ops)** | `homelab` | `bazel run //apps/cli/homelab/cmd/homelab -- <args>` | `bazel test //apps/cli/homelab/...` |
+| **Go CLI** | `vitruvian-devx` | `bazel run //apps/cli/vitruvian-devx:devx -- <args>` (developer build of record); release builds via goreleaser only | `bazel test //apps/cli/vitruvian-devx/...` |
+| **Rust CLI (infra/ops)** | `vitruvian-homelab` | `bazel run //apps/cli/vitruvian-homelab:homelab -- <args>` | `bazel test //apps/cli/vitruvian-homelab/...` |
 | **Agent / MCP (Rust)** | `mcp-slack` | `bazel run //apps/mcp/slack:mcp-slack` (the MCP host injects the Slack tokens as env) | `bazel test //apps/mcp/slack/...` |
 | **Agent / MCP + macOS** | `vitruvian-code` | `pnpm start` / `pnpm dev` for the bot; `bazel build --config=macos-app //apps/desktop/vitruvian-code/macos:VitruvianCode` for the menu-bar app | — (no tests yet) |
 
@@ -124,7 +124,7 @@ Each app type has its own inner loop. The table below is the practical per-type 
 > - **`tabula`'s docs were pre-monorepo and have been corrected.** They now live at [`apps/suites/tabula/docs/`](apps/suites/tabula/docs/index.md) (relocated so they mirror with the app), and the `getting-started/*` and `reference/infrastructure.md` pages have been rewritten to the real Bazel+pnpm+Pulumi flow (Node 22, no `docker-compose.yml`, no Terraform, no `BlueCentre` clone). If you hit any lingering `npm`/`docker-compose`/Terraform references in older tabula prose (e.g. deep in `apps/suites/tabula/CONTRIBUTING.md`), this SOP and the root README win.
 > - **`oauth-user-inspector` README deploy path is dead.** `npm run deploy` / `scripts/deploy.sh` invoke a retired Cloud Build flow (`gcloud builds submit --config cloudbuild.yaml`) and **no `cloudbuild.yaml` exists**. Deploy is CI-only (Section 8). Ignore that section of the README.
 > - **`vitruvian-code` is documented with bare `npm`** even though it is a member of `pnpm-workspace.yaml`. Prefer `pnpm` to keep the single lockfile honest.
-> - **Two Go task runners exist out-of-band:** `devx` carries a `magefile.go`, `homelab` carries `.mise.toml`. **🎯 Target:** Bazel is the developer build of record for both; the Mage/mise runners are legacy and being retired (goreleaser stays for mirror releases only). Use the `bazel run` commands above.
+> - **Two CLI task runners exist out-of-band:** `vitruvian-devx` carries a `magefile.go`, `vitruvian-homelab` carries `.mise.toml`. **🎯 Target:** Bazel is the developer build of record for both; the Mage/mise runners are legacy and being retired (goreleaser stays for mirror releases only). Use the `bazel run` commands above.
 
 ### 3.2 Using devx / a local k8s cluster
 
@@ -151,10 +151,10 @@ There is **no documented local-vs-dev-project split** yet — that's a known loc
 |-----|------|--------|
 | `tabula` (API) | `apps/suites/tabula/api/.env` | copy `apps/suites/tabula/api/.env.example`; keys: `DATABASE_URL`, `JWT_SECRET`, `WORKOS_*`, `UPSTASH_REDIS_URL` |
 | `vitruvian-code` | `apps/desktop/vitruvian-code/.env` | copy `apps/desktop/vitruvian-code/.env.example`; keys: `TELEGRAM_BOT_TOKEN`, `ALLOWED_USER_IDS`, `GEMINI_*` |
-| `devx` | `.env` / `.env.keys` | managed via `devx config secrets`; keys: `CF_TUNNEL_TOKEN`, `DEV_HOSTNAME` |
+| `vitruvian-devx` | `.env` / `.env.keys` | managed via `devx config secrets`; keys: `CF_TUNNEL_TOKEN`, `DEV_HOSTNAME` |
 | Pulumi stacks | `infrastructure/pulumi/<project>/Pulumi.<stack>.yaml` | gitignored; non-secret config is committed, secrets are not (Section 7) |
 
-> **Gap:** `oauth-user-inspector`, `mcp-slack`, and `homelab` ship **no `.env.example`**, so "how do I supply secrets to run this locally" is partly tribal knowledge. **🎯 Target:** every app that reads env/secret config commits a placeholder `.env.example`. See the Alignment Gaps doc.
+> **Gap:** `oauth-user-inspector`, `mcp-slack`, and `vitruvian-homelab` ship **no `.env.example`**, so "how do I supply secrets to run this locally" is partly tribal knowledge. **🎯 Target:** every app that reads env/secret config commits a placeholder `.env.example`. See the Alignment Gaps doc.
 
 ---
 
@@ -164,7 +164,7 @@ The default branch is **`main`**.
 
 1. **Branch first — never commit on `main`, and branch work happens in a worktree.** `bazel run //tools/worktree -- <branch>` creates an isolated worktree with its own Bazel server. This is **enforced, not convention** (#502): `bazel build/run/test` from the *primary* checkout on a non-`main` HEAD fails via the workspace-status guard (`tools/githooks/check-config.sh`) with recovery instructions. `VITRUVIAN_ALLOW_PRIMARY_BRANCH=1` is the break-glass override; CI and linked worktrees are exempt.
 2. **Conventional Commits.** Use `feat:`, `fix:`, `docs:`, `chore:`, scoped where helpful (`fix(gitops): …`). This feeds `release-please`. A `feat` or `fix` releases **every** product whose folder the pull request changes, so the scope must name the product it releases (`feat(vitruvian-sdk): …`). The required `release-scope` check fails a pull request that would release a product it does not name; one that truly changes two says so with a `Releases: a, b` line in its description ([`.github/workflows/README.md`](.github/workflows/README.md)).
-3. **Co-Authored-By trailer.** End commit messages authored with an assistant with the appropriate `Co-Authored-By:` trailer (documented in `apps/cli/devx/CONTRIBUTING.md`, the de-facto template).
+3. **Co-Authored-By trailer.** End commit messages authored with an assistant with the appropriate `Co-Authored-By:` trailer (documented in `apps/cli/vitruvian-devx/CONTRIBUTING.md`, the de-facto template).
 4. **Finish branches with a PR.** When a branch is done, **push and open a GitHub PR** (`gh pr create`) for review + CI. **Never merge locally.**
 5. **The merge queue is the single enforcement authority.** Branch protection, required reviews, and the merge queue are codified as IaC in `infrastructure/pulumi/platform/repo_config` (merge queue on; `requireStatusChecks` intentionally `false` because the queue runs them). A PR merges by **entering the queue**, which runs the full required-check set against the rebased result.
 
@@ -246,7 +246,7 @@ bazel test  //...
 
 # Scope to one app
 bazel test //apps/suites/tabula/...
-bazel test //apps/cli/devx/...
+bazel test //apps/cli/vitruvian-devx/...
 
 # Format + BUILD hygiene — run this before every PR. It is a REQUIRED check.
 bazel run //:tidy        # gazelle + buildifier + prettier/gofmt
@@ -261,7 +261,7 @@ bazel run //:tidy        # gazelle + buildifier + prettier/gofmt
 ```bash
 pnpm install               # workspace install (root)
 pnpm --filter <pkg> dev    # run one TS app's dev loop
-go test ./...              # inside apps/cli/devx/ or apps/cli/homelab/ (gazelle keeps go_test in the Bazel sweep)
+go test ./...              # inside apps/cli/vitruvian-devx/ (gazelle keeps go_test in the Bazel sweep)
 ```
 
 ### How CI decides what to run
@@ -296,9 +296,9 @@ The authoritative list lives in `infrastructure/pulumi/platform/repo_config/main
 | **build-test** | `ci.yaml` | `bazel test`, affected targets on every lane (full `//...` on global-impact/fallback) |
 | **build-macos** | `ci.yaml` | macOS build incl. the `vitruvian-code` app (`--config=macos-app`), step-gated on macOS-relevant paths |
 | **license-check** | `ci.yaml` | whole-repo header presence (`//tools/license:check`) **and** MIT+holder content (`:verify`) |
-| **go-lint (devx\|homelab)** | `ci.yaml` | golangci-lint per Go module, step-gated on that module's paths |
-| **go-test (devx\|homelab)** | `ci.yaml` | `go test -race` per Go module (Bazel doesn't run `-race`), step-gated likewise |
-| **validate-butane** | `ci.yaml` | devx's Fedora CoreOS template renders to valid Ignition, step-gated on the template |
+| **go-lint (devx\|homelab)** | `ci.yaml` | golangci-lint per CLI check (legacy check names preserved for merge-queue ruleset), step-gated on `apps/cli/vitruvian-devx/` |
+| **go-test (devx\|homelab)** | `ci.yaml` | `go test -race` for `apps/cli/vitruvian-devx` (Bazel doesn't run `-race`), step-gated likewise |
+| **validate-butane** | `ci.yaml` | Vitruvian DevX CLI's Fedora CoreOS template renders to valid Ignition, step-gated on the template |
 | **tidy-check** | `tidy-check.yaml` | `bazel run //:tidy` produced no diff |
 | **conformance-check** | `conformance-check.yaml` | `//tools/conformance:check` — version pins, JS catalog, merge-queue check names, app visibility firewall, app metadata ↔ CODEOWNERS, CODEOWNERS ↔ what the per-directory `OWNERS` files compile to, the nightly-sweep pairing, and the zitadel import guard |
 | **gitops-validate** | `gitops-validate.yaml` | `gitops/**` renders + passes kubeconform *before* ArgoCD reconciles it live |
@@ -329,11 +329,11 @@ addlicense -check -c "VitruvianSoftware" -l mit \
 - **Not covered:** `json`, `md`, lockfiles, `_helpers.tpl`, generated/scaffold trees (`docs/**`, `internal/scaffold/templates/**`, `dev-local/{crds,values,dashboards}/**`, prisma migrations, `Pulumi.*.yaml`).
 - **The HTML gotcha:** addlicense inserts an **HTML comment** (`<!-- ... -->`) header into `.html`/`.css`-style files. If a header looks "missing," check that it wasn't stripped by a formatter or templating step — addlicense will re-add it; run `addlicense` without `-check` (or `bazel run //:tidy` adjacent flows) to fix locally.
 
-> **`-check` only verifies a header is *present*, not that it's MIT or that the holder is VitruvianSoftware.** An Apache/wrong-holder header passes silently. So today `homelab`, `mcp-slack`, and `vitruvian-code` ship **Apache-2.0** LICENSE files (and `mcp-slack`'s source carries an Apache header), and `tabula`'s LICENSE names `BlueCentre` — all slip through. **🎯 Target:** MIT `(c) 2026 VitruvianSoftware` everywhere, plus a content gate that fails on non-MIT/wrong-holder. New code must use the MIT/VitruvianSoftware header; do not copy headers from the Apache-licensed apps. See the Alignment Gaps doc.
+> **`-check` only verifies a header is *present*, not that it's MIT or that the holder is VitruvianSoftware.** An Apache/wrong-holder header passes silently. So today `vitruvian-homelab`, `mcp-slack`, and `vitruvian-code` ship **Apache-2.0** LICENSE files (and `mcp-slack`'s source carries an Apache header), and `tabula`'s LICENSE names `BlueCentre` — all slip through. **🎯 Target:** MIT `(c) 2026 VitruvianSoftware` everywhere, plus a content gate that fails on non-MIT/wrong-holder. New code must use the MIT/VitruvianSoftware header; do not copy headers from the Apache-licensed apps. See the Alignment Gaps doc.
 
 ### Governance files
 
-Each first-party app should carry the governance quartet: **`LICENSE`, `CONTRIBUTING.md`, `CLA.md`, `CODE_OF_CONDUCT.md`**. `oauth-user-inspector` and `devx` are the aligned references. **🎯 Target:** generate all four from one template and add a canonical root governance set that per-app files link to (today `tabula` lacks a standalone `CODE_OF_CONDUCT.md`/`CLA.md`; `homelab` and `vitruvian-code` lack `CODE_OF_CONDUCT.md`).
+Each first-party app should carry the governance quartet: **`LICENSE`, `CONTRIBUTING.md`, `CLA.md`, `CODE_OF_CONDUCT.md`**. `oauth-user-inspector` and `vitruvian-devx` are the aligned references. **🎯 Target:** generate all four from one template and add a canonical root governance set that per-app files link to (today `tabula` lacks a standalone `CODE_OF_CONDUCT.md`/`CLA.md`; `vitruvian-homelab` and `vitruvian-code` lack `CODE_OF_CONDUCT.md`).
 
 ---
 
@@ -367,7 +367,7 @@ Deploy mechanics are determined by **app type** (see the Applications & Categori
 | App type | Target | Mechanism |
 |----------|--------|-----------|
 | **SaaS web service** (`tabula`, `oauth-user-inspector`) | **GCP Cloud Run** | image → Artifact Registry → **Pulumi `cloudrunv2`**, deployed by GitHub Actions via **keyless WIF**, keyed on a per-app **GitHub Environment** |
-| **CLI / developer tool** (`devx`, `homelab`) | Standalone-repo **GitHub Releases + Homebrew tap** | `goreleaser` + `release-please` from the mirror (**released, not deployed**) |
+| **CLI / developer tool** (`vitruvian-devx`, `vitruvian-homelab`) | Standalone-repo **GitHub Releases + Homebrew tap** | `goreleaser` / `release-please` from the mirror (**released, not deployed**) |
 | **Agent / MCP** (`mcp-slack`, `vitruvian-code`) | container image (`mcp-slack`) / DMG (`vitruvian-code`) | `release-please`; `mcp-slack` publishes its image from `main`; *DMG publishing CI is a gap — see below* |
 | **Self-hosted platform** (`gitops/`) | dev-local **k3s** | **ArgoCD app-of-apps**, reconciled from git only (Section 9) |
 
@@ -404,7 +404,7 @@ Deploy auth is **keyless** Workload Identity Federation per GCP project, **codif
 
 ### Releases
 
-- **`apps-release.yaml`** runs per-app `release-please` for the four released apps (`devx`, `homelab`, `mcp-slack`, `vitruvian-code`) — version bumps in the app's manifest drive the release, so releases stay **manifest-driven by design** (not path- or graph-gated like deploys). The monorepo is the **single release authority**; mirrors self-tag off the exported manifest.
+- **`apps-release.yaml`** runs per-app `release-please` for the four released apps (`vitruvian-devx`, `vitruvian-homelab`, `mcp-slack`, `vitruvian-code`) — version bumps in the app's manifest drive the release, so releases stay **manifest-driven by design** (not path- or graph-gated like deploys). The monorepo is the **single release authority**; mirrors self-tag off the exported manifest.
 - The generated `charts-publish` job (`tools/charts/publish.sh`, break-glass `bazel run //tools/charts:publish`) publishes **OCI Helm charts to GHCR**, scoped to the chart whose directory changed in the push (fail-open to all on manual dispatch); container images stay in **GCP Artifact Registry**.
 
 ---
@@ -429,7 +429,7 @@ bazel run //tools/gitops:<target> -- <args>
 
 ## 10. Code sharing / Copybara
 
-Five of the six first-party apps (`devx`, `homelab`, `mcp-slack`, `vitruvian-code`, `oauth-user-inspector`) are **one-way Copybara-mirrored** to a standalone repo in the `VitruvianSoftware` org. `tabula` is currently **not** mirrored.
+Five of the six first-party apps (`vitruvian-devx`, `vitruvian-homelab`, `mcp-slack`, `vitruvian-code`, `oauth-user-inspector`) are **one-way Copybara-mirrored** to a standalone repo in the `VitruvianSoftware` org. `tabula` is currently **not** mirrored.
 
 - **Edit in the monorepo. Never edit the standalone mirror** for first-party work — Copybara exports one-way (monorepo → mirror). Config lives in `tools/copybara/copy.bara.sky`; per-component export workflows are `.github/workflows/copybara-export-<app>.yaml` (plus the shared `_copybara-export.yaml`).
 - A cron **import** workflow (`copybara-import-pr.yaml`) opens monorepo PRs and re-runs `//:tidy`.
@@ -445,7 +445,7 @@ Five of the six first-party apps (`devx`, `homelab`, `mcp-slack`, `vitruvian-cod
 - **Companion docs (this orientation layer):**
   - **Applications & Categories** — what each app is and its category (the shared vocabulary).
   - **Alignment Gaps** — every "🎯 Target / not yet adopted" item above, tracked with severity and recommendation.
-- **Per-app:** each app's `README.md` / `CONTRIBUTING.md` / `AGENTS.md`; `apps/cli/devx/docs/`, `apps/desktop/vitruvian-code/docs/`, `apps/cli/devx/FEATURES.md`/`IDEAS.md`.
+- **Per-app:** each app's `README.md` / `CONTRIBUTING.md` / `AGENTS.md`; `apps/cli/vitruvian-devx/docs/`, `apps/desktop/vitruvian-code/docs/`, `apps/cli/vitruvian-devx/FEATURES.md`/`IDEAS.md`.
 - **Repo-root `AGENTS.md`** and `README.bazel.md` for Bazel-specific guidance.
 - **CI/CD vocabulary:** [`.github/CI_DEFINITIONS.md`](.github/CI_DEFINITIONS.md) (presubmit/postsubmit/affected targets/safety floor/deploy gate). **Flaky tests:** [`docs/engineering/flaky-tests.md`](docs/engineering/flaky-tests.md) (quarantine + culprit-finder).
 

@@ -17,7 +17,7 @@ Each gap is labeled **P0** (blocks the standard / live correctness or security i
 
 Two framing rules this doc enforces:
 
-1. **"No environments" is not always a gap.** The CLIs and agents (`devx`, `homelab`, `mcp-slack`, `nexus-agent`) are *released, not deployed*. They legitimately have no dev→prod ladder. Where that's the correct end state, it's marked **n/a**, not red. The actual gap there is that this is undocumented, so it *reads* as a hole.
+1. **"No environments" is not always a gap.** The CLIs and agents (`vitruvian-devx`, `vitruvian-homelab`, `mcp-slack`, `nexus-agent`) are *released, not deployed*. They legitimately have no dev→prod ladder. Where that's the correct end state, it's marked **n/a**, not red. The actual gap there is that this is undocumented, so it *reads* as a hole.
 2. **A claimed standard that isn't enforced is a gap.** Several "standards" (MIT-via-`addlicense`, `actionlint`, Codecov) are asserted in docs but verifiably not wired or not enforcing. Those are called out explicitly because they are more dangerous than honest omissions.
 
 ---
@@ -30,14 +30,14 @@ Legend: **A** = aligned (meets the target) · **P** = partial (works but diverge
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | **tabula** | P | G | A | P | P | P | **G** | P | P | P |
 | **oauth-user-inspector** | P | G | P | A | P | A | **A** | P | P | A |
-| **devx** | P | G | P | A | n/a | A | n/a | A | A | A |
-| **homelab** | P | G | G | A | n/a | P | n/a | P | P | G |
+| **vitruvian-devx** | P | G | P | A | n/a | A | n/a | A | A | A |
+| **vitruvian-homelab** | P | G | G | A | n/a | P | n/a | P | P | G |
 | **mcp-slack** | G | G | P | P | n/a | P | n/a | G | G | G |
 | **nexus-agent** | G | G | G | P | n/a | A | n/a | G | G | G |
 
 Reading the matrix:
 
-- **No app is fully aligned across the board.** The closest is `devx`, which is correctly a *released-not-deployed* CLI.
+- **No app is fully aligned across the board.** The closest is `vitruvian-devx`, which is correctly a *released-not-deployed* CLI.
 - **The columns hide an inversion worth calling out:** `tabula` has the most mature CI/CD and the *least* reproducible deploy identity (its WIF is click-ops). `oauth-user-inspector` has the cleanest deploy identity (the only Pulumi-codified WIF) but a thinner pipeline (single-shot deploy, development-only). The reference pattern is split across two apps; neither embodies it whole.
 - **`mcp-slack` and `nexus-agent` are the consistent laggards** — zero tests, no structured observability, divergent licenses, no publish automation behind their documented install paths.
 - **Remote dev is `G` for every app** because there is no standard remote/cloud dev environment at all (only a generic, app-agnostic root `.devcontainer`).
@@ -58,8 +58,8 @@ Each gap below consolidates the dimension surveys and the explicitly-named sessi
 |---|---|
 | tabula | `bazel build\|test\|run //apps/suites/tabula/...`, Bazel-managed hermetic Postgres/Redis for tests |
 | oauth-user-inspector | `npm run dev` (concurrently vite + nodemon) — plain npm, bypasses pnpm/Bazel |
-| devx | `mage` (magefile.go) |
-| homelab | `mise run {build,test,lint}` (.mise.toml) |
+| vitruvian-devx | `mage` (magefile.go) |
+| vitruvian-homelab | `mise run {build,test,lint}` (.mise.toml) |
 | mcp-slack | `bazel run //apps/mcp/slack:mcp-slack` (Rust; the npm build is retired, #4025) |
 | nexus-agent | `npm start` / `./bot.sh` / `node --watch` / DMG — four documented modes |
 
@@ -122,7 +122,7 @@ There is **no rule** saying which a containerized app should use, and tabula add
 | Hosting target | Apps | Mechanism |
 |---|---|---|
 | GCP Cloud Run | tabula, oauth-user-inspector | image → Artifact Registry → Pulumi `cloudrunv2`, WIF, per-app GitHub Environment |
-| Standalone repo + Homebrew/Releases | devx, homelab | goreleaser binaries + tap |
+| Standalone repo + Homebrew/Releases | vitruvian-devx, vitruvian-homelab | goreleaser / release binaries + tap |
 | Standalone repo + GHCR image / DMG | mcp-slack, nexus-agent | `docker run ghcr.io/vitruviansoftware/mcp-slack:main` / macOS DMG |
 | dev-local k3s (ArgoCD GitOps) | *platform infra only* | app-of-apps; the one app wired for it (tabula) is checked in **disabled** |
 
@@ -269,7 +269,7 @@ Critically, the **license-check CI does not actually enforce MIT-ness or the hol
 
 **Priority: P2 · Effort: S**
 
-**Current state.** Per-app governance is patchy: **tabula** has no standalone `CLA.md` and no `CODE_OF_CONDUCT.md` (only an inline section in a 747-line `CONTRIBUTING.md`); **homelab** and **nexus-agent** lack `CODE_OF_CONDUCT.md`. There is **no root-level governance set** — every app reimplements its own, ranging from 21-line stubs to 747 lines, and only `apps/cli/devx/CONTRIBUTING.md` documents the `Co-Authored-By` trailer. Also: **tabula is the only first-party app not Copybara-mirrored** (the other five are in `tools/copybara/copy.bara.sky`), and whether that's intentional is undocumented.
+**Current state.** Per-app governance is patchy: **tabula** has no standalone `CLA.md` and no `CODE_OF_CONDUCT.md` (only an inline section in a 747-line `CONTRIBUTING.md`); **vitruvian-homelab** and **nexus-agent** lack `CODE_OF_CONDUCT.md`. There is **no root-level governance set** — every app reimplements its own, ranging from 21-line stubs to 747 lines, and only `apps/cli/vitruvian-devx/CONTRIBUTING.md` documents the `Co-Authored-By` trailer. Also: **tabula is the only first-party app not Copybara-mirrored** (the other five are in `tools/copybara/copy.bara.sky`), and whether that's intentional is undocumented.
 
 **Target.** Identical governance quartet (LICENSE, CONTRIBUTING, CLA, CODE_OF_CONDUCT) per app, generated from one template; a thin per-app CONTRIBUTING that links a canonical root CONTRIBUTING/CODE_OF_CONDUCT (which should be added). Commit/PR/merge-queue conventions documented once at root.
 
@@ -324,11 +324,11 @@ Critically, the **license-check CI does not actually enforce MIT-ness or the hol
 
 **Priority: P2 · Effort: S**
 
-**Current state.** `tabula` (`api/.env.example`), `devx`, and `nexus-agent` ship a committed `.env.example`. **`mcp-slack`, `oauth-user-inspector`, and `homelab` do not** — so "how do I supply secrets to run this locally" is partly tribal knowledge. `mcp-slack` reads `SLACK_*` straight from `process.env` with no example; `oauth` reads runtime secrets from GCP Secret Manager but documents no local keys.
+**Current state.** `tabula` (`api/.env.example`), `vitruvian-devx`, and `nexus-agent` ship a committed `.env.example`. **`mcp-slack`, `oauth-user-inspector`, and `vitruvian-homelab` do not** — so "how do I supply secrets to run this locally" is partly tribal knowledge. `mcp-slack` reads `SLACK_*` straight from `process.env` with no example; `oauth` reads runtime secrets from GCP Secret Manager but documents no local keys.
 
 **Target.** Every app that reads env/secret config ships a committed `.env.example` (placeholders only) listing required keys.
 
-**Recommended action.** Add `.env.example` to `mcp-slack`, `oauth-user-inspector`, and `homelab`. This is the cheap, uniform documentation of the local-secrets model and dovetails with 3.1.
+**Recommended action.** Add `.env.example` to `mcp-slack`, `oauth-user-inspector`, and `vitruvian-homelab`. This is the cheap, uniform documentation of the local-secrets model and dovetails with 3.1.
 
 ### 3.20 Sealed-secrets rotation/runbook undocumented in-tree
 
@@ -386,7 +386,7 @@ Ordered by leverage (how many gaps a single fix closes) and by live-correctness/
 |---|---|---|---|
 | 1 | ✅ **Removed the committed `secure:` BuildBuddy key and routed `repo_config` through the shared `pkg/secrets` helper** (#456 code / #484 / #486) — ⏳ only the operator key rotation remains (`bazel run //tools/rotate-buildbuddy-key`) | 3.7, 3.18 (and the secrets-model invariant) — *a key is in git history now* | P0 |
 | 2 | **Codify the dev-local Alertmanager routing/receivers in git** (sealed-secret healthchecks.io URL) | 3.17 — the long-open R3 alerting gap; restores the GitOps closed loop | P0 |
-| 3 | **Make license-check actually enforce MIT + holder**, then relicense homelab/mcp-slack/nexus-agent and fix tabula's holder | 3.14 — a claimed invariant is currently fake | P0 |
+| 3 | **Make license-check actually enforce MIT + holder**, then relicense vitruvian-homelab/mcp-slack/nexus-agent and fix tabula's holder | 3.14 — a claimed invariant is currently fake | P0 |
 | 4 | **Extend `devx scaffold` to emit a fully-aligned app** (Bazel BUILD + reusable deploy workflow caller + Pulumi deploy-identity + `devx.yaml` + `.env.example` + governance quartet + mirror CI) | 3.3, 3.4, 3.8–3.13, 3.15, 3.19, 3.21 — stops new apps reopening every gap | P0 |
 | 5 | **Codify tabula's WIF deploy-identity as Pulumi** (import click-ops) and **generalize `tabulaEnvironments` → `envForApp`** to cover oauth | 3.8, 3.9 — the two click-ops deploy-identity halves | P0/P1 |
 | 6 | ⏳ **Commit the missing `Pulumi.<env>.yaml` stacks (≥ production)** or descope apps to development-only; ✅ **extract the reusable Cloud Run deploy workflow with blue-green/migrate inputs** (partially rolled out to tabula) | 3.6, 3.12 — makes promotion real | P0/P1 |

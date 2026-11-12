@@ -84,7 +84,7 @@ fn should_prune_dir(name: &str, components: &[String]) -> bool {
 /// Cache of every regular file under the repo root, stored as workspace-relative
 /// paths and sorted by raw bytes (LC_ALL=C).
 pub struct FileCache {
-    /// Relative paths (e.g. `"apps/cli/devx/main.go"`), byte-sorted.
+    /// Relative paths (e.g. `"apps/cli/vitruvian-devx/main.go"`), byte-sorted.
     files: Vec<String>,
 }
 

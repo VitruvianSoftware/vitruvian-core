@@ -32,8 +32,8 @@ describe("Service Maturity Scorecards & Governance", () => {
     "apps/web/backstage/catalog-info.yaml",
     "apps/suites/tabula/catalog-info.yaml",
     "apps/web/oauth-user-inspector/catalog-info.yaml",
-    "apps/cli/devx/catalog-info.yaml",
-    "apps/cli/homelab/catalog-info.yaml",
+    "apps/cli/vitruvian-devx/catalog-info.yaml",
+    "apps/cli/vitruvian-homelab/catalog-info.yaml",
     "apps/mcp/slack/catalog-info.yaml",
     "apps/desktop/vitruvian-code/catalog-info.yaml",
   ];

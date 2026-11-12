@@ -4,7 +4,7 @@
 Subsystem blueprint grouping child modules under `apps/cli`.
 
 ## Subdirectories & Boundaries
-- [devx](./devx/README.md): Contract for apps/cli/devx
-- [homelab](./homelab/README.md): Contract for apps/cli/homelab
+- [vitruvian-devx](./vitruvian-devx/README.md): Contract for apps/cli/vitruvian-devx
+- [vitruvian-homelab](./vitruvian-homelab/README.md): Contract for apps/cli/vitruvian-homelab
 - [ostation](./ostation/README.md): Contract for apps/cli/ostation
 

@@ -6,8 +6,8 @@
 
 ## Affected Units / Components
 <!-- Check all affected components -->
-- [ ] `apps/cli/devx`
-- [ ] `apps/cli/homelab`
+- [ ] `apps/cli/vitruvian-devx`
+- [ ] `apps/cli/vitruvian-homelab`
 - [ ] `apps/suites/tabula`
 - [ ] `apps/mcp/slack`
 - [ ] `apps/desktop/vitruvian-code`

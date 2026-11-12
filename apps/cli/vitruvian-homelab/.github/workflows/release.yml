@@ -1,0 +1,162 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Publish-on-version-bump. The monorepo (vitruvian-core) authors Vitruvian
+# Homelab's version bump via release-please; the bumped .release-please-manifest.json
+# is exported here. When the version has no matching tag yet, this is a new
+# release: tag the exported commit, build darwin arm64/amd64 binaries from the
+# stdlib-only Rust crate, publish the GitHub Release, and update the Homebrew
+# formula (Formula/vitruvian-homelab.rb) in VitruvianSoftware/homebrew-tap.
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
+
+      - id: detect
+        name: Detect a new release from the exported manifest
+        run: |
+          if [ ! -f .release-please-manifest.json ]; then
+            echo "No manifest yet -- monorepo release-please has not cut a release."
+            exit 0
+          fi
+          V="$(jq -r 'to_entries[0].value' .release-please-manifest.json)"
+          if [ -z "$V" ] || [ "$V" = "null" ]; then
+            echo "No version in manifest."
+            exit 0
+          fi
+          if git rev-parse "v$V" >/dev/null 2>&1 || git rev-parse "vitruvian-homelab-v$V" >/dev/null 2>&1; then
+            echo "v$V already released -- nothing to do."
+          else
+            echo "version=$V" >> "$GITHUB_OUTPUT"
+            echo "Detected new release v$V."
+          fi
+
+      - name: Build darwin arm64 and amd64 archives
+        if: steps.detect.outputs.version
+        run: |
+          set -euo pipefail
+          V="${{ steps.detect.outputs.version }}"
+          COMMIT="$(git rev-parse --short HEAD)"
+          DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+          mkdir -p dist/arm64 dist/amd64 out
+
+          rustc --edition 2021 --target aarch64-apple-darwin --crate-type lib --crate-name vitruvian_homelab_rs -Copt-level=3 rs/src/lib.rs -o dist/arm64/libvitruvian_homelab_rs.rlib
+          HOMELAB_VERSION="$V" HOMELAB_COMMIT="$COMMIT" HOMELAB_DATE="$DATE" \
+            rustc --edition 2021 --target aarch64-apple-darwin -Copt-level=3 --extern vitruvian_homelab_rs=dist/arm64/libvitruvian_homelab_rs.rlib rs/src/main.rs -o dist/arm64/homelab
+          cp LICENSE README.md homelab.example.yaml dist/arm64/
+          tar -C dist/arm64 -czf "out/vitruvian-homelab_${V}_darwin_arm64.tar.gz" homelab LICENSE README.md homelab.example.yaml
+
+          rustc --edition 2021 --target x86_64-apple-darwin --crate-type lib --crate-name vitruvian_homelab_rs -Copt-level=3 rs/src/lib.rs -o dist/amd64/libvitruvian_homelab_rs.rlib
+          HOMELAB_VERSION="$V" HOMELAB_COMMIT="$COMMIT" HOMELAB_DATE="$DATE" \
+            rustc --edition 2021 --target x86_64-apple-darwin -Copt-level=3 --extern vitruvian_homelab_rs=dist/amd64/libvitruvian_homelab_rs.rlib rs/src/main.rs -o dist/amd64/homelab
+          cp LICENSE README.md homelab.example.yaml dist/amd64/
+          tar -C dist/amd64 -czf "out/vitruvian-homelab_${V}_darwin_amd64.tar.gz" homelab LICENSE README.md homelab.example.yaml
+
+          (
+            cd out
+            shasum -a 256 "vitruvian-homelab_${V}_darwin_arm64.tar.gz" "vitruvian-homelab_${V}_darwin_amd64.tar.gz" > checksums.txt
+          )
+
+      - name: Tag and publish GitHub Release
+        if: steps.detect.outputs.version
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
+        run: |
+          set -euo pipefail
+          V="${{ steps.detect.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "v$V" -m "Release v$V"
+          git push origin "v$V"
+          gh release create "v$V" \
+            "out/vitruvian-homelab_${V}_darwin_arm64.tar.gz" \
+            "out/vitruvian-homelab_${V}_darwin_amd64.tar.gz" \
+            "out/checksums.txt" \
+            --title "Vitruvian Homelab $V" \
+            --generate-notes
+
+      - name: Update Homebrew Formula
+        if: steps.detect.outputs.version
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
+        run: |
+          set -euo pipefail
+          V="${{ steps.detect.outputs.version }}"
+          REPO="${GITHUB_REPOSITORY}"
+          ARM64_SHA="$(shasum -a 256 "out/vitruvian-homelab_${V}_darwin_arm64.tar.gz" | awk '{print $1}')"
+          AMD64_SHA="$(shasum -a 256 "out/vitruvian-homelab_${V}_darwin_amd64.tar.gz" | awk '{print $1}')"
+
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/VitruvianSoftware/homebrew-tap.git" tap-repo
+          cd tap-repo
+          mkdir -p Formula
+
+          cat > Formula/vitruvian-homelab.rb << EOF
+          class VitruvianHomelab < Formula
+            desc "Vitruvian Homelab — k3s and Lima cluster provisioning CLI"
+            homepage "https://github.com/${REPO}"
+            version "${V}"
+            license "Apache-2.0"
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "https://github.com/${REPO}/releases/download/v${V}/vitruvian-homelab_${V}_darwin_arm64.tar.gz"
+                sha256 "${ARM64_SHA}"
+              else
+                url "https://github.com/${REPO}/releases/download/v${V}/vitruvian-homelab_${V}_darwin_amd64.tar.gz"
+                sha256 "${AMD64_SHA}"
+              end
+            end
+
+            def install
+              bin.install "homelab"
+            end
+
+            test do
+              system "#{bin}/homelab", "version"
+            end
+          end
+          EOF
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/vitruvian-homelab.rb
+          git commit -m "chore: update vitruvian-homelab formula to v${V}" || echo "No changes to commit"
+          git push origin main

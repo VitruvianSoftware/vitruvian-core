@@ -48,7 +48,7 @@ extension_kinds:
     blurb: Instructions an agent loads when a task calls for them, so it uses a tool the way its authors intended.
 
 projects:
-  - name: devx
+  - name: Vitruvian DevX CLI
     group: devtools
     featured: true
     status: released
@@ -58,17 +58,17 @@ projects:
       Cloudflare tunnel ingress, and starts everything in dependency order.
     tags: [Go, Lima, Kubernetes, Cloudflare]
     repo: https://github.com/VitruvianSoftware/devx
-    source: apps/cli/devx
-    install: brew tap vitruviansoftware/tap && brew trust vitruviansoftware/tap && brew install vitruviansoftware/tap/devx
+    source: apps/cli/vitruvian-devx
+    install: brew tap vitruviansoftware/tap && brew trust vitruviansoftware/tap && brew install vitruviansoftware/tap/vitruvian-devx
     extension:
       kind: skill
-      needs: devx installed
+      needs: Vitruvian DevX CLI installed
       installs:
         - tool: Any agent
           label: Add the skills to your project
           command: devx agent init
 
-  - name: homelab
+  - name: Vitruvian Homelab
     group: devtools
     featured: true
     status: released
@@ -76,16 +76,16 @@ projects:
       Declarative multi-node K3s clusters on macOS. Describe the nodes in one
       file and homelab provisions Lima VZ virtual machines, networking and the
       cluster to match.
-    tags: [Go, K3s, Lima VZ, macOS]
+    tags: [Rust, K3s, Lima VZ, macOS]
     repo: https://github.com/VitruvianSoftware/homelab
-    source: apps/cli/homelab
-    install: brew tap vitruviansoftware/tap && brew trust vitruviansoftware/tap && brew install vitruviansoftware/tap/homelab
+    source: apps/cli/vitruvian-homelab
+    install: brew tap vitruviansoftware/tap && brew trust vitruviansoftware/tap && brew install vitruviansoftware/tap/vitruvian-homelab
 
   - name: homebrew-tap
     group: devtools
     status: released
     summary: >-
-      The Homebrew tap for Vitruvian tools: devx, homelab and our macOS
+      The Homebrew tap for Vitruvian tools: Vitruvian DevX CLI, Vitruvian Homelab and our macOS
       utilities, installable with one command.
     tags: [Homebrew, Ruby]
     repo: https://github.com/VitruvianSoftware/homebrew-tap

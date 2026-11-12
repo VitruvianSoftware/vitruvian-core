@@ -117,7 +117,7 @@ func TestGuardReviewPathsCoverage(t *testing.T) {
 		"tools/cloud-bootstrap/src/configure_tailscale/lib.rs",
 		"tools/remote/BUILD",
 		"tools/remote/testdata/setup_sh.golden",
-		"apps/cli/devx/main.go",
+		"apps/cli/vitruvian-devx/main.go",
 		".claude/agents/wren.md",
 		".agents/agents/wren.md",
 		// Other .github files, and a mirror's own workflows (they run in the
