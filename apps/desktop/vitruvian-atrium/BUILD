@@ -30,6 +30,7 @@ load("@build_bazel_rules_swift//swift:swift_interop_hint.bzl", "swift_interop_hi
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("//tools/apple:defs.bzl", "APPLE_TOOLCHAIN_ONLY")
 load("//tools/delivery:defs.bzl", "delivery")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 load("//tools/swift-test-preferences:defs.bzl", "swift_test")
@@ -105,7 +106,7 @@ swift_library(
     # says what protects it (REFACTOR.md step 6a).
     features = ["swift.enable_v6"],
     module_name = "VitruvianAtriumCore",
-    target_compatible_with = MACOS_ONLY,
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
         ":FanControlKit",
         # The tool protocol's types (MIT, packages/vitruvian-sdk): the app and
@@ -127,7 +128,7 @@ swift_library(
     # Swift 6 language mode, as VitruvianAtriumCore.
     features = ["swift.enable_v6"],
     module_name = "VitruvianAtriumDesign",
-    target_compatible_with = MACOS_ONLY,
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [":VitruvianAtriumCore"],
 )
 
@@ -148,7 +149,7 @@ swift_library(
     # actor.
     features = ["swift.enable_v6"],
     module_name = "VitruvianAtriumServices",
-    target_compatible_with = MACOS_ONLY,
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
         ":FanControlKit",
         ":HIDEventSystem",
@@ -174,7 +175,7 @@ swift_library(
     # checking as errors, and main-actor code checked at run time.
     features = ["swift.enable_v6"],
     module_name = "VitruvianAtriumUI",
-    target_compatible_with = MACOS_ONLY,
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
         ":VitruvianAtriumCore",
         ":VitruvianAtriumDesign",
@@ -197,7 +198,7 @@ swift_library(
     # Swift 6 language mode since REFACTOR.md step 6zzk.
     features = ["swift.enable_v6"],
     module_name = "FanControlKit",
-    target_compatible_with = MACOS_ONLY,
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
 )
 
 # --- The app ------------------------------------------------------------------
@@ -230,7 +231,7 @@ swift_library(
     # that checks for the main thread at run time runs there.
     features = ["swift.enable_v6"],
     module_name = "VitruvianAtrium",
-    target_compatible_with = MACOS_ONLY,
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
         ":FanControlKit",
         ":HIDEventSystem",
@@ -253,7 +254,7 @@ swift_library(
     copts = ["-DVITRUVIAN_SAMPLE_TOOL"],
     features = ["swift.enable_v6"],
     module_name = "VitruvianAtrium",
-    target_compatible_with = MACOS_ONLY,
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
         ":FanControlKit",
         ":HIDEventSystem",
@@ -277,7 +278,7 @@ swift_library(
     # for the main thread at run time are the signal handlers, which run there.
     features = ["swift.enable_v6"],
     module_name = "FanControlHelper",
-    target_compatible_with = MACOS_ONLY,
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [":FanControlKit"],
 )
 
@@ -299,7 +300,7 @@ swift_library(
     # Swift 6 language mode since REFACTOR.md step 6zzl.
     features = ["swift.enable_v6"],
     module_name = "VitruvianAtriumNowPlaying",
-    target_compatible_with = MACOS_ONLY,
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
 )
 
 macos_dylib(
@@ -332,7 +333,7 @@ swift_binary(
     ],
     features = ["swift.enable_v6"],
     tags = ["manual"],
-    target_compatible_with = MACOS_ONLY,
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
 )
 
 # A tool the unit tests start as a real child process: it speaks the tool
@@ -355,7 +356,7 @@ swift_binary(
     ],
     features = ["swift.enable_v6"],
     tags = ["manual"],
-    target_compatible_with = MACOS_ONLY,
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
 )
 
 # Looks at, and presses, the controls of the running Vitruvian Atrium app from the
@@ -387,7 +388,7 @@ swift_binary(
     ],
     features = ["swift.enable_v6"],
     tags = ["manual"],
-    target_compatible_with = MACOS_ONLY,
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
 )
 
 # Checks against the live internet what the unit tests check against
@@ -413,7 +414,7 @@ swift_binary(
     ],
     features = ["swift.enable_v6"],
     tags = ["manual"],
-    target_compatible_with = MACOS_ONLY,
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
         ":VitruvianAtriumCore",
         ":VitruvianAtriumServices",
@@ -764,7 +765,7 @@ swift_test(
     features = ["swift.enable_v6"],
     module_name = "VitruvianAtriumTests",
     tags = ["manual"],
-    target_compatible_with = MACOS_ONLY,
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
         ":FanControlKit",
         ":VMStatisticsCompat",

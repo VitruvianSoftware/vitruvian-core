@@ -2,6 +2,7 @@ load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application")
 load("@build_bazel_rules_swift//swift:swift_binary.bzl", "swift_binary")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("//tools/apple:defs.bzl", "APPLE_TOOLCHAIN_ONLY")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 load("//tools/swift-test-preferences:defs.bzl", "swift_test")
 
@@ -17,7 +18,7 @@ swift_library(
     srcs = [":shared_sources"],
     features = ["swift.enable_v6"],
     module_name = "VitruvianCodeCore",
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     visibility = [
         "//apps/desktop/vitruvian-atrium:__pkg__",
         "//apps/desktop/vitruvian-code:__subpackages__",
@@ -46,7 +47,7 @@ swift_library(
     data = [":shared_ui_resources"],
     features = ["swift.enable_v6"],
     module_name = "VitruvianCodeUI",
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     visibility = [
         "//apps/desktop/vitruvian-atrium:__pkg__",
         "//apps/desktop/vitruvian-code:__subpackages__",
@@ -89,7 +90,7 @@ swift_library(
     features = ["swift.enable_v6"],
     module_name = "VitruvianCodeToolCore",
     tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
         ":VitruvianCodeCore",
         "//packages/vitruvian-sdk:VitruvianToolKit",
@@ -105,7 +106,7 @@ swift_test(
     size = "small",
     srcs = glob(["Tests/VitruvianCodeToolTests/**/*.swift"]),
     tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
         ":VitruvianCodeCore",
         ":VitruvianCodeToolCore",
@@ -123,7 +124,7 @@ swift_binary(
     features = ["swift.enable_v6"],
     module_name = "VitruvianCodeToolProgram",
     tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
         ":VitruvianCodeCore",
         ":VitruvianCodeToolCore",
@@ -210,7 +211,7 @@ swift_library(
     name = "VitruvianCodeLib",
     srcs = glob(["Sources/VitruvianCode/**/*.swift"]),
     module_name = "VitruvianCode",
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
         ":VitruvianCodeCore",
         ":VitruvianCodeUI",
@@ -246,7 +247,7 @@ swift_test(
         "//apps/desktop/vitruvian-code:testdata_files",
     ],
     tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
         ":VitruvianCodeCore",
         ":VitruvianCodeUI",

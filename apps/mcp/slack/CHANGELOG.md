@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.23.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.22.1...mcp-slack-v1.23.0) (2026-11-12)
+
+
+### Features
+
+* **mcp-slack:** hold the allow-list with a user token, and add paging, compact output and whoami ([#4616](https://github.com/VitruvianSoftware/vitruvian-core/issues/4616)) ([08cc7e3](https://github.com/VitruvianSoftware/vitruvian-core/commit/08cc7e3d102cae969b79f06b3823bc183ae7ce84))
+
 ## [1.22.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.22.0...mcp-slack-v1.22.1) (2026-10-27)
 
 

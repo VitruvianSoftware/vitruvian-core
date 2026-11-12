@@ -22,7 +22,9 @@ use crate::config::WriteTokenPreference;
 use crate::json::JsonValue;
 use crate::permalink::{parse_file_reference, parse_permalink, MessageRef};
 use crate::slack_client::{
-    CreateUserGroupInput, SlackClient, SlackClientError, UpdateUserGroupFields, UploadFileInput,
+    ChannelHistoryOptions, CreateUserGroupInput, PostMessageOptions, ReplyToThreadOptions,
+    SearchOptions, SlackClient, SlackClientError, ThreadRepliesOptions, UpdateUserGroupFields,
+    UploadFileInput,
 };
 
 fn str_arg(args: &JsonValue, name: &str) -> Result<String, SlackClientError> {
@@ -172,12 +174,14 @@ pub const HANDLER_NAMES: &[&str] = &[
     "slack_mark_read",
     "slack_get_users",
     "slack_get_user_profile",
+    "slack_whoami",
     "slack_search_messages",
     "slack_search_files",
     "slack_post_message",
     "slack_reply_to_thread",
     "slack_update_message",
     "slack_add_reaction",
+    "slack_remove_reaction",
     "slack_list_pins",
     "slack_pin_message",
     "slack_unpin_message",
@@ -209,18 +213,34 @@ pub fn dispatch(
     name: &str,
     args: &JsonValue,
 ) -> Result<JsonValue, SlackClientError> {
+    let _ = opt_bool(args, "compact")?;
     match name {
         // Channels
         "slack_list_channels" => {
             client.list_channels_num(opt_num(args, "limit")?, opt_str(args, "cursor")?.as_deref())
         }
         "slack_get_channel_info" => client.get_channel_info(&str_arg(args, "channel_id")?),
-        "slack_get_channel_history" => {
-            client.get_channel_history_num(&str_arg(args, "channel_id")?, opt_num(args, "limit")?)
-        }
-        "slack_get_thread_replies" => {
-            client.get_thread_replies(&str_arg(args, "channel_id")?, &str_arg(args, "thread_ts")?)
-        }
+        "slack_get_channel_history" => client.get_channel_history_with_options(
+            &str_arg(args, "channel_id")?,
+            ChannelHistoryOptions {
+                limit: opt_num(args, "limit")?,
+                oldest: opt_str(args, "oldest")?,
+                latest: opt_str(args, "latest")?,
+                since: opt_str(args, "since")?,
+                cursor: opt_str(args, "cursor")?,
+                include_activity: opt_bool(args, "include_activity")?,
+            },
+        ),
+        "slack_get_thread_replies" => client.get_thread_replies_with_options(
+            &str_arg(args, "channel_id")?,
+            &str_arg(args, "thread_ts")?,
+            ThreadRepliesOptions {
+                limit: opt_num(args, "limit")?,
+                cursor: opt_str(args, "cursor")?,
+                oldest: opt_str(args, "oldest")?,
+                latest: opt_str(args, "latest")?,
+            },
+        ),
         "slack_set_channel_topic" => {
             client.set_channel_topic(&str_arg(args, "channel_id")?, &str_arg(args, "topic")?)
         }
@@ -257,27 +277,46 @@ pub fn dispatch(
             client.get_users_num(opt_num(args, "limit")?, opt_str(args, "cursor")?.as_deref())
         }
         "slack_get_user_profile" => client.get_user_profile(&str_arg(args, "user_id")?),
+        "slack_whoami" => client.whoami(),
 
         // Search
-        "slack_search_messages" => client.search_messages_num(
+        "slack_search_messages" => client.search_messages_with_options(
             &str_arg(args, "query")?,
-            opt_num(args, "count")?,
-            opt_str(args, "sort")?.as_deref(),
+            SearchOptions {
+                count: opt_num(args, "count")?,
+                sort: opt_str(args, "sort")?,
+                sort_dir: opt_str(args, "sort_dir")?,
+                page: opt_num(args, "page")?,
+            },
         ),
-        "slack_search_files" => client.search_files_num(
+        "slack_search_files" => client.search_files_with_options(
             &str_arg(args, "query")?,
-            opt_num(args, "count")?,
-            opt_str(args, "sort")?.as_deref(),
+            SearchOptions {
+                count: opt_num(args, "count")?,
+                sort: opt_str(args, "sort")?,
+                sort_dir: opt_str(args, "sort_dir")?,
+                page: opt_num(args, "page")?,
+            },
         ),
 
         // Messaging
-        "slack_post_message" => {
-            client.post_message(&str_arg(args, "channel_id")?, &str_arg(args, "text")?)
-        }
-        "slack_reply_to_thread" => client.reply_to_thread(
+        "slack_post_message" => client.post_message_with_options(
+            &str_arg(args, "channel_id")?,
+            &str_arg(args, "text")?,
+            PostMessageOptions {
+                thread_ts: opt_str(args, "thread_ts")?,
+                reply_broadcast: opt_bool(args, "reply_broadcast")?,
+                unfurl_links: opt_bool(args, "unfurl_links")?,
+            },
+        ),
+        "slack_reply_to_thread" => client.reply_to_thread_with_options(
             &str_arg(args, "channel_id")?,
             &str_arg(args, "thread_ts")?,
             &str_arg(args, "text")?,
+            ReplyToThreadOptions {
+                reply_broadcast: opt_bool(args, "reply_broadcast")?,
+                unfurl_links: opt_bool(args, "unfurl_links")?,
+            },
         ),
         "slack_update_message" => client.update_message(
             &str_arg(args, "channel_id")?,
@@ -288,6 +327,11 @@ pub fn dispatch(
             &str_arg(args, "channel_id")?,
             &str_arg(args, "timestamp")?,
             &str_arg(args, "reaction")?,
+        ),
+        "slack_remove_reaction" => client.remove_reaction(
+            &str_arg(args, "channel_id")?,
+            &str_arg(args, "timestamp")?,
+            &str_arg(args, "emoji")?,
         ),
 
         // Pins
@@ -741,5 +785,331 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.to_string().contains("must be a number"));
+    }
+
+    #[test]
+    fn channel_history_paging_since_and_opt_in_activity_filtering() {
+        let urls: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let urls_ref = urls.clone();
+        let _guard = set_mock_fetch(move |req| {
+            urls_ref.lock().unwrap().push(req.url.clone());
+            let cursor = if req.url.contains("cursor=page2") {
+                ""
+            } else {
+                "cursor_next_123"
+            };
+            Ok(HttpResponse::json(
+                200,
+                JsonValue::parse(&format!(
+                    r#"{{"ok":true,"messages":[{{"ts":"1.0","text":"hello"}},{{"ts":"2.0","subtype":"channel_join","text":"joined"}},{{"ts":"3.0","subtype":"channel_leave","text":"left"}},{{"ts":"4.0","subtype":"group_join","text":"gjoined"}},{{"ts":"5.0","subtype":"group_leave","text":"gleft"}},{{"ts":"6.0","subtype":"bot_message","text":"alert"}}],"response_metadata":{{"next_cursor":"{cursor}"}}}}"#
+                ))
+                .unwrap(),
+            ))
+        });
+
+        let client = client_for(&stdio_env());
+
+        // Default: include_activity is true (all 6 messages kept), Slack's response_metadata kept without top-level next_cursor.
+        let default_res = dispatch(
+            &client,
+            "slack_get_channel_history",
+            &JsonValue::parse(r#"{"channel_id":"C1"}"#).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            default_res
+                .get("messages")
+                .and_then(|v| v.as_array())
+                .unwrap()
+                .len(),
+            6
+        );
+        assert!(!default_res.contains_key("next_cursor"));
+        assert_eq!(
+            default_res
+                .get("response_metadata")
+                .and_then(|m| m.get("next_cursor"))
+                .and_then(|v| v.as_str()),
+            Some("cursor_next_123")
+        );
+
+        // include_activity: false drops join/leave subtypes while keeping regular + bot messages.
+        urls.lock().unwrap().clear();
+        let filtered_res = dispatch(
+            &client,
+            "slack_get_channel_history",
+            &JsonValue::parse(
+                r#"{"channel_id":"C1","include_activity":false,"oldest":"100.0","latest":"200.0","since":"not-parsed-when-oldest-set","cursor":"page2"}"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let kept = filtered_res
+            .get("messages")
+            .and_then(|v| v.as_array())
+            .unwrap();
+        assert_eq!(kept.len(), 2);
+        assert_eq!(kept[0].get("ts").and_then(|v| v.as_str()), Some("1.0"));
+        assert_eq!(kept[1].get("ts").and_then(|v| v.as_str()), Some("6.0"));
+        // Empty response_metadata.next_cursor does not emit top-level next_cursor.
+        assert!(!filtered_res.contains_key("next_cursor"));
+        {
+            let recorded = urls.lock().unwrap();
+            let parsed = crate::url::ParsedUrl::parse(&recorded[0]).unwrap();
+            assert_eq!(parsed.query_get("oldest"), Some("100.0"));
+            assert_eq!(parsed.query_get("latest"), Some("200.0"));
+            assert_eq!(parsed.query_get("cursor"), Some("page2"));
+        }
+
+        // since converts to oldest when oldest is omitted.
+        urls.lock().unwrap().clear();
+        dispatch(
+            &client,
+            "slack_get_channel_history",
+            &JsonValue::parse(r#"{"channel_id":"C1","since":"24h"}"#).unwrap(),
+        )
+        .unwrap();
+        {
+            let recorded = urls.lock().unwrap();
+            let parsed = crate::url::ParsedUrl::parse(&recorded[0]).unwrap();
+            let oldest_val: f64 = parsed.query_get("oldest").unwrap().parse().unwrap();
+            assert!(oldest_val > 1_000_000_000.0);
+        }
+
+        // Invalid since fails before calling Slack.
+        urls.lock().unwrap().clear();
+        let err = dispatch(
+            &client,
+            "slack_get_channel_history",
+            &JsonValue::parse(r#"{"channel_id":"C1","since":"yesterday"}"#).unwrap(),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("Invalid since value"));
+        assert!(urls.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn thread_replies_sends_limit_only_when_passed_without_top_level_next_cursor() {
+        let urls: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let urls_ref = urls.clone();
+        let _guard = set_mock_fetch(move |req| {
+            urls_ref.lock().unwrap().push(req.url.clone());
+            Ok(HttpResponse::json(
+                200,
+                JsonValue::parse(
+                    r#"{"ok":true,"messages":[{"ts":"1.0"}],"response_metadata":{"next_cursor":"thread_cur"}}"#,
+                )
+                .unwrap(),
+            ))
+        });
+
+        let client = client_for(&stdio_env());
+
+        // Without limit: no limit query param sent to Slack, and no top-level next_cursor added.
+        let res = dispatch(
+            &client,
+            "slack_get_thread_replies",
+            &JsonValue::parse(r#"{"channel_id":"C1","thread_ts":"1.0"}"#).unwrap(),
+        )
+        .unwrap();
+        assert!(!res.contains_key("next_cursor"));
+        assert_eq!(
+            res.get("response_metadata")
+                .and_then(|m| m.get("next_cursor"))
+                .and_then(|v| v.as_str()),
+            Some("thread_cur")
+        );
+        {
+            let parsed = crate::url::ParsedUrl::parse(&urls.lock().unwrap()[0]).unwrap();
+            assert_eq!(parsed.query_get("limit"), None);
+            assert_eq!(parsed.query_get("cursor"), None);
+        }
+
+        // With limit > 200 and paging bounds: clamped to 200 and forwarded.
+        urls.lock().unwrap().clear();
+        dispatch(
+            &client,
+            "slack_get_thread_replies",
+            &JsonValue::parse(
+                r#"{"channel_id":"C1","thread_ts":"1.0","limit":500,"cursor":"c2","oldest":"1.1","latest":"9.9"}"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        {
+            let parsed = crate::url::ParsedUrl::parse(&urls.lock().unwrap()[0]).unwrap();
+            assert_eq!(parsed.query_get("limit"), Some("200"));
+            assert_eq!(parsed.query_get("cursor"), Some("c2"));
+            assert_eq!(parsed.query_get("oldest"), Some("1.1"));
+            assert_eq!(parsed.query_get("latest"), Some("9.9"));
+        }
+    }
+
+    #[test]
+    fn search_tools_forward_page_and_sort_dir_and_validate_inputs() {
+        let urls: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let urls_ref = urls.clone();
+        let _guard = set_mock_fetch(move |req| {
+            urls_ref.lock().unwrap().push(req.url.clone());
+            Ok(HttpResponse::json(
+                200,
+                JsonValue::parse(r#"{"ok":true,"messages":{"matches":[]},"files":{"matches":[]}}"#)
+                    .unwrap(),
+            ))
+        });
+
+        let client = client_for(&stdio_env());
+
+        for tool in ["slack_search_messages", "slack_search_files"] {
+            urls.lock().unwrap().clear();
+            dispatch(
+                &client,
+                tool,
+                &JsonValue::parse(
+                    r#"{"query":"incident","page":3,"sort":"timestamp","sort_dir":"asc"}"#,
+                )
+                .unwrap(),
+            )
+            .unwrap();
+            let parsed = crate::url::ParsedUrl::parse(&urls.lock().unwrap()[0]).unwrap();
+            assert_eq!(parsed.query_get("page"), Some("3"));
+            assert_eq!(parsed.query_get("sort_dir"), Some("asc"));
+
+            urls.lock().unwrap().clear();
+            assert!(dispatch(
+                &client,
+                tool,
+                &JsonValue::parse(r#"{"query":"incident","page":0}"#).unwrap(),
+            )
+            .is_err());
+            assert!(dispatch(
+                &client,
+                tool,
+                &JsonValue::parse(r#"{"query":"incident","sort_dir":"sideways"}"#).unwrap(),
+            )
+            .is_err());
+            assert!(urls.lock().unwrap().is_empty());
+        }
+    }
+
+    #[test]
+    fn whoami_remove_reaction_and_messaging_options_dispatch_correctly() {
+        let calls: Arc<Mutex<Vec<CapturedCall>>> = Arc::new(Mutex::new(Vec::new()));
+        let calls_ref = calls.clone();
+        let _guard = set_mock_fetch(move |req| {
+            calls_ref.lock().unwrap().push(CapturedCall {
+                url: req.url.clone(),
+                body: req.body_str(),
+            });
+            Ok(HttpResponse::json(
+                200,
+                JsonValue::parse(r#"{"ok":true,"user_id":"U1","team_id":"T123"}"#).unwrap(),
+            ))
+        });
+
+        let client = client_for(&stdio_env());
+
+        // D1: slack_whoami calls auth.test for bot + user when user token is configured.
+        let who = dispatch(&client, "slack_whoami", &JsonValue::empty_object()).unwrap();
+        assert_eq!(
+            who.get("bot")
+                .and_then(|b| b.get("user_id"))
+                .and_then(|v| v.as_str()),
+            Some("U1")
+        );
+        assert_eq!(
+            who.get("user")
+                .and_then(|u| u.get("team_id"))
+                .and_then(|v| v.as_str()),
+            Some("T123")
+        );
+        assert_eq!(calls.lock().unwrap().len(), 2);
+
+        // D2: slack_remove_reaction sends channel, timestamp, and name=emoji to reactions.remove.
+        calls.lock().unwrap().clear();
+        dispatch(
+            &client,
+            "slack_remove_reaction",
+            &JsonValue::parse(
+                r#"{"channel_id":"C1","timestamp":"1700000000.000100","emoji":"thumbsup"}"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        {
+            let recorded = calls.lock().unwrap();
+            assert_eq!(recorded.len(), 1);
+            assert!(recorded[0].url.contains("/api/reactions.remove"));
+            let body = JsonValue::parse(recorded[0].body.as_ref().unwrap()).unwrap();
+            assert_eq!(body.get("channel").and_then(|v| v.as_str()), Some("C1"));
+            assert_eq!(
+                body.get("timestamp").and_then(|v| v.as_str()),
+                Some("1700000000.000100")
+            );
+            assert_eq!(body.get("name").and_then(|v| v.as_str()), Some("thumbsup"));
+        }
+
+        // D3: slack_post_message default sends only channel + text; optional thread_ts,
+        // reply_broadcast, unfurl_links forwarded when provided.
+        calls.lock().unwrap().clear();
+        dispatch(
+            &client,
+            "slack_post_message",
+            &JsonValue::parse(r#"{"channel_id":"C1","text":"plain"}"#).unwrap(),
+        )
+        .unwrap();
+        {
+            let recorded = calls.lock().unwrap();
+            let body = JsonValue::parse(recorded[0].body.as_ref().unwrap()).unwrap();
+            assert_eq!(body.as_object().unwrap().len(), 2);
+        }
+
+        calls.lock().unwrap().clear();
+        dispatch(
+            &client,
+            "slack_post_message",
+            &JsonValue::parse(
+                r#"{"channel_id":"C1","text":"broadcast","thread_ts":"1.23","reply_broadcast":true,"unfurl_links":false}"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        {
+            let recorded = calls.lock().unwrap();
+            let body = JsonValue::parse(recorded[0].body.as_ref().unwrap()).unwrap();
+            assert_eq!(body.get("thread_ts").and_then(|v| v.as_str()), Some("1.23"));
+            assert_eq!(
+                body.get("reply_broadcast").and_then(|v| v.as_bool()),
+                Some(true)
+            );
+            assert_eq!(
+                body.get("unfurl_links").and_then(|v| v.as_bool()),
+                Some(false)
+            );
+        }
+
+        // D3: slack_reply_to_thread forwards optional reply_broadcast and unfurl_links.
+        calls.lock().unwrap().clear();
+        dispatch(
+            &client,
+            "slack_reply_to_thread",
+            &JsonValue::parse(
+                r#"{"channel_id":"C1","thread_ts":"1.23","text":"reply","reply_broadcast":true,"unfurl_links":false}"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        {
+            let recorded = calls.lock().unwrap();
+            let body = JsonValue::parse(recorded[0].body.as_ref().unwrap()).unwrap();
+            assert_eq!(
+                body.get("reply_broadcast").and_then(|v| v.as_bool()),
+                Some(true)
+            );
+            assert_eq!(
+                body.get("unfurl_links").and_then(|v| v.as_bool()),
+                Some(false)
+            );
+        }
     }
 }
