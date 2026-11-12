@@ -48,9 +48,13 @@ export const scorecardsPlugin = createBackendPlugin({
           auth,
         });
 
+        // No addAuthPolicy here on purpose: Backstage's default policy then
+        // requires a signed-in user or a service token for every route. The
+        // entity card calls /entities through fetchApi, which sends the
+        // user's token. /evaluate takes a caller-supplied entity and fetches
+        // its links, so opening it up would let anyone make this server
+        // request internal URLs.
         http.use(router);
-        http.addAuthPolicy({ path: "/entities", allow: "unauthenticated" });
-        http.addAuthPolicy({ path: "/evaluate", allow: "unauthenticated" });
       },
     });
   },
