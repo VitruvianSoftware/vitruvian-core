@@ -1,7 +1,7 @@
 {
   "id": "dev.vitruvian.code",
   "name": {
-    "en": "Code"
+    "en": "Vitruvian Code"
   },
   "description": {
     "en": "Run your Telegram bot for the Antigravity agent and ask the agent from anywhere with a Quick Prompt",
@@ -134,21 +134,21 @@
       {
         "id": "agent",
         "title": {
-          "en": "Code",
-          "pt-BR": "Code",
-          "tr": "Code",
-          "ru": "Code",
-          "es": "Code",
-          "sk": "Code",
-          "de": "Code",
-          "fr": "Code",
-          "it": "Code",
-          "ja": "Code",
-          "ko": "Code",
-          "uk": "Code",
-          "zh-Hans": "Code",
-          "zh-TW": "Code",
-          "zh-HK": "Code"
+          "en": "Vitruvian Code",
+          "pt-BR": "Vitruvian Code",
+          "tr": "Vitruvian Code",
+          "ru": "Vitruvian Code",
+          "es": "Vitruvian Code",
+          "sk": "Vitruvian Code",
+          "de": "Vitruvian Code",
+          "fr": "Vitruvian Code",
+          "it": "Vitruvian Code",
+          "ja": "Vitruvian Code",
+          "ko": "Vitruvian Code",
+          "uk": "Vitruvian Code",
+          "zh-Hans": "Vitruvian Code",
+          "zh-TW": "Vitruvian Code",
+          "zh-HK": "Vitruvian Code"
         },
         "placement": "island",
         "icon": "paperplane"
@@ -156,21 +156,21 @@
       {
         "id": "settings",
         "title": {
-          "en": "Code",
-          "pt-BR": "Code",
-          "tr": "Code",
-          "ru": "Code",
-          "es": "Code",
-          "sk": "Code",
-          "de": "Code",
-          "fr": "Code",
-          "it": "Code",
-          "ja": "Code",
-          "ko": "Code",
-          "uk": "Code",
-          "zh-Hans": "Code",
-          "zh-TW": "Code",
-          "zh-HK": "Code"
+          "en": "Vitruvian Code",
+          "pt-BR": "Vitruvian Code",
+          "tr": "Vitruvian Code",
+          "ru": "Vitruvian Code",
+          "es": "Vitruvian Code",
+          "sk": "Vitruvian Code",
+          "de": "Vitruvian Code",
+          "fr": "Vitruvian Code",
+          "it": "Vitruvian Code",
+          "ja": "Vitruvian Code",
+          "ko": "Vitruvian Code",
+          "uk": "Vitruvian Code",
+          "zh-Hans": "Vitruvian Code",
+          "zh-TW": "Vitruvian Code",
+          "zh-HK": "Vitruvian Code"
         },
         "placement": "settings"
       }
