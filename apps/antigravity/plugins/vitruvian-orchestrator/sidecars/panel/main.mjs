@@ -43,6 +43,7 @@ import { fileURLToPath } from "node:url";
 import {
   board as boardView,
   burnDown,
+  channels as channelsView,
   DEFAULT_QUIET_MS,
   DEFAULT_STALL_MS,
   DEFAULT_WAITING_STALL_MS,
@@ -50,6 +51,7 @@ import {
   initialFlow,
   members as membersView,
   mentionGraph,
+  overview as overviewView,
   pendingWakes,
   reduce,
   remaining,
@@ -530,13 +532,14 @@ const EVENT_ORDER = Object.freeze({
   "run.progress": 3,
   "member.pause": 3,
   "run.end": 4,
-  post: 5,
-  wake: 6,
-  "member.retire": 7,
-  "member.kill": 7,
-  "task.return": 8,
-  "task.accept": 9,
-  close: 10,
+  channel: 5,
+  post: 6,
+  wake: 7,
+  "member.retire": 8,
+  "member.kill": 8,
+  "task.return": 9,
+  "task.accept": 10,
+  close: 11,
 });
 
 /**
@@ -714,6 +717,12 @@ export function buildPanelState(flow, meta = {}) {
     quietMs: meta.quietMs,
     stallMs: meta.stallMs,
   });
+  const chList = channelsView(flow);
+  const ov = overviewView(flow, {
+    now,
+    quietMs: meta.quietMs,
+    stallMs: meta.stallMs,
+  });
   const stallMap = new Map(stallRows.map((row) => [row.id, row]));
   const taskByN = new Map((flow?.tasks ?? []).map((t) => [t.n, t]));
   const graph = mentionGraph(flow);
@@ -769,6 +778,8 @@ export function buildPanelState(flow, meta = {}) {
     posts,
     graphPosts,
     postsDropped,
+    channels: chList,
+    overview: ov,
     mentionGraph: graph,
     hasMemberEvents: Boolean(flow?.hasMemberEvents),
     members,

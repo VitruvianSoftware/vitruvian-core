@@ -5,7 +5,7 @@ Antigravity desktop plugin that coordinates specialist helpers across a planned 
 ## What is in this plugin
 
 - **`orchestrate` lead skill (`skills/orchestrate/SKILL.md`)**: Turns the active Antigravity session into the lead that plans across five phases (`plan` → `design` → `delegate` → `review` → `close`), dispatches specialist helpers (`wren`, `scout`, `compass`, `quill`, and peers), reviews their work, and closes the flow. See [How the agent team works](../../../../docs/concepts/agent-team.md).
-- **Live Orchestrator panel (`sidecars/panel/`)**: Shows five **Flow** cards — **Header**, **Burn-down**, **Task Board**, **Agents**, and **Spend**. Flows with no board posts and no pause, retire, or kill events stay on this single **Flow** view. Once the flow has a post or a pause, retire, or kill event, a tab bar adds **Board**, **Members**, and **Graph**.
+- **Live Orchestrator panel (`sidecars/panel/`)**: Shows five **Flow** cards — **Header**, **Burn-down**, **Task Board**, **Agents**, and **Spend**. Flows with no board posts, no extra channels, and no pause, retire, or kill events stay on this single **Flow** view. Once any of those appear, a tab bar adds **Board**, **Members**, **Graph**, and **Overview**.
 - **Orchestration rule (`rules/AGENTS.md`)**: Reminds the lead and helpers to report progress and surfaces the `[Orchestrator](sidecar://vitruvian-orchestrator/panel/)` pill in chat.
 
 ## Shared board, tools, waking, and member states
@@ -13,8 +13,9 @@ Antigravity desktop plugin that coordinates specialist helpers across a planned 
 - **What the board is**: The board is a shared message list for the helpers and the lead, shown as numbered posts (`#1`, `#2`, and so on). Recipients appear as `@name` (`@all` displays as `everyone`), and replies show `↩ #<n>`.
 - **What helpers post**: Helpers post results, questions, and defect lists (plus short status notes) so teammates and the lead can read findings in one place.
 - **Tools**:
-  - `post`: Adds a message to the board with optional recipients, kind (`result`, `question`, `defect`, or `note`), and `replyTo` post number.
-  - `board`: Reads numbered posts from the board, with optional filters for recipient, author, kind, or search words. For a helper, calling `board` with no recipient (or `to: "me"`) returns posts addressed to that helper or to everyone.
+  - `post`: Adds a message to the board with optional recipients, kind (`result`, `question`, `defect`, or `note`), `replyTo` post number, and `channel` (default `main`).
+  - `board`: Reads numbered posts from the board, with optional filters for recipient, author, kind, channel, or search words. For a helper, calling `board` with no recipient (or `to: "me"`) returns posts addressed to that helper or to everyone.
+  - `channel`: Lists channels (`action: "list"`, open to all) or creates and archives channels (`action: "create"` or `"archive"`, lead-only, up to 20 channels).
   - `step`: Called by a helper to report step progress (`done`, `total`, `note`) or a pause reason (`paused: "quota"` or `paused: "error"`, plus an optional `detail` such as `429 Resource Exhausted`).
   - `progress`: Called only by the lead to publish or update the task plan, change phases, accept or return tasks, close the flow, or `retire` / `kill` a helper.
 - **How waking works**: When a post mentions a waiting helper (`@name`), Antigravity delivers a wake straight to the helper's own conversation once for that mention (`@lead` wakes the lead conversation). Only the lead's `@all` wakes everyone who is waiting; `@all` from a helper never broadcasts wakes. Every forwarded post is clearly marked and shown to other agents as helper content, never as instructions from the user, the lead, or the system.
@@ -37,9 +38,17 @@ The lead can set a model on a task and put `Gemini model: <id>` in the brief; th
 
 The lead can give a task its own worktree and put `Worktree: <branch>` in the brief; the helper creates it with the repo's worktree tool (or reuses it), works there, reports the path, and the panel shows it on the helper. A bad name is refused: the helper asks the lead and stops, and the panel shows a warning. Give parallel helpers on the same repository separate worktrees.
 
+## Overview
+
+The **Overview** tab gives a data-only snapshot of the flow and shows only non-empty cards: active and standing-by helpers (one row per helper from its latest run, showing its latest step note or else its latest post), open questions (questions with no later `replyTo` answer), open defects, and quiet or stalled runs. A defect is closed by a later `result` post from the same author that sets `replyTo` to that defect's post number; as a fallback when `replyTo` is omitted, a later `result` post from the same author closes the defect when it mentions the defect's worker recipient and either the author has only one task or both posts name the same unambiguous task (a defect addressed only to `@lead`, or one from an author with several tasks and no explicit task number, is closed only by `replyTo`).
+
+## Channels
+
+Posts carry a `channel` (`main` by default; channel names match `[a-z0-9][a-z0-9-]{0,31}`, up to 20 channels). Only the lead can create or archive channels with `channel`; everyone can list channels, filter `board` by `channel`, and post to open channels. Posting to an unknown or archived channel is rejected with an error, and `main` cannot be archived. Once a non-`main` channel exists, channel chips (`All`, `#main`, `#<name>`) appear above the **Board** tab. When the lead puts `Channel: <name>` in a task brief, the helper posts in that channel.
+
 ## Safety
 
-The model and worktree are only ever read from the lead's brief, never from board posts, and are checked before use.
+The model, worktree, and channel are only ever read from the lead's brief, never from board posts, and are checked before use.
 
 ## Opening the panel
 
@@ -73,5 +82,5 @@ ln -s "$(pwd)/apps/antigravity/plugins/vitruvian-orchestrator" ~/.gemini/config/
 Adapted from [`savvy-fleet`](../savvy-fleet/README.md) (MIT, VitruvianSoftware) for the Antigravity sidecar layout and powered by [`packages/orchestrator-core`](../../../../packages/orchestrator-core/README.md).
 
 ## Subdirectories & Boundaries
-- [mcp](./mcp/README.md): MCP server exposing `progress`, `step`, `post`, and `board`.
+- [mcp](./mcp/README.md): MCP server exposing `progress`, `step`, `post`, `board`, and `channel`.
 - [sidecars](./sidecars/README.md): Sidecar UI and background wake watcher for the Orchestrator panel.

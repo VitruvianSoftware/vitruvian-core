@@ -28,6 +28,7 @@ import type { EngineInterface, Register } from "claude-code";
 
 import type {
   BurnDown,
+  ChannelInfo,
   DelegateTokenCounts,
   Flow,
   FlowEvent,
@@ -35,6 +36,7 @@ import type {
   MembersView,
   MentionGraph,
   MentionGraphEdge,
+  OverviewView,
   Panel,
   PauseReason,
   PendingWake,
@@ -53,19 +55,25 @@ import type {
 import {
   board as boardView,
   burnDown,
+  channels as channelsView,
   delegateCost,
   formatWake,
   initialFlow,
+  isValidChannel,
   isValidWorktree,
   members,
   mentionGraph,
+  overview as overviewView,
   pendingWakes,
   reduce,
   remaining,
   runCost,
+  sanitizeDisplayText,
   spend,
   stalls,
   taskBoard,
+  validateChannelAction,
+  validatePostChannel,
 } from "./lib/orchestrator-core.mjs";
 
 const VALID_HANDLE_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -77,6 +85,7 @@ const TOOL = "mcp__vitruvian-orchestrator__progress";
 const STEP_TOOL = "mcp__vitruvian-orchestrator__step";
 const POST_TOOL = "mcp__vitruvian-orchestrator__post";
 const BOARD_TOOL = "mcp__vitruvian-orchestrator__board";
+const CHANNEL_TOOL = "mcp__vitruvian-orchestrator__channel";
 const POST_KINDS: readonly PostKind[] = [
   "note",
   "question",
@@ -140,14 +149,21 @@ type PostInput = {
   to?: string[];
   kind?: PostKind;
   replyTo?: number;
+  channel?: string;
 };
 
 type BoardInput = {
   to?: string;
   from?: string;
   kind?: PostKind;
+  channel?: string;
   search?: string;
   limit?: number;
+};
+
+type ChannelInput = {
+  action?: string;
+  name?: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -1549,7 +1565,11 @@ const bandSvg = (f: Flow, W: number, isWorking: boolean): string => {
   const accepted = total - remaining(f);
   const runningCount = f.tasks.filter((t) => t.state === "running").length;
   const ratioVal = f.closedAt !== null ? 1 : total > 0 ? accepted / total : 0;
-  const title = fitText(f.title || "Orchestrator", 13, Math.max(60, W * 0.35));
+  const safeBandTitle =
+    sanitizeDisplayText(f.title || "Orchestrator")
+      .replace(/\s+/g, " ")
+      .trim() || "Orchestrator";
+  const title = fitText(safeBandTitle, 13, Math.max(60, W * 0.35));
   const BAR_X = Math.round(16 + textWidth(title, 13) + 12);
   const BAR_W = Math.max(60, W - BAR_X - 46 - CRAB_W);
   const color = f.closedAt !== null ? GREEN : BLUE;
@@ -1654,10 +1674,14 @@ const headerSvg = (W: number, f: Flow, sp: SpendSummary): string => {
 
   const rightSummary = `accepted ${accepted} of ${total} · est. ${fmtCost(sp.total)}`;
   const titleMaxW = Math.max(80, W - textWidth(rightSummary, 11) - 12);
+  const safeHeaderTitle =
+    sanitizeDisplayText(f.title || "Flow")
+      .replace(/\s+/g, " ")
+      .trim() || "Flow";
   return svg(
     W,
     50,
-    `<text class="t" x="0" y="15" font-family="${FONT}" font-size="14" font-weight="600">${xml(fitText(f.title || "Flow", 14, titleMaxW))}</text>
+    `<text class="t" x="0" y="15" font-family="${FONT}" font-size="14" font-weight="600">${xml(fitText(safeHeaderTitle, 14, titleMaxW))}</text>
 <text class="s" x="${W}" y="15" text-anchor="end" font-family="${FONT}" font-size="11" font-variant-numeric="tabular-nums">${xml(rightSummary)}</text>
 ${pills}`,
   );
@@ -1746,9 +1770,60 @@ const fmtRelTime = (postAt: number, nowAt: number): string => {
 };
 
 const clipLine = (s: string, maxCols: number): string => {
-  const clean = s.replace(/\s+/g, " ").trim();
+  const clean = sanitizeDisplayText(s).replace(/\s+/g, " ").trim();
   if (clean.length <= maxCols) return clean;
   return `${clean.slice(0, Math.max(1, maxCols - 1))}…`;
+};
+
+const wrapPlainText = (
+  raw: string,
+  maxCols: number,
+  firstIndent = "",
+  restIndent = "  ",
+): string[] => {
+  const safeCols = Math.max(1, maxCols);
+  const safe = sanitizeDisplayText(raw).replace(/\s+/g, " ").trim();
+  const words = safe.length > 0 ? safe.split(" ") : [];
+  if (words.length === 0) return [firstIndent.slice(0, safeCols)];
+  const lines: string[] = [];
+  let prefix = firstIndent.slice(0, Math.max(0, safeCols - 1));
+  let current = prefix;
+  const nextPrefix = restIndent.slice(0, Math.max(0, safeCols - 1));
+  const nextRoom = Math.max(1, safeCols - nextPrefix.length);
+  for (const rawWord of words) {
+    let word = rawWord;
+    while (word.length > 0) {
+      if (current.length === prefix.length) {
+        const lineRoom = Math.max(1, safeCols - prefix.length);
+        if (word.length <= lineRoom) {
+          current += word;
+          word = "";
+        } else if (lines.length === 0 && nextRoom > lineRoom) {
+          prefix = nextPrefix;
+          current = prefix;
+        } else {
+          lines.push(current + word.slice(0, lineRoom));
+          word = word.slice(lineRoom);
+          prefix = nextPrefix;
+          current = prefix;
+        }
+      } else {
+        const remRoom = safeCols - current.length - 1;
+        if (remRoom >= 1 && word.length <= remRoom) {
+          current += ` ${word}`;
+          word = "";
+        } else {
+          lines.push(current);
+          prefix = nextPrefix;
+          current = prefix;
+        }
+      }
+    }
+  }
+  if (current.length > prefix.length || lines.length === 0) {
+    lines.push(current);
+  }
+  return lines;
 };
 
 const postKindHex = (kind: PostKind | string): string => {
@@ -1797,12 +1872,15 @@ const stallHex = (
 };
 
 const formatBoardRecipient = (t: string): string =>
-  t.toLowerCase() === "all" ? "everyone" : `@${t}`;
+  t.toLowerCase() === "all" ? "everyone" : `@${sanitizeDisplayText(t)}`;
 
 const formatWhoTalks = (edges: MentionGraphEdge[]): string =>
   edges
     .slice(0, 5)
-    .map((e) => `${e.from} → ${e.to} ×${e.count}`)
+    .map(
+      (e) =>
+        `${sanitizeDisplayText(e.from)} → ${sanitizeDisplayText(e.to)} ×${e.count}`,
+    )
     .join(", ");
 
 const boardSvg = (
@@ -1822,22 +1900,29 @@ const boardSvg = (
   const rows = posts
     .map((pt, idx) => {
       const y = padY + (idx + extraRows) * rowH + 15;
+      const safeFrom = sanitizeDisplayText(pt.from);
       const toPart =
         pt.to.length > 0
           ? ` → ${pt.to.map(formatBoardRecipient).join(", ")}`
           : "";
       const replyPart =
         typeof pt.replyTo === "number" ? ` ↩ #${pt.replyTo}` : "";
+      const channelPart =
+        pt.channel && pt.channel !== "main"
+          ? ` [#${sanitizeDisplayText(pt.channel)}]`
+          : "";
       const rel = fmtRelTime(pt.at, at);
       const badgeColor = postKindHex(pt.kind);
-      const prefix = `#${pt.seq} ${pt.from}${toPart}${replyPart} · ${rel} `;
-      const badgeText = pt.kind;
+      const prefix = `#${pt.seq} ${safeFrom}${toPart}${replyPart}${channelPart} · ${rel} `;
+      const badgeText = sanitizeDisplayText(pt.kind);
       const badgeW = Math.round(textWidth(badgeText, 9.5) + 10);
       const prefixW = Math.round(textWidth(prefix, 10.5));
       const badgeX = Math.min(W - badgeW - 8, 8 + prefixW + 2);
       const bodyX = badgeX + badgeW + 6;
       const bodyBudget = Math.max(24, W - bodyX - 8);
-      const cleanBody = pt.text.replace(/\s+/g, " ").trim();
+      const cleanBody = sanitizeDisplayText(pt.text)
+        .replace(/\s+/g, " ")
+        .trim();
       const fittedBody = fitText(cleanBody, 10.5, bodyBudget);
       return `<text class="s" x="8" y="${y}" font-family="${FONT}" font-size="10.5">${xml(fitText(prefix, 10.5, Math.max(40, W - 80)))}</text>
 <rect x="${badgeX}" y="${y - 10}" width="${badgeW}" height="14" rx="7" fill="${badgeColor}" opacity="0.18"/>
@@ -1852,6 +1937,419 @@ const boardSvg = (
   );
 };
 
+const overviewSvg = (
+  W: number,
+  ov: OverviewView,
+): { source: string; height: number } => {
+  const rowH = 20;
+  const padY = 6;
+  const lines: { text: string; heading?: boolean; color?: string }[] = [];
+  if (ov.members.length > 0) {
+    lines.push({ text: `Members (${ov.members.length})`, heading: true });
+    for (const m of ov.members) {
+      const safeAgent = sanitizeDisplayText(m.agent);
+      const safeLine = sanitizeDisplayText(m.line).replace(/\s+/g, " ").trim();
+      lines.push({
+        text: `  ${safeAgent} (${m.state})${safeLine ? `: ${safeLine}` : ""}`,
+      });
+    }
+  }
+  if (ov.openQuestions.length > 0) {
+    lines.push({
+      text: `Open questions (${ov.openQuestions.length})`,
+      heading: true,
+      color: AMBER,
+    });
+    for (const q of ov.openQuestions) {
+      const safeFrom = sanitizeDisplayText(q.from);
+      const safeText = sanitizeDisplayText(q.text).replace(/\s+/g, " ").trim();
+      lines.push({ text: `  #${q.seq} (${safeFrom}): ${safeText}` });
+    }
+  }
+  if (ov.openDefects.length > 0) {
+    lines.push({
+      text: `Open defects (${ov.openDefects.length})`,
+      heading: true,
+      color: RED,
+    });
+    for (const d of ov.openDefects) {
+      const safeFrom = sanitizeDisplayText(d.from);
+      const toPart =
+        d.to.length > 0
+          ? ` → ${d.to.map(formatBoardRecipient).join(", ")}`
+          : "";
+      const safeText = sanitizeDisplayText(d.text).replace(/\s+/g, " ").trim();
+      lines.push({
+        text: `  #${d.seq} (${safeFrom}${toPart}): ${safeText}`,
+      });
+    }
+  }
+  if (ov.stalls.length > 0) {
+    lines.push({
+      text: `Stalls (${ov.stalls.length})`,
+      heading: true,
+      color: RED,
+    });
+    for (const s of ov.stalls) {
+      const safeAgent = sanitizeDisplayText(s.agent);
+      lines.push({
+        text: `  ${safeAgent} (${s.state}, idle ${fmtTime(s.idleMs)})`,
+      });
+    }
+  }
+  const H_px = Math.max(28, padY * 2 + lines.length * rowH);
+  const body = lines
+    .map((item, idx) => {
+      const y = padY + idx * rowH + 14;
+      const fitted = fitText(item.text, 10.5, Math.max(40, W - 16));
+      const fillAttr = item.color
+        ? ` fill="${item.color}"`
+        : item.heading
+          ? ' class="s"'
+          : ' class="t"';
+      const weight = item.heading ? "600" : "400";
+      return `<text${fillAttr} x="8" y="${y}" font-family="${FONT}" font-size="10.5" font-weight="${weight}">${xml(fitted)}</text>`;
+    })
+    .join("\n");
+  return {
+    source: svg(
+      W,
+      H_px,
+      `<rect class="tile" x="0" y="0" width="${W}" height="${H_px}" rx="6"/>\n${body}`,
+    ),
+    height: H_px,
+  };
+};
+
+const BOARD_USAGE =
+  "Usage: /orchestrator-board [members | overview] [--from <name>] [--to <name>] [--kind <kind>] [--channel <name>] [--search <text>] [--last <N>]";
+
+const tokenizeCommandArgs = (raw: string): string[] => {
+  const tokens: string[] = [];
+  let current = "";
+  let quote: '"' | "'" | null = null;
+  let inToken = false;
+  for (let i = 0; i < raw.length; i += 1) {
+    const ch = raw[i] ?? "";
+    if (quote) {
+      if (ch === quote) {
+        quote = null;
+      } else {
+        current += ch;
+      }
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      inToken = true;
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      if (inToken) {
+        tokens.push(current);
+        current = "";
+        inToken = false;
+      }
+      continue;
+    }
+    current += ch;
+    inToken = true;
+  }
+  if (inToken) tokens.push(current);
+  return tokens;
+};
+
+const formatMemberCliLines = (row: MemberRow, width: number): string[] => {
+  const safeAgent = sanitizeDisplayText(row.agent);
+  const stateLabel =
+    row.state === "paused"
+      ? `paused: ${sanitizeDisplayText(row.reason ?? "error")}${row.detail ? ` (${sanitizeDisplayText(row.detail)})` : ""}`
+      : sanitizeDisplayText(row.state);
+  const taskLabel = typeof row.taskN === "number" ? `#${row.taskN}` : "ad-hoc";
+  const safeBaseModel = sanitizeDisplayText(row.model || "—");
+  const effectiveDelegate = row.delegate || row.taskModel || null;
+  const safeDelegate = effectiveDelegate
+    ? sanitizeDisplayText(effectiveDelegate)
+    : null;
+  const modelLabel =
+    safeDelegate && safeDelegate !== safeBaseModel
+      ? `${safeBaseModel} → ${safeDelegate}`
+      : safeBaseModel;
+  const parts = [
+    safeAgent,
+    stateLabel,
+    `task ${taskLabel}`,
+    modelLabel,
+    ...(row.worktree ? [`⎇ ${sanitizeDisplayText(row.worktree)}`] : []),
+  ];
+  return wrapPlainText(parts.join(" · "), width, "  ", "    ");
+};
+
+const formatOrchestratorBoardCommand = (
+  f: Flow | null,
+  rawArgs: string,
+  at: number,
+  width: number,
+): string => {
+  const tokens = tokenizeCommandArgs(rawArgs);
+  if (tokens[0] === "members") {
+    if (tokens.length > 1) return BOARD_USAGE;
+    if (!f) return "No active flow.";
+    const mv = members(f) as MembersView;
+    const totalMembers =
+      mv.active.length + mv.standingBy.length + mv.retired.length;
+    if (totalMembers === 0) return "No members dispatched in this flow yet.";
+    const sections: string[] = [];
+    const groups: [string, MemberRow[]][] = [
+      ["Active", mv.active],
+      ["Standing by", mv.standingBy],
+      ["Retired", mv.retired],
+    ];
+    for (const [heading, rows] of groups) {
+      const lines = [
+        ...wrapPlainText(`${heading} (${rows.length})`, width, "", "  "),
+      ];
+      if (rows.length === 0) {
+        lines.push(...wrapPlainText("none", width, "  ", "  "));
+      } else {
+        for (const r of rows) {
+          lines.push(...formatMemberCliLines(r, width));
+        }
+      }
+      sections.push(lines.join("\n"));
+    }
+    return sections.join("\n\n");
+  }
+
+  if (tokens[0] === "overview") {
+    if (tokens.length > 1) return BOARD_USAGE;
+    if (!f) return "No active flow.";
+    const ov = overviewView(f, at) as OverviewView;
+    const blocks: string[] = [];
+    if (ov.members.length > 0) {
+      const lines = [
+        ...wrapPlainText(`Members (${ov.members.length})`, width, "", "  "),
+      ];
+      for (const m of ov.members) {
+        const safeAgent = sanitizeDisplayText(m.agent);
+        const safeLine = sanitizeDisplayText(m.line);
+        lines.push(
+          ...wrapPlainText(
+            `${safeAgent} (${m.state})${safeLine ? `: ${safeLine}` : ""}`,
+            width,
+            "  ",
+            "    ",
+          ),
+        );
+      }
+      blocks.push(lines.join("\n"));
+    }
+    if (ov.openQuestions.length > 0) {
+      const lines = [
+        ...wrapPlainText(
+          `Open questions (${ov.openQuestions.length})`,
+          width,
+          "",
+          "  ",
+        ),
+      ];
+      for (const q of ov.openQuestions) {
+        lines.push(
+          ...wrapPlainText(
+            `#${q.seq} ${sanitizeDisplayText(q.from)}: ${sanitizeDisplayText(q.text)}`,
+            width,
+            "  ",
+            "    ",
+          ),
+        );
+      }
+      blocks.push(lines.join("\n"));
+    }
+    if (ov.openDefects.length > 0) {
+      const lines = [
+        ...wrapPlainText(
+          `Open defects (${ov.openDefects.length})`,
+          width,
+          "",
+          "  ",
+        ),
+      ];
+      for (const d of ov.openDefects) {
+        const toPart =
+          d.to.length > 0
+            ? ` → ${d.to.map(formatBoardRecipient).join(", ")}`
+            : "";
+        lines.push(
+          ...wrapPlainText(
+            `#${d.seq} ${sanitizeDisplayText(d.from)}${toPart}: ${sanitizeDisplayText(d.text)}`,
+            width,
+            "  ",
+            "    ",
+          ),
+        );
+      }
+      blocks.push(lines.join("\n"));
+    }
+    if (ov.stalls.length > 0) {
+      const lines = [
+        ...wrapPlainText(`Stalls (${ov.stalls.length})`, width, "", "  "),
+      ];
+      for (const s of ov.stalls) {
+        lines.push(
+          ...wrapPlainText(
+            `${sanitizeDisplayText(s.agent)} (${s.state}, idle ${fmtTime(s.idleMs)})`,
+            width,
+            "  ",
+            "    ",
+          ),
+        );
+      }
+      blocks.push(lines.join("\n"));
+    }
+    if (blocks.length === 0) return "Nothing active on the overview yet.";
+    return blocks.join("\n\n");
+  }
+
+  let fromFilter: string | undefined;
+  let toFilter: string | undefined;
+  let kindFilter: PostKind | undefined;
+  let channelFilter: string | undefined;
+  let searchFilter: string | undefined;
+  let lastLimit = 30;
+
+  for (let i = 0; i < tokens.length; i += 1) {
+    const tok = tokens[i] ?? "";
+    if (!tok.startsWith("--")) return BOARD_USAGE;
+    const eqIdx = tok.indexOf("=");
+    const flag = eqIdx >= 0 ? tok.slice(0, eqIdx) : tok;
+    let val: string | undefined;
+    if (eqIdx >= 0) {
+      val = tok.slice(eqIdx + 1);
+    } else {
+      i += 1;
+      val = tokens[i];
+    }
+    if (val === undefined) return BOARD_USAGE;
+    const trimmed = val.trim();
+    if (
+      trimmed.length === 0 ||
+      val.startsWith("--") ||
+      trimmed.startsWith("--")
+    ) {
+      return BOARD_USAGE;
+    }
+    if (flag === "--from") {
+      if (!VALID_HANDLE_RE.test(trimmed)) return BOARD_USAGE;
+      fromFilter = trimmed;
+    } else if (flag === "--to") {
+      if (!VALID_HANDLE_RE.test(trimmed)) return BOARD_USAGE;
+      toFilter = trimmed;
+    } else if (flag === "--kind") {
+      const k = trimmed.toLowerCase();
+      if (!(POST_KINDS as readonly string[]).includes(k)) return BOARD_USAGE;
+      kindFilter = k as PostKind;
+    } else if (flag === "--channel") {
+      if (!isValidChannel(trimmed)) return BOARD_USAGE;
+      channelFilter = trimmed;
+    } else if (flag === "--search") {
+      searchFilter = trimmed;
+    } else if (flag === "--last") {
+      if (!/^\d+$/.test(trimmed)) return BOARD_USAGE;
+      const parsed = Number(trimmed);
+      if (!Number.isInteger(parsed) || parsed < 1) return BOARD_USAGE;
+      lastLimit = Math.min(200, parsed);
+    } else {
+      return BOARD_USAGE;
+    }
+  }
+
+  if (!f) return "No active flow.";
+  if (channelFilter !== undefined) {
+    const knownChannels = channelsView(f) as ChannelInfo[];
+    if (!knownChannels.some((c) => c.name === channelFilter)) {
+      const existing = knownChannels
+        .map((c) => sanitizeDisplayText(c.name))
+        .join(", ");
+      return wrapPlainText(
+        `Channel "${sanitizeDisplayText(channelFilter)}" does not exist. Existing channels: ${existing}.`,
+        width,
+        "",
+        "",
+      ).join("\n");
+    }
+  }
+  const posts = boardView(f, {
+    ...(fromFilter !== undefined ? { from: fromFilter } : {}),
+    ...(toFilter !== undefined ? { to: toFilter } : {}),
+    ...(kindFilter !== undefined ? { kind: kindFilter } : {}),
+    ...(channelFilter !== undefined ? { channel: channelFilter } : {}),
+    ...(searchFilter !== undefined ? { search: searchFilter } : {}),
+    limit: lastLimit,
+  }) as Post[];
+  if (posts.length === 0) return "No board posts match.";
+
+  return posts
+    .map((p) => {
+      const safeFrom = sanitizeDisplayText(p.from);
+      const toPart =
+        p.to.length > 0
+          ? ` → ${p.to.map(formatBoardRecipient).join(", ")}`
+          : "";
+      const replyPart = typeof p.replyTo === "number" ? ` ↩ #${p.replyTo}` : "";
+      const channelPart =
+        p.channel && p.channel !== "main"
+          ? ` [#${sanitizeDisplayText(p.channel)}]`
+          : "";
+      const safeKind = sanitizeDisplayText(p.kind);
+      const rel = fmtRelTime(p.at, at);
+      const safeText = sanitizeDisplayText(p.text).replace(/\s+/g, " ").trim();
+      const headerCols = [
+        `#${p.seq}`,
+        `${safeFrom}${toPart}${replyPart}${channelPart}`,
+        safeKind,
+        `(${rel})`,
+      ];
+      const headerLines: string[] = [];
+      let curHdr = "";
+      for (const col of headerCols) {
+        const indent = headerLines.length === 0 ? "" : "  ";
+        if (!curHdr) {
+          if (indent.length + col.length <= width) {
+            curHdr = indent + col;
+          } else {
+            const wrapped = wrapPlainText(col, width, indent, "  ");
+            headerLines.push(...wrapped.slice(0, -1));
+            curHdr = wrapped[wrapped.length - 1] ?? "  ";
+          }
+        } else if (curHdr.length + 2 + col.length <= width) {
+          curHdr += `  ${col}`;
+        } else {
+          headerLines.push(curHdr);
+          if (2 + col.length <= width) {
+            curHdr = `  ${col}`;
+          } else {
+            const wrapped = wrapPlainText(col, width, "  ", "  ");
+            headerLines.push(...wrapped.slice(0, -1));
+            curHdr = wrapped[wrapped.length - 1] ?? "  ";
+          }
+        }
+      }
+      if (curHdr) headerLines.push(curHdr);
+      if (!safeText) return headerLines.join("\n");
+      const lastHdr = headerLines[headerLines.length - 1] ?? "";
+      const firstWordLen = (safeText.split(" ")[0] ?? "").length;
+      if (lastHdr.length + 2 + firstWordLen <= width) {
+        const combined = wrapPlainText(safeText, width, `${lastHdr}  `, "  ");
+        return [...headerLines.slice(0, -1), ...combined].join("\n");
+      }
+      return [
+        ...headerLines,
+        ...wrapPlainText(safeText, width, "  ", "  "),
+      ].join("\n");
+    })
+    .join("\n\n");
+};
+
 const agentRowSvg = (
   W: number,
   r: Run,
@@ -1859,7 +2357,11 @@ const agentRowSvg = (
   stall: StallState | null = null,
   member: MemberRow | null = null,
 ): string => {
-  const costume = costumeOf(r.agent);
+  const safeAgent = sanitizeDisplayText(r.agent).replace(/\s+/g, " ").trim();
+  const safeTitle = sanitizeDisplayText(r.title || r.agent)
+    .replace(/\s+/g, " ")
+    .trim();
+  const costume = costumeOf(safeAgent);
   const color = stallHex(r, stall, member);
   const mascotColor = colorOf(costume);
   const textW = Math.max(80, W - 44 - 16);
@@ -1867,9 +2369,10 @@ const agentRowSvg = (
   const costLabel = cost !== null ? `est. ${fmtCost(cost)}` : "unpriced";
   const tokLabel = `${fmtTokens(runTotalTokens(r))} tok`;
   const timeLabel = fmtTime(runElapsed(r, at));
+  const safeStepNote = r.steps?.note ? sanitizeDisplayText(r.steps.note) : "";
   const stepText =
     r.steps && r.steps.total > 0
-      ? `${r.steps.done}/${r.steps.total}${r.steps.note ? " · " + r.steps.note : ""}`
+      ? `${r.steps.done}/${r.steps.total}${safeStepNote ? " · " + safeStepNote : ""}`
       : `ctx ${r.contextPct ?? 0}%`;
   const ratioVal =
     r.status === "done"
@@ -1878,17 +2381,29 @@ const agentRowSvg = (
         ? Math.min(1, r.steps.done / r.steps.total)
         : Math.min(1, (r.contextPct ?? 0) / 100);
   const fillW = Math.round(textW * ratioVal);
-  const baseModel = r.model || "—";
-  const effectiveDelegate = r.delegate || member?.taskModel || null;
+  const baseModel =
+    sanitizeDisplayText(r.model || "—")
+      .replace(/\s+/g, " ")
+      .trim() || "—";
+  const rawDelegate = r.delegate || member?.taskModel || null;
+  const effectiveDelegate = rawDelegate
+    ? sanitizeDisplayText(rawDelegate).replace(/\s+/g, " ").trim()
+    : null;
   const modelLabel =
     effectiveDelegate && effectiveDelegate !== baseModel
       ? `${baseModel} → ${effectiveDelegate}`
       : baseModel;
-  const worktree = r.worktree || member?.worktree || null;
+  const rawWorktree = r.worktree || member?.worktree || null;
+  const worktree = rawWorktree
+    ? sanitizeDisplayText(rawWorktree).replace(/\s+/g, " ").trim()
+    : null;
+  const safeEffort = r.effort
+    ? sanitizeDisplayText(r.effort).replace(/\s+/g, " ").trim()
+    : "";
   const meta = [
     modelLabel,
     ...(worktree ? [`⎇ ${worktree}`] : []),
-    ...(r.effort ? [r.effort] : []),
+    ...(safeEffort ? [safeEffort] : []),
     ...(r.role === "lead" ? ["lead"] : []),
     stallLabel(r, stall, member),
   ].join(" · ");
@@ -1898,8 +2413,8 @@ const agentRowSvg = (
     W,
     58,
     `${crab(0, 10, costume, false, r.status === "running")}
-<text class="t" x="42" y="16" font-family="${FONT}" font-size="12.5" font-weight="600">${xml(fitText(`${r.agent}: ${r.title || r.agent}`, 12.5, textW))}</text>
-<text x="42" y="31" font-family="${FONT}" font-size="11"><tspan fill="${mascotColor}">${xml(r.agent)}</tspan><tspan class="s">  ${xml(fitText(meta, 11, textW - 40))}</tspan></text>
+<text class="t" x="42" y="16" font-family="${FONT}" font-size="12.5" font-weight="600">${xml(fitText(`${safeAgent}: ${safeTitle || safeAgent}`, 12.5, textW))}</text>
+<text x="42" y="31" font-family="${FONT}" font-size="11"><tspan fill="${mascotColor}">${xml(safeAgent)}</tspan><tspan class="s">  ${xml(fitText(meta, 11, textW - 40))}</tspan></text>
 <text class="s" x="42" y="45" font-family="${FONT}" font-size="10.5" font-variant-numeric="tabular-nums">${xml(fitText(stats, 10.5, textW))}</text>
 <rect class="k" x="42" y="50" width="${textW}" height="3.5" rx="1.75"/>
 <rect x="42" y="50" width="${fillW}" height="3.5" rx="1.75" fill="${color}"/>
@@ -2089,9 +2604,16 @@ async function stallTick($: EngineInterface): Promise<void> {
     const key = `${f.startedAt}:${row.id}:${row.lastActivityAt}`;
     if (noticedStalls.has(key)) continue;
     noticedStalls.add(key);
-    const where = row.taskN ? ` on task #${row.taskN} ("${row.title}")` : "";
+    const safeRowAgent = sanitizeDisplayText(row.agent)
+      .replace(/\s+/g, " ")
+      .trim();
+    const safeRowTitle = sanitizeDisplayText(row.title)
+      .replace(/\s+/g, " ")
+      .trim();
+    const safeRowId = sanitizeDisplayText(row.id).replace(/\s+/g, " ").trim();
+    const where = row.taskN ? ` on task #${row.taskN} ("${safeRowTitle}")` : "";
     $.ui.toast(
-      `${row.agent} has been silent for ${fmtTime(row.idleMs)}${row.taskN ? ` on task #${row.taskN}` : ""}. Check it before restarting it: a long build can be this quiet.`,
+      `${safeRowAgent} has been silent for ${fmtTime(row.idleMs)}${row.taskN ? ` on task #${row.taskN}` : ""}. Check it before restarting it: a long build can be this quiet.`,
     );
     // Wake the lead too, as Antigravity's watchdog does: a prompt from the
     // plugin is a turn of its own once the session is idle, so a lead that
@@ -2099,7 +2621,7 @@ async function stallTick($: EngineInterface): Promise<void> {
     // above), worded so it inspects before it restarts anything.
     void $.prompt
       .submit({
-        text: `[Orchestrator watchdog] Subagent ${row.agent} (${row.id}) has had no activity for ${fmtTime(row.idleMs)}${where}. Check it before acting: read its latest output, or message it with SendMessage. A long build or test can be this quiet. Restart it only if it is stuck.`,
+        text: `[Orchestrator watchdog] Subagent ${safeRowAgent} (${safeRowId}) has had no activity for ${fmtTime(row.idleMs)}${where}. Check it before acting: read its latest output, or message it with SendMessage. A long build or test can be this quiet. Restart it only if it is stuck.`,
       })
       .catch(() => {});
   }
@@ -2270,6 +2792,11 @@ export const register: Register = (on) => {
             minimum: 1,
             description: "Optional post seq number this message replies to.",
           },
+          channel: {
+            type: "string",
+            description:
+              "Optional channel handle (default 'main'; must already exist and not be archived).",
+          },
         },
         required: ["text"],
       },
@@ -2296,6 +2823,10 @@ export const register: Register = (on) => {
             enum: [...POST_KINDS],
             description: "Filter by post kind: note, question, defect, result.",
           },
+          channel: {
+            type: "string",
+            description: "Optional channel handle to filter posts by.",
+          },
           search: {
             type: "string",
             description:
@@ -2311,10 +2842,38 @@ export const register: Register = (on) => {
       },
     });
 
+    await $.tool.register({
+      name: "channel",
+      description:
+        "Manage board channels: 'list' (open to all) or lead-only 'create' and 'archive' (max 20 channels).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          action: {
+            type: "string",
+            enum: ["create", "archive", "list"],
+            description: "Channel action: create, archive, or list.",
+          },
+          name: {
+            type: "string",
+            description:
+              "Channel handle ([a-z0-9][a-z0-9-]{0,31}); required for create and archive.",
+          },
+        },
+        required: ["action"],
+      },
+    });
+
     await $.command.register({
       name: "orchestrator-panel",
       description:
         "Show or hide the Orchestrator live panel (flow header, burn-down, task board, agents, and spend)",
+    });
+
+    await $.command.register({
+      name: "orchestrator-board",
+      description:
+        "Print the Orchestrator board, members, or overview as plain terminal text",
     });
 
     $.clock.every(1000, () => {
@@ -2341,6 +2900,48 @@ export const register: Register = (on) => {
         ? "Orchestrator panel opened."
         : "Orchestrator panel closed.",
     };
+  });
+
+  on("command.run", { command: "orchestrator-board" }, async ($, e) => {
+    const rawArgs =
+      typeof (e as { args?: unknown }).args === "string"
+        ? ((e as { args: string }).args ?? "")
+        : "";
+    const explicitCols = Number(
+      (e as { columns?: unknown; bodyColumns?: unknown }).columns ??
+        (e as { bodyColumns?: unknown }).bodyColumns,
+    );
+    const stdCols = Number(
+      (
+        globalThis as {
+          process?: { stdout?: { columns?: unknown } };
+        }
+      ).process?.stdout?.columns,
+    );
+    const width = Math.max(
+      40,
+      Math.floor(
+        Number.isFinite(explicitCols) && explicitCols > 0
+          ? explicitCols
+          : Number.isFinite(stdCols) && stdCols > 0
+            ? stdCols
+            : 80,
+      ),
+    );
+    const f = await read($, flow);
+    const clockNow = await $.clock.now();
+    const stateNow = await read($, now);
+    const at = f
+      ? Math.max(
+          clockNow,
+          stateNow,
+          f.startedAt,
+          ...f.runs.map((r) => r.endedAt ?? r.startedAt),
+          ...(f.posts ?? []).map((pt) => pt.at),
+          0,
+        )
+      : clockNow;
+    return { text: formatOrchestratorBoardCommand(f, rawArgs, at, width) };
   });
 
   on("tool.call", { tool: TOOL }, async ($, e) => {
@@ -2492,6 +3093,14 @@ export const register: Register = (on) => {
     const input = e as unknown as PostInput;
     const text = typeof input.text === "string" ? input.text : "";
     const current = await read($, flow);
+    const chCheck = validatePostChannel(current, input.channel) as {
+      ok: boolean;
+      channel?: string;
+      error?: string;
+    };
+    if (!chCheck.ok) {
+      return { result: chCheck.error ?? "invalid channel", isError: true };
+    }
     if (!current || text.trim().length === 0) {
       return { result: JSON.stringify({ seq: 0 }) };
     }
@@ -2533,6 +3142,9 @@ export const register: Register = (on) => {
         Number.isInteger(input.replyTo) &&
         input.replyTo > 0
           ? { replyTo: input.replyTo }
+          : {}),
+        ...(chCheck.channel && chCheck.channel !== "main"
+          ? { channel: chCheck.channel }
           : {}),
         ...(callerRun ? { runId: callerRun.id } : {}),
       });
@@ -2591,6 +3203,9 @@ export const register: Register = (on) => {
         ...(effectiveTo !== undefined ? { to: effectiveTo } : {}),
         ...(typeof input.from === "string" ? { from: input.from } : {}),
         ...(typeof input.kind === "string" ? { kind: input.kind } : {}),
+        ...(typeof input.channel === "string"
+          ? { channel: input.channel }
+          : {}),
         ...(typeof input.search === "string" ? { search: input.search } : {}),
         limit,
       }) as Post[]
@@ -2600,10 +3215,67 @@ export const register: Register = (on) => {
       to: p.to,
       kind: p.kind,
       replyTo: p.replyTo,
+      ...(p.channel && p.channel !== "main" ? { channel: p.channel } : {}),
       at: p.at,
       text: p.text,
     }));
     return { result: JSON.stringify(rows) };
+  });
+
+  on("tool.call", { tool: CHANNEL_TOOL }, async ($, e) => {
+    const input = e as unknown as ChannelInput;
+    const action =
+      typeof input.action === "string" ? input.action.trim().toLowerCase() : "";
+    if (action === "list") {
+      const current = await read($, flow);
+      return { result: JSON.stringify(channelsView(current)) };
+    }
+    if (action !== "create" && action !== "archive") {
+      return {
+        result: 'channel action must be "create", "archive", or "list"',
+        isError: true,
+      };
+    }
+    if (e.agentId) {
+      return {
+        result: `channel ${action} is for the lead only`,
+        isError: true,
+      };
+    }
+    const current = await read($, flow);
+    const check = validateChannelAction(current, {
+      action,
+      name: input.name,
+    }) as {
+      ok: boolean;
+      error?: string;
+      name?: string;
+      noop?: boolean;
+      channels?: ChannelInfo[];
+    };
+    if (!check.ok) {
+      return {
+        result: check.error ?? `invalid channel ${action}`,
+        isError: true,
+      };
+    }
+    if (check.noop) {
+      return {
+        result: JSON.stringify(check.channels ?? channelsView(current)),
+      };
+    }
+    const at = await $.clock.now();
+    const nextFlow = await update($, flow, (prev) => {
+      if (!prev) return prev;
+      return reduce(prev, {
+        type: "channel",
+        at,
+        action,
+        name: check.name,
+      });
+    });
+    await update($, now, () => at);
+    return { result: JSON.stringify(channelsView(nextFlow)) };
   });
 
   // Capture effort from the Agent tool call and provide a fallback run.start when
@@ -2869,7 +3541,10 @@ export const register: Register = (on) => {
       firstIndent = "",
       restIndent = "  ",
     ): string[] => {
-      const words = text.trim().split(/\s+/).filter(Boolean);
+      const words = sanitizeDisplayText(text)
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
       if (words.length === 0) return [firstIndent];
       const lines: string[] = [];
       let current = firstIndent;
@@ -2895,7 +3570,9 @@ export const register: Register = (on) => {
       firstIndent = "  ",
       restIndent = "  ",
     ): string[] => {
-      const clean = segments.map((s) => s.trim()).filter(Boolean);
+      const clean = segments
+        .map((s) => sanitizeDisplayText(s).replace(/\s+/g, " ").trim())
+        .filter(Boolean);
       if (clean.length === 0) return [];
       const lines: string[] = [];
       let current = firstIndent;
@@ -3050,23 +3727,45 @@ export const register: Register = (on) => {
     const memberById = new Map<string, MemberRow>(
       [...mv.active, ...mv.standingBy, ...mv.retired].map((m) => [m.id, m]),
     );
+    const ov = overviewView(f, at) as OverviewView;
+    const hasOverviewItems =
+      ov.members.length > 0 ||
+      ov.openQuestions.length > 0 ||
+      ov.openDefects.length > 0 ||
+      ov.stalls.length > 0;
+    const hasNonMainChannel = (channelsView(f) as ChannelInfo[]).some(
+      (c) => c.name !== "main",
+    );
+    const showOverview =
+      hasOverviewItems &&
+      (postCount > 0 || (f.postsDropped ?? 0) > 0 || hasNonMainChannel);
     const renderAgentRow = (r: Run) => {
       const stall = stallById.get(r.id) ?? null;
       const member = memberById.get(r.id) ?? null;
       const cost = runCost(r);
       const costText = cost !== null ? `est. ${fmtCost(cost)}` : "unpriced";
+      const safeNote = r.steps?.note ? sanitizeDisplayText(r.steps.note) : "";
       const stepOrCtx =
         r.steps && r.steps.total > 0
-          ? `steps ${r.steps.done}/${r.steps.total}${r.steps.note ? ` (${r.steps.note})` : ""}`
+          ? `steps ${r.steps.done}/${r.steps.total}${safeNote ? ` (${safeNote})` : ""}`
           : `ctx ${r.contextPct ?? 0}%`;
       const tokText = `${fmtTokens(runTotalTokens(r))} tok`;
       const elapsedText = fmtTime(runElapsed(r, at));
-      const agentName = r.role === "lead" ? "lead" : r.agent;
-      const effectiveDelegate = r.delegate || member?.taskModel || null;
+      const agentName =
+        r.role === "lead"
+          ? "lead"
+          : sanitizeDisplayText(r.agent).replace(/\s+/g, " ").trim();
+      const safeBaseModel = sanitizeDisplayText(r.model)
+        .replace(/\s+/g, " ")
+        .trim();
+      const rawDelegate = r.delegate || member?.taskModel || null;
+      const effectiveDelegate = rawDelegate
+        ? sanitizeDisplayText(rawDelegate).replace(/\s+/g, " ").trim()
+        : null;
       const modelLabel =
-        effectiveDelegate && effectiveDelegate !== r.model
-          ? `${r.model} → ${effectiveDelegate}`
-          : r.model;
+        effectiveDelegate && effectiveDelegate !== safeBaseModel
+          ? `${safeBaseModel} → ${effectiveDelegate}`
+          : safeBaseModel;
       const worktree = r.worktree || member?.worktree || null;
       const detailLines = wrapSegments(
         [
@@ -3084,9 +3783,7 @@ export const register: Register = (on) => {
       );
       // The desktop picture fits the step note to one line; give it in full.
       const noteLines =
-        r.steps && r.steps.note
-          ? wrapWords(r.steps.note, cols, "  ", "  ")
-          : [];
+        r.steps && safeNote ? wrapWords(safeNote, cols, "  ", "  ") : [];
       return (
         <Box key={`run-${r.id}`} flexDirection="column" marginBottom={1}>
           {hasDesktopSvg && "Svg" in ui ? (
@@ -3150,7 +3847,7 @@ export const register: Register = (on) => {
         {hasDesktopSvg && "Svg" in ui ? (
           <ui.Svg
             source={headerSvg(W, f, sp)}
-            alt={`${f.title}: phase ${f.phase}, accepted ${accepted} of ${total}, est. ${fmtCost(sp.total)}`}
+            alt={`${sanitizeDisplayText(f.title)}: phase ${sanitizeDisplayText(f.phase)}, accepted ${accepted} of ${total}, est. ${fmtCost(sp.total)}`}
             width={W}
             height={50}
           />
@@ -3248,6 +3945,7 @@ export const register: Register = (on) => {
                       </Text>
                     ) : null}
                     {recentPosts.map((pt) => {
+                      const safeFrom = sanitizeDisplayText(pt.from);
                       const toPart =
                         pt.to.length > 0
                           ? ` → ${pt.to.map(formatBoardRecipient).join(",")}`
@@ -3256,8 +3954,12 @@ export const register: Register = (on) => {
                         typeof pt.replyTo === "number"
                           ? ` ↩ #${pt.replyTo}`
                           : "";
+                      const channelPart =
+                        pt.channel && pt.channel !== "main"
+                          ? ` [#${sanitizeDisplayText(pt.channel)}]`
+                          : "";
                       const rel = fmtRelTime(pt.at, at);
-                      const head = `#${pt.seq} ${pt.from}${toPart}${replyPart} (${rel}) [${pt.kind}] `;
+                      const head = `#${pt.seq} ${safeFrom}${toPart}${replyPart}${channelPart} (${rel}) [${sanitizeDisplayText(pt.kind)}] `;
                       const bodyBudget = Math.max(8, cols - head.length);
                       const clippedBody = clipLine(pt.text, bodyBudget);
                       return (
@@ -3267,6 +3969,107 @@ export const register: Register = (on) => {
                         </Text>
                       );
                     })}
+                  </>
+                )}
+              </Box>
+            )}
+
+            {/* 4c. Overview (shown when non-empty) */}
+            {showOverview && (
+              <Box flexDirection="column" marginTop={1}>
+                <Text bold>Overview</Text>
+                {hasDesktopSvg && "Svg" in ui ? (
+                  (() => {
+                    const ovPic = overviewSvg(W, ov);
+                    return (
+                      <ui.Svg
+                        source={ovPic.source}
+                        alt="Flow overview"
+                        width={W}
+                        height={ovPic.height}
+                      />
+                    );
+                  })()
+                ) : (
+                  <>
+                    {ov.members.length > 0 && (
+                      <>
+                        <Text dimColor>
+                          {clipLine(`Members (${ov.members.length})`, cols)}
+                        </Text>
+                        {ov.members.flatMap((m, idx) =>
+                          wrapPlainText(
+                            `${sanitizeDisplayText(m.agent)} (${m.state})${m.line ? `: ${sanitizeDisplayText(m.line)}` : ""}`,
+                            cols,
+                            "  ",
+                            "    ",
+                          ).map((line, li) => (
+                            <Text key={`ov-m-${idx}-${li}`}>{line}</Text>
+                          )),
+                        )}
+                      </>
+                    )}
+                    {ov.openQuestions.length > 0 && (
+                      <>
+                        <Text color="yellow">
+                          {clipLine(
+                            `Open questions (${ov.openQuestions.length})`,
+                            cols,
+                          )}
+                        </Text>
+                        {ov.openQuestions.flatMap((q, idx) =>
+                          wrapPlainText(
+                            `#${q.seq} (${sanitizeDisplayText(q.from)}): ${sanitizeDisplayText(q.text)}`,
+                            cols,
+                            "  ",
+                            "    ",
+                          ).map((line, li) => (
+                            <Text key={`ov-q-${idx}-${li}`}>{line}</Text>
+                          )),
+                        )}
+                      </>
+                    )}
+                    {ov.openDefects.length > 0 && (
+                      <>
+                        <Text color="red">
+                          {clipLine(
+                            `Open defects (${ov.openDefects.length})`,
+                            cols,
+                          )}
+                        </Text>
+                        {ov.openDefects.flatMap((d, idx) => {
+                          const toPart =
+                            d.to.length > 0
+                              ? ` → ${d.to.map(formatBoardRecipient).join(", ")}`
+                              : "";
+                          return wrapPlainText(
+                            `#${d.seq} (${sanitizeDisplayText(d.from)}${toPart}): ${sanitizeDisplayText(d.text)}`,
+                            cols,
+                            "  ",
+                            "    ",
+                          ).map((line, li) => (
+                            <Text key={`ov-d-${idx}-${li}`}>{line}</Text>
+                          ));
+                        })}
+                      </>
+                    )}
+                    {ov.stalls.length > 0 && (
+                      <>
+                        <Text color="red">
+                          {clipLine(`Stalls (${ov.stalls.length})`, cols)}
+                        </Text>
+                        {ov.stalls.flatMap((s, idx) =>
+                          wrapPlainText(
+                            `${sanitizeDisplayText(s.agent)} (${s.state}, idle ${fmtTime(s.idleMs)})`,
+                            cols,
+                            "  ",
+                            "    ",
+                          ).map((line, li) => (
+                            <Text key={`ov-s-${idx}-${li}`}>{line}</Text>
+                          )),
+                        )}
+                      </>
+                    )}
                   </>
                 )}
               </Box>
@@ -3312,8 +4115,13 @@ export const register: Register = (on) => {
                   const unpricedByModel: Record<string, number> = {};
                   for (const r of f.runs) {
                     if (r.delegate && delegateCost(r) === null) {
-                      unpricedByModel[r.delegate] =
-                        (unpricedByModel[r.delegate] ?? 0) + 1;
+                      const safeDel = sanitizeDisplayText(r.delegate)
+                        .replace(/\s+/g, " ")
+                        .trim();
+                      if (safeDel) {
+                        unpricedByModel[safeDel] =
+                          (unpricedByModel[safeDel] ?? 0) + 1;
+                      }
                     }
                   }
                   return (
@@ -3366,6 +4174,13 @@ export const register: Register = (on) => {
       />
     );
 
+    const safeAboveTitle = sanitizeDisplayText(f.title)
+      .replace(/\s+/g, " ")
+      .trim();
+    const safeAbovePhase = sanitizeDisplayText(f.phase)
+      .replace(/\s+/g, " ")
+      .trim();
+
     if (e.surface === "desktop" && "Svg" in ui) {
       const { Svg } = ui;
       const width = Math.max(
@@ -3376,7 +4191,7 @@ export const register: Register = (on) => {
         <Box flexDirection="row" alignItems="center" gap={1}>
           <Svg
             source={bandSvg(f, width, isWorking)}
-            alt={`${f.title} · ${f.phase} · ${accepted} of ${total} accepted`}
+            alt={`${safeAboveTitle} · ${safeAbovePhase} · ${accepted} of ${total} accepted`}
             width={width}
             height={H}
           />
@@ -3389,17 +4204,17 @@ export const register: Register = (on) => {
     const cols = Math.max(40, e.props.bodyColumns || 80);
     const textBudget = Math.max(28, cols - 10);
     const barW = Math.max(6, Math.min(14, Math.floor(textBudget / 6)));
-    const statusLine = `${barText(ratioVal, barW)} · ${f.phase} · ${accepted} of ${total} accepted`;
-    const oneLine = `● ${f.title} · ${statusLine}`;
+    const statusLine = `${barText(ratioVal, barW)} · ${safeAbovePhase} · ${accepted} of ${total} accepted`;
+    const oneLine = `● ${safeAboveTitle} · ${statusLine}`;
     const tone = f.closedAt !== null ? "green" : "blue";
 
     if (oneLine.length <= textBudget) {
       return (
         <Box flexDirection="row" justifyContent="space-between" gap={1}>
           <Text>
-            <Text color={tone}>● {f.title}</Text>{" "}
+            <Text color={tone}>● {safeAboveTitle}</Text>{" "}
             <Text color={tone}>{barText(ratioVal, barW)}</Text>{" "}
-            <Text bold>{f.phase}</Text>{" "}
+            <Text bold>{safeAbovePhase}</Text>{" "}
             <Text dimColor>
               {accepted} of {total} accepted
             </Text>
@@ -3412,7 +4227,7 @@ export const register: Register = (on) => {
       );
     }
 
-    const titleWords = f.title.trim().split(/\s+/).filter(Boolean);
+    const titleWords = safeAboveTitle.split(/\s+/).filter(Boolean);
     const titleLines: string[] = [];
     let cur = "●";
     for (const w of titleWords) {

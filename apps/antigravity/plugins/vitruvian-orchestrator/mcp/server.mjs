@@ -55,10 +55,13 @@ import { fileURLToPath } from "node:url";
 
 import {
   board as boardView,
+  channels as channelsView,
   initialFlow,
   isValidWorktree,
   reduce,
   remaining,
+  validateChannelAction,
+  validatePostChannel,
 } from "../sidecars/panel/lib/orchestrator-core.mjs";
 
 export const SERVER_INFO = Object.freeze({
@@ -211,6 +214,11 @@ export const TOOLS = Object.freeze([
           minimum: 1,
           description: "Optional seq number of the post being replied to.",
         },
+        channel: {
+          type: "string",
+          description:
+            "Optional channel handle (default 'main'; must match [a-z0-9][a-z0-9-]{0,31}).",
+        },
       },
       required: ["text"],
     },
@@ -218,7 +226,7 @@ export const TOOLS = Object.freeze([
   Object.freeze({
     name: "board",
     description:
-      "Read posts from the shared Orchestrator board with optional recipient, author, kind, substring, and limit filters.",
+      "Read posts from the shared Orchestrator board with optional recipient, author, kind, channel, substring, and limit filters.",
     inputSchema: {
       type: "object",
       properties: {
@@ -236,6 +244,10 @@ export const TOOLS = Object.freeze([
           enum: ["note", "question", "defect", "result"],
           description: "Optional post kind filter.",
         },
+        channel: {
+          type: "string",
+          description: "Optional channel handle filter (e.g. 'main').",
+        },
         search: {
           type: "string",
           description: "Optional case-insensitive substring filter.",
@@ -248,6 +260,27 @@ export const TOOLS = Object.freeze([
             "Maximum newest matching posts to return (default 20, max 100).",
         },
       },
+    },
+  }),
+  Object.freeze({
+    name: "channel",
+    description:
+      "Create, archive, or list shared Orchestrator board channels ('create' and 'archive' are lead-only; 'list' is open to all).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          enum: ["create", "archive", "list"],
+          description: "Channel action: create, archive, or list.",
+        },
+        name: {
+          type: "string",
+          description:
+            "Channel handle ([a-z0-9][a-z0-9-]{0,31]) for create or archive.",
+        },
+      },
+      required: ["action"],
     },
   }),
 ]);
@@ -791,6 +824,16 @@ export function mapPostToEvent(
     };
   }
 
+  const chCheck = validatePostChannel(flow ?? null, inp.channel);
+  if (!chCheck.ok) {
+    return {
+      valid: false,
+      error: chCheck.error,
+      rootConversationId,
+      event: null,
+    };
+  }
+
   let matchedRun = null;
   if (flow && Array.isArray(flow.runs)) {
     if (callerConversationId) {
@@ -867,6 +910,9 @@ export function mapPostToEvent(
     Number.isInteger(inp.replyTo) &&
     inp.replyTo > 0
       ? { replyTo: inp.replyTo }
+      : {}),
+    ...(chCheck.channel && chCheck.channel !== "main"
+      ? { channel: chCheck.channel }
       : {}),
     ...(runId ? { runId } : {}),
   };
@@ -965,6 +1011,7 @@ export function queryBoard(
     to: effectiveTo,
     from: typeof inp.from === "string" ? inp.from : undefined,
     kind: typeof inp.kind === "string" ? inp.kind : undefined,
+    channel: typeof inp.channel === "string" ? inp.channel : undefined,
     search: typeof inp.search === "string" ? inp.search : undefined,
     limit,
   }).map((p) => ({
@@ -975,6 +1022,7 @@ export function queryBoard(
     replyTo: p.replyTo,
     at: p.at,
     text: p.text,
+    ...(p.channel && p.channel !== "main" ? { channel: p.channel } : {}),
   }));
 }
 
@@ -1261,13 +1309,14 @@ const SERVER_EVENT_ORDER = Object.freeze({
   "run.progress": 3,
   "member.pause": 3,
   "run.end": 4,
-  post: 5,
-  wake: 6,
-  "member.retire": 7,
-  "member.kill": 7,
-  "task.return": 8,
-  "task.accept": 9,
-  close: 10,
+  channel: 5,
+  post: 6,
+  wake: 7,
+  "member.retire": 8,
+  "member.kill": 8,
+  "task.return": 9,
+  "task.accept": 10,
+  close: 11,
 });
 
 function foldServerFlowEvents(flowEvents = [], transcriptEvents = []) {
@@ -1773,6 +1822,17 @@ export function handleJsonRpcMessage(message, options = {}) {
       const { rootConversationId, parentConversationId } =
         extractConversationMeta(meta, options.brainRoots);
       if (!rootConversationId) {
+        const chCheck = validatePostChannel(null, toolArgs.channel);
+        if (!chCheck.ok) {
+          return {
+            jsonrpc: "2.0",
+            id,
+            error: {
+              code: -32602,
+              message: chCheck.error,
+            },
+          };
+        }
         return {
           jsonrpc: "2.0",
           id,
@@ -1802,6 +1862,16 @@ export function handleJsonRpcMessage(message, options = {}) {
         options.brainRoots,
       );
       if (!mapped.valid || !mapped.event) {
+        if (mapped.error) {
+          return {
+            jsonrpc: "2.0",
+            id,
+            error: {
+              code: -32602,
+              message: mapped.error,
+            },
+          };
+        }
         return {
           jsonrpc: "2.0",
           id,
@@ -1874,6 +1944,177 @@ export function handleJsonRpcMessage(message, options = {}) {
         id,
         result: {
           content: [{ type: "text", text: JSON.stringify(rows) }],
+        },
+      };
+    }
+
+    if (toolName === "channel") {
+      const action =
+        typeof toolArgs.action === "string" ? toolArgs.action.trim() : "";
+      if (action !== "create" && action !== "archive" && action !== "list") {
+        return {
+          jsonrpc: "2.0",
+          id,
+          error: {
+            code: -32602,
+            message: 'channel action must be "create", "archive", or "list"',
+          },
+        };
+      }
+
+      const {
+        rootConversationId,
+        callerConversationId,
+        parentConversationId,
+        agentName,
+        rawMeta,
+      } = extractConversationMeta(meta, options.brainRoots);
+
+      if (action === "list") {
+        if (!rootConversationId) {
+          return {
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [
+                { type: "text", text: JSON.stringify(channelsView(null)) },
+              ],
+            },
+          };
+        }
+        const loaderOpts = {
+          brainRoots: options.brainRoots,
+          meta,
+          conversationId: rootConversationId,
+          parentConversationId,
+        };
+        const filePath = join(flowsDir, `${rootConversationId}.jsonl`);
+        const currentFlow =
+          options.flow !== undefined
+            ? options.flow
+            : existsSync(filePath)
+              ? readFlowFromJsonlFile(filePath, loaderOpts)
+              : null;
+        return {
+          jsonrpc: "2.0",
+          id,
+          result: {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(channelsView(currentFlow)),
+              },
+            ],
+          },
+        };
+      }
+
+      const isMetaHelper =
+        Boolean(parentConversationId) ||
+        Boolean(agentName) ||
+        (Boolean(callerConversationId) &&
+          Boolean(rootConversationId) &&
+          callerConversationId !== rootConversationId);
+      if (isMetaHelper) {
+        return {
+          jsonrpc: "2.0",
+          id,
+          error: {
+            code: -32602,
+            message: `channel ${action} is for the lead only`,
+          },
+        };
+      }
+      if (
+        !callerConversationId ||
+        !rootConversationId ||
+        rootConversationId === "default" ||
+        callerConversationId !== rootConversationId
+      ) {
+        return {
+          jsonrpc: "2.0",
+          id,
+          error: {
+            code: -32602,
+            message: `channel ${action} is for the lead only: caller unknown`,
+          },
+        };
+      }
+
+      const loaderOpts = {
+        brainRoots: options.brainRoots,
+        meta,
+        conversationId: rootConversationId,
+        parentConversationId,
+      };
+      const existingPath = join(flowsDir, `${rootConversationId}.jsonl`);
+      const currentFlow =
+        options.flow !== undefined
+          ? options.flow
+          : existsSync(existingPath)
+            ? readFlowFromJsonlFile(existingPath, loaderOpts)
+            : null;
+      if (
+        isKnownWorkerCaller(
+          callerConversationId,
+          currentFlow,
+          flowsDir,
+          options,
+        )
+      ) {
+        return {
+          jsonrpc: "2.0",
+          id,
+          error: {
+            code: -32602,
+            message: `channel ${action} is for the lead only`,
+          },
+        };
+      }
+
+      const check = validateChannelAction(currentFlow, {
+        action,
+        name: toolArgs.name,
+      });
+      if (!check.ok) {
+        return {
+          jsonrpc: "2.0",
+          id,
+          error: {
+            code: -32602,
+            message: check.error,
+          },
+        };
+      }
+
+      let nextFlow = currentFlow;
+      if (!check.noop) {
+        const metaFields = {
+          rootConversationId,
+          ...(rawMeta && Object.keys(rawMeta).length > 0
+            ? { _meta: rawMeta }
+            : {}),
+        };
+        const filePath =
+          appendFlowEvents(flowsDir, rootConversationId, [
+            {
+              type: "channel",
+              at,
+              ...metaFields,
+              action,
+              name: check.name,
+            },
+          ]) || existingPath;
+        nextFlow = readFlowFromJsonlFile(filePath, loaderOpts);
+      }
+
+      return {
+        jsonrpc: "2.0",
+        id,
+        result: {
+          content: [
+            { type: "text", text: JSON.stringify(channelsView(nextFlow)) },
+          ],
         },
       };
     }

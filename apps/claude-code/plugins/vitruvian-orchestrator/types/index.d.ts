@@ -94,6 +94,37 @@ export type MembersView = {
   retired: MemberRow[];
 };
 
+export type ChannelInfo = {
+  name: string;
+  archived: boolean;
+};
+
+export type OverviewMember = {
+  agent: string;
+  state: MemberState;
+  line: string;
+};
+
+export type OpenQuestion = {
+  seq: number;
+  from: string;
+  text: string;
+};
+
+export type OpenDefect = {
+  seq: number;
+  from: string;
+  to: string[];
+  text: string;
+};
+
+export type OverviewView = {
+  members: OverviewMember[];
+  openQuestions: OpenQuestion[];
+  openDefects: OpenDefect[];
+  stalls: StallRow[];
+};
+
 export type PendingWake = {
   seq: number;
   target: string;
@@ -184,6 +215,7 @@ export type Flow = {
   postsDropped?: number;
   woken?: string[];
   hasMemberEvents?: boolean;
+  channels?: ChannelInfo[];
 };
 
 export type PlanTaskInput = {
@@ -262,6 +294,8 @@ export type FlowEvent = {
   kind?: PostKind;
   replyTo?: number;
   channel?: string;
+  action?: "create" | "archive";
+  name?: string;
   runId?: string;
   reason?: PauseReason;
   detail?: string;

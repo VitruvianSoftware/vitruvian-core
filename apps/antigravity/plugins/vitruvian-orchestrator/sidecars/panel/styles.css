@@ -366,7 +366,9 @@ p {
 
 .panel-tabs[hidden],
 .tab-badge[hidden],
-.control-btn[hidden] {
+.control-btn[hidden],
+.board-channels[hidden],
+.overview-section[hidden] {
   display: none;
 }
 
@@ -412,6 +414,24 @@ p {
 .board-follow-bar {
   display: flex;
   align-items: center;
+  gap: 0.35rem;
+}
+
+.board-channels {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.overview-sections {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.overview-section {
+  display: grid;
   gap: 0.35rem;
 }
 

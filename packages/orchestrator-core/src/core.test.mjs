@@ -1599,6 +1599,12 @@ test("post assigns sequential seq numbers, unions explicit to + mentions, caps t
     kind: "result",
   });
   flow = reduce(flow, {
+    type: "channel",
+    at: 1250,
+    action: "create",
+    name: "qa",
+  });
+  flow = reduce(flow, {
     type: "post",
     at: 1300,
     from: "scout",
@@ -1896,6 +1902,12 @@ test("board() filters by search, from, to, kind, channel, and applies limit keep
     from: "scout",
     text: "XSS check failed on SVG label @wren @lead",
     kind: "defect",
+  });
+  flow = reduce(flow, {
+    type: "channel",
+    at: 350,
+    action: "create",
+    name: "design",
   });
   flow = reduce(flow, {
     type: "post",
@@ -3101,4 +3113,1197 @@ test("phase 2 item 5: worktree validation on tasks and runs stores valid branche
   });
   assert.equal(flow.runs[0].worktree, "feat/forge-helper");
   assert.equal(members(flow).active[0].worktree, "feat/forge-helper");
+});
+
+test("phase 3 item 2: overview(flow) summarizes active/standing-by member lines, openQuestions, openDefects (replyTo + fallback), and stalls", () => {
+  assert.deepEqual(coreModule.overview(null), {
+    members: [],
+    openQuestions: [],
+    openDefects: [],
+    stalls: [],
+  });
+
+  let flow = reduce(null, {
+    type: "plan",
+    at: 1000,
+    title: "Phase 3 overview",
+    tasks: [
+      { title: "Implement API", specialist: "wren", tier: "core" },
+      { title: "Implement UI", specialist: "wren", tier: "core" },
+      { title: "Infra wiring", specialist: "atlas", tier: "core" },
+    ],
+  });
+
+  // Lead run should never appear in overview.members
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 1005,
+    id: "run-lead",
+    harness: "claude-code",
+    agent: "beacon",
+    model: "claude-opus-4-6",
+    title: "Lead",
+    role: "lead",
+  });
+
+  // Active member (wren) with step note containing newlines, ANSI, and > 140 chars
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 1010,
+    id: "run-wren-1",
+    harness: "claude-code",
+    agent: "wren",
+    model: "claude-sonnet-4-6",
+    title: "Implement API",
+    role: "worker",
+  });
+  const longNote = `\x1b[31mStep 2:\x1b[0m\n  ${"x".repeat(160)}`;
+  flow = reduce(flow, {
+    type: "run.progress",
+    at: 1020,
+    id: "run-wren-1",
+    steps: { done: 2, total: 4, note: longNote },
+  });
+  // Even if wren also posts, step note wins over latest post
+  flow = reduce(flow, {
+    type: "post",
+    at: 1030,
+    from: "wren",
+    runId: "run-wren-1",
+    text: "wren note that should not override step note",
+  });
+
+  // Standing-by waiting member (atlas) with NO step note -> falls back to latest post (one line, <= 140 chars)
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 1040,
+    id: "run-atlas",
+    harness: "claude-code",
+    agent: "atlas",
+    model: "claude-sonnet-4-6",
+    title: "Infra wiring",
+    role: "worker",
+  });
+  flow = reduce(flow, {
+    type: "post",
+    at: 1050,
+    from: "atlas",
+    runId: "run-atlas",
+    text: `line one\nline two ${"y".repeat(150)}`,
+  });
+  flow = reduce(flow, {
+    type: "run.end",
+    at: 1060,
+    id: "run-atlas",
+    status: "done",
+  });
+
+  // Retired member (quill) should not appear in overview.members
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 1070,
+    id: "run-quill",
+    harness: "claude-code",
+    agent: "quill",
+    model: "claude-haiku-5-5",
+    title: "Docs",
+    role: "worker",
+  });
+  flow = reduce(flow, {
+    type: "member.retire",
+    at: 1080,
+    id: "run-quill",
+  });
+
+  // Questions: #3 answered via replyTo, #4 still open
+  flow = reduce(flow, {
+    type: "post",
+    at: 1090,
+    from: "wren",
+    to: ["lead"],
+    kind: "question",
+    text: "Should channel names allow underscores?",
+  }); // seq 3
+  flow = reduce(flow, {
+    type: "post",
+    at: 1100,
+    from: "forge",
+    to: ["lead"],
+    kind: "question",
+    text: "Which region for bucket?",
+  }); // seq 4
+  flow = reduce(flow, {
+    type: "post",
+    at: 1110,
+    from: "lead",
+    to: ["wren"],
+    kind: "note",
+    replyTo: 3,
+    text: "Dashes only.",
+  }); // seq 5 closes question #3
+
+  // Defects:
+  // #6: closed via explicit replyTo from same author (scout)
+  flow = reduce(flow, {
+    type: "post",
+    at: 1120,
+    from: "scout",
+    to: ["wren", "lead"],
+    kind: "defect",
+    text: "Missing edge-case test",
+  }); // seq 6
+  // Implementer result replying to #6 does NOT close #6 (different author)
+  flow = reduce(flow, {
+    type: "post",
+    at: 1130,
+    from: "wren",
+    to: ["scout"],
+    kind: "result",
+    replyTo: 6,
+    text: "Added edge-case test",
+  }); // seq 7
+
+  const midOverview = coreModule.overview(flow, 1130);
+  assert.equal(midOverview.openDefects.length, 1);
+  assert.equal(midOverview.openDefects[0].seq, 6);
+
+  // Reviewer scout replies with result + replyTo: 6 -> closes #6
+  flow = reduce(flow, {
+    type: "post",
+    at: 1140,
+    from: "scout",
+    to: ["wren"],
+    kind: "result",
+    replyTo: 6,
+    text: "Verified",
+  }); // seq 8
+
+  // #9: defect for atlas (single task #3) closed by fallback (same author aegis, result, mentions @atlas, no replyTo)
+  flow = reduce(flow, {
+    type: "post",
+    at: 1150,
+    from: "aegis",
+    to: ["atlas", "lead"],
+    kind: "defect",
+    text: "Bucket ACL too broad",
+  }); // seq 9
+  // #10 and #11: two defects from scout for wren (who has 2 tasks: #1 and #2)
+  flow = reduce(flow, {
+    type: "post",
+    at: 1160,
+    from: "scout",
+    to: ["wren", "lead"],
+    kind: "defect",
+    text: "Task 1: status code 500 on empty body",
+  }); // seq 10
+  flow = reduce(flow, {
+    type: "post",
+    at: 1170,
+    from: "scout",
+    to: ["wren", "lead"],
+    kind: "defect",
+    text: "Task 2: missing ARIA label",
+  }); // seq 11
+
+  // Aegis posts result mentioning @atlas without replyTo -> closes #9 via fallback
+  flow = reduce(flow, {
+    type: "post",
+    at: 1180,
+    from: "aegis",
+    to: ["atlas", "lead"],
+    kind: "result",
+    text: "IAM policy tightened and verified",
+  }); // seq 12
+  // Scout posts result mentioning @wren for Task 1 -> closes #10, leaves #11 open
+  flow = reduce(flow, {
+    type: "post",
+    at: 1190,
+    from: "scout",
+    to: ["wren", "lead"],
+    kind: "result",
+    text: "Task 1: verified 400 status code",
+  }); // seq 13
+
+  // Check at now = 1130 + DEFAULT_QUIET_MS + 1000 so run-wren-1 (lastActivityAt 1130) is quiet
+  const snap = coreModule.overview(flow, 1130 + DEFAULT_QUIET_MS + 1000);
+  assert.equal(snap.members.length, 2);
+  assert.equal(snap.members[0].agent, "wren");
+  assert.equal(snap.members[0].state, "working");
+  assert.equal(snap.members[0].line.includes("\n"), false);
+  assert.equal(snap.members[0].line.includes("\x1b"), false);
+  assert.equal(snap.members[0].line.length, 140);
+  assert.match(snap.members[0].line, /^Step 2: x+…$/);
+
+  assert.equal(snap.members[1].agent, "atlas");
+  assert.equal(snap.members[1].state, "waiting");
+  assert.equal(snap.members[1].line.includes("\n"), false);
+  assert.equal(snap.members[1].line.length, 140);
+  assert.match(snap.members[1].line, /^line one line two y+…$/);
+
+  assert.deepEqual(snap.openQuestions, [
+    { seq: 4, from: "forge", text: "Which region for bucket?" },
+  ]);
+  assert.deepEqual(snap.openDefects, [
+    {
+      seq: 11,
+      from: "scout",
+      to: ["wren", "lead"],
+      text: "Task 2: missing ARIA label",
+    },
+  ]);
+  assert.equal(snap.stalls.length, 1);
+  assert.equal(snap.stalls[0].id, "run-wren-1");
+  assert.equal(snap.stalls[0].state, "quiet");
+});
+
+test("phase 3 item 2b: overview(flow) defect fallback closes defect when reviewer first runs a QA task and re-verifies ad-hoc", () => {
+  let flow = reduce(null, {
+    type: "plan",
+    at: 1000,
+    title: "QA re-verify fallback",
+    tasks: [
+      { title: "Infra wiring", specialist: "atlas", tier: "core" },
+      { title: "QA infra", specialist: "scout", tier: "fast", after: [1] },
+    ],
+  });
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 1010,
+    id: "run-scout-qa1",
+    harness: "claude-code",
+    agent: "scout",
+    model: "claude-haiku-5-5",
+    title: "QA infra",
+    role: "worker",
+  });
+  flow = reduce(flow, {
+    type: "post",
+    at: 1020,
+    from: "scout",
+    runId: "run-scout-qa1",
+    to: ["atlas", "lead"],
+    kind: "defect",
+    text: "Missing IAM condition",
+  });
+  assert.equal(coreModule.overview(flow, 1030).openDefects.length, 1);
+
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 1040,
+    id: "run-scout-qa2",
+    harness: "claude-code",
+    agent: "scout",
+    model: "claude-haiku-5-5",
+    title: "Re-verify infra after return",
+    role: "worker",
+  });
+  flow = reduce(flow, {
+    type: "post",
+    at: 1050,
+    from: "scout",
+    runId: "run-scout-qa2",
+    to: ["atlas", "lead"],
+    kind: "result",
+    text: "IAM condition verified",
+  });
+  assert.deepEqual(coreModule.overview(flow, 1060).openDefects, []);
+});
+
+test("phase 3 item 3: channels validate handles, enforce max 20, archive blocks posts, and keep empty flows unchanged", () => {
+  assert.equal(coreModule.isValidChannel("main"), true);
+  assert.equal(coreModule.isValidChannel("a"), true);
+  assert.equal(coreModule.isValidChannel("qa-round-1"), true);
+  assert.equal(coreModule.isValidChannel(`a${"b".repeat(31)}`), true);
+  assert.equal(coreModule.isValidChannel(`a${"b".repeat(32)}`), false);
+  assert.equal(coreModule.isValidChannel("Upper"), false);
+  assert.equal(coreModule.isValidChannel("-dash"), false);
+  assert.equal(coreModule.isValidChannel("under_score"), false);
+  assert.equal(coreModule.isValidChannel(""), false);
+
+  assert.deepEqual(coreModule.channels(null), [
+    { name: "main", archived: false },
+  ]);
+
+  let flow = reduce(null, {
+    type: "plan",
+    at: 100,
+    title: "Channels flow",
+    tasks: [],
+  });
+  // Optional field: flow with no channel events has no `channels` key
+  assert.equal("channels" in flow, false);
+  assert.deepEqual(coreModule.channels(flow), [
+    { name: "main", archived: false },
+  ]);
+
+  // validatePostChannel rejects unknown channels even before any channel event
+  assert.equal(coreModule.validatePostChannel(flow, undefined).ok, true);
+  assert.equal(coreModule.validatePostChannel(flow, "main").ok, true);
+  const badUnknown = coreModule.validatePostChannel(flow, "qa");
+  assert.equal(badUnknown.ok, false);
+  assert.match(badUnknown.error, /unknown channel "qa"/i);
+
+  // Create channel "qa"
+  assert.equal(
+    coreModule.validateChannelAction(flow, { action: "create", name: "qa" }).ok,
+    true,
+  );
+  flow = reduce(flow, {
+    type: "channel",
+    at: 110,
+    action: "create",
+    name: "qa",
+  });
+  assert.deepEqual(coreModule.channels(flow), [
+    { name: "main", archived: false },
+    { name: "qa", archived: false },
+  ]);
+  assert.equal(coreModule.validatePostChannel(flow, "qa").ok, true);
+
+  // Post to "qa" succeeds and board filters by channel
+  flow = reduce(flow, {
+    type: "post",
+    at: 120,
+    from: "scout",
+    channel: "qa",
+    text: "QA check 1",
+  });
+  flow = reduce(flow, {
+    type: "post",
+    at: 125,
+    from: "wren",
+    text: "Main update",
+  });
+  assert.equal(board(flow, { channel: "qa" }).length, 1);
+  assert.equal(board(flow, { channel: "main" }).length, 1);
+
+  // Post to unknown channel when channels are tracked is rejected by validatePostChannel and ignored by reduce
+  assert.equal(coreModule.validatePostChannel(flow, "missing").ok, false);
+  const beforeMissing = flow.posts.length;
+  flow = reduce(flow, {
+    type: "post",
+    at: 126,
+    from: "wren",
+    channel: "missing",
+    text: "Should be dropped",
+  });
+  assert.equal(flow.posts.length, beforeMissing);
+
+  // Cannot archive "main"
+  const archiveMain = coreModule.validateChannelAction(flow, {
+    action: "archive",
+    name: "main",
+  });
+  assert.equal(archiveMain.ok, false);
+  assert.match(archiveMain.error, /main/i);
+
+  // Archive "qa" -> blocks further posts to "qa"
+  assert.equal(
+    coreModule.validateChannelAction(flow, { action: "archive", name: "qa" })
+      .ok,
+    true,
+  );
+  flow = reduce(flow, {
+    type: "channel",
+    at: 130,
+    action: "archive",
+    name: "qa",
+  });
+  assert.deepEqual(coreModule.channels(flow), [
+    { name: "main", archived: false },
+    { name: "qa", archived: true },
+  ]);
+  const postArchived = coreModule.validatePostChannel(flow, "qa");
+  assert.equal(postArchived.ok, false);
+  assert.match(postArchived.error, /archived/i);
+  flow = reduce(flow, {
+    type: "post",
+    at: 135,
+    from: "scout",
+    channel: "qa",
+    text: "Blocked post",
+  });
+  assert.equal(board(flow, { channel: "qa" }).length, 1);
+
+  // Enforce max 20 channels total (main + qa + 18 more = 20; 21st rejected)
+  for (let i = 1; i <= 18; i += 1) {
+    const chName = `ch-${i}`;
+    assert.equal(
+      coreModule.validateChannelAction(flow, {
+        action: "create",
+        name: chName,
+      }).ok,
+      true,
+    );
+    flow = reduce(flow, {
+      type: "channel",
+      at: 200 + i,
+      action: "create",
+      name: chName,
+    });
+  }
+  assert.equal(coreModule.channels(flow).length, 20);
+  const overCap = coreModule.validateChannelAction(flow, {
+    action: "create",
+    name: "ch-overflow",
+  });
+  assert.equal(overCap.ok, false);
+  assert.match(overCap.error, /20/);
+  flow = reduce(flow, {
+    type: "channel",
+    at: 300,
+    action: "create",
+    name: "ch-overflow",
+  });
+  assert.equal(coreModule.channels(flow).length, 20);
+});
+
+test("phase 3 qa: archived channel cannot be re-created and overview sanitises control/bidi/zero-width, falls back from empty notes, and caps line at 140 chars", () => {
+  assert.deepEqual(coreModule.overview(null), {
+    members: [],
+    openQuestions: [],
+    openDefects: [],
+    stalls: [],
+  });
+  assert.deepEqual(coreModule.overview(undefined), {
+    members: [],
+    openQuestions: [],
+    openDefects: [],
+    stalls: [],
+  });
+
+  let flow = initialFlow("QA Edge Flow", 1_000);
+  flow = reduce(flow, {
+    type: "plan",
+    at: 1_000,
+    title: "QA Edge Flow",
+    tasks: [
+      { title: "Implement", specialist: "wren", tier: "core" },
+      { title: "Verify", specialist: "scout", tier: "fast", after: [1] },
+    ],
+  });
+
+  // Create then archive "qa-round"; re-creating must fail and leave it archived.
+  flow = reduce(flow, {
+    type: "channel",
+    at: 1_010,
+    action: "create",
+    name: "qa-round",
+  });
+  flow = reduce(flow, {
+    type: "channel",
+    at: 1_020,
+    action: "archive",
+    name: "qa-round",
+  });
+  const recreate = coreModule.validateChannelAction(flow, {
+    action: "create",
+    name: "qa-round",
+  });
+  assert.equal(recreate.ok, false);
+  assert.match(recreate.error, /archived/i);
+  flow = reduce(flow, {
+    type: "channel",
+    at: 1_030,
+    action: "create",
+    name: "qa-round",
+  });
+  assert.deepEqual(coreModule.channels(flow), [
+    { name: "main", archived: false },
+    { name: "qa-round", archived: true },
+  ]);
+
+  // Spawn wren with a control-only step note -> overview.members line falls back to latest post, sanitised & capped <= 140 chars.
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 1_040,
+    id: "wren-1",
+    harness: "claude-code",
+    agent: "wren",
+    model: "claude-opus-5-5",
+    title: "Implement",
+    role: "worker",
+  });
+  flow = reduce(flow, {
+    type: "run.progress",
+    at: 1_050,
+    id: "wren-1",
+    steps: {
+      done: 1,
+      total: 2,
+      note: "\x1b[31m  \u009b\u202e\u2066\u00ad\u200b\ufeff \t\n ",
+    },
+  });
+  const longPost =
+    "Status\x1b[31m\u009b\u202e\u2066\u00ad\u200b\ufeff\tupdate:\n" +
+    "x".repeat(180);
+  flow = reduce(flow, {
+    type: "post",
+    at: 1_060,
+    from: "wren",
+    runId: "wren-1",
+    to: ["lead"],
+    kind: "question",
+    text: longPost,
+  });
+
+  // Unrelated post without matching replyTo leaves question #1 open.
+  flow = reduce(flow, {
+    type: "post",
+    at: 1_070,
+    from: "lead",
+    to: ["wren"],
+    kind: "note",
+    text: "Looking into it",
+  });
+  const ovOpen = coreModule.overview(flow, 1_080);
+  assert.equal(ovOpen.openQuestions.length, 1);
+  assert.equal(ovOpen.openQuestions[0].seq, 1);
+
+  const wrenMember = ovOpen.members.find((m) => m.agent === "wren");
+  assert.ok(wrenMember);
+  assert.ok(wrenMember.line.startsWith("Status update: xxx"));
+  assert.equal(wrenMember.line.length, 140);
+  assert.equal(wrenMember.line.includes("\n"), false);
+  for (const ch of [
+    "\x1b",
+    "\u009b",
+    "\u202e",
+    "\u2066",
+    "\u00ad",
+    "\u200b",
+    "\ufeff",
+  ]) {
+    assert.equal(wrenMember.line.includes(ch), false);
+  }
+
+  // Later post with replyTo: 1 closes question #1.
+  flow = reduce(flow, {
+    type: "post",
+    at: 1_090,
+    from: "lead",
+    to: ["wren"],
+    kind: "note",
+    replyTo: 1,
+    text: "Confirmed",
+  });
+  assert.equal(coreModule.overview(flow, 1_100).openQuestions.length, 0);
+});
+
+test("scout qa: overview(flow) defect fallback keeps multi-task specialist defects open when reviewer run has no after edge and keeps @lead-only defects open across mismatched worker results", () => {
+  // Case A: wren owns tasks #1 and #2; scout runs task #3 with after: [].
+  // Neither post sets replyTo or names task #N. Because wren's task scope is
+  // ambiguous (#1 vs #2), scout's result must NOT close the defect via scout's own taskN (#3).
+  let flow = reduce(initialFlow(), {
+    type: "plan",
+    at: 1_000,
+    title: "Ambiguous Fallback QA",
+    tasks: [
+      { title: "Build auth", specialist: "wren", tier: "core", after: [] },
+      { title: "Build billing", specialist: "wren", tier: "core", after: [] },
+      { title: "QA sweep", specialist: "scout", tier: "fast", after: [] },
+    ],
+  });
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 1_010,
+    id: "scout-1",
+    harness: "claude-code",
+    agent: "scout",
+    model: "haiku",
+    title: "QA sweep",
+  });
+  flow = reduce(flow, {
+    type: "post",
+    at: 1_020,
+    from: "scout",
+    runId: "scout-1",
+    to: ["wren", "lead"],
+    kind: "defect",
+    text: "Auth session cookie missing SameSite",
+  });
+  flow = reduce(flow, {
+    type: "post",
+    at: 1_030,
+    from: "scout",
+    runId: "scout-1",
+    to: ["wren", "lead"],
+    kind: "result",
+    text: "Billing totals verified green",
+  });
+  assert.equal(coreModule.overview(flow, 1_040).openDefects.length, 1);
+
+  // Case B: defect mentions only @lead (no worker recipient); later result without
+  // replyTo mentions @atlas and @lead. Different recipient target must not close it.
+  let leadFlow = reduce(initialFlow(), {
+    type: "plan",
+    at: 2_000,
+    title: "Lead Defect Scope QA",
+    tasks: [
+      { title: "Infra", specialist: "atlas", tier: "core", after: [] },
+      { title: "Review", specialist: "scout", tier: "fast", after: [] },
+    ],
+  });
+  leadFlow = reduce(leadFlow, {
+    type: "post",
+    at: 2_010,
+    from: "scout",
+    to: ["lead"],
+    kind: "defect",
+    text: "Plan omits rollback gate",
+  });
+  leadFlow = reduce(leadFlow, {
+    type: "post",
+    at: 2_020,
+    from: "scout",
+    to: ["atlas", "lead"],
+    kind: "result",
+    text: "Infra preview clean",
+  });
+  assert.equal(coreModule.overview(leadFlow, 2_030).openDefects.length, 1);
+
+  // Even a later result addressed only to @lead without replyTo must NOT close it; only replyTo closes a @lead-only defect.
+  leadFlow = reduce(leadFlow, {
+    type: "post",
+    at: 2_025,
+    from: "scout",
+    to: ["lead"],
+    kind: "result",
+    text: "All gates checked",
+  });
+  assert.equal(coreModule.overview(leadFlow, 2_030).openDefects.length, 1);
+  leadFlow = reduce(leadFlow, {
+    type: "post",
+    at: 2_028,
+    from: "scout",
+    to: ["lead"],
+    kind: "result",
+    replyTo: 1,
+    text: "Rollback gate added",
+  });
+  assert.equal(coreModule.overview(leadFlow, 2_030).openDefects.length, 0);
+
+  // Case C: author (scout) owns multiple tasks (#2 and #3) while wren owns 1 task (#1).
+  // Without replyTo or explicit task #N, fallback must keep the defect open; replyTo closes it.
+  let multiAuthorFlow = reduce(initialFlow(), {
+    type: "plan",
+    at: 3_000,
+    title: "Multi-Task Author QA",
+    tasks: [
+      { title: "Implement API", specialist: "wren", tier: "core", after: [] },
+      { title: "Unit QA", specialist: "scout", tier: "fast", after: [1] },
+      { title: "E2E QA", specialist: "scout", tier: "fast", after: [1] },
+    ],
+  });
+  multiAuthorFlow = reduce(multiAuthorFlow, {
+    type: "post",
+    at: 3_010,
+    from: "scout",
+    to: ["wren", "lead"],
+    kind: "defect",
+    text: "Unit check failed on empty payload",
+  });
+  multiAuthorFlow = reduce(multiAuthorFlow, {
+    type: "post",
+    at: 3_020,
+    from: "scout",
+    to: ["wren", "lead"],
+    kind: "result",
+    text: "E2E suite passed",
+  });
+  assert.equal(
+    coreModule.overview(multiAuthorFlow, 3_030).openDefects.length,
+    1,
+  );
+  multiAuthorFlow = reduce(multiAuthorFlow, {
+    type: "post",
+    at: 3_025,
+    from: "scout",
+    to: ["wren", "lead"],
+    kind: "result",
+    replyTo: 1,
+    text: "Unit check fixed and verified",
+  });
+  assert.equal(
+    coreModule.overview(multiAuthorFlow, 3_030).openDefects.length,
+    0,
+  );
+});
+
+test("return round 2 security 1: reduce rejects posts to non-main channels when flow.channels is undefined", () => {
+  assert.equal(
+    reduce(null, {
+      type: "post",
+      at: 1_005,
+      from: "wren",
+      channel: "ghost",
+      text: "Post on null flow",
+    }),
+    null,
+  );
+
+  let planned = reduce(null, {
+    type: "plan",
+    at: 1_010,
+    title: "Planned Without Channels",
+    tasks: [{ title: "Build", specialist: "wren", tier: "core" }],
+  });
+  assert.equal(planned.channels, undefined);
+  const afterBlockedOnPlanned = reduce(planned, {
+    type: "post",
+    at: 1_020,
+    from: "wren",
+    channel: "sec-audit",
+    text: "Uncreated channel before any channel event",
+  });
+  assert.equal(afterBlockedOnPlanned.posts.length, 0);
+
+  // Main and omitted channel still succeed when flow.channels is undefined
+  planned = reduce(planned, {
+    type: "post",
+    at: 1_030,
+    from: "wren",
+    channel: "main",
+    text: "Allowed main post",
+  });
+  assert.equal(planned.posts.length, 1);
+});
+
+test("return round 2 security 2: specialist, tier, run agent/model, and overview/stalls/members/taskBoard strip ANSI, bidi, and zero-width characters", () => {
+  const dirtyAgent = "wr\x1b[31men\u202e\u200b";
+  const dirtySpecialist = "sc\x1b[31mout\u202e\u200b";
+  const dirtyTier = "co\x1b[31mre\u202e\u200b";
+  const dirtyModel = "claude-\x1b[31msonnet-4-6\u202e\u200b";
+  const forbiddenRe =
+    /[\x1b\u202a-\u202e\u2066-\u2069\u200b-\u200f\u2060-\u2064\ufeff]/;
+
+  let flow = reduce(null, {
+    type: "plan",
+    at: 1_000,
+    title: "Dirty Names Plan",
+    tasks: [
+      {
+        title: "Sanitise names",
+        specialist: dirtySpecialist,
+        tier: dirtyTier,
+        after: [],
+      },
+    ],
+  });
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 1_010,
+    id: "run-dirty-1",
+    harness: "claude-code",
+    agent: dirtyAgent,
+    model: dirtyModel,
+    title: "Sanitise names",
+  });
+  flow = reduce(flow, {
+    type: "post",
+    at: 1_020,
+    from: "scout",
+    to: ["wren", "lead"],
+    kind: "defect",
+    text: "Check output",
+  });
+
+  assert.equal(flow.tasks[0].specialist, "scout");
+  assert.equal(flow.tasks[0].tier, "core");
+  assert.equal(flow.runs[0].agent, "wren");
+  assert.equal(flow.runs[0].model, "claude-sonnet-4-6");
+  assert.equal(forbiddenRe.test(JSON.stringify(taskBoard(flow))), false);
+  assert.equal(forbiddenRe.test(JSON.stringify(members(flow))), false);
+  assert.equal(
+    forbiddenRe.test(
+      JSON.stringify(stalls(flow, 1_000 + DEFAULT_STALL_MS + 5_000)),
+    ),
+    false,
+  );
+  assert.equal(
+    forbiddenRe.test(
+      JSON.stringify(
+        coreModule.overview(flow, 1_000 + DEFAULT_STALL_MS + 5_000),
+      ),
+    ),
+    false,
+  );
+
+  // Also defend unreduced persisted snapshots fed straight into overview(), stalls(), members(), and taskBoard()
+  const rawPersisted = {
+    ...flow,
+    tasks: [
+      {
+        ...flow.tasks[0],
+        specialist: dirtySpecialist,
+        tier: dirtyTier,
+      },
+    ],
+    runs: [
+      {
+        ...flow.runs[0],
+        agent: dirtyAgent,
+        model: dirtyModel,
+      },
+    ],
+    posts: [
+      {
+        seq: 1,
+        at: 1_020,
+        from: dirtyAgent,
+        to: [dirtySpecialist],
+        kind: "defect",
+        text: "Unreduced post",
+      },
+      {
+        seq: 2,
+        at: 1_025,
+        from: dirtySpecialist,
+        to: ["lead"],
+        kind: "question",
+        text: "Unreduced question?",
+      },
+    ],
+  };
+  assert.equal(
+    forbiddenRe.test(
+      JSON.stringify(
+        coreModule.overview(rawPersisted, 1_000 + DEFAULT_STALL_MS + 5_000),
+      ),
+    ),
+    false,
+  );
+  assert.equal(
+    forbiddenRe.test(
+      JSON.stringify(stalls(rawPersisted, 1_000 + DEFAULT_STALL_MS + 5_000)),
+    ),
+    false,
+  );
+  assert.equal(forbiddenRe.test(JSON.stringify(members(rawPersisted))), false);
+  assert.equal(
+    forbiddenRe.test(JSON.stringify(taskBoard(rawPersisted))),
+    false,
+  );
+});
+
+test("return round 2 security 3: repeated channel create and repeated archive are exact no-ops in reduce and validateChannelAction", () => {
+  let flow = reduce(null, {
+    type: "plan",
+    at: 1_000,
+    title: "Channel Idempotency",
+    tasks: [{ title: "Build", specialist: "wren", tier: "core" }],
+  });
+
+  // Creating "main" is a no-op returning the exact same flow reference
+  assert.equal(
+    reduce(flow, {
+      type: "channel",
+      at: 1_005,
+      action: "create",
+      name: "main",
+    }),
+    flow,
+  );
+  assert.equal(
+    coreModule.validateChannelAction(flow, { action: "create", name: "main" })
+      .noop,
+    true,
+  );
+
+  // First create mutates, second create is a no-op
+  flow = reduce(flow, {
+    type: "channel",
+    at: 1_010,
+    action: "create",
+    name: "sec-audit",
+  });
+  const dupCreateCheck = coreModule.validateChannelAction(flow, {
+    action: "create",
+    name: "sec-audit",
+  });
+  assert.equal(dupCreateCheck.ok, true);
+  assert.equal(dupCreateCheck.noop, true);
+  assert.deepEqual(dupCreateCheck.channels, [
+    { name: "main", archived: false },
+    { name: "sec-audit", archived: false },
+  ]);
+  assert.equal(
+    reduce(flow, {
+      type: "channel",
+      at: 1_020,
+      action: "create",
+      name: "sec-audit",
+    }),
+    flow,
+  );
+
+  // First archive mutates, second archive is a no-op returning the exact same flow reference
+  const firstArchiveCheck = coreModule.validateChannelAction(flow, {
+    action: "archive",
+    name: "sec-audit",
+  });
+  assert.equal(firstArchiveCheck.ok, true);
+  assert.equal(Boolean(firstArchiveCheck.noop), false);
+  flow = reduce(flow, {
+    type: "channel",
+    at: 1_030,
+    action: "archive",
+    name: "sec-audit",
+  });
+  const dupArchiveCheck = coreModule.validateChannelAction(flow, {
+    action: "archive",
+    name: "sec-audit",
+  });
+  assert.equal(dupArchiveCheck.ok, true);
+  assert.equal(dupArchiveCheck.noop, true);
+  assert.deepEqual(dupArchiveCheck.channels, [
+    { name: "main", archived: false },
+    { name: "sec-audit", archived: true },
+  ]);
+  assert.equal(
+    reduce(flow, {
+      type: "channel",
+      at: 1_040,
+      action: "archive",
+      name: "sec-audit",
+    }),
+    flow,
+  );
+});
+
+test("return round 2 acceptance 4: overview emits one member row per agent from its latest run and fallback closes defect when reviewer has one task", () => {
+  // 1. Reproduce return-round flow (wren and scout each run twice after task.return)
+  let flow = reduce(null, {
+    type: "plan",
+    at: 1_000,
+    title: "Return Round Dedupe & Defect Fallback",
+    tasks: [
+      { title: "Implement PKCE", specialist: "wren", tier: "deep", after: [] },
+      {
+        title: "Implement session rotation",
+        specialist: "wren",
+        tier: "deep",
+        after: [1],
+      },
+      {
+        title: "QA OAuth callback",
+        specialist: "scout",
+        tier: "deep",
+        after: [1, 2],
+      },
+      {
+        title: "Update runbook",
+        specialist: "quill",
+        tier: "light",
+        after: [],
+      },
+    ],
+  });
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 1_010,
+    id: "run-wren-1",
+    harness: "antigravity",
+    agent: "wren",
+    model: "claude-haiku-4-5",
+    title: "Implement PKCE",
+    role: "worker",
+  });
+  flow = reduce(flow, {
+    type: "run.progress",
+    at: 1_020,
+    id: "run-wren-1",
+    steps: { done: 3, total: 3, note: "PKCE verifier bound" },
+  });
+  flow = reduce(flow, {
+    type: "run.end",
+    at: 1_030,
+    id: "run-wren-1",
+    status: "done",
+  });
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 1_040,
+    id: "run-scout-1",
+    harness: "antigravity",
+    agent: "scout",
+    model: "claude-haiku-4-5",
+    title: "QA OAuth callback",
+    role: "worker",
+  });
+  flow = reduce(flow, {
+    type: "post",
+    at: 1_050,
+    from: "scout",
+    runId: "run-scout-1",
+    to: ["wren", "lead"],
+    kind: "defect",
+    text: "PUSH_BACK: empty state crashes timingSafeEqual @wren @lead",
+  });
+  flow = reduce(flow, {
+    type: "run.end",
+    at: 1_060,
+    id: "run-scout-1",
+    status: "done",
+  });
+  flow = reduce(flow, { type: "task.return", at: 1_070, n: 1 });
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 1_080,
+    id: "run-wren-1#2",
+    harness: "antigravity",
+    agent: "wren",
+    model: "claude-haiku-4-5",
+    title: "Implement PKCE",
+    role: "worker",
+  });
+  flow = reduce(flow, {
+    type: "run.progress",
+    at: 1_090,
+    id: "run-wren-1#2",
+    steps: {
+      done: 2,
+      total: 2,
+      note: "guarded length mismatch before timingSafeEqual",
+    },
+  });
+  flow = reduce(flow, {
+    type: "run.end",
+    at: 1_100,
+    id: "run-wren-1#2",
+    status: "done",
+  });
+  flow = reduce(flow, {
+    type: "run.start",
+    at: 1_110,
+    id: "run-scout-2",
+    harness: "antigravity",
+    agent: "scout",
+    model: "claude-haiku-4-5",
+    title: "QA OAuth callback",
+    role: "worker",
+  });
+  // Reviewer posts passing result mentioning @wren @lead WITHOUT replyTo -> fallback closes defect because scout has only 1 task!
+  flow = reduce(flow, {
+    type: "post",
+    at: 1_120,
+    from: "scout",
+    runId: "run-scout-2",
+    to: ["wren", "lead"],
+    kind: "result",
+    text: "PASS: verified empty and mismatched length state params return 400 @wren @lead",
+  });
+  flow = reduce(flow, {
+    type: "run.end",
+    at: 1_130,
+    id: "run-scout-2",
+    status: "done",
+  });
+
+  const ov = coreModule.overview(flow, 1_140);
+  // Exactly one row per agent, from its latest run
+  assert.deepEqual(
+    ov.members.map((m) => ({ agent: m.agent, state: m.state, line: m.line })),
+    [
+      {
+        agent: "wren",
+        state: "waiting",
+        line: "guarded length mismatch before timingSafeEqual",
+      },
+      {
+        agent: "scout",
+        state: "waiting",
+        line: "PASS: verified empty and mismatched length state params return 400 @wren @lead",
+      },
+    ],
+  );
+  // Defect from run-scout-1 is closed even though wren owns 2 tasks and scout omitted replyTo
+  assert.deepEqual(ov.openDefects, []);
+});
+
+test("return round 2 acceptance 6: board({ channel }) also returns lead @all posts from main", () => {
+  let flow = reduce(null, {
+    type: "plan",
+    at: 1_000,
+    title: "Channel Broadcast Visibility",
+    tasks: [
+      { title: "Implement PKCE", specialist: "wren", tier: "fast", after: [] },
+      { title: "Audit OAuth", specialist: "aegis", tier: "core", after: [1] },
+    ],
+  });
+  flow = reduce(flow, {
+    type: "channel",
+    at: 1_010,
+    action: "create",
+    name: "sec-audit",
+  });
+  flow = reduce(flow, {
+    type: "channel",
+    at: 1_015,
+    action: "create",
+    name: "ops",
+  });
+  // #1: helper post on main
+  flow = reduce(flow, {
+    type: "post",
+    at: 1_020,
+    from: "wren",
+    to: ["all"],
+    text: "Starting implementation @all",
+  });
+  // #2: lead direct post on main (not @all)
+  flow = reduce(flow, {
+    type: "post",
+    at: 1_030,
+    from: "lead",
+    to: ["wren"],
+    text: "Keep token lifetimes unchanged @wren",
+  });
+  // #3: lead @all broadcast on main -> MUST appear in channel filters!
+  flow = reduce(flow, {
+    type: "post",
+    at: 1_040,
+    from: "lead",
+    to: ["all"],
+    text: "Scope lock: PKCE only in this PR @all",
+  });
+  // #4: lead @all post on another non-main channel (ops) -> stays in ops, not sec-audit
+  flow = reduce(flow, {
+    type: "post",
+    at: 1_050,
+    from: "lead",
+    to: ["all"],
+    channel: "ops",
+    text: "Ops channel notice @all",
+  });
+  // #5: channel post in sec-audit
+  flow = reduce(flow, {
+    type: "post",
+    at: 1_060,
+    from: "aegis",
+    to: ["wren", "lead"],
+    channel: "sec-audit",
+    kind: "defect",
+    text: "Guard state length before timingSafeEqual @wren @lead",
+  });
+
+  const secAuditPosts = board(flow, { channel: "sec-audit" });
+  assert.deepEqual(
+    secAuditPosts.map((p) => p.seq),
+    [3, 5],
+  );
+
+  // Worker-scoped channel read (to: "wren", channel: "sec-audit") also includes lead's @all post from main
+  const wrenChannelPosts = board(flow, { channel: "sec-audit", to: "wren" });
+  assert.deepEqual(
+    wrenChannelPosts.map((p) => p.seq),
+    [3, 5],
+  );
+
+  // Explicit main channel filter still returns main posts (#1, #2, #3) without duplicating #3
+  const mainPosts = board(flow, { channel: "main" });
+  assert.deepEqual(
+    mainPosts.map((p) => p.seq),
+    [1, 2, 3],
+  );
 });
