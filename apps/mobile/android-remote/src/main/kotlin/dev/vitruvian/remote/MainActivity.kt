@@ -74,11 +74,16 @@ import kotlinx.coroutines.withTimeout
  */
 public class MainActivity : ComponentActivity() {
 
+  private lateinit var persistence: Persistence
   private lateinit var hid: BluetoothHidTransport
   private lateinit var state: RemoteState
 
   /** Ask once per launch, not on every focus change (returning from the dialog is one). */
   private var askedForBluetooth = false
+  /**
+   * Whether this install has ever asked for `POST_NOTIFICATIONS`. Backed by [Persistence] so we can
+   * distinguish "not asked yet" (`shouldShowRationale == false`) from "permanently blocked".
+   */
   private var askedForNotifications = false
   private var pendingNotificationPermissionCallback: ((Boolean, Boolean) -> Unit)? = null
 
@@ -106,11 +111,14 @@ public class MainActivity : ComponentActivity() {
       registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         val callback = pendingNotificationPermissionCallback
         pendingNotificationPermissionCallback = null
+        askedForNotifications = true
+        persistence.askedForNotifications = true
         val reallyGranted = granted && hasPostNotificationsPermission()
-        val shouldShowRationale =
-            !reallyGranted &&
-                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                shouldShowRequestPermissionRationale(PERMISSION_POST_NOTIFICATIONS)
+        val shouldShowRationale = !reallyGranted && shouldShowPostNotificationsRationale()
+        if (reallyGranted && BridgeHub.enabled()) {
+          // The service re-posts its foreground notice on start (PhoneBridgeService.kt:108).
+          PhoneBridgeService.start(this)
+        }
         callback?.invoke(reallyGranted, shouldShowRationale)
       }
 
@@ -122,9 +130,6 @@ public class MainActivity : ComponentActivity() {
         // Unavailable rather than throwing. Calling it on denial keeps the one
         // code path instead of two.
         if (granted) hid.start()
-        // One dialog at a time: the second is asked for only once the first is
-        // out of the way, or Android drops it.
-        askForNotifications()
       }
 
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -138,6 +143,8 @@ public class MainActivity : ComponentActivity() {
     // the foreground, so it costs nothing when the app is not on screen.
     window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
+    persistence = Persistence(this)
+    askedForNotifications = persistence.askedForNotifications
     // The state holder is created first so the transport can report link
     // changes straight into it -- that is what drives the trackpad caption
     // between "drag to move" and "not connected".
@@ -147,13 +154,15 @@ public class MainActivity : ComponentActivity() {
     BridgeHub.attach(this)
     state =
         RemoteState(
-            persistence = Persistence(this),
+            persistence = persistence,
             hid = hid,
             phoneClipboard = SystemClipboard(this),
             notifier =
                 ShadeNotifier(
                     context = this,
                     hasPermission = ::hasPostNotificationsPermission,
+                    hasAsked = ::hasAskedForPostNotifications,
+                    shouldShowRationale = ::shouldShowPostNotificationsRationale,
                     ensurePermission = ::ensurePostNotificationsPermission,
                 ),
             bridge = ServiceBridge(),
@@ -302,9 +311,15 @@ public class MainActivity : ComponentActivity() {
 
   override fun onResume() {
     super.onResume()
+    val hadNotifications = state.notificationsGranted
+    // All three change while the app is away: permissions granted or revoked in
+    // Settings (re-read by onForeground), and everything the bridge did while
+    // nobody was looking.
     state.onForeground(true)
-    // Both change while the app is away: a permission granted in Settings, and
-    // everything the bridge did while nobody was looking.
+    if (!hadNotifications && state.notificationsGranted && BridgeHub.enabled()) {
+      // The service re-posts its foreground notice on start (PhoneBridgeService.kt:108).
+      PhoneBridgeService.start(this)
+    }
     state.refreshBridgePermissions()
     pushBridgeStatus()
   }
@@ -348,28 +363,9 @@ public class MainActivity : ComponentActivity() {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
     if (ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) ==
         PackageManager.PERMISSION_GRANTED) {
-      askForNotifications()
       return
     }
     requestBluetooth.launch(Manifest.permission.BLUETOOTH_CONNECT)
-  }
-
-  /**
-   * Asks for the notification permission, after the first frame, exactly like Bluetooth above.
-   *
-   * Same first-run bug applies: a permission dialog in front of an app that has not painted yet can
-   * leave the activity undrawn. Notifications became a runtime permission in API 33; below that the
-   * channel alone is enough.
-   */
-  private fun askForNotifications() {
-    if (askedForNotifications) return
-    askedForNotifications = true
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
-    if (ContextCompat.checkSelfPermission(this, PERMISSION_POST_NOTIFICATIONS) ==
-        PackageManager.PERMISSION_GRANTED) {
-      return
-    }
-    requestNotifications.launch(PERMISSION_POST_NOTIFICATIONS)
   }
 
   private fun hasPostNotificationsPermission(): Boolean {
@@ -379,18 +375,47 @@ public class MainActivity : ComponentActivity() {
         PackageManager.PERMISSION_GRANTED
   }
 
+  private fun shouldShowPostNotificationsRationale(): Boolean =
+      Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+          shouldShowRequestPermissionRationale(PERMISSION_POST_NOTIFICATIONS)
+
+  private fun hasAskedForPostNotifications(): Boolean {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+      return !NotificationManagerCompat.from(this).areNotificationsEnabled()
+    }
+    if (ContextCompat.checkSelfPermission(this, PERMISSION_POST_NOTIFICATIONS) ==
+        PackageManager.PERMISSION_GRANTED) {
+      return true
+    }
+    return askedForNotifications || shouldShowPostNotificationsRationale()
+  }
+
   private fun ensurePostNotificationsPermission(onResult: (Boolean, Boolean) -> Unit) {
     if (hasPostNotificationsPermission()) {
       onResult(true, false)
       return
     }
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+        ContextCompat.checkSelfPermission(this, PERMISSION_POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED) {
+      askedForNotifications = true
+      persistence.askedForNotifications = true
       onResult(false, false)
       return
     }
-    askedForNotifications = true
-    pendingNotificationPermissionCallback = onResult
-    requestNotifications.launch(PERMISSION_POST_NOTIFICATIONS)
+    val previous = pendingNotificationPermissionCallback
+    pendingNotificationPermissionCallback =
+        if (previous == null) {
+          onResult
+        } else {
+          { granted, shouldShowRationale ->
+            previous(granted, shouldShowRationale)
+            onResult(granted, shouldShowRationale)
+          }
+        }
+    if (previous == null) {
+      requestNotifications.launch(PERMISSION_POST_NOTIFICATIONS)
+    }
   }
 
   override fun onDestroy() {
@@ -437,6 +462,8 @@ public class MainActivity : ComponentActivity() {
 private class ShadeNotifier(
     private val context: Context,
     private val hasPermission: () -> Boolean = { true },
+    private val hasAsked: () -> Boolean = { false },
+    private val shouldShowRationale: () -> Boolean = { false },
     private val ensurePermission: ((Boolean, Boolean) -> Unit) -> Unit = { it(true, false) },
 ) : Notifier {
   init {
@@ -459,6 +486,10 @@ private class ShadeNotifier(
   }
 
   override fun hasNotificationPermission(): Boolean = hasPermission()
+
+  override fun hasAskedNotificationPermission(): Boolean = hasAsked()
+
+  override fun shouldShowNotificationRationale(): Boolean = shouldShowRationale()
 
   override fun ensureNotificationPermission(
       onResult: (granted: Boolean, shouldShowRationale: Boolean) -> Unit,
@@ -484,6 +515,7 @@ private class ShadeNotifier(
   }
 
   override fun notify(id: String, title: String, body: String, deepLink: String) {
+    if (!hasNotificationPermission()) return
     val intent =
         Intent(Intent.ACTION_VIEW, Uri.parse(deepLink), context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
