@@ -4,6 +4,6 @@
 Subsystem blueprint grouping child modules under `apps/mcp`.
 
 ## Subdirectories & Boundaries
-- [roborock](./roborock/README.md): Contract for apps/mcp/roborock
-- [slack](./slack/README.md): Contract for apps/mcp/slack
+- [vitruvian-roborock-mcp](./vitruvian-roborock-mcp/README.md): Contract for apps/mcp/vitruvian-roborock-mcp
+- [vitruvian-slack-mcp](./vitruvian-slack-mcp/README.md): Contract for apps/mcp/vitruvian-slack-mcp
 

@@ -46,7 +46,7 @@ _IGNORE_GLOBS = [
     "**/dev-local/crds/**",
     "**/dev-local/values/**",
     "**/dev-local/dashboards/**",
-    "apps/mcp/slack/deploy/chart/gitops/**",
+    "apps/mcp/vitruvian-slack-mcp/deploy/chart/gitops/**",
     # generated DB migrations
     "**/prisma/migrations/**",
     # bazel symlinks, vendored trees, VCS

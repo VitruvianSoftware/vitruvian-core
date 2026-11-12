@@ -18,7 +18,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# relay-spike: the relay P0 spike server (apps/suites/relay/spike). One
+# vitruvian-relay-spike: the Vitruvian Relay P0 spike server (apps/suites/vitruvian-relay/spike). One
 # namespace, and only the kinds its chart renders. No Secret or SealedSecret:
 # the server needs none (it fetches Zitadel's public keys).
 apiVersion: argoproj.io/v1alpha1
@@ -29,7 +29,7 @@ metadata:
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
-  description: relay-spike — relay P0 spike (MCP over Zitadel sign-in, WebSocket echo)
+  description: vitruvian-relay-spike — Vitruvian Relay P0 spike (MCP over Zitadel sign-in, WebSocket echo)
   orphanedResources:
     warn: true
   sourceRepos:

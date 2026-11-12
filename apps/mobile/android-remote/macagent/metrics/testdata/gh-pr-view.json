@@ -257,7 +257,7 @@
       "completedAt": "2026-09-07T20:04:07Z",
       "conclusion": "SKIPPED",
       "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331730/job/101853634837",
-      "name": "mcp-slack-service",
+      "name": "vitruvian-slack-mcp-service",
       "startedAt": "2026-09-07T20:04:08Z",
       "status": "COMPLETED",
       "workflowName": "Presubmit"

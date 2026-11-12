@@ -252,7 +252,7 @@ var syncedProjects = []syncedProject{
 	},
 	{
 		// Export-only standalone mirror for the Roborock vacuum integration,
-		// CLI, FastMCP server, and plugins (apps/mcp/roborock).
+		// CLI, FastMCP server, and plugins (apps/mcp/vitruvian-roborock-mcp).
 		Name:           "mcp-roborock",
 		StandaloneRepo: "mcp-roborock",
 		OneWay:         true,

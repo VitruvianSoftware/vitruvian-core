@@ -131,7 +131,7 @@ projects:
     tags: [Bazel, Bzlmod, Backstage]
     repo: https://github.com/VitruvianSoftware/kitchen-sink
 
-  - name: mcp-slack
+  - name: vitruvian-slack-mcp
     group: agents
     featured: true
     status: mirror
@@ -141,15 +141,15 @@ projects:
       as the bot or as you.
     tags: [Rust, MCP, Slack]
     repo: https://github.com/VitruvianSoftware/mcp-slack
-    source: apps/mcp/slack
+    source: apps/mcp/vitruvian-slack-mcp
     extension:
       kind: mcp
       needs: Docker, plus a Slack bot token, user token and team ID, passed to the server as environment variables (add an --env flag for each; the README lists them)
       installs:
         - tool: Claude Code
-          command: claude mcp add slack -- docker run -i --rm -e SLACK_BOT_TOKEN -e SLACK_USER_TOKEN -e SLACK_TEAM_ID -e MCP_TRANSPORT=stdio ghcr.io/vitruviansoftware/mcp-slack:main
+          command: claude mcp add slack -- docker run -i --rm -e SLACK_BOT_TOKEN -e SLACK_USER_TOKEN -e SLACK_TEAM_ID -e MCP_TRANSPORT=stdio ghcr.io/vitruviansoftware/vitruvian-slack-mcp:main
         - tool: Antigravity
-          command: agy mcp add slack -- docker run -i --rm -e SLACK_BOT_TOKEN -e SLACK_USER_TOKEN -e SLACK_TEAM_ID -e MCP_TRANSPORT=stdio ghcr.io/vitruviansoftware/mcp-slack:main
+          command: agy mcp add slack -- docker run -i --rm -e SLACK_BOT_TOKEN -e SLACK_USER_TOKEN -e SLACK_TEAM_ID -e MCP_TRANSPORT=stdio ghcr.io/vitruviansoftware/vitruvian-slack-mcp:main
 
   - name: gh-watch
     group: agents
@@ -245,7 +245,7 @@ projects:
     tags: [JavaScript, Antigravity, Claude Code, Subagents]
     source: apps/antigravity/plugins/savvy-fleet
 
-  - name: mcp-roborock
+  - name: vitruvian-roborock-mcp
     group: agents
     status: mirror
     summary: >-
@@ -254,7 +254,7 @@ projects:
       the robot home.
     tags: [Rust, MCP]
     repo: https://github.com/VitruvianSoftware/mcp-roborock
-    source: apps/mcp/roborock
+    source: apps/mcp/vitruvian-roborock-mcp
     extension:
       kind: plugin
       needs: rrctl on your PATH (download it from a 0.2.0+ release, or cargo install), and a Roborock account (the plugin walks you through logging in)

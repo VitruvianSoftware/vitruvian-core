@@ -1634,23 +1634,23 @@ No drift detected.
 
 No drift detected.
 
-## apps/mcp/roborock/README.md
+## apps/mcp/vitruvian-roborock-mcp/README.md
 
 No drift detected.
 
-## apps/mcp/roborock/rust_src/README.md
+## apps/mcp/vitruvian-roborock-mcp/rust_src/README.md
 
 No drift detected.
 
-## apps/mcp/slack/README.md
+## apps/mcp/vitruvian-slack-mcp/README.md
 
 No drift detected.
 
-## apps/mcp/slack/rs/README.md
+## apps/mcp/vitruvian-slack-mcp/rs/README.md
 
 No drift detected.
 
-## apps/mcp/slack/rs/src/README.md
+## apps/mcp/vitruvian-slack-mcp/rs/src/README.md
 
 No drift detected.
 
@@ -2014,15 +2014,15 @@ No drift detected.
 
 No drift detected.
 
-## apps/suites/relay/README.md
+## apps/suites/vitruvian-relay/README.md
 
 No drift detected.
 
-## apps/suites/relay/spike/README.md
+## apps/suites/vitruvian-relay/spike/README.md
 
 No drift detected.
 
-## apps/suites/relay/spike/src/README.md
+## apps/suites/vitruvian-relay/spike/src/README.md
 
 No drift detected.
 

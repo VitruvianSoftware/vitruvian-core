@@ -119,7 +119,7 @@ jobs:
           fetch-depth: 0
 
       # Shared with actionlint, gitops-validate, chart-render and
-      # mcp-slack-image: .github/actions/install-pinned-tool.
+      # vitruvian-slack-mcp-image: .github/actions/install-pinned-tool.
       # NOTE: this hardens fetching the SCANNER BINARY only. #1192 tracks the
       # separate deps.dev resolution SPOF *inside* the scan itself.
       - name: Install osv-scanner (pinned + checksum-verified)

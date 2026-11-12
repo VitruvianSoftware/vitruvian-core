@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "name": "vitruvian-slack-mcp-service",
+  "package": "vitruvian-slack-mcp",
+  "test_targets": ["//vitruvian-slack-mcp:unit_tests"],
+  "tier": "L1",
+  "runner": "ubuntu-26.04",
+  "persona": "backend",
+  "concurrency_group": "pipeline-vitruvian-slack-mcp-service",
+  "timeout_minutes": 15
+}

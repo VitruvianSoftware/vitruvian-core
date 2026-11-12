@@ -660,9 +660,10 @@ impl Run {
             Vec::new()
         };
         match kind {
-            "mcp-slack" => {
-                self.publish_npm_dir(&sh::cat(&[&self.root, b"/apps/mcp/slack"]), &token)
-            }
+            "mcp-slack" => self.publish_npm_dir(
+                &sh::cat(&[&self.root, b"/apps/mcp/vitruvian-slack-mcp"]),
+                &token,
+            ),
             _ => {
                 let base = sh::cat(&[&self.root, b"/packages/pulumi/library/ts/packages"]);
                 for d in glob_dirs(&base) {

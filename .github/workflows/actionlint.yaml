@@ -91,7 +91,7 @@ jobs:
           persist-credentials: false
 
       # Shared with gitops-validate, chart-render, supply-chain and
-      # mcp-slack-image: .github/actions/install-pinned-tool.
+      # vitruvian-slack-mcp-image: .github/actions/install-pinned-tool.
       - name: Install actionlint (pinned + checksum-verified)
         uses: ./.github/actions/install-pinned-tool
         with:

@@ -18,16 +18,18 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Helm values for the mcp-slack Application (gitops/argocd/applications/mcp-slack.yaml),
+# Helm values for the vitruvian-slack-mcp Application (gitops/argocd/applications/vitruvian-slack-mcp.yaml),
 # extracted out of that Application's inline `helm.values` block so
 # argocd-image-updater's git write-back has a real file to patch
 # (`image.digest`) — it can't target a string embedded in an Application
-# manifest. Referenced via the `$values` source ref in mcp-slack.yaml.
+# manifest. Referenced via the `$values` source ref in vitruvian-slack-mcp.yaml.
 
 image:
   # Updated automatically by argocd-image-updater when a new digest lands
-  # behind ghcr.io/vitruviansoftware/mcp-slack:latest.
+  # behind ghcr.io/vitruviansoftware/mcp-slack:main.
   digest: "main@sha256:7e4c0e084fd88f846d41f152c5a34b163a39eb4ba0c39209dd5a586dff26e842"
+  # OLD image name on purpose: ghcr.io/vitruviansoftware/vitruvian-slack-mcp does not exist yet.
+  # After the first vitruvian-slack-mcp-image run, switch this and the ImageUpdater imageName together.
   repository: ghcr.io/vitruviansoftware/mcp-slack
 oidc:
   projectId: "385463212784486211" # pulumi stack output projectId — REQUIRED

@@ -56,8 +56,8 @@ use std::process::{Command, Stdio};
 pub const SEARCH_DIRS: &[&str] = &[
     "packages/pulumi/library/ts/packages",
     "pulumi/library/ts/packages",
-    "apps/mcp/slack",
-    "mcp-slack",
+    "apps/mcp/vitruvian-slack-mcp",
+    "vitruvian-slack-mcp",
     // The Vitruvian SDK's TypeScript kit, published from the vitruvian-sdk mirror.
     "packages/vitruvian-sdk/kits/typescript",
     "vitruvian-sdk/kits/typescript",
@@ -377,6 +377,6 @@ mod tests {
             expected_directory("vitruvian-sdk/kits/typescript/package.json"),
             "kits/typescript"
         );
-        assert_eq!(expected_directory("mcp-slack/package.json"), "");
+        assert_eq!(expected_directory("vitruvian-slack-mcp/package.json"), "");
     }
 }

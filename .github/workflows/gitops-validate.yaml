@@ -93,7 +93,7 @@ jobs:
           cache: false
 
       # Shared with actionlint, chart-render, supply-chain and
-      # mcp-slack-image: .github/actions/install-pinned-tool.
+      # vitruvian-slack-mcp-image: .github/actions/install-pinned-tool.
       - name: Install kubeconform (pinned + checksum-verified)
         uses: ./.github/actions/install-pinned-tool
         with:

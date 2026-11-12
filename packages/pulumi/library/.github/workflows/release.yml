@@ -193,7 +193,7 @@ jobs:
                       # Not hypothetical. On 2026-08-21 six releases tagged and then failed to
                       # publish, leaving foundation-log-export, -pubsub and -gcloud tagged at
                       # 0.4.1 while npm still served 0.2.0 -- unrecoverable without deleting
-                      # tags by hand. mcp-slack's release.yml fixed exactly this ("TAG LAST,
+                      # tags by hand. vitruvian-slack-mcp's release.yml fixed exactly this ("TAG LAST,
                       # and only after a successful publish"); this workflow never got it.
                       #
                       # The skip is also no longer "a tag exists". For an npm package it is

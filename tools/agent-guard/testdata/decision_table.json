@@ -1409,9 +1409,9 @@
   ["kubectl version --client", "allow", null, ""],
   ["kubectl config get-contexts", "allow", null, ""],
   ["helm version", "allow", null, ""],
-  ["helm status mcp-slack -n mcp-slack", "deny", "helm-read", ""],
+  ["helm status vitruvian-slack-mcp -n mcp-slack", "deny", "helm-read", ""],
   [
-    "docker buildx build --load -t x:verify apps/suites/relay/spike/",
+    "docker buildx build --load -t x:verify apps/suites/vitruvian-relay/spike/",
     "deny",
     "docker",
     ""

@@ -57,15 +57,15 @@
       "concurrency_group": "pipeline-homelab"
     },
     {
-      "name": "mcp-slack-service",
-      "package": "mcp-slack",
-      "targets": "//mcp-slack:unit_tests",
-      "test_targets": "//mcp-slack:unit_tests",
+      "name": "vitruvian-slack-mcp-service",
+      "package": "vitruvian-slack-mcp",
+      "targets": "//vitruvian-slack-mcp:unit_tests",
+      "test_targets": "//vitruvian-slack-mcp:unit_tests",
       "runner": "ubuntu-26.04",
       "tier": "L1",
       "persona": "backend",
       "timeout_minutes": 15,
-      "concurrency_group": "pipeline-mcp-slack-service"
+      "concurrency_group": "pipeline-vitruvian-slack-mcp-service"
     },
     {
       "name": "vitruvian-code-macos",

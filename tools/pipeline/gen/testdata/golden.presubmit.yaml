@@ -224,7 +224,7 @@ jobs:
           QUEUED: ${{ steps.queued.outputs.verdict }}
           QUEUED_RUN: ${{ steps.queued.outputs.run }}
           FAST_LANE: ${{ steps.fastlane.outputs.verdict }}
-          ALL_UNITS: '["backstage-backend","design-system","backstage-app","devx-cli","homelab","mcp-slack-service","vitruvian-code-src","vitruvian-code-macos","oauth-user-inspector","pulumi-repo-config","tabula-shared","tabula-api","tabula-cli","tabula-extension","tabula-web"]'
+          ALL_UNITS: '["backstage-backend","design-system","backstage-app","devx-cli","homelab","vitruvian-slack-mcp-service","vitruvian-code-src","vitruvian-code-macos","oauth-user-inspector","pulumi-repo-config","tabula-shared","tabula-api","tabula-cli","tabula-extension","tabula-web"]'
         run: |
           set +e -u -o pipefail
           if [ "$RELEASE_SKIP" = "true" ]; then
@@ -520,12 +520,12 @@ jobs:
           pre-count: ${{ steps.llvm-contents.outputs.pre-count }}
           pin-path: ${{ steps.llvm-contents.outputs.pin-path }}
 
-  unit-mcp-slack-service:
-    name: mcp-slack-service
+  unit-vitruvian-slack-mcp-service:
+    name: vitruvian-slack-mcp-service
     runs-on: ubuntu-26.04
     timeout-minutes: 15
     needs: [plan]
-    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'mcp-slack-service')) }}
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'vitruvian-slack-mcp-service')) }}
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
@@ -544,7 +544,7 @@ jobs:
         id: llvm-contents
         uses: ./.github/actions/llvm-cache-restore
 
-      - name: Build & Test Unit mcp-slack-service
+      - name: Build & Test Unit vitruvian-slack-mcp-service
         run: |
           set -euo pipefail
           cache_flags=()
@@ -552,7 +552,7 @@ jobs:
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //mcp-slack:unit_tests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //mcp-slack:unit_tests; else exit $rc; fi; }
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //vitruvian-slack-mcp:unit_tests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //vitruvian-slack-mcp:unit_tests; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -992,7 +992,7 @@ jobs:
 
   gate:
     name: gate/all-required-passed
-    needs: [plan, unit-backstage-backend, unit-design-system, unit-backstage-app, unit-devx-cli, unit-homelab, unit-mcp-slack-service, unit-vitruvian-code-src, unit-vitruvian-code-macos, unit-oauth-user-inspector, unit-pulumi-repo-config, unit-tabula-shared, unit-tabula-api, unit-tabula-cli, unit-tabula-extension, unit-tabula-web]
+    needs: [plan, unit-backstage-backend, unit-design-system, unit-backstage-app, unit-devx-cli, unit-homelab, unit-vitruvian-slack-mcp-service, unit-vitruvian-code-src, unit-vitruvian-code-macos, unit-oauth-user-inspector, unit-pulumi-repo-config, unit-tabula-shared, unit-tabula-api, unit-tabula-cli, unit-tabula-extension, unit-tabula-web]
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 5

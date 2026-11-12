@@ -24,7 +24,7 @@ app type).
 | [`vitruviansoftware-dev`](apps/web/vitruviansoftware-dev/) | Website | The public [vitruviansoftware.dev](https://vitruviansoftware.dev) Jekyll site. Edited here, exported to its standalone repo, which publishes it on GitHub Pages. |
 | [`devx`](apps/cli/devx/) | CLI / developer tool | Local-dev orchestrator: provisions Lima VMs & devcontainers, ephemeral DBs/emulators, K3s clusters, and tunnel ingress. |
 | [`homelab`](apps/cli/homelab/) | CLI / developer tool | Declarative multi-node K3s homelab manager for macOS (Lima VZ). |
-| [`mcp-slack`](apps/mcp/slack/) | Agent / MCP service | Slack MCP server (dual-token; ~22 tools including Canvas CRUD). |
+| [`vitruvian-slack-mcp`](apps/mcp/vitruvian-slack-mcp/) | Agent / MCP service | Slack MCP server (dual-token; ~22 tools including Canvas CRUD). |
 | [`vitruvian-code`](apps/desktop/vitruvian-code/) | Agent / MCP service | Telegram bot + macOS menu-bar app that bridges chats to a local AI coding CLI. |
 | [`vitruvian`](apps/desktop/vitruvian/) | Desktop app | macOS menu-bar utility hub (volume mixer, system monitor, app switcher, notch, capture). GPL-3.0-or-later fork, being renamed and refactored; not yet distributed. |
 

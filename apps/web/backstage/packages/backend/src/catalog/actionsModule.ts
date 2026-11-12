@@ -670,7 +670,7 @@ When querying for entity relationships, prefer using relations over spec fields.
           entity_ref: z
             .string()
             .describe(
-              "Entity reference to refresh, e.g. 'component:default/mcp-slack' or 'component:devx'",
+              "Entity reference to refresh, e.g. 'component:default/vitruvian-slack-mcp' or 'component:devx'",
             ),
         }),
       output: (z) =>
@@ -956,7 +956,7 @@ When querying for entity relationships, prefer using relations over spec fields.
           entity_ref: z
             .string()
             .describe(
-              "Entity reference, e.g. 'component:default/mcp-slack' or 'component:devx'",
+              "Entity reference, e.g. 'component:default/vitruvian-slack-mcp' or 'component:devx'",
             ),
         }),
       output: (z) =>

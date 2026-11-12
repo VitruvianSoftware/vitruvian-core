@@ -24,7 +24,7 @@ package dev.vitruvian.wear.common
  * Speaker broadcast room targets and Roborock vacuum actions for `home-control`.
  *
  * Maps wrist selections directly to the CLI/bridge contracts used by `speaker-broadcast`
- * (`~/.gemini/speaker_broadcast.json`) and `apps/mcp/roborock`.
+ * (`~/.gemini/speaker_broadcast.json`) and `apps/mcp/vitruvian-roborock-mcp`.
  */
 public enum class SpeakerRoom(
     public val targetId: String,
