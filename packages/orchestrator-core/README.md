@@ -15,7 +15,12 @@ Every event carries `at` (timestamp in milliseconds):
 - `{ type: "run.end", at, id, status: "done" | "error", tokens? }` — marks a run finished, updates `lastActivityAt`, and moves its linked task to `"review"` when `status === "done"`, or to `"returned"` (with `round` unchanged) when `status === "error"`.
 - `{ type: "task.accept", at, n }` — accepts task `n` and promotes any `"waiting"` tasks whose `after` dependencies are all `"accepted"` to `"ready"`.
 - `{ type: "task.return", at, n }` — returns task `n` for another pass (`state: "returned"`, `round + 1`).
-- `{ type: "close", at }` — closes the flow (`phase: "close"`, `closedAt: at`) and ends every run still open, the lead's included, as `"done"` at `at`.
+- `{ type: "post", at, from, text, to?, kind?, replyTo?, channel?, runId? }` — strips ANSI escape sequences and C0/DEL control characters (preserving `\n` and `\t`), ignores empty text, appends a numbered post (`seq` = 1, 2, 3 …) to `flow.posts`, unions explicit `to` with `@name` mentions parsed from `text`, and caps `text` at 4000 characters (`…[truncated]`).
+- `{ type: "wake", at, seq, target }` — records a delivered board wake (`"${seq}:${target}"` in `flow.woken`) so replaying a flow after restart does not re-send already-delivered wakes.
+- `{ type: "member.pause", at, id, reason: "quota" | "error", detail? }` — marks specialist run `id` paused (`reason`, optional `detail`); cleared by any later `run.progress` or `run.start` for `id`.
+- `{ type: "member.kill", at, id }` — marks specialist run `id` killed (ending it if still open).
+- `{ type: "member.retire", at, id }` — marks specialist run `id` retired (ending it if still open).
+- `{ type: "close", at }` — closes the flow (`phase: "close"`, `closedAt: at`), ends every run still open as `"done"` at `at`, and retires all members.
 
 After every event, waiting tasks whose `after` lists are all accepted become `"ready"`, and `{ at, remaining }` is appended to `history` whenever the unaccepted task count changes.
 
@@ -27,7 +32,11 @@ After every event, waiting tasks whose `after` lists are all accepted become `"r
 - `delegateCost(run)` — estimated USD cost for a delegated run (`run.delegate` + `run.delegateTokens`, pricing `thinking` tokens at the delegate model's `output` rate), or `null` unless both are set and the delegate model has a price in `src/prices.mjs`.
 - `runCost(run)` — estimated USD cost (`driverCost + delegateCost`) using model rates from `src/prices.mjs` (Claude `fable`/`mythos`, `opus-5-5`, `opus`, `sonnet`, `haiku-5-5`, `haiku`, plus `gemini-4-(carbon|argon)` and `gemini-3.8-flash`), or `null` when neither driver nor delegate is priced.
 - `spend(flow)` — aggregates `{ total, byModel, lead, workers, unpriced: { runs, tokens }, delegated: { runs, unpriced, byModel } }`, attributing `delegateCost` to `byModel[run.delegate]`, `workers`, and `total`, and counting delegated runs without usable delegate cost in `delegated.unpriced`.
-- `stalls(flow, now, { quietMs = DEFAULT_QUIET_MS, stallMs = DEFAULT_STALL_MS, waitingStallMs = DEFAULT_WAITING_STALL_MS } = {})` — inspects running worker runs (`status === "running"` and `role !== "lead"`) and returns `{ id, agent, title, taskN, lastActivityAt, idleMs, state }[]`, where `state` is `"stalled"` (`idleMs >= stallMs`, default 15 min), `"quiet"` (`idleMs >= quietMs`, default 5 min), or `"active"`. A run that is waiting on its own work (`waiting`) or has handed it to Gemini (`delegate`) is silent by design: it reads `"waiting"` instead of `"quiet"`, and only becomes `"stalled"` after `waitingStallMs` (default 60 min, above agy-delegate's 45-minute limit).
+- `stalls(flow, now, { quietMs = DEFAULT_QUIET_MS, stallMs = DEFAULT_STALL_MS, waitingStallMs = DEFAULT_WAITING_STALL_MS } = {})` — inspects running worker runs (`status === "running"`, `role !== "lead"`, and not `paused`) and returns `{ id, agent, title, taskN, lastActivityAt, idleMs, state }[]`, where `state` is `"stalled"` (`idleMs >= stallMs`, default 15 min), `"quiet"` (`idleMs >= quietMs`, default 5 min), or `"active"`. A run that is waiting on its own work (`waiting`) or has handed it to Gemini (`delegate`) is silent by design: it reads `"waiting"` instead of `"quiet"`, and only becomes `"stalled"` after `waitingStallMs` (default 60 min, above agy-delegate's 45-minute limit).
+- `mentions(text)` — extracts lower-cased, de-duplicated `@name` mentions (`@` followed by `[a-z0-9][a-z0-9-]*`, not preceded by a word character; includes `@all` and `@lead`).
+- `members(flow)` — groups specialist runs into `{ active, standingBy, retired }`, where each row has `{ id, agent, state, reason?, detail?, taskN?, model, delegate?, lastPostSeq?, lastActivityAt }` (`active` = `working`; `standingBy` = `waiting` + `paused`; `retired` = `killed` + `retired`).
+- `board(flow, { search?, from?, to?, kind?, channel?, limit? })` — returns posts newest last, filtered (case-insensitive `search` across `text`, `from`, and `to`), with `limit` keeping the newest N.
+- `pendingWakes(flow, alreadyWoken)` — returns `{ seq, target, runId?, from, excerpt }[]` for waiting members (and `@lead`) mentioned in posts, skipping `(seq:target)` keys in `flow.woken` and `alreadyWoken`, expanding `@all` to non-retired members, and never waking a post's own author.
 
 ## How Plugins Use It
 

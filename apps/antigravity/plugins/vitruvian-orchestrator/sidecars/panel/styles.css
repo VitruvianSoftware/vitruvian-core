@@ -358,6 +358,200 @@ p {
   margin-left: auto;
 }
 
+.panel-tabs {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.panel-tabs[hidden],
+.tab-badge[hidden],
+.control-btn[hidden] {
+  display: none;
+}
+
+.tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.68rem;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--muted-fg);
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.tab-btn.active {
+  color: var(--status-blue);
+  background: var(--status-blue-bg);
+  border-color: var(--status-blue);
+  font-weight: 600;
+}
+
+.tab-badge {
+  font-size: 0.68rem;
+  padding: 0.02rem 0.38rem;
+  border-radius: 999px;
+  background: var(--chip-bg);
+  color: var(--fg);
+}
+
+.tab-pane {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.tab-pane[hidden] {
+  display: none;
+}
+
+.board-follow-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.board-controls {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.4fr) repeat(3, minmax(84px, 1fr));
+  gap: 0.35rem;
+  margin-bottom: 0.55rem;
+}
+
+.control-input,
+.control-select,
+.control-btn {
+  font-family: inherit;
+  font-size: 0.75rem;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 0.25rem 0.45rem;
+}
+
+.control-btn {
+  background: var(--chip-bg);
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.control-btn.active {
+  color: var(--status-blue);
+  background: var(--status-blue-bg);
+  border-color: var(--status-blue);
+  font-weight: 600;
+}
+
+.board-list {
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.post-row {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+}
+
+.post-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.post-header-left,
+.post-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.post-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.81rem;
+  line-height: 1.45;
+}
+
+.post-text.clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.link-btn {
+  justify-self: start;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--status-blue);
+  font-family: inherit;
+  font-size: 0.74rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.members-groups {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.members-groups[hidden] {
+  display: none;
+}
+
+.member-group {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.group-heading {
+  font-size: 0.78rem;
+  font-weight: 600;
+  margin: 0;
+  color: var(--fg);
+}
+
+.member-retired > summary {
+  cursor: pointer;
+  user-select: none;
+}
+
+.member-retired-list {
+  margin-top: 0.35rem;
+}
+
+.member-card {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+}
+
+.member-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.member-post {
+  word-break: break-word;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -1,20 +1,29 @@
 # vitruvian-orchestrator (Antigravity)
 
-Antigravity desktop plugin for routing multi-domain engineering work across the Vitruvian specialist subagent roster with a live orchestration telemetry panel.
+Antigravity desktop plugin that coordinates specialist helpers across a planned engineering flow and shows live progress, spend, and team messages in a sidecar panel.
 
 ## What is in this plugin
 
-- **`orchestrate` lead skill (`skills/orchestrate/SKILL.md`)**: Generated from `.agents/roster/` by `//tools/agent-roster`. Turns the active Antigravity session into the lead orchestrator that plans across five phases (`plan` → `design` → `delegate` → `review` → `close`), staffs every change with an implementer, `scout` for QA, `compass` for UAT and `quill` for docs, dispatches them via `invoke_subagent` (`pro` for the `lead` and `deep` tiers, `flash` for `light`), follows up via `send_message`, and does the final review. See [How the agent team works](../../../../docs/concepts/agent-team.md).
-- **MCP telemetry server (`mcp/server.mjs`, `mcp_config.json`)**: Minimal dependency-free stdio MCP server exposing two tools:
-  - `progress` (called by the lead): records the task plan (`title`, `tasks`), phase transitions (`plan`, `design`, `delegate`, `review`, `close`), review outcomes (`accept`, `return`), and flow completion (`finished`) to `~/.gemini/antigravity/vitruvian-orchestrator/flows/<root_conversation_id>.jsonl`.
-  - `step` (called by a worker subagent): records `{ done, total, note }` step progress against the calling worker's run ID (resolved via `_meta["antigravity.google/conversation_id"]` and routed to `_meta["antigravity.google/root_conversation_id"]`).
-- **Live Orchestrator sidecar panel (`sidecars/panel/`)**: Folds flow JSONL events and `transcript.jsonl` `invoke_subagent` / `send_message` runs through `orchestrator-core.mjs` (`packages/orchestrator-core`) and renders five live sections:
-  1. **Header**: flow title, phase pills (`plan`, `design`, `delegate`, `review`, `close`), accepted task counter (`accepted N of M`), and estimated cost (`est.`).
-  2. **Burn-down**: inline SVG chart of remaining tasks over time with a dashed ideal line and vertical markers at each re-plan.
-  3. **Task board**: numbered tasks with title, specialist, tier, status colour (`accepted` green, `running` blue, `review`/`waiting` amber, `returned`/`error` red), return round, and `"waits on #x"` dependency badges.
-  4. **Agents**: active and finished runs with specialist mascot, model, effort, `done/total` step progress or context percentage, token count, estimated cost or `"unpriced"`, elapsed duration, and run status.
-  5. **Spend**: lead vs. worker cost split, per-model cost breakdown, and unpriced run token totals.
-- **Orchestration rule (`rules/AGENTS.md`)**: Instructs the lead session to call `progress` on plan creation, phase transitions, task accept/return, and close; instructs workers to call `step`; and surfaces the sidecar pill.
+- **`orchestrate` lead skill (`skills/orchestrate/SKILL.md`)**: Turns the active Antigravity session into the lead that plans across five phases (`plan` → `design` → `delegate` → `review` → `close`), dispatches specialist helpers (`wren`, `scout`, `compass`, `quill`, and peers), reviews their work, and closes the flow. See [How the agent team works](../../../../docs/concepts/agent-team.md).
+- **Live Orchestrator panel (`sidecars/panel/`)**: Shows five **Flow** cards — **Header**, **Burn-down**, **Task Board**, **Agents**, and **Spend**. Flows with no board posts and no pause, retire, or kill events stay on this single **Flow** view. Once the flow has a post or a pause, retire, or kill event, a tab bar adds **Board** and **Members**.
+- **Orchestration rule (`rules/AGENTS.md`)**: Reminds the lead and helpers to report progress and surfaces the `[Orchestrator](sidecar://vitruvian-orchestrator/panel/)` pill in chat.
+
+## Shared board, tools, waking, and member states
+
+- **What the board is**: The board is a shared message list for the helpers and the lead, shown as numbered posts (`#1`, `#2`, and so on). Recipients appear as `@name` (`@all` displays as `everyone`), and replies show `↩ #<n>`.
+- **What helpers post**: Helpers post results, questions, and defect lists (plus short status notes) so teammates and the lead can read findings in one place.
+- **Tools**:
+  - `post`: Adds a message to the board with optional recipients, kind (`result`, `question`, `defect`, or `note`), and `replyTo` post number.
+  - `board`: Reads numbered posts from the board, with optional filters for recipient, author, kind, or search words. For a helper, calling `board` with no recipient (or `to: "me"`) returns posts addressed to that helper or to everyone.
+  - `step`: Called by a helper to report step progress (`done`, `total`, `note`) or a pause reason (`paused: "quota"` or `paused: "error"`, plus an optional `detail` such as `429 Resource Exhausted`).
+  - `progress`: Called only by the lead to publish or update the task plan, change phases, accept or return tasks, close the flow, or `retire` / `kill` a helper.
+- **How waking works**: When a post mentions a waiting helper (`@name`), Antigravity delivers a wake straight to the helper's own conversation once for that mention (`@lead` wakes the lead conversation). Only the lead's `@all` wakes everyone who is waiting; `@all` from a helper never broadcasts wakes. Every forwarded post is clearly marked and shown to other agents as helper content, never as instructions from the user, the lead, or the system.
+- **Member states**:
+  - `working`: The helper is actively running its turn or a background task.
+  - `waiting`: The helper finished its turn and is standing by so an `@mention` on the board can wake it.
+  - `paused`: The helper reported a pause reason (`quota` or `error`). While the flow is open, its row shows an amber `paused: <reason>` badge in place of `running`, and the **Members** tab shows its pause detail whether or not it has posted.
+  - `retired`: The helper is done for good — either retired early by the lead with `progress` (`retire`) or finished when the flow closes. Retired helpers are grouped under **Retired** in the **Members** tab and never change the status badge on **Flow** agent rows.
+  - `killed`: The lead marked the helper as killed with `progress` (`kill`). It shows a red `killed` badge and is no longer woken by board posts. This does not stop a helper that is still running; the lead stops it in the tool itself.
 
 ## Opening the panel
 
@@ -45,9 +54,8 @@ ln -s "$(pwd)/apps/antigravity/plugins/vitruvian-orchestrator" ~/.gemini/config/
 
 ## Credits
 
-Adapted from [`savvy-fleet`](../savvy-fleet/README.md) (MIT, VitruvianSoftware) for Antigravity sidecar architecture and `transcript.jsonl` subagent run extraction, and powered by the shared [`packages/orchestrator-core`](../../../../packages/orchestrator-core/README.md) state machine.
+Adapted from [`savvy-fleet`](../savvy-fleet/README.md) (MIT, VitruvianSoftware) for the Antigravity sidecar layout and powered by [`packages/orchestrator-core`](../../../../packages/orchestrator-core/README.md).
 
 ## Subdirectories & Boundaries
-- [mcp](./mcp/README.md): Component package providing implementation for apps/antigravity/plugins/vitruvian-orche...
-- [sidecars](./sidecars/README.md): Subsystem blueprint grouping child modules under apps/antigravity/plugins/vitruvian-orc...
-
+- [mcp](./mcp/README.md): MCP server exposing `progress`, `step`, `post`, and `board`.
+- [sidecars](./sidecars/README.md): Sidecar UI and background wake watcher for the Orchestrator panel.

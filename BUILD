@@ -72,6 +72,15 @@ exports_files(
     visibility = ["//tools/agent-guard:__pkg__"],
 )
 
+exports_files(
+    [
+        ".agents/roster/skills/orchestrate/antigravity.md",
+        ".agents/roster/skills/orchestrate/claude-code.md",
+        ".agents/roster/skills/orchestrate/opencode.md",
+    ],
+    visibility = ["//tools/agent-roster:__pkg__"],
+)
+
 # //tools/ci's hook tests read settings.json too, to check each hook is wired.
 exports_files(
     [".claude/settings.json"],
