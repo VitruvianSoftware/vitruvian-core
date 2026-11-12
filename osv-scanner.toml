@@ -120,3 +120,13 @@ reason = "PERMANENT: no fixed version exists in any range ('zbus_names is unmain
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0372"
 reason = "PERMANENT: no fixed version exists in any range ('zvariant_derive is unmaintained', a notice, not a flaw). crates.io zvariant_derive 5.15.1, proc macro of zvariant in zbus 5.19.0 (latest) <- accesskit_unix and ksni, Linux only (apps/suites/wand/Cargo.lock). Not time-boxed because no future date makes it actionable; revisit when eframe/tray-icon move off zbus or apps/suites/wand is re-locked."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0486"
+ignoreUntil = 2026-12-23
+reason = "crates.io rustix 1.1.4 in apps/desktop/vitruvian-courier/libsignal/Cargo.lock (libsignal's graph, built only for Vitruvian Courier's Signal bridge). Fixed in 1.1.6. A newly published advisory, unrelated to the Courier rename (the lock is byte-identical to main's). //tools/crates:lock cannot re-lock this workspace (it needs rust-version 1.75, this one is edition 2024 on Rust 1.98.1), so the bump is a hand re-lock per libsignal/README.md. To do before this expires."
+
+[[IgnoredVulns]]
+id = "GHSA-474x-hrwr-fgx4"
+ignoreUntil = 2026-12-23
+reason = "npm fast-xml-parser 5.11.2 (pnpm-lock.yaml), a transitive dependency. Low severity (CVSS 3.7). Fixed in 5.12.0. A newly published advisory, unrelated to the Courier rename (pnpm-lock.yaml is unchanged). To be bumped by the next pnpm lock refresh before this expires."
