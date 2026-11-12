@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.42.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.41.0...home-speaker-v1.42.0) (2026-11-12)
+
+
+### Features
+
+* **android-remote:** every Home Speaker option on the phone, with checks that stop them drifting ([#4634](https://github.com/VitruvianSoftware/vitruvian-core/issues/4634)) ([354cabf](https://github.com/VitruvianSoftware/vitruvian-core/commit/354cabf056119f83307f0afbc96581860bc5ed85))
+* **courier:** Read Aloud through HomeSpeaker, and a per-chat Read Aloud on HomeSpeaker choice ([#4612](https://github.com/VitruvianSoftware/vitruvian-core/issues/4612)) ([01cedb6](https://github.com/VitruvianSoftware/vitruvian-core/commit/01cedb6e55c95d2004a1593a961acf688e673b02))
+* **home-speaker:** say which app and session an announcement came from ([#4601](https://github.com/VitruvianSoftware/vitruvian-core/issues/4601)) ([5944efe](https://github.com/VitruvianSoftware/vitruvian-core/commit/5944efe12b8bef371d8ae58c521f3d2fc15508a1))
+
 ## [1.41.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.40.0...home-speaker-v1.41.0) (2026-11-10)
 
 
