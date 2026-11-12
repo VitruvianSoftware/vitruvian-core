@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.35](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.34...android-remote-v0.1.35) (2026-11-12)
+
+
+### Bug Fixes
+
+* **android-remote:** ask for notifications only when a feature needs them, not at first launch ([#4604](https://github.com/VitruvianSoftware/vitruvian-core/issues/4604)) ([ca2ea8c](https://github.com/VitruvianSoftware/vitruvian-core/commit/ca2ea8c8252c48b2efd50dace7ad3098cca09801))
+
 ## [0.1.34](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.33...android-remote-v0.1.34) (2026-11-10)
 
 

@@ -114,7 +114,7 @@ android_binary(
         "minSdkVersion": "26",
         "targetSdkVersion": "35",
         "versionCode": "1",
-        "versionName": "0.1.34",  # x-release-please-version
+        "versionName": "0.1.35",  # x-release-please-version
     },
     # No explicit visibility: the package default above already scopes this to
     # the app's own subpackages, and `bazel build //<this app>:app` needs no
@@ -210,6 +210,7 @@ kt_jvm_test(
     name = "derive_test",
     srcs = ["src/test/kotlin/dev/vitruvian/remote/state/DeriveTest.kt"],
     data = [
+        "src/main/kotlin/dev/vitruvian/remote/MainActivity.kt",
         "src/main/kotlin/dev/vitruvian/remote/state/AgentClient.kt",
         "src/main/kotlin/dev/vitruvian/remote/state/Derive.kt",
         "src/main/kotlin/dev/vitruvian/remote/state/RemoteState.kt",

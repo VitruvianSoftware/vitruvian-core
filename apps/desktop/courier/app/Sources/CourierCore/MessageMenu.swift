@@ -48,6 +48,8 @@ public struct MessageMenuItem: Equatable, Sendable, Identifiable {
         case translateTo(String)
         /// Transcribes a voice note inline below its waveform (`VoiceNoteTranscriptStore`).
         case transcribeVoiceNote
+        /// Speaks the message aloud via HomeSpeaker (`--say`) or this Mac's voice (`AVSpeechSynthesizer`).
+        case readAloud
         /// A line that only says something ("Sent at 14:02"), always greyed.
         case info
     }
@@ -103,7 +105,9 @@ public enum MessageMenu {
                                 includeDiagnostics: Bool = false,
                                 isAIAvailable: Bool = false,
                                 responseLanguage: String = "English",
-                                translationLanguages: [String] = []) -> [[MessageMenuItem]] {
+                                translationLanguages: [String] = [],
+                                canReadAloud: Bool = false,
+                                isReadingAloud: Bool = false) -> [[MessageMenuItem]] {
         let offered = Set(available.actions)
         let greyed = Dictionary(available.unavailable.map { ($0.action, $0.reason) }, uniquingKeysWith: { a, _ in a })
 
@@ -134,6 +138,17 @@ public enum MessageMenu {
             [item(.forward)].compactMap { $0 },
             [item(.showHistory)].compactMap { $0 },
         ]
+        if canReadAloud {
+            sections.append([
+                MessageMenuItem(
+                    command: .readAloud,
+                    title: isReadingAloud ? String(localized: "Reading Aloud…") : String(localized: "Read Aloud"),
+                    key: nil,
+                    isEnabled: !isReadingAloud,
+                    help: nil
+                ),
+            ])
+        }
         if message.kind == .voiceNote,
            !message.isNote,
            !message.showsMediaRemovedPlaceholder,
