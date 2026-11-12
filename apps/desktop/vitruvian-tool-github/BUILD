@@ -15,6 +15,7 @@
 load("@build_bazel_rules_swift//swift:swift_binary.bzl", "swift_binary")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+load("//tools/apple:defs.bzl", "APPLE_TOOLCHAIN_ONLY")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 load("//tools/swift-test-preferences:defs.bzl", "swift_test")
 
@@ -31,7 +32,7 @@ swift_library(
     features = ["swift.enable_v6"],
     module_name = "GitHubToolCore",
     tags = ["manual"],
-    target_compatible_with = MACOS_ONLY,
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
         "//packages/vitruvian-sdk:VitruvianToolKit",
         "//packages/vitruvian-sdk:VitruvianToolProtocol",
@@ -47,7 +48,7 @@ swift_test(
     srcs = glob(["Tests/GitHubToolCoreTests/*.swift"]),
     data = ["vitruvian-tool.json"],
     tags = ["manual"],
-    target_compatible_with = MACOS_ONLY,
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
         ":GitHubToolCore",
         "//packages/vitruvian-sdk:VitruvianToolKit",
@@ -62,7 +63,7 @@ swift_binary(
     features = ["swift.enable_v6"],
     module_name = "GitHubToolProgram",
     tags = ["manual"],
-    target_compatible_with = MACOS_ONLY,
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
         ":GitHubToolCore",
         "//packages/vitruvian-sdk:VitruvianToolKit",
