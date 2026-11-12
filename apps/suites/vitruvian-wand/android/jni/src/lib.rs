@@ -35,9 +35,7 @@ fn init_logger() {
 /// Creates a new [`Bridge`] handle (`Box<Mutex<Option<Bridge>>>`) for the given platform
 /// (`1` = Android, `2` = AndroidTv) and JSON config string. Returns `0` on error.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vitruviansoftware_wand_core_WandNative_nativeCreate<
-    'local,
->(
+pub extern "system" fn Java_com_vitruviansoftware_wand_core_WandNative_nativeCreate<'local>(
     mut unowned_env: EnvUnowned<'local>,
     _class: JClass<'local>,
     platform: jint,
@@ -78,9 +76,7 @@ pub extern "system" fn Java_com_vitruviansoftware_wand_core_WandNative_nativeCre
 /// `Option<Bridge>` out of its `Mutex<Option<Bridge>>` slot so stray post-destroy calls
 /// return an error JSON instead of touching freed memory.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vitruviansoftware_wand_core_WandNative_nativeDestroy<
-    'local,
->(
+pub extern "system" fn Java_com_vitruviansoftware_wand_core_WandNative_nativeDestroy<'local>(
     _unowned_env: EnvUnowned<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -111,9 +107,7 @@ pub extern "system" fn Java_com_vitruviansoftware_wand_core_WandNative_nativeDef
 /// Feeds a 20-byte BLE packet and microsecond timestamp into the engine, returning
 /// a JSON array of `Action`s (or `{"error": "..."}` on failure).
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vitruviansoftware_wand_core_WandNative_nativeFeed<
-    'local,
->(
+pub extern "system" fn Java_com_vitruviansoftware_wand_core_WandNative_nativeFeed<'local>(
     mut unowned_env: EnvUnowned<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -144,9 +138,7 @@ pub extern "system" fn Java_com_vitruviansoftware_wand_core_WandNative_nativeFee
 /// Advances button long-press and double-press timers at `t_us` without a packet, returning
 /// a JSON array of `Action`s (or `{"error": "..."}` on failure).
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vitruviansoftware_wand_core_WandNative_nativeTick<
-    'local,
->(
+pub extern "system" fn Java_com_vitruviansoftware_wand_core_WandNative_nativeTick<'local>(
     mut unowned_env: EnvUnowned<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -164,9 +156,7 @@ pub extern "system" fn Java_com_vitruviansoftware_wand_core_WandNative_nativeTic
 /// Releases all held/toggled bindings and resets button/pointer state, returning
 /// a JSON array of release `Action`s (such as `MouseUp`).
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vitruviansoftware_wand_core_WandNative_nativeReleaseAll<
-    'local,
->(
+pub extern "system" fn Java_com_vitruviansoftware_wand_core_WandNative_nativeReleaseAll<'local>(
     mut unowned_env: EnvUnowned<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -182,9 +172,7 @@ pub extern "system" fn Java_com_vitruviansoftware_wand_core_WandNative_nativeRel
 /// Replaces the active engine configuration from a JSON string. Returns `{"ok":true}`
 /// or `{"error":"..."}`.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vitruviansoftware_wand_core_WandNative_nativeSetConfig<
-    'local,
->(
+pub extern "system" fn Java_com_vitruviansoftware_wand_core_WandNative_nativeSetConfig<'local>(
     mut unowned_env: EnvUnowned<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -213,9 +201,7 @@ pub extern "system" fn Java_com_vitruviansoftware_wand_core_WandNative_nativeSet
 
 /// Returns the current engine configuration as a JSON string (or `{"error":"..."}`).
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vitruviansoftware_wand_core_WandNative_nativeGetConfig<
-    'local,
->(
+pub extern "system" fn Java_com_vitruviansoftware_wand_core_WandNative_nativeGetConfig<'local>(
     mut unowned_env: EnvUnowned<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -230,9 +216,7 @@ pub extern "system" fn Java_com_vitruviansoftware_wand_core_WandNative_nativeGet
 
 /// Enables or disables test mode on the engine.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vitruviansoftware_wand_core_WandNative_nativeSetTestMode<
-    'local,
->(
+pub extern "system" fn Java_com_vitruviansoftware_wand_core_WandNative_nativeSetTestMode<'local>(
     _unowned_env: EnvUnowned<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -248,9 +232,7 @@ pub extern "system" fn Java_com_vitruviansoftware_wand_core_WandNative_nativeSet
 
 /// Requests gyro/orientation recentering on the next packet.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vitruviansoftware_wand_core_WandNative_nativeRecalibrate<
-    'local,
->(
+pub extern "system" fn Java_com_vitruviansoftware_wand_core_WandNative_nativeRecalibrate<'local>(
     _unowned_env: EnvUnowned<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -265,9 +247,7 @@ pub extern "system" fn Java_com_vitruviansoftware_wand_core_WandNative_nativeRec
 
 /// Returns the most recently decoded `Sample` as JSON (or `"null"` / `{"error":"..."}`).
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vitruviansoftware_wand_core_WandNative_nativeLastSample<
-    'local,
->(
+pub extern "system" fn Java_com_vitruviansoftware_wand_core_WandNative_nativeLastSample<'local>(
     mut unowned_env: EnvUnowned<'local>,
     _class: JClass<'local>,
     handle: jlong,
@@ -287,9 +267,7 @@ pub extern "system" fn Java_com_vitruviansoftware_wand_core_WandNative_nativeLas
 
 /// Returns `JNI_TRUE` when `level` (%) is below the low-battery threshold (< 15%).
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_vitruviansoftware_wand_core_WandNative_nativeBatteryLow<
-    'local,
->(
+pub extern "system" fn Java_com_vitruviansoftware_wand_core_WandNative_nativeBatteryLow<'local>(
     _unowned_env: EnvUnowned<'local>,
     _class: JClass<'local>,
     level: jint,
