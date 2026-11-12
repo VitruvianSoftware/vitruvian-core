@@ -28,6 +28,7 @@ exports_files([
     "argocd.test.yml",
     "vitruvian-slack-mcp.test.yml",
     "oom.test.yml",
+    "cnpg.test.yml",
 ])
 
 rust_library(
