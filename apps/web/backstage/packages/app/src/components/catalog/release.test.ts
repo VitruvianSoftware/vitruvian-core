@@ -68,11 +68,11 @@ describe("release target reader", () => {
         name: "devx",
         annotations: {
           "vitruvian.dev/release-model": "goreleaser",
-          "vitruvian.dev/mirror": "VitruvianSoftware/devx",
+          "vitruvian.dev/mirror": "VitruvianSoftware/vitruvian-devx",
         },
         links: [
           {
-            url: "https://github.com/VitruvianSoftware/devx/releases",
+            url: "https://github.com/VitruvianSoftware/vitruvian-devx/releases",
             title: "Releases",
           },
         ],
@@ -84,8 +84,9 @@ describe("release target reader", () => {
     const target = readReleaseTarget(devx);
     expect(target).toEqual({
       type: "github",
-      repoSlug: "VitruvianSoftware/devx",
-      releasesUrl: "https://github.com/VitruvianSoftware/devx/releases",
+      repoSlug: "VitruvianSoftware/vitruvian-devx",
+      releasesUrl:
+        "https://github.com/VitruvianSoftware/vitruvian-devx/releases",
     });
   });
 

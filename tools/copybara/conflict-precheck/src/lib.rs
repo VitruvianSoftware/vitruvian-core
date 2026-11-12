@@ -148,7 +148,6 @@ const RENAMED_MIRROR_LABELS: &[(&[u8], &[u8])] = &[
     (b"vitruvian-courier", b"COURIER_REV_ID"),
     (b"vitruvian-speaker", b"HOME_SPEAKER_REV_ID"),
     (b"vitruvian-deck", b"ESP32_DESK_COMPANION_REV_ID"),
-    // Not renamed yet; listed so the next rename needs no change here.
     (b"vitruvian-slack-mcp", b"MCP_SLACK_REV_ID"),
     (b"vitruvian-devx", b"DEVX_REV_ID"),
     (b"vitruvian-homelab", b"HOMELAB_REV_ID"),

@@ -20,7 +20,7 @@
 
 name: Copybara Export (devx)
 
-# Exports vitruvian-core/apps/cli/vitruvian-devx/ to VitruvianSoftware/devx on every push under
+# Exports vitruvian-core/apps/cli/vitruvian-devx/ to VitruvianSoftware/vitruvian-devx on every push under
 # apps/cli/vitruvian-devx/**. Thin caller — logic lives in _copybara-export.yaml.
 on:
     push:
@@ -44,7 +44,7 @@ jobs:
     export:
         uses: ./.github/workflows/_copybara-export.yaml
         with:
-            component: devx
+            component: vitruvian-devx
             standalone-only: ".github/workflows/sync-to-monorepo.yaml"
             copybara-options: ${{ inputs['copybara-options'] || github.event.inputs['copybara-options'] || '--force --ignore-noop' }}
         secrets:

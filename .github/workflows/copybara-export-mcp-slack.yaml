@@ -20,7 +20,7 @@
 
 name: Copybara Export (mcp-slack)
 
-# Exports vitruvian-core/apps/mcp/vitruvian-slack-mcp/ to VitruvianSoftware/mcp-slack on every push
+# Exports vitruvian-core/apps/mcp/vitruvian-slack-mcp/ to VitruvianSoftware/vitruvian-slack-mcp on every push
 # under apps/mcp/vitruvian-slack-mcp/**. Thin caller — logic lives in _copybara-export.yaml.
 on:
     push:
@@ -45,7 +45,7 @@ jobs:
     export:
         uses: ./.github/workflows/_copybara-export.yaml
         with:
-            component: mcp-slack
+            component: vitruvian-slack-mcp
             standalone-only: "package-lock.json .github/workflows/sync-to-monorepo.yaml"
             copybara-options: ${{ inputs['copybara-options'] || github.event.inputs['copybara-options'] || '--force --ignore-noop' }}
         secrets:

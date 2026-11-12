@@ -57,7 +57,7 @@ projects:
       ephemeral databases and cloud emulators, local K3s clusters and
       Cloudflare tunnel ingress, and starts everything in dependency order.
     tags: [Go, Lima, Kubernetes, Cloudflare]
-    repo: https://github.com/VitruvianSoftware/devx
+    repo: https://github.com/VitruvianSoftware/vitruvian-devx
     source: apps/cli/vitruvian-devx
     install: brew tap vitruviansoftware/tap && brew trust vitruviansoftware/tap && brew install vitruviansoftware/tap/devx
     extension:
@@ -77,7 +77,7 @@ projects:
       file and Vitruvian Homelab provisions Lima VZ virtual machines, networking and the
       cluster to match.
     tags: [Go, K3s, Lima VZ, macOS]
-    repo: https://github.com/VitruvianSoftware/homelab
+    repo: https://github.com/VitruvianSoftware/vitruvian-homelab
     source: apps/cli/vitruvian-homelab
     install: brew tap vitruviansoftware/tap && brew trust vitruviansoftware/tap && brew install vitruviansoftware/tap/homelab
 
@@ -140,7 +140,7 @@ projects:
       channels, threads, search, files, user groups and Canvas editing, acting
       as the bot or as you.
     tags: [Rust, MCP, Slack]
-    repo: https://github.com/VitruvianSoftware/mcp-slack
+    repo: https://github.com/VitruvianSoftware/vitruvian-slack-mcp
     source: apps/mcp/vitruvian-slack-mcp
     extension:
       kind: mcp

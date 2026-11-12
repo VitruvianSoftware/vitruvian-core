@@ -6,7 +6,7 @@ Vitruvian Slack MCP (`vitruvian-slack-mcp`) is developed in the **[VitruvianSoft
 
 You contribute by opening a PR against this mirror; it is **imported back into the monorepo** for review:
 
-1. **Open a PR** against `VitruvianSoftware/mcp-slack`.
+1. **Open a PR** against `VitruvianSoftware/vitruvian-slack-mcp`.
 2. **Sign the CLA** (first PR only): post this exact comment on your PR — `I have read the CLA Document and I hereby sign the CLA` (see [CLA.md](./CLA.md)). The CLA check must be green.
 3. **A maintainer applies the `import-to-monorepo` label.** Only labelled, CLA-signed PRs are imported.
 4. **The monorepo imports your PR automatically** (within ~15 min — a scheduled job), opening a PR in `vitruvian-core` under `apps/mcp/vitruvian-slack-mcp/` **with you as the author**, where the full monorepo CI + review run.
