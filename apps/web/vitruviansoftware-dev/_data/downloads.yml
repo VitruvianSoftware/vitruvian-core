@@ -118,14 +118,14 @@ categories:
         extensions_url: /ai/#dev.vitruvian.homespeaker
         extensions_label: Vitruvian Speaker Extension
 
-      - id: courier
-        name: Courier
+      - id: vitruvian-courier
+        name: Vitruvian Courier
         version: "0.3.16"
         summary: >-
           Every chat app in one inbox, on this Mac. A native macOS app that brings
           your messaging accounts into one window, signed with Developer ID and notarized.
         platforms: ["macOS Universal", "Apple Silicon", "Intel"]
-        brew_cask: vitruviansoftware/tap/courier
+        brew_cask: vitruviansoftware/tap/vitruvian-courier
         downloads:
           - label: Universal DMG
             url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/courier-v0.3.16/Courier-0.3.16-universal.dmg
@@ -143,8 +143,8 @@ categories:
             url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/courier-v0.3.16/Courier-0.3.16-universal.zip
             size: 150.4 MB
             arch: Universal
-        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=courier
-        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/courier
+        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=vitruvian-courier
+        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-courier
 
   - id: mobile
     title: Mobile & Companion Apps

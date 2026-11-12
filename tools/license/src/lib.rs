@@ -59,7 +59,7 @@ const EXEMPT_PREFIXES: &[&str] = &[
     // Vitruvian Code's unmodified vendored Mermaid (another holder's MIT)
     "apps/desktop/vitruvian-code/macos/Sources/VitruvianCodeUI/Resources/",
     // AGPL-3.0-or-later, with SPDX AGPL headers
-    "apps/desktop/courier/",
+    "apps/desktop/vitruvian-courier/",
 ];
 
 /// Whether verify.sh's filters drop this `git ls-files` line.
@@ -310,7 +310,7 @@ mod tests {
             "pulumi/library/x.go",
             "packages/pulumi/examples/y.ts",
             "apps/desktop/vitruvian-atrium/S/main.swift",
-            "apps/desktop/courier/a.swift",
+            "apps/desktop/vitruvian-courier/a.swift",
             "bazel-/x.go",
         ] {
             assert!(is_exempt(p), "{p}");

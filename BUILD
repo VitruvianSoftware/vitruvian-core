@@ -232,7 +232,7 @@ exports_files(
 # gazelle:exclude packages/pulumi/examples
 # apps contains subtrees with hand-authored BUILD files or non-Go toolchains.
 # Keep Gazelle out of non-Go app subtrees, while letting Gazelle manage apps/cli/vitruvian-devx
-# and apps/desktop/courier (Go modules). The other apps are listed one by one
+# and apps/desktop/vitruvian-courier (Go modules). The other apps are listed one by one
 # because Gazelle cannot un-exclude a child of an excluded directory.
 # gazelle:exclude apps/antigravity
 # gazelle:exclude apps/cli/vitruvian-homelab
@@ -357,13 +357,13 @@ doctor(
 )
 
 # Sponsor buttons (FUNDING.yml) whose folder has no BUILD of its own: the
-# monorepo's, Courier's and pulumi-library's. The stripe stack's
+# monorepo's, Vitruvian Courier's and pulumi-library's. The stripe stack's
 # donations_pages_test.go checks each opens a donate page that a Payment Link
 # backs.
 exports_files(
     [
         ".github/FUNDING.yml",
-        "apps/desktop/courier/.github/FUNDING.yml",
+        "apps/desktop/vitruvian-courier/.github/FUNDING.yml",
         "packages/pulumi/library/.github/FUNDING.yml",
     ],
     visibility = ["//infrastructure/pulumi/platform/stripe:__pkg__"],

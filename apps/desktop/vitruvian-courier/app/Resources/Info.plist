@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Copyright 2026 VitruvianSoftware. SPDX-License-Identifier: AGPL-3.0-or-later.
+     CFBundleShortVersionString and CFBundleVersion are not here: BUILD's apple_bundle_version writes them from
+     version.bzl, the version the engine reports too. -->
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>Vitruvian Courier</string>
+	<key>CFBundleExecutable</key>
+	<string>VitruvianCourier</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.vitruviansoftware.courier</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Vitruvian Courier</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.social-networking</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSContactsUsageDescription</key>
+	<string>Vitruvian Courier matches people in your chats with your contacts on this Mac. Your contacts never leave this Mac.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Vitruvian Courier shows your schedule in the calendar pane and adds events from dates in your messages. Your calendar never leaves this Mac.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>Vitruvian Courier saves the attachments you download to this folder. Nothing else in it is read or changed.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Vitruvian Courier uses the microphone to record voice notes and for Talk to Type. Audio stays on this Mac unless you send a voice note or turn on OpenAI Whisper.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Vitruvian Courier turns your speech into text on this Mac for Talk to Type and voice-note transcripts.</string>
+	<key>NSSupportsAutomaticTermination</key>
+	<false/>
+</dict>
+</plist>

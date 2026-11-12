@@ -1,0 +1,3047 @@
+// Copyright 2026 VitruvianSoftware
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+import Combine
+import Foundation
+
+/// Something the conversation could not do, shown in a bar above the composer.
+public enum ConversationProblem: Equatable, Sendable {
+    /// The newest messages could not be read.
+    case loadFailed
+    /// A reaction, retry or delete was refused or not answered. The text is for people.
+    case actionFailed(String)
+    /// The chat was opened at a message that is no longer in it (deleted since): the newest messages show instead.
+    case messageGone
+}
+
+/// Whether `EditGroupSheet` saves changes to the remote network (**For Everyone**) or locally in `room_prefs` (**Just for Me**).
+public enum EditGroupScope: String, CaseIterable, Equatable, Sendable {
+    case forEveryone
+    case justForMe
+}
+
+/// Draft state for `EditGroupSheet`.
+public struct EditGroupDraft: Equatable, Identifiable, Sendable {
+    public var id: String { roomID }
+    public let roomID: String
+    public let network: String
+    public let isDirect: Bool
+    public let features: ChatFeatures
+    public var scope: EditGroupScope
+    public var name: String
+    public var topic: String
+    public var avatarPath: String
+    public var remoteName: String
+    public var localName: String
+    public var remoteTopic: String
+    public var remoteAvatarPath: String
+    public var localAvatarPath: String
+
+    /// **For Everyone** is enabled only when at least one of `canSetName`, `canSetTopic`, or `canSetAvatar` is true.
+    public var canEditForEveryone: Bool {
+        features.canSetName || features.canSetTopic || features.canSetAvatar
+    }
+
+    /// Whether a local override is currently saved on this Mac.
+    public var hasLocalOverride: Bool {
+        !localName.isEmpty || !localAvatarPath.isEmpty
+    }
+
+    public init(
+        roomID: String,
+        scope: EditGroupScope = .forEveryone,
+        name: String = "",
+        topic: String = "",
+        avatarPath: String = "",
+        network: String = "",
+        isDirect: Bool = false,
+        features: ChatFeatures = .noFeatures,
+        remoteName: String = "",
+        localName: String = "",
+        remoteTopic: String = "",
+        remoteAvatarPath: String = "",
+        localAvatarPath: String = ""
+    ) {
+        self.roomID = roomID
+        self.network = network
+        self.isDirect = isDirect
+        self.features = features
+        self.scope = scope
+        self.name = name
+        self.topic = topic
+        self.avatarPath = avatarPath
+        self.remoteName = remoteName
+        self.localName = localName
+        self.remoteTopic = remoteTopic
+        self.remoteAvatarPath = remoteAvatarPath
+        self.localAvatarPath = localAvatarPath
+    }
+
+    public init(info: RoomInfoResult, initialScope: EditGroupScope? = nil) {
+        let canEveryone = info.features.canSetName || info.features.canSetTopic || info.features.canSetAvatar
+        let resolvedScope: EditGroupScope
+        if let initialScope, (initialScope == .justForMe || canEveryone) {
+            resolvedScope = initialScope
+        } else {
+            resolvedScope = canEveryone ? .forEveryone : .justForMe
+        }
+        let defaultName: String
+        let networkAvatarPath = info.localAvatarURI.isEmpty ? info.avatarPath : ""
+        let defaultAvatarPath: String
+        if resolvedScope == .forEveryone {
+            defaultName = info.remoteName.isEmpty ? info.name : info.remoteName
+            defaultAvatarPath = networkAvatarPath
+        } else {
+            defaultName = !info.localName.isEmpty ? info.localName : info.name
+            defaultAvatarPath = !info.localAvatarURI.isEmpty ? info.localAvatarURI : networkAvatarPath
+        }
+        self.init(
+            roomID: info.roomID,
+            scope: resolvedScope,
+            name: defaultName,
+            topic: info.topic,
+            avatarPath: defaultAvatarPath,
+            network: info.network,
+            isDirect: info.isDirect,
+            features: info.features,
+            remoteName: info.remoteName.isEmpty ? info.name : info.remoteName,
+            localName: info.localName,
+            remoteTopic: info.topic,
+            remoteAvatarPath: networkAvatarPath,
+            localAvatarPath: info.localAvatarURI
+        )
+    }
+
+    public mutating func selectScope(_ newScope: EditGroupScope) {
+        guard newScope == .justForMe || canEditForEveryone else { return }
+        guard newScope != scope else { return }
+        scope = newScope
+        switch newScope {
+        case .forEveryone:
+            name = remoteName
+            topic = remoteTopic
+            avatarPath = remoteAvatarPath
+        case .justForMe:
+            name = localName.isEmpty ? remoteName : localName
+            avatarPath = localAvatarPath.isEmpty ? remoteAvatarPath : localAvatarPath
+        }
+    }
+}
+
+/// Draft state for `ReportSpamSheet`. The leave/delete checkbox (`alsoLeaveOrDelete`) is always unticked (`false`) by default.
+public struct ReportSpamDraft: Equatable, Identifiable, Sendable {
+    public var id: String { roomID }
+    public let roomID: String
+    public var chatName: String
+    public var isDirect: Bool
+    public let canLeave: Bool
+    public let canDelete: Bool
+    public let network: String
+    public var alsoLeaveOrDelete: Bool
+
+    public init(
+        roomID: String,
+        canLeave: Bool,
+        canDelete: Bool,
+        network: String = "",
+        chatName: String = "",
+        isDirect: Bool = false,
+        alsoLeaveOrDelete: Bool = false
+    ) {
+        self.roomID = roomID
+        self.chatName = chatName
+        self.isDirect = isDirect
+        self.canLeave = canLeave
+        self.canDelete = canDelete
+        self.network = network
+        self.alsoLeaveOrDelete = alsoLeaveOrDelete
+    }
+
+    /// Whether the optional leave/delete checkbox is shown.
+    public var showsLeaveOrDeleteToggle: Bool {
+        canLeave || canDelete
+    }
+
+    /// Wording for the optional checkbox: `"Also leave the group on <Network>"` or `"Also delete the chat on <Network>"`.
+    public var leaveOrDeleteLabel: String? {
+        let display = NetworkNames.displayName(of: network)
+            ?? (network.isEmpty ? nil : network)
+        if canLeave {
+            if let display {
+                return String(localized: "Also leave the group on \(display)")
+            }
+            return String(localized: "Also leave the group")
+        }
+        if canDelete {
+            if let display {
+                return String(localized: "Also delete the chat on \(display)")
+            }
+            return String(localized: "Also delete the chat")
+        }
+        return nil
+    }
+}
+
+/// Destructive room or member action awaiting confirmation.
+public enum RoomConfirmationRequest: Equatable, Identifiable, Sendable {
+    case leaveGroup(roomID: String, groupName: String, network: String)
+    case deleteChat(roomID: String, chatName: String, isDirect: Bool, features: ChatFeatures, network: String)
+    case removeParticipant(roomID: String, member: Member, groupName: String, network: String)
+
+    public var id: String {
+        switch self {
+        case let .leaveGroup(roomID, _, _): "leave:\(roomID)"
+        case let .deleteChat(roomID, _, _, _, _): "delete:\(roomID)"
+        case let .removeParticipant(roomID, member, _, _): "kick:\(roomID):\(member.userID)"
+        }
+    }
+}
+
+/// Completed AI chat summary for the open chat, shown in `AIPane`.
+public struct ChatAISummary: Equatable, Sendable {
+    public let text: String
+    public let messageCount: Int
+    public let collapsedHeader: String
+    public let provenance: String
+
+    public init(text: String, messageCount: Int, collapsedHeader: String, provenance: String) {
+        self.text = text
+        self.messageCount = messageCount
+        self.collapsedHeader = collapsedHeader
+        self.provenance = provenance
+    }
+}
+
+/// The open chat: its timeline, what is new in it, and its composer.
+///
+/// The timeline keeps the pages it has loaded. A change in the open chat (a new event, a status, the read marker)
+/// reads the newest page again and merges it by event id, so older pages stay; a `resync`, and a new engine's
+/// greeting, read the newest page and drop the older ones. A read that was in flight when the chat was closed, or
+/// when the engine restarted, is dropped when its answer comes.
+///
+/// A chat opened at a message (a search result) shows a window of its history around that message instead: the
+/// page `room.events around` reads, then older pages above it and newer pages below it as the person scrolls.
+/// While that window does not reach the newest message the chat is "away": changes don't read the newest page (a
+/// new message is only noted, for "Jump to latest"), nothing new is marked read, and the "New" divider isn't drawn.
+/// Reaching the newest message by scrolling, "Jump to latest" and sending all end it.
+///
+/// The open chat's features (`room.features`) are read when it opens, when the engine is greeted or resyncs, and
+/// whenever its row changes (`room`): a bridge writes new ones as the network's limits change. They and the chat's
+/// network go to both composers (the chat's and the thread pane's), with the other person's name in a one-to-one
+/// chat, for its quick replies. A chat whose network leaves no "deleted" placeholder, or the person's setting, hides
+/// deleted messages.
+///
+/// Disappearing messages (01 §5). The header says the chat's timer (`timerLine`) and its menu offers the timers the
+/// chat has (`timerChoices`, `setTimer`); neither shows a timer the engine has not reported: a change the person
+/// asks for is a call to `room.setDisappearing`, and the header moves when the engine says the chat has it (a room
+/// change reads the features again). A message with a timer running says how long it has left (`disappearsIn`,
+/// by the minute), and a message past its time is left out of the chat and of the thread pane with no read of the
+/// engine: one wake, for whichever comes first of the next message to run out and the next minute a countdown
+/// changes at, builds both again (see `scheduleWake`). The bridge's note that the timer changed reads as a note
+/// (`timerChangeNote`), not as the bridge's English.
+///
+/// A search result that is a reply in a thread (Ruling 23) opens the chat around its root, which the engine centres
+/// the page on, and the thread pane at the reply.
+///
+/// **Threads' unread replies.** Opening the chat reads its timeline only: a reply that stays in its thread is read
+/// in the thread pane (`ThreadModel.markReadIfNeeded`), so the chat's unread count keeps counting it and its root's
+/// summary says how many are new. While any are, the chat says so above its timeline (`unreadThreadsBanner`, read
+/// with `thread.unread` when the chat opens and whenever it changes), and `showNextUnreadThread` opens the pane at
+/// the oldest unread reply, then the next thread's.
+///
+/// Protocol 5. Who is typing (`typingLine`) is the chat's row's, read again on each typing change; a read that fails
+/// shows no one, so a line never sticks. A receipt change reads the newest page again, as a status change does: my
+/// newest message says Delivered or Seen. Mark as Unread from a message (`markUnread`) and Reply Privately
+/// (`replyPrivately`) are here; the composer sends my typing, while "Show recipients I'm typing" is on.
+///
+/// **Incognito** (`incognitoIsOn`: the setting, with the plan): opening and reading the chat marks nothing read and
+/// sends no receipt, so its count and "New" divider stay. It is read when I send a message in it (my newest message
+/// that went changes: the networks mark it read then anyway), or by hand (⌘⇧U, Mark as Read, Mark All as Read, which
+/// are the inbox's). Turning Incognito off sends nothing for chats already open: what was looked at while it was on
+/// waits for the next message. Turning it on (`setIncognito`) asks whether to also hide that I'm typing.
+@MainActor
+public final class ConversationModel: ObservableObject {
+    public static let pageSize = 50
+    /// The reactions offered on hover, the default first.
+    public static let quickReactions = ["❤️", "👍", "😂", "😮", "😢", "🙏"]
+    /// How long a message the chat was opened at stays highlighted.
+    public static let highlightDuration: Duration = .seconds(3)
+    /// Steady pointer hover delay before the sender hover card opens.
+    public static let senderHoverDelay: Duration = .milliseconds(500)
+
+    /// The view is asked to scroll to a message. A new request has a higher serial, so asking for the same
+    /// message twice is two requests.
+    public struct MessageScrollRequest: Equatable, Sendable {
+        public let messageID: String
+        public let serial: Int
+    }
+
+    /// The open chat; nil when none is.
+    @Published public private(set) var roomID: String?
+    /// When the open chat is a merged chat (`openMergedChat`), its definition from `AppModel.mergedChats`; nil for a single room.
+    public var mergedChat: MergedChat? {
+        roomID.flatMap { appModel.mergedChats[$0] }
+    }
+    /// In a merged chat, the underlying room where replies are sent; defaults to `MergedChat.lastRoomID` and changes
+    /// only when the person switches it (`cycleMergedReplyNetwork`).
+    @Published public var activeReplyRoomID: String?
+    /// In a merged chat, the network id of `activeReplyRoomID`.
+    @Published public private(set) var activeReplyNetwork: String?
+    /// Oldest first.
+    @Published public private(set) var items: [TimelineItem] = [] {
+        didSet {
+            var map: [String: TimelineMessage] = [:]
+            map.reserveCapacity(items.count)
+            for case let .message(message) in items {
+                map[message.id] = message
+            }
+            messagesByID = map
+        }
+    }
+    private var messagesByID: [String: TimelineMessage] = [:]
+    /// The newest page of the open chat has been read (or, for a chat opened at a message, the page around it).
+    @Published public private(set) var isLoaded = false
+    /// There are older messages than the ones loaded.
+    @Published public private(set) var hasOlder = false
+    @Published public private(set) var isLoadingOlder = false
+    /// The last read of an older page failed: the view offers a button instead of trying again by itself.
+    @Published public private(set) var olderFailed = false
+    @Published public private(set) var problem: ConversationProblem?
+    /// Messages from others that came while the chat was scrolled up: the jump-to-bottom button's count.
+    @Published public private(set) var newMessageCount = 0
+    @Published public private(set) var isAtBottom = true
+    /// Goes up by one each time the view is asked to scroll to the newest message.
+    @Published public private(set) var jumpToBottomRequest = 0
+    /// The message a keyboard action (⌘R) is about.
+    @Published public var selectedMessageID: String?
+    /// Showing history that doesn't reach the newest message (the chat was opened at an older one).
+    @Published public private(set) var isAwayFromLatest = false
+    /// A newer page is being read, while away.
+    @Published public private(set) var isLoadingNewer = false
+    /// The message the chat was opened at, for `highlightDuration`.
+    @Published public private(set) var highlightedMessageID: String?
+    /// The view scrolls to this message whenever it changes.
+    @Published public private(set) var scrollToMessageRequest: MessageScrollRequest?
+    /// A new event came in the chat while away: "Jump to latest" has something new below.
+    @Published public private(set) var hasNewerWhileAway = false
+    /// My newest message that went (not a note, not deleted): the only one whose Sent, Delivered or Seen is shown.
+    public private(set) var lastOutgoingID: String?
+    /// What the open chat can do (room.features); `noFeatures` until read, and for no chat.
+    @Published public private(set) var features: ChatFeatures = .noFeatures
+    /// The open chat's network, by the engine's id; "" until its row is known.
+    @Published public private(set) var network = ""
+    /// In a one-to-one chat, the other person's name (what quick replies fill in); nil in a group, or unknown.
+    @Published public private(set) var otherPerson: String?
+    /// The open chat is one-to-one (true) or a group (false); nil while its row is unknown.
+    @Published public private(set) var isDirectChat: Bool?
+    /// The time the timeline was last built at. Countdowns (`disappearsIn`) are read from the clock; a view that shows
+    /// one watches this so it is drawn again whenever the model has built the timeline, at least every minute while
+    /// a countdown shows.
+    @Published public private(set) var countdownClock = Date(timeIntervalSince1970: 0)
+    /// A change of the disappearing timer is on its way to the engine: the menu waits for its answer.
+    @Published public private(set) var isChangingTimer = false
+    /// Who is typing in the open chat, as its row words it ("Ana is typing…", "3 people are typing…"); nil when no one
+    /// is, and for no chat.
+    @Published public private(set) var typingLine: String?
+    /// "After marking the open chat read or unread", for Mark as Unread from a message: the inbox's own rule
+    /// (`InboxModel.planAfterToggleRead`), worked out before the mark and done after it. The app sets it; unset, the
+    /// chat stays open.
+    public var planAfterToggleRead: @MainActor () -> @MainActor () -> Void = { {} }
+    /// Whether the person's plan includes a feature: the inbox's (`InboxModel.isEntitled`), which the app points
+    /// this at. Unset, nothing is included, so Incognito does nothing until the plan is known (C42).
+    public var isEntitled: @MainActor (Feature) -> Bool = { _ in false } {
+        didSet { objectWillChange.send() }
+    }
+    /// Turning Incognito on asked whether to also hide that I'm typing, and the person hasn't answered yet: the
+    /// view shows `hideTypingQuestion` with `hideTypingButton` and `keepShowingTypingButton`.
+    @Published public private(set) var asksToHideTyping = false
+    /// Whether the Chat Info right pane is open on the conversation view (⌘⇧I).
+    @Published public var isShowingChatInfo = false
+    /// The open chat's full `room.info` result when loaded for the Chat Info pane.
+    @Published public private(set) var chatInfo: RoomInfoResult?
+    /// Bookmarked messages in the open chat (`search.query` with `sections: [.bookmarks]`).
+    @Published public private(set) var chatInfoBookmarks: [MessageHit] = []
+    /// Whether `refreshChatInfo` is currently in flight.
+    @Published public private(set) var isRefreshingChatInfo = false
+    /// Incremented when `conversation.searchChatInfo` asks the Chat Info pane to focus its filter field.
+    @Published public private(set) var focusChatInfoSearchRequest = 0
+    /// Active Edit Group / Edit Chat sheet draft.
+    @Published public var activeEditGroupDraft: EditGroupDraft?
+    /// Active Add Participants sheet target room info.
+    @Published public var activeAddParticipantsRoom: RoomInfoResult?
+    /// Active Report Spam sheet draft.
+    @Published public var activeReportSpamDraft: ReportSpamDraft?
+    /// Active destructive room/member confirmation alert.
+    @Published public var pendingRoomConfirmation: RoomConfirmationRequest?
+    /// Active sender hover card (opened after 0.5s of steady hover or via ⌘⇧O).
+    @Published public var activeSenderCard: SenderHoverCardState?
+    /// Shared groups for the currently shown sender hover card (`search.query(sections: [.inGroups])`).
+    @Published public private(set) var senderCardSharedGroups: [PersonHit] = []
+    /// On-demand macOS Contacts.framework bridge for the sender hover card.
+    public var contactsBridge = ContactsBridge()
+    /// Whether the Calendar right pane is open (`⌘⌥K`).
+    @Published public var isShowingCalendar = false
+    /// On-demand macOS EventKit bridge for the Calendar right pane and detected message dates.
+    public var calendarBridge = CalendarBridge()
+    /// Whether the AI right pane (`AIPane`) is open.
+    @Published public var isShowingAIPane = false
+    /// Session cache and auto-transcribe queue for voice-note transcripts.
+    public var voiceNoteTranscripts = VoiceNoteTranscriptStore()
+    /// True while an AI summary request is in flight for the open chat.
+    @Published public private(set) var isSummarizingChat = false
+    /// Count of messages being summarized while `isSummarizingChat` is true.
+    @Published public private(set) var summarizingMessageCount = 0
+    /// Finished AI summary for the open chat (`AIPane`).
+    @Published public private(set) var chatSummary: ChatAISummary?
+    /// Plain error message when an AI summary request fails.
+    @Published public private(set) var chatSummaryError: String?
+    /// Whether the finished summary in `AIPane` is expanded.
+    @Published public var isChatSummaryExpanded = false
+    /// Opens Settings ▸ AI.
+    public var onOpenAISettings: @MainActor () -> Void = {}
+    private var summarizeTask: Task<Void, Never>?
+    private var summarizeToken = 0
+    /// Active view-once message being viewed in `ViewOnceSheet`.
+    @Published public var activeViewOnceMessage: TimelineMessage?
+    /// Whether the poll creator sheet (`PollCreatorWindow`) is presented.
+    @Published public var isCreatingPoll = false
+    /// Active message or gallery tile ID opened in the in-app lightbox.
+    @Published public var activeLightboxMessageID: String?
+    /// Full-window attachment lightbox model (`AttachmentCarousel.tsx`).
+    public let carousel = AttachmentCarouselModel()
+    /// The injected current time (`now()`), used for stable local-time formatting in `ChatInfoPane`.
+    public var currentTime: Date { now() }
+    /// Tests: how many times the open chat has been told read (room.markRead asked for).
+    private(set) var readsSent = 0
+    /// Tests: how many of the newest pages have been applied, to know every change so far has been read.
+    private(set) var pagesApplied = 0
+    /// Tests: called each time an answer for a chat that is no longer open (or from an engine that is gone), or for a
+    /// window around a message that was let go of meanwhile, is dropped, so a test can wait for that instead of for a
+    /// while.
+    var staleAnswerDropped: (@MainActor () -> Void)?
+    /// From the moment the chat is opened at a message (its page still on the way) until it is back at the
+    /// newest message: what it shows doesn't reach the newest, so nothing new in it should be marked read.
+    public var isHeldAwayFromLatest: Bool { anchorID != nil }
+
+    public let composer: ComposerModel
+    /// The thread pane, in the open chat.
+    public let thread: ThreadModel
+    /// The open chat's threads with unread replies, the oldest unread first (`thread.unread`). Empty for a merged
+    /// chat, whose threads are its rooms'.
+    @Published public private(set) var unreadThreads: [UnreadThread] = []
+    /// App-wide voice-note & audio player (`Audio` and `GlobalAudioPlayerBar`).
+    public let audioPlayer: AudioPlayerModel
+    /// Whether the person is looking at the open chat (see `Attention`): it is marked read only then.
+    public let attention: Attention
+    /// Where toasts go: the inbox's (`InboxModel.announce`). Today: a refused disappearing timer.
+    public var onToast: @MainActor (String) -> Void = { _ in }
+    /// The composer's settings, one object shared with Settings: hiding deleted messages and the quick reaction are
+    /// read from it, and both composers are given it.
+    public var preferences: ComposerPreferences? {
+        didSet { preferencesChanged() }
+    }
+
+    private let appModel: AppModel
+    private let unreadCount: @MainActor (String) -> Int
+    private let chat: @MainActor (String) -> InboxRow?
+    private var hideDeletedPreference = false
+    private var showChatUpdatesPreference = true
+    private var preferenceSubscription: AnyCancellable?
+    private var showChatUpdatesSubscription: AnyCancellable?
+    private var incognitoSubscription: AnyCancellable?
+    /// Goes up with each read of the features: an older answer, or one for another chat, is dropped.
+    private var featuresSerial = 0
+    private let calendar: Calendar
+    private let sleep: @Sendable (Duration) async throws -> Void
+    /// The time the timeline is built at: a message whose disappearing timer has run out by then is not shown.
+    private let now: @MainActor () -> Date
+    private let locale: Locale
+    /// The one scheduled wake for the soonest change the clock brings (`scheduleWake`); nil when none is waited for.
+    private var wakeTask: Task<Void, Never>?
+    /// A wake is set this much after the time it is for: a message goes at its `expires_at`, not a moment before.
+    static let wakeSlack: Duration = .milliseconds(50)
+    /// A wake is never nearer than this, so a clock that disagrees with the sleeper cannot make it spin.
+    static let minimumWake: Int64 = 100
+    private var subscriptions: [AnyCancellable] = []
+    private weak var observedLifecycle: SystemLifecycleModel?
+
+    public var lifecycle: SystemLifecycleModel {
+        observedLifecycle
+            ?? composer.hotkeyDispatcher?.lifecycle
+            ?? appModel.lifecycle
+    }
+
+    public var isLocked: Bool {
+        if !AppLockGate.shared.canPerform(.other, lifecycle: lifecycle) {
+            return true
+        }
+        if let hotkeys = composer.hotkeys, hotkeys.isLocked {
+            return true
+        }
+        return false
+    }
+
+    /// Dismisses every active sheet, popover, confirmation alert, and overlay owned by this conversation.
+    public func dismissAllPresentations() {
+        activeViewOnceMessage = nil
+        activeEditGroupDraft = nil
+        activeAddParticipantsRoom = nil
+        activeReportSpamDraft = nil
+        pendingRoomConfirmation = nil
+        isCreatingPoll = false
+        asksToHideTyping = false
+        closeLightbox()
+        dismissSenderCard()
+        composer.dismissAllPresentations()
+        thread.composer.dismissAllPresentations()
+    }
+
+    // What is loaded.
+    private var events: [String: Event] = [:]
+    private var locallyMarkedPlayed = Set<String>()
+    private var seenIDs = Set<String>()
+    private var olderCursor: Cursor?
+    private var olderPagesLoaded = false
+    private var firstUnreadID: String?
+    private var unreadAtOpen = 0
+    /// The next newest page is the first since the chat was opened (or came back from a window): it places the
+    /// "New" divider and marks the chat read, as opening does.
+    private var firstNewest = true
+    /// The newest page asked for by "Jump to latest" from a window: the view scrolls down once it is in.
+    private var scrollDownOnNewest = false
+    /// The chat was opened at a message that isn't there: the newest page shows `messageGone` when it lands.
+    private var messageGoneOnNewest = false
+    /// A window reached the newest message while changes were waiting: the newest page that brings them places
+    /// the "New" divider, from `unreadAtOpen`.
+    private var dividerOnNewest = false
+
+    // A window around a message.
+    /// The message the chat is held at, from the moment it is opened at it until the window reaches the newest
+    /// message. While it is set the newest page is never read.
+    private var anchorID: String?
+    /// The page around `anchorID` is in (until then the chat is still opening at it).
+    private var windowLoaded = false
+    /// The newest event of the window, for the next newer page.
+    private var newerCursor: Cursor?
+    /// Something asked for the newest page while it couldn't be read: it is read on reaching the latest.
+    private var missedChanges = false
+    /// The serial of the last `AppModel.pendingMessage` taken, so each is taken once.
+    private var takenPendingSerial = 0
+    private var scrollSerial = 0
+    private var highlightTask: Task<Void, Never>?
+    private var isHoveringSenderTrigger = false
+    private var isHoveringSenderCard = false
+    private var senderHoverTask: Task<Void, Never>?
+
+    // Which answers still count.
+    private var generation = 0
+    private var pageEpoch = 0
+    private var fetchSerial = 0
+    private var appliedSerial = 0
+    private var refetching = false
+    private var refetchAgain = false
+    /// A resync (or a new engine) asked for the older pages to be dropped, and no answer has done it yet. Whichever
+    /// answer lands first does it, so a refetch that overtakes the resync's own read cannot keep them.
+    private var dropPending = false
+
+    // Reading.
+    private var needsRead = false
+    /// My messages sent from this chat's composers (the chat's or its thread pane's) that haven't gone yet: when one
+    /// has, it is a reply, wherever the chat shows when it does (after leaving an older part of the chat, say). A
+    /// thread reply is a reply too: its status is the thread pane's, since the chat's own page leaves it out.
+    private var mySends = Set<String>()
+    /// My messages already counted as a reply, by either path: none is counted twice.
+    private var repliesRead = Set<String>()
+    /// Marked unread from a message and stayed on: nothing marks the chat read again until it is reopened or a new
+    /// message comes (Inferred (inventory 02 §3.4.2 item 8)).
+    private var holdsRead = false
+
+    // Who is typing.
+    private var readingTyping = false
+    private var typingAgain = false
+
+    /// Reply Privately's quote, for the one-to-one chat being opened: put in once that chat's features are read
+    /// (whether the quote is a range or "> " lines), since opening a chat forgets the last chat's features and its
+    /// draft may come in after.
+    private var pendingPrivateReply: (roomID: String, message: TimelineMessage)?
+
+    /// - Parameters:
+    ///   - unreadCount: a chat's unread count as the inbox has it, read when the chat is opened (the "New" divider
+    ///     goes above that many of the newest messages from others), and when a window reaches the newest message.
+    ///   - attention: whether the person is looking; nil makes one that only follows `setWindowKey`.
+    ///   - savedDraft: a chat's draft as the engine keeps it (its inbox row's), for a chat opened with no text in
+    ///     the composer's memory; nil when the inbox hasn't loaded the chat.
+    ///   - lookUpDraft: the draft of a chat `savedDraft` doesn't know, looked up; nil when that fails.
+    ///   - sleep: how the highlight waits out `highlightDuration`; tests give one on a clock they move.
+    ///   - now: the time now, for disappearing messages; tests give a clock they move.
+    ///   - locale: how lengths of time read ("7 days"), in the header, the menu, countdowns and notes.
+    ///   - chat: a chat's row as the inbox has it (its network, its name, whether it is one-to-one); nil when the
+    ///     inbox hasn't loaded it (then `learnChat` brings it once looked up).
+    ///   - preferences: the composer's settings (see `preferences`).
+    public init(appModel: AppModel, unreadCount: @escaping @MainActor (String) -> Int = { _ in 0 },
+                attention: Attention? = nil, calendar: Calendar = .autoupdatingCurrent,
+                savedDraft: @escaping @MainActor (String) -> String? = { _ in "" },
+                lookUpDraft: @escaping @MainActor (String) async -> String? = { _ in nil },
+                chat: @escaping @MainActor (String) -> InboxRow? = { _ in nil },
+                preferences: ComposerPreferences? = nil,
+                followsAppSelection: Bool = true,
+                sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
+                now: @escaping @MainActor () -> Date = Date.init, locale: Locale = .current) {
+        self.appModel = appModel
+        self.unreadCount = unreadCount
+        self.chat = chat
+        self.preferences = preferences
+        self.attention = attention ?? Attention(source: StaticPresence(), pollInterval: nil)
+        self.calendar = calendar
+        self.sleep = sleep
+        self.now = now
+        self.locale = locale
+        self.calendarBridge = CalendarBridge(now: now, calendar: calendar)
+        composer = ComposerModel(sender: EngineMessageSender(appModel: appModel), now: now)
+        thread = ThreadModel(appModel: appModel, now: now, calendar: calendar, sleep: sleep)
+        audioPlayer = AudioPlayerModel(appModel: appModel, preferences: preferences)
+        audioPlayer.conversation = self
+        subscriptions.append(audioPlayer.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        })
+        composer.savedDraft = savedDraft
+        composer.lookUpDraft = lookUpDraft
+        composer.onSettled = { [weak self] in self?.requestRefetch() }
+        composer.onSubmit = { [weak self] in self?.jumpToBottom() }
+        for target in [composer, thread.composer] {
+            target.onSent = { [weak self] room, eventID in self?.sent(eventID, in: room) }
+            target.chatContext = { [weak self] in self?.aiChatContext ?? AIChatContext(title: "", messages: []) }
+            target.onSummarizeChat = { [weak self] in self?.summarizeChat() }
+            target.onOpenAISettings = { [weak self] in self?.onOpenAISettings() }
+        }
+        composer.quote = { [weak self] id in self?.message(id)?.quoted }
+        thread.mayMarkRead = { [weak self] in
+            guard let self else { return false }
+            return !self.isLocked && self.attention.isLooking && !self.incognitoIsOn
+        }
+        thread.onMarkedRead = { [weak self] room, root in self?.threadRead(root, in: room) }
+        composer.selectedMessage = { [weak self] in self?.selectedMessageID.flatMap { self?.message($0) } }
+        if followsAppSelection {
+            subscriptions.append(appModel.$selectedRoomID.removeDuplicates().sink { [weak self] room in
+                self?.open(room)
+            })
+        }
+        subscriptions.append(appModel.$mergedChats.dropFirst().sink { [weak self] merges in
+            guard let self else { return }
+            if let room = self.roomID, room.hasPrefix("merge:"), merges[room] == nil {
+                self.activeReplyRoomID = nil
+                self.activeReplyNetwork = nil
+            }
+            self.objectWillChange.send()
+        })
+        // A message in the chat that is already open: selectedRoomID doesn't change, so this is how it arrives.
+        // (For another chat, `open` takes it when selectedRoomID moves, just after.)
+        subscriptions.append(appModel.$pendingMessage.compactMap { $0 }.sink { [weak self] pending in
+            self?.pendingMessageArrived(pending)
+        })
+        // The thread pane's messages leave on time too: its items decide what the wake waits for. (The value comes
+        // before the property is set.)
+        subscriptions.append(thread.$items.dropFirst().sink { [weak self] threadItems in
+            self?.scheduleWake(threadItems: threadItems)
+            // A thread reply of mine may have gone: looked at once the pane has the page (the value comes first).
+            Task { @MainActor [weak self] in self?.countReplies() }
+        })
+        appModel.onConnect { [weak self] client in await self?.reload(from: client) }
+        appModel.onChange { [weak self] change in self?.handle(change) }
+        self.attention.onReturn { [weak self] in self?.personReturned() }
+        subscriptions.append(
+            NotificationCenter.default.publisher(for: SystemLifecycleModel.didLockNotification)
+                .sink { [weak self] notification in
+                    guard let self else { return }
+                    if let lifecycle = notification.object as? SystemLifecycleModel {
+                        self.observedLifecycle = lifecycle
+                    }
+                    self.dismissAllPresentations()
+                }
+        )
+        preferencesChanged()
+    }
+
+    // MARK: - Opening
+
+    /// Opens `room` directly on this conversation model (used by detached chat and space windows).
+    public func openDetachedRoom(_ room: String?) {
+        open(room)
+    }
+
+    /// Populates `items`, `isLoaded`, and chat metadata directly for deterministic view snapshots without an engine.
+    public func setSnapshotStateForTesting(
+        roomID: String,
+        items: [TimelineItem],
+        row: InboxRow? = nil,
+        features: ChatFeatures = .noFeatures,
+        lastOutgoingID: String? = nil
+    ) {
+        self.roomID = roomID
+        self.items = items
+        self.isLoaded = true
+        self.features = features
+        self.lastOutgoingID = lastOutgoingID
+        composer.open(roomID)
+        if let row {
+            learnChat(row, of: roomID)
+        } else {
+            handOnChat()
+        }
+    }
+
+    /// Shows `info` as the open chat's Chat Info, for view tests without an engine.
+    public func setChatInfoForTesting(_ info: RoomInfoResult?) {
+        chatInfo = info
+        isShowingChatInfo = info != nil
+    }
+
+    private func open(_ room: String?) {
+        if let room, let merged = appModel.mergedChats[room] {
+            if roomID == merged.mergeID { return }
+            openMergedChat(merged)
+            return
+        }
+        activeReplyRoomID = nil
+        activeReplyNetwork = nil
+        var target: String?
+        if let room, let pending = appModel.pendingMessage, pending.roomID == room,
+           pending.serial > takenPendingSerial {
+            takenPendingSerial = pending.serial
+            target = pending.eventID
+        }
+        reset(room, at: target, inPlace: false)
+        if pendingPrivateReply?.roomID != room { pendingPrivateReply = nil }
+        composer.open(room)
+        thread.close()
+        unreadThreads = []
+        readUnreadThreads()
+        features = .noFeatures
+        let row = room.flatMap(chat)
+        learnChat(row, of: room)
+        // The row may be a moment behind the engine: when it says someone is typing, read it again.
+        typingLine = row?.typingLine
+        if typingLine != nil { readTyping() }
+        startReading()
+        readFeatures()
+    }
+
+    /// Opens a merged chat (`merge.*`), defaulting `activeReplyRoomID` to `merged.lastRoomID` (or the first room).
+    /// Incoming messages on other rooms in the merge refresh the timeline without switching `activeReplyRoomID`.
+    public func openMergedChat(_ merged: MergedChat) {
+        appModel.mergedChats[merged.mergeID] = merged
+        let initialRoom = (!merged.lastRoomID.isEmpty && merged.roomIDs.contains(merged.lastRoomID))
+            ? merged.lastRoomID
+            : (merged.roomIDs.first ?? "")
+        activeReplyRoomID = initialRoom.isEmpty ? nil : initialRoom
+        activeReplyNetwork = networkForMergedRoom(initialRoom, in: merged)
+        reset(merged.mergeID, at: nil, inPlace: false)
+        if pendingPrivateReply?.roomID != merged.mergeID { pendingPrivateReply = nil }
+        composer.open(activeReplyRoomID)
+        thread.close()
+        features = .noFeatures
+        network = activeReplyNetwork ?? ""
+        let trimmedName = merged.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        otherPerson = trimmedName.isEmpty ? nil : trimmedName
+        isDirectChat = true
+        handOnChat()
+        typingLine = nil
+        startReading()
+        readFeatures()
+    }
+
+    /// Cycles the active reply room across the rooms of the open merged chat and persists `last_room_id` via `merge.update`.
+    public func cycleMergedReplyNetwork() {
+        guard !isLocked else { return }
+        guard var merged = mergedChat, !merged.roomIDs.isEmpty else { return }
+        let current = activeReplyRoomID ?? merged.lastRoomID
+        let nextIndex: Int
+        if let idx = merged.roomIDs.firstIndex(of: current) {
+            nextIndex = (idx + 1) % merged.roomIDs.count
+        } else {
+            nextIndex = 0
+        }
+        let nextRoom = merged.roomIDs[nextIndex]
+        let nextNet = networkForMergedRoom(nextRoom, in: merged)
+        merged.lastRoomID = nextRoom
+        appModel.mergedChats[merged.mergeID] = merged
+        activeReplyRoomID = nextRoom
+        activeReplyNetwork = nextNet
+        network = nextNet ?? ""
+        composer.open(nextRoom)
+        handOnChat()
+        readFeatures()
+        guard let client = appModel.client else { return }
+        let params = MergeUpdateParams(
+            mergeID: merged.mergeID,
+            name: merged.name,
+            roomIDs: merged.roomIDs,
+            lastRoomID: nextRoom
+        )
+        Task {
+            let _: MergedChat? = try? await client.call("merge.update", params)
+        }
+    }
+
+    private func networkForMergedRoom(_ roomID: String, in merged: MergedChat) -> String? {
+        if let idx = merged.roomIDs.firstIndex(of: roomID), idx < merged.networks.count {
+            return merged.networks[idx]
+        }
+        return chat(roomID)?.network
+    }
+
+    private func matchesOpenRoom(_ candidate: String) -> Bool {
+        guard let open = roomID else { return false }
+        if candidate == open { return true }
+        if let merged = mergedChat, open == merged.mergeID {
+            return merged.roomIDs.contains(candidate)
+        }
+        return false
+    }
+
+    private func eventsParams(room: String, thread: String? = nil, before: Cursor? = nil,
+                              after: Cursor? = nil, around: String? = nil, limit: Int) -> RoomEventsParams {
+        if let mergeID = mergedChat?.mergeID, room == mergeID {
+            return RoomEventsParams(mergeID: mergeID, thread: thread, before: before,
+                                    after: after, around: around, limit: limit)
+        }
+        return RoomEventsParams(roomID: room, thread: thread, before: before,
+                                after: after, around: around, limit: limit)
+    }
+
+    // MARK: - The chat's features, network and people
+
+    /// The open chat's row, looked up after it opened (the inbox didn't list it): its network and, one-to-one, the
+    /// other person's name reach the composers. Another chat's row changes nothing.
+    public func learnChat(_ row: InboxRow) {
+        guard row.roomID == roomID else { return }
+        learnChat(row, of: row.roomID)
+    }
+
+    private func learnChat(_ row: InboxRow?, of room: String?) {
+        guard room == roomID else { return }
+        if let merged = mergedChat, room == merged.mergeID { return }
+        network = row?.network ?? ""
+        let name = row?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        otherPerson = row?.isDirect == true && !name.isEmpty ? name : nil
+        let wasDirect = isDirectChat
+        isDirectChat = row?.isDirect
+        handOnChat()
+        if isDirectChat != wasDirect, !events.isEmpty { rebuild() } // "Seen" names no one one-to-one
+    }
+
+    /// Reads the open chat's features. An answer for a chat no longer open, from an engine that is gone, or older
+    /// than one already shown, is dropped; a failure keeps what was known.
+    private func readFeatures() {
+        guard let room = roomID, let client = appModel.client else { return }
+        let targetRoom = activeReplyRoomID ?? room
+        guard !targetRoom.hasPrefix("merge:") else { return }
+        featuresSerial += 1
+        let serial = featuresSerial
+        Task { [weak self] in
+            let read: ChatFeatures? = try? await client.call("room.features", RoomParams(roomID: targetRoom))
+            guard let self, serial == self.featuresSerial, room == self.roomID, client === self.appModel.client
+            else { return }
+            if let read {
+                self.features = read
+                self.handOnChat()
+                self.rebuild()
+            }
+            // With the features known (or not to be had), Reply Privately's quote goes in.
+            self.putInPrivateReply()
+        }
+    }
+
+    /// The chat's features, network and other person, to each composer open on this chat.
+    private func handOnChat() {
+        guard let room = roomID else { return }
+        let targetRoom = activeReplyRoomID ?? room
+        for target in [composer, thread.composer] where target.roomID == room || target.roomID == targetRoom {
+            target.features = features
+            target.network = activeReplyNetwork ?? network
+            target.otherPerson = otherPerson
+        }
+        thread.isDirect = isDirectChat ?? false
+        if thread.roomID == room || thread.roomID == targetRoom {
+            thread.hideDeleted = hidesDeleted
+        }
+    }
+
+    /// Deleted messages leave no placeholder: the person's setting, or a network that leaves none (Telegram).
+    private var hidesDeleted: Bool { hideDeletedPreference || features.hideDeletedPlaceholder }
+
+    private func preferencesChanged() {
+        composer.preferences = preferences
+        thread.composer.preferences = preferences
+        audioPlayer.preferences = preferences
+        // C21: my typing goes out from either composer while "Show recipients I'm typing" is on, read at each
+        // change, so Settings counts at once. Incognito's Hide Typing turns the setting off; Incognito itself
+        // never hides typing.
+        let showsTyping: @MainActor () -> Bool = { [weak self] in self?.preferences?.showTyping ?? true }
+        composer.sendsTyping = showsTyping
+        thread.composer.sendsTyping = showsTyping
+        incognitoSubscription = preferences?.$incognito.dropFirst().sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
+        hideDeletedPreference = preferences?.hideDeletedMessages ?? false
+        showChatUpdatesPreference = preferences?.showChatUpdatesInTimeline ?? true
+        // @Published says so before the value changes: the new value is the one handed over.
+        preferenceSubscription = preferences?.$hideDeletedMessages.dropFirst().sink { [weak self] hide in
+            guard let self else { return }
+            self.hideDeletedPreference = hide
+            self.rebuild()
+            if self.thread.roomID == self.roomID { self.thread.hideDeleted = self.hidesDeleted }
+        }
+        showChatUpdatesSubscription = preferences?.$showChatUpdatesInTimeline.dropFirst().sink { [weak self] show in
+            guard let self else { return }
+            self.showChatUpdatesPreference = show
+            self.rebuild()
+        }
+        rebuild()
+    }
+
+    // MARK: - The thread pane
+
+    /// Opens the thread pane on `rootID` in the open chat, at `replyID` when given (a search result).
+    public func openThread(_ rootID: String, at replyID: String? = nil) {
+        guard !isLocked, let room = roomID else { return }
+        thread.open(rootID, in: room, at: replyID)
+        handOnChat()
+    }
+
+    /// Above the timeline while the chat has threads with unread replies: "New replies in 2 threads". Nil while it
+    /// has none.
+    public var unreadThreadsBanner: String? {
+        switch unreadThreads.count {
+        case 0: nil
+        case 1: String(localized: "New replies in 1 thread")
+        case let count: String(localized: "New replies in \(count) threads")
+        }
+    }
+
+    /// One of the unread replies the banner stands for mentions me.
+    public var unreadThreadsMentionMe: Bool { unreadThreads.contains(where: \.unreadMentionsMe) }
+
+    /// The banner's click: the thread pane opens at the oldest unread reply of the thread after the one it shows
+    /// (the first thread when it shows none of them, round again after the last). A root on the page opens the pane
+    /// at once, and the chat scrolls to it; one further up opens the chat around the reply, as a search result does,
+    /// which centres the chat on its root.
+    public func showNextUnreadThread() {
+        guard !isLocked, let room = roomID, !unreadThreads.isEmpty else { return }
+        var next = unreadThreads[0]
+        if let open = thread.rootID, let at = unreadThreads.firstIndex(where: { $0.rootID == open }) {
+            next = unreadThreads[(at + 1) % unreadThreads.count]
+        }
+        if message(next.rootID) != nil {
+            openThread(next.rootID, at: next.firstUnreadID)
+            scrollSerial += 1
+            scrollToMessageRequest = MessageScrollRequest(messageID: next.rootID, serial: scrollSerial)
+        } else {
+            appModel.open(.message(roomID: room, eventID: next.firstUnreadID))
+        }
+    }
+
+    /// Reads the open chat's threads with unread replies (`thread.unread`). A merged chat has none of its own.
+    private func readUnreadThreads() {
+        guard let room = roomID, !room.hasPrefix("merge:"), let client = appModel.client else { return }
+        let owner = generation
+        Task { [weak self] in
+            let result: UnreadThreadsResult? = try? await client.call("thread.unread", RoomParams(roomID: room))
+            guard let self, let result, owner == self.generation, client === self.appModel.client,
+                  self.roomID == room else { return }
+            self.unreadThreads = result.threads
+        }
+    }
+
+    /// The thread pane read `rootID`'s thread: its summary says nothing new, and the banner drops it, at once. The
+    /// engine's read change confirms both.
+    private func threadRead(_ rootID: String, in room: String) {
+        guard matchesOpenRoom(room) else { return }
+        unreadThreads.removeAll { $0.rootID == rootID }
+        guard var root = events[rootID], var summary = root.thread, summary.unread > 0 else { return }
+        summary.unread = 0
+        summary.unreadMentionsMe = false
+        root.thread = summary
+        events[rootID] = root
+        rebuild()
+    }
+
+    /// The open chat's unread count, learned after it opened: the inbox didn't list the chat (a search opened it from
+    /// the archive, say) and looked its row up. At its newest message, the "New" divider goes above that many, at
+    /// once if the newest page is in, else when it lands; in a window around a message, reaching the newest one
+    /// reads the count again anyway. A count that is no higher than the one it opened with changes nothing.
+    public func learnUnreadCount(_ count: Int, of room: String) {
+        guard room == roomID, anchorID == nil, count > unreadAtOpen else { return }
+        unreadAtOpen = count
+        guard !firstNewest, !dividerOnNewest else { return } // the newest page still to come places it
+        firstUnreadID = Timeline.firstUnreadID(events: Array(events.values), me: Timeline.meUserID, unread: count,
+                                               now: now())
+        rebuild()
+    }
+
+    private func pendingMessageArrived(_ pending: PendingMessage) {
+        guard pending.serial > takenPendingSerial, let room = roomID, pending.roomID == room else { return }
+        takenPendingSerial = pending.serial
+        // Opened again at a message, in place: what is on screen stays until the page around it is in, and the
+        // composer (its text, its reply) is untouched.
+        reset(room, at: pending.eventID, inPlace: true)
+        if typingLine != nil { readTyping() }
+        startReading()
+    }
+
+    /// Forgets what is loaded, and every read in flight, for `room` opened at its newest message or at `target`.
+    private func reset(_ room: String?, at target: String?, inPlace: Bool) {
+        generation += 1
+        pageEpoch += 1
+        cancelWake()
+        events = [:]
+        seenIDs = []
+        olderCursor = nil
+        olderPagesLoaded = false
+        firstUnreadID = nil
+        unreadAtOpen = room.map { unreadCount($0) } ?? 0
+        firstNewest = true
+        scrollDownOnNewest = false
+        messageGoneOnNewest = false
+        dividerOnNewest = false
+        refetching = false
+        refetchAgain = false
+        dropPending = false
+        readingTyping = false
+        typingAgain = false
+        holdsRead = false
+        if room != roomID {
+            mySends = []
+            repliesRead = []
+            chatInfo = nil
+            chatInfoBookmarks = []
+            dismissSenderCard()
+            cancelSummarizeChat()
+            chatSummary = nil
+            chatSummaryError = nil
+            isChatSummaryExpanded = false
+        }
+        // Opened at a message, nothing is read until the person reaches the newest one; in Incognito, nothing is
+        // read at all, and nothing waits to be read once it is off.
+        needsRead = room != nil && target == nil && !incognitoIsOn
+        anchorID = room == nil ? nil : target
+        windowLoaded = false
+        newerCursor = nil
+        missedChanges = false
+        clearHighlight()
+
+        roomID = room
+        hasOlder = false
+        isLoadingOlder = false
+        olderFailed = false
+        isLoadingNewer = false
+        problem = nil
+        isAwayFromLatest = false
+        hasNewerWhileAway = false
+        if !inPlace {
+            items = []
+            typingLine = nil
+            lastOutgoingID = nil
+            isLoaded = false
+            newMessageCount = 0
+            isAtBottom = true
+            selectedMessageID = nil
+            scrollToMessageRequest = nil
+        }
+    }
+
+    private func startReading() {
+        guard roomID != nil, appModel.client != nil else { return }
+        if isShowingChatInfo {
+            Task { [weak self] in await self?.refreshChatInfo() }
+        }
+        if let anchor = anchorID {
+            Task { [weak self] in await self?.fetchAround(anchor, reveal: true) }
+        } else {
+            requestRefetch()
+        }
+    }
+
+    // MARK: - Reading the engine
+
+    /// The engine was greeted, or said `resync`: read the newest page, and forget the older ones. A chat held at
+    /// a message reads the page around it again instead (highlighting it only if it was still opening).
+    private func reload(from client: EngineClient) async {
+        guard let room = roomID, client === appModel.client else { return }
+        learnChat(chat(room), of: room)
+        readFeatures()
+        if typingLine != nil { readTyping() } // a new engine, or lost changes: whoever was typing may have stopped
+        if let anchor = anchorID {
+            await fetchAround(anchor, reveal: !windowLoaded)
+            return
+        }
+        dropPending = true
+        await fetchNewest()
+    }
+
+    /// "Try again" on the bar: read again what failed.
+    public func reload() {
+        if problem == .messageGone { problem = nil }
+        if let anchor = anchorID {
+            // Held at a message: read the page around it again (highlighting it only if it never showed).
+            let reveal = !windowLoaded
+            Task { [weak self] in await self?.fetchAround(anchor, reveal: reveal) }
+            return
+        }
+        requestRefetch()
+    }
+
+    private func handle(_ change: Change) {
+        guard let open = roomID else { return }
+        switch change {
+        case let .event(room, _):
+            guard matchesOpenRoom(room) else { return }
+            if anchorID != nil { hasNewerWhileAway = true }
+            requestRefetch()
+            readUnreadThreads()
+        case let .read(room, _):
+            guard matchesOpenRoom(room) else { return }
+            requestRefetch()
+            readUnreadThreads()
+        case let .status(room, _), let .receipt(room):
+            // A receipt: my newest message's Delivered or Seen, read with the page as a status is.
+            if matchesOpenRoom(room) { requestRefetch() }
+        case let .typing(room):
+            if matchesOpenRoom(room) { readTyping() }
+        case let .room(room):
+            // With no room, names or pictures changed in chats unknown: this one may be among them. Its features
+            // may have changed too (its bridge writes them as the network's limits change).
+            if room == nil || matchesOpenRoom(room!) {
+                requestRefetch()
+                learnChat(chat(open), of: open)
+                readFeatures()
+                if isShowingChatInfo || chatInfo != nil {
+                    Task { [weak self] in await self?.refreshChatInfo() }
+                }
+            }
+        case .bridge, .resync, .spaces, .reminder, .scheduled:
+            // resync reads through the app model's connect hooks. Spaces and a reminder change rows, not the chat's
+            // events (a reminder that fires brings a room change of its own). Scheduled messages are in no timeline
+            // until they are sent, which brings an event.
+            break
+        }
+    }
+
+    /// Reads the newest page. Changes that come while a read is in flight cost one more read, however many. While
+    /// the chat is held at a message the newest page isn't read: the request waits until the window reaches it.
+    private func requestRefetch() {
+        guard roomID != nil else { return }
+        if anchorID != nil {
+            missedChanges = true
+            return
+        }
+        if refetching {
+            refetchAgain = true
+            return
+        }
+        refetching = true
+        let owner = generation
+        Task { [weak self] in await self?.refetchUntilQuiet(owner: owner) }
+    }
+
+    private func refetchUntilQuiet(owner: Int) async {
+        var again = true
+        while again {
+            refetchAgain = false
+            await fetchNewest()
+            guard owner == generation else { return } // another chat is open: it owns the flags now
+            again = refetchAgain
+        }
+        refetching = false
+    }
+
+    /// Reads who is typing in the open chat: its row, by id. Changes that come while a read is in flight cost one more
+    /// read, however many.
+    private func readTyping() {
+        guard roomID != nil else { return }
+        if readingTyping {
+            typingAgain = true
+            return
+        }
+        readingTyping = true
+        let owner = generation
+        Task { [weak self] in await self?.readTypingUntilQuiet(owner: owner) }
+    }
+
+    private func readTypingUntilQuiet(owner: Int) async {
+        var again = true
+        while again {
+            typingAgain = false
+            guard let room = roomID, let client = appModel.client else { break }
+            let roomIDs = appModel.scopeRoomIDs(for: room).filter { !$0.hasPrefix("merge:") }
+            guard !roomIDs.isEmpty else { break }
+            let result: InboxResult? = try? await client.call("inbox.list", InboxListParams(roomIDs: roomIDs))
+            guard owner == generation else { return } // another chat is open: it owns the flags now
+            guard client === appModel.client else { break }
+            // A read that failed shows no one: a typing line never sticks.
+            let idSet = Set(roomIDs)
+            typingLine = result?.rooms.first { idSet.contains($0.roomID) && $0.typingLine != nil }?.typingLine
+            again = typingAgain
+        }
+        readingTyping = false
+    }
+
+    private func fetchNewest() async {
+        guard let room = roomID, let client = appModel.client else { return }
+        let owner = generation
+        fetchSerial += 1
+        let serial = fetchSerial
+        let page: EventsPage
+        do {
+            page = try await client.call("room.events", eventsParams(room: room, limit: Self.pageSize))
+        } catch {
+            guard owner == generation, client === appModel.client, anchorID == nil else {
+                staleAnswerDropped?()
+                return
+            }
+            messageGoneOnNewest = false // the failure is what the bar says now
+            problem = .loadFailed
+            return
+        }
+        // Only the answer for the chat that is open now, from the engine that is up now, not older than one
+        // already shown, and not while the chat is held at a message.
+        guard owner == generation, client === appModel.client, serial > appliedSerial, anchorID == nil else {
+            staleAnswerDropped?()
+            return
+        }
+        appliedSerial = serial
+        let drop = dropPending
+        dropPending = false
+        apply(page, dropOlder: drop)
+        pagesApplied += 1
+    }
+
+    private func apply(_ page: EventsPage, dropOlder: Bool) {
+        let first = firstNewest
+        let pageIDs = Set(page.events.map(\.eventID))
+        let fresh = page.events.filter { !seenIDs.contains($0.eventID) }
+
+        // A page that does not reach back to what is loaded leaves a hole: more came than one page holds. Where the
+        // page reaches is its before cursor (its events may be fewer than it covers).
+        var hasHole = false
+        if let before = page.before, let newestLoaded = events.values.map(Self.position).max() {
+            hasHole = Position(ts: before.ts, seq: before.seq) > newestLoaded
+        }
+        if dropOlder || hasHole {
+            events = [:]
+            olderCursor = nil
+            olderPagesLoaded = false
+            pageEpoch += 1
+        } else if let before = page.before {
+            // What the page covers, down to its before cursor, is what the engine has now: a message it no longer
+            // lists (discarded, deleted for me) goes. The page may list fewer events than asked for, even none: the
+            // cursor, not the count, says where it ends.
+            let from = Position(ts: before.ts, seq: before.seq)
+            events = events.filter { Self.position($0.value) < from || pageIDs.contains($0.key) }
+        } else {
+            // Nothing older: the page is the whole chat (an empty one has no events).
+            events = events.filter { pageIDs.contains($0.key) }
+        }
+        for var event in page.events {
+            if locallyMarkedPlayed.contains(event.eventID) {
+                event.played = true
+            }
+            events[event.eventID] = event
+        }
+        seenIDs.formUnion(pageIDs)
+        if !olderPagesLoaded { olderCursor = page.before }
+        hasOlder = olderCursor != nil
+        if messageGoneOnNewest {
+            messageGoneOnNewest = false
+            problem = .messageGone
+        } else if problem != .messageGone {
+            problem = nil // the notice that a message is gone stays until the person moves on
+        }
+
+        if first || dividerOnNewest {
+            dividerOnNewest = false
+            firstUnreadID = Timeline.firstUnreadID(events: Array(events.values), me: Timeline.meUserID,
+                                                   unread: unreadAtOpen, now: now())
+        }
+        rebuild()
+        isLoaded = true
+
+        if first {
+            firstNewest = false
+            if attention.isLooking { markRead() }
+            countReplies()
+        } else {
+            let incoming = fresh.filter(Timeline.isIncomingMessage)
+            if !incoming.isEmpty {
+                holdsRead = false // a new message: the chat is read as usual again
+                if !isAtBottom { newMessageCount += incoming.count }
+                if attention.isLooking { markRead() } else if !incognitoIsOn { needsRead = true }
+            }
+            // A reply of mine from this Mac's composers may have gone. Only those count (Ruling 24): a scheduled
+            // message going out, or one from my phone, is not me replying here, and reads nothing. My phone's own
+            // read receipt moves my marker.
+            countReplies()
+        }
+        if scrollDownOnNewest {
+            scrollDownOnNewest = false
+            jumpToBottomRequest += 1
+        }
+    }
+
+    /// Where an event is in the chat's order: by time, then by arrival.
+    private struct Position: Comparable {
+        let ts: Int64
+        let seq: Int64
+
+        static func < (lhs: Position, rhs: Position) -> Bool { (lhs.ts, lhs.seq) < (rhs.ts, rhs.seq) }
+    }
+
+    private static func position(_ event: Event) -> Position { Position(ts: event.ts, seq: event.seq) }
+
+    private func rebuild() {
+        let nextItems = Timeline.build(events: Array(events.values), me: Timeline.meUserID, firstUnreadID: firstUnreadID,
+                                       now: now(), hideDeleted: hidesDeleted, isDirect: isDirectChat ?? false,
+                                       showChatUpdates: showChatUpdatesPreference,
+                                       calendar: calendar)
+        if nextItems != items {
+            items = nextItems
+        }
+        lastOutgoingID = items.reversed().lazy.compactMap { item -> String? in
+            // The one Timeline put Sent, Delivered or Seen under: my newest that went, not a note, not deleted.
+            if case let .message(message) = item, message.mine, !message.isNote, message.kind != .deleted,
+               message.statusLine?.hasGone == true { message.id } else { nil }
+        }.first
+        if let selected = selectedMessageID, messagesByID[selected] == nil {
+            selectedMessageID = nil
+        }
+        // My held messages, as the chat has them now: the composer's ⌘Z takes back the newest.
+        if roomID != nil, (roomID == composer.roomID || activeReplyRoomID == composer.roomID) {
+            composer.updateHeld(from: items)
+        }
+        countdownClock = now()
+        scheduleWake()
+    }
+
+    // MARK: - Disappearing messages
+
+    /// "Messages disappear after 7 days", for the header; nil when the chat has no timer running.
+    public var timerLine: String? { Disappearing.headerLine(for: features.currentTimer, locale: locale) }
+
+    /// The header menu: Off, then the timers the chat offers. Empty for a chat with no timer to set (the menu is
+    /// not offered).
+    public var timerChoices: [DisappearingChoice] { Disappearing.choices(in: features, locale: locale) }
+
+    /// "Change Setting", on a timer-change note: opens the same menu.
+    public static var changeSettingTitle: String { String(localized: "Change Setting") }
+
+    /// Asks the engine to set the chat's timer to `choice` (one of `timerChoices`; anything else does nothing).
+    /// The header keeps showing the engine's timer: it moves when the engine reports the change, which the call
+    /// brings (a room change) and this reads for. A refusal is a toast, and changes nothing.
+    public func setTimer(_ choice: DisappearingChoice) async {
+        guard !isLocked,
+              let room = activeReplyRoomID ?? roomID, !room.hasPrefix("merge:"), !isChangingTimer,
+              let offered = timerChoices.first(where: { $0.type == choice.type && $0.timerMS == choice.timerMS })
+        else { return }
+        let network = self.network
+        guard let client = appModel.client else {
+            onToast(EngineErrorText.text(for: EngineError.notConnected, fallback: Self.couldntChangeTimer))
+            return
+        }
+        isChangingTimer = true
+        defer { isChangingTimer = false }
+        let owner = generation
+        do {
+            let _: Empty = try await client.call(
+                "room.setDisappearing", DisappearingParams(roomID: room, type: offered.type, timerMS: offered.timerMS))
+        } catch {
+            onToast(Self.describeTimerRefusal(error, network: network))
+            return
+        }
+        // Read what the chat has now, whether or not the room change has come.
+        if owner == generation, client === appModel.client { readFeatures() }
+    }
+
+    private static var couldntChangeTimer: String { String(localized: "Couldn’t change the timer.") }
+
+    /// A refusal in Vitruvian Courier's words: the network said no (-32023), or the engine's own words for anything else.
+    static func describeTimerRefusal(_ error: Error, network: String) -> String {
+        if case .rpc(.notSupported, _, _)? = error as? EngineError {
+            guard let name = NetworkNames.displayName(of: network) else {
+                return String(localized: "Couldn’t change the timer: the network said no.")
+            }
+            return String(localized: "Couldn’t change the timer: \(name) said no.")
+        }
+        return EngineErrorText.text(for: error, fallback: couldntChangeTimer)
+    }
+
+    /// "Disappears in 1 hour, 30 minutes", under a message with a timer running: whole minutes, rounded up, read
+    /// from the model's clock. Nil with none running. For a message of the chat or of the thread pane.
+    public func disappearsIn(_ message: TimelineMessage) -> String? {
+        Disappearing.countdown(expiresAt: message.expiresAt, now: now(), locale: locale)
+    }
+
+    /// The note for a message that is the bridge's note of a timer change ("Ann set messages to disappear after 1
+    /// day.", "You set …"); nil for any other message.
+    public func timerChangeNote(for message: TimelineMessage) -> String? {
+        message.timerChange.map {
+            Disappearing.note(for: $0, by: message.senderName, mine: message.mine, locale: locale)
+        }
+    }
+
+    /// Who to name beside a call note: in a group chat, the caller; nil in a one-to-one chat, while the chat's row is
+    /// unknown (so a one-to-one chat never shows a name it doesn't need), for my own call, and for any other message.
+    public func callCaller(for message: TimelineMessage) -> String? {
+        guard let direct = isDirectChat else { return nil }
+        return CallNote.caller(of: message, direct: direct)
+    }
+
+    /// Sets the one wake for the soonest change the clock brings to what the chat and the thread pane show: a
+    /// message running out (it leaves), or a countdown stepping down a minute. It is set again on every build, so
+    /// there is only ever one, and `reset` takes it back with the chat. It is set a hair after the time, and never
+    /// nearer than `minimumWake`. When it comes the thread pane and the chat are built again at the model's clock.
+    /// If the clock has not moved forward since it was set (it stood still, or was set back), nothing is built and
+    /// the wake is set again, from the clock as it is now and never nearer than `minimumWake`.
+    private func scheduleWake(threadItems: [TimelineItem]? = nil) {
+        wakeTask?.cancel()
+        wakeTask = nil
+        guard roomID != nil else { return }
+        let since = now()
+        let pane = thread.roomID == roomID ? (threadItems ?? thread.items) : []
+        guard let until = Disappearing.millisUntilNextChange(in: items + pane, now: since) else { return }
+        let wait = Duration.milliseconds(max(until, 0)) + Self.wakeSlack
+        let sleep = self.sleep
+        wakeTask = Task { [weak self] in
+            do {
+                try await sleep(max(wait, .milliseconds(Self.minimumWake)))
+            } catch {
+                return // set again by a build, or taken back with the chat
+            }
+            guard let self, !Task.isCancelled else { return }
+            self.wake(since: since)
+        }
+    }
+
+    private func wake(since: Date) {
+        wakeTask = nil
+        guard now() > since else {
+            scheduleWake()
+            return
+        }
+        thread.clockMoved()
+        rebuild() // sets the next wake
+    }
+
+    private func cancelWake() {
+        wakeTask?.cancel()
+        wakeTask = nil
+    }
+
+    /// A message of the open chat, as loaded.
+    func message(_ eventID: String) -> TimelineMessage? {
+        messagesByID[eventID]
+    }
+
+    // MARK: - A window around a message
+
+    /// Reads the page around `eventID` and shows it in place of everything loaded. `reveal` highlights the
+    /// message; the view is asked to scroll to it either way.
+    private func fetchAround(_ eventID: String, reveal: Bool) async {
+        guard let room = roomID, let client = appModel.client else { return }
+        let owner = generation
+        fetchSerial += 1
+        let serial = fetchSerial
+        let page: EventsPage
+        do {
+            page = try await client.call(
+                "room.events", eventsParams(room: room, around: eventID, limit: Self.pageSize))
+        } catch EngineError.rpc(.notFound, _, _) {
+            guard owner == generation, client === appModel.client, anchorID == eventID else { return }
+            // Not in this chat any more (deleted since): the newest messages, with a calm notice.
+            messageGoneOnNewest = true
+            leaveWindow(scrollDown: isLoaded)
+            return
+        } catch {
+            guard owner == generation, client === appModel.client, anchorID == eventID else { return }
+            problem = .loadFailed
+            return
+        }
+        // As for the newest page; and only while the chat is still held at this message ("Jump to latest" may
+        // have let go of it meanwhile).
+        guard owner == generation, client === appModel.client, serial > appliedSerial, anchorID == eventID else {
+            staleAnswerDropped?()
+            return
+        }
+        appliedSerial = serial
+        applyWindow(page, at: eventID, reveal: reveal)
+    }
+
+    private func applyWindow(_ page: EventsPage, at eventID: String, reveal: Bool) {
+        // A reply that stays in its thread isn't in the chat's timeline: the engine centred the page on its root
+        // (Ruling 23). The chat shows the root, and the thread pane the reply.
+        var shown = eventID
+        if !page.events.contains(where: { $0.eventID == eventID }) {
+            let roots = Self.threadRoots(in: page)
+            if roots.count == 1 {
+                shown = roots[0]
+                openThread(roots[0], at: eventID)
+            } else if let nearest = roots.first {
+                shown = nearest
+                findThread(of: eventID, among: roots, guessed: nearest, reveal: reveal)
+            }
+        }
+        pageEpoch += 1 // an older or newer page asked for before this one joins nothing
+        events = [:]
+        for var event in page.events {
+            if locallyMarkedPlayed.contains(event.eventID) {
+                event.played = true
+            }
+            events[event.eventID] = event
+        }
+        seenIDs = Set(events.keys)
+        olderCursor = page.before
+        olderPagesLoaded = true // the window's own cursor is the one to go on from, whatever a newest page says
+        hasOlder = olderCursor != nil
+        newerCursor = page.after
+        windowLoaded = true
+        if problem != .messageGone { problem = nil }
+        firstUnreadID = nil // no "New" divider while away
+        if page.after == nil {
+            reachedLatest()
+        } else {
+            isAwayFromLatest = true
+        }
+        rebuild()
+        isLoaded = true
+        if reveal { highlight(shown) }
+        scrollSerial += 1
+        scrollToMessageRequest = MessageScrollRequest(messageID: shown, serial: scrollSerial)
+        if shown != eventID, thread.rootID != nil { handOnChat() }
+    }
+
+    /// The thread roots of a page centred on one of them, nearest the middle first: the page is centred on the root
+    /// of the reply that isn't in it (Ruling 23).
+    private static func threadRoots(in page: EventsPage) -> [String] {
+        let middle = Double(page.events.count - 1) / 2
+        return page.events.enumerated().filter { $0.element.thread != nil }
+            .sorted { abs(Double($0.offset) - middle) < abs(Double($1.offset) - middle) }
+            .map(\.element.eventID)
+    }
+
+    /// With more than one thread on the page: which of them `replyID` is in, read from each thread's pages (at most
+    /// `ThreadModel.pagesToFindTarget` in all). The pane opens on the one that has it; if none does (deleted since),
+    /// it stays shut.
+    private func findThread(of replyID: String, among roots: [String], guessed: String, reveal: Bool) {
+        guard let room = roomID, let client = appModel.client else { return }
+        let owner = generation
+        Task { [weak self] in
+            var pages = 0
+            for root in roots {
+                var cursor: Cursor?
+                repeat {
+                    guard pages < ThreadModel.pagesToFindTarget else { return }
+                    pages += 1
+                    let page: EventsPage? = try? await client.call(
+                        "room.events", RoomEventsParams(roomID: room, thread: root, before: cursor,
+                                                        limit: ThreadModel.pageSize))
+                    guard let self, owner == self.generation, client === self.appModel.client else { return }
+                    guard let page else { break }
+                    if page.events.contains(where: { $0.eventID == replyID }) {
+                        self.openThread(root, at: replyID)
+                        if root != guessed {
+                            // The chat showed the root nearest the page's middle: show the one that has the reply.
+                            if reveal { self.highlight(root) }
+                            self.scrollSerial += 1
+                            self.scrollToMessageRequest = MessageScrollRequest(messageID: root, serial: self.scrollSerial)
+                        }
+                        return
+                    }
+                    cursor = page.before
+                } while cursor != nil
+            }
+        }
+    }
+
+    /// The view reached the bottom while away: reads the next newer page and adds it below.
+    public func loadNewer() {
+        guard isAwayFromLatest, let room = roomID, let cursor = newerCursor, !isLoadingNewer,
+              let client = appModel.client else { return }
+        isLoadingNewer = true
+        let owner = generation
+        let epoch = pageEpoch
+        Task { [weak self] in
+            let page: EventsPage?
+            do {
+                page = try await client.call(
+                    "room.events", self?.eventsParams(room: room, after: cursor, limit: Self.pageSize)
+                        ?? RoomEventsParams(roomID: room, after: cursor, limit: Self.pageSize))
+            } catch {
+                page = nil // reaching the bottom again tries again
+            }
+            guard let self, owner == self.generation else { return }
+            self.isLoadingNewer = false
+            // The window may have been dropped ("Jump to latest", a resync) while this was out: then it joins nothing.
+            guard client === self.appModel.client, epoch == self.pageEpoch, self.isAwayFromLatest, let page else {
+                if page != nil { self.staleAnswerDropped?() }
+                return
+            }
+            for event in page.events {
+                self.events[event.eventID] = event
+                self.seenIDs.insert(event.eventID)
+            }
+            self.newerCursor = page.after
+            if page.after == nil { self.reachedLatest() }
+            self.rebuild()
+        }
+    }
+
+    /// The window reaches the newest message: the chat is live again, from here on as one opened at its newest.
+    private func reachedLatest() {
+        anchorID = nil
+        newerCursor = nil
+        isAwayFromLatest = false
+        hasNewerWhileAway = false
+        firstNewest = false
+        // What was unread is still unread (nothing was marked while away): the divider goes above it. Counted now,
+        // before this chat is marked read. When something came while away, the count includes messages the
+        // window doesn't have yet, so the divider waits for the newest page that brings them.
+        unreadAtOpen = roomID.map { unreadCount($0) } ?? 0
+        if missedChanges {
+            missedChanges = false
+            firstUnreadID = nil
+            dividerOnNewest = true
+            requestRefetch()
+        } else {
+            firstUnreadID = Timeline.firstUnreadID(events: Array(events.values), me: Timeline.meUserID,
+                                                   unread: unreadAtOpen, now: now())
+        }
+        if attention.isLooking { markRead() } else if !incognitoIsOn { needsRead = true }
+    }
+
+    /// Lets go of the window and reads the newest page instead, as when the chat was opened.
+    private func leaveWindow(scrollDown: Bool) {
+        anchorID = nil
+        windowLoaded = false
+        newerCursor = nil
+        missedChanges = false
+        isAwayFromLatest = false
+        hasNewerWhileAway = false
+        newMessageCount = 0
+        clearHighlight()
+        pageEpoch += 1 // older and newer pages of the window join nothing now
+        dropPending = true
+        firstNewest = true
+        unreadAtOpen = roomID.map { unreadCount($0) } ?? 0
+        needsRead = !incognitoIsOn
+        scrollDownOnNewest = scrollDown
+        requestRefetch()
+    }
+
+    private func highlight(_ eventID: String) {
+        highlightTask?.cancel()
+        highlightedMessageID = eventID
+        let sleep = self.sleep
+        highlightTask = Task { [weak self] in
+            do {
+                try await sleep(Self.highlightDuration)
+            } catch {
+                return // a newer highlight, or another chat, took over
+            }
+            guard let self, !Task.isCancelled else { return }
+            self.highlightedMessageID = nil
+            self.highlightTask = nil
+        }
+    }
+
+    private func clearHighlight() {
+        highlightTask?.cancel()
+        highlightTask = nil
+        highlightedMessageID = nil
+    }
+
+    // MARK: - Older messages
+
+    /// Reads the next older page, when the view scrolls to the top.
+    public func loadOlder() {
+        guard let room = roomID, let cursor = olderCursor, !isLoadingOlder, let client = appModel.client else { return }
+        isLoadingOlder = true
+        olderFailed = false
+        let owner = generation
+        let epoch = pageEpoch
+        Task { [weak self] in
+            let page: EventsPage?
+            do {
+                page = try await client.call(
+                    "room.events", self?.eventsParams(room: room, before: cursor, limit: Self.pageSize)
+                        ?? RoomEventsParams(roomID: room, before: cursor, limit: Self.pageSize))
+            } catch {
+                page = nil
+            }
+            guard let self, owner == self.generation else { return }
+            self.isLoadingOlder = false
+            // The pages may have been dropped (a resync) while this was out: then it joins nothing.
+            guard client === self.appModel.client, epoch == self.pageEpoch else { return }
+            guard let page else {
+                self.olderFailed = true
+                return
+            }
+            for event in page.events {
+                self.events[event.eventID] = event
+                self.seenIDs.insert(event.eventID)
+            }
+            self.olderPagesLoaded = true
+            self.olderCursor = page.before
+            self.hasOlder = page.before != nil
+            self.rebuild()
+            // Pages are read by cursor, not by count: one with no events (cut to stay under 1 MiB, or every
+            // message in it deleted for me) and a cursor further back reads on.
+            if page.events.isEmpty, let next = page.before, next != cursor { self.loadOlder() }
+        }
+    }
+
+    /// A message of mine was sent from one of this chat's composers.
+    private func sent(_ eventID: String, in room: String) {
+        guard room == roomID, !repliesRead.contains(eventID) else { return }
+        mySends.insert(eventID)
+        countReplies() // the page that shows it gone may have come first
+    }
+
+    /// Counts the replies that have gone: my sends from this chat's composers whose event (the chat's, or the thread
+    /// pane's) says it went. Each is counted once; any new one reads the chat (`readAfterReply`). Nothing else is a
+    /// reply (Ruling 24): not a scheduled message the engine sends at its time, nor one of mine from another device.
+    private func countReplies() {
+        // The event's own status, not the status line: only my newest message shows one.
+        var replies = mySends.filter { id in
+            (events[id] ?? thread.event(id)).map { StatusLine.of(status: $0.status, reason: $0.statusReason).hasGone }
+                ?? false
+        }
+        mySends.subtract(replies)
+        replies.subtract(repliesRead)
+        guard !replies.isEmpty else { return }
+        repliesRead.formUnion(replies)
+        readAfterReply()
+    }
+
+    /// A reply reads a chat that Incognito or Mark as Unread kept unread (the networks mark it read on a reply
+    /// anyway, surprise 7). Otherwise the chat is read as usual and there is nothing to do.
+    private func readAfterReply() {
+        guard holdsRead || incognitoIsOn else { return }
+        holdsRead = false
+        markRead(reply: true)
+    }
+
+    /// Quitting: the chat's composer and the thread pane's each stop my typing, and this returns once those
+    /// room.setTyping calls have been answered (each is bounded: `EngineMessageSender.typingTimeout`).
+    public func stopTyping() async {
+        for target in [composer, thread.composer] {
+            target.endTyping()
+            await target.voiceRecorder.cancel()
+        }
+        for target in [composer, thread.composer] { await target.waitForTyping() }
+    }
+
+    // MARK: - Incognito
+
+    /// Incognito is on: the setting, and the plan has it. The composer's mark shows while this is (and "Show the
+    /// incognito mark in the message box" is on).
+    public var incognitoIsOn: Bool { preferences?.incognito == true && isEntitled(.incognito) }
+
+    /// "Turn on incognito mode" and "Turn off incognito mode", from Settings and the command bar. On needs the plan.
+    /// Turning it on while my typing shows asks whether to hide that too (`asksToHideTyping`). Inferred (inventory
+    /// 01 §7 "asks whether to also hide typing"): the question's wording is Vitruvian Courier's.
+    public func setIncognito(_ on: Bool) {
+        guard !isLocked, let preferences, preferences.incognito != on else { return }
+        if on, !isEntitled(.incognito) { return }
+        preferences.incognito = on
+        asksToHideTyping = on && preferences.showTyping
+    }
+
+    /// The answer to `hideTypingQuestion`: Hide Typing turns "Show recipients I'm typing" off; Keep Showing leaves it.
+    public func answerHideTyping(_ hide: Bool) {
+        guard asksToHideTyping else { return }
+        asksToHideTyping = false
+        if hide { preferences?.showTyping = false }
+    }
+
+    public static var hideTypingQuestion: String { String(localized: "Also hide that you’re typing?") }
+    public static var hideTypingButton: String { String(localized: "Hide Typing") }
+    public static var keepShowingTypingButton: String { String(localized: "Keep Showing") }
+
+    // MARK: - Reading and scrolling
+
+    /// The window of the open chat became key, or stopped being key (or the conversation view went away).
+    public func setWindowKey(_ isKey: Bool) {
+        attention.setWindowKey(isKey)
+    }
+
+    /// The person is looking again: what waited for them is read now.
+    private func personReturned() {
+        guard !isLocked else { return }
+        if needsRead, isLoaded { markRead() }
+        if thread.roomID != nil, thread.roomID == roomID { thread.markReadIfNeeded() }
+    }
+
+    /// Tells the engine the open chat is read. The engine does nothing for a chat that already is. Not after Mark as
+    /// Unread from a message that stayed on the chat, until it is reopened, a new message comes or I reply; and not
+    /// while Incognito is on, unless I replied (`reply`).
+    private func markRead(reply: Bool = false) {
+        guard !isLocked else { return }
+        needsRead = false
+        guard !holdsRead, reply || !incognitoIsOn, let room = roomID, let client = appModel.client else { return }
+        let rooms = appModel.scopeRoomIDs(for: room).filter { !$0.hasPrefix("merge:") }
+        guard !rooms.isEmpty else { return }
+        readsSent += 1
+        Task {
+            // A failure is ignored: the unread count shows the truth the next time the inbox reads.
+            for targetRoom in rooms {
+                let _: Empty? = try? await client.call("room.markRead", MarkReadParams(roomID: targetRoom))
+            }
+        }
+    }
+
+    /// The view says whether the newest message is on screen.
+    public func scrolled(toBottom: Bool) {
+        guard isAtBottom != toBottom else { return }
+        isAtBottom = toBottom
+        if toBottom { newMessageCount = 0 }
+    }
+
+    /// ⌘↓, the jump button ("Jump to latest" while away), and sending: scroll to the newest message. While the
+    /// chat is held at a message, its window is dropped and the newest page read first; the view scrolls when it
+    /// is in.
+    public func jumpToBottom() {
+        if anchorID != nil {
+            leaveWindow(scrollDown: true)
+        } else {
+            jumpToBottomRequest += 1
+        }
+    }
+
+    // MARK: - Actions
+
+    /// Starts a reply to the message in the composer.
+    public func reply(to eventID: String) {
+        guard !isLocked else { return }
+        if let message = messagesByID[eventID], message.kind != .deleted {
+            composer.startReply(to: message.quoted)
+        }
+    }
+
+    /// ⌘R: replies to the selected message.
+    public func replyToSelected() {
+        guard !isLocked else { return }
+        guard let id = selectedMessageID else { return }
+        reply(to: id)
+    }
+
+    /// Nothing selected: a click on the selected message, Esc, or a click on the timeline's empty space. False when
+    /// nothing was, so Esc goes on to its next use.
+    @discardableResult
+    public func deselectMessage() -> Bool {
+        guard selectedMessageID != nil else { return false }
+        selectedMessageID = nil
+        return true
+    }
+
+    /// The selected message, as loaded.
+    public var selectedMessage: TimelineMessage? { selectedMessageID.flatMap(message) }
+
+    /// A message by its ID, looked for where it was acted on first (the chat, or the thread pane open on this
+    /// chat), then in the other: a reply is only in the pane, and a thread's root is in both.
+    public func message(_ eventID: String, from source: MessageSource) -> TimelineMessage? {
+        let pane = thread.roomID != nil && thread.roomID == roomID ? thread.message(eventID) : nil
+        switch source {
+        case .chat: return message(eventID) ?? pane
+        case .thread: return pane ?? message(eventID)
+        }
+    }
+
+    /// What Reply is for `message` in this chat: Reply, or where replies are thread replies (Slack), Reply in
+    /// Thread; nil where it has neither (an SMS chat).
+    public func replyAction(for message: TimelineMessage) -> MessageAction? {
+        let offered = availableActions(for: message).actions
+        if offered.contains(.reply) { return .reply }
+        if offered.contains(.replyInThread) { return .replyInThread }
+        return nil
+    }
+
+    /// ↑ with "Move focus to the message list": selects the message before the selected one, or with none selected
+    /// the newest, so ↑↑↑ walks up the chat. False with no message to select.
+    @discardableResult
+    public func selectOlderMessage() -> Bool {
+        guard !isLocked else { return false }
+        let ids = items.compactMap { item -> String? in if case let .message(message) = item { message.id } else { nil } }
+        guard let newest = ids.last else { return false }
+        guard let selected = selectedMessageID, let index = ids.firstIndex(of: selected) else {
+            selectedMessageID = newest
+            return true
+        }
+        if index > 0 { selectedMessageID = ids[index - 1] }
+        return true
+    }
+
+    /// What `message` offers in the open chat now, and what it shows greyed with why. Reply Privately only in a chat
+    /// known to be a group, on a network that runs this session.
+    public func availableActions(for message: TimelineMessage) -> (actions: [MessageAction], unavailable: [Unavailable]) {
+        MessageActions.available(for: message, in: features, network: network, now: now(), locale: locale,
+                                 isDirect: isDirectChat ?? true, networkRunning: networkRuns)
+    }
+
+    /// The open chat's network runs this session: the engine has started it (it may still be signing in).
+    private var networkRuns: Bool {
+        guard let account = appModel.accounts.first(where: { $0.network == network }) else { return false }
+        return account.state != .notStarted && account.state != .starting
+    }
+
+    /// ⌘T (02 §2.2 "Message: Edit"): edits the selected message if it is mine and can be edited, else my newest
+    /// message the chat still lets me edit. False when there is none.
+    @discardableResult
+    public func editSelectedOrLast() -> Bool {
+        guard !isLocked else { return false }
+        if let selected = selectedMessage, availableActions(for: selected).actions.contains(.edit) {
+            composer.startEditing(selected)
+            return true
+        }
+        for case let .message(message) in items.reversed() where message.mine {
+            if availableActions(for: message).actions.contains(.edit) {
+                composer.startEditing(message)
+                return true
+            }
+        }
+        return false
+    }
+
+    /// ⌘⇧H: the selected message's first link, for the view to open; nil when it has none.
+    public func firstLinkOfSelected() -> URL? {
+        guard !isLocked else { return nil }
+        guard let selected = selectedMessage, availableActions(for: selected).actions.contains(.openFirstLink) else {
+            return nil
+        }
+        return MessageActions.firstLink(in: selected.rich)
+    }
+
+    /// ⌘⇧R: reacts to the selected message with the quick reaction (Settings ▸ Messages).
+    public func quickReactToSelected() async {
+        guard !isLocked else { return }
+        guard let selected = selectedMessage, availableActions(for: selected).actions.contains(.react) else { return }
+        await react(to: selected.id, key: preferences?.quickReaction ?? "❤️")
+    }
+
+    /// ⌘↓ ("Show Replies"): on a selected thread root, opens its thread; otherwise scrolls to the newest message.
+    public func showRepliesOrJumpToBottom() {
+        guard !isLocked else { return }
+        if let selected = selectedMessage, selected.thread != nil {
+            openThread(selected.id)
+        } else {
+            jumpToBottom()
+        }
+    }
+
+    /// Reads the open chat again, and the thread pane open on it: after an action whose result the engine stores
+    /// without telling (a bookmark, Delete for Me) or tells only for the event it changed (a vote, an unsend).
+    public func refresh() {
+        requestRefetch()
+        if let room = roomID, thread.roomID == room { thread.refresh() }
+        if isShowingChatInfo || chatInfo != nil {
+            Task { [weak self] in await self?.refreshChatInfo() }
+        }
+    }
+
+    // MARK: - Chat Info, Bookmarks & Export Chat
+
+    /// Shows or hides the Chat Info right pane (⌘⇧I), loading `room.info` and bookmarks when opened.
+    public func toggleChatInfo() {
+        guard !isLocked else { return }
+        isShowingChatInfo.toggle()
+        if isShowingChatInfo {
+            Task { [weak self] in await self?.refreshChatInfo() }
+        }
+    }
+
+    /// Shows or hides the Calendar right pane (`⌘⌥K`), loading the selected day's agenda on demand when opened.
+    public func toggleCalendar() {
+        guard !isLocked else { return }
+        isShowingCalendar.toggle()
+        if isShowingCalendar {
+            Task { [weak self] in await self?.calendarBridge.loadSelectedDay() }
+        }
+    }
+
+    // MARK: - AI Context & Summarize
+
+    /// Binds this conversation's composers and voice-note transcript store to a shared `AIProviderStore`.
+    public func bindAIProviderStore(_ store: AIProviderStore) {
+        voiceNoteTranscripts = store.voiceNoteTranscripts
+        composer.bindAIProviderStore(store)
+        thread.composer.bindAIProviderStore(store)
+    }
+
+    /// Loaded `TimelineMessage` items in the open chat (oldest first).
+    public var timelineMessages: [TimelineMessage] {
+        items.compactMap { item in
+            if case let .message(msg) = item { return msg }
+            return nil
+        }
+    }
+
+    /// Builds `AIChatContext` from the open chat's title and loaded text messages.
+    public var aiChatContext: AIChatContext {
+        let title = chatInfo?.name
+            ?? roomID.flatMap { chat($0)?.name }
+            ?? otherPerson
+            ?? ""
+        return AIChatContext(title: title, timelineMessages: timelineMessages)
+    }
+
+    /// Opens the AI right pane and summarizes the open chat's recent messages using `composer.aiProvider`.
+    public func summarizeChat() {
+        guard !isLocked else { return }
+        isShowingAIPane = true
+        let provider = composer.aiProvider
+        let prefs = composer.aiPreferences
+        guard provider.isAvailable else {
+            isSummarizingChat = false
+            chatSummary = nil
+            chatSummaryError = provider.unavailableReason
+            return
+        }
+
+        cancelSummarizeChat()
+        let context = aiChatContext
+        let cappedCount = min(context.messages.count, AIPrompts.maxSummarizeMessages)
+        let startedRoom = roomID
+        summarizeToken += 1
+        let token = summarizeToken
+        isSummarizingChat = true
+        summarizingMessageCount = cappedCount
+        chatSummaryError = nil
+
+        let provenance = provider.provenanceFooter(preferences: prefs)
+        let locationNote: String
+        if let configured = provider as? ConfiguredAIProvider {
+            locationNote = configured.kind.summaryLocationNote()
+        } else {
+            locationNote = prefs.selectedEngine.summaryLocationNote()
+        }
+        let collapsedHeader = cappedCount == 1
+            ? String(localized: "Summary of 1 message · \(locationNote)")
+            : String(localized: "Summary of \(cappedCount) messages · \(locationNote)")
+
+        summarizeTask = Task { @MainActor [weak self] in
+            let disposition = await provider.summarize(context: context)
+            guard !Task.isCancelled,
+                  let self,
+                  self.roomID == startedRoom,
+                  self.summarizeToken == token
+            else {
+                return
+            }
+            self.isSummarizingChat = false
+            self.summarizeTask = nil
+            switch disposition {
+            case let .text(summaryText):
+                self.chatSummary = ChatAISummary(
+                    text: AIOutputFormatter.cleanMarkdown(summaryText),
+                    messageCount: cappedCount,
+                    collapsedHeader: collapsedHeader,
+                    provenance: provenance
+                )
+                self.chatSummaryError = nil
+            case let .unavailable(reason):
+                self.chatSummary = nil
+                self.chatSummaryError = reason
+            }
+        }
+    }
+
+    /// Cancels an in-flight AI chat summary request.
+    public func cancelSummarizeChat() {
+        summarizeToken += 1
+        summarizeTask?.cancel()
+        summarizeTask = nil
+        isSummarizingChat = false
+    }
+
+    /// Waits for an in-flight chat summary request to finish (for deterministic tests).
+    public func waitForSummary() async {
+        await summarizeTask?.value
+    }
+
+    /// Opens the Chat Info pane if closed and asks its filter field to take focus.
+    public func focusChatInfoSearch() {
+        guard !isLocked else { return }
+        if !isShowingChatInfo {
+            isShowingChatInfo = true
+            Task { [weak self] in await self?.refreshChatInfo() }
+        }
+        focusChatInfoSearchRequest += 1
+    }
+
+    /// Reads `room.info` and the chat's bookmarked messages (`search.query` with `sections: [.bookmarks]`) for the
+    /// open chat. When `force` is true, passes `refresh: true` so the bridge refreshes live participant/room info.
+    public func refreshChatInfo(force: Bool = false) async {
+        guard !isLocked, let room = roomID else { return }
+        let targetRoom = activeReplyRoomID ?? room
+        isRefreshingChatInfo = true
+        defer { isRefreshingChatInfo = false }
+        let (info, bookmarks) = await fetchChatInfo(for: targetRoom, force: force)
+        guard !isLocked, room == roomID else { return }
+        if let info {
+            chatInfo = info
+        }
+        chatInfoBookmarks = bookmarks
+    }
+
+    /// Reads `room.info` and bookmarked messages for a specific `roomID` (used by both the right pane and standalone
+    /// Chat Info windows).
+    public func fetchChatInfo(for targetRoom: String, force: Bool = false) async -> (info: RoomInfoResult?, bookmarks: [MessageHit]) {
+        guard !isLocked, let client = appModel.client else { return (nil, []) }
+        async let infoCall: RoomInfoResult? = try? client.call(
+            "room.info",
+            RoomInfoParams(roomID: targetRoom, refresh: force ? true : nil)
+        )
+        async let searchCall: SearchResult? = try? client.call(
+            "search.query",
+            SearchParams(
+                text: "",
+                sections: [.bookmarks],
+                filters: SearchFilters(roomIDs: [targetRoom])
+            )
+        )
+        let info = await infoCall
+        let search = await searchCall
+        guard client === appModel.client else { return (nil, []) }
+        return (info, search?.bookmarks?.hits ?? [])
+    }
+
+    /// Opens the chat at `eventID` (for jumping to a pinned or bookmarked message from Chat Info).
+    public func openEvent(_ eventID: String, in targetRoomID: String? = nil) {
+        guard !isLocked, let room = targetRoomID ?? roomID else { return }
+        appModel.open(.message(roomID: room, eventID: eventID))
+    }
+
+    /// Exports the chat's messages to `url` via `room.export`. Never writes anywhere the person didn't pick.
+    @discardableResult
+    public func exportChat(roomID targetRoomID: String? = nil, to url: URL) async throws -> Int {
+        guard !isLocked else {
+            throw EngineError.rpc(.badValue, message: "Vitruvian Courier is locked", reason: "locked")
+        }
+        try AppLockGate.shared.ensureUnlocked(.export, lifecycle: lifecycle)
+        guard let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
+            throw EngineError.notConnected
+        }
+        let result: RoomExportResult = try await client.call(
+            "room.export",
+            RoomExportParams(roomID: room, path: url.path)
+        )
+        return result.messagesWritten
+    }
+
+    // MARK: - Edit Group / Chat, Add Participants, Member Actions, Leave, Delete & Report Spam (Task 10)
+
+    /// Opens the Edit Group / Edit Chat sheet for `info` (or the open chat's `chatInfo`).
+    public func beginEditChat(info: RoomInfoResult? = nil, roomID targetRoomID: String? = nil) async {
+        guard !isLocked else { return }
+        let resolvedInfo: RoomInfoResult?
+        if let info {
+            resolvedInfo = info
+        } else if let targetRoomID, chatInfo?.roomID != targetRoomID {
+            resolvedInfo = await fetchChatInfo(for: targetRoomID, force: false).info
+        } else if let chatInfo {
+            resolvedInfo = chatInfo
+        } else if let target = targetRoomID ?? activeReplyRoomID ?? roomID {
+            resolvedInfo = await fetchChatInfo(for: target, force: false).info
+        } else {
+            resolvedInfo = nil
+        }
+
+        if let resolvedInfo {
+            activeEditGroupDraft = EditGroupDraft(info: resolvedInfo)
+        } else if let target = targetRoomID ?? activeReplyRoomID ?? roomID {
+            let row = chat(target)
+            let roomFeatures: ChatFeatures = (target == roomID) ? features : .noFeatures
+            let canEveryone = roomFeatures.canSetName || roomFeatures.canSetTopic || roomFeatures.canSetAvatar
+            let isDirectValue: Bool = row?.isDirect ?? (isDirectChat ?? false)
+            let nameValue: String = row?.name ?? ""
+            let avatarValue: String = row?.avatarPath ?? ""
+            let remoteNameValue: String = row?.remoteName ?? nameValue
+            let localNameValue: String = row?.localName ?? ""
+            let localAvatarValue: String = row?.localAvatarPath ?? ""
+            let networkAvatarValue: String = localAvatarValue.isEmpty ? avatarValue : ""
+            let initialScope: EditGroupScope = canEveryone ? .forEveryone : .justForMe
+            let initialAvatarValue: String = (initialScope == .forEveryone)
+                ? networkAvatarValue
+                : (!localAvatarValue.isEmpty ? localAvatarValue : networkAvatarValue)
+            let networkValue: String = row?.network ?? network
+            activeEditGroupDraft = EditGroupDraft(
+                roomID: target,
+                scope: initialScope,
+                name: nameValue,
+                topic: "",
+                avatarPath: initialAvatarValue,
+                network: networkValue,
+                isDirect: isDirectValue,
+                features: roomFeatures,
+                remoteName: remoteNameValue,
+                localName: localNameValue,
+                remoteTopic: "",
+                remoteAvatarPath: networkAvatarValue,
+                localAvatarPath: localAvatarValue
+            )
+        }
+    }
+
+    /// Opens the Add Participants sheet for `info` (or the open chat's `chatInfo`).
+    public func beginAddParticipants(info: RoomInfoResult? = nil) async {
+        guard !isLocked else { return }
+        if let info {
+            activeAddParticipantsRoom = info
+            return
+        }
+        if let chatInfo {
+            activeAddParticipantsRoom = chatInfo
+            return
+        }
+        if let target = activeReplyRoomID ?? roomID, let fetched = await fetchChatInfo(for: target, force: false).info {
+            activeAddParticipantsRoom = fetched
+        }
+    }
+
+    /// Opens the Report Spam sheet for `info` or `targetRoomID`, with `alsoLeaveOrDelete` unticked by default.
+    public func beginReportSpam(info: RoomInfoResult? = nil, roomID targetRoomID: String? = nil) async {
+        guard !isLocked else { return }
+        let resolvedInfo: RoomInfoResult?
+        if let info {
+            resolvedInfo = info
+        } else if let targetRoomID, chatInfo?.roomID != targetRoomID {
+            resolvedInfo = await fetchChatInfo(for: targetRoomID, force: false).info
+        } else if let chatInfo {
+            resolvedInfo = chatInfo
+        } else if let target = targetRoomID ?? activeReplyRoomID ?? roomID {
+            resolvedInfo = await fetchChatInfo(for: target, force: false).info
+        } else {
+            resolvedInfo = nil
+        }
+
+        if let resolvedInfo {
+            activeReportSpamDraft = ReportSpamDraft(
+                roomID: resolvedInfo.roomID,
+                canLeave: resolvedInfo.features.canLeave,
+                canDelete: resolvedInfo.features.canDelete,
+                network: resolvedInfo.network,
+                chatName: resolvedInfo.name,
+                isDirect: resolvedInfo.isDirect
+            )
+        } else if let target = targetRoomID ?? activeReplyRoomID ?? roomID {
+            let row = chat(target)
+            let roomFeatures: ChatFeatures = (target == roomID) ? features : .noFeatures
+            let isDirectValue: Bool = row?.isDirect ?? (isDirectChat ?? false)
+            activeReportSpamDraft = ReportSpamDraft(
+                roomID: target,
+                canLeave: roomFeatures.canLeave,
+                canDelete: roomFeatures.canDelete,
+                network: row?.network ?? network,
+                chatName: row?.name ?? "",
+                isDirect: isDirectValue
+            )
+        }
+    }
+
+    /// Saves edits from `EditGroupSheet`:
+    /// - `.forEveryone`: dispatches `room.setName`, `room.setTopic`, and/or `room.setAvatar` according to `draft.features`.
+    /// - `.justForMe`: dispatches `room.setLocalOverride` with `local_name` and `local_avatar_path`.
+    @discardableResult
+    public func saveGroupEdit(_ draft: EditGroupDraft) async -> Bool {
+        guard !isLocked, let client = appModel.client else { return false }
+        let owner = generation
+        let targetNetwork = !draft.network.isEmpty ? draft.network : (chat(draft.roomID)?.network ?? network)
+        do {
+            switch draft.scope {
+            case .forEveryone where draft.canEditForEveryone:
+                if draft.features.canSetName, draft.name != draft.remoteName || (draft.remoteName.isEmpty && !draft.name.isEmpty) {
+                    let _: Empty = try await client.call(
+                        "room.setName",
+                        RoomTextParams(roomID: draft.roomID, text: draft.name)
+                    )
+                }
+                if draft.features.canSetTopic, draft.topic != draft.remoteTopic {
+                    let _: Empty = try await client.call(
+                        "room.setTopic",
+                        RoomTextParams(roomID: draft.roomID, text: draft.topic)
+                    )
+                }
+                if draft.features.canSetAvatar, !draft.avatarPath.isEmpty, draft.avatarPath != draft.remoteAvatarPath {
+                    let _: Empty = try await client.call(
+                        "room.setAvatar",
+                        RoomAvatarParams(roomID: draft.roomID, path: draft.avatarPath)
+                    )
+                }
+            case .forEveryone, .justForMe:
+                let trimmedName = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                let trimmedRemoteName = draft.remoteName.trimmingCharacters(in: .whitespacesAndNewlines)
+                let localName = (trimmedName == trimmedRemoteName) ? "" : trimmedName
+                let trimmedAvatar = draft.avatarPath.trimmingCharacters(in: .whitespacesAndNewlines)
+                let localAvatarPath: String
+                if !draft.remoteAvatarPath.isEmpty && trimmedAvatar == draft.remoteAvatarPath {
+                    localAvatarPath = ""
+                } else if trimmedAvatar.isEmpty && !draft.localAvatarPath.isEmpty {
+                    localAvatarPath = draft.localAvatarPath
+                } else {
+                    localAvatarPath = trimmedAvatar
+                }
+                let _: Empty = try await client.call(
+                    "room.setLocalOverride",
+                    RoomLocalOverrideParams(
+                        roomID: draft.roomID,
+                        localName: localName,
+                        localAvatarPath: localAvatarPath
+                    )
+                )
+            }
+        } catch {
+            guard owner == generation, client === appModel.client else { return false }
+            onToast(
+                EngineErrorText.text(
+                    for: error,
+                    network: targetNetwork,
+                    fallback: String(localized: "Couldn’t save chat changes.")
+                )
+            )
+            return false
+        }
+        guard owner == generation else { return false }
+        activeEditGroupDraft = nil
+        refresh()
+        return true
+    }
+
+    /// Resets the chat's local override (`room.setLocalOverride` with empty name and avatar path).
+    @discardableResult
+    public func resetLocalOverride(roomID targetRoomID: String? = nil, network targetNetwork: String? = nil) async -> Bool {
+        guard !isLocked, let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
+            return false
+        }
+        let owner = generation
+        let resolvedNetwork = targetNetwork ?? chat(room)?.network ?? network
+        do {
+            let _: Empty = try await client.call(
+                "room.setLocalOverride",
+                RoomLocalOverrideParams(roomID: room, localName: "", localAvatarPath: "")
+            )
+        } catch {
+            guard owner == generation, client === appModel.client else { return false }
+            onToast(
+                EngineErrorText.text(
+                    for: error,
+                    network: resolvedNetwork,
+                    fallback: String(localized: "Couldn’t reset the chat name.")
+                )
+            )
+            return false
+        }
+        guard owner == generation else { return false }
+        activeEditGroupDraft = nil
+        refresh()
+        return true
+    }
+
+    /// Reports `draft.roomID` as spam via `room.reportSpam(room_id:leave_or_delete:)`.
+    @discardableResult
+    public func reportSpam(_ draft: ReportSpamDraft) async -> Bool {
+        guard !isLocked, let client = appModel.client else { return false }
+        let owner = generation
+        let resolvedNetwork = !draft.network.isEmpty ? draft.network : (chat(draft.roomID)?.network ?? network)
+        do {
+            let _: Empty = try await client.call(
+                "room.reportSpam",
+                ReportSpamParams(roomID: draft.roomID, leaveOrDelete: draft.alsoLeaveOrDelete)
+            )
+        } catch {
+            guard owner == generation, client === appModel.client else { return false }
+            onToast(
+                EngineErrorText.text(
+                    for: error,
+                    network: resolvedNetwork,
+                    fallback: String(localized: "Couldn’t report the chat as spam.")
+                )
+            )
+            return false
+        }
+        guard owner == generation else { return false }
+        activeReportSpamDraft = nil
+        refresh()
+        return true
+    }
+
+    /// Invites `userIDs` into `targetRoomID` via `room.invite`.
+    @discardableResult
+    public func inviteParticipants(userIDs: [String], in targetRoomID: String? = nil) async -> Bool {
+        guard !isLocked,
+              !userIDs.isEmpty,
+              let room = targetRoomID ?? activeReplyRoomID ?? roomID,
+              let client = appModel.client else { return false }
+        let owner = generation
+        let resolvedNetwork = chat(room)?.network ?? chatInfo?.network ?? network
+        do {
+            let _: Empty = try await client.call(
+                "room.invite",
+                RoomInviteParams(roomID: room, userIDs: userIDs)
+            )
+        } catch {
+            guard owner == generation, client === appModel.client else { return false }
+            onToast(
+                EngineErrorText.text(
+                    for: error,
+                    network: resolvedNetwork,
+                    fallback: String(localized: "Couldn’t add participants.")
+                )
+            )
+            return false
+        }
+        guard owner == generation else { return false }
+        activeAddParticipantsRoom = nil
+        refresh()
+        return true
+    }
+
+    /// Queries `people.contacts` + `search.query(sections: [.inGroups])` for `AddParticipantsSheet`.
+    public func searchInviteCandidates(query: String, network targetNetwork: String, existingMemberIDs: Set<String> = []) async -> [ContactCandidate] {
+        guard !isLocked, let client = appModel.client else { return [] }
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        async let contactsCall: PeopleContactsResult? = try? client.call(
+            "people.contacts",
+            PeopleContactsParams(network: targetNetwork.isEmpty ? nil : targetNetwork, query: trimmed)
+        )
+        async let inGroupsCall: SearchResult? = trimmed.isEmpty ? nil : (try? client.call(
+            "search.query",
+            SearchParams(
+                text: trimmed,
+                sections: [.inGroups],
+                filters: targetNetwork.isEmpty ? nil : SearchFilters(networks: [targetNetwork])
+            )
+        ))
+        let contacts = await contactsCall?.contacts ?? []
+        let groupHits = await inGroupsCall?.inGroups ?? []
+        var seen = existingMemberIDs
+        var merged: [ContactCandidate] = []
+        for candidate in contacts where seen.insert(candidate.userID).inserted {
+            merged.append(candidate)
+        }
+        for hit in groupHits where seen.insert(hit.userID).inserted {
+            merged.append(
+                ContactCandidate(
+                    userID: hit.userID,
+                    name: hit.name,
+                    avatarPath: hit.avatarPath,
+                    network: hit.network,
+                    accountID: "",
+                    identifiers: [],
+                    roomID: hit.roomID
+                )
+            )
+        }
+        return merged
+    }
+
+    /// Promotes or demotes a group participant via `room.setAdmin`.
+    @discardableResult
+    public func setParticipantAdmin(userID: String, isAdmin: Bool, in targetRoomID: String? = nil) async -> Bool {
+        guard !isLocked, let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
+            return false
+        }
+        let owner = generation
+        let resolvedNetwork = chat(room)?.network ?? chatInfo?.network ?? network
+        do {
+            let _: Empty = try await client.call(
+                "room.setAdmin",
+                RoomAdminParams(roomID: room, userID: userID, isAdmin: isAdmin)
+            )
+        } catch {
+            guard owner == generation, client === appModel.client else { return false }
+            onToast(
+                EngineErrorText.text(
+                    for: error,
+                    network: resolvedNetwork,
+                    fallback: String(localized: "Couldn’t change admin status.")
+                )
+            )
+            return false
+        }
+        guard owner == generation else { return false }
+        refresh()
+        return true
+    }
+
+    /// Removes `userID` from `targetRoomID` via `room.kick`.
+    @discardableResult
+    public func removeParticipant(userID: String, reason: String? = nil, in targetRoomID: String? = nil) async -> Bool {
+        guard !isLocked, let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
+            return false
+        }
+        let owner = generation
+        let resolvedNetwork = chat(room)?.network ?? chatInfo?.network ?? network
+        do {
+            let _: Empty = try await client.call(
+                "room.kick",
+                RoomKickParams(roomID: room, userID: userID, reason: reason)
+            )
+        } catch {
+            guard owner == generation, client === appModel.client else { return false }
+            onToast(
+                EngineErrorText.text(
+                    for: error,
+                    network: resolvedNetwork,
+                    fallback: String(localized: "Couldn’t remove participant.")
+                )
+            )
+            return false
+        }
+        guard owner == generation else { return false }
+        refresh()
+        return true
+    }
+
+    /// Opens or creates a 1:1 direct chat with `userID` from `targetRoomID` via `room.directChat`.
+    @discardableResult
+    public func messageParticipant(userID: String, in targetRoomID: String? = nil) async -> String? {
+        guard !isLocked, let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
+            return nil
+        }
+        let owner = generation
+        let resolvedNetwork = chat(room)?.network ?? chatInfo?.network ?? network
+        do {
+            let result: RoomResult = try await client.call(
+                "room.directChat",
+                DirectChatParams(roomID: room, userID: userID)
+            )
+            guard owner == generation else { return nil }
+            appModel.open(.chat(roomID: result.roomID))
+            return result.roomID
+        } catch {
+            guard owner == generation, client === appModel.client else { return nil }
+            onToast(Self.describeDirectChatRefusal(error, network: resolvedNetwork))
+            return nil
+        }
+    }
+
+    /// Leaves `targetRoomID` via `room.leave`.
+    @discardableResult
+    public func leaveGroup(roomID targetRoomID: String? = nil) async -> Bool {
+        guard !isLocked, let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
+            return false
+        }
+        let owner = generation
+        let resolvedNetwork = chat(room)?.network ?? chatInfo?.network ?? network
+        do {
+            let _: Empty = try await client.call("room.leave", RoomParams(roomID: room))
+        } catch {
+            guard owner == generation, client === appModel.client else { return false }
+            onToast(
+                EngineErrorText.text(
+                    for: error,
+                    network: resolvedNetwork,
+                    fallback: String(localized: "Couldn’t leave the group.")
+                )
+            )
+            return false
+        }
+        guard owner == generation else { return false }
+        refresh()
+        return true
+    }
+
+    /// Deletes `targetRoomID` via `room.delete`.
+    @discardableResult
+    public func deleteChat(roomID targetRoomID: String? = nil) async -> Bool {
+        guard !isLocked, let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
+            return false
+        }
+        let owner = generation
+        let resolvedNetwork = chat(room)?.network ?? chatInfo?.network ?? network
+        do {
+            let _: Empty = try await client.call("room.delete", RoomParams(roomID: room))
+        } catch {
+            guard owner == generation, client === appModel.client else { return false }
+            onToast(
+                EngineErrorText.text(
+                    for: error,
+                    network: resolvedNetwork,
+                    fallback: String(localized: "Couldn’t delete the chat.")
+                )
+            )
+            return false
+        }
+        guard owner == generation else { return false }
+        refresh()
+        return true
+    }
+
+    /// Stages a confirmation alert to leave a group.
+    public func requestLeaveGroup(info: RoomInfoResult? = nil, roomID targetRoomID: String? = nil) {
+        guard !isLocked else { return }
+        let resolvedRoom = info?.roomID ?? targetRoomID ?? activeReplyRoomID ?? roomID ?? ""
+        guard !resolvedRoom.isEmpty else { return }
+        let name = info?.name ?? chat(resolvedRoom)?.name ?? chatInfo?.name ?? ""
+        let net = info?.network ?? chat(resolvedRoom)?.network ?? chatInfo?.network ?? network
+        pendingRoomConfirmation = .leaveGroup(roomID: resolvedRoom, groupName: name, network: net)
+    }
+
+    /// Stages a confirmation alert to delete a chat.
+    public func requestDeleteChat(info: RoomInfoResult? = nil, roomID targetRoomID: String? = nil) {
+        guard !isLocked else { return }
+        let resolvedRoom = info?.roomID ?? targetRoomID ?? activeReplyRoomID ?? roomID ?? ""
+        guard !resolvedRoom.isEmpty else { return }
+        let name = info?.name ?? chat(resolvedRoom)?.name ?? chatInfo?.name ?? ""
+        let direct = info?.isDirect ?? chat(resolvedRoom)?.isDirect ?? isDirectChat ?? false
+        let feats = info?.features ?? ((resolvedRoom == roomID) ? features : (chatInfo?.features ?? .noFeatures))
+        let net = info?.network ?? chat(resolvedRoom)?.network ?? chatInfo?.network ?? network
+        pendingRoomConfirmation = .deleteChat(
+            roomID: resolvedRoom,
+            chatName: name,
+            isDirect: direct,
+            features: feats,
+            network: net
+        )
+    }
+
+    /// Stages a confirmation alert to remove `member` from a group.
+    public func requestRemoveParticipant(_ member: Member, info: RoomInfoResult? = nil) {
+        guard !isLocked else { return }
+        let resolvedRoom = info?.roomID ?? activeReplyRoomID ?? roomID ?? ""
+        guard !resolvedRoom.isEmpty else { return }
+        let groupName = info?.name ?? chat(resolvedRoom)?.name ?? chatInfo?.name ?? ""
+        let net = info?.network ?? chat(resolvedRoom)?.network ?? chatInfo?.network ?? network
+        pendingRoomConfirmation = .removeParticipant(
+            roomID: resolvedRoom,
+            member: member,
+            groupName: groupName,
+            network: net
+        )
+    }
+
+    /// Executes the currently staged `pendingRoomConfirmation`.
+    public func confirmRoomAction() async {
+        guard !isLocked, let request = pendingRoomConfirmation else {
+            pendingRoomConfirmation = nil
+            return
+        }
+        pendingRoomConfirmation = nil
+        switch request {
+        case let .leaveGroup(roomID, _, _):
+            _ = await leaveGroup(roomID: roomID)
+        case let .deleteChat(roomID, _, _, _, _):
+            _ = await deleteChat(roomID: roomID)
+        case let .removeParticipant(roomID, member, _, _):
+            _ = await removeParticipant(userID: member.userID, in: roomID)
+        }
+    }
+
+    public func dismissRoomConfirmation() {
+        pendingRoomConfirmation = nil
+    }
+
+    // MARK: - Sender Hover Card (Task 12)
+
+    /// Tracks pointer hover on a message's sender avatar or name.
+    /// Waits `senderHoverDelay` (0.5 s) of steady hover before opening the card, and closes when the pointer
+    /// leaves both the trigger and the card.
+    public func setTriggerHovered(_ hovering: Bool, for message: TimelineMessage) {
+        guard !message.mine else { return }
+        if hovering, isLocked { return }
+        isHoveringSenderTrigger = hovering
+        if hovering {
+            if activeSenderCard?.messageID == message.id { return }
+            senderHoverTask?.cancel()
+            let delay = Self.senderHoverDelay
+            let sleep = self.sleep
+            senderHoverTask = Task { @MainActor [weak self] in
+                do {
+                    try await sleep(delay)
+                } catch {
+                    return
+                }
+                guard !Task.isCancelled, let self, self.isHoveringSenderTrigger else { return }
+                await self.openSenderCard(for: message)
+            }
+        } else {
+            senderHoverTask?.cancel()
+            senderHoverTask = nil
+            if !isHoveringSenderTrigger && !isHoveringSenderCard {
+                activeSenderCard = nil
+                senderCardSharedGroups = []
+            }
+        }
+    }
+
+    /// Tracks pointer hover on the open sender hover card popover.
+    public func setCardHovered(_ hovering: Bool) {
+        isHoveringSenderCard = hovering
+        if !hovering && !isHoveringSenderTrigger && !isHoveringSenderCard {
+            senderHoverTask?.cancel()
+            senderHoverTask = nil
+            activeSenderCard = nil
+            senderCardSharedGroups = []
+        }
+    }
+
+    /// Dismisses the sender hover card immediately.
+    public func dismissSenderCard() {
+        senderHoverTask?.cancel()
+        senderHoverTask = nil
+        isHoveringSenderTrigger = false
+        isHoveringSenderCard = false
+        activeSenderCard = nil
+        senderCardSharedGroups = []
+    }
+
+    /// Opens the sender hover card for `message`, loading on-demand Contacts match and shared groups.
+    public func openSenderCard(for message: TimelineMessage) async {
+        guard !isLocked else { return }
+        let targetRoom = !message.roomID.isEmpty ? message.roomID : (activeReplyRoomID ?? roomID ?? "")
+        if chatInfo == nil, !targetRoom.isEmpty, let fetched = await fetchChatInfo(for: targetRoom, force: false).info {
+            if targetRoom == roomID || targetRoom == activeReplyRoomID {
+                chatInfo = fetched
+            }
+        }
+        let resolvedMember = chatInfo?.members.first(where: { $0.userID == message.sender })
+            ?? Member(
+                userID: message.sender,
+                name: message.senderName.isEmpty ? message.sender : message.senderName,
+                avatarPath: message.senderAvatarPath,
+                powerLevel: 0,
+                isAdmin: false,
+                identifiers: [],
+                tz: "",
+                isBot: false
+            )
+        let resolvedNetwork = chat(targetRoom)?.network ?? chatInfo?.network ?? network
+        activeSenderCard = SenderHoverCardState(
+            messageID: message.id,
+            userID: message.sender,
+            member: resolvedMember,
+            network: resolvedNetwork
+        )
+        await contactsBridge.loadMatch(identifiers: resolvedMember.identifiers, fallbackName: resolvedMember.name)
+
+        // Query up to 5 shared groups using only the room/Matrix display name (never any data from Contacts).
+        let searchName = resolvedMember.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !searchName.isEmpty, let client = appModel.client {
+            let result: SearchResult? = try? await client.call(
+                "search.query",
+                SearchParams(text: searchName, sections: [.inGroups], limit: 5)
+            )
+            let hits = (result?.inGroups ?? []).filter { hit in
+                hit.userID == resolvedMember.userID
+            }
+            if activeSenderCard?.userID == message.sender {
+                senderCardSharedGroups = Array(hits.prefix(5))
+            }
+        } else {
+            senderCardSharedGroups = []
+        }
+    }
+
+    /// Opens the sender hover card for the currently selected message (`⌘⇧O`).
+    /// If the selected message is outgoing (`mine`), falls back to the other person in a 1:1 chat or the latest
+    /// incoming message in the timeline.
+    public func showSenderCardForSelectedMessage() async {
+        guard !isLocked else { return }
+        if let id = selectedMessageID, let msg = message(id, from: .chat), !msg.mine {
+            await openSenderCard(for: msg)
+            return
+        }
+        for case let .message(msg) in items.reversed() where !msg.mine {
+            await openSenderCard(for: msg)
+            return
+        }
+        if let id = selectedMessageID, let msg = message(id, from: .chat) {
+            await openSenderCard(for: msg)
+        }
+    }
+
+    /// Confirmation question for removing a participant from a group, including both the person's and group's names.
+    public static func removeParticipantConfirmation(memberName: String, groupName: String) -> String {
+        let person = memberName.isEmpty ? String(localized: "this participant") : memberName
+        let group = groupName.isEmpty ? String(localized: "this group") : groupName
+        return String(localized: "Remove \(person) from “\(group)”?")
+    }
+
+    /// Confirmation title and detail for leaving a group, with the group's name in the question.
+    public static func leaveGroupConfirmation(groupName: String) -> (title: String, detail: String) {
+        let group = groupName.isEmpty ? String(localized: "this group") : groupName
+        return (
+            title: String(localized: "Leave “\(group)”?"),
+            detail: String(localized: "You won’t receive new messages from this group unless someone adds you back.")
+        )
+    }
+
+    /// Confirmation title and detail for deleting a chat, with the chat's name in the question.
+    /// Includes `"This also leaves the group."` solely when `features.deleteLeavesGroup` is true.
+    public static func deleteChatConfirmation(
+        chatName: String,
+        isDirect: Bool,
+        features: ChatFeatures
+    ) -> (title: String, detail: String) {
+        let name = chatName.isEmpty ? String(localized: "this chat") : chatName
+        let title = String(localized: "Delete “\(name)”?")
+        if features.deleteLeavesGroup {
+            return (
+                title: title,
+                detail: String(localized: "This also leaves the group.")
+            )
+        }
+        return (
+            title: title,
+            detail: String(localized: "This permanently deletes the chat on the connected network.")
+        )
+    }
+
+    public func react(to eventID: String, key: String) async {
+        let messageRoom = message(eventID)?.roomID
+        await act { client, room in
+            let targetRoom = (messageRoom?.isEmpty == false ? messageRoom : nil) ?? self.activeReplyRoomID ?? room
+            guard !targetRoom.hasPrefix("merge:") else { return }
+            let _: Sent = try await client.call("message.react", ReactParams(roomID: targetRoom, eventID: eventID, key: key))
+        }
+    }
+
+    /// Takes back a reaction of mine: unsends the reaction's own event. A network that can't take one back says so,
+    /// as any failed action does.
+    public func unreact(eventID: String) async {
+        await act { client, _ in
+            let _: Sent = try await client.call("message.unsend", EventParams(eventID: eventID))
+        }
+    }
+
+    /// Sends a message that failed again, as the same message.
+    public func retry(_ eventID: String) async {
+        await act { client, _ in
+            let _: Empty = try await client.call("message.retry", EventParams(eventID: eventID))
+        }
+    }
+
+    /// Deletes a message that failed, from this device only.
+    public func discard(_ eventID: String) async {
+        await act { client, _ in
+            let _: Empty = try await client.call("message.discard", EventParams(eventID: eventID))
+        }
+    }
+
+    /// Opens an unopened view-once message in `ViewOnceSheet`.
+    public func openViewOnce(_ message: TimelineMessage) {
+        guard !isLocked, message.viewOnce, !message.played else { return }
+        activeViewOnceMessage = message
+    }
+
+    /// Returns true when `eventID` is known in this conversation to be a view-once attachment.
+    public func isViewOnceEvent(_ eventID: String) -> Bool {
+        if events[eventID]?.viewOnce == true { return true }
+        if message(eventID, from: .chat)?.viewOnce == true { return true }
+        if message(eventID, from: .thread)?.viewOnce == true { return true }
+        return false
+    }
+
+    /// Opens an image, video, or gallery item in the in-app lightbox (`AttachmentCarouselOverlay`).
+    ///
+    /// View-once media never opens in the lightbox.
+    public func openLightbox(_ messageID: String) {
+        guard !isLocked else { return }
+        if isViewOnceEvent(messageID) {
+            activeLightboxMessageID = nil
+            carousel.close()
+            return
+        }
+        for case let .message(msg) in items where !msg.galleryItems.isEmpty {
+            if msg.viewOnce, msg.galleryItems.contains(where: { $0.id == messageID }) {
+                activeLightboxMessageID = nil
+                carousel.close()
+                return
+            }
+        }
+        carousel.onSelectedEventChanged = { [weak self] eventID in
+            self?.activeLightboxMessageID = eventID
+        }
+        var timelineCarouselItems = CarouselItem.items(from: items)
+        if !timelineCarouselItems.contains(where: { $0.eventID == messageID }) {
+            let threadCarouselItems = CarouselItem.items(from: thread.items)
+            if threadCarouselItems.contains(where: { $0.eventID == messageID }) {
+                timelineCarouselItems = threadCarouselItems
+            }
+        }
+        if !timelineCarouselItems.isEmpty {
+            carousel.open(items: timelineCarouselItems, selectedEventID: messageID)
+            activeLightboxMessageID = carousel.currentItem?.eventID ?? messageID
+        } else {
+            activeLightboxMessageID = messageID
+        }
+    }
+
+    /// Closes the in-app attachment lightbox.
+    public func closeLightbox() {
+        carousel.close()
+        activeLightboxMessageID = nil
+    }
+
+    /// Marks a view-once or voice-note message as played (`message.markPlayed`) on this Mac only (played state never
+    /// goes to the network).
+    public func markPlayed(_ eventID: String, roomID explicitRoomID: String? = nil) async {
+        guard !isLocked else { return }
+        locallyMarkedPlayed.insert(eventID)
+        let messageRoom = explicitRoomID ?? message(eventID, from: .chat)?.roomID
+        if var existing = events[eventID] {
+            existing.played = true
+            events[eventID] = existing
+            rebuild()
+        }
+        if let explicitRoom = messageRoom, !explicitRoom.isEmpty, !explicitRoom.hasPrefix("merge:"),
+           explicitRoom != roomID, let client = appModel.client {
+            let _: Empty? = try? await client.call(
+                "message.markPlayed",
+                MarkPlayedParams(roomID: explicitRoom, eventID: eventID)
+            )
+            return
+        }
+        await act { client, room in
+            let targetRoom = (messageRoom?.isEmpty == false ? messageRoom : nil) ?? self.activeReplyRoomID ?? room
+            guard !targetRoom.hasPrefix("merge:") else { return }
+            let _: Empty = try await client.call(
+                "message.markPlayed",
+                MarkPlayedParams(roomID: targetRoom, eventID: eventID)
+            )
+        }
+    }
+
+    /// Marks a voice note or media message as played locally via `message.markPlayed`.
+    public func markMediaPlayed(eventID: String, roomID: String? = nil) async {
+        await markPlayed(eventID, roomID: roomID)
+    }
+
+    /// Builds the consecutive voice-note playback queue starting at `messageID` in the same chat, stopping at the
+    /// first non-voice message or after the newest voice note.
+    public func voiceNoteQueue(
+        startingAt messageID: String,
+        in sourceItems: [TimelineItem]? = nil
+    ) -> [AudioPlayerModel.Track] {
+        let messages = (sourceItems ?? items).compactMap { item -> TimelineMessage? in
+            if case let .message(msg) = item { return msg }
+            return nil
+        }
+        guard let startIndex = messages.firstIndex(where: { $0.id == messageID }) else { return [] }
+        let startMsg = messages[startIndex]
+        guard startMsg.kind == .voiceNote, !startMsg.viewOnce else { return [] }
+
+        var tracks: [AudioPlayerModel.Track] = []
+        for msg in messages[startIndex...] {
+            guard msg.kind == .voiceNote, !msg.viewOnce, msg.roomID == startMsg.roomID else {
+                break
+            }
+            let chatTitle = chat(msg.roomID)?.name ?? otherPerson ?? chatInfo?.name ?? ""
+            let senderName = msg.mine
+                ? String(localized: "You")
+                : (msg.senderName.isEmpty ? chatTitle : msg.senderName)
+            tracks.append(
+                AudioPlayerModel.Track(
+                    eventID: msg.id,
+                    roomID: msg.roomID,
+                    mediaPath: msg.mediaPath,
+                    senderName: senderName,
+                    chatTitle: chatTitle,
+                    durationMS: msg.durationMS ?? 0,
+                    waveform: msg.waveform,
+                    isVoiceNote: true
+                )
+            )
+        }
+        return tracks
+    }
+
+    // MARK: - Mark as Unread, Reply Privately
+
+    /// Mark as Unread on a message: the chat's unread count runs from it on (room.setUnreadFrom, on this Mac only),
+    /// then "After marking the open chat read or unread" says where to go (`planAfterToggleRead`, the inbox's rule).
+    /// Staying on the chat, it isn't marked read again until it is reopened or a new message comes (Inferred
+    /// (inventory 02 §3.4.2 item 8)). A refusal is a toast, and nothing moves.
+    public func markUnread(from messageID: String) async {
+        guard !isLocked, let room = roomID, let sender = composer.sender, let message = message(messageID, from: .chat),
+              availableActions(for: message).actions.contains(.markUnread) else { return }
+        let owner = generation
+        let after = planAfterToggleRead()
+        do {
+            try await sender.setUnreadFrom(eventID: messageID)
+        } catch {
+            guard owner == generation else { return }
+            onToast(EngineErrorText.text(for: error, fallback: String(localized: "Couldn’t mark the chat unread.")))
+            return
+        }
+        guard owner == generation, room == roomID else { return }
+        holdsRead = true
+        needsRead = false
+        after()
+    }
+
+    /// Reply Privately on someone's message in a group: the one-to-one chat with them (room.directChat: Vitruvian Courier's own,
+    /// or one the network makes) opens, with the message quoted in its composer (`ComposerModel.startPrivateReply`)
+    /// once that chat's features are read. A refusal is a toast in Vitruvian Courier's words, and the group stays open.
+    public func replyPrivately(to messageID: String) async {
+        guard !isLocked, let room = roomID, let sender = composer.sender, let message = message(messageID, from: .chat),
+              availableActions(for: message).actions.contains(.replyPrivately) else { return }
+        let owner = generation
+        let network = self.network
+        let target: String
+        do {
+            target = try await sender.directChat(roomID: room, userID: message.sender)
+        } catch {
+            guard owner == generation else { return }
+            onToast(Self.describeDirectChatRefusal(error, network: network))
+            return
+        }
+        guard owner == generation else { return } // the person has moved on: they aren't taken away
+        pendingPrivateReply = (target, message)
+        if target == roomID {
+            putInPrivateReply()
+        } else {
+            appModel.open(.chat(roomID: target))
+        }
+    }
+
+    /// Reply Privately's quote, into the composer of the chat it was for, once.
+    private func putInPrivateReply() {
+        guard let pending = pendingPrivateReply, pending.roomID == roomID, composer.roomID == pending.roomID
+        else { return }
+        pendingPrivateReply = nil
+        composer.startPrivateReply(quoting: pending.message, in: features)
+    }
+
+    /// Why a private chat couldn't be had, in Vitruvian Courier's words: the network can't reach the person or start chats
+    /// (-32023), or the person isn't in the group as far as Vitruvian Courier knows (-32020); the engine's words otherwise.
+    static func describeDirectChatRefusal(_ error: Error, network: String) -> String {
+        switch error as? EngineError {
+        case .rpc(.notSupported, _, _)?:
+            guard let name = NetworkNames.displayName(of: network) else {
+                return String(localized: "The network can’t start a chat with this person.")
+            }
+            return String(localized: "\(name) can’t start a chat with this person.")
+        case .rpc(.notFound, _, _)?:
+            return String(localized: "That person isn’t in this chat any more.")
+        default:
+            return EngineErrorText.text(for: error, fallback: String(localized: "Couldn’t open a private chat."))
+        }
+    }
+
+    private func act(_ call: (EngineClient, String) async throws -> Void) async {
+        guard !isLocked, let room = roomID, let client = appModel.client else { return }
+        let owner = generation
+        do {
+            try await call(client, room)
+        } catch {
+            guard owner == generation, client === appModel.client else { return }
+            problem = .actionFailed(Self.describe(error))
+        }
+        // Whatever the answer was, the store knows best: read it. (A call that was not answered may still have
+        // happened, and is never repeated.)
+        if owner == generation { requestRefetch() }
+    }
+
+    static func describe(_ error: Error) -> String {
+        EngineErrorText.text(for: error, fallback: String(localized: "Vitruvian Courier’s engine could not do that."))
+    }
+}

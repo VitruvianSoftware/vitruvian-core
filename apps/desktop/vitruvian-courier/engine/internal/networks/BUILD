@@ -1,0 +1,121 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+# keep
+go_test(
+    name = "gchat_link_test",
+    srcs = ["gchat_link_test.go"],
+    embed = [":networks"],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [
+        "//apps/desktop/vitruvian-courier/engine/internal/gchat",
+        "@com_github_stretchr_testify//require",
+    ],
+)
+
+go_test(
+    name = "networks_test",
+    srcs = [
+        "gchat_link_test.go",
+        "networks_test.go",
+        "offline_test.go",
+        "signal_absent_other_test.go",
+        "signal_link_test.go",
+        "signal_registered_darwin_test.go",
+    ],
+    # The engine's go.mod, read by TestWhatsAppBridgeVersionIsTheOneCheckedForUnreadMarks, and the protocol's
+    # networks.json, read by TestRegistryMatchesTheProtocolsNetworkList.
+    data = [
+        "//apps/desktop/vitruvian-courier/engine:go.mod",
+        "//apps/desktop/vitruvian-courier/protocol",
+    ],
+    embed = [":networks"],
+    deps = [
+        "//apps/desktop/vitruvian-courier/engine/internal/actions",
+        "//apps/desktop/vitruvian-courier/engine/internal/engine",
+        "//apps/desktop/vitruvian-courier/engine/internal/host",
+        "//apps/desktop/vitruvian-courier/engine/internal/media",
+        "//apps/desktop/vitruvian-courier/engine/internal/richtext",
+        "//apps/desktop/vitruvian-courier/engine/internal/store",
+        "@com_github_rs_zerolog//:zerolog",
+        "@com_github_stretchr_testify//require",
+        "@fi_mau_go_mautrix_bluesky//pkg/connector",
+        "@fi_mau_go_mautrix_discord//pkg/connector",
+        "@fi_mau_go_mautrix_discord//pkg/discordid",
+        "@fi_mau_go_mautrix_gmessages//pkg/connector",
+        "@fi_mau_go_mautrix_gmessages//pkg/libgm/gmproto",
+        "@fi_mau_go_mautrix_gvoice//pkg/connector",
+        "@fi_mau_go_mautrix_linkedin//pkg/connector",
+        "@fi_mau_go_mautrix_meta//pkg/connector",
+        "@fi_mau_go_mautrix_meta//pkg/igconnector",
+        "@fi_mau_go_mautrix_meta//pkg/metaid",
+        "@fi_mau_go_mautrix_slack//pkg/connector",
+        "@fi_mau_go_mautrix_slack//pkg/slackid",
+        "@fi_mau_go_mautrix_telegram//pkg/connector",
+        "@fi_mau_go_mautrix_telegram//pkg/connector/ids",
+        "@fi_mau_go_mautrix_twitter//pkg/connector",
+        "@fi_mau_go_mautrix_whatsapp//pkg/connector",
+        "@fi_mau_go_mautrix_whatsapp//pkg/waid",
+        "@in_gopkg_yaml_v3//:yaml_v3",
+        "@net_maunium_go_mautrix//bridgev2",
+        "@net_maunium_go_mautrix//bridgev2/database",
+        "@net_maunium_go_mautrix//bridgev2/networkid",
+        "@net_maunium_go_mautrix//event",
+    ] + select({
+        "@rules_go//go/platform:darwin": [
+            "//apps/desktop/vitruvian-courier/engine/internal/gchat",
+            "//apps/desktop/vitruvian-courier/engine/internal/imessage",
+            "@fi_mau_go_mautrix_signal//pkg/connector",
+            "@fi_mau_go_mautrix_signal//pkg/libsignalgo",
+        ],
+        "@rules_go//go/platform:ios": [
+            "//apps/desktop/vitruvian-courier/engine/internal/gchat",
+            "//apps/desktop/vitruvian-courier/engine/internal/imessage",
+            "@fi_mau_go_mautrix_signal//pkg/connector",
+            "@fi_mau_go_mautrix_signal//pkg/libsignalgo",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+go_library(
+    name = "networks",
+    srcs = [
+        "networks.go",
+        "networks_signal_darwin.go",
+        "networks_signal_other.go",
+    ],
+    importpath = "github.com/VitruvianSoftware/vitruvian-courier/engine/internal/networks",
+    visibility = ["//apps/desktop/vitruvian-courier/engine:__subpackages__"],
+    deps = [
+        "//apps/desktop/vitruvian-courier/engine/internal/engine",
+        "//apps/desktop/vitruvian-courier/engine/internal/media",
+        "//apps/desktop/vitruvian-courier/engine/internal/store",
+        "@com_github_rs_zerolog//:zerolog",
+        "@fi_mau_go_mautrix_bluesky//pkg/connector",
+        "@fi_mau_go_mautrix_discord//pkg/connector",
+        "@fi_mau_go_mautrix_gmessages//pkg/connector",
+        "@fi_mau_go_mautrix_gvoice//pkg/connector",
+        "@fi_mau_go_mautrix_linkedin//pkg/connector",
+        "@fi_mau_go_mautrix_meta//pkg/connector",
+        "@fi_mau_go_mautrix_meta//pkg/igconnector",
+        "@fi_mau_go_mautrix_slack//pkg/connector",
+        "@fi_mau_go_mautrix_telegram//pkg/connector",
+        "@fi_mau_go_mautrix_twitter//pkg/connector",
+        "@fi_mau_go_mautrix_whatsapp//pkg/connector",
+        "@in_gopkg_yaml_v3//:yaml_v3",
+        "@net_maunium_go_mautrix//bridgev2",
+        "@net_maunium_go_mautrix//event",
+    ] + select({
+        "@rules_go//go/platform:darwin": [
+            "//apps/desktop/vitruvian-courier/engine/internal/gchat",
+            "//apps/desktop/vitruvian-courier/engine/internal/imessage",
+            "@fi_mau_go_mautrix_signal//pkg/connector",
+        ],
+        "@rules_go//go/platform:ios": [
+            "//apps/desktop/vitruvian-courier/engine/internal/gchat",
+            "//apps/desktop/vitruvian-courier/engine/internal/imessage",
+            "@fi_mau_go_mautrix_signal//pkg/connector",
+        ],
+        "//conditions:default": [],
+    }),
+)

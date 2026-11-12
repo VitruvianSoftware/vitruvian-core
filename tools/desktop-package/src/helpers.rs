@@ -356,6 +356,10 @@ mod tests {
             expected_artifact_names("Vitruvian Speaker", "1.0.0")[0],
             "VitruvianSpeaker-1.0.0-universal.dmg"
         );
+        assert_eq!(
+            expected_artifact_names("Vitruvian Courier", "0.4.0")[0],
+            "VitruvianCourier-0.4.0-universal.dmg"
+        );
         assert_eq!(required_release_assets("A", "1", true, false, &[]).len(), 4);
         assert_eq!(required_release_assets("A", "1", false, true, &[]).len(), 8);
         assert_eq!(expected_artifact_names("A", "1").len(), 5);

@@ -1,0 +1,6 @@
+# Copyright 2026 VitruvianSoftware
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+"""Vitruvian Courier's one version: the app's CFBundleShortVersionString (app/BUILD) and the engine's hello (engine/cmd/vitruvian-courier-engine/BUILD) both read it."""
+
+VITRUVIAN_COURIER_VERSION = "0.3.17"  # x-release-please-version

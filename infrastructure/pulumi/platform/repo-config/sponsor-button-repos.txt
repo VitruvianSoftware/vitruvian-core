@@ -13,7 +13,7 @@
 # apply, since it sits under repo-config.
 vitruvian-core                .github/FUNDING.yml
 vitruvian                     apps/desktop/vitruvian-atrium/.github/FUNDING.yml
-courier                       apps/desktop/courier/.github/FUNDING.yml
+courier                       apps/desktop/vitruvian-courier/.github/FUNDING.yml
 home-speaker                  apps/desktop/vitruvian-speaker/.github/FUNDING.yml
 vitruvian-remote              apps/mobile/android-remote/.github/FUNDING.yml
 esp32-desk-companion          apps/embedded/vitruvian-deck/.github/FUNDING.yml
