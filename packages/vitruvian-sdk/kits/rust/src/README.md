@@ -24,7 +24,7 @@ Component package providing implementation for `packages/vitruvian-sdk/kits/rust
 - `[panels.rs:PanelAnswer]`
 - `[panels.rs:Opened]`
 - `[panels.rs:Acted]`
-- Subdirectory: [generated](./generated/README.md)
+- Subdirectory: [generated](./generated/) (code written by `//tools/sdk-codegen`; do not edit)
 
 ## Invariants
 - None

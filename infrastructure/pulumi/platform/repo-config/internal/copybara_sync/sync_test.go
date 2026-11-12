@@ -32,11 +32,12 @@ import (
 )
 
 type seen struct {
-	typeToken     string
-	inputs        resource.PropertyMap
-	importID      string
-	protect       bool
-	ignoreChanges []string
+	typeToken           string
+	inputs              resource.PropertyMap
+	importID            string
+	protect             bool
+	deleteBeforeReplace bool
+	ignoreChanges       []string
 }
 
 // Pulumi registers resources concurrently, so the mock serialises its own
@@ -51,6 +52,7 @@ func (m mocks) NewResource(args pulumi.MockResourceArgs) (string, resource.Prope
 	if rpc := args.RegisterRPC; rpc != nil {
 		s.importID = rpc.GetImportId()
 		s.protect = rpc.GetProtect()
+		s.deleteBeforeReplace = rpc.GetDeleteBeforeReplace()
 		s.ignoreChanges = rpc.GetIgnoreChanges()
 	}
 	m.mu.Lock()
@@ -246,9 +248,10 @@ func flag(t *testing.T, got map[string]seen, resourceName, field string) bool {
 	return v.BoolValue()
 }
 
-// The nexus-agent mirror is renamed in place to vitruvian-code while keeping
-// its Pulumi logical name, import ID, protection, live GitHub settings and
-// existing sync-auth bindings stable.
+// The Vitruvian Code mirror remains adopted under logical name and import ID
+// nexus-agent (so Pulumi neither replaces nor re-imports the protected
+// Repository), while all repo-scoped sync-auth resources target vitruvian-code
+// directly with a rotated ED25519 key pair.
 func TestNexusAgentMirrorIsAdoptedProtectedWithLiveSettings(t *testing.T) {
 	got := run(t)
 	r, ok := got["nexus-agent"]
@@ -324,45 +327,53 @@ func TestNexusAgentMirrorIsAdoptedProtectedWithLiveSettings(t *testing.T) {
 		t.Errorf("nexus-agent.topics = %v, want %v", topics, wantTopics)
 	}
 
-	// Existing sync auth resources stay on LegacyRepo ("nexus-agent") with
-	// unchanged secret names so no ForceNew deploy key or secret is replaced.
-	if v := text(t, got, "nexus-agent-standalone-deploy-key", "repository"); v != "nexus-agent" {
-		t.Errorf("deploy key repository = %q, want nexus-agent", v)
+	// Sync-auth resources target vitruvian-code directly, rotating the ED25519
+	// key pair (vitruvian-code-sync-key) so create-before-delete replacement of
+	// the ForceNew deploy key does not collide with the pre-rename deploy key.
+	if k, ok := got["vitruvian-code-sync-key"]; !ok || k.typeToken != "tls:index/privateKey:PrivateKey" {
+		t.Fatalf("vitruvian-code-sync-key = %v, want tls:index/privateKey:PrivateKey", k.typeToken)
+	}
+	if _, legacyKey := got["nexus-agent-sync-key"]; legacyKey {
+		t.Error("nexus-agent-sync-key must be retired so the ForceNew deploy key rotates onto a fresh key pair")
+	}
+	if dk := got["nexus-agent-standalone-deploy-key"]; dk.deleteBeforeReplace {
+		t.Error("deploy key must use create-before-delete (deleteBeforeReplace: false)")
+	}
+	if v := text(t, got, "nexus-agent-standalone-deploy-key", "repository"); v != "vitruvian-code" {
+		t.Errorf("deploy key repository = %q, want vitruvian-code", v)
 	}
 	if v := text(t, got, "nexus-agent-sync-ssh-key-secret", "secretName"); v != "NEXUS_AGENT_SYNC_SSH_KEY" {
 		t.Errorf("sync ssh secret = %q, want NEXUS_AGENT_SYNC_SSH_KEY", v)
 	}
+	if v := text(t, got, "nexus-agent-sync-ssh-key-secret", "repository"); v != "vitruvian-core" {
+		t.Errorf("sync ssh secret repository = %q, want vitruvian-core", v)
+	}
 	if v := text(t, got, "nexus-agent-dispatch-app-id-secret", "secretName"); v != "NEXUS_AGENT_DISPATCH_APP_ID" {
 		t.Errorf("dispatch app id secret = %q, want NEXUS_AGENT_DISPATCH_APP_ID", v)
 	}
-	if v := text(t, got, "nexus-agent-dispatch-app-id-secret", "repository"); v != "nexus-agent" {
-		t.Errorf("dispatch app id repository = %q, want nexus-agent", v)
+	if v := text(t, got, "nexus-agent-dispatch-app-id-secret", "repository"); v != "vitruvian-code" {
+		t.Errorf("dispatch app id repository = %q, want vitruvian-code", v)
 	}
-	if v := text(t, got, "nexus-agent-dispatch-app-private-key-secret", "repository"); v != "nexus-agent" {
-		t.Errorf("dispatch app key repository = %q, want nexus-agent", v)
+	if v := text(t, got, "nexus-agent-dispatch-app-private-key-secret", "secretName"); v != "NEXUS_AGENT_DISPATCH_APP_PRIVATE_KEY" {
+		t.Errorf("dispatch app key secret = %q, want NEXUS_AGENT_DISPATCH_APP_PRIVATE_KEY", v)
+	}
+	if v := text(t, got, "nexus-agent-dispatch-app-private-key-secret", "repository"); v != "vitruvian-code" {
+		t.Errorf("dispatch app key repository = %q, want vitruvian-code", v)
 	}
 	if _, ok := got["nexus-agent-mirror-readonly"]; ok {
 		t.Error("nexus-agent is two-way in sync.go today and must not declare one-way branch protection here")
 	}
 }
 
-func TestNexusAgentRenamePreservesLogicalNameImportIDAndDeployKeyTarget(t *testing.T) {
+func TestNoSyncAuthResourceTargetsRenamedNexusAgentRepo(t *testing.T) {
 	got := run(t)
 	if _, renamedURN := got["vitruvian-code"]; renamedURN {
 		t.Fatal("vitruvian-code must not be registered as a new Repository logical name; URN must stay nexus-agent")
 	}
-	r, ok := got["nexus-agent"]
-	if !ok {
-		t.Fatal("logical resource name nexus-agent missing; changing it would delete and recreate the repo")
-	}
-	if v := text(t, got, "nexus-agent", "name"); v != "vitruvian-code" {
-		t.Errorf("RepositoryArgs.Name = %q, want vitruvian-code", v)
-	}
-	if r.importID != "nexus-agent" {
-		t.Errorf("importID = %q, want pre-rename live name nexus-agent", r.importID)
-	}
-	if v := text(t, got, "nexus-agent-standalone-deploy-key", "repository"); v != "nexus-agent" {
-		t.Errorf("deploy key repository = %q, want nexus-agent to avoid ForceNew replacement", v)
+	for name, r := range got {
+		if repoVal, hasRepo := r.inputs["repository"]; hasRepo && repoVal.IsString() && repoVal.StringValue() == "nexus-agent" {
+			t.Errorf("resource %s (%s) still targets legacy repository name %q; want vitruvian-code", name, r.typeToken, repoVal.StringValue())
+		}
 	}
 }
 
@@ -389,8 +400,12 @@ func TestRepositoryDeclarationMatchesCreateOrAdoptMode(t *testing.T) {
 			if v := text(t, got, p.Name, "name"); v != p.StandaloneRepo {
 				t.Errorf("%s: RepositoryArgs.Name = %q, want %q", p.Name, v, p.StandaloneRepo)
 			}
-			if r.importID != p.legacyRepo() {
-				t.Errorf("%s: importID = %q, want %q", p.Name, r.importID, p.legacyRepo())
+			wantImportID := p.Adopt.ImportID
+			if wantImportID == "" {
+				wantImportID = p.StandaloneRepo
+			}
+			if r.importID != wantImportID {
+				t.Errorf("%s: importID = %q, want %q", p.Name, r.importID, wantImportID)
 			}
 			if !r.protect {
 				t.Errorf("%s: adopted repository must be protected", p.Name)

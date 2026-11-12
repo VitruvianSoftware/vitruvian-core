@@ -42,7 +42,7 @@ asHook: false
 
 hooks:
   enabled: true
-  preUpgrade: false
+  preUpgrade: true
 
 system:
   url: "https://sentry.lab.ipv1337.dev"
