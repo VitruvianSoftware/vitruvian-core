@@ -56,6 +56,9 @@ delivery(
     ],
     github_environment = "foundation-proj-{env}",
     kind = "pulumi",
+    # Called tabula-identity (app tabula) until #4631; its earlier deploys ran under that name.
+    renamed_from = "tabula-identity",
+    renamed_from_app = "tabula",
     render = "reusable",
     run = "//apps/suites/vitruvian-tabs/infra/identity:up",
 )

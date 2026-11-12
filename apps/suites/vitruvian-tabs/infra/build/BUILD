@@ -25,6 +25,9 @@ delivery(
     ],
     github_environment = "foundation-proj-{env}",
     kind = "pulumi",
+    # Called tabula-build-stack (app tabula) until #4631; its earlier deploys ran under that name.
+    renamed_from = "tabula-build-stack",
+    renamed_from_app = "tabula",
     render = "transcribed",
     run = "//apps/suites/vitruvian-tabs/infra/build:up",
 )

@@ -119,6 +119,9 @@ delivery(
     # //tools/delivery/gen's the tag-scoping test pins both
     # halves, so this stops being a divergence the day legacy is deleted.
     promotion = "release:vitruvian-tabs-api-v",
+    # Called tabula-api (app tabula) until #4631; its earlier deploys ran under that name.
+    renamed_from = "tabula-api",
+    renamed_from_app = "tabula",
     run = "//apps/suites/vitruvian-tabs/infra/app:deploy",
     shared_build = "vitruvian-tabs",
     soak = True,
