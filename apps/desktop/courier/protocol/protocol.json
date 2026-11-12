@@ -308,6 +308,11 @@
         "merge_id": {
           "type": "string",
           "doc": "The merged chat this room belongs to, or \"\"."
+        },
+        "read_aloud": {
+          "type": "string?",
+          "values": ["always", "never"],
+          "doc": "Per-chat HomeSpeaker announcement override; left out for Default."
         }
       }
     },
@@ -550,6 +555,16 @@
       "fields": {
         "room_ids": { "type": "string[]", "doc": "1 to 500 chats." },
         "on": { "type": "bool" }
+      }
+    },
+    "SetReadAloudParams": {
+      "fields": {
+        "room_ids": { "type": "string[]", "doc": "1 to 500 chats." },
+        "read_aloud": {
+          "type": "string",
+          "values": ["", "always", "never"],
+          "doc": "Per-chat HomeSpeaker announcement override. \"\" resets to Default."
+        }
       }
     },
     "SetLabelParams": {
@@ -2669,6 +2684,12 @@
       "params": "RoomsFlagParams",
       "result": "RoomsChanged",
       "errors": [-32020, -32022]
+    },
+    "room.setReadAloud": {
+      "doc": "Set chats' per-chat HomeSpeaker announcement override (\"\", \"always\", or \"never\"). Stored on this Mac only.",
+      "params": "SetReadAloudParams",
+      "result": "RoomsChanged",
+      "errors": [-32014, -32020]
     },
     "room.setHidden": {
       "doc": "Hide chats, or show them again. A new message leaves them hidden.",

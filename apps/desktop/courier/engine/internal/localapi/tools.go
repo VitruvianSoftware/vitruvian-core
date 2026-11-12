@@ -279,6 +279,7 @@ type wireRow struct {
 	LowPriority  bool   `json:"low_priority"`
 	Hidden       bool   `json:"hidden"`
 	MarkedUnread bool   `json:"marked_unread"`
+	ReadAloud    string `json:"read_aloud"`
 }
 
 type wireEvent struct {
@@ -360,6 +361,7 @@ type chatJSON struct {
 	IsMuted       bool              `json:"isMuted"`
 	IsPinned      bool              `json:"isPinned"`
 	IsLowPriority bool              `json:"isLowPriority"`
+	ReadAloud     string            `json:"readAloud,omitempty"`
 	LastActivity  string            `json:"lastActivity"`
 	Participants  []participantJSON `json:"participants,omitempty"`
 }
@@ -455,7 +457,7 @@ func (l *lookups) chat(r wireRow) chatJSON {
 	return chatJSON{
 		ID: r.RoomID, AccountID: l.accountOf(r.RoomID, r.Network), Network: l.networkName(r.Network), Title: r.Name,
 		Type: typ, UnreadCount: r.Unread, IsArchived: r.Archived, IsMuted: r.Muted, IsPinned: r.Pinned,
-		IsLowPriority: r.LowPriority, LastActivity: rfc3339(r.LastTS),
+		IsLowPriority: r.LowPriority, ReadAloud: r.ReadAloud, LastActivity: rfc3339(r.LastTS),
 	}
 }
 
