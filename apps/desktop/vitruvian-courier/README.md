@@ -1,5 +1,7 @@
 # Vitruvian Courier
 
+Formerly **Courier**. Releases up to 0.3.17 are tagged `courier-v*`; later ones are `vitruvian-courier-v*`.
+
 ## Overview
 Subsystem blueprint grouping child modules under `apps/desktop/vitruvian-courier`.
 
