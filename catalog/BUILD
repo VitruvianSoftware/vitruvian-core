@@ -53,7 +53,7 @@ rust_test(
         "tools.json",
         "//:workflow_files",
         "//apps/desktop/vitruvian-atrium:Resources/Info.plist",
-        "//apps/desktop/vitruvian-atrium:Sources/Vitruvian/Services/Platform/External/Catalogue/CatalogueSigning.swift",
+        "//apps/desktop/vitruvian-atrium:Sources/VitruvianAtrium/Services/Platform/External/Catalogue/CatalogueSigning.swift",
     ] + glob(["testdata/**"]),
 )
 

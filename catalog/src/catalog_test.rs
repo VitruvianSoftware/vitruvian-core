@@ -246,7 +246,7 @@ fn test_the_app_is_built_with_this_key() {
     let here_dir = here::catalog_dir();
     let root = here_dir.parent().unwrap();
     let swift = root.join(
-        "apps/desktop/vitruvian-atrium/Sources/Vitruvian/Services/Platform/External/Catalogue/CatalogueSigning.swift",
+        "apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/Platform/External/Catalogue/CatalogueSigning.swift",
     );
     let swift_text = std::fs::read_to_string(&swift).unwrap();
     let found = pyre::fixed(r#"package static let publicKey = "([^"]*)""#)
