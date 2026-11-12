@@ -30,7 +30,7 @@ name: Copybara Export (esp32-desk-companion)
 on:
     push:
         branches: [main]
-        paths: ["apps/embedded/esp32-s3/**", "tools/copybara/copy.bara.sky"]
+        paths: ["apps/embedded/vitruvian-deck/**", "tools/copybara/copy.bara.sky"]
     workflow_dispatch:
         inputs:
             copybara-options:

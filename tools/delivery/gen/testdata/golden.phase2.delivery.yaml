@@ -56,9 +56,6 @@
 #   - charts  kind=publish  run=//tools/charts:publish  envs=publish  promotion=push-all
 #       paths:  .*/deploy/chart/ tools/charts/
 #       render: transcribed from .github/workflows/charts-publish.yml job "publish"
-#   - esp32-s3  kind=publish  run=//apps/embedded/esp32-s3:publish  envs=beta,production  promotion=release:esp32-s3-v
-#       paths:  apps/embedded/esp32-s3/
-#       render: transcribed from .github/workflows/iot-esp32-s3.yaml job "release-and-publish"
 #   - gravastar-mouse-publish  kind=publish  run=//packages/peripherals:publish  envs=beta,production  promotion=release:gravastar-mouse-v
 #       paths:  packages/peripherals/
 #       render: transcribed from .github/workflows/vitruvian-release.yaml job "package"
@@ -96,6 +93,9 @@
 #   - vitruvian  kind=publish  run=//apps/desktop/vitruvian:publish  envs=beta,production  promotion=release:vitruvian-v
 #       paths:  apps/desktop/vitruvian/
 #       render: transcribed from .github/workflows/vitruvian-release.yaml job "package"
+#   - vitruvian-deck  kind=publish  run=//apps/embedded/vitruvian-deck:publish  envs=beta,production  promotion=release:vitruvian-deck-v
+#       paths:  apps/embedded/vitruvian-deck/
+#       render: transcribed from .github/workflows/iot-vitruvian-deck.yaml job "release-and-publish"
 #   - zitadel-apps  kind=pulumi  run=//infrastructure/pulumi/platform/zitadel-apps:up  envs=development,nonproduction,production  promotion=release:oauth-user-inspector-v
 #       paths:  infrastructure/pulumi/platform/zitadel-apps/ \.github/workflows/_zitadel-apps-apply\.yaml
 
@@ -116,7 +116,6 @@ on:
         required: true
         options:
           - charts
-          - esp32-s3
           - gravastar-mouse-publish
           - oauth-user-inspector
           - oauth-user-inspector-identity
@@ -127,6 +126,7 @@ on:
           - tabula-identity
           - tabula-web
           - vitruvian
+          - vitruvian-deck
       environment:
         description: Target environment (single-env break-glass redeploy)
         type: choice
@@ -239,7 +239,6 @@ jobs:
       # `if:` can actually read — expressions cannot index into JSON.
       manifest: ${{ steps.manifest.outputs.manifest }}
       affected_charts: ${{ steps.manifest.outputs.affected_charts }}
-      affected_esp32_s3: ${{ steps.manifest.outputs.affected_esp32_s3 }}
       affected_gravastar_mouse_publish: ${{ steps.manifest.outputs.affected_gravastar_mouse_publish }}
       affected_oauth_user_inspector: ${{ steps.manifest.outputs.affected_oauth_user_inspector }}
       affected_oauth_user_inspector_identity: ${{ steps.manifest.outputs.affected_oauth_user_inspector_identity }}
@@ -250,6 +249,7 @@ jobs:
       affected_tabula_identity: ${{ steps.manifest.outputs.affected_tabula_identity }}
       affected_tabula_web: ${{ steps.manifest.outputs.affected_tabula_web }}
       affected_vitruvian: ${{ steps.manifest.outputs.affected_vitruvian }}
+      affected_vitruvian_deck: ${{ steps.manifest.outputs.affected_vitruvian_deck }}
       affected_zitadel_apps: ${{ steps.manifest.outputs.affected_zitadel_apps }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -310,7 +310,7 @@ jobs:
           # The units THIS workflow delivers. The engine judges only these, so
           # one app's workflow never pays for another app's target-determinator
           # sweep. A name the engine cannot find fails the manifest open.
-          ORCHESTRATE_UNITS: charts esp32-s3 gravastar-mouse-publish oauth-user-inspector oauth-user-inspector-identity stripe tabula-api tabula-build-stack tabula-dev-latest tabula-identity tabula-web vitruvian zitadel-apps
+          ORCHESTRATE_UNITS: charts gravastar-mouse-publish oauth-user-inspector oauth-user-inspector-identity stripe tabula-api tabula-build-stack tabula-dev-latest tabula-identity tabula-web vitruvian vitruvian-deck zitadel-apps
         run: bazel run //tools/delivery/orchestrate -- --out delivery-manifest.json
       - name: Upload the delivery manifest
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -372,116 +372,6 @@ jobs:
         run: |
           echo "New GHCR packages start private. Make each chart public once (UI or):"
           echo "  gh api -X PATCH /orgs/vitruviansoftware/packages/container/charts%2F<name> -f visibility=public"
-
-  # ======== unit: esp32-s3 → beta → production ========
-  # Declared in apps/embedded/esp32-s3/BUILD; break-glass target: //apps/embedded/esp32-s3:publish
-  # Transcribed from .github/workflows/iot-esp32-s3.yaml job "release-and-publish" (that job no longer exists; see git history).
-
-  # The push rung: delivers on an affected push. The later rungs are
-  # release-gated promotions and do not chain behind this one.
-  esp32-s3-beta:
-    needs: [orchestrate]
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_esp32_s3 == 'true')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'esp32-s3' && inputs.environment == 'beta'))
-    concurrency:
-      group: delivery-esp32-s3-beta
-      cancel-in-progress: false
-    runs-on: ubuntu-26.04
-    timeout-minutes: 30
-    # Transcribed from the legacy job: job-level permissions REPLACE the
-    # workflow-level block, which is narrower than this job needs.
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
-      # PlatformIO downloads the whole ESP32 toolchain (~1 GB) into
-      # ~/.platformio on first use; cache it on the project file so a
-      # firmware-only change does not re-fetch it.
-      - name: Cache the PlatformIO toolchain
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: ~/.platformio
-          key: platformio-${{ runner.os }}-${{ hashFiles('apps/embedded/esp32-s3/platformio.ini') }}
-          restore-keys: |
-            platformio-${{ runner.os }}-
-      # `uv tool install` lands `pio` in ~/.local/bin, which is where
-      # the firmware builder looks -- the Bazel action that runs it sees
-      # neither this job's PATH nor HOME. `--with pip`: PlatformIO
-      # bootstraps its own penv via `python -m pip`, and a uv tool venv
-      # ships without pip.
-      - name: Install PlatformIO
-        run: uv tool install platformio --with pip
-
-      - name: Set up Bazel
-        uses: ./.github/actions/setup-bazel
-
-      - name: Build, stamp and publish the firmware bundle
-        env:
-          GRADE: beta
-          # Empty on a push; the script requires it for the production grade.
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # replaces apps/embedded/esp32-s3/publish.sh
-          rustc --edition 2021 --crate-type lib --crate-name publish apps/embedded/esp32-s3/host_companion/src/publish/lib.rs -o "$RUNNER_TEMP/libpublish.rlib"
-          rustc --edition 2021 apps/embedded/esp32-s3/host_companion/src/publish/main.rs -L "$RUNNER_TEMP" --extern publish="$RUNNER_TEMP/libpublish.rlib" -o "$RUNNER_TEMP/esp32-s3-publish"
-          "$RUNNER_TEMP/esp32-s3-publish"
-
-  # PROMOTION rung 1/1 — release-gated on a esp32-s3-v* release, never reached by a push.
-  esp32-s3-production:
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'esp32-s3-v')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'esp32-s3' && inputs.environment == 'production'))
-    concurrency:
-      group: delivery-esp32-s3-production
-      cancel-in-progress: false
-    runs-on: ubuntu-26.04
-    timeout-minutes: 30
-    # Transcribed from the legacy job: job-level permissions REPLACE the
-    # workflow-level block, which is narrower than this job needs.
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
-      # PlatformIO downloads the whole ESP32 toolchain (~1 GB) into
-      # ~/.platformio on first use; cache it on the project file so a
-      # firmware-only change does not re-fetch it.
-      - name: Cache the PlatformIO toolchain
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: ~/.platformio
-          key: platformio-${{ runner.os }}-${{ hashFiles('apps/embedded/esp32-s3/platformio.ini') }}
-          restore-keys: |
-            platformio-${{ runner.os }}-
-      # `uv tool install` lands `pio` in ~/.local/bin, which is where
-      # the firmware builder looks -- the Bazel action that runs it sees
-      # neither this job's PATH nor HOME. `--with pip`: PlatformIO
-      # bootstraps its own penv via `python -m pip`, and a uv tool venv
-      # ships without pip.
-      - name: Install PlatformIO
-        run: uv tool install platformio --with pip
-
-      - name: Set up Bazel
-        uses: ./.github/actions/setup-bazel
-
-      - name: Build, stamp and publish the firmware bundle
-        env:
-          GRADE: production
-          # Empty on a push; the script requires it for the production grade.
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # replaces apps/embedded/esp32-s3/publish.sh
-          rustc --edition 2021 --crate-type lib --crate-name publish apps/embedded/esp32-s3/host_companion/src/publish/lib.rs -o "$RUNNER_TEMP/libpublish.rlib"
-          rustc --edition 2021 apps/embedded/esp32-s3/host_companion/src/publish/main.rs -L "$RUNNER_TEMP" --extern publish="$RUNNER_TEMP/libpublish.rlib" -o "$RUNNER_TEMP/esp32-s3-publish"
-          "$RUNNER_TEMP/esp32-s3-publish"
 
   # ======== unit: gravastar-mouse-publish → beta → production ========
   # Declared in packages/peripherals/BUILD; break-glass target: //packages/peripherals:publish
@@ -1868,3 +1758,113 @@ jobs:
           NOTARY_KEY_ID: ${{ secrets.VITRUVIAN_NOTARY_KEY_ID }}
           NOTARY_ISSUER_ID: ${{ secrets.VITRUVIAN_NOTARY_ISSUER_ID }}
         run: bazel run //apps/desktop/vitruvian:publish
+
+  # ======== unit: vitruvian-deck → beta → production ========
+  # Declared in apps/embedded/vitruvian-deck/BUILD; break-glass target: //apps/embedded/vitruvian-deck:publish
+  # Transcribed from .github/workflows/iot-vitruvian-deck.yaml job "release-and-publish" (that job no longer exists; see git history).
+
+  # The push rung: delivers on an affected push. The later rungs are
+  # release-gated promotions and do not chain behind this one.
+  vitruvian-deck-beta:
+    needs: [orchestrate]
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_vitruvian_deck == 'true')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'vitruvian-deck' && inputs.environment == 'beta'))
+    concurrency:
+      group: delivery-vitruvian-deck-beta
+      cancel-in-progress: false
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    # Transcribed from the legacy job: job-level permissions REPLACE the
+    # workflow-level block, which is narrower than this job needs.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      # PlatformIO downloads the whole ESP32 toolchain (~1 GB) into
+      # ~/.platformio on first use; cache it on the project file so a
+      # firmware-only change does not re-fetch it.
+      - name: Cache the PlatformIO toolchain
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.platformio
+          key: platformio-${{ runner.os }}-${{ hashFiles('apps/embedded/vitruvian-deck/platformio.ini') }}
+          restore-keys: |
+            platformio-${{ runner.os }}-
+      # `uv tool install` lands `pio` in ~/.local/bin, which is where
+      # the firmware builder looks -- the Bazel action that runs it sees
+      # neither this job's PATH nor HOME. `--with pip`: PlatformIO
+      # bootstraps its own penv via `python -m pip`, and a uv tool venv
+      # ships without pip.
+      - name: Install PlatformIO
+        run: uv tool install platformio --with pip
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: Build, stamp and publish the firmware bundle
+        env:
+          GRADE: beta
+          # Empty on a push; the script requires it for the production grade.
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # replaces apps/embedded/vitruvian-deck/publish.sh
+          rustc --edition 2021 --crate-type lib --crate-name publish apps/embedded/vitruvian-deck/host-companion/src/publish/lib.rs -o "$RUNNER_TEMP/libpublish.rlib"
+          rustc --edition 2021 apps/embedded/vitruvian-deck/host-companion/src/publish/main.rs -L "$RUNNER_TEMP" --extern publish="$RUNNER_TEMP/libpublish.rlib" -o "$RUNNER_TEMP/vitruvian-deck-publish"
+          "$RUNNER_TEMP/vitruvian-deck-publish"
+
+  # PROMOTION rung 1/1 — release-gated on a vitruvian-deck-v* release, never reached by a push.
+  vitruvian-deck-production:
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'vitruvian-deck-v')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'vitruvian-deck' && inputs.environment == 'production'))
+    concurrency:
+      group: delivery-vitruvian-deck-production
+      cancel-in-progress: false
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    # Transcribed from the legacy job: job-level permissions REPLACE the
+    # workflow-level block, which is narrower than this job needs.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      # PlatformIO downloads the whole ESP32 toolchain (~1 GB) into
+      # ~/.platformio on first use; cache it on the project file so a
+      # firmware-only change does not re-fetch it.
+      - name: Cache the PlatformIO toolchain
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.platformio
+          key: platformio-${{ runner.os }}-${{ hashFiles('apps/embedded/vitruvian-deck/platformio.ini') }}
+          restore-keys: |
+            platformio-${{ runner.os }}-
+      # `uv tool install` lands `pio` in ~/.local/bin, which is where
+      # the firmware builder looks -- the Bazel action that runs it sees
+      # neither this job's PATH nor HOME. `--with pip`: PlatformIO
+      # bootstraps its own penv via `python -m pip`, and a uv tool venv
+      # ships without pip.
+      - name: Install PlatformIO
+        run: uv tool install platformio --with pip
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: Build, stamp and publish the firmware bundle
+        env:
+          GRADE: production
+          # Empty on a push; the script requires it for the production grade.
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # replaces apps/embedded/vitruvian-deck/publish.sh
+          rustc --edition 2021 --crate-type lib --crate-name publish apps/embedded/vitruvian-deck/host-companion/src/publish/lib.rs -o "$RUNNER_TEMP/libpublish.rlib"
+          rustc --edition 2021 apps/embedded/vitruvian-deck/host-companion/src/publish/main.rs -L "$RUNNER_TEMP" --extern publish="$RUNNER_TEMP/libpublish.rlib" -o "$RUNNER_TEMP/vitruvian-deck-publish"
+          "$RUNNER_TEMP/vitruvian-deck-publish"

@@ -341,12 +341,12 @@ fn transcribed_job(name: &str) -> Option<TranscribedSpec> {
             "",
             render_charts_publish_steps,
         )),
-        "esp32-s3" => Some(spec(
+        "vitruvian-deck" => Some(spec(
             30,
             &["contents: write"],
             &[],
             "",
-            render_esp32_s3_publish_steps,
+            render_vitruvian_deck_publish_steps,
         )),
         "vitruvian" => Some(spec(
             60,
@@ -448,7 +448,7 @@ fn render_charts_publish_steps(b: &mut String, _u: &Unit, _env: &str, opts: &Opt
     Ok(())
 }
 
-fn render_esp32_s3_publish_steps(b: &mut String, _u: &Unit, env: &str, opts: &Opts) -> R {
+fn render_vitruvian_deck_publish_steps(b: &mut String, _u: &Unit, env: &str, opts: &Opts) -> R {
     b.push_str("    steps:\n");
     w!(b, "      - uses: {}\n", opts.pin("actions/checkout")?);
     b.push_str("        with:\n");
@@ -463,7 +463,7 @@ fn render_esp32_s3_publish_steps(b: &mut String, _u: &Unit, env: &str, opts: &Op
     w!(b, "        uses: {}\n", opts.pin("actions/cache")?);
     b.push_str("        with:\n");
     b.push_str("          path: ~/.platformio\n");
-    b.push_str("          key: platformio-${{ runner.os }}-${{ hashFiles('apps/embedded/esp32-s3/platformio.ini') }}\n");
+    b.push_str("          key: platformio-${{ runner.os }}-${{ hashFiles('apps/embedded/vitruvian-deck/platformio.ini') }}\n");
     b.push_str("          restore-keys: |\n");
     b.push_str("            platformio-${{ runner.os }}-\n");
     b.push_str("      # `uv tool install` lands `pio` in ~/.local/bin, which is where\n");
@@ -484,10 +484,10 @@ fn render_esp32_s3_publish_steps(b: &mut String, _u: &Unit, env: &str, opts: &Op
     b.push_str("          RELEASE_TAG: ${{ github.event.release.tag_name }}\n");
     b.push_str("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n");
     b.push_str("        run: |\n");
-    b.push_str("          # replaces apps/embedded/esp32-s3/publish.sh\n");
-    b.push_str("          rustc --edition 2021 --crate-type lib --crate-name publish apps/embedded/esp32-s3/host_companion/src/publish/lib.rs -o \"$RUNNER_TEMP/libpublish.rlib\"\n");
-    b.push_str("          rustc --edition 2021 apps/embedded/esp32-s3/host_companion/src/publish/main.rs -L \"$RUNNER_TEMP\" --extern publish=\"$RUNNER_TEMP/libpublish.rlib\" -o \"$RUNNER_TEMP/esp32-s3-publish\"\n");
-    b.push_str("          \"$RUNNER_TEMP/esp32-s3-publish\"\n");
+    b.push_str("          # replaces apps/embedded/vitruvian-deck/publish.sh\n");
+    b.push_str("          rustc --edition 2021 --crate-type lib --crate-name publish apps/embedded/vitruvian-deck/host-companion/src/publish/lib.rs -o \"$RUNNER_TEMP/libpublish.rlib\"\n");
+    b.push_str("          rustc --edition 2021 apps/embedded/vitruvian-deck/host-companion/src/publish/main.rs -L \"$RUNNER_TEMP\" --extern publish=\"$RUNNER_TEMP/libpublish.rlib\" -o \"$RUNNER_TEMP/vitruvian-deck-publish\"\n");
+    b.push_str("          \"$RUNNER_TEMP/vitruvian-deck-publish\"\n");
     Ok(())
 }
 

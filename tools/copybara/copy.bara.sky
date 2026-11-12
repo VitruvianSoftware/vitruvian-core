@@ -655,22 +655,22 @@ COMPONENTS = [
         ],
         "export_only": True,
     },
-    # esp32-desk-companion: EXPORT-ONLY mirror of apps/embedded/esp32-s3 (MIT),
-    # the Desk Companion firmware and its host companion.
+    # esp32-desk-companion: EXPORT-ONLY mirror of apps/embedded/vitruvian-deck (MIT),
+    # the Vitruvian Deck firmware and its host companion.
     {
         "name": "esp32-desk-companion",
         "repo": "esp32-desk-companion",
-        "subtree": "apps/embedded/esp32-s3",
+        "subtree": "apps/embedded/vitruvian-deck",
         "standalone_rev_id": "ESP32_DESK_COMPANION_REV_ID",
         "mode": "SQUASH",
         "standalone_only": [],
         # release-please and the monorepo's catalog, owners and docs-site files.
         "origin_only_exclude": [
-            "apps/embedded/esp32-s3/release-please-config.json",
-            "apps/embedded/esp32-s3/.release-please-manifest.json",
-            "apps/embedded/esp32-s3/catalog-info.yaml",
-            "apps/embedded/esp32-s3/OWNERS",
-            "apps/embedded/esp32-s3/mkdocs.yml",
+            "apps/embedded/vitruvian-deck/release-please-config.json",
+            "apps/embedded/vitruvian-deck/.release-please-manifest.json",
+            "apps/embedded/vitruvian-deck/catalog-info.yaml",
+            "apps/embedded/vitruvian-deck/OWNERS",
+            "apps/embedded/vitruvian-deck/mkdocs.yml",
         ],
         "export_only": True,
     },

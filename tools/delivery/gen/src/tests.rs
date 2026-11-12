@@ -33,7 +33,6 @@ use crate::unit::{self, Unit};
 
 const FIXTURES: &[&str] = &[
     "charts",
-    "esp32-s3",
     "gravastar-mouse-publish",
     "oauth-user-inspector-identity",
     "oauth-user-inspector",
@@ -44,6 +43,7 @@ const FIXTURES: &[&str] = &[
     "tabula-identity",
     "tabula-web",
     "vitruvian",
+    "vitruvian-deck",
     "zitadel-apps",
 ];
 const WF: &str = "delivery-fixture.yaml";
@@ -405,7 +405,6 @@ fn group_by_app_gives_every_app_its_own_workflow() {
         .collect();
     let want: Vec<(String, Vec<String>)> = vec![
         ("charts", vec!["charts"]),
-        ("esp32-s3", vec!["esp32-s3"]),
         ("gravastar-mouse", vec!["gravastar-mouse-publish"]),
         (
             "oauth-user-inspector",
@@ -427,6 +426,7 @@ fn group_by_app_gives_every_app_its_own_workflow() {
             ],
         ),
         ("vitruvian", vec!["vitruvian"]),
+        ("vitruvian-deck", vec!["vitruvian-deck"]),
     ]
     .into_iter()
     .map(|(a, us)| (a.to_string(), us.into_iter().map(String::from).collect()))

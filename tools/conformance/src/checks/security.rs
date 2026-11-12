@@ -1228,7 +1228,7 @@ mod release_tag_tests {
     fn prefixes_follow_release_please_defaults_and_overrides() {
         let json = r#"{"tag-separator":"-","packages":{
             "apps/a":{"component":"vitruvian"},
-            "apps/b":{"package-name":"esp32-s3"},
+            "apps/b":{"package-name":"vitruvian-deck"},
             "apps/c":{"component":"go/pkg/x","tag-separator":"/"},
             "apps/d":{"component":"lib","include-component-in-tag":false},
             "apps/e":{"component":"bare","include-v-in-tag":false}}}"#;
@@ -1236,7 +1236,13 @@ mod release_tag_tests {
         got.sort();
         assert_eq!(
             got,
-            vec!["bare-", "esp32-s3-v", "go/pkg/x/v", "v", "vitruvian-v"]
+            vec![
+                "bare-",
+                "go/pkg/x/v",
+                "v",
+                "vitruvian-deck-v",
+                "vitruvian-v"
+            ]
         );
         assert!(release_tag_prefixes(r#"{"packages":{"x":{}}}"#).is_err());
     }

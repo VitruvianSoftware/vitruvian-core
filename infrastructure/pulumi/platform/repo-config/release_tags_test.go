@@ -143,7 +143,7 @@ func TestReleaseTagsProtected(t *testing.T) {
 		"vitruvian-v4.12.0",
 		"vitruvian-sdk-v0.14.0",
 		"home-speaker-v2.3.0",
-		"esp32-s3-v0.1.12",
+		"vitruvian-deck-v0.1.12",
 		"gravastar-mouse-v0.2.0",
 		"foundation-gcp-projects-v0.30.0",
 		"go-network-v2.0.0",
@@ -273,7 +273,7 @@ func TestProgramRegistersReleaseTagRuleset(t *testing.T) {
 	}
 	exc := propStrings(ref["excludes"])
 	var wantExc []string
-	for _, tag := range []string{"vitruvian-beta-latest", "esp32-s3-beta-latest", "gravastar-mouse-beta-latest", "tabula-extension-dev-latest"} {
+	for _, tag := range []string{"vitruvian-beta-latest", "vitruvian-deck-beta-latest", "gravastar-mouse-beta-latest", "tabula-extension-dev-latest"} {
 		wantExc = append(wantExc, "refs/tags/"+tag)
 	}
 	if strings.Join(exc, " ") != strings.Join(wantExc, " ") {

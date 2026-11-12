@@ -82,7 +82,7 @@ var environmentTagPatterns = []string{
 //
 // Where each is set:
 //   - vitruvian-beta-latest: apps/desktop/vitruvian/bazel/src/publish/lib.rs
-//   - esp32-s3-beta-latest: apps/embedded/esp32-s3/host_companion/src/publish/lib.rs
+//   - vitruvian-deck-beta-latest: apps/embedded/vitruvian-deck/host-companion/src/publish/lib.rs
 //   - gravastar-mouse-beta-latest: packages/peripherals/scripts/src/lib.rs
 //   - tabula-extension-dev-latest: apps/suites/tabula/extension/scripts/src/publish_dev_latest.rs
 //
@@ -91,7 +91,7 @@ var environmentTagPatterns = []string{
 var rollingTags = []string{
 	// rolling-tags:begin
 	"vitruvian-beta-latest",
-	"esp32-s3-beta-latest",
+	"vitruvian-deck-beta-latest",
 	"gravastar-mouse-beta-latest",
 	"tabula-extension-dev-latest",
 	// rolling-tags:end

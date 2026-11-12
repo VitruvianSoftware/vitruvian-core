@@ -360,11 +360,11 @@ projects:
     tags: [Kotlin, Jetpack Compose, Android]
     source: apps/mobile/android-remote
 
-  - name: ESP32-S3 desk companion
+  - name: Vitruvian Deck
     group: lab
     status: in-development
     summary: >-
       Firmware that turns a 1.69 inch ESP32-S3 touch board into a desk
       display for live Mac metrics and a USB and Bluetooth shortcut pad.
     tags: [C++, ESP32-S3, USB HID]
-    source: apps/embedded/esp32-s3
+    source: apps/embedded/vitruvian-deck

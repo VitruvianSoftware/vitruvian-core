@@ -174,7 +174,7 @@ flowchart LR
 | App | Where the button goes |
 |---|---|
 | Vitruvian (desktop) | Done: Settings > Support's Donate button opens `AppInfo.donateURL`, `https://vitruviansoftware.dev/donate/vitruvian/`. |
-| Courier, HomeSpeaker (desktop), Vitruvian Remote (Android), ESP32-S3 Desk Companion (firmware) | Done for the mirrors: each has its own live link and page, `https://vitruviansoftware.dev/donate/<key>/` (`courier`, `home-speaker`, `vitruvian-remote`, `esp32-desk-companion`), and its mirror's Sponsor button opens that page. A "Support" item in each app is still to do. |
+| Courier, HomeSpeaker (desktop), Vitruvian Remote (Android), Vitruvian Deck (firmware) | Done for the mirrors: each has its own live link and page, `https://vitruviansoftware.dev/donate/<key>/` (`courier`, `home-speaker`, `vitruvian-remote`, `esp32-desk-companion`), and its mirror's Sponsor button opens that page. A "Support" item in each app is still to do. |
 | NexusAgent, OAuth User Inspector, mcp-slack, mcp-roborock, gh-watch, devx, homelab | Done: each has its own live link and page the same way, under its mirror's name, and its mirror's Sponsor button opens that page. |
 | vitruvian-tool-github, vitruvian-sdk | Done: no link of their own. They only work with Vitruvian, so their Sponsor buttons open `/donate/vitruvian/`. |
 | pulumi-library, the Pulumi foundation examples, the site's repository, vitruvian-core | Done: not apps, so their Sponsor buttons open the general `/donate/`. |

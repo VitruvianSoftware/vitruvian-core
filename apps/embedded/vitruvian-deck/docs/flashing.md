@@ -1,0 +1,219 @@
+# Vitruvian Deck Firmware Flashing & Host Setup Guide
+
+This guide provides step-by-step instructions for building and flashing **Vitruvian Deck** firmware using Bazel, PlatformIO, or esptool, setting up the macOS companion daemon, and troubleshooting common issues.
+
+---
+
+## 1. Prerequisites
+
+### Hardware:
+- Waveshare ESP32-S3-Touch-LCD-1.69 board.
+- USB-C to USB-C or USB-A to USB-C cable (**must support USB data**, not charge-only).
+
+### Software Tools:
+- **macOS** 13+ (Ventura, Sonoma, Sequoia).
+- **Bazel** (`bazelisk`) or **PlatformIO** (`uv tool install platformio` or `brew install platformio`).
+- **Python** 3.10+ and **uv** (`brew install uv`).
+- **GitHub CLI** (`gh`) logged into your account (`gh auth login`).
+
+---
+
+## 2. Flashing with Bazel (Recommended Monorepo Flow)
+
+The monorepo provides hermetic Bazel wrappers for building and flashing.
+
+### Step 1: Build Firmware Artifacts
+```bash
+bazel build //apps/embedded/vitruvian-deck:firmware
+```
+Outputs are compiled in `bazel-bin/apps/embedded/vitruvian-deck/`:
+- `firmware.bin` (Application binary)
+- `bootloader.bin` (ESP32-S3 second-stage bootloader)
+- `partitions.bin` (Partition layout)
+
+### Step 2: Flash to Connected Vitruvian Deck
+Plug your board into a USB-C port on your Mac, then run:
+```bash
+bazel run //apps/embedded/vitruvian-deck:flash
+```
+Bazel will auto-detect the serial port matching `/dev/cu.usbmodem*` and flash the binaries at 460,800 baud.
+
+### Step 3: Flash with Explicit Serial Port
+If multiple USB serial devices are connected:
+```bash
+bazel run //apps/embedded/vitruvian-deck:flash -- /dev/cu.usbmodem1101
+```
+
+---
+
+## 3. Flashing with PlatformIO
+
+If developing outside of Bazel or using the PlatformIO IDE / CLI:
+
+```bash
+# Compile firmware
+pio run -d apps/embedded/vitruvian-deck
+
+# Upload firmware over USB
+pio run -d apps/embedded/vitruvian-deck -t upload
+
+# Open serial debug monitor
+pio device monitor -d apps/embedded/vitruvian-deck -b 115200
+```
+
+---
+
+## 3b. Flashing Over the Air (no cable)
+
+Once the device has joined a network it can be reflashed wirelessly. Both paths
+are gated on the device's OTA password — by default `vitruvian-<last 3 octets of
+the Wi-Fi MAC>`, which the Settings deck prints alongside the MAC.
+
+### Browser upload (no toolchain):
+Open `http://vitruvian-deck.local/update` (user `vitruvian`, password as
+above) and upload `firmware.bin`. The page shows live upload progress and the
+device reboots into the new image on completion.
+
+### PlatformIO / espota:
+```bash
+pio run -d apps/embedded/vitruvian-deck -t upload \
+  --upload-port vitruvian-deck.local \
+  --upload-flags "--auth=vitruvian-A1B2C3"
+```
+
+Notes:
+- Only `firmware.bin` is flashed over the air. A bootloader or partition-table
+  change still needs the USB path above.
+- OTA is unavailable while the Wi-Fi provisioning portal is up: both bind port
+  80, so the portal takes it exclusively.
+- An interrupted upload is safe — the running image is untouched until the new
+  one verifies.
+
+---
+
+## 4. Standalone Flashing with the Rust flasher / `esptool`
+
+For flashing distributed binary release zips without compiling from source:
+
+```bash
+# Extract distribution zip
+unzip vitruvian-deck.zip -d vitruvian-deck-release
+cd vitruvian-deck-release
+
+# Build the std-only flasher beside the images, then run it
+rustc --edition 2021 -O flash/main.rs -o flash-vitruvian-deck
+./flash-vitruvian-deck /dev/cu.usbmodemXXXX
+```
+
+### Manual `esptool` Command:
+```bash
+esptool.py -p /dev/cu.usbmodemXXXX -b 460800 --before default_reset --after hard_reset write_flash \
+  0x0000 bootloader.bin \
+  0x8000 partitions.bin \
+  0x10000 firmware.bin
+```
+
+---
+
+## 5. Running the macOS Companion Daemon
+
+### Interactive Execution:
+```bash
+bazel run //apps/embedded/vitruvian-deck:vitruvian-deck
+```
+
+### Expected Startup Output:
+```
+Vitruvian Deck Companion Daemon starting...
+Connected to Vitruvian Deck over USB CDC /dev/cu.usbmodem1101
+[APP] Focus -> VS Code (com.microsoft.VSCode) via usb
+[INIT] Primed USB CDC /dev/cu.usbmodem1101: app=VS Code, agent=idle, ci=passing
+```
+
+Unplug the cable and the same daemon finds the device on the LAN instead:
+```
+Waiting for Vitruvian Deck on USB (/dev/cu.usbmodem*) or vitruvian-deck.local...
+Connected to Vitruvian Deck over Wi-Fi UDP 192.168.1.42:8266
+[INIT] Primed Wi-Fi UDP 192.168.1.42:8266: app=VS Code, agent=idle, ci=passing
+```
+
+### Transport Selection Flags:
+| Flag | Effect |
+|---|---|
+| *(none)* | USB when the cable is in, Wi-Fi (mDNS-discovered) when it is not |
+| `--wifi-host HOST` | Pin the device address instead of discovering it |
+| `--wifi-port PORT` | Override the UDP port (default 8266) |
+| `--usb-only` | Never fall back to Wi-Fi |
+| `--wifi-only` | Never use USB, even when tethered |
+| `--wifi-sync` | One-shot: beam this Mac's Wi-Fi credentials to a tethered device and exit |
+
+### Automatic Background Startup (macOS launchd):
+To run the daemon automatically in the background whenever you log into macOS, create a user LaunchAgent:
+
+1. Create `~/Library/LaunchAgents/com.vitruviansoftware.deck.plist`:
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.vitruviansoftware.deck</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/YOUR_USERNAME/Workspace/gh/application/vitruvian/vitruvian-core/bazel-bin/apps/embedded/vitruvian-deck/vitruvian-deck</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/vitruvian-deck.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/vitruvian-deck.err</string>
+</dict>
+</plist>
+```
+2. Load and start the service:
+```bash
+launchctl load ~/Library/LaunchAgents/com.vitruviansoftware.deck.plist
+```
+
+---
+
+## 6. Troubleshooting & Recovery
+
+### Issue 1: Serial Port Not Detected (`/dev/cu.usbmodem*` missing)
+- **Cause**: Cable is power-only, or the ESP32-S3 is in a sleep or unconfigured USB state.
+- **Solution**:
+  1. Replace cable with a high-speed data-rated USB-C cable.
+  2. Put the board into **ROM Bootloader Mode**:
+     - Press and **HOLD** the `BOOT` button on the bottom of the board.
+     - Press and **RELEASE** the `RST` (Reset) button.
+     - **RELEASE** the `BOOT` button.
+     - Verify the port appears: `ls /dev/cu.usbmodem*` or `ls /dev/cu.*`.
+
+### Issue 2: Permission Denied or "Resource Busy" on Serial Port
+- **Cause**: Another process (e.g. an existing daemon instance, `screen`, or a serial monitor) has opened the port.
+- **Solution**:
+  ```bash
+  lsof | grep /dev/cu.usbmodem
+  kill -9 <PID>
+  ```
+
+### Issue 3: Corrupted NVS Preferences or Stuck Screen
+- **Cause**: Flash memory corrupted or invalid preferences written to NVS.
+- **Solution**: Perform a complete flash erase:
+  ```bash
+  uvx esptool -p /dev/cu.usbmodemXXXX erase_flash
+  bazel run //apps/embedded/vitruvian-deck:flash
+  ```
+
+### Issue 4: Frontmost Application Detection Not Triggering
+- **Cause**: macOS Accessibility or System Events permissions restricted.
+- **Solution**:
+  1. Ensure Terminal or your IDE has permission under:  
+     `System Settings > Privacy & Security > Accessibility`
+  2. Test `lsappinfo` directly in terminal:
+     ```bash
+     /usr/bin/lsappinfo front
+     ```
