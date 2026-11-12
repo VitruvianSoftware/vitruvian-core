@@ -3763,7 +3763,7 @@ public class RemoteState(
                   add(
                       ModuleRow(
                           title = lbl("announce_source"),
-                          error = Derive.settingError(homeSpeakerErrors, "announce_source"),
+                          error = Derive.settingError(vitruvianSpeakerErrors, "announce_source"),
                           subtitle =
                               "starts each announcement with the app, or app and session, it came from",
                           trailing =
@@ -3774,7 +3774,8 @@ public class RemoteState(
                               catalogChoiceActions(hs, "announce_source", hs.announceSource) {
                                   wire,
                                   label ->
-                                setHomeSpeaker("Say who it's from: $label", announceSource = wire)
+                                setVitruvianSpeaker(
+                                    "Say who it's from: $label", announceSource = wire)
                               },
                       ))
                 }

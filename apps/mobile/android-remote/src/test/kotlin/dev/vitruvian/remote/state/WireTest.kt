@@ -806,9 +806,9 @@ public class WireTest {
     assertEquals(listOf("off", "app", "app_and_session"), source.choices.map { it.value })
     assertEquals(
         "app_and_session",
-        HomeSpeakerWire.sources("""{"announce_source":"app_and_session"}""").announceSource)
+        VitruvianSpeakerWire.sources("""{"announce_source":"app_and_session"}""").announceSource)
     // An older Mac sends nothing; the phone reads that as off.
-    assertEquals("off", HomeSpeakerWire.sources("{}").announceSource)
+    assertEquals("off", VitruvianSpeakerWire.sources("{}").announceSource)
 
     val speech = s.catalog["speech_length"]!!
     assertEquals("choice", speech.kind)
