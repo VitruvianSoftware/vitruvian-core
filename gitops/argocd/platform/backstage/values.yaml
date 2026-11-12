@@ -98,6 +98,12 @@ backstage:
       secretKeyRef:
         name: backstage-secrets
         key: BACKSTAGE_AUTH_KEY
+  - name: SENTRY_DSN
+    valueFrom:
+      secretKeyRef:
+        name: backstage-secrets
+        key: SENTRY_DSN
+        optional: true
   - name: AUTH_SESSION_SECRET
     valueFrom:
       secretKeyRef:

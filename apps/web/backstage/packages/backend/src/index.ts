@@ -18,8 +18,17 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+import * as Sentry from "@sentry/node";
 import { createBackend } from "@backstage/backend-defaults";
 import { rootHttpRouterServiceFactory } from "@backstage/backend-defaults/rootHttpRouter";
+
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV || "production",
+    tracesSampleRate: 0.0,
+  });
+}
 
 import { authModuleGithubOrgProvider } from "./auth/module";
 import { permissionModuleVitruvianPolicy } from "./permissions/module";
@@ -32,7 +41,7 @@ const backend = createBackend();
 
 backend.add(
   rootHttpRouterServiceFactory({
-    configure({ app, applyDefaults, config }) {
+    configure({ app, routes, middleware, config }) {
       app.use((_req, res, next) => {
         const originalWriteHead = res.writeHead.bind(res);
         (res as any).writeHead = function (statusCode: any, ...rest: any[]) {
@@ -65,7 +74,9 @@ backend.add(
           ],
         });
       });
-      applyDefaults();
+      app.use(routes);
+      Sentry.setupExpressErrorHandler(app);
+      app.use(middleware.error());
     },
   }),
 );

@@ -18,6 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+import * as Sentry from "@sentry/react";
 import {
   ScmIntegrationsApi,
   scmIntegrationsApiRef,
@@ -33,7 +34,22 @@ export const apis: AnyApiFactory[] = [
   createApiFactory({
     api: scmIntegrationsApiRef,
     deps: { configApi: configApiRef },
-    factory: ({ configApi }) => ScmIntegrationsApi.fromConfig(configApi),
+    factory: ({ configApi }) => {
+      const rawDsn = configApi.getOptionalString("sentry.dsn");
+      if (rawDsn) {
+        // Rewrite internal tailnet hostname to the public Cloudflare tunnel ingest endpoint for browser sessions
+        const dsn = rawDsn.replace(
+          "sentry.lab.ipv1337.dev",
+          "sentry-ingest.ipv1337.dev",
+        );
+        Sentry.init({
+          dsn,
+          environment: "production",
+          tracesSampleRate: 0.0,
+        });
+      }
+      return ScmIntegrationsApi.fromConfig(configApi);
+    },
   }),
   // Backs scmAuthApiRef, which the GitHub Actions plugin uses to call the
   // GitHub API as the signed-in user.
