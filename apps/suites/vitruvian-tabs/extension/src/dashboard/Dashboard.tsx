@@ -436,9 +436,9 @@ export const Dashboard: React.FC = () => {
     const handleStorageChange = (changes: {
       [key: string]: chrome.storage.StorageChange;
     }) => {
-      if (changes.vitruvian-tabs_workspaces) {
-        if (changes.vitruvian-tabs_workspaces.newValue) {
-          const nextWorkspaces = changes.vitruvian-tabs_workspaces
+      if (changes.vitruvian_tabs_workspaces) {
+        if (changes.vitruvian_tabs_workspaces.newValue) {
+          const nextWorkspaces = changes.vitruvian_tabs_workspaces
             .newValue as Workspace[];
           // Optimization: Update directly from payload to avoid async read delay
           // This fixes "Workspace does not show until refresh"
@@ -459,18 +459,18 @@ export const Dashboard: React.FC = () => {
         }
       }
 
-      if (changes.vitruvian-tabs_active_workspace) {
+      if (changes.vitruvian_tabs_active_workspace) {
         // Handle external active workspace change (e.g. from sidebar/service)
         useWorkspaceStore.setState({
-          activeWorkspaceId: changes.vitruvian-tabs_active_workspace.newValue as
-            string | null | undefined,
+          activeWorkspaceId: changes.vitruvian_tabs_active_workspace
+            .newValue as string | null | undefined,
         });
       }
 
       // Propagate auth changes across windows: logging out (or in) in one
       // window must not leave others operating on a dead session
-      if (changes.vitruvian-tabs_access_token || changes.vitruvian-tabs_user) {
-        const tokenChange = changes.vitruvian-tabs_access_token;
+      if (changes.vitruvian_tabs_access_token || changes.vitruvian_tabs_user) {
+        const tokenChange = changes.vitruvian_tabs_access_token;
         if (tokenChange && !tokenChange.newValue) {
           // Logged out elsewhere — reset this window's UI state
           window.location.reload();

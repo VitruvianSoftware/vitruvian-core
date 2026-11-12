@@ -65,11 +65,11 @@ ts_project(
     transpiler = "tsc",
     tsconfig = "tsconfig.typecheck.json",
     deps = [
-        ":node_modules/@vitruvian-tabs/shared",
         ":node_modules/@types/chrome",
         ":node_modules/@types/node",
         ":node_modules/@types/react",
         ":node_modules/@types/react-dom",
+        ":node_modules/@vitruvian-tabs/shared",
         ":node_modules/@vitruviansoftware/design-system",
         ":node_modules/geist",
         ":node_modules/next",

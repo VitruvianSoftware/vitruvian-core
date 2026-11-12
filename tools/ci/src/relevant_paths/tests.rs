@@ -148,7 +148,12 @@ fn default_ignore_set_for_the_bazel_build_lanes() {
     );
     // agent-guard's Antigravity wiring is code: //tools/agent-guard:agent_guard_test reads it.
     case(".agents/hooks.json RUNS", true, "", &[".agents/hooks.json"]);
-    case("source change runs", true, "", &["vitruvian-tabs/api/src/index.ts"]);
+    case(
+        "source change runs",
+        true,
+        "",
+        &["vitruvian-tabs/api/src/index.ts"],
+    );
     case(
         "mixed docs+source runs",
         true,

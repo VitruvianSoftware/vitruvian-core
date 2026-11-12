@@ -613,7 +613,10 @@ fn unit_filter_query_failure_lists_the_named_units() {
     let (mut f, k) = two_units();
     f.fail_query = true;
     let r = Harness::new(&repos().declared, f, k)
-        .env("ORCHESTRATE_UNITS", "oauth-user-inspector vitruvian-tabs-api")
+        .env(
+            "ORCHESTRATE_UNITS",
+            "oauth-user-inspector vitruvian-tabs-api",
+        )
         .run();
     assert_fail_open(&r, "bazel query");
     r.unit("oauth-user-inspector");

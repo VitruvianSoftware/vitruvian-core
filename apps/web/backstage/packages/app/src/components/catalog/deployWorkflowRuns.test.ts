@@ -67,7 +67,9 @@ describe("isDeployWorkflowAvailable", () => {
   it("is false with only a workflow, and on an entity with no annotations at all", () => {
     expect(
       isDeployWorkflowAvailable(
-        entity({ "vitruvian.dev/deploy-workflow": "delivery-vitruvian-tabs.yaml" }),
+        entity({
+          "vitruvian.dev/deploy-workflow": "delivery-vitruvian-tabs.yaml",
+        }),
       ),
     ).toBe(false);
     expect(
@@ -101,7 +103,11 @@ describe("isDeployWorkflowAvailable", () => {
 describe("runsUrl", () => {
   it("targets the single workflow, not the repo", () => {
     expect(
-      runsUrl("VitruvianSoftware/vitruvian-core", "delivery-vitruvian-tabs.yaml", 5),
+      runsUrl(
+        "VitruvianSoftware/vitruvian-core",
+        "delivery-vitruvian-tabs.yaml",
+        5,
+      ),
     ).toBe(
       "https://api.github.com/repos/VitruvianSoftware/vitruvian-core/actions/workflows/delivery-vitruvian-tabs.yaml/runs?per_page=5",
     );

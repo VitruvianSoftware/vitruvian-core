@@ -181,7 +181,11 @@ pub fn run(_args: &[String]) -> i32 {
         return 1;
     }
 
-    if !cmd_ok(Command::new("zip").args(["-q", "vitruvian-tabs-extension-chrome.zip", "build-info.json"])) {
+    if !cmd_ok(Command::new("zip").args([
+        "-q",
+        "vitruvian-tabs-extension-chrome.zip",
+        "build-info.json",
+    ])) {
         eprintln!("publish-dev-latest: zip update failed");
         return 1;
     }

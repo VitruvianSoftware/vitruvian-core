@@ -182,7 +182,10 @@ describe("DataService", () => {
         },
       ];
 
-      localStorageMock.setItem("vitruvian_tabs_workspaces", JSON.stringify(workspaces));
+      localStorageMock.setItem(
+        "vitruvian_tabs_workspaces",
+        JSON.stringify(workspaces),
+      );
 
       const stats = await DataService.getStats();
       expect(stats.totalWorkspaces).toBe(1);
@@ -360,7 +363,10 @@ describe("DataService", () => {
 
     it("should handle missing properties in getStats", async () => {
       const workspaces = [{ id: "1", name: "Test" }]; // No tabs, resources, etc.
-      localStorageMock.setItem("vitruvian_tabs_workspaces", JSON.stringify(workspaces));
+      localStorageMock.setItem(
+        "vitruvian_tabs_workspaces",
+        JSON.stringify(workspaces),
+      );
 
       const stats = await DataService.getStats();
       expect(stats.totalTabs).toBe(0);
@@ -369,7 +375,10 @@ describe("DataService", () => {
 
     it("should handle missing sections in getStats", async () => {
       const workspaces = [{ id: "1", name: "Test", sections: undefined }];
-      localStorageMock.setItem("vitruvian_tabs_workspaces", JSON.stringify(workspaces));
+      localStorageMock.setItem(
+        "vitruvian_tabs_workspaces",
+        JSON.stringify(workspaces),
+      );
 
       const stats = await DataService.getStats();
       expect(stats.totalResources).toBe(0);
@@ -377,7 +386,10 @@ describe("DataService", () => {
 
     it("should handle missing description in exportWorkspaces (CSV)", async () => {
       const workspaces = [{ id: "1", name: "Test", description: undefined }];
-      localStorageMock.setItem("vitruvian_tabs_workspaces", JSON.stringify(workspaces));
+      localStorageMock.setItem(
+        "vitruvian_tabs_workspaces",
+        JSON.stringify(workspaces),
+      );
 
       const result = await DataService.exportWorkspaces("csv");
       expect(result).toContain('"Test","",0,0,0,0,0');

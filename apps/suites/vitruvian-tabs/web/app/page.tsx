@@ -93,7 +93,9 @@ export default function Home() {
       <header className="border-b bg-ink-2">
         <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between">
-            <h1 className="text-3xl font-bold text-paper">Vitruvian Tabs Dashboard</h1>
+            <h1 className="text-3xl font-bold text-paper">
+              Vitruvian Tabs Dashboard
+            </h1>
             <div className="flex gap-3">
               <div className="flex gap-3 items-center">
                 {user ? (
@@ -284,9 +286,9 @@ export default function Home() {
               About Vitruvian Tabs Dashboard
             </h2>
             <p className="text-blue-800">
-              This web dashboard provides a centralized view of your Vitruvian Tabs
-              workspaces, with analytics and data export capabilities. Use the
-              navigation above to explore your workspaces and view detailed
+              This web dashboard provides a centralized view of your Vitruvian
+              Tabs workspaces, with analytics and data export capabilities. Use
+              the navigation above to explore your workspaces and view detailed
               statistics.
             </p>
           </div>

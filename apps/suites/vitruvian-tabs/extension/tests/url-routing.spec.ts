@@ -107,7 +107,7 @@ test.describe("URL-Based Workspace Routing", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const storage = (window as any).chrome.storage.local;
       const result = await storage.get("vitruvian_tabs_workspaces");
-      const workspaces = result.vitruvian-tabs_workspaces || [];
+      const workspaces = result.vitruvian_tabs_workspaces || [];
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const ws = workspaces.find((w: any) => w.name === wsName);
       return ws?.id || "";
@@ -243,7 +243,7 @@ test.describe("Multi-Context Workspace Isolation", () => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const storage = (window as any).chrome.storage.local;
         const result = await storage.get("vitruvian_tabs_workspaces");
-        const workspaces = result.vitruvian-tabs_workspaces || [];
+        const workspaces = result.vitruvian_tabs_workspaces || [];
         return {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           idA: workspaces.find((w: any) => w.name === names.a)?.id || "",

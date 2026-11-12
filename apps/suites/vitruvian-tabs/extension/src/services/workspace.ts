@@ -433,8 +433,9 @@ export class WorkspaceService {
         const forceRemoteResult = await chrome.storage.local.get(
           "vitruvian_tabs_force_remote_until",
         );
-        const forceRemoteUntil = forceRemoteResult.vitruvian-tabs_force_remote_until as
-          number | undefined;
+        const forceRemoteUntil =
+          forceRemoteResult.vitruvian_tabs_force_remote_until as
+            number | undefined;
         const now = Date.now();
         const forceRemote = forceRemoteUntil && now < forceRemoteUntil;
 

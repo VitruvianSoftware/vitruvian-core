@@ -330,7 +330,7 @@ test.describe("Workspace Management", () => {
         (window as any).chrome.storage.local.get(
           ["vitruvian_tabs_workspaces"],
           (result: any) => {
-            resolve(result.vitruvian-tabs_workspaces);
+            resolve(result.vitruvian_tabs_workspaces);
           },
         );
       });
@@ -376,7 +376,7 @@ test.describe("Workspace Management", () => {
         (window as any).chrome.storage.local.get(
           ["vitruvian_tabs_workspaces"],
           (result: any) => {
-            resolve(result.vitruvian-tabs_workspaces);
+            resolve(result.vitruvian_tabs_workspaces);
           },
         );
       });
@@ -415,7 +415,7 @@ test.describe("Workspace Management", () => {
         (window as any).chrome.storage.local.get(
           ["vitruvian_tabs_workspaces"],
           (result: any) => {
-            resolve(result.vitruvian-tabs_workspaces);
+            resolve(result.vitruvian_tabs_workspaces);
           },
         );
       });
@@ -530,7 +530,7 @@ test.describe("Workspace Management", () => {
         (window as any).chrome.storage.local.get(
           ["vitruvian_tabs_workspaces"],
           (result: any) => {
-            resolve(result.vitruvian-tabs_workspaces);
+            resolve(result.vitruvian_tabs_workspaces);
           },
         );
       });
@@ -592,7 +592,9 @@ test.describe("Workspace Management", () => {
     );
     await page.reload();
     await page.waitForLoadState("load");
-    await page.waitForSelector('h1:has-text("Vitruvian Tabs")', { timeout: 10000 });
+    await page.waitForSelector('h1:has-text("Vitruvian Tabs")', {
+      timeout: 10000,
+    });
 
     // Open Dashboard
     const dashboardBtn = page.getByRole("button", { name: "Dashboard" });
@@ -647,7 +649,7 @@ test.describe("Workspace Management", () => {
         (window as any).chrome.storage.local.get(
           ["vitruvian_tabs_workspaces"],
           (result: any) => {
-            resolve(result.vitruvian-tabs_workspaces);
+            resolve(result.vitruvian_tabs_workspaces);
           },
         );
       });
@@ -730,7 +732,7 @@ test.describe("Workspace Management", () => {
           (window as any).chrome.storage.local.get(
             ["vitruvian_tabs_workspaces"],
             (result: any) => {
-              resolve(result.vitruvian-tabs_workspaces);
+              resolve(result.vitruvian_tabs_workspaces);
             },
           );
         });

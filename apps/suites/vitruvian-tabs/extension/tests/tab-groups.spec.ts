@@ -159,7 +159,7 @@ async function getWorkspaceTabGroupsFromStorage(
     const result = await (window as any).chrome.storage.local.get(
       "vitruvian_tabs_workspaces",
     );
-    const workspaces = result.vitruvian-tabs_workspaces || [];
+    const workspaces = result.vitruvian_tabs_workspaces || [];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const ws = workspaces.find((w: any) => w.name.includes(wsName));
     return ws?.tabGroups || [];

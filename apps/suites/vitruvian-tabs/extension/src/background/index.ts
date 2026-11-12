@@ -63,7 +63,9 @@ import {
 
 /** One-time migration: remove any access token left on disk by older builds. */
 function migrateLegacyToken(): void {
-  chrome.storage.local.remove("vitruvian_tabs_access_token").catch(() => undefined);
+  chrome.storage.local
+    .remove("vitruvian_tabs_access_token")
+    .catch(() => undefined);
 }
 
 // Listen for extension installation

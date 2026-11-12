@@ -217,7 +217,11 @@ fn extra_path_match_deploys_without_touching_td() {
             ("TD_ARGS_LOG", log_s),
         ],
     );
-    assert_has(&o.stdout, "path matched vitruvian-tabs/infra/app/)", "reason");
+    assert_has(
+        &o.stdout,
+        "path matched vitruvian-tabs/infra/app/)",
+        "reason",
+    );
     assert!(!log.exists(), "target-determinator must not run");
     // The changed files are listed, indented.
     assert_has(
@@ -686,12 +690,19 @@ fn after_rev_bounds_the_range() {
         "chore(main): release vitruvian-tabs 3.0.0",
     );
     let release = fx.head();
-    fx.commit("vitruvian-tabs/app.ts", "x", "feat(vitruvian-tabs): later work");
+    fx.commit(
+        "vitruvian-tabs/app.ts",
+        "x",
+        "feat(vitruvian-tabs): later work",
+    );
     fx.expect(
         "AFTER_REV",
         &before,
         "false",
-        &[("EXTRA_PATH_REGEX", "vitruvian-tabs/"), ("AFTER_REV", &release)],
+        &[
+            ("EXTRA_PATH_REGEX", "vitruvian-tabs/"),
+            ("AFTER_REV", &release),
+        ],
     );
 }
 

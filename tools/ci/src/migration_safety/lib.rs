@@ -230,7 +230,10 @@ fn lint_changed(root: &[u8], config: &[u8], base: &[u8]) -> i32 {
 
 pub fn run(args: &[Vec<u8>]) -> i32 {
     let root = find_root();
-    let config = cat(&[&root, b"/apps/suites/vitruvian-tabs/api/prisma/.squawk.toml"]);
+    let config = cat(&[
+        &root,
+        b"/apps/suites/vitruvian-tabs/api/prisma/.squawk.toml",
+    ]);
 
     let tmp = match mktemp_dir() {
         Ok(t) => t,

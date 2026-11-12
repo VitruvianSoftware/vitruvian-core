@@ -48,7 +48,10 @@ export function getDataSourceInfo(): DataSourceInfo {
   }
 
   // Check API (Authenticated)
-  if (typeof window !== "undefined" && localStorage.getItem("vitruvian_tabs_token")) {
+  if (
+    typeof window !== "undefined" &&
+    localStorage.getItem("vitruvian_tabs_token")
+  ) {
     return {
       type: "api",
       available: true,

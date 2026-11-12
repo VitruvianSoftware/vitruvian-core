@@ -156,8 +156,8 @@ export const useTabSync = ({
     const forceRemoteResult = await chrome.storage.local.get(
       "vitruvian_tabs_force_remote_until",
     );
-    const forceRemoteUntil = forceRemoteResult.vitruvian-tabs_force_remote_until as
-      number | undefined;
+    const forceRemoteUntil =
+      forceRemoteResult.vitruvian_tabs_force_remote_until as number | undefined;
     if (forceRemoteUntil && Date.now() < forceRemoteUntil) {
       // eslint-disable-next-line no-console
       console.log(

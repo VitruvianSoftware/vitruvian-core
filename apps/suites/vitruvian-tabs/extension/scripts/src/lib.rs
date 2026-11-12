@@ -87,7 +87,8 @@ mod tests {
         let gh_log = tmp.join("gh.log");
 
         fs::create_dir_all(fake_root.join("apps/suites/vitruvian-tabs/extension")).unwrap();
-        fs::create_dir_all(fake_root.join("bazel-bin/apps/suites/vitruvian-tabs/extension")).unwrap();
+        fs::create_dir_all(fake_root.join("bazel-bin/apps/suites/vitruvian-tabs/extension"))
+            .unwrap();
         fs::create_dir_all(&stubs).unwrap();
         fs::create_dir_all(&work).unwrap();
 

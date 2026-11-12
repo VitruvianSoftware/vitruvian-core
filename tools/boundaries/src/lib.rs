@@ -153,12 +153,18 @@ mod tests {
 
     #[test]
     fn app_name_suite_web() {
-        assert_eq!(get_app_name("apps/suites/vitruvian-tabs/web"), "suites/vitruvian-tabs");
+        assert_eq!(
+            get_app_name("apps/suites/vitruvian-tabs/web"),
+            "suites/vitruvian-tabs"
+        );
     }
 
     #[test]
     fn app_name_suite_api() {
-        assert_eq!(get_app_name("apps/suites/vitruvian-tabs/api"), "suites/vitruvian-tabs");
+        assert_eq!(
+            get_app_name("apps/suites/vitruvian-tabs/api"),
+            "suites/vitruvian-tabs"
+        );
     }
 
     #[test]

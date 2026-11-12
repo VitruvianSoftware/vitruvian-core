@@ -205,8 +205,10 @@ test.describe("Drag and Drop", () => {
     const storedResources = await dashboardPage.evaluate(
       async ({ id, secId }) => {
         // @ts-expect-error - using arbitrary keys
-        const data = await chrome.storage.local.get("vitruvian_tabs_workspaces");
-        const workspaces = data.vitruvian-tabs_workspaces || [];
+        const data = await chrome.storage.local.get(
+          "vitruvian_tabs_workspaces",
+        );
+        const workspaces = data.vitruvian_tabs_workspaces || [];
         const ws = workspaces.find((w: any) => w.id === id);
         const section = ws.sections.find((s: any) => s.id === secId);
         return section.resources;

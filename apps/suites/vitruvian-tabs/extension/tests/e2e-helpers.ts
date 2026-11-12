@@ -137,7 +137,10 @@ export async function logoutTestUser(page: Page): Promise<void> {
   await page.evaluate(async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const storage = (window as any).chrome.storage.local;
-    await storage.remove(["vitruvian_tabs_access_token", "vitruvian_tabs_user"]);
+    await storage.remove([
+      "vitruvian_tabs_access_token",
+      "vitruvian_tabs_user",
+    ]);
   });
 }
 
@@ -191,7 +194,7 @@ export async function cleanupTestData(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const storage = (window as any).chrome.storage.local;
     const result = await storage.get("vitruvian_tabs_workspaces");
-    const workspaces = result.vitruvian-tabs_workspaces || [];
+    const workspaces = result.vitruvian_tabs_workspaces || [];
 
     // Filter out test workspaces
     const filtered = workspaces.filter(
@@ -547,7 +550,8 @@ async function suppressOnboarding(page: Page): Promise<void> {
       const storage = (window as any).chrome?.storage?.local;
       if (!storage) return;
       const current =
-        (await storage.get("vitruvian_tabs_settings")).vitruvian-tabs_settings || {};
+        (await storage.get("vitruvian_tabs_settings"))
+          .vitruvian_tabs_settings || {};
       await storage.set({
         vitruvian_tabs_settings: { ...current, onboardingCompleted: true },
       });

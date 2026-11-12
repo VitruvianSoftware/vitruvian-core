@@ -31,7 +31,8 @@ export class StorageService {
 
   private static readonly SETTINGS_KEY = "vitruvian_tabs_settings";
 
-  private static readonly ACTIVE_WORKSPACE_KEY = "vitruvian_tabs_active_workspace";
+  private static readonly ACTIVE_WORKSPACE_KEY =
+    "vitruvian_tabs_active_workspace";
 
   private static readonly SPACE_GROUPS_KEY = "vitruvian_tabs_space_groups";
 

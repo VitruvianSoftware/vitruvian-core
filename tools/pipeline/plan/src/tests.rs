@@ -104,7 +104,10 @@ fn docs_only_fast_gate() {
             &["OWNERS", "apps/cli/devx/OWNERS", ".github/CODEOWNERS"],
             true,
         ),
-        (&["docs/index.md", "apps/suites/vitruvian-tabs/api/src/app.ts"], false),
+        (
+            &["docs/index.md", "apps/suites/vitruvian-tabs/api/src/app.ts"],
+            false,
+        ),
         (
             &[
                 "apps/mobile/android-remote/catalog-info.yaml",
@@ -300,7 +303,10 @@ fn classify_persona_and_operation_cases() {
             Operation::UiFeature,
         ),
         (
-            &["apps/suites/vitruvian-tabs/api/src/server.ts", "apps/suites/vitruvian-tabs/api/src/routes/auth.ts"],
+            &[
+                "apps/suites/vitruvian-tabs/api/src/server.ts",
+                "apps/suites/vitruvian-tabs/api/src/routes/auth.ts",
+            ],
             false,
             false,
             Persona::BackendDev,
@@ -328,7 +334,10 @@ fn classify_persona_and_operation_cases() {
             Operation::InfraProvision,
         ),
         (
-            &["apps/suites/vitruvian-tabs/web/app/page.tsx", "apps/suites/vitruvian-tabs/api/src/server.ts"],
+            &[
+                "apps/suites/vitruvian-tabs/web/app/page.tsx",
+                "apps/suites/vitruvian-tabs/api/src/server.ts",
+            ],
             false,
             false,
             Persona::FullStackDev,
@@ -383,17 +392,31 @@ pipeline_unit(
 #[test]
 fn compute_plan_hermetic() {
     let d = tmp("hermetic");
-    write(&d, "apps/suites/vitruvian-tabs/web/BUILD", VITRUVIAN_TABS_BUILD);
+    write(
+        &d,
+        "apps/suites/vitruvian-tabs/web/BUILD",
+        VITRUVIAN_TABS_BUILD,
+    );
     let root = d.to_str().unwrap();
-    let runner = Mock::new(&[("//apps/suites/vitruvian-tabs/web:all", &["//apps/suites/vitruvian-tabs/web:unit_tests"])]);
+    let runner = Mock::new(&[(
+        "//apps/suites/vitruvian-tabs/web:all",
+        &["//apps/suites/vitruvian-tabs/web:unit_tests"],
+    )]);
     let e = Engine::new(root, &runner);
 
     let p = e
-        .compute_plan(v(&["apps/suites/vitruvian-tabs/web/src/App.tsx"]), "main", "HEAD")
+        .compute_plan(
+            v(&["apps/suites/vitruvian-tabs/web/src/App.tsx"]),
+            "main",
+            "HEAD",
+        )
         .unwrap();
     assert_eq!(p.persona, Some(Persona::FrontendDev));
     assert_eq!(p.operation, Some(Operation::UiFeature));
-    assert_eq!(p.targets, Some(v(&["//apps/suites/vitruvian-tabs/web:unit_tests"])));
+    assert_eq!(
+        p.targets,
+        Some(v(&["//apps/suites/vitruvian-tabs/web:unit_tests"]))
+    );
     assert_eq!(p.matrix.len(), 1);
     assert_eq!(p.matrix[0].name, "vitruvian-tabs-web");
     assert_eq!(p.plan_source, PLAN_SOURCE_LIVE);
@@ -407,7 +430,11 @@ fn compute_plan_hermetic() {
     let failing = Mock::failing();
     let e = Engine::new(root, &failing);
     let p = e
-        .compute_plan(v(&["apps/suites/vitruvian-tabs/web/src/App.tsx"]), "main", "HEAD")
+        .compute_plan(
+            v(&["apps/suites/vitruvian-tabs/web/src/App.tsx"]),
+            "main",
+            "HEAD",
+        )
         .unwrap();
     assert!(p.is_global_impact);
     assert_eq!(p.targets, Some(v(&["//..."])));
@@ -416,12 +443,20 @@ fn compute_plan_hermetic() {
 #[test]
 fn degraded_query_is_distinguishable_from_real_global_impact() {
     let d = tmp("degraded");
-    write(&d, "apps/suites/vitruvian-tabs/web/BUILD", VITRUVIAN_TABS_BUILD);
+    write(
+        &d,
+        "apps/suites/vitruvian-tabs/web/BUILD",
+        VITRUVIAN_TABS_BUILD,
+    );
     let root = d.to_str().unwrap();
 
     let failing = Mock::failing();
     let p = Engine::new(root, &failing)
-        .compute_plan(v(&["apps/suites/vitruvian-tabs/web/src/App.tsx"]), "main", "HEAD")
+        .compute_plan(
+            v(&["apps/suites/vitruvian-tabs/web/src/App.tsx"]),
+            "main",
+            "HEAD",
+        )
         .unwrap();
     assert!(p.is_global_impact && p.is_degraded);
     assert_eq!(
@@ -429,14 +464,21 @@ fn degraded_query_is_distinguishable_from_real_global_impact() {
         "query degraded: fallback to full sweep (simulated query error)"
     );
 
-    let ok = Mock::new(&[("//apps/suites/vitruvian-tabs/web:all", &["//apps/suites/vitruvian-tabs/web:unit_tests"])]);
+    let ok = Mock::new(&[(
+        "//apps/suites/vitruvian-tabs/web:all",
+        &["//apps/suites/vitruvian-tabs/web:unit_tests"],
+    )]);
     let p = Engine::new(root, &ok)
         .compute_plan(v(&["MODULE.bazel"]), "main", "HEAD")
         .unwrap();
     assert!(p.is_global_impact && !p.is_degraded);
 
     let p = Engine::new(root, &ok)
-        .compute_plan(v(&["apps/suites/vitruvian-tabs/web/src/App.tsx"]), "main", "HEAD")
+        .compute_plan(
+            v(&["apps/suites/vitruvian-tabs/web/src/App.tsx"]),
+            "main",
+            "HEAD",
+        )
         .unwrap();
     assert!(!p.is_global_impact && !p.is_degraded);
 }
@@ -946,7 +988,11 @@ fn unit_is_selected_through_a_dependency() {
 #[test]
 fn plan_json_matches_go_shape() {
     let d = tmp("json");
-    write(&d, "apps/suites/vitruvian-tabs/web/BUILD", VITRUVIAN_TABS_BUILD);
+    write(
+        &d,
+        "apps/suites/vitruvian-tabs/web/BUILD",
+        VITRUVIAN_TABS_BUILD,
+    );
     let runner = Mock::new(&[]);
     let mut p = Engine::new(d.to_str().unwrap(), &runner)
         .compute_plan(v(&["apps/suites/vitruvian-tabs/web/x.ts"]), "base<&>", "")

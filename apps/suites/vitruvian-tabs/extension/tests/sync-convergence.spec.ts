@@ -109,7 +109,7 @@ async function readLocal(page: Page): Promise<ApiWorkspace[]> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const storage = (window as any).chrome.storage.local;
     const result = await storage.get("vitruvian_tabs_workspaces");
-    return (result.vitruvian-tabs_workspaces || []) as ApiWorkspace[];
+    return (result.vitruvian_tabs_workspaces || []) as ApiWorkspace[];
   });
 }
 

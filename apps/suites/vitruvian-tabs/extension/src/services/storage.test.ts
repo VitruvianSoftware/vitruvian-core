@@ -123,7 +123,9 @@ describe("StorageService", () => {
     });
 
     it("should return undefined for non-existent workspace", async () => {
-      mockStorage.local.get.mockResolvedValue({ vitruvian_tabs_workspaces: [] });
+      mockStorage.local.get.mockResolvedValue({
+        vitruvian_tabs_workspaces: [],
+      });
       const result = await StorageService.getWorkspaceById("nonexistent");
       expect(result).toBeUndefined();
     });
@@ -153,7 +155,9 @@ describe("StorageService", () => {
         autoSave: true,
         tabCloseMode: "hybrid",
       };
-      mockStorage.local.get.mockResolvedValue({ vitruvian_tabs_settings: settings });
+      mockStorage.local.get.mockResolvedValue({
+        vitruvian_tabs_settings: settings,
+      });
       const result = await StorageService.getSettings();
       expect(result).toEqual(settings);
     });

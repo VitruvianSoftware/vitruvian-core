@@ -84,8 +84,12 @@ describe("AuthService", () => {
 
       AuthService.logout();
 
-      expect(localStorageMock.removeItem).toHaveBeenCalledWith("vitruvian_tabs_token");
-      expect(localStorageMock.removeItem).toHaveBeenCalledWith("vitruvian_tabs_user");
+      expect(localStorageMock.removeItem).toHaveBeenCalledWith(
+        "vitruvian_tabs_token",
+      );
+      expect(localStorageMock.removeItem).toHaveBeenCalledWith(
+        "vitruvian_tabs_user",
+      );
     });
   });
 

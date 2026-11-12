@@ -177,7 +177,9 @@ pub fn load_upstash_credentials(
     if !final_email || !final_key {
         eprintln!("\n⚠️  Upstash credentials not found in environment or Secret Manager.");
         eprintln!("Terraform operations involving Upstash will likely fail.");
-        eprintln!("Use \"vitruvian-tabs infra secrets set UPSTASH_EMAIL/UPSTASH_API_KEY\" to set them.\n");
+        eprintln!(
+            "Use \"vitruvian-tabs infra secrets set UPSTASH_EMAIL/UPSTASH_API_KEY\" to set them.\n"
+        );
         return false;
     }
     true

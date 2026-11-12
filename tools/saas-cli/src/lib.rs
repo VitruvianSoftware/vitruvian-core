@@ -362,7 +362,7 @@ mod tests {
         let map = format!("{}/ids-{}.tsv", base, std::process::id());
         std::fs::write(
             &map,
-            "# comment\ntabula/infra/build  sa@p.iam.gserviceaccount.com  prj-p  purpose text\n-  x@y  -  ref\n",
+            "# comment\napps/suites/vitruvian-tabs/infra/build  sa@p.iam.gserviceaccount.com  prj-p  purpose text\n-  x@y  -  ref\n",
         )
         .unwrap();
         assert_eq!(

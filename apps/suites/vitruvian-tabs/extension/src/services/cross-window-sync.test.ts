@@ -63,7 +63,9 @@ describe("CrossWindowSyncService", () => {
 
   it("initializes a BroadcastChannel on the shared channel name", () => {
     expect(MockBroadcastChannel.instances).toHaveLength(1);
-    expect(MockBroadcastChannel.instances[0].name).toBe("vitruvian_tabs_sync_channel");
+    expect(MockBroadcastChannel.instances[0].name).toBe(
+      "vitruvian_tabs_sync_channel",
+    );
   });
 
   it("broadcasts claim/release messages with the expected shape", () => {

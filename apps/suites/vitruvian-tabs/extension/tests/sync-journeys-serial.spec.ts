@@ -601,7 +601,7 @@ test.describe("Sync Journeys (Serial)", () => {
           const s = await (window as any).chrome.storage.local.get(
             "vitruvian_tabs_workspaces",
           );
-          return s.vitruvian-tabs_workspaces || [];
+          return s.vitruvian_tabs_workspaces || [];
         });
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         expect(workspaces.some((w: any) => w.name === wsName)).toBe(true);

@@ -573,7 +573,12 @@ fn render_gravastar_mouse_publish_steps(b: &mut String, _u: &Unit, env: &str, op
     Ok(())
 }
 
-fn render_vitruvian_tabs_build_stack_steps(b: &mut String, _u: &Unit, _env: &str, opts: &Opts) -> R {
+fn render_vitruvian_tabs_build_stack_steps(
+    b: &mut String,
+    _u: &Unit,
+    _env: &str,
+    opts: &Opts,
+) -> R {
     b.push_str("    steps:\n");
     w!(b, "      - uses: {}\n", opts.pin("actions/checkout")?);
     b.push_str("        with:\n");

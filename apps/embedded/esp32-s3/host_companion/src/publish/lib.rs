@@ -546,7 +546,10 @@ mod tests {
         assert!(e.contains("refusing to guess"));
         let e = resolve_config(&envs(
             &root,
-            &[("GRADE", "production"), ("RELEASE_TAG", "vitruvian-tabs-v1.0.0")],
+            &[
+                ("GRADE", "production"),
+                ("RELEASE_TAG", "vitruvian-tabs-v1.0.0"),
+            ],
         ))
         .unwrap_err();
         assert!(e.contains("is not an esp32-s3-v*"));

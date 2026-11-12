@@ -88,7 +88,7 @@ export default function RelayLandingPage() {
     };
   }, [relayId]);
 
-  function openInVitruvian Tabs() {
+  function openInVitruvianTabs() {
     if (!info) return;
     openInExtension(relayId, info.workspaceId);
     setPhase("opening");
@@ -139,7 +139,7 @@ export default function RelayLandingPage() {
       {info ? <RelayPreviewCard info={info} /> : null}
       <div className="mt-8 flex flex-col gap-3">
         {extensionInstalled ? (
-          <Button type="button" onClick={openInVitruvian Tabs}>
+          <Button type="button" onClick={openInVitruvianTabs}>
             Open in Vitruvian Tabs
           </Button>
         ) : (

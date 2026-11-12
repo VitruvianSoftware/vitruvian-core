@@ -97,7 +97,9 @@ describe("Background Script", () => {
 
     await installCallback({ reason: "install" });
 
-    expect(console.log).toHaveBeenCalledWith("Vitruvian Tabs extension installed"); // Assuming console.log is mocked or we check side effects
+    expect(console.log).toHaveBeenCalledWith(
+      "Vitruvian Tabs extension installed",
+    ); // Assuming console.log is mocked or we check side effects
     expect(StorageService.getSettings).toHaveBeenCalled();
     expect(StorageService.saveSettings).toHaveBeenCalled();
     expect(chrome.tabs.create).toHaveBeenCalledWith(
@@ -122,7 +124,9 @@ describe("Background Script", () => {
 
     await installCallback({ reason: "update" });
 
-    expect(console.log).toHaveBeenCalledWith("Vitruvian Tabs extension updated");
+    expect(console.log).toHaveBeenCalledWith(
+      "Vitruvian Tabs extension updated",
+    );
   });
 
   it("runs an auto-suspend scan on the autoSuspendCheck alarm", async () => {

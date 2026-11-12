@@ -298,7 +298,9 @@ describe("AuthService", () => {
         email: "test@example.com",
         name: "Test User",
       };
-      mockChrome.storage.local.get.mockResolvedValue({ vitruvian_tabs_user: mockUser });
+      mockChrome.storage.local.get.mockResolvedValue({
+        vitruvian_tabs_user: mockUser,
+      });
 
       const result = await AuthService.getUser();
       expect(result).toEqual(mockUser);

@@ -42,7 +42,9 @@ jest.mock("./cross-window-sync", () => ({
 }));
 
 // Mock chrome APIs at module level
-const mockStorage: { vitruvian_tabs_window_ownership?: WindowOwnershipRecord[] } = {};
+const mockStorage: {
+  vitruvian_tabs_window_ownership?: WindowOwnershipRecord[];
+} = {};
 const mockChromeStorage = {
   get: jest.fn((key: string) =>
     Promise.resolve({ [key]: mockStorage[key as keyof typeof mockStorage] }),
@@ -88,7 +90,7 @@ describe("WindowOwnershipService", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     // Clear mock storage
-    delete mockStorage.vitruvian-tabs_window_ownership;
+    delete mockStorage.vitruvian_tabs_window_ownership;
     mockWindows.clear();
     mockTabs.length = 0;
   });
@@ -103,7 +105,7 @@ describe("WindowOwnershipService", () => {
       const records: WindowOwnershipRecord[] = [
         { workspaceId: "ws1", windowId: 1, tabId: 100, lastActive: Date.now() },
       ];
-      mockStorage.vitruvian-tabs_window_ownership = records;
+      mockStorage.vitruvian_tabs_window_ownership = records;
 
       const result = await WindowOwnershipService.getWindowOwnership();
       expect(result).toEqual(records);
@@ -123,7 +125,7 @@ describe("WindowOwnershipService", () => {
         tabId: 100,
         lastActive: Date.now(),
       };
-      mockStorage.vitruvian-tabs_window_ownership = [record];
+      mockStorage.vitruvian_tabs_window_ownership = [record];
 
       const result = await WindowOwnershipService.getWorkspaceOwner("ws1");
       expect(result).toEqual(record);
@@ -146,7 +148,7 @@ describe("WindowOwnershipService", () => {
         tabId: 100,
         lastActive: Date.now(),
       };
-      mockStorage.vitruvian-tabs_window_ownership = [record];
+      mockStorage.vitruvian_tabs_window_ownership = [record];
 
       const result = await WindowOwnershipService.isWorkspaceOwnedByOtherWindow(
         "ws1",
@@ -162,7 +164,7 @@ describe("WindowOwnershipService", () => {
         tabId: 200,
         lastActive: Date.now(),
       };
-      mockStorage.vitruvian-tabs_window_ownership = [record];
+      mockStorage.vitruvian_tabs_window_ownership = [record];
       mockWindows.set(2, { id: 2 });
 
       const result = await WindowOwnershipService.isWorkspaceOwnedByOtherWindow(
@@ -179,7 +181,7 @@ describe("WindowOwnershipService", () => {
         tabId: 100,
         lastActive: Date.now(),
       };
-      mockStorage.vitruvian-tabs_window_ownership = [record];
+      mockStorage.vitruvian_tabs_window_ownership = [record];
 
       const result = await WindowOwnershipService.isWorkspaceOwnedByOtherWindow(
         "ws1",
@@ -200,8 +202,8 @@ describe("WindowOwnershipService", () => {
       const setCall = mockChromeStorage.set.mock.calls[0][0] as {
         vitruvian_tabs_window_ownership: WindowOwnershipRecord[];
       };
-      expect(setCall.vitruvian-tabs_window_ownership).toHaveLength(1);
-      expect(setCall.vitruvian-tabs_window_ownership[0]).toMatchObject({
+      expect(setCall.vitruvian_tabs_window_ownership).toHaveLength(1);
+      expect(setCall.vitruvian_tabs_window_ownership[0]).toMatchObject({
         workspaceId: "ws1",
         windowId: 1,
         tabId: 100,
@@ -215,15 +217,15 @@ describe("WindowOwnershipService", () => {
         tabId: 200,
         lastActive: Date.now() - 1000,
       };
-      mockStorage.vitruvian-tabs_window_ownership = [existingRecord];
+      mockStorage.vitruvian_tabs_window_ownership = [existingRecord];
 
       await WindowOwnershipService.registerWorkspaceOwnership("ws1", 1, 100);
 
       const setCall = mockChromeStorage.set.mock.calls[0][0] as {
         vitruvian_tabs_window_ownership: WindowOwnershipRecord[];
       };
-      expect(setCall.vitruvian-tabs_window_ownership).toHaveLength(1);
-      expect(setCall.vitruvian-tabs_window_ownership[0].windowId).toBe(1);
+      expect(setCall.vitruvian_tabs_window_ownership).toHaveLength(1);
+      expect(setCall.vitruvian_tabs_window_ownership[0].windowId).toBe(1);
     });
   });
 
@@ -233,15 +235,17 @@ describe("WindowOwnershipService", () => {
         { workspaceId: "ws1", windowId: 1, tabId: 100, lastActive: Date.now() },
         { workspaceId: "ws2", windowId: 2, tabId: 200, lastActive: Date.now() },
       ];
-      mockStorage.vitruvian-tabs_window_ownership = records;
+      mockStorage.vitruvian_tabs_window_ownership = records;
 
       await WindowOwnershipService.clearWorkspaceOwnership("ws1");
 
       const setCall = mockChromeStorage.set.mock.calls[0][0] as {
         vitruvian_tabs_window_ownership: WindowOwnershipRecord[];
       };
-      expect(setCall.vitruvian-tabs_window_ownership).toHaveLength(1);
-      expect(setCall.vitruvian-tabs_window_ownership[0].workspaceId).toBe("ws2");
+      expect(setCall.vitruvian_tabs_window_ownership).toHaveLength(1);
+      expect(setCall.vitruvian_tabs_window_ownership[0].workspaceId).toBe(
+        "ws2",
+      );
     });
   });
 
@@ -252,15 +256,17 @@ describe("WindowOwnershipService", () => {
         { workspaceId: "ws2", windowId: 1, tabId: 101, lastActive: Date.now() },
         { workspaceId: "ws3", windowId: 2, tabId: 200, lastActive: Date.now() },
       ];
-      mockStorage.vitruvian-tabs_window_ownership = records;
+      mockStorage.vitruvian_tabs_window_ownership = records;
 
       await WindowOwnershipService.clearWindowOwnership(1);
 
       const setCall = mockChromeStorage.set.mock.calls[0][0] as {
         vitruvian_tabs_window_ownership: WindowOwnershipRecord[];
       };
-      expect(setCall.vitruvian-tabs_window_ownership).toHaveLength(1);
-      expect(setCall.vitruvian-tabs_window_ownership[0].workspaceId).toBe("ws3");
+      expect(setCall.vitruvian_tabs_window_ownership).toHaveLength(1);
+      expect(setCall.vitruvian_tabs_window_ownership[0].workspaceId).toBe(
+        "ws3",
+      );
     });
   });
 
@@ -273,20 +279,20 @@ describe("WindowOwnershipService", () => {
         tabId: 100,
         lastActive: oldTimestamp,
       };
-      mockStorage.vitruvian-tabs_window_ownership = [record];
+      mockStorage.vitruvian_tabs_window_ownership = [record];
 
       await WindowOwnershipService.updateOwnershipActivity("ws1");
 
       const setCall = mockChromeStorage.set.mock.calls[0][0] as {
         vitruvian_tabs_window_ownership: WindowOwnershipRecord[];
       };
-      expect(setCall.vitruvian-tabs_window_ownership[0].lastActive).toBeGreaterThan(
-        oldTimestamp,
-      );
+      expect(
+        setCall.vitruvian_tabs_window_ownership[0].lastActive,
+      ).toBeGreaterThan(oldTimestamp);
     });
 
     it("should do nothing if workspace not found", async () => {
-      mockStorage.vitruvian-tabs_window_ownership = [];
+      mockStorage.vitruvian_tabs_window_ownership = [];
 
       await WindowOwnershipService.updateOwnershipActivity("ws1");
 
@@ -303,8 +309,8 @@ describe("WindowOwnershipService", () => {
       );
 
       expect(result).toEqual({ claimed: true });
-      expect(mockStorage.vitruvian-tabs_window_ownership).toHaveLength(1);
-      expect(mockStorage.vitruvian-tabs_window_ownership![0]).toMatchObject({
+      expect(mockStorage.vitruvian_tabs_window_ownership).toHaveLength(1);
+      expect(mockStorage.vitruvian_tabs_window_ownership![0]).toMatchObject({
         workspaceId: "ws1",
         windowId: 1,
         tabId: 100,
@@ -323,7 +329,7 @@ describe("WindowOwnershipService", () => {
         tabId: 200,
         lastActive: Date.now(),
       };
-      mockStorage.vitruvian-tabs_window_ownership = [owner];
+      mockStorage.vitruvian_tabs_window_ownership = [owner];
       mockWindows.set(2, { id: 2 });
 
       const result = await WindowOwnershipService.tryClaimWorkspace(
@@ -334,7 +340,7 @@ describe("WindowOwnershipService", () => {
 
       expect(result).toEqual({ claimed: false, owner });
       // Record untouched, no claim broadcast
-      expect(mockStorage.vitruvian-tabs_window_ownership![0].windowId).toBe(2);
+      expect(mockStorage.vitruvian_tabs_window_ownership![0].windowId).toBe(2);
       expect(crossWindowSync.broadcastClaim).not.toHaveBeenCalled();
     });
 
@@ -345,7 +351,7 @@ describe("WindowOwnershipService", () => {
         tabId: 200,
         lastActive: Date.now(),
       };
-      mockStorage.vitruvian-tabs_window_ownership = [deadOwner];
+      mockStorage.vitruvian_tabs_window_ownership = [deadOwner];
 
       const result = await WindowOwnershipService.tryClaimWorkspace(
         "ws1",
@@ -354,13 +360,13 @@ describe("WindowOwnershipService", () => {
       );
 
       expect(result).toEqual({ claimed: true });
-      expect(mockStorage.vitruvian-tabs_window_ownership).toHaveLength(1);
-      expect(mockStorage.vitruvian-tabs_window_ownership![0].windowId).toBe(1);
+      expect(mockStorage.vitruvian_tabs_window_ownership).toHaveLength(1);
+      expect(mockStorage.vitruvian_tabs_window_ownership![0].windowId).toBe(1);
       expect(crossWindowSync.broadcastRelease).toHaveBeenCalledWith("ws1", 999);
     });
 
     it("releases this window’s previous workspace when claiming a new one", async () => {
-      mockStorage.vitruvian-tabs_window_ownership = [
+      mockStorage.vitruvian_tabs_window_ownership = [
         {
           workspaceId: "ws-old",
           windowId: 1,
@@ -386,19 +392,19 @@ describe("WindowOwnershipService", () => {
   describe("clearWorkspaceOwnership with attributed window", () => {
     it("removes only the record held by the released window", async () => {
       // A third window re-claimed ws1 between the dead-check and the clear
-      mockStorage.vitruvian-tabs_window_ownership = [
+      mockStorage.vitruvian_tabs_window_ownership = [
         { workspaceId: "ws1", windowId: 3, tabId: 300, lastActive: Date.now() },
       ];
 
       await WindowOwnershipService.clearWorkspaceOwnership("ws1", 999);
 
       // Window 3's fresh claim must survive
-      expect(mockStorage.vitruvian-tabs_window_ownership).toHaveLength(1);
-      expect(mockStorage.vitruvian-tabs_window_ownership![0].windowId).toBe(3);
+      expect(mockStorage.vitruvian_tabs_window_ownership).toHaveLength(1);
+      expect(mockStorage.vitruvian_tabs_window_ownership![0].windowId).toBe(3);
     });
 
     it("broadcasts the release attributed to the dead owner", async () => {
-      mockStorage.vitruvian-tabs_window_ownership = [
+      mockStorage.vitruvian_tabs_window_ownership = [
         {
           workspaceId: "ws1",
           windowId: 999,
@@ -409,14 +415,14 @@ describe("WindowOwnershipService", () => {
 
       await WindowOwnershipService.clearWorkspaceOwnership("ws1", 999);
 
-      expect(mockStorage.vitruvian-tabs_window_ownership).toHaveLength(0);
+      expect(mockStorage.vitruvian_tabs_window_ownership).toHaveLength(0);
       expect(crossWindowSync.broadcastRelease).toHaveBeenCalledWith("ws1", 999);
     });
   });
 
   describe("clearWindowOwnership broadcasts", () => {
     it("broadcasts a release for each workspace the closed window held", async () => {
-      mockStorage.vitruvian-tabs_window_ownership = [
+      mockStorage.vitruvian_tabs_window_ownership = [
         { workspaceId: "ws1", windowId: 1, tabId: 100, lastActive: Date.now() },
         { workspaceId: "ws2", windowId: 1, tabId: 101, lastActive: Date.now() },
         { workspaceId: "ws3", windowId: 2, tabId: 200, lastActive: Date.now() },
@@ -435,7 +441,7 @@ describe("WindowOwnershipService", () => {
 
   describe("clearAllWindowOwnership", () => {
     it("wipes the ownership storage key", async () => {
-      mockStorage.vitruvian-tabs_window_ownership = [
+      mockStorage.vitruvian_tabs_window_ownership = [
         { workspaceId: "ws1", windowId: 1, tabId: 100, lastActive: Date.now() },
       ];
 

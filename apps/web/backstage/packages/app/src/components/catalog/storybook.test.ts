@@ -119,7 +119,9 @@ describe("Storybook helpers", () => {
             [STORYBOOK_URL_ANNOTATION]: "vitruvian-tabs-panel--overview",
           }),
         ),
-      ).toBe(`${DEFAULT_STORYBOOK_URL}/?path=/story/vitruvian-tabs-panel--overview`);
+      ).toBe(
+        `${DEFAULT_STORYBOOK_URL}/?path=/story/vitruvian-tabs-panel--overview`,
+      );
     });
   });
 

@@ -873,7 +873,9 @@ describe("SyncService", () => {
 
     it("should load queue on initialization", async () => {
       (AuthService.getToken as jest.Mock).mockResolvedValue("test-token");
-      mockChrome.storage.local.get.mockResolvedValue({ vitruvian_tabs_sync_queue: [] });
+      mockChrome.storage.local.get.mockResolvedValue({
+        vitruvian_tabs_sync_queue: [],
+      });
 
       (SyncService as any).initialized = false;
       await SyncService.initialize();
@@ -884,7 +886,9 @@ describe("SyncService", () => {
     it("should process queue on init if online and logged in", async () => {
       (AuthService.getToken as jest.Mock).mockResolvedValue("test-token");
       Object.defineProperty(globalThis.navigator, "onLine", { value: true });
-      mockChrome.storage.local.get.mockResolvedValue({ vitruvian_tabs_sync_queue: [] });
+      mockChrome.storage.local.get.mockResolvedValue({
+        vitruvian_tabs_sync_queue: [],
+      });
 
       (SyncService as any).initialized = false;
       await SyncService.initialize();
@@ -1453,7 +1457,9 @@ describe("SyncService", () => {
       await SyncService.processQueue();
 
       expect(mockStorage.get("vitruvian_tabs_sync_queue")).toHaveLength(0);
-      expect(mockStorage.get("vitruvian_tabs_space_groups")[0].title).toBe("New");
+      expect(mockStorage.get("vitruvian_tabs_space_groups")[0].title).toBe(
+        "New",
+      );
     });
 
     it("on 409 where local is newer: adopts server version and retries", async () => {

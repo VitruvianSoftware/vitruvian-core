@@ -508,7 +508,11 @@ fn source_differing_from_trigger_skips_with_zero_gh_calls() {
     ]);
     assert_eq!(o.code, 0, "{o:?}");
     assert_eq!(h.log(), "", "no gh calls at all");
-    assert_has(&o.stdout, "this entry is for 'delivery-vitruvian-tabs'", "says why");
+    assert_has(
+        &o.stdout,
+        "this entry is for 'delivery-vitruvian-tabs'",
+        "says why",
+    );
 }
 
 #[test]

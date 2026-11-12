@@ -457,7 +457,10 @@ fn gap_empty_google_cloud_project_falls_back_to_gcp_project_id() {
 #[test]
 fn gap_non_interactive_matches_exact_token_only() {
     let fx = Fx::new();
-    let (mut c, log, count) = fx.cmd("apps/suites/vitruvian-tabs/infra/web", &["preview", "--non-interactive=false"]);
+    let (mut c, log, count) = fx.cmd(
+        "apps/suites/vitruvian-tabs/infra/web",
+        &["preview", "--non-interactive=false"],
+    );
     c.env("PULUMI_BACKEND_URL", "gs://b").env("CI", "1");
     let r = exec(c, &log, &count);
     assert!(
@@ -473,7 +476,10 @@ fn gap_non_interactive_matches_exact_token_only() {
 #[test]
 fn explicit_non_interactive_not_duplicated() {
     let fx = Fx::new();
-    let (mut c, log, count) = fx.cmd("apps/suites/vitruvian-tabs/infra/web", &["preview", "--non-interactive"]);
+    let (mut c, log, count) = fx.cmd(
+        "apps/suites/vitruvian-tabs/infra/web",
+        &["preview", "--non-interactive"],
+    );
     c.env("PULUMI_BACKEND_URL", "gs://b").env("CI", "1");
     let r = exec(c, &log, &count);
     assert!(
@@ -488,8 +494,10 @@ fn runs_in_project_dir_with_gowork_off() {
     let fx = Fx::new();
     let r = run_cmd(&fx, "up", false, "ok", "gs://b", "", "", &[]);
     assert!(
-        r.log
-            .contains(&format!("pwd={}/apps/suites/vitruvian-tabs/infra/web ", fx.ws.display())),
+        r.log.contains(&format!(
+            "pwd={}/apps/suites/vitruvian-tabs/infra/web ",
+            fx.ws.display()
+        )),
         "{}",
         r.log
     );
@@ -565,7 +573,10 @@ fn pulumi_org_qualifies_bare_stack_names_on_cloud_backend() {
 #[test]
 fn pulumi_org_ignored_on_gcs_backend() {
     let fx = Fx::new();
-    let (mut c, log, count) = fx.cmd("apps/suites/vitruvian-tabs/infra/web", &["preview", "--stack", "dev"]);
+    let (mut c, log, count) = fx.cmd(
+        "apps/suites/vitruvian-tabs/infra/web",
+        &["preview", "--stack", "dev"],
+    );
     c.env("PULUMI_BACKEND_URL", "gs://b")
         .env("PULUMI_ORG", "vitruvian")
         .env("CI", "1");

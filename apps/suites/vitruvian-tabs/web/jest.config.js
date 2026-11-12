@@ -26,7 +26,9 @@ const createJestConfig = nextJest({
   // Path to the Next.js app, to load next.config.ts and .env in the test env.
   // Under Bazel (rules_jest) the process cwd is the runfiles root, so this is
   // workspace-relative rather than config-relative.
-  dir: process.env.JS_BINARY__RUNFILES ? "apps/suites/vitruvian-tabs/web" : "./",
+  dir: process.env.JS_BINARY__RUNFILES
+    ? "apps/suites/vitruvian-tabs/web"
+    : "./",
 });
 
 // Add any custom config to be passed to Jest

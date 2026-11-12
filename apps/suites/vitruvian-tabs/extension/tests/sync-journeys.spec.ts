@@ -365,8 +365,10 @@ test.describe("Sync Journeys (Space & Section Management)", () => {
     const wsAId = await page.evaluate(async (name) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const w = (
-        await (window as any).chrome.storage.local.get("vitruvian_tabs_workspaces")
-      ).vitruvian-tabs_workspaces.find((ws: any) => ws.name.startsWith(name));
+        await (window as any).chrome.storage.local.get(
+          "vitruvian_tabs_workspaces",
+        )
+      ).vitruvian_tabs_workspaces.find((ws: any) => ws.name.startsWith(name));
       return w?.id as string | undefined;
     }, "Persist A");
     await page.goto(
@@ -509,8 +511,10 @@ test.describe("Sync Journeys (Space & Section Management)", () => {
     await page.evaluate(async (name) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const w = (
-        await (window as any).chrome.storage.local.get("vitruvian_tabs_workspaces")
-      ).vitruvian-tabs_workspaces.find((ws: any) => ws.name.startsWith(name));
+        await (window as any).chrome.storage.local.get(
+          "vitruvian_tabs_workspaces",
+        )
+      ).vitruvian_tabs_workspaces.find((ws: any) => ws.name.startsWith(name));
       if (w) {
         await (window as any).chrome.storage.local.set({
           vitruvian_tabs_active_workspace: w.id,
@@ -526,7 +530,7 @@ test.describe("Sync Journeys (Space & Section Management)", () => {
       const storage = (window as any).chrome.storage.local;
       const result = await storage.get("vitruvian_tabs_workspaces");
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const w = result.vitruvian-tabs_workspaces.find((ws: any) =>
+      const w = result.vitruvian_tabs_workspaces.find((ws: any) =>
         ws.name.startsWith(name),
       );
       if (w) {
@@ -821,9 +825,9 @@ test.describe("Sync Journeys (Space & Section Management)", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const storage = (window as any).chrome.storage.local;
       const result = await storage.get("vitruvian_tabs_workspaces");
-      if (result.vitruvian-tabs_workspaces) {
+      if (result.vitruvian_tabs_workspaces) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const filtered = result.vitruvian-tabs_workspaces.filter(
+        const filtered = result.vitruvian_tabs_workspaces.filter(
           (ws: any) => !ws.name.includes("Order"),
         );
         await storage.set({ vitruvian_tabs_workspaces: filtered });
@@ -879,7 +883,7 @@ test.describe("Sync Journeys (Space & Section Management)", () => {
       const result = await (window as any).chrome.storage.local.get(
         "vitruvian_tabs_workspaces",
       );
-      const workspaces = result.vitruvian-tabs_workspaces || [];
+      const workspaces = result.vitruvian_tabs_workspaces || [];
       const targetWs = workspaces.filter((w: { name: string }) =>
         names.some((n) => w.name.includes(n)),
       );
@@ -952,7 +956,7 @@ test.describe("Sync Journeys (Space & Section Management)", () => {
       const storage = (window as any).chrome.storage.local;
       const result = await storage.get("vitruvian_tabs_workspaces");
       // eslint-disable-next-line camelcase
-      const workspaces = result.vitruvian-tabs_workspaces;
+      const workspaces = result.vitruvian_tabs_workspaces;
       const ws = workspaces.find((w: { name: string }) => w.name === wName);
       if (ws && ws.sections && ws.sections.length >= 3) {
         // Swap sections

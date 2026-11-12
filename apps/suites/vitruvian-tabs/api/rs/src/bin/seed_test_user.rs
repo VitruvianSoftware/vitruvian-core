@@ -36,7 +36,8 @@ fn main() {
     };
 
     if let Ok(db_url) = std::env::var("DATABASE_URL") {
-        if !db_url.is_empty() && std::env::var("VITRUVIAN_TABS_SEED_DRY_RUN").as_deref() != Ok("1") {
+        if !db_url.is_empty() && std::env::var("VITRUVIAN_TABS_SEED_DRY_RUN").as_deref() != Ok("1")
+        {
             let mut used_pg_client = false;
             if let Ok(pg) = PgClient::from_url(&db_url) {
                 let mut all_ok = true;

@@ -122,8 +122,10 @@ mod tests {
 
     fn mk_tmp() -> PathBuf {
         let id = TMP_COUNTER.fetch_add(1, AtomicOrdering::SeqCst);
-        let dir =
-            std::env::temp_dir().join(format!("vitruvian-tabs-ext-rs-test-{}-{id}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "vitruvian-tabs-ext-rs-test-{}-{id}",
+            std::process::id()
+        ));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).expect("create temp dir");
         dir
@@ -131,7 +133,8 @@ mod tests {
 
     fn write_bundle(dir: &Path, commit: &str) {
         fs::create_dir_all(dir).expect("mkdir bundle");
-        fs::write(dir.join("manifest.json"), r#"{"name":"Vitruvian Tabs"}"#).expect("write manifest");
+        fs::write(dir.join("manifest.json"), r#"{"name":"Vitruvian Tabs"}"#)
+            .expect("write manifest");
         fs::write(
             dir.join("build-info.json"),
             format!(r#"{{"commit":"{commit}"}}"#),
@@ -738,19 +741,31 @@ tabula-api-stg,https://tabula-api-stg-xyz.a.run.app
 
         let mut secrets = BTreeMap::new();
         secrets.insert(
-            ("vitruvian-tabs-staging".to_string(), "WORKOS_API_KEY".to_string()),
+            (
+                "vitruvian-tabs-staging".to_string(),
+                "WORKOS_API_KEY".to_string(),
+            ),
             "sk_stg_secret".to_string(),
         );
         secrets.insert(
-            ("vitruvian-tabs-staging".to_string(), "WORKOS_CLIENT_ID".to_string()),
+            (
+                "vitruvian-tabs-staging".to_string(),
+                "WORKOS_CLIENT_ID".to_string(),
+            ),
             "client_stg_123".to_string(),
         );
         secrets.insert(
-            ("vitruvian-tabs-staging".to_string(), "UPSTASH_EMAIL".to_string()),
+            (
+                "vitruvian-tabs-staging".to_string(),
+                "UPSTASH_EMAIL".to_string(),
+            ),
             "ops@tabula.dev".to_string(),
         );
         secrets.insert(
-            ("vitruvian-tabs-staging".to_string(), "UPSTASH_API_KEY".to_string()),
+            (
+                "vitruvian-tabs-staging".to_string(),
+                "UPSTASH_API_KEY".to_string(),
+            ),
             "upstash_key_123".to_string(),
         );
         let fetcher = MockSecretFetcher { secrets };

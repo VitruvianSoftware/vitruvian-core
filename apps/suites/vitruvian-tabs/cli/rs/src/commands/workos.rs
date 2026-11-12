@@ -207,8 +207,9 @@ pub fn run_workos_command(args: &[String]) -> Result<String, String> {
     }
 
     // Passthrough to WorkOS CLI
-    let config = get_config()
-        .map_err(|_| "Configuration not found. Please run \"vitruvian-tabs init\" first.".to_string())?;
+    let config = get_config().map_err(|_| {
+        "Configuration not found. Please run \"vitruvian-tabs init\" first.".to_string()
+    })?;
     let mut env_name = "dev".to_string();
     for (idx, a) in args.iter().enumerate() {
         if (a == "--env" || a == "-e") && idx + 1 < args.len() {

@@ -197,7 +197,9 @@ describe("RelayLandingPage — extension installed", () => {
     const openBtn = await screen.findByRole("button", {
       name: /Open in Vitruvian Tabs/,
     });
-    expect(screen.queryByText("Install Vitruvian Tabs")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Install Vitruvian Tabs"),
+    ).not.toBeInTheDocument();
     // PING fired during detection, but IMPORT_SPACE must NOT fire without a click.
     expect(sendMessage).not.toHaveBeenCalledWith(
       "ext-id",
@@ -235,7 +237,8 @@ describe("RelayLandingPage — extension installed", () => {
     mockInfo.mockResolvedValue(info("view"));
     render(<RelayLandingPage />);
     await waitFor(
-      () => expect(screen.getByText("Install Vitruvian Tabs")).toBeInTheDocument(),
+      () =>
+        expect(screen.getByText("Install Vitruvian Tabs")).toBeInTheDocument(),
       { timeout: 2000 },
     );
   });

@@ -441,7 +441,10 @@ fn group_by_app_gives_every_app_its_own_workflow() {
 fn group_by_app_refuses_couplings_across_apps() {
     let edits: Vec<(Edit, &str)> = vec![
         (Box::new(|us| us[0].app.clear()), "declares no app"),
-        (Box::new(|us| us[0].app = "Vitruvian_Tabs".into()), "lowercase"),
+        (
+            Box::new(|us| us[0].app = "Vitruvian_Tabs".into()),
+            "lowercase",
+        ),
         (
             Box::new(|us| {
                 for u in us.iter_mut().filter(|u| u.name == "vitruvian-tabs-web") {

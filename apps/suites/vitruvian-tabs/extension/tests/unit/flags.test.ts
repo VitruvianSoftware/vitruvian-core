@@ -62,7 +62,9 @@ describe("ChromeStorageProvider", () => {
     const provider = new ChromeStorageProvider();
     await provider.initialize();
 
-    expect(mockChromeStorage.get).toHaveBeenCalledWith("vitruvian_tabs_feature_flags");
+    expect(mockChromeStorage.get).toHaveBeenCalledWith(
+      "vitruvian_tabs_feature_flags",
+    );
     expect(provider.resolveBooleanEvaluation("test-flag", false).value).toBe(
       true,
     );

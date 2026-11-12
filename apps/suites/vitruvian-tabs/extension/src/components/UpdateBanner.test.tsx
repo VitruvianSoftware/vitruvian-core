@@ -73,7 +73,9 @@ describe("UpdateBanner", () => {
     expect(await screen.findByRole("status")).toBeInTheDocument();
 
     expect(screen.getByRole("status")).toHaveTextContent("newsha9");
-    expect(screen.getByRole("status")).toHaveTextContent("vitruvian-tabs ext update");
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "vitruvian-tabs ext update",
+    );
 
     fireEvent.click(screen.getByRole("button", { name: /reload/i }));
     expect(mockReload).toHaveBeenCalled();
@@ -127,6 +129,8 @@ describe("UpdateBanner", () => {
     expect(await screen.findByRole("status")).toHaveTextContent(
       "New release v0.2.0 available",
     );
-    expect(screen.getByRole("status")).toHaveTextContent("vitruvian-tabs ext update");
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "vitruvian-tabs ext update",
+    );
   });
 });

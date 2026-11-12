@@ -26,7 +26,10 @@ pub const CLI_REPORTED_VERSION: &str = "0.1.0";
 pub fn format_version_table() -> String {
     let rows = vec![
         vec!["Component".to_string(), "Version".to_string()],
-        vec!["Vitruvian Tabs CLI".to_string(), CLI_REPORTED_VERSION.to_string()],
+        vec![
+            "Vitruvian Tabs CLI".to_string(),
+            CLI_REPORTED_VERSION.to_string(),
+        ],
         vec!["Package".to_string(), PACKAGE_VERSION.to_string()],
         vec!["Platform".to_string(), std::env::consts::OS.to_string()],
         vec!["Arch".to_string(), std::env::consts::ARCH.to_string()],
