@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.18](https://github.com/VitruvianSoftware/vitruvian-core/compare/courier-v0.3.17...courier-v0.3.18) (2026-11-12)
+
+
+### Features
+
+* **courier:** Read Aloud through HomeSpeaker, and a per-chat Read Aloud on HomeSpeaker choice ([#4612](https://github.com/VitruvianSoftware/vitruvian-core/issues/4612)) ([01cedb6](https://github.com/VitruvianSoftware/vitruvian-core/commit/01cedb6e55c95d2004a1593a961acf688e673b02))
+
 ## [0.3.17](https://github.com/VitruvianSoftware/vitruvian-core/compare/courier-v0.3.16...courier-v0.3.17) (2026-11-12)
 
 
