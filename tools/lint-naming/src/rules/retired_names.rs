@@ -255,7 +255,7 @@ mod tests {
         assert!(
             validate_retired_content("apps/desktop/vitruvian-code/CHANGELOG.md", prose).is_empty()
         );
-        assert!(validate_retired_content("apps/desktop/vitruvian/UPSTREAM.md", prose).is_empty());
+        assert!(validate_retired_content("apps/desktop/vitruvian-atrium/UPSTREAM.md", prose).is_empty());
         assert!(validate_retired_content("docs/superpowers/specs/2026-05-01.md", prose).is_empty());
         assert!(validate_retired_content("docs/archive/planning/old.md", prose).is_empty());
         assert!(validate_retired_content("docs/standards/brand.md", prose).is_empty());
