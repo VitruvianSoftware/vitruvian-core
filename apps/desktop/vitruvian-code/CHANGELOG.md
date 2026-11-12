@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.35.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.34.0...vitruvian-code-v1.35.0) (2026-11-12)
+
+
+### Features
+
+* **vitruvian-code:** run turns through AgentConnection, add per-chat modes and a hidden Connection setting ([#4608](https://github.com/VitruvianSoftware/vitruvian-core/issues/4608)) ([3c90f5a](https://github.com/VitruvianSoftware/vitruvian-core/commit/3c90f5a2aff8e203e030617038633a883764af0d))
+
 ## [1.34.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-code-v1.33.0...vitruvian-code-v1.34.0) (2026-11-11)
 
 
