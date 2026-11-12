@@ -1669,12 +1669,6 @@ func messageSendFile(ctx context.Context, d *Deps, raw json.RawMessage) (any, er
 	if err := required("path", p.Path); err != nil {
 		return nil, err
 	}
-	if !filepath.IsAbs(*p.Path) {
-		return nil, invalidParams("path must be absolute")
-	}
-	if fi, err := os.Stat(*p.Path); err != nil || !fi.Mode().IsRegular() {
-		return nil, invalidParams("path is not a file that can be read")
-	}
 	hold, err := d.hold(p.HoldMS)
 	if err != nil {
 		return nil, err
@@ -1684,6 +1678,12 @@ func messageSendFile(ctx context.Context, d *Deps, raw json.RawMessage) (any, er
 	}
 	if err := d.replyAndThread(ctx, *p.RoomID, p.ReplyTo, p.ThreadRoot); err != nil {
 		return nil, err
+	}
+	if !filepath.IsAbs(*p.Path) {
+		return nil, invalidParams("path must be absolute")
+	}
+	if fi, err := os.Stat(*p.Path); err != nil || !fi.Mode().IsRegular() {
+		return nil, invalidParams("path is not a file that can be read")
 	}
 	o := actions.SendOptions{ReplyTo: p.ReplyTo, ThreadRoot: p.ThreadRoot, Hold: hold}
 	eventID, err := d.Actions.SendFileWith(ctx, *p.RoomID, *p.Path, o)

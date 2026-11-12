@@ -39,7 +39,7 @@ const (
 type APIToken struct {
 	ID      string
 	Name    string
-	CanSend bool // may send messages (send_message): off unless turned on
+	CanSend bool // may send messages (send_message, send_file): off unless turned on
 	Created time.Time
 	// LastUsed is when a request last came with it (to the minute); zero when none has.
 	LastUsed time.Time

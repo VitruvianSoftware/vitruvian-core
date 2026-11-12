@@ -86,7 +86,7 @@ func TestMCPStdioForwardsToolsList(t *testing.T) {
 		names = append(names, tool.Name)
 	}
 	require.ElementsMatch(t, []string{
-		"get_accounts", "search", "search_chats", "search_messages", "get_chat", "list_messages", "send_message",
+		"get_accounts", "search", "search_chats", "search_messages", "get_chat", "list_messages", "send_message", "send_file",
 		"archive_chat", "set_chat_reminder", "clear_chat_reminder", "focus_app", "search_docs",
 	}, names, "the local API's tools, forwarded")
 
