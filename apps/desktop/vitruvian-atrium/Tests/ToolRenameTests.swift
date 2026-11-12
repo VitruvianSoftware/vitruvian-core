@@ -154,7 +154,7 @@ enum ToolRenameTests {
 
     static func theAppsSettingsMove(_ suite: TestSuite) {
         let name = "vitruvian-tool-rename-\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: name) else { return suite.expect(false, "a defaults domain") }
+        guard let defaults = ScratchDefaults.suite(named: name) else { return suite.expect(false, "a defaults domain") }
         defer { defaults.removePersistentDomain(forName: name) }
         let o = old.rawValue, n = new.rawValue
         defaults.set("Kitchen", forKey: "\(o)/room")
