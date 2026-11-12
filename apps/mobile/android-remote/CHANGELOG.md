@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.36](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.35...android-remote-v0.1.36) (2026-11-12)
+
+
+### Features
+
+* **home-speaker:** say which app and session an announcement came from ([#4601](https://github.com/VitruvianSoftware/vitruvian-core/issues/4601)) ([5944efe](https://github.com/VitruvianSoftware/vitruvian-core/commit/5944efe12b8bef371d8ae58c521f3d2fc15508a1))
+
 ## [0.1.35](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.34...android-remote-v0.1.35) (2026-11-12)
 
 
