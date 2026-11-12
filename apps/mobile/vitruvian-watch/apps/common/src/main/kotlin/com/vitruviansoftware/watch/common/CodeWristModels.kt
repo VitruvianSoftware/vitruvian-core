@@ -23,7 +23,7 @@ package com.vitruviansoftware.watch.common
 import java.util.Locale
 
 /**
- * Voice-to-Agent routing and wrist approval models for `nexus-wrist`.
+ * Voice-to-Agent routing and wrist approval models for `code`.
  *
  * Classifies spoken transcripts from the Pixel Watch 4 microphone into the specialist subagent
  * roster (`ridge`, `scout`, `atlas`, `aegis`, `wren`, or `beacon`) and encodes one-tap PR/alert

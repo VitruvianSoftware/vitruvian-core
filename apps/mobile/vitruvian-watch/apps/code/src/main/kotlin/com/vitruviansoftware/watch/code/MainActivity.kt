@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-package com.vitruviansoftware.watch.nexus
+package com.vitruviansoftware.watch.code
 
 import android.app.Activity
 import android.content.Intent
@@ -70,12 +70,12 @@ import dev.vitruvian.design.VitruvianTheme
 public class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
-    setContent { VitruvianTheme { NexusWristScreen() } }
+    setContent { VitruvianTheme { CodeWristScreen() } }
   }
 }
 
 @Composable
-private fun NexusWristScreen() {
+private fun CodeWristScreen() {
   val view = LocalView.current
   val focusRequester = remember { FocusRequester() }
 
@@ -142,7 +142,7 @@ private fun NexusWristScreen() {
         verticalArrangement = Arrangement.Center,
     ) {
       Tag(
-          text = "NEXUS · @${currentItem.agent.id}",
+          text = "CODE · @${currentItem.agent.id}",
           tone = TagTone.Accent,
       )
       Spacer(modifier = Modifier.height(4.dp))

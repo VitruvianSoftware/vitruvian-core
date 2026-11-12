@@ -21,8 +21,8 @@
 # release-please and asset publisher for the Vitruvian Watch:
 # 1. Authors release PRs from conventional commits under apps/mobile/vitruvian-watch/apps/.
 # 2. When the release PR merges, cuts the GitHub Release (tag: vitruvian-watch-vX.Y.Z).
-# 3. Compiles all 4 multi-ABI Vitruvian Watch release APKs (VitruvianPulse, VitruvianWatchRemote,
-#    VitruvianHomeControl, VitruvianNexusWrist) on Linux, computes SHA-256 sidecars,
+# 3. Compiles all 4 multi-ABI Vitruvian Watch release APKs (VitruvianWatchPulse, VitruvianWatchRemote,
+#    VitruvianWatchHome, VitruvianWatchCode) on Linux, computes SHA-256 sidecars,
 #    and attaches all 8 files to the GitHub Release.
 # 4. Verifies the GitHub Release holds every APK and matching SHA-256 checksum.
 name: vitruvian-watch-release
@@ -125,14 +125,14 @@ jobs:
           printf '%s\n' "${listing}"
           missing=0
           for file in \
-            "VitruvianPulse-${version}.apk" \
-            "VitruvianPulse-${version}.apk.sha256" \
+            "VitruvianWatchPulse-${version}.apk" \
+            "VitruvianWatchPulse-${version}.apk.sha256" \
             "VitruvianWatchRemote-${version}.apk" \
             "VitruvianWatchRemote-${version}.apk.sha256" \
-            "VitruvianHomeControl-${version}.apk" \
-            "VitruvianHomeControl-${version}.apk.sha256" \
-            "VitruvianNexusWrist-${version}.apk" \
-            "VitruvianNexusWrist-${version}.apk.sha256"; do
+            "VitruvianWatchHome-${version}.apk" \
+            "VitruvianWatchHome-${version}.apk.sha256" \
+            "VitruvianWatchCode-${version}.apk" \
+            "VitruvianWatchCode-${version}.apk.sha256"; do
             size="$(awk -F '\t' -v f="${file}" '$1 == f { print $2 }' <<<"${listing}")"
             if [[ -z "${size}" || "${size}" == "0" ]]; then
               echo "::error::${TAG} has no ${file}"

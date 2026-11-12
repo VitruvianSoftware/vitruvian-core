@@ -6,9 +6,9 @@ Component package providing implementation for `apps/mobile/vitruvian-watch/apps
 ## Interface
 - `[HomeControlModels.kt:SpeakerRoom]`
 - `[HomeControlModels.kt:RoborockAction]`
-- `[NexusWristModels.kt:SpecialistAgent]`
-- `[NexusWristModels.kt:ApprovalDecision]`
-- `[NexusWristModels.kt:VoiceAgentRouter]`
+- `[CodeWristModels.kt:SpecialistAgent]`
+- `[CodeWristModels.kt:ApprovalDecision]`
+- `[CodeWristModels.kt:VoiceAgentRouter]`
 - `[PulseModels.kt:PulseTone]`
 - `[RotaryVolumeMath.kt:TvRemoteCommand]`
 - `[RotaryVolumeMath.kt:MediaTarget]`

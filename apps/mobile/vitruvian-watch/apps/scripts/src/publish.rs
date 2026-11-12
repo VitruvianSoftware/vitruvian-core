@@ -25,10 +25,10 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const APK_SPECS: &[(&str, &str)] = &[
-    ("vitruvian-pulse", "VitruvianPulse"),
+    ("vitruvian-pulse", "VitruvianWatchPulse"),
     ("remote", "VitruvianWatchRemote"),
-    ("home-control", "VitruvianHomeControl"),
-    ("nexus-wrist", "VitruvianNexusWrist"),
+    ("home-control", "VitruvianWatchHome"),
+    ("code", "VitruvianWatchCode"),
 ];
 
 const ANDROID_HOME_CANDIDATES: &[&str] = &[
@@ -237,7 +237,7 @@ pub fn run(args: &[String]) -> i32 {
             "//apps/mobile/vitruvian-watch/apps/vitruvian-pulse:app",
             "//apps/mobile/vitruvian-watch/apps/remote:app",
             "//apps/mobile/vitruvian-watch/apps/home-control:app",
-            "//apps/mobile/vitruvian-watch/apps/nexus-wrist:app",
+            "//apps/mobile/vitruvian-watch/apps/code:app",
         ])
         .status();
     match build_status {
@@ -379,18 +379,18 @@ mod tests {
     #[test]
     fn apk_filename_format() {
         assert_eq!(
-            apk_filename("VitruvianPulse", "1.0.0"),
-            "VitruvianPulse-1.0.0.apk"
+            apk_filename("VitruvianWatchPulse", "1.0.0"),
+            "VitruvianWatchPulse-1.0.0.apk"
         );
     }
 
     #[test]
     fn apk_filename_all_specs() {
         let expected = vec![
-            ("vitruvian-pulse", "VitruvianPulse-2.0.0.apk"),
+            ("vitruvian-pulse", "VitruvianWatchPulse-2.0.0.apk"),
             ("remote", "VitruvianWatchRemote-2.0.0.apk"),
-            ("home-control", "VitruvianHomeControl-2.0.0.apk"),
-            ("nexus-wrist", "VitruvianNexusWrist-2.0.0.apk"),
+            ("home-control", "VitruvianWatchHome-2.0.0.apk"),
+            ("code", "VitruvianWatchCode-2.0.0.apk"),
         ];
         for (i, &(pkg, display_name)) in APK_SPECS.iter().enumerate() {
             let name = apk_filename(display_name, "2.0.0");

@@ -29,7 +29,7 @@ package(default_visibility = ["//apps/mobile/vitruvian-watch:__subpackages__"])
 kt_android_library(
     name = "lib",
     srcs = glob(["src/main/kotlin/**/*.kt"]),
-    custom_package = "com.vitruviansoftware.watch.nexus",
+    custom_package = "com.vitruviansoftware.watch.code",
     manifest = "src/main/AndroidManifest.xml",
     plugins = ["//packages/design-system-android:compose_compiler"],
     resource_files = glob(["src/main/res/**"]),
@@ -49,10 +49,10 @@ kt_android_library(
 
 android_binary(
     name = "app",
-    custom_package = "com.vitruviansoftware.watch.nexus",
+    custom_package = "com.vitruviansoftware.watch.code",
     manifest = "src/main/AndroidManifest.xml",
     manifest_values = {
-        "applicationId": "com.vitruviansoftware.watch.nexus",
+        "applicationId": "com.vitruviansoftware.watch.code",
         "minSdkVersion": "30",
         "targetSdkVersion": "35",
         "versionCode": "1",
@@ -63,7 +63,7 @@ android_binary(
 
 doctor(
     name = "doctor",
-    label = "vitruvian-watch-nexus-wrist (Vitruvian Watch Voice-to-Agent & Approval Companion)",
+    label = "vitruvian-watch-code (Vitruvian Watch Voice-to-Agent & Approval Companion)",
     required = [
         "bazel",
         "git",

@@ -22,7 +22,7 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const WATCH_PKGS: &[&str] = &["vitruvian-pulse", "remote", "home-control", "nexus-wrist"];
+const WATCH_PKGS: &[&str] = &["vitruvian-pulse", "remote", "home-control", "code"];
 
 const ANDROID_HOME_CANDIDATES: &[&str] = &[
     "/usr/local/lib/android/sdk",
@@ -131,7 +131,7 @@ pub fn run(_args: &[String]) -> i32 {
             "//apps/mobile/vitruvian-watch/apps/vitruvian-pulse:app",
             "//apps/mobile/vitruvian-watch/apps/remote:app",
             "//apps/mobile/vitruvian-watch/apps/home-control:app",
-            "//apps/mobile/vitruvian-watch/apps/nexus-wrist:app",
+            "//apps/mobile/vitruvian-watch/apps/code:app",
         ])
         .status();
     match build_status {
@@ -228,7 +228,7 @@ mod tests {
     fn watch_pkgs_order() {
         assert_eq!(
             WATCH_PKGS,
-            &["vitruvian-pulse", "remote", "home-control", "nexus-wrist"]
+            &["vitruvian-pulse", "remote", "home-control", "code"]
         );
     }
 }
