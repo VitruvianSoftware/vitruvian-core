@@ -971,9 +971,11 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
+ "rustls",
  "serde_json",
  "tokio",
  "tokio-tungstenite",
+ "ureq",
  "vitruvian-slack-mcp",
 ]
 

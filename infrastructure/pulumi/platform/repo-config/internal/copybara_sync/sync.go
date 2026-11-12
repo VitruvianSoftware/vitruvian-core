@@ -87,18 +87,8 @@ type syncedProject struct {
 
 	// StandaloneRepo is the name of the standalone GitHub repository this
 	// component is synced with (e.g. "mcp-slack", or the target name
-	// "vitruvian-code" when renaming an adopted mirror in place).
+	// "vitruvian-code" when an adopted mirror was renamed in place).
 	StandaloneRepo string
-
-	// LegacyRepo is the pre-rename repository name under which an adopted
-	// standalone mirror was originally imported and wired up (e.g. "nexus-agent"
-	// while renaming to "vitruvian-code"). When set, adoptRepository keeps the
-	// import ID on LegacyRepo and ManageSyncAuth keeps existing repo-scoped
-	// sync-auth resources (the ForceNew RepositoryDeployKey and the two-way
-	// dispatch ActionsSecrets, which carry no DependsOn on the adopted repo)
-	// pointed at LegacyRepo (redirected by GitHub after rename) until a follow-up
-	// expand/contract PR migrates them to StandaloneRepo.
-	LegacyRepo string
 
 	// OneWay marks a component exported monorepo -> standalone only
 	// (copy.bara.sky is_one_way): it has no import-back dispatch workflow,
@@ -110,11 +100,12 @@ type syncedProject struct {
 	// ensuring zero click-ops or manual repository creation.
 	CreateRepo bool
 
-	// Adopt imports an EXISTING standalone repository into Pulumi state via
-	// github.NewRepository with pulumi.Import(pulumi.ID(StandaloneRepo)) and
-	// pulumi.Protect(true), with arguments matching its live GitHub settings so
-	// adoption is a zero-diff import before any in-place rename or setting
-	// change. Mutually exclusive with CreateRepo.
+	// Adopt manages an EXISTING standalone repository in Pulumi state via
+	// github.NewRepository with pulumi.Import(pulumi.ID(importID)) and
+	// pulumi.Protect(true), with arguments matching its live GitHub settings.
+	// Once adopted, the Adopt block must remain declared so Pulumi keeps managing
+	// the Repository rather than planning to delete it. Mutually exclusive with
+	// CreateRepo.
 	Adopt *adoptedRepo
 
 	// Description is the repository description used when CreateRepo is true.
@@ -133,20 +124,18 @@ type syncedProject struct {
 	UnprotectedMirror bool
 }
 
-// legacyRepo returns LegacyRepo when an adopted mirror has been renamed in
-// place, or StandaloneRepo otherwise.
-func (p syncedProject) legacyRepo() string {
-	if p.LegacyRepo != "" {
-		return p.LegacyRepo
-	}
-	return p.StandaloneRepo
-}
-
 // adoptedRepo mirrors the live GitHub repository settings for a brownfield
-// standalone repository being imported into Pulumi state. Passing the live
-// values explicitly prevents pulumi-github defaults (such as allowMergeCommit
-// and allowRebaseMerge) from causing an import input mismatch.
+// standalone repository managed in Pulumi state. Passing the live values
+// explicitly prevents pulumi-github defaults (such as allowMergeCommit and
+// allowRebaseMerge) from causing an import input mismatch.
 type adoptedRepo struct {
+	// ImportID is the repository ID recorded in Pulumi state at adoption time.
+	// When an adopted repository is later renamed in place via RepositoryArgs.Name,
+	// terraform-provider-github keeps its original state ID (e.g. "nexus-agent");
+	// leaving ImportID on that original value prevents Pulumi from seeing an
+	// import-ID mismatch and attempting to re-import the already-managed resource.
+	// Defaults to StandaloneRepo when empty.
+	ImportID                 string
 	Description              string
 	Visibility               string
 	DeleteBranchOnMerge      bool
@@ -187,14 +176,23 @@ var syncedProjects = []syncedProject{
 	},
 	{
 		// Adopted via pulumi.Import as nexus-agent in PR #4581 and renamed in place
-		// to VitruvianSoftware/vitruvian-code here, preserving releases, stars and
-		// tags. Name stays "nexus-agent" to keep the Pulumi URN and NEXUS_AGENT_*
-		// secret names stable; LegacyRepo keeps the ForceNew deploy key and pre-existing
-		// dispatch secrets on "nexus-agent" (GitHub redirects) until the contract PR.
+		// to VitruvianSoftware/vitruvian-code in PR #4582, preserving releases, stars
+		// and tags.
+		//
+		// Why Name stays "nexus-agent": secretPrefix(Name) drives NEXUS_AGENT_SYNC_SSH_KEY
+		// (read by copybara-export-nexus-agent.yaml), NEXUS_AGENT_DISPATCH_APP_* (read by
+		// the mirror's standalone-only dispatch workflow), and the NEXUS_AGENT_REV_ID
+		// commit trailer; secretName on github.ActionsSecret is ForceNew, so Pulumi
+		// aliases cannot make renaming Name a no-op in state.
+		//
+		// Why Adopt and ImportID: "nexus-agent" stay: removing Adopt would cause Pulumi
+		// to plan deleting the protected Repository resource, and changing ImportID to
+		// "vitruvian-code" would make Pulumi re-import because terraform-provider-github
+		// retains state ID "nexus-agent" across an in-place repository rename.
 		Name:           "nexus-agent",
 		StandaloneRepo: "vitruvian-code",
-		LegacyRepo:     "nexus-agent",
 		Adopt: &adoptedRepo{
+			ImportID:                 "nexus-agent",
 			Description:              "Vitruvian Code: a macOS menu bar app and Telegram bot that connects your messages to local AI coding tools.",
 			Visibility:               "public",
 			DeleteBranchOnMerge:      true,
@@ -428,8 +426,14 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 			}
 		}
 
-		// 1. Create a fresh ED25519 key pair for the export push.
-		privateKey, err := tls.NewPrivateKey(ctx, fmt.Sprintf("%s-sync-key", project.Name), &tls.PrivateKeyArgs{
+		// 1. Create a fresh ED25519 key pair for the export push. Keyed by
+		//    StandaloneRepo (identical to Name for non-renamed projects): when an
+		//    adopted mirror moves its ForceNew deploy key off a pre-rename redirect
+		//    onto StandaloneRepo (deleteBeforeReplace: false), generating a fresh
+		//    key pair avoids a GitHub 422 "key is already in use" collision with the
+		//    old deploy key before it is deleted, while updating <PROJECT>_SYNC_SSH_KEY
+		//    in the monorepo with the matching private half in the same apply.
+		privateKey, err := tls.NewPrivateKey(ctx, fmt.Sprintf("%s-sync-key", project.StandaloneRepo), &tls.PrivateKeyArgs{
 			Algorithm: pulumi.String("ED25519"),
 		})
 		if err != nil {
@@ -437,12 +441,10 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 		}
 
 		// 2. Install the PUBLIC half as a WRITE deploy key on the STANDALONE repo
-		//    so the monorepo's export workflow can push to it. Repository on
-		//    github.RepositoryDeployKey is ForceNew, so an adopted repo renamed in
-		//    place keeps LegacyRepo until a follow-up expand/contract PR rotates it.
+		//    so the monorepo's export workflow can push to it.
 		deployKeyArgs := &github.RepositoryDeployKeyArgs{
 			Title:      pulumi.String("copybara-sync (write)"),
-			Repository: pulumi.String(project.legacyRepo()),
+			Repository: pulumi.String(project.StandaloneRepo),
 			Key:        privateKey.PublicKeyOpenssh,
 			ReadOnly:   pulumi.Bool(false),
 		}
@@ -450,6 +452,8 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 		if repo != nil {
 			deployKeyArgs.Repository = repo.Name
 			deployKeyOpts = append(deployKeyOpts, pulumi.DependsOn([]pulumi.Resource{repo}))
+		} else if adoptedRepoRes != nil {
+			deployKeyOpts = append(deployKeyOpts, pulumi.DependsOn([]pulumi.Resource{adoptedRepoRes}))
 		}
 		_, err = github.NewRepositoryDeployKey(ctx, fmt.Sprintf("%s-standalone-deploy-key", project.Name), deployKeyArgs, deployKeyOpts...)
 		if err != nil {
@@ -541,22 +545,25 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 			//    STANDALONE repo, where its dispatch workflow reads them to fire a
 			//    repository_dispatch back into the monorepo (the import trigger).
 			//    Uses the shared sync App creds (syncAppCreds); the App is created manually.
-			//    Uses legacyRepo() so an in-place repo rename does not race or churn
-			//    existing repo-scoped secrets before the rename completes.
+			//    Repository on github.ActionsSecret updates in place when a mirror is renamed.
+			var dispatchOpts []pulumi.ResourceOption
+			if adoptedRepoRes != nil {
+				dispatchOpts = append(dispatchOpts, pulumi.DependsOn([]pulumi.Resource{adoptedRepoRes}))
+			}
 			_, err = github.NewActionsSecret(ctx, fmt.Sprintf("%s-dispatch-app-id-secret", project.Name), &github.ActionsSecretArgs{
-				Repository:     pulumi.String(project.legacyRepo()),
+				Repository:     pulumi.String(project.StandaloneRepo),
 				SecretName:     pulumi.String(fmt.Sprintf("%s_DISPATCH_APP_ID", prefix)),
 				PlaintextValue: appID,
-			})
+			}, dispatchOpts...)
 			if err != nil {
 				return err
 			}
 
 			_, err = github.NewActionsSecret(ctx, fmt.Sprintf("%s-dispatch-app-private-key-secret", project.Name), &github.ActionsSecretArgs{
-				Repository:     pulumi.String(project.legacyRepo()),
+				Repository:     pulumi.String(project.StandaloneRepo),
 				SecretName:     pulumi.String(fmt.Sprintf("%s_DISPATCH_APP_PRIVATE_KEY", prefix)),
 				PlaintextValue: appKey,
-			})
+			}, dispatchOpts...)
 			if err != nil {
 				return err
 			}
@@ -653,9 +660,14 @@ func tapKey(ctx *pulumi.Context, project syncedProject, repo *github.Repository)
 // fields while keeping name, description, and topics under Pulumi control.
 func adoptRepository(ctx *pulumi.Context, project syncedProject) (*github.Repository, error) {
 	a := project.Adopt
-	// Logical name is project.Name (keeping the URN github:index:Repository::nexus-agent
-	// across an in-place rename), while Args.Name sets the live GitHub repository name
-	// and Import uses the pre-rename LegacyRepo ID it was adopted under.
+	importID := a.ImportID
+	if importID == "" {
+		importID = project.StandaloneRepo
+	}
+	// Logical name is project.Name (keeping the URN github:index/repository:Repository::nexus-agent
+	// across an in-place rename), Args.Name sets the live GitHub repository name,
+	// and Import keeps the original state ID (importID) recorded at adoption time so
+	// Pulumi does not attempt to re-import an already-managed repository.
 	return github.NewRepository(
 		ctx,
 		project.Name,
@@ -681,7 +693,7 @@ func adoptRepository(ctx *pulumi.Context, project syncedProject) (*github.Reposi
 			SquashMergeCommitMessage: pulumi.String(a.SquashMergeCommitMessage),
 			Topics:                   pulumi.ToStringArray(a.Topics),
 		},
-		pulumi.Import(pulumi.ID(project.legacyRepo())),
+		pulumi.Import(pulumi.ID(importID)),
 		pulumi.Protect(true),
 		pulumi.IgnoreChanges([]string{
 			"hasDownloads",

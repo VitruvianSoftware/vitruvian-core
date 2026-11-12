@@ -22,7 +22,10 @@ _CRATES = [
 
 rust_library(
     name = "vitruvian_relay_spike_lib",
-    srcs = ["src/lib.rs"],
+    srcs = [
+        "src/client.rs",
+        "src/lib.rs",
+    ],
     crate_name = "vitruvian_relay_spike",
     crate_root = "src/lib.rs",
     edition = "2021",
@@ -37,6 +40,25 @@ rust_binary(
     deps = _CRATES + [
         ":vitruvian_relay_spike_lib",
         "//apps/mcp/vitruvian-slack-mcp:vitruvian_slack_mcp_lib",
+    ],
+)
+
+# The spike's test client: device-flow sign-in (spike B) and a day-long hold
+# on /connect (spike C). See README.md. rustls and ureq come from
+# vitruvian-slack-mcp's hub, not ours: the client passes its TLS config to
+# them, and Bazel treats the same crate from two hubs as two different crates.
+rust_binary(
+    name = "vitruvian-relay-spike-client",
+    srcs = ["src/client_main.rs"],
+    crate_root = "src/client_main.rs",
+    edition = "2021",
+    deps = [
+        ":vitruvian_relay_spike_lib",
+        "//apps/mcp/vitruvian-slack-mcp:vitruvian_slack_mcp_lib",
+        "@vitruvian_relay_spike_crates//:serde_json",
+        "@vitruvian_relay_spike_crates//:tokio-tungstenite",
+        "@vitruvian_slack_mcp_crates//:rustls",
+        "@vitruvian_slack_mcp_crates//:ureq",
     ],
 )
 
