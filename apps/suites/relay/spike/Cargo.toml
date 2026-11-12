@@ -42,6 +42,11 @@ path = "src/lib.rs"
 name = "relay-spike"
 path = "src/main.rs"
 
+# The spike's test client (spikes B and C). Not in the image.
+[[bin]]
+name = "relay-spike-client"
+path = "src/client_main.rs"
+
 [dependencies]
 mcp-slack = { path = "../../../mcp/slack/rs" }
 bytes = "1"
@@ -52,7 +57,12 @@ hyper = { version = "1", features = ["http1", "server"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
-# handshake only: derive_accept_key for the server side. No client, no TLS.
+# The client's HTTPS and TLS: the same ureq and rustls (ring only) that
+# mcp-slack already brings in, so no new crates in the lock file.
+rustls = { version = "0.23", default-features = false, features = ["logging", "ring", "std", "tls12"] }
+ureq = { version = "2.12", default-features = false, features = ["tls"] }
+# handshake only: derive_accept_key for the server, and the blocking client
+# handshake over our own TLS stream for relay-spike-client. No bundled TLS.
 tokio-tungstenite = { version = "0.24", default-features = false, features = ["handshake"] }
 
 [profile.release]

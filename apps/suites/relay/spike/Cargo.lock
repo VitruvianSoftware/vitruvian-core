@@ -591,9 +591,11 @@ dependencies = [
  "hyper",
  "hyper-util",
  "mcp-slack",
+ "rustls",
  "serde_json",
  "tokio",
  "tokio-tungstenite",
+ "ureq",
 ]
 
 [[package]]

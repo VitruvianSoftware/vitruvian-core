@@ -96,6 +96,8 @@ pub struct ServerConfig {
     pub slack: SlackCredentials,
     pub channel_guard: ChannelGuard,
     pub write_token: WriteTokenPreference,
+    pub http_allow_destructive: bool,
+    pub compact_output: bool,
     pub http: Option<HttpConfig>,
 }
 
@@ -230,10 +232,19 @@ pub fn parse_write_mode(
     )))
 }
 
+fn parse_opt_in_flag(raw: Option<&str>) -> bool {
+    matches!(
+        raw.map(|v| v.trim().to_ascii_lowercase()).as_deref(),
+        Some("true" | "1")
+    )
+}
+
 pub fn resolve_config<E: EnvSource + ?Sized>(env: &E) -> Result<ServerConfig, ConfigError> {
     let transport = parse_transport_mode(env_get(env, "MCP_TRANSPORT"))?;
     let team_id = required(env, "SLACK_TEAM_ID", "to scope Slack API calls")?;
     let bot_token = required(env, "SLACK_BOT_TOKEN", "for all Slack reads")?;
+    let http_allow_destructive = parse_opt_in_flag(env_get(env, "SLACK_HTTP_ALLOW_DESTRUCTIVE"));
+    let compact_output = parse_opt_in_flag(env_get(env, "SLACK_COMPACT_OUTPUT"));
 
     if transport == TransportMode::Stdio {
         let user_token = required(
@@ -245,7 +256,7 @@ pub fn resolve_config<E: EnvSource + ?Sized>(env: &E) -> Result<ServerConfig, Co
             env_get(env, "SLACK_CHANNEL_IDS"),
             ChannelGuardOptions {
                 required: false,
-                enforce_visibility: false,
+                enforce_visibility: true,
             },
             env_get(env, "SLACK_PRIVATE_CHANNEL_IDS"),
         )
@@ -260,6 +271,8 @@ pub fn resolve_config<E: EnvSource + ?Sized>(env: &E) -> Result<ServerConfig, Co
             },
             channel_guard,
             write_token: WriteTokenPreference::User,
+            http_allow_destructive,
+            compact_output,
             http: None,
         });
     }
@@ -282,7 +295,7 @@ human. Either set it, or use SLACK_WRITE_MODE=bot.",
         env_get(env, "SLACK_CHANNEL_IDS"),
         ChannelGuardOptions {
             required: user_token.is_none(),
-            enforce_visibility: user_token.is_none(),
+            enforce_visibility: true,
         },
         env_get(env, "SLACK_PRIVATE_CHANNEL_IDS"),
     )
@@ -315,6 +328,8 @@ human. Either set it, or use SLACK_WRITE_MODE=bot.",
         },
         channel_guard,
         write_token: write_mode,
+        http_allow_destructive,
+        compact_output,
         http: Some(HttpConfig {
             port,
             issuer,
@@ -473,8 +488,27 @@ mod tests {
         assert_eq!(config.transport, TransportMode::Stdio);
         assert_eq!(config.slack.user_token.as_deref(), Some("xoxp-test"));
         assert_eq!(config.write_token, WriteTokenPreference::User);
+        assert!(!config.http_allow_destructive);
+        assert!(!config.compact_output);
         assert!(config.http.is_none());
         assert!(config.channel_guard.is_allowed("any-channel"));
+
+        for truthy in ["true", "1", " TRUE ", " 1 "] {
+            let mut opt_in = stdio_env();
+            opt_in.insert("SLACK_COMPACT_OUTPUT".to_string(), truthy.to_string());
+            assert!(
+                resolve_config(&opt_in).unwrap().compact_output,
+                "SLACK_COMPACT_OUTPUT={truthy:?}"
+            );
+        }
+        for falsy in ["", "false", "0", "yes", "no"] {
+            let mut opt_out = stdio_env();
+            opt_out.insert("SLACK_COMPACT_OUTPUT".to_string(), falsy.to_string());
+            assert!(
+                !resolve_config(&opt_out).unwrap().compact_output,
+                "SLACK_COMPACT_OUTPUT={falsy:?}"
+            );
+        }
 
         let mut without_user = stdio_env();
         without_user.remove("SLACK_USER_TOKEN");
@@ -488,11 +522,102 @@ mod tests {
     }
 
     #[test]
+    fn stdio_enforces_visibility_only_when_allowlist_is_configured() {
+        use crate::channel_allowlist::ChannelAllowlistError;
+        use crate::json::JsonValue;
+
+        // No allow-list on stdio (default): unrestricted, visibility not enforced.
+        let unrestricted = resolve_config(&stdio_env()).unwrap();
+        assert!(unrestricted.channel_guard.is_unrestricted());
+        assert!(!unrestricted.channel_guard.enforces_visibility());
+        assert!(unrestricted
+            .channel_guard
+            .assert_visibility_matches("C_ANY", Some(&JsonValue::Bool(true)))
+            .is_ok());
+        assert!(unrestricted
+            .channel_guard
+            .assert_visibility_matches("C_ANY", None)
+            .is_ok());
+
+        let mut blank_allowlist = stdio_env();
+        blank_allowlist.insert("SLACK_CHANNEL_IDS".to_string(), " , ".to_string());
+        let blank_cfg = resolve_config(&blank_allowlist).unwrap();
+        assert!(blank_cfg.channel_guard.is_unrestricted());
+        assert!(!blank_cfg.channel_guard.enforces_visibility());
+
+        // Live HTTP equivalent (user token, no allow-list): also unchanged.
+        let mut unrestricted_http = http_env();
+        unrestricted_http.remove("SLACK_CHANNEL_IDS");
+        unrestricted_http.insert("SLACK_USER_TOKEN".to_string(), "xoxp-test".to_string());
+        let http_unrestricted_cfg = resolve_config(&unrestricted_http).unwrap();
+        assert!(http_unrestricted_cfg.channel_guard.is_unrestricted());
+        assert!(!http_unrestricted_cfg.channel_guard.enforces_visibility());
+
+        // With SLACK_CHANNEL_IDS set on stdio: enforce_visibility is true.
+        let mut restricted_stdio = stdio_env();
+        restricted_stdio.insert("SLACK_CHANNEL_IDS".to_string(), "C_PUBLIC".to_string());
+        restricted_stdio.insert(
+            "SLACK_PRIVATE_CHANNEL_IDS".to_string(),
+            "G_PRIVATE".to_string(),
+        );
+        let restricted = resolve_config(&restricted_stdio).unwrap();
+        assert!(!restricted.channel_guard.is_unrestricted());
+        assert!(restricted.channel_guard.enforces_visibility());
+        assert!(restricted
+            .channel_guard
+            .assert_visibility_matches("C_PUBLIC", Some(&JsonValue::Bool(false)))
+            .is_ok());
+        assert!(matches!(
+            restricted
+                .channel_guard
+                .assert_visibility_matches("C_PUBLIC", Some(&JsonValue::Bool(true))),
+            Err(ChannelAllowlistError::ChannelVisibilityMismatch { .. })
+        ));
+        assert!(restricted
+            .channel_guard
+            .assert_visibility_matches("G_PRIVATE", Some(&JsonValue::Bool(true)))
+            .is_ok());
+        assert!(matches!(
+            restricted
+                .channel_guard
+                .assert_visibility_matches("G_PRIVATE", Some(&JsonValue::Bool(false))),
+            Err(ChannelAllowlistError::ChannelVisibilityMismatch { .. })
+        ));
+    }
+
+    #[test]
     fn http_configuration_validates_all_settings() {
         let config = resolve_config(&http_env()).unwrap();
         assert_eq!(config.transport, TransportMode::Http);
         assert_eq!(config.write_token, WriteTokenPreference::Bot);
         assert!(config.slack.user_token.is_none());
+        assert!(!config.http_allow_destructive);
+        assert!(!config.compact_output);
+
+        for truthy in ["true", "1", " TRUE "] {
+            let mut destructive = http_env();
+            destructive.insert(
+                "SLACK_HTTP_ALLOW_DESTRUCTIVE".to_string(),
+                truthy.to_string(),
+            );
+            assert!(
+                resolve_config(&destructive).unwrap().http_allow_destructive,
+                "SLACK_HTTP_ALLOW_DESTRUCTIVE={truthy:?}"
+            );
+        }
+        for falsy in ["", "false", "0"] {
+            let mut non_destructive = http_env();
+            non_destructive.insert(
+                "SLACK_HTTP_ALLOW_DESTRUCTIVE".to_string(),
+                falsy.to_string(),
+            );
+            assert!(
+                !resolve_config(&non_destructive)
+                    .unwrap()
+                    .http_allow_destructive,
+                "SLACK_HTTP_ALLOW_DESTRUCTIVE={falsy:?}"
+            );
+        }
         assert_eq!(
             config.http,
             Some(HttpConfig {

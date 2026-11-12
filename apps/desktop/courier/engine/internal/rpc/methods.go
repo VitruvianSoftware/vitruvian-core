@@ -262,6 +262,7 @@ var methods = map[string]handler{
 	"room.setPinned":        roomSetPinned,
 	"room.setArchived":      roomSetArchived,
 	"room.setLowPriority":   roomSetLowPriority,
+	"room.setReadAloud":     roomSetReadAloud,
 	"room.setHidden":        roomSetHidden,
 	"room.setMarkedUnread":  roomSetMarkedUnread,
 	"room.setLabel":         roomSetLabel,

@@ -91,7 +91,7 @@ flowchart LR
 | Copybara image | `olivr/copybara@sha256:87e2e9089344e64693faebb2ee0ed33b8797358c0420b0fa98325ca611e98679` (2023-01 build, reports "Unknown version") |
 | Dispatch token action | `actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1` (v3.2.0) |
 | GitHub App | `vitruvian-copybara-sync`, **App ID 3863936**, installed on `vitruvian-core` (Contents: Read & write; Pull requests: write for the import PRs + Dependabot auto-merge). **Reused by all components.** |
-| Export-push secret | `<COMP>_SYNC_SSH_KEY` (in vitruvian-core) ↔ write deploy key on the mirror. e.g. `DEVX_SYNC_SSH_KEY`, `NEXUS_AGENT_SYNC_SSH_KEY`. |
+| Export-push secret | `<COMP>_SYNC_SSH_KEY` (in vitruvian-core) ↔ write deploy key on the mirror. e.g. `DEVX_SYNC_SSH_KEY`, `NEXUS_AGENT_SYNC_SSH_KEY` (`VitruvianSoftware/vitruvian-code` keeps the `nexus-agent` logical project key and `NEXUS_AGENT_*` secret/rev-id names while its deploy key and dispatch secrets target `vitruvian-code` directly). |
 | Import gate label | `import-to-monorepo`, applied on the **mirror** PR by a maintainer. |
 | Rev-id labels | export stamps `MONOREPO_REV_ID` (shared — each lands on a *separate* mirror); `import_pr` stamps a per-component `<COMP>_REV_ID` (unique — they all land in the *shared* monorepo). |
 
@@ -339,8 +339,15 @@ pulumi up --stack dev
 > `_repo-config-apply.yaml`, on merge to `main` or by `workflow_dispatch`, and it takes no input to
 > replace a resource, so **a plain re-apply keeps the existing key**.
 >
-> **Open question:** how to force this key to rotate through the pipeline is not recorded anywhere I
-> could find. Decide that before rotating.
+> **Pipeline rotation pattern (used when moving `vitruvian-code` off its `nexus-agent` redirect):**
+> `tls.NewPrivateKey` in `sync.go` is named `<StandaloneRepo>-sync-key` without aliasing an older
+> logical key name. Changing that `tls.PrivateKey` logical name creates a fresh ED25519 key pair
+> first, replaces the `ForceNew` `RepositoryDeployKey` create-before-delete without colliding with
+> the still-present old key on GitHub (`422 key is already in use`), updates `<COMP>_SYNC_SSH_KEY`
+> in `vitruvian-core` with the matching private half in the same apply, and deletes the retired
+> `tls.PrivateKey` from state last. Meanwhile `ActionsSecret` `repository` inputs update in place,
+> and an adopted mirror renamed in place keeps its `Adopt` block and original `ImportID` (e.g.
+> `"nexus-agent"`) so Pulumi neither deletes nor re-imports the protected `Repository` resource.
 
 ### 8e. Rotate / replace the GitHub App private key
 The App is a manual resource. Generate a new private key in the App settings. The program reads it

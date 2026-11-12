@@ -48,6 +48,7 @@ private const val KEY_BRIDGE_TRUST_UNTIL = "bridgeTrustUntil"
 private const val KEY_BRIDGE_AUDIT = "bridgeAudit"
 private const val KEY_HOMESPEAKER_SETTINGS_EXPANDED = "homeSpeakerSettingsExpanded"
 private const val KEY_HOMESPEAKER_MIRROR = "homeSpeakerMirror"
+private const val KEY_ASKED_NOTIFICATIONS = "askedForNotifications"
 
 /** How many console commands are remembered. Beyond this the oldest fall off. */
 private const val RECENT_COMMAND_LIMIT = 20
@@ -286,6 +287,14 @@ public class Persistence(context: Context) {
   public var homeSpeakerMirror: Boolean
     get() = prefs.getBoolean(KEY_HOMESPEAKER_MIRROR, false)
     set(value) = prefs.edit().putBoolean(KEY_HOMESPEAKER_MIRROR, value).apply()
+
+  /**
+   * Whether this install has ever prompted for `POST_NOTIFICATIONS`, separating "not asked yet"
+   * from "permanently denied" when Android reports `shouldShowRequestPermissionRationale == false`.
+   */
+  public var askedForNotifications: Boolean
+    get() = prefs.getBoolean(KEY_ASKED_NOTIFICATIONS, false)
+    set(value) = prefs.edit().putBoolean(KEY_ASKED_NOTIFICATIONS, value).apply()
 
   private companion object {
     const val FIELD_COUNT = 5

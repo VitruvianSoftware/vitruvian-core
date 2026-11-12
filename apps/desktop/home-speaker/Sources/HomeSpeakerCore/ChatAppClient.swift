@@ -60,15 +60,34 @@ public struct BeeperChat: Equatable, Sendable {
     public var network: String?
     public var isMuted: Bool
     public var isLowPriority: Bool
+    /// The chat's own choice in Courier ("Read Aloud on HomeSpeaker"), from the chat's
+    /// `readAloud` field. Beeper never sends it, so its chats are always `.followSettings`.
+    public var readAloud: ReadAloud
+
+    /// Whether a chat is read aloud whatever the app's announce setting says.
+    public enum ReadAloud: String, Equatable, Sendable {
+        /// No choice made: the app's setting (direct messages and mentions, or every message) decides.
+        case followSettings = ""
+        /// Every message in the chat is read, even when the setting is direct messages and mentions.
+        case always
+        /// Nothing in the chat is read.
+        case never
+
+        /// The chat's `readAloud` value; anything unknown (or absent) follows the settings.
+        public init(field: Any?) {
+            self = (field as? String).flatMap(ReadAloud.init(rawValue:)) ?? .followSettings
+        }
+    }
 
     public init(id: String, isDirect: Bool, title: String = "", network: String? = nil,
-                isMuted: Bool = false, isLowPriority: Bool = false) {
+                isMuted: Bool = false, isLowPriority: Bool = false, readAloud: ReadAloud = .followSettings) {
         self.id = id
         self.isDirect = isDirect
         self.title = title
         self.network = network
         self.isMuted = isMuted
         self.isLowPriority = isLowPriority
+        self.readAloud = readAloud
     }
 }
 
@@ -399,7 +418,8 @@ public struct ChatAppClient: Sendable {
             chats[id] = BeeperChat(
                 id: id, isDirect: (chat["type"] as? String) == "single", title: (chat["title"] as? String) ?? "",
                 network: chat["network"] as? String, isMuted: (chat["isMuted"] as? Bool) ?? false,
-                isLowPriority: (chat["isLowPriority"] as? Bool) ?? false)
+                isLowPriority: (chat["isLowPriority"] as? Bool) ?? false,
+                readAloud: BeeperChat.ReadAloud(field: chat["readAloud"]))
         }
         let inOrder = ((json["items"] as? [[String: Any]]) ?? []).compactMap { m -> BeeperMessage? in
             guard let id = m["id"] as? String, let chatID = m["chatID"] as? String,
@@ -552,6 +572,11 @@ public struct ChatAppClient: Sendable {
         if message.type == "REACTION" || message.isHidden || message.isDeleted { return false }
         if muteOwn && (message.isSender || ownUserIDs.contains(message.senderID)) { return false }
         if chat?.isMuted == true || chat?.isLowPriority == true { return false }
+        switch chat?.readAloud ?? .followSettings {
+        case .never: return false
+        case .always: return true
+        case .followSettings: break
+        }
         if chat?.isDirect == true || mode == .all { return true }
         return message.mentions.contains("@room") || message.mentions.contains { ownUserIDs.contains($0) }
     }

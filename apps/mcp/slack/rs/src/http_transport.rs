@@ -40,7 +40,7 @@ use crate::config::HttpConfig;
 use crate::dispatch::dispatch;
 use crate::json::JsonValue;
 use crate::slack_client::SlackClient;
-use crate::tools::ToolDefinition;
+use crate::tools::{strip_slack_noise, ToolDefinition};
 use bytes::Bytes;
 use http::{HeaderMap, HeaderValue, Method, Request, Response, StatusCode, Uri};
 use http_body_util::combinators::UnsyncBoxBody;
@@ -767,6 +767,33 @@ fn error_message(id: &JsonValue, code: i64, message: &str) -> JsonValue {
     ])
 }
 
+/// Extracts and removes the opt-in `compact` boolean from tool arguments before
+/// dispatching to Slack, falling back to `default_compact` when omitted or null.
+fn extract_compact_arg(
+    args: &JsonValue,
+    default_compact: bool,
+) -> Result<(JsonValue, bool), String> {
+    let Some(entries) = args.as_object() else {
+        return Ok((args.clone(), default_compact));
+    };
+    let mut use_compact = default_compact;
+    let mut cleaned = Vec::with_capacity(entries.len());
+    for (k, v) in entries {
+        if k == "compact" {
+            match v {
+                JsonValue::Null => {}
+                JsonValue::Bool(b) => use_compact = *b,
+                _ => {
+                    return Err("Argument compact must be a boolean when present.".to_string());
+                }
+            }
+        } else {
+            cleaned.push((k.clone(), v.clone()));
+        }
+    }
+    Ok((JsonValue::Object(cleaned), use_compact))
+}
+
 /// A stateless MCP server: one per HTTP request, like the TS factory built.
 pub struct McpServer {
     name: String,
@@ -774,6 +801,7 @@ pub struct McpServer {
     client: Option<Arc<SlackClient>>,
     advertised_tools: Vec<ToolDefinition>,
     advertised_names: HashSet<String>,
+    compact_output_default: bool,
     has_handled_request: AtomicBool,
 }
 
@@ -785,6 +813,7 @@ impl McpServer {
             client: None,
             advertised_tools: Vec::new(),
             advertised_names: HashSet::new(),
+            compact_output_default: false,
             has_handled_request: AtomicBool::new(false),
         }
     }
@@ -805,8 +834,14 @@ impl McpServer {
             client: Some(client),
             advertised_tools,
             advertised_names,
+            compact_output_default: false,
             has_handled_request: AtomicBool::new(false),
         }
+    }
+
+    pub fn with_compact_output(mut self, compact_output: bool) -> Self {
+        self.compact_output_default = compact_output;
+        self
     }
 
     /// The stateless transport's single-use guard (SDK `_hasHandledRequest`).
@@ -907,13 +942,20 @@ impl McpServer {
                         "Tool {tool_name} is not available on this transport."
                     ))
                 } else if let Some(ref client) = self.client {
-                    dispatch(client, tool_name, &args).map_err(|e| e.to_string())
+                    extract_compact_arg(&args, self.compact_output_default).and_then(
+                        |(clean_args, use_compact)| {
+                            dispatch(client, tool_name, &clean_args)
+                                .map(|val| (val, use_compact))
+                                .map_err(|e| e.to_string())
+                        },
+                    )
                 } else {
                     Err("No SlackClient configured".to_string())
                 };
 
                 let text = match call_result {
-                    Ok(val) => val.to_string_pretty(),
+                    Ok((val, true)) => strip_slack_noise(&val).to_json_string(),
+                    Ok((val, false)) => val.to_string_pretty(),
                     Err(err_msg) => {
                         JsonValue::object(vec![("error", JsonValue::str(&err_msg))]).to_string()
                     }
@@ -2994,5 +3036,287 @@ mod tests {
         assert!(!is_json_content_type(Some("application/json, text/plain")));
         assert!(!is_json_content_type(None));
         assert!(!is_json_content_type(Some("")));
+    }
+
+    #[test]
+    fn default_tool_output_is_byte_for_byte_pretty_json_with_blocks_and_team_kept() {
+        let raw_slack_payload = JsonValue::parse(
+            r#"{"ok":true,"messages":[{"type":"message","user":"U123","text":"hello world","ts":"1700000000.000100","team":"T123","client_msg_id":"msg-uuid-1","blocks":[{"type":"rich_text"}],"user_profile":{"avatar_hash":"abc","image_72":"https://img/72.png","real_name":"James"},"icons":{"emoji":":wave:"}}],"has_more":false}"#,
+        )
+        .unwrap();
+        let expected_pretty = raw_slack_payload.to_string_pretty();
+
+        let payload_for_mock = raw_slack_payload.clone();
+        let _guard = crate::slack_client::set_mock_fetch(move |_| {
+            Ok(crate::slack_client::HttpResponse::json(
+                200,
+                payload_for_mock.clone(),
+            ))
+        });
+
+        let mut env = HashMap::new();
+        env.insert("SLACK_BOT_TOKEN".to_string(), "xoxb-test".to_string());
+        env.insert("SLACK_USER_TOKEN".to_string(), "xoxp-test".to_string());
+        env.insert("SLACK_TEAM_ID".to_string(), "T123".to_string());
+        let cfg = crate::config::resolve_config(&env).unwrap();
+        assert!(!cfg.compact_output);
+
+        let client = Arc::new(SlackClient::new(
+            cfg.slack.clone(),
+            cfg.channel_guard.clone(),
+            cfg.write_token,
+        ));
+        let server = McpServer::with_slack(
+            SERVER_NAME,
+            SERVER_VERSION,
+            client,
+            crate::tools::tools_for(&cfg),
+        )
+        .with_compact_output(cfg.compact_output);
+
+        // HTTP handle_request path: byte-for-byte identical to main's pretty JSON, nothing stripped.
+        let resp = server.handle_request(
+            &JsonValue::Number(1.0),
+            "tools/call",
+            Some(
+                &JsonValue::parse(
+                    r#"{"name":"slack_get_channel_history","arguments":{"channel_id":"C1"}}"#,
+                )
+                .unwrap(),
+            ),
+        );
+        let text = resp
+            .get("result")
+            .and_then(|r| r.get("content"))
+            .and_then(|c| c.as_array())
+            .and_then(|a| a.first())
+            .and_then(|item| item.get("text"))
+            .and_then(|t| t.as_str())
+            .unwrap();
+        assert_eq!(text, expected_pretty);
+        assert!(text.contains("\n  \"messages\": [\n"));
+        assert!(text.contains("\"blocks\": ["));
+        assert!(text.contains("\"team\": \"T123\""));
+        assert!(text.contains("\"client_msg_id\": \"msg-uuid-1\""));
+        assert!(text.contains("\"user_profile\": {"));
+        assert!(text.contains("\"icons\": {"));
+
+        // Stdio handle_jsonrpc_message path: identical pretty text inside the JSON-RPC envelope.
+        let stdio_resp = server
+            .handle_jsonrpc_message(
+                r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"slack_get_channel_history","arguments":{"channel_id":"C1"}}}"#,
+            )
+            .unwrap()
+            .unwrap();
+        let stdio_text = stdio_resp
+            .get("result")
+            .and_then(|r| r.get("content"))
+            .and_then(|c| c.as_array())
+            .and_then(|a| a.first())
+            .and_then(|item| item.get("text"))
+            .and_then(|t| t.as_str())
+            .unwrap();
+        assert_eq!(stdio_text, expected_pretty);
+    }
+
+    #[test]
+    fn compact_output_is_opt_in_via_argument_or_env_and_strips_compact_before_slack() {
+        let raw_slack_payload = JsonValue::parse(
+            r#"{"ok":true,"messages":[{"user":"U123","text":"hello","ts":"1.0","team":"T123","blocks":[{"type":"rich_text"}],"icons":{"emoji":":wave:"}}]}"#,
+        )
+        .unwrap();
+        let expected_pretty = raw_slack_payload.to_string_pretty();
+        let expected_compact = crate::tools::strip_slack_noise(&raw_slack_payload).to_json_string();
+        assert!(!expected_compact.contains('\n'));
+        assert!(!expected_compact.contains("\"blocks\""));
+        assert!(!expected_compact.contains("\"team\""));
+
+        let urls: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let urls_ref = urls.clone();
+        let payload_for_mock = raw_slack_payload.clone();
+        let _guard = crate::slack_client::set_mock_fetch(move |req| {
+            urls_ref.lock().unwrap().push(req.url.clone());
+            Ok(crate::slack_client::HttpResponse::json(
+                200,
+                payload_for_mock.clone(),
+            ))
+        });
+
+        let mut env = HashMap::new();
+        env.insert("SLACK_BOT_TOKEN".to_string(), "xoxb-test".to_string());
+        env.insert("SLACK_USER_TOKEN".to_string(), "xoxp-test".to_string());
+        env.insert("SLACK_TEAM_ID".to_string(), "T123".to_string());
+        let cfg = crate::config::resolve_config(&env).unwrap();
+        let client = Arc::new(SlackClient::new(
+            cfg.slack.clone(),
+            cfg.channel_guard.clone(),
+            cfg.write_token,
+        ));
+
+        // 1. Default server + compact: true per-call -> compact & stripped; `compact` not sent to Slack.
+        let server_default = McpServer::with_slack(
+            SERVER_NAME,
+            SERVER_VERSION,
+            client.clone(),
+            crate::tools::tools_for(&cfg),
+        );
+        let resp = server_default.handle_request(
+            &JsonValue::Number(1.0),
+            "tools/call",
+            Some(
+                &JsonValue::parse(
+                    r#"{"name":"slack_get_channel_history","arguments":{"channel_id":"C1","compact":true}}"#,
+                )
+                .unwrap(),
+            ),
+        );
+        let text = resp
+            .get("result")
+            .and_then(|r| r.get("content"))
+            .and_then(|c| c.as_array())
+            .unwrap()[0]
+            .get("text")
+            .and_then(|v| v.as_str())
+            .unwrap();
+        assert_eq!(text, expected_compact);
+        let parsed_url = crate::url::ParsedUrl::parse(&urls.lock().unwrap()[0]).unwrap();
+        assert_eq!(parsed_url.query_get("compact"), None);
+
+        // 2. SLACK_COMPACT_OUTPUT=true server -> compact by default, overridable with compact: false.
+        let server_compact_env = McpServer::with_slack(
+            SERVER_NAME,
+            SERVER_VERSION,
+            client,
+            crate::tools::tools_for(&cfg),
+        )
+        .with_compact_output(true);
+
+        let resp_env = server_compact_env.handle_request(
+            &JsonValue::Number(2.0),
+            "tools/call",
+            Some(
+                &JsonValue::parse(
+                    r#"{"name":"slack_get_channel_history","arguments":{"channel_id":"C1"}}"#,
+                )
+                .unwrap(),
+            ),
+        );
+        let text_env = resp_env
+            .get("result")
+            .and_then(|r| r.get("content"))
+            .and_then(|c| c.as_array())
+            .unwrap()[0]
+            .get("text")
+            .and_then(|v| v.as_str())
+            .unwrap();
+        assert_eq!(text_env, expected_compact);
+
+        let resp_opt_out = server_compact_env.handle_request(
+            &JsonValue::Number(3.0),
+            "tools/call",
+            Some(
+                &JsonValue::parse(
+                    r#"{"name":"slack_get_channel_history","arguments":{"channel_id":"C1","compact":false}}"#,
+                )
+                .unwrap(),
+            ),
+        );
+        let text_opt_out = resp_opt_out
+            .get("result")
+            .and_then(|r| r.get("content"))
+            .and_then(|c| c.as_array())
+            .unwrap()[0]
+            .get("text")
+            .and_then(|v| v.as_str())
+            .unwrap();
+        assert_eq!(text_opt_out, expected_pretty);
+
+        // 3. Invalid non-boolean compact is rejected before calling Slack.
+        urls.lock().unwrap().clear();
+        let resp_bad = server_default.handle_request(
+            &JsonValue::Number(4.0),
+            "tools/call",
+            Some(
+                &JsonValue::parse(
+                    r#"{"name":"slack_get_channel_history","arguments":{"channel_id":"C1","compact":"yes"}}"#,
+                )
+                .unwrap(),
+            ),
+        );
+        let text_bad = resp_bad
+            .get("result")
+            .and_then(|r| r.get("content"))
+            .and_then(|c| c.as_array())
+            .unwrap()[0]
+            .get("text")
+            .and_then(|v| v.as_str())
+            .unwrap();
+        assert!(text_bad.contains("Argument compact must be a boolean"));
+        assert!(urls.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn http_withheld_destructive_tools_are_unlisted_and_refused_unless_enabled() {
+        let guard = crate::slack_client::set_mock_fetch(|_| {
+            Ok(crate::slack_client::HttpResponse::json(
+                200,
+                JsonValue::object(vec![("ok", true.into())]),
+            ))
+        });
+
+        let mut env = HashMap::new();
+        env.insert("MCP_TRANSPORT".to_string(), "http".to_string());
+        env.insert("SLACK_BOT_TOKEN".to_string(), "xoxb-test".to_string());
+        env.insert("SLACK_USER_TOKEN".to_string(), "xoxp-test".to_string());
+        env.insert("SLACK_TEAM_ID".to_string(), "T123".to_string());
+        env.insert(
+            "OIDC_ISSUER".to_string(),
+            "https://auth.example.test".to_string(),
+        );
+        env.insert("OIDC_PROJECT_ID".to_string(), "999".to_string());
+        env.insert(
+            "OIDC_ALLOWED_SUBJECTS".to_string(),
+            "379361013981513322".to_string(),
+        );
+        env.insert(
+            "OIDC_ALLOWED_CLIENT_ID".to_string(),
+            "111222333".to_string(),
+        );
+
+        let cfg = crate::config::resolve_config(&env).unwrap();
+        let client = Arc::new(SlackClient::new(
+            cfg.slack.clone(),
+            cfg.channel_guard.clone(),
+            cfg.write_token,
+        ));
+        let server = McpServer::with_slack(
+            SERVER_NAME,
+            SERVER_VERSION,
+            client,
+            crate::tools::tools_for(&cfg),
+        );
+
+        for tool in crate::tools::HTTP_WITHHELD_DESTRUCTIVE {
+            let resp = server.handle_request(
+                &JsonValue::Number(1.0),
+                "tools/call",
+                Some(
+                    &JsonValue::parse(&format!(r#"{{"name":"{tool}","arguments":{{}}}}"#)).unwrap(),
+                ),
+            );
+            let text = resp
+                .get("result")
+                .and_then(|r| r.get("content"))
+                .and_then(|c| c.as_array())
+                .unwrap()[0]
+                .get("text")
+                .and_then(|v| v.as_str())
+                .unwrap();
+            assert!(
+                text.contains("is not available on this transport"),
+                "{tool}: {text}"
+            );
+        }
+        assert!(guard.calls.lock().unwrap().is_empty());
     }
 }

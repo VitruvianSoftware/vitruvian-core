@@ -203,6 +203,7 @@ type inboxRow struct {
 	UnreadMentions   int           `json:"unread_mentions"`
 	PreviewMediaPath string        `json:"preview_media_path"`
 	PreviewCall      *callJSON     `json:"preview_call"` // null unless preview_kind is call
+	ReadAloud        string        `json:"read_aloud,omitempty"`
 }
 
 // callJSON is a CallNote: what a bridge's call notice says, as Courier reads it.
@@ -351,7 +352,7 @@ func (d *Deps) toRows(ctx context.Context, rows []store.InboxRow) ([]inboxRow, e
 			Muted: r.Muted, Pinned: !r.PinnedAt.IsZero(), Archived: r.Archived, LowPriority: r.LowPriority,
 			Hidden: r.Hidden, MarkedUnread: r.MarkedUnread, Request: r.Request, Draft: r.Draft, Labels: labels,
 			MutedBy: r.MutedBy, MutedByName: r.MutedByName, Typing: typing, UnreadMentions: r.UnreadMentions,
-			PreviewMediaPath: d.path(r.PreviewMediaURI),
+			PreviewMediaPath: d.path(r.PreviewMediaURI), ReadAloud: r.ReadAloud,
 		}
 		if rm := r.Reminder; rm != nil {
 			row.Reminder = &reminderJSON{DueAt: ms(rm.DueAt), Condition: rm.Condition, Fired: !rm.FiredAt.IsZero()}
@@ -715,6 +716,28 @@ func roomSetLowPriority(ctx context.Context, d *Deps, raw json.RawMessage) (any,
 		return nil, err
 	}
 	d.poke() // a low-priority chat is out of the inbox place, which pending auto-archives look at
+	return changedRooms(changed), nil
+}
+
+func roomSetReadAloud(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	var p struct {
+		RoomIDs   *[]string `json:"room_ids"`
+		ReadAloud *string   `json:"read_aloud"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	ids, err := roomIDList(p.RoomIDs, maxBulkRoomIDs)
+	if err != nil {
+		return nil, err
+	}
+	if p.ReadAloud == nil {
+		return nil, invalidParams("read_aloud is required") // "" resets to Default
+	}
+	changed, err := d.Store.SetReadAloud(ctx, ids, *p.ReadAloud)
+	if err != nil {
+		return nil, err
+	}
 	return changedRooms(changed), nil
 }
 

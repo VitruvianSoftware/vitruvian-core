@@ -880,7 +880,14 @@ public final class SettingsNavigationModel: ObservableObject {
             keywords: ["send later", "reminders", "undo send", "incognito", "low priority", "auto-archive"]
         ),
 
-        // MARK: - Integrations (6)
+        // MARK: - Integrations (7)
+        SettingDefinition(
+            id: "integrations.homeSpeaker",
+            pane: .integrations,
+            section: "HomeSpeaker",
+            title: "HomeSpeaker",
+            keywords: ["homespeaker", "read aloud", "voice", "announce", "speaker"]
+        ),
         SettingDefinition(
             id: "integrations.localAPI",
             pane: .integrations,
@@ -1039,6 +1046,7 @@ public final class SettingsNavigationModel: ObservableObject {
         "plan.overview",
         "plan.features",
         // IntegrationsSettingsPane
+        "integrations.homeSpeaker",
         "integrations.localAPI",
         "integrations.remoteAccess",
         "integrations.connections",

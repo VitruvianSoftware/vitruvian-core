@@ -801,3 +801,79 @@ func TestRoomMembersExcludesServiceBotsAndEnrichesBareMeProfile(t *testing.T) {
 	require.Equal(t, []string{"mailto:me@example.com", "slack-internal:U00EXAMPLE1"}, meHit.Identifiers)
 	require.True(t, meHit.IsAdmin)
 }
+
+func TestMigration13AddsReadAloudAndSetReadAloudPersists(t *testing.T) {
+	ctx := context.Background()
+	migrated, _ := openFixtureWith(t, "m10.sql", `
+INSERT INTO rooms (room_id, network, name, is_direct, created_at, last_ts, last_event_id, request) VALUES
+  ('!m13:courier.local', 'whatsapp', 'Migrated Chat', 1, 1000, 0, '', 0);
+INSERT INTO room_prefs (room_id, muted) VALUES ('!m13:courier.local', 1);`)
+	require.Equal(t, 13, SchemaVersion)
+	require.Equal(t, SchemaVersion, userVersion(t, migrated))
+	require.Equal(t, "", inboxByID(t, migrated)["!m13:courier.local"].ReadAloud)
+	require.True(t, inboxByID(t, migrated)["!m13:courier.local"].Muted)
+	changed, err := migrated.SetReadAloud(ctx, []string{"!m13:courier.local"}, "always")
+	require.NoError(t, err)
+	require.Equal(t, []string{"!m13:courier.local"}, changed)
+	require.Equal(t, "always", inboxByID(t, migrated)["!m13:courier.local"].ReadAloud)
+
+	// Reopening the SQLite store preserves always, never, and '' across restarts, and other room_prefs writes keep it.
+	dbPath := filepath.Join(t.TempDir(), "courier.db")
+	s, err := Open(dbPath)
+	require.NoError(t, err)
+	mkRoom(t, s, "!a", time.Unix(1, 0))
+	mkRoom(t, s, "!b", time.Unix(2, 0))
+
+	ch, cancel := s.Subscribe()
+	changed, err = s.SetReadAloud(ctx, []string{"!a", "!b"}, "always")
+	require.NoError(t, err)
+	require.Equal(t, []string{"!a", "!b"}, changed)
+	require.Equal(t, Change{Kind: "room", RoomID: "!a"}, nextChange(t, ch))
+	require.Equal(t, Change{Kind: "room", RoomID: "!b"}, nextChange(t, ch))
+	cancel()
+
+	// Setting the same value again is a no-op.
+	changed, err = s.SetReadAloud(ctx, []string{"!a"}, "always")
+	require.NoError(t, err)
+	require.Empty(t, changed)
+
+	changed, err = s.SetReadAloud(ctx, []string{"!b"}, "never")
+	require.NoError(t, err)
+	require.Equal(t, []string{"!b"}, changed)
+
+	// Changing other prefs must not clobber read_aloud.
+	_, err = s.SetLowPriority(ctx, []string{"!a"}, true)
+	require.NoError(t, err)
+	require.NoError(t, s.SetDraft(ctx, "!b", "draft text"))
+	require.NoError(t, s.Close())
+
+	reopened, err := Open(dbPath)
+	require.NoError(t, err)
+	defer reopened.Close()
+	rows := inboxByID(t, reopened)
+	require.Equal(t, "always", rows["!a"].ReadAloud)
+	require.True(t, rows["!a"].LowPriority)
+	require.Equal(t, "never", rows["!b"].ReadAloud)
+	require.Equal(t, "draft text", rows["!b"].Draft)
+
+	// Invalid values are rejected with ErrBadValue and leave stored state untouched; unknown rooms return ErrNotFound.
+	for _, bad := range []string{"default", "ALWAYS", "NEVER", "loud", "true", " "} {
+		_, err = reopened.SetReadAloud(ctx, []string{"!a"}, bad)
+		require.ErrorIs(t, err, ErrBadValue, "value %q", bad)
+	}
+	require.Equal(t, "always", inboxByID(t, reopened)["!a"].ReadAloud)
+	_, err = reopened.SetReadAloud(ctx, []string{"!missing:courier.local"}, "never")
+	require.ErrorIs(t, err, ErrNotFound)
+
+	// Resetting to '' (Default) round-trips across reopening.
+	changed, err = reopened.SetReadAloud(ctx, []string{"!a"}, "")
+	require.NoError(t, err)
+	require.Equal(t, []string{"!a"}, changed)
+	require.NoError(t, reopened.Close())
+
+	reopened2, err := Open(dbPath)
+	require.NoError(t, err)
+	defer reopened2.Close()
+	require.Equal(t, "", inboxByID(t, reopened2)["!a"].ReadAloud)
+	require.Equal(t, "never", inboxByID(t, reopened2)["!b"].ReadAloud)
+}

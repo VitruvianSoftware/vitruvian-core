@@ -22,7 +22,10 @@ _CRATES = [
 
 rust_library(
     name = "relay_spike_lib",
-    srcs = ["src/lib.rs"],
+    srcs = [
+        "src/client.rs",
+        "src/lib.rs",
+    ],
     crate_name = "relay_spike",
     crate_root = "src/lib.rs",
     edition = "2021",
@@ -37,6 +40,25 @@ rust_binary(
     deps = _CRATES + [
         ":relay_spike_lib",
         "//apps/mcp/slack:mcp_slack_lib",
+    ],
+)
+
+# The spike's test client: device-flow sign-in (spike B) and a day-long hold
+# on /connect (spike C). See README.md. rustls and ureq come from mcp-slack's
+# hub, not ours: the client passes mcp-slack's TLS config to them, and Bazel
+# treats the same crate from two hubs as two different crates.
+rust_binary(
+    name = "relay-spike-client",
+    srcs = ["src/client_main.rs"],
+    crate_root = "src/client_main.rs",
+    edition = "2021",
+    deps = [
+        ":relay_spike_lib",
+        "//apps/mcp/slack:mcp_slack_lib",
+        "@mcp_slack_crates//:rustls",
+        "@mcp_slack_crates//:ureq",
+        "@relay_spike_crates//:serde_json",
+        "@relay_spike_crates//:tokio-tungstenite",
     ],
 )
 
