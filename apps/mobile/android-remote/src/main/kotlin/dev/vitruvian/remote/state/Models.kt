@@ -394,6 +394,15 @@ public interface Notifier {
   public fun hasNotificationPermission(): Boolean = true
 
   /**
+   * Whether the app has already asked for `POST_NOTIFICATIONS` (or notifications are disabled in
+   * system Settings so only Settings can re-enable them).
+   */
+  public fun hasAskedNotificationPermission(): Boolean = false
+
+  /** Whether Android reports a rationale applies (`true` after a first runtime denial on 33+). */
+  public fun shouldShowNotificationRationale(): Boolean = false
+
+  /**
    * Ensures `POST_NOTIFICATIONS` is granted, prompting on Android 13+ when needed and invoking
    * [onResult] with `(granted, shouldShowRationale)`.
    */
