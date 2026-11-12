@@ -311,7 +311,7 @@ projects:
     tags: [Backstage, TypeScript, MCP]
     source: apps/web/backstage
 
-  - name: Tabula
+  - name: Vitruvian Tabs
     group: lab
     status: in-development
     summary: >-
@@ -319,7 +319,7 @@ projects:
       MV3 extension, a web dashboard and a CLI, with per-PR preview
       environments.
     tags: [TypeScript, Cloud Run, MV3]
-    source: apps/suites/tabula
+    source: apps/suites/vitruvian-tabs
 
   - name: Vitruvian design system
     group: lab

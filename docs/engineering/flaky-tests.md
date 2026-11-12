@@ -17,7 +17,7 @@ flowchart LR
 ## Quarantine (Playwright e2e specs)
 
 The flaky unit in this repo's e2e suite is a *spec* inside one Bazel target
-(`//apps/suites/tabula/extension:e2e`), so quarantine happens at the Playwright level, not
+(`//apps/suites/vitruvian-tabs/extension:e2e`), so quarantine happens at the Playwright level, not
 the Bazel tag level (tagging the whole target would drop the entire suite).
 
 **To quarantine a spec:**
@@ -29,13 +29,13 @@ the Bazel tag level (tagging the whole target would drop the entire suite).
 2. Append ` @quarantine` to the spec title and add a `// QUARANTINED (#NNN)`
    comment above it.
 3. That's it. The lanes split automatically via two Bazel targets in
-   `apps/suites/tabula/extension/BUILD` (the grep filters are baked into `fixed_args`
+   `apps/suites/vitruvian-tabs/extension/BUILD` (the grep filters are baked into `fixed_args`
    there — the service manager execs the Playwright binary directly, so a
    workflow-level `--test_arg` would silently never arrive):
-   - **`//apps/suites/tabula/extension:e2e`** (blocking lanes, and any local run) carries
+   - **`//apps/suites/vitruvian-tabs/extension:e2e`** (blocking lanes, and any local run) carries
      `--grep-invert @quarantine` — the spec cannot fail unrelated changes.
-   - **`//apps/suites/tabula/extension:e2e_quarantine`** (`manual`-tagged; run nightly by
-     `tabula-e2e.yaml`'s `schedule:` by explicit label with
+   - **`//apps/suites/vitruvian-tabs/extension:e2e_quarantine`** (`manual`-tagged; run nightly by
+     `vitruvian-tabs-e2e.yaml`'s `schedule:` by explicit label with
      `--nocache_test_results`) carries `--grep @quarantine
      --pass-with-no-tests`, so the spec keeps producing fresh signal and an
      empty register is a clean no-op.

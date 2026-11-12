@@ -141,8 +141,8 @@ mod tests {
     #[test]
     fn app_name_service_app() {
         assert_eq!(
-            get_app_name("apps/services/tabula-api"),
-            "services/tabula-api"
+            get_app_name("apps/services/vitruvian-tabs-api"),
+            "services/vitruvian-tabs-api"
         );
     }
 
@@ -156,12 +156,18 @@ mod tests {
 
     #[test]
     fn app_name_suite_web() {
-        assert_eq!(get_app_name("apps/suites/tabula/web"), "suites/tabula");
+        assert_eq!(
+            get_app_name("apps/suites/vitruvian-tabs/web"),
+            "suites/vitruvian-tabs"
+        );
     }
 
     #[test]
     fn app_name_suite_api() {
-        assert_eq!(get_app_name("apps/suites/tabula/api"), "suites/tabula");
+        assert_eq!(
+            get_app_name("apps/suites/vitruvian-tabs/api"),
+            "suites/vitruvian-tabs"
+        );
     }
 
     #[test]

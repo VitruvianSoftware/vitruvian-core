@@ -1,5 +1,5 @@
 {
-  "description": "Cloud Run metrics for the apps that do NOT run in the homelab cluster (tabula, oauth-user-inspector). Data comes from GCP Cloud Monitoring via a keyless federated identity -- see docs/gcp-cluster-federation.md.\n\nTagged with each app name so the Backstage EntityGrafanaDashboardsCard picks it up from grafana/dashboard-selector.",
+  "description": "Cloud Run metrics for the apps that do NOT run in the homelab cluster (vitruvian-tabs, oauth-user-inspector). Data comes from GCP Cloud Monitoring via a keyless federated identity -- see docs/gcp-cluster-federation.md.\n\nTagged with each app name so the Backstage EntityGrafanaDashboardsCard picks it up from grafana/dashboard-selector.",
   "panels": [
     {
       "datasource": {
@@ -291,7 +291,7 @@
   ],
   "refresh": "5m",
   "schemaVersion": 39,
-  "tags": ["cloud-run", "gcp", "oauth-user-inspector", "tabula"],
+  "tags": ["cloud-run", "gcp", "oauth-user-inspector", "vitruvian-tabs"],
   "templating": {
     "list": [
       {

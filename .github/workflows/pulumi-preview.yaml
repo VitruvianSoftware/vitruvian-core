@@ -30,7 +30,7 @@ name: Pulumi Preview
 # forbids paths filters on REQUIRED checks, which would wedge PR mergeability).
 #
 # Auth notes:
-#   * tabula / oauth-user-inspector authenticate to GCP with keyless WIF, but
+#   * vitruvian-tabs / oauth-user-inspector authenticate to GCP with keyless WIF, but
 #     as the READ-ONLY <app>-preview service account (roles/viewer on the dev
 #     project, nothing else), NOT the deploy identity (#4120). Each leg runs in
 #     the <app>-preview Environment, whose WIF binding is
@@ -61,7 +61,7 @@ name: Pulumi Preview
 on:
   pull_request:
     paths:
-      - "apps/suites/tabula/infra/app/**"
+      - "apps/suites/vitruvian-tabs/infra/app/**"
       - "apps/web/oauth-user-inspector/infra/app/**"
       - "infrastructure/pulumi/platform/pkg/**"
       - ".github/workflows/pulumi-preview.yaml"
@@ -86,12 +86,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - app: tabula
-            dir: apps/suites/tabula/infra/app
+          - app: vitruvian-tabs
+            dir: apps/suites/vitruvian-tabs/infra/app
             stack: development
             # Read-only preview identity (#4120), NOT the deploy Environment.
             environment: tabula-preview
-            # Same non-secret placeholder as the oauth leg below: tabula's app
+            # Same non-secret placeholder as the oauth leg below: vitruvian-tabs's app
             # stack now declares a Cloudflare CNAME, so its DEFAULT provider must
             # CONFIGURE for this advisory, token-less preview. A dry run makes no
             # Cloudflare API calls (the zone id is pinned, so no LookupZone). The
@@ -198,7 +198,7 @@ jobs:
           stack: ${{ matrix.stack }}
           working-directory: ${{ matrix.dir }}
           pulumi-access-token: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-          # Empty for apps without a cloudflare provider (e.g. tabula); a
+          # Empty for apps without a cloudflare provider (e.g. vitruvian-tabs); a
           # non-secret placeholder for oauth-user-inspector (see matrix note).
           cloudflare-api-token: ${{ matrix.cfPreviewToken }}
 

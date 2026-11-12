@@ -22,7 +22,7 @@
 # the wildcard. svcinit reserves autoassigned ports on 127.0.0.1, so a service
 # that also binds "*" / "::*" can lose the port to a socket svcinit never
 # checked for. Consumed as the `test` of a service_test (see
-# //apps/suites/tabula/api:redis_loopback_test).
+# //apps/suites/vitruvian-tabs/api:redis_loopback_test).
 
 # gazelle:ignore
 

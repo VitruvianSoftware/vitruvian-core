@@ -78,12 +78,12 @@ sequenceDiagram
     participant Sources as Live Probes (GitHub/Kuma/FS)
 
     Developer->>UI: Navigates to Component Page
-    UI->>API: GET /api/scorecards/entities/component/default/tabula
+    UI->>API: GET /api/scorecards/entities/component/default/vitruvian-tabs
     API->>Evaluator: evaluateEntityScorecard(entity, repoRoot, githubToken)
     
     par Live Fact Collection
         Evaluator->>Sources: Parse CODEOWNERS & LICENSE
-        Evaluator->>Sources: Scan docs/runbooks/tabula.md
+        Evaluator->>Sources: Scan docs/runbooks/vitruvian-tabs.md
         Evaluator->>Cache: Check GitHub Actions Pass Rate
         alt Cache Hit
             Cache-->>Evaluator: Return cached CI pass rate
@@ -177,7 +177,7 @@ Criteria dynamically adapt based on **`spec.type`**:
 
 | Component | Archetype | Owner | Lifecycle | Security | Reliability | Quality | Delivery | Overall Tier |
 | :--- | :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
-| **`tabula`** | `service` | `tabula-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |
+| **`vitruvian-tabs`** | `service` | `tabula-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |
 | **`oauth-user-inspector`** | `service` | `oauth-user-inspector-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |
 | **`backstage`** | `service` | `platform-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |
 | **`buzz`** | `service` | `platform-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |

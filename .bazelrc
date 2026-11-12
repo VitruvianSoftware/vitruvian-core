@@ -115,9 +115,9 @@ common --repository_cache=~/.cache/bazel/repository-cache
 # this file. See https://bazel.build/configure/best-practices#bazelrc-file.
 try-import %workspace%/user.bazelrc
 
-# Heavyweight end-to-end suites (//tabula: browser + full service stack) are
+# Heavyweight end-to-end suites (//apps/suites/vitruvian-tabs: browser + full service stack) are
 # tagged "e2e" and excluded from the default sweep. Run them explicitly with
-# `bazel test --config=e2e //tabula/...` (dedicated CI lane).
+# `bazel test --config=e2e //apps/suites/vitruvian-tabs/...` (dedicated CI lane).
 test --test_tag_filters=-e2e
 test:e2e --test_tag_filters=e2e
 
@@ -126,7 +126,7 @@ test:e2e --test_tag_filters=e2e
 # WHY THIS EXISTS. Bazel runs all 72 go_test targets WITHOUT -race. Race
 # coverage came only from a separate non-Bazel job (ci.yaml `go-test`) running
 # `go test -race` over exactly two modules, devx and homelab -- so every other
-# Go target in the repo, tabula's included, has never been race-tested anywhere.
+# Go target in the repo, vitruvian-tabs's included, has never been race-tested anywhere.
 # ci.yaml said so in a comment; this closes it.
 #
 # It is a SEPARATE config, not a default on `test`, because flipping it changes

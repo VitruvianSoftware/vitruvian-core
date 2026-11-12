@@ -34,7 +34,7 @@ use std::process::{Command, Stdio};
 
 /// The apps that must each ship an MIT LICENSE.
 pub const APPS: &[&str] = &[
-    "apps/suites/tabula",
+    "apps/suites/vitruvian-tabs",
     "apps/web/oauth-user-inspector",
     "apps/cli/devx",
     "apps/cli/homelab",
@@ -465,9 +465,9 @@ mod tests {
                 format!("// Copyright (c) 2026 VitruvianSoftware\n{MIT_BODY}\n\npackage main\n"),
             )
             .unwrap();
-            std::fs::remove_file(root.join("apps/suites/tabula/LICENSE")).unwrap();
+            std::fs::remove_file(root.join("apps/suites/vitruvian-tabs/LICENSE")).unwrap();
         });
         assert_ne!(rc, 0, "missing-LICENSE");
-        assert!(out.contains("apps/suites/tabula/LICENSE is missing"));
+        assert!(out.contains("apps/suites/vitruvian-tabs/LICENSE is missing"));
     }
 }

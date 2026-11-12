@@ -8,7 +8,7 @@
 
 ## Scope
 
-1. **App hotfix** — `tabula` and `oauth-user-inspector`, via Cloud Run blue-green. Both now use the **same** model: build the image once, promote the **immutable digest** through each env.
+1. **App hotfix** — `vitruvian-tabs` and `oauth-user-inspector`, via Cloud Run blue-green. Both now use the **same** model: build the image once, promote the **immutable digest** through each env.
 2. **Foundation stage** — `gcp-projects` / `gcp-networks`.
 
 **Not covered:** cluster / GitOps changes — that's ArgoCD reconciling from git, a separate failure domain that an Actions outage does not stop.
@@ -29,7 +29,7 @@
 
 | app | `pulumi-dir` | dev project | region | migrations | smoke |
 |---|---|---|---|---|---|
-| `tabula` (service `tabula-api`) | `apps/suites/tabula/infra/app` | `prj-d-bu2-oss-floating-c3d1` | `us-central1` | **yes** (`--phase expand`) | `GET /health` |
+| `vitruvian-tabs` (service `tabula-api`) | `apps/suites/vitruvian-tabs/infra/app` | `prj-d-bu2-oss-floating-c3d1` | `us-central1` | **yes** (`--phase expand`) | `GET /health` |
 | `oauth-user-inspector` | `apps/web/oauth-user-inspector/infra/app` | `prj-d-bu1-oss-floating-648a` | `us-central1` | no | `GET /` + DOM mount check |
 
 Nonproduction / production use `prj-n-…` / `prj-p-…` projects (same suffix scheme) — **VERIFY suffixes live**. Both apps fetch `CLOUDFLARE_API_TOKEN` at deploy time (customDomain grey-cloud DNS).
@@ -47,19 +47,19 @@ export CLOUDFLARE_API_TOKEN="$(gcloud secrets versions access latest --secret=CL
 GIT_SHA="$(git rev-parse HEAD)"
 ```
 
-**tabula** (build → EXPAND migration → deploy; repeat the `:deploy` per env development → nonproduction → production):
+**vitruvian-tabs** (build → EXPAND migration → deploy; repeat the `:deploy` per env development → nonproduction → production):
 
 ```bash
 IMAGE="us-central1-docker.pkg.dev/<build-project>/tabula/api"                 # VERIFY build project
-bazel run //apps/suites/tabula/api:image_push -- --repository "$IMAGE" --tag "$GIT_SHA"
+bazel run //apps/suites/vitruvian-tabs/api:image_push -- --repository "$IMAGE" --tag "$GIT_SHA"
 DIGEST="$IMAGE@$(gcloud artifacts docker images describe "$IMAGE:$GIT_SHA" --format='value(image_summary.digest)')"
 # EXPAND migration only (--phase expand refuses any *_contract migration):
-bazel build //apps/suites/tabula/api:schema_engine //apps/suites/tabula/api:migrate_deploy_bin
-export PRISMA_SCHEMA_ENGINE_BINARY="$PWD/bazel-bin/apps/suites/tabula/api/schema-engine"
-export PRISMA_QUERY_ENGINE_LIBRARY="$PWD/apps/suites/tabula/api/prisma/engine-placeholder"
+bazel build //apps/suites/vitruvian-tabs/api:schema_engine //apps/suites/vitruvian-tabs/api:migrate_deploy_bin
+export PRISMA_SCHEMA_ENGINE_BINARY="$PWD/bazel-bin/apps/suites/vitruvian-tabs/api/schema-engine"
+export PRISMA_QUERY_ENGINE_LIBRARY="$PWD/apps/suites/vitruvian-tabs/api/prisma/engine-placeholder"
 DATABASE_URL="$(gcloud secrets versions access latest --secret=DATABASE_URL --project=prj-d-bu2-oss-floating-c3d1)"; export DATABASE_URL  # VERIFY project
-bazel run //apps/suites/tabula/api:migrate_deploy_bin -- --schema apps/suites/tabula/api/prisma/schema.prisma --phase expand
-bazel run //apps/suites/tabula/infra/app:deploy -- --env development --project prj-d-bu2-oss-floating-c3d1 --image-digest "$DIGEST"  # VERIFY project
+bazel run //apps/suites/vitruvian-tabs/api:migrate_deploy_bin -- --schema apps/suites/vitruvian-tabs/api/prisma/schema.prisma --phase expand
+bazel run //apps/suites/vitruvian-tabs/infra/app:deploy -- --env development --project prj-d-bu2-oss-floating-c3d1 --image-digest "$DIGEST"  # VERIFY project
 ```
 
 **oauth-user-inspector** (build once, promote the SAME digest to every env; no migrations):
@@ -73,7 +73,7 @@ bazel run //apps/web/oauth-user-inspector/infra/app:deploy -- --env development 
 
 The `:deploy` target fails closed if a non-first deploy's candidate URL can't be resolved (never false-greens; #808), and promotes only after the smoke passes.
 
-> **Preflight parity.** CI's `//tools/ci:tabula_deploy_preflight` skips the whole rollout when the live service already serves this exact digest+config (fail-open). By hand, a re-run just deploys an identical candidate + no-op promote — harmless.
+> **Preflight parity.** CI's `//tools/ci:vitruvian_tabs_deploy_preflight` skips the whole rollout when the live service already serves this exact digest+config (fail-open). By hand, a re-run just deploys an identical candidate + no-op promote — harmless.
 
 ## Step 2 — Foundation stage (`gcp-projects` / `gcp-networks`)
 

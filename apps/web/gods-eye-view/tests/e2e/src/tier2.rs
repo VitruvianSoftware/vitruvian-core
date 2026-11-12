@@ -374,7 +374,7 @@ pub fn run(ctx: &mut TestContext) {
     let src_layer = 3u8;
     let dep_layer = 3u8;
     let src_app = "gods-eye-view";
-    let dep_app = "tabula";
+    let dep_app = "vitruvian-tabs";
     let is_violation = src_layer == 3 && dep_layer == 3 && src_app != dep_app;
     if is_violation {
         ctx.pass(

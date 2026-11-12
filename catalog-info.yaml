@@ -62,7 +62,7 @@ spec:
     - ./apps/web/oauth-user-inspector/catalog-info.yaml
     - ./apps/web/vitruviansoftware-dev/catalog-info.yaml
     - ./apps/mobile/android-remote/catalog-info.yaml
-    - ./apps/suites/tabula/catalog-info.yaml
+    - ./apps/suites/vitruvian-tabs/catalog-info.yaml
     - ./apps/suites/wand/catalog-info.yaml
     - ./packages/design-system-android/catalog-info.yaml
     - ./tools/catalog-info.yaml
@@ -231,9 +231,9 @@ spec:
 apiVersion: backstage.io/v1alpha1
 kind: System
 metadata:
-  name: tabula-platform
-  title: Tabula Platform
-  description: Tabula workspace SaaS application suite (Web frontend, REST API backend, Chrome extension, CLI, and database tiers)
+  name: vitruvian-tabs-platform
+  title: Vitruvian Tabs Platform
+  description: Vitruvian Tabs workspace SaaS application suite (Web frontend, REST API backend, Chrome extension, CLI, and database tiers)
 spec:
   owner: tabula-team
   domain: products-and-services
@@ -298,22 +298,22 @@ apiVersion: backstage.io/v1alpha1
 kind: API
 metadata:
   name: tabula-api
-  title: Tabula REST API
-  description: REST API specification for Tabula workspace data, document schemas, and session synchronization
+  title: Vitruvian Tabs REST API
+  description: REST API specification for Vitruvian Tabs workspace data, document schemas, and session synchronization
   links:
-    - url: https://github.com/VitruvianSoftware/tabula
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/suites/vitruvian-tabs
       title: Source Code
       icon: github
 spec:
   type: openapi
   lifecycle: production
   owner: tabula-team
-  system: tabula-platform
+  system: vitruvian-tabs-platform
   definition: |
     openapi: "3.0.0"
     info:
       version: 1.0.0
-      title: Tabula API
+      title: Vitruvian Tabs API
       description: Workspace backend and document persistence API
     paths:
       /v1/workspaces:

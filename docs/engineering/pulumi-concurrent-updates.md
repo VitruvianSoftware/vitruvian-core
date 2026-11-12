@@ -66,7 +66,7 @@ code, [`tools/pulumi/src/retry_concurrent_update.rs`](../../tools/pulumi/src/ret
   in-process with it;
 - the CI applies that run without Bazel (the
   `.github/actions/pulumi-run-captured` composite action, used by the identity
-  applies, tabula's build stack and the foundation workflows, and the inline
+  applies, vitruvian-tabs's build stack and the foundation workflows, and the inline
   `pulumi up` / `pulumi refresh` in the zitadel-apps workflows) build
   `//tools/pulumi:retry-concurrent-update` with the runner's own `rustc`
   (`rustc --edition 2021 -O tools/pulumi/src/bin/retry_concurrent_update.rs`)

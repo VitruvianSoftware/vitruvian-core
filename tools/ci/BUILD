@@ -1803,12 +1803,12 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
-# tabula-deploy-preflight
+# vitruvian-tabs-deploy-preflight
 rust_library(
-    name = "tabula_deploy_preflight_lib",
-    srcs = ["src/tabula_deploy_preflight/lib.rs"],
-    crate_name = "tabula_deploy_preflight",
-    crate_root = "src/tabula_deploy_preflight/lib.rs",
+    name = "vitruvian_tabs_deploy_preflight_lib",
+    srcs = ["src/vitruvian_tabs_deploy_preflight/lib.rs"],
+    crate_name = "vitruvian_tabs_deploy_preflight",
+    crate_root = "src/vitruvian_tabs_deploy_preflight/lib.rs",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [
@@ -1818,13 +1818,13 @@ rust_library(
 )
 
 rust_binary(
-    name = "tabula_deploy_preflight",
-    srcs = ["src/tabula_deploy_preflight/main.rs"],
+    name = "vitruvian_tabs_deploy_preflight",
+    srcs = ["src/vitruvian_tabs_deploy_preflight/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],
     deps = [
-        ":tabula_deploy_preflight_lib",
+        ":vitruvian_tabs_deploy_preflight_lib",
         "//tools/shell-compat:shell_compat",
     ],
 )
@@ -1832,12 +1832,12 @@ rust_binary(
 # Black-box: runs the REAL binary as CI does, with fake gh/gcloud/curl on
 # PATH and throwaway git repos. Ported case for case from the shell suite.
 rust_test(
-    name = "tabula_deploy_preflight_test",
+    name = "vitruvian_tabs_deploy_preflight_test",
     size = "small",
-    srcs = ["src/tabula_deploy_preflight/tests.rs"],
-    data = [":tabula_deploy_preflight"],
+    srcs = ["src/vitruvian_tabs_deploy_preflight/tests.rs"],
+    data = [":vitruvian_tabs_deploy_preflight"],
     edition = "2021",
-    env = {"BIN": "$(rootpath :tabula_deploy_preflight)"},
+    env = {"BIN": "$(rootpath :vitruvian_tabs_deploy_preflight)"},
     rustc_flags = ["-Copt-level=3"],
     deps = [":ci_testkit"],
 )

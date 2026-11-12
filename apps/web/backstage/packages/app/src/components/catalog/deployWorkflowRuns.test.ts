@@ -38,7 +38,7 @@ describe("isDeployWorkflowAvailable", () => {
     expect(
       isDeployWorkflowAvailable(
         entity({
-          "vitruvian.dev/deploy-workflow": "tabula-deploy.yaml",
+          "vitruvian.dev/deploy-workflow": "delivery-vitruvian-tabs.yaml",
           "github.com/project-slug": "VitruvianSoftware/vitruvian-core",
         }),
       ),
@@ -67,7 +67,9 @@ describe("isDeployWorkflowAvailable", () => {
   it("is false with only a workflow, and on an entity with no annotations at all", () => {
     expect(
       isDeployWorkflowAvailable(
-        entity({ "vitruvian.dev/deploy-workflow": "tabula-deploy.yaml" }),
+        entity({
+          "vitruvian.dev/deploy-workflow": "delivery-vitruvian-tabs.yaml",
+        }),
       ),
     ).toBe(false);
     expect(
@@ -101,9 +103,13 @@ describe("isDeployWorkflowAvailable", () => {
 describe("runsUrl", () => {
   it("targets the single workflow, not the repo", () => {
     expect(
-      runsUrl("VitruvianSoftware/vitruvian-core", "tabula-deploy.yaml", 5),
+      runsUrl(
+        "VitruvianSoftware/vitruvian-core",
+        "delivery-vitruvian-tabs.yaml",
+        5,
+      ),
     ).toBe(
-      "https://api.github.com/repos/VitruvianSoftware/vitruvian-core/actions/workflows/tabula-deploy.yaml/runs?per_page=5",
+      "https://api.github.com/repos/VitruvianSoftware/vitruvian-core/actions/workflows/delivery-vitruvian-tabs.yaml/runs?per_page=5",
     );
   });
 
@@ -123,7 +129,7 @@ describe("mapRun", () => {
   };
 
   it("flags a green run whose deploy jobs were ALL skipped as a no-op", () => {
-    // This is exactly how tabula-deploy looked while nothing had ever shipped.
+    // This is exactly how delivery-vitruvian-tabs looked while nothing had ever shipped.
     const r = mapRun(base, [
       { name: "gate", conclusion: "success" },
       { name: "deploy-dev-api", conclusion: "skipped" },

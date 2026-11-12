@@ -737,9 +737,9 @@ mod tests {
         assert_eq!(err.0, 2);
         assert!(err.1.contains("needs RELEASE_TAG=vitruvian-atrium-vX.Y.Z"));
 
-        e.insert("RELEASE_TAG".into(), "tabula-v1.0.0".into());
+        e.insert("RELEASE_TAG".into(), "vitruvian-tabs-v1.0.0".into());
         let err = resolve_publish_plan(&[], &e, "3.86.0", SHA).unwrap_err();
-        assert_eq!(err, (2, "publish: RELEASE_TAG=tabula-v1.0.0 is not a vitruvian-atrium-v* release; another component's release reached this rung".to_string()));
+        assert_eq!(err, (2, "publish: RELEASE_TAG=vitruvian-tabs-v1.0.0 is not a vitruvian-atrium-v* release; another component's release reached this rung".to_string()));
 
         e.insert("RELEASE_TAG".into(), "vitruvian-atrium-v3.85.0".into());
         let err = resolve_publish_plan(&[], &e, "3.86.0", SHA).unwrap_err();

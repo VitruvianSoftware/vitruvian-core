@@ -6,7 +6,7 @@ Provision **Upstash Redis** as code.
 import "github.com/VitruvianSoftware/pulumi-library/go/pkg/upstash"
 
 cache, err := upstash.NewRedis(ctx, "cache", &upstash.RedisArgs{
-    Name:   "tabula-shared",
+    Name:   "vitruvian-tabs-shared",
     Region: "us-east-1",
 })
 // cache.ConnectionURL is a SECRET output: rediss://default:<pw>@<host>:<port>

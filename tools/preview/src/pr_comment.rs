@@ -30,7 +30,7 @@ const USAGE: &str = "Usage: {PROG} --pr <number> --app <name> --status <status> 
 
 Required:
   --pr <number>              Pull Request number
-  --app <name>               Application name (e.g. tabula)
+  --app <name>               Application name (e.g. vitruvian-tabs)
   --status <status>          Status: provisioning | ready | failed | teardown
 
 Options:
@@ -304,8 +304,8 @@ mod tests {
 
     #[test]
     fn body_ends_with_the_marker() {
-        let b = render(b"failed", b"tabula", b"7", b"", b"", b"", b"T").unwrap();
-        assert!(b.ends_with(b"\n\n<!-- vitruvian-preview-bot: tabula -->"));
+        let b = render(b"failed", b"vitruvian-tabs", b"7", b"", b"", b"", b"T").unwrap();
+        assert!(b.ends_with(b"\n\n<!-- vitruvian-preview-bot: vitruvian-tabs -->"));
         assert!(b.starts_with("### ❌".as_bytes()));
     }
 

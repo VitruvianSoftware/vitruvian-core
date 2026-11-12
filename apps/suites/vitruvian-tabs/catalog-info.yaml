@@ -1,0 +1,80 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Machine-readable app metadata (#500): the single per-app source for
+# ownership, deploy identity, and release model. Backstage-compatible
+# Component; consumed today by tools/conformance (owner must match
+# .github/CODEOWNERS) and by humans/agents doing impact analysis.
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: vitruvian-tabs
+  title: Vitruvian Tabs
+  description: Vitruvian Tabs SaaS tab/workspace platform — API (Cloud Run blue-green) + Chrome extension + web companion + CLI
+  annotations:
+    github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/techdocs-ref: dir:.
+    storybook.io/url: https://storybook.vitruviansoftware.dev
+    opentelemetry.io/service-name: vitruvian-tabs
+    # Single word => matched as a Grafana TAG (case-sensitive). Resolves to
+    # the templated 'Cloud Run Services' dashboard, which is tagged with both
+    # app names; pick this component's project from its variable.
+    grafana/dashboard-selector: vitruvian-tabs
+    # Cloud Run services this component actually runs as. Explicit rather
+    # than derived: the projects are random-suffixed and some components
+    # have more than one service per environment, so nothing here is
+    # guessable from the entity name.
+    vitruvian.dev/cloud-run-services: |
+      development/api=prj-d-bu2-oss-floating-c3d1/us-central1/tabula-api-development
+      development/web=prj-d-bu2-oss-floating-c3d1/us-central1/tabula-web-development
+      nonproduction/api=prj-n-bu2-oss-floating-a943/us-central1/tabula-api-nonproduction
+      nonproduction/web=prj-n-bu2-oss-floating-a943/us-central1/tabula-web-nonproduction
+      production/api=prj-p-bu2-oss-floating-8663/us-central1/tabula-api-production
+      production/web=prj-p-bu2-oss-floating-8663/us-central1/tabula-web-production
+    vitruvian.dev/deploy-workflow: delivery-vitruvian-tabs.yaml
+    vitruvian.dev/deploy-targets: //apps/suites/vitruvian-tabs/api:image_push //apps/suites/vitruvian-tabs/extension:chrome_zip
+    vitruvian.dev/environments: development nonproduction production
+    vitruvian.dev/release-model: continuous-deploy
+  links:
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/suites/vitruvian-tabs
+      title: Monorepo Source
+      icon: github
+    - url: https://status.ipv1337.dev
+      title: Uptime Status
+      icon: web
+    - url: https://grafana.lab.ipv1337.dev/d/cloud-run-services?var-service=tabula
+      title: Grafana Cloud Run Metrics
+      icon: dashboard
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/pkgs/container/tabula-api
+      title: Container Image (GHCR)
+      icon: docker
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/docs/operations/incident-triage-runbook.md
+      title: Incident Triage Runbook
+      icon: docs
+spec:
+  type: service
+  lifecycle: production
+  owner: tabula-team
+  system: vitruvian-tabs-platform
+  providesApis:
+    - tabula-api
+  dependsOn:
+    - component:default/monorepo-tooling
+    - resource:default/zitadel

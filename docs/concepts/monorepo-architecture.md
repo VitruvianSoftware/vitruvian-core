@@ -13,13 +13,13 @@ flowchart TB
     subgraph mono["vitruvian-core monorepo"]
         direction TB
         subgraph appsg["Applications (by category)"]
-            saas["SaaS web services<br/>tabula · oauth-user-inspector"]
+            saas["SaaS web services<br/>vitruvian-tabs · oauth-user-inspector"]
             clis["CLIs / dev tools<br/>devx · homelab"]
             agents["Agent / MCP services<br/>vitruvian-slack-mcp · vitruvian-code"]
         end
         subgraph infra["infrastructure/pulumi (IaC, Go)"]
             found["GCP foundation<br/>bootstrap → org → environments<br/>→ networks → projects → app-infra"]
-            appstacks["Per-app stacks<br/>apps/suites/tabula/infra/* · apps/web/oauth-user-inspector/infra/*<br/>(identity, build, data, app)"]
+            appstacks["Per-app stacks<br/>apps/suites/vitruvian-tabs/infra/* · apps/web/oauth-user-inspector/infra/*<br/>(identity, build, data, app)"]
             repocfg["repo-config<br/>(this repo's own GitHub settings,<br/>merge queue, environments)"]
         end
         gitopsdir["gitops/argocd<br/>app-of-apps for the dev-local platform"]
@@ -41,7 +41,7 @@ Six first-party apps in three categories (full taxonomy + per-category standards
 
 | Category | Apps | Runs on | Ships via |
 |---|---|---|---|
-| SaaS web service | `tabula`, `oauth-user-inspector` | GCP Cloud Run (per-app project) | deploy pipeline (blue-green) |
+| SaaS web service | `vitruvian-tabs`, `oauth-user-inspector` | GCP Cloud Run (per-app project) | deploy pipeline (blue-green) |
 | CLI / developer tool | `devx`, `homelab` | user's machine | GitHub Releases + Homebrew (mirror) |
 | Agent / MCP service | `vitruvian-slack-mcp`, `vitruvian-code` | user's machine (`vitruvian-slack-mcp` also hosted on the homelab cluster) | container image on GHCR (`vitruvian-slack-mcp`) / DMG (mirror) |
 
@@ -106,7 +106,7 @@ flowchart LR
 
     subgraph Apps["Application Execution"]
         OAUTH["oauth-user-inspector"]
-        TABULA["tabula (api / web)"]
+        TABULA["vitruvian-tabs (api / web)"]
     end
 
     subgraph Infra["Infrastructure Execution"]
@@ -133,7 +133,7 @@ The monorepo is always the source of truth. Full runbook:
 ```text
 vitruvian-core/
 ├── apps/
-│   ├── suites/tabula/                 # SaaS suite (with its infra/ Pulumi stacks)
+│   ├── suites/vitruvian-tabs/                 # SaaS suite (with its infra/ Pulumi stacks)
 │   ├── web/oauth-user-inspector/      # SaaS web app (with its infra/ Pulumi stacks)
 │   ├── cli/devx/  cli/homelab/        # Go CLIs
 │   └── mcp/slack/  desktop/vitruvian-code/ # agent / MCP services

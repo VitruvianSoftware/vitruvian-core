@@ -112,21 +112,21 @@ To turn it on elsewhere: store the token (`docs/operations/key-rotation.md`),
 declare the variable in `pipelineGates`, merge, then dispatch
 `Repo Config Apply` once and read the plan.
 
-### Tabula deploy environments
+### Vitruvian Tabs deploy environments
 
 This program also manages the GitHub Environments the generated
-`.github/workflows/delivery-tabula.yaml` binds for tabula: `tabula-development`,
+`.github/workflows/delivery-vitruvian-tabs.yaml` binds for vitruvian-tabs: `tabula-development`,
 `tabula-nonproduction`, and `tabula-production`. The environment name carries
 the component namespace, so variables inside use bare names and
 `tabula-production`'s protection rules (required reviewer, deployments only
-from protected branches) are scoped to tabula alone.
+from protected branches) are scoped to vitruvian-tabs alone.
 
 Only non-credential identifiers are stored, as environment **variables**
 (keyless Workload Identity Federation needs no key material); runtime secrets
 such as `DATABASE_URL` live in GCP Secret Manager, managed by
-`//apps/suites/tabula/infra/data`. `GCP_DEPLOY_SERVICE_ACCOUNT` is the CI
+`//apps/suites/vitruvian-tabs/infra/data`. `GCP_DEPLOY_SERVICE_ACCOUNT` is the CI
 *deployer* identity impersonated via WIF — distinct from the Cloud Run
-*runtime* service account (`tabula-api-<env>`), which the tabula Pulumi
+*runtime* service account (`tabula-api-<env>`), which the vitruvian-tabs Pulumi
 program creates. Values are plain identifiers and are
 committed in `Pulumi.<stack>.yaml`:
 
@@ -219,7 +219,7 @@ and reach the Pulumi Cloud backend via `PULUMI_ACCESS_TOKEN` (secret).
 - [main.go:291]: `// so it always reports — safe to require.`
 
 ## Side Effects
-- [main.go:287]: `// migration-safety (#819) Squawk-lints Tabula's Prisma migrations so a`
+- [main.go:287]: `// migration-safety (#819) Squawk-lints Vitruvian Tabs's Prisma migrations so a`
 
 ## Verification
 - Run: `bazel test //infrastructure/pulumi/platform/repo-config/...`

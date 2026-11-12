@@ -21,7 +21,7 @@
 # ══════════════════════════════════════════════════════════════════════════
 # DISABLED ON PURPOSE. `.disabled` because ArgoCD's directory recursion only
 # reads .yaml/.yml/.json, so this file is inert until it is renamed — the same
-# mechanism tabula.yaml.disabled uses.
+# mechanism vitruvian-tabs.yaml.disabled uses.
 #
 # It is NOT disabled because it is unfinished. It is disabled because five
 # required values do not exist yet, and every one of them is a security

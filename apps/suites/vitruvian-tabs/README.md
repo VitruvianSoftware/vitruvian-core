@@ -1,0 +1,276 @@
+# Vitruvian Tabs
+
+> A lean, privacy-conscious browser tab management extension with cloud sync
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue.svg)](https://www.typescriptlang.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-22-green.svg)](https://nodejs.org/)
+
+## What is Vitruvian Tabs?
+
+Vitruvian Tabs is a browser tab management extension designed to help you organize your digital workspace
+without breaking the bank or compromising on performance. Inspired by tools like Workona, Vitruvian Tabs
+offers workspace-based tab organization, automatic saving, cross-device sync, and smart tab
+suspension — all built on a cost-effective, serverless cloud architecture.
+
+**Key Differentiators:**
+
+- 🎯 **Performance-First**: Lightweight extension with minimal memory footprint (< 50MB)
+- 🪟 **Multi-Window Native**: Open different workspaces in different windows (like Workona)
+- 🔗 **Local-First Sharing**: Share workspaces with public links without compromising privacy
+- 💰 **Cost-Effective**: Competitive pricing enabled by modern cloud free tiers
+- 🔒 **Privacy-Conscious**: Minimal data collection, transparent handling
+- ⚡ **Scale-to-Zero Architecture**: Efficient serverless backend with Neon, Cloud Run, and Upstash
+
+## Features
+
+### Current Features (Planned for Phase 1 - MVP)
+
+- **Workspace Management**
+  - Create, rename, and delete workspaces
+  - Up to 10 workspaces on free tier (2x competitors)
+  - Quick workspace switching
+  - Visual workspace indicators
+
+- **Tab Management**
+  - Save and restore tabs within workspaces
+  - Suspend inactive tabs to save memory
+  - Move tabs between workspaces
+  - Drag-and-drop tab reordering
+
+- **User Authentication**
+  - Email/password sign-up and login
+  - Secure session management
+  - Account settings and password reset
+
+- **Cross-Device Sync**
+  - Local browser storage for offline access
+  - Cloud sync for logged-in users
+  - Conflict resolution for multi-device usage
+
+### Planned Features
+
+See the [product requirements](./docs/product/REQUIREMENTS.md) for detailed phase breakdowns:
+
+**Phase 2: Sync & History** (Months 4-6)
+
+- Real-time cross-device synchronization
+- Multi-Window Workspaces (URL-based state)
+- "Relay" Sharing (Local-First Public Links)
+- 30-day backup history (free) / 90-day (pro)
+- Universal search across workspaces
+- Web dashboard for browser-based access
+
+**Phase 3: Integrations & Pro Features** (Months 7-10)
+
+- Cloud document links (Google Drive, Notion, GitHub, Figma)
+- Workspace templates and marketplace
+- Advanced productivity features (focus mode, time tracking)
+- Import/export from other tools
+
+**Phase 4: Team Features & Enterprise** (Months 11-15)
+
+- Shared workspaces for teams
+- SSO and SCIM for enterprise
+- Admin controls and user management
+- API access for custom integrations
+
+## Tech Stack
+
+### Frontend
+
+- **Browser Extension**: TypeScript, Manifest V3, React 18, Zustand
+- **Web Dashboard**: Next.js 14, React 18, Tailwind CSS (Phase 2)
+
+### Backend
+
+- **API**: Node 22, TypeScript, Fastify
+- **Language**: TypeScript with strict mode
+- **Database**: Neon Postgres (serverless, autoscaling)
+- **ORM**: Prisma (type-safe database access)
+- **Cache**: Upstash Redis (serverless, edge-optimized)
+- **Auth**: JWT with bcrypt (Phase 1-3), WorkOS SSO (Phase 4)
+
+### Infrastructure
+
+- **Compute**: Google Cloud Run (scale-to-zero), per-environment GCP project
+- **Database**: Neon Postgres · **Cache**: Upstash Redis (both provisioned as code)
+- **Registry**: Google Artifact Registry
+- **IaC**: **Pulumi-in-Go** ([`apps/suites/vitruvian-tabs/infra/*`](./infra)), applied by CI via keyless WIF
+- **Rollout**: blue-green (candidate at 0% traffic → smoke → promote)
+
+See the [Architecture documentation](./docs/architecture/overview.md) for detailed
+system design and the [Infrastructure reference](./docs/reference/infrastructure.md) for
+the Pulumi stacks.
+
+## Quick Start
+
+### For Users
+
+**Installation** (Coming Soon):
+
+1. Visit Chrome Web Store (link TBD)
+2. Click "Add to Chrome"
+3. Sign up or log in
+4. Start organizing your tabs!
+
+### For Developers
+
+Vitruvian Tabs lives in the vitruvian-core Bazel monorepo; all builds and tests are
+Bazel targets.
+
+**Build everything:**
+
+```bash
+bazel build //apps/suites/vitruvian-tabs/...
+```
+
+**Run the test suites:**
+
+```bash
+# Unit + hermetic integration tests (Postgres/Redis/migrations are
+# Bazel-managed test services; nothing to install or start)
+bazel test //apps/suites/vitruvian-tabs/...
+
+# Extension E2E (Playwright + headless Chromium against the full stack)
+bazel test --config=e2e //apps/suites/vitruvian-tabs/...
+
+# Coverage with threshold enforcement
+bazel coverage //apps/suites/vitruvian-tabs/...
+```
+
+**Run the API locally:**
+
+```bash
+bazel run //apps/suites/vitruvian-tabs/api:api_bin
+```
+
+**Build the extension and load it in Chrome:**
+
+```bash
+bazel build //apps/suites/vitruvian-tabs/extension:dist
+```
+
+1. Navigate to `chrome://extensions/`
+2. Enable "Developer mode"
+3. Click "Load unpacked"
+4. Select `bazel-bin/apps/suites/vitruvian-tabs/extension/dist`
+
+**Operations CLI (auth, WorkOS, db, config):**
+
+```bash
+bazel run //apps/suites/vitruvian-tabs/cli:vitruvian-tabs -- --help
+```
+
+**Deploy to `development`** happens automatically on merge to `main`
+(`.github/workflows/delivery-vitruvian-tabs.yaml`: Bazel image → Artifact Registry → prisma
+migrate → Pulumi blue-green). Deploys are **CI-only**; promotion to
+nonproduction/production is release-gated. Break-glass manual apply (preview first):
+
+```bash
+bazel run //apps/suites/vitruvian-tabs/infra/app:preview
+bazel run //apps/suites/vitruvian-tabs/infra/app:up
+```
+
+See [docs/](docs/index.md) for the full documentation set.
+
+## Project Structure
+
+```text
+apps/suites/vitruvian-tabs/
+ ├── api/        # TypeScript API (Prisma + Postgres, Redis) → Cloud Run
+ ├── cli/        # vitruvian-tabs — admin/ops CLI
+ ├── extension/  # Manifest-V3 browser extension (React)
+ ├── web/        # Web dashboard
+ ├── shared/     # Shared TypeScript types
+ ├── infra/      # Pulumi-in-Go stacks: build, data, identity, app
+ ├── deploy/     # Helm chart
+ ├── docs/       # This documentation set (start at docs/index.md)
+ ├── README.md   # This file
+ └── CONTRIBUTING.md
+```
+
+## Documentation
+
+- **[Competitive analysis](./docs/product/workona_walkthrough.md)**: Workona teardown and market
+  positioning
+- **[Requirements](./docs/product/REQUIREMENTS.md)**: Product development phases and features
+- **[Architecture](./docs/architecture/overview.md)**: System design, service selection, and data
+  flow
+- **[Infrastructure](./docs/reference/infrastructure.md)**: Pulumi stacks and deployment
+- **[Contributing](./CONTRIBUTING.md)**: How to contribute to Vitruvian Tabs
+
+## Pricing (Planned)
+
+| Tier     | Price            | Features                                                        |
+| -------- | ---------------- | --------------------------------------------------------------- |
+| **Free** | $0/forever       | 10 workspaces, 30-day backups, basic sync, cross-device access  |
+| **Pro**  | $4.99/month      | Unlimited workspaces, 90-day backups, integrations, templates   |
+| **Team** | $6.99/user/month | All Pro features + shared workspaces, SSO, SCIM, admin controls |
+
+## Contributing
+
+We welcome contributions! Please see our [Contributing Guidelines](./CONTRIBUTING.md) for details
+on:
+
+- Code of conduct
+- Development setup
+- Pull request process
+- Coding standards
+
+## License
+
+Vitruvian Tabs is open source software licensed under the [MIT License](./LICENSE).
+
+## Support
+
+- **Documentation**: [/docs](./docs)
+- **Issues**: [GitHub Issues](https://github.com/VitruvianSoftware/vitruvian-core/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/VitruvianSoftware/vitruvian-core/discussions)
+
+## Roadmap Status
+
+- [x] Project initialization and documentation
+- [x] Infrastructure as Code (Terraform)
+- [ ] Phase 1: MVP (Months 1-3)
+  - [ ] Chrome extension development
+  - [ ] Backend API
+  - [ ] User authentication
+  - [ ] Basic workspace and tab management
+- [ ] Phase 2: Sync & History (Months 4-6)
+- [ ] Phase 3: Integrations (Months 7-10)
+- [ ] Phase 4: Team Features (Months 11-15)
+
+See the [product requirements](./docs/product/REQUIREMENTS.md) for detailed timelines and features.
+
+## Acknowledgments
+
+Vitruvian Tabs is built with modern, open-source technologies and leverages generous free tiers from:
+
+- [Neon](https://neon.tech) - Serverless Postgres
+- [Upstash](https://upstash.com) - Serverless Redis
+- [Google Cloud](https://cloud.google.com) - Cloud Run, Storage, Scheduler
+- [WorkOS](https://workos.com) - Enterprise authentication
+- [Cloudflare](https://cloudflare.com) - CDN and edge services
+
+---
+
+**Built with ❤️ by the Vitruvian Tabs team**
+
+## Interface
+- Internal implementation components
+- Subdirectory: [api](./api/README.md)
+- Subdirectory: [cli](./cli/README.md)
+- Subdirectory: [extension](./extension/README.md)
+- Subdirectory: [infra](./infra/README.md)
+- Subdirectory: [shared](./shared/README.md)
+- Subdirectory: [web](./web/README.md)
+
+## Invariants
+- None
+
+## Side Effects
+- [jest-resolver.cjs:36]: `*      every jest.mock() silently no-ops, real chrome/prisma/ioredis modules`
+
+## Verification
+- Run: `bazel test //apps/suites/vitruvian-tabs/...`

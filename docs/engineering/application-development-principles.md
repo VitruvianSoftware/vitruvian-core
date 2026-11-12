@@ -139,7 +139,7 @@ Non-secret *identifiers* (project id, region, SA email, WIF provider) **are** co
 
 **In practice:** Sequence infra and app via **expand/contract (parallel change)**, encoded as pipeline ordering:
 
-1. **Expand** — apply *additive, backward-compatible* infra first (a new secret, env var, expand-only DB migration, OAuth redirect URI), with the app deploy **gated** to proceed only on its success. Cross-job `needs:` (or an ordered step) is the mechanism; `tabula-deploy` is the reference — Prisma `migrate deploy` and a no-traffic candidate land before any traffic shifts.
+1. **Expand** — apply *additive, backward-compatible* infra first (a new secret, env var, expand-only DB migration, OAuth redirect URI), with the app deploy **gated** to proceed only on its success. Cross-job `needs:` (or an ordered step) is the mechanism; `delivery-vitruvian-tabs` is the reference — Prisma `migrate deploy` and a no-traffic candidate land before any traffic shifts.
 2. **Deploy** the app against the now-present infra.
 3. **Contract** — remove the old infra (drop a column, delete a redirect URI, tighten a binding) only **after** the old revision is gone, in a *later* run. Never contract ahead of the rollover; expand changes must stay backward-compatible so a half-applied pipeline (infra ahead of app) is always safe.
 
@@ -149,9 +149,9 @@ Edge cases the sequence must respect: **(a) circular dependency on the app's own
 
 Database schema is the sharpest instance of §2.15, because the blue-green rollout runs `prisma migrate deploy` **before** the new revision takes traffic: during the traffic shift the **old** revision keeps serving against the **new** schema. So a deploy-phase migration must be backward-**compatible** with the code already running — otherwise it breaks the live revision the instant it applies, and (Neon has no in-repo PITR) can't be rolled back to. This is enforced, not just documented (issue #819):
 
-- **Expand migrations are the default and must be backward-compatible** — add a nullable/defaulted column, add a table, add an index. The `migration-safety` required check (`//tools/ci:migration_safety`, tuned by `apps/suites/tabula/api/prisma/.squawk.toml`, Squawk under the hood) **fails the PR** if an added/modified migration is backward-incompatible: drop/rename a column, narrow a type, add a validated (`NOT VALID`-less) constraint, add a `NOT NULL` column without a default. The gate self-tests on every run, so a mis-tuning surfaces in CI, not on a deploy.
+- **Expand migrations are the default and must be backward-compatible** — add a nullable/defaulted column, add a table, add an index. The `migration-safety` required check (`//tools/ci:migration_safety`, tuned by `apps/suites/vitruvian-tabs/api/prisma/.squawk.toml`, Squawk under the hood) **fails the PR** if an added/modified migration is backward-incompatible: drop/rename a column, narrow a type, add a validated (`NOT VALID`-less) constraint, add a `NOT NULL` column without a default. The gate self-tests on every run, so a mis-tuning surfaces in CI, not on a deploy.
 - **Contract migrations are deliberate and separated** — a genuinely destructive change (drop the now-unused column after the new code stopped reading it) is committed as a migration whose directory name **ends in `_contract`** (e.g. `20260701120000_drop_legacy_workspace_id_contract`). That suffix exempts it from the safety gate (it is knowingly backward-incompatible) **and** tells the deploy wrapper not to auto-apply it.
-- **The deploy applies only expand; contract is a later, explicit run.** The migrate step runs `//apps/suites/tabula/api:migrate_deploy_bin --phase expand`, which **refuses** if any pending migration is a `*_contract` one (it would be swept in by `migrate deploy`, which always applies *all* pending). You apply the contract deliberately, **after** the new revision has fully replaced the old and soaked, via `--phase contract`. Never contract ahead of the rollover.
+- **The deploy applies only expand; contract is a later, explicit run.** The migrate step runs `//apps/suites/vitruvian-tabs/api:migrate_deploy_bin --phase expand`, which **refuses** if any pending migration is a `*_contract` one (it would be swept in by `migrate deploy`, which always applies *all* pending). You apply the contract deliberately, **after** the new revision has fully replaced the old and soaked, via `--phase contract`. Never contract ahead of the rollover.
 
 The rename-a-column case is two migrations across two deploys: **expand** (add the new column, backfill, write both) → cut over the code → **contract** (drop the old column) in a later run. The gate makes the unsafe single-step rename impossible to merge unmarked.
 
@@ -226,7 +226,7 @@ Pick the category that matches the artifact you are shipping. Each section is se
 | **Environments & promotion** | At minimum `development` (auto on push to main) and `production` (workflow_dispatch + environment protection + required reviewer). **Every** environment must have *both* a committed `Pulumi.<env>.yaml` **and** a Pulumi-managed GitHub Environment — no environment slot without a backing stack. Promotion = re-run the workflow against the higher environment with the **same git SHA** (immutable image, promote-by-tag, never rebuild). |
 | **Secrets & config** | Runtime secrets in **GCP Secret Manager**, read at runtime by the runtime SA — never in CI. Non-secret identifiers committed in `Pulumi.<env>.yaml`. Ship a `.env.example`. |
 | **Observability** | Structured logger (pino/winston) → Cloud Logging with revision metadata; `/health` endpoint; post-deploy smoke; **(target)** Cloud Run startup + liveness probes in the Pulumi spec. Enforce a Jest `coverageThreshold` (~80%) under `bazel coverage`; every frontend gets at least a Jest smoke suite. |
-| **Example apps** | `tabula` (multi-component, blue-green, the most mature deploy), `oauth-user-inspector` (single-container, the cleanest WIF-as-code reference). |
+| **Example apps** | `vitruvian-tabs` (multi-component, blue-green, the most mature deploy), `oauth-user-inspector` (single-container, the cleanest WIF-as-code reference). |
 
 **Watch-outs (from the field):** don't leave a vestigial second Dockerfile or a half-wired k8s `Application.disabled` in the tree — pick one production host and delete the other surface, or document it as deliberately unwired. Don't expose `nonproduction`/`production` workflow options that have no backing Pulumi stack.
 
@@ -298,7 +298,7 @@ Pick the category that matches the artifact you are shipping. Each section is se
 | **Environments & promotion** | Use **artifact release channels** (alpha/beta/stable) — this is a *distribution train*, orthogonal to server environments. Rolling beta releases update on push to `main`; production releases promote via release-please GitHub Release tags. |
 | **Secrets & config** | Client-side config only; backend secrets stay in the backend. Signing certificates (`SIGNING_CERT_P12`) and Apple Notary credentials (`NOTARY_API_KEY_P8`) injected via pipeline secrets into dedicated macOS runners (`runs-on: xcode-27`). |
 | **Observability** | App-appropriate client logging; a lightweight Playwright smoke for the critical render+auth path **(target)**. |
-| **Example apps** | `apps/desktop/vitruvian-speaker` (menu bar speech broadcaster), `apps/desktop/vitruvian-atrium` (agent control hub), `apps/desktop/vitruvian-code/macos` (Swift menu bar bridge), `apps/suites/tabula/extension` (MV3 Chrome/Edge/Firefox). |
+| **Example apps** | `apps/desktop/vitruvian-speaker` (menu bar speech broadcaster), `apps/desktop/vitruvian-atrium` (agent control hub), `apps/desktop/vitruvian-code/macos` (Swift menu bar bridge), `apps/suites/vitruvian-tabs/extension` (MV3 Chrome/Edge/Firefox). |
 
 ---
 
@@ -332,7 +332,7 @@ Pick the category that matches the artifact you are shipping. Each section is se
 | **Environments & promotion** | N/A — changes ship by merge. |
 | **Secrets & config** | Only `PULUMI_ACCESS_TOKEN` + `BUILDBUDDY_API_KEY` on the deploy path. No secret in a committed config — including the repo-governance stack **(target)**. |
 | **Observability** | CI is the observability surface; keep workflows lint-clean and SHA-pinned. |
-| **Examples** | `tools/pulumi` & `tools/gitops` (bazel wrappers), `tools/copybara`, `tools/oci`, `.github/workflows/ci.yaml` + per-app deploy/export workflows, `apps/suites/tabula/shared` (in-app shared types). |
+| **Examples** | `tools/pulumi` & `tools/gitops` (bazel wrappers), `tools/copybara`, `tools/oci`, `.github/workflows/ci.yaml` + per-app deploy/export workflows, `apps/suites/vitruvian-tabs/shared` (in-app shared types). |
 
 ---
 

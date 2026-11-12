@@ -225,14 +225,14 @@ fn assert_body_has(p: &Poll, needle: &str, what: &str) {
 fn waiting_recent_run_notifies_and_stale_run_is_filtered() {
     let p = Poll::new();
     let json = runs(&[
-        ("tabula-deploy", "https://x/runs/1", &recent()),
+        ("delivery-vitruvian-tabs", "https://x/runs/1", &recent()),
         ("stale-workflow", "https://x/runs/2", &stale()),
     ]);
     let o = p.run(&[("FAKE_WAITING_JSON", &json)]);
     assert_eq!(o.code, 0, "{o:?}");
     assert_has(
         &o.stdout,
-        "-> waiting: tabula-deploy (https://x/runs/1)",
+        "-> waiting: delivery-vitruvian-tabs (https://x/runs/1)",
         "recent picked up",
     );
     assert_lacks(&o.stdout, "stale-workflow", "stale filtered by cutoff");
@@ -242,11 +242,11 @@ fn waiting_recent_run_notifies_and_stale_run_is_filtered() {
 #[test]
 fn waiting_notification_payload_is_exact() {
     let p = Poll::new();
-    let json = runs(&[("tabula-deploy", "https://x/runs/1", &recent())]);
+    let json = runs(&[("delivery-vitruvian-tabs", "https://x/runs/1", &recent())]);
     p.run(&[("FAKE_WAITING_JSON", &json)]);
     assert_eq!(
         p.bodies(),
-        "{\n  \"topic\": \"vitruvian-alerts\",\n  \"title\": \"[ci] approval needed: tabula-deploy\",\n  \
+        "{\n  \"topic\": \"vitruvian-alerts\",\n  \"title\": \"[ci] approval needed: delivery-vitruvian-tabs\",\n  \
          \"message\": \"Workflow run is waiting on a required-reviewer approval. https://x/runs/1\",\n  \
          \"priority\": 4,\n  \"tags\": [\n    \"hourglass_flowing_sand\",\n    \"ci\"\n  ],\n  \
          \"click\": \"https://x/runs/1\"\n}\n"
@@ -258,7 +258,7 @@ fn waiting_notification_payload_is_exact() {
 #[test]
 fn ntfy_request_shape_is_exact() {
     let p = Poll::new();
-    let json = runs(&[("tabula-deploy", "https://x/runs/1", &recent())]);
+    let json = runs(&[("delivery-vitruvian-tabs", "https://x/runs/1", &recent())]);
     p.run(&[("FAKE_WAITING_JSON", &json)]);
     assert_eq!(
         p.curl_argv(),
@@ -425,7 +425,7 @@ fn failed_ntfy_body_build_warns_and_posts_nothing() {
 #[test]
 fn cutoff_minutes_is_configurable() {
     let p = Poll::new();
-    let json = runs(&[("tabula-deploy", "https://x/runs/1", &recent())]);
+    let json = runs(&[("delivery-vitruvian-tabs", "https://x/runs/1", &recent())]);
     let o = p.run(&[("FAKE_WAITING_JSON", &json), ("CUTOFF_MINUTES", "1")]);
     assert_eq!(o.code, 0, "{o:?}");
     assert_has(
@@ -435,7 +435,7 @@ fn cutoff_minutes_is_configurable() {
     );
     assert_lacks(
         &o.stdout,
-        "waiting: tabula-deploy",
+        "waiting: delivery-vitruvian-tabs",
         "5-minute-old run excluded by a 1-minute cutoff",
     );
 }

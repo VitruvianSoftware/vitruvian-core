@@ -1128,7 +1128,7 @@ pub fn check_owners(ctx: &Context) {
     // Check required subtrees.
     let required = [
         "apps",
-        "apps/suites/tabula",
+        "apps/suites/vitruvian-tabs",
         "packages/design-system",
         "infrastructure",
         "gitops",

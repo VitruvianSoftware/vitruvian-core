@@ -126,7 +126,7 @@ jobs:
             stack: production
             environment: foundation-proj-preview
             preview_service_account: sa-terraform-proj-preview@prj-b-seed-c010.iam.gserviceaccount.com
-          # business_unit_2 (tabula): one representative leaf. No modules_dir —
+          # business_unit_2 (vitruvian-tabs): one representative leaf. No modules_dir —
           # bu1's development leg already carries the single modules vet/test run
           # for this stage, and a second one would just duplicate it.
           - app: gcp-projects-bu2-development
@@ -178,7 +178,7 @@ jobs:
             stack: production
             environment: foundation-app-preview
             preview_service_account: sa-terraform-proj-preview@prj-b-seed-c010.iam.gserviceaccount.com
-          # gcp-app-infra bu2 (tabula): one representative leaf. No modules_dir —
+          # gcp-app-infra bu2 (vitruvian-tabs): one representative leaf. No modules_dir —
           # the bu1 leg above already runs the single modules vet/test for this
           # stage. This leg exists so the bu2 leaves' go vet/test run in CI and a
           # `pulumi preview` catches a mangled config key BEFORE deploy (the exact

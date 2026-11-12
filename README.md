@@ -19,7 +19,7 @@ app type).
 
 | App | Type | What it is |
 |---|---|---|
-| [`tabula`](apps/suites/tabula/) | SaaS web service | Browser tab-management product: a TypeScript API on Cloud Run, an MV3 browser extension, a web dashboard, and a CLI. The most mature deploy in the repo. |
+| [`vitruvian-tabs`](apps/suites/vitruvian-tabs/) | SaaS web service | Browser tab-management product: a TypeScript API on Cloud Run, an MV3 browser extension, a web dashboard, and a CLI. The most mature deploy in the repo. |
 | [`oauth-user-inspector`](apps/web/oauth-user-inspector/) | SaaS web service | Full-stack OAuth/token inspector (React + Vite frontend + Express backend) served as one container on Cloud Run. |
 | [`vitruviansoftware-dev`](apps/web/vitruviansoftware-dev/) | Website | The public [vitruviansoftware.dev](https://vitruviansoftware.dev) Jekyll site. Edited here, exported to its standalone repo, which publishes it on GitHub Pages. |
 | [`devx`](apps/cli/devx/) | CLI / developer tool | Local-dev orchestrator: provisions Lima VMs & devcontainers, ephemeral DBs/emulators, K3s clusters, and tunnel ingress. |
@@ -45,7 +45,7 @@ Each application type has its own conventions — see the
 ```
 .
 ├── apps/                            # Applications by tier (suites, web, cli, mcp, desktop, mobile, embedded)
-│   ├── suites/tabula/               # Browser tab-management SaaS suite
+│   ├── suites/vitruvian-tabs/       # Browser tab-management SaaS suite
 │   ├── web/                         # Containerized web apps (oauth-user-inspector, backstage, gods-eye-view)
 │   ├── cli/                         # Developer & platform CLIs (devx, homelab)
 │   ├── mcp/                         # Model Context Protocol servers (slack)

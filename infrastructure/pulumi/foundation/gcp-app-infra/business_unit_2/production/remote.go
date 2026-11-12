@@ -51,7 +51,7 @@ func loadStackReferences(ctx *pulumi.Context, cfg *AppInfraConfig) (*stackRefs, 
 	}
 	// The per-app deploy SA is platform-issued by stage-4 gcp-projects (§4.1)
 	// for BOTH business units, so this reads the same re-export bu1 does.
-	// (Until tabula's identity was migrated up, stage-4 had no such output
+	// (Until vitruvian-tabs's identity was migrated up, stage-4 had no such output
 	// here and GetStringOutput ERRORS on a missing output — which failed the
 	// whole apply — so this leaf deliberately skipped the read.)
 	deploySAs := map[string]pulumi.StringOutput{}

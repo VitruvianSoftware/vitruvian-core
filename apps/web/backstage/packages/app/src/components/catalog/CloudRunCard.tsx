@@ -51,7 +51,7 @@ type Row = {
  * Cloud Run state for the apps that do NOT run in this cluster.
  *
  * The ArgoCD card answers "what version is live and is it healthy" for
- * in-cluster services; this is the same question for tabula and
+ * in-cluster services; this is the same question for vitruvian-tabs and
  * oauth-user-inspector, which deploy to Cloud Run. Data comes from our own
  * backend rather than the browser, because the GCP credential is a federated
  * token exchanged server-side (docs/gcp-cluster-federation.md).

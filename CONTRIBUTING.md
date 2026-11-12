@@ -59,7 +59,7 @@ gh auth login
 
 > **devx stuck on an old version?** Homebrew skips untrusted taps in `brew upgrade` and `brew outdated` without saying so. Run `brew trust vitruviansoftware/tap && brew upgrade vitruviansoftware/tap/devx`.
 
-`bazel run //:doctor` checks the core toolchain; `bazel run //<app>:doctor` (e.g. `//apps/suites/tabula:doctor`) checks
+`bazel run //:doctor` checks the core toolchain; `bazel run //<app>:doctor` (e.g. `//apps/suites/vitruvian-tabs:doctor`) checks
 that app's exact requirements and fails if anything is missing or the wrong version. Run it first whenever a
 build or test behaves unexpectedly — it's faster than diagnosing a cryptic toolchain error.
 
@@ -72,7 +72,7 @@ A root **`.devcontainer/`** exists (Bazel + Kind + gcloud + Pulumi, Codespaces-c
 ```
 vitruvian-core/
 ├── apps/
-│   ├── suites/tabula/            # SaaS, multi-component (API→Cloud Run, extension, web, cli, shared)
+│   ├── suites/vitruvian-tabs/            # SaaS, multi-component (API→Cloud Run, extension, web, cli, shared)
 │   ├── web/oauth-user-inspector/ # SaaS, single-container web app → Cloud Run
 │   ├── cli/devx/                 # CLI / developer tool (Go)
 │   ├── cli/homelab/              # CLI / infra-ops tool (Go)
@@ -87,7 +87,7 @@ vitruvian-core/
 │   └── ci/, format/, lint/, ...  # affected-targets, formatters, presets
 │
 ├── infrastructure/
-│   ├── pulumi/                   # IaC: dev-local, tabula, oauth-user-inspector(+-deploy-identity),
+│   ├── pulumi/                   # IaC: dev-local, vitruvian-tabs, oauth-user-inspector(+-deploy-identity),
 │   │                             #      lab-gmail, repo_config; root = copybara sync-auth
 │   └── gcp-identities.tsv        # per-Pulumi-project GCP account/project map
 │
@@ -95,7 +95,7 @@ vitruvian-core/
 │   └── argocd/{projects,platform,applications,root-applications.yaml}
 │
 ├── docs/                         # infra, concepts, guides, operations, engineering + cross-cutting
-│                                 #   (per-app docs live in each app dir, e.g. apps/suites/tabula/docs/)
+│                                 #   (per-app docs live in each app dir, e.g. apps/suites/vitruvian-tabs/docs/)
 ├── .github/workflows/            # CI/CD (ci.yaml, per-app deploy, copybara, charts-publish, ...)
 ├── .nvmrc / BUILD / MODULE.bazel # repo-root pins and the //:tidy target
 └── AGENTS.md / README.md
@@ -113,7 +113,7 @@ Each app type has its own inner loop. The table below is the practical per-type 
 
 | App type | Apps | Run / iterate | Test |
 |----------|------|---------------|------|
-| **Bazel monorepo (multi-component SaaS)** | `tabula` | `bazel run //apps/suites/tabula/cli:tabcli`; load extension from `bazel-bin/apps/suites/tabula/extension/dist`; backing Postgres/Redis come up as Bazel-managed hermetic test services | `bazel test //apps/suites/tabula/...` |
+| **Bazel monorepo (multi-component SaaS)** | `vitruvian-tabs` | `bazel run //apps/suites/vitruvian-tabs/cli:vitruvian-tabs`; load extension from `bazel-bin/apps/suites/vitruvian-tabs/extension/dist`; backing Postgres/Redis come up as Bazel-managed hermetic test services | `bazel test //apps/suites/vitruvian-tabs/...` |
 | **Containerized SaaS web app** | `oauth-user-inspector` | `pnpm dev` (concurrently Vite + nodemon/tsc backend on `:8080) | `bazel test //apps/web/oauth-user-inspector/...` (jest server suite) |
 | **Go CLI** | `devx` | `bazel run //apps/cli/devx:devx -- <args>` (developer build of record); release builds via goreleaser only | `bazel test //apps/cli/devx/...` |
 | **Go CLI (infra/ops)** | `homelab` | `bazel run //apps/cli/homelab/cmd/homelab -- <args>` | `bazel test //apps/cli/homelab/...` |
@@ -121,7 +121,7 @@ Each app type has its own inner loop. The table below is the practical per-type 
 | **Agent / MCP + macOS** | `vitruvian-code` | `pnpm start` / `pnpm dev` for the bot; `bazel build --config=macos-app //apps/desktop/vitruvian-code/macos:VitruvianCode` for the menu-bar app | — (no tests yet) |
 
 > **Known divergences you will hit (all tracked in the Alignment Gaps doc):**
-> - **`tabula`'s docs were pre-monorepo and have been corrected.** They now live at [`apps/suites/tabula/docs/`](apps/suites/tabula/docs/index.md) (relocated so they mirror with the app), and the `getting-started/*` and `reference/infrastructure.md` pages have been rewritten to the real Bazel+pnpm+Pulumi flow (Node 22, no `docker-compose.yml`, no Terraform, no `BlueCentre` clone). If you hit any lingering `npm`/`docker-compose`/Terraform references in older tabula prose (e.g. deep in `apps/suites/tabula/CONTRIBUTING.md`), this SOP and the root README win.
+> - **`vitruvian-tabs`'s docs were pre-monorepo and have been corrected.** They now live at [`apps/suites/vitruvian-tabs/docs/`](apps/suites/vitruvian-tabs/docs/index.md) (relocated so they mirror with the app), and the `getting-started/*` and `reference/infrastructure.md` pages have been rewritten to the real Bazel+pnpm+Pulumi flow (Node 22, no `docker-compose.yml`, no Terraform, no `BlueCentre` clone). If you hit any lingering `npm`/`docker-compose`/Terraform references in older vitruvian-tabs prose (e.g. deep in `apps/suites/vitruvian-tabs/CONTRIBUTING.md`), this SOP and the root README win.
 > - **`oauth-user-inspector` README deploy path is dead.** `npm run deploy` / `scripts/deploy.sh` invoke a retired Cloud Build flow (`gcloud builds submit --config cloudbuild.yaml`) and **no `cloudbuild.yaml` exists**. Deploy is CI-only (Section 8). Ignore that section of the README.
 > - **`vitruvian-code` is documented with bare `npm`** even though it is a member of `pnpm-workspace.yaml`. Prefer `pnpm` to keep the single lockfile honest.
 > - **Two Go task runners exist out-of-band:** `devx` carries a `magefile.go`, `homelab` carries `.mise.toml`. **🎯 Target:** Bazel is the developer build of record for both; the Mage/mise runners are legacy and being retired (goreleaser stays for mirror releases only). Use the `bazel run` commands above.
@@ -130,17 +130,17 @@ Each app type has its own inner loop. The table below is the practical per-type 
 
 `devx` is the intended local-dev orchestrator: `devx vm init`, `devx up` (brings up the databases declared in `devx.yaml` and runs your services in dependency order), `devx shell`, and `devx scaffold {go-api,node-api,next-app,go-cli,python-api}` to stamp a new app skeleton.
 
-> **Careful — `devx up` does *not* do `.env` injection.** A `host` service gets only its own `env:` map plus `PORT`; it does not read or write a `.env` file. The app loads its own `.env` (e.g. `apps/suites/tabula/api` via `dotenv`, which does not override what devx already set). `.env`/vault injection happens in `devx shell`, `devx db seed`, and `devx test` — not `devx up`.
+> **Careful — `devx up` does *not* do `.env` injection.** A `host` service gets only its own `env:` map plus `PORT`; it does not read or write a `.env` file. The app loads its own `.env` (e.g. `apps/suites/vitruvian-tabs/api` via `dotenv`, which does not override what devx already set). `.env`/vault injection happens in `devx shell`, `devx db seed`, and `devx test` — not `devx up`.
 
-**Dogfooding status.** `apps/suites/tabula/api` and `apps/web/oauth-user-inspector` now ship a committed `devx.yaml` ([tabula/api](apps/suites/tabula/api/devx.yaml) declares Postgres + Redis and gates the API on both; [oauth-user-inspector](apps/web/oauth-user-inspector/devx.yaml) declares its backend + Vite frontend and deliberately declares **no** database — it has none). The remaining four apps have no backing services, so the plain `bazel run`/`pnpm` loops in 3.1 remain the whole story. Validate any `devx.yaml` change with `devx map` from that file's directory — the parser ignores unknown keys silently.
+**Dogfooding status.** `apps/suites/vitruvian-tabs/api` and `apps/web/oauth-user-inspector` now ship a committed `devx.yaml` ([vitruvian-tabs/api](apps/suites/vitruvian-tabs/api/devx.yaml) declares Postgres + Redis and gates the API on both; [oauth-user-inspector](apps/web/oauth-user-inspector/devx.yaml) declares its backend + Vite frontend and deliberately declares **no** database — it has none). The remaining four apps have no backing services, so the plain `bazel run`/`pnpm` loops in 3.1 remain the whole story. Validate any `devx.yaml` change with `devx map` from that file's directory — the parser ignores unknown keys silently.
 
-For a **local k8s** cluster, `devx` provisions zero/multi-node K3s; the `.devcontainer/` also ships a `kind-config.yaml`. Note: the **dev-local k3s homelab hosts platform infra only** (Zitadel, observability, CNPG, MinIO, etc.) reconciled by ArgoCD — first-party apps are **not** deployed there (the one wired path, `gitops/argocd/applications/tabula.yaml.disabled`, is disabled). See Section 9.
+For a **local k8s** cluster, `devx` provisions zero/multi-node K3s; the `.devcontainer/` also ships a `kind-config.yaml`. Note: the **dev-local k3s homelab hosts platform infra only** (Zitadel, observability, CNPG, MinIO, etc.) reconciled by ArgoCD — first-party apps are **not** deployed there (the one wired path, `gitops/argocd/applications/vitruvian-tabs.yaml.disabled`, is disabled). See Section 9.
 
 ### 3.3 Per-app GCP dev project
 
 The two Cloud Run apps each have a per-app GCP **dev** project for runtime secrets/integration:
 
-- `tabula` → `prj-d-bu2-oss-floating-c3d1` (GitHub Environment `tabula-development`)
+- `vitruvian-tabs` → `prj-d-bu2-oss-floating-c3d1` (GitHub Environment `tabula-development`)
 - `oauth-user-inspector` → `prj-d-bu1-oss-floating-648a` (GitHub Environment `oauth-user-inspector-development`)
 
 There is **no documented local-vs-dev-project split** yet — that's a known local-dev gap. Runtime secrets live in that project's GCP Secret Manager and are read at runtime (never checked out locally); see Section 7.
@@ -149,7 +149,7 @@ There is **no documented local-vs-dev-project split** yet — that's a known loc
 
 | App | File | Source |
 |-----|------|--------|
-| `tabula` (API) | `apps/suites/tabula/api/.env` | copy `apps/suites/tabula/api/.env.example`; keys: `DATABASE_URL`, `JWT_SECRET`, `WORKOS_*`, `UPSTASH_REDIS_URL` |
+| `vitruvian-tabs` (API) | `apps/suites/vitruvian-tabs/api/.env` | copy `apps/suites/vitruvian-tabs/api/.env.example`; keys: `DATABASE_URL`, `JWT_SECRET`, `WORKOS_*`, `UPSTASH_REDIS_URL` |
 | `vitruvian-code` | `apps/desktop/vitruvian-code/.env` | copy `apps/desktop/vitruvian-code/.env.example`; keys: `TELEGRAM_BOT_TOKEN`, `ALLOWED_USER_IDS`, `GEMINI_*` |
 | `devx` | `.env` / `.env.keys` | managed via `devx config secrets`; keys: `CF_TUNNEL_TOKEN`, `DEV_HOSTNAME` |
 | Pulumi stacks | `infrastructure/pulumi/<project>/Pulumi.<stack>.yaml` | gitignored; non-secret config is committed, secrets are not (Section 7) |
@@ -245,7 +245,7 @@ bazel build //...
 bazel test  //...
 
 # Scope to one app
-bazel test //apps/suites/tabula/...
+bazel test //apps/suites/vitruvian-tabs/...
 bazel test //apps/cli/devx/...
 
 # Format + BUILD hygiene — run this before every PR. It is a REQUIRED check.
@@ -254,7 +254,7 @@ bazel run //:tidy        # gazelle + buildifier + prettier/gofmt
 
 `bazel run //:tidy` is the **single formatting/BUILD-hygiene entrypoint** — it regenerates BUILD files (gazelle), formats Starlark (buildifier), and runs the per-language formatters. The `tidy-check` CI job re-runs it and **fails the PR if the tree isn't clean**.
 
-> **Frontends are NOT bazel-built — this is a deliberate, load-bearing convention.** Bazel runs only the `jest_test` for frontends/containerized web apps; the production artifact comes from a **Dockerfile** (`apps/web/oauth-user-inspector`) or a **Bazel `oci` image** (`apps/suites/tabula/api`). Don't add a Bazel production build for a Vite/Next/webpack frontend.
+> **Frontends are NOT bazel-built — this is a deliberate, load-bearing convention.** Bazel runs only the `jest_test` for frontends/containerized web apps; the production artifact comes from a **Dockerfile** (`apps/web/oauth-user-inspector`) or a **Bazel `oci` image** (`apps/suites/vitruvian-tabs/api`). Don't add a Bazel production build for a Vite/Next/webpack frontend.
 
 ### Fallback / direct commands
 
@@ -329,11 +329,11 @@ addlicense -check -c "VitruvianSoftware" -l mit \
 - **Not covered:** `json`, `md`, lockfiles, `_helpers.tpl`, generated/scaffold trees (`docs/**`, `internal/scaffold/templates/**`, `dev-local/{crds,values,dashboards}/**`, prisma migrations, `Pulumi.*.yaml`).
 - **The HTML gotcha:** addlicense inserts an **HTML comment** (`<!-- ... -->`) header into `.html`/`.css`-style files. If a header looks "missing," check that it wasn't stripped by a formatter or templating step — addlicense will re-add it; run `addlicense` without `-check` (or `bazel run //:tidy` adjacent flows) to fix locally.
 
-> **`-check` only verifies a header is *present*, not that it's MIT or that the holder is VitruvianSoftware.** An Apache/wrong-holder header passes silently. So today `homelab`, `vitruvian-slack-mcp`, and `vitruvian-code` ship **Apache-2.0** LICENSE files (and `vitruvian-slack-mcp`'s source carries an Apache header), and `tabula`'s LICENSE names `BlueCentre` — all slip through. **🎯 Target:** MIT `(c) 2026 VitruvianSoftware` everywhere, plus a content gate that fails on non-MIT/wrong-holder. New code must use the MIT/VitruvianSoftware header; do not copy headers from the Apache-licensed apps. See the Alignment Gaps doc.
+> **`-check` only verifies a header is *present*, not that it's MIT or that the holder is VitruvianSoftware.** An Apache/wrong-holder header passes silently. So today `homelab`, `vitruvian-slack-mcp`, and `vitruvian-code` ship **Apache-2.0** LICENSE files (and `vitruvian-slack-mcp`'s source carries an Apache header), and `vitruvian-tabs`'s LICENSE names `BlueCentre` — all slip through. **🎯 Target:** MIT `(c) 2026 VitruvianSoftware` everywhere, plus a content gate that fails on non-MIT/wrong-holder. New code must use the MIT/VitruvianSoftware header; do not copy headers from the Apache-licensed apps. See the Alignment Gaps doc.
 
 ### Governance files
 
-Each first-party app should carry the governance quartet: **`LICENSE`, `CONTRIBUTING.md`, `CLA.md`, `CODE_OF_CONDUCT.md`**. `oauth-user-inspector` and `devx` are the aligned references. **🎯 Target:** generate all four from one template and add a canonical root governance set that per-app files link to (today `tabula` lacks a standalone `CODE_OF_CONDUCT.md`/`CLA.md`; `homelab` and `vitruvian-code` lack `CODE_OF_CONDUCT.md`).
+Each first-party app should carry the governance quartet: **`LICENSE`, `CONTRIBUTING.md`, `CLA.md`, `CODE_OF_CONDUCT.md`**. `oauth-user-inspector` and `devx` are the aligned references. **🎯 Target:** generate all four from one template and add a canonical root governance set that per-app files link to (today `vitruvian-tabs` lacks a standalone `CODE_OF_CONDUCT.md`/`CLA.md`; `homelab` and `vitruvian-code` lack `CODE_OF_CONDUCT.md`).
 
 ---
 
@@ -346,13 +346,13 @@ The model is recently formalized and is **the authoritative target**. The invari
 Three storage tiers, each with a clear owner:
 
 1. **k8s platform secrets → sealed-secrets, committed to git.** `gitops/argocd/platform/sealed-secrets-manifests/*.sealedsecret.yaml` (cloudflare, cloudflared, zitadel masterkey/db, minio-root, grafana, cnpg, tempo). ArgoCD decrypts in-cluster. Re-seal/rotate via the `//tools/gitops` targets (`tools/gitops/sealed_secrets_keys.sh`). The **zitadel masterkey loss = total data loss** — back it up.
-2. **Cloud Run app *runtime* secrets → per-app GCP Secret Manager.** Created (empty) by the app's Pulumi program, granted to the runtime SA, read directly at runtime (`secretKeyRef` for `tabula`; `accessSecretVersion` for `oauth-user-inspector`). **They never transit CI.**
+2. **Cloud Run app *runtime* secrets → per-app GCP Secret Manager.** Created (empty) by the app's Pulumi program, granted to the runtime SA, read directly at runtime (`secretKeyRef` for `vitruvian-tabs`; `accessSecretVersion` for `oauth-user-inspector`). **They never transit CI.**
 3. **Pulumi-stack secrets → never in git; injected in CI as env, with a gitignored config-file fallback locally.** The canonical implementation is the `internal/secrets` package inside `infrastructure/pulumi/platform/repo_config` — `secrets.EnvOrConfig(cfg, "ENV_NAME", "configKey")` (and `EnvOrConfigOptional` for a secret that may be absent): read `os.Getenv(...)` in CI, fall back to `cfg.RequireSecret(...)` locally so the same code runs both places. `Pulumi.<stack>.yaml` is gitignored; **non-secret** identifiers (project id, region, SA emails, WIF provider) are committed as config-as-code.
 
 **Local vs CI:**
 
 - **Local:** uncommitted/gitignored files — `Pulumi.<stack>.yaml`, `~/.kube/<cluster>.yaml`, per-app GCP dev creds, the `.env` files in Section 3.4.
-- **CI:** the *same* secrets are replicated into **GitHub pipeline secrets** and injected as env at run time. Scope is via **per-app GitHub Environments** (the "tabula model": `tabula-development`, `oauth-user-inspector-development`); shared-infra creds stay repo-level. The only repo-level GitHub secret on the deploy path is `PULUMI_ACCESS_TOKEN` (+ `BUILDBUDDY_API_KEY` for `tabula`'s Bazel build).
+- **CI:** the *same* secrets are replicated into **GitHub pipeline secrets** and injected as env at run time. Scope is via **per-app GitHub Environments** (the "vitruvian-tabs model": `tabula-development`, `oauth-user-inspector-development`); shared-infra creds stay repo-level. The only repo-level GitHub secret on the deploy path is `PULUMI_ACCESS_TOKEN` (+ `BUILDBUDDY_API_KEY` for `vitruvian-tabs`'s Bazel build).
 
 > **Former live violation (resolved in code):** `infrastructure/pulumi/platform/repo_config/Pulumi.dev.yaml` used to commit a `secure:`-encrypted BuildBuddy key read via `cfg.RequireSecret` with no env fallback. The blob is removed and `repo_config` now routes through the shared `secrets.EnvOrConfigOptional` helper (issue #456). The remaining step is the operator key rotation — `bazel run //tools/rotate-buildbuddy-key`. See the Alignment Gaps doc.
 
@@ -366,7 +366,7 @@ Deploy mechanics are determined by **app type** (see the Applications & Categori
 
 | App type | Target | Mechanism |
 |----------|--------|-----------|
-| **SaaS web service** (`tabula`, `oauth-user-inspector`) | **GCP Cloud Run** | image → Artifact Registry → **Pulumi `cloudrunv2`**, deployed by GitHub Actions via **keyless WIF**, keyed on a per-app **GitHub Environment** |
+| **SaaS web service** (`vitruvian-tabs`, `oauth-user-inspector`) | **GCP Cloud Run** | image → Artifact Registry → **Pulumi `cloudrunv2`**, deployed by GitHub Actions via **keyless WIF**, keyed on a per-app **GitHub Environment** |
 | **CLI / developer tool** (`devx`, `homelab`) | Standalone-repo **GitHub Releases + Homebrew tap** | `goreleaser` + `release-please` from the mirror (**released, not deployed**) |
 | **Agent / MCP** (`vitruvian-slack-mcp`, `vitruvian-code`) | container image (`vitruvian-slack-mcp`) / DMG (`vitruvian-code`) | `release-please`; `vitruvian-slack-mcp` publishes its image from `main`; *DMG publishing CI is a gap — see below* |
 | **Self-hosted platform** (`gitops/`) | dev-local **k3s** | **ArgoCD app-of-apps**, reconciled from git only (Section 9) |
@@ -375,7 +375,7 @@ Deploy mechanics are determined by **app type** (see the Applications & Categori
 
 **When does a deploy fire?** On push to `main`, a **graph gate** (`//tools/ci:deploy_affected`) decides: it deploys iff the app's *deployable Bazel targets* are affected by the diff, or a non-graph input changed (the app's Pulumi program, the workflow files) — and it **fails open** (any uncertainty deploys; blue-green re-deploys are idempotent). No directory path-glob triggers: a shared-library change outside the app's dir correctly redeploys it; a docs-only change inside it correctly doesn't.
 
-**How does it deploy?** Through the **reusable pipeline** `.github/workflows/_deploy-cloud-run.yaml` — extracted from tabula's production flow, parameterized per app via a thin caller. Deploy-time inputs (`imageTag`/`promote`/`stableRevision`) pass as **per-invocation env vars** (`TABULA_*`), never `pulumi config set` — so a local run interleaving with CI can't clobber a rollout mid-flight.
+**How does it deploy?** Through the **reusable pipeline** `.github/workflows/_deploy-cloud-run.yaml` — extracted from vitruvian-tabs's production flow, parameterized per app via a thin caller. Deploy-time inputs (`imageTag`/`promote`/`stableRevision`) pass as **per-invocation env vars** (`TABULA_*`), never `pulumi config set` — so a local run interleaving with CI can't clobber a rollout mid-flight.
 
 ```mermaid
 flowchart TD
@@ -392,15 +392,15 @@ flowchart TD
 ```
 
 - **Every app is delivered by its own GENERATED workflow, `.github/workflows/delivery-<app>.yaml`** (delivery-orchestrator Phase 2, `docs/superpowers/specs/2026-08-19-delivery-orchestrator-design.md`), named by each unit's `delivery(app = ...)`. Apps never share a queue: a run waiting on one app's Environment approval holds back only that app. In each, one `orchestrate` job decides which of that app's units a push affects, from the `delivery()` declarations in the Bazel graph, and per-unit job chains deploy `…-development` on an affected push and `…-nonproduction`/`…-production` on a published `tabula-api-v*` / `tabula-web-v*` / `oauth-user-inspector-v*` release, each rung behind its dev-soak interlock and its GitHub Environment. Edit the `delivery()` block next to the code, never the workflow: `bazel run //tools/ci:gen` regenerates it and tidy-check fails on drift.
-- **There are no hand-written per-app deploy workflows** (delivery-orchestrator Phase 3): the eight that existed, and the reusable gate they shared, were deleted once the generated lane had run a full release cycle — see git history for what they looked like. Break-glass is the app's `delivery-<app>.yaml` `workflow_dispatch` (a `unit` + an `environment`) or the unit's `bazel run` target. The extension bundle still shares tabula's gate universe via `graph_targets` on the tabula units, so the bundle and the API re-stamp together (the update-banner coupling).
-- **Advisory Pulumi previews:** PRs touching `infrastructure/pulumi/{tabula,oauth-user-inspector,pkg}` get a `pulumi preview --diff` posted as a sticky PR comment (`pulumi-preview.yaml`). Image/traffic lines are expected noise (deploy-time inputs are absent at preview); **the signal is creates/deletes/REPLACES**.
+- **There are no hand-written per-app deploy workflows** (delivery-orchestrator Phase 3): the eight that existed, and the reusable gate they shared, were deleted once the generated lane had run a full release cycle — see git history for what they looked like. Break-glass is the app's `delivery-<app>.yaml` `workflow_dispatch` (a `unit` + an `environment`) or the unit's `bazel run` target. The extension bundle still shares vitruvian-tabs's gate universe via `graph_targets` on the vitruvian-tabs units, so the bundle and the API re-stamp together (the update-banner coupling).
+- **Advisory Pulumi previews:** PRs touching `apps/suites/vitruvian-tabs/infra/app and oauth-user-inspector,pkg}` get a `pulumi preview --diff` posted as a sticky PR comment (`pulumi-preview.yaml`). Image/traffic lines are expected noise (deploy-time inputs are absent at preview); **the signal is creates/deletes/REPLACES**.
 - **App metadata:** each app's `catalog-info.yaml` records its owner team, deploy/release workflow, targets, and environments — conformance enforces it exists and its owner matches CODEOWNERS.
 
 > **Remaining gap:** the promotion ladder beyond `development` needs committed `Pulumi.<env>.yaml` stacks (none exist for `nonproduction`/`production` yet) — tracked with the staging-environment work in issue #497. oauth's Dockerfile→`rules_oci` migration is the other alignment gap (Alignment Gaps doc).
 
 ### Deploy identity (WIF)
 
-Deploy auth is **keyless** Workload Identity Federation per GCP project, **codified as a Pulumi bootstrap**. The reference is `apps/web/oauth-user-inspector/infra/identity` (repo-scoped WIF pool/provider + least-privilege deploy SA + runtime SA). **`tabula`'s WIF predates this and is click-ops** — a known gap; **🎯 Target** is a `tabula-deploy-identity` Pulumi project mirroring the reference.
+Deploy auth is **keyless** Workload Identity Federation per GCP project, **codified as a Pulumi bootstrap**. The reference is `apps/web/oauth-user-inspector/infra/identity` (repo-scoped WIF pool/provider + least-privilege deploy SA + runtime SA). **`vitruvian-tabs`'s WIF predates this and is click-ops** — a known gap; **🎯 Target** is a `tabula-deploy-identity` Pulumi project mirroring the reference.
 
 ### Releases
 
@@ -429,7 +429,7 @@ bazel run //tools/gitops:<target> -- <args>
 
 ## 10. Code sharing / Copybara
 
-Five of the six first-party apps (`devx`, `homelab`, `vitruvian-slack-mcp`, `vitruvian-code`, `oauth-user-inspector`) are **one-way Copybara-mirrored** to a standalone repo in the `VitruvianSoftware` org. `tabula` is currently **not** mirrored.
+Five of the six first-party apps (`devx`, `homelab`, `vitruvian-slack-mcp`, `vitruvian-code`, `oauth-user-inspector`) are **one-way Copybara-mirrored** to a standalone repo in the `VitruvianSoftware` org. `vitruvian-tabs` is currently **not** mirrored.
 
 - **Edit in the monorepo. Never edit the standalone mirror** for first-party work — Copybara exports one-way (monorepo → mirror). Config lives in `tools/copybara/copy.bara.sky`; per-component export workflows are `.github/workflows/copybara-export-<app>.yaml` (plus the shared `_copybara-export.yaml`).
 - A cron **import** workflow (`copybara-import-pr.yaml`) opens monorepo PRs and re-runs `//:tidy`.
@@ -441,7 +441,7 @@ Five of the six first-party apps (`devx`, `homelab`, `vitruvian-slack-mcp`, `vit
 ## 11. Where to get help / where docs live
 
 - **[`docs/README.md`](docs/README.md)** — **the documentation hub**: role-based quick starts ([app developer](docs/getting-started/app-developer.md), [platform engineer](docs/getting-started/platform-engineer.md), [operator](docs/getting-started/operator.md), [repo admin](docs/getting-started/repo-admin.md)), the [SDLC walkthrough](docs/concepts/sdlc.md), and the [Bazel targets catalog](docs/reference/bazel-targets.md).
-- **`docs/` areas** — [`docs/infrastructure/`](docs/infrastructure/index.md) (the Pulumi/k8s estate), [`docs/operations/`](docs/operations/README.md) (runbooks: sealed-secrets, key rotation, break-glass deploy; incident postmortems), [`docs/admin/`](docs/admin/README.md) (Copybara sync), [`docs/guides/`](docs/guides/) (build-cache, remote-build, app onboarding). Per-app docs live in each app's own directory (e.g. [`apps/suites/tabula/docs/`](apps/suites/tabula/docs/index.md)). Historical plans/designs live in [`docs/archive/`](docs/archive/README.md) and [`docs/superpowers/`](docs/superpowers/README.md).
+- **`docs/` areas** — [`docs/infrastructure/`](docs/infrastructure/index.md) (the Pulumi/k8s estate), [`docs/operations/`](docs/operations/README.md) (runbooks: sealed-secrets, key rotation, break-glass deploy; incident postmortems), [`docs/admin/`](docs/admin/README.md) (Copybara sync), [`docs/guides/`](docs/guides/) (build-cache, remote-build, app onboarding). Per-app docs live in each app's own directory (e.g. [`apps/suites/vitruvian-tabs/docs/`](apps/suites/vitruvian-tabs/docs/index.md)). Historical plans/designs live in [`docs/archive/`](docs/archive/README.md) and [`docs/superpowers/`](docs/superpowers/README.md).
 - **Companion docs (this orientation layer):**
   - **Applications & Categories** — what each app is and its category (the shared vocabulary).
   - **Alignment Gaps** — every "🎯 Target / not yet adopted" item above, tracked with severity and recommendation.
@@ -449,6 +449,6 @@ Five of the six first-party apps (`devx`, `homelab`, `vitruvian-slack-mcp`, `vit
 - **Repo-root `AGENTS.md`** and `README.bazel.md` for Bazel-specific guidance.
 - **CI/CD vocabulary:** [`.github/CI_DEFINITIONS.md`](.github/CI_DEFINITIONS.md) (presubmit/postsubmit/affected targets/safety floor/deploy gate). **Flaky tests:** [`docs/engineering/flaky-tests.md`](docs/engineering/flaky-tests.md) (quarantine + culprit-finder).
 
-> ⚠️ **Doc-drift warning.** Some per-app docs are known-stale (notably `tabula`'s `getting-started`/`CONTRIBUTING` and `oauth-user-inspector`'s deploy section — see Sections 3 and 8). When an app's own docs conflict with this SOP, **this SOP and the merge queue's required checks win**, and please open a PR to fix the stale doc.
+> ⚠️ **Doc-drift warning.** Some per-app docs are known-stale (notably `vitruvian-tabs`'s `getting-started`/`CONTRIBUTING` and `oauth-user-inspector`'s deploy section — see Sections 3 and 8). When an app's own docs conflict with this SOP, **this SOP and the merge queue's required checks win**, and please open a PR to fix the stale doc.
 
 ---

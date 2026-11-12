@@ -2026,287 +2026,287 @@ No drift detected.
 
 No drift detected.
 
-## apps/suites/tabula/README.md
+## apps/suites/vitruvian-tabs/README.md
 
 No drift detected.
 
-## apps/suites/tabula/api/README.md
+## apps/suites/vitruvian-tabs/api/README.md
 
 No drift detected.
 
-## apps/suites/tabula/api/prisma/README.md
+## apps/suites/vitruvian-tabs/api/prisma/README.md
 
 No drift detected.
 
-## apps/suites/tabula/api/prisma/migrations/README.md
+## apps/suites/vitruvian-tabs/api/prisma/migrations/README.md
 
 No drift detected.
 
-## apps/suites/tabula/api/prisma/migrations/20251207000000_init/README.md
+## apps/suites/vitruvian-tabs/api/prisma/migrations/20251207000000_init/README.md
 
 No drift detected.
 
-## apps/suites/tabula/api/prisma/migrations/20251207232507_migration/README.md
+## apps/suites/vitruvian-tabs/api/prisma/migrations/20251207232507_migration/README.md
 
 No drift detected.
 
-## apps/suites/tabula/api/prisma/migrations/20251224030040_add_space_groups/README.md
+## apps/suites/vitruvian-tabs/api/prisma/migrations/20251224030040_add_space_groups/README.md
 
 No drift detected.
 
-## apps/suites/tabula/api/prisma/migrations/20251224042904_add_missing_workspace_models/README.md
+## apps/suites/vitruvian-tabs/api/prisma/migrations/20251224042904_add_missing_workspace_models/README.md
 
 No drift detected.
 
-## apps/suites/tabula/api/prisma/migrations/20251224043651_fix_id_types_to_string/README.md
+## apps/suites/vitruvian-tabs/api/prisma/migrations/20251224043651_fix_id_types_to_string/README.md
 
 No drift detected.
 
-## apps/suites/tabula/api/prisma/migrations/20260610000000_add_sync_versioning/README.md
+## apps/suites/vitruvian-tabs/api/prisma/migrations/20260610000000_add_sync_versioning/README.md
 
 No drift detected.
 
-## apps/suites/tabula/api/prisma/migrations/20260610010000_add_backup_name_type/README.md
+## apps/suites/vitruvian-tabs/api/prisma/migrations/20260610010000_add_backup_name_type/README.md
 
 No drift detected.
 
-## apps/suites/tabula/api/prisma/migrations/20260614003800_repair_drifted_sync_and_backup_columns/README.md
+## apps/suites/vitruvian-tabs/api/prisma/migrations/20260614003800_repair_drifted_sync_and_backup_columns/README.md
 
 No drift detected.
 
-## apps/suites/tabula/api/prisma/migrations/20260615000000_add_sharing_acl/README.md
+## apps/suites/vitruvian-tabs/api/prisma/migrations/20260615000000_add_sharing_acl/README.md
 
 No drift detected.
 
-## apps/suites/tabula/api/prisma/migrations/20260616000000_add_share_link_relay_id/README.md
+## apps/suites/vitruvian-tabs/api/prisma/migrations/20260616000000_add_share_link_relay_id/README.md
 
 No drift detected.
 
-## apps/suites/tabula/api/rs/README.md
+## apps/suites/vitruvian-tabs/api/rs/README.md
 
 No drift detected.
 
-## apps/suites/tabula/api/rs/src/README.md
+## apps/suites/vitruvian-tabs/api/rs/src/README.md
 
 No drift detected.
 
-## apps/suites/tabula/api/rs/src/bin/README.md
+## apps/suites/vitruvian-tabs/api/rs/src/bin/README.md
 
 No drift detected.
 
-## apps/suites/tabula/cli/README.md
+## apps/suites/vitruvian-tabs/cli/README.md
 
 No drift detected.
 
-## apps/suites/tabula/cli/rs/README.md
+## apps/suites/vitruvian-tabs/cli/rs/README.md
 
 No drift detected.
 
-## apps/suites/tabula/cli/rs/src/README.md
+## apps/suites/vitruvian-tabs/cli/rs/src/README.md
 
 No drift detected.
 
-## apps/suites/tabula/cli/rs/src/commands/README.md
+## apps/suites/vitruvian-tabs/cli/rs/src/commands/README.md
 
 No drift detected.
 
-## apps/suites/tabula/cli/rs/src/utils/README.md
+## apps/suites/vitruvian-tabs/cli/rs/src/utils/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/README.md
+## apps/suites/vitruvian-tabs/extension/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/coverage/README.md
+## apps/suites/vitruvian-tabs/extension/coverage/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/coverage/lcov-report/README.md
+## apps/suites/vitruvian-tabs/extension/coverage/lcov-report/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/scripts/README.md
+## apps/suites/vitruvian-tabs/extension/scripts/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/scripts/src/README.md
+## apps/suites/vitruvian-tabs/extension/scripts/src/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/scripts/src/bin/README.md
+## apps/suites/vitruvian-tabs/extension/scripts/src/bin/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/src/README.md
+## apps/suites/vitruvian-tabs/extension/src/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/src/background/README.md
+## apps/suites/vitruvian-tabs/extension/src/background/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/src/components/README.md
+## apps/suites/vitruvian-tabs/extension/src/components/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/src/components/illustrations/README.md
+## apps/suites/vitruvian-tabs/extension/src/components/illustrations/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/src/components/onboarding/README.md
+## apps/suites/vitruvian-tabs/extension/src/components/onboarding/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/src/constants/README.md
+## apps/suites/vitruvian-tabs/extension/src/constants/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/src/dashboard/README.md
+## apps/suites/vitruvian-tabs/extension/src/dashboard/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/src/dashboard/hooks/README.md
+## apps/suites/vitruvian-tabs/extension/src/dashboard/hooks/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/src/hooks/README.md
+## apps/suites/vitruvian-tabs/extension/src/hooks/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/src/lib/README.md
+## apps/suites/vitruvian-tabs/extension/src/lib/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/src/lib/flags/README.md
+## apps/suites/vitruvian-tabs/extension/src/lib/flags/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/src/popup/README.md
+## apps/suites/vitruvian-tabs/extension/src/popup/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/src/services/README.md
+## apps/suites/vitruvian-tabs/extension/src/services/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/src/stores/README.md
+## apps/suites/vitruvian-tabs/extension/src/stores/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/src/testUtils/README.md
+## apps/suites/vitruvian-tabs/extension/src/testUtils/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/src/types/README.md
+## apps/suites/vitruvian-tabs/extension/src/types/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/src/utils/README.md
+## apps/suites/vitruvian-tabs/extension/src/utils/README.md
 
 No drift detected.
 
-## apps/suites/tabula/extension/tests/unit/README.md
+## apps/suites/vitruvian-tabs/extension/tests/unit/README.md
 
 No drift detected.
 
-## apps/suites/tabula/infra/README.md
+## apps/suites/vitruvian-tabs/infra/README.md
 
 No drift detected.
 
-## apps/suites/tabula/infra/app/README.md
+## apps/suites/vitruvian-tabs/infra/app/README.md
 
 No drift detected.
 
-## apps/suites/tabula/infra/app/cmd/README.md
+## apps/suites/vitruvian-tabs/infra/app/cmd/README.md
 
 No drift detected.
 
-## apps/suites/tabula/infra/app/cmd/revname/README.md
+## apps/suites/vitruvian-tabs/infra/app/cmd/revname/README.md
 
 No drift detected.
 
-## apps/suites/tabula/infra/app/revision/README.md
+## apps/suites/vitruvian-tabs/infra/app/revision/README.md
 
 No drift detected.
 
-## apps/suites/tabula/infra/data/README.md
+## apps/suites/vitruvian-tabs/infra/data/README.md
 
 No drift detected.
 
-## apps/suites/tabula/infra/identity/README.md
+## apps/suites/vitruvian-tabs/infra/identity/README.md
 
 No drift detected.
 
-## apps/suites/tabula/infra/web/README.md
+## apps/suites/vitruvian-tabs/infra/web/README.md
 
 No drift detected.
 
-## apps/suites/tabula/infra/web/revision/README.md
+## apps/suites/vitruvian-tabs/infra/web/revision/README.md
 
 No drift detected.
 
-## apps/suites/tabula/shared/README.md
+## apps/suites/vitruvian-tabs/shared/README.md
 
 No drift detected.
 
-## apps/suites/tabula/shared/src/README.md
+## apps/suites/vitruvian-tabs/shared/src/README.md
 
 No drift detected.
 
-## apps/suites/tabula/shared/src/types/README.md
+## apps/suites/vitruvian-tabs/shared/src/types/README.md
 
 No drift detected.
 
-## apps/suites/tabula/web/README.md
+## apps/suites/vitruvian-tabs/web/README.md
 
 No drift detected.
 
-## apps/suites/tabula/web/__mocks__/README.md
+## apps/suites/vitruvian-tabs/web/__mocks__/README.md
 
 No drift detected.
 
-## apps/suites/tabula/web/__tests__/README.md
+## apps/suites/vitruvian-tabs/web/__tests__/README.md
 
 No drift detected.
 
-## apps/suites/tabula/web/app/README.md
+## apps/suites/vitruvian-tabs/web/app/README.md
 
 No drift detected.
 
-## apps/suites/tabula/web/app/analytics/README.md
+## apps/suites/vitruvian-tabs/web/app/analytics/README.md
 
 No drift detected.
 
-## apps/suites/tabula/web/app/components/README.md
+## apps/suites/vitruvian-tabs/web/app/components/README.md
 
 No drift detected.
 
-## apps/suites/tabula/web/app/components/space/README.md
+## apps/suites/vitruvian-tabs/web/app/components/space/README.md
 
 No drift detected.
 
-## apps/suites/tabula/web/app/s/README.md
+## apps/suites/vitruvian-tabs/web/app/s/README.md
 
 No drift detected.
 
-## apps/suites/tabula/web/app/s/[relayId]/README.md
+## apps/suites/vitruvian-tabs/web/app/s/[relayId]/README.md
 
 No drift detected.
 
-## apps/suites/tabula/web/app/workspaces/README.md
+## apps/suites/vitruvian-tabs/web/app/workspaces/README.md
 
 No drift detected.
 
-## apps/suites/tabula/web/app/workspaces/[id]/README.md
+## apps/suites/vitruvian-tabs/web/app/workspaces/[id]/README.md
 
 No drift detected.
 
-## apps/suites/tabula/web/lib/README.md
+## apps/suites/vitruvian-tabs/web/lib/README.md
 
 No drift detected.
 
-## apps/suites/tabula/web/types/README.md
+## apps/suites/vitruvian-tabs/web/types/README.md
 
 No drift detected.
 
@@ -5102,7 +5102,7 @@ No drift detected.
 
 No drift detected.
 
-## tools/ci/src/tabula_deploy_preflight/README.md
+## tools/ci/src/vitruvian_tabs_deploy_preflight/README.md
 
 No drift detected.
 

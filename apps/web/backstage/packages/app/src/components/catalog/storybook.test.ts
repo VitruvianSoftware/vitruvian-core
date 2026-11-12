@@ -54,7 +54,7 @@ describe("Storybook helpers", () => {
 
     it("returns absolute URL when provided via storybook.io/url", () => {
       const url =
-        "https://storybook.vitruviansoftware.dev/?path=/story/tabula--primary";
+        "https://storybook.vitruviansoftware.dev/?path=/story/vitruvian-tabs--primary";
       expect(
         getStorybookUrl(makeEntity({ [STORYBOOK_URL_ANNOTATION]: url })),
       ).toBe(url);
@@ -116,10 +116,12 @@ describe("Storybook helpers", () => {
       expect(
         getStorybookUrl(
           makeEntity({
-            [STORYBOOK_URL_ANNOTATION]: "tabula-panel--overview",
+            [STORYBOOK_URL_ANNOTATION]: "vitruvian-tabs-panel--overview",
           }),
         ),
-      ).toBe(`${DEFAULT_STORYBOOK_URL}/?path=/story/tabula-panel--overview`);
+      ).toBe(
+        `${DEFAULT_STORYBOOK_URL}/?path=/story/vitruvian-tabs-panel--overview`,
+      );
     });
   });
 

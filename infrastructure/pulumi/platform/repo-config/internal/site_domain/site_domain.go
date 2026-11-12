@@ -31,7 +31,7 @@
 //
 // WHAT IT OWNS, AND DELIBERATELY NOTHING ELSE. Three records and one setting.
 // The zone also holds MX, SPF, DKIM and Google verification records, records
-// written by external-dns, records written by the tabula stacks and by
+// written by external-dns, records written by the vitruvian-tabs stacks and by
 // tools/ci/ensure-site-verification.sh, and another GitHub account's Pages
 // verification. None of those is declared here, and TestOwnsOnlyTheSiteRecords
 // fails if one ever is.

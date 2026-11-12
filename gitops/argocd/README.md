@@ -48,7 +48,7 @@ fully automatically.
   `//tools/pulumi`) — no ad-hoc CLIs.
 - **Parking a component:** rename its manifest to `*.disabled` (e.g.
   `applicationset.yaml.disabled`). The roots skip `.disabled` files, so parked
-  components (crossplane, datadog, istio, ingress-nginx, telepresence, tabula
+  components (crossplane, datadog, istio, ingress-nginx, telepresence, vitruvian-tabs
   until its chart is published) stay out of the cluster while remaining in git.
 
 ## Bootstrap (the one manual layer, by design)

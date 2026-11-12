@@ -186,7 +186,7 @@ reconciled like the rest of the platform.
 
 - **Pros:** most GitOps-pure — fits §2.3 (closed-loop platform reconcile); no CI
   egress, no tailnet-from-CI; drift is continuously reconciled, not just on deploy.
-- **Cons:** biggest change — adopt + operate PKO; diverges from how `tabula` /
+- **Cons:** biggest change — adopt + operate PKO; diverges from how `vitruvian-tabs` /
   `oauth-user-inspector` deploy today (CI-Pulumi), so it splits the deploy model
   unless those migrate too; the machine-user key moves to an in-cluster (sealed)
   secret.

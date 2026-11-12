@@ -30,7 +30,7 @@ surfaced this.
    stay fresh after stage-4 changes). Foundation still deploys *scaffolding*, never a
    workload.
 4. `modules/serverless_space`: left in place unused for now; delete in a follow-up
-   after confirming tabula's `revision`-pkg naming parity (409-safe suffix).
+   after confirming vitruvian-tabs's `revision`-pkg naming parity (409-safe suffix).
 5. AR repo / WIF / all SAs consolidation into foundation: tracked follow-up, not here.
 
 ## Precondition (verified)
@@ -39,7 +39,7 @@ so consuming the foundation `region` output is a no-op — no region-replace (wh
 `deletion_protection=true` would block). **Re-verify per env before the state move.**
 
 ## Verified live state (2026-07-24, read-only `pulumi stack export`)
-Uniform across **all 6 envs** (bu1 oauth ×3, bu2 tabula ×3):
+Uniform across **all 6 envs** (bu1 oauth ×3, bu2 vitruvian-tabs ×3):
 - **Foundation leaf** (`ipv1337/foundation-app-infra-bu{N}-<env>/production`, 7 resources):
   owns the workload — `pkg:index:CloudRun` component → child `gcp:cloudrunv2/service:Service`
   (**`deletionProtection=true`**) + a sibling `gcp:cloudrunv2/serviceIamMember:ServiceIamMember`
@@ -63,7 +63,7 @@ release-please merge), so merging this PR does not auto-trigger it — there is 
 - bu2 only: delete `revision_test.go`.
 
 ### App stacks
-- `apps/web/oauth-user-inspector/infra/app/main.go` and `apps/suites/tabula/infra/app/main.go`: remove the `workloadMigrated` flag and its `if !workloadMigrated` guard so the Cloud Run service + allUsers invoker are always declared; `serviceUrl` always exported (DomainMapping already binds via the service output).
+- `apps/web/oauth-user-inspector/infra/app/main.go` and `apps/suites/vitruvian-tabs/infra/app/main.go`: remove the `workloadMigrated` flag and its `if !workloadMigrated` guard so the Cloud Run service + allUsers invoker are always declared; `serviceUrl` always exported (DomainMapping already binds via the service output).
 - App `Pulumi.{development,nonproduction,production}.yaml`: delete `workloadMigrated: "true"` (and its stale comment). App inputs (project/region/runtimeServiceAccount) are unchanged — they were already in config.
 - (Outputs contract — FOLLOW-UP, not this PR) each app stack could later add a StackReference to `ipv1337/foundation-app-infra-bu{N}-<env>/production` and read project id / number / region from its outputs (instead of the committed config), plus runtime SA from the sibling `infra/identity` StackReference. Deferred per decision #1 (adds a cross-stack read grant + deploy-order coupling); the leaf already exports the contract for when it lands.
 
@@ -76,7 +76,7 @@ release-please merge), so merging this PR does not auto-trigger it — there is 
 The 6 live services (`oauth-user-inspector-<env>`, `tabula-api-<env>`) currently sit in
 the **foundation leaf** Pulumi state. Recreate is the safe path (nothing is launched):
 
-For each env (bu1: oauth ×3 component `oauth-user-inspector`; bu2: tabula ×3 component `tabula`):
+For each env (bu1: oauth ×3 component `oauth-user-inspector`; bu2: vitruvian-tabs ×3 component `vitruvian-tabs`):
 1. **State-delete the workload from the LEAF** (state-only; live service keeps serving).
    Delete the component with `--target-dependents` (removes the component *and* its child
    `Service`), then the sibling invoker. Example (bu1/development):
@@ -93,7 +93,7 @@ For each env (bu1: oauth ×3 component `oauth-user-inspector`; bu2: tabula ×3 c
 2. `gcloud run services delete <service> --region us-central1 --project <oss-floating> --quiet`
    (`<service>` = `oauth-user-inspector-<env>` / `tabula-api-<env>`; removes the live service so
    the app recreate is a clean create, not a 409 — brief gap is free, not launched).
-3. Run the app's own deploy pipeline (`oauth-user-inspector-deploy` / `tabula-deploy`,
+3. Run the app's own deploy pipeline (`oauth-user-inspector-deploy` / `delivery-vitruvian-tabs`,
    now `workload-migrated:false` → PHASE=all) → recreates the service + invoker in the **app**
    stack with the built digest; the DomainMapping (already in app state) rebinds to the same name.
 4. Verify: service serves 200; foundation leaf `pulumi preview` is clean (no workload, just the
@@ -107,7 +107,7 @@ matching. Recreate is preferred here (apps not launched, fewer failure modes).
 
 The state-move ran for all six envs after #1137 merged; every env verified: leaf state
 **workload-free**, app stack owns **Service + invoker + DomainMapping**, live service **HTTP 200**.
-Recreate deploys: oauth dev/nonprod/prod + tabula dev/nonprod/prod all green.
+Recreate deploys: oauth dev/nonprod/prod + vitruvian-tabs dev/nonprod/prod all green.
 
 Execution notes (landmines the runbook above didn't anticipate):
 - **Delete order within the leaf is child-first for a reason.** The public invoker's `Name`
@@ -131,6 +131,6 @@ Execution notes (landmines the runbook above didn't anticipate):
 
 ## Risks
 - `deletion_protection=true` blocks any Pulumi-side delete → use `pulumi state delete` (step 1), never `pulumi up`.
-- bu2 deploy-SA output gap: tabula-deploy is minted in `apps/suites/tabula/infra/identity`, not stage-4, and foundation bu2 `remote.go` skips reading it — so the bu2 foundation contract can't export `tabula_deploy_service_account` (the app already sources it from identity; nothing breaks, contract is asymmetric).
-- Deleting `serverless_space` later removes its 409-safe revision naming — confirm `apps/suites/tabula/infra/app` parity via the shared `revision` pkg first (hence decision #4).
+- bu2 deploy-SA output gap: tabula-deploy is minted in `apps/suites/vitruvian-tabs/infra/identity`, not stage-4, and foundation bu2 `remote.go` skips reading it — so the bu2 foundation contract can't export `tabula_deploy_service_account` (the app already sources it from identity; nothing breaks, contract is asymmetric).
+- Deleting `serverless_space` later removes its 409-safe revision naming — confirm `apps/suites/vitruvian-tabs/infra/app` parity via the shared `revision` pkg first (hence decision #4).
 - App stacks now depend on the foundation leaf's outputs being current — ensure the scaffolding leaf is deployed after any stage-4 change (decision #3 keeps it in the chain).

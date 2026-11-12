@@ -135,8 +135,8 @@ func TestRollingTagsAreExactAndUndeployable(t *testing.T) {
 func TestReleaseTagsProtected(t *testing.T) {
 	protected := []string{
 		// release-please's <component>-v<version>, one per family on origin.
-		"tabula-api-v0.30.0",
-		"tabula-web-v0.29.0",
+		"vitruvian-tabs-api-v0.30.0",
+		"vitruvian-tabs-web-v0.29.0",
 		"courier-v0.1.0",
 		"oauth-user-inspector-v1.4.0",
 		"oauth-user-inspector-infra-v0.9.0",
@@ -151,7 +151,7 @@ func TestReleaseTagsProtected(t *testing.T) {
 		"v1.0.1",
 		"2026.26",
 		// Look-alikes of the rolling names.
-		"tabula-api-v9.9.9-beta-latest",
+		"vitruvian-tabs-api-v9.9.9-beta-latest",
 		"vitruvian-atrium-beta-latest-2",
 		"beta-latest",
 	}
@@ -273,7 +273,7 @@ func TestProgramRegistersReleaseTagRuleset(t *testing.T) {
 	}
 	exc := propStrings(ref["excludes"])
 	var wantExc []string
-	for _, tag := range []string{"vitruvian-atrium-beta-latest", "esp32-s3-beta-latest", "gravastar-mouse-beta-latest", "tabula-extension-dev-latest"} {
+	for _, tag := range []string{"vitruvian-atrium-beta-latest", "esp32-s3-beta-latest", "gravastar-mouse-beta-latest", "vitruvian-tabs-extension-dev-latest"} {
 		wantExc = append(wantExc, "refs/tags/"+tag)
 	}
 	if strings.Join(exc, " ") != strings.Join(wantExc, " ") {

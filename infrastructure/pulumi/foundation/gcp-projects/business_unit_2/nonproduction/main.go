@@ -175,8 +175,8 @@ func main() {
 		// BU+env (docs/engineering/core-vs-application-infrastructure.md §8). Its
 		// grants live HERE, in a stage it does not apply, which is what makes
 		// ungating stage 5 safe. Minted only when this env hosts apps and the
-		// oss-floating project exists. Mirrors bu1; tabula's per-app deploy SA
-		// stays in tabula/infra/identity for now (the leaf only re-exports it),
+		// oss-floating project exists. Mirrors bu1; vitruvian-tabs's per-app deploy SA
+		// stays in apps/suites/vitruvian-tabs/infra/identity for now (the leaf only re-exports it),
 		// so this leaf mints ONLY the pipeline identity, not per-app deploy SAs.
 		if cfg.OSSFloatingProjectEnabled && len(cfg.Apps) > 0 {
 			pipeline, err := app_deploy_identity.DeployBUPipeline(ctx, cfg.BusinessCode, &app_deploy_identity.PipelineArgs{

@@ -23,7 +23,7 @@ instance James pokes at is *not* launched.
 | App | Launched? | Since | Notes |
 | --- | --- | --- | --- |
 | oauth-user-inspector | **No** | — | Public demo tool, but no external users yet. Free to reshape (region standardization, build-stack strip). |
-| tabula | **No** | — | Pre-launch. Free to reshape. |
+| vitruvian-tabs | **No** | — | Pre-launch. Free to reshape. |
 | vitruvian-slack-mcp | **No** | — | Not deployed as a hosted service. |
 | vitruvian-code | **No** | — | Not deployed as a hosted service. |
 

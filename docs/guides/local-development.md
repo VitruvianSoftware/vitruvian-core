@@ -10,10 +10,10 @@ The repo-wide setup (toolchain, worktrees, the merge queue) lives in
 ```bash
 nvm use && corepack enable    # Node 22 + pnpm, versions from .nvmrc / packageManager
 bazel run //:doctor           # core toolchain check
-bazel run //<app>:doctor      # per-app check — //apps/suites/tabula:doctor, //apps/cli/devx:doctor, …
+bazel run //<app>:doctor      # per-app check — //apps/suites/vitruvian-tabs:doctor, //apps/cli/devx:doctor, …
 ```
 
-Every app has a `doctor` target (`tabula`, `oauth-user-inspector`, `devx`, `homelab`,
+Every app has a `doctor` target (`vitruvian-tabs`, `oauth-user-inspector`, `devx`, `homelab`,
 `vitruvian-slack-mcp`, `vitruvian-code`). Run it first whenever a build behaves strangely — it is
 faster than decoding a toolchain error.
 
@@ -27,9 +27,9 @@ bazel run //tools/worktree -- my-branch
 
 | App | Run it | Test it | Backing services |
 |---|---|---|---|
-| **tabula** (API) | `bazel run //apps/suites/tabula/api:api_bin` — or `devx up` (see below) | `bazel test //apps/suites/tabula/...` | Postgres + Redis |
-| **tabula** (CLI) | `bazel run //apps/suites/tabula/cli:tabcli -- --help` | `bazel test //apps/suites/tabula/...` | — |
-| **tabula** (extension) | `bazel build //apps/suites/tabula/extension:dist`, then load `bazel-bin/apps/suites/tabula/extension/dist` unpacked | `bazel test //apps/suites/tabula/...` | — |
+| **vitruvian-tabs** (API) | `bazel run //apps/suites/vitruvian-tabs/api:api_bin` — or `devx up` (see below) | `bazel test //apps/suites/vitruvian-tabs/...` | Postgres + Redis |
+| **vitruvian-tabs** (CLI) | `bazel run //apps/suites/vitruvian-tabs/cli:vitruvian-tabs -- --help` | `bazel test //apps/suites/vitruvian-tabs/...` | — |
+| **vitruvian-tabs** (extension) | `bazel build //apps/suites/vitruvian-tabs/extension:dist`, then load `bazel-bin/apps/suites/vitruvian-tabs/extension/dist` unpacked | `bazel test //apps/suites/vitruvian-tabs/...` | — |
 | **oauth-user-inspector** | `pnpm dev` (Vite `:5173` + Express `:8080`) — or `devx up` | `bazel test //apps/web/oauth-user-inspector/...` | none (GCP Secret Manager) |
 | **devx** | `bazel run //apps/cli/devx:devx -- <args>` | `bazel test //apps/cli/devx/...` | — |
 | **homelab** | `bazel run //apps/cli/homelab/cmd/homelab -- <args>` | `bazel test //apps/cli/homelab/...` | — |
@@ -62,13 +62,13 @@ Which apps ship one today:
 
 | App | `devx.yaml` | What it declares |
 |---|---|---|
-| [`tabula/api`](../../apps/suites/tabula/api/devx.yaml) | ✅ | Postgres + Redis, then the API gated on both being healthy |
+| [`vitruvian-tabs/api`](../../apps/suites/vitruvian-tabs/api/devx.yaml) | ✅ | Postgres + Redis, then the API gated on both being healthy |
 | [`oauth-user-inspector`](../../apps/web/oauth-user-inspector/devx.yaml) | ✅ | Express backend + Vite frontend (no database — it has none) |
 | `devx`, `homelab`, `vitruvian-slack-mcp`, `vitruvian-code` | — | No backing services; the plain `bazel run`/`pnpm` loop above is the whole story |
 | [`infrastructure/pulumi/platform/dev-local`](../../infrastructure/pulumi/platform/dev-local/devx.yaml) | ✅ | Not an app — uses `customActions` to wrap Pulumi verbs |
 
 ```bash
-cd apps/suites/tabula/api
+cd apps/suites/vitruvian-tabs/api
 devx up      # bring up Postgres + Redis, then the API
 devx map     # validate this devx.yaml and print its dependency graph
 ```
@@ -77,8 +77,8 @@ devx map     # validate this devx.yaml and print its dependency graph
 
 1. **`devx up` does not write or read a `.env` file.** A `host` service receives
    *only* its own `env:` map plus `PORT`. Anything else (`JWT_SECRET`, `WORKOS_*`)
-   must come from the app's own loader — `apps/suites/tabula/api` reads its gitignored
-   `apps/suites/tabula/api/.env` via `dotenv`, which does **not** override what `devx` already set.
+   must come from the app's own loader — `apps/suites/vitruvian-tabs/api` reads its gitignored
+   `apps/suites/vitruvian-tabs/api/.env` via `dotenv`, which does **not** override what `devx` already set.
 2. **Unknown keys are silently ignored.** The config is parsed non-strictly, so a
    typo or an invented field is discarded without warning. A `databases:` entry
    accepts exactly `engine`, `port`, `pull`, `seed` — there is **no `name:` and no
@@ -97,7 +97,7 @@ Secrets never live in git. Local dev uses **gitignored** files seeded from a com
 
 | App | File | Template |
 |---|---|---|
-| `tabula` (API) | `apps/suites/tabula/api/.env` | ✅ `apps/suites/tabula/api/.env.example` |
+| `vitruvian-tabs` (API) | `apps/suites/vitruvian-tabs/api/.env` | ✅ `apps/suites/vitruvian-tabs/api/.env.example` |
 | `vitruvian-code` | `apps/desktop/vitruvian-code/.env` | ✅ `apps/desktop/vitruvian-code/.env.example` |
 | `devx` | `.env` / `.env.keys` | ✅ `apps/cli/devx/.env.example` (also `devx config secrets`) |
 | `oauth-user-inspector` | env vars / GCP Secret Manager | ❌ no `.env.example` yet |

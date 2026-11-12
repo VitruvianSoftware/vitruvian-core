@@ -219,7 +219,7 @@ Lives in `<app>/infra/`, ships in the app's own PR, deployed by the app's deploy
 | IAM on resources the app owns — e.g. `allUsers` invoker on *its own* service | `apps/web/oauth-user-inspector/infra/app` |
 | Custom domain mapping and the DNS record that points at it | `apps/web/oauth-user-inspector/infra/app` |
 | The app's **runtime** service account | `apps/web/oauth-user-inspector/infra/identity` (`oauth-user-inspector-rt`) |
-| Secret Manager **secrets** the app owns, and accessor bindings on those secrets | `apps/suites/tabula/infra/app` |
+| Secret Manager **secrets** the app owns, and accessor bindings on those secrets | `apps/suites/vitruvian-tabs/infra/app` |
 | BigQuery **datasets/tables/views**, Pub/Sub topics and subscriptions, app-owned buckets | — |
 | App-level alerts, SLOs, dashboards | — |
 | Identity-provider application registrations (e.g. a Zitadel OIDC app) | `infrastructure/pulumi/platform/zitadel-apps` |
@@ -364,7 +364,7 @@ Two boundary cases remain **not yet ruled on**. Nothing below should be treated 
 | # | Case | Current state | Proposal |
 |---|---|---|---|
 | 2 | **Per-app Artifact Registry repo** | Lives in the shared infra-pipeline project (core), created outside the foundation. | Foundation declares the repo (naming, retention, immutable tags); the app only pushes to it. |
-| 3 | **Secret containers** | Inconsistent — `tabula` creates its own secrets, while `apps/web/oauth-user-inspector/infra/identity` notes that `secretmanager.secrets.CREATE` runs as the folder-scoped `sa-terraform-proj`. | App owns containers in its own project; values stay out of IaC. Pick one and make both apps match. |
+| 3 | **Secret containers** | Inconsistent — `vitruvian-tabs` creates its own secrets, while `apps/web/oauth-user-inspector/infra/identity` notes that `secretmanager.secrets.CREATE` runs as the folder-scoped `sa-terraform-proj`. | App owns containers in its own project; values stay out of IaC. Pick one and make both apps match. |
 | 4 | **Databases** | Not yet exercised on this split. | Instance/cluster is core; database and schema are the app's. |
 
 Structural deltas, tracked separately:

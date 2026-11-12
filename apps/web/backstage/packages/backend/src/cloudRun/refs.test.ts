@@ -26,7 +26,7 @@ import {
 } from "./refs";
 
 describe("parseCloudRunRefs", () => {
-  it("parses the real tabula annotation, two services per environment", () => {
+  it("parses the real vitruvian-tabs annotation, two services per environment", () => {
     const { refs, invalid } = parseCloudRunRefs(
       [
         "development/api=prj-d-bu2-oss-floating-c3d1/us-central1/tabula-api-development",

@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "name": "vitruvian-tabs-extension",
+  "package": "apps/suites/vitruvian-tabs/extension",
+  "test_targets": ["//apps/suites/vitruvian-tabs/extension:unit_tests"],
+  "tier": "L1",
+  "runner": "ubuntu-26.04",
+  "persona": "frontend",
+  "concurrency_group": "pipeline-vitruvian-tabs-extension",
+  "timeout_minutes": 15,
+  "depends_on": ["vitruvian-tabs-shared"]
+}

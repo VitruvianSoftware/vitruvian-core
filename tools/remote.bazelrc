@@ -41,7 +41,7 @@ common:remote --remote_default_exec_properties=container-image=docker://gcr.io/f
 # WHY NOT JUST ADD `--config=ci` TO THOSE LANES. Measured 2026-07-27: :ci also
 # carries `--remote_download_outputs=minimal` (preset.bazelrc:122), and on a
 # CACHE HIT that does not materialise top-level outputs. Same target, same disk
-# cache: a normal build produced tabula-extension-chrome.zip (322k); the same
+# cache: a normal build produced vitruvian-tabs-extension-chrome.zip (322k); the same
 # build with `minimal` reported "Build completed successfully" with 497 cache
 # hits and NO zip on disk. The artifact lanes (`chrome_zip` -> `gh release
 # upload`, the image push, the migrate binary) would have published nothing off

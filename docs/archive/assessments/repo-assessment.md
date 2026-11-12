@@ -44,7 +44,7 @@ A **polyglot Bazel monorepo** (Bazel 9.1.x via Bzlmod) serving as the single sou
 | Pulumi project names | `kebab-case` | `oauth-user-inspector`, `repo-config` |
 | Pulumi stack names | `kebab-case` | `development`, `nonproduction`, `production` |
 | GitHub Environments | `{app}-{env}` kebab-case | `tabula-development`, `oauth-user-inspector-production` |
-| GitHub workflow files | `{app}-{action}.yaml` kebab-case | `tabula-deploy.yaml`, `oauth-user-inspector-deploy.yaml` |
+| GitHub workflow files | `{app}-{action}.yaml` kebab-case | `delivery-vitruvian-tabs.yaml`, `oauth-user-inspector-deploy.yaml` |
 | Bazel targets | `snake_case` (Bazel convention) | `image_push`, `migrate_deploy_bin` |
 | Go packages | `snake_case` (Go convention) | `cloud_run`, `secret_manager` |
 | GCP project IDs | `{app}-{env}-{seq}` kebab-case | `tabula-development-0001` |
@@ -57,7 +57,7 @@ A **polyglot Bazel monorepo** (Bazel 9.1.x via Bzlmod) serving as the single sou
 | `repo_config/` | `repo-config/` | Directory |
 | `dev-local/` | `dev-local/` | ✅ Already correct |
 | `lab-gmail/` | `accounts/personal/` (rename + restructure) | Directory + purpose |
-| `oauth-user-inspector-deploy-identity/` | **Keep as a separate bootstrap stack** (replicate the pattern to tabula — see §4.2 #4) | Trust boundary |
+| `oauth-user-inspector-deploy-identity/` | **Keep as a separate bootstrap stack** (replicate the pattern to vitruvian-tabs — see §4.2 #4) | Trust boundary |
 | `copy.bara.sky` component names | Already kebab-case ✅ | Config |
 
 **Bazel exception:** Bazel targets use `snake_case` per Bazel convention (e.g., `go_binary`, `ts_project`). This is a widely understood exception — don't fight the build system's own conventions.
@@ -70,7 +70,7 @@ A **polyglot Bazel monorepo** (Bazel 9.1.x via Bzlmod) serving as the single sou
 
 | App | Type | Language(s) | Ship Model | Deploy Target |
 |-----|------|-------------|------------|---------------|
-| [tabula](../../../tabula) | SaaS platform (API + extension + web + CLI) | TypeScript | Continuous deploy | Cloud Run (blue-green) |
+| [vitruvian-tabs](../../../apps/suites/vitruvian-tabs) | SaaS platform (API + extension + web + CLI) | TypeScript | Continuous deploy | Cloud Run (blue-green) |
 | [oauth-user-inspector](../../../oauth-user-inspector) | SaaS web app | TypeScript/React + Express | Continuous deploy | Cloud Run (blue-green — to be aligned) |
 | [devx](../../../devx) | CLI tool | Go | Bazel build → GoReleaser (distribution) | N/A (released) |
 | [homelab](../../../homelab) | CLI (k3s/Lima provisioner) | Go | Bazel build → GoReleaser (distribution) | N/A — *provisions* the cluster; not deployed to it |
@@ -87,7 +87,7 @@ A **polyglot Bazel monorepo** (Bazel 9.1.x via Bzlmod) serving as the single sou
 |---------------|-----------------|-------------|
 | Root (`vitruvian-core`) | Copybara sync auth (deploy keys, GitHub secrets) | — |
 | `lab-gmail/` | Personal GCP infra — Cloud Run (lab-gmail), Cloud Build, Secret Manager, IAM, Storage | `personal-llc` |
-| `tabula/` | Tabula API — Cloud Run v2 (blue-green), Artifact Registry, 5 secrets | `tabula-dev-0001` |
+| `vitruvian-tabs/` | Vitruvian Tabs API — Cloud Run v2 (blue-green), Artifact Registry, 5 secrets | `tabula-dev-0001` |
 | `oauth-user-inspector/infra/app/` | OAuth Inspector — Cloud Run v2, DomainMapping, Cloudflare CNAME | `prj-{d,n,p}-bu1-oss-floating-*` |
 | `oauth-user-inspector/infra/identity/` | Per-env deploy/runtime SAs + shared `foundation-pool` WIF binding | `prj-{d,n,p}-bu1-oss-floating-*` |
 | `dev-local/` | Homelab k8s platform components (Helm charts) | — |
@@ -111,7 +111,7 @@ infrastructure/pulumi/
 │       └── main.go                       # API enablement, shared IAM
 │
 ├── apps/                                 # Per-app infra (uses pkg/)
-│   ├── tabula/                           # deploy stack — 3 envs: dev/nonprod/prod
+│   ├── vitruvian-tabs/                           # deploy stack — 3 envs: dev/nonprod/prod
 │   ├── tabula-deploy-identity/           # bootstrap: WIF pool/provider + SAs (separate lifecycle)
 │   ├── oauth-user-inspector/             # deploy stack — 3 envs
 │   └── oauth-user-inspector-deploy-identity/  # bootstrap: WIF (kept separate, not folded in)
@@ -128,9 +128,9 @@ infrastructure/pulumi/
 
 **Key changes:**
 1. **`lab-gmail` → `accounts/personal/`** — Manages account-level resources only (Cloud Run for lab-gmail, shared IAM, API enablement). nexus-agent has *no* hosted infra today, so there is nothing to extract; if it ever grows a hosted backend, add `apps/nexus-agent/` then.
-2. **`pkg/` expanded** — Unified helpers for Cloud Run, identity, secrets, registry. Eliminates the current ~2x duplication (tabula + oauth today) and, more importantly, stops every *future* app from re-deciding these patterns. The secrets helper now exists as the shared `infrastructure/pulumi/pkg/secrets` module (`EnvOrConfig` / `EnvOrConfigOptional`, promoted from `copybara_sync`), which `copybara_sync` and `repo_config` route through so no new stack repeats the committed-secret mistake (§7.1 item C).
+2. **`pkg/` expanded** — Unified helpers for Cloud Run, identity, secrets, registry. Eliminates the current ~2x duplication (vitruvian-tabs + oauth today) and, more importantly, stops every *future* app from re-deciding these patterns. The secrets helper now exists as the shared `infrastructure/pulumi/pkg/secrets` module (`EnvOrConfig` / `EnvOrConfigOptional`, promoted from `copybara_sync`), which `copybara_sync` and `repo_config` route through so no new stack repeats the committed-secret mistake (§7.1 item C).
 3. **`apps/` grouping** — All app-specific infra. Each uses shared `pkg/` patterns.
-4. **Consistent WIF pattern, identity kept SEPARATE** — Every app builds its deploy-identity from `pkg/identity/`, but each app's WIF pool/provider + SAs stay in their **own bootstrap stack** (`apps/<app>-deploy-identity/`), *not* folded into the deploy stack. Rationale: the identity stack is what a deploy authenticates *with*; it needs higher-privilege, lower-frequency applies, so coupling it to steady-state deploys inverts the trust boundary. `oauth-user-inspector-deploy-identity` is already the reference pattern — replicate it to tabula, don't collapse it.
+4. **Consistent WIF pattern, identity kept SEPARATE** — Every app builds its deploy-identity from `pkg/identity/`, but each app's WIF pool/provider + SAs stay in their **own bootstrap stack** (`apps/<app>-deploy-identity/`), *not* folded into the deploy stack. Rationale: the identity stack is what a deploy authenticates *with*; it needs higher-privilege, lower-frequency applies, so coupling it to steady-state deploys inverts the trust boundary. `oauth-user-inspector-deploy-identity` is already the reference pattern — replicate it to vitruvian-tabs, don't collapse it.
 5. **`repo_config` → `repo-config` / `copybara_sync` → `copybara-sync`** — Kebab-case rename, deferred to Phase 3. These are Go module + Pulumi *project* directories; renaming churns the gazelle prefix, BUILD files, workflow path filters, and the Pulumi project name (which can orphan stack state) for no functional gain. Do it only alongside this `apps/`/`platform/` move (which already touches project names), never as a standalone change.
 
 #### 4.3 ArgoCD / GitOps
@@ -144,11 +144,11 @@ App-of-apps pattern deploys homelab Kubernetes workloads (~35 platform component
 #### 5.1 Deploy Workflow Alignment — Current vs Target
 
 > [!IMPORTANT]
-> **All SaaS/web apps should follow tabula's mature pattern** as the reference implementation: Bazel `rules_oci`, blue-green deploy, 3 standardized environments, BuildBuddy remote cache.
+> **All SaaS/web apps should follow vitruvian-tabs's mature pattern** as the reference implementation: Bazel `rules_oci`, blue-green deploy, 3 standardized environments, BuildBuddy remote cache.
 
 **Current state (inconsistencies highlighted):**
 
-| Dimension | tabula (reference) | oauth-user-inspector (to align) |
+| Dimension | vitruvian-tabs (reference) | oauth-user-inspector (to align) |
 |-----------|-------------------|-------------------------------|
 | Container build | ✅ Bazel `rules_oci` | ⚠️ Docker Buildx (Vite 6/Rolldown bindings break in Bazel sandbox; deploy workflow supports Docker via `dockerfile-dir`) |
 | Deploy mechanism | ✅ Blue-green (candidate → smoke → promote) | ✅ Blue-green (via reusable workflow) |
@@ -200,7 +200,7 @@ App-of-apps pattern deploys homelab Kubernetes workloads (~35 platform component
   run: bash ${{ inputs.smoke_script }} "${CANDIDATE_URL}"
 ```
 
-Each app provides its own smoke script if it needs more than a health check. Tabula might test `/api/v1/status`, oauth-user-inspector might run a Playwright script to verify React mounts.
+Each app provides its own smoke script if it needs more than a health check. Vitruvian Tabs might test `/api/v1/status`, oauth-user-inspector might run a Playwright script to verify React mounts.
 
 #### 5.3 Reusable Deploy Workflow
 
@@ -211,8 +211,8 @@ on:
     inputs:
       app-name:             { required: true, type: string }
       environment:          { required: true, type: string }    # development|nonproduction|production
-      bazel-image-target:   { required: true, type: string }    # //tabula/api:image_push
-      pulumi-dir:           { required: true, type: string }    # infrastructure/pulumi/apps/tabula
+      bazel-image-target:   { required: true, type: string }    # //apps/suites/vitruvian-tabs/api:image_push
+      pulumi-dir:           { required: true, type: string }    # apps/suites/vitruvian-tabs/infra/app
       smoke-url-path:       { required: false, type: string, default: '/health' }
       smoke-script:         { required: false, type: string }   # Optional app-specific smoke
       run-migrations:       { required: false, type: boolean, default: false }
@@ -269,15 +269,15 @@ jobs:
 **Each app's deploy workflow becomes a thin caller:**
 
 ```yaml
-# tabula-deploy.yaml
+# delivery-vitruvian-tabs.yaml
 uses: ./.github/workflows/_deploy-cloud-run.yaml
 with:
-  app-name: tabula
+  app-name: vitruvian-tabs
   environment: ${{ inputs.environment || 'development' }}
-  bazel-image-target: //tabula/api:image_push
-  pulumi-dir: infrastructure/pulumi/apps/tabula
+  bazel-image-target: //apps/suites/vitruvian-tabs/api:image_push
+  pulumi-dir: apps/suites/vitruvian-tabs/infra/app
   run-migrations: true
-  migration-target: //tabula/api:migrate_deploy_bin
+  migration-target: //apps/suites/vitruvian-tabs/api:migrate_deploy_bin
 
 # oauth-user-inspector-deploy.yaml (after alignment)
 uses: ./.github/workflows/_deploy-cloud-run.yaml
@@ -343,7 +343,7 @@ This gives you:
 **Design: Postsubmit runs per-app CI jobs in parallel, each testing only the affected targets in its own subtree. A _nightly_ periodic sweep tests cross-app integration.**
 
 > [!WARNING]
-> **Do not key the shard on `dorny/paths-filter` (directory globs). Key it on the Bazel graph (`target-determinator`) — the same engine `tools/ci/affected-targets.sh` already uses for presubmit.** Path-filters are strictly coarser than the graph: they **over-trigger** (any file under `tabula/**` reruns *all* of `//tabula/...`, even a docs-only or `cli`-only change) **and** — the failure that matters for a "hundreds of apps" target — they **under-trigger**, because a change to a shared Bazel library that isn't under any single app dir won't route to the affected app's tests. The dependency graph catches exactly that; a path glob cannot. The repo *already* computes the correct affected set — the shard should **bucket that set by owning app for per-app status**, not recompute a worse one. Keep the `push:main` full `//...` as the postsubmit floor and demote the periodic sweep to **nightly** (not weekly) so a cross-app break is caught in ≤24h, not ≤7 days.
+> **Do not key the shard on `dorny/paths-filter` (directory globs). Key it on the Bazel graph (`target-determinator`) — the same engine `tools/ci/affected-targets.sh` already uses for presubmit.** Path-filters are strictly coarser than the graph: they **over-trigger** (any file under `vitruvian-tabs/**` reruns *all* of `//apps/suites/vitruvian-tabs/...`, even a docs-only or `cli`-only change) **and** — the failure that matters for a "hundreds of apps" target — they **under-trigger**, because a change to a shared Bazel library that isn't under any single app dir won't route to the affected app's tests. The dependency graph catches exactly that; a path glob cannot. The repo *already* computes the correct affected set — the shard should **bucket that set by owning app for per-app status**, not recompute a worse one. Keep the `push:main` full `//...` as the postsubmit floor and demote the periodic sweep to **nightly** (not weekly) so a cross-app break is caught in ≤24h, not ≤7 days.
 
 ```yaml
 # In ci.yaml — postsubmit (push to main)
@@ -473,7 +473,7 @@ Two gates are absent today and both are cheap, high-leverage, and belong in Phas
 ```go
 // infrastructure/pulumi/platform/repo-config/main.go
 teams := map[string]string{
-    "tabula-team":           "Tabula application team",
+    "tabula-team":           "Vitruvian Tabs application team",
     "devx-team":             "Developer experience CLI team",
     "homelab-team":          "Homelab CLI and k8s apps team",
     "mcp-slack-team":        "MCP Slack server team",
@@ -520,7 +520,7 @@ Lock down visibility per app so an app's internals are `//<app>/...:__subpackage
 | ✅ Hermetic, reproducible builds | Bazel Bzlmod + BuildBuddy |
 | ✅ Multi-language lint/format | `--config=lint` aspects, `bazel run //:tidy` (lint is opt-in, not yet a required gate) |
 | ✅ Smart CI short-circuits | Docs-only skip, macOS path-gating |
-| ✅ Blue-green deploys | Tabula (reference implementation) |
+| ✅ Blue-green deploys | Vitruvian Tabs (reference implementation) |
 | ✅ Copybara sync with conflict detection | Pre-check tool, 15-min PR-import poll |
 | ✅ Conformance checks | Version pin consistency |
 | ✅ CODEOWNERS scaffolding | Per-app paths defined |
@@ -530,7 +530,7 @@ Lock down visibility per app so an app's internals are `//<app>/...:__subpackage
 > [!NOTE]
 > **Two of these "strengths" currently give false assurance — verified against the tree:**
 > - **License check does not enforce MIT or the holder.** The gate is `bazel run //tools/license:check` (`addlicense -check -l mit -c VitruvianSoftware`, via multitool). Tested empirically with the pinned `addlicense@v1.2.0`: `-check` is **presence-only** — the `-l`/`-c` flags apply only when *adding* headers, so a file carrying an Apache-2.0 header with a wrong holder passes clean. `mcp-slack` ships Apache source headers today and the check is green. The "MIT enforced repo-wide" invariant is not real (§7.1 item D).
-> - **Dependabot coverage has holes.** It watches `gomod` for `/devx` + `/homelab` and `github-actions` for root only — **not** the pnpm workspaces (tabula/oauth/mcp-slack/nexus-agent) and **not** the `infrastructure/pulumi/*` `go.mod`s. Large parts of the dependency surface get no automated bumps.
+> - **Dependabot coverage has holes.** It watches `gomod` for `/devx` + `/homelab` and `github-actions` for root only — **not** the pnpm workspaces (vitruvian-tabs/oauth/mcp-slack/nexus-agent) and **not** the `infrastructure/pulumi/*` `go.mod`s. Large parts of the dependency surface get no automated bumps.
 
 ---
 
@@ -547,7 +547,7 @@ The doc above is strong on deploy *standardization* but light on operational bla
 | E | **`actionlint` absent** (§5.7) | The whole scaling plan rests on hand-tuned workflow YAML that nothing lints; a drifted required-check name silently wedges the queue | **P1** |
 | F | **ArgoCD AppProjects are wildcard** | `clusterResourceWhitelist: '*'`, destinations `'*'` — no per-app namespace/RBAC scoping, so any app's manifests can write any namespace. Split `applications-project` per app | **P1** |
 | G | **Single cluster / single env for the platform** | The Cloud Run ladder adds dev→nonprod→prod for *apps*, but the GitOps platform itself is one cluster / one ArgoCD / permissive projects — every platform change is cluster-wide blast radius | **P2** |
-| H | **No cross-workflow concurrency on `tabula-release` / `charts-publish`** | Two rapid merges can race a release tag / GHCR chart push (`tabula-deploy` and `oauth-deploy` already guard this; release/publish don't) | **P2** |
+| H | **No cross-workflow concurrency on `vitruvian-tabs-release` / `charts-publish`** | Two rapid merges can race a release tag / GHCR chart push (`delivery-vitruvian-tabs` and `oauth-deploy` already guard this; release/publish don't) | **P2** |
 
 > **Note on the reusable deploy workflow (§5.3):** `pulumi stack select "${env}"` presumes a committed `Pulumi.<env>.yaml` per app+env. Today only `development`/`dev` stacks exist — **there are zero `nonproduction`/`production` stacks**. The env ladder is not traversable until those stack files are committed; do not `--create` empty, config-less stacks on the fly. Commit the missing stacks as part of the oauth alignment / ladder work.
 
@@ -613,7 +613,7 @@ graph TB
         PR[Code Change] --> GATE{"Affected-set<br/>target-determinator"}
         GATE -->|docs/gitops only| SKIP["Skip heavy ✓"]
         GATE -->|gitops/ changed| GV["gitops-validate<br/>render + kubeconform"]
-        GATE -->|affected: tabula| CI_T["ci-tabula<br/>affected in //tabula/..."]
+        GATE -->|affected: vitruvian-tabs| CI_T["ci-tabula<br/>affected in //apps/suites/vitruvian-tabs/..."]
         GATE -->|affected: devx| CI_D["ci-devx"]
         GATE -->|infrastructure| CI_I["ci-infra<br/>go lint + pulumi preview"]
         GATE -->|global impact| FULL["Full //... sweep"]
@@ -651,7 +651,7 @@ graph TB
 
 **The repo is remarkably well-engineered for its current scale.** The foundations — Bazel graph-aware CI, keyless WIF, IaC for repo settings, monorepo as single CI authority, Copybara sync, and the One Version Rule — are exactly right, and much of the Google-scale spine (`target-determinator` presubmit, BuildBuddy RBE, merge queue, GitOps closed loop) is genuinely in place.
 
-**But "well-engineered" is not the same as "safe to scale as-is."** Standardizing tabula's deploy pattern is necessary but *not sufficient*: four correctness/safety P0s (§7.1) must land alongside it, or scaling multiplies live-blast-radius. So the highest-impact Phase 1 work is:
+**But "well-engineered" is not the same as "safe to scale as-is."** Standardizing vitruvian-tabs's deploy pattern is necessary but *not sufficient*: four correctness/safety P0s (§7.1) must land alongside it, or scaling multiplies live-blast-radius. So the highest-impact Phase 1 work is:
 
 1. **The four P0s (§7.1)** — GitOps validation gate, secrets-key removal+rotation, a real license gate, and worktree isolation. These close live correctness/security/concurrency holes that standardization does not touch.
 2. **Reusable deploy workflow + oauth-user-inspector alignment** — eliminates the biggest inconsistency (two different deploy mechanisms for the same archetype); commit the missing `nonproduction`/`production` stacks so the ladder is traversable.
@@ -659,4 +659,4 @@ graph TB
 4. **Per-app CI + postsubmit sharding — driven by the Bazel graph, not path globs (§5.5/§5.6)** — cheaper CI and per-team visibility, *without* the shared-library blind spot a `paths-filter` shard would introduce.
 5. **GitHub teams** — scaffolding for contributors (the naming *convention* is adopted now; the existing-dir *renames* are deferred to Phase 3).
 
-The architecture is designed to scale. The work is about **standardizing the patterns that already exist in tabula** (3-environment blue-green deploy, Bazel OCI builds, BuildBuddy caching, environment-scoped variables) across all apps — **while closing the safety/validation gaps that a single maintainer on a single cluster has been able to hold in their head, but a larger team cannot.**
+The architecture is designed to scale. The work is about **standardizing the patterns that already exist in vitruvian-tabs** (3-environment blue-green deploy, Bazel OCI builds, BuildBuddy caching, environment-scoped variables) across all apps — **while closing the safety/validation gaps that a single maintainer on a single cluster has been able to hold in their head, but a larger team cannot.**

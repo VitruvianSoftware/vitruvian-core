@@ -81,7 +81,7 @@ inputs:
       it (tidy-check.yaml loads the same 64k-target graph as ci.yaml's
       build-test; a second writer would just waste upload budget on a
       redundant save). On main the writers are the read+write GitHub-hosted
-      jobs that actually run there: tabula-e2e.yaml (tabula pushes and its
+      jobs that actually run there: vitruvian-tabs-e2e.yaml (vitruvian-tabs pushes and its
       daily schedule), and ci.yaml's build-test and go-race on the pushes
       the merge queue did not already pass. When 'false' (the default),
       use full read+write actions/cache, which also saves a fresh extraction

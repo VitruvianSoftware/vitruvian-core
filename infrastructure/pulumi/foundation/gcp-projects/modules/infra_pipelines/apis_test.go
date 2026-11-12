@@ -32,7 +32,7 @@ import "testing"
 // some app's stack first tries to use it, as a 403 "<API> has not been used in
 // project <id> before or it is disabled" in the middle of an apply.
 //
-// That is not hypothetical: declaring Secret Manager containers for tabula's
+// That is not hypothetical: declaring Secret Manager containers for vitruvian-tabs's
 // Neon/Upstash management credentials failed exactly that way, because
 // secretmanager was never in this list. The per-env oss floating projects have
 // it (they hold each app's runtime secrets); this project never did.

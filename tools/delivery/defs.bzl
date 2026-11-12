@@ -72,7 +72,7 @@ def delivery(
       run: the bazel run target that performs the delivery (the break-glass target).
       environments: ordered ladder, e.g. ["development", "nonproduction", "production"].
       github_environment: GitHub Environment name pattern; "{env}" is substituted.
-      app: the app this unit delivers, e.g. "tabula". Every app gets its own
+      app: the app this unit delivers, e.g. "vitruvian-tabs". Every app gets its own
         generated workflow, .github/workflows/delivery-<app>.yaml, and so its
         own queue: a run waiting on one app's Environment approval never holds
         back another app. Units of ONE app share that workflow and its queue,
@@ -89,9 +89,8 @@ def delivery(
         from the build GitHub Environment's own vars, so this is the only part
         of the image ref a declaration owns.
       shared_build: name of a SHARED build job every unit carrying the same
-        value consumes, e.g. "tabula" (one `tabula-build` job producing both
-        the API and the web image, exactly as tabula-deploy.yaml's single
-        `build` job does today). A shared build's steps cannot be derived from
+        value consumes, e.g. "vitruvian-tabs" (one `vitruvian-tabs-build` job producing both
+        the API and the web image). A shared build's steps cannot be derived from
         a declaration — they are transcribed verbatim from the job they
         replace and pinned by a parity test — so //tools/delivery/gen keeps an
         explicit registry of them and rejects an unregistered name rather than
@@ -99,8 +98,8 @@ def delivery(
         build / build_context / image_repository_path: the shared job owns how
         its images are produced.
       image_digest_output: WHICH output of that shared build job this unit
-        deploys, e.g. "image-digest" (tabula-api) vs "web-image-digest"
-        (tabula-web). Required with shared_build, and validated against the
+        deploys, e.g. "image-digest" (vitruvian-tabs-api) vs "web-image-digest"
+        (vitruvian-tabs-web). Required with shared_build, and validated against the
         registered job's declared outputs by the generator: GitHub resolves an
         unknown `needs.<job>.outputs.<name>` to the EMPTY STRING rather than
         erroring, so a typo here would deploy an empty image ref instead of
@@ -123,7 +122,7 @@ def delivery(
         transcribed once, in Go, and pinned against the live legacy job by a
         parity test keyed on legacy_workflow/legacy_job below.
       legacy_workflow: PROVENANCE — the workflow file this unit's job was
-        transcribed FROM, e.g. ".github/workflows/tabula-dev-latest.yaml". It
+        transcribed FROM, e.g. ".github/workflows/charts-publish.yml". It
         was the parity test's baseline while both files existed; Phase 3 deleted
         those workflows, so it now records where the transcription came from for
         anyone reading the generated job (git history has the original). Not a
@@ -175,7 +174,7 @@ def delivery(
                            revision. The generator renders
                            `skip-if-unchanged: true` for the unit's rungs, and
                            _deploy-cloud-run.yaml runs
-                           tools/ci/tabula-deploy-preflight.sh inside the
+                           //tools/ci:vitruvian_tabs_deploy_preflight inside the
                            deploy job — AFTER the build, which is the only
                            place the image digest it needs exists.
         THE PREFLIGHT IS NOT AN ORCHESTRATOR VETO, deliberately: the decision
@@ -250,7 +249,7 @@ def delivery(
         fail("delivery(%s): legacy_workflow must be a repo-root path under .github/workflows/, got %r" % (name, legacy_workflow))
 
     if preflight not in ("", "revision-name"):
-        fail("delivery(%s): preflight must be \"\" or \"revision-name\", got %r — the only preflight mechanism that exists is the desired-vs-live revision-name comparison (tools/ci/tabula-deploy-preflight.sh)" % (name, preflight))
+        fail("delivery(%s): preflight must be \"\" or \"revision-name\", got %r — the only preflight mechanism that exists is the desired-vs-live revision-name comparison (//tools/ci:vitruvian_tabs_deploy_preflight)" % (name, preflight))
     if preflight and kind != "cloud-run":
         fail("delivery(%s): preflight applies to kind=\"cloud-run\" only — it is implemented by _deploy-cloud-run.yaml's skip-if-unchanged step" % name)
 

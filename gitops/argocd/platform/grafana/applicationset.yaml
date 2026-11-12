@@ -166,7 +166,7 @@ spec:
               datasources.yaml:
                 apiVersion: 1
                 datasources:
-                  # Cloud Run metrics for tabula and oauth-user-inspector, which run on
+                  # Cloud Run metrics for vitruvian-tabs and oauth-user-inspector, which run on
                   # GCP rather than in this cluster. authenticationType "gce" is a misnomer
                   # here: Grafana's GCE provider calls google.DefaultTokenSource, which
                   # resolves Application Default Credentials -- including the

@@ -82,12 +82,12 @@ func resolve(t *testing.T, o pulumi.StringOutput) string {
 }
 
 func TestNewProject(t *testing.T) {
-	base := &ProjectArgs{Name: "tabula-dev", RegionID: "aws-us-east-1", OrgID: "org-x"}
+	base := &ProjectArgs{Name: "vitruvian-tabs-dev", RegionID: "aws-us-east-1", OrgID: "org-x"}
 
 	t.Run("passes name, region and org through", func(t *testing.T) {
 		in, _ := run(t, base)
 		got := in["db"]
-		if got["name"].StringValue() != "tabula-dev" {
+		if got["name"].StringValue() != "vitruvian-tabs-dev" {
 			t.Errorf("name = %q", got["name"].StringValue())
 		}
 		if got["regionId"].StringValue() != "aws-us-east-1" {

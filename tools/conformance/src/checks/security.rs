@@ -1248,8 +1248,8 @@ mod release_tag_tests {
         assert!(!tag_collides("vitruvian-beta-latest", "v"));
         assert!(tag_collides("v1-latest", "v"));
         assert!(!tag_collides(
-            "tabula-extension-dev-latest",
-            "tabula-extension-v"
+            "vitruvian-tabs-extension-dev-latest",
+            "vitruvian-tabs-extension-v"
         ));
     }
 
