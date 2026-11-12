@@ -5,7 +5,7 @@ Component package providing implementation for `apps/mobile/android-remote/src/m
 
 ## Interface
 - `[MainActivity.kt:MainActivity]`
-- `[MainActivity.kt:HomeSpeakerNotificationReceiver]`
+- `[MainActivity.kt:VitruvianSpeakerNotificationReceiver]`
 - `[RemoteApp.kt:RemoteApp]`
 - Subdirectory: [bridge](./bridge/README.md)
 - Subdirectory: [hid](./hid/README.md)

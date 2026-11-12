@@ -44,7 +44,7 @@ package struct ToolAgreementContent: Equatable {
     /// the whole detail stays within `detailHeight` (`SheetColumn`). In a
     /// detail, a search field and links to its sections sit above the
     /// region and do not scroll; the links wrap onto a second row for an
-    /// extension with as many sections as HomeSpeaker. The rest of that
+    /// extension with as many sections as Vitruvian Speaker. The rest of that
     /// detail, those included, is 540 points at most, with every line of
     /// the tool's own words at its limit, Start Again, an update and its log
     /// open, so even then the region has this much and the sheet stays

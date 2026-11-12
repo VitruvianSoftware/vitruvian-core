@@ -334,7 +334,7 @@ extension ToolPanelScreensTests {
         }
     }
 
-    /// HomeSpeaker's networks as chips: one muted, one it cannot mute.
+    /// Vitruvian Speaker's networks as chips: one muted, one it cannot mute.
     static let networks = #"""
         {"blocks": [
           {"type": "chips", "id": "muted", "title": {"en": "Read aloud", "de": "Vorlesen"},

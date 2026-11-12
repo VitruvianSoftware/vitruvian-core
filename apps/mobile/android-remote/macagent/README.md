@@ -447,11 +447,11 @@ numbers `top` uses) instead of running `top`, which walked every process on the
 Mac and cost about two CPU-seconds each time.
 
 Several files start processes (`exec.rs`, `stream.rs`, `sampler.rs`,
-`homespeaker.rs`, `antigravity.rs`, `tailnet.rs`), all with
+`speaker.rs`, `antigravity.rs`, `tailnet.rs`), all with
 `std::process::Command` and never through a shell unless the caller asked for
 `kind: "shell"`. The rule is about where the arguments come from: reading uses
 fixed argv the agent chooses itself, and any process that takes text from a
-request (exec, streamed exec, HomeSpeaker say, Antigravity resume) is on an act
+request (exec, streamed exec, Vitruvian Speaker say, Antigravity resume) is on an act
 endpoint, behind the token.
 
 An optional tool that is absent or wedged returns `available: false` with a

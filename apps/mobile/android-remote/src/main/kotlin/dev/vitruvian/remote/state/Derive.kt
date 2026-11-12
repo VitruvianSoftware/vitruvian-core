@@ -241,10 +241,10 @@ public object Derive {
   public fun claudeWaiting(state: String): Boolean =
       state.equals("waiting_for_permission", ignoreCase = true)
 
-  // --- HomeSpeaker ---------------------------------------------------------
+  // --- Vitruvian Speaker ---------------------------------------------------------
 
   /**
-   * The one word on the HomeSpeaker plate, worst problem first.
+   * The one word on the Vitruvian Speaker plate, worst problem first.
    *
    * Order matters: "on" with no sign-in would draw a green status over a speaker that cannot speak,
    * which is the quiet kind of wrong this file exists to prevent. Each earlier condition is a
@@ -255,7 +255,7 @@ public object Derive {
    * or phone speaking on its own needs no Google at all. All off is "no outputs" -- enabled, and
    * still nothing will be said.
    */
-  public fun homeSpeakerStatus(
+  public fun vitruvianSpeakerStatus(
       available: Boolean,
       installed: Boolean,
       signedIn: Boolean,
@@ -281,52 +281,62 @@ public object Derive {
   /** What "This phone" is called wherever an output is named. */
   public const val THIS_PHONE: String = "This phone"
 
-  /** Shown when the helper or Home Speaker is too old to supply the `settings[]` catalog. */
-  public const val UPDATE_HOMESPEAKER_MESSAGE: String =
-      "Update Home Speaker and the Vitruvian Remote helper on your Mac to change these settings here."
+  /** Shown when the helper or Vitruvian Speaker is too old to supply the `settings[]` catalog. */
+  public const val UPDATE_SPEAKER_MESSAGE: String =
+      "Update Vitruvian Speaker and the Vitruvian Remote helper on your Mac to change these settings here."
 
   /**
-   * The single point-of-view substitution on the phone: Home Speaker's `"Your phone"` becomes
+   * The single point-of-view substitution on the phone: Vitruvian Speaker's `"Your phone"` becomes
    * [THIS_PHONE] (`"This phone"`).
    */
   public fun phoneWording(text: String): String = text.replace("Your phone", THIS_PHONE)
 
-  /** Relayed `outputs_label` from Home Speaker with [phoneWording] applied, or null when blank. */
+  /**
+   * Relayed `outputs_label` from Vitruvian Speaker with [phoneWording] applied, or null when blank.
+   */
   public fun outputsSummary(outputsLabel: String?): String? =
       outputsLabel?.trim()?.takeIf { it.isNotEmpty() }?.let(::phoneWording)
 
-  /** True only when Home Speaker is available and sent a non-empty `settings[]` catalog. */
-  public fun hasHomeSpeakerCatalog(available: Boolean, catalog: HomeSpeakerCatalog): Boolean =
-      available && !catalog.isEmpty
+  /** True only when Vitruvian Speaker is available and sent a non-empty `settings[]` catalog. */
+  public fun hasVitruvianSpeakerCatalog(
+      available: Boolean,
+      catalog: VitruvianSpeakerCatalog
+  ): Boolean = available && !catalog.isEmpty
 
   /**
    * The single sentence shown when `settings[]` is missing: the helper's own [reason] when present,
-   * else [UPDATE_HOMESPEAKER_MESSAGE].
+   * else [UPDATE_SPEAKER_MESSAGE].
    */
   public fun missingCatalogMessage(reason: String?): String =
-      reason?.trim()?.takeIf { it.isNotEmpty() } ?: UPDATE_HOMESPEAKER_MESSAGE
+      reason?.trim()?.takeIf { it.isNotEmpty() } ?: UPDATE_SPEAKER_MESSAGE
 
   /** Display label for catalog setting [key], with `"Your phone"` substituted as [THIS_PHONE]. */
-  public fun catalogLabel(catalog: HomeSpeakerCatalog, key: String): String =
+  public fun catalogLabel(catalog: VitruvianSpeakerCatalog, key: String): String =
       catalog[key]?.label?.let(::phoneWording).orEmpty()
 
-  /** Visibility flag for catalog setting [key] directly from Home Speaker's `shown` field. */
-  public fun catalogShown(catalog: HomeSpeakerCatalog, key: String): Boolean =
+  /** Visibility flag for catalog setting [key] directly from Vitruvian Speaker's `shown` field. */
+  public fun catalogShown(catalog: VitruvianSpeakerCatalog, key: String): Boolean =
       catalog[key]?.shown == true
 
   /** Selectable choices for catalog setting [key], with [phoneWording] applied to labels. */
-  public fun catalogChoices(catalog: HomeSpeakerCatalog, key: String): List<HomeSpeakerChoice> =
+  public fun catalogChoices(
+      catalog: VitruvianSpeakerCatalog,
+      key: String
+  ): List<VitruvianSpeakerChoice> =
       catalog[key]?.choices.orEmpty().map { it.copy(label = phoneWording(it.label)) }
 
   /** Display label for [value] in catalog setting [key]'s choices, or [value] if unlisted. */
-  public fun catalogChoiceLabel(catalog: HomeSpeakerCatalog, key: String, value: String): String =
-      catalogChoices(catalog, key).firstOrNull { it.value == value }?.label ?: value
+  public fun catalogChoiceLabel(
+      catalog: VitruvianSpeakerCatalog,
+      key: String,
+      value: String
+  ): String = catalogChoices(catalog, key).firstOrNull { it.value == value }?.label ?: value
 
   /** Numeric limits (`min`, `max`, `step`, `defaultValue`) for catalog setting [key]. */
-  public fun catalogLimits(catalog: HomeSpeakerCatalog, key: String): HomeSpeakerLimits? =
+  public fun catalogLimits(catalog: VitruvianSpeakerCatalog, key: String): VitruvianSpeakerLimits? =
       catalog[key]?.limits
 
-  /** Pure stepper button specification derived from a catalog entry's [HomeSpeakerLimits]. */
+  /** Pure stepper button specification derived from a catalog entry's [VitruvianSpeakerLimits]. */
   public data class StepperSpec(
       val minusLabel: String,
       val minusEnabled: Boolean,
@@ -337,12 +347,12 @@ public object Derive {
   )
 
   /**
-   * Builds − / + stepper buttons from [limits]. The next value stops at Home Speaker's own min and
-   * max, so the phone never sends one outside them.
+   * Builds − / + stepper buttons from [limits]. The next value stops at Vitruvian Speaker's own min
+   * and max, so the phone never sends one outside them.
    */
   public fun catalogStepper(
       current: Double,
-      limits: HomeSpeakerLimits,
+      limits: VitruvianSpeakerLimits,
       canAct: Boolean,
       unitSuffix: String = "",
   ): StepperSpec {
@@ -359,8 +369,8 @@ public object Derive {
   }
 
   /**
-   * The speaker's live volume is the device's 0-100 range, not a Home Speaker setting, so the phone
-   * keeps it inside that range before sending.
+   * The speaker's live volume is the device's 0-100 range, not a Vitruvian Speaker setting, so the
+   * phone keeps it inside that range before sending.
    */
   public fun clampSpeakerVolume(percent: Int): Int = percent.coerceIn(0, 100)
 
@@ -440,7 +450,7 @@ public object Derive {
         else -> "quiet from $start to $end"
       }
 
-  /** Sub-line for the Quiet hours top metric card on the HomeSpeaker dashboard. */
+  /** Sub-line for the Quiet hours top metric card on the Vitruvian Speaker dashboard. */
   public fun quietHoursMetricSub(
       enabled: Boolean,
       active: Boolean,
@@ -453,7 +463,7 @@ public object Derive {
         else -> "quiet from $start"
       }
 
-  /** Coding agents HomeSpeaker installs a hook for (Swift `CodingAgent.supportsHook`). */
+  /** Coding agents Vitruvian Speaker installs a hook for (Swift `CodingAgent.supportsHook`). */
   public val hookAgentSlugs: Set<String> = setOf("claude-code", "antigravity", "opencode")
 
   /** Subtitle for the Chat monitor row, surfacing the last poll relative time when running. */
@@ -477,7 +487,7 @@ public object Derive {
     else "Token saved on Mac"
   }
 
-  /** Pure specification for a row in the HomeSpeaker "Google Cloud OAuth" section. */
+  /** Pure specification for a row in the Vitruvian Speaker "Google Cloud OAuth" section. */
   public data class OAuthRowSpec(
       val title: String,
       val subtitle: String,
@@ -527,7 +537,7 @@ public object Derive {
       activeBackendLabel: String,
       monitorRunning: Boolean,
   ): String {
-    // The backend is named the way Home Speaker's own catalog names it.
+    // The backend is named the way Vitruvian Speaker's own catalog names it.
     val via = activeBackendLabel.trim()
     return if (monitorRunning && via.isNotEmpty()) {
       "currently reading via $via"
@@ -550,7 +560,7 @@ public object Derive {
    * flight.
    */
   public const val SIGN_IN_ALREADY_RUNNING: String =
-      "A HomeSpeaker sign-in is already running on the Mac"
+      "A Vitruvian Speaker sign-in is already running on the Mac"
 
   /**
    * Pure result of evaluating a pending Mac sign-in or Chat grant against the latest poll and
@@ -611,7 +621,7 @@ public object Derive {
   )
 
   /**
-   * Pure poll transition used when a `/v1/homespeaker` poll arrives: clears pending sign-in when
+   * Pure poll transition used when a `/v1/speaker` poll arrives: clears pending sign-in when
    * [signedIn] is true, clears pending Chat grant when [hasChatAccess] or [hasGoogleChatToken] is
    * true, and expires either after [SIGN_IN_TIMEOUT_MS] at [nowMs].
    */
@@ -633,7 +643,7 @@ public object Derive {
               ),
       )
 
-  /** Google Cloud Console URL opened by `HomeSpeakerTool` (`Block.openGoogleCloud`). */
+  /** Google Cloud Console URL opened by `VitruvianSpeakerTool` (`Block.openGoogleCloud`). */
   public const val GOOGLE_CLOUD_CONSOLE_URL: String =
       "https://console.cloud.google.com/apis/credentials"
 
@@ -653,8 +663,8 @@ public object Derive {
 
   /**
    * Derives the "Google Home account" row state. When not signed in, offers "Sign in on Mac"
-   * (`HomeSpeaker --sign-in`) and, if Antigravity tokens exist, "Import login". After tapping "Sign
-   * in on Mac", [signInPending] (or [signInPendingSinceMs] before [SIGN_IN_TIMEOUT_MS]) shows
+   * (`VitruvianSpeaker --sign-in`) and, if Antigravity tokens exist, "Import login". After tapping
+   * "Sign in on Mac", [signInPending] (or [signInPendingSinceMs] before [SIGN_IN_TIMEOUT_MS]) shows
    * [FINISH_SIGN_IN_ON_MAC] until the next poll reports [signedIn] or 5 minutes elapse.
    */
   public fun googleHomeAccountRow(
@@ -730,7 +740,7 @@ public object Derive {
 
   /**
    * Derives the Google Chat account and access status row from the fields reported by
-   * `/v1/homespeaker`, including the "Grant…" (`Block.grantChat`) and "Disconnect"
+   * `/v1/speaker`, including the "Grant…" (`Block.grantChat`) and "Disconnect"
    * (`Block.disconnectChat`) actions matching `Pages.swift`.
    */
   public fun googleChatAccountDiag(
@@ -975,7 +985,7 @@ public object Derive {
   ): LegacyLaunchAgentRowSpec =
       LegacyLaunchAgentRowSpec(
           title = "Legacy chat-monitor launch agent",
-          subtitle = "Installed by HomeSpeaker 1.x. Chat monitoring now runs inside the app.",
+          subtitle = "Installed by Vitruvian Speaker 1.x. Chat monitoring now runs inside the app.",
           trailing = "legacy",
           actionLabel = "Remove",
           actionEnabled = canAct && !busy,
@@ -1000,12 +1010,12 @@ public object Derive {
     Mute,
 
     /**
-     * Courier only: a network HomeSpeaker's own Slack or Google Chat reader covers. On reads it
-     * through Courier as well (`courier_read_anyway`); off leaves it to that reader.
+     * Courier only: a network Vitruvian Speaker's own Slack or Google Chat reader covers. On reads
+     * it through Courier as well (`courier_read_anyway`); off leaves it to that reader.
      */
     ReadAnyway,
 
-    /** No switch: Beeper's networks that HomeSpeaker reads itself. */
+    /** No switch: Beeper's networks that Vitruvian Speaker reads itself. */
     None,
   }
 
@@ -1019,9 +1029,9 @@ public object Derive {
   )
 
   /**
-   * [network] of chat app [app] ("Beeper" or "Courier") as HomeSpeaker's Settings shows it. A
-   * network HomeSpeaker reads itself is greyed for Beeper; for Courier its switch reads it through
-   * Courier as well, since Courier cannot say which Slack workspace an account is.
+   * [network] of chat app [app] ("Beeper" or "Courier") as Vitruvian Speaker's Settings shows it. A
+   * network Vitruvian Speaker reads itself is greyed for Beeper; for Courier its switch reads it
+   * through Courier as well, since Courier cannot say which Slack workspace an account is.
    */
   public fun chatNetworkRow(app: String, network: AgentBeeperNetwork): ChatNetworkRow {
     val title = "$app · ${network.name}"
@@ -1037,7 +1047,7 @@ public object Derive {
       } else {
         ChatNetworkRow(
             title,
-            "read directly by HomeSpeaker · on reads it through Courier too",
+            "read directly by Vitruvian Speaker · on reads it through Courier too",
             "read directly",
             on = false,
             switch = NetworkSwitch.ReadAnyway)
@@ -1055,20 +1065,20 @@ public object Derive {
   }
 
   /**
-   * Under an app's networks before the running monitor has listed them, in HomeSpeaker's words.
-   * Null when it has, or when an older agent cannot say ([listed] null).
+   * Under an app's networks before the running monitor has listed them, in Vitruvian Speaker's
+   * words. Null when it has, or when an older agent cannot say ([listed] null).
    */
   public fun networksLaterLine(app: String, listed: Boolean?): String? =
       if (listed == false) "Other networks show here once $app is being read." else null
 
   /**
-   * Where Courier's token comes from. The phone never carries it: it is pasted into HomeSpeaker on
-   * the Mac, where Courier runs.
+   * Where Courier's token comes from. The phone never carries it: it is pasted into Vitruvian
+   * Speaker on the Mac, where Courier runs.
    */
   public val courierTokenSteps: String =
-      "In Courier: Settings › Integrations › New connection…, then paste the token into HomeSpeaker on your Mac"
+      "In Courier: Settings › Integrations › New connection…, then paste the token into Vitruvian Speaker on your Mac"
 
-  /** Courier stays off until a token is saved, as in HomeSpeaker's own Settings. */
+  /** Courier stays off until a token is saved, as in Vitruvian Speaker's own Settings. */
   public fun courierSwitchEnabled(hasToken: Boolean, on: Boolean): Boolean = hasToken || on
 
   /**
@@ -1088,14 +1098,14 @@ public object Derive {
         else -> "$percent%"
       }
 
-  /** Whether [homeSpeakerStatus]'s word is a good one, an off one, or a problem. */
+  /** Whether [vitruvianSpeakerStatus]'s word is a good one, an off one, or a problem. */
   public enum class SpeakerHealth {
     Ok,
     Off,
     Problem,
   }
 
-  public fun homeSpeakerHealth(
+  public fun vitruvianSpeakerHealth(
       available: Boolean,
       installed: Boolean,
       signedIn: Boolean,
@@ -1112,7 +1122,7 @@ public object Derive {
         else -> SpeakerHealth.Ok
       }
 
-  /** Pure specification for one button in HomeSpeaker's top "Now" strip. */
+  /** Pure specification for one button in Vitruvian Speaker's top "Now" strip. */
   public data class QuickActionSpec(
       val id: String,
       val label: String,
@@ -1123,7 +1133,7 @@ public object Derive {
   )
 
   /**
-   * The Mute / Unmute control in HomeSpeaker's Now strip.
+   * The Mute / Unmute control in Vitruvian Speaker's Now strip.
    *
    * Label names the action tapping will take ("Mute" when unmuted, "Unmute" when muted). Enabled
    * whenever the speaker volume is available and online (and not mid-request), regardless of
@@ -1163,7 +1173,7 @@ public object Derive {
   }
 
   /**
-   * The Quiet hours control in HomeSpeaker's Now strip.
+   * The Quiet hours control in Vitruvian Speaker's Now strip.
    *
    * Label shows "Quiet on" / "Quiet off"; secondary text shows the window ("22:00–07:00") and
    * appends "now" when quiet hours are currently active, or is omitted when no Mac is available.
@@ -1202,7 +1212,7 @@ public object Derive {
   }
 
   /**
-   * The Room control in HomeSpeaker's Now strip.
+   * The Room control in Vitruvian Speaker's Now strip.
    *
    * Shows the current target speaker's name and opens the speaker picker on tap.
    */
@@ -1235,7 +1245,7 @@ public object Derive {
   }
 
   /**
-   * The Replay control in HomeSpeaker's Now strip.
+   * The Replay control in Vitruvian Speaker's Now strip.
    *
    * Replays the newest item from Recent broadcasts; disabled when there is nothing to replay.
    */
@@ -1305,20 +1315,20 @@ public object Derive {
   }
 
   /**
-   * Sentinel stored as the previously observed announcement id when HomeSpeaker is reachable and
-   * has no latest announcement yet (`recent` and `last` both empty), so that the very next real
+   * Sentinel stored as the previously observed announcement id when Vitruvian Speaker is reachable
+   * and has no latest announcement yet (`recent` and `last` both empty), so that the very next real
    * announcement triggers a notification.
    */
   public const val NO_ANNOUNCEMENT_ID: String = "__none__"
 
-  /** Pure tracking state for HomeSpeaker announcement notification mirroring. */
+  /** Pure tracking state for Vitruvian Speaker announcement notification mirroring. */
   public data class MirrorState(
       val baselineId: String? = null,
       val activeNotificationId: String? = null,
       val activeNotificationText: String? = null,
   )
 
-  /** Notification side-effect decided by pure HomeSpeaker mirror functions. */
+  /** Notification side-effect decided by pure Vitruvian Speaker mirror functions. */
   public sealed interface MirrorNotificationAction {
     public data object None : MirrorNotificationAction
 
@@ -1329,7 +1339,7 @@ public object Derive {
     public data class Cancel(val id: String) : MirrorNotificationAction
   }
 
-  /** Pure outcome of toggling the mirror setting or observing a HomeSpeaker poll. */
+  /** Pure outcome of toggling the mirror setting or observing a Vitruvian Speaker poll. */
   public data class MirrorDecision(
       val enabled: Boolean,
       val state: MirrorState,
@@ -1345,11 +1355,11 @@ public object Derive {
 
   /**
    * Resolves the announcement id to record as the baseline for future comparisons:
-   * - `null` when HomeSpeaker is not available yet (so the first reachable poll still counts as
-   *   first load and does not notify).
+   * - `null` when Vitruvian Speaker is not available yet (so the first reachable poll still counts
+   *   as first load and does not notify).
    * - The newest broadcast's trimmed `id` when non-blank.
-   * - [NO_ANNOUNCEMENT_ID] when HomeSpeaker is available but has no broadcast with a non-blank id
-   *   (so the very next real announcement triggers a notification).
+   * - [NO_ANNOUNCEMENT_ID] when Vitruvian Speaker is available but has no broadcast with a
+   *   non-blank id (so the very next real announcement triggers a notification).
    */
   public fun mirrorBaselineId(
       available: Boolean,
@@ -1362,7 +1372,8 @@ public object Derive {
   }
 
   /**
-   * Pure decision for whether to post a phone notification when HomeSpeaker state is observed:
+   * Pure decision for whether to post a phone notification when Vitruvian Speaker state is
+   * observed:
    * - Never notifies when `enabled` is false.
    * - Never notifies on first load or when the setting was just turned on (`previousId == null` or
    *   blank).
@@ -1388,8 +1399,8 @@ public object Derive {
    * - Turning the toggle OFF, or requesting ON when `POST_NOTIFICATIONS` is denied, disables the
    *   setting and cancels any active announcement notification.
    * - Turning the toggle ON with permission granted enables the setting, seeds `baselineId` from
-   *   the current HomeSpeaker snapshot so the already-latest announcement is never notified, and
-   *   emits [MirrorNotificationAction.None].
+   *   the current Vitruvian Speaker snapshot so the already-latest announcement is never notified,
+   *   and emits [MirrorNotificationAction.None].
    */
   public fun mirrorToggle(
       requestedOn: Boolean,
@@ -1418,11 +1429,11 @@ public object Derive {
   }
 
   /**
-   * Pure decision when a HomeSpeaker status snapshot is observed:
+   * Pure decision when a Vitruvian Speaker status snapshot is observed:
    * - Picks the newest announcement from `recent` (falling back to `last`).
-   * - When HomeSpeaker is unavailable (`!available`), preserves `baselineId` so the first reachable
-   *   poll will not notify, while still cancelling an active notification if mirroring was disabled
-   *   or lost permission.
+   * - When Vitruvian Speaker is unavailable (`!available`), preserves `baselineId` so the first
+   *   reachable poll will not notify, while still cancelling an active notification if mirroring
+   *   was disabled or lost permission.
    * - When mirroring is disabled or lacks permission, updates `baselineId` and cancels any active
    *   notification.
    * - When a new announcement id arrives after an established baseline (`shouldNotifyAnnouncement`)
@@ -1573,8 +1584,8 @@ public object Derive {
       last: AgentLastBroadcast? = null,
   ): AgentLastBroadcast? = (recent.ifEmpty { listOfNotNull(last) }).firstOrNull()
 
-  /** Builds all five controls for HomeSpeaker's Now strip in display order. */
-  public fun homeSpeakerQuickActions(
+  /** Builds all five controls for Vitruvian Speaker's Now strip in display order. */
+  public fun vitruvianSpeakerQuickActions(
       hasCatalog: Boolean = true,
       paired: Boolean,
       available: Boolean,
@@ -1606,7 +1617,7 @@ public object Derive {
             hasReplay = hasReplay,
             target = replayTarget,
         )
-    // Without Home Speaker's catalog every control that changes a setting is hidden; replaying
+    // Without Vitruvian Speaker's catalog every control that changes a setting is hidden; replaying
     // speaks, it does not change a setting.
     if (!hasCatalog) return listOf(replay)
     return listOf(
@@ -1650,7 +1661,7 @@ public object Derive {
   private val LEAKED_PATH_OR_CODE_REGEX = Regex("""(?:/v\d+/|https?://)""", RegexOption.IGNORE_CASE)
   private val TECHNICAL_PREFIX_REGEX =
       Regex(
-          """^(?:[✗✓!]\s*|(?:agent|homespeaker|google\s+home|google\s+chat|gws|oauth)\s*(?:·\s*[^:]+)?:\s*|(?:error|failed|failure)\s*:\s*|(?:sign\s+(?:in|out)|disconnect|grant(?:\s+chat)?|import(?:\s+login)?)\s+(?:failed|error)\s*:\s*|http\s+\d{3}(?:\s+[a-z][a-z ]*)?\s*:\s*)+""",
+          """^(?:[✗✓!]\s*|(?:agent|speaker|google\s+home|google\s+chat|gws|oauth)\s*(?:·\s*[^:]+)?:\s*|(?:error|failed|failure)\s*:\s*|(?:sign\s+(?:in|out)|disconnect|grant(?:\s+chat)?|import(?:\s+login)?)\s+(?:failed|error)\s*:\s*|http\s+\d{3}(?:\s+[a-z][a-z ]*)?\s*:\s*)+""",
           RegexOption.IGNORE_CASE,
       )
   private val TRAILING_HTTP_REGEX =
@@ -1662,10 +1673,10 @@ public object Derive {
       )
 
   /**
-   * Strips raw tool/agent/HTTP prefixes (e.g. `"agent: homespeaker: error: ..."`, `"✗ homespeaker ·
-   * sign in on Mac: ..."`, `"HTTP 400: ..."`) leaving the human-readable reason.
+   * Strips raw tool/agent/HTTP prefixes (e.g. `"agent: speaker: error: ..."`, `"✗ speaker · sign in
+   * on Mac: ..."`, `"HTTP 400: ..."`) leaving the human-readable reason.
    */
-  public fun stripHomeSpeakerErrorPrefixes(raw: String): String {
+  public fun stripVitruvianSpeakerErrorPrefixes(raw: String): String {
     var cleaned = raw.trim()
     while (true) {
       val next = TECHNICAL_PREFIX_REGEX.replaceFirst(cleaned, "").trim()
@@ -1675,7 +1686,7 @@ public object Derive {
     return TRAILING_HTTP_REGEX.replace(cleaned, "").trim()
   }
 
-  private fun plainHomeSpeakerAction(what: String): String {
+  private fun plainVitruvianSpeakerAction(what: String): String {
     val raw = what.trim().ifEmpty { "update speaker" }
     return when (raw.lowercase(Locale.ROOT)) {
       "sign in on mac",
@@ -1693,18 +1704,18 @@ public object Derive {
   }
 
   /**
-   * One-line inline error shown directly under a HomeSpeaker Now strip control, stream plate, or
-   * Settings row when an action fails. Uses plain words rather than exception class names, paths,
-   * or raw HTTP codes.
+   * One-line inline error shown directly under a Vitruvian Speaker Now strip control, stream plate,
+   * or Settings row when an action fails. Uses plain words rather than exception class names,
+   * paths, or raw HTTP codes.
    */
-  public fun homeSpeakerInlineError(
+  public fun vitruvianSpeakerInlineError(
       what: String,
       reason: String? = null,
       authFailed: Boolean = false,
   ): String {
-    val action = plainHomeSpeakerAction(what)
+    val action = plainVitruvianSpeakerAction(what)
     val raw = reason?.trim().orEmpty()
-    val stripped = stripHomeSpeakerErrorPrefixes(raw)
+    val stripped = stripVitruvianSpeakerErrorPrefixes(raw)
     val lower = stripped.lowercase(Locale.ROOT)
     val rawLower = raw.lowercase(Locale.ROOT)
     if (authFailed ||
@@ -1714,7 +1725,7 @@ public object Derive {
         rawLower.contains("forbidden")) {
       return "Couldn't $action: this phone isn't paired"
     }
-    // Network failures only, by the phrases Java and OkHttp use for them. Home Speaker's own
+    // Network failures only, by the phrases Java and OkHttp use for them. Vitruvian Speaker's own
     // refusals reach the phone verbatim and may say "refused" or "reset"; those must keep
     // their words, so no bare "refused" / "reset" / "connect" here.
     val unreachable =
@@ -1767,7 +1778,7 @@ public object Derive {
   )
 
   /**
-   * Maps pairing and `/v1/homespeaker/volume` state to the Quick Settings "Speaker" tile.
+   * Maps pairing and `/v1/speaker/volume` state to the Quick Settings "Speaker" tile.
    * - Unpaired or no host -> [SpeakerTileLook.Unavailable], `"Not paired"`
    * - POST click failure -> [SpeakerTileLook.Unavailable], `"Couldn't reach the Mac"`
    * - GET unreachable -> [SpeakerTileLook.Unavailable], `"Mac unreachable"`
@@ -2269,7 +2280,7 @@ public object Derive {
     Vms,
     Containers,
     Ollama,
-    HomeSpeaker,
+    VitruvianSpeaker,
     SpeakerVolume,
     Tv,
     Tools,
@@ -2339,7 +2350,7 @@ public object Derive {
         "homelab" -> setOf(PollSource.Argo, PollSource.K8s)
         "docker" -> setOf(PollSource.Containers)
         "ollama" -> setOf(PollSource.Ollama)
-        "homespeaker" -> setOf(PollSource.HomeSpeaker, PollSource.SpeakerVolume)
+        "speaker" -> setOf(PollSource.VitruvianSpeaker, PollSource.SpeakerVolume)
         "tv" -> setOf(PollSource.Tv)
         "antigravity" -> setOf(PollSource.Antigravity, PollSource.AntigravitySessions)
         else -> emptySet()
@@ -2357,7 +2368,7 @@ public object Derive {
           PollSource.K8s,
           PollSource.Argo,
           PollSource.Containers,
-          PollSource.HomeSpeaker,
+          PollSource.VitruvianSpeaker,
       )
 
   /**
@@ -2706,7 +2717,7 @@ public object Derive {
   }
 
   /**
-   * Pure decision logic for the HomeSpeaker phone notification mirror row.
+   * Pure decision logic for the Vitruvian Speaker phone notification mirror row.
    *
    * When notification permission is permanently denied/blocked (`[permissionBlocked] == true` and
    * `[shouldShowRationale] == false`), shows the toggle as off (`checked = false`), surfaces
@@ -2736,16 +2747,16 @@ public object Derive {
     )
   }
 
-  /** Confirmation window for two-tap "Reset HomeSpeaker". */
+  /** Confirmation window for two-tap "Reset Vitruvian Speaker". */
   public const val RESET_CONFIRM_WINDOW_MS: Long = 5_000L
 
-  /** Result of tapping the "Reset HomeSpeaker" action. */
+  /** Result of tapping the "Reset Vitruvian Speaker" action. */
   public data class ResetTapResult(
       val shouldReset: Boolean,
       val nextArmedAtMs: Long?,
   )
 
-  /** Specification for the "Reset HomeSpeaker" section/row. */
+  /** Specification for the "Reset Vitruvian Speaker" section/row. */
   public data class ResetRowSpec(
       val title: String,
       val subtitle: String,
@@ -2760,7 +2771,7 @@ public object Derive {
       armedAtMs != null && nowMs >= armedAtMs && (nowMs - armedAtMs) < RESET_CONFIRM_WINDOW_MS
 
   /**
-   * Pure two-tap confirmation state machine for resetting HomeSpeaker settings.
+   * Pure two-tap confirmation state machine for resetting Vitruvian Speaker settings.
    * - First tap (not armed, or window expired): arms reset for 5 s (`nextArmedAtMs = nowMs`).
    * - Second tap within 5 s: confirms reset (`shouldReset = true`, `nextArmedAtMs = null`).
    */
@@ -2771,8 +2782,8 @@ public object Derive {
         ResetTapResult(shouldReset = false, nextArmedAtMs = nowMs)
       }
 
-  /** Builds the row spec for the "Reset HomeSpeaker" section. */
-  public fun resetHomeSpeakerRow(
+  /** Builds the row spec for the "Reset Vitruvian Speaker" section. */
+  public fun resetVitruvianSpeakerRow(
       armedAtMs: Long?,
       nowMs: Long,
       canAct: Boolean,
@@ -2780,8 +2791,8 @@ public object Derive {
   ): ResetRowSpec {
     val armed = isResetArmed(armedAtMs, nowMs)
     return ResetRowSpec(
-        title = "Reset HomeSpeaker",
-        subtitle = "puts every HomeSpeaker setting back to default",
+        title = "Reset Vitruvian Speaker",
+        subtitle = "puts every Vitruvian Speaker setting back to default",
         actionLabel = if (armed) "Tap again to reset" else "Reset settings",
         danger = armed,
         enabled = canAct && !busy,

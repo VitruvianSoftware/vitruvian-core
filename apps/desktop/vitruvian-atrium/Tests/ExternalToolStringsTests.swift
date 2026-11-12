@@ -69,11 +69,11 @@ enum ExternalToolStringsTests {
                          && strings.installRefused("Deploys") == "“Deploys” was not installed",
                      "a format is filled with what it is handed, in the order the sentence names it")
         func size(_ bytes: Int) -> String { ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .memory) }
-        suite.expect(strings.panelRefused("HomeSpeaker", .notWellFormed("blocks[76].id"))
-                         == "HomeSpeaker sent a page Vitruvian Atrium can’t show (blocks[76].id is not well formed). "
+        suite.expect(strings.panelRefused("Vitruvian Speaker", .notWellFormed("blocks[76].id"))
+                         == "Vitruvian Speaker sent a page Vitruvian Atrium can’t show (blocks[76].id is not well formed). "
                          + "Updating the extension may fix it."
-                         && strings.panelRefused("HomeSpeaker", .tooLarge(bytes: 300_000))
-                         == "HomeSpeaker sent a page Vitruvian Atrium can’t show (over the \(size(UILimits.maxTreeBytes)) "
+                         && strings.panelRefused("Vitruvian Speaker", .tooLarge(bytes: 300_000))
+                         == "Vitruvian Speaker sent a page Vitruvian Atrium can’t show (over the \(size(UILimits.maxTreeBytes)) "
                          + "size limit). Updating the extension may fix it."
                          && size(UILimits.maxTreeBytes) == "256 KB",
                      "a refused page is said in plain words, with the extension's name and why")

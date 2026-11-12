@@ -25,7 +25,7 @@ public struct ChatInfoPane: View {
     public var now: () -> Date = Date.init
     public var timerChoices: [DisappearingChoice] = []
     public var onSelectTimer: (DisappearingChoice) -> Void = { _ in }
-    /// The chat's "Read Aloud on HomeSpeaker" choice; nil hides the row (HomeSpeaker is not installed).
+    /// The chat's "Read Aloud on Vitruvian Speaker" choice; nil hides the row (Vitruvian Speaker is not installed).
     public var readAloud: ChatReadAloud? = nil
     public var onSelectReadAloud: (ChatReadAloud) -> Void = { _ in }
     public var onEditTitleAndAvatar: () -> Void = {}
@@ -673,7 +673,7 @@ public struct ChatInfoPane: View {
                         Image(systemName: "speaker.wave.2")
                             .foregroundStyle(.secondary)
                             .frame(width: 16)
-                        Text(String(localized: "Read Aloud on HomeSpeaker"))
+                        Text(String(localized: "Read Aloud on Vitruvian Speaker"))
                             .font(.callout)
                             .lineLimit(1)
                             .layoutPriority(1)
@@ -682,7 +682,7 @@ public struct ChatInfoPane: View {
                     HStack(spacing: 8) {
                         Spacer().frame(width: 16)
                         Picker(
-                            String(localized: "Read Aloud on HomeSpeaker"),
+                            String(localized: "Read Aloud on Vitruvian Speaker"),
                             selection: Binding(get: { readAloud }, set: onSelectReadAloud)
                         ) {
                             ForEach(ChatReadAloud.settable, id: \.rawValue) { choice in

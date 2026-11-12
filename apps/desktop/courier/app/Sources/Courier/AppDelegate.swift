@@ -21,7 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The message menu, its keys and commands; the open chat's scheduled messages.
     let messageActions: MessageActionsModel
     let scheduled: ScheduledModel
-    /// Read Aloud: HomeSpeaker's `--say`, or this Mac's voice. One for every window.
+    /// Read Aloud: Vitruvian Speaker's `--say`, or this Mac's voice. One for every window.
     let readAloud: ReadAloudService
     /// Settings ▸ Messages: one object for the composers, the conversation and Settings, which reads the defaults
     /// once (a copy would miss a change until the next launch). The same for the quick replies.

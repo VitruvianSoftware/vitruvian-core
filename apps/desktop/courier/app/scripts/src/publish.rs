@@ -516,7 +516,7 @@ mod tests {
     fn other_tags_are_refused() {
         for bad in [
             "v1.2.3",
-            "home-speaker-v1.2.3",
+            "vitruvian-speaker-v1.2.3",
             "courier-v1.2",
             "courier-v1.2.x",
             "courier-v",

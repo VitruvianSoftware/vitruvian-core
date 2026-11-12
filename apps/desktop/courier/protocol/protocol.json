@@ -312,7 +312,7 @@
         "read_aloud": {
           "type": "string?",
           "values": ["always", "never"],
-          "doc": "Per-chat HomeSpeaker announcement override; left out for Default."
+          "doc": "Per-chat Vitruvian Speaker announcement override; left out for Default."
         }
       }
     },
@@ -563,7 +563,7 @@
         "read_aloud": {
           "type": "string",
           "values": ["", "always", "never"],
-          "doc": "Per-chat HomeSpeaker announcement override. \"\" resets to Default."
+          "doc": "Per-chat Vitruvian Speaker announcement override. \"\" resets to Default."
         }
       }
     },
@@ -2686,7 +2686,7 @@
       "errors": [-32020, -32022]
     },
     "room.setReadAloud": {
-      "doc": "Set chats' per-chat HomeSpeaker announcement override (\"\", \"always\", or \"never\"). Stored on this Mac only.",
+      "doc": "Set chats' per-chat Vitruvian Speaker announcement override (\"\", \"always\", or \"never\"). Stored on this Mac only.",
       "params": "SetReadAloudParams",
       "result": "RoomsChanged",
       "errors": [-32014, -32020]

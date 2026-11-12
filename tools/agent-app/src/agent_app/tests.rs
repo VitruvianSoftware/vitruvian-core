@@ -309,9 +309,9 @@ fn foundation_rerun_accepted() {
             "catalog-bump.yaml",
             &[
                 "-f",
-                "id=dev.vitruvian.homespeaker",
+                "id=dev.vitruvian.speaker",
                 "-f",
-                "tag=home-speaker-v1.20.0"
+                "tag=vitruvian-speaker-v1.20.0"
             ]
         ),
         Ok(())

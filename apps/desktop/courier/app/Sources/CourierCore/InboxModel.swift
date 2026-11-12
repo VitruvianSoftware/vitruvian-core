@@ -1010,7 +1010,7 @@ public final class InboxModel: ObservableObject {
         await setFlag("room.setLowPriority", on, ids: ids, toast: String(localized: "Moved to Low Priority"))
     }
 
-    /// Sets the per-chat HomeSpeaker announcement preference (`""`, `"always"`, `"never"`).
+    /// Sets the per-chat Vitruvian Speaker announcement preference (`""`, `"always"`, `"never"`).
     public func setReadAloud(_ value: ChatReadAloud, ids: [String]? = nil) async {
         let expandedIDs = expandRoomIDs(beginAction(ids))
         guard !expandedIDs.isEmpty else { return }

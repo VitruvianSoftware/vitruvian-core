@@ -99,20 +99,20 @@ public enum ReadAloudText {
     }
 }
 
-/// Locates and launches the HomeSpeaker macOS app (`com.vitruviansoftware.homespeaker`).
-public protocol HomeSpeakerLocating: Sendable {
+/// Locates and launches the Vitruvian Speaker macOS app (`com.vitruviansoftware.speaker`).
+public protocol VitruvianSpeakerLocating: Sendable {
     func applicationURL() -> URL?
     func binaryURL() -> URL?
     func openApplication(at url: URL) async -> Bool
 }
 
-public extension HomeSpeakerLocating {
+public extension VitruvianSpeakerLocating {
     func binaryURL() -> URL? {
         guard let appURL = applicationURL() else { return nil }
         let executableURL = appURL
             .appendingPathComponent("Contents", isDirectory: true)
             .appendingPathComponent("MacOS", isDirectory: true)
-            .appendingPathComponent("HomeSpeaker", isDirectory: false)
+            .appendingPathComponent("Vitruvian Speaker", isDirectory: false)
         guard FileManager.default.isExecutableFile(atPath: executableURL.path) else {
             return nil
         }
@@ -120,16 +120,16 @@ public extension HomeSpeakerLocating {
     }
 }
 
-/// Finds the HomeSpeaker a person actually uses: the Vitruvian extension's `bin/tool` or `HomeSpeaker.app` in an
-/// Applications folder. Both take `--say` and `--state` and hand the speaking to whichever HomeSpeaker is in use.
+/// Finds the Vitruvian Speaker a person actually uses: the Vitruvian extension's `bin/tool` or `Vitruvian Speaker.app` in an
+/// Applications folder. Both take `--say` and `--state` and hand the speaking to whichever Vitruvian Speaker is in use.
 /// A copy anywhere else (a development build in a checkout, say) is never used.
-public struct WorkspaceHomeSpeakerLocator: HomeSpeakerLocating {
-    public static let bundleIdentifier = "com.vitruviansoftware.homespeaker"
-    /// The Vitruvian app, which hosts HomeSpeaker as an extension.
+public struct WorkspaceVitruvianSpeakerLocator: VitruvianSpeakerLocating {
+    public static let bundleIdentifier = "com.vitruviansoftware.speaker"
+    /// The Vitruvian app, which hosts Vitruvian Speaker as an extension.
     public static let vitruvianBundleIdentifier = "com.vitruviansoftware.atrium"
     /// The extension's binary, relative to the home folder.
     public static let extensionToolPath =
-        "Library/Application Support/com.vitruviansoftware.atrium/Tools/dev.vitruvian.homespeaker/bin/tool"
+        "Library/Application Support/com.vitruviansoftware.atrium/Tools/dev.vitruvian.speaker/bin/tool"
 
     private let home: URL
     private let isExecutable: @Sendable (String) -> Bool
@@ -157,7 +157,7 @@ public struct WorkspaceHomeSpeakerLocator: HomeSpeakerLocating {
         return url
     }
 
-    /// `HomeSpeaker.app` when installed; otherwise the Vitruvian app when HomeSpeaker is its extension.
+    /// `Vitruvian Speaker.app` when installed; otherwise the Vitruvian app when Vitruvian Speaker is its extension.
     public func applicationURL() -> URL? {
         if let app = installedApp(Self.bundleIdentifier) { return app }
         if extensionToolURL() != nil { return installedApp(Self.vitruvianBundleIdentifier) }
@@ -173,7 +173,7 @@ public struct WorkspaceHomeSpeakerLocator: HomeSpeakerLocating {
     public func binaryURL() -> URL? {
         if let tool = extensionToolURL() { return tool }
         guard let app = installedApp(Self.bundleIdentifier) else { return nil }
-        let binary = app.appendingPathComponent("Contents/MacOS/HomeSpeaker")
+        let binary = app.appendingPathComponent("Contents/MacOS/VitruvianSpeaker")
         return isExecutable(binary.path) ? binary : nil
     }
 
@@ -187,8 +187,8 @@ public struct WorkspaceHomeSpeakerLocator: HomeSpeakerLocating {
     }
 }
 
-/// Captured exit status and streams from running `Contents/MacOS/HomeSpeaker`.
-public struct HomeSpeakerCommandResult: Equatable, Sendable {
+/// Captured exit status and streams from running `Contents/MacOS/VitruvianSpeaker`.
+public struct VitruvianSpeakerCommandResult: Equatable, Sendable {
     public var exitCode: Int32
     public var stdout: Data
     public var stderr: Data
@@ -202,21 +202,21 @@ public struct HomeSpeakerCommandResult: Equatable, Sendable {
     }
 }
 
-/// Runs the HomeSpeaker binary directly with an argument array (never `/bin/sh`) off the main actor.
-public protocol HomeSpeakerCommandRunning: Sendable {
-    func run(executableURL: URL, arguments: [String], timeout: TimeInterval) async throws -> HomeSpeakerCommandResult
+/// Runs the Vitruvian Speaker binary directly with an argument array (never `/bin/sh`) off the main actor.
+public protocol VitruvianSpeakerCommandRunning: Sendable {
+    func run(executableURL: URL, arguments: [String], timeout: TimeInterval) async throws -> VitruvianSpeakerCommandResult
 }
 
 /// `Foundation.Process` runner executing off the main actor with a hard timeout and no shell interpolation.
-public struct FoundationHomeSpeakerCommandRunner: HomeSpeakerCommandRunning {
+public struct FoundationVitruvianSpeakerCommandRunner: VitruvianSpeakerCommandRunning {
     public init() {}
 
-    /// How long a timed-out HomeSpeaker gets after SIGTERM before SIGKILL, and how long its pipes are waited on.
+    /// How long a timed-out Vitruvian Speaker gets after SIGTERM before SIGKILL, and how long its pipes are waited on.
     static let killGrace: TimeInterval = 2
 
-    /// The variables HomeSpeaker reads to credit a `--say` to a coding agent (`BroadcastSource.inferred`). Courier
+    /// The variables Vitruvian Speaker reads to credit a `--say` to a coding agent (`BroadcastSource.inferred`). Courier
     /// started from an agent's shell inherits them, and its Read Aloud would then be named as that agent's reply,
-    /// so they are left out of HomeSpeaker's environment: a Read Aloud is the person's own.
+    /// so they are left out of Vitruvian Speaker's environment: a Read Aloud is the person's own.
     public static let agentMarkers: Set<String> = ["CLAUDECODE", "ANTIGRAVITY_AGENT", "OPENCODE", "AI_AGENT"]
 
     /// `environment` without `agentMarkers`.
@@ -228,7 +228,7 @@ public struct FoundationHomeSpeakerCommandRunner: HomeSpeakerCommandRunning {
         executableURL: URL,
         arguments: [String],
         timeout: TimeInterval
-    ) async throws -> HomeSpeakerCommandResult {
+    ) async throws -> VitruvianSpeakerCommandResult {
         try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 let process = Process()
@@ -311,7 +311,7 @@ public struct FoundationHomeSpeakerCommandRunner: HomeSpeakerCommandRunning {
                 _ = outputGroup.wait(timeout: .now() + Self.killGrace)
 
                 continuation.resume(
-                    returning: HomeSpeakerCommandResult(
+                    returning: VitruvianSpeakerCommandResult(
                         exitCode: process.terminationStatus,
                         stdout: stdoutData.value,
                         stderr: stderrData.value,
@@ -323,7 +323,7 @@ public struct FoundationHomeSpeakerCommandRunner: HomeSpeakerCommandRunning {
     }
 }
 
-/// System speech synthesis fallback when HomeSpeaker is not installed.
+/// System speech synthesis fallback when Vitruvian Speaker is not installed.
 @MainActor
 public protocol SpeechSynthesizing: AnyObject {
     var isSpeaking: Bool { get }
@@ -331,7 +331,7 @@ public protocol SpeechSynthesizing: AnyObject {
     func stop()
 }
 
-/// `AVSpeechSynthesizer` wrapper used when HomeSpeaker is not installed on this Mac.
+/// `AVSpeechSynthesizer` wrapper used when Vitruvian Speaker is not installed on this Mac.
 @MainActor
 public final class SystemSpeechSynthesizer: SpeechSynthesizing {
     private let synthesizer = AVSpeechSynthesizer()
@@ -355,15 +355,15 @@ public final class SystemSpeechSynthesizer: SpeechSynthesizing {
     }
 }
 
-/// Status shown in `Settings ▸ Integrations ▸ HomeSpeaker` (`docs/read-aloud.md` §3).
-public enum HomeSpeakerIntegrationStatus: Equatable, Sendable {
-    /// HomeSpeaker is installed and `courier_enabled` is `true` in `--state --json`.
+/// Status shown in `Settings ▸ Integrations ▸ Vitruvian Speaker` (`docs/read-aloud.md` §3).
+public enum VitruvianSpeakerIntegrationStatus: Equatable, Sendable {
+    /// Vitruvian Speaker is installed and `courier_enabled` is `true` in `--state --json`.
     case installedReading
-    /// HomeSpeaker is installed and `courier_enabled` is `false` in `--state --json`.
+    /// Vitruvian Speaker is installed and `courier_enabled` is `false` in `--state --json`.
     case installedNotReading
-    /// HomeSpeaker is installed, before `--state --json` is read or when reading it fails.
+    /// Vitruvian Speaker is installed, before `--state --json` is read or when reading it fails.
     case installed
-    /// HomeSpeaker is not installed; Read Aloud speaks with this Mac's system voice.
+    /// Vitruvian Speaker is not installed; Read Aloud speaks with this Mac's system voice.
     case notInstalled
 
     public var statusLine: String {
@@ -371,7 +371,7 @@ public enum HomeSpeakerIntegrationStatus: Equatable, Sendable {
         case .installedReading:
             String(localized: "Installed · reads Courier messages aloud")
         case .installedNotReading:
-            String(localized: "Installed · not reading Courier (turn it on in HomeSpeaker)")
+            String(localized: "Installed · not reading Courier (turn it on in Vitruvian Speaker)")
         case .installed:
             String(localized: "Installed")
         case .notInstalled:
@@ -379,9 +379,9 @@ public enum HomeSpeakerIntegrationStatus: Equatable, Sendable {
         }
     }
 
-    /// Parses `HomeSpeaker --state --json` output (shape in `apps/desktop/home-speaker/testdata/state_v1.json`).
+    /// Parses `VitruvianSpeaker --state --json` output (shape in `apps/desktop/vitruvian-speaker/testdata/state_v1.json`).
     /// Falls back to `.installed` if the JSON cannot be decoded or lacks a boolean `courier_enabled` setting.
-    public static func parseStateJSON(_ data: Data) -> HomeSpeakerIntegrationStatus {
+    public static func parseStateJSON(_ data: Data) -> VitruvianSpeakerIntegrationStatus {
         guard !data.isEmpty,
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let settings = root["settings"] as? [[String: Any]] else {
@@ -398,34 +398,34 @@ public enum HomeSpeakerIntegrationStatus: Equatable, Sendable {
     }
 }
 
-/// Coordinates Read Aloud across HomeSpeaker (`--say`) and this Mac's fallback voice (`AVSpeechSynthesizer`),
-/// and probes `HomeSpeaker --state --json` for Settings ▸ Integrations.
+/// Coordinates Read Aloud across Vitruvian Speaker (`--say`) and this Mac's fallback voice (`AVSpeechSynthesizer`),
+/// and probes `VitruvianSpeaker --state --json` for Settings ▸ Integrations.
 @MainActor
 public final class ReadAloudService: ObservableObject {
     public static let sayTimeout: TimeInterval = 60
     public static let stateTimeout: TimeInterval = 10
 
-    /// Number of in-flight `HomeSpeaker --say` runs; while > 0, the message menu shows disabled `"Reading Aloud…"`.
-    @Published public private(set) var activeHomeSpeakerCount: Int = 0
+    /// Number of in-flight `VitruvianSpeaker --say` runs; while > 0, the message menu shows disabled `"Reading Aloud…"`.
+    @Published public private(set) var activeVitruvianSpeakerCount: Int = 0
 
-    public var isReadingOnHomeSpeaker: Bool {
-        activeHomeSpeakerCount > 0
+    public var isReadingOnVitruvianSpeaker: Bool {
+        activeVitruvianSpeakerCount > 0
     }
 
-    public var isHomeSpeakerInstalled: Bool {
+    public var isVitruvianSpeakerInstalled: Bool {
         locator.binaryURL() != nil
     }
 
-    /// Receives calm failure notices (`"HomeSpeaker couldn’t read it aloud."` plus HomeSpeaker's error text).
+    /// Receives calm failure notices (`"Vitruvian Speaker couldn’t read it aloud."` plus Vitruvian Speaker's error text).
     public var onNotice: @MainActor (String) -> Void = { _ in }
 
-    private let locator: any HomeSpeakerLocating
-    private let runner: any HomeSpeakerCommandRunning
+    private let locator: any VitruvianSpeakerLocating
+    private let runner: any VitruvianSpeakerCommandRunning
     private let synthesizer: any SpeechSynthesizing
 
     public init(
-        locator: any HomeSpeakerLocating = WorkspaceHomeSpeakerLocator(),
-        runner: any HomeSpeakerCommandRunning = FoundationHomeSpeakerCommandRunner(),
+        locator: any VitruvianSpeakerLocating = WorkspaceVitruvianSpeakerLocator(),
+        runner: any VitruvianSpeakerCommandRunning = FoundationVitruvianSpeakerCommandRunner(),
         synthesizer: (any SpeechSynthesizing)? = nil
     ) {
         self.locator = locator
@@ -433,7 +433,7 @@ public final class ReadAloudService: ObservableObject {
         self.synthesizer = synthesizer ?? SystemSpeechSynthesizer()
     }
 
-    /// Reads `text` aloud (trimmed to 1,000 characters) via HomeSpeaker when installed, or this Mac's system voice.
+    /// Reads `text` aloud (trimmed to 1,000 characters) via Vitruvian Speaker when installed, or this Mac's system voice.
     public func readAloud(
         _ text: String,
         onFailureNotice: (@MainActor (String) -> Void)? = nil
@@ -443,8 +443,8 @@ public final class ReadAloudService: ObservableObject {
         let notify = onFailureNotice ?? onNotice
 
         if let binaryURL = locator.binaryURL() {
-            activeHomeSpeakerCount += 1
-            defer { activeHomeSpeakerCount = max(0, activeHomeSpeakerCount - 1) }
+            activeVitruvianSpeakerCount += 1
+            defer { activeVitruvianSpeakerCount = max(0, activeVitruvianSpeakerCount - 1) }
 
             do {
                 let result = try await runner.run(
@@ -469,8 +469,8 @@ public final class ReadAloudService: ObservableObject {
         synthesizer.speak(trimmed)
     }
 
-    /// Probes `HomeSpeaker --state --json` off the main actor when HomeSpeaker is installed.
-    public func fetchIntegrationStatus() async -> HomeSpeakerIntegrationStatus {
+    /// Probes `VitruvianSpeaker --state --json` off the main actor when Vitruvian Speaker is installed.
+    public func fetchIntegrationStatus() async -> VitruvianSpeakerIntegrationStatus {
         guard let binaryURL = locator.binaryURL() else {
             return .notInstalled
         }
@@ -484,27 +484,27 @@ public final class ReadAloudService: ObservableObject {
             guard !result.timedOut, result.exitCode == 0 else {
                 return .installed
             }
-            return HomeSpeakerIntegrationStatus.parseStateJSON(result.stdout)
+            return VitruvianSpeakerIntegrationStatus.parseStateJSON(result.stdout)
         } catch {
             return .installed
         }
     }
 
-    /// Launches or activates HomeSpeaker (`Open HomeSpeaker` in Settings ▸ Integrations).
+    /// Launches or activates Vitruvian Speaker (`Open Vitruvian Speaker` in Settings ▸ Integrations).
     @discardableResult
-    public func openHomeSpeaker() async -> Bool {
+    public func openVitruvianSpeaker() async -> Bool {
         guard let appURL = locator.applicationURL() else { return false }
         return await locator.openApplication(at: appURL)
     }
 
     public static func failureNotice(detail: String?) -> String {
         guard let detail = detail?.trimmingCharacters(in: .whitespacesAndNewlines), !detail.isEmpty else {
-            return String(localized: "HomeSpeaker couldn’t read it aloud.")
+            return String(localized: "Vitruvian Speaker couldn’t read it aloud.")
         }
-        return String(localized: "HomeSpeaker couldn’t read it aloud. \(detail)")
+        return String(localized: "Vitruvian Speaker couldn’t read it aloud. \(detail)")
     }
 
-    /// Extracts HomeSpeaker's own error text from JSON or plain-text `stderr` / `stdout`.
+    /// Extracts Vitruvian Speaker's own error text from JSON or plain-text `stderr` / `stdout`.
     public static func extractFailureDetail(stdout: Data, stderr: Data) -> String? {
         for stream in [stderr, stdout] {
             if let jsonError = parseJSONError(from: stream) {

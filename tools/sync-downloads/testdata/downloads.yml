@@ -101,35 +101,35 @@ categories:
         extensions_url: /ai/#eco-vitruvian-atrium
         extensions_label: Browse Desktop Extensions
 
-      - id: home-speaker
-        name: HomeSpeaker
+      - id: vitruvian-speaker
+        name: Vitruvian Speaker
         version: "1.36.0"
         summary: >-
           A macOS menu bar app that announces agent summaries, chat notifications, and spoken
           briefings aloud on Google Home, Nest speakers, or local system speech synthesis with quiet hours.
         platforms: ["macOS Universal", "Apple Silicon", "Intel"]
-        brew_cask: VitruvianSoftware/tap/home-speaker
+        brew_cask: VitruvianSoftware/tap/vitruvian-speaker
         downloads:
           - label: Universal DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.36.0/HomeSpeaker-1.36.0-universal.dmg
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-speaker-v1.36.0/VitruvianSpeaker-1.36.0-universal.dmg
             size: 5.2 MB
             arch: Universal
           - label: Apple Silicon DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.36.0/HomeSpeaker-1.36.0-arm64.dmg
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-speaker-v1.36.0/VitruvianSpeaker-1.36.0-arm64.dmg
             size: 3.6 MB
             arch: arm64
           - label: Intel x86_64 DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.36.0/HomeSpeaker-1.36.0-x86_64.dmg
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-speaker-v1.36.0/VitruvianSpeaker-1.36.0-x86_64.dmg
             size: 3.7 MB
             arch: x86_64
           - label: Universal ZIP
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.36.0/HomeSpeaker-1.36.0-universal.zip
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-speaker-v1.36.0/VitruvianSpeaker-1.36.0-universal.zip
             size: 5.2 MB
             arch: Universal
-        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=home-speaker
-        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/home-speaker
-        extensions_url: /ai/#dev.vitruvian.homespeaker
-        extensions_label: HomeSpeaker Extension
+        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=vitruvian-speaker
+        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-speaker
+        extensions_url: /ai/#dev.vitruvian.speaker
+        extensions_label: Vitruvian Speaker Extension
 
   - id: mobile
     title: Mobile & Companion Apps

@@ -53,7 +53,7 @@ pulumi_go_test(
         "//apps/antigravity/plugins/gh-watch:.github/FUNDING.yml",
         "//apps/cli/devx:.github/FUNDING.yml",
         "//apps/cli/homelab:.github/FUNDING.yml",
-        "//apps/desktop/home-speaker:.github/FUNDING.yml",
+        "//apps/desktop/vitruvian-speaker:.github/FUNDING.yml",
         "//apps/desktop/vitruvian-atrium:.github/FUNDING.yml",
         "//apps/desktop/vitruvian-code:.github/FUNDING.yml",
         "//apps/desktop/vitruvian-tool-github:.github/FUNDING.yml",

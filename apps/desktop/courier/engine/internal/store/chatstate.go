@@ -263,7 +263,7 @@ func (s *Store) SetLowPriority(ctx context.Context, roomIDs []string, on bool) (
 	return s.setFlag(ctx, roomIDs, on, func(p *prefs) *bool { return &p.lowPriority })
 }
 
-// SetReadAloud sets chats' per-chat HomeSpeaker announcement override ("", "always", or "never"), and returns the
+// SetReadAloud sets chats' per-chat Vitruvian Speaker announcement override ("", "always", or "never"), and returns the
 // ones that changed. Any other value is ErrBadValue.
 func (s *Store) SetReadAloud(ctx context.Context, roomIDs []string, value string) ([]string, error) {
 	switch value {

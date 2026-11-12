@@ -44,7 +44,7 @@ Component package providing implementation for `apps/mobile/android-remote/macag
 - [exec.rs:21]: `//! Act-tier execution (`POST /v1/exec`), clipboard (`GET/POST /v1/clipboard`),`
 - [exec.rs:208]: `let mut child = match cmd.spawn() {`
 - [exec.rs:226]: `let out_handle = thread::spawn(move || {`
-- [homespeaker.rs:56]: `/// Returned with HTTP 409 when a sign-in, grant-chat, or disconnect-chat job...`
+- [speaker.rs:56]: `/// Returned with HTTP 409 when a sign-in, grant-chat, or disconnect-chat job...`
 - [hook.rs:142]: `if let Some(out) = permission_hook_output(stdin, "http://127.0.0.1:9949", &to...`
 - [http_util.rs:21]: `//! Zero-dependency (std-only) HTTP/1.1 + SSE server, client, and test harness.`
 - [http_util.rs:463]: `/// Serves a single HTTP connection.`

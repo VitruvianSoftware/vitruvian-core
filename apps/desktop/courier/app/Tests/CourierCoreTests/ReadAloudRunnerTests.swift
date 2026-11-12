@@ -5,9 +5,9 @@ import XCTest
 
 @testable import CourierCore
 
-/// Exercises `FoundationHomeSpeakerCommandRunner` against real system binaries without invoking speech output.
+/// Exercises `FoundationVitruvianSpeakerCommandRunner` against real system binaries without invoking speech output.
 final class ReadAloudRunnerTests: XCTestCase {
-    private let runner = FoundationHomeSpeakerCommandRunner()
+    private let runner = FoundationVitruvianSpeakerCommandRunner()
 
     func testPrintfExitZeroAndStdout() async throws {
         let result = try await runner.run(
@@ -73,7 +73,7 @@ final class ReadAloudRunnerTests: XCTestCase {
     func testMissingExecutableThrows() async {
         do {
             _ = try await runner.run(
-                executableURL: URL(fileURLWithPath: "/nonexistent/HomeSpeaker"),
+                executableURL: URL(fileURLWithPath: "/nonexistent/VitruvianSpeaker"),
                 arguments: [],
                 timeout: 1
             )

@@ -58,7 +58,8 @@ pub const CLAUDE_SESSION_WINDOW: Duration = Duration::from_secs(4 * 3600);
 pub const TRANSCRIPT_TAIL: usize = 64 << 10;
 pub const NOT_CONFIGURED_KUBE: &str = "not configured (--kube-context)";
 pub const DATA_VOLUME: &str = "/System/Volumes/Data";
-pub const HOME_SPEAKER_BINARY: &str = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker";
+pub const SPEAKER_BINARY: &str =
+    "/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker";
 
 pub const CMD_TIMEOUT: Duration = Duration::from_secs(10);
 pub const TOOL_TIMEOUT: Duration = Duration::from_secs(5);
@@ -77,7 +78,7 @@ pub const KNOWN_TOOLS: &[&str] = &[
     "agy",
     "claude",
     "docker",
-    "homespeaker",
+    "speaker",
     "kubectl",
     "limactl",
     "ollama",
@@ -373,13 +374,13 @@ pub fn tool_reason(name: &str, stderr: &str, err: &str) -> String {
 pub fn tool_presence(names: &[&str]) -> Tools {
     let mut tools = BTreeMap::new();
     for &n in names {
-        if n == "homespeaker" {
-            let avail = Path::new(HOME_SPEAKER_BINARY).exists();
+        if n == "speaker" {
+            let avail = Path::new(SPEAKER_BINARY).exists();
             tools.insert(
                 n.to_string(),
                 Tool {
                     available: avail,
-                    path: HOME_SPEAKER_BINARY.to_string(),
+                    path: SPEAKER_BINARY.to_string(),
                 },
             );
             continue;

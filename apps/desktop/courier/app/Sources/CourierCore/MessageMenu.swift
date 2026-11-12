@@ -48,7 +48,7 @@ public struct MessageMenuItem: Equatable, Sendable, Identifiable {
         case translateTo(String)
         /// Transcribes a voice note inline below its waveform (`VoiceNoteTranscriptStore`).
         case transcribeVoiceNote
-        /// Speaks the message aloud via HomeSpeaker (`--say`) or this Mac's voice (`AVSpeechSynthesizer`).
+        /// Speaks the message aloud via Vitruvian Speaker (`--say`) or this Mac's voice (`AVSpeechSynthesizer`).
         case readAloud
         /// A line that only says something ("Sent at 14:02"), always greyed.
         case info

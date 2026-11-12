@@ -2,7 +2,7 @@
 
 A small macOS menu bar app for the [Mac agent](../macagent/README.md). The
 agent runs hidden in the background; this app lets you see it and steer it
-without a terminal. It is a separate app from HomeSpeaker on purpose.
+without a terminal. It is a separate app from Vitruvian Speaker on purpose.
 
 ## What it shows
 

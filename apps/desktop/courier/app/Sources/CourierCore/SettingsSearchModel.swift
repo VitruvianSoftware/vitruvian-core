@@ -882,11 +882,11 @@ public final class SettingsNavigationModel: ObservableObject {
 
         // MARK: - Integrations (7)
         SettingDefinition(
-            id: "integrations.homeSpeaker",
+            id: "integrations.vitruvianSpeaker",
             pane: .integrations,
-            section: "HomeSpeaker",
-            title: "HomeSpeaker",
-            keywords: ["homespeaker", "read aloud", "voice", "announce", "speaker"]
+            section: "Vitruvian Speaker",
+            title: "Vitruvian Speaker",
+            keywords: ["vitruvian-speaker", "read aloud", "voice", "announce", "speaker"]
         ),
         SettingDefinition(
             id: "integrations.localAPI",
@@ -1046,7 +1046,7 @@ public final class SettingsNavigationModel: ObservableObject {
         "plan.overview",
         "plan.features",
         // IntegrationsSettingsPane
-        "integrations.homeSpeaker",
+        "integrations.vitruvianSpeaker",
         "integrations.localAPI",
         "integrations.remoteAccess",
         "integrations.connections",

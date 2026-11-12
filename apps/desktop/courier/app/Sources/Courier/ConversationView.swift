@@ -64,7 +64,7 @@ struct ConversationView: View {
                     now: { conversation.currentTime },
                     timerChoices: conversation.timerChoices,
                     onSelectTimer: { choice in Task { await conversation.setTimer(choice) } },
-                    readAloud: messageActions.readAloud.isHomeSpeakerInstalled
+                    readAloud: messageActions.readAloud.isVitruvianSpeakerInstalled
                         ? inbox.row(of: info.roomID)?.effectiveReadAloud : nil,
                     onSelectReadAloud: { choice in Task { await inbox.setReadAloud(choice, ids: [info.roomID]) } },
                     onEditTitleAndAvatar: {
@@ -876,7 +876,7 @@ private struct ConversationHeaderContainer: View {
             row: headerRow,
             networkName: headerRow.map { inbox.networkName($0.network) },
             conversation: conversation,
-            readAloud: readAloud.isHomeSpeakerInstalled ? headerRow?.effectiveReadAloud : nil,
+            readAloud: readAloud.isVitruvianSpeakerInstalled ? headerRow?.effectiveReadAloud : nil,
             onSelectReadAloud: { choice in
                 guard let roomID = headerRow?.roomID else { return }
                 Task { await inbox.setReadAloud(choice, ids: [roomID]) }
@@ -942,7 +942,7 @@ struct ConversationHeader: View {
     let row: InboxRow?
     let networkName: String?
     @ObservedObject var conversation: ConversationModel
-    /// The chat's Read Aloud on HomeSpeaker choice; nil hides the menu (HomeSpeaker is not installed).
+    /// The chat's Read Aloud on Vitruvian Speaker choice; nil hides the menu (Vitruvian Speaker is not installed).
     var readAloud: ChatReadAloud? = nil
     var onSelectReadAloud: (ChatReadAloud) -> Void = { _ in }
     var redactNamesAndPictures: Bool = false
@@ -1019,9 +1019,9 @@ struct ConversationHeader: View {
             .help(conversation.composer.aiProvider.isAvailable ? "" : String(localized: "Set up AI in Settings"))
             if let readAloud {
                 Divider()
-                Menu(String(localized: "Read Aloud on HomeSpeaker")) {
+                Menu(String(localized: "Read Aloud on Vitruvian Speaker")) {
                     Picker(
-                        String(localized: "Read Aloud on HomeSpeaker"),
+                        String(localized: "Read Aloud on Vitruvian Speaker"),
                         selection: Binding(get: { readAloud }, set: onSelectReadAloud)
                     ) {
                         ForEach(ChatReadAloud.settable, id: \.rawValue) { choice in

@@ -331,7 +331,7 @@ CREATE TABLE settings (
 	// chat a floor (room_prefs.threads_read_*) below which every thread is read. The floor starts at the later of the
 	// chat's two read markers, so nothing read before this version comes back unread.
 	migration12SQL,
-	// 13: per-chat HomeSpeaker Read Aloud override ('', 'always', 'never').
+	// 13: per-chat Vitruvian Speaker Read Aloud override ('', 'always', 'never').
 	`ALTER TABLE room_prefs ADD COLUMN read_aloud TEXT NOT NULL DEFAULT '';`,
 }
 

@@ -236,7 +236,7 @@ exports_files(
 # because Gazelle cannot un-exclude a child of an excluded directory.
 # gazelle:exclude apps/antigravity
 # gazelle:exclude apps/cli/homelab
-# gazelle:exclude apps/desktop/home-speaker
+# gazelle:exclude apps/desktop/vitruvian-speaker
 # gazelle:exclude apps/desktop/vitruvian-atrium
 # gazelle:exclude apps/desktop/vitruvian-code
 # gazelle:exclude apps/desktop/vitruvian-tool-github

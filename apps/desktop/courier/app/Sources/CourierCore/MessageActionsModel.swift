@@ -127,7 +127,7 @@ public final class MessageActionsModel: ObservableObject {
     }
     /// Where "Create quick reply from draft" saves; nil offers none.
     public var quickReplies: QuickReplies?
-    /// Shared Read Aloud service (`HomeSpeaker --say` or `AVSpeechSynthesizer` fallback).
+    /// Shared Read Aloud service (`VitruvianSpeaker --say` or `AVSpeechSynthesizer` fallback).
     public let readAloud: ReadAloudService
     /// How long a forward waits for the engine's answer; nil is the client's own limit. Tests shorten it.
     var forwardTimeout: TimeInterval?

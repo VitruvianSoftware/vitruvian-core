@@ -2520,21 +2520,21 @@
 "OpenAI rate limit reached. Try again in a moment." = "OpenAI rate limit reached. Try again in a moment.";
 "Couldn’t reach OpenAI. Check your internet connection." = "Couldn’t reach OpenAI. Check your internet connection.";
 
-/* Read Aloud (docs/read-aloud.md): a message's menu, the buttons beside Copy, what is spoken, and HomeSpeaker's row. */
+/* Read Aloud (docs/read-aloud.md): a message's menu, the buttons beside Copy, what is spoken, and Vitruvian Speaker's row. */
 "Read Aloud" = "Read Aloud";
 "Reading Aloud…" = "Reading Aloud…";
 "Read aloud" = "Read aloud";
 "You said: %@" = "You said: %@";
 "%@ says: %@" = "%1$@ says: %2$@";
-"Read Aloud on HomeSpeaker" = "Read Aloud on HomeSpeaker";
+"Read Aloud on Vitruvian Speaker" = "Read Aloud on Vitruvian Speaker";
 "Every Message" = "Every Message";
 "Default" = "Default";
 "Muted chats are never read aloud." = "Muted chats are never read aloud.";
-"HomeSpeaker" = "HomeSpeaker";
-"Open HomeSpeaker" = "Open HomeSpeaker";
+"Vitruvian Speaker" = "Vitruvian Speaker";
+"Open Vitruvian Speaker" = "Open Vitruvian Speaker";
 "Installed" = "Installed";
 "Installed · reads Courier messages aloud" = "Installed · reads Courier messages aloud";
-"Installed · not reading Courier (turn it on in HomeSpeaker)" = "Installed · not reading Courier (turn it on in HomeSpeaker)";
+"Installed · not reading Courier (turn it on in Vitruvian Speaker)" = "Installed · not reading Courier (turn it on in Vitruvian Speaker)";
 "Not installed · Read Aloud uses this Mac’s voice" = "Not installed · Read Aloud uses this Mac’s voice";
-"HomeSpeaker couldn’t read it aloud." = "HomeSpeaker couldn’t read it aloud.";
-"HomeSpeaker couldn’t read it aloud. %@" = "HomeSpeaker couldn’t read it aloud. %@";
+"Vitruvian Speaker couldn’t read it aloud." = "Vitruvian Speaker couldn’t read it aloud.";
+"Vitruvian Speaker couldn’t read it aloud. %@" = "Vitruvian Speaker couldn’t read it aloud. %@";

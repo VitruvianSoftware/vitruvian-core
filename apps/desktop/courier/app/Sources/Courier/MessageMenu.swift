@@ -213,7 +213,7 @@ enum MessageRowActions {
                     responseLanguage: composer.aiPreferences.responseLanguage,
                     translationLanguages: composer.aiPreferences.translationLanguages,
                     canReadAloud: canReadAloud,
-                    isReadingAloud: messageActions.readAloud.isReadingOnHomeSpeaker
+                    isReadingAloud: messageActions.readAloud.isReadingOnVitruvianSpeaker
                 )
             },
             perform: { command, id in

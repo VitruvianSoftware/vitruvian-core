@@ -40,7 +40,7 @@ pub const APPS: &[&str] = &[
     "apps/cli/homelab",
     "apps/mcp/vitruvian-slack-mcp",
     "apps/desktop/vitruvian-code",
-    "apps/desktop/home-speaker",
+    "apps/desktop/vitruvian-speaker",
 ];
 
 /// The `git ls-files` pathspecs whose headers are content-checked.

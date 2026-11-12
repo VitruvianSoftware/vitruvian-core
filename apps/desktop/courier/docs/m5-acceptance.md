@@ -91,7 +91,7 @@ Each line is one row of the inventory's `ledger.tsv`, kept under its row name. T
 
 These were in the reference app but have no ledger row of their own. They are out of scope for milestone 5.
 
-- The REST API (`/v1`) and its OpenAPI spec endpoint, except two read-only endpoints added after milestone 5 so HomeSpeaker can read chats from Courier: `GET /v1/accounts` and `GET /v1/messages/search`. They are on the same port as MCP, take the same tokens, and keep the same Remote Access and Host rules. `GET /v1/messages/search` may leave out `query` and list the messages its filters pick, such as everything after `dateAfter`. Nothing else under `/v1` is served, and nothing there can send.
+- The REST API (`/v1`) and its OpenAPI spec endpoint, except two read-only endpoints added after milestone 5 so Vitruvian Speaker can read chats from Courier: `GET /v1/accounts` and `GET /v1/messages/search`. They are on the same port as MCP, take the same tokens, and keep the same Remote Access and Host rules. `GET /v1/messages/search` may leave out `query` and list the messages its filters pick, such as everything after `dateAfter`. Nothing else under `/v1` is served, and nothing there can send.
 - The OAuth flow third-party apps used to get a token. In Courier you make a token in Settings, or a client asks with `POST /v0/pair` and you answer the alert.
 - The approval dialog's "Expires in" choice. Courier's tokens last until revoked.
 - "Join Developer Community chat".

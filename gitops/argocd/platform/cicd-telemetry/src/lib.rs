@@ -90,7 +90,7 @@ pub const WORKFLOW_NAMES: &[&str] = &[
     "delivery-drift",
     "gitops-validate",
     "gods-eye-view-image",
-    "home-speaker-release",
+    "vitruvian-speaker-release",
     "iot-esp32-s3",
     "iot-esp32-s3-release",
     "vitruvian-slack-mcp image update PR",

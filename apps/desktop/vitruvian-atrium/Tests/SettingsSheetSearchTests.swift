@@ -40,9 +40,9 @@ enum SettingsSheetSearchTests {
          "preferences": [{"id": "project", "title": {"en": "Project"}, "type": "string", "default": "web"}]}
         """#)
 
-    /// A page shaped as HomeSpeaker's: sections, sub-headings, a caption
+    /// A page shaped as Vitruvian Speaker's: sections, sub-headings, a caption
     /// after a control, and help.
-    static let homeSpeaker = #"""
+    static let vitruvianSpeaker = #"""
         {"blocks": [
           {"type": "heading", "text": "Speaking", "section": true},
           {"type": "toggle", "id": "speak", "title": "Speak", "value": true, "help": "Say things on the home speakers."},
@@ -95,7 +95,7 @@ enum SettingsSheetSearchTests {
     }
 
     static func announceFindsBeeperAnnounce(_ suite: TestSuite) {
-        index(homeSpeaker) { _, index in
+        index(vitruvianSpeaker) { _, index in
             let found = index.matches("announce")
             suite.expect(found.map(\.title) == ["Announce"] && found.first?.section == "Chats"
                              && found.first?.anchor == .panelItem(9),
@@ -118,7 +118,7 @@ enum SettingsSheetSearchTests {
     }
 
     static func aMatchingSubheadingKeepsItsGroup(_ suite: TestSuite) {
-        index(homeSpeaker) { _, index in
+        index(vitruvianSpeaker) { _, index in
             suite.expect(index.matches("beeper").map(\.title) == ["Read messages", "Announce", "Networks"],
                          "a sub-heading that matches keeps every setting under it, and only those: "
                              + "\(index.matches("beeper").map(\.title))")
@@ -131,7 +131,7 @@ enum SettingsSheetSearchTests {
     }
 
     static func aSectionAndAMenusOptionsAreSearched(_ suite: TestSuite) {
-        index(homeSpeaker) { _, index in
+        index(vitruvianSpeaker) { _, index in
             let chats = ["Read Slack", "Read", "Read messages", "Announce", "Networks"]
             suite.expect(index.matches("chats").map(\.title) == chats
                              && index.kept("chats").links.map(\.title) == ["Chats"],
@@ -162,7 +162,7 @@ enum SettingsSheetSearchTests {
     }
 
     static func aCaptionAfterAControlIsItsHelp(_ suite: TestSuite) {
-        index(homeSpeaker) { _, index in
+        index(vitruvianSpeaker) { _, index in
             suite.expect(index.matches("yourself").map(\.title) == ["Announce"],
                          "a caption directly after a control with no help is that control's help")
             suite.expect(index.matches("home speakers").map(\.title) == ["Speak"],
@@ -173,7 +173,7 @@ enum SettingsSheetSearchTests {
     }
 
     static func caseAndAccentsDoNotMatter(_ suite: TestSuite) {
-        index(homeSpeaker) { _, index in
+        index(vitruvianSpeaker) { _, index in
             suite.expect(index.matches("QUIET").map(\.title) == ["Quiet hours"]
                              && index.matches("réad sláck").map(\.title) == ["Read Slack", "Read"],
                          "a search ignores the letters' case and accents, in what is typed and in what it finds")
@@ -183,7 +183,7 @@ enum SettingsSheetSearchTests {
     }
 
     static func vitruvianRowsAreSearchedToo(_ suite: TestSuite) {
-        index(homeSpeaker) { detail, index in
+        index(vitruvianSpeaker) { detail, index in
             let found = index.matches("island")
             suite.expect(found.map(\.anchor) == [.showsInIsland, .showsStatus]
                              && found.allSatisfy { $0.section == "Vitruvian Atrium" && $0.sectionAnchor == .vitruvianHeading },
@@ -198,7 +198,7 @@ enum SettingsSheetSearchTests {
     }
 
     static func noMatchSaysSo(_ suite: TestSuite) {
-        index(homeSpeaker) { _, index in
+        index(vitruvianSpeaker) { _, index in
             suite.expect(index.matches("zebra").isEmpty && index.kept("zebra").nothingFound
                              && index.kept("zebra").links.isEmpty && !index.kept("zebra").saysNotSearchable,
                          "a search that finds nothing keeps nothing, and the sheet says so")
@@ -225,13 +225,13 @@ enum SettingsSheetSearchTests {
         }
         suite.expect(english.pageNotSearchable == "This page can’t be searched.",
                      "the sheet says it cannot search the page")
-        index(homeSpeaker) { _, index in
+        index(vitruvianSpeaker) { _, index in
             suite.expect(index.searchable, "a page of blocks can be searched")
         }
     }
 
     static func jumpRowListsEverySection(_ suite: TestSuite) {
-        index(homeSpeaker) { detail, index in
+        index(vitruvianSpeaker) { detail, index in
             suite.expect(index.sections == ["Vitruvian Atrium", "Speaking", "Chats", "Quiet hours", detail.commandsTitle,
                                             detail.usesTitle]
                              && index.anchors == [.vitruvianHeading, .panelItem(0), .panelItem(3), .panelItem(12),
@@ -262,13 +262,13 @@ enum SettingsSheetSearchTests {
     /// and links read only that page, never Vitruvian Atrium's own rows, the
     /// commands or what the extension uses.
     static func theIslandPaneIndexesThePageAlone(_ suite: TestSuite) {
-        let page = SettingsSheetIndex(page: ToolPanelScreensTests.content(homeSpeaker), isWeb: false, title: "Settings")
+        let page = SettingsSheetIndex(page: ToolPanelScreensTests.content(vitruvianSpeaker), isWeb: false, title: "Settings")
         suite.expect(page.sections == ["Speaking", "Chats", "Quiet hours"]
                          && page.anchors == [.panelItem(0), .panelItem(3), .panelItem(12)]
                          && page.entries.allSatisfy { if case .panelItem = $0.anchor { return true } else { return false } },
                      "the island pane's links are the page's own sections, and its search finds only the page's "
                          + "settings: \(page.sections)")
-        index(homeSpeaker) { _, sheet in
+        index(vitruvianSpeaker) { _, sheet in
             suite.expect(page.matches("announce").map(\.anchor) == sheet.matches("announce").map(\.anchor),
                          "a search of the page finds what the Extensions sheet's search finds in it")
         }
@@ -282,7 +282,7 @@ enum SettingsSheetSearchTests {
     }
 
     static func theSectionInViewIsLit(_ suite: TestSuite) {
-        index(homeSpeaker) { _, index in
+        index(vitruvianSpeaker) { _, index in
             let tops: [SettingsSheetIndex.Anchor: CGFloat] = [.vitruvianHeading: -400, .panelItem(0): -180,
                                                                .panelItem(3): 12, .panelItem(12): 300,
                                                                .commands: 520, .uses: 610]

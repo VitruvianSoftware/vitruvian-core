@@ -5,28 +5,28 @@ import XCTest
 
 @testable import CourierCore
 
-/// Read Aloud (docs/read-aloud.md): what is spoken, where it is spoken (HomeSpeaker's `--say`, or this Mac's voice),
-/// what happens when HomeSpeaker fails, and the status Settings ▸ Integrations shows from `--state --json`. HomeSpeaker
+/// Read Aloud (docs/read-aloud.md): what is spoken, where it is spoken (Vitruvian Speaker's `--say`, or this Mac's voice),
+/// what happens when Vitruvian Speaker fails, and the status Settings ▸ Integrations shows from `--state --json`. Vitruvian Speaker
 /// and the speech synthesizer are fakes: nothing here speaks. All data here is made up.
 @MainActor
 final class ReadAloudTests: XCTestCase {
     // MARK: Fakes
 
-    private struct FakeLocator: HomeSpeakerLocating {
+    private struct FakeLocator: VitruvianSpeakerLocating {
         var installed: Bool
 
         func applicationURL() -> URL? {
-            installed ? URL(fileURLWithPath: "/Applications/HomeSpeaker.app") : nil
+            installed ? URL(fileURLWithPath: "/Applications/Vitruvian Speaker.app") : nil
         }
 
         func binaryURL() -> URL? {
-            installed ? URL(fileURLWithPath: "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker") : nil
+            installed ? URL(fileURLWithPath: "/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker") : nil
         }
 
         func openApplication(at url: URL) async -> Bool { true }
     }
 
-    private final class FakeRunner: HomeSpeakerCommandRunning, @unchecked Sendable {
+    private final class FakeRunner: VitruvianSpeakerCommandRunning, @unchecked Sendable {
         struct Call: Equatable {
             var executable: String
             var arguments: [String]
@@ -35,18 +35,18 @@ final class ReadAloudTests: XCTestCase {
 
         private let lock = NSLock()
         private var recorded: [Call] = []
-        var result: HomeSpeakerCommandResult
+        var result: VitruvianSpeakerCommandResult
         var error: Error?
 
-        init(result: HomeSpeakerCommandResult = HomeSpeakerCommandResult(exitCode: 0)) {
+        init(result: VitruvianSpeakerCommandResult = VitruvianSpeakerCommandResult(exitCode: 0)) {
             self.result = result
         }
 
         var calls: [Call] { lock.withLock { recorded } }
 
         func run(executableURL: URL, arguments: [String], timeout: TimeInterval) async throws
-            -> HomeSpeakerCommandResult {
-            let (result, error) = lock.withLock { () -> (HomeSpeakerCommandResult, Error?) in
+            -> VitruvianSpeakerCommandResult {
+            let (result, error) = lock.withLock { () -> (VitruvianSpeakerCommandResult, Error?) in
                 recorded.append(Call(executable: executableURL.path, arguments: arguments, timeout: timeout))
                 return (self.result, self.error)
             }
@@ -179,21 +179,21 @@ final class ReadAloudTests: XCTestCase {
 
     // MARK: Where it is spoken
 
-    func testWithHomeSpeakerInstalledItRunsSayWithTheTextAsOneArgument() async {
+    func testWithVitruvianSpeakerInstalledItRunsSayWithTheTextAsOneArgument() async {
         let runner = FakeRunner()
         let synthesizer = FakeSynthesizer()
         let service = service(installed: true, runner: runner, synthesizer: synthesizer)
         let said = "Ann says: it's \"fine\"; $(rm -rf /) && `echo`"
         await service.readAloud(said)
         XCTAssertEqual(runner.calls, [
-            FakeRunner.Call(executable: "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker",
+            FakeRunner.Call(executable: "/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker",
                             arguments: ["--say", said], timeout: 60),
         ])
-        XCTAssertEqual(synthesizer.spoken, [], "this Mac's voice is only for when HomeSpeaker is not installed")
-        XCTAssertFalse(service.isReadingOnHomeSpeaker, "done")
+        XCTAssertEqual(synthesizer.spoken, [], "this Mac's voice is only for when Vitruvian Speaker is not installed")
+        XCTAssertFalse(service.isReadingOnVitruvianSpeaker, "done")
     }
 
-    func testWithoutHomeSpeakerItSpeaksOnThisMac() async {
+    func testWithoutVitruvianSpeakerItSpeaksOnThisMac() async {
         let runner = FakeRunner()
         let synthesizer = FakeSynthesizer()
         let service = service(installed: false, runner: runner, synthesizer: synthesizer)
@@ -219,53 +219,53 @@ final class ReadAloudTests: XCTestCase {
         XCTAssertEqual(runner.calls.first?.arguments.last?.count, 1_000)
     }
 
-    // MARK: When HomeSpeaker cannot
+    // MARK: When Vitruvian Speaker cannot
 
-    func testAFailureIsACalmNoticeWithHomeSpeakersOwnWords() async {
-        let runner = FakeRunner(result: HomeSpeakerCommandResult(
+    func testAFailureIsACalmNoticeWithVitruvianSpeakersOwnWords() async {
+        let runner = FakeRunner(result: VitruvianSpeakerCommandResult(
             exitCode: 1, stderr: Data("error: No speakers are turned on.\n".utf8)))
         var notices: [String] = []
         let service = service(installed: true, runner: runner)
         await service.readAloud("hello") { notices.append($0) }
-        XCTAssertEqual(notices, ["HomeSpeaker couldn’t read it aloud. No speakers are turned on."])
-        XCTAssertFalse(service.isReadingOnHomeSpeaker)
+        XCTAssertEqual(notices, ["Vitruvian Speaker couldn’t read it aloud. No speakers are turned on."])
+        XCTAssertFalse(service.isReadingOnVitruvianSpeaker)
     }
 
     func testATimeoutIsANoticeAndClearsReadingAloud() async {
-        // The runner killed HomeSpeaker after the 60 s limit: exit status is whatever the signal left (here 0).
-        let runner = FakeRunner(result: HomeSpeakerCommandResult(exitCode: 0, timedOut: true))
+        // The runner killed Vitruvian Speaker after the 60 s limit: exit status is whatever the signal left (here 0).
+        let runner = FakeRunner(result: VitruvianSpeakerCommandResult(exitCode: 0, timedOut: true))
         var notices: [String] = []
         let service = service(installed: true, runner: runner)
         await service.readAloud("hello") { notices.append($0) }
-        XCTAssertEqual(notices, ["HomeSpeaker couldn’t read it aloud."])
-        XCTAssertFalse(service.isReadingOnHomeSpeaker, "“Reading Aloud…” must clear after a timeout")
+        XCTAssertEqual(notices, ["Vitruvian Speaker couldn’t read it aloud."])
+        XCTAssertFalse(service.isReadingOnVitruvianSpeaker, "“Reading Aloud…” must clear after a timeout")
     }
 
     func testAFailureWithNothingToSayIsJustTheNotice() async {
-        let runner = FakeRunner(result: HomeSpeakerCommandResult(exitCode: 1))
+        let runner = FakeRunner(result: VitruvianSpeakerCommandResult(exitCode: 1))
         var notices: [String] = []
         let service = service(installed: true, runner: runner)
         await service.readAloud("hello") { notices.append($0) }
-        XCTAssertEqual(notices, ["HomeSpeaker couldn’t read it aloud."])
+        XCTAssertEqual(notices, ["Vitruvian Speaker couldn’t read it aloud."])
     }
 
     func testAJSONErrorIsReadToo() async {
-        let runner = FakeRunner(result: HomeSpeakerCommandResult(
+        let runner = FakeRunner(result: VitruvianSpeakerCommandResult(
             exitCode: 1, stdout: Data(#"{"error":"Quiet hours are on."}"#.utf8)))
         var notices: [String] = []
         let service = service(installed: true, runner: runner)
         await service.readAloud("hello") { notices.append($0) }
-        XCTAssertEqual(notices, ["HomeSpeaker couldn’t read it aloud. Quiet hours are on."])
+        XCTAssertEqual(notices, ["Vitruvian Speaker couldn’t read it aloud. Quiet hours are on."])
     }
 
-    func testAHomeSpeakerThatCannotBeRunIsTheSameNotice() async {
+    func testAVitruvianSpeakerThatCannotBeRunIsTheSameNotice() async {
         struct Boom: LocalizedError { var errorDescription: String? { "Not permitted." } }
         let runner = FakeRunner()
         runner.error = Boom()
         var notices: [String] = []
         let service = service(installed: true, runner: runner)
         await service.readAloud("hello") { notices.append($0) }
-        XCTAssertEqual(notices, ["HomeSpeaker couldn’t read it aloud. Not permitted."])
+        XCTAssertEqual(notices, ["Vitruvian Speaker couldn’t read it aloud. Not permitted."])
     }
 
     func testASuccessSaysNothing() async {
@@ -275,7 +275,7 @@ final class ReadAloudTests: XCTestCase {
         XCTAssertEqual(notices, [])
     }
 
-    // MARK: Settings ▸ Integrations ▸ HomeSpeaker
+    // MARK: Settings ▸ Integrations ▸ Vitruvian Speaker
 
     private func state(courierEnabled: Bool?) -> Data {
         var settings: [[String: Any]] = [["key": "snooze", "kind": "toggle", "value": true]]
@@ -286,20 +286,20 @@ final class ReadAloudTests: XCTestCase {
         return try! JSONSerialization.data(withJSONObject: ["app_installed": true, "settings": settings])
     }
 
-    func testTheStatusSaysWhetherHomeSpeakerReadsCourier() async {
-        let reading = FakeRunner(result: HomeSpeakerCommandResult(exitCode: 0, stdout: state(courierEnabled: true)))
+    func testTheStatusSaysWhetherVitruvianSpeakerReadsCourier() async {
+        let reading = FakeRunner(result: VitruvianSpeakerCommandResult(exitCode: 0, stdout: state(courierEnabled: true)))
         let status = await service(installed: true, runner: reading).fetchIntegrationStatus()
         XCTAssertEqual(status, .installedReading)
         XCTAssertEqual(status.statusLine, "Installed · reads Courier messages aloud")
         XCTAssertEqual(reading.calls.map(\.arguments), [["--state", "--json"]])
 
-        let notReading = FakeRunner(result: HomeSpeakerCommandResult(exitCode: 0, stdout: state(courierEnabled: false)))
+        let notReading = FakeRunner(result: VitruvianSpeakerCommandResult(exitCode: 0, stdout: state(courierEnabled: false)))
         let off = await service(installed: true, runner: notReading).fetchIntegrationStatus()
         XCTAssertEqual(off, .installedNotReading)
-        XCTAssertEqual(off.statusLine, "Installed · not reading Courier (turn it on in HomeSpeaker)")
+        XCTAssertEqual(off.statusLine, "Installed · not reading Courier (turn it on in Vitruvian Speaker)")
     }
 
-    func testTheStatusWithoutHomeSpeakerIsNotInstalledAndAsksNothing() async {
+    func testTheStatusWithoutVitruvianSpeakerIsNotInstalledAndAsksNothing() async {
         let runner = FakeRunner()
         let status = await service(installed: false, runner: runner).fetchIntegrationStatus()
         XCTAssertEqual(status, .notInstalled)
@@ -308,16 +308,16 @@ final class ReadAloudTests: XCTestCase {
     }
 
     func testAnUnreadableStateIsJustInstalled() async {
-        let garbage = FakeRunner(result: HomeSpeakerCommandResult(exitCode: 0, stdout: Data("not json".utf8)))
+        let garbage = FakeRunner(result: VitruvianSpeakerCommandResult(exitCode: 0, stdout: Data("not json".utf8)))
         let a = await service(installed: true, runner: garbage).fetchIntegrationStatus()
         XCTAssertEqual(a, .installed)
         XCTAssertEqual(a.statusLine, "Installed")
 
-        let missing = FakeRunner(result: HomeSpeakerCommandResult(exitCode: 0, stdout: state(courierEnabled: nil)))
+        let missing = FakeRunner(result: VitruvianSpeakerCommandResult(exitCode: 0, stdout: state(courierEnabled: nil)))
         let b = await service(installed: true, runner: missing).fetchIntegrationStatus()
         XCTAssertEqual(b, .installed)
 
-        let failed = FakeRunner(result: HomeSpeakerCommandResult(exitCode: 1, stdout: state(courierEnabled: true)))
+        let failed = FakeRunner(result: VitruvianSpeakerCommandResult(exitCode: 1, stdout: state(courierEnabled: true)))
         let c = await service(installed: true, runner: failed).fetchIntegrationStatus()
         XCTAssertEqual(c, .installed)
 
@@ -327,19 +327,19 @@ final class ReadAloudTests: XCTestCase {
         XCTAssertEqual(d, .installed)
     }
 
-    func testHomeSpeakerIsNotToldACodingAgentAskedForTheReadAloud() {
+    func testVitruvianSpeakerIsNotToldACodingAgentAskedForTheReadAloud() {
         let inherited = ["CLAUDECODE": "1", "ANTIGRAVITY_AGENT": "1", "OPENCODE": "1", "AI_AGENT": "claude-code",
                          "PATH": "/usr/bin", "HOME": "/Users/someone"]
         XCTAssertEqual(
-            FoundationHomeSpeakerCommandRunner.childEnvironment(inherited),
+            FoundationVitruvianSpeakerCommandRunner.childEnvironment(inherited),
             ["PATH": "/usr/bin", "HOME": "/Users/someone"]
         )
     }
 
-    // MARK: - Finding HomeSpeaker
+    // MARK: - Finding Vitruvian Speaker
 
-    private func locator(executables: Set<String>, apps: [String: String]) -> WorkspaceHomeSpeakerLocator {
-        WorkspaceHomeSpeakerLocator(
+    private func locator(executables: Set<String>, apps: [String: String]) -> WorkspaceVitruvianSpeakerLocator {
+        WorkspaceVitruvianSpeakerLocator(
             home: URL(fileURLWithPath: "/Users/someone"),
             isExecutable: { executables.contains($0) },
             appLookup: { id in apps[id].map { URL(fileURLWithPath: $0) } }
@@ -347,9 +347,9 @@ final class ReadAloudTests: XCTestCase {
     }
 
     private let extensionTool =
-        "/Users/someone/Library/Application Support/com.vitruviansoftware.atrium/Tools/dev.vitruvian.homespeaker/bin/tool"
+        "/Users/someone/Library/Application Support/com.vitruviansoftware.atrium/Tools/dev.vitruvian.speaker/bin/tool"
 
-    func testTheVitruvianExtensionsHomeSpeakerIsFoundAndVitruvianIsWhatOpens() {
+    func testTheVitruvianExtensionsVitruvianSpeakerIsFoundAndVitruvianIsWhatOpens() {
         let found = locator(executables: [extensionTool],
                             apps: ["com.vitruviansoftware.atrium": "/Applications/Vitruvian Atrium.app"])
         XCTAssertEqual(found.binaryURL()?.path, extensionTool)
@@ -357,21 +357,21 @@ final class ReadAloudTests: XCTestCase {
     }
 
     func testTheInstalledAppIsUsedWhenThereIsNoExtension() {
-        let binary = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
-        let found = locator(executables: [binary], apps: ["com.vitruviansoftware.homespeaker": "/Applications/HomeSpeaker.app"])
+        let binary = "/Applications/Vitruvian Speaker.app/Contents/MacOS/VitruvianSpeaker"
+        let found = locator(executables: [binary], apps: ["com.vitruviansoftware.speaker": "/Applications/Vitruvian Speaker.app"])
         XCTAssertEqual(found.binaryURL()?.path, binary)
-        XCTAssertEqual(found.applicationURL()?.path, "/Applications/HomeSpeaker.app")
-        let inHome = "/Users/someone/Applications/HomeSpeaker.app"
+        XCTAssertEqual(found.applicationURL()?.path, "/Applications/Vitruvian Speaker.app")
+        let inHome = "/Users/someone/Applications/Vitruvian Speaker.app"
         XCTAssertEqual(
-            locator(executables: [inHome + "/Contents/MacOS/HomeSpeaker"],
-                    apps: ["com.vitruviansoftware.homespeaker": inHome]).binaryURL()?.path,
-            inHome + "/Contents/MacOS/HomeSpeaker")
+            locator(executables: [inHome + "/Contents/MacOS/VitruvianSpeaker"],
+                    apps: ["com.vitruviansoftware.speaker": inHome]).binaryURL()?.path,
+            inHome + "/Contents/MacOS/VitruvianSpeaker")
     }
 
     func testADevelopmentBuildInACheckoutIsNeverUsed() {
-        let dev = "/Users/someone/src/repo/apps/desktop/home-speaker/dist/HomeSpeaker.app"
-        let found = locator(executables: [dev + "/Contents/MacOS/HomeSpeaker"],
-                            apps: ["com.vitruviansoftware.homespeaker": dev])
+        let dev = "/Users/someone/src/repo/apps/desktop/vitruvian-speaker/dist/Vitruvian Speaker.app"
+        let found = locator(executables: [dev + "/Contents/MacOS/VitruvianSpeaker"],
+                            apps: ["com.vitruviansoftware.speaker": dev])
         XCTAssertNil(found.binaryURL())
         XCTAssertNil(found.applicationURL())
     }

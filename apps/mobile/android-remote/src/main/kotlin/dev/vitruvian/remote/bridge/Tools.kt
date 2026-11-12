@@ -658,11 +658,11 @@ public object PhoneTools {
   // --- phone.speak ------------------------------------------------------
 
   /**
-   * Speaks a HomeSpeaker announcement on the phone.
+   * Speaks a Vitruvian Speaker announcement on the phone.
    *
-   * Deliberately [ToolTier.Read] so unattended HomeSpeaker announcements from the Mac play
-   * immediately when the user turns on "This phone" in HomeSpeaker settings, rather than blocking
-   * on a 90-second interactive outbound approval prompt while the phone is in a pocket.
+   * Deliberately [ToolTier.Read] so unattended Vitruvian Speaker announcements from the Mac play
+   * immediately when the user turns on "This phone" in Vitruvian Speaker settings, rather than
+   * blocking on a 90-second interactive outbound approval prompt while the phone is in a pocket.
    */
   private fun speak(context: Context): PhoneTool =
       tool(
@@ -670,7 +670,7 @@ public object PhoneTools {
           tier = ToolTier.Read,
           description =
               "Speaks a short announcement aloud on the phone, or plays a pre-synthesized WAV " +
-                  "audio clip from HomeSpeaker on the Mac.",
+                  "audio clip from Vitruvian Speaker on the Mac.",
           inputSchema =
               """
               {"type":"object","properties":{
@@ -910,7 +910,7 @@ public object PhoneTools {
               return@withHeadphoneGuard skippedResult("no headphones connected")
             }
             withTransientAudioFocus(audio, speechAttrs, pauseMedia) {
-              val utteranceId = "homespeaker-${System.currentTimeMillis()}"
+              val utteranceId = "speaker-${System.currentTimeMillis()}"
               if (engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId) !=
                   TextToSpeech.SUCCESS) {
                 return@withTransientAudioFocus ToolResult(

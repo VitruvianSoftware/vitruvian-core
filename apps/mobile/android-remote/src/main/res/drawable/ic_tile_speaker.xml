@@ -3,7 +3,7 @@
   Copyright (c) 2026 VitruvianSoftware
   SPDX-License-Identifier: MIT
 
-  HomeSpeaker mute Quick Settings tile: a speaker cone with sound waves.
+  Vitruvian Speaker mute Quick Settings tile: a speaker cone with sound waves.
   Line only, 1.5 dp, on the language's 24 dp grid, and white because a Quick
   Settings tile is drawn on the system's own surface and is tinted by the system.
 -->

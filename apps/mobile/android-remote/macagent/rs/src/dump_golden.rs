@@ -24,9 +24,9 @@ use std::fs;
 fn main() {
     let path = env::args()
         .nth(1)
-        .expect("usage: dump_golden_homespeaker <state_v1.json>");
+        .expect("usage: dump_golden_speaker <state_v1.json>");
     let raw = fs::read_to_string(&path).expect("failed to read state_v1.json");
-    let json = vitruvian_remote_macagent::homespeaker::state_from_doc_json(&raw)
-        .expect("failed to map state_v1.json to GET /v1/homespeaker JSON");
+    let json = vitruvian_remote_macagent::speaker::state_from_doc_json(&raw)
+        .expect("failed to map state_v1.json to GET /v1/speaker JSON");
     println!("{json}");
 }

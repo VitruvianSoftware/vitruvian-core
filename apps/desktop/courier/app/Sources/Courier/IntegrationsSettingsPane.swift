@@ -23,7 +23,7 @@ public struct IntegrationsSettingsPane: View {
         ScrollViewReader { proxy in
             Form {
                 localAPISection
-                homeSpeakerSection
+                vitruvianSpeakerSection
                 connectionsSection
                 companionSections
             }
@@ -37,7 +37,7 @@ public struct IntegrationsSettingsPane: View {
             }
         }
         .task { await model.refresh() }
-        .task { await model.refreshHomeSpeaker() }
+        .task { await model.refreshVitruvianSpeaker() }
         .alert(String(localized: "Turn on Remote Access?"), isPresented: $model.isConfirmingRemoteAccess) {
             Button(String(localized: "Turn On")) { Task { await model.confirmRemoteAccess() } }
             Button(String(localized: "Cancel"), role: .cancel) { model.cancelRemoteAccess() }
@@ -135,28 +135,28 @@ public struct IntegrationsSettingsPane: View {
         }
     }
 
-    // MARK: - HomeSpeaker
+    // MARK: - Vitruvian Speaker
 
-    private var homeSpeakerSection: some View {
+    private var vitruvianSpeakerSection: some View {
         Section {
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(String(localized: "HomeSpeaker"))
+                    Text(String(localized: "Vitruvian Speaker"))
                     // The status wraps rather than being cut off beside the button.
-                    Text(model.homeSpeakerStatus.statusLine)
+                    Text(model.vitruvianSpeakerStatus.statusLine)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 8)
-                if model.isHomeSpeakerInstalled {
-                    Button(String(localized: "Open HomeSpeaker")) { Task { await model.openHomeSpeaker() } }
+                if model.isVitruvianSpeakerInstalled {
+                    Button(String(localized: "Open Vitruvian Speaker")) { Task { await model.openVitruvianSpeaker() } }
                         .controlSize(.small)
                 }
             }
-            .settingAnchor("integrations.homeSpeaker", highlighted: highlightedSettingID)
+            .settingAnchor("integrations.vitruvianSpeaker", highlighted: highlightedSettingID)
         } header: {
-            Text(String(localized: "HomeSpeaker"))
+            Text(String(localized: "Vitruvian Speaker"))
         }
     }
 

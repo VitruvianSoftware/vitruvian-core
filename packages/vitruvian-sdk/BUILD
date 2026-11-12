@@ -193,7 +193,7 @@ swift_binary(
     module_name = "VitruvianToolCommandLine",
     tags = ["manual"],
     target_compatible_with = APPLE_TOOLCHAIN_ONLY,
-    # The GitHub, Vitruvian Code and HomeSpeaker tools' folder tests run `validate` on what
+    # The GitHub, Vitruvian Code and Vitruvian Speaker tools' folder tests run `validate` on what
     # they built.
     visibility = ["//packages/vitruvian-sdk/consumers:tools"],
     deps = [":VitruvianToolCLI"],

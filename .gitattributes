@@ -64,7 +64,7 @@ packages/vitruvian-sdk/kits/rust/src/generated/mod.rs      linguist-generated=tr
 # layout (arrays one item a line); the formatter must leave it as written.
 # Each tool's version_test holds the committed file to that layout.
 apps/desktop/vitruvian-tool-github/vitruvian-tool.json rules-lint-ignored=true
-apps/desktop/home-speaker/tool/vitruvian-tool.json     rules-lint-ignored=true
+apps/desktop/vitruvian-speaker/tool/vitruvian-tool.json     rules-lint-ignored=true
 apps/desktop/vitruvian-code/macos/tool/vitruvian-tool.json rules-lint-ignored=true
 apps/mobile/android-remote/macmenu/tool/vitruvian-tool.json rules-lint-ignored=true
 apps/antigravity/plugins/ext-marketplace/plugin.json   rules-lint-ignored=true

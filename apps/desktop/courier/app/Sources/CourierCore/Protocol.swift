@@ -410,7 +410,7 @@ public struct InboxRow: ProtocolType, Equatable, Identifiable {
     public var localAvatarPath: String
     /// The merged chat this room belongs to, or "".
     public var mergeID: String
-    /// Per-chat HomeSpeaker announcement preference (`"always"`, `"never"`, or `nil` for Default).
+    /// Per-chat Vitruvian Speaker announcement preference (`"always"`, `"never"`, or `nil` for Default).
     public var readAloud: ChatReadAloud?
 
     public init(roomID: String, network: String, name: String, avatarPath: String, isDirect: Bool, lastTS: Int64,
@@ -461,7 +461,7 @@ public struct InboxRow: ProtocolType, Equatable, Identifiable {
     /// Unread messages, or marked unread: what toggle read and the Unread filter go by.
     public var isUnread: Bool { unread > 0 || markedUnread }
 
-    /// Effective per-chat HomeSpeaker announcement preference (`.default` when omitted on the wire).
+    /// Effective per-chat Vitruvian Speaker announcement preference (`.default` when omitted on the wire).
     public var effectiveReadAloud: ChatReadAloud { readAloud ?? .default }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
@@ -578,16 +578,16 @@ public struct InboxRow: ProtocolType, Equatable, Identifiable {
     }
 }
 
-/// InboxRow.read_aloud and SetReadAloudParams.read_aloud: per-chat HomeSpeaker announcement preference.
+/// InboxRow.read_aloud and SetReadAloudParams.read_aloud: per-chat Vitruvian Speaker announcement preference.
 public struct ChatReadAloud: OpenValues, CaseIterable {
     public let rawValue: String
     public init(rawValue: String) { self.rawValue = rawValue }
 
-    /// Follow HomeSpeaker's settings (omitted on `InboxRow` and the local API).
+    /// Follow Vitruvian Speaker's settings (omitted on `InboxRow` and the local API).
     public static let `default` = Self(rawValue: "")
-    /// Announce every message in this chat on HomeSpeaker (unless muted).
+    /// Announce every message in this chat on Vitruvian Speaker (unless muted).
     public static let always = Self(rawValue: "always")
-    /// Never announce this chat on HomeSpeaker.
+    /// Never announce this chat on Vitruvian Speaker.
     public static let never = Self(rawValue: "never")
     public static let known: [Self] = [.always, .never]
     /// The values `room.setReadAloud` accepts.

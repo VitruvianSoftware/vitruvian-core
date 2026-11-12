@@ -45,8 +45,8 @@ public final class IntegrationsModel: ObservableObject {
 
     /// The client asking to connect, while its prompt shows. One at a time, as the engine allows.
     @Published public private(set) var pairRequest: PairRequest?
-    /// HomeSpeaker status shown in `Settings ▸ Integrations ▸ HomeSpeaker`.
-    @Published public private(set) var homeSpeakerStatus: HomeSpeakerIntegrationStatus
+    /// Vitruvian Speaker status shown in `Settings ▸ Integrations ▸ Vitruvian Speaker`.
+    @Published public private(set) var vitruvianSpeakerStatus: VitruvianSpeakerIntegrationStatus
 
     public static let minimumPort = 1024
     public static let maximumPort = 65535
@@ -76,7 +76,7 @@ public final class IntegrationsModel: ObservableObject {
         self.appModel = appModel
         self.enginePath = enginePath
         self.readAloudService = resolvedReadAloud
-        self.homeSpeakerStatus = resolvedReadAloud.isHomeSpeakerInstalled ? .installed : .notInstalled
+        self.vitruvianSpeakerStatus = resolvedReadAloud.isVitruvianSpeakerInstalled ? .installed : .notInstalled
         self.networkAddress = networkAddress
         self.explicitLifecycle = lifecycle
         appModel?.onConnect { [weak self] _ in await self?.refresh() }
@@ -96,18 +96,18 @@ public final class IntegrationsModel: ObservableObject {
     public var isEnabled: Bool { status?.enabled ?? false }
     public var isRemote: Bool { status?.remote ?? false }
     public var port: Int { status?.port ?? IntegrationsStatus.defaultPort }
-    public var isHomeSpeakerInstalled: Bool { homeSpeakerStatus != .notInstalled }
+    public var isVitruvianSpeakerInstalled: Bool { vitruvianSpeakerStatus != .notInstalled }
 
-    /// Probes `HomeSpeaker --state --json` off the main actor when the Integrations pane opens.
-    public func refreshHomeSpeaker() async {
+    /// Probes `VitruvianSpeaker --state --json` off the main actor when the Integrations pane opens.
+    public func refreshVitruvianSpeaker() async {
         guard !(lifecycle?.isLocked ?? false) else { return }
-        homeSpeakerStatus = await readAloudService.fetchIntegrationStatus()
+        vitruvianSpeakerStatus = await readAloudService.fetchIntegrationStatus()
     }
 
     @discardableResult
-    public func openHomeSpeaker() async -> Bool {
+    public func openVitruvianSpeaker() async -> Bool {
         guard canChange else { return false }
-        return await readAloudService.openHomeSpeaker()
+        return await readAloudService.openVitruvianSpeaker()
     }
 
     /// "Listening on 127.0.0.1:23390", "Listening on all addresses, port 23390", "Off", or why it isn't listening.
@@ -308,14 +308,14 @@ public final class IntegrationsModel: ObservableObject {
         status: IntegrationsStatus?,
         tokens: [APIToken] = [],
         created: CreateTokenResult? = nil,
-        homeSpeakerStatus: HomeSpeakerIntegrationStatus? = nil
+        vitruvianSpeakerStatus: VitruvianSpeakerIntegrationStatus? = nil
     ) {
         self.status = status
         self.tokens = tokens
         if let status { portText = String(status.port) }
         createdConnection = created
-        if let homeSpeakerStatus {
-            self.homeSpeakerStatus = homeSpeakerStatus
+        if let vitruvianSpeakerStatus {
+            self.vitruvianSpeakerStatus = vitruvianSpeakerStatus
         }
     }
 

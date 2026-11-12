@@ -280,7 +280,7 @@ You can install **[Vitruvian TV (`dev.vitruvian.tv`)](/tools/catalog/#dev.vitruv
 
 When you aren't at your laptop, **[Vitruvian Remote](https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/mobile/android-remote)** (`apps/mobile/android-remote`) is our Jetpack Compose remote and observability console built specifically for Android foldables like the Pixel Fold.
 
-Folded closed, it acts as a tactile pocket remote and trackpad. Unfolded—or set half-open on the coffee table in tabletop posture—it displays live Mac CPU/thermal sparklines, Lima VMs, K3s cluster health, HomeSpeaker TTS broadcast controls, and a dedicated **Sony TV dashboard** (`tvDashboard`).
+Folded closed, it acts as a tactile pocket remote and trackpad. Unfolded—or set half-open on the coffee table in tabletop posture—it displays live Mac CPU/thermal sparklines, Lima VMs, K3s cluster health, Vitruvian Speaker TTS broadcast controls, and a dedicated **Sony TV dashboard** (`tvDashboard`).
 
 Because the phone talks to `vitruvian-remote-agent` on the Mac over Tailscale, the phone doesn't even need its own ADB key paired to the TV. The Go agent ([`apps/mobile/android-remote/macagent/tv.go`](https://github.com/VitruvianSoftware/vitruvian-core/blob/main/apps/mobile/android-remote/macagent/tv.go)) exposes `GET /v1/tv` and `POST /v1/tv`, coalescing power state, foreground window focus, and `/proc/meminfo` into a single 5-second-bounded ADB shell round-trip:
 

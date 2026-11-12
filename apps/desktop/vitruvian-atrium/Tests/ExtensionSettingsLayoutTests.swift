@@ -46,8 +46,8 @@ enum ExtensionSettingsLayoutTests {
 
     static let english = FeatureStrings.externalTools(.enUS)
 
-    /// HomeSpeaker's island page, taller than the preview's card.
-    static let homeSpeakerIsland = #"""
+    /// Vitruvian Speaker's island page, taller than the preview's card.
+    static let vitruvianSpeakerIsland = #"""
         {"blocks": [
           {"type": "toggle", "id": "home", "title": "Home speakers", "value": true},
           {"type": "toggle", "id": "mac", "title": "This Mac", "value": false},
@@ -74,7 +74,7 @@ enum ExtensionSettingsLayoutTests {
         ]}
         """#
 
-    /// HomeSpeaker's menus: Announce, whose options run long, Speaker and
+    /// Vitruvian Speaker's menus: Announce, whose options run long, Speaker and
     /// Volume.
     static let announce = #"""
         {"type": "choice", "id": "announce", "title": "Announce", "value": "every",
@@ -91,11 +91,11 @@ enum ExtensionSettingsLayoutTests {
          "options": [{"value": "25", "title": "25%"}, {"value": "50", "title": "50%"}, {"value": "75", "title": "75%"}]}
         """#
 
-    /// HomeSpeaker's settings page: five sections.
-    static let homeSpeakerSettings = #"""
+    /// Vitruvian Speaker's settings page: five sections.
+    static let vitruvianSpeakerSettings = #"""
         {"blocks": [
           {"type": "heading", "text": "General", "section": true},
-          {"type": "heading", "text": "Which HomeSpeaker"},
+          {"type": "heading", "text": "Which Vitruvian Speaker"},
           {"type": "text", "text": "This Mac uses the extension."},
           {"type": "button", "id": "app", "title": "Use the app instead"},
           {"type": "button", "id": "copy", "title": "Copy settings from the app"},
@@ -194,11 +194,11 @@ enum ExtensionSettingsLayoutTests {
         }
     }
 
-    static let homeSpeaker = Extension(
-        name: "HomeSpeaker", icon: "hifispeaker.2", version: "1.26.0",
+    static let vitruvianSpeaker = Extension(
+        name: "Vitruvian Speaker", icon: "hifispeaker.2", version: "1.26.0",
         description: "Speaks what you type, or the clipboard, on your Google Home speakers, and keeps broadcasting, "
             + "quiet hours and the volume at hand.",
-        settings: homeSpeakerSettings, setting: true)
+        settings: vitruvianSpeakerSettings, setting: true)
     static let remote = Extension(
         name: "Vitruvian Remote", icon: "iphone.radiowaves.left.and.right", version: "0.1.8",
         description: "Pairs your Android phone with this Mac's Vitruvian Remote agent over Tailscale, manages push "
@@ -640,7 +640,7 @@ enum ExtensionSettingsLayoutTests {
 
     // MARK: The Dynamic Island page
 
-    /// The pane of the Dynamic Island page for a HomeSpeaker-shaped
+    /// The pane of the Dynamic Island page for a VitruvianSpeaker-shaped
     /// extension, at the width of James's window (306 points), with a
     /// preview as tall as the built-in previews are there.
     static let paneWidth: CGFloat = 306
@@ -649,25 +649,25 @@ enum ExtensionSettingsLayoutTests {
     static func theIslandPaneKeepsItsPreviewInItsCard(_ suite: TestSuite) {
         for dark in [false, true] {
             let bench = PanelBench()
-            guard let described = ExternalToolManifestTests.tool(String(data: homeSpeaker.manifest,
+            guard let described = ExternalToolManifestTests.tool(String(data: vitruvianSpeaker.manifest,
                                                                           encoding: .utf8) ?? "") else {
                 suite.expect(false, "the manifest reads")
                 return
             }
             let pane = NotchExtensionPane(manifest: described, shown: true)
             let column = NotchSectionScroll {
-                NotchExtensionDetail(pane: pane, title: "HomeSpeaker", symbol: "hifispeaker.2", shown: true,
+                NotchExtensionDetail(pane: pane, title: "Vitruvian Speaker", symbol: "hifispeaker.2", shown: true,
                                      previewHeight: previewHeight, host: bench.host,
                                      window: NotchExtensionPaneTests.shown()) {}
             }
             let (window, view) = offScreen(column, size: CGSize(width: paneWidth, height: 810), dark: dark)
-            answer(bench, ["deploys": homeSpeakerIsland, "settings": homeSpeakerSettings])
+            answer(bench, ["deploys": vitruvianSpeakerIsland, "settings": vitruvianSpeakerSettings])
             settle(0.3)
             view.layoutSubtreeIfNeeded()
             let name = dark ? "dark" : "light"
             let outer = outermostScrollViews(in: view).first
             let opened = outer?.documentVisibleRect.minY
-            guard let drawn = picture(view, "island-pane-homespeaker-\(name).png") else {
+            guard let drawn = picture(view, "island-pane-vitruvian-speaker-\(name).png") else {
                 suite.expect(false, "\(name): the pane can be drawn")
                 takeDown(window)
                 return
@@ -718,7 +718,7 @@ enum ExtensionSettingsLayoutTests {
                                  "a link scrolls only the settings' own region, never the pane: the pane moved from "
                                      + "\(before.map { "\(Int($0))" } ?? "?") to \(linked.map { "\(Int($0))" } ?? "?"), "
                                      + "the region to \(inner.map { "\(Int($0.documentVisibleRect.minY))" } ?? "none")")
-                    picture(view, "island-pane-homespeaker-linked.png")
+                    picture(view, "island-pane-vitruvian-speaker-linked.png")
                     typeText("speak", into: field)
                     let after = outer?.documentVisibleRect.minY
                     // A search keeps fewer links, so the pane may be shorter
@@ -730,7 +730,7 @@ enum ExtensionSettingsLayoutTests {
                                  "a search scrolls only the settings' own region, never the pane: the pane moved from "
                                      + "\(linked.map { "\(Int($0))" } ?? "?") to \(after.map { "\(Int($0))" } ?? "?"), "
                                      + "its end now at \(end.map { "\(Int($0))" } ?? "?")")
-                    picture(view, "island-pane-homespeaker-searched.png")
+                    picture(view, "island-pane-vitruvian-speaker-searched.png")
                 }
             }
             takeDown(window)
@@ -781,13 +781,13 @@ enum ExtensionSettingsLayoutTests {
     static func theSheetLinesUpItsSwitches(_ suite: TestSuite) {
         for dark in [false, true] {
             let bench = PanelBench()
-            guard let view = detail(bench, homeSpeaker), let shown = sheet(view, parentHeight: 1009, dark: dark) else {
-                suite.expect(false, "the HomeSpeaker sheet is shown")
+            guard let view = detail(bench, vitruvianSpeaker), let shown = sheet(view, parentHeight: 1009, dark: dark) else {
+                suite.expect(false, "the Vitruvian Speaker sheet is shown")
                 return
             }
             defer { takeDown(shown.parent) }
             let name = dark ? "dark" : "light"
-            picture(shown.view, "sheet-homespeaker-\(name).png")
+            picture(shown.view, "sheet-vitruvian-speaker-\(name).png")
             let switches = views(in: shown.view, of: NSSwitch.self).map { frame(of: $0, in: shown.view) }
                 .sorted { $0.minY < $1.minY }
             let edges = switches.map(\.maxX)
@@ -805,8 +805,8 @@ enum ExtensionSettingsLayoutTests {
         var regions: [CGFloat: (region: CGFloat, sheet: CGFloat, cap: CGFloat)] = [:]
         for height in [640, 1009] as [CGFloat] {
             let bench = PanelBench()
-            guard let view = detail(bench, homeSpeaker), let shown = sheet(view, parentHeight: height) else {
-                suite.expect(false, "the HomeSpeaker sheet is shown on a window \(Int(height)) points high")
+            guard let view = detail(bench, vitruvianSpeaker), let shown = sheet(view, parentHeight: height) else {
+                suite.expect(false, "the Vitruvian Speaker sheet is shown on a window \(Int(height)) points high")
                 return
             }
             regions[height] = (region(shown), shown.sheet.frame.height, cap(shown))
@@ -816,7 +816,7 @@ enum ExtensionSettingsLayoutTests {
                          "window \(Int(height)): the sheet opens at its height: \(Int(first)) when first shown, "
                              + "\(Int(last)) settled, \(Int(spread)) between least and most over "
                              + "\(shown.heights.count) looks")
-            picture(shown.view, "sheet-homespeaker-window-\(Int(height)).png")
+            picture(shown.view, "sheet-vitruvian-speaker-window-\(Int(height)).png")
             takeDown(shown.parent)
         }
         let small = regions[640], large = regions[1009]
@@ -841,8 +841,8 @@ enum ExtensionSettingsLayoutTests {
     /// its region shrinking and growing again, never past its cap.
     static func theSheetFollowsItsWindow(_ suite: TestSuite) {
         let bench = PanelBench()
-        guard let view = detail(bench, homeSpeaker), let shown = sheet(view, parentHeight: 1009) else {
-            suite.expect(false, "the HomeSpeaker sheet is shown")
+        guard let view = detail(bench, vitruvianSpeaker), let shown = sheet(view, parentHeight: 1009) else {
+            suite.expect(false, "the Vitruvian Speaker sheet is shown")
             return
         }
         defer { takeDown(shown.parent) }
@@ -854,7 +854,7 @@ enum ExtensionSettingsLayoutTests {
             settle(0.6)
             shown.view.layoutSubtreeIfNeeded()
             seen.append((height, region(shown), shown.sheet.frame.height, cap(shown)))
-            picture(shown.view, "sheet-homespeaker-resized-\(seen.count)-\(Int(height)).png")
+            picture(shown.view, "sheet-vitruvian-speaker-resized-\(seen.count)-\(Int(height)).png")
         }
         let words = seen.map { "window \(Int($0.window)): region \(Int($0.region)), sheet \(Int($0.sheet)) of "
             + "\(Int($0.cap))" }.joined(separator: "; ")
@@ -873,9 +873,9 @@ enum ExtensionSettingsLayoutTests {
         for height in [770, 1009] as [CGFloat] {
             for opensLater in [false, true] {
                 let bench = PanelBench()
-                guard let view = detail(bench, homeSpeaker, log: log, logExpanded: !opensLater),
+                guard let view = detail(bench, vitruvianSpeaker, log: log, logExpanded: !opensLater),
                       let shown = sheet(view, parentHeight: height) else {
-                    suite.expect(false, "the HomeSpeaker sheet with its log is shown")
+                    suite.expect(false, "the Vitruvian Speaker sheet with its log is shown")
                     return
                 }
                 let name = "window \(Int(height)), log opened \(opensLater ? "while shown" : "before")"
@@ -897,7 +897,7 @@ enum ExtensionSettingsLayoutTests {
                                  && region(shown) >= tight - 0.5,
                              "\(name): with the log open the sheet stays within the window and under its cap, the "
                                  + "region giving way down to \(Int(tight)) at least: \(words)")
-                picture(shown.view, "sheet-homespeaker-log-\(Int(height))\(opensLater ? "-opened" : "").png")
+                picture(shown.view, "sheet-vitruvian-speaker-log-\(Int(height))\(opensLater ? "-opened" : "").png")
                 takeDown(shown.parent)
             }
         }
@@ -991,13 +991,13 @@ enum ExtensionSettingsLayoutTests {
         for language in [AppLanguage.enUS, .de] {
             L10n.shared.language = language
             let strings = FeatureStrings.externalTools(language)
-            let bench = PanelBench(name: "HomeSpeaker")
+            let bench = PanelBench(name: "Vitruvian Speaker")
             bench.host.open(ToolPanelHostTests.key("deploys"), in: .island)
             answer(bench, ["deploys": refusedSettings])
             let tag = language.rawValue
             let panel = islandPixels(ToolPanelView(key: ToolPanelHostTests.key("deploys"), size: .island, host: bench.host),
                                      "refused-sentence-\(tag)-panel.png")
-            let said = strings.panelRefused("HomeSpeaker", problem)
+            let said = strings.panelRefused("Vitruvian Speaker", problem)
             let meant = islandPixels(ToolPanelNotShown(size: .island, why: said), "refused-sentence-\(tag)-meant.png")
             let log = islandPixels(ToolPanelNotShown(size: .island), "refused-sentence-\(tag)-log.png")
             let byID = islandPixels(ToolPanelNotShown(size: .island, why: strings.panelRefused("com.acme.deploys", problem)),
@@ -1007,7 +1007,7 @@ enum ExtensionSettingsLayoutTests {
         }
     }
 
-    /// A settings page shaped as HomeSpeaker's was in 3.64.0, which the app
+    /// A settings page shaped as Vitruvian Speaker's was in 3.64.0, which the app
     /// refused: its 77th block, a button, has no id.
     static let refusedSettings = #"{"blocks": ["#
         + Array(repeating: #"{"type": "text", "text": "Speaks on your Google Home speakers.", "style": "caption"}"#,
@@ -1025,7 +1025,7 @@ enum ExtensionSettingsLayoutTests {
 
         var body: some View {
             VStack(alignment: .leading, spacing: NotchLayout.spacing) {
-                Text(verbatim: "HomeSpeaker")
+                Text(verbatim: "Vitruvian Speaker")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(height: NotchLayout.headerHeight)
@@ -1047,11 +1047,11 @@ enum ExtensionSettingsLayoutTests {
     static func aRefusedPageSaysWhy(_ suite: TestSuite) {
         for dark in [false, true] {
             let name = dark ? "dark" : "light"
-            let bench = PanelBench(name: "HomeSpeaker")
-            let refused = Extension(name: homeSpeaker.name, icon: homeSpeaker.icon, version: homeSpeaker.version,
-                                    description: homeSpeaker.description, settings: refusedSettings, setting: true)
+            let bench = PanelBench(name: "Vitruvian Speaker")
+            let refused = Extension(name: vitruvianSpeaker.name, icon: vitruvianSpeaker.icon, version: vitruvianSpeaker.version,
+                                    description: vitruvianSpeaker.description, settings: refusedSettings, setting: true)
             guard let view = detail(bench, refused), let shown = sheet(view, parentHeight: 1009, dark: dark) else {
-                suite.expect(false, "\(name): the HomeSpeaker sheet is shown")
+                suite.expect(false, "\(name): the Vitruvian Speaker sheet is shown")
                 return
             }
             picture(shown.view, "refused-page-sheet-\(name).png")
@@ -1065,7 +1065,7 @@ enum ExtensionSettingsLayoutTests {
         for (page, problem) in [("malformed", refusedSettings), ("too-large", tooLargeIsland)] {
             for dark in [false, true] {
                 let name = dark ? "dark" : "light"
-                let bench = PanelBench(name: "HomeSpeaker")
+                let bench = PanelBench(name: "Vitruvian Speaker")
                 bench.host.open(ToolPanelHostTests.key("deploys"), in: .island)
                 let (window, view) = offScreen(RefusedIsland(host: bench.host), size: CGSize(width: 520, height: 320),
                                                dark: dark)
@@ -1084,11 +1084,11 @@ enum ExtensionSettingsLayoutTests {
                 let words = drawn.drawn(in: CGRect(x: 40, y: 50, width: 440, height: 200), background: 0)
                 suite.expect(spun && views(in: view, of: NSProgressIndicator.self).isEmpty
                                  && (words?.width ?? 0) > 300 && (words?.height ?? 0) > 20,
-                             "\(name): the island says why HomeSpeaker's \(page) page was refused, across the page, "
+                             "\(name): the island says why Vitruvian Speaker's \(page) page was refused, across the page, "
                                  + "and stops spinning: spun first \(spun), words \(words.map { "\($0)" } ?? "none")")
                 if case .notShown(let refused?)? = bench.host.shown[ToolPanelHostTests.key("deploys")] {
                     print("ExtensionSettingsLayoutTests: the island says "
-                              + english.panelRefused("HomeSpeaker", refused))
+                              + english.panelRefused("Vitruvian Speaker", refused))
                 }
                 takeDown(window)
             }
