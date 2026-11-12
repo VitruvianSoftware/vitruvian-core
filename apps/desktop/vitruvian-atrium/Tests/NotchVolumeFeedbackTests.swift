@@ -1,0 +1,320 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Vorssaint
+
+import Combine
+import CoreAudio
+import Foundation
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
+
+/// Runs the island's volume notice with real Combine delivery, a controlled
+/// audio source and a clock of its own, without changing hardware volume.
+enum NotchVolumeFeedbackTests {
+    struct OutputDevice {
+        let uid: String
+        let name: String
+        let isHeadphones: Bool
+    }
+
+    final class Mixer {
+        var outputDevices = [
+            OutputDevice(uid: "speakers", name: "MacBook Pro Speakers", isHeadphones: false),
+            OutputDevice(uid: "headphones", name: "Wireless Headphones", isHeadphones: true)
+        ]
+        @Published var currentOutputDeviceUID: String? = "speakers"
+        @Published var systemOutputVolume: Double? = 0.3
+        @Published var systemOutputMuted: Bool? = false
+
+        func publish(device: String?, volume: Double?, muted: Bool?, identityFirst: Bool = true) {
+            if identityFirst { currentOutputDeviceUID = device }
+            systemOutputVolume = volume
+            systemOutputMuted = muted
+            if !identityFirst { currentOutputDeviceUID = device }
+        }
+    }
+
+    /// The island as the notice sees it: open or closed, able to show system
+    /// feedback or not, and the uptime its own controls are measured against.
+    final class Island {
+        var expanded = false
+        var showsSystemFeedback = true
+        var notice: NotchNotice?
+        var presented: [NotchNotice] = []
+        var now: TimeInterval = 1_000
+
+        func show(_ incoming: NotchNotice) -> Bool {
+            guard showsSystemFeedback,
+                  NotchSupport.shouldReplace(notice?.event, with: incoming.event) else { return false }
+            notice = incoming
+            presented.append(incoming)
+            return true
+        }
+    }
+
+    static func makeFeedback(_ mixer: Mixer, _ island: Island) -> NotchVolumeFeedback {
+        NotchVolumeFeedback(
+            output: .init(volume: { mixer.systemOutputVolume }, muted: { mixer.systemOutputMuted },
+                          deviceUID: { mixer.currentOutputDeviceUID },
+                          changes: {
+                              mixer.$systemOutputVolume
+                                  .combineLatest(mixer.$systemOutputMuted, mixer.$currentOutputDeviceUID)
+                                  .map { $0.2 }
+                                  .eraseToAnyPublisher()
+                          },
+                          device: {
+                              mixer.outputDevices.first { $0.uid == mixer.currentOutputDeviceUID }
+                                  .map { (name: $0.name, isHeadphones: $0.isHeadphones) }
+                          }),
+            island: .init(isExpanded: { island.expanded }, show: { island.show($0) }, uptime: { island.now }))
+    }
+
+    static func run(_ suite: TestSuite) {
+        func drain() {
+            var delivered = false
+            DispatchQueue.main.async { delivered = true }
+            let deadline = Date().addingTimeInterval(1)
+            while !delivered && Date() < deadline {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.005))
+            }
+            suite.expect(delivered, "queued volume publications settle within the test deadline")
+        }
+        let outputs: [(name: String, dataSource: String?, terminals: [UInt32], symbol: String)] = [
+            ("MacBook Pro Speakers", nil, [kAudioStreamTerminalTypeSpeaker], "speaker.wave.2.fill"),
+            ("Built-in Output", "Headphones", [], "headphones"),
+            ("WH-1000XM5", "Headphones", [], "headphones"),
+            ("Alex's AirPods", nil, [kAudioStreamTerminalTypeHeadphones], "airpods"),
+            ("Alex's AirPods Pro", nil, [kAudioStreamTerminalTypeHeadphones], "airpodspro"),
+            ("Alex's AirPods Max", nil, [kAudioStreamTerminalTypeHeadphones], "airpodsmax"),
+            ("JBL Flip 6", nil, [kAudioStreamTerminalTypeSpeaker], "speaker.wave.2.fill"),
+            ("HUAWEI FreeClip 2", nil, [kAudioStreamTerminalTypeHeadphones], "headphones"),
+            ("My renamed audio device", nil, [kAudioStreamTerminalTypeHeadphones], "headphones"),
+            ("Soundcore speaker", nil, [kAudioStreamTerminalTypeSpeaker], "speaker.wave.2.fill")
+        ]
+        for output in outputs {
+            let mixer = Mixer()
+            let island = Island()
+            mixer.outputDevices.append(OutputDevice(
+                uid: "selected", name: output.name,
+                isHeadphones: MixerRoutingSupport.outputLooksLikeHeadphones(
+                    name: output.name, uid: "selected", dataSourceName: output.dataSource,
+                    terminalTypes: output.terminals)))
+            mixer.currentOutputDeviceUID = "selected"
+            let feedback = makeFeedback(mixer, island)
+            feedback.showCurrentVolume()
+            suite.expect(island.notice?.symbol == output.symbol,
+                         "volume keys identify the active output: \(output.name)")
+            feedback.showVolume(0.6)
+            suite.expect(island.notice?.symbol == output.symbol && island.notice?.level == 0.6,
+                         "explicit volume feedback identifies the active output: \(output.name)")
+            for muted in [false, true] {
+                feedback.showVolume(muted ? 0.6 : 0, muted: muted)
+                let silentSymbol = output.symbol == "speaker.wave.2.fill" ? "speaker.slash.fill" : output.symbol
+                suite.expect(island.notice?.symbol == silentSymbol && island.notice?.level == 0
+                             && island.notice?.detail == "0%",
+                             "silent output keeps its device identity and reports zero: \(output.name)")
+            }
+            mixer.currentOutputDeviceUID = "missing"
+            feedback.showCurrentVolume()
+            suite.expect(island.notice?.symbol == "speaker.wave.2.fill",
+                         "missing output metadata falls back without using another connected device")
+        }
+        let connection = NotchNotice(event: .accessory, title: "Wireless Headphones",
+                                     detail: "Connected", symbol: "headphones")
+        for identityFirst in [false, true] {
+            let mixer = Mixer()
+            let island = Island()
+            let feedback = makeFeedback(mixer, island)
+            let subscription = feedback.follow()
+            drain()
+            suite.expect(island.presented.isEmpty, "starting volume observation establishes a silent baseline")
+            island.notice = connection
+            mixer.publish(device: "headphones", volume: 0.75, muted: true, identityFirst: identityFirst)
+            drain()
+            suite.expect(island.notice == connection && island.presented.isEmpty,
+                   "switching output never replaces its connection notice with stored volume or mute")
+            mixer.systemOutputVolume = 0.8
+            mixer.systemOutputMuted = false
+            drain()
+            suite.expect(island.notice?.event == .volume && island.notice?.level == 0.8 && island.presented.count == 1,
+                   "a real adjustment on the new output appears once with its final mute state")
+            suite.expect(island.notice?.symbol == "headphones",
+                   "observed volume feedback uses the new output after either publication order")
+            island.presented.removeAll()
+            island.notice = connection
+            mixer.publish(device: "another-output", volume: 0.8, muted: false, identityFirst: identityFirst)
+            drain()
+            suite.expect(island.notice == connection && island.presented.isEmpty,
+                   "an output switch at the same level is also silent")
+            mixer.systemOutputMuted = true
+            drain()
+            suite.expect(island.notice?.event == .volume && island.notice?.level == 0,
+                   "the first real mute change after an equal-volume switch is not swallowed")
+            suite.expect(island.notice?.symbol == "speaker.slash.fill",
+                   "switching away from headphones clears the previous device icon")
+            island.presented.removeAll()
+            island.notice = connection
+            mixer.publish(device: nil, volume: nil, muted: nil)
+            mixer.publish(device: "headphones", volume: nil, muted: nil)
+            drain()
+            mixer.publish(device: "headphones", volume: 0.5, muted: false)
+            drain()
+            suite.expect(island.notice == connection && island.presented.isEmpty,
+                   "disconnecting and receiving a delayed initial reading remain silent")
+            mixer.publish(device: "old-output", volume: 0.9, muted: true)
+            mixer.publish(device: "latest-output", volume: 0.2, muted: false)
+            drain()
+            suite.expect(island.notice == connection && island.presented.isEmpty,
+                   "queued publications from superseded outputs cannot flash a volume notice")
+            mixer.publish(device: nil, volume: nil, muted: nil)
+            mixer.publish(device: "latest-output", volume: 0.4, muted: false)
+            drain()
+            suite.expect(island.notice == connection && island.presented.isEmpty,
+                   "a quick reconnect to the same output invalidates its old baseline before queued delivery")
+            feedback.showCurrentVolume()
+            suite.expect(island.notice?.event == .volume && island.notice?.level == 0.4,
+                   "an explicit volume key still shows feedback even when the level has not changed")
+            island.expanded = true
+            island.presented.removeAll()
+            mixer.systemOutputVolume = 0.6
+            drain()
+            suite.expect(island.notice?.level == 0.6 && island.presented.count == 1,
+                   "volume changes supply header feedback while the island is open on any page")
+            island.presented.removeAll()
+            // Each step of the island's slider or mute button marks its change.
+            feedback.noteOwnAdjustment()
+            mixer.systemOutputVolume = 0.35
+            drain()
+            feedback.noteOwnAdjustment()
+            mixer.systemOutputMuted = true
+            drain()
+            suite.expect(island.presented.isEmpty,
+                   "the island's own level and mute controls leave the open island's top row alone")
+            feedback.showCurrentVolume()
+            suite.expect(island.presented.count == 1 && island.notice?.level == 0,
+                   "a volume key right after an own adjustment still shows feedback")
+            island.presented.removeAll()
+            island.now += 0.5
+            mixer.systemOutputMuted = false
+            drain()
+            suite.expect(island.presented.isEmpty, "the island's own adjustment is its own for a second")
+            island.now += 0.5
+            mixer.systemOutputVolume = 0.45
+            drain()
+            suite.expect(island.presented.count == 1 && island.notice?.level == 0.45,
+                   "a change after the own adjustment's moment shows in the open island's top row again")
+            island.presented.removeAll()
+            island.expanded = false
+            feedback.noteOwnAdjustment()
+            mixer.systemOutputVolume = 0.5
+            drain()
+            suite.expect(island.presented.count == 1,
+                   "a closed island keeps its volume feedback whatever changed the level")
+            island.presented.removeAll()
+            subscription.cancel()
+            mixer.publish(device: "stopped-output", volume: 0.1, muted: false)
+            drain()
+            suite.expect(island.presented.isEmpty, "stopping observation cancels volume feedback")
+            withExtendedLifetime(feedback) {}
+        }
+
+        // The command bar writes a level and then reports it, because the
+        // observer can have nothing new to show for that write.
+        let mixer = Mixer()
+        let island = Island()
+        let feedback = makeFeedback(mixer, island)
+        let subscription = feedback.follow()
+        drain()
+        mixer.systemOutputVolume = 0.3
+        drain()
+        suite.expect(island.presented.isEmpty, "rewriting the current level gives the observer nothing to show")
+        suite.expect(feedback.showVolume(0.3) && island.notice?.level == 0.3,
+               "a level set outside the island shows even when it matches the current one")
+        island.presented.removeAll()
+        mixer.publish(device: "headphones", volume: 0.6, muted: false)
+        drain()
+        suite.expect(island.presented.isEmpty && feedback.showVolume(0.6) && island.notice?.level == 0.6,
+               "a level set outside the island shows when it is a new output's silent first reading")
+        island.presented.removeAll()
+        mixer.publish(device: nil, volume: 0.5, muted: false)
+        drain()
+        mixer.systemOutputVolume = 0.7
+        drain()
+        suite.expect(island.presented.isEmpty, "a level read with no output device shows nothing")
+        island.expanded = true
+        suite.expect(feedback.showVolume(0.2) && island.notice?.level == 0.2,
+               "a level set outside the open island supplies its header feedback")
+        island.showsSystemFeedback = false
+        suite.expect(!feedback.showVolume(0.9) && island.notice?.level == 0.2,
+               "an island that cannot show volume leaves the confirmation to the caller")
+        subscription.cancel()
+
+        // The island's keyboard light controls mark their own changes the same
+        // way, apart from the other levels, for a second.
+        var own = NotchOwnLevelAdjustments()
+        own.note(.keyboardLight, at: 100)
+        suite.expect(own.owns(.keyboardLight, at: 100.5) && !own.owns(.brightness, at: 100.5)
+                     && !own.owns(.volume, at: 100.5),
+               "the island's own keyboard light slider leaves the open island's top row alone, and only for that level")
+        suite.expect(!own.owns(.keyboardLight, at: 101) && !NotchOwnLevelAdjustments().owns(.keyboardLight, at: 0),
+               "a level change after the slider's moment shows its reading")
+
+        // An output that adapts its own level, measured from AirPods Pro
+        // reacting to the room: a hundredth at a time, a ramp up and back
+        // down, steps 0.2 to 0.6 s apart, each ramp closing with a coarser
+        // correction about 1.7 s after its last fine step.
+        suite.expect(NotchSupport.volumeChangeOrigin(from: 0.43, to: 0.44, sinceRide: .infinity) == .rides,
+               "a hundredth of the scale is finer than any volume key can press")
+        suite.expect(NotchSupport.volumeChangeOrigin(from: 0.47, to: 0.45, sinceRide: 0.5) == .rides,
+               "the coarser correction that closes a ramp belongs to the ramp")
+        suite.expect(NotchSupport.volumeChangeOrigin(from: 0.47, to: 0.45, sinceRide: 10) == .announces,
+               "the same two hundredths announce themselves when no ramp is under way")
+        suite.expect(NotchSupport.volumeChangeOrigin(from: 0.42, to: 0.42 + 1.0 / 16, sinceRide: 0.1) == .announces,
+               "a full key step reports however busy the output is")
+        suite.expect(NotchSupport.volumeChangeOrigin(from: 0.41, to: 0.47, sinceRide: 0.1) == .announces,
+               "a full key step rounded into hundredths by the output still reports")
+        suite.expect(NotchSupport.volumeChangeOrigin(from: 0.42, to: 0.42 + 1.0 / 64,
+                                                     sinceRide: .infinity) == .announces,
+               "the keyboard's fine step reports when the output is still")
+        suite.expect(NotchSupport.volumeChangeOrigin(from: 0.005, to: 0, sinceRide: 0.1) == .announces
+               && NotchSupport.volumeChangeOrigin(from: 0.995, to: 1, sinceRide: 0.1) == .announces,
+               "a level pressed against either end reports however little it moved")
+        suite.expect(NotchSupport.volumeChangeOrigin(from: .nan, to: 0.5, sinceRide: 0) == .announces,
+               "an unreadable previous level leaves the change to the caller's judgement")
+
+        let adaptive = Mixer()
+        let riding = Island()
+        let ridingFeedback = makeFeedback(adaptive, riding)
+        let ride = ridingFeedback.follow()
+        drain()
+        // The level the person left it at, which reports as it always did.
+        adaptive.systemOutputVolume = 0.43
+        drain()
+        suite.expect(riding.presented.count == 1, "the level a person sets still reports before any ramp")
+        riding.presented.removeAll()
+        riding.notice = nil
+        // The levels this Mac recorded over one ramp, including the two
+        // hundredths that turn it around, a fraction of a second apart.
+        for level in [0.44, 0.45, 0.46, 0.47, 0.45, 0.44, 0.43, 0.42] {
+            riding.now += 0.4
+            adaptive.systemOutputVolume = level
+            drain()
+        }
+        suite.expect(riding.presented.isEmpty && riding.notice == nil,
+               "a ramp the output drives itself never raises the volume indicator")
+        adaptive.systemOutputMuted = true
+        drain()
+        suite.expect(riding.presented.count == 1 && riding.notice?.level == 0,
+               "muting during such a ramp still reports")
+        riding.presented.removeAll()
+        adaptive.systemOutputMuted = false
+        drain()
+        adaptive.systemOutputVolume = 0.42 + 1.0 / 16
+        drain()
+        suite.expect(riding.presented.count == 2 && riding.notice?.level == 0.42 + 1.0 / 16,
+               "a key press after the ramp reports from the level the ramp left behind")
+        ride.cancel()
+        withExtendedLifetime(ridingFeedback) {}
+    }
+}

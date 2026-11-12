@@ -54,7 +54,7 @@ pulumi_go_test(
         "//apps/cli/devx:.github/FUNDING.yml",
         "//apps/cli/homelab:.github/FUNDING.yml",
         "//apps/desktop/home-speaker:.github/FUNDING.yml",
-        "//apps/desktop/vitruvian:.github/FUNDING.yml",
+        "//apps/desktop/vitruvian-atrium:.github/FUNDING.yml",
         "//apps/desktop/vitruvian-code:.github/FUNDING.yml",
         "//apps/desktop/vitruvian-tool-github:.github/FUNDING.yml",
         "//apps/embedded/esp32-s3:.github/FUNDING.yml",

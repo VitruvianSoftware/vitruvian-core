@@ -214,8 +214,8 @@ final class RemoteModel: ObservableObject {
 
     func openVitruvianApp() {
         let candidates = [
-            URL(fileURLWithPath: "/Applications/Vitruvian.app"),
-            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications/Vitruvian.app"),
+            URL(fileURLWithPath: "/Applications/Vitruvian Atrium.app"),
+            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications/Vitruvian Atrium.app"),
         ]
         if let appURL = candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) }) {
             NSWorkspace.shared.openApplication(at: appURL, configuration: NSWorkspace.OpenConfiguration())

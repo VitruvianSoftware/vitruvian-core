@@ -52,8 +52,8 @@ rust_test(
         "sources.json",
         "tools.json",
         "//:workflow_files",
-        "//apps/desktop/vitruvian:Resources/Info.plist",
-        "//apps/desktop/vitruvian:Sources/Vitruvian/Services/Platform/External/Catalogue/CatalogueSigning.swift",
+        "//apps/desktop/vitruvian-atrium:Resources/Info.plist",
+        "//apps/desktop/vitruvian-atrium:Sources/VitruvianAtrium/Services/Platform/External/Catalogue/CatalogueSigning.swift",
     ] + glob(["testdata/**"]),
 )
 
@@ -93,7 +93,7 @@ rust_binary(
         "catalog.schema.json",
         "sources.json",
         "tools.json",
-        "//apps/desktop/vitruvian:Resources/Info.plist",
+        "//apps/desktop/vitruvian-atrium:Resources/Info.plist",
     ],
     edition = "2021",
     visibility = ["//visibility:public"],

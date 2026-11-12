@@ -205,8 +205,8 @@ pub fn ecosystems() -> Vec<Value> {
             )),
         ),
         eco(
-            "vitruvian-desktop",
-            "Vitruvian Desktop (macOS)",
+            "vitruvian-atrium",
+            "Vitruvian Atrium (macOS)",
             "Vitruvian macOS",
             "Ed25519-signed JSON-RPC 2.0 extensions for the macOS notch island, Command Bar, and Radial menu.",
             Some((
@@ -709,7 +709,7 @@ fn additional() -> Vec<Ext> {
             repo: s("https://github.com/VitruvianSoftware/vitruvian-code"),
             mirror_repo: s("https://github.com/VitruvianSoftware/vitruvian-code"),
             source: s("apps/desktop/vitruvian-code"),
-            ecosystems: ecos(&["antigravity", "claude-code", "vitruvian-desktop"]),
+            ecosystems: ecos(&["antigravity", "claude-code", "vitruvian-atrium"]),
             capabilities: caps(&["2 Skills", "macOS Menu Bar", "Telegram Bridge"]),
             skills: caps(&["configure", "access"]),
             hooks: vec![],

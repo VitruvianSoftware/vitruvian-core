@@ -426,7 +426,7 @@ fn real_repo_unit_files_read_completely() {
     assert!(total >= files.len());
     // The desktop unit the truncated read once missed.
     let desk = fs::read(dir.join("apps__desktop__vitruvian__BUILD.txt")).unwrap();
-    let u = &parse_bytes(&desk, "apps/desktop/vitruvian").unwrap()[0];
+    let u = &parse_bytes(&desk, "apps/desktop/vitruvian-atrium").unwrap()[0];
     assert_eq!(u.runner, "xcode-27");
     assert!(u.test_targets.len() >= 10, "{:?}", u.test_targets);
 }

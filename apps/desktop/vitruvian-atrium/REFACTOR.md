@@ -1,0 +1,5597 @@
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Copyright (C) 2026 VitruvianSoftware -->
+
+# Vitruvian refactor plan
+
+Status: **done**: steps 1 to 8 have landed, and each says what it leaves
+on purpose. Each slice was a PR that built and tested green on the
+`vitruvian-desktop-macos` unit before the next started. Steps are ordered so that
+each one makes the next safer: the compiler takes over checks that were done by
+hand, and only then does the code get moved around.
+
+The gaps come from the architecture review of the imported code:
+
+- a singleton web with `.shared` cycles;
+- 3K-line god-object services;
+- feature wiring that fails silently when a list is forgotten;
+- untyped preferences;
+- convention-only threading;
+- a test harness that text-extracts production code and pins source text.
+
+## Step 1: make feature wiring compiler-checked (done)
+
+Problem: adding a feature means editing 12 to 20 files. Several of those lists
+fail silently when an entry is missing:
+
+- `FeatureRuntime.bindings` is a dictionary called as `bindings[feature]?()`.
+- `AppDelegate` has a hand-kept quit-cleanup list, which has already drifted.
+- `AppDelegate` has a hand-kept Accessibility-resync list. It has also drifted:
+  `.pastePlain`, `.keepAwake` and `.commandBar` are missing.
+
+Change:
+
+- Turn `bindings` into an exhaustive `switch` over `AppFeature`. A new case then
+  fails to compile until it is wired. Features with nothing to start return an
+  explicit no-op.
+- Derive the Accessibility-resync list from `AppFeature.permissions` instead of
+  keeping a second copy.
+- Add a test asserting that every feature with a runtime binding is also covered
+  by the quit path, or is explicitly marked as needing no cleanup.
+
+Done when: forgetting any of these is a compile error or a failing test, and the
+three features dropped from the resync list are back.
+
+Landed:
+
+- `runBinding(for:)` is an exhaustive switch.
+- Converting it exposed `connectedDevices`, which had no binding, so
+  uninstalling it left SystemMonitor's sampling plan stale. It now re-syncs the
+  monitor.
+- Both permission sinks re-sync `AppFeature.dependents(on:)`, which is derived
+  from `permissions`. That brings back `keepAwake`, `pastePlain`, `commandBar`,
+  `notchNotifications`, `screenRecorder` and `cleaningMode` for Accessibility,
+  and the switcher, screenshot, OCR and Watch for Screen Recording.
+  `FeatureCatalogTests` guards both lists.
+- The quit-cleanup check moved to step 2. The audit there found that tying
+  quit to the catalog would be unsafe, so it was dropped (see step 2).
+
+## Step 2: make crash recovery explicit (done)
+
+The plan was a shared `FeatureService` protocol, with quit stopping only the
+services that had started. Auditing the 25 quit-path calls rejected both parts:
+
+- **Skipping services that never started saves little.** Opening the menu panel
+  creates most of them anyway (`QuickControlsSection`), and so does closing it
+  (`ProcessUsageService`).
+- **Skipping them is unsafe for three.** For each, touching `.shared` at quit
+  is what undoes a change a crashed run left behind:
+  - Super Key: clears a leftover `hidutil` remap marker;
+  - mouse acceleration: reads its on-disk journal;
+  - Dock previews: creating the service restores Dock auto-hide.
+- **A protocol adds no check.** After step 1, the exhaustive switch already
+  makes the compiler check each feature's wiring. A protocol over 67
+  `syncWithPreferences()` methods would add no check of its own.
+
+What changed instead:
+
+- **Dock auto-hide is restored at launch.** `DockAutohideHold.recoverIfNeeded()`
+  joins the other launch-time recoveries (`FanControlService`, `KeepAwakeManager`,
+  `SystemShortcutTakeover`, mouse acceleration):
+  - **Before:** restoring auto-hide after a crash waited until something created
+    the Dock preview service. With the feature uninstalled, that could be quit,
+    so the Dock stayed visible for the whole session.
+  - **Test:** `DockAutohideHoldTests` covers it.
+- **`applicationWillTerminate` says which calls must stay unconditional,** so a
+  later "only stop what started" change cannot drop a recovery.
+
+Left for later steps:
+
+- the quit and self-uninstall teardown lists (`AppDelegate`, `SelfUninstall`)
+  stay separate, because they do different jobs: quit undoes system changes,
+  while uninstall must stop every event tap before permissions are reset;
+- per-service `stop()` semantics become explicit when the services move behind
+  module seams (step 3).
+
+## Step 3: split the single target into modules (done)
+
+Problem: `App` / `Core` / `Services` / `UI` / `Support` are folders, not
+boundaries. The test binary recompiles a hand-picked list of 290 production files,
+plus about 590 text-extracted method bodies.
+
+Change, in order:
+
+1. `VitruvianAtriumCore`: the `*Support.swift` pure logic, catalogs, preferences keys
+   and strings. It must import no AppKit service singletons. Make what other
+   modules use `public` (or `package`).
+2. `VitruvianAtriumServices` (depends on Core) and `VitruvianAtriumUI` (depends on Core and
+   Services). `App` becomes the thin executable.
+3. Tests depend on the modules directly (`@testable import`). Each
+   `generate_sources.py` extraction is replaced as the code it targets moves
+   behind a module seam, until the script and `bazel/sources.bzl` can be
+   deleted.
+
+Done when: Bazel enforces the dependency direction (Core never imports Services
+or UI), and no test reads production source as text.
+
+Landed (3.1, first cut):
+
+- **`VitruvianAtriumCore` is `Core/`, minus 16 files that still reach a service.**
+  They were listed in `CORE_FILES_STILL_IN_APP` in `BUILD` (gone since 3.1c).
+  - **Contents:** 83 files, which are the preferences keys, localization and all
+    15 languages, the strings and pure helpers.
+  - **How the set was chosen:** a file-level reference graph found the files
+    with no path to a service singleton. Compiling the set as its own module
+    with the Linux Swift toolchain proved it closed.
+  - **What the graph missed:** it tracks type names, not extension members.
+    `AppKitExtensions.swift` uses `NSScreen.displayID`, which a screenshot
+    service declares, and Linux cannot compile AppKit files, so only macOS
+    CI caught it. It stays in the app.
+- **Supporting moves:**
+  - `DefaultsKey` moved out of `Defaults.swift`, whose defaults table still
+    references about 30 `*Support` types.
+  - `KeepAwakeAutomationSupport.swift` and `ScratchpadSupport.swift` moved into
+    `Core/`.
+- **Access:**
+  - Declarations in the module are `package`, so the app and tests (same Swift
+    package) see them and nothing else does.
+  - Three structs the app or tests build with a memberwise initializer now spell
+    it out.
+- **Tests:** the test binary depends on the module instead of recompiling it.
+  - `generate_sources.py` reads past a `package` modifier.
+  - The French punctuation check would otherwise have passed while scanning
+    nothing. It now fails if it reads no French block.
+
+Landed (3.1b, the catalog and its helpers):
+
+- **One edge cut, 65 files joined.** Nearly every remaining `Core/` file
+  reached a service through a single chain: `Defaults` → `MixerRoutingSupport` →
+  `AirPlayRouteManager`, for one constant. The constant
+  (`airPlaySentinelUID`) now lives in `MixerRoutingSupport`, and the route
+  manager keeps an alias.
+  - **Joined:** `Defaults`, `FeatureCatalog`, `FeaturePresets`,
+    `GlobalShortcut`, `SymbolicHotKeys`, `SettingsBackupSupport` and the
+    remaining strings.
+  - **Moved into `Core/`, keeping their folder names:** the 50 pure `*Support`
+    and model files they need, from `Services/`.
+- **`FanControlKit`** is a third module, holding `FanControlSupport.swift` and
+  `TemperatureSensorSelector.swift`.
+  - **Dependents:** `Defaults` needs their default values, and the privileged
+    fan helper compiles them too. Both depend on the module, and the helper
+    links nothing else of the app.
+  - **Imports:** Core re-exports the module (`@_exported import`), so app code
+    sees it through `import VitruvianAtriumCore`. The helper's `main.swift` and the
+    three files it shares with the app import it directly.
+- **Still in the app:**
+  - `AppKitExtensions` needs a screenshot service's `NSScreen.displayID`.
+  - `Permissions` opens the permission-guide UI.
+  - `SecureInputMonitor` is a singleton service.
+- **Initializers:** 197 initializers are spelled out, because a synthesized
+  initializer never leaves its module and outside code builds these types, by
+  name or as a contextual `.init(...)`.
+  - **What gets one:** every struct and class in the module without an
+    initializer of its own, except the `*Strings` family, which only Core
+    builds.
+  - **How:** a generator writes the memberwise initializer, following Swift's
+    synthesis rules: a `let` with a default is excluded, a `var` keeps its
+    default, and an optional `var` defaults to `nil`.
+  - **Private stored properties:** the synthesized initializer is fileprivate,
+    so those types get `package init() {}` when they are built outside as
+    `Foo()`. Otherwise they are left alone.
+- **Checks that ran before macOS, all on Linux:**
+  - The module type-checks with SDK stand-ins, and no error is new beyond SDK
+    gaps.
+  - A hidden-dependency scan matches every missing-member error against
+    extensions declared outside the module. It finds the `displayID` case
+    above, and nothing in this set.
+  - No top-level test declaration shadows a name the module uses.
+  - Generated test sources are byte-identical.
+  - Source-text pins naming a full moved path were updated. One test builds
+    the path from a relative fragment (`"Sources/Vitruvian/\(file)"`), which
+    that search missed; macOS CI caught it, and a rescan of every app file
+    for relative fragments of all 52 moved paths found no other.
+
+Landed (3.1c, the folder is the module):
+
+- **`AppKitExtensions` joined.** `NSScreen.displayID` moved into it from
+  `ScreenshotCaptureEngine.swift`, which was the only edge to a service.
+- **`Permissions` and `SecureInputMonitor` moved to `Services/`.** Each is a
+  singleton that owns live system state, which is what a service is, so by
+  this step's own rule neither belongs in Core. The earlier plan was to split
+  the permission-guide call out of `Permissions`, but that would still have
+  left a service singleton in Core. No Core file uses either.
+- **`CORE_FILES_STILL_IN_APP` is gone.** `VitruvianAtriumCore` is now exactly the
+  `Core/` folder: a file there that reaches a service fails to compile.
+- **Checks that ran before macOS, on Linux:** the whole folder type-checks as
+  one module with the SDK stand-ins, adding only SDK-gap errors (`NSScreen`
+  members the stand-in lacks), and the hidden-dependency scan finds nothing.
+
+### 3.2: interfaces first, then the split
+
+The split waits until nothing points the wrong way, so each module lands
+without exceptions. Measured at the start (type names and top-level
+functions, comments and strings blanked): 145 wrong-way references.
+
+- **`Services` -> `UI`, from 35 files.** Four kinds:
+  - pure types filed under `UI/` (settings destinations, `PermissionKind`,
+    panel layout models);
+  - window primitives (`OverlayPanel` in 23 files, `HUDBackdrop`,
+    `NonModalAlert`, `PlainTextEditor`);
+  - services that build their own SwiftUI view (about 25 views);
+  - the Notch cluster, mostly `NotchService`.
+- **`UI` -> `App`, from 32 files:** `FeatureRuntime` in 23, then menu-bar
+  types and `AppDelegate`.
+- **`Services` -> `App`, from 6 files:** `FeatureRuntime` and `AppDelegate`.
+
+The order:
+
+1. **3.2a, move what is filed in the wrong layer** (landed, below).
+2. **3.2b, the app shell and settings navigation** (landed, below).
+3. **3.2c, presentation**, in two parts:
+   - **3.2c-1, building blocks and models down** (landed, below);
+   - **3.2c-2, the view factory** (landed, below).
+4. **3.2d, the Notch cluster** (landed, below).
+5. **3.2e, the split**, one module per step, smallest first:
+   - **3.2e-1, `VitruvianAtriumDesign`** (landed, below);
+   - **3.2e-2, `VitruvianAtriumServices`** (landed, below);
+   - **3.2e-3, `VitruvianAtriumUI`** (landed, below). `App` stays the executable's library.
+
+   `bazel/layering.py` retires once Bazel holds the whole direction (it did, in 3.2e-3).
+
+Landed (3.2a, the ratchet and the misfiled files):
+
+- **`layering_test`** (Linux, in the pipeline unit) fails on any wrong-way
+  reference missing from `bazel/layering_baseline.txt`, and on any baseline
+  line that no longer occurs, so the baseline only shrinks.
+  - Proved both ways: a planted `StatusItemController` reference from a
+    service fails it, and so does a stale line.
+  - It matches type names, top-level function calls and globals. Its first
+    version saw types only and missed `appDelegate()`, a top-level function in
+    `UI/` that five services call. It misses extension members declared in a
+    later layer, which Bazel catches once the modules exist.
+- **Moves:** 145 references became 100.
+  - `FeatureRuntime` moved to `Services/`. It references 77 services and
+    nothing in `UI/` or `App/`: it is the service orchestrator, not the app
+    shell. That alone cut 27 files' references.
+  - `AppAppearanceController` moved to `Services/`, and `MenuBarRenderer.swift`
+    (the menu-bar metric models and the segment builder, which read service
+    snapshots) to `Services/MenuBar/`.
+  - The pure `MenuBarSpacingSupport`, `MenuBarAllowanceSupport`,
+    `StatusItemAnchorSupport` and `ReopenRequestSupport` moved into Core,
+    which made them `package` and spelled out two initializers.
+  - `BlackHoleGlyph`, the menu-bar mark's drawing, moved out of
+    `StatusItemController.swift` into `UI/`.
+
+Landed (3.2b, the app shell and settings navigation): 100 references became
+75, and nothing outside `App/` names `AppDelegate` any more.
+
+- **`AppShell`** (`Services/AppShell.swift`) is what services and views may
+  ask of the running app: open Settings and the intro windows, close the
+  popover, hit-test the status item, show the permission guide, relaunch.
+  - `appShell()` replaces `appDelegate()` and every
+    `NSApp.delegate as? AppDelegate`. It is still the delegate underneath, so
+    behavior is unchanged.
+  - The protocol is not `@MainActor`. Its callers are services that are not
+    actor-isolated, and in the Swift 5 mode a call from them into an
+    explicitly main-actor protocol is a compile error (tried on the Swift 6.4
+    toolchain). The delegate's own isolation comes from AppKit's
+    `@preconcurrency` protocols, so it never stopped those calls.
+  - `AppDelegate` conforms in `App/AppDelegate+AppShell.swift`. The
+    requirements use its own signatures, and a protocol extension supplies the
+    short forms with its defaults. The overloads were tried on the Swift 6.4
+    toolchain first: inside the delegate and through the protocol, every call
+    resolves to the intended method.
+  - `Permissions` shows its guide through the shell, so the service no longer
+    names the overlay.
+- **Settings navigation moved down.**
+  - `FeatureVisibilitySupport`, `SettingsSearchSupport` and
+    `SettingsSidebarSupport` moved into Core: destinations, the router (a pure
+    state machine), search and sidebar. They became `package`, and seven
+    initializers are spelled out.
+  - `PermissionKind` moved into Core, and `SettingsDirectory`, which reads two
+    services, moved to `Services/Settings/`.
+- **`SettingsHistoryNavigating`** is a Core `@objc` protocol for the Settings
+  window's Back and Forward actions. The mouse-navigation service finds those
+  menu items by its selectors, and the window conforms, so the compiler still
+  ties the selectors to the window.
+- **The metric status grouping** moved from `StatusItemController` into
+  `MenuBarRenderer`, which the Settings preview already reads.
+- **Tests:** five contracts that stubbed the delegate for extracted code now
+  stub `appShell()`.
+- **Checks that ran before macOS, on Linux:**
+  - Core type-checks with the moved files, and the only new error is `@objc`,
+    which Linux cannot compile.
+  - The hidden-dependency scan finds nothing, and no test declares a moved
+    name.
+
+Landed (3.2c-1, building blocks and models down): 75 references became 40.
+
+- **`Design/`** is a new layer between Core and Services, for the AppKit and
+  SwiftUI building blocks that services and views both draw with. It knows
+  no feature.
+  - **Moved in:** `OverlayPanel` (named from 23 service files),
+    `NonModalAlert`, `PlainTextEditor` and `MixerPercentNativeTextField`;
+    `HUDBackdrop` (out of `SharedUI.swift`); and `Theme`'s space gradient (out
+    of `Theme.swift`, as `SpaceGradient.swift`).
+  - **Why a layer, not Core or Services:** Core is pure logic and Services is
+    behavior. A panel or a backdrop is neither, and both need it.
+  - `layering.py` ranks it: `Core` <- `Design` <- `Services` <- `UI` <- `App`.
+- **Models that services own moved to `Services/`:**
+  - `BackdropEditing`, the protocol both editor models conform to, out of the
+    picker's view file;
+  - `PanelInteractionState`, which is state, not a view;
+  - `BreakdownKind`, which the process sampler is keyed by.
+- **Checks that ran before macOS, on Linux:**
+  - No `Design` file names a later layer, and none uses an extension member
+    declared in one. A scan matched every `.member` against later-layer
+    extensions.
+  - The same holds for the three files that moved into Services.
+  - No file name is used twice in a module.
+  - Every test-compiled file still finds the types it uses in the test set.
+  - The source pins on the split files (`SharedUI`,
+    `ScreenshotBackdropPopover`, `Theme`) read text that stayed.
+
+Landed (3.2c-2, the view factory): 40 references became 17. The 17 left are
+the Notch cluster (15, step 3.2d) and the screenshot quick preview's two
+borrowed widgets.
+
+- **`ServiceViewFactory`** (`Services/ServiceViews.swift`) builds the SwiftUI
+  content services host in their own panels and windows: 17 views.
+  - `UI/UIServiceViewFactory.swift` implements it, each view built exactly as
+    the service built it.
+  - `main.swift` installs it right after `Defaults.register()`, before any
+    self-test, probe or service can present.
+  - A service still owns its window and only asks for the content.
+  - `ServiceViews.factory` stops with a precondition if nothing was
+    installed. That cannot happen in the app, and none of these services is
+    compiled into the tests.
+  - Like `AppShell`, it is not `@MainActor`, for the same Swift 5 reason.
+- **Window controllers that were filed under `UI/` moved to `Services/`**,
+  next to `QuickToolHUD` and `BrightnessOSD`: `QuitProtectionHUD` and
+  `ShelfTooltipPopover`. Neither needs anything above `Design`.
+- **Lane and layout models moved to `Services/`:**
+  - the recorder lane's kind and item (the view keeps typealiases);
+  - the panel layout store (`PanelOrderItem`, `PanelSectionID`,
+    `PanelLayout`), split from the views in `PanelLayout.swift`.
+- **Checks that ran before macOS, on Linux:**
+  - No extracted test code reaches the factory, and no test pins a replaced
+    line.
+  - The moved files use no extension member declared above them.
+  - No file name repeats within a module.
+  - The test generator's output for the panel layout is unchanged.
+
+Landed (3.2d, the Notch cluster): 17 references became **0**. Nothing in
+`Core`, `Design` or `Services` names a type, top-level function or global
+of a later layer.
+
+- **Models and state that services own moved to `Services/`:**
+  - the lock screen's model;
+  - the menu panel's focus requests (`MenuPanelFocus`) and `MetricDetailKind`;
+  - the compact music snapshot;
+  - the quick-access motion and the island's backdrop presentation, which
+    the window host drives;
+  - the media workspace's file-dialog runner (`MediaPanelModal`), whose flag
+    the island reads.
+- **Drawing pieces moved to `Design/`:** `NotchShape`, `NotchButtonStyle`,
+  and the share picker's anchor and presenter.
+- **Seven Notch views** come from `ServiceViewFactory`: the island, its
+  mirror, quick access, its background, and the three lock-screen surfaces.
+- **One access change the split forced.**
+  `NotchBackdropPresentation.contourBottom` was `fileprivate`, and the view
+  left behind in `NotchComponents.swift` reads it, so it is internal now. A
+  scan of every split pair for private and fileprivate members, and for
+  private extensions, used across the split found it. It found nothing else.
+- **Checks that ran before macOS, on Linux:**
+  - The generated test sources are unchanged apart from one re-indented
+    line.
+  - No test or mutation check reads text that left its file.
+  - The test compile set is still closed.
+  - The moved files use no extension member declared above them.
+  - No file name repeats within a module.
+
+The ratchet's baseline is empty, so any new wrong-way reference fails
+`layering_test`. Step 3.2e can now make the layers modules.
+
+Landed (3.2e-1, `VitruvianAtriumDesign`): `Design/` is its own module, which
+depends on Core alone, so Bazel now enforces the bottom of the stack.
+
+- **Access:** its declarations are `package`.
+  - Four structs spell out their initializers: `HUDBackdrop`,
+    `NotchButtonStyle`, `NotchShape` and `ShelfSharePickerAnchor`.
+  - The share anchor's box class spells out `package init() {}`.
+  - An `NSObject` subclass keeps a usable `init()` across modules, and a
+    plain class does not. Both were tried with two real modules on the Swift
+    6.4 toolchain.
+  - `OverlayPanel` is `open`, because 13 services subclass it, and only an
+    open class can be subclassed outside its module. Its override is
+    `public`, as an override in an open class must be at least as visible as
+    the AppKit method it overrides. Both rules were tried the same way.
+- **Imports:** every app and test file imports it next to `VitruvianAtriumCore`, as
+  do the generated test sources.
+  - The exceptions are the files the fan helper and the Now Playing adapter
+    also compile, which link neither module.
+  - A uniform import also covers extension members, which a type-name scan
+    would miss.
+- **Tests:** the generator no longer copies `OverlayPanel` into the test
+  binary; the overlay test builds the module's own class.
+- **Checks:**
+  - No test declares a `Design` name at top level.
+  - Nothing outside `Design` subclasses a `Design` class except
+    `OverlayPanel`'s subclasses, which override AppKit members only.
+  - No `Design` file uses an extension member that a later layer declares.
+  - `Design` declares no extensions.
+  - The generated test sources still build from the annotated declarations.
+
+Landed (3.2e-2, `VitruvianAtriumServices`): `Services/` is its own module, which
+depends on Core and Design, so Bazel now enforces Core <- Design <- Services.
+
+- **Five hidden edges cut first.** The layering check sees type names, not
+  extension members, and five services used members that `UI/` declared:
+  - `AppFeature.hubTitle` and `hubDescription` moved to
+    `Services/Settings/FeatureHubText.swift`;
+  - `MenuBarMetric.detailKind` moved next to `MetricDetailKind`;
+  - `Notification.Name.menuPanelWillShow` moved to `MenuPanelFocus`;
+  - `NotchModule.title` moved to Core, beside `NotchModule` (its
+    `PanelOrderItem` conformance stays in `UI/`);
+  - `View.screenshotSafeHelp` moved to `Design/`.
+- **How they were found:** Services, Core and Design were type-checked as
+  one module on Linux with SDK stand-ins, and the errors were matched against
+  extensions declared outside that set. A name scan of every such extension
+  member found the ones whose receivers the stand-ins could not resolve.
+- **Access:** its declarations are `package`.
+  - As in Core, every struct without an initializer of its own spells out
+    its memberwise one (149), so nothing depends on finding each place that
+    builds one: tests build nested and generic ones by qualified name, and
+    some only as a contextual `.init()`.
+  - 32 types spell out `package init() {}`: structs whose private stored
+    properties keep the memberwise initializer private, and plain classes,
+    that outside code builds as `Foo()`. A class with only convenience
+    initializers counts: its default `init()` is still synthesized, and
+    still internal.
+  - Two one-line structs declared a second property after a `;`; it is
+    `package` too.
+- **Imports:** every `UI/`, `App/`, `Support/` and test file imports it, as do
+  the generated test sources.
+- **Shared files:** the fan helper and the Now Playing adapter still compile
+  their few `Services/` files themselves; the adapter's library now passes the
+  package name, as the helper's already did.
+- **Tests:** the test binary takes `Services/` from the module instead of
+  compiling 131 of its files.
+  - `generate_sources.py` reads production files with their `package`
+    modifiers removed, so every extraction sees the text it was written
+    against (a modifier can now follow an attribute).
+  - The `NotchModule.title` copy is gone, since Core has it, and the
+    `detailKind` copy reads its new file.
+  - The `NotchActivationButton` copy is gone too: a gesture test built the
+    copy and handed it to the module's `NotchGestureSupport`, whose type check
+    then failed to recognize it. macOS CI caught this.
+  - Six source-text checks split a file at `    func name`, which now reads
+    `    package func name`; they split there instead. A scan of every test
+    string literal, counted in the changed sources before and after, finds
+    no other.
+- **Checks that ran before macOS, on Linux:**
+  - Core, Design and Services emitted as one module with the SDK stand-ins,
+    and `UI/`, `App/` and `Support/` type-checked against it: the only new
+    errors were initializers that were not yet spelled out, now all fixed.
+  - The test binary, type-checked the same way in its old and new layouts:
+    the new layout adds no error beyond the SDK stand-ins' gaps. This is the
+    check that found the nested initializers, the `;` declarations and
+    `AgentUsageStore()`. It also reported `ScanCancellation()`, which macOS CI
+    then caught too: the copies the generator makes report errors at the
+    production file's path, which the first comparison left out.
+  - Annotating added no type-check errors in the module.
+  - Nothing outside `Services/` subclasses a `Services` class, and no
+    runtime lookup depends on the module name (no archived classes, no
+    `NSClassFromString` of an app class).
+  - Five test sources still declare a top-level copy of a `Services` type;
+    the copy shadows the module's, and no test hands it to the module.
+  - Generated test sources match the previous ones but for the spelled-out
+    initializers in their copies.
+
+Landed (3.2e-3, `VitruvianAtriumUI`): `UI/` is its own module, which depends on
+Core, Design and Services. With it, Bazel holds the whole direction, and the
+layering ratchet is gone.
+
+- **No hidden edges:** `App/`, `Support/` and `main.swift` declare no
+  extension member on a type `UI/` can see, and the ratchet already counted
+  zero wrong-way references.
+- **Access:** its declarations are `package`.
+  - `SettingsWindow` is `open`, with its two AppKit overrides `public`: a test
+    subclasses it from the test module (to fake `isKeyWindow`).
+  - Views that `App/`, `Support/`, a test, or a generated copy builds spell
+    out their initializer, taking what the synthesized one took: the
+    non-private stored properties, a `Binding` for a `@Binding`, the object
+    for an `@ObservedObject` (through `ObservedObject(wrappedValue:)`),
+    closures `@escaping`, defaults kept. 18 were written by hand and four
+    generated, and `UIServiceViewFactory` spells out `init()`.
+  - A view's explicit initializer takes the main-actor isolation the `View`
+    conformance infers. Built from a test's non-isolated function, it draws
+    no diagnostic in the Swift 5 language mode (tried with a stand-in
+    `@preconcurrency @MainActor protocol View` across modules), as before.
+- **Imports:** every `App/`, `Support/`, `main.swift` and test file imports it,
+  as do the generated test sources.
+- **Tests:** the test binary compiles no production file of its own any more;
+  every listed source now comes from a module. Its source glob may now be
+  empty (`allow_empty`), and fills again if upstream lists one outside them.
+- **The ratchet retired:** `bazel/layering.py`, its baseline and both targets
+  are deleted, and the pipeline unit no longer lists `:layering_test`
+  (`presubmit.yaml` regenerated).
+- **Checks that ran before macOS, on Linux with SDK stand-ins:**
+  - Core through UI type-checked as one module before and after: the only
+    new errors are SwiftUI names the stand-ins lack (`ObservedObject`,
+    `Binding`, view modifiers).
+  - Core through UI emitted as one module, and `App/`, `Support/` and
+    `main.swift` type-checked against it: no access error.
+  - The test binary in its 3.2e-2 and 3.2e-3 layouts, errors compared at
+    every path (the generated copies report at the production file's):
+    no new error.
+  - Every test string literal, counted in the changed sources before and
+    after: none that a test slices or searches by changes.
+  - The one top-level test copy of a `UI` type left (`NotchActivityPicker`)
+    is never handed to the module or type-checked by it.
+## Step 4: dependency injection at the seams that tests need (done)
+
+Problem: services take no collaborators. Tests fake them by shadowing type names
+inside the test module.
+
+Change:
+
+- Constructor injection for the collaborators tests replace today: UserDefaults,
+  the clock, NSWorkspace, the pasteboard, the HAL and the queues.
+- `.shared` stays as the production composition root.
+- Break the `.shared` cycles (Notch ↔ Shelf, Notch ↔ Brightness,
+  Notch ↔ PreciseVolumeRoller) with events or closures owned by the composition
+  root.
+
+Landed (4a, the island's cycles): `NotchService` names none of the three.
+
+- **`NotchCollaborators`** (`Services/Notch/NotchCollaborators.swift`) holds
+  what the island asks of them: resync key routing when it starts or stops
+  showing volume and brightness feedback, resync the Shelf when its file
+  routing changes, and hand a file drop to the Shelf.
+- **`NotchService.collaborators`** is a static that `main.swift`, the
+  composition root, fills in before anything runs. A static, so wiring it
+  does not build the island any earlier than before. Its default does
+  nothing, which is all a test without the services needs.
+- The calls keep their order and their feature gates; they moved from the
+  island into the wiring.
+- **Tests:** three contracts copy island methods that now call the hook
+  (file drop, fullscreen, session). Each contract wires its own stand-ins the
+  way `main.swift` wires the services, so the tests count the same resyncs.
+- Still named by the island: `BrightnessService.lidClosed()`, a static query
+  with no state, not a cycle.
+
+Landed (4b, two preview checks): the first tests that copied production
+text so they could swap `UserDefaults`, `NSWorkspace` or a desktop query now
+call the module's own code.
+
+- **Injected:** `WindowPreviewProvider.captureIsPaused` takes the
+  preferences and the app in front, and
+  `WindowEnumerator.dockPreviewMayActivate` takes the window, the
+  current-desktop preference and the desktop query. The overloads the app
+  calls pass the system's, so nothing else changed.
+- **Tested directly:** the switcher contract keeps its two checks, now
+  against a preferences suite of its own; the Dock Preview scope test keeps
+  its four, counting the desktop queries through its closure, and adds one
+  for an item with no window. Their stand-in `UserDefaults`, `NSWorkspace`,
+  `SpaceWindowBridge` and `SwitcherItem`, and the generated copies, are gone.
+- **The pattern for the rest:** about 180 type aliases and stand-ins in the
+  tests exist so a copied body reads a fake instead of the system. Each one
+  goes the same way: the production code takes what the test swaps, and the
+  test calls the module.
+
+Landed (4b, process names, the pointer's screen and title motion): three
+more tests call the module instead of a generated copy, which leaves 97.
+
+- **Injected:**
+  - `ResponsibleProcess.displayName` takes the app name, kernel name and
+    executable path lookups;
+  - `NSScreen.screen(containing:among:frame:fallback:)` is the choice
+    `withMouse` makes, for any screens and pointer;
+  - `ScrollingTitle.shouldScroll` takes hover, Reduce Motion and overflow.
+    Overflow stays lazy, so a title that cannot scroll is still never
+    measured, and the test now checks that too.
+- **Tested directly:** the three tests keep their checks, now with plain
+  values in place of stand-in `NSRunningApplication`, `proc_name`,
+  `proc_pidpath`, `NSScreen` and `NSEvent` types. The libproc buffer handling
+  stays in the system lookups the app passes, which the test no longer
+  imitates.
+
+Landed (4b, CPU ticks, copied answers and quick paste): three more tests call
+the module instead of a generated copy, which leaves 94.
+
+- **Injected:**
+  - `SystemMonitor.cpuUsage(ticks:now:previous:held:heldReadAt:)` is the tick
+    math `readCPUUsage` runs on the host's counters, with the monitor's state
+    passed in and out;
+  - `CommandBarCatalog.copyAnswer(_:copy:show:)` takes the pasteboard write
+    and the HUD;
+  - `ClipboardHistoryService.pasteIntoPreviousApp` has an overload that takes
+    the target app, the Accessibility grant, the beep, the prompt and the
+    paste shortcut.
+- **Tested directly:** the three tests keep their checks, now with plain
+  values and recorders in place of stand-in `host_statistics`, pasteboard,
+  pasteboard lane, HUD, `NSRunningApplication`, `NSSound`, `Permissions` and
+  main-queue types. The CPU test also checks that ticks which have not
+  advanced report nothing and that niced ticks count as busy. The system
+  calls stay in the app's wrappers, which the tests no longer imitate.
+
+Landed (4b, sound output, shortcut rows and notch notices): three more
+generated copies go, which leaves 91.
+
+- **Injected:**
+  - `AppVolumeMixer.switchToNextSoundOutput(in:outputs:currentUID:switchTo:)`
+    is the switch the output shortcut makes, for any outputs;
+  - `ShortcutsSettings.expansionBinding(for:in:expanded:)` takes the page's
+    open rows as a binding.
+- **Tested directly:** the two tests keep their checks, with plain outputs
+  and a plain binding in place of a stand-in mixer and page.
+- **Copy dropped:** `NotchNotice` already had a `package` initializer, so the
+  tests use the shipped type instead of a copy of it.
+
+Landed (4b, window-server capture and the island's panel): two more
+generated copies go, which leaves 89.
+
+- **Injected:** `WindowPreviewProvider.captureViaWindowServer` has an overload
+  that takes the connection, the capture function, its options and the
+  queue. The test passes its fake capture function and its own queue, so
+  every queueing and cancellation check runs the shipped body.
+- **Copy dropped:** `NotchPanel` is already `package`, with AppKit's
+  initializers, so its tests build the shipped class.
+
+Landed (4b, the island's outline and the mixer level's Escape): two more
+generated files go, which leaves 87.
+
+- **Copies dropped:** `NotchShape` already had a `package` initializer, so
+  its tests draw the shipped shape. The copied `NotchActivityPicker` beside
+  it was used by no test.
+- **Injected:** `MixerPercentEscape.cancelsLevel(keyCode:isActive:inFieldWindow:composing:)`
+  is the choice the mixer level field's Escape monitor makes. The field's
+  coordinator is private to its view, so the test asks this directly, and
+  now also checks that only Escape cancels, that an idle field ignores it,
+  and that a press outside the field's window never asks the input method.
+
+Landed (4b, the dimming choice): one more generated file goes, which leaves
+86.
+
+- **Injected:** `SoftwareDimmingButton.offersChoice(isActive:isBuiltIn:canChooseDimming:isDDC:readable:chosen:compact:)`
+  is the rule every display row uses to offer the dimming choice. The test
+  keeps all eleven of its checks with a plain row.
+- **What is left:** most of the 86 remaining copies stand in for several
+  collaborators at once. They cover the app delegate, which the tests cannot
+  import, the notch and command bar services, and window and panel hosts. Each
+  needs a step 5 style extraction or a seam per collaborator, not a one-line
+  overload, so later slices will be fewer copies each.
+
+Landed (4b, the panel's tab gates): one more generated file goes, which
+leaves 85.
+
+- **Injected:** `MenuPanelRowFeatures.utilities` and `.controls` list the hub
+  features behind the panel's utility and control rows. The row enums stay
+  private to the panel; the test compares these lists, and the shipped
+  `QuickToggleAction`, against the shipped `PanelSectionID.featureGate`
+  instead of copies of all four types.
+
+Landed (4b, the agent usage service's save, settle and alerts): three more
+generated files go, which leaves 82.
+
+- **Injected:** `AgentUsageService.settleArchive(on:keeping:save:remove:)`
+  settles saved progress on the reading queue, and
+  `AgentUsageService.saveProgress(mark:savedMark:providers:store:cursors:save:)`
+  writes it when reading moved on. The service passes its own queue, state and
+  archive; the tests pass recorders.
+- **Injected:** `AgentUsageService.delivers(_:queuedIn:running:session:providers:in:)`
+  is the rule an agent event meets on the main thread: dropped after a stop or
+  restart, or past the person's choices. The test reads those choices from a
+  test defaults domain instead of a stand-in `NotchAgentSupport`.
+
+Landed (4b, the agent usage service's log read): one more generated file
+goes, which leaves 81.
+
+- **Injected:** `AgentUsageService.read(_:provider:cursors:store:isCancelled:report:lines:)`
+  applies a log's new lines to the store as they arrive. `lines` defaults to
+  `AgentLogReader.readAppended`; the test wraps it to see each line arrive
+  instead of shadowing the reader.
+- **Check tightened:** the test now appends a line before its cancelled read,
+  so "a cancelled reading consumes no more entries" fails when cancellation
+  is ignored. Before, the file was unchanged and the check passed either way.
+
+Landed (4b, the Cleaner's last run): one more generated file goes, which
+leaves 80.
+
+- **Injected:** `CleanerScheduler.recordRun(freed:failed:at:in:)` saves a
+  finished automatic pass, and `CleanerView.lastRunLine(ranAt:freed:failed:strings:)`
+  is the schedule card's line for it. The test saves to a test defaults
+  domain, reads back through the card's `Preferences` keys and checks the
+  shipped English strings, in place of a stand-in defaults store and strings.
+
+Landed (4b, the music queue's row action): one more generated file goes,
+which leaves 79.
+
+- **Injected:** `NotchMusicService.playQueued(_:visible:request:upcoming:playback:pending:failed:in:send:)`
+  holds the row action's rule and its pending and failed flags. The service
+  passes its own state and `send`. The test reads its preferences from a test
+  domain instead of a stand-in `NotchQueueSupport`.
+- **Checks added:** a row action still waiting for its reply blocks another,
+  and a queue turned off in Settings plays nothing. The stand-in always
+  reported the queue on, so the second could not be checked before.
+
+Landed (4b, Keep Awake's timer handoff): one more generated file goes,
+which leaves 78.
+
+- **Injected:** `KeepAwakeManager.timerHandoff(trigger:suppressed:in:batteryAllows:matching:enabled:requireAll:)`
+  returns the conditions a timed session that ran out carries on with, or nil
+  when it ends. The battery and condition readers are closures, so they are
+  read in the same order as before, only after the cheaper guards pass.
+- **Check added:** a session already running automatically never reads the
+  conditions.
+- **Mutation fixture:** `mutation_checks.py` "a timed session hands over on
+  one condition" now targets the static's guard.
+
+Landed (4b, type copies): nine copies of data types that production already
+declares `package` become the module's own types. No generated file goes
+away, so 78 remain.
+
+- **Aliased:** `BrightnessService.DisplayControlFailure`,
+  `CommandBarService.Mode`, `JunkCleaner.Phase`, `UpdateService.State`,
+  `ScreenshotQuickPreviewController.Action`, and `SpaceWindowBridge.Topology`
+  in three scopes. Each is a module-qualified typealias where the copied
+  methods name the type unqualified.
+- **Dropped:** the copy of `NotchMediaSession`, a top-level type the module
+  already exports.
+- **Kept:** the copy of `AppUninstaller.Phase`, whose `.done` case holds the
+  test's stand-in `Leftover`.
+
+Landed (4b, the Dock preview's desktop-change observer): one more generated
+file goes, which leaves 77.
+
+- **Extracted:** `Services/DockPreview/DockPreviewSpaceObservation.swift`
+  keeps at most one desktop-change observer. While previews list only the
+  current desktop, a change ends the open session, unless a window is being
+  dragged.
+- **Wiring:** `DockPreviewService` hands it its state and `endSession`. The
+  notification center and name are injected.
+- **Test:** the test drives the type on its own `NotificationCenter` instead
+  of copies of `syncSpaceObservation` and `stopSpaceObservation`.
+
+Landed (4b, the Cleaner's scans, grouped by owning file): both copies of
+`JunkCleaner` go, which leaves 75.
+
+- **Injected places:** `JunkCleaner.Places` names the home folder, the
+  folders screenshots are saved in, and how an app registered with Launch
+  Services is found. Every scanner and the removal guard read it instead of
+  `NSHomeDirectory()` and `NSWorkspace`.
+- **Injected scanning:** `JunkCleaner.Scanning` names what a scan runs for
+  each category and the two queues it uses.
+  - `shared` keeps the system's of both.
+  - A package initializer lets a test build a cleaner with its own.
+- **Tests:**
+  - `CleanerEligibilityTests` lays its fixtures out under the real Library
+    folders of a fixture home and calls `mayRemove`, `appendLeftovers`,
+    `scanCaches`, `scanLogs`, `scanScreenshots` and `leftoverOwner`.
+  - `CleanerScanFlowTests` drives a real cleaner through a manual queue.
+- **Source text:** the anchors in `AppManagementFeatureTests` follow the
+  new signatures.
+
+Landed (4b, the command bar's brightness command): one more generated
+file goes, which leaves 74.
+
+- **Injected:** `CommandBarCatalog.applyBrightness(percent:display:route:)`
+  takes a `BrightnessRoute`: the display under the pointer, the displays
+  the brightness service drives, the set, refresh and refusal, and how the
+  retry is scheduled. `system` keeps the AppKit lookups, the service and
+  the 0.7 s retry.
+- **Test:** the test passes a route of its own instead of shadowing
+  `NSScreen`, `NSEvent`, `NSSound`, the service and the queue.
+
+Landed (4b, the Dock preview's frame restore): one more generated file
+goes, which leaves 73.
+
+- **Injected:** `DockPreviewFrameRestoration.restore(...)` takes a
+  `RestoreHost`:
+  - a display's frames now;
+  - the frontmost process and the focused window;
+  - the restore itself, and the wait between checks.
+
+  `system` keeps AppKit, the window activator and the main queue.
+  `Screen` is `package`.
+- **Test:** the test steps the checks one at a time instead of waiting on
+  the run loop.
+- **Checks added:** the waits are 0.15 s and then 0.05 s, and another app
+  in front cancels the restore. The stand-in it replaced always reported
+  the item's app in front.
+
+Landed (4b, the keyboard debounce tap): one more generated file goes, which
+leaves 72.
+
+- **Injected:** `KeyboardDebounceService.suppresses(_:event:state:config:)` is
+  the tap's rule for a key event, with the state and settings passed in.
+- **What stayed:** the tap keeps its re-arm branch and its lock.
+- **Test:** the test calls the rule with a state of its own.
+
+Landed (4b, Port Manager's refresh): one more generated file goes, which
+leaves 71.
+
+- **Injected:** `PortManagerService` takes a `Scanning`:
+  - the process list and each process's start time;
+  - the lsof listing;
+  - where the work runs and where its result is published.
+
+  `system` keeps `proc_listallpids`, the kill service's start time, lsof
+  and the dispatch queues. `snapshot(_:)` is `package`.
+- **Test:** the test passes inert process data and a manual queue instead
+  of shadowing `DispatchQueue`, `Shell`, the kill service and
+  `proc_listallpids`.
+
+Landed (4b, Fan Control's resume): one more generated file goes, which
+leaves 70.
+
+- **Extracted:** `FanControlLifecycle` (new, `Services/FanControl`) holds
+  what fan control does on its own:
+  - resuming after a launch or wake;
+  - keeping or forgetting the resumed control as the preferences change;
+  - winding down idle work.
+
+  It reads the defaults it is given. `FanControlService` owns it and passes
+  in its access state, snapshot, panel state and the helper requests.
+- **Test:** the test drives the lifecycle with a recording host and a
+  defaults domain of its own instead of a copy of ten service members.
+- **Checks added:** an open panel keeps its updates running, waking with the
+  panel closed does nothing, and a control that stopped cooling is not kept.
+  Mutants of each of these passed the old test.
+
+Landed (4b, the island's live equalizer): one more generated file goes,
+which leaves 69.
+
+- **Injected:** `NotchAudioLevelService` takes an `Environment`:
+  - whether the equalizer is chosen, and whether Reduce Motion is on;
+  - the playback it follows;
+  - how a reader is built.
+
+  `system` keeps the preferences, the music service and the Core Audio
+  reader. Readers conform to `NotchAudioLevelReading`.
+- **Test:** the test runs its own service on a playback subject, with
+  readers that only record what they are told, instead of a copy of the
+  whole class.
+- **Mutation suite:** its two fixtures on this file now act on the code the
+  test runs.
+
+Landed (4b, the music-app launch blocker): one more generated file goes,
+which leaves 68.
+
+- **Injected:** `MusicLaunchBlocker` takes a `System`:
+  - defaults, Accessibility and the clock;
+  - the time since the last deliberate gesture, and which players run;
+  - the launch notifications, the media-key tap and the replacement app.
+
+  `system` keeps AppKit, Core Graphics and the workspace. The tap sits
+  behind `MusicLaunchKeyTap`. A launch reaches the blocker as a
+  `LaunchedApp`, and a key as a `MediaKey`.
+- **What moved:** the tap callback only reads the key and hands it to
+  `observeMediaKey(type:key:)`, and it always passes the event on. The tap
+  is listen-only, so it could not swallow a key anyway. That is why the old
+  per-key "passes the event through" check goes.
+- **Test:** the test drives the real blocker with a session of doubles
+  instead of a copy of five methods.
+- **Check added:** a did-launch never re-judges a launch its will-launch
+  let through, even after another key. A mutant without that guard passed
+  the old test.
+- **Known gap:** a second observer pair added on a repeated sync is still not
+  seen by any check.
+
+Landed (4b, opening the player from the island or the radial card): one
+more generated file goes, which leaves 67.
+
+- **Injected:** `RadialNowPlayingApplication.open(_:using:)` takes an
+  `Opening`:
+  - the running player, as an `OpenablePlayer`: its policy, its hidden
+    state, unhiding, the activation handoff and both activation requests;
+  - whether it has a window on screen;
+  - where it is installed, and how an app is opened.
+
+  `system` keeps `NSRunningApplication`, the window list and the
+  workspace.
+- **Test:** the test passes recording doubles instead of shadowing the
+  AppKit types.
+- **No longer checked:** that the cooperative request names Vitruvian as its
+  source. That now sits in `system`'s one-line closure.
+
+Landed (4b, the updater's administrator install): one more generated file
+goes, which leaves 66.
+
+- **Injected:** `UpdateService` takes an `AdminInstall`:
+  - the authorization;
+  - hiding and restoring the Extra Brightness overlay;
+  - the main-queue hop;
+  - quitting.
+
+  `system` keeps `AdminShell`, the overlay service, the main queue and
+  `NSApp`. `launchAdminInstaller` is `package`.
+- **Test:** the test runs its own service.
+- **Checks added:** the answer waits for the main queue, and a declined
+  prompt leaves the service offering the update. Before, a double logged the
+  offer.
+
+Landed (4b, the media workspace's file dialogs): one more generated file
+goes, which leaves 65.
+
+- **Injected:** `MediaPanelModal.run(_:host:completion:)` takes:
+  - a `Dialog`: begin above a level, focus, run modal;
+  - a `Host`: the island, the event and key windows, whether the island
+    is expanded, activation, the main queue and the launcher's refocus.
+
+  `runPanelModal` keeps its signature and passes the panel and `system`.
+  The island is an `IslandWindowing`, which `NSWindow` adopts.
+- **Test:** the test drives `run` with doubles instead of a copy.
+- **No longer checked:** that the panel stays up while another app is
+  active. That now sits in the panel wrapper. A dialog can no longer
+  be attached as a sheet: `Dialog` has no way to do it.
+
+Landed (4b, the island's lyrics): one more generated file goes, which
+leaves 64.
+
+- **Injected:** `NotchLyricsService` takes an `Environment`:
+  - the preferences;
+  - lookups, which return their cancellation;
+  - the island's state;
+  - a `Chooser` (begin above a level, focus, cancel);
+  - activation, reopening the music section, and both queues.
+
+  `system` keeps the lyrics download, NotchService, an `NSOpenPanel`, `NSApp`
+  and the dispatch queues.
+- **What changed:**
+  - A token, not panel identity, names the open chooser.
+  - `visible` and `track` are readable.
+  - `IslandWindowing` is now `Sendable`, so the reopen hop can capture the
+    window weakly.
+- **Test:** the lifecycle and picker tests drive the real service on a
+  session of doubles. Lyrics now come from answered lookups or chosen files,
+  where before the test wrote them straight into the cache.
+- **Checks added:** six mutants passed the old test, and each now fails one
+  of these:
+  - a late answer from an earlier chooser;
+  - a retried lookup's predecessor answering;
+  - work that supersedes a chosen file's late read;
+  - an island that moved on before the reopen;
+  - focus taken before activation.
+
+Landed (4b, the island's download folder choice): one more generated file
+goes, which leaves 63.
+
+- **Extracted:** `NotchDownloadFolderChoice` (new, `Services/Notch`) holds:
+  - choosing the watched folder, from the Downloads page or from Settings;
+  - returning to the page it came from;
+  - the chooser's cancellation.
+
+  `NotchDownloadService` owns it and adopts what is chosen: it stops, saves
+  the bookmark, enables watching and syncs.
+- **Injected:** the chooser (above the island or as an ordinary window),
+  the feature and page settings, the island, the event and key windows,
+  activation, the reopen, the main queue and the bookmark.
+- **Shared:** `NotchIslandSurface` (new) is the island state that a chooser
+  returns to, with `shows(_:in:)`. The lyrics importer uses it too.
+- **Test:** the test drives the real choice on a session of doubles instead
+  of copies of five service members.
+- **Checks added:** two mutants passed the old test, and each now fails one
+  of these:
+  - a Settings chooser answered after the feature was removed saves
+    nothing;
+  - a click on the island opens the picker over it, even while another
+    window is key.
+
+Landed (4b, the recorder's export chip): one more generated file goes,
+which leaves 62.
+
+- **Extracted:** `RecorderExportProgressChip` (new, `UI/Recorder`) is the
+  chip. `RecorderEditorView` passes it the phase, progress, label, cancel
+  title and action.
+- **Test:** the layout test renders the real view instead of a copy of its
+  body.
+
+Landed (4b, clearing permissions and uninstalling): one more generated
+file goes, which leaves 61.
+
+- **Injected:** `SelfUninstall.clearPermissions` and `uninstallCompletely`
+  take `Steps`:
+  - every teardown step: input interceptors, sleep, fan helper, login item,
+    sudoers rule, TCC, preferences and the bundle;
+  - the fan helper's registration;
+  - the aftermath on success or failure;
+  - the main and background queues.
+
+  `system` is the real teardown. The local `stop` functions are marked
+  `@Sendable`.
+- **Test:** the test logs a run of doubles instead of a copy of five
+  functions. Its messages now come from the real strings.
+- **Generated registry kept:** `LocalizationCatalog.swift` stays. It lists
+  every `FeatureStrings` factory and copies no production code, so it is a
+  generated registry, not a copy.
+
+Landed (4b, editing a history image): one more generated file goes, which
+leaves 60.
+
+- **Injected:** `ClipboardHistoryService.editImage(_:editing:)` is static and
+  takes an `ImageEditing`:
+  - the feature, the image store and both queues;
+  - the beep;
+  - putting the history away, and opening the editor.
+
+  The instance method passes `system`, with the service's own dismissal.
+- **Test:** the test runs the real handoff on the real queues. It also uses
+  the real `ScreenshotService.imageCapture(from:)` instead of a copy.
+- **Still to do:** `ClipboardPreview` is the service's other copy. It reaches
+  into the history's editing, pinning and search caches, so it waits for
+  those to move into their own type.
+
+Landed (4b, the island's Mission Control polling): one more generated file
+goes, which leaves 59.
+
+- **Extracted:** `NotchMissionControlPolling` (new, `Services/Notch`) owns:
+  - the polling timer and its cadence;
+  - when a check is worth a frame probe.
+
+  `NotchWindowHost` owns it and passes the panel's visibility, the conceal
+  state, the window-list reading, the clock and its frame probe.
+- **Test:** the test drives the real polling instead of a copy of four host
+  members.
+- **Check added:** an overview that opens again is probed at once, sooner
+  than a lasting one. A mutant without that passed the old test.
+
+Landed (4b, the raw wheel tap): one more generated file goes, which leaves
+58.
+
+- **Injected:** `ScrollInverter.adjustWheel(_:state:defaults:ownProcessID:targets:)`
+  is the tap's decision for one wheel event:
+  - linear lines;
+  - direction;
+  - the sideways shortcut;
+  - holding back a fraction of a notch.
+
+  It is a `nonisolated` static. What it remembers between events is a
+  `WheelTapState`. What it asks about the pointer's target is a
+  `WheelTapTargets`, and `system` asks the exception lists and the app's
+  own windows.
+- **What stayed:** the tap keeps its re-arm branch.
+- **Test:** the test feeds real wheel events through the decision instead
+  of through a copy of `handle`.
+- **Verification:** this slice uses Core Graphics events, which the Linux
+  model cannot build. It relies on macOS CI.
+
+Landed (4b, dragging items out of the shelf): one more generated file goes,
+which leaves 57.
+
+- **Extracted:** `ShelfInternalDrag` (new, `Services/Shelf`) holds a drag out
+  of a shelf:
+  - the dragged items, and whether a drop inside merged them;
+  - holding the island open while the drag lasts;
+  - what the shelf it came from does once the items land.
+
+  `ShelfService` owns it, reads its items and merge flag, and passes the
+  island, its two shelf windows, the interaction end and item removal.
+- **Test:** the test drives the real drag with stand-in windows instead of a
+  copy of three service members.
+
+Landed (4b, the screenshot preview's hover and dismissal): one more generated
+file goes, which leaves 56.
+
+- **Injected:** `ScreenshotQuickPreviewController` takes a `Scheduler` for
+  its main-queue hops and the auto-dismiss timer; `main` keeps today's
+  behavior.
+- **Opened:** `hoverChanged`, `perform` and `scheduleAutoDismiss` are
+  `package`. The image view's hover forwarding is the static
+  `forwardImageHover(_:embedded:to:)`.
+- **Test:** the hover test builds a real preview over a manual clock instead
+  of a copy of the controller. The share-completion copy now copies the
+  `package` `scheduleAutoDismiss` with a scheduler fixture.
+- **Verification:** the controller draws through Core Graphics and SwiftUI,
+  which the Linux model cannot build. It relies on macOS CI.
+
+Landed (4b, the command bar's borrowed keyboard layout): one more generated
+file goes, which leaves 55.
+
+- **Extracted:** `CommandBarInputSourceBorrowing` (new, `Services/CommandBar`)
+  borrows an ASCII layout when the bar opens and puts the person's own source
+  back on close or quit. It takes a `System`: the preference, the Text Input
+  Sources calls and the next main-loop turn. `live` keeps today's behavior.
+  `CommandBarService` owns it, says which presentation is current, and keeps
+  `hasBorrowedInputSource` and `restoreBorrowedInputSource()` for the app
+  delegate.
+- **Test:** the input-source test drives the real borrowing instead of a copy
+  of four service members. The termination test, which still copies the
+  delegate's callback, runs it against the real borrowing.
+- **Check added:** a close with nothing borrowed queues no work. Without it, a
+  close that queued a no-op restore passed.
+- **Not covered:** the restore's second guard, that the record is still the
+  one it captured. It is unreachable through the service: each open starts a
+  new presentation first.
+
+Landed (4b, switcher app activation and window fronting): one more generated
+file goes, which leaves 54.
+
+- **Injected:** `WindowActivator.activateApp(_:plan:windowID:windowOwnerPID:calls:)`
+  and `activateSource(pid:windowID:windowOwnerPID:calls:)` are generic over
+  `SwitcherActivatableApp`, which `NSRunningApplication` adopts. They take
+  `ActivationCalls`: finding a running app, handing activation over, fronting,
+  focusing and preparing a window. The private callers pass the live calls.
+- **Injected:** `SpaceWindowBridge.frontWindow(_:ownerPID:calls:)` takes
+  `FrontingCalls`, the window server's three private calls. `live` resolves
+  the symbols as before.
+- **Test:** the activation test drives the real activation and fronting with
+  apps that log and calls that post nothing, instead of copies of four
+  members.
+- **Checks added:**
+  - cooperative recovery still raises the selected window afterwards;
+  - a source that is quitting is not restored.
+- **Not covered:** `activateSource` passing the pid as the window owner when
+  none is given. `activateApp` falls back to the same pid, so the mutant is
+  equivalent.
+
+Landed (4b, the scrolling screenshot's capture loop): one more generated file
+goes, which leaves 53.
+
+- **Injected:** `ScreenshotScrollingCapture.capture(region:finishSignal:onProgress:prepare:)`
+  is the capture loop over a `FrameSource` that `prepare` resolves once. The
+  existing `capture(region:includePointer:...)` resolves it through the
+  capture engine as before. `stitch(_:)` is `package`.
+- **Test:** the test runs the real loop and stitching over frames it supplies,
+  instead of a copy of the whole enum with stand-ins for the region and the
+  engine.
+- **Check added:** a region that cannot be captured reports a failure.
+- **Verification:** the loop draws through Core Graphics, which the Linux
+  model cannot build. The model type-checks the new signatures and the test's
+  calls in Swift 6; the loop itself relies on macOS CI.
+
+Landed (4b, the update highlights tour): one more generated file goes, which
+leaves 52.
+
+- **Injected:** `UpdateHighlightsView` takes the animation's URL. The default,
+  `bundledAnimationURL`, is the GIF in the app bundle as before.
+  `UpdateHighlightsGIF` is `package`.
+- **Test:** the layout test renders the real tour in every language, through
+  the real `L10n`, which it restores afterwards. It no longer renders a copy of
+  the view with stand-ins for the language, the screen, the bundle and the app
+  shell.
+- **Verification:** SwiftUI, so macOS CI only.
+
+Landed (4b, the Dynamic Island settings rows): one more generated file goes,
+which leaves 51.
+
+- **Extracted:** `NotchSettingsRows.swift` (new, `UI/Settings`) holds the rows
+  the layout test measures, as `package` views:
+  - `NotchDestinationRow`, island or window for one kind of content;
+  - `NotchAgentRows`: `Limits`, `LimitFocus`, `Readout`, `FinishAfter`,
+    `LimitAt` and `Budget`.
+
+  `NotchSettings` and `NotchAgentsSettingsControls` draw them where the
+  inline rows were, with the same indents.
+- **Test:** the test measures the real rows in the real `SettingsCard`,
+  instead of copies of the card primitives and of the page fragments.
+- **Verification:** SwiftUI, so macOS CI only.
+
+Landed (4b, the media workspace's layout): one more generated file goes, which
+leaves 50.
+
+- **Extracted, in `MediaWorkspaceView.swift`:**
+  - `MediaWorkspaceStack` stacks the header, tool picker and content, and
+    reports the content's natural height in the island;
+  - `MediaInputDropTarget` takes file drops only outside the island;
+  - the static `pick(_:current:onToolChange:select:)` is the tool picker's
+    change rule.
+- **Extracted, in `NotchFilesView.swift`:** the static
+  `mediaHeightChanged(_:id:in:refresh:)` resizes the island over
+  `NotchMediaHeightTracking`, which `NotchFileToolsService` adopts.
+- **Test:** the test lays out the real stack and drop target, and drives the
+  real height and tool rules, instead of copies of four private members. Its
+  file tools are still the shelf routing contract's, which adopts the new
+  protocol in the test.
+- **Generator:** the shelf routing copy now scopes `updateMediaHeight` to the
+  service class, since the protocol declares it too.
+- **Verification:** a Linux Swift 6 model runs the height and tool rules with
+  these fixtures. The views rely on macOS CI.
+
+Landed (4b, the quit-protection HUD): one more generated file goes, which
+leaves 49.
+
+- **Opened:** `QuitProtectionHUD` is `package`, with its `ContentView`,
+  `minimumSize` and `fittingSize(_:)`.
+- **Test:** the progress checks move from `Tests/Fixtures` into
+  `Tests/QuitProtectionHUDTests.swift`, as an extension of the real HUD. They
+  are no longer appended to a copy of the whole HUD file.
+- **Removed:** `Tests/Fixtures` held only those checks. It leaves `BUILD`'s
+  globs and `sync_sources.py`'s staging with them.
+- **Verification:** AppKit and Core Animation, so macOS CI only.
+
+Landed (4b, a click on a copy of the island): one more generated file goes,
+which leaves 48.
+
+- **Extracted:** `NotchIslandSummons` (new, beside `NotchPointerFollower`)
+  holds what a click on a copy does:
+  - an open island closes;
+  - once its window settles, it moves to that display and opens;
+  - it stays put if it stopped, can no longer move, or the display went away.
+
+  `NotchService` wires it the way it wires the pointer follower, and
+  `NotchMirrors` calls it on a click.
+- **Test:** the mirror test drives the real summons instead of a copy of
+  `bringIsland(to:)`.
+- **Checks added:** the wait for the window to settle, an unplugged display,
+  an island on one display only, an island suspended while it settles, and a
+  closed island that must not be collapsed again. The last one catches a
+  mutant the others let through.
+- **Verification:** a Linux Swift 6 model of the summons and the test kills
+  all eight mutants.
+
+Landed (4b, the island's screen-edge click area): one more generated file goes,
+which leaves 47.
+
+- **Extracted:** `NotchScreenEdgeClicks.area(for:)` works out where a click at
+  the top of the screen counts as a click on the closed island, from a
+  `Resting` value of the island's state. `pressed(hoverWork:hoverState:)` is
+  what a press there does to hover. `NotchService` passes its own state.
+- **Test:** the edge-click test feeds the real rules the same state, and
+  toggles each condition as before. It no longer runs a copy of the two
+  service members.
+- **Verification:** the rule moved verbatim. Its geometry lives in Core, so
+  this slice relies on macOS CI.
+
+Landed (4b, app update rules and scan completion): one more generated file
+goes, which leaves 46.
+
+- **Injected:** `AppUpdatesService` takes an `Environment`:
+  - the preferences;
+  - the feature switch;
+  - notifications;
+  - an optional scan.
+
+  `live` is the app's, so `shared` behaves as before.
+- **Split:** `check()` builds a `ScanRequest` and hands the scan's `ScanResult`
+  to `finishCheck`. Without an injected scan, the service's own `runScan` runs
+  the same sources on its work queue.
+- **Opened:** `reloadRules()` is `package`, and `sourceRefreshPending` is
+  readable.
+- **Test:** the rules test runs the real service. Its scans finish when the
+  test says, so it drives check, scan and completion as the app does,
+  instead of a copy of ten members.
+- **Verification:** AppKit and Combine, so macOS CI only.
+
+Landed (4b, app updates' online sources): one more generated file goes, which
+leaves 45.
+
+- **Injected:** `AppUpdatesService` also takes a `Network`:
+  - the clock the publisher deadline and the catalog cache read;
+  - the catalog's session;
+  - the URL loading for publisher feeds, which `AppUpdateFeedLoader.load(_:protocolClasses:completion:)`
+    now accepts.
+
+  `live` is the system's.
+- **Opened:** `SourceResult`, `publisherFindings`, `onlineCatalogFindings`,
+  `onlineResult` and `workQueue` are `package`.
+- **Test:** the findings test runs the real feed loader, batch loop, catalog
+  cache and fallback resolution over answered requests, instead of copies of
+  the loader and four service members.
+- **Verification:** URL loading through `URLProtocol` and the Darwin kernel
+  query keep this on macOS CI.
+
+Landed (4b, the island's volume notice): one more generated file goes, which
+leaves 44.
+
+- **Moved:** the volume binding, its baselines and the island's own
+  adjustment window leave `NotchService` for `NotchVolumeFeedback`
+  (`Services/Notch/NotchVolumeFeedback.swift`). Step 5k left this binding in
+  `bindEvents` because a contract copied it; that copy is now gone.
+- **Injected:** an `Output` (level, mute, device and their changes; `system`
+  is the app's mixer) and an `Island` (open or not, show a notice, uptime).
+  `NotchService` keeps `showCurrentVolume`, `noteOwnVolumeAdjustment` and
+  `showVolume` as forwarders, so callers do not change.
+- **Test:** the volume test runs the real type over a mixer of its own and a
+  clock it advances, instead of copies of five members. It now also checks
+  that the island's own adjustment lasts exactly one second and that a
+  reading with no output device shows nothing.
+- **Mutations:** the two volume mutations in `Tests/mutation_checks.py` now
+  apply to the new file.
+- **Verification:** a Linux model with a Combine shim runs the test (75
+  checks), and kills all 9 mutants of the type. The model also caught that
+  `Output` and `Island` must be `@MainActor`, because the mixer is.
+
+Landed (4b, the scratchpad's export and saves): two more generated files go,
+which leaves 42.
+
+- **Injected:** `ScratchpadService` takes an `Environment`:
+  - the store it saves to;
+  - the HUD warning;
+  - the autosave's timer;
+  - a save dialog per export (`ExportDialog`, which `live` builds over
+    `NSSavePanel`);
+  - the island's window, app activation and the main queue.
+
+  `live` is the app's, so `shared` behaves as before. The export's host is
+  now an `IslandWindowing`, which `NSWindow` already adopts.
+- **Test:** both contracts run a real pad over a store in a directory of
+  their own, which the save test makes unwritable and then repairs, instead
+  of copies of five members.
+  - New checks: an edit replaces the autosave waiting before it, closing
+    writes at once and drops it, edits kept through failed writes reach the
+    disk, an empty pad exports nothing, and with no host and no floating pad
+    nothing opens.
+  - Gone: the key-window and current-event host variants, since the export
+    reads neither.
+  - The dialog's `hidesOnDeactivate` is set in `live`, as the download
+    folder chooser's is, so no test sees it.
+- **Verification:** a Linux model of the store, the document and the
+  service's save and export members runs both contracts (45 checks), and
+  kills all 22 mutants of those members.
+
+Landed (4b, the gallery's wheel): one more generated file goes, which leaves
+41.
+
+- **Moved:** which scrolls the open island's gallery takes, and how many
+  rows each steps, leave `NotchService` for
+  `NotchSectionScroll.route(_:over:)` (`Services/Notch/NotchSectionScrollRoute.swift`).
+  It reads a `NotchScrollEvent`, which `NSEvent` adopts, over a
+  `NotchSectionScrollSurface`: the window's frame, its screen conversion,
+  its surface test and the open geometry. `NotchService` still decides
+  whether the gallery is showing, steps the rows and hands what the gallery
+  leaves to its gestures.
+- **Test:** the routing test runs the real route instead of copies of two
+  members. New checks: a gallery that is not showing takes nothing, a scroll
+  the gallery leaves ends the drag it was part of, lifting the fingers and
+  momentum step nothing, a wheel notch steps one row, and a phaseless glide
+  ends when it pauses.
+- **Verification:** a Linux model of the paging and the route runs the
+  whole test (61 checks) and kills all 12 mutants of the route.
+
+Landed (4b, the island's keys and clicks): one more generated file goes,
+which leaves 40.
+
+- **Moved:** what the island's local event monitor does with a key or a
+  click leaves `NotchService` for `NotchLocalEventRoute`
+  (`Services/Notch/NotchLocalEventRoute.swift`). It reads a
+  `NotchMonitoredEvent`, which `NSEvent` adopts, and asks an `Island` of
+  closures for state and actions. `NotchService` keeps installing the
+  monitors, and the click-away test both monitors share
+  (`clickIsAway()`).
+- **Test:** the key monitor test runs the real route instead of a copy of
+  `installEventMonitors()`. Besides Escape through composing fields and the
+  Tools arrows, it now checks the gallery, page and Control-Tab shortcuts,
+  capture controls holding them, the order the gallery, Scratchpad and
+  clipboard handlers get a key, clicks inside, on a popover and away, and
+  that no click has its key code read, which `NSEvent` would refuse.
+- **Verification:** a Linux model of the route runs the test (32 checks)
+  and kills all 22 mutants of the route.
+
+Landed (4b, the island's update control): one more generated file goes,
+which leaves 39.
+
+- **Split:** `NotchUpdateControl` follows `UpdateService` and draws
+  `NotchUpdateBadge`, which takes the state, so the layout test measures the
+  module's own view for any state and language. `UpdateService.State.isOffer`
+  names an available version, and `NotchService.opensUpdatePreview` is the
+  rule `showUpdate()` applies.
+- **Test:** the update test checks the real rule and lays out the real
+  control instead of copies of `showUpdate()`, the control and a stand-in
+  `UpdateService` and `L10n`. It restores the language it changes.
+- **Verification:** SwiftUI and AppKit, so macOS CI only.
+
+Landed (4b, the menu bar panel's keys): one more generated file goes, which
+leaves 38.
+
+- **Moved:** what the panel's key monitor does with Escape and the held
+  Space and Return leaves `AppDelegate` for `MenuPanelKeyRoute`
+  (`Services/MenuPanelKeyRoute.swift`), over a `MenuPanelKeyEvent` that
+  `NSEvent` adopts and a `Panel` of closures. `AppDelegate` passes its
+  popover and keeps its text-editing check.
+- **Test:** the panel key test runs the real route instead of a copy of
+  three `AppDelegate` members. New checks: Escape on a closed panel, the
+  held keys and their modifiers, a key panel, a text field's own submit,
+  and a closed panel taking nothing.
+- **Verification:** a Linux model of the route runs the test (18 checks)
+  and kills all 14 mutants of the route.
+
+Landed (4b, the menu bar icon after an update): one more generated file
+goes, which leaves 37.
+
+- **Moved:** the bounded check that the icon came back after an update, and
+  its one rebuild, leave `AppDelegate` for `StatusItemUpdateCheck`
+  (`Services/StatusItemUpdateCheck.swift`). It is generic over the item and
+  takes a `Host` (the item, the app's state, the rebuild, the log) and a
+  `System` (the build, the clock, the queue, the displays, the menu bar, the
+  session, the organizer). `live` is the app's.
+- **Test:** the recovery test runs the real check over a world of doubles
+  instead of copies of three `AppDelegate` members and stand-in AppKit,
+  defaults and dispatch types. Every stop condition is still checked before
+  and after the rebuild; the replaced item now outlives the swap, so the
+  check is seen to stop on identity, not on the item being freed.
+- **Verification:** a Linux model of the check and its helpers runs the test
+  (61 checks) and kills all 24 mutants of the check.
+
+Landed (4b, quitting with a borrowed layout): one more generated file goes,
+which leaves 36.
+
+- **Moved:** the answer to AppKit's quit request while the command bar has
+  borrowed a keyboard layout, and the pending restoration it waits for,
+  leave `AppDelegate` for `CommandBarTermination`
+  (`Services/CommandBar/CommandBarTermination.swift`). `AppDelegate` passes
+  the bar's borrowing and AppKit's reply.
+- **Test:** the termination contract builds the real type over the bar's
+  real borrowing, as `AppDelegate` does, instead of a copy of
+  `applicationShouldTerminate`. Its checks are unchanged, including the
+  reply serviced inside a modal loop nested in a main-queue callback.
+- **Verification:** a Swift 6 type-check of the type on Linux, and a run of
+  its run-loop reply there; the modal loop needs macOS CI.
+
+Landed (4b, the island's queue rows): one more generated file goes, which
+leaves 35.
+
+- **Moved:** the queue the island shows, its covers, the rows held through
+  a song change and the rule that clears them leave `NotchMusicService` for
+  `NotchUpcomingQueue` (`Services/Notch/NotchQueueSupport.swift`), generic
+  over the cover image. `NotchMusicService` keeps one, and `upcoming`,
+  `upcomingArtwork`, `upcomingIsHeld` and `upcomingRows` read it.
+- **Test:** the queue hold test drives the real type over `Data` covers
+  instead of copies of four members. New checks: holding the rows decodes
+  no cover again, and a queue turned off, no request or nothing playing
+  shows no rows.
+- **Verification:** the types it builds on reach into AppKit, so macOS CI
+  only.
+
+Landed (4b, playback control through Apple Events): two more generated
+files go, which leaves 33.
+
+- **Seam:** `NotchMusicAutomation.System` is the Mac as playback
+  automation reaches it: the player for a playback, whether that process is
+  still the same player, its inspection and permission, the consent prompt,
+  event delivery and the clock. `NotchMusicAutomation.send` takes one, and
+  `Target` gains an initializer for a player already identified.
+- **Moved:** the fallback flow leaves `NotchMusicService` for
+  `NotchMusicAutomationFlow` (`Services/Notch/NotchMusicAutomationFlow.swift`):
+  - what the player offers and allows, kept on screen while it is checked
+    again;
+  - the consent request, which never replays the gesture before it;
+  - one validated action at a time, with its deadline.
+
+  The service keeps its command state and passes it in, and its views read
+  the flow's answer through the same properties as before.
+- **Test:** the automation tests drive the real flow and the real `send`
+  over a player of doubles and queues they run by hand, instead of copies of
+  eleven members. New checks: the consent request is pending until
+  answered, a validation that never answers gives up at its deadline, and a
+  check that lands after the playback source changed is dropped.
+- **Verification:** a Swift 6 type-check of the flow and `send` on Linux;
+  the tests need macOS CI. The first type-check stubbed `DispatchWorkItem` as
+  `Sendable`, which hid three captures macOS rejects (and one in the test).
+  Those locals are now `nonisolated(unsafe)`, since the queues read only the
+  item's thread-safe flag, and the model uses the real type.
+
+Landed (4b, the quick launcher): one more generated file goes, which leaves
+32.
+
+- **Injected:** `QuickLauncherService` takes an `Environment`: the feature
+  switches, the saved order, the island's Tools page, the camera's island
+  view, each tool's own action and the main queue. `live` is the app's,
+  including the map from tile to service call that the tile actions used to
+  hold inline. Which tiles hide first, wait and how long, toggle in place or
+  open inside the launcher stays in `run`.
+- **Keys:** `takesPanelKey(_:flow:)` reads a `QuickLauncherKey`, which
+  `NSEvent` adopts with whether an input method is composing in its window.
+  `handlePanelKey` and the island's Tools route both call it.
+- **Tiles:** `QuickLauncherView.icon(for:state:)` and `isActive(_:state:)`
+  take a `QuickLauncherTileState`, so the icons are checked without the
+  services that report them.
+- **Test:** the launcher test and the island's destination test run the real
+  launcher over a world of doubles, instead of copies of eleven members and
+  two view methods. New checks: Keep Awake and a muted microphone look
+  active, digits past the last tile run nothing, modified keys and the
+  grid being edited leave keys alone.
+- **Mutations:** the launcher's two fixtures follow the code: one now runs
+  the recorder before hiding, the other draws a fixed recording icon.
+- **Verification:** AppKit and SwiftUI, so macOS CI only.
+
+Landed (4b, the clipboard history): one more generated file goes, which
+leaves 31.
+
+- **Injected:** `ClipboardHistoryService` takes an `Environment`:
+  - the settings, which hold the legacy blob;
+  - the history file;
+  - the saved file's byte limit;
+  - the stored images it reads and sweeps;
+  - the pasteboard lane its copies go through;
+  - the search folding.
+
+  `live` is the app's: the standard defaults, the private container, the
+  image store, `GeneralPasteboardAccess` over the general pasteboard, and the
+  search's own fold. Every settings read in the service goes through it, so
+  the persist lane writes the blob through a `LegacyBlob` handle instead of
+  `UserDefaults.standard`.
+- **Test:** the preview contract runs a real history over a temporary file,
+  its own defaults suite and a recorded pasteboard, instead of a copy of ten
+  members and stubbed saves. It loads each history from disk and changes it
+  only through the service's own calls. New checks:
+  - a copy while another is in flight is refused;
+  - a failed write changes nothing;
+  - batch copies blank the preview;
+  - an image whose file is gone is never written;
+  - edits, pins and the size trim reach the saved file;
+  - the legacy blob moves to the file and is retired;
+  - without a file the history saves to the blob;
+  - the launch sweep;
+  - an unpin is allowed even while the pinned items already overflow the
+    file;
+  - a history change drops the cached result for the same query.
+- **Verification:** a Linux Swift 6.4 model of the service's history members,
+  extracted from the production file, runs the contract (44 checks) and 34
+  mutants, all killed. A Swift 6 type-check of `live` over stubs. The
+  AppKit paths need macOS CI.
+
+Landed (4b, the Dock preview's auto-hide hold): one more generated file
+goes, which leaves 30.
+
+- **Moved:** the hold's session leaves `DockPreviewService` for
+  `DockHoldSession` (`Services/DockPreview/DockHoldSession.swift`):
+  - the `DockAutohideHold`;
+  - the window geometry captured before it;
+  - the workspace observers;
+  - what a key or a lost tap does;
+  - how choosing a window repairs its frame.
+
+  It is generic over the item, and its `Host` is the key tap, the frame
+  capture, the pointer queue, the preview's end, the Space policy, the
+  activation and the notification center. The service builds it with its
+  own members and forwards to it.
+- **Test:** the hold test drives a real session over a recorded preview and
+  a private notification center, instead of copies of five service members.
+  New checks:
+  - a key drops the queued pointer move before ending the preview;
+  - each workspace change ends the preview once;
+  - a frame repair goes stale after a newer hold or once the preview stops.
+
+  The service's own pointer filter, which the dropped move invalidates,
+  stays untested here.
+- **Verification:** a Linux Swift 6.4 model of the session and the hold
+  runs the test (41 checks) and 25 mutants, all killed. The service needs
+  macOS CI.
+
+Landed (4b, sharing a screenshot's link): two more generated files go,
+which leaves 28.
+
+- **Injected:** `ScreenshotLinkActions` (new) is what a screenshot surface
+  does with a shared link outside itself:
+  - list the live ones;
+  - copy one;
+  - revoke one;
+  - announce how it went, and beep.
+
+  `live` is `ScreenshotShareService`, the HUD and the system beep. The quick
+  preview takes one, and exposes its view model, so a preview runs without
+  the sharing service or the clipboard.
+- **Moved:** the latest capture leaves `ScreenshotService` for
+  `ScreenshotLatestCapture` (new):
+  - the editors open;
+  - the upload shortcut's pending upload;
+  - a link whose copy failed;
+  - whether the kept capture may still be published.
+
+  It is generic over the capture and the editor. Its `Host` is the
+  settings, the open preview, the kept capture, the upload and the link
+  actions. The service builds it and forwards to it.
+- **Test:** the share test drives a real preview and a real latest capture,
+  over recorded links, a clock it advances by hand and a private defaults
+  suite, instead of copies of four preview members and eight service
+  members. New checks:
+  - copies and failed copies are announced;
+  - a press with nothing kept says so;
+  - the shortcut turned off ignores a press, even over a preview;
+  - a link the service no longer lists is uploaded again;
+  - a copy that fails again keeps its dismissal;
+  - a leaving pointer cannot dismiss a sharing preview;
+  - a second close does nothing;
+  - teardown leaves no editor to block the shortcut.
+- **Kept as text:** `ScreenshotFeatureTests` still reads the service's
+  wiring (teardown invalidates, a capture begins as the latest, discard
+  withholds it) from the source, now naming the new calls. The mutation
+  fixture for an edited capture moves to `ScreenshotLatestCapture`.
+- **Verification:** a Linux Swift 6.4 model of both types and the preview's
+  share members, extracted from the production files, runs the test (81
+  checks) and 52 mutants. Three survive, all equivalent:
+  - clearing the copy retry when the capture changes, since the retry is
+    keyed by the old capture;
+  - the copy's capture check, since every caller passes the current one;
+  - `shareLink`'s closed check, since both paths it takes check again.
+
+  The panel and the island need macOS CI.
+
+Landed (4b, the super key's tap thread): one more generated file goes,
+which leaves 27.
+
+- **Injected:** `SuperKeyService` takes a `System`:
+  - the settings;
+  - event-tap creation;
+  - how the tap thread runs;
+  - the main queue that thread reports back to;
+  - Accessibility trust;
+  - hidutil.
+
+  `live` is the system's. Every settings read, trust check and hidutil
+  call in the service goes through it, so no test can reach the real key
+  mapping. `start()` is now `package`.
+- **Test:** the tap test starts a real service whose tap requests are
+  refused, runs its thread inline (`Thread.main()`), and records what it
+  asks of hidutil, over a private settings suite. It used to run a copy of
+  two members. New checks:
+  - a key never mapped leaves hidutil alone;
+  - a refused tap takes out a leftover mapping;
+  - without Accessibility no tap is asked for and a leftover mapping still
+    comes out.
+- **Kept as text:** the HID-stage check in `PointerInputFeatureTests` now
+  reads the mouse tap's `system.createTap(.cghidEventTap` call.
+- **Verification:** a Linux Swift 6.4 type-check of `System` (with `live`
+  over stubs) and the test against a reduced service model, 5 checks. The
+  tap thread's success path and the mapping itself need macOS CI.
+
+Landed (4b, the Now Playing adapter): one more generated file goes, which
+leaves 26.
+
+- **Injected:** `NotchMusicService` takes an `Environment`:
+  - how the adapter is launched;
+  - the main queue its replies come back on;
+  - delayed work and the clock;
+  - the queue commands are written on;
+  - the settings and the lyrics;
+  - the Apple Event system.
+
+  A running adapter is a `NotchMusicAdapterLink`: whether it runs, the pipe
+  its commands go into, and ending it. `live` launches the bundled script as
+  before; the reader's parsing and the service's checks stay in the service.
+- **Test:** the command, source and gap tests drive a real service over an
+  adapter they feed by hand, as the adapter's own JSON lines, with every
+  queue and the clock run by the test. They used to run a copy of twelve
+  members and set its private state directly. New checks:
+  - a replaced adapter can neither show a reading nor end its successor;
+  - a recovery waits before it relaunches;
+  - exits within a minute keep the budget spent;
+  - a seek past the end lands at the end;
+  - a command to an exited adapter is refused;
+  - a write the adapter cannot take reports the failure;
+  - each reading reaches the lyrics.
+- **Verification:** a Linux Swift 6.4 model of the real service and its
+  support files runs the six tests (72 checks) and 48 mutants. Eight
+  survive, each because another guard already covers the path:
+  - the reset in `start()`, already done by `stop()`;
+  - the second launch guard;
+  - the gap's and the restart's generation checks, already ended by
+    `disconnect()` and `stop()`;
+  - `stop()` cancelling the restart, already blocked by the restart's
+    generation check;
+  - `seek`'s track and context checks, which `send` repeats;
+  - `send`'s playback check, which the context check repeats.
+
+  The command queue's `live` form compiles only against macOS's Dispatch, as
+  it did before.
+
+Landed (4b, Keep Awake's closed-lid mode): one more generated file goes,
+which leaves 25.
+
+- **Injected:** `KeepAwakeManager` takes a `System`:
+  - the settings and where their changes are announced;
+  - the sleep override;
+  - `pmset -g`, the background and main queues, delayed work and quit's
+    waits;
+  - timers, power assertions and the battery;
+  - the screen lock and the login session;
+  - the lid, the power manager's lid policy, power assertions and sleep
+    request;
+  - the lid watch and the built-in panel.
+
+  `live` is the system's own, with the IOKit bodies moved there unchanged.
+  Automatic sessions and pointer activity keep their direct calls: nothing
+  tests them yet.
+- **Moved:** the `pmset disablesleep` lane leaves `Sudoers` for
+  `SleepOverride` (new): the serial lane, the rule's probe, writes,
+  authorized restores with probes suspended, and the rule install.
+  `Sudoers` keeps the rule paths, the install command, and `isConfigured`
+  and `pmsetDisableSleep` for the uninstall paths.
+- **Test:** the lid-sleep, closed-lid and dimming tests drive a real manager
+  over a machine they run by hand: its queues, `pmset` and the rule, the
+  power manager, the lid and the panel. They used to run a copy of 21
+  members against stand-in globals and set its private state directly; each
+  state is now reached the way the app reaches it. New checks:
+  - a screen lock restores sleep and its unlock re-enables closed-lid mode;
+  - a session started behind a locked screen asks for nothing until it
+    unlocks;
+  - a retry left over from an earlier lock is dropped by the next restore;
+  - a Mac without a power manager is neither asked to sleep nor polled;
+  - an enable still in flight at a teardown cannot ask for the rule again;
+  - a rule that proves itself at setup needs no install prompt;
+  - a restore that needed the password stops trusting the rule;
+  - turning closed-lid mode off during a session never sleeps the Mac;
+  - a second session end adds no second restore while one waits for its
+    password;
+  - a prompt queued before quit never opens;
+  - switching picks keeps one assertion of each kind;
+  - one lid watch serves a session, a launch restore that finds no panel
+    keeps watching, and closing the lid again with the option off leaves
+    the owed level alone;
+  - an install counts only once the rule proves itself, and a probe that
+    cannot read `pmset` writes nothing.
+- **Kept as text:** the mutation suite's "lid sleep forgets to retry a
+  refusal" still targets the same retry guard.
+- **Verification:** a Linux Swift 6.4 model of the real manager and
+  `SleepOverride` (automation monitoring and pointer activity stubbed) runs
+  the three tests, 148 checks, and 84 mutants. `live` type-checks against
+  IOKit-shaped stubs. Sixteen mutants survive, each because another guard
+  already covers the path:
+  - the enable, setup and preference guards against a pending restore,
+    which back each other;
+  - quit's checks in the setup probe, the setup reply, the enable reply and
+    the authorized restore's reply: quit clears the setup and bumps the
+    generation first;
+  - the generation checks on a passwordless restore's reply and in
+    `finishClamshellRestore`: only launch recovery could move the generation
+    under a pending restore, and it runs before any session;
+  - a pending enable in `clamshellNeedsRestore`, whose marker is written
+    first;
+  - the teardown's skipped probe during a restore, and its check for a
+    newer restore, which the generation check already catches;
+  - the lid policy guard, which `KeepAwakeAutomationSupport` repeats;
+  - the lid watch's mode check and repeat check, whose branches recheck;
+  - the option's own restore, which the disarm repeats.
+
+Landed (4b, the mixer's output volume): one more generated file goes,
+which leaves 24.
+
+- **Moved:** the default output's volume and mute leave `AppVolumeMixer` for
+  `MixerOutputControl` (new):
+  - the reading;
+  - the pending level and the write in flight;
+  - the keys waiting on the output's own reading;
+  - the lifetime that keeps one output's requests off the next;
+  - the read after the output's own notifications.
+
+  Its `Host` is the HAL queue, the main queue and delayed work, the HAL
+  reads and writes, whether the mixer still listens, and where the reading
+  and an output change go. The mixer keeps the listener registrations, its
+  `@Published` reading (the control assigns it, as the mixer did), and the
+  three request calls, which delegate.
+- **Test:** the output adjustment test drives a real control over an
+  in-memory output and hand-run queues. It used to run a copy of eleven
+  members with the refresh and the listener refresh stubbed. New checks:
+  - a failed write reads back the output's own level;
+  - a burst of notifications reads once, only for the output followed and
+    only while the mixer listens;
+  - a reading of a previous output, or from before it was followed again,
+    is dropped;
+  - an output without a settable volume reads as having none;
+  - with no output followed, requests go back to the system;
+  - requests clamp to the output's range;
+  - a key after the previous one finished reads again;
+  - a write for an output that stopped being the default is refused, and
+    one that outlived its output asks for the outputs again;
+  - the mixer's own writes and stop update the reading.
+- **Verification:** a Linux Swift 6.4 model of the control runs the test, 48
+  checks, and 51 mutants. One did not compile. Four survive, each
+  equivalent with serial HAL and main queues:
+  - the read generation and its check, already covered by the in-flight
+    write: a direct change always queues its write behind the read;
+  - the read's check for a current write, which only a direct change could
+    start, and that bumps the read generation;
+  - the drain's lifetime check: `end()` clears the pending level, so a
+    pending one is always current.
+
+  The mixer's host wiring type-checks against stubs; the HAL itself needs
+  macOS CI.
+
+Landed (4b, the microphone's gain and mute): one more generated file goes,
+which leaves 23.
+
+- **Injected:** `AudioHAL` (new) is the seven CoreAudio property calls both
+  services make; `live` is CoreAudio. `AudioInputDeviceManager` and
+  `MicMuteService` take an `Environment`:
+  - the HAL and its serial queue (`AudioWorkQueue`, new);
+  - the main queue;
+  - the settings.
+
+  The manager's also has delayed work, the clock and the mute it waits
+  behind. The mute's also has the island's microphone notice and the HUD.
+  Their static HAL helpers become instance methods that use the injected
+  HAL, so every CoreAudio call either service makes goes through it.
+- **Test:** the input volume test drives both real services over the
+  in-memory HAL it already had. That HAL now also calls the listeners the
+  services register, the way CoreAudio does. It used to run a copy of both
+  whole classes, with private members opened up and called directly. New
+  checks:
+  - a second start refreshes, and a restart removes each listener once;
+  - a read-only control and an old device keep no listener;
+  - the slider shows the clamped level at once;
+  - a change made elsewhere reaches the slider;
+  - a sweep from before a drag cannot pull it back;
+  - a gain change never reaches an object whose identity changed;
+  - a device without input streams is neither listed nor muted;
+  - a notification after stop changes no input;
+  - priority keeps its pick over an earlier preferred microphone, and its
+    pick becomes what quitting goes back to;
+  - the mute is saved for the next launch, and that saved mute blocks gain
+    changes until it is applied again;
+  - a double press announces once;
+  - a teardown outlasts a mute in flight;
+  - a mute that reached nothing is dropped;
+  - a sync during an unmute does not mute again;
+  - a driver that ignores the level or the switch is not recorded as muted;
+  - a read-only switch falls back to the level;
+  - an arriving microphone is muted;
+  - the user's own mute survives an unmute;
+  - switching the feature off gives every level back.
+- **Verification:** a Linux Swift 6.4 model of both services and their
+  support files runs the test, 90 checks, and 58 mutants. Two survive, each
+  equivalent:
+  - the gain write's first lifetime check, which the one after the identity
+    read repeats;
+  - the sweep's priority check, which `MixerRoutingSupport` makes when it
+    resolves the input.
+
+  CoreAudio itself needs macOS CI.
+
+Landed (4b, Now Playing routing): one more generated file goes, which
+leaves 22.
+
+- **Injected:** `NotchNativePlayback` in the Now Playing adapter gets a
+  `Platform`, and `live` is the system's:
+  - MediaRemote's functions and string constants, by name;
+  - the running applications, as `NowPlayingApplication` (new);
+  - the system uptime;
+  - the reply line to the app, the session refresh, and the queue.
+
+  The adapter's command switch moves into `NotchNativePlayback.perform`,
+  and what the test needs becomes `package`.
+- **Test:** the routing test links the adapter's module and drives the
+  real selection over a recording MediaRemote. Before, it compiled a copy
+  of fifteen members with a stand-in target and a stored running flag.
+  Only that file imports the module, because it carries a second copy of
+  the app's playback types. The music hardening test reaches the adapter
+  the way the app does: a reply for the context, and a request line through
+  the real framer. New checks:
+  - a quit app, or one without a bundle, gets no player path;
+  - another app on the same process, or a quit one, is never read;
+  - artwork is copied in;
+  - a failure answer is not delivery;
+  - each command reaches the player with its own number, and a seek with
+    its position;
+  - a system without the position option refuses the seek;
+  - a refused gesture still answers, and the new player is not read;
+  - a recording in another process is a new revision;
+  - a path or recording that changes during validation refuses;
+  - a validation of an old recording answers no;
+  - an untitled player publishes no controls;
+  - an empty item ID is none, and the adapter's own item key counts;
+  - a helper process shows its own name and its owner, and routes to
+    itself;
+  - rows arrive in a stable order;
+  - a blank title is no track, and choosing the waiting row again does
+    not restart its wait;
+  - the selected app quitting releases the choice;
+  - the music app on screen stays when another takes the session.
+- **Verification:** a Linux Swift 6.4 model of the selection runs the
+  test, 107 checks, and 80 mutants. The model swaps blocks and C function
+  pointers for closures, and the player path for a plain object. Three
+  survive, each equivalent:
+  - a released choice that keeps its timer, since every new choice resets
+    it;
+  - an untitled player that keeps its old context, which cannot validate
+    without an identity;
+  - validation's first running check, since the read it guards refuses a
+    player that is not running.
+
+  The system-player check needs a real system player, so the model does
+  not reach it. MediaRemote's player paths and the bridge into the
+  hardening test need macOS CI.
+
+Landed (4b, the command bar's emoji rows and run learning): one more
+generated file goes, which leaves 21.
+
+- **Extracted:** `CommandBarRunRecorder` (new) takes from
+  `CommandBarService` what running a row teaches the bar:
+  - the use it counts and saves;
+  - the search that found it, remembered for the session;
+  - the emoji's other tones;
+  - the field and selection handed to the row.
+
+  Its `Host` is the field as it stands, the bar's close, typing and the
+  settings. `CommandBarCatalog.emojiEntries` takes the settings, the
+  Accessibility answer and the typing, which default to the bar's own.
+- **Test:** the emoji test drives the real rows and the real recorder over
+  a disposable settings domain, through the real session key. Before, it
+  compiled copies of the four service members and the catalog's rows. New
+  checks:
+  - the step that orders the memory counts;
+  - the field and selection are handed over before the close wipes them,
+    and a new opening forgets them;
+  - a completed search learns what was typed;
+  - a row runs once, with its number;
+  - a row that keeps the bar open runs without counting or learning;
+  - a hidden shortcut learns nothing even with a search in the field;
+  - without Accessibility every row says so.
+- **Verification:** a Linux Swift 6.4 model of the recorder and the rows
+  runs the test, 257 checks, and 37 mutants. CryptoKit and pinyin are
+  stubbed off Apple platforms. One survives, equivalent: trimming the
+  learned search, which the emoji parse, the memory and the habit keys
+  each do again for a one-line field.
+
+Landed (4b, the pointer's display): one more generated file goes, which
+leaves 20.
+
+- **Moved to support:** three owners decided whether the pointer is on a
+  display, by AppKit's rule for the top and bottom rows. Each decision is
+  now a pure function that the owner calls:
+  - `SpaceHopSupport.warpTarget`, for where a Space hop puts the pointer;
+  - `ScreenshotSupport.captureGuideIsVisible(pointer:displayFrame:…)`, for
+    the capture guide;
+  - `DockPreviewSupport.isNearDock`, for the Dock's strip.
+
+  `SpaceHop`, the selection overlay and `DockPreviewService` keep reading
+  the screens and the pointer, and pass them in.
+- **Test:** the pointer test calls the three functions with the same
+  displays. Before, it compiled copies of the hop's step, the overlay's
+  guide refresh and the Dock check, with stand-ins for each type they
+  read. New checks:
+  - the guide hides during a selection or a pending capture;
+  - a display without a frame is not warped to, and its middle is
+    measured from the top;
+  - a pointer on no display is measured against the main display;
+  - the strip's own top row counts and the row above it does not;
+  - a magnifying Dock's strip is as deep as its largest icon;
+  - without preferences or a display every point counts.
+- **Verification:** a Linux Swift 6.4 model of the three functions runs
+  the test, 48 checks, and 18 mutants. One survives, equivalent: swapping
+  the selection and pending flags, which the guide treats alike.
+
+  The press and the warp themselves stay with `SpaceHop`, which macOS CI
+  builds.
+
+Landed (4b, the display under the pointer): one more generated file goes,
+which leaves 19.
+
+- **Added:** `ScreenGeometry` (`Core/ScreenGeometry.swift`, new) is what
+  placement reads of a display: its id, frames and scale. `under(_:among:fallback:)`
+  picks the display a pointer is on by AppKit's rule, through the existing
+  `NSScreen.screen(containing:…)`. `NSScreen.geometries` lists the attached
+  displays.
+- **Moved to pure functions** that take displays, one per owner:
+  - the full-display capture picks `ScreenGeometry.under`;
+  - `SpaceWindowBridge.visibleSpace(near:in:screens:main:)`;
+  - `WindowDirectionalIndicator.frame` (Core, new), with its size;
+  - `QuitProtectionSupport.panelOrigin`;
+  - `ScreenshotSupport.capturePointerNudge`, the loupe's arrow keys;
+  - `DockPreviewSupport.dropOrigin`.
+
+  The overlay under the pointer uses `NSScreen.screen(containing:…)` over
+  its panels. Each owner passes `NSScreen.geometries` and keeps its own
+  side effects.
+- **Test:** the lookup test calls the functions with the same three
+  displays. Before, it compiled copies of seven members with stand-ins
+  for screens, panels, the capture engine and the window activator. It no
+  longer needs a run loop. New checks:
+  - a display the topology misses falls back to its first, and a pointer
+    outside every display follows the main display's Space;
+  - the quit confirmation goes to the display asked for, clears the
+    Dock, rounds to whole points, and uses the first display without a
+    main one; with no display it places nothing;
+  - the directional indicator stays 8 points inside a corner;
+  - each arrow moves its own way, ten pixels with Shift, and another key
+    or no display moves nothing;
+  - the pointer crosses onto the next display, stops on the first column
+    and the top row, and stops on the fallback's edge from nowhere.
+- **Verification:** a Linux Swift 6.4 model of the functions runs the test,
+  71 checks, and 27 mutants, none surviving.
+
+Landed (4b, the update intros): one more generated file goes, which leaves
+18.
+
+- **Extracted:** `UpdateIntroSequence` (`Services/Update/`, new) takes from
+  `AppDelegate`:
+  - which intro an update shows next: the tour, the support page, the
+    showcase, then the brightness prompt;
+  - what closing one means, and the review flags;
+  - the rule that the support page waits for its Done action;
+  - the seen markers, and what onboarding marks.
+
+  Its `Host` is the settings, the version, quitting, the window the shell
+  opens for an intro, the showcase's cache, the last step and the next turn
+  of the main queue. `AppDelegate` keeps the windows and reports their
+  close. `AppInfo.isPrerelease` names the beta rule `isBeta` already used.
+- **Test:** the intro test drives the real sequence through a shell that
+  only notes the windows it was asked for. Before, it compiled copies of
+  nine `AppDelegate` members over a fixture with a stubbed showcase. New
+  checks:
+  - onboarding writes every first-run marker;
+  - a beta that has seen its tour asks for nothing else;
+  - asking for an open tour or support page keeps its mode;
+  - quitting may close the support page without Done, and nothing opens
+    while quitting;
+  - the next intro waits for the closing window to go;
+  - the showcase: once on its release, never on another, its cache
+    cleared otherwise, and quitting does not consume it;
+  - onboarding marks the showcase and the support page only on their own
+    releases.
+- **Verification:** a Linux Swift 6.4 model of the sequence, with the real
+  version rules from Core, runs the test, 167 checks, and 45 mutants. Three
+  survive, each equivalent:
+  - asking a beta for the support page or showcase, which their own
+    release gates refuse;
+  - resetting Done when the support page opens, and the review flag when
+    the tour closes: the close and the open reset each again.
+
+Landed (4b, a capture's keys): one more generated file goes, which leaves
+17.
+
+- **Moved to pure code** (`Services/QuickTools/ScreenshotCaptureKeys.swift`,
+  new):
+  - `ScreenshotPreviewKeys`: whether a preview owns the keyboard, and
+    what a press does to it;
+  - `ScreenshotChooserKeys`: what a press does while an area or window is
+    being chosen, over the overlays or the island's controls.
+
+  The two controllers' key monitors read the event, ask, and act. The
+  chooser's per-letter helpers go.
+- **`NotchService.CaptureFocus`** (new) is what decides whether the island
+  shows a capture. `isCaptureVisible(id:)` reads it from the island's
+  state.
+- **Test:** the keyboard test calls the routing and the focus with plain
+  values. Before, it compiled the two monitors, the chooser's helpers and
+  the island's check over stand-in events and windows. New checks:
+  - a metric's detail, a capture without content, or an island that is
+    away owns no capture keys;
+  - a preview that is not on screen ignores keys;
+  - modified keys are passed on, and Shift-E still edits;
+  - Return is kept from the app even when no display can be taken;
+  - only releasing a held Space ends the move;
+  - a sheet or a recording keeps the island's keys from the chooser;
+  - the floating chooser ignores the island's state;
+  - tools switch by number only when offered and without a command key;
+  - scrolling capture and the loupe follow their letters;
+  - C copies a color, and the arrows nudge, only while the loupe takes
+    keys, the arrows ten pixels with Shift.
+- **Verification:** a Linux Swift 6.4 model of the routing and the focus
+  runs the test, 440 checks, and 54 mutants. One survives, equivalent:
+  passing a command press through the plain-key switch, whose own guard
+  passes it on.
+
+Landed (4b, the uninstaller flow): one more generated file goes, which
+leaves 16.
+
+- **`AppUninstaller.Environment`** (new) is everything the uninstaller
+  reaches outside itself:
+  - the background and main queues;
+  - the scan and the removal, each moved whole into one static function
+    (`scan(_:)`, `remove(_:)`) that takes a `Scan` or `Removal` value
+    captured on the main thread;
+  - the running apps it quits;
+  - the package manager, as the new `AppUninstaller.PackageManager`
+    protocol, which `HomebrewManager` adopts;
+  - the HUD.
+
+  `shared` uses `live`. The Homebrew log is cleared before subscribing,
+  as before; the reason is now written beside it.
+- **`CommandBarUninstallReview`** (new, `Services/CommandBar`) holds the
+  bar's uninstall review:
+  - beginning, submitting and stepping back;
+  - its keys, and what a new query or a closing bar does to it;
+  - the pending Homebrew confirmation, and the explicit Finder request.
+
+  `CommandBarService` keeps its field and rows and reaches them through a
+  `Host`.
+- **`FinderBridge.selectionURLs`** takes an `Automation` (consent, status,
+  script) that defaults to the system.
+- **Test:** the flow test drives a real `AppUninstaller` on a manual queue
+  with recorded scans, removals and package-manager calls, and a real
+  review over a stand-in bar. Before, it compiled copies of seven
+  uninstaller members, five command-bar members and the Finder read over
+  stand-in queues, HUD and strings. New checks:
+  - a scan superseded while it runs, or on its way back, delivers nothing
+    and asks for no package;
+  - a bundle replaced during the scan, or while its package is asked, is
+    dropped;
+  - a plain removal quits the app first and takes the rows it captured;
+  - only the package's own running removal counts as removing;
+  - unchecking the app leaves its package out;
+  - a finished status from an earlier operation, another package's
+    removal, or this one failing does not continue the removal;
+  - a package removal that left the app trashes it with the rest, and
+    one that took it counts it once;
+  - closing the bar leaves a selection made elsewhere alone and cancels
+    a pending Finder request;
+  - a failed Finder read selects nothing.
+- **Verification:** a Linux Swift 6.4 model runs the test (58 checks)
+  over the production uninstaller, the review and the Finder read, with
+  stand-ins for AppKit, Combine and the platform-only scan helpers.
+  `live` is type-checked too. Of 72 mutants, three survive, all
+  equivalent:
+  - `reset()` not cancelling the package observation: the next
+    `select(appURL:)` cancels it before any results return;
+  - a removal's completion not checking for `.removing`: nothing can
+    leave that phase while the removal runs;
+  - the review's confirm not checking the phase: `submit()` only
+    confirms results, and `removeSelected()` checks again.
+
+Landed (4b, the brightness service's displays): three more generated files
+go, which leaves 13.
+
+- **`BrightnessService.Environment`** (new) is what the display side
+  reaches outside the app:
+  - the work queue and the main queue, the preferences and the clock;
+  - `Hardware`: the online and active displays, their info and
+    fingerprints, the system brightness calls, the external monitors' DDC
+    endpoints and I2C calls, the DDC pacing, and the gamma curves;
+  - `Power`: the reconfiguration call, the lid, and the lid observation
+    (the IOKit subscription moves into `LidObservation`);
+  - where screen and wake changes are posted, a delay for their debounce;
+  - the island and the overlay.
+
+  `shared` uses `live`. The brightness keys, their taps and the keyboard
+  light still talk to the system directly; `followsKeys` keeps a test's
+  rebuilds away from them. `start()` and `step` become package-visible, so
+  a test can start display control and press a key.
+- **Tests:** the three suites run a started service over a scripted desk
+  (`Tests/BrightnessRig.swift`): DDC monitors that speak the real packet
+  format, a built-in panel on the system pipeline, gamma curves, the
+  reconfiguration call and the lid. Before, they compiled copies of
+  fourteen service members over stand-in queues, bridges and IOKit calls.
+  - **Steps:** the routes come from the real rebuild, and checks follow
+    the step down to the bytes the monitor receives. New checks: steps in
+    a burst do not read the monitor again; a press during a read joins its
+    step; the overlay shows only a written step the island does not show;
+    a key step right after a slider move starts from the queued level.
+  - **Dimming choice:** the routes move through real rebuilds. Turning
+    the choice off, or extended dimming off, is checked by what the
+    rebuild and the next step do, not by the private levels: a write-only
+    monitor's slider starts from the monitor, and the next step reads it.
+  - **Restoration:** every scenario goes through what the app calls: a
+    tap on a row, the start-up and termination restores, the lid moving,
+    a cable coming out. A source-text check in `FeatureCatalogTests` (the
+    pre-switch-off gamma restore checks the fingerprint) becomes a
+    behavioral check here.
+- **Also:** the recorder's audio export check names the failure it saw.
+  It failed once on `main` and passed on rerun of the same commit.
+- **Verification:** a Linux Swift 6.4 model compiles the whole production
+  file, `live` included, over stand-ins for CoreGraphics, IOKit, AppKit and
+  the app's key-handling types. It runs the three suites (96 checks).
+  All 49 hand-written mutants of the production file fail them, one at
+  compile time.
+
+Landed (4b, the recorder editor's zoom aiming): one more generated file
+goes, which leaves 12.
+
+- **`RecorderEditorModel.Environment`** (new) is what the editor model
+  reaches outside the app: the preferences; `loadSource`, which reads the
+  recording's length, picture size, frame rate and audio tracks once it
+  opens; and `composePreview` with its delay, which turns a frame plan
+  into the player's composition. `live` is the AVFoundation code that was
+  inline. The controller still makes the model with `live`.
+- **Tests:** `RecorderZoomAimingTests` opens the real model over a take
+  with no file behind it. The recording opens as five seconds of
+  1000×500, and the preview composer counts what it is asked for. Before,
+  the suite compiled copies of twelve model members over a stand-in
+  player.
+  - The checks now follow the real undo stack and the real preview task.
+    New checks: a preview still on its way is dropped when aiming begins;
+    a drag sets a blur's area in the picture's own space, and one undo
+    takes it back.
+  - A source-text check in `RecorderFeatureTests` (a redrawn blur keeps
+    its strength) becomes a behavioral check here.
+- **Verification:** a Linux Swift 6.4 model type-checks the environment,
+  the load and the preview rebuild over AVFoundation stand-ins, and the
+  test's environment against them. The suite itself runs on macOS CI.
+
+Landed (4b, the screenshot chooser's refresh): one more generated file
+goes, which leaves 11.
+
+- **`ScreenshotSelectionController.Environment`** (new) is what the chooser
+  reaches outside the app: the displays (`Display`: a `ScreenGeometry` and
+  the height of the system's chrome), the pointer, the preferences, the
+  capture engine's four calls, and `show`, which puts the panels on screen.
+  `live` is what the controller called before. A panel is built from a
+  `Display` rather than an `NSScreen`.
+- **Seams:** the panel and overlay view become package-visible. So do the
+  confirmations the views call, the repeat and full-screen captures the
+  keys call, and the state the checks read (the panels, the pointer, the
+  full-screen action and its hover, the island's height). The capture
+  service's forwarding of the island's geometry is a static that takes
+  whether the session is still current.
+- **Tests:** `ScreenshotSelectionRefreshContract` starts real choosers the
+  way the capture service does, over two scripted 100-point displays and
+  captures that wait for the check to answer them. Their panels are built
+  but never shown. Every check is kept, now on real panels and pictures.
+  The guide-refresh counter is replaced by what the refresh shows: a
+  selection in progress hides the full-screen action on both displays.
+  New: the action shows under the pointer before its hover is checked.
+- **Not covered:** the service's own test of which session is current
+  (two identity comparisons).
+- **Verification:** a Linux Swift 6.4 model type-checks the environment
+  and the test's desk against stand-ins. The suite itself runs on macOS
+  CI. The six `mutation_checks.py` mutations of this file still name
+  messages the suite prints.
+
+Landed (4b, the island's full-screen visibility): one more generated
+file goes, which leaves 10.
+
+- **`NotchFullscreenVisibility`** (new, `Services/Notch/`) decides when the
+  island steps aside for a full-screen Space (an opt-in) and what it does
+  then:
+  - **Stepping aside:** it cancels hover, releases a drag, cancels the
+    capture controls, dismisses the notice and collapses, in that order.
+  - **Key routing:** it resyncs who owns the volume and brightness keys
+    whenever the island steps aside or returns.
+  - **Following:** on a Space or app change it follows only while the
+    island runs.
+  - Its environment is the preference and the Spaces (`.system`). The island
+    hands it those steps; `NotchService` keeps `hiddenInFullscreen`.
+- **`PreciseVolumeRollerService.Environment`** (new): the roller's
+  preference, whether the island takes the volume keys, Accessibility, the
+  session, and the event tap's creation. `shared` uses `.system`, as
+  before. The re-arm of a disabled tap still reads the system, since only a
+  live tap reaches it.
+- **Tests:** `NotchFullscreenTests` drives the module's own visibility over
+  a scripted preference, Spaces and island. It also drives a real roller,
+  wired through key routing the way `main.swift` wires them, over a tap
+  that macOS always refuses. Before, it compiled copies of four island
+  members and the roller's sync. Every check is kept; the step-aside check
+  now also pins the order.
+- **Verification:** a Linux Swift 6.4 model type-checks the new type and the
+  test's desk and island against stand-ins. The suite itself runs on macOS
+  CI.
+
+Landed (4b, the island's screen refresh): one more generated file goes,
+which leaves 9.
+
+- **`NotchScreenRefresh`** (new, `Services/Notch/`) keeps the island
+  current as the displays, the app in front and the preferences change.
+  It owns:
+  - one deferred pass per burst of preference or screen notifications;
+  - when the menu reader runs, and the room the island keeps without it;
+  - what another app coming forward does: resign key, remember the paste
+    target, collapse an open island unless the pointer is still in it;
+  - `canFollowPointer` and `move(to:)`, the two halves of following the
+    pointer that `NotchPointerFollower` asks the island for.
+  - Its environment is the main queue, Accessibility, the cover-the-menus
+    preference, the app in front, this app's identifier and the pointer
+    (`.system`). The island hands in its state and its reactions.
+  - `NotchService` keeps one-line forwards, so the rest of the island and
+    its other contracts are unchanged.
+- **Tests:** `NotchScreenRefreshContract` builds the module's own type over
+  its scripted island, which keeps its fields and forwards the old names.
+  Before, the suite compiled copies of seven island members. Every check
+  is kept, the pointer-follow ones included.
+- **Verification:** a Linux Swift 6.4 model type-checks the new type against
+  stand-ins. The suite itself runs on macOS CI.
+
+Landed (4b, the island canvas's drops): the shelf-drop contract stops
+copying the canvas. Its generated file stays for the shelf, file-tools and
+island members, which the next slices take one owner at a time, so 9 remain.
+
+- **`NotchCanvasDrop`** (new, `Services/Notch/`) is the drag bookkeeping
+  that lived in the window host's private canvas view:
+  - whether a drag is taken (drags from inside the app are not);
+  - delivering a taken drag once;
+  - letting go of a drag that leaves the visible island;
+  - checking the release point again, whatever the last update targeted.
+  - The canvas still converts the drag's location and says whether it is
+    on the visible island, then forwards one line to this type.
+- **Tests:** `ShelfDropRoutingTests` drives the module's own type with the
+  module's `NotchFileDropActions`. Before, it compiled copies of the
+  canvas's five drop methods and of the actions struct. Every check is
+  kept.
+- **Verification:** a Linux Swift 6.4 model type-checks and runs the new
+  type against stand-ins. The suite itself runs on macOS CI.
+
+Landed (4b, the island's file-drop gate): the shelf-drop contract stops
+copying the island. Its generated file stays for the shelf and file-tools
+members, so 9 remain.
+
+- **`NotchFileDrop`** now decides whether the island takes files: it is
+  interactive, not holding the capture controls, showing its files, and
+  the shelf is available and switched on. Its environment gains the shelf
+  switch, and its island gives the three island facts in place of the one
+  answer. `NotchService.canAcceptFileDrop` forwards to it.
+- **Tests:** `ShelfDropRoutingContract.Notch` is a scripted island that
+  holds the module's own `NotchFileDrop` and keeps the island's names for
+  it. Before, the suite compiled copies of nine island members. Every
+  check is kept.
+- **Verification:** a Linux Swift 6.4 model type-checks the type and the
+  scripted island against stand-ins, and runs the revoked-destination
+  checks. The suite itself runs on macOS CI.
+
+Landed (4b, the shelf's drop intake): the shelf-drop contract stops
+copying the shelf. Its generated file stays for the file-tools members,
+which the next slice takes, so 9 remain.
+
+- **`ShelfDropIntake`** (new, `Services/Shelf/`) is where a drop on the
+  shelf goes:
+  - nowhere while the shelf is unavailable or switched off;
+  - promised files to native delivery, handed the whole drop so the plain
+    items dropped with them stay attached;
+  - anything else read from the pasteboard now, onto the shelf or merged
+    into an item;
+  - a drop into the docked shelf's window completes the dock.
+  - `ShelfService` builds one over its own delivery, reading and dock
+    members. `acceptDrop`, `accept(draggingInfo:)` and
+    `merge(draggingInfo:into:)` forward to it, so the merge path shares
+    the rule it used to repeat.
+- **`ShelfPasteboardSupport.fileURLs(from:)`** is the file reader that was a
+  `ShelfService` method. It reads no shelf state. `ShelfService.fileURLs`
+  forwards to it.
+- **Tests:** `ShelfDropRoutingContract.ShelfService` is a scripted shelf
+  that holds the module's own intake. Before, the suite compiled copies of
+  four shelf members. Two checks change:
+  - the companion check now asks that a promised delivery gets every
+    promise and the whole drop, since gathering the companions stays in
+    `ShelfService`;
+  - a new check asks that a drop into another window leaves the dock alone.
+- **Verification:** a Linux Swift 6.4 model type-checks the intake, the
+  shelf's wiring of it and the scripted shelf against stand-ins, and runs
+  the routing and dock checks. The suite itself runs on macOS CI.
+
+Landed (4b, the media tools as a drop destination): the shelf-drop
+contract's generated file goes, which leaves 8.
+
+- **`NotchMediaDrop`** (new, `Services/Notch/`) decides what the island's
+  media tools take:
+  - nothing unless they are offered and not already working;
+  - only a drop whose every item is a file one tool optimizes, with
+    nothing promised, so mixed drops keep their companions on the shelf;
+  - opening the tool reports whether the tool took its inputs.
+- **`NotchFileToolsService`** takes an injected `Environment`: whether the
+  island shows its files with the tools and the shelf available, and the
+  shelf switch (`.system`).
+  - Its drop members forward to a `NotchMediaDrop`. That drop is busy while
+    a media job or an archive runs.
+  - Its own switch checks (preference sync, opening a tool, archiving) read
+    the same environment.
+- **Tests:** `ShelfDropRoutingContract.FileTools` holds a real service over
+  the contract's switches, and a `NotchMediaDrop` wired the way the service
+  wires it. Two things are scripted instead: whether the tools are busy, and
+  whether a tool takes its inputs. A real job's running state only arrives
+  asynchronously.
+  - Before, the suite compiled copies of seven service members. Every check
+    is kept.
+  - The two running-work revocations (media, archive) become one busy case,
+    since the drop sees one fact.
+  - `MediaWorkspaceLayoutTests` measures the real service, opened on a
+    scratch video.
+- **Verification:** a Linux Swift 6.4 model type-checks the drop, the
+  service's wiring and the scripted tools against stand-ins. It runs the
+  gate, mixed, promised, refusal and busy checks. The suites themselves run
+  on macOS CI.
+
+Landed (4b, the switcher's window strips): one more generated file goes,
+which leaves 7. Of those, six are copies and `LocalizationCatalog.swift`
+is the registry kept on purpose.
+
+- **`SwitcherWindowStrip`** (new, `UI/Switcher/`) is the scrolling row of
+  one app's windows that the switcher's previews and titles each built
+  inline. It keeps the selection in view:
+  - when it appears;
+  - when the selection or the app's windows change;
+  - after the viewport resizes.
+
+  It reads the selection from the switcher at reveal time, so a reveal
+  queued behind a resize finds the current selection.
+  - It is generic over `SwitcherStripModel`: the windows and the selected
+    index. `AppSwitcher` conforms.
+  - Each caller gives the tile and the frame.
+- **`SwitcherSupport.searchResult`** is what a search shows: the matching
+  session items in order, and the selection kept on the preferred item
+  while it is still shown. `AppSwitcher` applies it and then resizes as
+  before.
+- **Tests:** `SwitcherScrollContract` draws the module's own strip over
+  synthetic windows, with empty tiles of the real sizes, and searches
+  through the module's own helper. Before, it compiled copies of both
+  strips, the reveal and the search filter. Every check is kept.
+- **Mutation checks:** the two switcher mutations (no reveal after a
+  resize, reveal keyed on the window count) now edit the new file.
+- **Verification:** a Linux Swift 6.4 model type-checks and runs the search
+  helper. SwiftUI does not build on Linux, so the strip and the suite are
+  proven on macOS CI.
+
+Landed (4b, the island's destinations): one more generated file goes,
+which leaves 6. Of those, five are copies and `LocalizationCatalog.swift`
+is the registry kept on purpose.
+
+- **`NotchIslandFixture`** (new, `Tests/`) builds a real `NotchService`
+  over test doubles:
+  - a window host that draws nothing, with a real but transparent panel;
+  - services that record what the island asks of them;
+  - one notched built-in display;
+  - notification centers of its own, so the session changes the test
+    announces are the only ones the island hears;
+  - timers that wait until the test runs them, and open-island monitors
+    whose handlers the test holds.
+- **Tests:** `NotchDestinationContract` drives that island. Before, it
+  compiled copies of 14 island members and two metric mappings over a
+  hand-written state class. Every
+  check is kept, and each now reaches the island the way the app does:
+  - Escape arrives as the open island's own key, not a call to the
+    private `stepBack()`.
+  - Lock, sleep, the console and the screen saver arrive as the
+    notifications the session tracker hears.
+  - An activity under way, a banner and system feedback come from the
+    services' readings and the island's own `show(_:)`.
+  - A closing island is `collapse()`, or capture controls where the check
+    is about them.
+  - Teardowns and returns are read from what the island asks of its
+    services, in order.
+- **Changed checks:**
+  - During a capture, Escape now never reaches the island: the controls
+    take its keys. The check says so, and that closing still leaves the
+    island as it is.
+  - The held banner is held for real, by the pointer resting on it.
+- **Verification:** the suite runs on macOS CI; AppKit does not build on
+  Linux.
+
+Landed (4b, the island's music reader): one more generated file goes,
+which leaves 5: four copies and the registry kept on purpose.
+
+- **Tests:** `NotchMusicVisibilityTests` drives a real island from
+  `NotchIslandFixture` instead of compiled copies of its presentation and
+  consumer members over a state class. Every check is kept, each reached as
+  the app reaches it:
+  - a physical or simulated camera is a described display, and the room
+    beside it what the menu reader measures;
+  - full screen, the outline, copies on another display and a Mac without
+    a battery come from the fixture and the island's preferences;
+  - opening, sections and the app panel go through `open(...)`, and capture
+    controls through `presentCaptureControls`;
+  - a song waiting for its notice is a track change sent through the
+    island's events, released by its scheduled notice;
+  - the activity picker goes through `selectCompactActivity` and
+    `selectCompactCombination`.
+- **Changed checks:**
+  - The reader is the fixture's services, which record the island's starts
+    and stops; their playback survives a stop as the old reader's did.
+  - Copies are read after the island's next sync: they appear as it
+    presents, after it has synced its consumers.
+  - The Keep Awake strip is compared with the timer's geometry built from
+    the room it took, since its measured wing is private.
+  - The calendar wing check calls `NotchGeometry.compactCalendarGeometry`
+    directly: that is what the old check exercised with its stubbed wing.
+- The fixture gained a second display, per-display full screen, a measured
+  menu room and the playback reader's state.
+
+Landed (4b, the island's presentation and capture controls): one more
+generated file goes, which leaves 4: three copies (`NotchHover`,
+`NotchCompact`, `MenuPanelRecovery`) and the registry kept on purpose.
+
+- **Tests:** `NotchPresentationRefreshContract` and its capture-controls
+  checks drive a real island from `NotchIslandFixture` instead of compiled
+  copies of the island's refresh, capture and music-departure members and
+  the window host's restore. Every check is kept:
+  - The recording host keeps what each present and hide asked for: the
+    transition, glass, the reveal, the outline, the activation area. It
+    applies the module's `NotchWindowInputPolicy` to its panel.
+  - Hover, the capture controls' click-through and their deadlines run on
+    pointer moves and the fixture's clock.
+  - The menus' room is what the menu reader measures. A center collision
+    is a measurement of none.
+  - The music strip's departure follows playback, covers and track
+    changes sent to the island.
+- **Changed checks:**
+  - The page-title width checks call `NotchGeometry` directly; the title's
+    width is measured from its text, so a test cannot choose it.
+  - "Recent captures" is compared with the island's own expanded size.
+  - The hidden island's input policy is checked on the policy itself.
+- The fixture gained Reduce Motion and a host that keeps departing content
+  until it finishes.
+
+Landed (4b, the island's hover): one more generated file goes, which
+leaves 3: two copies (`NotchCompact`, `MenuPanelRecovery`) and the registry
+kept on purpose. No copy of `NotchService` is left, so the generator drops
+its whole map of the island's preferences, pointer, clock and services.
+
+- **Tests:** `NotchHoverTests` drives a real island from
+  `NotchIslandFixture` instead of compiled copies of 21 island members over
+  a state class. Every check is kept, each read from what the island shows
+  rather than its private state:
+  - opening and peeking are `expanded` and `peeking`, the hover deadlines
+    the fixture's pending work and its delays;
+  - the hover emphasis is the island's `surfaceSize`;
+  - the pointer observers are the fixture's movement watches, one per pair
+    of monitors;
+  - a departure that must not happen is a host transition that never
+    dismisses.
+- **Changed checks:**
+  - "Never consumes the local event" is checked on
+    `NotchMovementWatch.Environment.passingThrough(_:)`, the handler both
+    hidden hover and pointer following install. The island no longer sees
+    the event, so it cannot consume it.
+  - Local and global movement are one watch in the fixture, so the reveal
+    check no longer runs once for each.
+- **Production:** `NotchMovementWatch` names its local-monitor handler
+  (`passingThrough(_:)`) so that the check above can reach it.
+- **Generator:** it deletes generated files it no longer writes, so
+  `build.sh`'s glob cannot compile a stale copy.
+
+Landed (4b, the compact pages' calendar rows and rail): the `NotchCompact`
+copy loses four declarations. Its calendar-row and rail checks render the
+real views:
+
+- `NotchCalendarEventRow` is `package`, with its initializer spelled out.
+- `NotchRail` spells out its initializer; its callers already passed the
+  memberwise labels in order.
+- The copy no longer carries the row, its countdown modifier, the rail or
+  `NotchCalendarColor.color`. The checks are unchanged: the test doubles'
+  button style and surface added no layout, and neither do the real ones.
+
+Landed (4b, the compact camera page and page sizing): the `NotchCompact`
+copy loses `NotchCameraView` and `NotchView.pageSize`.
+
+- **Camera page:** `NotchCameraView` takes its camera (`NotchEmbeddedCamera`,
+  which `CameraPreviewService` adopts) and its preview. The app keeps
+  calling `NotchCameraView(size:)`, which passes the shared camera and its
+  live preview. The test renders the real page over a camera that records
+  starts and stops.
+- **Page sizing:** `NotchLayout.pageSize(...)` (`Core/Notch/NotchPageSize.swift`)
+  is the page-size rule `NotchView` held privately. Each page's own inputs
+  are autoclosures, so only the selected page's preferences are read, as
+  before. `NotchView` passes its readings, and the test calls the rule
+  directly.
+- **Changed check:** "vertical detail pages preserve their existing
+  layout" now uses a page that would grow without the detail. The old one
+  used a page that never grows, so it could not fail.
+
+Landed (4b, the compact scratchpad): the `NotchCompact` copy is gone. That
+leaves 2 generated files: one copy (`MenuPanelRecovery`) and the registry
+kept on purpose.
+
+- **Editor:** `NotchScratchpadView` and `ScratchpadFormatBar` take their pad,
+  and the app's is the shared one. The test renders the real island page
+  over a real pad in a directory of its own (`ScratchpadHarness`), on a
+  real island from `NotchIslandFixture`. Preview turns on and off through
+  `togglePreview()`, as its button does.
+- **Preferences:** `ScratchpadService.Environment` carries the `defaults` the
+  pad reads its availability, shortcut, retention and click-outside settings
+  from. `.live` passes `.standard`, and the harness passes a suite of its
+  own.
+- **Focus:** `ScratchpadFocus` (`Services/QuickTools/ScratchpadFocus.swift`)
+  holds both pads' focus rules over `ScratchpadFocusWindow`, which `NSWindow`
+  adopts:
+  - `bringForward` is the floating pad's: only an explicit show takes the
+    keyboard from another window, and a queued caret move is dropped once
+    another window is key;
+  - `placeCaret` is the island page's.
+
+  The test drives both over windows whose key status it sets. AppKit gives
+  key status only to an active app, which the test runner is not.
+- **Mutations:** "floating scratchpad takes another host's focus" now
+  mutates the guard in `ScratchpadFocus.swift`.
+
+Landed (4b, the menu panel's presentation): the last copy goes. What the
+generator writes now is the localization registry alone, and no test
+compiles a copy of production code.
+
+- **`MenuPanelPresenter`** (`Services/MenuPanel/MenuPanelPresenter.swift`)
+  is the main panel's presentation, moved out of `AppDelegate` with its
+  state, near verbatim:
+  - where the panel opens: the click, the status item's frame, the
+    remembered spot, the display;
+  - how it holds that spot while the menu bar shifts;
+  - how it closes, and why;
+  - how it comes back in place after something other than Vitruvian
+    closed it;
+  - where Settings opens beside it.
+- **Generic over the platform:** the presenter reads its display, windows,
+  status button and popover through `MenuPanelScreen`, `MenuPanelWindow`,
+  `MenuPanelButton` and `MenuPanelPopover`, which AppKit's types adopt
+  (`AppKitMenuPanel`).
+- **`Environment`** carries the rest:
+  - the screens, the current event, the main queue and window
+    observation;
+  - the shared services the panel's content uses (`MenuPanelFocus`,
+    `PanelInteractionState`, the sampling it releases);
+  - `AppDelegate`'s own hooks: dismissal monitors, following activation,
+    the stable positioning view, the Settings window.
+- **What stayed in `AppDelegate`:** the popover itself and its content, the
+  monitors and keys, activation tracking, metric anchor switches and the
+  positioning view, all of which now go through the presenter's state.
+- **Tests:** `MenuPanelRecoveryTests` drives the real presenter over a
+  platform of its own and a fixture that records every hook. It used to
+  shadow `NSScreen`, `NSWindow`, `NotificationCenter`, `DispatchQueue`,
+  `NSApp` and five singletons inside the test module. Every check is
+  kept. The release of sampling and metric focus is now counted at the
+  one hook that does both.
+- **Generator:** with no copy left, `Tests/generate_sources.py` loses its
+  extraction helpers.
+
+Landed (4c, no stand-in shadows a real type): step 4 is done. Its
+problem was tests faking a service's collaborators by declaring types with
+the real names. The services now take their collaborators, but six test
+files still named their stand-ins after what they stand in for.
+
+- **Renamed:**
+  - the screen-refresh contract's `DispatchQueue`, `NSWorkspace`, `Bundle`,
+    `NSEvent`, `NSScreen` and `ClipboardHistoryService` are `Clock`,
+    `Frontmost`, `OwnApp`, `Pointer`, `Display` and `Clipboard`;
+  - the shelf drop contract's `AppFeature`, `NotchSupport`, `UserDefaults`
+    and `ShelfService` are `Features`, `IslandModules`, `Switches` and
+    `Shelf`;
+  - the audio level reader, the volume feedback's mixer, the update intro's
+    shell and the window-server capture's two aliases take names of their
+    own.
+- **The check:** `TestDoubleNameTests` fails when a test declares a type
+  named after a framework type (`NS`, `CG`, `CF`, `AX`, `Dispatch`), one of
+  the Foundation types tests used to fake, or one of the app's own top-level
+  types. It runs with the repository checks, and first checks its scanner
+  and rule on known text.
+- **What step 4 leaves:** nothing open. Every test runs the module's own
+  code over injected collaborators: no generated copy, no shadowing type.
+  The `.shared` singletons stay as the composition root.
+
+## Step 5: decompose NotchService (done)
+
+Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
+outbound singletons and 119 inbound call sites. View-layout math is duplicated
+between it and the views, and the copies have already diverged.
+
+Change: extract, one PR each:
+
+- session/lock tracking
+- display and mirror selection
+- menu-bar space measurement
+- the notice/HUD queue
+- the capture-controls host
+- file-drop routing
+- event bindings
+
+Move the shared geometry into `NotchGeometry` as the single source used by both
+the service and the views. `AgentUsageService` is the template: documented thread
+ownership, pure helpers in enums, no outbound `.shared`.
+
+Landed (5a, session and lock tracking): `NotchSessionTracker`
+(`Services/Notch/NotchSessionTracker.swift`) follows system sleep, display
+sleep, the console, the lock screen and screen savers, and reports each change.
+
+- **What moved:** the ten observers on the workspace and distributed
+  notification centers, and the read of the current session at start.
+- **What stayed:** `NotchService.updateSession(_:)` applies each change and
+  owns its effects (suspending the island, the lock sounds, the timer), so the
+  contract that exercises those effects is unchanged.
+- **Injected:** both notification centers and the delivery queue. The app
+  passes the system's centers and the main queue.
+- **Tested directly:** `NotchSessionTrackerTests` drives the module's own
+  tracker through centers of its own, with no queue, and checks every
+  transition, that each center is read only for its own notifications, that
+  starting again replaces the observers, and that a stopped tracker reports
+  nothing. Run on Linux against the real file with AppKit stand-ins, it fails
+  when an unlock forgets the screen saver, or when `stop()` leaves an
+  observer behind.
+
+Landed (5b, menu-bar space measurement): `NotchMenuSpaceReader`
+(`Services/Notch/NotchMenuSpaceReader.swift`) reads how much of the menu bar
+beside the camera the menus leave free.
+
+- **What moved:** the once-a-second timer, the queue the accessibility read
+  runs on, the flag that keeps reads one at a time, and the generation that
+  drops an answer the island moved away from or a new menu bar owner made
+  stale. So did the choice of whose menus to measure, the menu bar's owner.
+- **What stayed:** `NotchService.syncMenuSpaceMonitoring()` still decides
+  whether to read at all, and `applyMenuSpace(_:)` what an answer does to the
+  island. The screen-refresh contract still runs those against a stand-in
+  that counts starts, stops and reads; its timer double is gone.
+- **Injected:** the menu bar's owner, the measurement, the background and
+  main queues, and the ticks. The app passes `.system`.
+- **Tested directly:** `NotchMenuSpaceReaderTests` runs each tick, read and
+  answer by hand. It checks that one read runs at a time, that an answer
+  reaches the island only while current, that a move or a new owner reads
+  again, that a stop drops the answer in flight, also across a quick
+  restart, and that a released reader cancels its ticks. Run on Linux against
+  the real file, it catches each of six mutations of the reader.
+
+Landed (5c, the copies on other displays): `NotchMirrors`
+(`Services/Notch/NotchMirrors.swift`) keeps the copies of the closed island
+that the other displays show when the island is on every display.
+
+- **What moved:** creating, updating, hiding and closing the copies, the
+  surface each one draws (a capsule's strip, a camera's strip or the island
+  at rest), the room a copy may take beside another display's menus, and
+  which displays show a full-screen Space.
+- **What stayed:** `NotchService` decides when the copies sync, and a click
+  on a copy still runs its `bringIsland(to:)`, which closes, moves and
+  opens the island. Its other contracts still find `syncMirrors()`,
+  `closeMirrors()` and `showsCopies`, now one line each. Choosing the
+  island's own display (`updateScreen()`, following the pointer) is the
+  other half of "display and mirror selection" and has not moved yet.
+- **Injected:** the displays (each with whether it shows a menu bar), the
+  island's geometry on a display, which displays are in full screen, the
+  five preferences the copies follow, the island while it shows copies,
+  its strip sizing, and the window each copy gets. A copy's window is a
+  `NotchMirrorHost`; `NotchWindowHost` is one.
+- **Tested directly:** `NotchMirrorContract` drives the module's own
+  `NotchMirrors` through a stand-in world and windows, with every check it
+  made of the copied methods, plus closing the copies and a click on a
+  copy. Only `bringIsland(to:)` is still copied from `NotchService`. Two
+  new mutations in `Tests/mutation_checks.py` guard the copies.
+
+Landed (5d, clicks on the menu bar above the island): `NotchScreenEdgeClicks`
+(`Services/Notch/NotchScreenEdgeClicks.swift`) watches clicks on the menu
+bar's first row above the closed island and opens it, one of the island's
+event bindings.
+
+- **What moved:** installing and removing the global and local mouse
+  monitors, turning each event into a point on screen, and the press,
+  drag and release rules that make a click.
+- **What stayed:** `NotchService.screenEdgeClickArea` (where the island
+  takes these clicks, from its geometry and state) and the new
+  `screenEdgePressed()`, which stops hover until the release. Other
+  contracts still find `syncScreenEdgeClicks()` and
+  `removeScreenEdgeClickMonitors()`, now one line each.
+- **Injected:** the monitors (`.system` uses `NSEvent`), and the island's
+  area, capsule gap, working surface, window shape and its press and click.
+- **Tested directly:** `NotchScreenEdgeClickTests` drives the module's own
+  type through stand-in monitors, with every check it made before plus an
+  event that has no point on screen. The click area and the press come
+  from `NotchService`, copied as before. Two new mutations guard the type.
+
+Landed (5e, following the pointer): `NotchPointerFollower`
+(`Services/Notch/NotchPointerFollower.swift`) brings the closed island to
+the display the pointer rests on, when the display choice is the pointer
+or every display. It is the moving half of "display and mirror selection".
+
+- **What moved:** watching pointer movement while the island can follow,
+  the check that the pointer left the island's display, the short wait
+  before it moves, and the conditions for the move (still allowed, not in
+  Mission Control, a different display).
+- **What stayed:** `canFollowPointer` (only a closed island at rest moves)
+  and `move(to:)`, which takes the display and refreshes the island.
+  `updateScreen()`, which picks the display and builds the island's window,
+  is the island's core and stays. Other contracts still find
+  `syncPointerFollowing()`, `removePointerMonitors()` and
+  `schedulePointerFollow()`, now one line each.
+- **Injected:** the monitors, the pointer's location, the displays and the
+  clock (`.system`), and the island's side, including how it waits for its
+  window to settle and how it moves.
+- **Tested directly:** `NotchScreenRefreshContract` drives the module's
+  own follower with the island's copied `canFollowPointer` and `move(to:)`,
+  through the same stand-in monitors, displays and clock, with every check
+  it made before. Two new mutations guard the follower.
+
+Landed (5f, the hover watches): `NotchMovementWatch`
+(`Services/Notch/NotchMovementWatch.swift`) keeps a pair of pointer-movement
+monitors, in this app and in others, while the island needs them.
+
+- **Two uses:**
+  - the watch while the island hides until the pointer reaches it;
+  - the watch from an unreported hover exit until AppKit reports the
+    pointer again.
+- **What stayed:** `NotchService` still decides when each watch runs
+  (`syncHiddenHoverMonitoring()`, `syncHoverExitMonitoring(entered:point:)`)
+  and what a move does (`hover(_:)`), so `NotchHoverTests` keeps copying those.
+- **Tested:** the copies now start and stop the module's own watches,
+  through the test's stand-in monitors, with every check they made before.
+  A new mutation guards against stacking monitors.
+
+Landed (5g, the agent strip's marks): the first slice of the single source
+for layout.
+
+- **Helpers:** `NotchAgentSupport` now owns how big a working agent's mark is
+  on a strip, the frame each mark takes and the width of a row of marks.
+  The island's wing (`NotchService`) and the strips that draw the marks (agent,
+  timer and watch, plus the capsule) all call these helpers.
+- **The divergence it fixes:** the service reserved full-size marks while the
+  strip shrank them to fit a short island. So on a 24-pt island the wing
+  kept room for a 14-pt mark the strip drew at 10 pt.
+- **Also:** the agents page lists agents through
+  `NotchAgentSupport.providers()`, so it no longer keeps its own list of the
+  three providers.
+- **Tested:** `NotchAgentTests` checks the sizes on tall, short and tiny
+  strips, and the width of a row of marks. A new mutation guards the
+  shrinking.
+- **Still duplicated:** the other copies the survey found move in later
+  slices (5j below took the notice, the header and the capsule).
+
+Landed (5h, file-drop routing): `NotchFileDrop`
+(`Services/Notch/NotchFileDrop.swift`) takes files dragged onto the island.
+A drop that the media tools can take offers two destinations, the shelf and
+the tools, and the pointer chooses between them; any other drop goes to the
+shelf.
+
+- **What moved:** the two destinations and which one the pointer is over,
+  opening the island on its files when a drag enters, and delivering the drop.
+- **What stayed:** whether the island takes files at all
+  (`canAcceptFileDrop`) and what a delivered drop does to the island. Views
+  still read `choosingFileDropDestination` and `targetsMediaDrop`, which are
+  now computed and announce each change through `objectWillChange`.
+- **Injected:** the shelf and the media tools (`.system(shelfAccept:)`), and
+  the island's side: its acceptance, the media tools' area and how it opens.
+- **Tested directly:** `ShelfDropRoutingContract` drives the module's own
+  type, wired to its stand-in shelf and tools, with every check it made
+  before. A new check counts the change announcements, and a new mutation
+  guards them.
+
+Landed (5i, the capture controls' movement watch): the monitor that lets
+clicks pass through the capture controls' window, except over the controls
+themselves, is a `NotchMovementWatch` that watches this app only
+(`.system(matching:inOtherApps: false)`). `NotchService` has no monitor
+array of its own left except the open island's clicks and keys
+(`eventMonitors`).
+
+- **Tested:** the capture-controls checks start and stop the module's own
+  watch through a stand-in monitor, and the teardown check now also asks the
+  watch. A new mutation guards the teardown.
+
+Landed (5j, the notice, the header and the capsule's music strip): more of
+the layout has one source.
+
+- **The text notice:** `NotchNoticeLayout` (new, in Core) holds its symbol
+  column, spacing, inset and font. `NotchNotice.preferredWingWidth` sizes the
+  wings with them and `NotchNoticeView` draws with them.
+- **The open header:** `NotchGeometry` gains `headerBottom`, `pageTop` and
+  `headerSideWidth(contentWidth:)`. The page clip, the media drop area, the
+  section scroll's header test, the header halves in `NotchView` and the
+  content editor, and the capture controls' header no longer spell out the
+  sums.
+- **The capsule's music strip without a title:** the view kept two paddings
+  between the cover and the bars, while `CapsuleLayout.musicSurface` reserves
+  one. The view now keeps one. Before, the capsule's resting width hid the
+  difference.
+- **Tested:** the spacing contract checks `pageTop` and the header halves on
+  every layout and camera height. A new mutation guards the halves.
+- **Left as they are:** the companion mark beside a timer is drawn at most
+  13 points but reserved at the strip's icon size (up to 20). Over-reserving
+  is safe, and the timer and download strips size it differently on
+  purpose, so it stays until a design decision. Also left: the calendar,
+  download and capture-control fonts and insets, which agree today.
+
+Landed (5k, event bindings): `NotchEventBindings`
+(`Services/Notch/NotchEventBindings.swift`) holds the island's subscriptions
+to the services whose state it shows.
+
+- **What moved:** `bindEvents`' subscriptions to eleven services: the timer,
+  Watch, music, the tools page, the system monitor's fan card, downloads,
+  agent usage (its strip and its events), the calendar, Keep Awake,
+  notifications and the clipboard history. Each source keeps its operators
+  (duplicates dropped, first values skipped, the hop to the main queue)
+  in `Sources.system()`, and each is asked for only when its module or
+  notice is on, so a service the island does not show is still never
+  started for it.
+- **What stayed:** every reaction. `NotchService` passes them in as
+  `Island`: resizing, remembering and naming songs, the tools and fan
+  card refreshes, and the notices, whose text it still builds. Volume and
+  battery stay in `bindEvents`, since a contract copies the volume binding.
+  `NotchService` loses 105 lines and 15 of its `.shared` reads.
+- **Tested directly:** `NotchEventBindingsTests` binds the module's own
+  type to subjects of its own and checks that only the sources of modules
+  that are on are asked for, that each change reaches the island once,
+  that binding again replaces the subscriptions, that a song is kept only
+  while it plays, that the system's banner hides only for a notification
+  the island stands in for, and that unbinding stops everything.
+
+Landed (5m, the island's preferences): `NotchService` reads its
+preferences from the `UserDefaults` it is built with. This is the first
+part of the island's own environment.
+
+- **Why:** five generated tests still copy the island's core, its hover,
+  notices, capture controls, presentation and destinations. Each needs
+  only one fact to drive the real `NotchService`: a test can build one.
+  Building one is harmless, since every collaborator it holds is lazy, so
+  what is left is what it reads and calls.
+- **What changed:**
+  - `NotchService.Environment` carries the preferences, and `.shared` is
+    built with `.system`, the standard defaults.
+  - Its 24 direct reads use them, and so do its 42 `NotchSupport` queries
+    through their `in:` forms. So do its eight feature checks and the lock
+    screen's sound check.
+  - The escaping closures capture the preferences rather than the island.
+- **What is next:** the window host behind a protocol, then the pointer,
+  the main-queue timers and the services it calls, one PR each. After
+  that, the five tests can build the island instead of copying it.
+- **Generated copies:** `Tests/generate_sources.py` reads the island's text
+  with the preferences argument taken out again. So the five copies are
+  byte for byte what they were (checked by regenerating before and after),
+  and their stand-ins still apply. One mutation check names the new text.
+
+Landed (5n, the island's window): `NotchService` asks for its window
+through `NotchIslandHost` (`Services/Notch/NotchIslandHost.swift`), and its
+environment builds it.
+
+- **The protocol** is the 21 things the island asks of its window:
+  - its panel, the size it heads to, whether content departs, and Mission
+    Control's concealment;
+  - its hit tests;
+  - presenting and hiding;
+  - settling and closing;
+  - its file drop, outline, hover and activation hooks.
+
+  `NotchWindowHost` conforms as it is.
+- **`Environment.makeHost`** builds the window from the island, its
+  geometry and size. `.system` builds the `NotchWindowHost` with the views
+  the island always had. The mirror windows on other displays still build
+  their own, through `NotchMirrors`' protocol.
+- **One call spelled out:** a protocol method has no defaults, so the
+  island's one `present` now passes `hideWhenSettled: false`, the value it
+  took by default. The presentation test's stand-in window takes that
+  argument too.
+
+Landed (5o, the pointer, motion and timers): `NotchService` reads the
+pointer and Reduce Motion, and starts its timers, through its environment.
+
+- **`Environment.pointer`** answers the 25 places that read
+  `NSEvent.mouseLocation`.
+- **`Environment.reducesMotion`** answers its four Reduce Motion checks.
+- **`Environment.schedule`** runs its ten delayed pieces of work. These
+  are hover openings and closings, notice dismissals, departures, the
+  track notice, capture controls and the music title.
+- `.system` passes the same system calls as before, so nothing runs
+  differently. A test can now place the pointer and step the clock.
+- **Generated copies:** the generator maps the three back to the system
+  calls when it reads the island, so the five copies stay as they were.
+
+Landed (5p, the services the island calls): `NotchService` reaches the
+services it reads, starts, stops and drives through `NotchIslandServices`
+(`Services/Notch/NotchIslandServices.swift`), in its environment.
+
+- **The protocol** names what the island uses, by what it means to it:
+  - 22 readings, such as the playing track, the timer's session, the
+    downloads, the agents' usage and the calendar countdown;
+  - 30 starts, stops and syncs of the services that follow it;
+  - 14 requests, such as the paste target, opening a notification and
+    the quick controls' actions.
+- **`SystemNotchIslandServices`** forwards each one to the shared instance
+  the island named before, so the app runs exactly as it did. The direct
+  calls in `NotchService` go from 66 to 0.
+- **Still named:**
+  - the local key route's tools key;
+  - a few readings the island takes through a local alias, such as the
+    watch's headline, the timer's clock, the artwork and the scratchpad's
+    tab limits;
+  - two `NSWorkspace` calls.
+
+  The next slice takes the aliases.
+- **Generated copies:** the generator maps each member back to the shared
+  instance, so the five copies stay byte for byte as they were (checked by
+  regenerating).
+
+Landed (5q, the aliased readings): the readings the island took through
+a local alias go through `NotchIslandServices` too:
+
+- the calendar's chosen event;
+- the watch's headline and thumbnail;
+- the timer's clock;
+- the artwork and its tint;
+- the scratchpad's tab limits and new tab;
+- the tools page's state and keys.
+
+`NotchService` now names no shared service, except `NSWorkspace` for
+Reduce Motion (in `.system`) and its workspace notifications. The
+presentation copy reads the music service directly instead of through its
+alias, which its stand-in already offers.
+
+Landed (5r, displays as values): `NotchService` reads the displays as
+`NotchDisplayInfo` (`Services/Notch/NotchDisplayInfo.swift`) values
+through its environment, not as `NSScreen`s.
+
+- **A display** is what the island reads from a screen:
+  - its id, frames, safe area and backing scale;
+  - the camera housing's width;
+  - whether it is built in and whether it carries the menu bar.
+- **`Environment.displays`**, **`separateSpaces`** and
+  **`statusBarThickness`** answer the island's ten screen reads: choosing
+  its display, its geometry, the mirrors' displays, the menu reader's top,
+  and moves to a display. `.system` builds them from `NSScreen`, so
+  nothing reads differently.
+- **Why:** a test cannot make an `NSScreen`. It can now describe the
+  displays the island chooses between.
+- None of the generated copies read a screen, so they are unchanged.
+
+Landed (5s, the island's parts and notifications): `NotchService` builds
+its own parts from its environment.
+
+- **`Environment.Parts`** holds the environments of its parts:
+  - the movement watches and the screen-edge clicks;
+  - the services the island listens to, and the volume output;
+  - the menu reader;
+  - the pointer follower, the screen refresh and full-screen visibility;
+  - the file drop.
+
+  `.system` gives each the system's, as before.
+- **Notifications:** where the island hears from the app, the workspace and
+  the session is in its environment too: the three notification centers,
+  and the session as the system reports it now. Its full-screen
+  notification is posted there. `.system` passes the default, workspace and
+  distributed centers. A test's island then hears only what the test posts.
+- None of the generated copies build a part, so they are unchanged.
+- **What is left before a test builds an island:**
+  - `appShell()`, for the popover, settings and update preview;
+  - the modal window check;
+  - the mirror windows on other displays;
+  - the remaining preference readers in the geometry, such as the camera
+    fit.
+
+Landed (5t, the last preference reads and the app around the island):
+
+- **Preferences:** the island's other 31 reads go through the preferences it
+  was built with, using their `in:` forms. These cover the activities' and
+  modules' switches, the agents' readout, the timer's saved mode, the
+  quick-access layout and the camera, capsule and silhouette fits.
+- **The app around it:** `NotchIslandServices` also answers:
+  - whether a modal window is up;
+  - whether a point is over the status item or the Accessibility Keyboard;
+  - closing the menu panel's popover;
+  - opening settings and the update preview.
+
+  `SystemNotchIslandServices` asks the app shell, as the island did.
+- The generator maps them back for its copies, which stay as they were.
+- **Left:** the mirror windows still build their own `NotchWindowHost`;
+  they appear only with a copy on every display.
+
+Landed (5u, the keyboard and the open island's monitors): the last two
+things a test could not stand in for.
+
+- **The keyboard:** the island asks its window for it through
+  `NotchIslandHost`: `hasKeyboard`, `takeKeyboard()` and
+  `releaseKeyboard()`. `NotchWindowHost` answers from its panel, as the
+  island did. A test process cannot make a real window key, so a test's
+  host decides.
+- **The open island's monitors:** the click in another app that closes it,
+  and this app's clicks and keys that it takes, come from
+  `Environment.Parts.openEvents`, a `NotchOpenEvents`
+  (`Services/Notch/NotchOpenEvents.swift`). `.system` installs the same
+  `NSEvent` monitors. A test's island hands its handlers to the test, which
+  can then press Escape as the island's own key.
+- The generator maps the keyboard calls back for its copies, which stay as
+  they were.
+
+Landed (5v, the copies' windows and the battery):
+
+- **Copies:** the island builds each copy's window on another display
+  through `Environment.makeMirror`, as it builds its own through
+  `makeHost`. `NotchMirrors` keeps its host type; the island's copies hold
+  an `AnyNotchMirrorHost` around whatever was built. `.system` builds the
+  same `NotchWindowHost`.
+- **Full screen:** which displays show a full-screen Space comes from
+  `Environment.Parts.fullscreenDisplays`. `.system` reads the Spaces as
+  the copies did.
+- **The battery:** whether the Mac has its own comes from
+  `Environment.hasBattery`. `.system` asks `PowerSampler`.
+- A test's island can now show copies on other displays and rest on a Mac
+  without a battery. The generator maps the battery back for its copies,
+  which stay as they were.
+
+Landed (5w, the window's mouse policy): `NotchWindowHost` keeps who takes
+the mouse in a `NotchWindowInputPolicy` (`Services/Notch/NotchWindowInputPolicy.swift`).
+
+- The island asks to ignore the mouse or take it. Mission Control and a
+  settling hide each hold the window click-through for a while, and the
+  island's latest ask is kept for when they end.
+- The host's five flags for this (concealed, the ask kept through Mission
+  Control, the hide, the ask kept through it, restoring) are the policy's,
+  and its four steps (asking, presenting, concealing, restoring) return
+  what the panel does. Nothing reads differently.
+- **Why:** the capture-controls checks compiled the host's restore and
+  mouse methods to test this. They now drive the policy, through a test
+  host that applies it as the real one does.
+
+Landed (5x, the notice queue): `NotchNoticeQueue`
+(`Services/Notch/NotchNoticeQueue.swift`) holds the island's notice:
+- the one on screen;
+- whether its message is open in place;
+- the one still drawn while the island closes around it.
+
+- **What moved:** the rules the island spelled out at each use:
+  - which notice may take the screen (a held message gives way only to
+    its own kind or a more urgent one);
+  - how one arrives (reveal, replace or a value update, and whether an
+    open message stays open);
+  - the width a burst of banners keeps;
+  - how one leaves (departing, closing with the island, or at once);
+  - whether the pointer can hold it;
+  - whether it survives a preference change.
+- **What stayed:** `NotchService` still owns the timers, the hover, the
+  animation and what each notice says. It publishes the queue and reads
+  `notice`, `noticeExpanded` and `departingNotice` from it. The seven
+  places that cleared the notice by hand now call `clear()`.
+- **Tested directly:** `NotchNoticeQueueTests` checks each rule on the value
+  itself, including that the pointer is read only when an open message
+  could stay open. The island suites (hover, destinations) still drive the
+  same rules through a real island.
+
+Landed (5l, the capture-controls host): `NotchCaptureControlsState`
+(`Services/Notch/NotchCaptureControlsState.swift`) holds the capture
+controls the island hosts:
+- the options they edit;
+- whether they wait compact around the camera;
+- whether a selection is being dragged;
+- how to cancel.
+
+- **What moved:** the rules the island applied by hand:
+  - which clicks the controls take (compact ones only over their hover
+    area, none during a selection);
+  - when open controls may close;
+  - what the pointer's comings and goings do: keep them open, close them
+    soon or later, open them after the hover delay, or cancel that
+    opening.
+- **What stayed:** `NotchService` keeps the window, the movement watch, the
+  timers and the hover, and applies the response it is given. It publishes
+  the state and reads `captureControls`, `captureControlsCollapsed` and
+  `captureSelectionInProgress` from it.
+- **Tested directly:** `NotchCaptureControlsStateTests` checks each rule on
+  the value, including that a selection in progress never asks where the
+  pointer is. `NotchCaptureControlsTests` still drives the controls through a
+  real island.
+
+Landed (5y, two layout rules that drifted): a survey of the island's size
+math found 21 numbers or rules that its sizing and its views each spelled
+out. Nineteen still agree. Two did not:
+
+- **The music page's row of controls.** The size counted lyrics and the
+  queue only while the island was on and showing Music. The page drew their
+  buttons from the switches alone. The Settings preview shows the page in
+  both of those states, so its player was squeezed under a row the size had
+  left out. `NotchMusicControls` (`Core/Notch/NotchMusicControls.swift`)
+  now decides the row for `NotchService`, `NotchView` and `NotchMusicView`
+  alike.
+- **The banner's icon.** It was measured at 22pt and drawn at
+  `min(22, strip - 4)`. `NotchNotificationBannerLayout.iconSide(stripHeight:)`
+  is now the one rule. A notice is measured before it knows its display, so
+  the wing still reserves the largest side, which the comment now says.
+- **Tested:** `NotchCompactTests` checks that the row follows the switches
+  and features but not the island's own state, and that the page's size
+  holds exactly that row. `NotchTests` checks the icon's side.
+- **Left:** the 19 agreeing duplicates. The riskiest are the compact
+  reading inset and font (9 copies), the music page arithmetic, the controls
+  page split, and the notice inset (two constants). They move a few at a
+  time, each to a named rule beside its kin.
+
+Landed (5z, the compact reading inset): the nine places that kept a reading
+clear of the strip's curve each wrote
+`compactActivityEdgeInset(boxHeight: size * 0.72, radius: 0)`. Four measured
+(three in `NotchService`, one in `NotchKeepAwakeSupport`) and five drew (the
+timer, agent, keep awake and watch strips, and the download percentage).
+`NotchGeometry.compactReadingInset(textSize:)` is now the one rule. The
+fonts stay as they are: the measuring side needs an `NSFont` and the
+drawing side a SwiftUI `Font`, and both already ask for the same system
+face.
+
+Landed (5za, the home page's split): five places split the home page's
+controls into level cards, the music card and shortcuts, each with its own
+filters:
+- `NotchService`'s and `NotchLayout.pageSize`'s sizing;
+- `NotchControlsView`;
+- the Settings editor's preview size and preview drawing.
+
+`NotchControlGroups` (`Core/Notch/NotchSupport.swift`, beside
+`NotchControlItem`) is now the one split, with `hasCards` for the card row.
+`NotchCompactTests` checks the split and that the page's size holds the
+rows drawn from it.
+
+Landed (5zb, the music page's arithmetic): the island's sizing,
+`NotchLayout.pageSize` and `NotchMusicView` each added the controls row and
+its spacing, and chose between the player and the idle message, by hand. The
+smallest player, 88pt, sat in `musicPlayerHeight` and again in the view.
+`NotchLayout.musicControlsRow(_:)`, `musicMainHeight(hasPlayback:layout:height:)`
+and `musicPlayerMinimumHeight` now hold them.
+
+Landed (5zc, the notice's inset and narrowest wing): the banner was
+measured with its own `inset` of 16, but drawn with `NotchNoticeLayout`'s,
+which was also 16. The narrowest wing, 88, was written in the banner's range
+and again in a text notice's width. The banner's inset now is
+`NotchNoticeLayout.inset`, and `NotchNoticeLayout.minimumWing` starts both
+ranges. `Tests/mutation_checks.py` follows the renamed line.
+
+Landed (5zd, the island's small sizes): five sizes were numbers that only
+agreed by coincidence. Each now has a name its sizing and its drawing share:
+- **Peek:** 52 below the safe top. It is `NotchLayout.navigationHeight`
+  plus `bottomInset`.
+- **Drop hint:** 66, the label's 52 and a 14pt gap that was never written
+  down. It is `NotchGeometry.dropPlaceholder`, from `dropHintHeight` and
+  `dropHintBottomGap`.
+- **Folded capture controls:** the camera plus 56, two 28pt sides. It is
+  `NotchGeometry.collapsedCaptureControls`, from `captureCollapsedSide`.
+- **Scrolling page's last row:** 4 below it. It is `scrollBottomPadding`.
+- **Download beside another activity:** an 80pt wing, which also decided
+  whether its percentage shows. It is `NotchDownloadSupport.companionWing`.
+
+Landed (5ze, the header's icon buttons): `NotchIconButton` drew a 28pt
+square and the header spaced it 6pt from its title. The geometry measured the
+title after `28 + 6` and centred a capsule's buttons with
+`(headerHeight - 28) / 2`. `NotchLayout.iconButtonSide` and
+`headerButtonSpacing` now serve all four. The capture controls' narrow
+buttons are squares of their own `rowHeight`.
+
+Landed (5zf, the lyrics and queue cards): both cards gave their list
+`height - 24 - 10 - 18`: their padding twice, the spacing below the title
+row, and that row. Each also wrote its padding and spacing. They now read
+`NotchLayout.musicExtraPadding`, `musicExtraSpacing`,
+`musicExtraTitleHeight` and `musicExtraListHeight(_:)`.
+
+Landed (5zg, the display's margins): the island kept 24pt to the display's
+sides (12 each) and 48pt below its tallest page. Those numbers were written
+eleven times: nine in `NotchGeometry` and the capsule's width, one in the
+activity picker's clamp, and one in the locked island. `NotchLayout.displaySideMargins`
+and `displayBottomMargin` hold them. `NotchGeometry.maximumSurfaceWidth` and
+`maximumSurfaceHeight` give the limits.
+
+Landed (5zh, the compact strips' marks): eleven places kept a round mark
+clear of the strip's curve with
+`compactActivityEdgeInset(boxHeight: s, radius: s / 2)`. They measure and
+draw the timer, keep awake, watch, agent and download marks.
+`NotchGeometry.compactMarkInset(side:)` is now the one rule. The wing
+widths that show a mark (28) and a reading (42) were written in five strips.
+They are `NotchLayout.compactMarkWing` and `compactReadingWing`.
+
+Landed (5zi, the System grid): the island sized the System page from its
+card rows and hover inset, and `NotchSystemView` added the same rows and
+inset to decide whether to scroll. `NotchLayout.systemGridHeight(count:width:)`
+is now both, and `NotchGeometry.systemRows(cards:)`, which only the sizing
+used, is gone.
+
+Landed (5zj, the survey's last five): each of these now has one rule, or
+named sizes, that the island's sizing and its views share:
+- **The running timer page:** `NotchLayout.timerActiveHeight(mode:)`, from
+  the row of controls (96), the gap (4), and the Pomodoro's progress line
+  (18). `NotchTimerView` draws the row and the gap with the same names.
+- **The Files page's minimum:** a shelf tile, its insets and the footer.
+  The tile's size, spacing and inset move from `ShelfTilesView` into
+  `ShelfTileLayout` in Core. The footer's trash button is
+  `NotchLayout.iconButtonSide`.
+- **The home page's music card:** `musicCardArtworkSide(height:)`, its
+  padding, spacing and transport width give the minimum width and the
+  drawing alike.
+- **The activity picker:** the label's size and font, and the chrome a
+  choice adds around it (`choiceChrome`). Its width limit takes the
+  display's margins from `NotchLayout.displaySideMargins`.
+- **The AI page:** `NotchAgentSupport.pageProviders(seen:)` and
+  `pageRows(providers:width:)` give the island's size and `NotchAgentsView`
+  the same agents and rows.
+- **A misleading comment:** `watchStripWing`'s said it weighed the eye. It
+  does not: the eye fits the wing's floor, which the island applies to both
+  sides. The comment now says so.
+
+With this, every duplicate the survey found reads from one place, and each
+responsibility the step listed has its own type. `NotchService` is 3,216
+lines, down from 3,400. Its only remaining `.shared` references are:
+- the language (`L10n.shared`);
+- `NSWorkspace.shared` in its live environment.
+
+Every service it uses comes through its `Environment`, as
+`AgentUsageService` set the pattern.
+
+## Step 6: typed preferences and explicit concurrency (done)
+
+- Preferences: a typed key (`Preference<Value>` carrying its default) replaces the
+  795 string constants plus the defaults dictionary, so `@AppStorage` and service
+  reads share one default.
+- Concurrency: mark UI-state holders `@MainActor`. Turn on Swift 6 strict
+  concurrency module by module, Core first.
+
+Landed (6a, Swift 6 for Core and Design): `VitruvianAtriumCore` and
+`VitruvianAtriumDesign` build in the Swift 6 language mode
+(`features = ["swift.enable_v6"]`), so the compiler rejects shared state that
+does not say what protects it. Services and UI stay in Swift 5 mode.
+
+- **How:** a first pass built all four modules with complete concurrency
+  checking, which only warns, so the real SDK said what Swift 6 would reject.
+  For Core and Design it reported 20 places beyond those a Linux type-check
+  had found. Each now says how it is safe:
+  - **Lock or one thread:** state a lock guards, or that only the main
+    thread or a test touches, is `nonisolated(unsafe)` with a comment naming
+    its guard. So are the 13 shared `NSFont`s, which never change.
+  - **Main actor:** these are main-actor isolated:
+    - `SettingsRouter`, `NonModalAlert`, `ShelfSharePresenter`, the share
+      anchor and the plain text editor's coordinator;
+    - the two notch-display queries and the switcher's app icon.
+
+    Each is `@preconcurrency`, so Swift 5 callers see no change.
+    `ShelfSharePresenter`'s picker delegate is a `@preconcurrency`
+    conformance, which Swift 6 checks at run time: AppKit calls it on the
+    main thread.
+  - **Sendable values:** `RadialMenuItem` is `Sendable`. The favicon
+    download is `@unchecked Sendable`: only its session's serial delegate
+    queue touches it. Its completion runs on the main actor.
+  - **One overload:** `isTrustworthyStatusFrame` lists the attached screens
+    in a main-actor overload, so the check itself takes any frames.
+- **What is left for Services and UI** (measured in step 6c, below).
+- **What stopped UI's build** (found in step 6c): with complete concurrency
+  checking, the compiler gave up on `MenuPanelView.itemView` and
+  `NotchMixerView.body` with "failed to produce diagnostic". The cause is
+  not their size. It is a choice between `nil` and one of the view's own
+  methods, passed where an optional action is expected:
+  `permissionAction: granted ? nil : grantPermission`. Swift 6.4 reproduces
+  it in a dozen lines, under complete checking and in Swift 6 mode alike;
+  plain Swift 5 accepts it. The six such places pass a closure instead,
+  `granted ? nil : { grantPermission() }`, which every mode accepts.
+
+Measured (6c, what stands between Services and UI and Swift 6): both
+modules were built with complete concurrency checking, which only warns.
+
+- **Services:** each of its two compile actions wrote about 6.3 MB of
+  diagnostics, more than Bazel shows (1 MB), so the warnings themselves were
+  not printed. At several hundred bytes per warning with its source excerpt,
+  that is thousands of places. Swift 6 for Services is a project of its
+  own: type by type, starting with the services that views observe.
+- **UI:** with those six closures the build completes, with 136 warnings
+  in 34 files. 79 are main-actor crossings, mostly AppKit coordinators and
+  delegates that are not isolated themselves; 23 send a value across
+  isolation; the rest are shared statics, non-`Sendable` captures and
+  `deinit` reads. That is one or two slices of work.
+- **Order:** UI first: isolate its AppKit coordinators and delegates, fix
+  the rest of the 136 (done in 6d, below), then build it in Swift 6 mode.
+  Services follows type by type, starting with the 97 `ObservableObject`s
+  that views observe, which become `@MainActor`.
+- **Repeating a count:** UI keeps complete checking on since 6d. For
+  Services, put `copts = ["-strict-concurrency=complete"]` on the module and
+  build with `--experimental_ui_max_stdouterr_bytes=-1`.
+
+Landed (6d, UI clean under complete checking): `VitruvianAtriumUI` builds with
+no concurrency warning under complete checking. It is still in Swift 5
+mode, and the build keeps complete checking on, so a new one shows. Each
+of the 136 places now says what isolates it:
+
+- **Main-actor protocols:** `ServiceViewFactory` and
+  `SettingsHistoryNavigating`, `@preconcurrency` so that Swift 5 services
+  still call them.
+- **Main-actor types:** the AppKit coordinators of six representable views,
+  the island's menu anchor, the permission guide, the screenshot keyboard
+  context, and the agent-mark and radial-menu icon caches, which only views
+  read.
+- **Main-queue observers:** an observer the main queue delivers reaches its
+  view through `MainActor.assumeIsolated`. Observers and work items that
+  `deinit` removes are `nonisolated(unsafe)`: only the main thread touches
+  them, and `deinit` runs after the last reference.
+- **Statics:** two `NSCache`s (thread-safe) and the never-changed menu
+  separator are `nonisolated(unsafe)`; two preference keys' defaults are
+  `let`.
+- **Values across queues:** notification settings are read before the hop
+  to the main queue, the app picker's loader is `@Sendable`, and the drop
+  handler's URL list says that its lock guards it.
+- **Closures:** `Binding` setters and delayed refreshes take closures
+  instead of function values.
+- **Why Swift 6 mode came separately (6e, below):** in Swift 6 mode the compiler also
+  checks, at run time, that main-actor code runs on the main thread where
+  a system API calls back into it. A callback that arrives on another
+  queue would then stop the app instead of racing. Before switching, each
+  closure UI hands to a system or Objective-C API is checked for the queue
+  it runs on.
+
+Landed (6e, UI in Swift 6 mode): `VitruvianAtriumUI` builds in the Swift 6
+language mode (`features = ["swift.enable_v6"]`), so a concurrency mistake
+there is an error, not a warning.
+
+- **The run-time check:** in Swift 6 mode, a closure written in main-actor
+  code and passed to a parameter that is neither `@Sendable` nor
+  `@MainActor`, in a module still in Swift 5 mode or in Objective-C, starts
+  by checking that it runs on the main thread. The compiler inserts the
+  check (`swift_task_isCurrentExecutor`, confirmed in SIL with Swift 6.4).
+  A callback on another queue would stop the app where it used to race.
+- **The audit:** every Services API that takes such a closure (80 of them)
+  was listed, and each one UI calls was traced to the queue that runs the
+  closure. All run on the main thread (the shortcut-recording tap, the
+  clipboard copy, the island's `perform`, the panel modals, the editors'
+  sharing, self-uninstall) except one: `GeneralPasteboardAccess.async`
+  runs `work` on its own lane. Its `work` is now `@Sendable`, so UI's
+  closure runs as plain code there.
+- **Notifications:** UI's `onReceive` publishers already deliver on the
+  main thread, except EventKit's store change, which now hops to the main
+  run loop. UI has no KVO overrides, selector-based observers or
+  background `perform`.
+- **Left for Services:** the other APIs keep plain closures until Services
+  moves to Swift 6; a new UI call to one of them needs the same trace.
+
+Landed (6b, typed preferences, first slice): `Preference<Value>`
+(`Core/Preference.swift`) is a key with its default. `Preferences`
+(`Core/Preferences.swift`) declares them, `Defaults.registeredDefaults`
+registers each from there, a view writes
+`@AppStorage(Preferences.x) var x: Bool` (`Design/PreferenceStorage.swift`)
+and a service can read `UserDefaults.standard[Preferences.x]`.
+
+- **Properties keep their type.** Every `@AppStorage(Preferences.x)`
+  property says its type, as it did when its default was written beside it,
+  so a reader sees it without looking the preference up.
+
+- **Why these five first:** comparing every `@AppStorage` default with the
+  registered one found these disagreeing. The app registers its defaults at
+  launch and the registered value wins there, so users saw the registered
+  default. Views read the other one wherever registration had not run, as
+  in a preview or a test:
+  - `windowLayoutShortcutsEnabled`: registered off, two views on;
+  - `micMuteMenuBarIndicator`: registered on, two views off;
+  - `menuBarMetricSpacing`: registered `compact`, two views `standard`;
+  - `menuBarMetricOrder`: registered the default order, two views empty;
+  - `screenshotPreviewPosition`: registered `automatic`, the view empty.
+
+  They now share the registered default, so the app's behavior does not
+  change.
+- **Tested directly:** `PreferenceTests` checks that each of the five is
+  registered with its declared default, and that it reads the same through
+  `UserDefaults` and through `@AppStorage`, before registration and after.
+  It also checks the typed read: a missing or mistyped value reads as the
+  default.
+- **Second slice, the switches:** every on/off preference with a literal
+  default moved too, 358 of them, with a script. Each is registered from its
+  declaration, and its 453 `@AppStorage` properties take the `Preference`.
+  - None of these disagreed.
+  - The script left alone the ten switches whose key a test pins by name in
+    source text, and `includeBetaUpdates`, whose view starts from
+    `AppInfo.isBeta` on purpose.
+  - A Linux type-check with an `AppStorage` stand-in carrying SwiftUI's
+    initializers shows no new error. It does catch a property whose
+    declared type disagrees with its preference.
+- **Third slice, numbers and text:** 141 preferences with a literal whole
+  number, fraction or text default moved the same way, and 130 `@AppStorage`
+  properties take them. Each was moved only where every view repeated the
+  same default with the same kind of literal, so no stored type changes.
+  The script skipped seven whose views name their default through a
+  constant, such as the usage bar colors.
+- **Fourth slice, computed defaults:** 63 preferences whose default is an
+  expression (a shortcut's storage value, a raw value, a named constant)
+  that every view repeated word for word, so the views already showed it
+  has a type `@AppStorage` stores. 88 `@AppStorage` properties take them.
+  `Data` joined the value types for the quick-access layout.
+- **Fifth slice, the rest:** the last 139 registered keys moved, so every
+  default `Defaults.registeredDefaults` registers is declared in
+  `Preferences`.
+  - A `Preference` also holds a list of text or a table of text, for the 26
+    lists and 3 tables. `@AppStorage` holds neither, so services read them
+    through `UserDefaults[preference]`. `PreferenceTests` checks both, and
+    that a list is registered with its declared default.
+  - 19 `@AppStorage` properties for 11 of them take the `Preference`. Their
+    views named the default through a constant, such as the usage bar
+    colors, and each constant equals the registered value, so the
+    declaration uses the constant.
+  - Views still write out a default for the 27 keys that tests pin by name
+    in source text, for two that views read as enums, and for
+    `includeBetaUpdates`.
+- **Left for later slices:**
+  - services still read most preferences by `DefaultsKey`; each read can
+    move to `UserDefaults[preference]` as its code is touched;
+  - 26 `@AppStorage` keys that are not registered at all, such as the menu
+    bar metric switches and the panel orders. Registering them would change
+    what code that checks `object(forKey:) == nil` sees, so each needs a
+    look first.
+
+Landed (6zzo, the unregistered switches): 12 of the `@AppStorage` keys that
+nothing registered are now `Preference`s, registered with their declared
+default. Their 21 `@AppStorage` properties take the `Preference`.
+
+- **Which:**
+  - the Auto Quit, cut-and-paste and shelf switches;
+  - the six menu bar metric switches (CPU, GPU, memory, network, battery,
+    power);
+  - the onboarding step;
+  - the command bar's links and row shortcuts.
+- **Why registering them changes nothing:** every view declared the type's
+  empty value (`false`, `0`, `""`, empty data), and every service read them
+  with `bool`, `integer`, `string` or `data(forKey:)`. The two decoders
+  return nothing for empty text or data, as for none. No code checks
+  `object(forKey:) == nil` for them.
+  - What a backup exports now includes them. It exports through
+    `object(forKey:)` on purpose, so that a backup is a complete snapshot.
+  - What "never switched on" counts reads the saved domain, not
+    registration, so it is unchanged.
+- **Kept unregistered on purpose:** the eight menu panel orders. An empty
+  order means the default one. The utility order's two migrations run
+  after registration and test `object(forKey:)`, so a registered `""` would
+  rewrite it. A test already pins the utility and toggle orders as
+  unregistered.
+- **Tests:** `PreferenceTests` checks each of the 12 the way it checks the
+  rest:
+  - it is registered with its declared default;
+  - it reads as that default through `UserDefaults` and `@AppStorage`,
+    before registration and after.
+
+Landed (6f, the first services on the main actor): six of Services' 97
+`ObservableObject`s are `@MainActor`. They are `AgentCodexResetService`,
+`AppAppearanceController`, `DiskProtectionService`,
+`NetworkAddressService`, `PortManagerService` and
+`UpdateShowcaseMediaLoader`.
+
+- **Why these six:** views observe them, and no Services code calls them
+  outside the main thread. In Swift 5 mode, a call from plain synchronous
+  code into a `@MainActor` method is already an error, not a warning, so
+  each service that joins needs its callers on the main actor first.
+- **What ran off the main thread stays off it, now said so:** the work
+  these services do on their own queues is `nonisolated`:
+  - the Codex lookup;
+  - the `lsof` snapshot;
+  - the Disk Arbitration eject and its completion;
+  - the interface list.
+- **A race fixed:** the showcase download's completion released the
+  loader's session on the URL session's queue while the main thread could
+  set it. It now does that on the main thread.
+- **The app delegate:** only its `NSApplicationDelegate` callbacks are on
+  the main actor. Its other methods are plain code, because the class
+  itself is not isolated. So `setUpPopover()`, which
+  `applicationDidFinishLaunching` calls and which hands the popover to
+  `AppAppearanceController`, is now `@MainActor`.
+- **Left as they are:**
+  - `SpeedTest` keeps its own serial queue by design, so it does not join.
+  - The next services all go through `FeatureRuntime`, which calls their
+    `syncWithPreferences()` from plain code, and the screenshot and
+    recorder editors through their controllers. Those hubs come next,
+    from the top down: once they are on the main actor, the services they
+    call can follow.
+- **Checked:** a Linux type-check of Core through UI against stand-ins.
+  Before the change, the probe listed every off-main call, each fixed
+  above. After it, the six files are clean under complete checking.
+
+Landed (6g, the features hub on the main actor): `FeatureRuntime`, which
+starts, stops and syncs every feature's service, is `@MainActor`. That
+opens the way for the services it calls.
+
+- **Its callers:**
+  - The app delegate, the settings and the onboarding already run on the
+    main actor.
+  - `SettingsBackup.applyAndRelaunch` is now `@MainActor`; only the
+    Settings import calls it.
+  - The app delegate's `relaunchApp()` implements the plain `AppShell`
+    protocol, so it is not on the main actor. It reaches the hub through
+    `MainActor.assumeIsolated`; its callers are UI buttons.
+  - The command bar's toggle and relaunch rows, and `ShortcutCapture.end()`,
+    stay in plain code, because their own callers are plain Services code.
+    They reach the hub through `MainActor.assumeIsolated`. Every path to
+    them was traced to the main thread: the bar's keys and clicks, the
+    recorder button, and the recording tap's main-queue hops and
+    `SessionActivity`'s main-queue delivery.
+- **Checked:** the same Linux probe adds no error, and the source-text
+  tests that read these lines still find what they look for.
+
+Landed (6h, five services the hub starts): `AudioPriorityService`,
+`MusicLaunchBlocker`, `CleanerScheduler`, `WhatsAppDownloadScheduler` and
+`WallpaperService` are `@MainActor`. With the hub on the main actor, they
+needed only their own off-main paths said:
+
+- **The schedulers:** each schedules a one-shot `Timer` on the main run
+  loop. Its block reaches the scheduler through `MainActor.assumeIsolated`.
+- **The wallpaper:** the apply generation that the off-main apply reads is
+  `nonisolated` and still answers under its lock. Checking whether a file
+  waits on iCloud is `nonisolated` too.
+- **Still waiting:** the following move later, together with their callers:
+  - `JunkCleaner` (`PanelInteractionState` reads its phase);
+  - `ClipboardIgnoredApps` (the clipboard history calls it);
+  - `WindowLayoutIgnoredApps` (the window layout service);
+  - `MenuPanelFocus` (the island);
+  - the Dock preview's pinned panel;
+  - the editors.
+- **What is left, measured:** with 11 of the 97 on the main actor, the
+  same probe was run with all 82 others annotated at once. It gives 580
+  errors in 65 files. Three files hold 237 of them:
+  - `AgentUsageService` (90), which keeps its own queue by design and may
+    stay off the main actor, like `SpeedTest`;
+  - `CommandBarCatalog` (75), whose rows' closures run on the main thread;
+  - `SystemMonitor` (72).
+  The rest are a few each. Rerunning that probe after each slice tracks
+  the count.
+
+Landed (6i, seven more services): `DockPreviewPinnedPanel`,
+`ExtraBrightnessService`, `ClipboardIgnoredApps`, `HotkeyManager`,
+`CleaningModeManager`, `AudioInputDeviceManager` and
+`NotchAudioLevelService` are `@MainActor`. A per-service probe (each one
+annotated alone) ranked these as one or two errors each.
+
+- **Timers on the main run loop** (the pinned panel's refresh, Extra
+  Brightness's heartbeat) reach their owner through `MainActor.assumeIsolated`.
+- **Methods that only main-actor code calls** take `@MainActor` themselves,
+  with the attribute on its own line so the test generator's prefixes still
+  match:
+  - the updater's `launchInstaller` and `launchAdminInstaller`;
+  - the clipboard history's `syncWithPreferences`, `start` and `stop`;
+  - the uninstaller's `suspendInputInterceptors`;
+  - the app delegate's Cleaning Mode menu action;
+  - the clipboard history's `captureIfChanged`, whose pasteboard read
+    completes on the main queue;
+  - the Dock preview's `createPinnedPanel`.
+- **Plain callers that run on the main thread** use
+  `MainActor.assumeIsolated`:
+  - the Dock preview's `togglePinned()`, which UI passes as a method
+    reference, so it stays plain itself;
+  - the shortcut recorder's `begin()`;
+  - the command bar's Cleaning Mode row;
+  - the island's preference sync and teardown.
+- **The audio input's HAL reads** run on their own queue, so its static
+  helpers are `nonisolated`.
+- **Not yet:** `MenuPanelFocus` (1 error in Services) is called about 30
+  times from app delegate methods that are not on the main actor. It
+  waits for the app delegate itself to be isolated.
+
+Landed (6j, the app delegate on the main actor): `AppDelegate` is
+`@MainActor`, so all of it runs as main-actor code, not only its
+`NSApplicationDelegate` callbacks. `MenuPanelFocus` follows it.
+
+- **Redundant annotations removed:** the per-method `@MainActor` on
+  `setUpPopover()` (6f) and on the Cleaning Mode menu action (6i) are
+  gone. So is the `MainActor.assumeIsolated` in `relaunchApp()` (6g).
+- **`main.swift`** builds the delegate through `MainActor.assumeIsolated`;
+  top-level code runs on the main thread.
+- **Still plain code:** `AppShell`, the protocol Services and UI use to
+  reach the app, is not isolated. In Swift 5 mode the delegate's
+  conformance to it is a warning. It becomes an error in Swift 6, which
+  means `AppShell` (and its callers) will need to move to the main actor
+  before the App module does.
+- **A warning fixed from 6h:** the wallpaper's folder scan read the
+  gallery's lifecycle from its worker queue. The lifecycle keeps its
+  state under a lock, so it is `@unchecked Sendable` and the property is
+  `nonisolated`.
+- **Checked:** the Linux probe now includes `App/`, `Support/` and
+  `main.swift`. Against 6i it adds only the `AppShell` conformance warning.
+
+Landed (6k, three more services): `SecureInputMonitor`,
+`SoundOutputSwitcher` and `PastePlainService` are `@MainActor`.
+
+- **Off-main paths:**
+  - The secure-input poll is a main-run-loop timer and reaches the
+    monitor through `MainActor.assumeIsolated`.
+  - The paste-plain read runs on the pasteboard's lane, so
+    `plainText(from:)` is `nonisolated`.
+  - The output switcher's Carbon hotkey handler already hops to the main
+    queue.
+- **Plain callers that run on the main thread** use
+  `MainActor.assumeIsolated`: the shortcut recorder's `begin()` and the
+  command bar's Paste Plain row.
+- **The ranking:** the per-service probe finished for all 84 remaining
+  services. Its cheapest entries are services that own CGEvent taps:
+  - `ScrollInverter`, the mouse services and `SmoothScrollService` run
+    their taps on the pointer thread (`PointerTapRunLoop`), so they stay
+    off the main actor;
+  - `WindowMaximizer` and `PreciseVolumeRollerService` run theirs on the
+    main run loop, but their C callbacks call the service directly. They
+    need the callback reworked before they can follow.
+  - The Linux probe cannot see into those callbacks, so taps are checked
+    by hand.
+
+Landed (6l, the app shell on the main actor): `AppShell`, the protocol
+Services and UI use to reach the app, is `@MainActor`. So the app
+delegate's conformance (6j) no longer crosses isolation, and the App
+module has no concurrency warning of its own left.
+
+- **Where Services reach the app:** the 17 calls run from the command
+  bar's actions and monitors, the radial menu, the clipboard editor, the
+  recent captures, the permission prompts and the island.
+  - The radial menu's `openSettings` runs from main-queue blocks, so it is
+    `@MainActor`.
+  - The other calls go through `MainActor.assumeIsolated`; each one was
+    traced to the main thread.
+- **Listed by hand:** the Linux probe saw 12 of the 17. The rest sit in
+  NSEvent monitor closures, which the stand-ins cannot type-check.
+
+Landed (6m, the updater, two quick tools and the menu bar item):
+`UpdateService`, `ColorSamplerService`, `SnippetLibraryService` and the
+app's `StatusItemController` are `@MainActor`.
+
+- **A race fixed:** the update download's completion invalidated the
+  service's session on the URL session's queue while the main thread could
+  clear it. It now does both on the main thread, as the showcase loader
+  does since 6f. The download delegate's `progress` and `completion` are
+  `@Sendable`, so the compiler checks that neither touches main-actor state.
+- **Timers and observers on the main run loop** reach their owner through
+  `MainActor.assumeIsolated`: the hourly update check, and the menu bar
+  item's title timer and defaults observer.
+- **The command bar's `afterBeat`** takes main-actor work. Its block runs
+  on the main queue, so the rows that pass it a closure no longer need
+  `MainActor.assumeIsolated`; four lose it, including two of 6l's.
+- **Nonisolated:** the update's pure statics (the read-only volume check,
+  the install-result path, the version compare) and the color sampler's
+  formatting and quiet copy, which the capture loupe calls while it draws.
+- **Plain callers that run on the main thread** use
+  `MainActor.assumeIsolated`:
+  - the island's update action, which UI passes as a method reference;
+  - the feedback diagnostics' beta opt-in;
+  - the capture chooser's native color sampler and color delivery;
+  - the command bar's snippet rows;
+  - the snippet expander's sync, which reads whether the library is up.
+- **Waiting for their owners:** the island's lyrics and quick access
+  motion wait for `NotchService`, and the pointer shortcut and the ignored
+  apps list for `WindowLayoutService`. Most of their callers are inside
+  those two.
+
+Landed (6n, the command bar on the main actor): `CommandBarService` is
+`@MainActor`, and so is every row's action: `CommandBarEntry.run` is a
+`@MainActor` closure, since the bar runs its rows from its own keys and
+clicks.
+
+- **Wrappers gone:** the rows that reached main-actor code through
+  `MainActor.assumeIsolated` call it directly: the feature switches, the
+  relaunch and the snippet rows. So do the bar's three ways into Settings
+  from 6l.
+- **Off the main thread, said so:** the Spotlight app lookup runs on a
+  global queue, so it is `nonisolated`. The bar's other background reads
+  already hand their results to the main queue.
+- **Main-queue callbacks:** the restart observer reaches the bar through
+  `MainActor.assumeIsolated`.
+- **Plain callers:** the island's Command Bar action and the snippet
+  expander's visibility read use `MainActor.assumeIsolated`. The saved-link
+  and script helpers, which only rows call, are `@MainActor`.
+- **Checked by hand:** the bar's twelve background reads, its observer,
+  its event monitors, and the result callbacks of the file search and the
+  script runner. The Linux probe cannot type-check about a hundred of the
+  file's expressions, because its stand-ins lack most of AppKit.
+
+Landed (6o, the island on the main actor): `NotchService` is `@MainActor`.
+Most notch services and quick tools report to it, so this slice is mostly
+about its callers.
+
+- **Calls into the island from plain code** go through
+  `MainActor.assumeIsolated`. Each was traced to the main thread:
+  - the Shelf's drag monitor, its watchdog and its toggles;
+  - the brightness keys, slider and on-screen display, the precise volume
+    keys and the microphone mute;
+  - the camera, the launcher, the Scratchpad and the clipboard history;
+  - the capture chooser, the quick preview, the selection's key monitor and
+    the windows a capture leaves out;
+  - the timer, Watch, accessory notices and the lock screen;
+  - `main.swift`, which wires the island's collaborators. Top-level code
+    runs on the main thread.
+- **Methods that only main-actor code calls** take `@MainActor`, with the
+  attribute on its own line so the tests' copies stay plain:
+  - the Shelf's internal drag;
+  - the Scratchpad's export;
+  - the media dialogs' panel modal;
+  - the downloads folder chooser;
+  - the lyrics import.
+- **`perform`** takes main-actor work. The action runs once the island
+  settles, on the main queue, so the island's own Command Bar action no
+  longer needs a wrapper (6n).
+- **Read by hand:** about half of these calls sit in code the Linux
+  stand-ins cannot type-check: event monitors, panels and SwiftUI hosts.
+  Every reference to the island outside it was listed and read.
+- **Tests:** where a test copies one of these methods, its stand-in island
+  runs on the test's main thread, so the copies keep working.
+
+Landed (6p, the island's own windows and notices): with the island on the
+main actor, what it owns and drives follows. These are `@MainActor`:
+
+- `NotchWindowHost`, its quick-access motion and its backdrop;
+- the lock screen service and its model;
+- the timer, Watch and accessory notices.
+
+Details:
+
+- **Wrappers gone:** the 6o `MainActor.assumeIsolated` calls inside the
+  timer, Watch, accessory and lock screen services are no longer needed.
+- **Off the main thread, said so:**
+  - IOBluetooth may report a connection on any thread. Those two `@objc`
+    callbacks are `nonisolated`, and each hops to the main queue as before.
+  - Watch's down-scaling for text recognition runs in a detached task, so
+    it is `nonisolated`.
+- **The window host:**
+  - Its Mission Control timer reaches it through `MainActor.assumeIsolated`.
+  - `whenSettled` takes main-actor work.
+  - Its conformance to the mirrors' host protocol is `@preconcurrency`;
+    the mirrors drive it on the main thread.
+- **Waiting for the music service:** the lyrics service is called from
+  the music service's plain code, so it moves with that service.
+
+Landed (6q, the island's music, lyrics, calendar and file tools): these are
+`@MainActor`:
+
+- `NotchMusicService` and `NotchLyricsService`;
+- `NotchCalendarService`;
+- `NotchFileToolsService`.
+
+Details:
+
+- **Their background work already hands results to the main queue**, so
+  only what runs off the main thread had to say so:
+  - The music adapter's pipe reader computes the artwork tint on its own
+    queue, so `artworkTint(of:)` is `nonisolated`.
+  - The lyrics download reports on its session's queue, so its completion
+    is `@Sendable`.
+  - The calendar's store observers are on the main queue and reach the
+    service through `MainActor.assumeIsolated`.
+  - Calendar reads stay in their own actor, as before.
+- **The file drop's media environment** (`NotchFileDrop.Environment.system`)
+  is `@MainActor`; the island builds it.
+- **Left for Swift 6:** the music adapter's pipe reader takes a plain
+  closure, which keeps its artwork cache in captured variables. Swift 6
+  will ask for that closure to be `@Sendable`, and the cache will have to
+  move into the reader.
+
+Landed (6r, the island's downloads and notifications):
+`NotchDownloadService` and `NotchNotificationService` are `@MainActor`.
+
+- **Callbacks on the main queue or run loop** reach them through
+  `MainActor.assumeIsolated`:
+  - the downloads folder's file-system sources;
+  - the workspace observers;
+  - the Accessibility observer's C callback, whose source is on the main
+    run loop.
+- **Their reads stay on their own queues** and hand results to the main
+  queue, as before.
+- **Wrappers gone:** the 6o method-level `@MainActor` on the downloads
+  folder chooser, and the downloads' `MainActor.assumeIsolated` around its
+  main-actor progress callbacks.
+
+Landed (6s, four quick tools): `QuickLauncherService`,
+`CameraPreviewService`, `ScratchpadService` and `ScreenTextService` are
+`@MainActor`.
+
+- **Wrappers gone:** their 6o `MainActor.assumeIsolated` calls into the
+  island, and the Scratchpad export's method-level `@MainActor`.
+- **Off the main thread, said so:** text recognition runs on a background
+  queue and in Watch's detached task, so `ScreenTextService.outcome` and
+  the recognition it runs are `nonisolated`. So is the launcher's column
+  count, a constant.
+- **Plain callers:**
+  - The capture chooser hands recognized text over through
+    `MainActor.assumeIsolated`.
+  - The settings export, which only Settings calls, is `@MainActor`.
+- **Observers:** blocks registered on the main queue already run as
+  main-actor code in this SDK, as the app delegate's do since 6j, so the
+  camera's and the launcher's observers need nothing.
+- **Not yet:** `RecentCaptureService` and `QuickTogglesService` do most of
+  their work on background queues that read shared state directly. Each
+  needs its own slice.
+
+Landed (6t, the link cleaner, the WhatsApp downloads and Homebrew):
+`URLCleanerService`, `WhatsAppDownloadManager`, `WhatsAppDownloadOrganizer`
+and `HomebrewManager` are `@MainActor`.
+
+- **Their workers are `nonisolated`:** the static functions that run on
+  each service's queue or on the pasteboard lane:
+  - the link cleaner's poll, rules and write;
+  - the downloads review's candidate scan;
+  - the organizer's whole file-moving and record-keeping engine;
+  - Homebrew's process launch, stop and timeouts.
+  These only touch files, the pasteboard and the defaults.
+- **Timers and sources on the main run loop** use
+  `MainActor.assumeIsolated`: the link cleaner's poll timer, and the
+  organizer's timer and folder source.
+- **Plain callers on the main thread:**
+  - The app updates' Homebrew upgrade goes through
+    `MainActor.assumeIsolated`, and so do the uninstaller's and the panel's
+    reads of Homebrew's progress.
+  - The uninstaller's Homebrew removal and the command bar's selection rows
+    and clipboard link cleaner, which only main-actor code calls, are
+    `@MainActor`.
+- **Not yet:** `JunkCleaner`, `AppUninstaller` and `KillProcessService`
+  run dozens of static scanners off the main thread. The test generator
+  copies many of them by their declaration line, so they need their own
+  slice.
+
+Landed (6u, the capture tools): these are `@MainActor`:
+
+- the capture chooser (`ScreenCaptureService`) and its options;
+- the on-screen selection (`ScreenshotSelectionController`);
+- the quick preview and its model;
+- `ScreenshotService`;
+- the media workspace's selection model.
+
+Details:
+
+- **Wrappers gone:** the `MainActor.assumeIsolated` calls these files made
+  into the island (6o), the color sampler (6m) and screen text (6s).
+- **Off the main thread, said so:** `ScreenshotService`'s static helpers
+  flatten, encode and name captures in detached tasks and on other
+  services' queues, so they are `nonisolated`. The test generator copies
+  `imageCapture(from:)` by its declaration line, so its `nonisolated`
+  stands on the line above.
+- **One thread, said so:** the selection's "a session is on screen" flag
+  and its active session are `nonisolated(unsafe)`. Only the main thread
+  touches them, but a session's deinit clears them.
+- **Smooth scrolling's question:** its tap, still plain here, asks whether
+  the loupe takes raw wheel steps. That check is `nonisolated` and reads the
+  session through `MainActor.assumeIsolated`; the tap's source is on the
+  main run loop.
+- **Plain callers on the main thread** use `MainActor.assumeIsolated`: the
+  screenshot editor's close and the recorder's toggle.
+- **Not yet:** the HUD (`QuickToolHUD`) is a static enum that almost every
+  service calls, so its scrolling-capture model stays plain with it. The
+  media service runs its workers on its own queue under a lock and needs
+  its own slice.
+
+Landed (6v, Keep Awake): `KeepAwakeManager` is `@MainActor`.
+
+- **Its three timers** (session end, battery watch, pointer jiggle) are on
+  the main run loop and reach it through `MainActor.assumeIsolated`.
+- **Its other callbacks already hop to the main queue:**
+  - the power-source and lid C callbacks;
+  - the screen-lock and app observers;
+  - the `sudo` and `pmset` checks.
+- **The command bar's catalog is built on the main actor:**
+  `CommandBarCatalog.build` and its action rows are `@MainActor`, so rows
+  read Keep Awake's live state directly. The bar is their only caller.
+- **Left for Swift 6:** Keep Awake's defaults subscription runs where the
+  defaults change, which can be off the main thread. It flips a scheduling
+  flag there before hopping to the main queue.
+- **Not yet, each for its own reason:**
+  - `MouseAppExceptions` is read from the pointer thread's taps.
+  - `QuitProtectionService` is called from the app switcher's tap path.
+  - `FanControlService` keeps its probe hardware on a serial queue of its
+    own.
+
+Landed (6w, the two editors): the screenshot and recording editors, their
+models and their windows' controllers, are `@MainActor`. So is
+`BackdropEditing`, the background picker's view of either model.
+
+- **The text and code scans** run off the main thread. They used to stop
+  early by comparing the capture they read with the model's current one,
+  which is main-actor state. They now stop on a token:
+  - each new scan cancels the one before, and every change of the capture
+    starts a new scan;
+  - a lock guards the token;
+  - the main-queue check that drops a stale result is unchanged.
+- **Off the main thread, said so:** the screenshot editor's clipboard and
+  file helpers are `nonisolated`. The auto-copy builds its payload in a
+  detached task, and the pin window calls them from plain code.
+- **The player's time observer** is delivered on the main queue and reaches
+  the model through `MainActor.assumeIsolated`.
+- **Wrappers gone:** the screenshot editor's close no longer needs the 6u
+  wrapper around `ScreenshotService`.
+- **The recorder service** stays plain for now (its session calls back from
+  capture queues). The methods that open, close and sweep editors are
+  `@MainActor`; all their callers are the feature runtime, the media
+  workspace and the recorder's own main-actor tasks.
+
+Landed (6x, the mouse taps on the main run loop): five services whose event
+tap is a source on the main run loop are `@MainActor`:
+
+- the window maximizer;
+- mouse navigation;
+- mouse button shortcuts;
+- the radial menu;
+- smooth scrolling.
+
+Details:
+
+- **The tap callbacks** are C functions, so they reach their service through
+  `MainActor.assumeIsolated`. The main run loop serves them.
+- **Timers** on the main run loop (the maximizer's frame animation and
+  settle, the smooth-scroll frame timer) do the same.
+- **Off the main thread, said so:** mouse navigation lists the web URL
+  handlers on a global queue, so that static is `nonisolated`.
+- **Main-actor work:** the radial menu's delayed post takes `@MainActor`
+  work, run from the main queue.
+- **Not yet:** middle click and the scroll inverter serve their taps from
+  the pointer thread (`PointerTapRunLoop`), so they stay plain.
+
+Landed (6y, the volume keys, Auto Quit and Dock Preview): three more
+services that serve their taps from the main run loop are `@MainActor`:
+
+- the precise volume keys;
+- Auto Quit;
+- Dock Preview.
+
+Details:
+
+- **Tap and Accessibility callbacks** are C functions on the main run loop
+  and reach their service through `MainActor.assumeIsolated`, as in 6x.
+  Auto Quit's window observers are such a callback.
+- **Timers** on the main run loop (Dock Preview's Dock-visibility and
+  settings polls) do the same.
+- **Wrappers gone:** the volume keys read the island directly again, as
+  before 6o.
+- **Plain callers:** the Dock click tap asks whether a preview panel covers
+  the click, and the switcher's window close tells Auto Quit about it. Both
+  run on the main thread and use `MainActor.assumeIsolated`.
+
+Landed (6z, Window Layout and shortcut recording): these are `@MainActor`:
+
+- `WindowLayoutService`, its ignored apps and the pointer's next-display
+  key;
+- `ShortcutCapture` and `ShortcutRecordingTap`, which say "main thread
+  only" in their documentation.
+
+Details:
+
+- **Window Layout's three taps** (directional, edge snap, gesture) and its
+  settle and gesture timers are on the main run loop and reach it through
+  `MainActor.assumeIsolated`, as in 6x. Its Carbon hotkey handler already
+  hops to the main queue.
+- **Tests' statics:** the ignored-apps matching that tests call directly is
+  `nonisolated`.
+- **Wrappers gone:** `ShortcutCapture`'s three `MainActor.assumeIsolated`
+  calls (6g to 6k).
+- **UI:** the shortcut field's `deinit` gives the keys back through
+  `MainActor.assumeIsolated` when it runs on the main thread; otherwise it
+  still hops to the main queue.
+
+Landed (6za, quick toggles and the recorder's audio choices): these are
+`@MainActor`:
+
+- `QuickTogglesService`;
+- `RecorderSelectionAudioOptions`, the two audio choices shown while an
+  area is picked.
+
+Details:
+
+- **The toggles' work queue** hands each result to the main queue, where
+  the run state is published, instead of publishing from the queue through
+  a main-thread check. What runs on the queue says so: the Finder restart
+  and its exit poll, the volume listing and the Automation target are
+  `nonisolated`.
+- **The recorder's `record(_:audioOptions:)`** is `@MainActor`; the capture
+  chooser is its only caller.
+- **UI:** the radial menu's quick-toggle title reads the toggles' state, so
+  it is `@MainActor`, like the item names next to it.
+- **Not yet, each for its own reason:**
+  - the microphone mute is read from the input manager's audio queue;
+  - recent captures keep their store on a serial queue of their own.
+
+Landed (6zb, clipboard history and quit protection): `ClipboardHistoryService`
+and `QuitProtectionService` are `@MainActor`.
+
+- **Off the main thread, said so:** the history's pasteboard read (on the
+  shared pasteboard lane) and its persistence (on its own queue) run
+  statics that are now `nonisolated`: the reader and its helpers, the
+  limits, the store's location and the queue itself.
+- **Wrappers gone:** the history's 6o `MainActor.assumeIsolated` calls into
+  the island and its 6l call to the app shell.
+- **Callers:**
+  - The command bar's clipboard rows read the history, so the two catalog
+    functions that build them are `@MainActor`; the bar is their only
+    caller.
+  - The switcher asks quit protection for a second press from its key
+    handling, which runs inside `main.sync`, through
+    `MainActor.assumeIsolated`.
+- **Quit protection's tap and hold timer** are on the main run loop and use
+  `MainActor.assumeIsolated`, as in 6x.
+- **Not yet:** `Permissions` is read from the pointer thread (the scroll
+  inverter), the switcher's tap path and some twenty plain call sites, so
+  it moves when they do.
+
+Landed (6zc, the cleaner, the uninstaller and the process killer):
+`JunkCleaner`, `AppUninstaller` and `KillProcessService` are `@MainActor`,
+and so is `PanelInteractionState`, the panel's close policy, which reads
+all three.
+
+- **Their scanners are `nonisolated`:** each service scans on a global
+  queue with static functions that only touch files, processes and the
+  defaults. The test generator copies many of them by their declaration
+  line, so `nonisolated` stands on the line above each one.
+- **The process killer's workers:** the batch kill and its follow-up run on
+  a global queue and only hop to the main queue, so they are `nonisolated`.
+  Its `refresh` is called from any thread (an app relaunch reports from the
+  workspace's queue); it stays `nonisolated`, hops to the main queue when it
+  has to, and runs its body through `MainActor.assumeIsolated`.
+- **Wrappers gone:** the 6t `MainActor.assumeIsolated` calls in the
+  uninstaller and the panel's close policy, and the uninstaller's
+  method-level `@MainActor`.
+
+Landed (6zd, the Shelf, app updates and fan control): `ShelfService`,
+`AppUpdatesService` and `FanControlService` are `@MainActor`.
+
+- **The Shelf:** its file sweeps run on a global queue and only read the
+  temporary and store directories, so they, the directories and the
+  persist queue are `nonisolated`. Its drag watchdog and auto-hide timers
+  are on the main run loop and use `MainActor.assumeIsolated`. The 6o
+  wrappers into the island and the method-level `@MainActor` on its
+  internal drag are gone.
+- **App updates:** the scan runs on its work queue. The six methods it
+  calls there are `nonisolated` (on their own line, since the test
+  generator copies three of them by their declaration line), and so are
+  the statics they use. The two URL sessions are plain constants instead
+  of lazy properties, which no isolation can describe; they are now made
+  with the service. The online catalog cache is `nonisolated(unsafe)`:
+  only the work queue touches it. The 6t wrapper is gone.
+- **Fan control:** the probe hardware is `nonisolated(unsafe)`, since only
+  the probe queue touches it, and the helper's removal statics, which
+  uninstalling calls from a background queue, are `nonisolated`. Its
+  replies already hop to the main queue.
+- **Callers:** the command bar's row that keeps a selection on the Shelf
+  calls it from `keepOnShelf`, which is `@MainActor`; the row's action is
+  its only caller and already runs on the main actor.
+
+Landed (6ze, Finder cut and paste, the speed test and agent usage):
+`FinderCutPaste`, `SpeedTest` and `AgentUsageService` are `@MainActor`. Each
+keeps work on its own thread or queue; what runs there now says so.
+
+- **Finder cut and paste:** its keyboard tap runs on a thread of its own, so
+  the tap's start, stop and callback are `nonisolated`, and the tap state
+  its lock guards is `nonisolated(unsafe)`. The callback already handed a
+  shortcut to the main thread with `DispatchQueue.main.sync`; that call now
+  enters the main actor through `MainActor.assumeIsolated`. The moves and
+  the progress poller run on global queues and are `nonisolated`.
+- **The speed test:** its state lives on the URL session's delegate queue,
+  so the methods that run there, the delegate methods and that state are
+  `nonisolated`. Its published values already hop to the main queue. Its
+  test calls it from the runner's main thread and now says so with
+  `MainActor.assumeIsolated`.
+- **Agent usage:** the log reading runs on its own queue. The methods and
+  statics that run there are `nonisolated` (three on their own line, since
+  the test generator copies them by their declaration line), and the state
+  already marked "Confined to `queue`" is `nonisolated(unsafe)`. The tick
+  timer is on the main run loop and uses `MainActor.assumeIsolated`.
+- **Not yet:** `MouseAppExceptions` answers the pointer thread's taps
+  (middle click, the scroll inverter), which read `.shared` there; its lists
+  are lock-guarded for that, and it stays plain.
+
+Landed (6zf, keyboard debounce, the system monitor and the media tools):
+`KeyboardDebounceService`, `SystemMonitor`, `MonitorAlertService` and
+`MediaService` are `@MainActor`.
+
+- **Keyboard debounce:** its tap runs on a thread of its own and restarts
+  itself from there, so starting, the tap loop, the callback and the
+  running-flag publish are `nonisolated`. The state its two locks guard is
+  `nonisolated(unsafe)`. The publish sets the flag through
+  `MainActor.assumeIsolated` from a closure that is now `@Sendable`; it
+  runs only on the main thread, directly or queued there.
+- **The system monitor:** sampling runs on its own queue. The sensors, the
+  samplers, the last readings and the histories belong to that queue and
+  are `nonisolated(unsafe)`; what decides when to sample stays on the main
+  thread. The sampling helpers are `nonisolated` (`readCPUUsage` on its own
+  line, since the test generator copies it), and so are the fan-count
+  statics the menu bar renderer reads. The timer is on the main run loop
+  and uses `MainActor.assumeIsolated`. The alerts service, which only
+  follows the monitor's snapshots on the main queue, is `@MainActor` with
+  it.
+- **The media tools:** every tool runs on the service's work queue, so the
+  33 work methods are `nonisolated`, and the work a tool hands to `run` is
+  `@Sendable`. The operation state its lock guards is
+  `nonisolated(unsafe)`. Its init is `nonisolated`: the island's file tools
+  and the media presentation probe make their own.
+
+Landed (6zg, recent captures and the HUD): `RecentCaptureService`,
+`QuickToolHUD` and the HUD's scrolling-capture model are `@MainActor`.
+
+- **Recent captures:** the store lives on the service's queue. It was a
+  lazy property, which no isolation can describe, so it is now a constant
+  made with the service, and the folder it lives in is found once, in
+  init. The queue's methods, the thumbnail statics and the recording
+  thumbnail (which awaits off the main actor, as before) are
+  `nonisolated`; the store, the clear generation its lock guards and the
+  thread-safe thumbnail cache are `nonisolated(unsafe)`. The 6l wrappers
+  around closing the panel are gone.
+- **The HUD:** with almost every service on the main actor, its state is
+  too. `show` and `showCountdown` stay callable from any thread, since the
+  recorder, the microphone mute, the QR and pin windows and a command bar
+  row still call them from plain code: each is a `nonisolated` entry that
+  hops to the main queue when it has to and runs its body through
+  `MainActor.assumeIsolated`.
+- **Still plain:** the microphone mute (read from the input manager's
+  audio queue, and copied whole by the test generator) and the screen
+  recorder (its microphone callback runs off the main thread).
+
+Landed (6zh, the switcher and the screen recorder): `AppSwitcher` and
+`ScreenRecorderService` are `@MainActor`.
+
+- **The switcher:** its keyboard tap runs on a thread of its own and routes
+  each key by state its locks guard, so the tap's lifecycle and routing are
+  `nonisolated` and that state is `nonisolated(unsafe)`. A key the switcher
+  may consume already went to the main thread through `main.sync`; it now
+  enters the main actor there through `MainActor.assumeIsolated`. The
+  window enumeration's focused-window lookup runs on its queue and is
+  `nonisolated`, and so are the two ownership queries other taps ask, which
+  only read under the lock. The 6zb wrappers into quit protection are gone.
+- **The recorder:** the session reports an unexpected stop, and a
+  microphone that would not start, from its capture side. Both callbacks
+  are now `@Sendable`. `stop` stays callable from any thread as a
+  `nonisolated` entry that hops to the main queue when it has to. The
+  microphone notice's text is read before the session starts, so its
+  callback needs nothing from the main thread. The elapsed-time timer is
+  on the main run loop and uses `MainActor.assumeIsolated`. The
+  method-level `@MainActor` from 6u, 6w and 6za, and the 6u wrapper in
+  `toggle`, are gone.
+
+Landed (6zi, the Super key): `SuperKeyService` is `@MainActor`.
+
+- **Its own threads:** the keyboard and mouse taps run on a thread of their
+  own, and the key mapping is written on a serial queue. What runs there is
+  `nonisolated`: the tap's lifecycle and callback, the solo actions, the
+  mapping's request and the `hidutil` work, and the Caps Lock and key
+  posting helpers. `runEventTap` takes `nonisolated` on its own line, since
+  the test generator copies it by its declaration line. The state the two
+  locks guard and the queue's mapping guard are `nonisolated(unsafe)`.
+- **Back on the main thread:** the mapping's completion is `@MainActor`,
+  since it publishes the run state and the failure. Letting go of a held
+  key notifies through a `@Sendable` closure that runs only on the main
+  thread, through `MainActor.assumeIsolated`.
+- **The settings directory:** its builders defaulted an argument to the
+  key's published source. A Swift 5 module evaluates a default argument
+  outside any actor, so the argument now defaults to nil, and the
+  builders, now `@MainActor`, read the source themselves. Their callers,
+  the command bar's settings rows and the Settings window's directory
+  cache, are `@MainActor` too.
+
+Landed (6zj, the volume mixer): `AppVolumeMixer` is `@MainActor`.
+
+- **Already split:** the mixer keeps its state on the main thread and does
+  its audio-system work on two queues through statics that take values:
+  every read of a refresh, the output volume and mute, the default device.
+  Those 26 statics are `nonisolated`, and so are the support check and the
+  maximum volume that views and the command bar read.
+- **Across the queue:** an output adjustment checks on the HAL queue that
+  its output is still current, under the output-control lock. That check
+  is `nonisolated` (on its own line, since the test generator copies it),
+  and the lifetime it reads is `nonisolated(unsafe)`.
+- **Not yet:** the AirPlay route manager. The mixer's engine builds ask it
+  for a renderer from the build queue, so it moves when it no longer has
+  to be reached through `.shared` from there.
+
+Landed (6zk, AirPlay routing): `AirPlayRouteManager` is `@MainActor`.
+
+- **Handed over, not looked up:** an AirPlay build now takes the manager
+  on the main thread and hands it to the build queue and its engine, which
+  used to reach it through `.shared` there.
+- **What the engines reach:** adding, preparing and ending a stream, and
+  binding a renderer to the routing context, run on the engines' threads
+  under the stream lock. They are `nonisolated`; the renderer is
+  `nonisolated(unsafe)` behind that lock, and the routing context and the
+  message-send symbol, set once in init, are too. The stream registry was
+  a lazy property, which no isolation can describe, so it is made in init.
+- **The mixer's snapshot:** the listed, connected and speaker statics the
+  HAL queue reads stay behind their lock and are `nonisolated`, and so is
+  the AirPlay sentinel.
+- **Back on the main thread:** the renderer reports a failure through a
+  `@MainActor` callback it already called from the main queue. The picker's
+  delegate, the context's observer and the backup timer reach the manager
+  through `MainActor.assumeIsolated`.
+- **The self-test** reads whether AirPlay is available from top-level code,
+  through `MainActor.assumeIsolated`, as `main.swift` does.
+
+Landed (6zl, middle click and the scroll inverter): `MiddleClickService`
+and `ScrollInverter` are `@MainActor`.
+
+- **The pointer thread:** both serve their taps from `PointerTapRunLoop`.
+  The callbacks and what they call are `nonisolated`, and the state their
+  locks guard, or that only the tap touches, is `nonisolated(unsafe)`. The
+  scroll inverter's callback takes `nonisolated` on its own line, since the
+  test generator copies it by its declaration line.
+- **Multitouch:** middle click's contact frames arrive on the multitouch
+  framework's thread through a C callback that only has `.shared`. That
+  instance and its init are `nonisolated`; the init's session handler,
+  called on the main queue, enters the main actor through
+  `MainActor.assumeIsolated`, as do the wake observer and the hot-plug
+  port, which delivers on the main queue.
+- **Not yet, each for its own reason:**
+  - `MouseAppExceptions` answers both taps from the pointer thread.
+  - `Permissions` is read from plain code in about twenty places, the
+    window activator and the preview provider among them.
+  - `MicMuteService` is read from the input manager's audio queue.
+  - `BrightnessService` keeps a key thread, a work queue and two locks of
+    its own, and needs a slice to itself.
+
+Landed (6zm, brightness): `BrightnessService` is `@MainActor`.
+
+- **Four kinds of state:** what the views publish stays on the main actor.
+  The function-key thread's tap and its flags sit behind `keyThreadLock`;
+  the routes, pending levels and topology behind `stateLock`; the DDC
+  pacing, gamma baselines and dimmed set are touched only on the work
+  queue. Those three groups are `nonisolated(unsafe)`, each with a comment
+  naming its guard, and the methods that run there are `nonisolated`.
+- **Static helpers:** the display queries, the system-brightness write and
+  the IOKit lookups are `nonisolated`; the work queue and the key thread
+  call them.
+- **The main run loop:** the media-key tap's source is on the main run
+  loop, so its callback enters the main actor through
+  `MainActor.assumeIsolated`, as do the screen-parameters and wake
+  observers, which deliver on the main queue.
+- **Toggling a display:** `finishDisplayToggle` is reached from the main
+  thread and from queued lid recovery. It stays `nonisolated` and publishes
+  through a `@Sendable` closure that runs on the main thread, directly or
+  queued, and enters the main actor there.
+- **Generated tests:** four methods the test generator copies by their
+  declaration line take `nonisolated` on its own line.
+- **Callers:** the command bar's brightness row is `@MainActor`.
+
+Landed (6zn, main-queue callbacks): the macOS build of #2686 listed 62
+isolation warnings in 24 files the earlier slices had made `@MainActor`.
+Swift 5 mode lets these through as warnings; Swift 6 mode would not.
+
+- **Main-queue observers:** almost all of them are notification observers
+  registered with `queue: .main`, whose closures the SDK types as
+  `@Sendable`. Their bodies now run through `MainActor.assumeIsolated`,
+  with a comment saying the main queue delivers them. That covers 22
+  files, from app updates and Auto Quit to the camera preview and the
+  window layout, plus four the later slices of this stack made
+  `@MainActor` (Finder cut and paste, recent captures, the switcher and
+  the volume mixer), found by scanning for the same shape.
+- **Animation completion:** the edge-snap preview's fade-out completion,
+  which AppKit calls on the main thread, does the same.
+- **Off the main thread:** Music launch blocking's replacement callback
+  comes back on a background queue and read the setting there. It now hops
+  to the main queue before it reads it.
+- **Under a lock:** the input-volume write lifetime the input device
+  manager's audio queue reads under its lock is `nonisolated(unsafe)`.
+- **Already fixed:** the command bar's Shelf row (`keepOnShelf`) was made
+  `@MainActor` on #2686 itself.
+
+Landed (6zo, microphone mute): `MicMuteService` is `@MainActor`.
+
+- **The audio queue:** the sweep and the CoreAudio statics it calls are
+  `nonisolated`, and so are the two entries the input manager uses from
+  its own audio queue: the adjustment lifetime and `withUnmutedInput`.
+  The blocked flag and the lifetime behind their lock are
+  `nonisolated(unsafe)`.
+- **The input manager** takes the service on the main thread before it
+  queues a volume write, instead of reading `.shared` from its audio
+  queue.
+- **Generated tests:** the test generator copies the whole class, and
+  strips `package` only at the start of a line, so the two `nonisolated`
+  entries carry the modifier on its own line.
+- **Reverted:** the two 6o wrappers around the island calls in `finish`.
+
+Landed (6zp, mouse exceptions): `MouseAppExceptions` is `@MainActor`.
+
+- **The pointer thread** asks it from the taps of middle click, the scroll
+  inverter, the button shortcuts, navigation and focus-follows-mouse.
+  What they call is `nonisolated`: the two questions, the pointer lookup,
+  the source-process rebuild and their helpers. The state they read was
+  already behind its lock and is now `nonisolated(unsafe)`.
+- **`shared` and init are `nonisolated`,** since a tap can be the first to
+  ask. Loading splits in two: the sets the taps read are filled before init
+  returns, on whatever thread that is, and the published lists follow on
+  the main thread, directly or queued. `reload()` still does both at once.
+- **Running-app changes** may arrive off the main thread. The rebuild
+  publishes its scopes through its existing hop to the main thread, which
+  now enters the main actor.
+- **Tests:** the pointer contract calls `reload()` from the suite's main
+  thread through `MainActor.assumeIsolated`.
+
+Landed (6zq, the rest of the macOS isolation warnings): the macOS build
+of #2687 listed the isolation warnings 6zn had not reached, in the app
+delegate and four services.
+
+- **The app delegate:** its three main-queue observers and the
+  quit-time input-source restore, which the main run loop performs, enter
+  the main actor through `MainActor.assumeIsolated`. Its notification
+  delegate method is `nonisolated`: it touches nothing of the delegate's,
+  and already hops to the main queue for its one piece of work.
+- **AppKit completions:** the HUD's fade-out and the island's Mission
+  Control fade run their completions through `MainActor.assumeIsolated`,
+  and the island's completion parameter is `@MainActor @Sendable`.
+- **The switcher's wake observer,** a one-line closure the earlier scan
+  missed, enters the main actor the same way.
+- **The island window's animation delegate** is a `@preconcurrency`
+  conformance: Core Animation calls it on the main thread.
+- **Keep Awake's** shared running-apps handler is `@Sendable` and enters
+  the main actor itself.
+- **Recent captures'** file manager is `nonisolated`, since its queue
+  removes files with it.
+- **What is left** in that log are `Sendable` captures: values such as
+  capture sessions, Bluetooth devices, accessibility elements and
+  cancellation tokens captured by queue closures. They are not isolation
+  crossings, and they belong to building Services in Swift 6 mode.
+
+Landed (6zr, permissions): `Permissions` is `@MainActor`.
+
+- **Read from other threads:** the window activator, the preview provider
+  and the window capture asked `Permissions.shared` for Accessibility or
+  Screen Recording from plain code, on whatever thread called them, and
+  the capture from an `async` function, and the window enumerator's
+  snapshot reads Accessibility from a plain function on the main queue.
+  Both grants are now mirrored into two statics behind a lock as they are
+  published, and those 14 reads use `Permissions.accessibilityGranted` and
+  `screenRecordingGranted`, which any thread may call. Everything else
+  still reads the published values.
+- **Off the main thread inside it:** the Full Disk Access probe, its list
+  of protected folders and the Automation status check run on background
+  queues and are `nonisolated`. The activation and defaults observers and
+  the polling timer enter the main actor through
+  `MainActor.assumeIsolated`.
+- **Callers:** five command bar builders that read a grant (toggles,
+  snippets, emoji, typing at the cursor, clipboard rows) are `@MainActor`.
+
+Landed (6zs, `Sendable` captures): what the macOS log of #2688 still
+listed after the isolation fixes were values captured by closures that
+run on another queue. Swift 6 mode rejects most of them.
+
+- **Lock-guarded flags:** the agent reader's cancellation, the cleaner's
+  and the uninstaller's scan cancellations and the media tools' token
+  keep their flag behind a lock, so each is `@unchecked Sendable`, with a
+  comment saying so.
+- **The media tools' log:** the conversion's output was a captured `var`
+  that the pipe's queue appended to under a lock the compiler could not
+  see. It is now a small locked type.
+- **Declared `@Sendable`:** the speed test's time box hands its action to
+  another queue, and the Super key's mapping work runs on the mapping
+  queue; both closure types now say so.
+- **Confined:** the notification reader lives on the notification
+  service's queue. The two closures that take it there capture it through
+  a `nonisolated(unsafe)` local that says so.
+- **Not captured:** the clipboard history panel's resize observer finds
+  the panel in the notification instead of capturing it.
+- **Not `Sendable` after all:** 6zq made recent captures' file manager
+  `nonisolated`, but the SDK does not mark `FileManager` `Sendable`, so the
+  macOS build warned. It is `nonisolated(unsafe)`, since the default
+  manager is safe from any thread.
+- **SDK types not yet marked:** capture sessions and devices, Bluetooth
+  devices, accessibility elements, Mach ports and dispatch work items are
+  imported with `@preconcurrency` (AVFoundation, IOBluetooth,
+  ApplicationServices, CoreFoundation, Dispatch), in the five files that
+  capture them, as the compiler suggests.
+
+Landed (6zt, transient paste and the clipboard auto-clear): both keep
+their state on the main thread and do their pasteboard work on the shared
+pasteboard lane, and their lane closures captured `self`, a plain class.
+They are `@MainActor`.
+
+- **Transient paste:** snippet expansion asks for it from plain code, and
+  it already refused any call off the main thread. `shared`, its init and
+  `paste` are `nonisolated`; `paste` keeps that refusal and runs the rest
+  on the main actor. The pasteboard snapshot it hands to the lane and back
+  goes through `nonisolated(unsafe)` locals that say so, the restore's
+  work item, run by the main queue, enters the main actor, and the
+  snapshot reader is `nonisolated`.
+- **The auto-clear:** its observers and its timer enter the main actor,
+  and the configuration generation the lane reads under its lock is
+  `nonisolated(unsafe)`.
+
+Landed (6zu, static state, and complete checking for Services): in Swift 6
+mode a static that any thread can reach must say what protects it. A
+Swift 6 type-check of Services on Linux listed 80 statics that did not.
+
+- **Complete checking on:** `VitruvianAtriumServices` builds with
+  `-strict-concurrency=complete`, as UI did from 6d. Each build now lists,
+  as warnings, what Swift 6 mode would reject (in CI in full since 6zv). The Linux check cannot see
+  AppKit's own main-actor annotations, so this macOS list is the real one.
+- **Behind a lock:** 22 statics are `nonisolated(unsafe)`, with a comment
+  naming the lock that guards them (or, for the sleep-state count, the one
+  queue that touches it).
+- **Main thread only:** 20 more are `nonisolated(unsafe)` with a comment
+  saying so: the activation handoff, the brightness overlay, wheel
+  scrolling, the mouse navigation keys, the quick tools' hotkeys, the Space
+  hop, the switcher's pending close and restore, the command bar's caches,
+  the clipboard's file icon list and the now-playing app icons.
+- **Thread-safe already:** five `NSCache`s, five `dlopen` handles that only
+  `dlsym` reads, and the recorder's constant audio settings.
+- **Main actor:** the activation policy, the view factory registry and the
+  media panel's modal flag are `@MainActor`, since everything that uses them
+  already is. `main.swift` installs the view factory inside
+  `MainActor.assumeIsolated`.
+- **Left as they are:** two `ISO8601DateFormatter`s and a list of
+  `CGEventType`s, which the Linux stand-ins do not mark `Sendable`. The macOS
+  SDK does mark the event types, but not the formatters; 6zw says the
+  formatters are read behind their lock.
+- **Next:** 20 singletons are `static let shared` of a class that is not
+  `Sendable`. Each one is a choice between the main actor and a lock, so
+  they are a slice of their own.
+
+Landed (6zv, the main-thread singletons): of the 20 singletons 6zu left,
+the ones whose state lives on the main thread are `@MainActor`, and two
+that only hold constants or a locked flag say why any thread may use them.
+
+- **Main actor:** the Dock preview's drag ghost, the Shelf tooltip, the QR
+  result panel, screenshot pins, Bluetooth sleep, the scroll wheel target,
+  mouse acceleration, focus follows mouse, Dock clicks, the radial menu's
+  Now Playing card and the disk image installer.
+- **Callbacks on the main thread:** their main-queue observers, the focus
+  timer, the Dock click tap (a source on the main run loop) and the HID
+  device callback (scheduled on the main run loop) enter the main actor
+  through `MainActor.assumeIsolated`.
+- **Off the main thread, said so:** the disk image installer's mount check
+  and install run on its work queue, focus follows mouse asks for the
+  window under the pointer on its query queue, and the Dock click sweeps
+  read the Accessibility tree on a global queue, so those methods and the
+  static helpers they call are `nonisolated`. The scroll wheel target's
+  `shared`, init and `contains` are `nonisolated` too: the pointer taps
+  ask it, and its cache keeps its own lock.
+- **`@unchecked Sendable`:** `SessionActivity` keeps its flag behind a lock
+  and adds and runs its handlers on the main thread, and
+  `GeneralPasteboardAccess` holds only constants. Tests build both off the
+  main actor.
+- **`main.swift`** recovers mouse acceleration inside
+  `MainActor.assumeIsolated`.
+- **The full list in CI:** 6zu's first macOS build wrote about 1.7 MB of
+  warnings per Services compile action, down from 6.3 MB in 6c, but Bazel
+  prints at most 1 MB of an action's output and skipped them. The
+  `vitruvian-desktop-macos` unit now builds with
+  `--experimental_ui_max_stdouterr_bytes=-1`, so its log shows them all.
+- **Not yet:** the window preview provider's captures run in tasks that a
+  main-actor class would move onto the main thread, and six services serve
+  event taps or caches from their own threads (Finder rename, click
+  debounce, snippets, the window use tracker, process usage, the battery
+  capacity probe). They are the next slice.
+
+Landed (6zw, main-actor code reached from plain code): with 6zv printing
+Services' full warning list, the macOS build reported 752 concurrency
+warnings. 249 of them say the same thing: main-actor AppKit is reached
+from code Swift does not know is on the main thread. Almost all of that code
+is on the main thread already, so it now says so.
+
+- **Main actor:** the recorder's indicator, the quit protection HUD, the
+  brightness overlay, sideways wheel scrolling, the island's frame probe,
+  the radial menu's arrival and departure, and the disk image installer's
+  destination prompt. So are the functions that read `NSApp` for the main
+  thread: `appShell()`, the settings import panel, the uninstaller's final
+  quit, the switcher's snapshot of this app's windows and the two window
+  lists that take one, and the island's overlay Space join.
+- **Hopping in:** the brightness overlay's `show`, `teardown` and `dismiss`
+  stay callable from any thread and hop to the main thread first, as they
+  did; its state is now plain main-actor statics instead of
+  `nonisolated(unsafe)`. Wheel scrolling's state is the same.
+- **Main thread, said at the call:** `MainActor.assumeIsolated` with a
+  comment where code that is already on the main thread touches AppKit:
+  - the window activator's paths for this app's own windows;
+  - the activation handoff's `NSApp` calls;
+  - the shell helper's direct branch of bringing the app forward;
+  - the island's menu-space reader asking whether this app is active;
+  - the island's gesture check walking up the view tree, which the tests
+    call from plain code;
+  - the mouse navigation keys reading the main menu, with the hidden-menu
+    probe moved to a main-actor `refreshOnMain`;
+  - the command bar opening Settings;
+  - the island's display-link tick (the link is on the main run loop);
+  - animation completions, which AppKit calls on the main thread, in the
+    brightness overlay, the recorder's indicator, the radial menu and the
+    lock screen fade. The radial menu and lock screen completions are
+    typed `@MainActor @Sendable () -> Void`, so they can cross into those
+    handlers (6zx added `@Sendable`: `@MainActor` alone does not make a
+    function type `Sendable`).
+- **Off the main thread, said so:** the Dock click service's `activate(pid:)`
+  and `restore(_:)` run on whatever queue the restore walk is on, as their
+  comments already said, so they are `nonisolated`. The walk's `[weak self]`
+  moves to the main-queue block that uses it.
+- **Statics:** the agent log's two formatters are read behind its lock;
+  two constant strings, two constant Bluetooth UUIDs, the pointer
+  follower's system environment and the pointer tap's run loop never change.
+  All are `nonisolated(unsafe)` with that comment.
+- **Not yet:**
+  - the seven singletons 6zv left (6zx);
+  - two SDK globals the code reads, `kAXTrustedCheckOptionPrompt` and
+    `vm_kernel_page_size`;
+  - about 490 warnings about values that are not `Sendable` crossing to
+    another thread, among them a capture engine handing back
+    ScreenCaptureKit windows and the recorder editor's waveform task;
+  - about 60 deprecations, which are not concurrency.
+
+Landed (6zx, the last singletons): the seven `static let shared` 6zv left
+are reached from more than one thread, so each says what keeps it safe
+there. None of them changes behavior.
+
+- **`@unchecked Sendable`, the locks named:** Finder rename, click debounce,
+  text snippets, the window use tracker, process usage and the battery
+  capacity probe already keep everything their taps, threads and queues
+  touch behind a lock. What is left lives on one thread, and each says
+  which: the debounce's sleep observers, the snippets' activation observer
+  and the tracker's `started` on the main thread, the tracker's observer
+  state on its watcher thread.
+- **The window preview provider** is `@unchecked Sendable` rather than
+  main-actor: its capture and warm tasks do their image work off the main
+  thread and reach the cache only through `MainActor.run`, which a
+  main-actor class would undo by running those tasks on the main thread.
+  Its `onUpdate` is `@MainActor @Sendable`, since it is only called inside
+  those `MainActor.run` blocks.
+- **Main-actor callbacks that cross threads** are `@MainActor @Sendable`:
+  6zw typed the radial menu's and the lock screen's animation completions
+  `@MainActor` alone, which does not make a function type `Sendable`, so the
+  capture into AppKit's completion handler still warned. The lock screen's
+  fade counter is declared with that type, which lets it keep its counter.
+- **The snippets' alert sound** is `Sendable`: it holds one sound ID.
+- **Not yet:** the remaining warnings are values that are not `Sendable`
+  crossing to another thread, two SDK globals, and deprecations (see 6zw).
+
+Measured (6zy, what stands between Services and Swift 6 mode): the
+complete-checking warning list overstates it. One build of
+`VitruvianAtriumServices` in Swift 6 mode (`swift.enable_v6`, continuing after
+errors) failed with **46 errors**, where the same code under complete
+checking printed 429 concurrency warnings.
+
+- **Why fewer:** most of the 429 are not errors in Swift 6 mode. The
+  weak-`self` relay (an outer `@Sendable` block taking `[weak self]` and a
+  nested main-queue block using it) warns under complete checking and
+  compiles in Swift 6 mode, as a Swift 6.4 type-check confirms; it was 68
+  of the warnings. Swift 6 also only warns about the `Sendable` captures of
+  SDK types it imports without full annotations.
+- **19 errors, one shape:** an event tap's callback returns its `CGEvent`
+  out of `MainActor.assumeIsolated`, and `CGEvent` is not `Sendable`. The
+  15 files with a main-run-loop tap need the same fix, as 6zs did for
+  CoreFoundation with an `@preconcurrency` import.
+- **27 errors in 13 files:**
+  - callbacks captured by queue blocks without being `Sendable`: transient
+    paste, clipboard auto-clear and history, kill process, the URL cleaner,
+    the Codex agent server, the Notch music reader and island actions;
+  - values sent to another thread: the screen recorder's session and
+    service, the camera preview's notification;
+  - captured `var`s mutated across threads: Homebrew's output buffers and
+    the switcher's pending window queries;
+  - the two SDK globals, `kAXTrustedCheckOptionPrompt` and
+    `vm_kernel_page_size`.
+- **A floor, not a ceiling:** the `sending` checks run only on files that
+  type-check, so fixing the errors above can show more of them.
+- **Still warnings in Swift 6 mode (212):** 79 deprecations, `Sendable`
+  captures of SDK types, and 20 suggested `@preconcurrency` imports.
+  None blocks the switch.
+- **Order:** the event taps (6zz), then the 27, then Services in Swift 6
+  mode, measuring again on the way.
+- **Also in this step:** the Dock click service's restore and minimize
+  walks take `[weak self]` on both the outer queue block and the inner
+  main-queue block. 6zw had moved it to the inner block only, which drew a
+  new warning (a weak capture differing from the outer block's implicit
+  strong one); weak on both is clean under complete checking and in Swift 6
+  mode.
+
+Landed (6zz, the event taps): the 19 errors of one shape from 6zy. An event
+tap's callback hands its `CGEvent` back out of `MainActor.assumeIsolated`,
+which needs a `Sendable` result, and `CGEvent` is not. The event never
+leaves the thread: the tap's source is on the main run loop, so the callback
+and the main actor are the same thread.
+
+- **The fix:** the 15 files with a main-run-loop tap import CoreGraphics as
+  `@preconcurrency`, the compiler's own suggestion and what 6zs did for
+  CoreFoundation. Eleven already imported it; the other four
+  (precise volume, auto-quit, brightness and the radial menu) reached it
+  through AppKit and now import it directly.
+- **Checked by the build:** in Swift 5 mode a `@preconcurrency` import
+  silences these warnings, so the macOS log of this step's build lists no
+  `CGEvent` `Sendable` warning in Services.
+- **Next:** the 27 errors in 13 files, then Services in Swift 6 mode.
+
+Landed (6zza, the 27 errors in 13 files): the rest of 6zy's list.
+
+- **Passed through, never called off the main thread:** transient paste's
+  three callbacks, clipboard history's planned write and the island's
+  settle action go through as `nonisolated(unsafe)` lets, the idiom those
+  files already use for a value handed to the pasteboard lane and back.
+- **Callbacks typed for where they run:**
+  - `@MainActor @Sendable`: clipboard auto-clear's change-count reader,
+    kill process's refresh and kill completions, Homebrew's streamed output;
+  - `@Sendable`: Homebrew's command completions, which run on its work
+    queue and hop to the main queue themselves (each caller's inner block
+    now takes `[weak self]` too, as 6zy found clean in both modes), and the
+    switcher's cancellation check.
+- **Shared state given a type:** Homebrew's output buffer, the switcher's
+  Accessibility batch and the Codex server's inbox each move into a small
+  lock-guarded class. The URL cleaner's poll token, the Notch music reader,
+  the screen recorder's session and its two samplers say what guards them
+  and are `@unchecked Sendable`.
+- **One race fixed:** the recorder's capture queue read `writesTapAudio`, a
+  plain `Bool` that `start()` could still lower after the stream began. It
+  is now settled before the stream runs and withdrawn through an atomic flag.
+- **Notifications stay put:** kill process and the camera preview read what
+  they need from the notification before `MainActor.assumeIsolated`, so the
+  notification never crosses to the main actor.
+- **The two SDK globals:** the Accessibility prompt option is spelled as
+  its value, `"AXTrustedCheckOptionPrompt"`, and the kernel page size is
+  read by the VM statistics C shim, which already reads those statistics.
+- **Measured again:** a build of `VitruvianAtriumServices` in Swift 6 mode with
+  one compiler process per file (batch mode off) shows none of the 27, and
+  **99 errors in 50 files**.
+- **Why 6zy's 46 was a floor:** batch mode hands each compiler process a
+  share of the module's files, and one file that fails to type-check stops
+  the `sending` checks for its whole batch. With errors spread over 25
+  files, almost no batch got that far.
+- **The 99, by shape:**
+  - 18 notifications and 3 timers handed into `MainActor.assumeIsolated`,
+    the shape fixed here in kill process and the camera preview;
+  - 9 reads of non-`Sendable` properties in a main-actor class's `deinit`;
+  - 10 `self`s of non-`Sendable` helper classes sent off the main actor,
+    and 4 event-tap verdicts;
+  - 55 others, mostly completion blocks and values handed to a queue, plus
+    ScreenCaptureKit window lists and the recorder's export closures.
+- **Next:** the 99, a shape at a time, measuring with batch mode off, then
+  Services in Swift 6 mode.
+
+Landed (6zzb, notifications and timers): 20 of the 99. Each observer and
+timer block runs on the main thread, but it is typed nonisolated, so handing
+its non-`Sendable` `Notification` or `Timer` into `MainActor.assumeIsolated`
+reads as a send.
+
+- **Sixteen observers** read what they need before the hop: the app (a
+  `Sendable` `NSRunningApplication`), its process ID, the mounted volume's
+  URL, the resized panel or the notification's name. The checks on them stay
+  inside, unchanged. Auto-quit has three such observers.
+- **The music launch blocker** passes the notification itself, which its
+  unit test drives directly, so it crosses as a `nonisolated(unsafe)` let.
+- **The three timers** (Dock preview visibility, the shelf's auto-hide fade
+  and the maximize animation) cross the same way: a timer on the main run
+  loop fires on the main thread and nothing else touches it.
+- **Left for the Accessibility errors:** the eighteenth `notification` in
+  6zza's count is the name auto-quit's Accessibility observer callback
+  passes, which goes with the other values that callback sends.
+- **Measured** (Swift 6 mode, batch mode off): the 20 are gone and nothing
+  new appeared; **79 errors in 39 files** remain.
+
+Landed (6zzc, main-actor `deinit`s): 9 of the 99. A main-actor class's
+`deinit` is nonisolated, so it cannot read a non-`Sendable` property: the
+timers, observers, XPC connection and display link these six classes tear
+down on the way out.
+
+- **The fix:** each such property is `nonisolated(unsafe)`, with a comment
+  that `deinit` reads it once nothing else holds the object.
+- **Not `isolated deinit`:** Swift 6.2's isolated `deinit` needs the macOS
+  15.4 runtime, and the app supports macOS 14.
+- **Measured** (Swift 6 mode, batch mode off): the 9 are gone and nothing
+  new appeared; **70 errors in 35 files** remain.
+
+Landed (6zzd, event-tap verdicts and `self` sent to the main thread): 14 of
+the 99.
+
+- **Four event-tap verdicts** (three in the switcher, one in Finder cut and
+  paste): the tap callback set a captured `var` inside
+  `DispatchQueue.main.sync`. It now returns the verdict from the `sync` call
+  instead, so nothing captured is mutated.
+- **Clipboard history's save:** the persist block's nested `finishPersist()`
+  captured the block's weak `self` by reference, so each main-queue hop sent
+  that shared reference. Both hops now take their own `[weak self]`, which
+  6zy found clean in both modes.
+- **Seven helper classes say how they are shared** and are
+  `@unchecked Sendable`:
+  - Command Bar file search: main-thread state, plus the Spotlight query
+    under its lock;
+  - Command Bar script runner and the Notch timer alarm: main thread only;
+  - the recorder's capture engine and cursor catalog: lock-guarded, with
+    the rest fixed before use;
+  - the switcher's pending window close and minimize restore: main thread
+    only, their Accessibility observer included.
+- **Not `@MainActor`:** the alarm's unit test drives it from plain code,
+  which a main-actor class would refuse.
+- **Measured** (Swift 6 mode, batch mode off): the 14 are gone and nothing
+  new appeared; **56 errors in 27 files** remain.
+
+Landed (6zze, callbacks handed to a queue): 25 of the 99.
+
+- **Typed for where they run:** `@MainActor @Sendable` for the callbacks
+  that only ever run on the main thread:
+  - opening a notification, the microphone request, self-uninstall's two
+    results;
+  - the window maximizer's frame changes, Homebrew's tap retry, the Super
+    Key's physical-key read;
+  - the sleep restore's `shouldProceed`. Its completion is `@Sendable`,
+    since it runs on the restore's own queue.
+- **The pasteboard lane:** results are `Sendable` and completions
+  `@MainActor`. The deadline's canceller and `didFinish` now live in the
+  main-thread delivery object, so only that object, the value and the clock
+  check cross the lane.
+- **Passed through as `nonisolated(unsafe)` lets:**
+  - keep-awake recovery's completion and transient paste's callbacks, both
+    made and run on the main thread;
+  - the menu-space reader's answer, made by a background read and run only
+    on the main thread.
+- **The window-capture queue** hands the captured value to the waiting
+  caller as `sending`. The value is a `nonisolated(unsafe)` let: Xcode 27
+  counts the result as part of the capture operation that made it, so the
+  probe still reported it as shared.
+- **Kept plain:** keep-awake recovery's completion parameter, because a
+  unit-test fixture copies that method into a class off the main actor.
+- **Measured** (Swift 6 mode, batch mode off): the 25 are gone and nothing
+  new appeared; **31 errors in 15 files** remain.
+
+Landed (6zzf, values sent across threads): 18 of the 99.
+
+- **Read before the hop, so only `Sendable` values cross:**
+  - app updates' results, copied out of the variables the sources filled;
+  - the brightness route's path key and dimming flag, without its IOKit
+    service;
+  - the mouse-acceleration callback's service, unwrapped from its context
+    pointer.
+- **Typed or marked:**
+  - the Dock preview's frame repair takes a main-actor `isCurrent`;
+  - the media loader's async operation is `sending`, handed to the task
+    that runs it. The video asset that operation reads crosses as a
+    `nonisolated(unsafe)` let, since the caller waits while the task
+    reads it;
+  - the switcher's two focus-retry states (one in Core), and the shelf's
+    file-promise transfer, say what keeps them safe and are
+    `@unchecked Sendable`.
+- **Accessibility references handed across** as `nonisolated(unsafe)` lets,
+  each with a comment saying where it goes:
+  - the Dock click walks' window lists;
+  - the Command Bar's menu item;
+  - auto-quit's observer callback arguments.
+- **Other hand-offs:**
+  - the mixer's pending output write, which its unit-test fixture copies
+    into a class off the main actor;
+  - the snippet tap's started port, which the main thread only compares.
+- **Kept per site, not a conformance:** an `AXUIElement` is an immutable
+  reference, but a module-wide `@retroactive @unchecked Sendable` would
+  vouch for every use at once; each crossing says what it does instead.
+- **Measured** (Swift 6 mode, batch mode off): the 18 are gone and nothing
+  new appeared; **13 errors in 3 files** remain.
+
+Landed (6zzg, screen capture and recorder export): the last 13 of the 99.
+
+- **Screenshot exclusions:** finding the app's own windows to leave out ran
+  on the main actor, so the shareable-content snapshot was sent there and
+  its windows sent back. Now only window IDs cross. The main-actor part
+  returns the IDs to exclude, and the snapshot is filtered where the
+  capture runs.
+- **Recorder export:**
+  - the exporter is `Sendable`, since its only state is the lock-guarded
+    cancel flag the editor flips;
+  - its progress callback is `@Sendable`, and each of the editor's two
+    progress closures takes its own `[weak self]`;
+  - the writer inputs and reader outputs cross into the task group as
+    `nonisolated(unsafe)` lets. Each is drained by one child task alone,
+    and the reader and writer are used again only after the group ends.
+- **Audio waveforms:** the loaded tracks and the source asset cross into
+  the detached task that reads them as `nonisolated(unsafe)` lets. The
+  editor keeps only the tracks' keys.
+- **Not `sending`:** Xcode 27 treats an `AVAsset` as non-`Sendable`; 6zzf's
+  probe rejected a `sending` closure that captured one.
+- **Measured** (Swift 6 mode, batch mode off): **no errors remain**. With
+  Services in Swift 6 mode the app builds, and its unit tests and self test
+  pass.
+- **Run-time checks:** the same build gave 1,745 functions Swift 6's
+  main-thread check: 716 closures typed `@MainActor`, and 1,029 that take
+  the main actor from where they are written. Among the second kind are 17
+  event-tap callbacks, and some of those taps run off the main thread.
+  Step 6zzh traces them before Services switches.
+
+Landed (6zzh, what would stop the app in Swift 6 mode): 6zzg's probe listed
+1,745 functions with Swift 6's main-thread check. A SwiftSyntax tool matched
+each one to the call it is passed to, and each was traced to the thread
+that runs it.
+
+- **Nine run off the main thread**, so in Swift 6 mode each would stop the
+  app:
+  - the scroll inverter's and middle click's tap callbacks, which run on
+    the pointer thread;
+  - the block that ends each of five tap threads (the switcher, Finder cut
+    and paste, the Super Key, keyboard debounce and the brightness keys),
+    which runs on that thread;
+  - the lock-screen sound's completion, on a thread of the system's choosing;
+  - the fan control helper's XPC error handler, on XPC's own queue.
+- **The fix:** each is now written outside the main actor. The tap callbacks
+  are `nonisolated` static lets, the five stops share
+  `TapThreadRunLoop.stop(_:)`, and the sound and the error handler are made
+  in `nonisolated` static functions.
+- **Safe as they are:** everything else either runs synchronously
+  (collection algorithms, `withLock`, SwiftUI builders) or runs on the main
+  thread. That covers main-queue blocks and work items, `assumeIsolated`,
+  AppKit's event monitors, animations and sheets, and dispatch sources and
+  IOKit ports set to the main queue. The CoreAudio and HID callbacks were
+  listed only for the main-queue blocks inside them.
+- **Measured** (Swift 6 mode): no errors, and 1,736 checked functions,
+  exactly the nine fewer. The other differences are only renumbering: the
+  closures after a removed tap callback in the same `start()` count from one
+  lower. The unit tests and self test pass.
+
+Landed (6zzi, Services in Swift 6 mode): `VitruvianAtriumServices` builds in the
+Swift 6 language mode (`features = ["swift.enable_v6"]`), as Core, Design and
+UI already do. A concurrency mistake in Services is now an error, not a
+warning.
+
+- **No more `-strict-concurrency=complete`:** Swift 6 mode implies it.
+- **The run-time check:** main-actor closures in Services now check for the
+  main thread when they start. 6zzh traced all 1,745 of them, and moved the
+  nine that run elsewhere out of the main actor. A new callback that runs off
+  the main thread needs the same: write it outside the main actor.
+- **Still in Swift 5 mode:** the app target (`VitruvianLib`),
+  `FanControlKit`, the fan control helper, the Now Playing helper and the
+  tests.
+
+Landed (6zzj, the app target in Swift 6 mode): `VitruvianLib` builds in the
+Swift 6 language mode too, so every module of the app but `FanControlKit`
+does (6zzk moves it).
+
+- **Measured:** a probe built it in Swift 6 mode and found 6 errors in 2
+  files. Each is fixed the way Services fixed the same error:
+  - two notification handlers in `AppDelegate` read the notification on the
+    main actor, so each now reads what it needs first;
+  - `StatusItemController`'s `deinit` reads four properties, which are now
+    `nonisolated(unsafe)`.
+- **The run-time check:** with the fixes, 70 closures check for the main
+  thread when they start. All 70 run there, so none moved:
+  - 28 blocks on the main queue;
+  - 12 Combine sinks received on the main queue;
+  - 11 `MainActor.assumeIsolated` bodies;
+  - 3 event monitors;
+  - 16 closures that a call runs before it returns, such as `filter` or
+    `first(where:)`.
+- **Still in Swift 5 mode:** `FanControlKit`, the fan control helper, the
+  Now Playing helper and the tests.
+
+Landed (6zzk, `FanControlKit` and the fan helper in Swift 6 mode): both build
+in the Swift 6 language mode. `FanControlKit` holds the fan-control policy
+the app reaches through `VitruvianAtriumCore` and the fan helper links. The lists
+in 6zzi and 6zzj had left it out.
+
+- **Measured:** a probe built both in Swift 6 mode and found no errors.
+  - The fan helper has 18 warnings, each a closure it sends to its own serial
+    queue that captures the controller or an XPC reply. The controller's state
+    lives on that queue.
+  - `FanControlKit` has one deprecation warning.
+- **The run-time check:** two closures check for the main thread when they
+  start: the helper's `SIGTERM` and `SIGINT` handlers. Their dispatch sources
+  run on the main queue.
+- **Still in Swift 5 mode:** the Now Playing helper and the tests.
+  - A first probe also built the Now Playing helper and found 20 errors, all
+    in its three adapter files. Each is global or static state that does not say
+    what guards it: a lock, a serial queue, or the watch process alone.
+
+Landed (6zzl, the Now Playing helper in Swift 6 mode): it builds in the Swift
+6 language mode, so the app, its modules and both helpers all do now.
+
+- **The 20 errors:** each property is `nonisolated(unsafe)`, grouped with
+  the guard it already had:
+  - `lock` for the six that track the chosen player;
+  - the serial `work` queue for the four that track a queue request;
+  - `lifetimeLock` for the four that more than one queue reads;
+  - the watch process for three: it sets `watching` and `readAt` before its
+    first read, and its reads, which keep `previousArtwork`, run one at a
+    time;
+  - set once, then only read, for the two MediaRemote handles and
+    `includeOtherPlayers`.
+- **Two more errors** showed once those were gone: `pending` and
+  `commandFramer`, locals of the watch that only the main queue touches. They
+  are `nonisolated(unsafe)` too, and `refresh()`, which uses `pending`, is
+  `@Sendable`.
+- **The run-time check:** two closures check for the main thread when they
+  start. Both are blocks the watch queues on the main queue.
+- **Still in Swift 5 mode:** the tests, and `make_icon`, the build tool that
+  draws the app icon. The lists in earlier steps left `make_icon` out.
+
+Landed (6zzm, the tests in Swift 6 mode): `unit_tests_bin` builds in the Swift
+6 language mode, with the main actor as the module's default isolation.
+
+- **Measured:** a first probe found 457 errors. 420 were statics in stand-ins
+  and test types that did not say what guards them; the rest were callbacks
+  the runner runs on the main thread.
+- **Why the main actor by default:** the runner runs every suite on the main
+  thread, and the production services the stand-ins copy are main-actor.
+  `-default-isolation MainActor` states both, in place of 420
+  `nonisolated(unsafe)` annotations.
+- **What runs elsewhere says `nonisolated`:**
+  - `TestSuite`, whose lock guards the counts;
+  - the URL protocols, a file manager and a file-promise receiver, which the
+    system calls on its own threads;
+  - the stand-ins for Dispatch, the HAL and defaults, which production reaches
+    from nonisolated helpers, as it reaches the real APIs;
+  - lock-guarded clocks, collectors and schedulers that production calls on
+    its own queues;
+  - the writer, export and window-capture tests, whose work runs in detached
+    tasks while the main thread waits.
+- **Compiler rules it hit,** each checked with the Linux toolchain:
+  - a base class's implicit `init()` is nonisolated while its subclass's is
+    main-actor, so 28 stand-in base classes declare `init() {}`;
+  - members of an `extension` do not take `nonisolated` from the type;
+  - a type named `DispatchQueue` gets Dispatch's `@Sendable` inference for
+    `async`.
+- **The run-time check:** four suites failed the main-thread check on another
+  thread. Each fix makes the compiler catch the case instead:
+  - `GeneralPasteboardAccess` and `MouseAppExceptions` held an injected clock
+    as a plain or `nonisolated(unsafe)` closure but call it on their own
+    queues. It is `@Sendable` now, and so are `SpeedTest`'s clock and time-box
+    scheduler, the same case before it ran;
+  - the repository source reader is nonisolated, and so, before they ran, are
+    the download-progress results and the archive outcome;
+  - `generate_sources.py` dropped a `nonisolated` written on the line above a
+    copied declaration, so the app-updates batch loop became main-actor and
+    its queue closures failed. A copy keeps it with `keep_nonisolated=True`.
+    The copies the tests run on the main thread leave it off, as their
+    stand-ins keep main-actor state.
+- **Still in Swift 5 mode:** only `make_icon`.
+
+Landed (6zzn, `make_icon` in Swift 6 mode): the build tool that draws the app
+icon builds in the Swift 6 language mode, so every Swift target in the app does
+now.
+
+- **Why the main actor by default:** `Tools/MakeIcon.swift` is a script of
+  top-level code, which runs on the main thread. In Swift 6 its top-level
+  variables are main-actor and its top-level functions are not, so
+  `drawMark` and the renderers could not read the images they draw.
+  `-default-isolation MainActor` puts the functions with the variables, as in
+  the tests, and the script compiles unchanged. A model of the script, built
+  with the Linux toolchain, shows the error without the default and none with
+  it.
+
+Landed (6zzp, the views' last written-out defaults): 30 `@AppStorage`
+properties in 17 views still wrote a default beside `DefaultsKey`. They now
+take their `Preference`, and the default comes from where it is
+registered.
+- **Which:** the Clipboard, Notch, Agents, Shelf, Screenshot, Monitor,
+  Switcher and keyboard debounce settings, and the island's agent strip,
+  capsule, lock screen and clipboard pages. Also the menu panel's clipboard
+  and window layout views, the quick launcher, and the metrics preview.
+- **Why they could move now:** every one wrote the registered default
+  word for word. No test reads their source any more, since step 7 turned
+  those reads into behavior.
+- **Left on purpose:**
+  - the eight menu panel orders, which stay unregistered (see 6zzo);
+  - `notchTimerMode`, which its view reads as an enum;
+  - `includeBetaUpdates`, whose view starts from `AppInfo.isBeta`.
+- **Left for step 7:** 14 properties in six files that tests still read as
+  text: the menu panel, mouse, mouse button, window layout and Command Bar
+  settings, and the switcher. They move with those reads.
+
+Landed (6zzq, the mouse switches): with step 7c's reads gone, eight more
+`@AppStorage` properties take their `Preference`:
+- the two mouse-button switches in the Mouse, Mouse Button and menu panel
+  views;
+- smooth scrolling;
+- the menu panel's clipboard switch.
+
+The switcher's window shortcut and the Command Bar's disabled sources
+follow; no test reads them. 14 remain:
+- the eight panel orders;
+- two enums, the timer mode and the horizontal scroll modifier;
+- `includeBetaUpdates`;
+- three in the Command Bar and window layout settings. Tests read their
+  keys there as text, to check that each has its own row.
+
+Landed (6zzr, the last written-out defaults): step 6 is done. Five more
+`@AppStorage` properties take their `Preference`:
+- **Two enums:** the timer mode and the horizontal scroll modifier. A view
+  reads each as its enum, so `@AppStorage` gains an initializer for an enum
+  stored as its raw text (`Design/PreferenceStorage.swift`). It starts from
+  the case the preference's default names, and each such default is written
+  from its case (`NotchTimerMode.timer.rawValue`), so it always names one.
+  `PreferenceTests` checks the starting case and a stored one.
+- **Three settings switches:** the Command Bar's ASCII layout, and window
+  layout's side repeat and disabled snap zones. Two tests check that each
+  switch has its settings row by finding its key in the view's source;
+  they now look for the `Preferences` name. Those reads stay in the ledger
+  (step 7e).
+
+What step 6 leaves, on purpose:
+- **Nine `@AppStorage` properties with their own default:**
+  - the eight menu panel orders, which stay unregistered (6zzo);
+  - `includeBetaUpdates`, whose default is whether this build is a beta.
+- **Service reads by `DefaultsKey`:** each moves to
+  `UserDefaults[preference]` as its code is touched. Both read the same
+  registered default, so nothing depends on the move.
+- **Concurrency:** every Swift target builds in the Swift 6 language mode
+  (6zzn), so there is nothing left to turn on.
+
+## Step 7: test-suite hygiene (done)
+
+- Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are
+  caught.
+- Replace the roughly 440 source-substring assertions with behavioral ones as the
+  code they guard moves (steps 3 to 5).
+- Move to Swift Testing once tests link modules instead of extracted text.
+
+Landed (7a, the mutation checks run again): `Tests/mutation_checks.py` had
+stopped working when `build.sh` stopped building the app.
+
+- **Through Bazel:** it plants each regression in the checkout, runs that
+  suite with `bazel test`, and requires a failure carrying the expected
+  diagnostic. A build error, a timeout or a different failure still does not
+  count. Each file goes back afterwards, also when the run is stopped, and the
+  run refuses to start while a file it mutates has uncommitted changes, so
+  `git checkout` can always restore it.
+- **Where it runs:** `bazel run --config=macos-app
+  //apps/desktop/vitruvian-atrium:mutation_checks`, and weekly in
+  `.github/workflows/vitruvian-atrium-mutation-checks.yaml` on the macOS runner.
+  Each of the 56 mutations rebuilds a module and reruns a suite, so no PR
+  waits on it. A red run files or refreshes one tracking issue.
+- **Fixtures:** all 56 still apply. One needed `package func toggle()`.
+
+Landed (7b, the Command Bar catalog): the six reads of `CommandBarCatalog.swift`
+became behavioral checks in `Tests/CommandBarCatalogRowTests.swift`.
+
+- **Seams:** the rows those reads pinned are built by functions that take
+  their actions: the clipboard clear, keep awake, restart, volume
+  confirmation and window rows, plus the uninstall rows and the feature
+  switches, which take their `defaults`. The catalog passes the live
+  services.
+- **What the checks run:** each row's id, title and confirmation, the
+  number it takes, and what it calls. They cover the keep awake presets, the
+  uninstall rows offering only apps the uninstaller takes, the rows for
+  process and window ids not learning habits, and a window row capturing
+  its focus source before the beat.
+- **Dropped:** the emoji id read. `Tests/CommandBarEmojiTests.swift`
+  already builds those rows and checks their ids for every skin tone.
+- **Left:** 141 source reads in 26 test files, over 86 production files.
+
+
+Landed (7c, the mouse-button settings): the three reads of
+`MouseButtonSettings.swift`, `MouseSettings.swift` and the mouse rows of
+`MenuPanelView.swift` became behavioral checks in
+`Tests/MouseButtonCaptureTests.swift`.
+
+- **Seam:** `MouseButtonCapture` (`Core/MouseButtons/MouseButtonCapture.swift`)
+  decides:
+  - what a pressed button means to the shortcut capture and to the Spaces
+    drag capture (refused as unusable, the radial menu's, already taken, or
+    accepted);
+  - what each capture says about a refusal, and its waiting prompt;
+  - the drag's button once its switch changes;
+  - whether either switch engages the tap.
+
+  The settings page, the Mouse page's permission note and status, and the
+  menu panel's row read it instead of spelling those rules out.
+- **What the checks run:**
+  - each capture's outcomes, including that the drag refuses a button
+    half-way through becoming a shortcut;
+  - that the drag's prompt and refusals never borrow the shortcut
+    capture's words;
+  - that switching the drag off drops its binding;
+  - that the feature's engaged keys are the same two switches.
+- **Left:** 138 source reads in 26 test files, over 84 production files.
+  The reads of `MouseButtonShortcutService.swift` stay for its own slice.
+
+Landed (7d, the Features hub's runtime): the three reads of
+`FeatureRuntime.swift` became behavioral checks in
+`Tests/FeatureRuntimeTests.swift`.
+
+- **Seams:**
+  - **Bindings as data.** What each feature's binding does is now a list of
+    named `FeatureBindingAction`s, from `FeatureRuntime.actions(for:in:)`,
+    read against the defaults it is given. One `perform` runs each action
+    on its live service. The table stays exhaustive: a new feature does not
+    compile until it says what it binds.
+  - **An environment.** The runtime takes an `Environment`: its defaults, the
+    performer, the follow-up after a change, and the saved domain.
+    `FeatureRuntime.shared` passes the live ones.
+- **What the checks run:**
+  - "Install all" on test defaults makes every installable feature available
+    without writing any enable key, with one change reported.
+  - A single install switches its main control on; a saved choice survives a
+    reinstall.
+  - Click debounce owns its service, the capture history follows exactly the
+    screenshot and recorder features, and the metric families recompute the
+    sampling plan.
+  - The island's extensions resync the island or stop their own service.
+  - Uninstalling media tools cancels their work, and switching WhatsApp
+    downloads off resets them.
+- **Left:** 135 source reads in 26 test files, over 83 production files.
+
+Landed (7e, the ledger of source pins): 133 reads of source files as text
+remain, in 26 test files. They are now counted in `Tests/source_pins.txt`,
+which `SourcePinLedgerTests` recounts on every run, so the number can only
+change on purpose:
+- a new source-text check fails until its line is added, in review;
+- a check turned behavioral fails until its line comes down.
+
+Also in this slice, the Features hub's "undo" of the never-used offer moves
+into `FeatureRuntime.reinstallKept(_:)`. `FeatureRuntimeTests` checks that
+it reinstalls without switching anything on, and keeps the features out of
+the offer. The read of `FeatureHubSettings.swift` that pinned it goes.
+
+- **What remains, and why it stays for now:** most of the 133 pin one of
+  three things:
+  - a SwiftUI view's structure (a lazy stack's nesting, a row's alignment,
+    a call a view must make), which only rendering could check;
+  - a service's live wiring to the system (event taps, the window server,
+    run loops), where the behavior is the operating system's;
+  - resources and build files (`Info.plist`, `build.sh`, localized strings),
+    which are data, not code.
+
+  Each converts when its code moves behind a seam, as 7b–7e did. The ledger
+  keeps the rest from growing meanwhile.
+Landed (7f, Swift Testing beside the runner): the suites now run through
+Swift Testing as well as through the binary's own runner.
+
+- **One list:** `Tests/TestGroups.swift` holds the suites and their run
+  order. `MetricsTests` runs them from there, and the harness checks that
+  the names Swift Testing lists match.
+- **The cases:** `Tests/SwiftTesting/UnitTests.swift` turns each suite into
+  one `@Test` case, run one at a time on the main actor. Every failed check
+  is recorded as an issue, and a suite that checks nothing fails.
+- **Where a suite runs:** on the main thread, from a run loop block. A
+  main-actor test body runs inside a main-queue callout, and the run loop
+  drains no more of the main queue under one. The suites spin the run loop
+  so that queued main-queue work can finish, so the first run, from the test
+  body, failed 16 checks there and crashed in the shelf's file promises.
+  Each suite now hands its failures back to the case, which records them.
+- **The target:** `unit_tests_swift_testing` builds them with `swift_test`
+  and runs the result through `bazel/run_unit_tests.sh`, like `unit_tests`.
+  It gets the same working directory, bare bundle and preference sweep.
+  It is `exclusive`, because both runners use the same throwaway defaults
+  suites and would clear each other's.
+- **Left:** `unit_tests` stays until this target has run green beside it.
+  Then the binary's runner goes, and Swift Testing is the only one.
+
+Landed (7g, Swift Testing runs the tests): step 7 is done. `unit_tests`
+runs under Swift Testing alone, and the binary's own runner is gone.
+
+- **The runner:** `Tests/MetricsTests.swift` and `TestSuite.finish()` are
+  deleted. `unit_tests_bin` is the `swift_test` from 7f, and `unit_tests`
+  runs it through the same wrapper as before. The second target, and its
+  `exclusive` tag, go.
+- **Kept from the old runner:**
+  - each suite prints its line (`notch: OK (75073 checks, 49.03s)`) and its
+    failed checks, and a suite that checks nothing fails;
+  - `--suite=<name>` still selects suites. The wrapper passes them in
+    `VITRUVIAN_TEST_SUITES`, and an unknown name fails its case;
+  - the log still ends in `TESTS OK` or `TESTS FAILED`, so
+    `mutation_checks.py` runs unchanged.
+- **Every suite must report:** Swift Testing would pass a run that skipped
+  suites, so the wrapper counts the suites' lines against the suites asked
+  for, which is every name in `TestGroups` on a full run, and fails on a
+  shortfall. Checked with a stand-in binary: all 44 reporting passes, while
+  43, none, or a failing binary fail.
+- **Dropped:** `--list`. The names are in `Tests/TestGroups.swift`.
+- **Registration is checked:** `TestRegistrationTests` follows the runs from
+  `TestGroups` through every contract and fails on a contract that nothing
+  runs. It used to compile and never run.
+- **`build.sh --test`** compiled the tests and a few sources as one module.
+  It has not worked since the tests import the app's modules (step 3.2e),
+  and it is left as upstream wrote it.
+
+Landed (7h, source pins turned behavioral, first part): 98 reads of source
+files as text become checks that run the code, in the resource, recorder,
+command bar, pointer-input, shelf, overlay, window layout, app management,
+storage, utilities, update, screenshot and switcher suites. 35 remain.
+
+- **Resources as data:** `Info.plist`, the entitlements, the fan helper's
+  launchd plist and every `InfoPlist.strings` are parsed as property lists
+  (`ShippedResource` in `LocalizationFeatureContractTests`) and checked by
+  key. Every language now has to translate the audio and organizer prompts,
+  not only mention their keys.
+- **Scripts run instead of being read:**
+  - `build.sh`'s Developer rename of the fan helper is `rename_fan_helper`,
+    run on a copy of the shipped plist.
+  - The preference sweep runs over a scratch folder holding every suite the
+    tests open.
+  - `Tools/setup-signing.sh` runs end to end against the stock LibreSSL
+    `openssl`, with logging stand-ins for `security` and `codesign`.
+  - `Tools/uninstall.sh`'s removal, rule search and sleep read are
+    functions run over scratch folders, against `SelfUninstall.ownedPaths`
+    and `Sudoers.ruleFiles`.
+- **Seams:**
+  - recorder: `RecorderComposer.FilteredComposition`, which a test makes
+    fail to check that both exports stop; `RecorderTypingSampler.record(at:)`;
+  - command bar: `CommandBarKeys`, `ShortcutListening`, the catalog's
+    `storeBootVolumeSpace`/`storeSystemAnswers`, `CommandBarView.examples`;
+  - keyboard: `KeycapLayoutSource`, `InputSourceSelection.selectNextSource`;
+  - Settings' Command Tab presence: `WindowActivationClaim`;
+  - pointer input: `MouseButtonShortcutSupport.route(press:)` and
+    `tapWanted`, `SpaceWindowBridge.registeredShortcut`,
+    `SuperKeyMouseTapRefusals`, `SuperKeyStatusLine`, `TapCreationRetry`,
+    `CleaningSessionSupport`, `FocusFollowsMouseSupport.leavesAlone` and
+    `handsToActivator`, `MouseAppExceptions.identity`, the installed-app
+    captions;
+  - the app delegate: `FeatureRuntime.permissionDidChange(_:)` and
+    `QuitInputRelease`;
+  - elsewhere: `HomebrewManager.awaitExit`, `DiskSampler.volumeKeys`,
+    `SelfUninstall.restoreSleep`, `OnboardingFeatureNames`,
+    `CleaningUnlockCounter.shippedPressWindow`.
+- **Threads:** the typing sampler takes 16,000 keystrokes from eight
+  threads at once, and the pointer thread invalidates a port it is handed
+  back off the main thread, at user-interactive quality.
+- **App management, storage, utilities, updates:** the uninstaller's picker
+  and drop (`AppPickerView.uninstaller`, `AppUninstaller.selectDropped`),
+  `UninstallerSupport.unmovedRow`, `UninstallDoneContent`,
+  `UninstallFailureNote.permissionReason`, `JunkCleaner.installedOracle` and
+  `Pass`, `CleanerScheduler.automaticStep`, `AutoQuitDeferredWork` and
+  `AutoQuitSupport.appIsBusy`, the disk image installer's non-modal alerts,
+  `QuitProtectionHUD.fit`, `RadialMenuSupport.mouseTapAction`, the share
+  services' wake notifications, `QuickTogglesSupport.exclusionCandidates`,
+  `UpdateShowcaseMediaLoader.download(startingWith:)` and
+  `LaunchAtLogin.setEnabled(_:system:)`. `bazel/sync_sources.py --check`
+  now also fails when `build.sh` stops compiling or staging the Now Playing
+  adapter, instead of a test reading `build.sh`.
+- **Screenshots:** `ScreenshotCapturePolicy.attachedCapturePlan` and
+  `attachedCaptureDisplayIndex` for the window capture,
+  `ScreenshotService.presentRoutedPreview`, the capture settings'
+  `TopSection`, the history's shortcut, panel and activation observer, the
+  selection controller's guide and loupe read through its `Environment`,
+  the preview's `Presentation` environment and `shareLinkClick`, the
+  editor model driven through drags, taps and undo, the recorder's
+  `outputSizeText` and `lookCards`, and a `withScratch` helper that hands
+  scratch files back before the check that follows.
+- **Switcher:** `SwitcherSessionOpening`, `WindowEnumerator.DisplayScope`,
+  `SwitcherPreferences` and `shaped(_:by:)`, `WindowActivator.PlacementCalls`
+  and `focusAfterSpaceHop`, `WindowPreviewProvider.listOnWarmQueue`,
+  `ActivationHandoff.handOff` and `isHandoffActivation`,
+  `DockClickService.activateCooperatively`, `DockPreviewService.dockElement`,
+  `MenuPanelView.heightCap`, and the status item's recovery in the new
+  `StatusItemRecovery`, which the app delegate calls. `ScrollingTitle` is
+  rendered at each alignment.
+- **Floating panels:** every surface that used to be scanned for a plain
+  `NSPanel` builds its panel through a `package` factory, and
+  `OverlayPanelTests` builds each one and checks that it is an
+  `OverlayPanel` that window managers skip. The two panels that need a live
+  controller are checked as subclasses.
+- **Shelf, island and window layout:** `ShelfDragWatchdog`,
+  `ShelfDismissal` (`ShelfView` takes one instead of a closure),
+  `ShelfStoreLoad.isWhole`, `NotchPanel.takesScroll`, the wheel's
+  `movesStrip`/`leavesWheel`, `NotchWatchLastReading`,
+  `NotchMenuSpaceReader.Environment.menusOnShow`,
+  `WindowLayoutSettledFrames`, `SettingsBackup.restore(_:into:)`,
+  `PastePlainService.readPlainText(on:from:then:)`, the mixer's
+  `MixerRender.renderCycle` and bounded `MixerEngineTeardown` queue, and
+  `KeepAwakeMatchModePicker`, rendered in a hosting view.
+
+Landed (7i, source pins turned behavioral, second part): 20 more reads go,
+leaving 15. Two kinds of check come out of them.
+
+- **Views, by value and by type.** What a view decides moves into a value it
+  reads, and the test checks the value. Where the property is the view's
+  shape, the test reads the view's compiled `Body` type, or renders it.
+  - Settings rows: `CommandBarSettingsActions` (two text-only buttons, by
+    body type), `CommandBarSettings.shortcutToggleTitle`, and a shared
+    `PreferenceSwitchRow` for the ASCII layout and side-repeat switches,
+    checked for the key it writes, in every language.
+  - Onboarding: `OnboardingOtherPermissionsList`, rendered with two rows of
+    different widths that report one leading edge.
+  - Features hub: `FeatureRuntime.Environment` takes the hardware reading,
+    and both pickers ask `FeatureRuntime.installBlockedReason(_:)`. A
+    fanless test runtime refuses exactly fan control, and install-all
+    finishes. `FeatureHubTally` feeds the summary card, and
+    `FeatureHubScrollPage`'s body type holds the lazy stack directly in the
+    scroll view (#2270).
+  - Display rows: `EnergyDisplayRow` and `BrightnessPanelDisplayRow`, whose
+    body types carry `SoftwareDimmingButton`.
+  - Switcher and Dock previews: `DockPreviewSupport.cardTitleBand` and
+    `pinMenuTitle`, `SwitcherItem.statusBadges`, `WindowNamePlacement`
+    (rendered at each placement), `SwitcherWindowlessDivider`.
+  - Panel surfaces: `PanelSurfaceFit` and `MenuPanelView.Mode`, which apply
+    the glass once, from one value.
+  - Screenshot and scratchpad: `sliderColumnLabel(width:)`, rendered with
+    `ImageRenderer` to show a long label shrinks inside its column, and
+    `ScratchpadIconTarget`, measured at its full hit size.
+- **Lints, as lints.** Rules over how all of the code is written are not
+  unit tests: they say nothing a piece of code does. They used to read the
+  whole Swift corpus, `build.sh` and `Tools/uninstall.sh` inside
+  `RepositoryFeatureTests`. They now run as `bazel/source_lints.py`, the
+  `source_lints_test` target, on any platform, with each rule's message
+  kept. 26 rules, among them:
+  - Keychain is never touched;
+  - activation is only yielded through `ActivationHandoff`;
+  - every event-tap owner follows the session and invalidates its port;
+  - the pointer taps run off the main thread;
+  - the path identity rule is spelled once;
+  - `build.sh` sweeps its temp folders and signs with a stable identity;
+  - the menu panel names every switch it draws.
+
+  Each rule was shown to fail on a mutated copy of the tree. Three of them
+  need a Mac to finish: that each SF Symbol drawn exists, that each system
+  tool is where it is expected, and that every language fills a format the
+  same way. They are split: the lint keeps the lists in
+  `Tests/SourceNames.swift` equal to what the sources spell, and the unit
+  tests check each listed name.
+- **Single-file rules from that suite, behavioral:**
+  - `URLCleanerField`, drawn in a grouped form (`SettingsLayoutTests`);
+  - `HomebrewOperationEnd`, run with a stand-in `brew`;
+  - Theme's borders taking `increasedContrast:`;
+  - `SelfUninstall.Steps.wired(to:)` with recorded `SystemCalls` and the
+    `InputInterceptor` list;
+  - the query habits through a `CommandBarRunRecorder` on test defaults;
+  - `SelfUninstall.commandLineSleepReport`;
+  - `BrightnessService`'s input taps suspended on a `BrightnessRig`.
+- **Left:** 15 reads, of service wiring in the switcher, the Dock preview,
+  the screenshot route, the command bar, Cleaning Mode, brightness, click
+  debounce, smooth scrolling and the recorder session.
+
+Landed (7j, the last source pins): the 15 reads left after 7i go, and with
+them the ledger. No unit test reads a source file as text.
+
+- **Service wiring, through seams:**
+  - App Switcher: `SwitcherTapEvent` (the tap mask and handler),
+    `SwitcherSessionSteps` (scope before the first layout, the display read
+    before the walk is queued, the front app read before teardown).
+  - Activation: `WindowActivator.ActivationSteps` and
+    `SwitcherActivationSources`, which record which source each step
+    receives.
+  - Dock Preview: `DockPreviewReattachment`, run tick by tick, and
+    `DockPreviewActions` for the close and activation flows.
+  - `SpaceHop.scheduleArrivalPulses`, with the scheduler injected.
+  - Screenshot route: `ScreenshotService.route`/`restore` over
+    `PreviewRoute`, and `ScreenshotLatestCapture.end` and
+    `registerShortcut`.
+  - Smooth scrolling and the side-wheel shortcuts take an `Environment` that
+    says whether the switcher steps by wheel. The glide is
+    `SmoothScrollGlide`, with its own environment and rig.
+  - `MouseClickDebounceLifecycle` and a `ClickFilterRig`.
+  - Cleaning Mode takes an `Environment`, and `CleaningTapSupport.classify`
+    reads each event.
+  - Brightness: `Environment.isMainThread` and a `stateLockIsFree` watched
+    by a defaults double.
+  - Command bar: `CommandBarPresentationSteps` for open and close, and
+    `offersUninstall`, `uninstallableAppIDs` and
+    `CommandBarUninstallReview` over throwaway bundles and a real
+    uninstaller.
+  - Search: `SearchFolding.folded`, the one fold the four searches use,
+    checked against Turkish.
+  - The recorder samplers' `start()` and `stop()` are `@MainActor`, which
+    the compiler now checks.
+- **Absences, as lints:** five checks that a file never does something
+  have nothing to run:
+  - Cleaning Mode posts no mouse event and reads no global button state;
+  - the brightness work queue never names NSScreen;
+  - the click filter schedules nothing;
+  - the smooth-scroll disabled-tap branch re-arms only while wanted;
+  - the inverter never yields to the switcher.
+
+  They join `bazel/source_lints.py`, each shown to fail on a mutated copy
+  of the tree.
+- **The ledger becomes a rule.** `SourcePinLedgerTests` and
+  `Tests/source_pins.txt` are deleted. `source_lints_test` fails on any
+  unit test that reads a source file as text or walks `Sources/`, so the
+  count stays at zero. `TestDoubleNameTests`, a rule over how the tests are
+  written, moves into the same lint. Both rules check their scanners on
+  sample text and fail on planted cases.
+
+What step 7 leaves: no reads of source files as text in the unit tests.
+The rules about how the code is written (33 of them) run as
+`source_lints_test`, on any platform. Where a rule needs a Mac to finish,
+`Tests/SourceNames.swift` carries the names and the unit tests check them.
+
+## Step 8: preferences read through their type (done)
+
+Step 6 gave every registered preference a `Preference` with its default, and
+views took it. Services kept reading most of them by key: `bool`,
+`integer`, `string` and the rest `(forKey: DefaultsKey.x)`. Step 8 moves those
+reads and writes to `UserDefaults[Preferences.x]`.
+
+- **Why:**
+  - **Types:** a typed read has the preference's type, so the compiler
+    rejects reading a fraction as a whole number, or writing text to a
+    switch.
+  - **Defaults:** a typed read falls back to the declared default where
+    registration has not run, as views already do. A read by key falls back
+    to `false`, `0` or nothing there.
+  - In the app nothing changes: all 717 preferences are registered from
+    their declarations before any of this code runs, so both reads return
+    the same value.
+- **What stays by key:**
+  - `Core/Defaults.swift`: registration, and the migrations that run before
+    it, which read what is stored rather than what a preference falls back
+    to;
+  - keys with no `Preference`, which are state the app keeps rather than
+    settings (such as `hasOnboarded`, or the window size). The last slice
+    decides each one.
+- **The ledger:** `preferences_are_reached_through_their_type` in
+  `bazel/source_lints.py` counts each `UserDefaults` call that reaches a
+  declared preference by key, outside `Core/Defaults.swift`. A new access
+  by key fails it. So does moving one without lowering its count, so each
+  count stays exact. It checks its scanner on sample text first.
+- **Slices, by the type the call returns:** the switches (8a); then whole
+  numbers and fractions; then text, where each `?? fallback` and `if let`
+  is checked against the declared default; then lists, tables and data;
+  then presence checks (`object`), resets (`removeObject`), the last
+  `@AppStorage(DefaultsKey.x)` properties, and the keys that have no
+  `Preference`.
+
+Landed (8a, the switches): every `bool(forKey:)` on a declared preference
+outside `Core/Defaults.swift` now reads `[Preferences.x]`. That is 402 reads
+across 118 files, and 43 writes became `[Preferences.x] = value`.
+
+- **Mechanical, and checked by the compiler:**
+  - A script rewrote `.bool(forKey: DefaultsKey.x)` to `[Preferences.x]`
+    on the same receiver, for each key whose `Preference` holds a `Bool`.
+  - Each rewritten write was a whole statement whose value is a `Bool`: a
+    literal, a comparison, or a property or parameter declared `Bool`.
+  - Each receiver is a `UserDefaults`: `defaults`,
+    `UserDefaults.standard`, or an environment's `defaults`.
+- **Left by key:**
+  - 17 `bool(forKey:)` calls on nine keys with no `Preference`, such as
+    `hasOnboarded` and `sleepDisabledFlag`;
+  - 14 in `Core/Defaults.swift`.
+- **Tests:** a test that drives a service over a fresh suite now sees a
+  switch's declared default where it saw `false`. The notch tests already
+  copy the registered `notch` defaults into their suite. One test relied on
+  `false`: the disk image install prompt's, which now sets all three of its
+  options.
+- **Checks that quoted the old spelling:** the smooth-scroll rule in
+  `bazel/source_lints.py` and one mutation in `Tests/mutation_checks.py`
+  now name `Preferences.x`.
+- **Ledger after 8a:**
+  - writes (`set`): 93;
+  - text (`string`): 117;
+  - whole numbers (`integer`): 51;
+  - fractions (`double`): 21;
+  - presence checks (`object`): 25;
+  - resets (`removeObject`): 18;
+  - lists (`stringArray`): 18;
+  - data (`data`): 8;
+  - tables (`dictionary`): 6;
+  - lists read as `array`: 2.
+
+Landed (8b, whole numbers and fractions): every `integer(forKey:)` and
+`double(forKey:)` on a declared preference outside `Core/Defaults.swift` now
+reads `[Preferences.x]`. That is 72 reads, and 27 writes became
+`[Preferences.x] = value`, in 38 files.
+
+- **The same script, by type:** it rewrites a read only where the getter
+  returns the preference's type. A write is rewritten only where the
+  preference holds a whole number or a fraction. Each value was checked to
+  have exactly that type: a count, a time interval, a size converted with
+  `Double(_:)`, or a parameter declared `Int`.
+- **Two writes say their conversion:** the cleaner's freed bytes and
+  WhatsApp cleanup's moved bytes are `Int64`, and their preferences hold
+  `Int`. They now write `Int(freed)` and `Int(bytes)`. The stored number is
+  the same on a 64-bit Mac.
+- **Defaults that differ from zero:** where registration has not run, as
+  in a test over a fresh suite, these reads now give the declared default.
+  Most of them, such as the battery limit and the clipboard history limit,
+  already went through a sanitizer that maps an unset `0` to that same
+  default.
+- **Left by key:** three reads of state with no `Preference`: the status
+  item placement generation and the settings window's saved size.
+- **Ledger after 8b:** `integer` and `double` are at zero, and writes
+  (`set`) are down to 66.
+
+Landed (8c, text): every `string(forKey:)` on a declared preference outside
+`Core/Defaults.swift` now reads `[Preferences.x]`. That is 117 reads, and 31
+writes became `[Preferences.x] = value`, in 50 files.
+
+- **A typed read is never nil, so the code around each read changed:**
+  - **`?? fallback`, 61 reads:** the fallback goes, because the declared
+    default takes its place. Where they differed (28 reads), the fallback
+    was `""` and the text went to a sanitizer or
+    `Enum(rawValue:) ?? .case`, which turns `""` into a case.
+  - **Passed on, compared or stored, 54 reads:** these work as they are.
+    A parameter typed `String?` takes the text as well.
+  - **Changed by hand:**
+    - the window layout's directional shortcut, which decodes with
+      `GlobalShortcut(storageValue:)` rather than `.flatMap` on an optional;
+    - the update showcase's media override, which drops an `if let`;
+    - the radial menu's legacy migration, whose fallbacks equal the
+      declared defaults.
+- **In the app nothing changes:** a registered key never read as nil, so
+  each fallback was unreachable there.
+- **Where registration has not run,** a read now gives the declared default
+  where it gave the fallback. The notch's idle content is the one read whose
+  enum fell back to another case (`.none`): it now starts from `music`, as
+  the app always has.
+- **Writes:** each value is a `String`: a raw value, an encoder that returns
+  `String`, a path or a version. Two writes stay by key, because their
+  encoders return `String?` and a `nil` there removes the key. They go with
+  the resets.
+- **Left by key:** 18 text reads of state with no `Preference`.
+- **Ledger after 8c:** `string` is at zero, and writes (`set`) are down to
+  35.
+
+Landed (8d, lists, tables and data): every `stringArray`, `array`,
+`dictionary` and `data(forKey:)` on a declared preference outside
+`Core/Defaults.swift` now reads `[Preferences.x]`. That is 34 reads, and 33
+writes became `[Preferences.x] = value`, in 26 files.
+
+- **Each read's surroundings, as with text:**
+  - `?? []` and `?? [:]` go: every one of these preferences declares an
+    empty list or table, except the Auto Quit exceptions, whose sanitizer
+    adds the mandatory apps either way.
+  - `dictionary(forKey:) as? [String: String]` is the preference's own type,
+    and the one `raw?[…]` after it becomes `raw[…]`.
+  - Four `guard`/`if let data = …` reads of data now test `isEmpty` on the
+    typed value, which falls back to empty data. One is the recorder's
+    presets, which decode straight from it.
+  - Parameters typed `[Any]`, `[String: Any]` and `Data?` take the typed
+    value as it is.
+- **Writes:** each value has the preference's type: a sanitized list, a
+  sorted set, an encoder that returns `[String: String]`, or encoded `Data`.
+- **Left by key:** reads of state with no `Preference`, such as the radial
+  menu profiles, text snippets, the mixer's volumes and the brightness
+  paths.
+- **Ledger after 8d:** every getter is at zero. Two writes are left, the
+  command bar aliases and row shortcuts, whose encoders return `String?`,
+  and `nil` there removes the key.
+
+Landed (8e, presence checks and resets): 21 `object(forKey:) as? T ??
+fallback` reads, 18 `removeObject(forKey:)` resets and the last two writes
+reach their preference through its type, in 13 files.
+
+- **`object(forKey:) as? Bool ?? true`:** this is how code got the right
+  default where registration had not run, which a typed read now does on
+  its own. Every one of the 21 fallbacks equals its declared default: the
+  notch switches, the Pomodoro lengths, the agent alerts and thresholds,
+  automatic update checks, the switcher's full-screen windows and the
+  cut-and-paste HUD.
+- **Resets:** `UserDefaults.removeValue(for:)` (`Core/Preference.swift`)
+  forgets the stored value, so the preference reads its default again.
+  `PreferenceTests` checks that. The fan helper's version and recovery
+  flag, the resume configuration and the audio priority lists use it.
+- **The last two writes:** the command bar aliases and row shortcuts now
+  write the encoded text, or remove the value when the encoder returns
+  `nil`, as `set(nil, forKey:)` did.
+- **The wallpaper's all-displays switch:** its getter answered `true` when
+  nothing was stored, and its declared default is `true`. It is now the
+  typed read.
+- **Three reads stay by key, on purpose:**
+  - the update service asks twice whether a beta channel was ever chosen,
+    which only `object(forKey:) == nil` can say;
+  - the confirmation preview's duration reads any stored number, a fraction
+    included, which a typed whole-number read would treat as missing.
+- **Ledger after 8e:** `object` is at three, and every other call is at
+  zero.
+
+What step 8 leaves, on purpose:
+- **Keys with no `Preference`.** These stay by key, because they are not
+  registered and a `Preference` is registered from its declaration.
+  - **Settings kept unregistered on purpose:**
+    - the menu panel orders and collapsed sections: an empty order means the
+      default one, and their migrations look for nothing stored;
+    - the language: unset follows the system;
+    - the lists the mixer, the launcher, the radial menu, the snippets and
+      the sound switcher keep as data.
+
+    Settings backup exports them by name.
+  - **State the app keeps rather than settings:**
+    - onboarding, update and migration markers;
+    - window sizes and bookmarks;
+    - saved volumes and brightness paths;
+    - developer switches.
+
+    Backup leaves them out.
+- **Three reads by key on declared preferences:** the beta channel's two
+  explicit-choice checks and the confirmation duration's read of any
+  number. They are listed in the ledger, so a fourth fails it.
+- **One `@AppStorage(DefaultsKey.x)` on a declared preference:** the beta
+  channel switch in Settings, which starts from whether the build is a
+  beta. Its declared default cannot say that.
+- **Values of another type read as the default.** The app writes each
+  preference with its type, so this only touches a value written by hand
+  (`defaults write` without `-int`, say) or left by an old build.
+  - `integer` and `double(forKey:)` parsed text, and `string(forKey:)`
+    turned numbers into text. A typed read gives the declared default
+    instead.
+  - A list or table with one element of another type now reads as empty,
+    where the audio priority lists and the switcher rules used to drop just
+    that element.
+
+## Not in scope
+
+Product decisions remain open:
+
+- own temporary-link and feedback backends;
+- community channels;
+- versioning;
+- the release pipeline.
+
+`UPSTREAM.md` lists them as release blockers.

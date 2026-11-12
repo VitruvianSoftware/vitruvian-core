@@ -1,0 +1,266 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 VitruvianSoftware
+
+import AppKit
+import VitruvianAtriumCore
+
+/// The services the island reads, starts, stops and asks to act.
+/// `SystemNotchIslandServices` is the app's, the shared instances; a test can
+/// stand in for any of them.
+@MainActor
+package protocol NotchIslandServices: AnyObject {
+    // MARK: What the island reads
+
+    var playback: NotchPlayback? { get }
+    var artwork: NSImage? { get }
+    var artworkTint: NotchArtworkTint? { get }
+    /// The song's player takes play and pause.
+    var musicCanToggle: Bool { get }
+    /// A command sent to the player has not been answered yet.
+    var musicCommandPending: Bool { get }
+    var timerSession: NotchTimerSession { get }
+    /// The timer's clock, which its session's readings count against.
+    var timerNow: TimeInterval { get }
+    var watchActive: Bool { get }
+    var watchHeadline: String { get }
+    var watchShowsThumbnail: Bool { get }
+    var downloads: [NotchDownloadItem] { get }
+    var choosingDownloadFolder: Bool { get }
+    /// The wallpaper section's image or folder picker is up.
+    var choosingWallpaperSource: Bool { get }
+    var agentUsage: AgentUsageSnapshot { get }
+    var keepAwakeActive: Bool { get }
+    var keepAwakeEndDate: Date? { get }
+    var calendarCountdown: NotchCalendarCountdown? { get }
+    /// The person chose to count down to this event.
+    func calendarIsChosen(_ event: NotchCalendarEvent) -> Bool
+    /// The event the Calendar page scrolls to once it next shows, or nil.
+    func revealCalendarEvent(_ id: String?)
+    var importingLyrics: Bool { get }
+    var scratchpadModal: Bool { get }
+    var canCreatePad: Bool { get }
+    var canClosePad: Bool { get }
+    var keepsCalendarPrompt: Bool { get }
+    var keepsCameraPrompt: Bool { get }
+    var activeUtility: QuickLauncherItem? { get }
+    /// True while a tool's island page is open, as one of the island's
+    /// sections.
+    var showsToolPanel: Bool { get }
+    var editingTools: Bool { get }
+    /// How many tiles the Tools page shows now: its quick tools and
+    /// commands. Tools' island pages are sections of their own.
+    var visibleToolCount: Int { get }
+    /// The island pages of tools the person shows, in the order the tools
+    /// were added.
+    var islandPanels: [ToolPanelHost.Key] { get }
+    /// Every island page there is, the ones the person hid as well.
+    var availableIslandPanels: [ToolPanelHost.Key] { get }
+    /// The tool's island page open now, if any.
+    var openToolPanel: ToolPanelHost.Key? { get }
+    /// A tool's island page's title, in the tool's own words.
+    func islandPanelTitle(_ key: ToolPanelHost.Key, language: AppLanguage) -> String
+    var mediaPresented: Bool { get }
+    var mediaContentHeight: CGFloat? { get }
+    var offersMediaDrop: Bool { get }
+    var systemSnapshot: SystemSnapshot { get }
+    var updateOffered: Bool { get }
+    var openingNotification: UUID? { get }
+
+    // MARK: What the island starts and stops
+
+    func startMusic()
+    func stopMusic()
+    func syncTimer()
+    func suspendTimer()
+    func stopTimer()
+    func syncWatch()
+    func stopWatch()
+    func syncDownloads()
+    func stopDownloads()
+    func syncCalendar()
+    func stopCalendar()
+    func syncNotifications()
+    func stopNotifications()
+    func syncAudioLevel()
+    func stopAudioLevel()
+    func syncAgentUsage()
+    func pauseAgentUsage()
+    func stopAgentUsage()
+    func syncAccessories()
+    func suspendAccessories()
+    func stopAccessories()
+    func syncFileTools()
+    func stopFileTools()
+    func stopLyrics()
+    func hideCamera()
+    func setMonitorDetailNeeds(_ needs: SystemMonitorPanelNeeds)
+    func setMonitorVisible(_ visible: Bool)
+    func syncLockScreen(_ session: NotchSessionState)
+    func closeLockScreen()
+    func playLockSound(locking: Bool)
+
+    // MARK: What the island asks them to do
+
+    func rememberPasteTarget()
+    func prepareTools()
+    /// The island collapsed or moved to another page: a tool's island page
+    /// open closes, and its tool is told.
+    func closeToolPanel()
+    /// Opens a tool's island page; false when the tool refused it.
+    @discardableResult
+    func openIslandToolPanel(_ key: ToolPanelHost.Key) -> Bool
+    /// Shows or hides a tool's island page among the sections, as its
+    /// detail's switch does; hidden, an open page closes.
+    func setIslandPanelShown(_ tool: ToolID, _ shown: Bool)
+    /// Whether the tools page takes a key, after acting on it.
+    func takesToolsKey(_ event: NSEvent, flow: QuickToolsSupport.GridFlow) -> Bool
+    func createPad(defaultName: String)
+    func showNormalMenuPanel()
+    func skipTrack(forward: Bool)
+    /// Plays or pauses the song `context` names. False when the command
+    /// was not sent, as while another is still on its way.
+    func toggleMusic(context: NotchPlaybackContext?) -> Bool
+    func openNotification(_ id: UUID,
+                          completion: @escaping @MainActor @Sendable (NotchNotificationReader.ActionResult) -> Void)
+    func dismissNotification(_ id: UUID)
+    func toggleKeepAwake()
+    func toggleMicrophone()
+    func captureScreenshot()
+    func toggleRecording()
+    func showCommandBar()
+    func showScratchpad()
+    func openNotchSettings()
+    func showSettingsModule(_ module: NotchModule)
+
+    // MARK: The app around the island
+
+    /// A modal window, such as an open or save panel, is up.
+    var hasModalWindow: Bool { get }
+    func isOverStatusItem(_ point: CGPoint) -> Bool
+    /// The Accessibility Keyboard covers a point on screen.
+    func assistiveKeyboardOwns(_ point: CGPoint) -> Bool
+    /// Closes the menu panel's popover, keeping the island open.
+    func closeMenuPopover()
+    func openSettingsWindow()
+    func showUpdatePreview()
+}
+
+/// The shared instances, as the app runs them.
+@MainActor
+package final class SystemNotchIslandServices: NotchIslandServices {
+    package init() {}
+
+    package var playback: NotchPlayback? { NotchMusicService.shared.playback }
+    package var artwork: NSImage? { NotchMusicService.shared.artwork }
+    package var artworkTint: NotchArtworkTint? { NotchMusicService.shared.artworkTint }
+    package var musicCanToggle: Bool { NotchMusicService.shared.canPerform(.toggle) }
+    package var musicCommandPending: Bool { NotchMusicService.shared.commandPending }
+    package var timerSession: NotchTimerSession { NotchTimerService.shared.session }
+    package var timerNow: TimeInterval { NotchTimerService.shared.now }
+    package var watchActive: Bool { NotchWatchService.shared.isActive }
+    package var watchHeadline: String { NotchWatchService.shared.headline }
+    package var watchShowsThumbnail: Bool { NotchWatchService.shared.showsThumbnail }
+    package var downloads: [NotchDownloadItem] { NotchDownloadService.shared.items }
+    package var choosingDownloadFolder: Bool { NotchDownloadService.shared.isChoosingFolder }
+    package var choosingWallpaperSource: Bool { WallpaperService.shared.isChoosingSource }
+    package var agentUsage: AgentUsageSnapshot { AgentUsageService.shared.snapshot }
+    package var keepAwakeActive: Bool { KeepAwakeManager.shared.isActive }
+    package var keepAwakeEndDate: Date? { KeepAwakeManager.shared.endDate }
+    package var calendarCountdown: NotchCalendarCountdown? { NotchCalendarService.shared.countdown }
+    package func calendarIsChosen(_ event: NotchCalendarEvent) -> Bool { NotchCalendarService.shared.isChosen(event) }
+    package func revealCalendarEvent(_ id: String?) { NotchCalendarService.shared.revealing = id }
+    package var importingLyrics: Bool { NotchLyricsService.shared.isImporting }
+    package var scratchpadModal: Bool { ScratchpadService.shared.modalInteractionActive }
+    package var canCreatePad: Bool { ScratchpadService.shared.canCreatePad }
+    package var canClosePad: Bool { ScratchpadService.shared.canClosePad }
+    package var keepsCalendarPrompt: Bool { Permissions.shared.keepsCalendarPrompt }
+    package var keepsCameraPrompt: Bool { CameraPreviewService.shared.keepsNotchPermissionPrompt }
+    package var activeUtility: QuickLauncherItem? { QuickLauncherService.shared.activeUtility }
+    package var showsToolPanel: Bool { ToolPanelHost.shared.island != nil }
+    package var editingTools: Bool { QuickLauncherService.shared.isEditing }
+    package var visibleToolCount: Int { QuickLauncherService.shared.visibleTiles.count }
+    package var islandPanels: [ToolPanelHost.Key] { ExternalToolStore.shared.islandPanels() }
+    package var availableIslandPanels: [ToolPanelHost.Key] { ExternalToolStore.shared.availableIslandPanels() }
+    package var openToolPanel: ToolPanelHost.Key? { ToolPanelHost.shared.island }
+    package func islandPanelTitle(_ key: ToolPanelHost.Key, language: AppLanguage) -> String {
+        ExternalToolStore.shared.installed[key.tool]?.tool.panel(key.panel)?.title.text(for: language.rawValue) ?? key.panel
+    }
+    package var mediaPresented: Bool { NotchFileToolsService.shared.mediaPresented }
+    package var mediaContentHeight: CGFloat? { NotchFileToolsService.shared.mediaContentHeight }
+    package var offersMediaDrop: Bool { NotchFileToolsService.shared.offersMediaDrop }
+    package var systemSnapshot: SystemSnapshot { SystemMonitor.shared.snapshot }
+    package var updateOffered: Bool { UpdateService.shared.state.isOffer }
+    package var openingNotification: UUID? { NotchNotificationService.shared.openingID }
+
+    package func startMusic() { NotchMusicService.shared.start() }
+    package func stopMusic() { NotchMusicService.shared.stop() }
+    package func syncTimer() { NotchTimerService.shared.syncWithPreferences() }
+    package func suspendTimer() { NotchTimerService.shared.suspend() }
+    package func stopTimer() { NotchTimerService.shared.stop() }
+    package func syncWatch() { NotchWatchService.shared.syncWithPreferences() }
+    package func stopWatch() { NotchWatchService.shared.stop() }
+    package func syncDownloads() { NotchDownloadService.shared.syncWithPreferences() }
+    package func stopDownloads() { NotchDownloadService.shared.stop() }
+    package func syncCalendar() { NotchCalendarService.shared.syncWithPreferences() }
+    package func stopCalendar() { NotchCalendarService.shared.stop() }
+    package func syncNotifications() { NotchNotificationService.shared.syncWithPreferences() }
+    package func stopNotifications() { NotchNotificationService.shared.stop() }
+    package func syncAudioLevel() { NotchAudioLevelService.shared.syncWithPreferences() }
+    package func stopAudioLevel() { NotchAudioLevelService.shared.stop() }
+    package func syncAgentUsage() { AgentUsageService.shared.syncWithPreferences() }
+    package func pauseAgentUsage() { AgentUsageService.shared.pause() }
+    package func stopAgentUsage() { AgentUsageService.shared.stop() }
+    package func syncAccessories() { NotchAccessoryService.shared.syncWithPreferences() }
+    package func suspendAccessories() { NotchAccessoryService.shared.suspend() }
+    package func stopAccessories() { NotchAccessoryService.shared.stop() }
+    package func syncFileTools() { NotchFileToolsService.shared.syncWithPreferences() }
+    package func stopFileTools() { NotchFileToolsService.shared.stop() }
+    package func stopLyrics() { NotchLyricsService.shared.stop() }
+    package func hideCamera() { CameraPreviewService.shared.hideEmbedded() }
+    package func setMonitorDetailNeeds(_ needs: SystemMonitorPanelNeeds) { SystemMonitor.shared.setNotchDetailNeeds(needs) }
+    package func setMonitorVisible(_ visible: Bool) { SystemMonitor.shared.setNotchVisible(visible) }
+    package func syncLockScreen(_ session: NotchSessionState) { NotchLockScreenService.shared.sync(session) }
+    package func closeLockScreen() { NotchLockScreenService.shared.close() }
+    package func playLockSound(locking: Bool) { NotchLockScreenService.shared.playSound(locking: locking) }
+
+    package func rememberPasteTarget() { ClipboardHistoryService.shared.rememberPasteTarget() }
+    package func prepareTools() { QuickLauncherService.shared.prepareForPresentation() }
+    package func closeToolPanel() {
+        if let island = ToolPanelHost.shared.island { ToolPanelHost.shared.close(island) }
+    }
+    package func setIslandPanelShown(_ tool: ToolID, _ shown: Bool) {
+        ExternalToolStore.shared.setShowsInIsland(tool, shown)
+    }
+    package func openIslandToolPanel(_ key: ToolPanelHost.Key) -> Bool {
+        ToolPanelHost.shared.open(key, in: .island) == nil && ToolPanelHost.shared.island == key
+    }
+    package func takesToolsKey(_ event: NSEvent, flow: QuickToolsSupport.GridFlow) -> Bool {
+        QuickLauncherService.shared.takesPanelKey(event, flow: flow)
+    }
+    package func createPad(defaultName: String) { ScratchpadService.shared.createPad(defaultName: defaultName) }
+    package func showNormalMenuPanel() { MenuPanelFocus.shared.showNormalPanel() }
+    package func skipTrack(forward: Bool) { NotchMusicService.shared.skipFromGesture(forward: forward) }
+    package func toggleMusic(context: NotchPlaybackContext?) -> Bool {
+        NotchMusicService.shared.send(.toggle, context: context)
+    }
+    package func openNotification(_ id: UUID,
+                                  completion: @escaping @MainActor @Sendable (NotchNotificationReader.ActionResult) -> Void) {
+        NotchNotificationService.shared.open(id, completion: completion)
+    }
+    package func dismissNotification(_ id: UUID) { NotchNotificationService.shared.dismiss(id) }
+    package func toggleKeepAwake() { KeepAwakeManager.shared.toggle() }
+    package func toggleMicrophone() { MicMuteService.shared.toggle() }
+    package func captureScreenshot() { ScreenshotService.shared.capture() }
+    package func toggleRecording() { ScreenRecorderService.shared.toggle() }
+    package func showCommandBar() { CommandBarService.shared.show() }
+    package func showScratchpad() { ScratchpadService.shared.show() }
+    package func openNotchSettings() { SettingsRouter.shared.request(FeatureSettingsDestination(.notch)) }
+    package func showSettingsModule(_ module: NotchModule) { SettingsRouter.shared.notchModule = module }
+
+    package var hasModalWindow: Bool { NSApp.modalWindow != nil }
+    package func isOverStatusItem(_ point: CGPoint) -> Bool { appShell()?.isOverStatusItem(point) == true }
+    package func assistiveKeyboardOwns(_ point: CGPoint) -> Bool { AssistiveKeyboard.ownsCocoaPoint(point) }
+    package func closeMenuPopover() { appShell()?.closePopover(preservingNotch: true) }
+    package func openSettingsWindow() { appShell()?.openSettingsWindow() }
+    package func showUpdatePreview() { appShell()?.showUpdatePreview() }
+}

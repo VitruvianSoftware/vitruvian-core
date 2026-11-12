@@ -1,0 +1,3549 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Vorssaint
+
+import Combine
+import Foundation
+
+/// The way a language agrees a noun with the number in front of it.
+package enum CountAgreement {
+    /// One form for exactly one, another for every other count.
+    case oneAndMany
+    /// Russian and Ukrainian: the number's last digits decide. 21 takes the
+    /// first form and 22 the middle one, while 11 through 14 fall back to the last.
+    case byLastDigits
+    /// Slovak: the whole number decides. Only one itself takes the first form
+    /// and only two through four the middle one, so 21 and 22 read
+    /// "21 súborov" and "22 súborov" the same way 25 does.
+    case byWholeNumber
+}
+
+/// Languages the interface can use. The first launch defaults to the system
+/// language; the onboarding and Settings let the user override it at any time.
+package enum AppLanguage: String, CaseIterable, Identifiable {
+    case enUS = "en-US"
+    case ptBR = "pt-BR"
+    case tr = "tr"
+    case ru = "ru"
+    case es = "es"
+    case sk = "sk"
+    case de = "de"
+    case fr = "fr"
+    case it = "it"
+    case ja = "ja"
+    case ko = "ko"
+    case uk = "uk"
+    case zhHans = "zh-Hans"
+    case zhTW = "zh-TW"
+    case zhHK = "zh-HK"
+
+    package var id: String { rawValue }
+
+    /// How this language agrees a counted noun with the number in front of
+    /// it. Three of the fifteen put a distinct form between one and many, and
+    /// they disagree on which numbers take it, so the count itself is not
+    /// enough to pick a form without knowing the language's rule.
+    package var countAgreement: CountAgreement {
+        switch self {
+        case .ru, .uk: return .byLastDigits
+        case .sk: return .byWholeNumber
+        default: return .oneAndMany
+        }
+    }
+
+    /// The language's own name, shown in its own script, the way macOS lists them.
+    package var displayName: String {
+        switch self {
+        case .enUS: return "English (US)"
+        case .ptBR: return "Português (Brasil)"
+        case .tr: return "Türkçe"
+        case .ru: return "Русский"
+        case .es: return "Español"
+        case .sk: return "Slovenčina"
+        case .de: return "Deutsch"
+        case .fr: return "Français"
+        case .it: return "Italiano"
+        case .ja: return "日本語"
+        case .ko: return "한국어"
+        case .zhHans: return "简体中文"
+        case .zhHK: return "繁體中文（香港）"
+        case .zhTW: return "繁體中文（台灣）"
+        case .uk: return "Українська"
+        }
+    }
+
+    /// Dates and times in this language, arranged the way System Settings
+    /// asks: region, 12- or 24-hour clock and first day of the week. A locale
+    /// made from the language alone would bring that language's own clock.
+    package func formattingLocale(system: Locale = .autoupdatingCurrent) -> Locale {
+        var components = Locale.Components(identifier: rawValue)
+        components.region = system.region
+        components.hourCycle = system.hourCycle
+        components.firstDayOfWeek = system.firstDayOfWeek
+        return Locale(components: components)
+    }
+
+    package static var systemDefault: AppLanguage {
+        let preferred = Locale.preferredLanguages.first ?? "en"
+        let p = preferred.lowercased()
+
+        if p.hasPrefix("zh-hk") || p.hasPrefix("zh-hant-hk") {
+            return .zhHK
+        }
+
+        if p.hasPrefix("zh-tw") || p.hasPrefix("zh-hant-tw") || p.hasPrefix("zh-hant") {
+            return .zhTW
+        }
+
+        let matches: [(String, AppLanguage)] = [
+            ("pt", .ptBR), ("tr", .tr), ("ru", .ru), ("es", .es), ("sk", .sk), ("de", .de),
+            ("fr", .fr), ("it", .it), ("ja", .ja), ("ko", .ko), ("uk", .uk), ("zh", .zhHans),
+        ]
+        for (prefix, language) in matches where preferred.hasPrefix(prefix) { return language }
+        return .enUS
+    }
+}
+
+/// Source of every user-facing string. Views observe this object so the whole
+/// interface re-renders immediately when the language changes.
+package final class L10n: ObservableObject {
+    /// The interface sets the language on the main thread. Services read it
+    /// from wherever they build text, so this is not main-actor isolated yet.
+    nonisolated(unsafe) package static let shared = L10n()
+
+    @Published package var language: AppLanguage {
+        didSet { UserDefaults.standard.set(language.rawValue, forKey: DefaultsKey.language) }
+    }
+
+    package var s: Strings { Strings.localized(language) }
+
+    private init() {
+        if let raw = UserDefaults.standard.string(forKey: DefaultsKey.language),
+           let saved = AppLanguage(rawValue: raw) {
+            language = saved
+        } else {
+            language = .systemDefault
+        }
+    }
+}
+
+extension Strings {
+    /// The catalog for a language other than the current one, as the
+    /// feature string tables offer theirs.
+    package static func localized(_ language: AppLanguage) -> Strings {
+        switch language {
+        case .enUS: return .enUS
+        case .ptBR: return .ptBR
+        case .tr: return .tr
+        case .ru: return .ru
+        case .es: return .es
+        case .sk: return .sk
+        case .de: return .de
+        case .fr: return .fr
+        case .it: return .it
+        case .ja: return .ja
+        case .ko: return .ko
+        case .zhHans: return .zhHans
+        case .zhHK: return .zhHK
+        case .zhTW: return .zhTW
+        case .uk: return .uk
+        }
+    }
+}
+
+/// Flat, compiler-checked catalog of UI strings. Adding a field here forces
+/// both translations to be provided.
+package struct Strings {
+    // MARK: Menu bar & context menu
+    package let statusIdleTooltip: String
+    package let statusActiveUntil: String      // + time
+    package let statusActiveIndefinite: String
+    package let menuEnableAwake: String
+    package let menuDisableAwake: String
+    package let menuActivateFor: String
+    package let menuSettings: String
+    package let menuAbout: String
+    package let menuQuit: String
+    // Standard application menu bar (App / Edit / Window) shown while one of the
+    // app's own windows is focused. Without it, an accessory app has no main menu
+    // and the standard shortcuts (Cmd+H/M/W/Q, Cmd+C/V/X/A) do nothing.
+    package let menuHide: String
+    package let menuHideOthers: String
+    package let menuShowAll: String
+    package let menuEdit: String
+    package let menuUndo: String
+    package let menuRedo: String
+    /// Named actions an icon-only control borrows so it can say what it
+    /// does. No feature owns these, because half a dozen already share them.
+    package let actionClear: String
+    package let actionRemove: String
+    package let actionBack: String
+    package let actionSearch: String
+    package let actionMute: String
+    package let actionUnmute: String
+    package let actionPlay: String
+    package let actionPause: String
+    package let menuCut: String
+    package let menuCopy: String
+    package let menuPaste: String
+    package let menuSelectAll: String
+    package let menuWindow: String
+    package let menuMinimize: String
+    package let menuZoom: String
+    package let menuClose: String
+
+    // MARK: Durations
+    package let minutes15: String
+    package let minutes30: String
+    package let hour1: String
+    package let hours2: String
+    package let hours4: String
+    package let hours8: String
+    package let indefinitely: String
+    package let indefinite: String
+
+    // MARK: Panel — header & footer
+    package let panelSettings: String
+    package let panelQuit: String
+    package let panelHotkeyHint: String
+
+    // MARK: Panel — keep awake card
+    package let keepAwakeTitle: String
+    package let keepAwakeEndsIn: String        // + remaining
+    package let keepAwakeUntilDisabled: String
+    package let keepAwakeNormalRules: String
+    package let keepAwakeUntilLabel: String
+    package let keepAwakeUntilStart: String
+    package let keepAwakeOptions: String
+    package let keepAwakeMouseJiggle: String
+    package let keepAwakeMouseJiggleCaption: String
+    package let keepAwakeMouseJiggleInterval: String
+    package let keepAwakeActiveIconLabel: String
+    package let keepAwakeActiveIconAtrium: String
+    package let keepAwakeActiveIconCoffee: String
+    package let keepAwakeActiveIconEye: String
+    package let keepAwakeActiveIconMoon: String
+    package let keepAwakeActiveIconLight: String
+    package let keepAwakeIconTintLabel: String
+    package let keepAwakeIconTintOrange: String
+    package let keepAwakeIconTintGreen: String
+    package let keepAwakeIconTintBlue: String
+    package let keepAwakeIconTintPurple: String
+    package let keepAwakeIconTintPink: String
+    package let keepAwakeIconTintNone: String
+    package let durationLabel: String
+    package let clamshellTitle: String
+    package let clamshellOnCaption: String
+    package let clamshellNeedsSession: String
+    package let clamshellReady: String
+    package let clamshellNeedsPassword: String
+
+    // MARK: Panel — system monitor
+    package let systemSection: String
+    package let temperatures: String
+    package let cpuLabel: String
+    package let gpuLabel: String
+    package let batteryLabel: String
+    package let usageSection: String
+    package let memorySection: String
+    package let memoryPressure: String
+    package let memorySwapUsed: String
+    package let memoryCompressed: String
+    package let memoryCachedFiles: String
+    package let pressureNormal: String
+    package let pressureWarning: String
+    package let pressureCritical: String
+    package let monitorUnavailable: String
+    package let energyAppsTitle: String
+    package let energyAppsIdle: String
+
+    // MARK: Notifications
+    package let notifySessionEndedTitle: String
+    package let notifySessionEndedBody: String
+    package let notifyBatteryTitle: String
+    package let notifyBatteryBody: String
+
+    // MARK: Administrator prompts (shown by macOS password dialogs)
+    package let adminPromptClamshellOn: String
+    package let adminPromptClamshellOff: String
+    package let adminPromptRecover: String
+    package let adminPromptUpdate: String
+    package let adminPromptSudoersInstall: String
+    package let adminPromptSudoersRemove: String
+
+    // MARK: Settings — window & tabs
+    package let settingsTitle: String
+    package let tabGeneral: String
+    package let tabEnergy: String
+    package let tabMouse: String
+    package let tabSwitcher: String
+    package let tabAdvanced: String
+    package let tabAbout: String
+    package let tabReleaseNotes: String
+    package let releaseNotesOnUpdateToggle: String
+    package let minimalWindowPreviews: String
+    package let minimalWindowPreviewsCaption: String
+    package let previewSizeLabel: String
+    package let previewSizeNormal: String
+    package let previewSizeLarge: String
+    package let previewSizeXLarge: String
+    package let settingsGroupFeatures: String
+
+    // MARK: Settings — advanced
+    package let advancedResetSection: String
+    package let advancedResetDescription: String
+    package let advancedClearButton: String
+    package let advancedCleared: String
+    package let advancedClearFailed: String
+    package let advancedClearConfirmTitle: String
+    package let advancedClearConfirmBody: String
+    package let advancedUninstallSection: String
+    package let advancedUninstallDescription: String
+    package let advancedUninstallButton: String
+    package let advancedUninstallConfirmTitle: String
+    package let advancedUninstallConfirmBody: String
+    package let advancedUninstallFailedTitle: String
+    package let advancedUninstallFailedBody: String
+
+    // MARK: Settings — general
+    package let launchAtLogin: String
+    package let languageLabel: String
+    package let menuBarSection: String
+    package let showCountdown: String
+    package let globalHotkeySection: String
+    package let hotkeyToggle: String
+    package let hotkeyCaption: String
+
+    // MARK: Settings — energy
+    package let sessionSection: String
+    package let defaultDurationLabel: String
+    package let keepAwakeAutoStart: String
+    package let keepAwakeAutoStartCaption: String
+    package let batteryProtectionSection: String
+    package let batteryDisableBelow: String
+    package let batteryNever: String
+    package let batteryProtectionCaption: String
+    package let clamshellSection: String
+    package let configuring: String
+    package let sudoersFailed: String
+    package let clamshellExplanation: String
+    package let dimScreenOnLidCloseTitle: String
+    package let dimScreenOnLidCloseCaption: String
+
+    // MARK: Settings — mouse
+    package let scrollSection: String
+    package let invertMouseScroll: String
+    package let invertMouseScrollCaption: String
+    package let scrollTrackpadNote: String
+    package let scrollActiveNow: String
+    package let mouseNavigationActiveNow: String
+    package let smoothScrollName: String
+    package let smoothScrollCaption: String
+    package let smoothScrollStepLabel: String
+    package let mouseNavigationSection: String
+    package let mouseNavigationEnable: String
+    package let mouseNavigationCaption: String
+    package let middleClickSection: String
+    package let middleClickEnable: String
+    package let middleClickEnableCaption: String
+    package let middleClickDragConflict: String
+    package let middleClickNoTrackpad: String
+    package let middleClickTapPicker: String
+    package let middleClickTapOff: String
+    package let middleClickTapThreeFingers: String
+    package let middleClickTapFourFingers: String
+    package let middleClickTapCaption: String
+    package let quickToolsTab: String
+    package let quickToolShortcutToggle: String
+    package let ocrName: String
+    package let ocrCaption: String
+    package let ocrCopied: String
+    package let ocrNoText: String
+    package let colorPickerName: String
+    package let colorPickerCaption: String
+    package let colorPickerFormatLabel: String
+    package let colorPickerBareHexToggle: String
+    package let colorPickerPickNow: String
+    package let micMuteName: String
+    package let micUnmuteName: String
+    package let micMuteCaption: String
+    package let micMutedHUD: String
+    package let micUnmutedHUD: String
+    package let micMutePartialHUD: String
+    package let micUnmutePartialHUD: String
+    package let micMuteMenuBarToggle: String
+    package let micMuteMenuBarCaption: String
+    package let pastePlainName: String
+    package let pastePlainCaption: String
+    package let launcherName: String
+    package let launcherCaption: String
+    package let launcherOpenNow: String
+    package let launcherEditHint: String
+    package let launcherEmptyState: String
+    package let launcherAddSection: String
+    package let launcherKeysHint: String
+
+    // MARK: Settings — switcher
+    package let switcherSection: String
+    package let switcherEnable: String
+    package let switcherEnableCaption: String
+    package let switcherUsageHint: String
+    package let switcherNoWindows: String
+    package let switcherIconRowMode: String
+    package let switcherIconRowModeCaption: String
+    package let switcherSimpleModeCaption: String
+    package let switcherShortcutHintApps: String
+    package let switcherShortcutHintWindows: String
+    package let switcherWindowShortcutCaption: String
+    package let switcherTakeOverSystemShortcuts: String
+    package let switcherTakeOverSystemShortcutsCaption: String
+    package let switcherAppearanceDelay: String
+    package let switcherAppearanceDelayCaption: String
+    package let switcherMaxColumns: String
+    package let switcherMaxColumnsCaption: String
+    package let switcherMaxColumnsAuto: String
+    package let switcherInstantSelection: String
+    package let switcherInstantSelectionCaption: String
+    package let switcherMergeTabs: String
+    package let switcherMergeTabsCaption: String
+    package let switcherWindowlessApps: String
+    package let switcherWindowlessAppsCaption: String
+    package let switcherWindowlessAppsOff: String
+    package let switcherWindowlessAppsFinder: String
+    package let switcherWindowlessAppsAll: String
+    package let switcherWindowlessAppsLockedFormat: String
+    package let switcherNoOpenWindow: String
+    package let switcherOtherDesktop: String
+    package let dockPreviewName: String
+    package let dockPreviewEnable: String
+    package let dockPreviewEnableCaption: String
+    package let dockPreviewCurrentSpaceOnlyCaption: String
+    package let dockPreviewBackgroundOpacity: String
+    package let dockPreviewBackgroundOpacityCaption: String
+    package let dockPreviewBackgroundOpacityGlassCaption: String
+    package let dockPreviewOpenDelay: String
+    package let dockPreviewOpenDelayCaption: String
+    package let dockPreviewQuitAppOnClose: String
+    package let dockPreviewQuitAppOnCloseCaption: String
+    package let dockPreviewKeepDockVisible: String
+    package let dockPreviewKeepDockVisibleCaption: String
+    package let dockPreviewOrderByCreation: String
+    package let dockPreviewOrderByCreationCaption: String
+    package let dockClickMinimize: String
+    package let dockClickMinimizeCaption: String
+    package let dockClickCycleWindows: String
+    package let dockClickCycleWindowsCaption: String
+    package let dockPreviewActiveNow: String
+    package let dockPreviewDockUnavailable: String
+    package let dockPreviewAutohideBeta: String
+    package let dockPreviewOpenWindow: String
+    package let dockPreviewCloseWindow: String
+    package let dockPreviewMinimizeWindow: String
+    package let dockPreviewRestoreWindow: String
+    package let dockPreviewPinPanel: String
+    package let dockPreviewUnpinPanel: String
+    package let dockPreviewPinned: String
+    package let dockPreviewClosePanel: String
+    package let dockPreviewPreviousWindow: String
+    package let dockPreviewNextWindow: String
+
+    // MARK: Feature — cut & paste in Finder
+    package let cutPasteName: String
+    package let cutPasteEnable: String
+    package let cutPasteEnableCaption: String
+    package let cutPasteShowHUD: String
+    package let cutPasteShowHUDCaption: String
+    package let cutPasteHowTitle: String
+    package let cutPasteStep1: String
+    package let cutPasteStep2: String
+    package let cutPasteTextNote: String
+    package let cutPasteActiveNow: String
+    package let cutPasteAutomationNote: String
+    package let cutReadyTitle: String
+    package let cutReadyHint: String
+    package let cutCancel: String
+    package let cutDoneTitle: String
+    package let cutMovedSingular: String
+    package let cutMovedPluralFormat: String      // + count
+    package let cutSomeFailed: String
+    package let cutMovingTitle: String
+    package let cutMovingCountFormat: String      // + position, total
+
+    // MARK: Feature — quit on last window close
+    package let autoQuitName: String
+    package let autoQuitEnable: String
+    package let autoQuitEnableCaption: String
+    package let autoQuitActiveNow: String
+    package let autoQuitHowTitle: String
+    package let autoQuitStep1: String
+    package let autoQuitStep2: String
+    package let autoQuitPredictableNote: String
+    package let autoQuitOngoingWorkNote: String
+    package let autoQuitExceptionsTitle: String
+    package let autoQuitExceptionsCaption: String
+    package let autoQuitExceptionsEmpty: String
+    package let autoQuitAddApp: String
+
+    // MARK: Feature — complete app uninstaller
+    package let uninstallerName: String
+    package let uninstallerEnableCaption: String
+    package let uninstallerStep1: String
+    package let uninstallerStep2: String
+    package let uninstallerStep3: String
+    package let uninstallerMenuItem: String
+    package let uninstallerDropTitle: String
+    package let uninstallerDropSubtitle: String
+    package let uninstallerChoose: String
+    package let uninstallerPickerTitle: String
+    package let uninstallerPickerSearch: String
+    package let uninstallerPickerEmpty: String
+    package let uninstallerEmptyNote: String
+    package let uninstallerFDANote: String
+    package let uninstallerFDAGrant: String
+    package let uninstallerFDAHint: String
+    package let uninstallerFDARelaunch: String
+    package let uninstallerScanning: String
+    package let uninstallerRemoving: String
+    package let uninstallerFoundTitle: String
+    package let uninstallerSelectedFormat: String   // + selected, total
+    package let uninstallerRemove: String
+    package let uninstallerCancel: String
+    package let uninstallerConfirmationExpired: String
+    package let uninstallerDoneTitle: String
+    package let uninstallerFreedFormat: String      // + size string
+    package let uninstallerSomeFailed: String
+    package let uninstallerFailedNeedsFDA: String
+    package let uninstallerFailedMoreFormat: String
+    package let uninstallerAnother: String
+    package let uninstallerCatApp: String
+    package let uninstallerCatSupport: String
+    package let uninstallerCatCaches: String
+    package let uninstallerCatPreferences: String
+    package let uninstallerCatContainers: String
+    package let uninstallerCatLogs: String
+    package let uninstallerCatState: String
+    package let uninstallerCatOther: String
+    package let uninstallerCommandBarBrowseTitle: String
+    package let uninstallerCommandBarToggle: String
+    package let uninstallerCommandBarCaption: String
+    package let uninstallerCommandBarFinderTitle: String
+    package let uninstallerSelectionUnavailable: String
+    package let uninstallerRefusedNotApp: String
+    package let uninstallerRefusedSystemFormat: String        // + app name
+    package let uninstallerRefusedSharedFormat: String        // + app name
+    package let uninstallerRefusedNestedFormat: String        // + app name
+    package let uninstallerRefusedSelfFormat: String          // + Advanced tab name
+    package let uninstallerRefusedLinkFormat: String          // + app name
+    package let uninstallerRefusedUnidentifiedFormat: String  // + app name
+    package let uninstallerPickerHiddenNote: String
+
+    // MARK: Feature — URL cleaner
+    package let urlCleanerName: String
+    package let urlCleanerEnable: String
+    package let urlCleanerEnableCaption: String
+    package let urlCleanerActiveNow: String
+    package let urlCleanerManualTitle: String
+    package let urlCleanerInputPlaceholder: String
+    package let urlCleanerOutputPlaceholder: String
+    package let urlCleanerPasteButton: String
+    package let urlCleanerCopyButton: String
+    package let urlCleanerClearButton: String
+    package let urlCleanerNoURL: String
+    package let urlCleanerNoChange: String
+    package let urlCleanerCleaned: String
+    package let urlCleanerCopied: String
+    package let urlCleanerLocalNote: String
+
+    // MARK: Feature — Homebrew manager
+    package let homebrewName: String
+    package let homebrewEnableCaption: String
+    package let homebrewMissingTitle: String
+    package let homebrewMissingBody: String
+    package let homebrewInstallHomebrew: String
+    package let homebrewInstallHomebrewCaption: String
+    package let homebrewInstallHomebrewOpened: String
+    package let homebrewShellSetupTitle: String
+    package let homebrewShellSetupBody: String
+    package let homebrewShellSetupButton: String
+    package let homebrewShellSetupOpened: String
+    package let homebrewRefresh: String
+    package let homebrewCheckPackages: String
+    package let homebrewTrustTitle: String
+    package let homebrewTrustCaption: String
+    package let homebrewTrustButton: String
+    package let homebrewSearchPlaceholder: String
+    package let homebrewKeyboardHint: String
+    package let homebrewSearchButton: String
+    package let homebrewSearchResults: String
+    package let homebrewInstalled: String
+    package let homebrewAll: String
+    package let homebrewFormulas: String
+    package let homebrewCasks: String
+    package let homebrewNoPackages: String
+    package let homebrewDependencies: String
+    package let homebrewGroupDependencies: String
+    package let homebrewOrphans: String
+    package let homebrewOrphansNote: String
+    package let homebrewDependencyUpdatesFormat: String
+    package let homebrewNoSelection: String
+    package let homebrewDetailsTitle: String
+    package let homebrewInstall: String
+    package let homebrewUninstall: String
+    package let homebrewUpgrade: String
+    package let homebrewUpgradeAll: String
+    package let homebrewUpdateHomebrew: String
+    package let homebrewAllPackages: String
+    package let homebrewOpenTerminal: String
+    package let homebrewCancelOperation: String
+    package let homebrewClearLog: String
+    package let homebrewLogTitle: String
+    package let homebrewVersion: String
+    package let homebrewDescription: String
+    package let homebrewHomepage: String
+    package let homebrewPopularity: String
+    package let homebrewPopularityFormat: String
+    package let homebrewInstalledBadge: String
+    package let homebrewNotInstalledBadge: String
+    package let homebrewUpdates: String
+    package let homebrewUpdateAvailableBadge: String
+    package let homebrewLatestVersion: String
+    package let homebrewConfirmInstallTitle: String
+    package let homebrewConfirmInstallBodyFormat: String
+    package let homebrewConfirmUninstallTitle: String
+    package let homebrewConfirmUninstallBodyFormat: String
+    package let homebrewConfirmUpgradeTitle: String
+    package let homebrewConfirmUpgradeBodyFormat: String
+    package let homebrewConfirmUpgradeAllTitle: String
+    package let homebrewConfirmUpgradeAllBody: String
+    package let homebrewConfirmUpdateHomebrewTitle: String
+    package let homebrewConfirmUpdateHomebrewBody: String
+    package let homebrewTerminalFallback: String
+    package let homebrewLoading: String
+    package let homebrewSearchEmpty: String
+    package let homebrewOperationInstallFormat: String
+    package let homebrewOperationUninstallFormat: String
+    package let homebrewOperationUpgradeFormat: String
+    package let homebrewOperationUpgradeAll: String
+    package let homebrewOperationUpdateHomebrew: String
+    package let homebrewOperationInstalledFormat: String
+    package let homebrewOperationUninstalledFormat: String
+    package let homebrewOperationUpgradedFormat: String
+    package let homebrewOperationUpgradedAll: String
+    package let homebrewOperationUpdatedHomebrew: String
+    package let homebrewOperationFailedFormat: String
+    package let homebrewOperationCancelled: String
+    package let homebrewOperationPreparing: String
+    package let homebrewOperationDownloading: String
+    package let homebrewOperationInstalling: String
+    package let homebrewOperationUninstalling: String
+    package let homebrewOperationUpgrading: String
+    package let homebrewOperationFinalizing: String
+    package let homebrewOperationRefreshing: String
+    package let homebrewOperationTerminal: String
+    package let homebrewOperationElapsedFormat: String
+    package let homebrewOperationShowDetails: String
+    package let homebrewOperationHideDetails: String
+    package let homebrewOperationTechnicalLog: String
+    package let homebrewOperationProgressUnknown: String
+
+    // MARK: Feature — local media tools
+    package let mediaName: String
+    package let mediaEnableCaption: String
+    package let mediaLocalNote: String
+    package let mediaToolVideo: String
+    package let mediaToolGIF: String
+    package let mediaToolImage: String
+    package let mediaToolText: String
+    package let mediaSelectFile: String
+    package let mediaDropHint: String
+    package let mediaOutput: String
+    package let mediaOutputAutomatic: String
+    package let mediaChooseOutput: String
+    package let mediaStartVideo: String
+    package let mediaStartGIF: String
+    package let mediaStartImage: String
+    package let mediaStartConvertPDF: String
+    package let mediaStartText: String
+    package let mediaCancel: String
+    package let mediaStartTime: String
+    package let mediaEndTime: String
+    package let mediaQuality: String
+    package let mediaCompressionLow: String
+    package let mediaCompressionMedium: String
+    package let mediaCompressionHigh: String
+    package let mediaCompressionLowDescription: String
+    package let mediaCompressionMediumDescription: String
+    package let mediaCompressionHighDescription: String
+    package let mediaMaxSize: String
+    package let mediaSizingResolution: String
+    package let mediaSizingFileSize: String
+    package let mediaTargetSize: String
+    package let mediaTargetSizeHint: String
+    package let mediaErrorTargetTooSmall: String
+    package let mediaMegabytesSuffix: String
+    package let mediaWidth: String
+    package let mediaFPS: String
+    package let mediaKeepAudio: String
+    package let mediaCodec: String
+    package let mediaFormat: String
+    package let mediaStripMetadata: String
+    package let mediaLoopGIF: String
+    package let mediaOCRMode: String
+    package let mediaOCRAccurate: String
+    package let mediaOCRFast: String
+    package let mediaLanguageCorrection: String
+    package let mediaTextOutputNote: String
+    package let mediaRunning: String
+    package let mediaCompleted: String
+    package let mediaCancelled: String
+    package let mediaOpenInFinder: String
+    package let mediaCopyText: String
+    package let mediaRunAgain: String
+    package let mediaEmptyText: String
+    package let mediaResultSavedFormat: String
+    package let mediaResultSizeFormat: String
+    package let mediaResultGrewCaption: String
+    package let mediaErrorNoFile: String
+    package let mediaErrorNoVideo: String
+    package let mediaErrorSameOutput: String
+    package let mediaErrorUnsupported: String
+
+    // MARK: Feature — temporary shelf
+    package let shelfName: String
+    package let shelfEnable: String
+    package let shelfEnableCaption: String
+    package let shelfHowTitle: String
+    package let shelfStep1: String
+    package let shelfStep2: String
+    package let shelfStep3: String
+    package let shelfShakeToggle: String
+    package let shelfShakeCaption: String
+    package let shelfDropZoneToggle: String
+    package let shelfDropZoneCaption: String
+    package let shelfDropZoneCaptionTopCenter: String
+    package let shelfDropZoneLabel: String
+    package let shelfDockPlacement: String
+    package let shelfDockMenuBar: String
+    package let shelfDockTopCenter: String
+    package let shelfDockIslandNote: String
+    package let shelfCollapse: String
+    package let shelfBehaviorTitle: String
+    package let shelfCloseAfterDrop: String
+    package let shelfCloseAfterDropCaption: String
+    package let shelfRemoveAfterDrop: String
+    package let shelfRemoveAfterDropCaption: String
+    package let shelfExclusionsTitle: String
+    package let shelfExclusionsEmpty: String
+    package let shelfExclusionsCaption: String
+    package let shelfPin: String
+    package let shelfUnpin: String
+    package let extraBrightnessName: String
+    package let extraBrightnessCaption: String
+    package let extraBrightnessLevelLabel: String
+    package let extraBrightnessUnsupported: String
+    package let shelfHotkeyLabel: String
+    package let shelfOpenNow: String
+    package let shelfNoPermission: String
+    package let shelfMenuItem: String
+    package let shelfTitle: String
+    package let shelfEmpty: String
+    package let shelfClearAll: String
+    package let shelfRemoveSelected: String
+    package let shelfSelectedFormat: String      // + count
+    package let shelfHint: String
+    package let shelfItemImage: String
+    // Three forms, not two: Russian and Ukrainian agree a noun with the number
+    // in front of it as one, as two through four, and as five or more. Every other
+    // language here needs only the first and the last, and repeats the last
+    // in the middle slot. A pile always holds two or more, so the items count
+    // has no singular of its own.
+    package let shelfTooltipItemsFormat: String      // + count, five or more
+    package let shelfTooltipItemsFew: String         // + count, two through four
+    package let shelfTooltipImageSingular: String    // + count == 1
+    package let shelfTooltipImageFew: String         // + count, two through four
+    package let shelfTooltipImagePlural: String      // + count
+    package let shelfTooltipFileSingular: String     // + count == 1
+    package let shelfTooltipFileFew: String          // + count, two through four
+    package let shelfTooltipFilePlural: String       // + count
+    package let shelfTooltipNoteSingular: String     // + count == 1
+    package let shelfTooltipNoteFew: String          // + count, two through four
+    package let shelfTooltipNotePlural: String       // + count
+    package let shelfTooltipLinkSingular: String     // + count == 1
+    package let shelfTooltipLinkFew: String          // + count, two through four
+    package let shelfTooltipLinkPlural: String       // + count
+    package let shelfActionOpen: String
+    package let shelfActionOpenWith: String
+    package let shelfActionShare: String
+    package let shelfActionPin: String
+    package let shelfActionUnpin: String
+
+    // MARK: Panel — per-app breakdown
+    package let breakdownMeasuring: String
+
+    // MARK: Panel — volume mixer
+    package let mixerSection: String
+    package let mixerEmpty: String
+    package let mixerUnavailable: String
+    package let mixerPermissionBody: String
+    package let mixerResetTooltip: String
+    package let mixerOutputDefault: String
+    package let mixerOutputCurrent: String
+    package let mixerOutputUnavailable: String
+    package let mixerOutputFallback: String
+    package let mixerBypassedCaption: String
+    package let mixerOutputTooltip: String
+    package let mixerAirPlayChooseSpeaker: String
+    package let mixerSystemOutputTitle: String
+    package let mixerSystemOutputNoDevices: String
+    package let mixerSystemOutputTooltip: String
+    package let mixerSystemOutputErrorFormat: String
+    package let mixerLowerOnHeadphonesDisconnect: String
+    package let mixerLowerOnHeadphonesDisconnectCaption: String
+    package let mixerHeadphonesDisconnectVolume: String
+    package let preciseVolumeRollerEnable: String
+    package let preciseVolumeRollerCaption: String
+    package let preciseVolumeRollerTapFailed: String
+    package let soundOutputSwitcherTitle: String
+    package let soundOutputSwitcherEnable: String
+    package let soundOutputSwitcherCaption: String
+    package let soundOutputSwitcherDevices: String
+    package let soundOutputSwitcherNoAvailableSelection: String
+    package let mixerInputTitle: String
+    package let mixerInputNoDevices: String
+    package let mixerInputUnavailable: String
+    package let mixerInputFallback: String
+    package let mixerInputTooltip: String
+    package let mixerInputErrorFormat: String
+    package let mixerVisibleApps: String
+    package let mixerAllShown: String
+    package let mixerHiddenCountLabel: String
+    package let mixerHideFromList: String
+
+    // MARK: Panel — audio device priority
+    package let audioPrioritySection: String
+    package let audioPriorityOutputEnable: String
+    package let audioPriorityInputEnable: String
+    package let audioPriorityOutputList: String
+    package let audioPriorityInputList: String
+    package let audioPriorityMoveUp: String
+    package let audioPriorityMoveDown: String
+    package let audioPriorityUnavailable: String
+    package let audioPriorityCurrent: String
+    package let audioPriorityCaption: String
+
+    // MARK: Settings — updates
+    package let updatesSection: String
+    package let autoCheckToggle: String
+    package let includeBetaUpdatesToggle: String
+    package let includeBetaUpdatesCaption: String
+    package let betaBadgeLabel: String
+    package let checkNowButton: String
+    package let updateChecking: String
+    package let updateUpToDate: String
+    package let updateAvailablePrefix: String  // + version
+    package let updateInstallButton: String
+    package let updateDownloading: String
+    package let updateInstalling: String
+    package let updateFailedPrefix: String
+    /// Why a check failed: GitHub refused for too many requests.
+    package let updateRateLimited: String
+    /// Why a check failed: GitHub answered, but named no Vitruvian Atrium release.
+    package let updateNoReleaseFound: String
+    package let updateLastChecked: String
+    package let updateNotifyTitle: String
+    package let updateInstallFailedBody: String
+    package let updateNeedsApplicationsTitle: String
+    package let updateNeedsApplicationsBody: String
+    package let menuCheckUpdates: String
+
+    // MARK: Permissions (shared by Settings & onboarding)
+    package let permissionRequired: String
+    package let permissionAccessibility: String
+    package let permissionScreenRecording: String
+    package let permissionGranted: String
+    package let permissionMissing: String
+    package let permissionOpenSettings: String
+    package let permissionRequest: String
+    package let permissionRestartNote: String
+
+    // MARK: Secure input
+    package let secureInputTitle: String
+    package let secureInputHeldFormat: String
+    package let secureInputUnattributed: String
+    package let secureInputUnidentified: String
+    package let secureInputRevealFormat: String
+    // The switcher page's captions: there secure input costs the switcher its
+    // keys rather than typing, and ⌘Tab reaches the macOS switcher until it ends.
+    package let secureInputSwitcherHeldFormat: String
+    package let secureInputSwitcherUnattributed: String
+    package let secureInputSwitcherUnidentified: String
+
+    // MARK: About
+    package let aboutDescription: String
+    package let versionPrefix: String
+    package let reviewIntro: String
+    package let reviewHighlights: String
+    package let viewOnGitHub: String
+
+    // MARK: Onboarding
+    package let obContinue: String
+    package let obBack: String
+    package let obSkipStep: String
+    package let obStart: String
+    package let obStepWelcomeTitle: String
+    package let obStepWelcomeBody: String
+    package let obWelcomeBullet1Title: String
+    package let obWelcomeBullet1Body: String
+    package let obWelcomeBullet2Title: String
+    package let obWelcomeBullet2Body: String
+    package let obWelcomeBullet3Title: String
+    package let obWelcomeBullet3Body: String
+    package let obLanguageLabel: String
+    package let obStepAccessibilityTitle: String
+    package let obStepAccessibilityBody: String
+    package let obAccessibilityWhy: String
+    package let obStepRecordingTitle: String
+    package let obStepRecordingBody: String
+    package let obRecordingWhy: String
+    package let obStepMonitorTitle: String
+    package let obStepMonitorBody: String
+    package let obMonitorNoPermission: String
+    package let obStepOptionalTitle: String
+    package let obStepOptionalBody: String
+    package let obStepStatusTitle: String
+    package let obStepStatusBody: String
+    package let obStatusRecheck: String
+    package let obStepDoneTitle: String
+    package let obStepDoneBody: String
+    package let obDoneHint: String
+    package let obWhatsNewTitle: String
+    package let obWhatsNewFallback: String
+    package let obLanguageUpdateTitle: String
+    package let obLanguageUpdateBody: String
+    package let obPurposeTitle: String
+    package let obPurposeBody: String
+    package let obPurposeSkip: String
+
+    // MARK: Settings — monitor / menu bar metrics
+    package let tabMonitor: String
+    package let monitorMenuBarSection: String
+    package let monitorMenuBarPreview: String
+    package let monitorMenuBarCaption: String
+    package let monitorCombineTemperatures: String
+    package let monitorCombineTemperaturesCaption: String
+    package let monitorSeparateMenuBarMetrics: String
+    package let monitorSeparateMenuBarMetricsCaption: String
+    package let monitorNetworkUploadFirst: String
+    package let monitorShowCPU: String
+    package let monitorShowMemory: String
+    package let monitorShowNetwork: String
+    package let monitorShowPowerLabel: String
+    package let monitorIntervalLabel: String
+    package let monitorInterval1: String
+    package let monitorInterval2: String
+    package let monitorInterval5: String
+    package let monitorPanelSection: String
+    package let panelNavigationMode: String
+    package let panelNavigationCaption: String
+    package let panelFooterSections: String
+    package let panelFooterList: String
+    package let betaBadge: String
+    package let betaFeatureWarning: String
+
+    // MARK: Panel — network
+    package let networkSection: String
+    package let networkIPAddresses: String
+    package let networkLocalIP: String
+    package let networkDownload: String
+    package let networkUpload: String
+    package let networkThisSession: String
+    package let networkMeasuring: String
+    package let networkApps: String
+    package let networkAppsIdle: String
+
+    // MARK: Panel — disk
+    package let diskSection: String
+    package let diskUsed: String
+    package let diskFree: String
+    package let diskMenuBarStyleLabel: String
+    package let diskMenuBarUsedPercentage: String
+    package let diskMenuBarAvailableSpace: String
+    package let diskMenuBarUsedSpace: String
+    package let diskAvailable: String
+    package let diskPurgeable: String
+    package let diskInternal: String
+    package let diskExternal: String
+    package let diskSelect: String
+    package let diskRead: String
+    package let diskWrite: String
+    package let diskSMARTStatus: String
+    package let diskSMARTUnavailable: String
+    package let diskTotalRead: String
+    package let diskTotalWritten: String
+    package let diskTemperature: String
+    package let diskHealth: String
+    package let diskPowerCycles: String
+    package let diskPowerOnHours: String
+    package let diskUnsafeShutdowns: String
+    package let diskMediaErrors: String
+    package let diskEject: String
+    package let diskEjectAll: String
+    package let diskEjecting: String
+    package let diskReadyToRemove: String
+    package let diskEjectFailed: String
+    package let diskProtectionCaption: String
+    package let diskNoExternal: String
+    package let diskOpenInFinder: String
+    package let diskStorageSettings: String
+    package let diskNoDisks: String
+
+    // MARK: Panel — power
+    package let powerSection: String
+    package let powerSystem: String
+    package let powerAdapter: String
+    package let powerBattery: String
+    package let powerCharging: String
+    package let powerOnBattery: String
+    package let powerPluggedIn: String
+    package let powerUnavailable: String
+    package let powerAdapterMaxFormat: String   // + rated watts, e.g. "30 W max"
+    package let monitorShowGPU: String
+    package let monitorShowCPUTemperature: String
+    package let monitorShowGPUTemperature: String
+    package let monitorShowBatteryTemperature: String
+    package let monitorShowPeripheralBattery: String
+    package let peripheralBatteryNoDevices: String
+    package let monitorGraphsSection: String
+
+    // MARK: Update notification + onboarding menu bar setup
+    package let updateBannerTitle: String
+    package let updateBannerAction: String
+    package let obStepMenuBarTitle: String
+    package let obStepMenuBarBody: String
+    package let obStepMenuBarNote: String
+    package let monitorMenuBarPresetLabel: String
+    package let menuBarPresetReadable: String
+    package let menuBarPresetDense: String
+    package let menuBarSpacingLabel: String
+    package let menuBarSpacingStandard: String
+    package let menuBarSpacingCompact: String
+    package let menuBarHideIconToggle: String
+    package let menuBarHideIconCaption: String
+    package let monitorLabelStyleLabel: String
+    package let menuBarLabelStyleCompact: String
+    package let menuBarLabelStyleClassic: String
+    package let monitorMemoryStyleLabel: String
+    package let monitorMemoryPressureDot: String
+    package let memoryStyleDot: String
+    package let memoryStylePercent: String
+    package let memoryStyleBoth: String
+    // MARK: System uptime, battery health, speed test
+    package let systemUptime: String
+    package let batteryCharge: String
+    package let powerHealth: String
+    package let powerCycles: String
+    package let speedTestRun: String
+    package let speedTestAgain: String
+    package let speedTestLatency: String
+    package let speedTestTesting: String
+    package let speedTestFailed: String
+
+    // MARK: Per-item panel config (Settings + onboarding)
+    package let monitorShowInPanel: String
+    package let disclosureExpanded: String
+    package let disclosureCollapsed: String
+    package let panelHideItem: String
+    package let panelShowItem: String
+    package let panelHiddenItem: String
+    package let monitorItemUptime: String
+    package let monitorItemNetSpeed: String
+    package let monitorItemNetTotals: String
+    package let monitorItemNetTest: String
+    package let monitorItemDiskUsage: String
+    package let monitorItemDiskActivity: String
+    package let monitorItemDiskSMART: String
+    package let monitorItemDiskProtection: String
+    package let monitorItemDiskTools: String
+    package let monitorPanelConfigHint: String
+    package let monitorOrderHint: String
+    package let obStepPanelTitle: String
+    package let obStepPanelBody: String
+    package let obStepPanelNavigationTitle: String
+    package let obStepPanelNavigationBody: String
+
+    // MARK: Cleaning mode
+    package let cleaningMenuItem: String
+    package let utilitiesSection: String
+    package let quickControlsSection: String
+    package let panelCategoryWindows: String
+    package let panelCategoryInput: String
+    package let panelCategoryFiles: String
+    package let windowMaximizeName: String
+    package let windowMaximizeCaption: String
+    package let windowMaximizeActiveNow: String
+    package let windowMaximizeNeedsAccessibility: String
+    package let keyDebounceName: String
+    package let keyDebounceEnable: String
+    package let keyDebounceCaption: String
+    package let keyDebounceActiveNow: String
+    package let keyDebounceGlobalWindow: String
+    package let keyDebouncePerKeySection: String
+    package let keyDebouncePerKeyCaption: String
+    package let keyDebounceKeyLabel: String
+    package let keyDebounceWindowLabel: String
+    package let keyDebounceAddKey: String
+    package let keyDebounceNoOverrides: String
+    package let keyDebounceRemoveKey: String
+    package let cleaningPanelCaption: String
+    package let cleaningOverlayTitle: String
+    package let cleaningOverlaySubtitle: String
+    package let cleaningOverlayUnlock: String
+    package let cleaningOverlayMouseHint: String
+    package let cleaningKeepScreenVisibleToggle: String
+    package let cleaningKeepScreenVisibleCaption: String
+    package let cleaningStartNow: String
+    package let cleaningNeedsAxTitle: String
+    package let cleaningNeedsAxBody: String
+
+    // MARK: Support / donate
+    package let tabSupport: String
+    package let shortcutsPageCaption: String
+    package let shortcutsPageTitle: String
+    package let settingsSearchPlaceholder: String
+    package let donateHeading: String
+    package let donateMessage: String
+    package let donateButton: String
+    package let donateThanks: String
+    package let supportIntroTitle: String
+    package let supportIntroMessage: String
+    package let supportIntroStarButton: String
+    package let supportIntroStarMessage: String
+    package let supportIntroCoffeeButton: String
+    package let supportIntroLaterButton: String
+    package let supportIntroDoneButton: String
+    package let discordIntroTitle: String
+    package let discordIntroMessage: String
+    package let discordIntroJoinButton: String
+    package let communityIntroTitle: String
+    package let communityIntroMessage: String
+    package let communityIntroFollowButton: String
+    package let homebrewOfficialIntroTitle: String
+    package let homebrewOfficialIntroMessage: String
+    package let homebrewOfficialIntroInstallLabel: String
+    package let homebrewOfficialIntroMigrationTitle: String
+    package let homebrewOfficialIntroMigrationMessage: String
+    package let homebrewOfficialIntroCopyButton: String
+    package let updateShowcaseTitle: String
+    package let updateShowcaseMessage: String
+    package let updateShowcaseUnavailable: String
+    package let updateShowcaseRestart: String
+    package let showMenuBarIcon: String
+    package let menuBarIconStillHiddenTitle: String
+    package let menuBarIconStillHiddenBody: String
+    package let menuBarIconManagerHintFormat: String  // + manager name (twice)
+    package let menuBarIconDisallowedBody: String
+
+    // MARK: Configurable shortcuts
+    package let shortcutRecording: String
+    package let shortcutReset: String
+    package let shortcutNone: String
+    package let shortcutClear: String
+    package let shortcutInvalid: String
+    package let shortcutPressKeys: String
+    package let shortcutEscapeHint: String
+    package let shortcutDeleteHint: String
+    package let shortcutNotCaptured: String
+    package let shortcutConflictFormat: String
+    package let shortcutTakeOverOffer: String
+    package let shortcutTakeOverAction: String
+    package let shortcutTakeOverCaption: String
+    package let shortcutTakeOverDismiss: String
+    package let shortcutUnavailable: String
+    package let shelfShortcutToggle: String
+    package let switcherUsageHintFormat: String
+
+    // MARK: Media keys
+    package let musicBlockSection: String
+    package let musicBlockTitle: String
+    package let musicBlockCaption: String
+    package let musicBlockUnavailable: String
+    package let musicBlockReplacementLabel: String
+    package let musicBlockReplacementNone: String
+    package let musicBlockReplacementBlocked: String
+    package let musicBlockChooseApp: String
+    package let musicBlockPlayReplacement: String
+
+    // MARK: Cleaner
+    package let cleanerName: String
+    package let cleanerIntroTitle: String
+    package let cleanerIntroCaption: String
+    package let cleanerScan: String
+    package let cleanerScanning: String
+    package let cleanerCleaning: String
+    package let cleanerCatLeftovers: String
+    package let cleanerCatLoginItems: String
+    package let cleanerCatCaches: String
+    package let cleanerCatLogs: String
+    package let cleanerCatDeveloper: String
+    package let cleanerCatTrash: String
+    package let cleanerLeftoversNote: String
+    package let cleanerLoginItemsNote: String
+    package let cleanerTrashNote: String
+    package let cleanerCatDeviceBackups: String
+    package let cleanerDeviceBackupsCaption: String
+    package let cleanerCatScreenshots: String
+    package let cleanerScreenshotsCaptionFormat: String
+    package let cleanerScreenshotsSettingCaption: String
+    package let cleanerScreenshotsAfterFormat: String
+    package let cleanerNothingFound: String
+    package let cleanerClean: String
+    package let cleanerDoneNote: String
+    package let cleanerAgain: String
+    package let cleanerRevealInFinder: String
+    package let cleanerPanelCaption: String
+    package let cleanerSafeSection: String
+    package let cleanerOptionalSection: String
+    package let cleanerCatOtherCaches: String
+    package let cleanerCachesCaption: String
+    package let cleanerLogsCaption: String
+    package let cleanerDeveloperCaption: String
+    package let cleanerLoginItemsCaption: String
+    package let cleanerLeftoversCaption: String
+    package let cleanerOtherCachesCaption: String
+    package let cleanerCleanSizeFormat: String      // + size string
+    package let cleanerScheduleTitle: String
+    package let cleanerScheduleOff: String
+    package let cleanerScheduleDaily: String
+    package let cleanerScheduleWeekly: String
+    package let cleanerScheduleCaption: String
+    package let cleanerScheduleLastFormat: String   // + size string
+    package let cleanerAutoNotificationFormat: String  // + size string
+    package let cleanerScheduleNextFormat: String   // + relative date and time
+    package let cleanerScheduleRanFormat: String    // + relative date and time
+    package let cleanerScheduleNotifyToggle: String
+    package let cleanerNotifDenied: String
+    package let cleanerNotifOpenSettings: String
+    package let launchAtLoginNeedsApplications: String
+    package let launchAtLoginNeedsApproval: String
+    package let ocrRemoveLineBreaksToggle: String
+    package let ocrRemoveLineBreaksCaption: String
+    package let ocrQRToggle: String
+    package let ocrQRCaption: String
+    package let ocrQRCopied: String
+    package let qrResultTitle: String
+    package let qrResultCopy: String
+    package let qrResultOpen: String
+    package let highlightsTitle: String
+    package let highlightsTitleClipboardRedesign: String
+    package let highlightsTitleWindowLayout: String
+    package let highlightsTitleQuitProtection: String
+    package let highlightsTitleRecorderBlur: String
+    package let highlightsCaptionDockPreview: String
+    package let highlightsCaptionScreenshot: String
+    package let highlightsCaptionSnippetLibrary: String
+    package let highlightsCaptionCapturePalette: String
+    package let highlightsCaptionClipboardRedesign: String
+    package let highlightsCaptionWindowLayout: String
+    package let highlightsCaptionQuitProtection: String
+    package let highlightsCaptionRecorderBlur: String
+    package let highlightsConfigure: String
+    package let highlightsTry: String
+    package let highlightsSeeAll: String
+    package let switcherCurrentSpaceOnly: String
+    package let switcherCurrentSpaceOnlyCaption: String
+    package let shelfFileMissing: String
+    package let previewSizeSmall: String
+    package let mixerSoundEffectsOutputTitle: String
+    package let mixerSoundEffectsOutputTooltip: String
+    package let monitorOpenActivityMonitor: String
+    package let dockClickHide: String
+    package let dockClickHideCaption: String
+    package let monitorMemoryMetricLabel: String
+    package let memoryMetricUsed: String
+    package let memoryMetricApp: String
+    package let keepAwakeRightClickToggle: String
+    package let keepAwakeRightClickToggleCaption: String
+    package let urlCleanerRulesTitle: String
+    package let urlCleanerRulesCaption: String
+    package let urlCleanerRulesCoverageCaption: String
+    package let urlCleanerRulesAllSites: String
+    package let urlCleanerRulesCountSingular: String
+    package let urlCleanerRulesCountPluralFormat: String   // + count
+    package let urlCleanerRulesAddSite: String
+    package let urlCleanerRulesParameterPlaceholder: String
+    package let urlCleanerRulesMatchCaption: String
+    package let urlCleanerRulesAddButton: String
+    package let urlCleanerRulesRemoveButton: String
+    package let urlCleanerRulesRemoveSiteButton: String
+    package let urlCleanerRulesRestoreSiteButton: String
+    package let urlCleanerRemovedFormat: String            // + comma separated names
+    package let switcherSearchPin: String
+    package let switcherSearchPinCaption: String
+    package let invertVerticalScroll: String
+    package let invertHorizontalScroll: String
+    package let scrollHorizontalName: String
+    package let scrollHorizontalModifierLabel: String
+    package let scrollHorizontalCommandKey: String
+    package let scrollHorizontalCaption: String
+    package let switcherShowShortcutHints: String
+    package let switcherShowShortcutHintsCaption: String
+    package let uninstallerHomebrewPackageFormat: String
+    package let shelfEdgeToggle: String
+    package let shelfEdgeCaption: String
+    package let focusFollowsMouseName: String
+    package let focusFollowsMouseCaption: String
+    package let focusFollowsMouseDelay: String
+    package let focusFollowsMouseRaise: String
+    package let focusFollowsMouseWaitForStop: String
+    package let switcherMinimizedPlacementLabel: String
+    package let switcherTreatHiddenAppsLikeMinimized: String
+    package let switcherMinimizedPlacementNormal: String
+    package let switcherMinimizedPlacementEnd: String
+    package let switcherMinimizedPlacementHidden: String
+    package let switcherShowFullscreenWindows: String
+    package let switcherScreenPlacementLabel: String
+    package let switcherScreenPlacementPointer: String
+    package let switcherScreenPlacementMenuBar: String
+    package let switcherScreenPlacementActiveWindow: String
+    package let switcherScreenPlacementCaption: String
+    package let switcherCurrentDisplayOnly: String
+    package let switcherCurrentDisplayOnlyCaption: String
+    package let smoothScrollResponseLabel: String
+    package let smoothScrollCoastLabel: String
+    package let mouseAccelerationName: String
+    package let mouseAccelerationCaption: String
+    package let linearScrollName: String
+    package let linearScrollCaption: String
+    package let linearScrollLinesLabel: String
+    package let shelfClearOnClose: String
+    package let shelfClearOnCloseCaption: String
+    package let shelfShortcutFinderSelection: String
+    package let shelfShortcutFinderSelectionCaption: String
+    package let spacesOrderName: String
+    package let spacesOrderCaption: String
+}
+
+// MARK: - Português (Brasil)
+
+extension Strings {
+    package static let ptBR = Strings(
+        statusIdleTooltip: "Vitruvian Atrium: suspensão normal",
+        statusActiveUntil: "Vitruvian Atrium: ativo até",
+        statusActiveIndefinite: "Vitruvian Atrium: ativo indefinidamente",
+        menuEnableAwake: "Ativar manter acordado",
+        menuDisableAwake: "Desativar manter acordado",
+        menuActivateFor: "Ativar por…",
+        menuSettings: "Ajustes…",
+        menuAbout: "Sobre o Vitruvian Atrium",
+        menuQuit: "Sair do Vitruvian Atrium",
+        menuHide: "Ocultar o Vitruvian Atrium",
+        menuHideOthers: "Ocultar Outros",
+        menuShowAll: "Mostrar Tudo",
+        menuEdit: "Editar",
+        menuUndo: "Desfazer",
+        menuRedo: "Refazer",
+        actionClear: "Limpar",
+        actionRemove: "Remover",
+        actionBack: "Voltar",
+        actionSearch: "Buscar",
+        actionMute: "Silenciar",
+        actionUnmute: "Reativar som",
+        actionPlay: "Reproduzir",
+        actionPause: "Pausar",
+        menuCut: "Recortar",
+        menuCopy: "Copiar",
+        menuPaste: "Colar",
+        menuSelectAll: "Selecionar Tudo",
+        menuWindow: "Janela",
+        menuMinimize: "Minimizar",
+        menuZoom: "Zoom",
+        menuClose: "Fechar",
+
+        minutes15: "15 minutos",
+        minutes30: "30 minutos",
+        hour1: "1 hora",
+        hours2: "2 horas",
+        hours4: "4 horas",
+        hours8: "8 horas",
+        indefinitely: "Indefinidamente",
+        indefinite: "Indefinida",
+
+        panelSettings: "Ajustes",
+        panelQuit: "Sair",
+        panelHotkeyHint: "Atalho alterna",
+
+        keepAwakeTitle: "Manter acordado",
+        keepAwakeEndsIn: "Termina em",
+        keepAwakeUntilDisabled: "Ativo até você desativar",
+        keepAwakeNormalRules: "O Mac segue as regras normais de energia",
+        keepAwakeUntilLabel: "Até",
+        keepAwakeUntilStart: "Iniciar",
+        keepAwakeOptions: "Opções",
+        keepAwakeMouseJiggle: "Mover cursor levemente",
+        keepAwakeMouseJiggleCaption: "Durante uma sessão, move o cursor um pouco no intervalo escolhido.",
+        keepAwakeMouseJiggleInterval: "Intervalo",
+        keepAwakeActiveIconLabel: "Ícone ativo",
+        keepAwakeActiveIconAtrium: "Vitruvian Atrium",
+        keepAwakeActiveIconCoffee: "Café",
+        keepAwakeActiveIconEye: "Olho",
+        keepAwakeActiveIconMoon: "Lua",
+        keepAwakeActiveIconLight: "Lâmpada",
+        keepAwakeIconTintLabel: "Cor do ícone ativo",
+        keepAwakeIconTintOrange: "Laranja",
+        keepAwakeIconTintGreen: "Verde",
+        keepAwakeIconTintBlue: "Azul",
+        keepAwakeIconTintPurple: "Roxo",
+        keepAwakeIconTintPink: "Rosa",
+        keepAwakeIconTintNone: "Sem cor",
+        durationLabel: "Duração",
+        clamshellTitle: "Continuar com a tampa fechada",
+        clamshellOnCaption: "Suspensão totalmente desativada. Atenção à energia",
+        clamshellNeedsSession: "Será aplicada sempre que “Manter acordado” estiver ativo",
+        clamshellReady: "Pronto. Liga e desliga sem senha",
+        clamshellNeedsPassword: "Pedirá a senha de administrador uma vez",
+
+        systemSection: "Sistema",
+        temperatures: "Temperaturas",
+        cpuLabel: "CPU",
+        gpuLabel: "GPU",
+        batteryLabel: "Bateria",
+        usageSection: "Uso de hardware",
+        memorySection: "Memória",
+        memoryPressure: "Pressão",
+        memorySwapUsed: "Swap em uso",
+        memoryCompressed: "Comprimida",
+        memoryCachedFiles: "Arquivos em cache",
+        pressureNormal: "Normal",
+        pressureWarning: "Atenção",
+        pressureCritical: "Crítico",
+        monitorUnavailable: "Sensores indisponíveis neste Mac",
+        energyAppsTitle: "Uso significativo de energia",
+        energyAppsIdle: "Sem uso significativo de energia",
+
+        notifySessionEndedTitle: "Sessão encerrada",
+        notifySessionEndedBody: "O tempo acabou. O Mac voltará a suspender normalmente.",
+        notifyBatteryTitle: "Vitruvian Atrium desativado",
+        notifyBatteryBody: "Bateria baixa. A suspensão normal foi restaurada para proteger a carga.",
+        adminPromptClamshellOn: "O Vitruvian Atrium precisa da sua senha para manter o Mac ativo com a tampa fechada.",
+        adminPromptClamshellOff: "O Vitruvian Atrium precisa da sua senha para reativar a suspensão normal do Mac.",
+        adminPromptRecover: "O Vitruvian Atrium foi encerrado com a suspensão do Mac desativada. Digite a senha para restaurar a suspensão normal.",
+        adminPromptUpdate: "O Vitruvian Atrium precisa da sua senha para instalar a atualização.",
+        adminPromptSudoersInstall: "O Vitruvian Atrium vai criar uma regra restrita (somente pmset disablesleep) para alternar a tampa fechada sem pedir senha. Esta é a única vez que a senha será necessária.",
+        adminPromptSudoersRemove: "O Vitruvian Atrium vai remover a regra de tampa fechada sem senha.",
+
+        settingsTitle: "Ajustes do Vitruvian Atrium",
+        tabGeneral: "Geral",
+        tabEnergy: "Energia",
+        tabMouse: "Mouse e Trackpad",
+        tabSwitcher: "Alternador",
+        tabAdvanced: "Avançado",
+        tabAbout: "Sobre",
+        tabReleaseNotes: "Novidades",
+        releaseNotesOnUpdateToggle: "Mostrar novidades ao atualizar",
+        minimalWindowPreviews: "Prévias minimalistas",
+        minimalWindowPreviewsCaption: "Oculta títulos, botões e detalhes decorativos nas prévias do Dock e do alternador. A seleção continua visível.",
+        previewSizeLabel: "Tamanho dos previews",
+        previewSizeNormal: "Normal",
+        previewSizeLarge: "Grande",
+        previewSizeXLarge: "Extra grande",
+        settingsGroupFeatures: "Recursos",
+        advancedResetSection: "Permissões",
+        advancedResetDescription: "Remove todas as permissões que você concedeu ao Vitruvian Atrium (Acessibilidade, Gravação de Tela, Acesso Total ao Disco e outras), o item de início e a regra de tampa fechada. Útil para começar do zero ou antes de desinstalar. O app continua instalado.",
+        advancedClearButton: "Limpar todas as permissões",
+        advancedCleared: "Permissões limpas.",
+        advancedClearFailed: "Não foi possível remover algumas permissões ou a regra de tampa fechada. Tente de novo e permita o pedido de senha, se ele aparecer.",
+        advancedClearConfirmTitle: "Limpar todas as permissões?",
+        advancedClearConfirmBody: "Os recursos que dependem de permissão vão parar de funcionar até você conceder de novo. As suas configurações são mantidas.",
+        advancedUninstallSection: "Desinstalar",
+        advancedUninstallDescription: "Faz tudo acima e ainda apaga as preferências e move o Vitruvian Atrium para a Lixeira, sem deixar rastro no sistema. O app fecha ao final. Você pode reinstalar quando quiser.",
+        advancedUninstallButton: "Desinstalar o Vitruvian Atrium completamente",
+        advancedUninstallConfirmTitle: "Desinstalar o Vitruvian Atrium?",
+        advancedUninstallConfirmBody: "O Vitruvian Atrium vai limpar as permissões, apagar as preferências e ir para a Lixeira, e então fechar. Esta ação não pode ser desfeita pelo app, mas ele fica na Lixeira até você esvaziá-la.",
+        advancedUninstallFailedTitle: "A desinstalação parou",
+        advancedUninstallFailedBody: "O Vitruvian Atrium não conseguiu restaurar uma configuração do sistema que ele mudou: repouso, velocidade das ventoinhas, aceleração do mouse ou ordem dos Espaços. Nada foi removido. Tente de novo e permita o pedido de senha, se ele aparecer.",
+
+        launchAtLogin: "Iniciar junto com o Mac",
+        languageLabel: "Idioma",
+        menuBarSection: "Barra de menus",
+        showCountdown: "Mostrar tempo restante ao lado do ícone",
+        globalHotkeySection: "Atalho global",
+        hotkeyToggle: "Ativar atalho para “Manter acordado”",
+        hotkeyCaption: "Funciona em qualquer app, sem permissões extras.",
+
+        sessionSection: "Sessão",
+        defaultDurationLabel: "Duração padrão",
+        keepAwakeAutoStart: "Manter acordado ao abrir o Vitruvian Atrium",
+        keepAwakeAutoStartCaption: "Inicia uma sessão com a duração padrão.",
+        batteryProtectionSection: "Proteção de bateria",
+        batteryDisableBelow: "Desativar com bateria abaixo de",
+        batteryNever: "Nunca",
+        batteryProtectionCaption: "Evita que uma sessão esquecida drene a bateria do MacBook.",
+        clamshellSection: "Tampa fechada",
+        configuring: "Configurando…",
+        sudoersFailed: "Não foi possível ativar a tampa fechada. Tente de novo.",
+        clamshellExplanation: "“Continuar com a tampa fechada” desativa completamente a suspensão enquanto “Manter acordado” estiver ativo e é revertido automaticamente quando a sessão termina ou o app é encerrado. Prefira usá-lo conectado à energia.",
+        dimScreenOnLidCloseTitle: "Escurecer a tela completamente",
+        dimScreenOnLidCloseCaption: "Escurece a tela quando a tampa fecha e restaura o brilho quando ela abre.",
+
+        scrollSection: "Rolagem",
+        invertMouseScroll: "Inverter rolagem do mouse",
+        invertMouseScrollCaption: "Inverte a direção da roda do mouse.",
+        scrollTrackpadNote: "O trackpad não muda: continua com a rolagem natural do macOS.",
+        scrollActiveNow: "Invertendo a rolagem do mouse agora",
+        mouseNavigationActiveNow: "Botões laterais ativos agora",
+        smoothScrollName: "Rolagem suave",
+        smoothScrollCaption: "Transforma cada passo da rodinha do mouse em um deslize curto e macio. O trackpad não muda.",
+        smoothScrollStepLabel: "Velocidade da rolagem",
+        mouseNavigationSection: "Navegação",
+        mouseNavigationEnable: "Usar botões laterais para voltar e avançar",
+        mouseNavigationCaption: "Converte os botões Voltar e Avançar do mouse em comandos de navegação no Finder, navegadores e apps compatíveis.",
+        middleClickSection: "Botão do meio no trackpad",
+        middleClickEnable: "Clique com três dedos vira botão do meio",
+        middleClickEnableCaption: "Pressionar o trackpad com três dedos funciona como o clique da rodinha do mouse: abre links em nova aba, fecha abas e tudo mais que o botão do meio faz.",
+        middleClickDragConflict: "O arrastar com três dedos do macOS está ativado e usa três dedos, então clique com quatro dedos para o clique do meio. Para usar três, desative-o nos Ajustes do Sistema em Acessibilidade, Controle do Cursor, Opções do Trackpad.",
+        middleClickNoTrackpad: "Não é possível ler os toques no trackpad. Conecte um trackpad compatível.",
+        middleClickTapPicker: "Toque leve também clica",
+        middleClickTapOff: "Desligado",
+        middleClickTapThreeFingers: "3 dedos",
+        middleClickTapFourFingers: "4 dedos",
+        middleClickTapCaption: "Um toque leve com esse número de dedos, sem pressionar, também dispara o clique do meio. Deslizar nunca conta. Se o toque de três dedos do macOS estiver atribuído à Busca, desative-o para os dois não abrirem juntos.",
+        quickToolsTab: "Painel rápido",
+        quickToolShortcutToggle: "Atalho global",
+        ocrName: "Copiar texto da tela",
+        ocrCaption: "Selecione uma área da tela e o texto reconhecido é copiado, pronto para colar.",
+        ocrCopied: "Texto copiado",
+        ocrNoText: "Nenhum texto encontrado",
+        colorPickerName: "Conta-gotas de cor",
+        colorPickerCaption: "Capture a cor de qualquer pixel da tela e copie no formato que preferir.",
+        colorPickerFormatLabel: "Formato copiado",
+        colorPickerBareHexToggle: "Copiar sem o prefixo #",
+        colorPickerPickNow: "Capturar cor",
+        micMuteName: "Silenciar microfone",
+        micUnmuteName: "Reativar microfone",
+        micMuteCaption: "Corta o microfone do Mac com um clique ou atalho, valendo para qualquer app.",
+        micMutedHUD: "Microfone silenciado",
+        micUnmutedHUD: "Silenciamento desativado",
+        micMutePartialHUD: "Alguns microfones não puderam ser silenciados",
+        micUnmutePartialHUD: "Alguns microfones continuam silenciados",
+        micMuteMenuBarToggle: "Mostrar na barra de menus enquanto silenciado",
+        micMuteMenuBarCaption: "Um microfone cortado em vermelho aparece ao lado do ícone do app na barra de menus enquanto este recurso o silencia.",
+        pastePlainName: "Colar como texto puro",
+        pastePlainCaption: "Cola o que foi copiado sem cores, fontes ou formatação. O conteúdo original continua no clipboard.",
+        launcherName: "Painel rápido",
+        launcherCaption: "Um painel flutuante com suas ferramentas favoritas, aberto por atalho de qualquer lugar.",
+        launcherOpenNow: "Abrir painel rápido",
+        launcherEditHint: "Use o botão de ajustes para escolher, ocultar e arrastar as ferramentas.",
+        launcherEmptyState: "Todas as ferramentas estão ocultas. Use o botão de ajustes para trazê-las de volta.",
+        launcherAddSection: "Adicionar de volta",
+        launcherKeysHint: "Setas navegam, Enter abre, 1 a 9 abrem direto",
+
+        switcherSection: "Alternador de janelas",
+        switcherEnable: "Usar o alternador do Vitruvian Atrium",
+        switcherEnableCaption: "Troque de app ou janela, inclusive janelas minimizadas e várias janelas do mesmo app.",
+        switcherUsageHint: "Segure o atalho para navegar; solte para ativar a janela. Shift ou ← volta; W fecha a janela; Q encerra o app; Esc cancela.",
+        switcherNoWindows: "Nenhuma janela aberta",
+        switcherIconRowMode: "Mostrar %@ com ícones grandes",
+        switcherIconRowModeCaption: "Mostra um ícone por app com os previews das janelas do app acima.",
+        switcherSimpleModeCaption: "Mostra ícones de apps e títulos das janelas, sem previews nem captura da tela pelo alternador.",
+        switcherShortcutHintApps: "Apps",
+        switcherShortcutHintWindows: "Janelas",
+        switcherWindowShortcutCaption: "Abre um seletor das janelas do app em primeiro plano. Com o seletor aberto, pula entre as janelas do app selecionado.",
+        switcherTakeOverSystemShortcuts: "Substituir ⌘Tab e ⌘` do macOS",
+        switcherTakeOverSystemShortcutsCaption: "Desativa os atalhos correspondentes de apps e janelas do macOS somente enquanto o alternador do Vitruvian Atrium estiver ativo. Todos os apps abertos continuam acessíveis.",
+        switcherAppearanceDelay: "Atraso de exibição",
+        switcherAppearanceDelayCaption: "Quanto tempo o atalho precisa ficar pressionado antes de o alternador aparecer.",
+        switcherMaxColumns: "Máximo de colunas",
+        switcherMaxColumnsCaption: "Quebra para mais linhas depois desse número de itens. Útil em monitores ultrawide.",
+        switcherMaxColumnsAuto: "Automático",
+        switcherInstantSelection: "Seleção instantânea",
+        switcherInstantSelectionCaption: "Move o destaque e a rolagem imediatamente ao navegar por apps e janelas.",
+        switcherMergeTabs: "Mostrar uma entrada por app",
+        switcherMergeTabsCaption: "Junta todas as janelas de um app em uma só entrada no alternador, em vez de uma por janela.",
+        switcherWindowlessApps: "Apps sem janela aberta",
+        switcherWindowlessAppsCaption: "Escolhe quais apps que estão abertos sem nenhuma janela aparecem no alternador.",
+        switcherWindowlessAppsOff: "Não mostrar",
+        switcherWindowlessAppsFinder: "Só o Finder",
+        switcherWindowlessAppsAll: "Todos os apps",
+        switcherWindowlessAppsLockedFormat: "Todos os apps abertos continuam acessíveis enquanto “%@” estiver ativado. Desative para escolher.",
+        switcherNoOpenWindow: "Sem janela aberta",
+        switcherOtherDesktop: "Outra Mesa",
+        dockPreviewName: "Dock Preview",
+        dockPreviewEnable: "Pré-visualizar janelas no Dock",
+        dockPreviewEnableCaption: "Passe o mouse em um app aberto no Dock para ver suas janelas e clique na que quiser abrir.",
+        dockPreviewCurrentSpaceOnlyCaption: "Quando desligado, mostra janelas de todas as mesas. Escolher uma janela em outra mesa leva você até ela.",
+        dockPreviewBackgroundOpacity: "Fundo do painel",
+        dockPreviewBackgroundOpacityCaption: "Diminua para ver mais do que está atrás do painel.",
+        dockPreviewBackgroundOpacityGlassCaption: "Com o Liquid Glass ligado, a transparência do painel é definida em Ajustes do Sistema > Aparência.",
+        dockPreviewOpenDelay: "Atraso de abertura",
+        dockPreviewOpenDelayCaption: "Quanto tempo o ponteiro precisa ficar sobre um ícone antes de o painel abrir.",
+        dockPreviewQuitAppOnClose: "Encerrar o app com o botão ×",
+        dockPreviewQuitAppOnCloseCaption: "No Dock Preview, × encerra o app inteiro em vez de fechar apenas aquela janela.",
+        dockPreviewKeepDockVisible: "Manter Dock visível (experimental)",
+        dockPreviewKeepDockVisibleCaption: "Suspende o ocultamento automático enquanto o preview está aberto e restaura ao sair. Pode reajustar janelas. Se o app for interrompido, reabra-o para restaurar o Dock.",
+        dockPreviewOrderByCreation: "Ordenar janelas por criação",
+        dockPreviewOrderByCreationCaption: "Mostra primeiro as janelas mais antigas em vez das usadas mais recentemente.",
+        dockClickMinimize: "Clicar no Dock minimiza",
+        dockClickMinimizeCaption: "As janelas do app ativo são minimizadas ao clicar no ícone dele no Dock. Clique de novo para trazê-las de volta.",
+        dockClickCycleWindows: "Clicar no Dock alterna janelas",
+        dockClickCycleWindowsCaption: "Clique no ícone do Dock do app ativo para alternar entre suas janelas, como ⌘`.",
+        dockPreviewActiveNow: "Ativo no Dock",
+        dockPreviewDockUnavailable: "Não foi possível ler os itens do Dock.",
+        dockPreviewAutohideBeta: "Beta. Você pode encontrar alguns bugs.",
+        dockPreviewOpenWindow: "Abrir janela",
+        dockPreviewCloseWindow: "Fechar janela",
+        dockPreviewMinimizeWindow: "Minimizar janela",
+        dockPreviewRestoreWindow: "Restaurar janela",
+        dockPreviewPinPanel: "Fixar prévia",
+        dockPreviewUnpinPanel: "Desfixar prévia",
+        dockPreviewPinned: "Fixado",
+        dockPreviewClosePanel: "Fechar prévia",
+        dockPreviewPreviousWindow: "Janela anterior",
+        dockPreviewNextWindow: "Próxima janela",
+
+        cutPasteName: "Recortar e colar",
+        cutPasteEnable: "Recortar e colar arquivos no Finder",
+        cutPasteEnableCaption: "Use ⌘X para recortar e ⌘V para mover arquivos e pastas no Finder.",
+        cutPasteShowHUD: "Mostrar painel flutuante",
+        cutPasteShowHUDCaption: "Exibe um indicador com os arquivos recortados enquanto o Finder estiver ativo.",
+        cutPasteHowTitle: "Como usar",
+        cutPasteStep1: "Selecione itens no Finder e pressione ⌘X para recortá-los.",
+        cutPasteStep2: "Abra a pasta de destino e pressione ⌘V para movê-los para lá.",
+        cutPasteTextNote: "Em campos de texto (como ao renomear), ⌘X e ⌘V continuam funcionando normalmente.",
+        cutPasteActiveNow: "Pronto para recortar no Finder",
+        cutPasteAutomationNote: "Na primeira vez, o macOS pede permissão para controlar o Finder.",
+        cutReadyTitle: "Recortado",
+        cutReadyHint: "na pasta de destino para mover",
+        cutCancel: "Cancelar recorte",
+        cutDoneTitle: "Movido!",
+        cutMovedSingular: "1 item movido",
+        cutMovedPluralFormat: "%d itens movidos",
+        cutSomeFailed: "Alguns itens não puderam ser movidos",
+        cutMovingTitle: "Movendo…",
+        cutMovingCountFormat: "%d de %d",
+
+        autoQuitName: "Encerrar ao fechar",
+        autoQuitEnable: "Encerrar o app ao fechar a última janela",
+        autoQuitEnableCaption: "Fechar a última janela de um app também o encerra.",
+        autoQuitActiveNow: "Ativo agora",
+        autoQuitHowTitle: "Como funciona",
+        autoQuitStep1: "Feche a última janela de um app (⌘W ou o botão vermelho).",
+        autoQuitStep2: "O app é encerrado sozinho. Diálogos de “salvar?” continuam aparecendo.",
+        autoQuitPredictableNote: "Apps que ainda não abriram uma janela continuam abertos. Apps da barra de menus continuam abertos, a menos que você autorize seu encerramento.",
+        autoQuitOngoingWorkNote: "Alguns apps fecham a última janela e continuam trabalhando, como um gravador de tela depois que a captura começa. Esses também são encerrados, a menos que estejam na lista de exceções.",
+        autoQuitExceptionsTitle: "Exceções",
+        autoQuitExceptionsCaption: "Apps nesta lista continuam abertos mesmo sem nenhuma janela.",
+        autoQuitExceptionsEmpty: "Nenhuma exceção",
+        autoQuitAddApp: "Adicionar app…",
+
+        uninstallerName: "Desinstalador",
+        uninstallerEnableCaption: "Remove um app junto com os caches, preferências, logs e resíduos que ele deixa para trás.",
+        uninstallerStep1: "Arraste um app para os Ajustes ou escolha um da lista.",
+        uninstallerStep2: "Revise os arquivos encontrados e quanto espaço ocupam.",
+        uninstallerStep3: "Mova o que quiser para a Lixeira. Nada é apagado de forma definitiva.",
+        uninstallerMenuItem: "Desinstalar um app…",
+        uninstallerDropTitle: "Arraste um app aqui",
+        uninstallerDropSubtitle: "ou escolha um para analisar",
+        uninstallerChoose: "Escolher app…",
+        uninstallerPickerTitle: "Escolher app",
+        uninstallerPickerSearch: "Buscar apps",
+        uninstallerPickerEmpty: "Nenhum app encontrado",
+        uninstallerEmptyNote: "Nada é removido sem a sua confirmação.",
+        uninstallerFDANote: "Conceda Acesso Total ao Disco para uma análise mais completa.",
+        uninstallerFDAGrant: "Conceder acesso…",
+        uninstallerFDAHint: "Ative o Vitruvian Atrium na lista. Se ele não aparecer, clique no + e escolha o Vitruvian Atrium em Aplicativos. O acesso só vale depois de reabrir o app.",
+        uninstallerFDARelaunch: "Reabrir agora",
+        uninstallerScanning: "Analisando arquivos…",
+        uninstallerRemoving: "Movendo para a Lixeira…",
+        uninstallerFoundTitle: "encontrado",
+        uninstallerSelectedFormat: "%d de %d selecionados",
+        uninstallerRemove: "Mover para a Lixeira",
+        uninstallerCancel: "Cancelar",
+        uninstallerConfirmationExpired: "Esta confirmação não é mais válida. Revise os itens atuais e confirme de novo.",
+        uninstallerDoneTitle: "Pronto!",
+        uninstallerFreedFormat: "%@ removidos",
+        uninstallerSomeFailed: "Alguns itens não puderam ser movidos para a Lixeira.",
+        uninstallerFailedNeedsFDA: "Os dados de apps em área restrita só podem ser movidos com Acesso Total ao Disco. A senha de administrador não substitui essa permissão.",
+        uninstallerFailedMoreFormat: "e mais %d",
+        uninstallerAnother: "Desinstalar outro",
+        uninstallerCatApp: "Aplicativo",
+        uninstallerCatSupport: "Suporte",
+        uninstallerCatCaches: "Caches",
+        uninstallerCatPreferences: "Preferências",
+        uninstallerCatContainers: "Contêineres",
+        uninstallerCatLogs: "Logs",
+        uninstallerCatState: "Estado salvo",
+        uninstallerCatOther: "Outros",
+        uninstallerCommandBarBrowseTitle: "Desinstalar aplicativo",
+        uninstallerCommandBarToggle: "Mostrar na Barra de Comandos",
+        uninstallerCommandBarCaption: "Permite escolher e desinstalar aplicativos pela Barra de Comandos.",
+        uninstallerCommandBarFinderTitle: "Desinstalar aplicativo selecionado no Finder",
+        uninstallerSelectionUnavailable: "Selecione um aplicativo que possa ser removido no Finder ou escolha outro na lista.",
+        uninstallerRefusedNotApp: "Só é possível desinstalar apps.",
+        uninstallerRefusedSystemFormat: "%@ não pode ser desinstalado porque faz parte do macOS.",
+        uninstallerRefusedSharedFormat: "%@ não pode ser desinstalado aqui porque compartilha arquivos com o macOS ou com outros apps.",
+        uninstallerRefusedNestedFormat: "%@ não pode ser desinstalado sozinho porque faz parte de outro app.",
+        uninstallerRefusedSelfFormat: "O Vitruvian Atrium não pode se desinstalar por aqui. Use Ajustes › %@.",
+        uninstallerRefusedLinkFormat: "%@ não pode ser desinstalado porque é um link para um app guardado em outro lugar.",
+        uninstallerRefusedUnidentifiedFormat: "%@ não pode ser desinstalado porque não foi possível identificá-lo como app.",
+        uninstallerPickerHiddenNote: "Apps que fazem parte do macOS ou são da Apple não aparecem na lista.",
+
+        urlCleanerName: "Limpar URL",
+        urlCleanerEnable: "Limpar URLs ao copiar",
+        urlCleanerEnableCaption: "Remove os parâmetros de rastreamento de um link assim que ele chega à área de transferência.",
+        urlCleanerActiveNow: "Ativo agora",
+        urlCleanerManualTitle: "Limpar agora",
+        urlCleanerInputPlaceholder: "Cole uma URL",
+        urlCleanerOutputPlaceholder: "A URL limpa aparece aqui",
+        urlCleanerPasteButton: "Colar",
+        urlCleanerCopyButton: "Copiar",
+        urlCleanerClearButton: "Limpar campo",
+        urlCleanerNoURL: "Cole uma URL válida.",
+        urlCleanerNoChange: "Nada para limpar.",
+        urlCleanerCleaned: "URL limpa.",
+        urlCleanerCopied: "Copiado.",
+        urlCleanerLocalNote: "Local. Sem rede.",
+
+        homebrewName: "Homebrew",
+        homebrewEnableCaption: "Pesquise, instale e remova fórmulas e casks.",
+        homebrewMissingTitle: "Homebrew não encontrado",
+        homebrewMissingBody: "O Vitruvian Atrium pode abrir o Terminal com o instalador oficial do Homebrew. O Terminal mostra os passos e pede sua senha se precisar.",
+        homebrewInstallHomebrew: "Instalar Homebrew",
+        homebrewInstallHomebrewCaption: "Depois que terminar no Terminal, volte aqui e clique em Atualizar.",
+        homebrewInstallHomebrewOpened: "Instalador aberto no Terminal.",
+        homebrewShellSetupTitle: "Finalizar configuração do Terminal",
+        homebrewShellSetupBody: "O Homebrew está instalado, mas o Terminal ainda pode não encontrar o comando brew. O Vitruvian Atrium pode abrir o Terminal com o comando de configuração.",
+        homebrewShellSetupButton: "Configurar Terminal",
+        homebrewShellSetupOpened: "Comando aberto no Terminal. Depois volte aqui e clique em Atualizar.",
+        homebrewRefresh: "Atualizar",
+        homebrewCheckPackages: "Verificar pacotes",
+        homebrewTrustTitle: "Tap ainda não confiável",
+        homebrewTrustCaption: "O Homebrew agora pede sua confirmação antes de usar taps de terceiros. Confie em %@ para continuar.",
+        homebrewTrustButton: "Confiar e continuar",
+        homebrewSearchPlaceholder: "Pesquisar pacotes",
+        homebrewKeyboardHint: "Espaço ou Enter fecham o painel do macOS. Use o botão de busca.",
+        homebrewSearchButton: "Pesquisar",
+        homebrewSearchResults: "Resultados",
+        homebrewInstalled: "Instalados",
+        homebrewAll: "Todos",
+        homebrewFormulas: "Fórmulas",
+        homebrewCasks: "Casks",
+        homebrewNoPackages: "Nenhum pacote encontrado",
+        homebrewDependencies: "Dependências",
+        homebrewGroupDependencies: "Agrupar dependências",
+        homebrewOrphans: "Não são mais necessárias",
+        homebrewOrphansNote: "Instaladas como dependências, mas nenhum pacote instalado precisa mais delas.",
+        homebrewDependencyUpdatesFormat: "Atualizações de dependências: %d",
+        homebrewNoSelection: "Selecione um pacote instalado ou pesquise um novo.",
+        homebrewDetailsTitle: "Detalhes do pacote",
+        homebrewInstall: "Instalar",
+        homebrewUninstall: "Desinstalar",
+        homebrewUpgrade: "Atualizar",
+        homebrewUpgradeAll: "Atualizar tudo",
+        homebrewUpdateHomebrew: "Atualizar Homebrew",
+        homebrewAllPackages: "pacotes",
+        homebrewOpenTerminal: "Abrir Terminal",
+        homebrewCancelOperation: "Cancelar",
+        homebrewClearLog: "Limpar log",
+        homebrewLogTitle: "Log",
+        homebrewVersion: "Versão",
+        homebrewDescription: "Tipo",
+        homebrewHomepage: "Abrir site",
+        homebrewPopularity: "Popularidade",
+        homebrewPopularityFormat: "%@ instalações em %@ dias",
+        homebrewInstalledBadge: "Instalado",
+        homebrewNotInstalledBadge: "Não instalado",
+        homebrewUpdates: "Atualizações",
+        homebrewUpdateAvailableBadge: "Atualização disponível",
+        homebrewLatestVersion: "Mais recente",
+        homebrewConfirmInstallTitle: "Instalar pelo Homebrew?",
+        homebrewConfirmInstallBodyFormat: "O Homebrew vai baixar e instalar %@. Dependências também podem ser instaladas.",
+        homebrewConfirmUninstallTitle: "Desinstalar pelo Homebrew?",
+        homebrewConfirmUninstallBodyFormat: "O Homebrew vai desinstalar %@. Arquivos de configuração podem permanecer no sistema.",
+        homebrewConfirmUpgradeTitle: "Atualizar pelo Homebrew?",
+        homebrewConfirmUpgradeBodyFormat: "O Homebrew vai baixar e aplicar a versão mais recente de %@. Dependências também podem ser atualizadas.",
+        homebrewConfirmUpgradeAllTitle: "Atualizar todos pelo Homebrew?",
+        homebrewConfirmUpgradeAllBody: "O Homebrew vai baixar e aplicar as versões mais recentes dos pacotes com atualização disponível. Dependências também podem ser atualizadas.",
+        homebrewConfirmUpdateHomebrewTitle: "Atualizar Homebrew?",
+        homebrewConfirmUpdateHomebrewBody: "O Homebrew vai buscar as informações mais recentes e depois recarregar seus pacotes.",
+        homebrewTerminalFallback: "Esta operação precisa do Terminal para pedir a senha de administrador. O Vitruvian Atrium não captura senhas.",
+        homebrewLoading: "Carregando…",
+        homebrewSearchEmpty: "Nenhum resultado",
+        homebrewOperationInstallFormat: "Instalando %@",
+        homebrewOperationUninstallFormat: "Desinstalando %@",
+        homebrewOperationUpgradeFormat: "Atualizando %@",
+        homebrewOperationUpgradeAll: "Atualizando pacotes",
+        homebrewOperationUpdateHomebrew: "Atualizando Homebrew",
+        homebrewOperationInstalledFormat: "%@ instalado.",
+        homebrewOperationUninstalledFormat: "%@ desinstalado.",
+        homebrewOperationUpgradedFormat: "%@ atualizado.",
+        homebrewOperationUpgradedAll: "Pacotes atualizados.",
+        homebrewOperationUpdatedHomebrew: "Homebrew atualizado.",
+        homebrewOperationFailedFormat: "Não foi possível concluir %@.",
+        homebrewOperationCancelled: "Operação cancelada.",
+        homebrewOperationPreparing: "Preparando…",
+        homebrewOperationDownloading: "Baixando arquivos…",
+        homebrewOperationInstalling: "Instalando arquivos…",
+        homebrewOperationUninstalling: "Removendo arquivos…",
+        homebrewOperationUpgrading: "Atualizando arquivos…",
+        homebrewOperationFinalizing: "Finalizando…",
+        homebrewOperationRefreshing: "Atualizando lista…",
+        homebrewOperationTerminal: "Continue no Terminal.",
+        homebrewOperationElapsedFormat: "%@ decorridos",
+        homebrewOperationShowDetails: "Mostrar detalhes",
+        homebrewOperationHideDetails: "Ocultar detalhes",
+        homebrewOperationTechnicalLog: "Detalhes técnicos",
+        homebrewOperationProgressUnknown: "O Homebrew ainda não informou uma porcentagem.",
+
+        mediaName: "Media",
+        mediaEnableCaption: "Comprima vídeos, converta e processe imagens, crie GIFs e extraia texto localmente.",
+        mediaLocalNote: "Local. Sem rede.",
+        mediaToolVideo: "Vídeo",
+        mediaToolGIF: "GIF",
+        mediaToolImage: "Imagem",
+        mediaToolText: "Texto",
+        mediaSelectFile: "Escolher arquivo",
+        mediaDropHint: "Arraste um arquivo aqui ou clique para escolher.",
+        mediaOutput: "Saída",
+        mediaOutputAutomatic: "Automática",
+        mediaChooseOutput: "Destino",
+        mediaStartVideo: "Comprimir vídeo",
+        mediaStartGIF: "Criar GIF",
+        mediaStartImage: "Processar imagem",
+        mediaStartConvertPDF: "Converter em PDF",
+        mediaStartText: "Extrair texto",
+        mediaCancel: "Cancelar",
+        mediaStartTime: "Início",
+        mediaEndTime: "Fim",
+        mediaQuality: "Compressão",
+        mediaCompressionLow: "Baixa",
+        mediaCompressionMedium: "Média",
+        mediaCompressionHigh: "Alta",
+        mediaCompressionLowDescription: "Alta qualidade, arquivo grande",
+        mediaCompressionMediumDescription: "Equilíbrio entre qualidade e tamanho do arquivo",
+        mediaCompressionHighDescription: "Baixa qualidade, arquivo pequeno",
+        mediaMaxSize: "Tamanho",
+        mediaSizingResolution: "Resolução",
+        mediaSizingFileSize: "Tamanho do arquivo",
+        mediaTargetSize: "Tamanho alvo",
+        mediaTargetSizeHint: "A resolução se ajusta para ficar abaixo do limite.",
+        mediaErrorTargetTooSmall: "Tamanho alvo pequeno demais para este clipe. Encurte-o ou aumente o limite.",
+        mediaMegabytesSuffix: " MB",
+        mediaWidth: "Largura",
+        mediaFPS: "FPS",
+        mediaKeepAudio: "Manter áudio",
+        mediaCodec: "Codec",
+        mediaFormat: "Formato",
+        mediaStripMetadata: "Remover metadados",
+        mediaLoopGIF: "Repetir GIF",
+        mediaOCRMode: "OCR",
+        mediaOCRAccurate: "Preciso",
+        mediaOCRFast: "Rápido",
+        mediaLanguageCorrection: "Correção de idioma",
+        mediaTextOutputNote: "O texto extraído pode ser copiado e salvo em TXT.",
+        mediaRunning: "Processando",
+        mediaCompleted: "Concluído",
+        mediaCancelled: "Cancelado.",
+        mediaOpenInFinder: "Mostrar",
+        mediaCopyText: "Copiar texto",
+        mediaRunAgain: "Rodar de novo",
+        mediaEmptyText: "Nenhum texto encontrado.",
+        mediaResultSavedFormat: "Salvo como %@",
+        mediaResultSizeFormat: "%@ para %@",
+        mediaResultGrewCaption: "O arquivo convertido ficou maior que o original.",
+        mediaErrorNoFile: "Escolha um arquivo primeiro.",
+        mediaErrorNoVideo: "Este arquivo não tem trilha de vídeo.",
+        mediaErrorSameOutput: "Escolha um destino diferente do arquivo original.",
+        mediaErrorUnsupported: "Formato não suportado pelo macOS.",
+
+        shelfName: "Área temporária",
+        shelfEnable: "Área temporária para arrastar arquivos",
+        shelfEnableCaption: "Um espaço flutuante para juntar arquivos, imagens e textos e arrastá-los depois para qualquer app.",
+        shelfHowTitle: "Como usar",
+        shelfStep1: "Abra a área com o atalho ou sacudindo o mouse durante um arraste.",
+        shelfStep2: "Solte arquivos, imagens, links ou texto sobre ela para guardá-los.",
+        shelfStep3: "Arraste cada item de volta para qualquer app quando precisar.",
+        shelfShakeToggle: "Abrir sacudindo o mouse durante o arraste",
+        shelfShakeCaption: "Sacuda o ponteiro rapidamente segurando um item para chamar a área perto do cursor.",
+        shelfDropZoneToggle: "Guardar arquivos na barra de menus ao arrastar",
+        shelfDropZoneCaption: "Ao arrastar um arquivo, a área aparece embaixo do ícone na barra de menus. O que você soltar fica guardado ali, num botão que você encolhe e abre com um clique e que some quando a área fica vazia.",
+        shelfDropZoneCaptionTopCenter: "Ao arrastar um arquivo, a área aparece como um selo no topo, no centro da tela. O que você soltar fica guardado ali, num selo que você abre com um clique e que some quando a área fica vazia.",
+        shelfDropZoneLabel: "Solte aqui",
+        shelfDockPlacement: "Posição",
+        shelfDockMenuBar: "Embaixo do ícone da barra de menus",
+        shelfDockTopCenter: "No topo, no centro da tela",
+        shelfDockIslandNote: "Enquanto a Dynamic Island está ligada, o centro do topo é dela.",
+        shelfCollapse: "Encolher",
+        shelfBehaviorTitle: "Depois de usar",
+        shelfCloseAfterDrop: "Fechar depois de soltar em outro app",
+        shelfCloseAfterDropCaption: "Fecha a área quando o destino aceita os itens. O alfinete no painel a mantém aberta.",
+        shelfRemoveAfterDrop: "Remover itens depois de soltar",
+        shelfRemoveAfterDropCaption: "Itens aceitos por outro app saem da área. Desative para manter uma cópia nela. Itens fixados sempre ficam.",
+        shelfExclusionsTitle: "Exceções automáticas",
+        shelfExclusionsEmpty: "Nenhum app adicionado.",
+        shelfExclusionsCaption: "Sacudir e a área da barra de menus não abrem durante arrastes iniciados nesses apps. O atalho e Abrir agora continuam funcionando.",
+        shelfPin: "Manter aberta",
+        shelfUnpin: "Deixar fechar após o uso",
+        extraBrightnessName: "Brilho extra",
+        extraBrightnessCaption: "Usa a reserva HDR da tela para passar do brilho máximo. Consome mais bateria e o Mac pode esquentar.",
+        extraBrightnessLevelLabel: "Intensidade",
+        extraBrightnessUnsupported: "Disponível apenas em telas XDR, como as dos MacBook Pro de 14 e 16 polegadas.",
+        shelfHotkeyLabel: "Atalho",
+        shelfOpenNow: "Abrir agora",
+        shelfNoPermission: "Não requer nenhuma permissão.",
+        shelfMenuItem: "Abrir área temporária",
+        shelfTitle: "Área temporária",
+        shelfEmpty: "Arraste itens aqui",
+        shelfClearAll: "Limpar tudo",
+        shelfRemoveSelected: "Remover selecionados",
+        shelfSelectedFormat: "%d selecionados",
+        shelfHint: "Clique para selecionar. Arraste para usar ou clique com o botão direito para mais ações.",
+        shelfItemImage: "Imagem",
+        shelfTooltipItemsFormat: "%d itens",
+        shelfTooltipItemsFew: "%d itens",
+        shelfTooltipImageSingular: "%d imagem",
+        shelfTooltipImageFew: "%d imagens",
+        shelfTooltipImagePlural: "%d imagens",
+        shelfTooltipFileSingular: "%d arquivo",
+        shelfTooltipFileFew: "%d arquivos",
+        shelfTooltipFilePlural: "%d arquivos",
+        shelfTooltipNoteSingular: "%d nota",
+        shelfTooltipNoteFew: "%d notas",
+        shelfTooltipNotePlural: "%d notas",
+        shelfTooltipLinkSingular: "%d link",
+        shelfTooltipLinkFew: "%d links",
+        shelfTooltipLinkPlural: "%d links",
+        shelfActionOpen: "Abrir",
+        shelfActionOpenWith: "Abrir com",
+        shelfActionShare: "Compartilhar",
+        shelfActionPin: "Fixar",
+        shelfActionUnpin: "Desafixar",
+
+        breakdownMeasuring: "Medindo…",
+
+        mixerSection: "Mixer de volume",
+        mixerEmpty: "Apps que usam áudio aparecem aqui",
+        mixerUnavailable: "Disponível a partir do macOS 14.4",
+        mixerPermissionBody: "Para ajustar o volume por app, permita “Gravação de Tela e Áudio do Sistema” nos Ajustes do Sistema. O áudio nunca é gravado.",
+        mixerResetTooltip: "Voltar para 100%",
+        mixerOutputDefault: "Padrão",
+        mixerOutputCurrent: "atual",
+        mixerOutputUnavailable: "Saída indisponível",
+        mixerOutputFallback: "Usando o padrão até esse dispositivo voltar.",
+        mixerBypassedCaption: "Este app controla o próprio áudio.",
+        mixerOutputTooltip: "Escolher saída",
+        mixerAirPlayChooseSpeaker: "Escolher alto-falante AirPlay…",
+        mixerSystemOutputTitle: "Saída",
+        mixerSystemOutputNoDevices: "Nenhuma saída encontrada",
+        mixerSystemOutputTooltip: "Escolher saída do sistema",
+        mixerSystemOutputErrorFormat: "Não foi possível trocar: %@",
+        mixerLowerOnHeadphonesDisconnect: "Baixar volume ao desconectar fones",
+        mixerLowerOnHeadphonesDisconnectCaption: "Ajusta a saída quando fones com fio ou Bluetooth desconectam.",
+        mixerHeadphonesDisconnectVolume: "Volume ao desconectar",
+        preciseVolumeRollerEnable: "Volume mais preciso no controle",
+        preciseVolumeRollerCaption: "Transforma roletes e teclas de volume em passos menores.",
+        preciseVolumeRollerTapFailed: "Não foi possível ouvir as teclas de volume.",
+        soundOutputSwitcherTitle: "Alternador de saída",
+        soundOutputSwitcherEnable: "Alternar saídas por atalho",
+        soundOutputSwitcherCaption: "Escolha as saídas e use o atalho para passar para a próxima disponível.",
+        soundOutputSwitcherDevices: "Saídas no ciclo",
+        soundOutputSwitcherNoAvailableSelection: "Selecione pelo menos uma saída disponível.",
+        mixerInputTitle: "Microfone",
+        mixerInputNoDevices: "Nenhum microfone encontrado",
+        mixerInputUnavailable: "Microfone indisponível",
+        mixerInputFallback: "Usando o padrão até esse microfone voltar.",
+        mixerInputTooltip: "Escolher microfone",
+        mixerInputErrorFormat: "Não foi possível trocar: %@",
+        mixerVisibleApps: "Apps na lista",
+        mixerAllShown: "Todos",
+        mixerHiddenCountLabel: "Escondidos",
+        mixerHideFromList: "Esconder da lista",
+        audioPrioritySection: "Prioridade dos dispositivos de áudio",
+        audioPriorityOutputEnable: "Trocar automaticamente para a saída de áudio com maior prioridade",
+        audioPriorityInputEnable: "Trocar automaticamente para o microfone de maior prioridade",
+        audioPriorityOutputList: "Prioridade das saídas de áudio",
+        audioPriorityInputList: "Prioridade dos microfones",
+        audioPriorityMoveUp: "Mover para cima",
+        audioPriorityMoveDown: "Mover para baixo",
+        audioPriorityUnavailable: "Indisponível",
+        audioPriorityCurrent: "Em uso",
+        audioPriorityCaption: "Os dispositivos são selecionados por ordem de prioridade. Quando um dispositivo de maior prioridade é conectado, ele passa a ser usado. Quando o dispositivo ativo é desconectado, o próximo disponível é selecionado.",
+
+        updatesSection: "Atualizações",
+        autoCheckToggle: "Procurar atualizações automaticamente",
+        includeBetaUpdatesToggle: "Receber atualizações beta",
+        includeBetaUpdatesCaption: "Versões beta incluem novidades em desenvolvimento e podem apresentar instabilidades ou comportamentos incompletos.",
+        betaBadgeLabel: "Beta",
+        checkNowButton: "Procurar agora",
+        updateChecking: "Procurando…",
+        updateUpToDate: "Você está na versão mais recente.",
+        updateAvailablePrefix: "Atualização disponível:",
+        updateInstallButton: "Baixar e instalar",
+        updateDownloading: "Baixando atualização…",
+        updateInstalling: "Instalando e reiniciando…",
+        updateFailedPrefix: "Não foi possível verificar:",
+        updateRateLimited: "o GitHub está limitando as solicitações. Tente novamente mais tarde.",
+        updateNoReleaseFound: "nenhuma versão do Vitruvian Atrium foi encontrada.",
+        updateLastChecked: "Última verificação:",
+        updateNotifyTitle: "Atualização do Vitruvian Atrium",
+        updateInstallFailedBody: "A atualização foi baixada, mas não pôde ser aplicada. Baixe a versão mais recente na página de releases do GitHub e arraste o app por cima do atual.",
+        updateNeedsApplicationsTitle: "Mova o Vitruvian Atrium para Aplicativos",
+        updateNeedsApplicationsBody: "O app está rodando de um lugar que não dá para atualizar, como a imagem de disco ou uma área temporária do sistema. Arraste o Vitruvian Atrium para a pasta Aplicativos, abra de lá e tente de novo.",
+        menuCheckUpdates: "Procurar atualizações…",
+
+        permissionRequired: "Permissão necessária",
+        permissionAccessibility: "Acessibilidade",
+        permissionScreenRecording: "Gravação de Tela",
+        permissionGranted: "Concedida",
+        permissionMissing: "Não concedida",
+        permissionOpenSettings: "Abrir Ajustes do Sistema…",
+        permissionRequest: "Conceder acesso",
+        permissionRestartNote: "O macOS pode pedir para reabrir o app depois de conceder.",
+        secureInputTitle: "A entrada segura está ativa",
+        secureInputHeldFormat: "%@ era o app em primeiro plano quando ela foi ligada e pode estar mantendo-a ativa, então o Vitruvian Atrium não consegue digitar por você. Saia do campo de senha do app, ou encerre-o, para liberá-la.",
+        secureInputUnattributed: "Não é possível dizer qual app a está mantendo ativa, então o Vitruvian Atrium não consegue digitar por você. Saia de qualquer campo de senha aberto, ou encerre a sessão e entre novamente, para limpá-la.",
+        secureInputUnidentified: "Não foi possível identificar o app que a está mantendo ativa, então o Vitruvian Atrium não consegue digitar por você.",
+        secureInputRevealFormat: "Mostrar %@",
+        secureInputSwitcherHeldFormat: "%@ era o app em primeiro plano quando ela foi ligada e pode estar mantendo-a ativa. Até ela ser desativada, o macOS esconde do alternador as teclas que você pressiona e o ⌘Tab abre o alternador do macOS. Saia do campo de senha do app, ou encerre-o, para liberá-la.",
+        secureInputSwitcherUnattributed: "Não é possível dizer qual app a está mantendo ativa. Até ela ser desativada, o macOS esconde do alternador as teclas que você pressiona e o ⌘Tab abre o alternador do macOS. Saia de qualquer campo de senha aberto, ou encerre a sessão e entre novamente, para limpá-la.",
+        secureInputSwitcherUnidentified: "Não foi possível identificar o app que a está mantendo ativa. Até ela ser desativada, o macOS esconde do alternador as teclas que você pressiona e o ⌘Tab abre o alternador do macOS.",
+
+        aboutDescription: "Central de utilidades para o seu Mac.\nEnergia, monitor do sistema, rolagem e alternador de janelas, direto na barra de menus.",
+        versionPrefix: "Versão",
+        reviewIntro: "Rever introdução",
+        reviewHighlights: "Rever novidades",
+        viewOnGitHub: "Ver no GitHub",
+
+        obContinue: "Continuar",
+        obBack: "Voltar",
+        obSkipStep: "Pular esta etapa",
+        obStart: "Abrir o Vitruvian Atrium",
+        obStepWelcomeTitle: "Bem-vindo ao Vitruvian Atrium",
+        obStepWelcomeBody: "Um utilitário discreto na barra de menus que deixa o macOS mais prático no dia a dia.",
+        obWelcomeBullet1Title: "Energia sob controle",
+        obWelcomeBullet1Body: "Mantenha o Mac acordado por quanto tempo quiser, até com a tampa fechada.",
+        obWelcomeBullet2Title: "Visão clara do sistema",
+        obWelcomeBullet2Body: "Temperaturas, uso de CPU e GPU e pressão de memória em tempo real.",
+        obWelcomeBullet3Title: "Mouse e janelas do seu jeito",
+        obWelcomeBullet3Body: "Rolagem invertida no mouse e um alternador de janelas com miniaturas.",
+        obLanguageLabel: "Idioma",
+        obStepAccessibilityTitle: "Acessibilidade",
+        obStepAccessibilityBody: "Necessária para inverter a rolagem do mouse e para o alternador de janelas responder ao teclado.",
+        obAccessibilityWhy: "O app só observa a roda do mouse e o atalho do alternador. Nada é gravado nem enviado a lugar algum.",
+        obStepRecordingTitle: "Gravação de Tela",
+        obStepRecordingBody: "Permite mostrar miniaturas reais das janelas no alternador, em vez de apenas ícones.",
+        obRecordingWhy: "As miniaturas são geradas na hora, ficam só na memória e nunca saem do seu Mac. Sem ela, o alternador funciona com ícones.",
+        obStepMonitorTitle: "Monitor do sistema",
+        obStepMonitorBody: "O painel mostra as temperaturas de CPU, GPU e bateria, o uso de hardware e a pressão de memória.",
+        obMonitorNoPermission: "Não precisa de permissão. Os sensores são lidos direto do sistema.",
+        obStepOptionalTitle: "Recursos opcionais",
+        obStepOptionalBody: "Ative agora o que quiser usar. Tudo pode ser mudado depois nos Ajustes.",
+        obStepStatusTitle: "Verificação",
+        obStepStatusBody: "Confira se está tudo pronto para os recursos que você quer usar.",
+        obStatusRecheck: "Verificar novamente",
+        obStepDoneTitle: "Tudo pronto!",
+        obStepDoneBody: "O Vitruvian Atrium já está cuidando do seu Mac.",
+        obDoneHint: "Procure o buraco negro na barra de menus, no canto superior direito da tela.",
+        obWhatsNewTitle: "Novidades nesta versão",
+        obWhatsNewFallback: "Esta atualização inclui as correções e melhorias mais recentes.",
+        obLanguageUpdateTitle: "Agora no seu idioma",
+        obLanguageUpdateBody: "O Vitruvian Atrium agora fala vários idiomas. Escolha o que você prefere usar; dá para mudar quando quiser nos Ajustes.",
+        obPurposeTitle: "O que te trouxe aqui?",
+        obPurposeBody: "Escolha uma configuração pronta ou marque exatamente o que quer usar.",
+        obPurposeSkip: "Você pode adicionar ou remover recursos depois nos Ajustes.",
+
+        tabMonitor: "Monitor",
+        monitorMenuBarSection: "Na barra de menus",
+        monitorMenuBarPreview: "Prévia da barra de menus",
+        monitorMenuBarCaption: "Escolha o que aparece ao lado do ícone na barra de menus.",
+        monitorCombineTemperatures: "Combinar uso e temperatura",
+        monitorCombineTemperaturesCaption: "Quando uso e temperatura do mesmo item estiverem ativos, mostra tudo em um bloco só.",
+        monitorSeparateMenuBarMetrics: "Separar métricas em itens próprios",
+        monitorSeparateMenuBarMetricsCaption: "Separa os blocos ativos na barra de menus e mantém uso e temperatura juntos quando combinar estiver ativo.",
+        monitorNetworkUploadFirst: "Upload acima do download",
+        monitorShowCPU: "CPU",
+        monitorShowMemory: "Memória",
+        monitorShowNetwork: "Rede",
+        monitorShowPowerLabel: "Energia",
+        monitorIntervalLabel: "Atualizar a cada",
+        monitorInterval1: "1 segundo",
+        monitorInterval2: "2 segundos",
+        monitorInterval5: "5 segundos",
+        monitorPanelSection: "No painel",
+        panelNavigationMode: "Navegar por seções no painel",
+        panelNavigationCaption: "Mostra uma seção por vez. Escolha Lista para ver tudo em uma rolagem contínua.",
+        panelFooterSections: "Seções",
+        panelFooterList: "Lista",
+        betaBadge: "BETA",
+        betaFeatureWarning: "Beta. Você pode encontrar alguns bugs.",
+
+        networkSection: "Rede",
+        networkIPAddresses: "Endereços IP",
+        networkLocalIP: "IPv4 local",
+        networkDownload: "Download",
+        networkUpload: "Upload",
+        networkThisSession: "Nesta sessão",
+        networkMeasuring: "Medindo…",
+        networkApps: "Apps usando rede",
+        networkAppsIdle: "Nenhum app usando rede agora",
+
+        diskSection: "Discos",
+        diskUsed: "usado",
+        diskFree: "livre",
+        diskMenuBarStyleLabel: "Exibição do disco",
+        diskMenuBarUsedPercentage: "Porcentagem usada",
+        diskMenuBarAvailableSpace: "Espaço disponível",
+        diskMenuBarUsedSpace: "Espaço usado",
+        diskAvailable: "disponível",
+        diskPurgeable: "purgável",
+        diskInternal: "Interno",
+        diskExternal: "Externo",
+        diskSelect: "Selecionar disco",
+        diskRead: "Leitura",
+        diskWrite: "Escrita",
+        diskSMARTStatus: "Status",
+        diskSMARTUnavailable: "SMART indisponível para este disco",
+        diskTotalRead: "Total lido",
+        diskTotalWritten: "Total escrito",
+        diskTemperature: "Temperatura",
+        diskHealth: "Saúde",
+        diskPowerCycles: "Ciclos",
+        diskPowerOnHours: "Horas ligado",
+        diskUnsafeShutdowns: "Desligamentos inseguros",
+        diskMediaErrors: "Erros de mídia",
+        diskEject: "Ejetar",
+        diskEjectAll: "Ejetar todos",
+        diskEjecting: "Ejetando…",
+        diskReadyToRemove: "Pronto para remover",
+        diskEjectFailed: "Não foi possível ejetar",
+        diskProtectionCaption: "Ejete antes de desconectar.",
+        diskNoExternal: "Nenhum disco externo pronto para ejeção.",
+        diskOpenInFinder: "Abrir",
+        diskStorageSettings: "Armazenamento",
+        diskNoDisks: "Nenhum disco montado encontrado.",
+
+        powerSection: "Energia",
+        powerSystem: "Sistema",
+        powerAdapter: "Adaptador",
+        powerBattery: "Bateria",
+        powerCharging: "Carregando",
+        powerOnBattery: "Na bateria",
+        powerPluggedIn: "Na tomada",
+        powerUnavailable: "Métricas de energia indisponíveis neste Mac",
+        powerAdapterMaxFormat: "%@ máx.",
+        monitorShowGPU: "GPU",
+        monitorShowCPUTemperature: "Temperatura da CPU",
+        monitorShowGPUTemperature: "Temperatura da GPU",
+        monitorShowBatteryTemperature: "Temperatura da bateria",
+        monitorShowPeripheralBattery: "Bateria dos periféricos",
+        peripheralBatteryNoDevices: "Nenhum periférico encontrado",
+        monitorGraphsSection: "Gráficos",
+
+        updateBannerTitle: "Atualização disponível",
+        updateBannerAction: "Atualizar",
+        obStepMenuBarTitle: "Métricas na barra de menus",
+        obStepMenuBarBody: "Escolha o que mostrar ao lado do ícone. A prévia acima muda em tempo real.",
+        obStepMenuBarNote: "Novidade: blocos de Rede e Energia e gráficos no painel. Ajuste tudo depois em Ajustes › Monitor.",
+        monitorMenuBarPresetLabel: "Estilo",
+        menuBarPresetReadable: "Legível",
+        menuBarPresetDense: "Denso",
+        menuBarSpacingLabel: "Espaçamento na barra",
+        menuBarSpacingStandard: "Padrão",
+        menuBarSpacingCompact: "Compacto",
+        menuBarHideIconToggle: "Ocultar o ícone do app enquanto houver métricas",
+        menuBarHideIconCaption: "O ícone volta sozinho quando as métricas saem da barra e quando há algo a avisar (atualização pronta, “Manter acordado” ativo ou microfone silenciado).",
+        monitorLabelStyleLabel: "Rótulos",
+        menuBarLabelStyleCompact: "Compactos",
+        menuBarLabelStyleClassic: "Clássicos",
+        monitorMemoryStyleLabel: "Mostrar memória como",
+        monitorMemoryPressureDot: "Ponto de pressão",
+        memoryStyleDot: "Ponto",
+        memoryStylePercent: "%",
+        memoryStyleBoth: "Ambos",
+        systemUptime: "Ativo há",
+        batteryCharge: "Carga",
+        powerHealth: "Saúde da bateria",
+        powerCycles: "Ciclos",
+        speedTestRun: "Testar velocidade",
+        speedTestAgain: "Testar de novo",
+        speedTestLatency: "Latência",
+        speedTestTesting: "Testando…",
+        speedTestFailed: "Falha no teste",
+
+        monitorShowInPanel: "Mostrar no painel",
+        disclosureExpanded: "Expandido",
+        disclosureCollapsed: "Recolhido",
+        panelHideItem: "Ocultar do painel",
+        panelShowItem: "Mostrar no painel",
+        panelHiddenItem: "Oculto",
+        monitorItemUptime: "Tempo ativo",
+        monitorItemNetSpeed: "Velocidade ao vivo",
+        monitorItemNetTotals: "Totais da sessão",
+        monitorItemNetTest: "Teste de velocidade",
+        monitorItemDiskUsage: "Uso do disco",
+        monitorItemDiskActivity: "Atividade ao vivo",
+        monitorItemDiskSMART: "SMART",
+        monitorItemDiskProtection: "Proteção externa",
+        monitorItemDiskTools: "Ferramentas",
+        monitorPanelConfigHint: "Abra um bloco para escolher o que ele mostra.",
+        monitorOrderHint: "Arraste para reordenar as seções do painel e use o olho para mostrar ou ocultar cada uma.",
+        obStepPanelTitle: "O que aparece no painel",
+        obStepPanelBody: "Abra cada bloco e escolha exatamente o que mostrar quando você clica no ícone.",
+        obStepPanelNavigationTitle: "Painel por seções",
+        obStepPanelNavigationBody: "O painel agora pode mostrar uma seção por vez. Você pode mudar entre Seções e Lista nos Ajustes.",
+
+        cleaningMenuItem: "Modo de limpeza",
+        utilitiesSection: "Utilidades",
+        quickControlsSection: "Controles",
+        panelCategoryWindows: "Janelas",
+        panelCategoryInput: "Mouse e teclado",
+        panelCategoryFiles: "Arquivos",
+        windowMaximizeName: "Maximizar janelas",
+        windowMaximizeCaption: "O botão verde maximiza sem criar outro Espaço.",
+        windowMaximizeActiveNow: "Ativo no botão verde",
+        windowMaximizeNeedsAccessibility: "Precisa de Acessibilidade para funcionar.",
+        keyDebounceName: "Debounce",
+        keyDebounceEnable: "Filtrar teclas duplicadas",
+        keyDebounceCaption: "Filtra toques duplicados muito rápidos.",
+        keyDebounceActiveNow: "Filtro ativo",
+        keyDebounceGlobalWindow: "Janela global",
+        keyDebouncePerKeySection: "Teclas específicas",
+        keyDebouncePerKeyCaption: "Valores por tecla substituem a janela global. Use 0 ms para não filtrar uma tecla.",
+        keyDebounceKeyLabel: "Tecla",
+        keyDebounceWindowLabel: "Janela",
+        keyDebounceAddKey: "Adicionar tecla",
+        keyDebounceNoOverrides: "Nenhuma tecla específica configurada.",
+        keyDebounceRemoveKey: "Remover tecla",
+        cleaningPanelCaption: "Bloqueia o teclado para limpar com segurança.",
+        cleaningOverlayTitle: "Teclado bloqueado para limpeza",
+        cleaningOverlaySubtitle: "Pressione Esc 5 vezes para desbloquear",
+        cleaningOverlayUnlock: "Desbloquear",
+        cleaningOverlayMouseHint: "O mouse e o trackpad continuam funcionando",
+        cleaningKeepScreenVisibleToggle: "Manter a tela visível",
+        cleaningKeepScreenVisibleCaption: "Exibe um indicador discreto no canto da tela em vez de escurecer o conteúdo.",
+        cleaningStartNow: "Bloquear teclado agora",
+        cleaningNeedsAxTitle: "Precisa de Acessibilidade",
+        cleaningNeedsAxBody: "Para bloquear o teclado com segurança, o Vitruvian Atrium precisa da permissão de Acessibilidade. Conceda em Ajustes do Sistema e tente de novo.",
+
+        tabSupport: "Apoiar",
+        shortcutsPageCaption: "Edite aqui todos os atalhos globais dos recursos instalados neste Mac. Os inativos continuam salvos, mas não funcionam.",
+        shortcutsPageTitle: "Atalhos de teclado",
+        settingsSearchPlaceholder: "Buscar ajustes",
+        donateHeading: "Ajude o Vitruvian Atrium a continuar crescendo",
+        donateMessage: "O Vitruvian Atrium é gratuito e de código aberto, e sempre será. Se você quiser apoiar o desenvolvimento, pode doar o valor que preferir. O pagamento é processado com segurança pela Stripe.",
+        donateButton: "Doar",
+        donateThanks: "Obrigado por estar aqui. 🖤",
+        supportIntroTitle: "Ajude o Vitruvian Atrium a continuar crescendo",
+        supportIntroMessage: "Se você quiser apoiar financeiramente o desenvolvimento, o Buy Me a Coffee é o único lugar para fazer isso.",
+        supportIntroStarButton: "Dar uma estrela no GitHub",
+        supportIntroStarMessage: "Apoio financeiro nunca é esperado. Dar uma estrela no GitHub ajuda mais pessoas a encontrar o Vitruvian Atrium e faz uma diferença enorme no desenvolvimento.",
+        supportIntroCoffeeButton: "Apoiar no Buy Me a Coffee",
+        supportIntroLaterButton: "Agora não",
+        supportIntroDoneButton: "Concluir",
+        discordIntroTitle: "A comunidade do Vitruvian Atrium no Discord está começando",
+        discordIntroMessage: "A comunidade do Vitruvian Atrium é nova e ainda está em desenvolvimento. Entre desde o começo para conhecer outros usuários e ajudar a construir um espaço acolhedor em torno do app.",
+        discordIntroJoinButton: "Entrar na comunidade no Discord",
+        communityIntroTitle: "Vem ver antes de todo mundo",
+        communityIntroMessage: "Quem já me seguia no X viu várias novidades desta atualização antes de todo mundo. Lá eu posto prévias do que vem depois e mostro como funciona, para você já saber o básico antes mesmo da atualização sair. Segue lá e veja o que vem depois!",
+        communityIntroFollowButton: "Seguir @vitruvian no X",
+        homebrewOfficialIntroTitle: "Agora no catálogo oficial do Homebrew",
+        homebrewOfficialIntroMessage: "O Vitruvian Atrium agora pode ser instalado direto do catálogo oficial do Homebrew.",
+        homebrewOfficialIntroInstallLabel: "Nova instalação",
+        homebrewOfficialIntroMigrationTitle: "Usava o tap antigo?",
+        homebrewOfficialIntroMigrationMessage: "Remova o tap uma vez. O app e seus ajustes continuam no lugar.",
+        homebrewOfficialIntroCopyButton: "Copiar comando",
+        updateShowcaseTitle: "Novidades da 3.1.4",
+        updateShowcaseMessage: "Veja uma prévia rápida das principais melhorias desta atualização.",
+        updateShowcaseUnavailable: "Não foi possível carregar o vídeo agora. Você ainda pode continuar.",
+        updateShowcaseRestart: "Voltar ao início",
+        showMenuBarIcon: "Mostrar ícone na barra de menus",
+        menuBarIconStillHiddenTitle: "O ícone continua escondido",
+        menuBarIconStillHiddenBody: "O ícone foi recriado, mas o macOS não deu um lugar visível a ele. A barra de menus provavelmente está sem espaço: remova alguns ícones da barra (ou feche apps com menus longos) e tente de novo.",
+        menuBarIconManagerHintFormat: "O %@ está aberto e pode estar guardando o ícone na seção oculta dele. Procure o Vitruvian Atrium lá, ou configure o %@ para sempre mostrar o Vitruvian Atrium.",
+        menuBarIconDisallowedBody: "O macOS está impedindo o Vitruvian Atrium de aparecer na barra de menus. Abra Ajustes do Sistema > Barra de Menus, encontre o Vitruvian Atrium na lista de apps e ative “Permitir na Barra de Menus” (Allow in the Menu Bar). O ícone aparece assim que a opção é ligada.",
+        shortcutRecording: "Pressione o novo atalho",
+        shortcutReset: "Redefinir",
+        shortcutNone: "Nenhum",
+        shortcutClear: "Remover atalho",
+        shortcutInvalid: "Use pelo menos Control, Option ou Command junto com uma tecla.",
+        shortcutPressKeys: "Pressione",
+        shortcutEscapeHint: "Esc cancela.",
+        shortcutDeleteHint: "Delete remove.",
+        shortcutNotCaptured: "Nada foi capturado. O macOS ou outro app já usa essa combinação. Tente outra.",
+        shortcutConflictFormat: "Este atalho já está em uso por %@.",
+        shortcutTakeOverOffer: "O macOS usa %@ em um atalho próprio.",
+        shortcutTakeOverAction: "Assumir enquanto o Vitruvian Atrium estiver aberto",
+        shortcutTakeOverCaption: "O macOS recupera a tecla sempre que o Vitruvian Atrium não estiver aberto ou este recurso estiver desligado.",
+        shortcutTakeOverDismiss: "Não assumir",
+        shortcutUnavailable: "O macOS recusou este atalho. Escolha outro.",
+        shelfShortcutToggle: "Atalho da área temporária",
+        switcherUsageHintFormat: "Segure %@ para navegar; solte para ativar a janela. Shift ou ← volta; W fecha a janela; Q encerra o app; Esc cancela.",
+        musicBlockSection: "Teclas de mídia",
+        musicBlockTitle: "Impedir que o Música abra sozinho",
+        musicBlockCaption: "Bloqueia a abertura do app de música após detectar uma tecla de mídia. Requer acesso à Acessibilidade. Comandos de fones sem uma tecla detectada são preservados.",
+        musicBlockUnavailable: "Esta proteção está indisponível agora. Desligue e ligue a opção para tentar novamente.",
+        musicBlockReplacementLabel: "Abrir no lugar",
+        musicBlockReplacementNone: "Nenhum",
+        musicBlockReplacementBlocked: "O Música e o iTunes são os apps bloqueados, então não podem abrir no lugar. Escolha outro app.",
+        musicBlockChooseApp: "Escolher app…",
+        musicBlockPlayReplacement: "Reproduzir após abrir o app substituto",
+        cleanerName: "Limpeza",
+        cleanerIntroTitle: "Limpe o lixo do Mac",
+        cleanerIntroCaption: "Procura restos de apps desinstalados, caches, registros e a Lixeira. Você revisa tudo antes e os itens removidos vão para a Lixeira.",
+        cleanerScan: "Verificar",
+        cleanerScanning: "Verificando…",
+        cleanerCleaning: "Limpando…",
+        cleanerCatLeftovers: "Restos de apps desinstalados",
+        cleanerCatLoginItems: "Itens de início órfãos",
+        cleanerCatCaches: "Caches",
+        cleanerCatLogs: "Registros",
+        cleanerCatDeveloper: "Lixo de desenvolvimento",
+        cleanerCatTrash: "Lixeira",
+        cleanerLeftoversNote: "Encontrados por análise e começam desmarcados. Confira o caminho antes de marcar.",
+        cleanerLoginItemsNote: "A entrada em Itens de Início some depois de reiniciar o Mac.",
+        cleanerTrashNote: "Esvaziar a Lixeira é permanente.",
+        cleanerCatDeviceBackups: "Backups de iPhone",
+        cleanerDeviceBackupsCaption: "Backups antigos de iPhone e iPad ocupam boa parte do que o macOS chama de Outros. Remova só os que você não precisa mais; um novo backup é feito quando o aparelho for conectado de novo.",
+        cleanerCatScreenshots: "Capturas de tela esquecidas",
+        cleanerScreenshotsCaptionFormat: "Capturas de tela que você não abre há %d dias e que ainda têm o nome e a pasta que o macOS deu. As que você renomeou ou moveu nunca aparecem aqui.",
+        cleanerScreenshotsSettingCaption: "A varredura lista, desmarcadas e com o tamanho total, as capturas de tela que você não abre há esse tempo.",
+        cleanerScreenshotsAfterFormat: "Após %d dias",
+        cleanerNothingFound: "Nada para limpar. Seu Mac está em ordem.",
+        cleanerClean: "Limpar",
+        cleanerDoneNote: "Os itens foram para a Lixeira e podem ser recuperados de lá.",
+        cleanerAgain: "Verificar de novo",
+        cleanerRevealInFinder: "Mostrar no Finder",
+        cleanerPanelCaption: "Restos de apps, caches e logs",
+        cleanerSafeSection: "Limpeza segura",
+        cleanerOptionalSection: "Opcional, revise antes",
+        cleanerCatOtherCaches: "Outros caches",
+        cleanerCachesCaption: "Arquivos temporários que os apps refazem sozinhos.",
+        cleanerLogsCaption: "Registros antigos de diagnóstico.",
+        cleanerDeveloperCaption: "Restos de compilações e simuladores do Xcode.",
+        cleanerLoginItemsCaption: "Entradas de início deixadas por apps que não existem mais.",
+        cleanerLeftoversCaption: "Arquivos deixados por apps que você desinstalou.",
+        cleanerOtherCachesCaption: "Seguro apagar, nada quebra. Apps podem abrir mais devagar na primeira vez e conteúdo baixado, como músicas offline, baixa de novo.",
+        cleanerCleanSizeFormat: "Limpar %@",
+        cleanerScheduleTitle: "Limpeza automática",
+        cleanerScheduleOff: "Desativada",
+        cleanerScheduleDaily: "Diária",
+        cleanerScheduleWeekly: "Semanal",
+        cleanerScheduleCaption: "Limpa sozinha só a parte segura no horário escolhido e manda tudo para a Lixeira.",
+        cleanerScheduleLastFormat: "A última limpeza automática liberou %@.",
+        cleanerAutoNotificationFormat: "%@ liberados e enviados para a Lixeira.",
+        cleanerScheduleNextFormat: "Próxima limpeza %@.",
+        cleanerScheduleRanFormat: "Última limpeza automática %@.",
+        cleanerScheduleNotifyToggle: "Avisar quando terminar",
+        cleanerNotifDenied: "As notificações do Vitruvian Atrium estão desativadas no sistema.",
+        cleanerNotifOpenSettings: "Abrir Ajustes de Notificações…",
+        launchAtLoginNeedsApplications: "O app está rodando de um lugar que não permite abrir no login. Arraste o Vitruvian Atrium para a pasta Aplicativos, abra de lá e ligue de novo.",
+        launchAtLoginNeedsApproval: "O item de login está registrado, mas o macOS ainda precisa da sua aprovação. Nos Ajustes do Sistema, permita que o Vitruvian Atrium abra no login e funcione em segundo plano.",
+        ocrRemoveLineBreaksToggle: "Remover quebras de linha",
+        ocrRemoveLineBreaksCaption: "Remove as quebras de linha para que o texto copiado seja colado como um único parágrafo.",
+        ocrQRToggle: "Ler QR codes",
+        ocrQRCaption: "Se a área tiver um QR code, o conteúdo dele aparece para copiar ou abrir.",
+        ocrQRCopied: "QR code copiado",
+        qrResultTitle: "QR code",
+        qrResultCopy: "Copiar",
+        qrResultOpen: "Abrir link",
+        highlightsTitle: "Novidades desta versão",
+        highlightsTitleClipboardRedesign: "Novo visual da área de transferência",
+        highlightsTitleWindowLayout: "Organização de janelas",
+        highlightsTitleQuitProtection: "Proteção de ⌘Q e ⌘W",
+        highlightsTitleRecorderBlur: "Desfoque no gravador de tela",
+        highlightsCaptionDockPreview: "O Dock Preview agora funciona com a ampliação do Dock ligada",
+        highlightsCaptionScreenshot: "A captura de tela ganhou uma lupa de pixels e leitura de QR codes",
+        highlightsCaptionSnippetLibrary: "Um menu de snippets com busca digita qualquer snippet direto no cursor",
+        highlightsCaptionCapturePalette: "Um único atalho agora abre uma paleta flutuante para capturas, gravações, texto na tela e cores com ajustes por perto.",
+        highlightsCaptionClipboardRedesign: "O histórico agora abre como uma paleta compacta, com linhas limpas e prévia sob demanda para ler ou editar o item completo.",
+        highlightsCaptionWindowLayout: "Use o anel direcional com atalho e ponteiro para posicionar janelas, ou arraste até as bordas da tela para encaixar com margens personalizadas.",
+        highlightsCaptionQuitProtection: "Evite fechar aplicativos ou janelas por engano exigindo segurar a tecla, tocar duas vezes ou usar um atalho extra, ajustável por aplicativo.",
+        highlightsCaptionRecorderBlur: "Oculte dados confidenciais, senhas e informações privadas em qualquer trecho do seu vídeo gravado antes de salvar ou exportar.",
+        highlightsConfigure: "Configurar",
+        highlightsTry: "Experimentar",
+        highlightsSeeAll: "Ver todas as mudanças",
+        switcherCurrentSpaceOnly: "Mostrar só a Mesa atual",
+        switcherCurrentSpaceOnlyCaption: "Mostra as janelas da Mesa atual. Janelas em tela cheia de outras Mesas também aparecem enquanto “Mostrar janelas em tela cheia” estiver ativo.",
+        shelfFileMissing: "O arquivo não existe mais",
+        previewSizeSmall: "Pequeno",
+        mixerSoundEffectsOutputTitle: "Sons do sistema",
+        mixerSoundEffectsOutputTooltip: "Escolher onde alertas e efeitos sonoros tocam",
+        monitorOpenActivityMonitor: "Abrir o Monitor de Atividade",
+        dockClickHide: "Clicar no Dock oculta o app",
+        dockClickHideCaption: "O app ativo é ocultado ao clicar no ícone dele no Dock. Clique de novo para trazê-lo de volta.",
+        monitorMemoryMetricLabel: "Medir memória como",
+        memoryMetricUsed: "Memória usada",
+        memoryMetricApp: "Memória de apps",
+        keepAwakeRightClickToggle: "Clique com o botão direito no ícone da barra de menus para alternar “Manter acordado”",
+        keepAwakeRightClickToggleCaption: "Substitui o menu de contexto do clique com o botão direito.",
+        urlCleanerRulesTitle: "Regras de limpeza",
+        urlCleanerRulesCaption: "Um site anexa estes parâmetros aos próprios links de compartilhamento para rastrear de onde o link veio. Ligado, o nome é removido ao limpar um link; desligado, ele permanece. Os nomes que você adicionar podem ser excluídos.",
+        urlCleanerRulesCoverageCaption: "A lista cobre os diferentes caminhos de compartilhamento de um site (a página, o app, uma sala ao vivo), por isso é longa; um link real costuma carregar apenas dois a quatro deles.",
+        urlCleanerRulesAllSites: "Todos os sites",
+        urlCleanerRulesCountSingular: "1 parâmetro",
+        urlCleanerRulesCountPluralFormat: "%d parâmetros",
+        urlCleanerRulesAddSite: "Adicionar site",
+        urlCleanerRulesParameterPlaceholder: "Nome do parâmetro",
+        urlCleanerRulesMatchCaption: "Escreva o nome à esquerda do = , como utm_source. Um nome que corresponde tira aquele parâmetro do link e deixa o resto como está.",
+        urlCleanerRulesAddButton: "Adicionar",
+        urlCleanerRulesRemoveButton: "Excluir nome",
+        urlCleanerRulesRemoveSiteButton: "Desativar todas as regras deste site",
+        urlCleanerRulesRestoreSiteButton: "Ativar todas as regras deste site",
+        urlCleanerRemovedFormat: "Removidos %@",
+        switcherSearchPin: "Fixar busca com S",
+        switcherSearchPinCaption: "S inicia uma busca e fixa o alternador aberto, assim digitar não produz mais caracteres especiais quando o atalho usa ⌥, e uma busca que comece com Q ou W não fecha a janela nem encerra o app por engano.",
+        invertVerticalScroll: "Inverter rolagem vertical",
+        invertHorizontalScroll: "Inverter rolagem horizontal",
+        scrollHorizontalName: "Rolar na horizontal segurando uma tecla",
+        scrollHorizontalModifierLabel: "Tecla modificadora",
+        scrollHorizontalCommandKey: "Command",
+        scrollHorizontalCaption: "Mantenha apenas a tecla escolhida pressionada para rolar a roda vertical do mouse na horizontal. Outras combinações de teclas não são alteradas.",
+        switcherShowShortcutHints: "Mostrar dicas de atalhos",
+        switcherShowShortcutHintsCaption: "Exibe os atalhos de apps e janelas abaixo dos ícones.",
+        uninstallerHomebrewPackageFormat: "%@ também será removido do Homebrew.",
+        shelfEdgeToggle: "Abrir perto de uma borda da tela",
+        shelfEdgeCaption: "Ao arrastar um arquivo para perto da borda da tela, a área espia para dentro. Solte ali, ou puxe de volta e ela recua.",
+        focusFollowsMouseName: "Foco ao passar o mouse",
+        focusFollowsMouseCaption: "Coloca em foco a janela sob o ponteiro.",
+        focusFollowsMouseDelay: "Atraso ao passar o mouse",
+        focusFollowsMouseRaise: "Trazer a janela para frente",
+        focusFollowsMouseWaitForStop: "Esperar o ponteiro parar",
+        switcherMinimizedPlacementLabel: "Janelas minimizadas",
+        switcherTreatHiddenAppsLikeMinimized: "Tratar apps ocultos como janelas minimizadas",
+        switcherMinimizedPlacementNormal: "Ordem normal",
+        switcherMinimizedPlacementEnd: "Colocar no final",
+        switcherMinimizedPlacementHidden: "Ocultar",
+        switcherShowFullscreenWindows: "Mostrar janelas em tela cheia",
+        switcherScreenPlacementLabel: "Mostrar em",
+        switcherScreenPlacementPointer: "Tela com o ponteiro",
+        switcherScreenPlacementMenuBar: "Tela com a barra de menus",
+        switcherScreenPlacementActiveWindow: "Tela com a janela ativa",
+        switcherScreenPlacementCaption: "Em qual tela o alternador abre quando há mais de uma conectada.",
+        switcherCurrentDisplayOnly: "Mostrar só a tela atual",
+        switcherCurrentDisplayOnlyCaption: "Mostra apenas as janelas da tela sob o cursor. Se essa tela não tiver janelas, o alternador não abre.",
+        smoothScrollResponseLabel: "Resposta",
+        smoothScrollCoastLabel: "Inércia",
+        mouseAccelerationName: "Desativar aceleração do mouse",
+        mouseAccelerationCaption: "Remove a aceleração do cursor para os mouses conectados. A configuração anterior volta ao desligar esta opção ou sair do Vitruvian Atrium.",
+        linearScrollName: "Rolagem linear",
+        linearScrollCaption: "Cada passo da rodinha do mouse rola a mesma distância, não importa a velocidade do giro. O trackpad não muda.",
+        linearScrollLinesLabel: "Linhas por passo",
+        shelfClearOnClose: "Limpar ao fechar",
+        shelfClearOnCloseCaption: "Esvazia a área somente quando você clica no botão de fechar. Ocultar automaticamente e encolher preservam os itens.",
+        shelfShortcutFinderSelection: "Adicionar a seleção do Finder com o atalho",
+        shelfShortcutFinderSelectionCaption: "Com o Finder em primeiro plano, o atalho abre a área temporária já com os arquivos selecionados. Sem seleção, ela abre como sempre.",
+        spacesOrderName: "Manter os Espaços em ordem fixa",
+        spacesOrderCaption: "Impede que o macOS reorganize os Espaços pelo uso mais recente, para que fiquem na ordem que você definiu. A configuração anterior volta ao desligar esta opção. O Dock pode reiniciar uma vez para aplicar a mudança."
+    )
+}
+
+// MARK: - English (US)
+
+extension Strings {
+    package static let enUS = Strings(
+        statusIdleTooltip: "Vitruvian Atrium: normal sleep",
+        statusActiveUntil: "Vitruvian Atrium: awake until",
+        statusActiveIndefinite: "Vitruvian Atrium: awake indefinitely",
+        menuEnableAwake: "Enable keep awake",
+        menuDisableAwake: "Disable keep awake",
+        menuActivateFor: "Activate for…",
+        menuSettings: "Settings…",
+        menuAbout: "About Vitruvian Atrium",
+        menuQuit: "Quit Vitruvian Atrium",
+        menuHide: "Hide Vitruvian Atrium",
+        menuHideOthers: "Hide Others",
+        menuShowAll: "Show All",
+        menuEdit: "Edit",
+        menuUndo: "Undo",
+        menuRedo: "Redo",
+        actionClear: "Clear",
+        actionRemove: "Remove",
+        actionBack: "Back",
+        actionSearch: "Search",
+        actionMute: "Mute",
+        actionUnmute: "Unmute",
+        actionPlay: "Play",
+        actionPause: "Pause",
+        menuCut: "Cut",
+        menuCopy: "Copy",
+        menuPaste: "Paste",
+        menuSelectAll: "Select All",
+        menuWindow: "Window",
+        menuMinimize: "Minimize",
+        menuZoom: "Zoom",
+        menuClose: "Close",
+
+        minutes15: "15 minutes",
+        minutes30: "30 minutes",
+        hour1: "1 hour",
+        hours2: "2 hours",
+        hours4: "4 hours",
+        hours8: "8 hours",
+        indefinitely: "Indefinitely",
+        indefinite: "Indefinite",
+
+        panelSettings: "Settings",
+        panelQuit: "Quit",
+        panelHotkeyHint: "Shortcut toggles",
+
+        keepAwakeTitle: "Keep awake",
+        keepAwakeEndsIn: "Ends in",
+        keepAwakeUntilDisabled: "Active until you turn it off",
+        keepAwakeNormalRules: "The Mac follows its normal energy rules",
+        keepAwakeUntilLabel: "Until",
+        keepAwakeUntilStart: "Start",
+        keepAwakeOptions: "Options",
+        keepAwakeMouseJiggle: "Move pointer slightly",
+        keepAwakeMouseJiggleCaption: "During a session, moves the pointer a little at the chosen interval.",
+        keepAwakeMouseJiggleInterval: "Interval",
+        keepAwakeActiveIconLabel: "Active icon",
+        keepAwakeActiveIconAtrium: "Vitruvian Atrium",
+        keepAwakeActiveIconCoffee: "Coffee",
+        keepAwakeActiveIconEye: "Eye",
+        keepAwakeActiveIconMoon: "Moon",
+        keepAwakeActiveIconLight: "Lightbulb",
+        keepAwakeIconTintLabel: "Active icon color",
+        keepAwakeIconTintOrange: "Orange",
+        keepAwakeIconTintGreen: "Green",
+        keepAwakeIconTintBlue: "Blue",
+        keepAwakeIconTintPurple: "Purple",
+        keepAwakeIconTintPink: "Pink",
+        keepAwakeIconTintNone: "No color",
+        durationLabel: "Duration",
+        clamshellTitle: "Keep going with the lid closed",
+        clamshellOnCaption: "Sleep fully disabled. Mind the power",
+        clamshellNeedsSession: "Applied whenever “Keep awake” is active",
+        clamshellReady: "Ready. Toggles without a password",
+        clamshellNeedsPassword: "Will ask for the administrator password once",
+
+        systemSection: "System",
+        temperatures: "Temperatures",
+        cpuLabel: "CPU",
+        gpuLabel: "GPU",
+        batteryLabel: "Battery",
+        usageSection: "Hardware usage",
+        memorySection: "Memory",
+        memoryPressure: "Pressure",
+        memorySwapUsed: "Swap used",
+        memoryCompressed: "Compressed",
+        memoryCachedFiles: "Cached files",
+        pressureNormal: "Normal",
+        pressureWarning: "Caution",
+        pressureCritical: "Critical",
+        monitorUnavailable: "Sensors unavailable on this Mac",
+        energyAppsTitle: "Apps using significant energy",
+        energyAppsIdle: "No significant energy use",
+
+        notifySessionEndedTitle: "Session ended",
+        notifySessionEndedBody: "Time is up. The Mac will sleep normally again.",
+        notifyBatteryTitle: "Vitruvian Atrium disabled",
+        notifyBatteryBody: "Low battery. Normal sleep was restored to protect the charge.",
+        adminPromptClamshellOn: "Vitruvian Atrium needs your password to keep the Mac going with the lid closed.",
+        adminPromptClamshellOff: "Vitruvian Atrium needs your password to restore the Mac’s normal sleep.",
+        adminPromptRecover: "Vitruvian Atrium quit while the Mac’s sleep was disabled. Enter the password to restore normal sleep.",
+        adminPromptUpdate: "Vitruvian Atrium needs your password to install the update.",
+        adminPromptSudoersInstall: "Vitruvian Atrium will create a restricted rule (pmset disablesleep only) to toggle closed-lid mode without asking for a password. This is the only time the password is needed.",
+        adminPromptSudoersRemove: "Vitruvian Atrium will remove the password-free closed-lid rule.",
+
+        settingsTitle: "Vitruvian Atrium Settings",
+        tabGeneral: "General",
+        tabEnergy: "Energy",
+        tabMouse: "Mouse & Trackpad",
+        tabSwitcher: "Switcher",
+        tabAdvanced: "Advanced",
+        tabAbout: "About",
+        tabReleaseNotes: "What’s New",
+        releaseNotesOnUpdateToggle: "Show what’s new after updating",
+        minimalWindowPreviews: "Minimal previews",
+        minimalWindowPreviewsCaption: "Hide titles, buttons and decorative details in Dock and switcher previews. The selection stays visible.",
+        previewSizeLabel: "Preview size",
+        previewSizeNormal: "Normal",
+        previewSizeLarge: "Large",
+        previewSizeXLarge: "Extra large",
+        settingsGroupFeatures: "Features",
+        advancedResetSection: "Permissions",
+        advancedResetDescription: "Removes every permission you granted Vitruvian Atrium (Accessibility, Screen Recording, Full Disk Access and others), the login item and the closed-lid rule. Useful to start fresh or before uninstalling. The app stays installed.",
+        advancedClearButton: "Clear all permissions",
+        advancedCleared: "Permissions cleared.",
+        advancedClearFailed: "Some permissions or the closed-lid rule could not be removed. Try again and allow the password request if it appears.",
+        advancedClearConfirmTitle: "Clear all permissions?",
+        advancedClearConfirmBody: "Features that need permissions will stop working until you grant them again. Your settings are kept.",
+        advancedUninstallSection: "Uninstall",
+        advancedUninstallDescription: "Does all of the above, then removes the preferences and moves Vitruvian Atrium to the Trash, leaving nothing behind. The app quits when done. You can reinstall anytime.",
+        advancedUninstallButton: "Uninstall Vitruvian Atrium completely",
+        advancedUninstallConfirmTitle: "Uninstall Vitruvian Atrium?",
+        advancedUninstallConfirmBody: "Vitruvian Atrium will clear its permissions, remove its preferences and move to the Trash, then quit. This can’t be undone from the app, but it stays in the Trash until you empty it.",
+        advancedUninstallFailedTitle: "Uninstall stopped",
+        advancedUninstallFailedBody: "Vitruvian Atrium could not put back a system setting it changed: sleep, fan speed, mouse acceleration or Space order. Nothing was removed. Try again and allow the password request if it appears.",
+
+        launchAtLogin: "Launch at login",
+        languageLabel: "Language",
+        menuBarSection: "Menu bar",
+        showCountdown: "Show remaining time next to the icon",
+        globalHotkeySection: "Global shortcut",
+        hotkeyToggle: "Enable shortcut for “Keep awake”",
+        hotkeyCaption: "Works in any app, no extra permissions.",
+
+        sessionSection: "Session",
+        defaultDurationLabel: "Default duration",
+        keepAwakeAutoStart: "Keep Awake when Vitruvian Atrium opens",
+        keepAwakeAutoStartCaption: "Starts a session with the default duration.",
+        batteryProtectionSection: "Battery protection",
+        batteryDisableBelow: "Disable when battery drops below",
+        batteryNever: "Never",
+        batteryProtectionCaption: "Keeps a forgotten session from draining the MacBook battery.",
+        clamshellSection: "Closed lid",
+        configuring: "Configuring…",
+        sudoersFailed: "Couldn’t turn on closed-lid mode. Try again.",
+        clamshellExplanation: "“Keep going with the lid closed” fully disables sleep while “Keep awake” is active and is reverted automatically when the session ends or the app quits. Prefer using it plugged in.",
+        dimScreenOnLidCloseTitle: "Dim the display to zero",
+        dimScreenOnLidCloseCaption: "Dims the display when the lid closes and brings the brightness back when it opens.",
+
+        scrollSection: "Scrolling",
+        invertMouseScroll: "Invert mouse scrolling",
+        invertMouseScrollCaption: "Reverses the mouse wheel direction.",
+        scrollTrackpadNote: "The trackpad is untouched: it keeps macOS natural scrolling.",
+        scrollActiveNow: "Inverting mouse scrolling right now",
+        mouseNavigationActiveNow: "Side buttons active right now",
+        smoothScrollName: "Smooth scrolling",
+        smoothScrollCaption: "Turns each mouse wheel step into a short, gentle glide. The trackpad is not affected.",
+        smoothScrollStepLabel: "Scrolling speed",
+        mouseNavigationSection: "Navigation",
+        mouseNavigationEnable: "Use side buttons for Back and Forward",
+        mouseNavigationCaption: "Turns the mouse Back and Forward buttons into navigation commands in Finder, browsers and compatible apps.",
+        middleClickSection: "Trackpad middle click",
+        middleClickEnable: "Three-finger click acts as middle click",
+        middleClickEnableCaption: "Pressing the trackpad with three fingers works like a mouse wheel click: open links in a new tab, close tabs and everything else the middle button does.",
+        middleClickDragConflict: "macOS three-finger drag is turned on and uses three fingers, so click with four fingers for the middle click. To use three, turn three-finger drag off in System Settings under Accessibility, Pointer Control, Trackpad Options.",
+        middleClickNoTrackpad: "Can’t read trackpad touches. Connect a supported trackpad.",
+        middleClickTapPicker: "A light tap also clicks",
+        middleClickTapOff: "Off",
+        middleClickTapThreeFingers: "3 fingers",
+        middleClickTapFourFingers: "4 fingers",
+        middleClickTapCaption: "A light tap with that many fingers, without pressing, also fires the middle click. Sliding never counts. If the macOS three-finger tap is assigned to Look Up, turn it off so both do not fire together.",
+        quickToolsTab: "Quick panel",
+        quickToolShortcutToggle: "Global shortcut",
+        ocrName: "Copy text from screen",
+        ocrCaption: "Select an area of the screen and the recognized text is copied, ready to paste.",
+        ocrCopied: "Text copied",
+        ocrNoText: "No text found",
+        colorPickerName: "Color picker",
+        colorPickerCaption: "Grab the color of any pixel on screen and copy it in your favorite format.",
+        colorPickerFormatLabel: "Copied format",
+        colorPickerBareHexToggle: "Copy without the # prefix",
+        colorPickerPickNow: "Pick color",
+        micMuteName: "Mute microphone",
+        micUnmuteName: "Unmute microphone",
+        micMuteCaption: "Cuts the Mac’s microphone with a click or shortcut, across every app.",
+        micMutedHUD: "Microphone muted",
+        micUnmutedHUD: "Mute off",
+        micMutePartialHUD: "Some microphones could not be muted",
+        micUnmutePartialHUD: "Some microphones are still muted",
+        micMuteMenuBarToggle: "Show in the menu bar while muted",
+        micMuteMenuBarCaption: "A red crossed-out mic appears beside the app’s icon in the menu bar while this feature mutes it.",
+        pastePlainName: "Paste as plain text",
+        pastePlainCaption: "Pastes what you copied without colors, fonts or formatting. The original stays on the clipboard.",
+        launcherName: "Quick panel",
+        launcherCaption: "A floating panel with your favorite tools, summoned by a shortcut from anywhere.",
+        launcherOpenNow: "Open quick panel",
+        launcherEditHint: "Use the tune button to choose, hide and drag the tools around.",
+        launcherEmptyState: "All tools are hidden. Use the tune button to add them back.",
+        launcherAddSection: "Add back",
+        launcherKeysHint: "Arrows navigate, Enter opens, 1 to 9 open directly",
+
+        switcherSection: "Window switcher",
+        switcherEnable: "Use the Vitruvian Atrium switcher",
+        switcherEnableCaption: "Switch between apps and windows, including minimized windows and multiple windows from the same app.",
+        switcherUsageHint: "Hold the shortcut to navigate; release to activate the window. Shift or ← goes back; W closes the window; Q quits the app; Esc cancels.",
+        switcherNoWindows: "No open windows",
+        switcherIconRowMode: "Show %@ with large icons",
+        switcherIconRowModeCaption: "Shows one icon per app with that app’s window previews above it.",
+        switcherSimpleModeCaption: "Shows app icons and window titles, without previews or screen capture by the switcher.",
+        switcherShortcutHintApps: "Apps",
+        switcherShortcutHintWindows: "Windows",
+        switcherWindowShortcutCaption: "Opens a switcher for the frontmost app’s windows. While the switcher is open, jumps between the selected app’s windows.",
+        switcherTakeOverSystemShortcuts: "Replace macOS ⌘Tab and ⌘`",
+        switcherTakeOverSystemShortcutsCaption: "Disables the matching macOS app and window shortcuts only while Vitruvian Atrium’s switcher is active. All running apps stay reachable.",
+        switcherAppearanceDelay: "Appearance delay",
+        switcherAppearanceDelayCaption: "How long the shortcut must be held before the switcher appears.",
+        switcherMaxColumns: "Maximum columns",
+        switcherMaxColumnsCaption: "Wraps onto more rows after this many items. Useful on ultrawide displays.",
+        switcherMaxColumnsAuto: "Auto",
+        switcherInstantSelection: "Instant selection",
+        switcherInstantSelectionCaption: "Moves the highlight and scroll position immediately as you browse apps and windows.",
+        switcherMergeTabs: "Show one entry per app",
+        switcherMergeTabsCaption: "Collapses all of an app’s windows into one entry in the switcher, instead of one entry per window.",
+        switcherWindowlessApps: "Apps with no open window",
+        switcherWindowlessAppsCaption: "Chooses which running apps with no window at all show up in the switcher.",
+        switcherWindowlessAppsOff: "Do not show",
+        switcherWindowlessAppsFinder: "Finder only",
+        switcherWindowlessAppsAll: "All apps",
+        switcherWindowlessAppsLockedFormat: "All running apps stay reachable while “%@” is on. Turn it off to choose.",
+        switcherNoOpenWindow: "No open window",
+        switcherOtherDesktop: "Other desktop",
+        dockPreviewName: "Dock Preview",
+        dockPreviewEnable: "Preview windows from the Dock",
+        dockPreviewEnableCaption: "Hover over an open app in the Dock to see its windows, then click the one you want.",
+        dockPreviewCurrentSpaceOnlyCaption: "When off, shows windows from all desktops. Choosing a window on another desktop takes you there.",
+        dockPreviewBackgroundOpacity: "Panel background",
+        dockPreviewBackgroundOpacityCaption: "Turn it down to see more of what sits behind the panel.",
+        dockPreviewBackgroundOpacityGlassCaption: "Liquid Glass is on, so the panel’s transparency is set in System Settings > Appearance.",
+        dockPreviewOpenDelay: "Open delay",
+        dockPreviewOpenDelayCaption: "How long the pointer has to rest on an icon before its panel opens.",
+        dockPreviewQuitAppOnClose: "Quit the app with the × button",
+        dockPreviewQuitAppOnCloseCaption: "In Dock Preview, × quits the whole app instead of closing only that window.",
+        dockPreviewKeepDockVisible: "Keep Dock visible (experimental)",
+        dockPreviewKeepDockVisibleCaption: "Pauses auto-hide while the preview is open and restores it when you leave. May resize windows. If the app is interrupted, reopen it to restore the Dock.",
+        dockPreviewOrderByCreation: "Order windows by creation time",
+        dockPreviewOrderByCreationCaption: "Show older windows first instead of the ones you used most recently.",
+        dockClickMinimize: "Click the Dock icon to minimize",
+        dockClickMinimizeCaption: "The active app’s windows minimize when you click its Dock icon. Click again to bring them back.",
+        dockClickCycleWindows: "Click the Dock icon to cycle windows",
+        dockClickCycleWindowsCaption: "Click an active app’s Dock icon to rotate through its windows, like ⌘`.",
+        dockPreviewActiveNow: "Active in the Dock",
+        dockPreviewDockUnavailable: "Could not read Dock items.",
+        dockPreviewAutohideBeta: "Beta. You may run into some bugs.",
+        dockPreviewOpenWindow: "Open window",
+        dockPreviewCloseWindow: "Close window",
+        dockPreviewMinimizeWindow: "Minimize window",
+        dockPreviewRestoreWindow: "Restore window",
+        dockPreviewPinPanel: "Pin preview",
+        dockPreviewUnpinPanel: "Unpin preview",
+        dockPreviewPinned: "Pinned",
+        dockPreviewClosePanel: "Close preview",
+        dockPreviewPreviousWindow: "Previous window",
+        dockPreviewNextWindow: "Next window",
+
+        cutPasteName: "Cut & paste",
+        cutPasteEnable: "Cut & paste files in Finder",
+        cutPasteEnableCaption: "Use ⌘X to cut and ⌘V to move files and folders in Finder.",
+        cutPasteShowHUD: "Show floating panel",
+        cutPasteShowHUDCaption: "Display a floating indicator with the cut files while Finder is active.",
+        cutPasteHowTitle: "How to use",
+        cutPasteStep1: "Select items in Finder and press ⌘X to cut them.",
+        cutPasteStep2: "Open the destination folder and press ⌘V to move them there.",
+        cutPasteTextNote: "In text fields (like when renaming), ⌘X and ⌘V keep working as usual.",
+        cutPasteActiveNow: "Ready to cut in Finder",
+        cutPasteAutomationNote: "The first time, macOS asks for permission to control Finder.",
+        cutReadyTitle: "Cut",
+        cutReadyHint: "in the destination folder to move",
+        cutCancel: "Cancel cut",
+        cutDoneTitle: "Moved!",
+        cutMovedSingular: "1 item moved",
+        cutMovedPluralFormat: "%d items moved",
+        cutSomeFailed: "Some items couldn’t be moved",
+        cutMovingTitle: "Moving…",
+        cutMovingCountFormat: "%d of %d",
+
+        autoQuitName: "Quit on close",
+        autoQuitEnable: "Quit an app when its last window closes",
+        autoQuitEnableCaption: "Closing an app’s last window also quits it.",
+        autoQuitActiveNow: "Active now",
+        autoQuitHowTitle: "How it works",
+        autoQuitStep1: "Close an app’s last window (⌘W or the red button).",
+        autoQuitStep2: "The app quits on its own. “Save changes?” dialogs still appear.",
+        autoQuitPredictableNote: "Apps that have not opened a window stay open. Menu bar apps stay open unless you explicitly allow them to quit.",
+        autoQuitOngoingWorkNote: "Some apps close their last window while they keep working, such as a screen recorder once capture starts. Those are quit too, unless they are on the Exceptions list.",
+        autoQuitExceptionsTitle: "Exceptions",
+        autoQuitExceptionsCaption: "Apps on this list stay open even with no windows.",
+        autoQuitExceptionsEmpty: "No exceptions",
+        autoQuitAddApp: "Add app…",
+
+        uninstallerName: "Uninstaller",
+        uninstallerEnableCaption: "Removes an app together with the caches, preferences, logs and leftovers it leaves behind.",
+        uninstallerStep1: "Drag an app onto Settings, or pick one from the list.",
+        uninstallerStep2: "Review the files found and how much space they take.",
+        uninstallerStep3: "Move what you want to the Trash. Nothing is deleted permanently.",
+        uninstallerMenuItem: "Uninstall an app…",
+        uninstallerDropTitle: "Drag an app here",
+        uninstallerDropSubtitle: "or choose one to scan",
+        uninstallerChoose: "Choose app…",
+        uninstallerPickerTitle: "Choose app",
+        uninstallerPickerSearch: "Search apps",
+        uninstallerPickerEmpty: "No apps found",
+        uninstallerEmptyNote: "Nothing is removed without your confirmation.",
+        uninstallerFDANote: "Grant Full Disk Access for a more thorough scan.",
+        uninstallerFDAGrant: "Grant access…",
+        uninstallerFDAHint: "Turn Vitruvian Atrium on in the list. If it isn’t there, click + and pick Vitruvian Atrium from Applications. Access only applies after you reopen the app.",
+        uninstallerFDARelaunch: "Relaunch now",
+        uninstallerScanning: "Scanning files…",
+        uninstallerRemoving: "Moving to the Trash…",
+        uninstallerFoundTitle: "found",
+        uninstallerSelectedFormat: "%d of %d selected",
+        uninstallerRemove: "Move to Trash",
+        uninstallerCancel: "Cancel",
+        uninstallerConfirmationExpired: "This confirmation is no longer valid. Review the current items and confirm again.",
+        uninstallerDoneTitle: "Done!",
+        uninstallerFreedFormat: "%@ removed",
+        uninstallerSomeFailed: "Some items couldn’t be moved to the Trash.",
+        uninstallerFailedNeedsFDA: "Sandboxed app data can only be moved with Full Disk Access. The administrator password does not stand in for it.",
+        uninstallerFailedMoreFormat: "and %d more",
+        uninstallerAnother: "Uninstall another",
+        uninstallerCatApp: "Application",
+        uninstallerCatSupport: "Support",
+        uninstallerCatCaches: "Caches",
+        uninstallerCatPreferences: "Preferences",
+        uninstallerCatContainers: "Containers",
+        uninstallerCatLogs: "Logs",
+        uninstallerCatState: "Saved state",
+        uninstallerCatOther: "Other",
+        uninstallerCommandBarBrowseTitle: "Uninstall Application",
+        uninstallerCommandBarToggle: "Show in Command Bar",
+        uninstallerCommandBarCaption: "Choose and uninstall apps in the Command Bar.",
+        uninstallerCommandBarFinderTitle: "Uninstall app selected in Finder",
+        uninstallerSelectionUnavailable: "Select an app that can be removed in Finder, or choose another from the list.",
+        uninstallerRefusedNotApp: "Only apps can be uninstalled.",
+        uninstallerRefusedSystemFormat: "%@ can’t be uninstalled because it’s part of macOS.",
+        uninstallerRefusedSharedFormat: "%@ can’t be uninstalled here because it shares files with macOS or other apps.",
+        uninstallerRefusedNestedFormat: "%@ can’t be uninstalled on its own because it’s part of another app.",
+        uninstallerRefusedSelfFormat: "Vitruvian Atrium can’t uninstall itself here. Use Settings › %@ instead.",
+        uninstallerRefusedLinkFormat: "%@ can’t be uninstalled because it’s a link to an app stored elsewhere.",
+        uninstallerRefusedUnidentifiedFormat: "%@ can’t be uninstalled because it can’t be identified as an app.",
+        uninstallerPickerHiddenNote: "Apps that are part of macOS or made by Apple aren’t listed.",
+
+        urlCleanerName: "Clean URL",
+        urlCleanerEnable: "Clean URLs as you copy them",
+        urlCleanerEnableCaption: "Removes tracking parameters from a link the moment it reaches the clipboard.",
+        urlCleanerActiveNow: "Active now",
+        urlCleanerManualTitle: "Clean now",
+        urlCleanerInputPlaceholder: "Paste a URL",
+        urlCleanerOutputPlaceholder: "The clean URL appears here",
+        urlCleanerPasteButton: "Paste",
+        urlCleanerCopyButton: "Copy",
+        urlCleanerClearButton: "Clear field",
+        urlCleanerNoURL: "Paste a valid URL.",
+        urlCleanerNoChange: "Nothing to clean.",
+        urlCleanerCleaned: "URL cleaned.",
+        urlCleanerCopied: "Copied.",
+        urlCleanerLocalNote: "Local. No network.",
+
+        homebrewName: "Homebrew",
+        homebrewEnableCaption: "Search, install and remove formulae and casks.",
+        homebrewMissingTitle: "Homebrew not found",
+        homebrewMissingBody: "Vitruvian Atrium can open Terminal with the official Homebrew installer. Terminal shows the steps and asks for your password if needed.",
+        homebrewInstallHomebrew: "Install Homebrew",
+        homebrewInstallHomebrewCaption: "When Terminal finishes, come back here and click Refresh.",
+        homebrewInstallHomebrewOpened: "Installer opened in Terminal.",
+        homebrewShellSetupTitle: "Finish Terminal setup",
+        homebrewShellSetupBody: "Homebrew is installed, but Terminal may not find the brew command yet. Vitruvian Atrium can open Terminal with the setup command.",
+        homebrewShellSetupButton: "Set up Terminal",
+        homebrewShellSetupOpened: "Command opened in Terminal. Then come back here and click Refresh.",
+        homebrewRefresh: "Refresh",
+        homebrewCheckPackages: "Check packages",
+        homebrewTrustTitle: "Tap not trusted yet",
+        homebrewTrustCaption: "Homebrew now asks for your confirmation before using third party taps. Trust %@ to continue.",
+        homebrewTrustButton: "Trust and continue",
+        homebrewSearchPlaceholder: "Search packages",
+        homebrewKeyboardHint: "Space or Return closes the macOS panel. Use the search button.",
+        homebrewSearchButton: "Search",
+        homebrewSearchResults: "Results",
+        homebrewInstalled: "Installed",
+        homebrewAll: "All",
+        homebrewFormulas: "Formulae",
+        homebrewCasks: "Casks",
+        homebrewNoPackages: "No packages found",
+        homebrewDependencies: "Dependencies",
+        homebrewGroupDependencies: "Group dependencies",
+        homebrewOrphans: "No longer needed",
+        homebrewOrphansNote: "Installed as dependencies, but no installed package needs them any more.",
+        homebrewDependencyUpdatesFormat: "Dependency updates: %d",
+        homebrewNoSelection: "Select an installed package or search for a new one.",
+        homebrewDetailsTitle: "Package details",
+        homebrewInstall: "Install",
+        homebrewUninstall: "Uninstall",
+        homebrewUpgrade: "Update",
+        homebrewUpgradeAll: "Update all",
+        homebrewUpdateHomebrew: "Update Homebrew",
+        homebrewAllPackages: "packages",
+        homebrewOpenTerminal: "Open Terminal",
+        homebrewCancelOperation: "Cancel",
+        homebrewClearLog: "Clear log",
+        homebrewLogTitle: "Log",
+        homebrewVersion: "Version",
+        homebrewDescription: "Type",
+        homebrewHomepage: "Open website",
+        homebrewPopularity: "Popularity",
+        homebrewPopularityFormat: "%@ installs in %@ days",
+        homebrewInstalledBadge: "Installed",
+        homebrewNotInstalledBadge: "Not installed",
+        homebrewUpdates: "Updates",
+        homebrewUpdateAvailableBadge: "Update available",
+        homebrewLatestVersion: "Latest",
+        homebrewConfirmInstallTitle: "Install with Homebrew?",
+        homebrewConfirmInstallBodyFormat: "Homebrew will download and install %@. Dependencies may also be installed.",
+        homebrewConfirmUninstallTitle: "Uninstall with Homebrew?",
+        homebrewConfirmUninstallBodyFormat: "Homebrew will uninstall %@. Configuration files may remain on the system.",
+        homebrewConfirmUpgradeTitle: "Update with Homebrew?",
+        homebrewConfirmUpgradeBodyFormat: "Homebrew will download and apply the latest version of %@. Dependencies may also be updated.",
+        homebrewConfirmUpgradeAllTitle: "Update all with Homebrew?",
+        homebrewConfirmUpgradeAllBody: "Homebrew will download and apply the latest versions for packages with updates available. Dependencies may also be updated.",
+        homebrewConfirmUpdateHomebrewTitle: "Update Homebrew?",
+        homebrewConfirmUpdateHomebrewBody: "Homebrew will fetch the latest information and then reload your packages.",
+        homebrewTerminalFallback: "This operation needs Terminal to ask for the administrator password. Vitruvian Atrium does not capture passwords.",
+        homebrewLoading: "Loading…",
+        homebrewSearchEmpty: "No results",
+        homebrewOperationInstallFormat: "Installing %@",
+        homebrewOperationUninstallFormat: "Uninstalling %@",
+        homebrewOperationUpgradeFormat: "Updating %@",
+        homebrewOperationUpgradeAll: "Updating packages",
+        homebrewOperationUpdateHomebrew: "Updating Homebrew",
+        homebrewOperationInstalledFormat: "%@ installed.",
+        homebrewOperationUninstalledFormat: "%@ uninstalled.",
+        homebrewOperationUpgradedFormat: "%@ updated.",
+        homebrewOperationUpgradedAll: "Packages updated.",
+        homebrewOperationUpdatedHomebrew: "Homebrew updated.",
+        homebrewOperationFailedFormat: "Could not finish %@.",
+        homebrewOperationCancelled: "Operation cancelled.",
+        homebrewOperationPreparing: "Preparing…",
+        homebrewOperationDownloading: "Downloading files…",
+        homebrewOperationInstalling: "Installing files…",
+        homebrewOperationUninstalling: "Removing files…",
+        homebrewOperationUpgrading: "Updating files…",
+        homebrewOperationFinalizing: "Finishing…",
+        homebrewOperationRefreshing: "Refreshing list…",
+        homebrewOperationTerminal: "Continue in Terminal.",
+        homebrewOperationElapsedFormat: "%@ elapsed",
+        homebrewOperationShowDetails: "Show details",
+        homebrewOperationHideDetails: "Hide details",
+        homebrewOperationTechnicalLog: "Technical details",
+        homebrewOperationProgressUnknown: "Homebrew has not reported a percentage yet.",
+
+        mediaName: "Media",
+        mediaEnableCaption: "Compress videos, convert and process images, make GIFs and extract text locally.",
+        mediaLocalNote: "Local. No network.",
+        mediaToolVideo: "Video",
+        mediaToolGIF: "GIF",
+        mediaToolImage: "Image",
+        mediaToolText: "Text",
+        mediaSelectFile: "Choose file",
+        mediaDropHint: "Drop a file here or click to choose one.",
+        mediaOutput: "Output",
+        mediaOutputAutomatic: "Automatic",
+        mediaChooseOutput: "Destination",
+        mediaStartVideo: "Compress video",
+        mediaStartGIF: "Make GIF",
+        mediaStartImage: "Process image",
+        mediaStartConvertPDF: "Convert to PDF",
+        mediaStartText: "Extract text",
+        mediaCancel: "Cancel",
+        mediaStartTime: "Start",
+        mediaEndTime: "End",
+        mediaQuality: "Compression",
+        mediaCompressionLow: "Low",
+        mediaCompressionMedium: "Medium",
+        mediaCompressionHigh: "High",
+        mediaCompressionLowDescription: "High quality, large file size",
+        mediaCompressionMediumDescription: "Balanced quality and file size",
+        mediaCompressionHighDescription: "Low quality, small file size",
+        mediaMaxSize: "Size",
+        mediaSizingResolution: "Resolution",
+        mediaSizingFileSize: "File size",
+        mediaTargetSize: "Target size",
+        mediaTargetSizeHint: "Resolution adapts to stay under the limit.",
+        mediaErrorTargetTooSmall: "Target size too small for this clip. Trim it or raise the limit.",
+        mediaMegabytesSuffix: " MB",
+        mediaWidth: "Width",
+        mediaFPS: "FPS",
+        mediaKeepAudio: "Keep audio",
+        mediaCodec: "Codec",
+        mediaFormat: "Format",
+        mediaStripMetadata: "Remove metadata",
+        mediaLoopGIF: "Loop GIF",
+        mediaOCRMode: "OCR",
+        mediaOCRAccurate: "Accurate",
+        mediaOCRFast: "Fast",
+        mediaLanguageCorrection: "Language correction",
+        mediaTextOutputNote: "Extracted text can be copied and saved as TXT.",
+        mediaRunning: "Processing",
+        mediaCompleted: "Done",
+        mediaCancelled: "Cancelled.",
+        mediaOpenInFinder: "Show",
+        mediaCopyText: "Copy text",
+        mediaRunAgain: "Run again",
+        mediaEmptyText: "No text found.",
+        mediaResultSavedFormat: "Saved as %@",
+        mediaResultSizeFormat: "%@ to %@",
+        mediaResultGrewCaption: "The converted file came out larger than the original.",
+        mediaErrorNoFile: "Choose a file first.",
+        mediaErrorNoVideo: "This file has no video track.",
+        mediaErrorSameOutput: "Choose a destination different from the original file.",
+        mediaErrorUnsupported: "Format not supported by macOS.",
+
+        shelfName: "Shelf",
+        shelfEnable: "Temporary area for dragging files",
+        shelfEnableCaption: "A floating spot to gather files, images and text, then drag them anywhere later.",
+        shelfHowTitle: "How to use",
+        shelfStep1: "Open it with the shortcut, or by shaking the mouse during a drag.",
+        shelfStep2: "Drop files, images, links or text onto it to hold them.",
+        shelfStep3: "Drag each item back out to any app when you need it.",
+        shelfShakeToggle: "Open by shaking the mouse while dragging",
+        shelfShakeCaption: "Shake the pointer quickly while holding an item to summon it near the cursor.",
+        shelfDropZoneToggle: "Keep dragged files in the menu bar",
+        shelfDropZoneCaption: "While you drag a file, the shelf appears below the menu bar icon. Whatever you drop is kept right there, in a button you shrink and open with a click that goes away once the shelf is empty.",
+        shelfDropZoneCaptionTopCenter: "While you drag a file, the shelf appears as a badge at the top center of the screen. Whatever you drop is kept right there, in a badge you open with a click that goes away once the shelf is empty.",
+        shelfDropZoneLabel: "Drop here",
+        shelfDockPlacement: "Position",
+        shelfDockMenuBar: "Below the menu bar icon",
+        shelfDockTopCenter: "Top center of the screen",
+        shelfDockIslandNote: "The Dynamic Island keeps the top center while it is on.",
+        shelfCollapse: "Collapse",
+        shelfBehaviorTitle: "After use",
+        shelfCloseAfterDrop: "Close after dropping into another app",
+        shelfCloseAfterDropCaption: "Closes the shelf when the destination accepts the items. The pin in the panel keeps it open.",
+        shelfRemoveAfterDrop: "Remove items after dropping",
+        shelfRemoveAfterDropCaption: "Items accepted by another app leave the shelf. Turn this off to keep a copy there. Pinned items always stay.",
+        shelfExclusionsTitle: "Automatic exceptions",
+        shelfExclusionsEmpty: "No apps added.",
+        shelfExclusionsCaption: "Shake and the menu bar drop zone stay off for drags started in these apps. The shortcut and Open now still work.",
+        shelfPin: "Keep open",
+        shelfUnpin: "Allow closing after use",
+        extraBrightnessName: "Extra brightness",
+        extraBrightnessCaption: "Uses the display’s HDR headroom to go past the maximum brightness. Uses more battery and the Mac can run warm.",
+        extraBrightnessLevelLabel: "Intensity",
+        extraBrightnessUnsupported: "Available only on XDR displays, such as the ones on the 14 and 16 inch MacBook Pro.",
+        shelfHotkeyLabel: "Shortcut",
+        shelfOpenNow: "Open now",
+        shelfNoPermission: "Requires no permissions.",
+        shelfMenuItem: "Open shelf",
+        shelfTitle: "Shelf",
+        shelfEmpty: "Drag items here",
+        shelfClearAll: "Clear all",
+        shelfRemoveSelected: "Remove selected",
+        shelfSelectedFormat: "%d selected",
+        shelfHint: "Click to select. Drag out to use or right-click for more actions.",
+        shelfItemImage: "Image",
+        shelfTooltipItemsFormat: "%d items",
+        shelfTooltipItemsFew: "%d items",
+        shelfTooltipImageSingular: "%d image",
+        shelfTooltipImageFew: "%d images",
+        shelfTooltipImagePlural: "%d images",
+        shelfTooltipFileSingular: "%d file",
+        shelfTooltipFileFew: "%d files",
+        shelfTooltipFilePlural: "%d files",
+        shelfTooltipNoteSingular: "%d note",
+        shelfTooltipNoteFew: "%d notes",
+        shelfTooltipNotePlural: "%d notes",
+        shelfTooltipLinkSingular: "%d link",
+        shelfTooltipLinkFew: "%d links",
+        shelfTooltipLinkPlural: "%d links",
+        shelfActionOpen: "Open",
+        shelfActionOpenWith: "Open With",
+        shelfActionShare: "Share",
+        shelfActionPin: "Pin",
+        shelfActionUnpin: "Unpin",
+
+        breakdownMeasuring: "Measuring…",
+
+        mixerSection: "Volume mixer",
+        mixerEmpty: "Apps that use audio show up here",
+        mixerUnavailable: "Available on macOS 14.4 and later",
+        mixerPermissionBody: "To adjust per-app volume, allow “Screen & System Audio Recording” in System Settings. Audio is never recorded.",
+        mixerResetTooltip: "Reset to 100%",
+        mixerOutputDefault: "Default",
+        mixerOutputCurrent: "current",
+        mixerOutputUnavailable: "Output unavailable",
+        mixerOutputFallback: "Using default until this device returns.",
+        mixerBypassedCaption: "This app manages its own audio.",
+        mixerOutputTooltip: "Choose output",
+        mixerAirPlayChooseSpeaker: "Choose AirPlay speaker…",
+        mixerSystemOutputTitle: "Output",
+        mixerSystemOutputNoDevices: "No outputs found",
+        mixerSystemOutputTooltip: "Choose system output",
+        mixerSystemOutputErrorFormat: "Could not switch: %@",
+        mixerLowerOnHeadphonesDisconnect: "Lower volume when headphones disconnect",
+        mixerLowerOnHeadphonesDisconnectCaption: "Adjusts output when wired or Bluetooth headphones disconnect.",
+        mixerHeadphonesDisconnectVolume: "Volume after disconnect",
+        preciseVolumeRollerEnable: "Use finer volume steps",
+        preciseVolumeRollerCaption: "Turns volume wheels and keys into smaller system volume steps.",
+        preciseVolumeRollerTapFailed: "Could not listen for volume keys.",
+        soundOutputSwitcherTitle: "Output switcher",
+        soundOutputSwitcherEnable: "Switch outputs with shortcut",
+        soundOutputSwitcherCaption: "Choose outputs and use the shortcut to move to the next available one.",
+        soundOutputSwitcherDevices: "Outputs in cycle",
+        soundOutputSwitcherNoAvailableSelection: "Select at least one available output.",
+        mixerInputTitle: "Microphone",
+        mixerInputNoDevices: "No microphones found",
+        mixerInputUnavailable: "Microphone unavailable",
+        mixerInputFallback: "Using default until this microphone returns.",
+        mixerInputTooltip: "Choose microphone",
+        mixerInputErrorFormat: "Could not switch: %@",
+        mixerVisibleApps: "Apps in the list",
+        mixerAllShown: "All",
+        mixerHiddenCountLabel: "Hidden",
+        mixerHideFromList: "Hide from the list",
+        audioPrioritySection: "Audio priority",
+        audioPriorityOutputEnable: "Automatically switch to the highest-priority output",
+        audioPriorityInputEnable: "Automatically switch to the highest-priority microphone",
+        audioPriorityOutputList: "Output priority",
+        audioPriorityInputList: "Microphone priority",
+        audioPriorityMoveUp: "Move up",
+        audioPriorityMoveDown: "Move down",
+        audioPriorityUnavailable: "Unavailable",
+        audioPriorityCurrent: "Current",
+        audioPriorityCaption: "Devices are selected in priority order. When a higher-priority device connects, it becomes active. When the active one disconnects, the next available takes over.",
+
+        updatesSection: "Updates",
+        autoCheckToggle: "Check for updates automatically",
+        includeBetaUpdatesToggle: "Receive beta updates",
+        includeBetaUpdatesCaption: "Beta versions include features in development and may contain bugs or incomplete behavior.",
+        betaBadgeLabel: "Beta",
+        checkNowButton: "Check now",
+        updateChecking: "Checking…",
+        updateUpToDate: "You’re on the latest version.",
+        updateAvailablePrefix: "Update available:",
+        updateInstallButton: "Download and install",
+        updateDownloading: "Downloading update…",
+        updateInstalling: "Installing and restarting…",
+        updateFailedPrefix: "Couldn’t check:",
+        updateRateLimited: "GitHub is limiting requests. Try again in a while.",
+        updateNoReleaseFound: "no Vitruvian Atrium release was found.",
+        updateLastChecked: "Last checked:",
+        updateNotifyTitle: "Vitruvian Atrium update",
+        updateInstallFailedBody: "The update was downloaded but could not be applied. Download the latest version from the GitHub releases page and drag the app over the current one.",
+        updateNeedsApplicationsTitle: "Move Vitruvian Atrium to Applications",
+        updateNeedsApplicationsBody: "The app is running from a place that cannot be updated, such as the disk image or a temporary system location. Drag Vitruvian Atrium to the Applications folder, open it from there and try again.",
+        menuCheckUpdates: "Check for updates…",
+
+        permissionRequired: "Permission required",
+        permissionAccessibility: "Accessibility",
+        permissionScreenRecording: "Screen Recording",
+        permissionGranted: "Granted",
+        permissionMissing: "Not granted",
+        permissionOpenSettings: "Open System Settings…",
+        permissionRequest: "Grant access",
+        permissionRestartNote: "macOS may ask to reopen the app after granting.",
+        secureInputTitle: "Secure input is on",
+        secureInputHeldFormat: "%@ was the active app when it turned on and may be holding it, so Vitruvian Atrium cannot type for you. Dismiss its password field, or quit it, to release it.",
+        secureInputUnattributed: "The app holding it cannot be named, so Vitruvian Atrium cannot type for you. Dismiss any open password field, or log out and back in, to clear it.",
+        secureInputUnidentified: "The app holding it could not be identified, so Vitruvian Atrium cannot type for you.",
+        secureInputRevealFormat: "Show %@",
+        secureInputSwitcherHeldFormat: "%@ was the active app when it turned on and may be holding it. Until it turns off, macOS hides your keystrokes from the switcher and ⌘Tab opens the macOS switcher instead. Dismiss its password field, or quit it, to release it.",
+        secureInputSwitcherUnattributed: "The app holding it cannot be named. Until it turns off, macOS hides your keystrokes from the switcher and ⌘Tab opens the macOS switcher instead. Dismiss any open password field, or log out and back in, to clear it.",
+        secureInputSwitcherUnidentified: "The app holding it could not be identified. Until it turns off, macOS hides your keystrokes from the switcher and ⌘Tab opens the macOS switcher instead.",
+
+        aboutDescription: "A utility hub for your Mac.\nEnergy, system monitor, scrolling and a window switcher, right in the menu bar.",
+        versionPrefix: "Version",
+        reviewIntro: "Review introduction",
+        reviewHighlights: "Review highlights",
+        viewOnGitHub: "View on GitHub",
+
+        obContinue: "Continue",
+        obBack: "Back",
+        obSkipStep: "Skip this step",
+        obStart: "Open Vitruvian Atrium",
+        obStepWelcomeTitle: "Welcome to Vitruvian Atrium",
+        obStepWelcomeBody: "A discreet menu bar utility that makes everyday macOS more practical.",
+        obWelcomeBullet1Title: "Energy under control",
+        obWelcomeBullet1Body: "Keep the Mac awake for as long as you want, even with the lid closed.",
+        obWelcomeBullet2Title: "A clear view of the system",
+        obWelcomeBullet2Body: "CPU, GPU and battery temperatures, hardware usage and memory pressure in real time.",
+        obWelcomeBullet3Title: "Mouse and windows, your way",
+        obWelcomeBullet3Body: "Reversed mouse scrolling and a window switcher with thumbnails.",
+        obLanguageLabel: "Language",
+        obStepAccessibilityTitle: "Accessibility",
+        obStepAccessibilityBody: "Needed to invert mouse scrolling and for the window switcher to respond to the keyboard.",
+        obAccessibilityWhy: "The app only watches the mouse wheel and the switcher shortcut. Nothing is recorded or sent anywhere.",
+        obStepRecordingTitle: "Screen Recording",
+        obStepRecordingBody: "Lets the switcher show real window thumbnails instead of icons only.",
+        obRecordingWhy: "Thumbnails are generated on the fly, stay in memory and never leave your Mac. Without it, the switcher still works with icons.",
+        obStepMonitorTitle: "System monitor",
+        obStepMonitorBody: "The panel shows CPU, GPU and battery temperatures, hardware usage and memory pressure.",
+        obMonitorNoPermission: "No permission needed. Sensors are read straight from the system.",
+        obStepOptionalTitle: "Optional features",
+        obStepOptionalBody: "Turn on what you want to use now. Everything can be changed later in Settings.",
+        obStepStatusTitle: "Checkup",
+        obStepStatusBody: "Make sure everything is ready for the features you want.",
+        obStatusRecheck: "Check again",
+        obStepDoneTitle: "All set!",
+        obStepDoneBody: "Vitruvian Atrium is already looking after your Mac.",
+        obDoneHint: "Look for the black hole in the menu bar, at the top right of the screen.",
+        obWhatsNewTitle: "What’s new in this version",
+        obWhatsNewFallback: "This update includes the latest fixes and improvements.",
+        obLanguageUpdateTitle: "Now in your language",
+        obLanguageUpdateBody: "Vitruvian Atrium now speaks several languages. Choose the one you’d like to use; you can change it anytime in Settings.",
+        obPurposeTitle: "What brought you here?",
+        obPurposeBody: "Choose a ready setup or select exactly what you want to use.",
+        obPurposeSkip: "You can add or remove features later in Settings.",
+
+        tabMonitor: "Monitor",
+        monitorMenuBarSection: "In the menu bar",
+        monitorMenuBarPreview: "Menu bar preview",
+        monitorMenuBarCaption: "Choose what appears next to the icon in the menu bar.",
+        monitorCombineTemperatures: "Combine usage and temperature",
+        monitorCombineTemperaturesCaption: "When usage and temperature for the same item are enabled, show them in one block.",
+        monitorSeparateMenuBarMetrics: "Separate metrics into their own items",
+        monitorSeparateMenuBarMetricsCaption: "Separates active blocks in the menu bar and keeps usage and temperature together when combine is on.",
+        monitorNetworkUploadFirst: "Upload above download",
+        monitorShowCPU: "CPU",
+        monitorShowMemory: "Memory",
+        monitorShowNetwork: "Network",
+        monitorShowPowerLabel: "Power",
+        monitorIntervalLabel: "Update every",
+        monitorInterval1: "1 second",
+        monitorInterval2: "2 seconds",
+        monitorInterval5: "5 seconds",
+        monitorPanelSection: "In the panel",
+        panelNavigationMode: "Navigate panel by sections",
+        panelNavigationCaption: "Shows one section at a time. Choose List to see everything in one continuous scroll.",
+        panelFooterSections: "Sections",
+        panelFooterList: "List",
+        betaBadge: "BETA",
+        betaFeatureWarning: "Beta. You may run into some bugs.",
+
+        networkSection: "Network",
+        networkIPAddresses: "IP addresses",
+        networkLocalIP: "Local IPv4",
+        networkDownload: "Download",
+        networkUpload: "Upload",
+        networkThisSession: "This session",
+        networkMeasuring: "Measuring…",
+        networkApps: "Apps using network",
+        networkAppsIdle: "No apps using network now",
+
+        diskSection: "Disks",
+        diskUsed: "used",
+        diskFree: "free",
+        diskMenuBarStyleLabel: "Disk display",
+        diskMenuBarUsedPercentage: "Used percentage",
+        diskMenuBarAvailableSpace: "Available space",
+        diskMenuBarUsedSpace: "Used space",
+        diskAvailable: "available",
+        diskPurgeable: "purgeable",
+        diskInternal: "Internal",
+        diskExternal: "External",
+        diskSelect: "Select disk",
+        diskRead: "Read",
+        diskWrite: "Write",
+        diskSMARTStatus: "Status",
+        diskSMARTUnavailable: "SMART unavailable for this disk",
+        diskTotalRead: "Total read",
+        diskTotalWritten: "Total written",
+        diskTemperature: "Temperature",
+        diskHealth: "Health",
+        diskPowerCycles: "Power cycles",
+        diskPowerOnHours: "Power on hours",
+        diskUnsafeShutdowns: "Unsafe shutdowns",
+        diskMediaErrors: "Media errors",
+        diskEject: "Eject",
+        diskEjectAll: "Eject all",
+        diskEjecting: "Ejecting…",
+        diskReadyToRemove: "Ready to remove",
+        diskEjectFailed: "Could not eject",
+        diskProtectionCaption: "Eject before unplugging.",
+        diskNoExternal: "No external disk ready to eject.",
+        diskOpenInFinder: "Open",
+        diskStorageSettings: "Storage",
+        diskNoDisks: "No mounted disks found.",
+
+        powerSection: "Power",
+        powerSystem: "System",
+        powerAdapter: "Adapter",
+        powerBattery: "Battery",
+        powerCharging: "Charging",
+        powerOnBattery: "On battery",
+        powerPluggedIn: "Plugged in",
+        powerUnavailable: "Power metrics unavailable on this Mac",
+        powerAdapterMaxFormat: "%@ max",
+        monitorShowGPU: "GPU",
+        monitorShowCPUTemperature: "CPU temperature",
+        monitorShowGPUTemperature: "GPU temperature",
+        monitorShowBatteryTemperature: "Battery temperature",
+        monitorShowPeripheralBattery: "Peripheral battery",
+        peripheralBatteryNoDevices: "No devices found",
+        monitorGraphsSection: "Graphs",
+
+        updateBannerTitle: "Update available",
+        updateBannerAction: "Update",
+        obStepMenuBarTitle: "Metrics in the menu bar",
+        obStepMenuBarBody: "Pick what to show next to the icon. The preview above updates live.",
+        obStepMenuBarNote: "New: Network and Power blocks and graphs in the panel. Fine-tune it all later in Settings › Monitor.",
+        monitorMenuBarPresetLabel: "Style",
+        menuBarPresetReadable: "Readable",
+        menuBarPresetDense: "Dense",
+        menuBarSpacingLabel: "Menu bar spacing",
+        menuBarSpacingStandard: "Standard",
+        menuBarSpacingCompact: "Compact",
+        menuBarHideIconToggle: "Hide the app icon while metrics are shown",
+        menuBarHideIconCaption: "The icon returns by itself when metrics leave the bar and when there is something to signal (an update ready, “Keep awake” running or the microphone muted).",
+        monitorLabelStyleLabel: "Labels",
+        menuBarLabelStyleCompact: "Compact",
+        menuBarLabelStyleClassic: "Classic",
+        monitorMemoryStyleLabel: "Show memory as",
+        monitorMemoryPressureDot: "Pressure dot",
+        memoryStyleDot: "Dot",
+        memoryStylePercent: "%",
+        memoryStyleBoth: "Both",
+        systemUptime: "Up for",
+        batteryCharge: "Charge",
+        powerHealth: "Battery health",
+        powerCycles: "Cycles",
+        speedTestRun: "Speed test",
+        speedTestAgain: "Test again",
+        speedTestLatency: "Latency",
+        speedTestTesting: "Testing…",
+        speedTestFailed: "Test failed",
+
+        monitorShowInPanel: "Show in panel",
+        disclosureExpanded: "Expanded",
+        disclosureCollapsed: "Collapsed",
+        panelHideItem: "Hide from panel",
+        panelShowItem: "Show in panel",
+        panelHiddenItem: "Hidden",
+        monitorItemUptime: "Uptime",
+        monitorItemNetSpeed: "Live speed",
+        monitorItemNetTotals: "Session totals",
+        monitorItemNetTest: "Speed test",
+        monitorItemDiskUsage: "Disk usage",
+        monitorItemDiskActivity: "Live activity",
+        monitorItemDiskSMART: "SMART",
+        monitorItemDiskProtection: "External protection",
+        monitorItemDiskTools: "Tools",
+        monitorPanelConfigHint: "Open a block to choose what it shows.",
+        monitorOrderHint: "Drag to reorder the panel sections and use the eye to show or hide each one.",
+        obStepPanelTitle: "What’s in the panel",
+        obStepPanelBody: "Open each block and pick exactly what shows when you click the icon.",
+        obStepPanelNavigationTitle: "Section-based panel",
+        obStepPanelNavigationBody: "The panel can now show one section at a time. You can switch between Sections and List in Settings.",
+
+        cleaningMenuItem: "Cleaning Mode",
+        utilitiesSection: "Utilities",
+        quickControlsSection: "Controls",
+        panelCategoryWindows: "Windows",
+        panelCategoryInput: "Mouse and keyboard",
+        panelCategoryFiles: "Files",
+        windowMaximizeName: "Maximize windows",
+        windowMaximizeCaption: "The green button maximizes without creating another Space.",
+        windowMaximizeActiveNow: "Green button override active",
+        windowMaximizeNeedsAccessibility: "Needs Accessibility to work.",
+        keyDebounceName: "Debounce",
+        keyDebounceEnable: "Filter duplicate keys",
+        keyDebounceCaption: "Filters very fast duplicate key presses.",
+        keyDebounceActiveNow: "Filter active",
+        keyDebounceGlobalWindow: "Global window",
+        keyDebouncePerKeySection: "Specific keys",
+        keyDebouncePerKeyCaption: "Per-key values override the global window. Use 0 ms to stop filtering a key.",
+        keyDebounceKeyLabel: "Key",
+        keyDebounceWindowLabel: "Window",
+        keyDebounceAddKey: "Add key",
+        keyDebounceNoOverrides: "No specific keys configured.",
+        keyDebounceRemoveKey: "Remove key",
+        cleaningPanelCaption: "Locks the keyboard so you can clean safely.",
+        cleaningOverlayTitle: "Keyboard locked for cleaning",
+        cleaningOverlaySubtitle: "Press Escape 5 times to unlock",
+        cleaningOverlayUnlock: "Unlock",
+        cleaningOverlayMouseHint: "Your mouse and trackpad still work",
+        cleaningKeepScreenVisibleToggle: "Keep screen visible",
+        cleaningKeepScreenVisibleCaption: "Shows a discreet indicator in the corner of the screen instead of blacking out content.",
+        cleaningStartNow: "Lock keyboard now",
+        cleaningNeedsAxTitle: "Accessibility needed",
+        cleaningNeedsAxBody: "To lock the keyboard safely, Vitruvian Atrium needs Accessibility permission. Grant it in System Settings and try again.",
+
+        tabSupport: "Support",
+        shortcutsPageCaption: "Edit every global shortcut from the features installed on this Mac. Inactive shortcuts stay saved but do not run.",
+        shortcutsPageTitle: "Keyboard shortcuts",
+        settingsSearchPlaceholder: "Search settings",
+        donateHeading: "Help Vitruvian Atrium keep growing",
+        donateMessage: "Vitruvian Atrium is free and open source, and it always will be. If you would like to support its development, you can give any amount you choose. Payments are handled securely by Stripe.",
+        donateButton: "Donate",
+        donateThanks: "Thank you for being here. 🖤",
+        supportIntroTitle: "Help Vitruvian Atrium keep growing",
+        supportIntroMessage: "If you would like to support development financially, Buy Me a Coffee is the one place to do it.",
+        supportIntroStarButton: "Star Vitruvian Atrium on GitHub",
+        supportIntroStarMessage: "Financial support is never expected. A star on GitHub helps more people discover Vitruvian Atrium and makes a real difference to its development.",
+        supportIntroCoffeeButton: "Support on Buy Me a Coffee",
+        supportIntroLaterButton: "Not now",
+        supportIntroDoneButton: "Done",
+        discordIntroTitle: "The Vitruvian Discord community is just getting started",
+        discordIntroMessage: "The Vitruvian Atrium community is new and still being built. Join early to meet other users and help build a welcoming space around the app.",
+        discordIntroJoinButton: "Join the Discord community",
+        communityIntroTitle: "See it before everyone else",
+        communityIntroMessage: "People who already followed me on X saw several changes in this update before anyone else. I post previews of what is coming and show how it works, so you already know the basics before the update ships. Follow along and see what comes next!",
+        communityIntroFollowButton: "Follow @vitruvian on X",
+        homebrewOfficialIntroTitle: "Now in the official Homebrew catalog",
+        homebrewOfficialIntroMessage: "Vitruvian Atrium can now be installed directly from the official Homebrew catalog.",
+        homebrewOfficialIntroInstallLabel: "New installation",
+        homebrewOfficialIntroMigrationTitle: "Used the old tap?",
+        homebrewOfficialIntroMigrationMessage: "Remove the tap once. The app and your settings stay in place.",
+        homebrewOfficialIntroCopyButton: "Copy command",
+        updateShowcaseTitle: "What’s new in 3.1.4",
+        updateShowcaseMessage: "Take a quick look at the main improvements in this update.",
+        updateShowcaseUnavailable: "The video could not load right now. You can still continue.",
+        updateShowcaseRestart: "Restart",
+        showMenuBarIcon: "Show menu bar icon",
+        menuBarIconStillHiddenTitle: "The icon is still hidden",
+        menuBarIconStillHiddenBody: "The icon was rebuilt, but macOS did not give it a visible spot. The menu bar is probably out of room: remove some menu bar icons (or close apps with long menus) and try again.",
+        menuBarIconManagerHintFormat: "%@ is open and may be keeping the icon in its hidden section. Look for Vitruvian Atrium there, or set %@ to always show Vitruvian Atrium.",
+        menuBarIconDisallowedBody: "macOS is keeping Vitruvian Atrium out of the menu bar. Open System Settings > Menu Bar, find Vitruvian Atrium in the app list and turn on “Allow in the Menu Bar”. The icon appears as soon as the switch is on.",
+        shortcutRecording: "Press the new shortcut",
+        shortcutReset: "Reset",
+        shortcutNone: "None",
+        shortcutClear: "Remove shortcut",
+        shortcutInvalid: "Use at least Control, Option or Command with a key.",
+        shortcutPressKeys: "Press keys",
+        shortcutEscapeHint: "Escape cancels.",
+        shortcutDeleteHint: "Delete clears.",
+        shortcutNotCaptured: "Nothing was captured. macOS or another app already uses that combination. Try another one.",
+        shortcutConflictFormat: "This shortcut is already used by %@.",
+        shortcutTakeOverOffer: "macOS uses %@ for one of its own shortcuts.",
+        shortcutTakeOverAction: "Take over while Vitruvian Atrium runs",
+        shortcutTakeOverCaption: "macOS gets the key back whenever Vitruvian Atrium is not running or this feature is off.",
+        shortcutTakeOverDismiss: "Don’t take over",
+        shortcutUnavailable: "macOS rejected this shortcut. Choose another one.",
+        shelfShortcutToggle: "Shelf shortcut",
+        switcherUsageHintFormat: "Hold %@ to navigate; release to activate the window. Shift or ← goes back; W closes the window; Q quits the app; Esc cancels.",
+        musicBlockSection: "Media keys",
+        musicBlockTitle: "Stop Music from opening on its own",
+        musicBlockCaption: "Blocks the music app opening after a detected media key. Requires Accessibility access. Headphone commands without a detected key are left alone.",
+        musicBlockUnavailable: "This protection is unavailable right now. Turn it off and on to try again.",
+        musicBlockReplacementLabel: "Open instead",
+        musicBlockReplacementNone: "None",
+        musicBlockReplacementBlocked: "Music and iTunes are the apps being blocked, so they can’t open instead. Choose another app.",
+        musicBlockChooseApp: "Choose app…",
+        musicBlockPlayReplacement: "Play after opening replacement",
+        cleanerName: "Cleaner",
+        cleanerIntroTitle: "Clean up your Mac",
+        cleanerIntroCaption: "Scans for leftovers from uninstalled apps, caches, logs and the Trash. You review everything first and removed items go to the Trash.",
+        cleanerScan: "Scan",
+        cleanerScanning: "Scanning…",
+        cleanerCleaning: "Cleaning…",
+        cleanerCatLeftovers: "Leftovers from uninstalled apps",
+        cleanerCatLoginItems: "Orphaned startup items",
+        cleanerCatCaches: "Caches",
+        cleanerCatLogs: "Logs",
+        cleanerCatDeveloper: "Developer junk",
+        cleanerCatTrash: "Trash",
+        cleanerLeftoversNote: "Found by analysis and left unchecked. Check the path before ticking.",
+        cleanerLoginItemsNote: "The entry under Login Items disappears after restarting the Mac.",
+        cleanerTrashNote: "Emptying the Trash is permanent.",
+        cleanerCatDeviceBackups: "iPhone backups",
+        cleanerDeviceBackupsCaption: "Old iPhone and iPad backups take a big slice of the storage macOS calls Other. Remove only the ones you no longer need; a new backup is made when you plug the device in again.",
+        cleanerCatScreenshots: "Forgotten screenshots",
+        cleanerScreenshotsCaptionFormat: "Screenshots you have not opened in %d days that still have the name and folder macOS gave them. Ones you renamed or moved never show up here.",
+        cleanerScreenshotsSettingCaption: "The scan lists the screenshots you have not opened for this long, unchecked, with their total size.",
+        cleanerScreenshotsAfterFormat: "After %d days",
+        cleanerNothingFound: "Nothing to clean. Your Mac is tidy.",
+        cleanerClean: "Clean",
+        cleanerDoneNote: "Items went to the Trash and can be recovered from there.",
+        cleanerAgain: "Scan again",
+        cleanerRevealInFinder: "Reveal in Finder",
+        cleanerPanelCaption: "App leftovers, caches and logs",
+        cleanerSafeSection: "Safe cleanup",
+        cleanerOptionalSection: "Optional, review first",
+        cleanerCatOtherCaches: "Other caches",
+        cleanerCachesCaption: "Temporary files apps rebuild on their own.",
+        cleanerLogsCaption: "Old diagnostic logs.",
+        cleanerDeveloperCaption: "Xcode build and simulator leftovers.",
+        cleanerLoginItemsCaption: "Startup entries left by apps that no longer exist.",
+        cleanerLeftoversCaption: "Files left behind by apps you uninstalled.",
+        cleanerOtherCachesCaption: "Safe to remove, nothing breaks. Apps may open slower once and downloaded content, like offline music, downloads again.",
+        cleanerCleanSizeFormat: "Clean %@",
+        cleanerScheduleTitle: "Automatic cleanup",
+        cleanerScheduleOff: "Off",
+        cleanerScheduleDaily: "Daily",
+        cleanerScheduleWeekly: "Weekly",
+        cleanerScheduleCaption: "Cleans only the safe part on its own at the chosen time and sends everything to the Trash.",
+        cleanerScheduleLastFormat: "The last automatic cleanup freed %@.",
+        cleanerAutoNotificationFormat: "%@ freed and sent to the Trash.",
+        cleanerScheduleNextFormat: "Next cleanup %@.",
+        cleanerScheduleRanFormat: "Last automatic cleanup %@.",
+        cleanerScheduleNotifyToggle: "Notify when done",
+        cleanerNotifDenied: "Vitruvian Atrium notifications are turned off in the system.",
+        cleanerNotifOpenSettings: "Open Notification Settings…",
+        launchAtLoginNeedsApplications: "The app is running from a place that cannot open at login. Drag Vitruvian Atrium to the Applications folder, open it from there and turn this on again.",
+        launchAtLoginNeedsApproval: "The login item is registered, but macOS still needs your approval. In System Settings, allow Vitruvian Atrium to open at login and to run in the background.",
+        ocrRemoveLineBreaksToggle: "Remove line breaks",
+        ocrRemoveLineBreaksCaption: "Removes line breaks so copied text pastes as one paragraph.",
+        ocrQRToggle: "Read QR codes",
+        ocrQRCaption: "If the area has a QR code, its content is shown to copy or open.",
+        ocrQRCopied: "QR code copied",
+        qrResultTitle: "QR code",
+        qrResultCopy: "Copy",
+        qrResultOpen: "Open link",
+        highlightsTitle: "New in this update",
+        highlightsTitleClipboardRedesign: "Redesigned clipboard",
+        highlightsTitleWindowLayout: "Window Layout",
+        highlightsTitleQuitProtection: "Quit and close protection",
+        highlightsTitleRecorderBlur: "Recording privacy blur",
+        highlightsCaptionDockPreview: "Dock Preview now works with Dock magnification turned on",
+        highlightsCaptionScreenshot: "The screenshot tool gained a pixel loupe and QR code reading",
+        highlightsCaptionSnippetLibrary: "A searchable snippet menu types any snippet right at your cursor",
+        highlightsCaptionCapturePalette: "One shortcut now opens a floating palette for screenshots, recordings, screen text and colors with nearby controls.",
+        highlightsCaptionClipboardRedesign: "Clipboard history now opens as a compact palette with uncluttered rows and an on-demand preview for reading or editing the full item.",
+        highlightsCaptionWindowLayout: "Position windows with the directional ring using a shortcut and pointer, or drag to screen edges to snap with custom gaps.",
+        highlightsCaptionQuitProtection: "Avoid quitting apps or closing windows by accident with a hold, a double press or an extra modifier, customizable per app.",
+        highlightsCaptionRecorderBlur: "Hide private details, passwords and sensitive areas anywhere across your recorded video before sharing or exporting.",
+        highlightsConfigure: "Set up",
+        highlightsTry: "Try it",
+        highlightsSeeAll: "See all changes",
+        switcherCurrentSpaceOnly: "Show only the current desktop",
+        switcherCurrentSpaceOnlyCaption: "Lists windows from the current desktop. Fullscreen windows from other desktops also appear while “Show fullscreen windows” is on.",
+        shelfFileMissing: "The file no longer exists",
+        previewSizeSmall: "Small",
+        mixerSoundEffectsOutputTitle: "System sounds",
+        mixerSoundEffectsOutputTooltip: "Choose where alerts and sound effects play",
+        monitorOpenActivityMonitor: "Open Activity Monitor",
+        dockClickHide: "Click the Dock icon to hide the app",
+        dockClickHideCaption: "The active app hides when you click its Dock icon. Click again to bring it back.",
+        monitorMemoryMetricLabel: "Measure memory as",
+        memoryMetricUsed: "Memory Used",
+        memoryMetricApp: "App Memory",
+        keepAwakeRightClickToggle: "Right-click the menu bar icon to toggle Keep Awake",
+        keepAwakeRightClickToggleCaption: "Replaces the right-click context menu.",
+        urlCleanerRulesTitle: "Cleaning rules",
+        urlCleanerRulesCaption: "A site attaches these parameters to its own share links to track where the link came from. Switched on, a name is removed when a link is cleaned; switched off, it stays. Names you add can be deleted.",
+        urlCleanerRulesCoverageCaption: "The list covers a site’s different share paths (the web page, the app, a live room), which is why it is long; a real link usually carries only two to four of them.",
+        urlCleanerRulesAllSites: "All sites",
+        urlCleanerRulesCountSingular: "1 parameter",
+        urlCleanerRulesCountPluralFormat: "%d parameters",
+        urlCleanerRulesAddSite: "Add a site",
+        urlCleanerRulesParameterPlaceholder: "Parameter name",
+        urlCleanerRulesMatchCaption: "Write the name to the left of the = , like utm_source. A name that matches takes that one parameter out of the link and leaves the rest as it was.",
+        urlCleanerRulesAddButton: "Add",
+        urlCleanerRulesRemoveButton: "Delete name",
+        urlCleanerRulesRemoveSiteButton: "Turn off every rule for this site",
+        urlCleanerRulesRestoreSiteButton: "Turn on every rule for this site",
+        urlCleanerRemovedFormat: "Removed %@",
+        switcherSearchPin: "Pin search with S",
+        switcherSearchPinCaption: "S starts a search and pins the switcher open, so typing no longer produces special characters when your shortcut uses ⌥, and a search starting with Q or W no longer closes the window or quits the app by mistake.",
+        invertVerticalScroll: "Invert vertical scrolling",
+        invertHorizontalScroll: "Invert horizontal scrolling",
+        scrollHorizontalName: "Scroll sideways while holding a key",
+        scrollHorizontalModifierLabel: "Modifier key",
+        scrollHorizontalCommandKey: "Command",
+        scrollHorizontalCaption: "Hold only the selected modifier to scroll the vertical mouse wheel horizontally. Other key combinations are unchanged.",
+        switcherShowShortcutHints: "Show shortcut hints",
+        switcherShowShortcutHintsCaption: "Shows the app and window shortcuts below the icons.",
+        uninstallerHomebrewPackageFormat: "%@ will also be removed from Homebrew.",
+        shelfEdgeToggle: "Open near a screen edge",
+        shelfEdgeCaption: "Drag a file toward the screen edge to peek the shelf in. Drop it there, or pull back and it retreats.",
+        focusFollowsMouseName: "Focus follows mouse",
+        focusFollowsMouseCaption: "Focuses the window under the pointer.",
+        focusFollowsMouseDelay: "Hover delay",
+        focusFollowsMouseRaise: "Bring the window to the front",
+        focusFollowsMouseWaitForStop: "Wait for the pointer to stop",
+        switcherMinimizedPlacementLabel: "Minimized windows",
+        switcherTreatHiddenAppsLikeMinimized: "Treat hidden apps like minimized windows",
+        switcherMinimizedPlacementNormal: "Normal ordering",
+        switcherMinimizedPlacementEnd: "Place at end",
+        switcherMinimizedPlacementHidden: "Hide",
+        switcherShowFullscreenWindows: "Show fullscreen windows",
+        switcherScreenPlacementLabel: "Show on",
+        switcherScreenPlacementPointer: "Display with the pointer",
+        switcherScreenPlacementMenuBar: "Display with the menu bar",
+        switcherScreenPlacementActiveWindow: "Display with the active window",
+        switcherScreenPlacementCaption: "Which display the switcher opens on when more than one is connected.",
+        switcherCurrentDisplayOnly: "Show only the current display",
+        switcherCurrentDisplayOnlyCaption: "Lists only windows on the display under the pointer. If that display has no windows, the switcher does not open.",
+        smoothScrollResponseLabel: "Response",
+        smoothScrollCoastLabel: "Coast",
+        mouseAccelerationName: "Disable mouse acceleration",
+        mouseAccelerationCaption: "Removes pointer acceleration for connected mice. Your previous setting returns when this is turned off or Vitruvian Atrium quits.",
+        linearScrollName: "Linear scrolling",
+        linearScrollCaption: "Every notch of the mouse wheel scrolls the same distance, no matter how fast it spins. The trackpad is not affected.",
+        linearScrollLinesLabel: "Lines per step",
+        shelfClearOnClose: "Clear when closed",
+        shelfClearOnCloseCaption: "Empties the shelf only when you click its close button. Automatic hiding and collapsing keep the items.",
+        shelfShortcutFinderSelection: "Add the Finder selection with the shortcut",
+        shelfShortcutFinderSelectionCaption: "With Finder in front, the shortcut opens the shelf with the selected files already in it. With nothing selected, it opens as usual.",
+        spacesOrderName: "Keep Spaces in a fixed order",
+        spacesOrderCaption: "Stops macOS from rearranging Spaces by most recent use, so they stay in the order you set. Your previous setting returns when this is turned off. The Dock may restart once to apply the change."
+    )
+}

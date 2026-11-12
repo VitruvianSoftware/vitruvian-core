@@ -871,7 +871,7 @@ private func testProfile(_ root: URL) -> HomeSpeakerProfile {
 
 private func extensionChosen(dataFolder: URL) -> DoorRecord {
     DoorRecord(chosen: .extension, installedExtension: .init(
-        program: "/Applications/Vitruvian.app/Tools/dev.vitruvian.homespeaker/bin/tool",
+        program: "/Applications/Vitruvian Atrium.app/Tools/dev.vitruvian.homespeaker/bin/tool",
         dataFolder: dataFolder.path, version: "1.22.0", door: DoorRecord.ExtensionEntry.runsAlone))
 }
 

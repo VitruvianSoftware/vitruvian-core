@@ -140,7 +140,7 @@ func TestReleaseTagsProtected(t *testing.T) {
 		"courier-v0.1.0",
 		"oauth-user-inspector-v1.4.0",
 		"oauth-user-inspector-infra-v0.9.0",
-		"vitruvian-v4.12.0",
+		"vitruvian-atrium-v4.12.0",
 		"vitruvian-sdk-v0.14.0",
 		"home-speaker-v2.3.0",
 		"esp32-s3-v0.1.12",
@@ -152,7 +152,7 @@ func TestReleaseTagsProtected(t *testing.T) {
 		"2026.26",
 		// Look-alikes of the rolling names.
 		"tabula-api-v9.9.9-beta-latest",
-		"vitruvian-beta-latest-2",
+		"vitruvian-atrium-beta-latest-2",
 		"beta-latest",
 	}
 	for _, p := range environmentTagPatterns {
@@ -273,7 +273,7 @@ func TestProgramRegistersReleaseTagRuleset(t *testing.T) {
 	}
 	exc := propStrings(ref["excludes"])
 	var wantExc []string
-	for _, tag := range []string{"vitruvian-beta-latest", "esp32-s3-beta-latest", "gravastar-mouse-beta-latest", "tabula-extension-dev-latest"} {
+	for _, tag := range []string{"vitruvian-atrium-beta-latest", "esp32-s3-beta-latest", "gravastar-mouse-beta-latest", "tabula-extension-dev-latest"} {
 		wantExc = append(wantExc, "refs/tags/"+tag)
 	}
 	if strings.Join(exc, " ") != strings.Join(wantExc, " ") {
@@ -380,12 +380,12 @@ func TestDeployTagPatternsNeverMatchExemptTags(t *testing.T) {
 // Vitruvian Code's mirror cuts plain `v<version>` tags on `vitruvian-code` from
 // pushes to `main` and deploys to `vitruvian-code-release` from branch `main`
 // only (never from tags). On `vitruvian-core`, `v*` would match the exempt
-// rolling tag `vitruvian-beta-latest`, so `vitruvian-code-release` must stay on
+// rolling tag `vitruvian-atrium-beta-latest`, so `vitruvian-code-release` must stay on
 // `vitruvian-code` with its single `main` branch deployment policy and zero tag
 // deployment policies anywhere.
 func TestVitruvianCodeReleaseTagsStaySeparateFromMonorepoReleaseTags(t *testing.T) {
-	if ok, err := path.Match("v*", "vitruvian-beta-latest"); err != nil || !ok {
-		t.Fatalf("expected v* to match vitruvian-beta-latest (got ok=%v, err=%v); this invariant explains why v* must never sit on vitruvian-core", ok, err)
+	if ok, err := path.Match("v*", "vitruvian-atrium-beta-latest"); err != nil || !ok {
+		t.Fatalf("expected v* to match vitruvian-atrium-beta-latest (got ok=%v, err=%v); this invariant explains why v* must never sit on vitruvian-core", ok, err)
 	}
 	for _, p := range environmentTagPatterns {
 		if p == "v*" {

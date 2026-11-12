@@ -1,0 +1,675 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Vorssaint
+
+import SwiftUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+
+/// Screenshot-specific sections inside the shared screen-capture page.
+package struct ScreenshotCaptureSettings: View {
+    @ObservedObject private var l10n = L10n.shared
+    @ObservedObject private var permissions = Permissions.shared
+    @ObservedObject private var service = ScreenshotService.shared
+    @ObservedObject private var sharing = ScreenshotShareService.shared
+    @AppStorage(Preferences.screenshotFullScreenShortcutEnabled)
+    private var fullScreenShortcutEnabled: Bool
+    @AppStorage(Preferences.screenshotLastCaptureShortcutEnabled)
+    private var lastCaptureShortcutEnabled: Bool
+    @AppStorage(Preferences.screenshotClipboardShortcutEnabled)
+    private var clipboardShortcutEnabled: Bool
+    @AppStorage(Preferences.screenshotFreeze) private var freeze: Bool
+    @AppStorage(Preferences.screenshotHideAtriumWindows) private var hideAtriumWindows: Bool
+    @AppStorage(Preferences.screenshotSaveFolder) private var saveFolder: String
+    @AppStorage(Preferences.screenshotSaveSubfolder) private var saveSubfolder: String
+    @AppStorage(Preferences.screenshotFileNamePattern) private var fileNamePattern: String
+    @AppStorage(Preferences.screenshotFileNumberStart) private var numberStart: Int
+    @AppStorage(Preferences.screenshotFileNumberNext) private var nextNumber: Int
+    @AppStorage(Preferences.screenshotIncludePointer) private var includePointer: Bool
+    @AppStorage(Preferences.screenshotShowLastRegion) private var showLastRegion: Bool
+    @AppStorage(Preferences.screenshotHighlightWindows) private var highlightWindows: Bool
+    @AppStorage(Preferences.screenshotLoupeStartsOn) private var loupeStartsOn: Bool
+    @AppStorage(Preferences.screenshotLoupeRememberZoom) private var rememberLoupeZoom: Bool
+    @AppStorage(Preferences.screenshotLoupeDefaultZoom) private var loupeDefaultZoom: Double
+    @AppStorage(Preferences.screenshotLoupeSteppedZoomByDefault)
+    private var steppedLoupeZoomByDefault: Bool
+    @AppStorage(Preferences.screenshotDownscale) private var downscale: Bool
+    @AppStorage(Preferences.screenshotDelay) private var delay: Int
+    @AppStorage(Preferences.screenshotDefaultAction) private var defaultActionRaw: String
+    @AppStorage(Preferences.screenshotToolOrder) private var toolOrderRaw: String
+    @AppStorage(Preferences.screenshotToolShortcutsEnabled) private var toolShortcutsEnabled: Bool
+    @AppStorage(Preferences.screenshotCopyToClipboard) private var copyToClipboard: Bool
+    @AppStorage(Preferences.screenshotCopyImageOnly) private var copyImageOnly: Bool
+    @AppStorage(Preferences.screenshotAddToShelf) private var addToShelf: Bool
+    @AppStorage(Preferences.shelfEnabled) private var shelfEnabled: Bool
+    @AppStorage(AppFeature.shelf.availabilityKey) private var shelfAvailable = false
+    @AppStorage(Preferences.screenshotPreviewPosition) private var previewPositionRaw: String
+    @AppStorage(Preferences.screenshotPreviewTakesFocus) private var previewTakesFocus: Bool
+    @AppStorage(Preferences.screenshotPreviewEnabled) private var previewEnabled: Bool
+    @AppStorage(Preferences.screenshotPreviewDuration) private var previewDuration: Int
+    @AppStorage(Preferences.screenshotSharingEnabled) private var sharingEnabled: Bool
+    @AppStorage(Preferences.screenshotUploadShortcutEnabled) private var uploadShortcutEnabled: Bool
+    @AppStorage(Preferences.screenshotUploadDuration) private var uploadDuration: Int
+    @State private var showingSharedLinks = false
+    @State private var showingSharePrivacy = false
+
+    private var strings: ScreenshotFeatureStrings {
+        FeatureStrings.screenshot(l10n.language)
+    }
+
+    package var body: some View {
+        Group {
+            Section {
+                HStack(spacing: 10) {
+                    Button {
+                        ScreenshotService.shared.capture()
+                    } label: {
+                        Label(strings.captureButton, systemImage: "camera.viewfinder")
+                            .frame(maxWidth: .infinity)
+                    }
+                    Button {
+                        ScreenshotService.shared.captureScrolling()
+                    } label: {
+                        Label(strings.scrollingCaptureButton, systemImage: "rectangle.stack")
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                Text(strings.panelCaption)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Toggle(strings.fullScreenShortcutTitle, isOn: $fullScreenShortcutEnabled)
+                    .onChange(of: fullScreenShortcutEnabled) { _, _ in
+                        ScreenshotService.shared.syncWithPreferences()
+                    }
+                ShortcutPreferenceRow(role: .screenshotFullScreen,
+                                      isEnabled: fullScreenShortcutEnabled) {
+                    ScreenshotService.shared.syncWithPreferences()
+                }
+                if fullScreenShortcutEnabled, service.fullScreenShortcutRegistrationFailed {
+                    Text(l10n.s.shortcutUnavailable)
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+                Toggle(strings.editLastCapture, isOn: $lastCaptureShortcutEnabled)
+                    .onChange(of: lastCaptureShortcutEnabled) { _, _ in
+                        ScreenshotService.shared.syncWithPreferences()
+                    }
+                ShortcutPreferenceRow(role: .screenshotLastCapture,
+                                      isEnabled: lastCaptureShortcutEnabled) {
+                    ScreenshotService.shared.syncWithPreferences()
+                }
+                if lastCaptureShortcutEnabled,
+                   service.lastCaptureShortcutRegistrationFailed {
+                    Text(l10n.s.shortcutUnavailable)
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+                Toggle(strings.editClipboardImage, isOn: $clipboardShortcutEnabled)
+                    .onChange(of: clipboardShortcutEnabled) { _, _ in
+                        ScreenshotService.shared.syncWithPreferences()
+                    }
+                ShortcutPreferenceRow(role: .screenshotClipboard,
+                                      isEnabled: clipboardShortcutEnabled) {
+                    ScreenshotService.shared.syncWithPreferences()
+                }
+                if clipboardShortcutEnabled, service.clipboardShortcutRegistrationFailed {
+                    Text(l10n.s.shortcutUnavailable)
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+                if !permissions.screenRecording {
+                    PermissionRow(kind: .screenRecording)
+                }
+            } header: {
+                Text(strings.pageTitle)
+            }
+            .settingsFormSectionAnchor(.screenshot)
+
+            Section {
+                Toggle(strings.freezeToggle, isOn: $freeze)
+                Text(strings.freezeCaption)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Toggle(strings.hideAtriumWindowsToggle, isOn: $hideAtriumWindows)
+                Picker(strings.delayLabel, selection: $delay) {
+                    ForEach(ScreenshotSupport.allowedDelays, id: \.self) { seconds in
+                        if seconds == 0 {
+                            Text(strings.delayOff).tag(0)
+                        } else {
+                            Text(String(format: strings.delaySecondsFormat, seconds)).tag(seconds)
+                        }
+                    }
+                }
+                .pickerStyle(.segmented)
+                Toggle(strings.pointerToggle, isOn: $includePointer)
+                Toggle(strings.lastRegionToggle, isOn: $showLastRegion)
+                Toggle(strings.highlightWindowsToggle, isOn: $highlightWindows)
+                Text(strings.highlightWindowsCaption)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                DisclosureGroup {
+                    Toggle(strings.loupeStartsOnToggle, isOn: $loupeStartsOn)
+                    Toggle(strings.loupeRememberZoomToggle, isOn: $rememberLoupeZoom)
+                    if !rememberLoupeZoom {
+                        Picker(strings.loupeDefaultZoomLabel, selection: $loupeDefaultZoom) {
+                            ForEach(ScreenshotSupport.captureLoupeDefaultZooms, id: \.self) { zoom in
+                                Text(zoom.formatted(
+                                    .number.precision(.fractionLength(0...1))) + "×")
+                                    .tag(zoom)
+                            }
+                        }
+                    }
+                    Picker(strings.loupeWheelZoomLabel,
+                           selection: $steppedLoupeZoomByDefault) {
+                        Text(strings.loupeZoomFast).tag(false)
+                        Text(strings.loupeZoomStepped).tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    Text(strings.loupeZoomOptionCaption)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    previewPositionRow
+                    previewFocusRow
+                    defaultActionRow
+                } label: {
+                    Text(FeatureStrings.recorder(l10n.language).moreOptions)
+                }
+            }
+
+            Section {
+                Toggle(strings.autoCopyToggle, isOn: autoCopyBinding)
+                Text(strings.autoCopyCaption)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Toggle(strings.copyImageOnlyToggle, isOn: $copyImageOnly)
+                Text(strings.copyImageOnlyCaption)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Toggle(strings.addToShelfToggle, isOn: addToShelfBinding)
+                    .disabled(!shelfIsOn)
+                Text(strings.addToShelfCaption)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                folderRow
+                subfolderRow
+                fileNameRow
+                Toggle(strings.downscaleToggle, isOn: $downscale)
+                Text(strings.downscaleCaption)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                ScreenshotToolOrderControls(orderRaw: $toolOrderRaw,
+                                            shortcutsEnabled: $toolShortcutsEnabled,
+                                            showsTitle: false)
+            } header: {
+                Text(strings.toolShortcutsTitle)
+            }
+
+            Section {
+                Toggle(strings.shareEnabledToggle, isOn: $sharingEnabled)
+                    .onChange(of: sharingEnabled) { _, _ in service.syncWithPreferences() }
+                if sharingEnabled {
+                    Toggle(strings.uploadLastCapture, isOn: $uploadShortcutEnabled)
+                        .onChange(of: uploadShortcutEnabled) { _, _ in service.syncWithPreferences() }
+                    ShortcutPreferenceRow(role: .screenshotUpload,
+                                          isEnabled: uploadShortcutEnabled) {
+                        service.syncWithPreferences()
+                    }
+                    Picker(strings.uploadExpiry, selection: $uploadDuration) {
+                        ForEach(ScreenshotShareDuration.allCases) { duration in
+                            Text(duration.title(strings)).tag(duration.rawValue)
+                        }
+                    }
+                    if uploadShortcutEnabled {
+                        if service.uploadShortcutRegistrationFailed {
+                            Text(l10n.s.shortcutUnavailable)
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                    Text(strings.shareCaption)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Button {
+                    showingSharePrivacy = true
+                } label: {
+                    Label(strings.sharePrivacyButton, systemImage: "hand.raised")
+                }
+                if !sharing.records.isEmpty {
+                    Button {
+                        showingSharedLinks = true
+                    } label: {
+                        HStack {
+                            Label(strings.sharedLinksTitle, systemImage: "link")
+                            Spacer()
+                            Text("\(sharing.records.count)")
+                                .foregroundStyle(.secondary)
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            } header: {
+                Text(strings.shareSectionTitle)
+            }
+        }
+        .onAppear { sharing.refresh() }
+        .sheet(isPresented: $showingSharedLinks) {
+            ScreenshotSharedLinksView()
+        }
+        .sheet(isPresented: $showingSharePrivacy) {
+            ScreenshotSharePrivacyView()
+        }
+    }
+
+    /// The after-capture action can copy too, so the toggle reads on while
+    /// either one copies. Turning it off clears both. Otherwise captures keep
+    /// reaching the clipboard while the switch shows off.
+    private var autoCopyBinding: Binding<Bool> {
+        Binding {
+            copyToClipboard || defaultAction.copiesToClipboard
+        } set: { isOn in
+            copyToClipboard = isOn
+            if !isOn { defaultActionRaw = defaultAction.withoutCopy.rawValue }
+        }
+    }
+
+    private var defaultAction: ScreenshotDefaultAction {
+        ScreenshotDefaultAction(rawValue: defaultActionRaw) ?? .none
+    }
+
+    private var shelfIsOn: Bool {
+        shelfEnabled && shelfAvailable
+    }
+
+    /// Reads off while the shelf is off, since no capture reaches it then.
+    /// The choice itself is kept for when the shelf comes back.
+    private var addToShelfBinding: Binding<Bool> {
+        Binding {
+            addToShelf && shelfIsOn
+        } set: { isOn in
+            addToShelf = isOn
+        }
+    }
+
+    private var defaultActionRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ScreenshotDefaultActionPicker(strings: strings, selection: $defaultActionRaw)
+            if defaultActionRaw != ScreenshotDefaultAction.edit.rawValue {
+                Text(strings.defaultActionCaption)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if usesAutomaticConfirmationPreview {
+                Toggle(strings.confirmationPreviewToggle, isOn: $previewEnabled)
+                if previewEnabled {
+                    Picker(strings.confirmationPreviewDurationLabel, selection: $previewDuration) {
+                        ForEach(ScreenshotSupport.confirmationPreviewDurations, id: \.self) { seconds in
+                            if seconds == 0 {
+                                Text(strings.confirmationPreviewUntilDismissed).tag(0)
+                            } else {
+                                Text(String(format: strings.delaySecondsFormat, seconds)).tag(seconds)
+                            }
+                        }
+                    }
+                }
+                Text(strings.confirmationPreviewCaption)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var usesAutomaticConfirmationPreview: Bool {
+        guard let action = ScreenshotDefaultAction(rawValue: defaultActionRaw) else { return false }
+        switch action {
+        case .save, .saveAndCopy, .copy: return true
+        case .none, .edit: return false
+        }
+    }
+
+    private var previewFocusRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Toggle(strings.previewFocusToggle, isOn: $previewTakesFocus)
+            Text(strings.previewFocusCaption)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var previewPositionRow: some View {
+        Picker(strings.previewPositionLabel, selection: $previewPositionRaw) {
+            Text(strings.previewPositionAutomatic)
+                .tag(ScreenshotSupport.QuickPreviewPosition.automatic.rawValue)
+            Text(strings.previewPositionTopLeft)
+                .tag(ScreenshotSupport.QuickPreviewPosition.topLeft.rawValue)
+            Text(strings.previewPositionTopRight)
+                .tag(ScreenshotSupport.QuickPreviewPosition.topRight.rawValue)
+            Text(strings.previewPositionBottomLeft)
+                .tag(ScreenshotSupport.QuickPreviewPosition.bottomLeft.rawValue)
+            Text(strings.previewPositionBottomRight)
+                .tag(ScreenshotSupport.QuickPreviewPosition.bottomRight.rawValue)
+        }
+    }
+
+    private var folderRow: some View {
+        HStack {
+            Text(strings.folderLabel)
+            Spacer()
+            Text(currentFolderName)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            if !saveFolder.isEmpty {
+                Button {
+                    saveFolder = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.borderless)
+                .screenshotSafeHelp(l10n.s.shortcutReset)
+            }
+            Button(strings.folderChoose) {
+                chooseFolder()
+            }
+        }
+    }
+
+    private var subfolderRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(strings.subfolderLabel)
+                    .lineLimit(1)
+                Spacer(minLength: 12)
+                if !saveSubfolder.isEmpty {
+                    Text(ScreenshotSupport.expandSaveSubfolder(saveSubfolder, date: Date()))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                TextField("", text: $saveSubfolder)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 150)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            Text(strings.subfolderCaption)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var fileNameRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(strings.fileNamePatternLabel)
+                    .lineLimit(1)
+                Spacer(minLength: 12)
+                Text(fileNamePreview)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                TextField("", text: $fileNamePattern)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 150)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            Text(strings.fileNamePatternCaption)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if ScreenshotSupport.fileNamePatternUsesNumber(fileNamePattern) {
+                HStack {
+                    Text(strings.fileNumberStartLabel)
+                        .lineLimit(1)
+                    TextField("", value: $numberStart, formatter: Self.numberFieldFormatter)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 70)
+                    Stepper("", value: $numberStart, in: 0...999_999)
+                        .labelsHidden()
+                    Button(strings.fileNumberResetButton) {
+                        nextNumber = numberStart
+                    }
+                    Spacer()
+                    Text(String(format: strings.fileNumberNextFormat, nextNumber))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .onChange(of: numberStart) { _, newValue in
+                    nextNumber = newValue
+                }
+            }
+        }
+    }
+
+    private static let numberFieldFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .none
+        formatter.minimum = 0
+        formatter.maximum = 999_999
+        formatter.usesGroupingSeparator = false
+        return formatter
+    }()
+
+    private var fileNamePreview: String {
+        let trimmed = fileNamePattern.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return ScreenshotSupport.fileName(prefix: strings.fileNamePrefix, date: Date())
+        }
+        return ScreenshotSupport.expandFileNamePattern(trimmed, date: Date(), number: nextNumber) + ".png"
+    }
+
+    private var currentFolderName: String {
+        let manager = FileManager.default
+        if !saveFolder.isEmpty {
+            let expanded = (saveFolder as NSString).expandingTildeInPath
+            var isDirectory: ObjCBool = false
+            if manager.fileExists(atPath: expanded, isDirectory: &isDirectory), isDirectory.boolValue {
+                return manager.displayName(atPath: expanded)
+            }
+        }
+        let desktop = manager.urls(for: .desktopDirectory, in: .userDomainMask).first
+        return desktop.map { manager.displayName(atPath: $0.path) } ?? "Desktop"
+    }
+
+    private func chooseFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        if panel.runModal() == .OK, let url = panel.url {
+            saveFolder = url.path
+        }
+    }
+}
+
+package struct ScreenshotSharePrivacyView: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var l10n = L10n.shared
+    package let actionTitle: String?
+    package let onAction: (() -> Void)?
+
+    package init(actionTitle: String? = nil, onAction: (() -> Void)? = nil) {
+        self.actionTitle = actionTitle
+        self.onAction = onAction
+    }
+
+    private var strings: ScreenshotFeatureStrings {
+        FeatureStrings.screenshot(l10n.language)
+    }
+
+    package var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Label(strings.sharePrivacyTitle, systemImage: "hand.raised")
+                    .font(.title3.weight(.semibold))
+                Spacer()
+                Button(actionTitle ?? strings.done) {
+                    dismiss()
+                    guard let onAction else { return }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        onAction()
+                    }
+                }
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(20)
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    privacyParagraph(symbol: "photo", text: strings.sharePrivacyData)
+                    privacyParagraph(symbol: "externaldrive", text: strings.sharePrivacyStorage)
+                    privacyParagraph(symbol: "person.2", text: strings.sharePrivacyAccess)
+                }
+                .padding(20)
+            }
+        }
+        .frame(width: 560, height: 390)
+    }
+
+    private func privacyParagraph(symbol: String, text: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: symbol)
+                .foregroundStyle(.secondary)
+                .frame(width: 22)
+            Text(text)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+private struct ScreenshotSharedLinksView: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var l10n = L10n.shared
+    @ObservedObject private var sharing = ScreenshotShareService.shared
+    @State private var deletingID: String?
+    @State private var showingDeleteError = false
+
+    private var strings: ScreenshotFeatureStrings {
+        FeatureStrings.screenshot(l10n.language)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text(strings.sharedLinksTitle)
+                    .font(.title3.weight(.semibold))
+                Spacer()
+                Button(strings.done) { dismiss() }
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(18)
+
+            Divider()
+
+            if sharing.records.isEmpty {
+                ContentUnavailableView(strings.sharedLinksEmpty,
+                                       systemImage: "link.badge.plus")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List(sharing.records) { record in
+                    linkRow(record)
+                }
+                .listStyle(.inset)
+            }
+        }
+        .frame(width: 560, height: 360)
+        .onAppear { sharing.refresh() }
+        .alert(strings.deleteFailedHUD, isPresented: $showingDeleteError) {
+            Button(strings.done, role: .cancel) {}
+        }
+    }
+
+    private func linkRow(_ record: ScreenshotShareRecord) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: "link")
+                .font(.title3)
+                .foregroundStyle(.secondary)
+                .frame(width: 24)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(record.url.absoluteString)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+                HStack(spacing: 4) {
+                    Text(strings.expiresLabel)
+                    Text(record.expiresAt, style: .relative)
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            Button {
+                copy(record.url)
+            } label: {
+                Image(systemName: "doc.on.doc")
+            }
+            .buttonStyle(.borderless)
+            .screenshotSafeHelp(strings.copyLink)
+            Button {
+                NSWorkspace.shared.open(record.url)
+            } label: {
+                Image(systemName: "arrow.up.forward.app")
+            }
+            .buttonStyle(.borderless)
+            .screenshotSafeHelp(strings.openLink)
+            Button(role: .destructive) {
+                delete(record)
+            } label: {
+                if deletingID == record.id {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: "trash")
+                }
+            }
+            .buttonStyle(.borderless)
+            .disabled(deletingID != nil)
+            .screenshotSafeHelp(strings.deleteLink)
+        }
+        .padding(.vertical, 5)
+    }
+
+    private func copy(_ url: URL) {
+        sharing.copy(url)
+    }
+
+    private func delete(_ record: ScreenshotShareRecord) {
+        deletingID = record.id
+        Task {
+            do {
+                try await sharing.delete(record)
+                QuickToolHUD.show(icon: "link", message: strings.linkDeletedHUD)
+            } catch {
+                showingDeleteError = true
+            }
+            deletingID = nil
+        }
+    }
+}
+
+package struct ScreenshotDefaultActionPicker: View {
+    package let strings: ScreenshotFeatureStrings
+    @Binding package var selection: String
+
+    package var body: some View {
+        Picker(strings.defaultActionLabel, selection: $selection) {
+            Text(strings.defaultActionNone).tag(ScreenshotDefaultAction.none.rawValue)
+            Text(strings.saveButton).tag(ScreenshotDefaultAction.save.rawValue)
+            Text(strings.defaultActionSaveAndCopy).tag(ScreenshotDefaultAction.saveAndCopy.rawValue)
+            Text(strings.copyButton).tag(ScreenshotDefaultAction.copy.rawValue)
+            Text(strings.editButton).tag(ScreenshotDefaultAction.edit.rawValue)
+        }
+    }
+}

@@ -55,7 +55,7 @@
 # mean something even for a unit that renders no job yet.
 #   - gravastar-mouse-publish  kind=publish  run=//packages/peripherals:publish  envs=beta,production  promotion=release:gravastar-mouse-v
 #       paths:  packages/peripherals/
-#       render: transcribed from .github/workflows/vitruvian-release.yaml job "package"
+#       render: transcribed from .github/workflows/vitruvian-atrium-release.yaml job "package"
 
 name: delivery-gravastar-mouse
 
@@ -254,7 +254,7 @@ jobs:
 
   # ======== unit: gravastar-mouse-publish → beta → production ========
   # Declared in packages/peripherals/BUILD; break-glass target: //packages/peripherals:publish
-  # Transcribed from .github/workflows/vitruvian-release.yaml job "package" (that job no longer exists; see git history).
+  # Transcribed from .github/workflows/vitruvian-atrium-release.yaml job "package" (that job no longer exists; see git history).
 
   # The push rung: delivers on an affected push. The later rungs are
   # release-gated promotions and do not chain behind this one.

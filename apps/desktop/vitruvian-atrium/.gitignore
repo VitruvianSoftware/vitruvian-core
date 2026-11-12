@@ -1,0 +1,27 @@
+# Build artifacts
+build/
+dist/
+.build/
+*.dmg
+
+# Signing material: never commit private keys or notary credentials
+*.p12
+*.pem
+*.cer
+*.p8
+*.key
+*.mobileprovision
+*.keychain-db
+
+# macOS noise
+.DS_Store
+
+# Xcode / SwiftPM user state
+*.xcodeproj
+xcuserdata/
+.swiftpm/
+
+# Root .gitignore ignores `scratchpad/`, which matches `Scratchpad/` on case-insensitive APFS
+!Sources/VitruvianAtrium/UI/Scratchpad/
+!Sources/VitruvianAtrium/UI/Scratchpad/**
+

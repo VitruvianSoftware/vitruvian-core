@@ -81,7 +81,7 @@ var environmentTagPatterns = []string{
 // between the markers below.
 //
 // Where each is set:
-//   - vitruvian-beta-latest: apps/desktop/vitruvian/bazel/src/publish/lib.rs
+//   - vitruvian-atrium-beta-latest: apps/desktop/vitruvian-atrium/bazel/src/publish/lib.rs
 //   - esp32-s3-beta-latest: apps/embedded/esp32-s3/host_companion/src/publish/lib.rs
 //   - gravastar-mouse-beta-latest: packages/peripherals/scripts/src/lib.rs
 //   - tabula-extension-dev-latest: apps/suites/tabula/extension/scripts/src/publish_dev_latest.rs
@@ -90,7 +90,7 @@ var environmentTagPatterns = []string{
 // push (the ruleset refuses the move), which is the safe way round.
 var rollingTags = []string{
 	// rolling-tags:begin
-	"vitruvian-beta-latest",
+	"vitruvian-atrium-beta-latest",
 	"esp32-s3-beta-latest",
 	"gravastar-mouse-beta-latest",
 	"tabula-extension-dev-latest",

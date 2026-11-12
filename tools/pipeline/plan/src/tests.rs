@@ -859,7 +859,7 @@ pipeline_unit(
 )
 
 # Build + package + upload. The generated delivery workflow runs the script
-# directly (bash apps/desktop/vitruvian/publish.sh).
+# directly (bash apps/desktop/vitruvian-atrium/publish.sh).
 exports_files([
     "Tools/ci-setup-signing.sh",
     "publish.sh",
@@ -868,7 +868,7 @@ exports_files([
 
 #[test]
 fn desktop_unit_as_it_was_before_the_workaround() {
-    let u = must_read(DESKTOP_BUILD, "apps/desktop/vitruvian");
+    let u = must_read(DESKTOP_BUILD, "apps/desktop/vitruvian-atrium");
     assert_eq!(u.len(), 1);
     let u = &u[0];
     assert_eq!(u.name, "vitruvian-desktop-macos");
@@ -879,7 +879,7 @@ fn desktop_unit_as_it_was_before_the_workaround() {
     );
     assert!(u
         .test_targets
-        .contains(&"//apps/desktop/vitruvian:tool_protocol_pin_test".to_string()));
+        .contains(&"//apps/desktop/vitruvian-atrium:tool_protocol_pin_test".to_string()));
 }
 
 #[test]
@@ -922,11 +922,11 @@ fn compute_plan_fails_on_an_unreadable_unit() {
 #[test]
 fn unit_is_selected_through_a_dependency() {
     let d = tmp("throughdep");
-    write(&d, "apps/desktop/vitruvian/BUILD", DESKTOP_BUILD);
+    write(&d, "apps/desktop/vitruvian-atrium/BUILD", DESKTOP_BUILD);
     write(&d, "packages/tool-protocol/BUILD", "# a package\n");
     let runner = Mock::new(&[(
         "//packages/tool-protocol:all",
-        &["//apps/desktop/vitruvian:tool_protocol_pin_test"],
+        &["//apps/desktop/vitruvian-atrium:tool_protocol_pin_test"],
     )]);
     let p = Engine::new(d.to_str().unwrap(), &runner)
         .compute_plan(

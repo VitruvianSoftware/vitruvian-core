@@ -93,9 +93,9 @@
 #       graph:  //apps/suites/tabula/api:image_push //apps/suites/tabula/extension:chrome_zip
 #       build:  shared "tabula" → web-image-digest
 #       soak:   promotion blocked while development is red
-#   - vitruvian  kind=publish  run=//apps/desktop/vitruvian:publish  envs=beta,production  promotion=release:vitruvian-v
-#       paths:  apps/desktop/vitruvian/
-#       render: transcribed from .github/workflows/vitruvian-release.yaml job "package"
+#   - vitruvian-atrium  kind=publish  run=//apps/desktop/vitruvian-atrium:publish  envs=beta,production  promotion=release:vitruvian-atrium-v
+#       paths:  apps/desktop/vitruvian-atrium/
+#       render: transcribed from .github/workflows/vitruvian-atrium-release.yaml job "package"
 #   - zitadel-apps  kind=pulumi  run=//infrastructure/pulumi/platform/zitadel-apps:up  envs=development,nonproduction,production  promotion=release:oauth-user-inspector-v
 #       paths:  infrastructure/pulumi/platform/zitadel-apps/ \.github/workflows/_zitadel-apps-apply\.yaml
 
@@ -126,7 +126,7 @@ on:
           - tabula-dev-latest
           - tabula-identity
           - tabula-web
-          - vitruvian
+          - vitruvian-atrium
       environment:
         description: Target environment (single-env break-glass redeploy)
         type: choice
@@ -249,7 +249,7 @@ jobs:
       affected_tabula_dev_latest: ${{ steps.manifest.outputs.affected_tabula_dev_latest }}
       affected_tabula_identity: ${{ steps.manifest.outputs.affected_tabula_identity }}
       affected_tabula_web: ${{ steps.manifest.outputs.affected_tabula_web }}
-      affected_vitruvian: ${{ steps.manifest.outputs.affected_vitruvian }}
+      affected_vitruvian_atrium: ${{ steps.manifest.outputs.affected_vitruvian_atrium }}
       affected_zitadel_apps: ${{ steps.manifest.outputs.affected_zitadel_apps }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -310,7 +310,7 @@ jobs:
           # The units THIS workflow delivers. The engine judges only these, so
           # one app's workflow never pays for another app's target-determinator
           # sweep. A name the engine cannot find fails the manifest open.
-          ORCHESTRATE_UNITS: charts esp32-s3 gravastar-mouse-publish oauth-user-inspector oauth-user-inspector-identity stripe tabula-api tabula-build-stack tabula-dev-latest tabula-identity tabula-web vitruvian zitadel-apps
+          ORCHESTRATE_UNITS: charts esp32-s3 gravastar-mouse-publish oauth-user-inspector oauth-user-inspector-identity stripe tabula-api tabula-build-stack tabula-dev-latest tabula-identity tabula-web vitruvian-atrium zitadel-apps
         run: bazel run //tools/delivery/orchestrate -- --out delivery-manifest.json
       - name: Upload the delivery manifest
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -1773,17 +1773,17 @@ jobs:
       workload-migrated: false
     secrets: inherit
 
-  # ======== unit: vitruvian → beta → production ========
-  # Declared in apps/desktop/vitruvian/BUILD; break-glass target: //apps/desktop/vitruvian:publish
-  # Transcribed from .github/workflows/vitruvian-release.yaml job "package" (that job no longer exists; see git history).
+  # ======== unit: vitruvian-atrium → beta → production ========
+  # Declared in apps/desktop/vitruvian-atrium/BUILD; break-glass target: //apps/desktop/vitruvian-atrium:publish
+  # Transcribed from .github/workflows/vitruvian-atrium-release.yaml job "package" (that job no longer exists; see git history).
 
   # The push rung: delivers on an affected push. The later rungs are
   # release-gated promotions and do not chain behind this one.
-  vitruvian-beta:
+  vitruvian-atrium-beta:
     needs: [orchestrate]
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_vitruvian == 'true')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'vitruvian' && inputs.environment == 'beta'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_vitruvian_atrium == 'true')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'vitruvian-atrium' && inputs.environment == 'beta'))
     concurrency:
-      group: delivery-vitruvian-beta
+      group: delivery-vitruvian-atrium-beta
       cancel-in-progress: false
     runs-on: xcode-27
     timeout-minutes: 60
@@ -1806,7 +1806,7 @@ jobs:
         env:
           SIGNING_CERT_P12: ${{ secrets.VITRUVIAN_SIGNING_CERT_P12 }}
           SIGNING_CERT_PASSWORD: ${{ secrets.VITRUVIAN_SIGNING_CERT_PASSWORD }}
-        run: bazel run //apps/desktop/vitruvian:ci_setup_signing
+        run: bazel run //apps/desktop/vitruvian-atrium:ci_setup_signing
 
       - name: Build, package and publish the DMG
         env:
@@ -1816,13 +1816,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Cache-only: reuse the build the macOS pipeline unit cached.
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
-        run: bazel run //apps/desktop/vitruvian:publish
+        run: bazel run //apps/desktop/vitruvian-atrium:publish
 
-  # PROMOTION rung 1/1 — release-gated on a vitruvian-v* release, never reached by a push.
-  vitruvian-production:
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'vitruvian-v')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'vitruvian' && inputs.environment == 'production'))
+  # PROMOTION rung 1/1 — release-gated on a vitruvian-atrium-v* release, never reached by a push.
+  vitruvian-atrium-production:
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'vitruvian-atrium-v')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'vitruvian-atrium' && inputs.environment == 'production'))
     concurrency:
-      group: delivery-vitruvian-production
+      group: delivery-vitruvian-atrium-production
       cancel-in-progress: false
     runs-on: xcode-27
     timeout-minutes: 60
@@ -1845,7 +1845,7 @@ jobs:
         env:
           SIGNING_CERT_P12: ${{ secrets.VITRUVIAN_SIGNING_CERT_P12 }}
           SIGNING_CERT_PASSWORD: ${{ secrets.VITRUVIAN_SIGNING_CERT_PASSWORD }}
-        run: bazel run //apps/desktop/vitruvian:ci_setup_signing
+        run: bazel run //apps/desktop/vitruvian-atrium:ci_setup_signing
 
       - name: Mint App token for the Homebrew tap
         id: tap-token
@@ -1867,4 +1867,4 @@ jobs:
           NOTARY_API_KEY_P8: ${{ secrets.VITRUVIAN_NOTARY_API_KEY_P8 }}
           NOTARY_KEY_ID: ${{ secrets.VITRUVIAN_NOTARY_KEY_ID }}
           NOTARY_ISSUER_ID: ${{ secrets.VITRUVIAN_NOTARY_ISSUER_ID }}
-        run: bazel run //apps/desktop/vitruvian:publish
+        run: bazel run //apps/desktop/vitruvian-atrium:publish

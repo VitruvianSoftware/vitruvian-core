@@ -47,7 +47,7 @@
     "apps/desktop/vitruvian-code/macos/tool/version_test.py",
     "apps/desktop/vitruvian-code/macos/tool/vitruvian-tool.json",
     "apps/desktop/vitruvian-code/release-please-config.json",
-    "apps/desktop/vitruvian/UPSTREAM.md",
+    "apps/desktop/vitruvian-atrium/UPSTREAM.md",
     "packages/vitruvian-sdk/BUILD",
     "packages/vitruvian-sdk/Sources/VitruvianToolKit/Tool.swift",
     "packages/vitruvian-sdk/Tests/VitruvianToolKitTests/ToolTests.swift",

@@ -650,7 +650,7 @@ final class FakeSynth: SpeechSynthesizing, @unchecked Sendable {
         let home = FileManager.default.homeDirectoryForCurrentUser
         let prodApp = HomeSpeakerProfile.app(home: home)
         let prodExt = HomeSpeakerProfile.extension(
-            dataFolder: home.appendingPathComponent("Library/Application Support/com.vitruviansoftware.vitruvian/Data/dev.vitruvian.homespeaker"),
+            dataFolder: home.appendingPathComponent("Library/Application Support/com.vitruviansoftware.atrium/Data/dev.vitruvian.homespeaker"),
             toolFolder: nil)
         #expect(prodApp.speechLockURL == SpeechLock.defaultURL)
         #expect(prodExt.speechLockURL == SpeechLock.defaultURL)

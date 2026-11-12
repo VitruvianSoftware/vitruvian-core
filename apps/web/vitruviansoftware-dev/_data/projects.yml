@@ -348,7 +348,7 @@ projects:
       JSON-RPC 2.0 extension runtime (VitruvianToolKit) for system telemetry,
       living-room Android TV control and developer workflows.
     tags: [Swift, macOS, AppKit]
-    source: apps/desktop/vitruvian
+    source: apps/desktop/vitruvian-atrium
 
   - name: Vitruvian Remote
     group: lab

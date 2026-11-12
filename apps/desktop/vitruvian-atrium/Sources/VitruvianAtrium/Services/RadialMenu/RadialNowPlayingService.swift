@@ -1,0 +1,435 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Vorssaint
+
+import AppKit
+import Foundation
+import SwiftUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+
+/// A session-scoped view of macOS Now Playing. The read itself lives in the
+/// bridge below, out of process; a failed run, a timeout and malformed
+/// metadata all arrive here as an empty playback session.
+/// Nothing here is required for the radial menu itself to work.
+@MainActor
+package final class RadialNowPlayingService {
+    package static let shared = RadialNowPlayingService()
+
+    private let bridge = MediaRemoteNowPlayingBridge()
+    private var generation = 0
+    package private(set) var state = RadialNowPlayingState.nothingPlaying
+    private var pendingPresentationAnchor: CGPoint?
+    private var panel: NSPanel?
+    private var eventMonitors: [Any] = []
+    private var activationObserver: NSObjectProtocol?
+
+    private init() {}
+
+    package func refresh(update: @escaping (RadialNowPlayingState) -> Void) {
+        generation += 1
+        let requestedGeneration = generation
+        state = .loading
+        update(.loading)
+        bridge.fetch { [weak self] snapshot in
+            DispatchQueue.main.async {
+                guard let self, self.generation == requestedGeneration else { return }
+                let nextState = snapshot.map(RadialNowPlayingState.playing) ?? .nothingPlaying
+                self.state = nextState
+                update(nextState)
+                guard let anchor = self.pendingPresentationAnchor else { return }
+                self.pendingPresentationAnchor = nil
+                if case let .playing(snapshot) = nextState {
+                    self.showCard(snapshot: snapshot, at: anchor)
+                }
+            }
+        }
+    }
+
+    package func presentDetails(at anchor: CGPoint) {
+        switch state {
+        case let .playing(snapshot):
+            showCard(snapshot: snapshot, at: anchor)
+        case .loading:
+            pendingPresentationAnchor = anchor
+        case .nothingPlaying:
+            break
+        }
+    }
+
+    package func dismissDetails() {
+        pendingPresentationAnchor = nil
+        removeMonitors()
+        panel?.orderOut(nil)
+    }
+
+    private func showCard(snapshot: RadialNowPlayingSnapshot, at anchor: CGPoint) {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in self?.showCard(snapshot: snapshot, at: anchor) }
+            return
+        }
+        dismissDetails()
+        let card = RadialNowPlayingCard(snapshot: snapshot) { [weak self] in
+            self?.dismissDetails()
+            RadialNowPlayingApplication.open(snapshot)
+        }
+        let host = NSHostingController(rootView: card)
+        host.view.layoutSubtreeIfNeeded()
+        let size = host.view.fittingSize
+        let panel = ensurePanel()
+        panel.contentViewController = host
+
+        let visibleFrame = NSScreen.screens.first(where: { $0.frame.contains(anchor) })?.visibleFrame
+            ?? NSScreen.pointerVisibleFrame
+        let x = min(max(anchor.x - size.width / 2, visibleFrame.minX + 12),
+                    visibleFrame.maxX - size.width - 12)
+        let y = min(max(anchor.y - size.height / 2, visibleFrame.minY + 12),
+                    visibleFrame.maxY - size.height - 12)
+        panel.setFrame(NSRect(origin: CGPoint(x: x, y: y), size: size), display: true)
+        panel.alphaValue = 0
+        panel.orderFrontRegardless()
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.12
+            panel.animator().alphaValue = 1
+        }
+        installMonitors(for: panel)
+    }
+
+    /// The now playing card's panel, before its content: a floating overlay,
+    /// which window managers do not list.
+    package static func makePanel() -> NSPanel {
+        OverlayPanel(contentRect: .zero,
+                     styleMask: [.borderless, .nonactivatingPanel],
+                     backing: .buffered,
+                     defer: false)
+    }
+
+    private func ensurePanel() -> NSPanel {
+        if let panel { return panel }
+        let panel = Self.makePanel()
+        panel.title = "Now Playing"
+        panel.level = .statusBar
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.hidesOnDeactivate = false
+        panel.isReleasedWhenClosed = false
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle]
+        self.panel = panel
+        return panel
+    }
+
+    private func installMonitors(for panel: NSPanel) {
+        removeMonitors()
+        let clicks: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+        if let monitor = NSEvent.addLocalMonitorForEvents(matching: clicks, handler: { [weak self, weak panel] event in
+            guard let self, let panel else { return event }
+            if event.window !== panel { self.dismissDetails() }
+            return event
+        }) { eventMonitors.append(monitor) }
+        if let monitor = NSEvent.addGlobalMonitorForEvents(matching: clicks, handler: { [weak self] _ in
+            DispatchQueue.main.async { self?.dismissDetails() }
+        }) { eventMonitors.append(monitor) }
+        activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            // Delivered on the main queue.
+            MainActor.assumeIsolated { self?.dismissDetails() }
+        }
+    }
+
+    private func removeMonitors() {
+        eventMonitors.forEach { NSEvent.removeMonitor($0) }
+        eventMonitors = []
+        if let activationObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(activationObserver)
+            self.activationObserver = nil
+        }
+    }
+}
+
+private struct RadialNowPlayingCard: View {
+    let snapshot: RadialNowPlayingSnapshot
+    let openApplication: () -> Void
+
+    @ObservedObject private var l10n = L10n.shared
+
+    private var text: RadialMenuFeatureStrings { FeatureStrings.radialMenu(l10n.language) }
+    private var appName: String {
+        RadialNowPlayingApplication.name(for: snapshot) ?? text.mediaNowPlaying
+    }
+    private var title: String { snapshot.title ?? appName }
+
+    var body: some View {
+        Button(action: openApplication) {
+            HStack(alignment: .center, spacing: 12) {
+                artwork
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.system(size: 13, weight: .semibold))
+                        .lineLimit(2)
+                    if let album = snapshot.album {
+                        Text(album)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    if let artist = snapshot.artist {
+                        Text(artist)
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    HStack(spacing: 5) {
+                        if let icon = RadialNowPlayingApplication.icon(for: snapshot) {
+                            Image(nsImage: icon)
+                                .resizable()
+                                .interpolation(.high)
+                                .frame(width: 14, height: 14)
+                        }
+                        Text(String(format: text.mediaOpenAppFormat, appName))
+                            .font(.system(size: 9.5, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        Image(systemName: "arrow.up.forward.app")
+                            .font(.system(size: 8.5, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.top, 2)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(12)
+            .frame(width: 320, alignment: .leading)
+            .background(HUDBackdrop(cornerRadius: 16))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.14), lineWidth: 0.6)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityHint(String(format: text.mediaOpenAppFormat, appName))
+    }
+
+    @ViewBuilder
+    private var artwork: some View {
+        if let data = snapshot.artworkData, let image = NSImage(data: data) {
+            Image(nsImage: image)
+                .resizable()
+                .interpolation(.high)
+                .aspectRatio(contentMode: .fill)
+                .frame(width: 76, height: 76)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        } else {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Theme.spaceGradient)
+                .frame(width: 76, height: 76)
+                .overlay {
+                    if let icon = RadialNowPlayingApplication.icon(for: snapshot) {
+                        Image(nsImage: icon)
+                            .resizable()
+                            .interpolation(.high)
+                            .frame(width: 42, height: 42)
+                    } else {
+                        Image(systemName: "music.note")
+                            .font(.system(size: 24, weight: .semibold))
+                            .foregroundStyle(.white)
+                    }
+                }
+        }
+    }
+}
+
+package enum RadialNowPlayingApplication {
+    // Main thread only, like the views that ask for icons.
+    nonisolated(unsafe) private static var icons: [String: NSImage] = [:]
+    nonisolated(unsafe) private static var missingIcons = Set<String>()
+
+    package static func runningApplication(for snapshot: RadialNowPlayingSnapshot) -> NSRunningApplication? {
+        if let bundleIdentifier = snapshot.appBundleIdentifier,
+           let application = NSRunningApplication.runningApplications(
+            withBundleIdentifier: bundleIdentifier).first(where: { !$0.isTerminated }) {
+            return application
+        }
+        if let pid = snapshot.appPID {
+            return NSRunningApplication(processIdentifier: pid_t(pid))
+        }
+        return nil
+    }
+
+    package static func name(for snapshot: RadialNowPlayingSnapshot) -> String? {
+        if let name = runningApplication(for: snapshot)?.localizedName, !name.isEmpty { return name }
+        guard let identifier = snapshot.appBundleIdentifier else { return nil }
+        return identifier.split(separator: ".").last.map(String.init)
+    }
+
+    package static func icon(for snapshot: RadialNowPlayingSnapshot) -> NSImage? {
+        let key = snapshot.appBundleIdentifier ?? snapshot.appPID.map { "pid:\($0)" } ?? ""
+        if let icon = icons[key] { return icon }
+        if missingIcons.contains(key) { return nil }
+        let icon: NSImage?
+        if let runningIcon = runningApplication(for: snapshot)?.icon {
+            icon = runningIcon
+        } else if let identifier = snapshot.appBundleIdentifier,
+                  let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: identifier) {
+            icon = NSWorkspace.shared.icon(forFile: url.path)
+        } else {
+            icon = nil
+        }
+        if let icon {
+            icons[key] = icon
+        } else {
+            missingIcons.insert(key)
+        }
+        return icon
+    }
+
+    /// A running player as `open` sees it.
+    package struct OpenablePlayer {
+        package var pid: pid_t
+        package var activationPolicy: NSApplication.ActivationPolicy
+        package var isHidden: Bool
+        package var bundleURL: URL?
+        package var unhide: () -> Void
+        /// Hands Vitruvian Atrium's activation over to the player.
+        package var handOffActivation: () -> Void
+        /// Asks the player to activate on Vitruvian Atrium's behalf; false when refused.
+        package var activateFromAtrium: (NSApplication.ActivationOptions) -> Bool
+        package var activate: (NSApplication.ActivationOptions) -> Void
+
+        package init(pid: pid_t, activationPolicy: NSApplication.ActivationPolicy, isHidden: Bool,
+                     bundleURL: URL?, unhide: @escaping () -> Void, handOffActivation: @escaping () -> Void,
+                     activateFromAtrium: @escaping (NSApplication.ActivationOptions) -> Bool,
+                     activate: @escaping (NSApplication.ActivationOptions) -> Void) {
+            self.pid = pid
+            self.activationPolicy = activationPolicy
+            self.isHidden = isHidden
+            self.bundleURL = bundleURL
+            self.unhide = unhide
+            self.handOffActivation = handOffActivation
+            self.activateFromAtrium = activateFromAtrium
+            self.activate = activate
+        }
+
+        init(_ application: NSRunningApplication) {
+            self.init(pid: application.processIdentifier, activationPolicy: application.activationPolicy,
+                      isHidden: application.isHidden, bundleURL: application.bundleURL,
+                      unhide: { application.unhide() },
+                      handOffActivation: { ActivationHandoff.yield(to: application) },
+                      activateFromAtrium: { application.activate(from: NSRunningApplication.current, options: $0) },
+                      activate: { _ = application.activate(options: $0) })
+        }
+    }
+
+    /// What `open` reads and asks of the system. `system` is the running
+    /// applications, the window list and the workspace; tests pass doubles.
+    package struct Opening {
+        package var player: (RadialNowPlayingSnapshot) -> OpenablePlayer?
+        package var hasWindowOnScreen: (pid_t) -> Bool
+        package var installedURL: (_ bundleIdentifier: String) -> URL?
+        package var openApplication: (URL, NSWorkspace.OpenConfiguration) -> Void
+
+        package init(player: @escaping (RadialNowPlayingSnapshot) -> OpenablePlayer?,
+                     hasWindowOnScreen: @escaping (pid_t) -> Bool,
+                     installedURL: @escaping (String) -> URL?,
+                     openApplication: @escaping (URL, NSWorkspace.OpenConfiguration) -> Void) {
+            self.player = player
+            self.hasWindowOnScreen = hasWindowOnScreen
+            self.installedURL = installedURL
+            self.openApplication = openApplication
+        }
+
+        package static var system: Opening {
+            Opening(player: { RadialNowPlayingApplication.runningApplication(for: $0).map(OpenablePlayer.init) },
+                    hasWindowOnScreen: { RadialNowPlayingApplication.hasWindowOnScreen(pid: $0) },
+                    installedURL: { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) },
+                    openApplication: { NSWorkspace.shared.openApplication(at: $0, configuration: $1) })
+        }
+    }
+
+    /// The island and the radial card are non-activating panels, so Vitruvian Atrium
+    /// rarely holds activation when one is clicked. Since macOS 14 a bare
+    /// request from an inactive app is refused, and the player stayed behind.
+    package static func open(_ snapshot: RadialNowPlayingSnapshot, using opening: Opening = .system) {
+        if let application = opening.player(snapshot) {
+            // A helper takes no activation; the handoff would leave Vitruvian Atrium in front.
+            guard application.activationPolicy == .regular else { return }
+            // Read before the unhide below: a hidden player's windows come back with it.
+            let showsNoWindow = !application.isHidden && !opening.hasWindowOnScreen(application.pid)
+            if application.isHidden { application.unhide() }
+            application.handOffActivation()
+            if !application.activateFromAtrium([.activateAllWindows]) {
+                application.activate([.activateAllWindows])
+            }
+            // Like a Dock click, a player that keeps playing with its window
+            // closed shows one again, the way the App Switcher reopens a
+            // windowless app. Activation alone would leave nothing to see.
+            if showsNoWindow, let url = application.bundleURL {
+                let configuration = NSWorkspace.OpenConfiguration()
+                configuration.activates = false
+                configuration.addsToRecentItems = false
+                configuration.promptsUserIfNeeded = false
+                opening.openApplication(url, configuration)
+            }
+            return
+        }
+        guard let identifier = snapshot.appBundleIdentifier,
+              let url = opening.installedURL(identifier) else { return }
+        opening.openApplication(url, NSWorkspace.OpenConfiguration())
+    }
+
+    /// Whether the player has a window on the current Space. One on another
+    /// Space reads as none, and the reopen that follows is harmless there.
+    private static func hasWindowOnScreen(pid: pid_t) -> Bool {
+        let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],
+                                                 kCGNullWindowID) as? [[String: Any]] ?? []
+        return windows.contains {
+            ($0[kCGWindowOwnerPID as String] as? pid_t) == pid && ($0[kCGWindowLayer as String] as? Int) == 0
+        }
+    }
+}
+
+/// Reads Now Playing through `/usr/bin/perl` loading the adapter library
+/// (`Sources/NowPlayingAdapter`). Since macOS 15.4 MediaRemote answers only
+/// processes carrying Apple's signature; perl is one, the app is not. A
+/// missing script or library, a failed run, a timeout and malformed output
+/// all read as an empty playback session.
+private final class MediaRemoteNowPlayingBridge {
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.radial-now-playing", qos: .userInitiated)
+    /// 2 s: a cold perl load measured 500 ms with no session playing, and a
+    /// real reply adds the MediaRemote round trip plus up to 16 MB of base64
+    /// artwork through the pipe. A kill reads as nothing playing, so a deadline
+    /// that is too tight empties the first wheel after login (#1280). The wheel
+    /// shows `.loading` and holds the card anchor while it waits, so the extra
+    /// second costs nothing on screen.
+    private static let replyTimeout: TimeInterval = 2.0
+
+    func fetch(completion: @escaping (RadialNowPlayingSnapshot?) -> Void) {
+        guard let script = Bundle.main.url(forResource: "now-playing", withExtension: "pl"),
+              let library = Bundle.main.privateFrameworksURL?
+                .appendingPathComponent("libVitruvianAtriumNowPlaying.dylib"),
+              FileManager.default.fileExists(atPath: library.path) else {
+            completion(nil)
+            return
+        }
+        queue.async {
+            let result = BoundedProcessRunner.run("/usr/bin/perl", [script.path, library.path],
+                                                  timeout: Self.replyTimeout,
+                                                  maxOutputBytes: RadialNowPlayingSupport.maximumAdapterReplyBytes)
+            guard result.status == 0, !result.timedOut,
+                  let reply = RadialNowPlayingSupport.adapterReply(from: result.output) else {
+                completion(nil)
+                return
+            }
+            let isPlaying = RadialNowPlayingSupport.playbackIsActive(
+                remoteIsPlaying: reply.isPlaying, info: reply.info)
+            completion(RadialNowPlayingSupport.snapshot(info: reply.info,
+                                                        isPlaying: isPlaying,
+                                                        appBundleIdentifier: reply.displayID,
+                                                        appPID: reply.pid))
+        }
+    }
+}

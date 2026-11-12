@@ -12,7 +12,7 @@
 # fails when a listed FUNDING.yml is missing. Editing this file re-runs the
 # apply, since it sits under repo-config.
 vitruvian-core                .github/FUNDING.yml
-vitruvian                     apps/desktop/vitruvian/.github/FUNDING.yml
+vitruvian                     apps/desktop/vitruvian-atrium/.github/FUNDING.yml
 courier                       apps/desktop/courier/.github/FUNDING.yml
 home-speaker                  apps/desktop/home-speaker/.github/FUNDING.yml
 vitruvian-remote              apps/mobile/android-remote/.github/FUNDING.yml

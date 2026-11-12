@@ -98,7 +98,7 @@ REFERENCE_MANIFESTS = [
 
 # The one list of the protocol's Swift sources: it is both what the module
 # compiles and what the Vitruvian app's pin hashes
-# (//apps/desktop/vitruvian:tool_protocol_pin_test), so the two cannot differ.
+# (//apps/desktop/vitruvian-atrium:tool_protocol_pin_test), so the two cannot differ.
 filegroup(
     name = "protocol_sources",
     srcs = glob(["Sources/VitruvianToolProtocol/**/*.swift"]),

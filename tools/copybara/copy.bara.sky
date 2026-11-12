@@ -581,7 +581,7 @@ COMPONENTS = [
         "standalone_only": [],
         "export_only": True,
     },
-    # vitruvian: EXPORT-ONLY mirror of apps/desktop/vitruvian, the Vitruvian Mac
+    # vitruvian: EXPORT-ONLY mirror of apps/desktop/vitruvian-atrium, the Vitruvian Mac
     # app, a GPL-3.0-or-later fork of vorssaint-utils. The mirror is the public
     # source the GPL owes with every DMG (UPSTREAM.md); it ships LICENSE,
     # UPSTREAM.md and TRADEMARKS.md and presents nothing as a Vorssaint build.
@@ -589,14 +589,14 @@ COMPONENTS = [
     {
         "name": "vitruvian",
         "repo": "vitruvian",
-        "subtree": "apps/desktop/vitruvian",
+        "subtree": "apps/desktop/vitruvian-atrium",
         "standalone_rev_id": "VITRUVIAN_REV_ID",
         "mode": "SQUASH",
         "standalone_only": [],
         # release-please keys on monorepo paths and the mirror releases nothing.
         "origin_only_exclude": [
-            "apps/desktop/vitruvian/release-please-config.json",
-            "apps/desktop/vitruvian/.release-please-manifest.json",
+            "apps/desktop/vitruvian-atrium/release-please-config.json",
+            "apps/desktop/vitruvian-atrium/.release-please-manifest.json",
         ],
         "export_only": True,
     },

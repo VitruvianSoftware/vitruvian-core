@@ -24,7 +24,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const TOOL_ID: &str = "com.vitruviansoftware.vitruvian.home-speaker";
+const TOOL_ID: &str = "com.vitruviansoftware.atrium.home-speaker";
 const BINARY_NAME: &str = "home-speaker-tool";
 
 #[derive(Debug)]

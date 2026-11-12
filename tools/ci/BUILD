@@ -1874,7 +1874,7 @@ rust_test(
     name = "release_pr_dequeue_test",
     size = "small",
     srcs = ["src/release_pr_dequeue/tests.rs"],
-    # vitruvian-release.yaml: the dequeue must run before release-please.
+    # vitruvian-atrium-release.yaml: the dequeue must run before release-please.
     data = [
         ":release_pr_dequeue",
         "//:workflow_files",

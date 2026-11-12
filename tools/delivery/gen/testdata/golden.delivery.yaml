@@ -82,9 +82,9 @@
 #       graph:  //apps/suites/tabula/api:image_push //apps/suites/tabula/extension:chrome_zip
 #       build:  shared "tabula" → web-image-digest
 #       soak:   promotion blocked while development is red
-#   - vitruvian  kind=publish  run=//apps/desktop/vitruvian:publish  envs=beta,production  promotion=release:vitruvian-v
-#       paths:  apps/desktop/vitruvian/
-#       render: transcribed from .github/workflows/vitruvian-release.yaml job "package"
+#   - vitruvian-atrium  kind=publish  run=//apps/desktop/vitruvian-atrium:publish  envs=beta,production  promotion=release:vitruvian-atrium-v
+#       paths:  apps/desktop/vitruvian-atrium/
+#       render: transcribed from .github/workflows/vitruvian-atrium-release.yaml job "package"
 #   - zitadel-apps  kind=pulumi  run=//infrastructure/pulumi/platform/zitadel-apps:up  envs=development,nonproduction,production  promotion=release:oauth-user-inspector-v
 #       paths:  infrastructure/pulumi/platform/zitadel-apps/ \.github/workflows/_zitadel-apps-apply\.yaml
 
@@ -191,7 +191,7 @@ jobs:
       affected_tabula_dev_latest: ${{ steps.manifest.outputs.affected_tabula_dev_latest }}
       affected_tabula_identity: ${{ steps.manifest.outputs.affected_tabula_identity }}
       affected_tabula_web: ${{ steps.manifest.outputs.affected_tabula_web }}
-      affected_vitruvian: ${{ steps.manifest.outputs.affected_vitruvian }}
+      affected_vitruvian_atrium: ${{ steps.manifest.outputs.affected_vitruvian_atrium }}
       affected_zitadel_apps: ${{ steps.manifest.outputs.affected_zitadel_apps }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -252,7 +252,7 @@ jobs:
           # The units THIS workflow delivers. The engine judges only these, so
           # one app's workflow never pays for another app's target-determinator
           # sweep. A name the engine cannot find fails the manifest open.
-          ORCHESTRATE_UNITS: charts esp32-s3 gravastar-mouse-publish oauth-user-inspector oauth-user-inspector-identity stripe tabula-api tabula-build-stack tabula-dev-latest tabula-identity tabula-web vitruvian zitadel-apps
+          ORCHESTRATE_UNITS: charts esp32-s3 gravastar-mouse-publish oauth-user-inspector oauth-user-inspector-identity stripe tabula-api tabula-build-stack tabula-dev-latest tabula-identity tabula-web vitruvian-atrium zitadel-apps
         run: bazel run //tools/delivery/orchestrate -- --out delivery-manifest.json
       - name: Upload the delivery manifest
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

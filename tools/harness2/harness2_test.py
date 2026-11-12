@@ -398,7 +398,7 @@ class PreToolUseTest(Env):
             d = self.decide(
                 tool,
                 Path=json.dumps(
-                    "/repo/apps/desktop/vitruvian/Resources/Brand/AppIcon-Default.png"
+                    "/repo/apps/desktop/vitruvian-atrium/Resources/Brand/AppIcon-Default.png"
                 ),
             )
             self.assertEqual(d["decision"], "deny", tool)

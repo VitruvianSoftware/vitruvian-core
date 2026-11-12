@@ -53,7 +53,7 @@ const EXEMPT_PREFIXES: &[&str] = &[
     "packages/pulumi/library/",
     "packages/pulumi/examples/",
     // an imported GPL-3.0-or-later fork, kept with its upstream headers
-    "apps/desktop/vitruvian/",
+    "apps/desktop/vitruvian-atrium/",
     // carries code from that fork, so GPL-3.0-or-later too
     "apps/desktop/vitruvian-tool-github/",
     // Vitruvian Code's unmodified vendored Mermaid (another holder's MIT)
@@ -309,7 +309,7 @@ mod tests {
             "a/internal/scaffold/templates/t.go",
             "pulumi/library/x.go",
             "packages/pulumi/examples/y.ts",
-            "apps/desktop/vitruvian/S/main.swift",
+            "apps/desktop/vitruvian-atrium/S/main.swift",
             "apps/desktop/courier/a.swift",
             "bazel-/x.go",
         ] {
@@ -437,7 +437,7 @@ mod tests {
         assert!(out.contains("has a non-MIT license header"));
 
         let (rc, _) = run_repo_case(|root| {
-            let dir = root.join("apps/desktop/vitruvian/Sources");
+            let dir = root.join("apps/desktop/vitruvian-atrium/Sources");
             std::fs::create_dir_all(&dir).unwrap();
             std::fs::write(
                 dir.join("main.swift"),

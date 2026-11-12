@@ -45,7 +45,7 @@
 # tools are written with (MIT flows into GPL, one way).
 package_group(
     name = "app",
-    packages = ["//apps/desktop/vitruvian"],
+    packages = ["//apps/desktop/vitruvian-atrium"],
 )
 
 # Tools built in this repository against the SDK: the protocol, the kit, the

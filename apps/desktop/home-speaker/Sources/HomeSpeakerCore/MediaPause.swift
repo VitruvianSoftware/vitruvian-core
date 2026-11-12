@@ -559,7 +559,7 @@ public struct OSAScriptRunner: ScriptRunner {
 // `homespeaker_media_remote_entry`, which then speaks to MediaRemote with
 // perl's standing. So no helper file ships: the image that holds this code
 // is the one perl loads, found with `dladdr`. The same trick is proven in
-// the Vitruvian app (apps/desktop/vitruvian/Sources/NowPlayingAdapter).
+// the Vitruvian app (apps/desktop/vitruvian-atrium/Sources/NowPlayingAdapter).
 
 /// One Now Playing session HomeSpeaker paused through MediaRemote.
 public struct NowPlayingSession: Equatable, Sendable {

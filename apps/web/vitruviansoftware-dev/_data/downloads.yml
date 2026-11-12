@@ -58,14 +58,14 @@ categories:
         extensions_url: /ai/#vitruvian-code
         extensions_label: MCP & Agent Setup
 
-      - id: vitruvian-desktop
-        name: Vitruvian Desktop
+      - id: vitruvian-atrium
+        name: Vitruvian Atrium
         version: "3.89.0"
         summary: >-
           The flagship desktop control hub for Vitruvian. Orchestrates AI coding sessions,
           multi-agent workspaces, live status tracking, and terminal integration from the macOS menu bar.
         platforms: ["macOS Universal", "Apple Silicon", "Intel"]
-        brew_cask: vitruviansoftware/tap/vitruvian
+        brew_cask: vitruviansoftware/tap/vitruvian-atrium
         downloads:
           - label: Universal DMG
             url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.89.0/Vitruvian-3.89.0-universal.dmg
@@ -84,8 +84,8 @@ categories:
             size: 83.8 MB
             arch: Universal
         releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=vitruvian
-        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian
-        extensions_url: /ai/#eco-vitruvian-desktop
+        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-atrium
+        extensions_url: /ai/#eco-vitruvian-atrium
         extensions_label: Browse Desktop Extensions
 
       - id: home-speaker
