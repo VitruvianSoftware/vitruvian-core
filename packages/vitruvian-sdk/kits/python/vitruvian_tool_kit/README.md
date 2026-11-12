@@ -24,7 +24,7 @@ Component package providing implementation for `packages/vitruvian-sdk/kits/pyth
 - `[panels.py:tree]`
 - `[tool.py:RPCErrorCode]`
 - `[tool.py:RefusalCode]`
-- Subdirectory: [generated](./generated/README.md)
+- Subdirectory: [generated](./generated/) (code written by `//tools/sdk-codegen`; do not edit)
 
 ## Invariants
 - None

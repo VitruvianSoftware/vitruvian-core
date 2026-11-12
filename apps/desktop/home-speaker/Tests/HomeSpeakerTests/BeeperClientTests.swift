@@ -658,6 +658,43 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
         #expect(found.messages.first { $0.id == "m-sig-plain" }?.mentions == [])
     }
 
+    @Test func aCouriersChatOwnReadAloudChoiceWinsOverTheSetting() throws {
+        // Courier sends `readAloud` only when the person chose Every Message or Never for the chat.
+        let json: [String: Any] = [
+            "chats": [
+                "g-always": ["id": "g-always", "type": "group", "readAloud": "always"],
+                "d-never": ["id": "d-never", "type": "single", "readAloud": "never"],
+                "g-plain": ["id": "g-plain", "type": "group"],
+                "g-odd": ["id": "g-odd", "type": "group", "readAloud": "sometimes"],
+            ],
+            "items": [],
+        ]
+        let chats = ChatAppClient.parseSearch(json).chats
+        #expect(chats["g-always"]?.readAloud == .always)
+        #expect(chats["d-never"]?.readAloud == .never)
+        #expect(chats["g-plain"]?.readAloud == .followSettings)
+        #expect(chats["g-odd"]?.readAloud == .followSettings)
+
+        let me: Set<String> = ["@me:fake.test"]
+        func says(_ chat: BeeperChat?, _ mode: ChatMonitorConfig.BeeperAnnounce, mine: Bool = false) -> Bool {
+            let msg = BeeperMessage(id: "1", chatID: chat?.id ?? "x", accountID: "a",
+                                    senderID: mine ? "@me:fake.test" : "@alice:fake.test",
+                                    timestamp: start, type: "TEXT", text: "hi", isSender: mine)
+            return ChatAppClient.shouldAnnounce(msg, chat: chat, ownUserIDs: me, mode: mode, muteOwn: true)
+        }
+        // Every Message reads a group even when only direct messages and mentions are read.
+        #expect(says(chats["g-always"], .directAndMentions))
+        // Never silences even a direct message with every message read.
+        #expect(!says(chats["d-never"], .all))
+        // No choice behaves as before.
+        #expect(!says(chats["g-plain"], .directAndMentions))
+        #expect(says(chats["g-plain"], .all))
+        // Every Message still skips my own messages, and a muted or low-priority chat stays silent.
+        #expect(!says(chats["g-always"], .all, mine: true))
+        #expect(!says(BeeperChat(id: "m", isDirect: false, isMuted: true, readAloud: .always), .all))
+        #expect(!says(BeeperChat(id: "l", isDirect: false, isLowPriority: true, readAloud: .always), .all))
+    }
+
     @Test func connectionErrorsSayWhatHappened() {
         #expect(ChatAppClient.mapped(URLError(.cannotConnectToHost)) == .beeperNotRunning)
         #expect(ChatAppClient.mapped(URLError(.networkConnectionLost)) == .beeperNotRunning)
