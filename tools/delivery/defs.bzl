@@ -63,7 +63,9 @@ def delivery(
         graph_targets = [],
         workflow_inputs = {},
         changelog_inputs = {},
-        preflight = ""):
+        preflight = "",
+        renamed_from = "",
+        renamed_from_app = ""):
     """Declares one delivery unit.
 
     Args:
@@ -130,6 +132,14 @@ def delivery(
         (e.g. stripe): its transcribed job was written in //tools/delivery/gen.
       legacy_job: the job id inside legacy_workflow that was transcribed. Set
         with legacy_workflow or not at all.
+      renamed_from: the unit's previous name, for a unit that was renamed. Its
+        deploys before the rename ran as jobs named after the OLD name, often
+        in the old app's workflow, so without this //tools/ci:delivery_drift
+        finds no delivery at all for a renamed unit until it next deploys, and
+        reports it UNKNOWN. Not read by the generator.
+      renamed_from_app: the app the unit belonged to under its old name, when
+        that changed too (its old workflow is delivery-<renamed_from_app>.yaml).
+        Defaults to app. Needs renamed_from.
       gate_var: an ADDITIONAL repo-variable condition every rendered rung must
         satisfy, e.g. "SYNC_AUTH_AUTO_APPLY" — the opt-in switch a legacy job
         carries because its apply is off by default. Dropping it would turn
@@ -253,6 +263,11 @@ def delivery(
     if preflight and kind != "cloud-run":
         fail("delivery(%s): preflight applies to kind=\"cloud-run\" only — it is implemented by _deploy-cloud-run.yaml's skip-if-unchanged step" % name)
 
+    if renamed_from_app and not renamed_from:
+        fail("delivery(%s): renamed_from_app = %r needs renamed_from (the unit's old name: its old deploy jobs are named after it)" % (name, renamed_from_app))
+    if renamed_from == name:
+        fail("delivery(%s): renamed_from names the unit itself" % name)
+
     for t in graph_targets:
         if not t.startswith("//"):
             fail("delivery(%s): graph_targets must be absolute Bazel labels (//pkg:target), got %r — target-determinator resolves nothing else" % (name, t))
@@ -311,6 +326,8 @@ def delivery(
         "workflow_inputs": workflow_inputs,
         "changelog_inputs": changelog_inputs,
         "preflight": preflight,
+        "renamed_from": renamed_from,
+        "renamed_from_app": renamed_from_app,
         "package": native.package_name(),
     }
     write_file(

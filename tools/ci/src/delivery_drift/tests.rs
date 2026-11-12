@@ -124,7 +124,7 @@ if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
   while [ "$i" -lt "$((off + n))" ] && [ "$i" -lt "${#rows[@]}" ]; do
     read -r rid sha <<<"${rows[$i]}"
     jobs=""
-    case "$hits" in *" $rid "*) jobs='{"name":"oauth-user-inspector-development / deploy"},' ;; esac
+    case "$hits" in *" $rid "*) jobs='{"name":"'"${STUB_JOB:-oauth-user-inspector}"'-development / deploy"},' ;; esac
     jobs="${jobs}"'{"name":"orchestrate"}'
     nodes="${nodes}${nodes:+,}{\"databaseId\":${rid},\"checkSuite\":{\"branch\":{\"name\":\"main\"},\"commit\":{\"oid\":\"${sha}\"},\"checkRuns\":{\"nodes\":[${jobs}]}}}"
     i=$((i + 1))
@@ -847,6 +847,66 @@ fn a_unit_last_delivered_before_the_per_app_split() {
         ],
     );
     assert_eq!(r.code, 1, "legacy fallback disabled => UNKNOWN\n{}", r.err);
+}
+
+/// The unit's metadata as delivery() emits it after a rename.
+fn rename_unit(fx: &Fx, renamed_from: &str, renamed_from_app: &str) {
+    write(
+        fx.repo
+            .join("bazel-bin/oauth-user-inspector/infra/app/oauth-user-inspector.delivery.json"),
+        &format!(
+            r#"{{"schema":1,"name":"oauth-user-inspector","app":"oauth-user-inspector","kind":"cloud-run",
+ "environments":["development","nonproduction","production"],
+ "extra_paths":["oauth-user-inspector/"],"exclude_paths":[],"graph_targets":[],
+ "renamed_from":"{renamed_from}","renamed_from_app":"{renamed_from_app}"}}
+"#
+        ),
+    );
+}
+
+#[test]
+fn a_renamed_unit_is_found_under_its_old_name_in_its_old_workflow() {
+    let fx = Fx::new();
+    // Its only deploy ran as `old-oauth-development` in delivery-old-app.yaml.
+    let old = [
+        ("STUB_DELIVERED_WF", "delivery-old-app.yaml"),
+        ("STUB_JOB", "old-oauth"),
+    ];
+
+    // Without the rename declared, that deploy is invisible: UNKNOWN.
+    let r = fx.run("0", &fx.head, &old);
+    assert_eq!(r.code, 1, "an undeclared rename is UNKNOWN\n{}", r.err);
+
+    rename_unit(&fx, "old-oauth", "old-app");
+    let r = fx.run("0", &fx.head, &old);
+    r.verdict(0, "OK", "the old name's deploy counts");
+    assert_has(
+        &r.err,
+        "last delivered as old-oauth by delivery-old-app.yaml",
+        "names the old unit and workflow",
+    );
+
+    // Same app (only the unit was renamed): found in its own workflow.
+    rename_unit(&fx, "old-oauth", "");
+    let r = fx.run(
+        "0",
+        &fx.head,
+        &[
+            ("STUB_DELIVERED_WF", "delivery-oauth-user-inspector.yaml"),
+            ("STUB_JOB", "old-oauth"),
+        ],
+    );
+    r.verdict(0, "OK", "the old name in the unit's own workflow counts");
+
+    // Declared, but no deploy under either name: still UNKNOWN, and says so.
+    rename_unit(&fx, "old-oauth", "old-app");
+    let r = fx.run(
+        "0",
+        &fx.head,
+        &[("STUB_DELIVERED_WF", "delivery-elsewhere.yaml")],
+    );
+    assert_eq!(r.code, 1, "no deploy under either name\n{}", r.err);
+    assert_has(&r.err, "(nor as old-oauth)", "names the old name it tried");
 }
 
 fn twenty_runs(fx: &Fx) -> String {
