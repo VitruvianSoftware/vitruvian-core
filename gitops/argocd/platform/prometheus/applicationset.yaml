@@ -552,34 +552,164 @@ spec:
                       summary: "Job {{ $labels.namespace }}/{{ $labels.job_name }} failed"
                       description: "{{ $labels.namespace }}/{{ $labels.job_name }} has {{ $value }} failed pod(s)."
 
-                # ── 7. CNPG Postgres (ready instances via KSM, not cnpg labels) ─
+                # ── 7. CNPG Postgres ────────────────────────────────────────
+                # Every rule here covers EVERY CNPG cluster, with no namespace
+                # list. The old copy alert matched only cnpg-cluster|grafana, so
+                # five databases (Zitadel, Backstage, Buzz, Umami, Sentry) could
+                # lose copies without paging anyone. Tests:
+                # tools/ci/prometheus-rule-tests/cnpg.test.yml.
+                #
+                # Two label sources. kube-state-metrics (kube_pod_info) names the
+                # cluster in created_by_name. CNPG's own exporter, scraped by the
+                # 'cnpg' job in extraScrapeConfigs, names it in cnpg_io_cluster.
+                # Some instances are ALSO scraped by the chart's annotation jobs
+                # (job=kubernetes-pods / kubernetes-service-endpoints), so the same
+                # number can arrive two or three times: every exporter rule
+                # aggregates with max/min by cluster to count it once.
                 - name: cnpg
                   rules:
+                  # A copy is any instance pod CNPG created for the cluster. CNPG
+                  # keeps a pod per instance even when one is broken (Pending, not
+                  # Ready, or on a lost node), so "ready < pods" compares each
+                  # cluster with its own size. Not covered: a pod deleted and not
+                  # recreated, which CNPG does not do on its own.
                   - alert: CNPGClusterUnderReplicated
                     expr: |
-                      sum by (namespace) (
+                      sum by (namespace, created_by_name) (
                         kube_pod_status_ready{condition="true"}
-                        * on(namespace, pod) group_left
-                        kube_pod_info{created_by_kind="Cluster", namespace=~"cnpg-cluster|grafana"}
-                      ) < 3
+                        * on(namespace, pod) group_left(created_by_name)
+                        kube_pod_info{created_by_kind="Cluster"}
+                      )
+                      <
+                      count by (namespace, created_by_name) (
+                        kube_pod_info{created_by_kind="Cluster"}
+                      )
                     for: 10m
                     labels:
                       severity: page
                     annotations:
-                      summary: "CNPG cluster in {{ $labels.namespace }} has <3 ready instances"
+                      summary: "CNPG cluster {{ $labels.namespace }}/{{ $labels.created_by_name }} is missing a ready copy"
                       description: >-
-                        Only {{ $value }} ready CNPG Postgres instance(s) in {{ $labels.namespace }}
-                        (expected 3) for >10m. Likely a sleeping node + hostname-pinned local-path
-                        PV stranding a replica.
+                        Only {{ $value }} instance(s) of {{ $labels.namespace }}/{{ $labels.created_by_name }}
+                        are ready, fewer than it has, for >10m. Likely a sleeping node and a
+                        hostname-pinned local-path PV stranding a replica. One more loss and the
+                        database is down or read-only.
+
+                  # The failure that hid five databases: a cluster exists, but
+                  # Prometheus collects nothing from it, so every exporter-based
+                  # rule below is silent for it.
+                  - alert: CNPGMetricsMissing
+                    expr: |
+                      count by (namespace, created_by_name) (
+                        kube_pod_info{created_by_kind="Cluster"}
+                      )
+                      unless on (namespace, created_by_name)
+                      label_replace(
+                        max by (namespace, cnpg_io_cluster) (cnpg_collector_up),
+                        "created_by_name", "$1", "cnpg_io_cluster", "(.+)"
+                      )
+                    for: 15m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: "No metrics from CNPG cluster {{ $labels.namespace }}/{{ $labels.created_by_name }}"
+                      description: >-
+                        {{ $labels.namespace }}/{{ $labels.created_by_name }} has instance pods but
+                        Prometheus has no cnpg_collector_up for it, so its backup and WAL alerts
+                        cannot fire. Check the 'cnpg' scrape job's targets.
 
                   - alert: CNPGCollectorDown
-                    expr: cnpg_collector_up == 0
+                    expr: min by (namespace, pod) (cnpg_collector_up) == 0
                     for: 10m
                     labels:
                       severity: warning
                     annotations:
-                      summary: "CNPG metrics collector down ({{ $labels.namespace }})"
-                      description: "cnpg_collector_up==0 for >10m; CNPG instance metrics unavailable."
+                      summary: "CNPG metrics collector down ({{ $labels.namespace }}/{{ $labels.pod }})"
+                      description: "cnpg_collector_up==0 on {{ $labels.namespace }}/{{ $labels.pod }} for >10m; that instance's metrics are unavailable."
+
+                  # WAL is the change log that point-in-time restore replays. If
+                  # the primary cannot ship it to MinIO, every minute since the
+                  # last success is lost in a restore, and the primary's disk
+                  # fills with unshipped files.
+                  - alert: CNPGWALArchivingFailing
+                    expr: |
+                      max by (namespace, cnpg_io_cluster) (
+                        cnpg_pg_stat_archiver_last_failed_time{cnpg_io_instanceRole="primary"}
+                      )
+                      >
+                      max by (namespace, cnpg_io_cluster) (
+                        cnpg_pg_stat_archiver_last_archived_time{cnpg_io_instanceRole="primary"}
+                      )
+                    for: 30m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: "WAL archiving failing for {{ $labels.namespace }}/{{ $labels.cnpg_io_cluster }}"
+                      description: >-
+                        The primary of {{ $labels.namespace }}/{{ $labels.cnpg_io_cluster }} last
+                        failed to archive WAL more recently than it last succeeded, for >30m.
+                        Point-in-time restore loses everything after the last archived file.
+
+                  # Backup times come from the Barman Cloud plugin, which every
+                  # cluster here uses (method: plugin). A last failure newer than
+                  # the last success means the most recent backup attempt failed.
+                  - alert: CNPGBackupFailed
+                    expr: |
+                      max by (namespace, cnpg_io_cluster) (
+                        barman_cloud_cloudnative_pg_io_last_failed_backup_timestamp
+                      )
+                      >
+                      max by (namespace, cnpg_io_cluster) (
+                        barman_cloud_cloudnative_pg_io_last_available_backup_timestamp
+                      )
+                    for: 15m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: "Latest backup of {{ $labels.namespace }}/{{ $labels.cnpg_io_cluster }} failed"
+                      description: >-
+                        The most recent base backup of {{ $labels.namespace }}/{{ $labels.cnpg_io_cluster }}
+                        failed after the last good one. Check its Backup objects and the plugin
+                        sidecar's log.
+
+                  # Daily backups, so 36h means a whole day was missed. A value
+                  # of 0 (no backup ever) is also far past 36h and fires.
+                  - alert: CNPGBackupStale
+                    expr: |
+                      time()
+                      - max by (namespace, cnpg_io_cluster) (
+                          barman_cloud_cloudnative_pg_io_last_available_backup_timestamp
+                        )
+                      > 36 * 3600
+                    for: 30m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: "No backup of {{ $labels.namespace }}/{{ $labels.cnpg_io_cluster }} in 36h"
+                      description: >-
+                        The newest good base backup of {{ $labels.namespace }}/{{ $labels.cnpg_io_cluster }}
+                        is {{ $value | humanizeDuration }} old. Backups are daily.
+
+                  # Every cluster here is set up with plugin backups, so one that
+                  # reports CNPG metrics but no backup times has lost its backup
+                  # setup (or the plugin), and the two backup rules above are
+                  # silent for it.
+                  - alert: CNPGBackupMetricsMissing
+                    expr: |
+                      max by (namespace, cnpg_io_cluster) (cnpg_collector_up)
+                      unless on (namespace, cnpg_io_cluster)
+                      max by (namespace, cnpg_io_cluster) (
+                        barman_cloud_cloudnative_pg_io_last_available_backup_timestamp
+                      )
+                    for: 1h
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: "No backup metrics from {{ $labels.namespace }}/{{ $labels.cnpg_io_cluster }}"
+                      description: >-
+                        {{ $labels.namespace }}/{{ $labels.cnpg_io_cluster }} reports CNPG metrics but
+                        no Barman Cloud backup times, so CNPGBackupFailed and CNPGBackupStale cannot
+                        fire for it. Check its backup plugin configuration.
 
                 # ── 8. Storage (PVC/PV) ──────────────────────────────────────
                 - name: storage
@@ -1054,6 +1184,32 @@ spec:
                   action: drop
                 - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
                   target_label: component
+              # Every CloudNativePG Postgres instance, found by the cnpg.io/podRole
+              # label CNPG puts on instance pods, on the exporter port 9187. This
+              # replaces per-cluster prometheus.io/scrape annotations, which the
+              # cloudnative-pg 'cluster' Helm chart silently drops (it has no
+              # inheritedMetadata value): Zitadel, Backstage, Buzz, Sentry and
+              # cnpg-cluster were never scraped. A new cluster is picked up with
+              # nothing to add. Rules that read these metrics live in the 'cnpg'
+              # rule group and dedupe the annotation-scraped copies.
+              - job_name: 'cnpg'
+                kubernetes_sd_configs:
+                  - role: pod
+                relabel_configs:
+                - source_labels: [__meta_kubernetes_pod_label_cnpg_io_podRole]
+                  regex: 'instance'
+                  action: keep
+                - source_labels: [__meta_kubernetes_pod_container_port_number]
+                  regex: '9187'
+                  action: keep
+                - action: labelmap
+                  regex: __meta_kubernetes_pod_label_(cnpg_io_cluster|cnpg_io_instanceRole)
+                - source_labels: [__meta_kubernetes_namespace]
+                  target_label: namespace
+                - source_labels: [__meta_kubernetes_pod_name]
+                  target_label: pod
+                - source_labels: [__meta_kubernetes_pod_node_name]
+                  target_label: node
               - job_name: 'minio'
                 metrics_path: /minio/v2/metrics/cluster
                 kubernetes_sd_configs:

@@ -1,0 +1,200 @@
+# Copyright (c) 2026 VitruvianSoftware
+# SPDX-License-Identifier: MIT
+#
+# Unit tests for the 'cnpg' rule group in
+# gitops/argocd/platform/prometheus/applicationset.yaml.
+#
+# The old copy alert matched only namespace=~"cnpg-cluster|grafana", and the
+# exporter metrics of five of the seven clusters were never scraped at all, so
+# a degraded Zitadel, Backstage, Buzz, Umami or Sentry database paged nobody.
+# These tests use clusters OUTSIDE those two namespaces on purpose: against the
+# old rule the first test fails.
+#
+# promtool starts the clock at Unix epoch 0, so a timestamp metric's value is
+# "seconds since the test began".
+rule_files:
+  - rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  # ------------------------------------------------ copy lost, any namespace --
+  - interval: 1m
+    name: A Zitadel copy that stays not-ready pages; a healthy Buzz does not
+    input_series:
+      - series: 'kube_pod_info{namespace="zitadel",pod="zitadel-db-cluster-4",created_by_kind="Cluster",created_by_name="zitadel-db-cluster"}'
+        values: '1+0x30'
+      - series: 'kube_pod_info{namespace="zitadel",pod="zitadel-db-cluster-5",created_by_kind="Cluster",created_by_name="zitadel-db-cluster"}'
+        values: '1+0x30'
+      - series: 'kube_pod_info{namespace="zitadel",pod="zitadel-db-cluster-6",created_by_kind="Cluster",created_by_name="zitadel-db-cluster"}'
+        values: '1+0x30'
+      - series: 'kube_pod_status_ready{namespace="zitadel",pod="zitadel-db-cluster-4",condition="true"}'
+        values: '1+0x30'
+      - series: 'kube_pod_status_ready{namespace="zitadel",pod="zitadel-db-cluster-5",condition="true"}'
+        values: '1+0x30'
+      # Goes not-ready at t=2m and stays that way.
+      - series: 'kube_pod_status_ready{namespace="zitadel",pod="zitadel-db-cluster-6",condition="true"}'
+        values: '1 1 0+0x28'
+      - series: 'kube_pod_info{namespace="buzz",pod="buzz-db-1",created_by_kind="Cluster",created_by_name="buzz-db"}'
+        values: '1+0x30'
+      - series: 'kube_pod_info{namespace="buzz",pod="buzz-db-2",created_by_kind="Cluster",created_by_name="buzz-db"}'
+        values: '1+0x30'
+      - series: 'kube_pod_status_ready{namespace="buzz",pod="buzz-db-1",condition="true"}'
+        values: '1+0x30'
+      - series: 'kube_pod_status_ready{namespace="buzz",pod="buzz-db-2",condition="true"}'
+        values: '1+0x30'
+    alert_rule_test:
+      # Inside the 10m `for:`.
+      - eval_time: 10m
+        alertname: CNPGClusterUnderReplicated
+        exp_alerts: []
+      - eval_time: 13m
+        alertname: CNPGClusterUnderReplicated
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              namespace: zitadel
+              created_by_name: zitadel-db-cluster
+            exp_annotations:
+              summary: "CNPG cluster zitadel/zitadel-db-cluster is missing a ready copy"
+              description: "Only 2 instance(s) of zitadel/zitadel-db-cluster are ready, fewer than it has, for >10m. Likely a sleeping node and a hostname-pinned local-path PV stranding a replica. One more loss and the database is down or read-only."
+
+  # ------------------------------------------------- metrics never collected --
+  - interval: 1m
+    name: A cluster with pods but no exporter metrics warns; a scraped one does not
+    input_series:
+      - series: 'kube_pod_info{namespace="backstage",pod="backstage-db-cluster-1",created_by_kind="Cluster",created_by_name="backstage-db-cluster"}'
+        values: '1+0x30'
+      - series: 'kube_pod_info{namespace="umami",pod="umami-db-1",created_by_kind="Cluster",created_by_name="umami-db"}'
+        values: '1+0x30'
+      - series: 'cnpg_collector_up{job="cnpg",namespace="umami",pod="umami-db-1",cnpg_io_cluster="umami-db"}'
+        values: '1+0x30'
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: CNPGMetricsMissing
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: CNPGMetricsMissing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: backstage
+              created_by_name: backstage-db-cluster
+            exp_annotations:
+              summary: "No metrics from CNPG cluster backstage/backstage-db-cluster"
+              description: "backstage/backstage-db-cluster has instance pods but Prometheus has no cnpg_collector_up for it, so its backup and WAL alerts cannot fire. Check the 'cnpg' scrape job's targets."
+
+  # ---------------------------------------------------------- WAL archiving --
+  - interval: 1m
+    name: A primary whose last WAL failure is newer than its last success warns; replicas are ignored
+    input_series:
+      # Last success at t=60s; failures from t=5m on keep the failure time newer.
+      - series: 'cnpg_pg_stat_archiver_last_archived_time{job="cnpg",namespace="sentry",pod="sentry-db-1",cnpg_io_cluster="sentry-db",cnpg_io_instanceRole="primary"}'
+        values: '60+0x60'
+      - series: 'cnpg_pg_stat_archiver_last_failed_time{job="cnpg",namespace="sentry",pod="sentry-db-1",cnpg_io_cluster="sentry-db",cnpg_io_instanceRole="primary"}'
+        values: '0 0 0 0 0 300+60x56'
+      # A replica with a stale, newer failure must not count.
+      - series: 'cnpg_pg_stat_archiver_last_archived_time{job="cnpg",namespace="grafana",pod="grafana-db-cluster-8",cnpg_io_cluster="grafana-db-cluster",cnpg_io_instanceRole="replica"}'
+        values: '0+0x60'
+      - series: 'cnpg_pg_stat_archiver_last_failed_time{job="cnpg",namespace="grafana",pod="grafana-db-cluster-8",cnpg_io_cluster="grafana-db-cluster",cnpg_io_instanceRole="replica"}'
+        values: '999+0x60'
+    alert_rule_test:
+      - eval_time: 34m
+        alertname: CNPGWALArchivingFailing
+        exp_alerts: []
+      - eval_time: 36m
+        alertname: CNPGWALArchivingFailing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: sentry
+              cnpg_io_cluster: sentry-db
+            exp_annotations:
+              summary: "WAL archiving failing for sentry/sentry-db"
+              description: "The primary of sentry/sentry-db last failed to archive WAL more recently than it last succeeded, for >30m. Point-in-time restore loses everything after the last archived file."
+
+  # ------------------------------------------------------------ backup failed --
+  - interval: 1m
+    name: A failed latest backup warns once, even when scraped by two jobs
+    input_series:
+      # The same cluster arrives twice (cnpg job and an annotation job).
+      - series: 'barman_cloud_cloudnative_pg_io_last_available_backup_timestamp{job="cnpg",namespace="zitadel",pod="zitadel-db-cluster-4",cnpg_io_cluster="zitadel-db-cluster"}'
+        values: '100+0x30'
+      - series: 'barman_cloud_cloudnative_pg_io_last_failed_backup_timestamp{job="cnpg",namespace="zitadel",pod="zitadel-db-cluster-4",cnpg_io_cluster="zitadel-db-cluster"}'
+        values: '200+0x30'
+      - series: 'barman_cloud_cloudnative_pg_io_last_available_backup_timestamp{job="kubernetes-pods",namespace="zitadel",pod="zitadel-db-cluster-4",cnpg_io_cluster="zitadel-db-cluster"}'
+        values: '100+0x30'
+      - series: 'barman_cloud_cloudnative_pg_io_last_failed_backup_timestamp{job="kubernetes-pods",namespace="zitadel",pod="zitadel-db-cluster-4",cnpg_io_cluster="zitadel-db-cluster"}'
+        values: '200+0x30'
+      # Healthy: never failed (0).
+      - series: 'barman_cloud_cloudnative_pg_io_last_available_backup_timestamp{job="cnpg",namespace="umami",pod="umami-db-1",cnpg_io_cluster="umami-db"}'
+        values: '100+0x30'
+      - series: 'barman_cloud_cloudnative_pg_io_last_failed_backup_timestamp{job="cnpg",namespace="umami",pod="umami-db-1",cnpg_io_cluster="umami-db"}'
+        values: '0+0x30'
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: CNPGBackupFailed
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: CNPGBackupFailed
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: zitadel
+              cnpg_io_cluster: zitadel-db-cluster
+            exp_annotations:
+              summary: "Latest backup of zitadel/zitadel-db-cluster failed"
+              description: "The most recent base backup of zitadel/zitadel-db-cluster failed after the last good one. Check its Backup objects and the plugin sidecar's log."
+
+  # ------------------------------------------------------------- backup stale --
+  # 1m samples: with a wider interval the series goes stale between samples
+  # (5m lookback) and the alert never holds for its 30m `for:`.
+  - interval: 1m
+    name: No good backup for 36h warns; a fresh one clears it
+    input_series:
+      # Last good backup at t=100s, then a new one at t=37h (133200s).
+      # Samples 0..2219 cover the first 37h; the new value starts at 37h.
+      - series: 'barman_cloud_cloudnative_pg_io_last_available_backup_timestamp{job="cnpg",namespace="buzz",pod="buzz-db-1",cnpg_io_cluster="buzz-db"}'
+        values: '100+0x2219 133200+0x60'
+    alert_rule_test:
+      - eval_time: 36h
+        alertname: CNPGBackupStale
+        exp_alerts: []
+      - eval_time: 36h40m
+        alertname: CNPGBackupStale
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: buzz
+              cnpg_io_cluster: buzz-db
+            exp_annotations:
+              summary: "No backup of buzz/buzz-db in 36h"
+              description: "The newest good base backup of buzz/buzz-db is 1d 12h 38m 20s old. Backups are daily."
+      - eval_time: 37h30m
+        alertname: CNPGBackupStale
+        exp_alerts: []
+
+  # ---------------------------------------------------- backup times missing --
+  - interval: 5m
+    name: A scraped cluster with no backup times warns after 1h
+    input_series:
+      - series: 'cnpg_collector_up{job="cnpg",namespace="cnpg-cluster",pod="cnpg-cluster-1",cnpg_io_cluster="cnpg-cluster"}'
+        values: '1+0x20'
+      - series: 'cnpg_collector_up{job="cnpg",namespace="umami",pod="umami-db-1",cnpg_io_cluster="umami-db"}'
+        values: '1+0x20'
+      - series: 'barman_cloud_cloudnative_pg_io_last_available_backup_timestamp{job="cnpg",namespace="umami",pod="umami-db-1",cnpg_io_cluster="umami-db"}'
+        values: '100+0x20'
+    alert_rule_test:
+      - eval_time: 55m
+        alertname: CNPGBackupMetricsMissing
+        exp_alerts: []
+      - eval_time: 65m
+        alertname: CNPGBackupMetricsMissing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: cnpg-cluster
+              cnpg_io_cluster: cnpg-cluster
+            exp_annotations:
+              summary: "No backup metrics from cnpg-cluster/cnpg-cluster"
+              description: "cnpg-cluster/cnpg-cluster reports CNPG metrics but no Barman Cloud backup times, so CNPGBackupFailed and CNPGBackupStale cannot fire for it. Check its backup plugin configuration."
