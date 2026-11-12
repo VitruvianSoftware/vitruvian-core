@@ -193,6 +193,15 @@ the repo variables directly):
 | `.github/workflows/_repo-config-preview.yaml` | PR touching `infrastructure/pulumi/platform/repo-config/**` | `REPO_CONFIG_PREVIEW_ENABLED=true` | posts a cleaned-up `pulumi preview --diff` comment |
 | `.github/workflows/_repo-config-apply.yaml` | push to the default branch touching the same path | `REPO_CONFIG_AUTO_APPLY=true` | runs `pulumi up` |
 
+> **Large merges skip the auto-apply.** GitHub matches a push against a
+> workflow's `paths` filter using only the first 300 changed files. A merge that
+> changes more (the 2026-11-12 brand rename, #4631, changed about 5,800) can touch
+> this folder and still never start `_repo-config-apply.yaml`. The live settings
+> then lag the code: that day the release-tags ruleset kept the old rolling tag
+> names, and three beta publishers failed with HTTP 422. After any merge that
+> large, check that an apply ran for its commit; if none did, merge a small change
+> under this folder (or start the workflow by hand) to apply it.
+
 The preview comment shows only the Pulumi diff — Bazel build output and ANSI
 escape codes are stripped so the sticky comment stays readable.
 
