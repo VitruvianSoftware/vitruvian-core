@@ -224,7 +224,7 @@ jobs:
           QUEUED: ${{ steps.queued.outputs.verdict }}
           QUEUED_RUN: ${{ steps.queued.outputs.run }}
           FAST_LANE: ${{ steps.fastlane.outputs.verdict }}
-          ALL_UNITS: '["antigravity-ext-marketplace","antigravity-gh-watch","antigravity-hookify","antigravity-live-context","antigravity-plugins-conformance","antigravity-ralph-loop","antigravity-receipts-report","antigravity-savvy-fleet","antigravity-security-guidance","antigravity-worktree-band","backstage-backend","courier-app-macos","courier-engine-macos","design-system","backstage-app","design-system-android","devx-cli","gods-eye-view","homelab","mcp-slack-service","oauth-user-inspector","peripherals","pulumi-repo-config","relay-spike-service","remote","remote-boot","remote-mac-agent","remote-mac-menu","tabula-shared","tabula-api","tabula-cli","tabula-extension","tabula-web","vitruvian-code-src","vitruvian-code-bridge","vitruvian-code-macos","vitruvian-desktop-macos","vitruvian-sdk","vitruvian-tool-github","wand-android","wand-linux","wand-macos"]'
+          ALL_UNITS: '["antigravity-ext-marketplace","antigravity-gh-watch","antigravity-hookify","antigravity-live-context","antigravity-plugins-conformance","antigravity-ralph-loop","antigravity-receipts-report","antigravity-savvy-fleet","antigravity-security-guidance","antigravity-worktree-band","backstage-backend","courier-app-macos","courier-engine-macos","design-system","backstage-app","design-system-android","devx-cli","gods-eye-view","homelab","mcp-slack-service","oauth-user-inspector","peripherals","pulumi-repo-config","relay-spike-service","remote","remote-boot","remote-mac-agent","remote-mac-menu","tabula-shared","tabula-api","tabula-cli","tabula-extension","tabula-web","vitruvian-code-src","vitruvian-code-bridge","vitruvian-code-macos","vitruvian-desktop-macos","vitruvian-sdk","vitruvian-tool-github","vitruvian-wand-android","vitruvian-wand-linux","vitruvian-wand-macos"]'
         run: |
           set +e -u -o pipefail
           if [ "$RELEASE_SKIP" = "true" ]; then
@@ -1891,12 +1891,12 @@ jobs:
           fi
           bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/desktop/vitruvian-tool-github:GitHubToolCoreTests //apps/desktop/vitruvian-tool-github:conformance_test //apps/desktop/vitruvian-tool-github:github-tool //apps/desktop/vitruvian-tool-github:mirror_workflows_test //apps/desktop/vitruvian-tool-github:version_test || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/desktop/vitruvian-tool-github:GitHubToolCoreTests //apps/desktop/vitruvian-tool-github:conformance_test //apps/desktop/vitruvian-tool-github:github-tool //apps/desktop/vitruvian-tool-github:mirror_workflows_test //apps/desktop/vitruvian-tool-github:version_test; else exit $rc; fi; }
 
-  unit-wand-android:
-    name: wand-android
+  unit-vitruvian-wand-android:
+    name: vitruvian-wand-android
     runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 20
     needs: [plan]
-    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'wand-android')) }}
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'vitruvian-wand-android')) }}
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
@@ -1915,7 +1915,7 @@ jobs:
         id: llvm-contents
         uses: ./.github/actions/llvm-cache-restore
 
-      - name: Build & Test Unit wand-android
+      - name: Build & Test Unit vitruvian-wand-android
         run: |
           set -euo pipefail
           cache_flags=()
@@ -1923,17 +1923,17 @@ jobs:
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/wand/android:actions_test //apps/suites/wand/android:gesture_planner_test //apps/suites/wand/android:native_engine_test //apps/suites/wand/android:stroke_coordinator_test //apps/suites/wand/android:wand_apk //apps/suites/wand/android/jni:wand_jni_lib //apps/suites/wand/android/jni:wand_jni_test || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/wand/android:actions_test //apps/suites/wand/android:gesture_planner_test //apps/suites/wand/android:native_engine_test //apps/suites/wand/android:stroke_coordinator_test //apps/suites/wand/android:wand_apk //apps/suites/wand/android/jni:wand_jni_lib //apps/suites/wand/android/jni:wand_jni_test; else exit $rc; fi; }
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/vitruvian-wand/android:actions_test //apps/suites/vitruvian-wand/android:gesture_planner_test //apps/suites/vitruvian-wand/android:native_engine_test //apps/suites/vitruvian-wand/android:stroke_coordinator_test //apps/suites/vitruvian-wand/android:vitruvian_wand_apk //apps/suites/vitruvian-wand/android/jni:vitruvian_wand_jni_lib //apps/suites/vitruvian-wand/android/jni:vitruvian_wand_jni_test || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/vitruvian-wand/android:actions_test //apps/suites/vitruvian-wand/android:gesture_planner_test //apps/suites/vitruvian-wand/android:native_engine_test //apps/suites/vitruvian-wand/android:stroke_coordinator_test //apps/suites/vitruvian-wand/android:vitruvian_wand_apk //apps/suites/vitruvian-wand/android/jni:vitruvian_wand_jni_lib //apps/suites/vitruvian-wand/android/jni:vitruvian_wand_jni_test; else exit $rc; fi; }
           bin=$(bazel info "${extra_flags[@]}" "${cache_flags[@]}" bazel-bin)
-          mkdir -p .pipeline-artifacts/wand-apk
-          cp -L "$bin/apps/suites/wand/android/wand_apk.apk" .pipeline-artifacts/wand-apk/
+          mkdir -p .pipeline-artifacts/vitruvian-wand-apk
+          cp -L "$bin/apps/suites/vitruvian-wand/android/vitruvian_wand_apk.apk" .pipeline-artifacts/vitruvian-wand-apk/
 
-      - name: Upload wand-apk
+      - name: Upload vitruvian-wand-apk
         if: success()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: wand-apk
-          path: .pipeline-artifacts/wand-apk
+          name: vitruvian-wand-apk
+          path: .pipeline-artifacts/vitruvian-wand-apk
           if-no-files-found: error
 
       - name: LLVM cache tripwire
@@ -1945,12 +1945,12 @@ jobs:
           pre-count: ${{ steps.llvm-contents.outputs.pre-count }}
           pin-path: ${{ steps.llvm-contents.outputs.pin-path }}
 
-  unit-wand-linux:
-    name: wand-linux
+  unit-vitruvian-wand-linux:
+    name: vitruvian-wand-linux
     runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 20
     needs: [plan]
-    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'wand-linux')) }}
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'vitruvian-wand-linux')) }}
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
@@ -1969,7 +1969,7 @@ jobs:
         id: llvm-contents
         uses: ./.github/actions/llvm-cache-restore
 
-      - name: Build & Test Unit wand-linux
+      - name: Build & Test Unit vitruvian-wand-linux
         run: |
           set -euo pipefail
           cache_flags=()
@@ -1977,7 +1977,7 @@ jobs:
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/wand/build/smoke:smoke_test //apps/suites/wand/core:integration_test //apps/suites/wand/core:wand_core_clippy //apps/suites/wand/core:wand_core_unit_test //apps/suites/wand/desktop:wand //apps/suites/wand/desktop:wand_clippy //apps/suites/wand/desktop:wand_desktop_test || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/wand/build/smoke:smoke_test //apps/suites/wand/core:integration_test //apps/suites/wand/core:wand_core_clippy //apps/suites/wand/core:wand_core_unit_test //apps/suites/wand/desktop:wand //apps/suites/wand/desktop:wand_clippy //apps/suites/wand/desktop:wand_desktop_test; else exit $rc; fi; }
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/vitruvian-wand/build/smoke:smoke_test //apps/suites/vitruvian-wand/core:integration_test //apps/suites/vitruvian-wand/core:vitruvian_wand_core_clippy //apps/suites/vitruvian-wand/core:vitruvian_wand_core_unit_test //apps/suites/vitruvian-wand/desktop:vitruvian-wand //apps/suites/vitruvian-wand/desktop:vitruvian_wand_clippy //apps/suites/vitruvian-wand/desktop:vitruvian_wand_desktop_test || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/vitruvian-wand/build/smoke:smoke_test //apps/suites/vitruvian-wand/core:integration_test //apps/suites/vitruvian-wand/core:vitruvian_wand_core_clippy //apps/suites/vitruvian-wand/core:vitruvian_wand_core_unit_test //apps/suites/vitruvian-wand/desktop:vitruvian-wand //apps/suites/vitruvian-wand/desktop:vitruvian_wand_clippy //apps/suites/vitruvian-wand/desktop:vitruvian_wand_desktop_test; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -1988,12 +1988,12 @@ jobs:
           pre-count: ${{ steps.llvm-contents.outputs.pre-count }}
           pin-path: ${{ steps.llvm-contents.outputs.pin-path }}
 
-  unit-wand-macos:
-    name: wand-macos
+  unit-vitruvian-wand-macos:
+    name: vitruvian-wand-macos
     runs-on: xcode-27
     timeout-minutes: 20
     needs: [plan]
-    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'wand-macos')) }}
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'vitruvian-wand-macos')) }}
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
@@ -2008,7 +2008,7 @@ jobs:
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
 
-      - name: Build & Test Unit wand-macos
+      - name: Build & Test Unit vitruvian-wand-macos
         run: |
           set -euo pipefail
           cache_flags=()
@@ -2017,7 +2017,7 @@ jobs:
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/wand/... || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/wand/...; else exit $rc; fi; }
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/vitruvian-wand/... || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/vitruvian-wand/...; else exit $rc; fi; }
 
   rdeps-map:
     name: plan/rdeps-map
@@ -2073,7 +2073,7 @@ jobs:
 
   gate:
     name: gate/all-required-passed
-    needs: [plan, unit-antigravity-ext-marketplace, unit-antigravity-gh-watch, unit-antigravity-hookify, unit-antigravity-live-context, unit-antigravity-plugins-conformance, unit-antigravity-ralph-loop, unit-antigravity-receipts-report, unit-antigravity-savvy-fleet, unit-antigravity-security-guidance, unit-antigravity-worktree-band, unit-backstage-backend, unit-courier-app-macos, unit-courier-engine-macos, unit-design-system, unit-backstage-app, unit-design-system-android, unit-devx-cli, unit-gods-eye-view, unit-homelab, unit-mcp-slack-service, unit-oauth-user-inspector, unit-peripherals, unit-pulumi-repo-config, unit-relay-spike-service, unit-remote, unit-remote-boot, unit-remote-mac-agent, unit-remote-mac-menu, unit-tabula-shared, unit-tabula-api, unit-tabula-cli, unit-tabula-extension, unit-tabula-web, unit-vitruvian-code-src, unit-vitruvian-code-bridge, unit-vitruvian-code-macos, unit-vitruvian-desktop-macos, unit-vitruvian-sdk, unit-vitruvian-tool-github, unit-wand-android, unit-wand-linux, unit-wand-macos]
+    needs: [plan, unit-antigravity-ext-marketplace, unit-antigravity-gh-watch, unit-antigravity-hookify, unit-antigravity-live-context, unit-antigravity-plugins-conformance, unit-antigravity-ralph-loop, unit-antigravity-receipts-report, unit-antigravity-savvy-fleet, unit-antigravity-security-guidance, unit-antigravity-worktree-band, unit-backstage-backend, unit-courier-app-macos, unit-courier-engine-macos, unit-design-system, unit-backstage-app, unit-design-system-android, unit-devx-cli, unit-gods-eye-view, unit-homelab, unit-mcp-slack-service, unit-oauth-user-inspector, unit-peripherals, unit-pulumi-repo-config, unit-relay-spike-service, unit-remote, unit-remote-boot, unit-remote-mac-agent, unit-remote-mac-menu, unit-tabula-shared, unit-tabula-api, unit-tabula-cli, unit-tabula-extension, unit-tabula-web, unit-vitruvian-code-src, unit-vitruvian-code-bridge, unit-vitruvian-code-macos, unit-vitruvian-desktop-macos, unit-vitruvian-sdk, unit-vitruvian-tool-github, unit-vitruvian-wand-android, unit-vitruvian-wand-linux, unit-vitruvian-wand-macos]
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 5

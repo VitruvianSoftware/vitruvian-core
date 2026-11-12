@@ -495,11 +495,11 @@ crate.annotation(
 # explains the moving parts and apps/desktop/courier/engine/docs/m2-libsignal.md
 # records why it is built this way.
 #
-# libsignal and Wand need Rust 1.98.1 (eframe/egui 0.37 require Rust >= 1.95;
+# libsignal and Vitruvian Wand need Rust 1.98.1 (eframe/egui 0.37 require Rust >= 1.95;
 # libsignal pins 1.98.1 in its rust-toolchain file). The SDK above stays on
 # 1.75.0: these toolchains only match when
 # //apps/desktop/courier/libsignal:rust_1_98_1 is true (also aliased at
-# //apps/suites/wand:rust_1_98_1), and only libsignal and Wand targets set that
+# //apps/suites/vitruvian-wand:rust_1_98_1_enabled), and only libsignal and Vitruvian Wand targets set that
 # flag (by transition). They are registered below, ahead of rules_rust's own
 # registration, so they are considered first and skipped everywhere else.
 # rules_rust (0.68.1 declared above; the graph resolves 0.69.0) knows checksums
@@ -778,11 +778,11 @@ crate.annotation(
 )
 use_repo(crate, "gchat_crates")
 
-# --- Wand (cross-platform BLE Air Mouse: macOS, Linux, Android) --------------
+# --- Vitruvian Wand (cross-platform BLE Air Mouse: macOS, Linux, Android) --------------
 crate.from_cargo(
-    name = "wand_crates",
-    cargo_lock = "//apps/suites/wand:Cargo.lock",
-    cargo_toml = "//apps/suites/wand:Cargo.toml",
+    name = "vitruvian_wand_crates",
+    cargo_lock = "//apps/suites/vitruvian-wand:Cargo.lock",
+    cargo_toml = "//apps/suites/vitruvian-wand:Cargo.toml",
     platform_triples = [
         "aarch64-apple-darwin",
         "x86_64-apple-darwin",
@@ -803,9 +803,9 @@ crate.annotation(
         "RULES_RUST_SYMLINK_EXEC_ROOT": "1",
     },
     crate = "libdbus-sys",
-    repositories = ["wand_crates"],
+    repositories = ["vitruvian_wand_crates"],
 )
-use_repo(crate, "wand_crates")
+use_repo(crate, "vitruvian_wand_crates")
 
 #########################
 # Support for Ruby, see https://github.com/bazel-contrib/rules_ruby
