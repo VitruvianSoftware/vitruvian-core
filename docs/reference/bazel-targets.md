@@ -58,6 +58,7 @@ mindmap
 | `//tools/pipeline-status -- <pr#\|sha>` | Evaluates the health of post-merge push workflows on `main`, asserting that CI, delivery, and image builds completed green |
 | `//:tidy` | **The single hygiene entrypoint**: gazelle → python manifest → all formatters. Required check (`tidy-check`); run before every PR |
 | `//:gazelle` | Regenerate `BUILD` files after adding/moving code |
+| `//tools/pnpm:lock` | Re-lock `pnpm-lock.yaml` after editing a `package.json` (`-- --check` reports drift, changes nothing) |
 | `//tools:bazel_env` | Exposes every Bazel-managed tool (go, node, pnpm, python, prettier, …) on your `$PATH` via direnv |
 | `//tools/ci-preflight` | The repo-side counterpart to `//:doctor`: every `secrets.*`/`vars.*` the workflows reference, and whether it is actually configured. Flags secrets that PR-triggered workflows read but the **Dependabot** store lacks — those silently resolve to `""` on dependency PRs. `-- --list` for the required set without touching the network |
 | `//tools/gomod:tidy` | `go mod tidy` across the `replace`-coupled Go modules (library ↔ go-foundation examples), which Dependabot cannot keep in step on its own. The fix side of `//tools/gomod:check` |
