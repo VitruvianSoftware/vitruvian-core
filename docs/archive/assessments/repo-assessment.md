@@ -43,12 +43,12 @@ A **polyglot Bazel monorepo** (Bazel 9.1.x via Bzlmod) serving as the single sou
 | Directories | `kebab-case` | `oauth-user-inspector/`, `mcp-slack/` |
 | Pulumi project names | `kebab-case` | `oauth-user-inspector`, `repo-config` |
 | Pulumi stack names | `kebab-case` | `development`, `nonproduction`, `production` |
-| GitHub Environments | `{app}-{env}` kebab-case | `__KEEP_TABULA_19__`, `oauth-user-inspector-production` |
-| GitHub workflow files | `{app}-{action}.yaml` kebab-case | `__KEEP_TABULA_27__`, `oauth-user-inspector-deploy.yaml` |
+| GitHub Environments | `{app}-{env}` kebab-case | `tabula-development`, `oauth-user-inspector-production` |
+| GitHub workflow files | `{app}-{action}.yaml` kebab-case | `delivery-vitruvian-tabs.yaml`, `oauth-user-inspector-deploy.yaml` |
 | Bazel targets | `snake_case` (Bazel convention) | `image_push`, `migrate_deploy_bin` |
 | Go packages | `snake_case` (Go convention) | `cloud_run`, `secret_manager` |
-| GCP project IDs | `{app}-{env}-{seq}` kebab-case | `__KEEP_TABULA_17__` |
-| GCP resources | `{app}-{qualifier}-{env}` kebab-case | `__KEEP_TABULA_1__` |
+| GCP project IDs | `{app}-{env}-{seq}` kebab-case | `tabula-development-0001` |
+| GCP resources | `{app}-{qualifier}-{env}` kebab-case | `tabula-api-development` |
 
 **Existing-dir renames (deferred to Phase 3, ride the Pulumi reorg):**
 
@@ -87,7 +87,7 @@ A **polyglot Bazel monorepo** (Bazel 9.1.x via Bzlmod) serving as the single sou
 |---------------|-----------------|-------------|
 | Root (`vitruvian-core`) | Copybara sync auth (deploy keys, GitHub secrets) | — |
 | `lab-gmail/` | Personal GCP infra — Cloud Run (lab-gmail), Cloud Build, Secret Manager, IAM, Storage | `personal-llc` |
-| `vitruvian-tabs/` | Vitruvian Tabs API — Cloud Run v2 (blue-green), Artifact Registry, 5 secrets | `__KEEP_TABULA_18__` |
+| `vitruvian-tabs/` | Vitruvian Tabs API — Cloud Run v2 (blue-green), Artifact Registry, 5 secrets | `tabula-dev-0001` |
 | `oauth-user-inspector/infra/app/` | OAuth Inspector — Cloud Run v2, DomainMapping, Cloudflare CNAME | `prj-{d,n,p}-bu1-oss-floating-*` |
 | `oauth-user-inspector/infra/identity/` | Per-env deploy/runtime SAs + shared `foundation-pool` WIF binding | `prj-{d,n,p}-bu1-oss-floating-*` |
 | `dev-local/` | Homelab k8s platform components (Helm charts) | — |
@@ -112,7 +112,7 @@ infrastructure/pulumi/
 │
 ├── apps/                                 # Per-app infra (uses pkg/)
 │   ├── vitruvian-tabs/                           # deploy stack — 3 envs: dev/nonprod/prod
-│   ├── __KEEP_TABULA_28__-identity/           # bootstrap: WIF pool/provider + SAs (separate lifecycle)
+│   ├── tabula-deploy-identity/           # bootstrap: WIF pool/provider + SAs (separate lifecycle)
 │   ├── oauth-user-inspector/             # deploy stack — 3 envs
 │   └── oauth-user-inspector-deploy-identity/  # bootstrap: WIF (kept separate, not folded in)
 │                                         # nexus-agent has no hosted infra today —
@@ -269,7 +269,7 @@ jobs:
 **Each app's deploy workflow becomes a thin caller:**
 
 ```yaml
-# __KEEP_TABULA_27__
+# delivery-vitruvian-tabs.yaml
 uses: ./.github/workflows/_deploy-cloud-run.yaml
 with:
   app-name: vitruvian-tabs
@@ -473,7 +473,7 @@ Two gates are absent today and both are cheap, high-leverage, and belong in Phas
 ```go
 // infrastructure/pulumi/platform/repo-config/main.go
 teams := map[string]string{
-    "__KEEP_TABULA_38__":           "Vitruvian Tabs application team",
+    "tabula-team":           "Vitruvian Tabs application team",
     "devx-team":             "Developer experience CLI team",
     "homelab-team":          "Homelab CLI and k8s apps team",
     "mcp-slack-team":        "MCP Slack server team",
@@ -503,7 +503,7 @@ Lock down visibility per app so an app's internals are `//<app>/...:__subpackage
 
 #### 6.3 GCP Project Convention (P1)
 
-**Naming:** `{app}-{env}-{seq}` kebab-case (e.g., `__KEEP_TABULA_17__`).
+**Naming:** `{app}-{env}-{seq}` kebab-case (e.g., `tabula-development-0001`).
 **Driven by Pulumi config**, never hardcoded. GitHub Environment variables hold the project ID.
 
 **GCP Organization/Folders are NOT possible with a personal `@gmail.com` account.** The naming convention serves as your logical hierarchy until a Workspace domain is adopted.
@@ -547,7 +547,7 @@ The doc above is strong on deploy *standardization* but light on operational bla
 | E | **`actionlint` absent** (§5.7) | The whole scaling plan rests on hand-tuned workflow YAML that nothing lints; a drifted required-check name silently wedges the queue | **P1** |
 | F | **ArgoCD AppProjects are wildcard** | `clusterResourceWhitelist: '*'`, destinations `'*'` — no per-app namespace/RBAC scoping, so any app's manifests can write any namespace. Split `applications-project` per app | **P1** |
 | G | **Single cluster / single env for the platform** | The Cloud Run ladder adds dev→nonprod→prod for *apps*, but the GitOps platform itself is one cluster / one ArgoCD / permissive projects — every platform change is cluster-wide blast radius | **P2** |
-| H | **No cross-workflow concurrency on `vitruvian-tabs-release` / `charts-publish`** | Two rapid merges can race a release tag / GHCR chart push (`__KEEP_TABULA_28__` and `oauth-deploy` already guard this; release/publish don't) | **P2** |
+| H | **No cross-workflow concurrency on `vitruvian-tabs-release` / `charts-publish`** | Two rapid merges can race a release tag / GHCR chart push (`delivery-vitruvian-tabs` and `oauth-deploy` already guard this; release/publish don't) | **P2** |
 
 > **Note on the reusable deploy workflow (§5.3):** `pulumi stack select "${env}"` presumes a committed `Pulumi.<env>.yaml` per app+env. Today only `development`/`dev` stacks exist — **there are zero `nonproduction`/`production` stacks**. The env ladder is not traversable until those stack files are committed; do not `--create` empty, config-less stacks on the fly. Commit the missing stacks as part of the oauth alignment / ladder work.
 

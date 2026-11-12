@@ -177,7 +177,7 @@ Criteria dynamically adapt based on **`spec.type`**:
 
 | Component | Archetype | Owner | Lifecycle | Security | Reliability | Quality | Delivery | Overall Tier |
 | :--- | :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
-| **`vitruvian-tabs`** | `service` | `__KEEP_TABULA_38__` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |
+| **`vitruvian-tabs`** | `service` | `tabula-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |
 | **`oauth-user-inspector`** | `service` | `oauth-user-inspector-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |
 | **`backstage`** | `service` | `platform-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |
 | **`buzz`** | `service` | `platform-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |

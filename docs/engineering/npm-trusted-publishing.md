@@ -8,10 +8,10 @@ one per stack, not one per project. While any stack is updating, an update to
 *any other* stack is rejected immediately:
 
 ```
-error: [409] Conflict: You have a running update for the stack '__KEEP_TABULA_36__/development'.
+error: [409] Conflict: You have a running update for the stack 'pulumi_tabula_web/development'.
 Individual user accounts do not support concurrent updates. Create an organization to have
 concurrent updates, wait for this update to complete, or run
-`pulumi cancel -s __KEEP_TABULA_36__/development` to cancel the ongoing update.
+`pulumi cancel -s pulumi_tabula_web/development` to cancel the ongoing update.
 ```
 
 Note what the message names: the stack holding the lock is a **completely

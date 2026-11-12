@@ -140,7 +140,7 @@ For a **local k8s** cluster, `devx` provisions zero/multi-node K3s; the `.devcon
 
 The two Cloud Run apps each have a per-app GCP **dev** project for runtime secrets/integration:
 
-- `vitruvian-tabs` → `prj-d-bu2-oss-floating-c3d1` (GitHub Environment `__KEEP_TABULA_19__`)
+- `vitruvian-tabs` → `prj-d-bu2-oss-floating-c3d1` (GitHub Environment `tabula-development`)
 - `oauth-user-inspector` → `prj-d-bu1-oss-floating-648a` (GitHub Environment `oauth-user-inspector-development`)
 
 There is **no documented local-vs-dev-project split** yet — that's a known local-dev gap. Runtime secrets live in that project's GCP Secret Manager and are read at runtime (never checked out locally); see Section 7.
@@ -352,7 +352,7 @@ Three storage tiers, each with a clear owner:
 **Local vs CI:**
 
 - **Local:** uncommitted/gitignored files — `Pulumi.<stack>.yaml`, `~/.kube/<cluster>.yaml`, per-app GCP dev creds, the `.env` files in Section 3.4.
-- **CI:** the *same* secrets are replicated into **GitHub pipeline secrets** and injected as env at run time. Scope is via **per-app GitHub Environments** (the "vitruvian-tabs model": `__KEEP_TABULA_19__`, `oauth-user-inspector-development`); shared-infra creds stay repo-level. The only repo-level GitHub secret on the deploy path is `PULUMI_ACCESS_TOKEN` (+ `BUILDBUDDY_API_KEY` for `vitruvian-tabs`'s Bazel build).
+- **CI:** the *same* secrets are replicated into **GitHub pipeline secrets** and injected as env at run time. Scope is via **per-app GitHub Environments** (the "vitruvian-tabs model": `tabula-development`, `oauth-user-inspector-development`); shared-infra creds stay repo-level. The only repo-level GitHub secret on the deploy path is `PULUMI_ACCESS_TOKEN` (+ `BUILDBUDDY_API_KEY` for `vitruvian-tabs`'s Bazel build).
 
 > **Former live violation (resolved in code):** `infrastructure/pulumi/platform/repo_config/Pulumi.dev.yaml` used to commit a `secure:`-encrypted BuildBuddy key read via `cfg.RequireSecret` with no env fallback. The blob is removed and `repo_config` now routes through the shared `secrets.EnvOrConfigOptional` helper (issue #456). The remaining step is the operator key rotation — `bazel run //tools/rotate-buildbuddy-key`. See the Alignment Gaps doc.
 
@@ -391,7 +391,7 @@ flowchart TD
     SM -->|fail| STOP["live revision keeps serving: nothing to roll back"]
 ```
 
-- **Every app is delivered by its own GENERATED workflow, `.github/workflows/delivery-<app>.yaml`** (delivery-orchestrator Phase 2, `docs/superpowers/specs/2026-08-19-delivery-orchestrator-design.md`), named by each unit's `delivery(app = ...)`. Apps never share a queue: a run waiting on one app's Environment approval holds back only that app. In each, one `orchestrate` job decides which of that app's units a push affects, from the `delivery()` declarations in the Bazel graph, and per-unit job chains deploy `…-development` on an affected push and `…-nonproduction`/`…-production` on a published `tabula-api-v*` / `__KEEP_TABULA_33__-v*` / `oauth-user-inspector-v*` release, each rung behind its dev-soak interlock and its GitHub Environment. Edit the `delivery()` block next to the code, never the workflow: `bazel run //tools/ci:gen` regenerates it and tidy-check fails on drift.
+- **Every app is delivered by its own GENERATED workflow, `.github/workflows/delivery-<app>.yaml`** (delivery-orchestrator Phase 2, `docs/superpowers/specs/2026-08-19-delivery-orchestrator-design.md`), named by each unit's `delivery(app = ...)`. Apps never share a queue: a run waiting on one app's Environment approval holds back only that app. In each, one `orchestrate` job decides which of that app's units a push affects, from the `delivery()` declarations in the Bazel graph, and per-unit job chains deploy `…-development` on an affected push and `…-nonproduction`/`…-production` on a published `tabula-api-v*` / `tabula-web-v*` / `oauth-user-inspector-v*` release, each rung behind its dev-soak interlock and its GitHub Environment. Edit the `delivery()` block next to the code, never the workflow: `bazel run //tools/ci:gen` regenerates it and tidy-check fails on drift.
 - **There are no hand-written per-app deploy workflows** (delivery-orchestrator Phase 3): the eight that existed, and the reusable gate they shared, were deleted once the generated lane had run a full release cycle — see git history for what they looked like. Break-glass is the app's `delivery-<app>.yaml` `workflow_dispatch` (a `unit` + an `environment`) or the unit's `bazel run` target. The extension bundle still shares vitruvian-tabs's gate universe via `graph_targets` on the vitruvian-tabs units, so the bundle and the API re-stamp together (the update-banner coupling).
 - **Advisory Pulumi previews:** PRs touching `apps/suites/vitruvian-tabs/infra/app and oauth-user-inspector,pkg}` get a `pulumi preview --diff` posted as a sticky PR comment (`pulumi-preview.yaml`). Image/traffic lines are expected noise (deploy-time inputs are absent at preview); **the signal is creates/deletes/REPLACES**.
 - **App metadata:** each app's `catalog-info.yaml` records its owner team, deploy/release workflow, targets, and environments — conformance enforces it exists and its owner matches CODEOWNERS.
@@ -400,7 +400,7 @@ flowchart TD
 
 ### Deploy identity (WIF)
 
-Deploy auth is **keyless** Workload Identity Federation per GCP project, **codified as a Pulumi bootstrap**. The reference is `apps/web/oauth-user-inspector/infra/identity` (repo-scoped WIF pool/provider + least-privilege deploy SA + runtime SA). **`vitruvian-tabs`'s WIF predates this and is click-ops** — a known gap; **🎯 Target** is a `__KEEP_TABULA_28__-identity` Pulumi project mirroring the reference.
+Deploy auth is **keyless** Workload Identity Federation per GCP project, **codified as a Pulumi bootstrap**. The reference is `apps/web/oauth-user-inspector/infra/identity` (repo-scoped WIF pool/provider + least-privilege deploy SA + runtime SA). **`vitruvian-tabs`'s WIF predates this and is click-ops** — a known gap; **🎯 Target** is a `tabula-deploy-identity` Pulumi project mirroring the reference.
 
 ### Releases
 

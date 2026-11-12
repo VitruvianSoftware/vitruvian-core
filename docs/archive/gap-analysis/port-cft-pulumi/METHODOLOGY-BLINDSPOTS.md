@@ -142,7 +142,7 @@ the workflows against what `repo_config` declares, then adversarial verify). **1
 **The headline is reassuring: no ACTIVE value drift.** Every declared `GCP_REGION`,
 `GCP_PROJECT_ID`, deploy-SA and WIF-provider value is correct — the oauth/networks/repo_config
 region-consistency work aligned them. Notably the `${{ vars.GCP_REGION || 'us-central1' }}`
-fallbacks (`__KEEP_TABULA_27__:148`, `oauth-user-inspector-deploy.yaml:149`,
+fallbacks (`delivery-vitruvian-tabs.yaml:148`, `oauth-user-inspector-deploy.yaml:149`,
 `_deploy-cloud-run.yaml:209`) were **refuted as a live bug**: the values behind them are
 correct, so nothing is mis-deploying. The next `us-south1` is **not** sitting here today.
 (The fallback fragility is still worth removing — a missing var would default silently rather

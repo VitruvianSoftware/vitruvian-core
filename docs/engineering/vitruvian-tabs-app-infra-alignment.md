@@ -15,9 +15,9 @@ oauth-user-inspector made in `business_unit_1`, applied to vitruvian-tabs in `bu
 
 | env | leaf owns service | app stack | custom domain | serving |
 |---|---|---|---|---|
-| development   | ✅ `__KEEP_TABULA_1__`   | DomainMapping + Record only | __KEEP_TABULA_9__     | ✅ |
-| nonproduction | ✅ `__KEEP_TABULA_2__` | DomainMapping + Record only | __KEEP_TABULA_10__ | ✅ |
-| production    | ✅ `__KEEP_TABULA_3__`    | DomainMapping + Record only | __KEEP_TABULA_11__         | ✅ |
+| development   | ✅ `tabula-api-development`   | DomainMapping + Record only | tabula-api.dev.vitruviansoftware.dev     | ✅ |
+| nonproduction | ✅ `tabula-api-nonproduction` | DomainMapping + Record only | tabula-api.staging.vitruviansoftware.dev | ✅ |
+| production    | ✅ `tabula-api-production`    | DomainMapping + Record only | tabula-api.vitruviansoftware.dev         | ✅ |
 
 The per-env §7 runbook that was actually executed — including the two non-obvious dependencies
 (re-run `repo_config` after stage-4 so the app-deploy env gets `GCP_SERVICE_ACCOUNT`; the
@@ -39,7 +39,7 @@ Record post-cutover); the deploy-identity stayed app-owned (the leaf reads no st
 
 **Stage-5 bu2 app-infra leaves (#1061).** `gcp-app-infra/business_unit_2/{development,
 nonproduction,production}` now mirror the bu1 leaves: each instantiates `modules/serverless_space`
-for vitruvian-tabs and ships **inert** (`__KEEP_TABULA_37__: "false"`). The per-app config replicates
+for vitruvian-tabs and ships **inert** (`tabula_workload_enabled: "false"`). The per-app config replicates
 vitruvian-tabs's live Cloud Run service (base name `tabula-api`, runtime SA, `TABULA_` prefix, region
 `us-central1`, max-instances 10, allUsers invoker, the plain env vars) so a future post-import
 preview can be empty — **subject to the blocker in §3.**
@@ -62,7 +62,7 @@ local exception to pipeline-only), then a flip via PR.
 ### 2.1 Stage-4 deploy-identity adoption
 
 Unlike oauth — whose deploy identity is already minted in `gcp-projects` (bu1) via
-`app_deploy_identity` (#999) — vitruvian-tabs's `__KEEP_TABULA_28__` and `__KEEP_TABULA_29__` SAs are still minted by
+`app_deploy_identity` (#999) — vitruvian-tabs's `tabula-deploy` and `tabula-rt` SAs are still minted by
 `apps/suites/vitruvian-tabs/infra/identity`. To match the pattern, `gcp-projects/business_unit_2/<env>` must own them.
 
 Because the SAs **already exist**, adding them to stage-4 and applying would fail
@@ -73,8 +73,8 @@ it is done deliberately, dev-first, verified between environments — not batche
 
 ### 2.2 Workload cutover (§7)
 
-Per env: import the running `__KEEP_TABULA_4__` service into the bu2 stage-5 leaf → confirm an
-empty preview → flip `__KEEP_TABULA_37__` to `true` → state-delete from `apps/suites/vitruvian-tabs/infra/app`.
+Per env: import the running `tabula-api-<env>` service into the bu2 stage-5 leaf → confirm an
+empty preview → flip `tabula_workload_enabled` to `true` → state-delete from `apps/suites/vitruvian-tabs/infra/app`.
 **Blocked on §3.**
 
 ---
@@ -88,7 +88,7 @@ empty preview → flip `__KEEP_TABULA_37__` to `true` → state-delete from `app
   (`bazel run <project>:import -- …`), so the §7 adoptions run behind a target per principles §2.2.
 - **⚠️ NEW hard blocker for BOTH apps: `serverless_space` has no custom-domain support.** The oauth
   bu1 dev cutover was **rolled back** for exactly this (#1060), and the archetype creates no
-  DomainMapping / Cloudflare record. vitruvian-tabs serves on `__KEEP_TABULA_12__`
+  DomainMapping / Cloudflare record. vitruvian-tabs serves on `tabula-api.*.vitruviansoftware.dev`
   (created today by `apps/suites/vitruvian-tabs/infra/app`), so cutting the workload onto the archetype as-is would
   **drop vitruvian-tabs's custom domains** — the same wall oauth hit. This is shared-archetype work another
   effort is actively on; adding domain support to `serverless_space` in parallel would collide, so
@@ -99,7 +99,7 @@ empty preview → flip `__KEEP_TABULA_37__` to `true` → state-delete from `app
 ## 3. ⚠️ Blocker: revision-name format mismatch (tabula-only) — RESOLVED in #1064, kept for context
 
 `serverless_space` names revisions `<serviceName>-<revisionSuffix>`, i.e.
-`__KEEP_TABULA_1__-<8 hex of digest>`. Its test `TestRevisionNameMatchesTheAppStackFormat`
+`tabula-api-development-<8 hex of digest>`. Its test `TestRevisionNameMatchesTheAppStackFormat`
 pins exactly this (`oauth-user-inspector-development-abc12345`).
 
 vitruvian-tabs's app stack names revisions `<serviceName>-<shortDigest>-<configHash>` (a 6-char sha256 of

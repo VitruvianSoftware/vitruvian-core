@@ -127,8 +127,8 @@ flowchart TD
 
     subgraph Units["Affected Cloud Run Units (development)"]
         OAUTH["oauth-user-inspector-development"]
-        TAB_WEB["__KEEP_TABULA_5__"]
-        TAB_API["__KEEP_TABULA_1__"]
+        TAB_WEB["tabula-web-development"]
+        TAB_API["tabula-api-development"]
     end
 
     APP_SRC -->|Scoped path match| EVAL

@@ -44,7 +44,7 @@ Uniform across **all 6 envs** (bu1 oauth ×3, bu2 vitruvian-tabs ×3):
   owns the workload — `pkg:index:CloudRun` component → child `gcp:cloudrunv2/service:Service`
   (**`deletionProtection=true`**) + a sibling `gcp:cloudrunv2/serviceIamMember:ServiceIamMember`
   (`<app>-public-invoker`). The workload cutover DID land here.
-- **App stack** (`ipv1337/pulumi_oauth_user_inspector/<env>`, `ipv1337/__KEEP_TABULA_35__/<env>`,
+- **App stack** (`ipv1337/pulumi_oauth_user_inspector/<env>`, `ipv1337/pulumi_tabula_app/<env>`,
   5 resources): owns only the `gcp:cloudrun/domainMapping:DomainMapping` (+ cloudflare CNAME).
 
 Consequence: the scaffolding-only leaf program declares zero workload, so a leaf `pulumi up`
@@ -73,7 +73,7 @@ release-please merge), so merging this PR does not auto-trigger it — there is 
 - `foundation-app-deploy.yaml`: **no change** — the digest guard stays as the real safety net.
 
 ## State migration (per env, after the PR merges — the deliberate live step)
-The 6 live services (`oauth-user-inspector-<env>`, `__KEEP_TABULA_4__`) currently sit in
+The 6 live services (`oauth-user-inspector-<env>`, `tabula-api-<env>`) currently sit in
 the **foundation leaf** Pulumi state. Recreate is the safe path (nothing is launched):
 
 For each env (bu1: oauth ×3 component `oauth-user-inspector`; bu2: vitruvian-tabs ×3 component `vitruvian-tabs`):
@@ -91,9 +91,9 @@ For each env (bu1: oauth ×3 component `oauth-user-inspector`; bu2: vitruvian-ta
    **Do NOT** let `pulumi up` delete it — `deletionProtection=true` blocks a provider delete.
    (`gcloud run services delete` is unaffected — the guard is provider-side on `up`, not on gcloud.)
 2. `gcloud run services delete <service> --region us-central1 --project <oss-floating> --quiet`
-   (`<service>` = `oauth-user-inspector-<env>` / `__KEEP_TABULA_4__`; removes the live service so
+   (`<service>` = `oauth-user-inspector-<env>` / `tabula-api-<env>`; removes the live service so
    the app recreate is a clean create, not a 409 — brief gap is free, not launched).
-3. Run the app's own deploy pipeline (`oauth-user-inspector-deploy` / `__KEEP_TABULA_28__`,
+3. Run the app's own deploy pipeline (`oauth-user-inspector-deploy` / `delivery-vitruvian-tabs`,
    now `workload-migrated:false` → PHASE=all) → recreates the service + invoker in the **app**
    stack with the built digest; the DomainMapping (already in app state) rebinds to the same name.
 4. Verify: service serves 200; foundation leaf `pulumi preview` is clean (no workload, just the
@@ -114,7 +114,7 @@ Execution notes (landmines the runbook above didn't anticipate):
   references `Service.Name`, so Pulumi treats the invoker as a *dependent* of the Service —
   deleting the Service first errors `…depend on it…`. Correct order: **invoker → Service →
   component**.
-- **Per-env `protect` flag was inconsistent.** `__KEEP_TABULA_25__` and `__KEEP_TABULA_26__` had Pulumi
+- **Per-env `protect` flag was inconsistent.** `tabula-nonprod` and `tabula-prod` had Pulumi
   `protect=true` on the Service+component (the others didn't), so those two needed
   `pulumi state delete … --force`. (This is the Pulumi `protect` flag, distinct from the
   provider-side `deletion_protection` input.)
@@ -131,6 +131,6 @@ Execution notes (landmines the runbook above didn't anticipate):
 
 ## Risks
 - `deletion_protection=true` blocks any Pulumi-side delete → use `pulumi state delete` (step 1), never `pulumi up`.
-- bu2 deploy-SA output gap: __KEEP_TABULA_28__ is minted in `apps/suites/vitruvian-tabs/infra/identity`, not stage-4, and foundation bu2 `remote.go` skips reading it — so the bu2 foundation contract can't export `tabula_deploy_service_account` (the app already sources it from identity; nothing breaks, contract is asymmetric).
+- bu2 deploy-SA output gap: tabula-deploy is minted in `apps/suites/vitruvian-tabs/infra/identity`, not stage-4, and foundation bu2 `remote.go` skips reading it — so the bu2 foundation contract can't export `tabula_deploy_service_account` (the app already sources it from identity; nothing breaks, contract is asymmetric).
 - Deleting `serverless_space` later removes its 409-safe revision naming — confirm `apps/suites/vitruvian-tabs/infra/app` parity via the shared `revision` pkg first (hence decision #4).
 - App stacks now depend on the foundation leaf's outputs being current — ensure the scaffolding leaf is deployed after any stage-4 change (decision #3 keeps it in the chain).

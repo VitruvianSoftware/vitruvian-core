@@ -139,7 +139,7 @@ Non-secret *identifiers* (project id, region, SA email, WIF provider) **are** co
 
 **In practice:** Sequence infra and app via **expand/contract (parallel change)**, encoded as pipeline ordering:
 
-1. **Expand** — apply *additive, backward-compatible* infra first (a new secret, env var, expand-only DB migration, OAuth redirect URI), with the app deploy **gated** to proceed only on its success. Cross-job `needs:` (or an ordered step) is the mechanism; `__KEEP_TABULA_28__` is the reference — Prisma `migrate deploy` and a no-traffic candidate land before any traffic shifts.
+1. **Expand** — apply *additive, backward-compatible* infra first (a new secret, env var, expand-only DB migration, OAuth redirect URI), with the app deploy **gated** to proceed only on its success. Cross-job `needs:` (or an ordered step) is the mechanism; `delivery-vitruvian-tabs` is the reference — Prisma `migrate deploy` and a no-traffic candidate land before any traffic shifts.
 2. **Deploy** the app against the now-present infra.
 3. **Contract** — remove the old infra (drop a column, delete a redirect URI, tighten a binding) only **after** the old revision is gone, in a *later* run. Never contract ahead of the rollover; expand changes must stay backward-compatible so a half-applied pipeline (infra ahead of app) is always safe.
 

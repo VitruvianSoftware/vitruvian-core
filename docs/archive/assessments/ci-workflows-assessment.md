@@ -17,7 +17,7 @@ The CI **core is strong and correct** — the June 2026 gaps are closed and hold
 
 - **Merge-queue invariant holds** for all 12 required checks: each always reports a status on the `merge_group` commit; heavy *steps* are path-gated with a fail-safe ("run unless the filter is CERTAIN nothing relevant changed"), so no required check can hang the queue while docs-only PRs still fast-path.
 - **Hot path is not cron-polluted** — the nightly full-graph correctness sweep lives in `periodic-full-sweep.yaml`, not `ci.yaml`.
-- **Non-cancelling concurrency** guards nearly every state-mutating workflow (apps-release, __KEEP_TABULA_28__, pulumi-library-release, repo-config, …).
+- **Non-cancelling concurrency** guards nearly every state-mutating workflow (apps-release, delivery-vitruvian-tabs, pulumi-library-release, repo-config, …).
 - **`pulumi-preview.yaml` per-leg path-gating is exemplary** — the exact pattern the foundation lane should have copied.
 - **Dependency-aware path scoping exists** — `copybara-sync-auth-apply.yaml` includes the shared `pkg/copybara_sync/**` its consumer imports (the pattern `repo_config` should follow — see #811).
 
@@ -56,7 +56,7 @@ The CI **core is strong and correct** — the June 2026 gaps are closed and hold
 
 ### Correctness — mostly right, real bugs in the deploy path
 - **Foundation deploy has no `concurrency:`** on production `pulumi up` (#805) — the sole outlier among deploy workflows; with manual-approval gates holding runs open, org infra can be applied out of order. This is the [#499](https://github.com/VitruvianSoftware/vitruvian-core/issues/499) serialize-pattern that foundation never adopted.
-- **Blue-green smoke can false-green** (#808) — `__KEEP_TABULA_28__` silently falls back to the *stable* revision URL when the candidate tag doesn't resolve, "passing" against the old revision and promoting the untested one. A bug in the [#204](https://github.com/VitruvianSoftware/vitruvian-core/issues/204) deploy.
+- **Blue-green smoke can false-green** (#808) — `delivery-vitruvian-tabs` silently falls back to the *stable* revision URL when the candidate tag doesn't resolve, "passing" against the old revision and promoting the untested one. A bug in the [#204](https://github.com/VitruvianSoftware/vitruvian-core/issues/204) deploy.
 - **Migrations run before blue-green with no rollback** (#819) — the [#204](https://github.com/VitruvianSoftware/vitruvian-core/issues/204) "with rollback" claim doesn't cover DB migrations.
 
 ### Alignment by app/subsystem type — Go strong, the rest has holes
