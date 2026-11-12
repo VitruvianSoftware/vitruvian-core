@@ -56,3 +56,9 @@ delivery-stripe.yaml unit environment
 # 2026-11-09 on James's go-ahead ("Let wren run it"). It changes live sign-in
 # for the relay's clients only; the stack refuses the role check without a grant.
 zitadel-apps-relay-apply.yaml action
+# Rebuilds the site's downloads list from the latest releases and opens (or
+# refreshes) its pull request, which the merge queue still tests. No inputs.
+# Its daily 05:00 UTC run is otherwise the only way to refresh a stale or
+# conflicting downloads PR. Added 2026-11-12 at James's request, after the brand
+# rename left that PR conflicting with main.
+site-sync-downloads.yaml
