@@ -866,7 +866,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                  Pages.Block.courierEnabled?, Pages.Block.courierAnnounce?, Pages.Block.courierAddress?, Pages.Block.courierNetworks?,
                  Pages.Block.muteOwnMessages?, Pages.Block.pollInterval?,
                  Pages.Block.claudeCodeEnabled?, Pages.Block.antigravityEnabled?, Pages.Block.opencodeEnabled?,
-                 Pages.Block.announcementStyle?, Pages.Block.styleModel?, Pages.Block.localEngine?, Pages.Block.geminiVoice?:
+                 Pages.Block.announceSource?, Pages.Block.announcementStyle?, Pages.Block.styleModel?, Pages.Block.localEngine?, Pages.Block.geminiVoice?:
                 guard try saveSetting(event, picked: picked) else { return .keep }
             case let id? where Pages.Block.networkKey(id) != nil:
                 // A Beeper or Courier network's switch, saved as the others are.
@@ -1023,6 +1023,9 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         case Pages.Block.speechLength?:
             guard let picked, SpeechLength(rawValue: picked) != nil else { return false }
             _ = try applySetting(.speechLength, picked)
+        case Pages.Block.announceSource?:
+            guard let picked, AnnounceSourceLabel(rawValue: picked) != nil else { return false }
+            _ = try applySetting(.announceSource, picked)
         case Pages.Block.announcementStyle?:
             guard let picked else { return false }
             return try applySetting(.announcementStyle, picked)
