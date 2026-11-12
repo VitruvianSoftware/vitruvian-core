@@ -62,7 +62,7 @@ const NOT_SET_UP: &str = "sayClipboard: refused, Set up Vitruvian Speaker first"
 
 const MORE_SETTINGS: &str = "moreSettings";
 const MORE_SETTINGS_CAPTION: &str =
-    "More settings: Vitruvian Settings \u{203a} Extensions \u{203a} Vitruvian Speaker";
+    "More settings: Vitruvian Settings \u{203a} Extensions \u{203a} Speaker";
 const QUIT_AGAIN: &str = "door.quitAgain";
 const OLD_APP: &str = "This copy of the app is older than 1.19";
 

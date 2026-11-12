@@ -240,10 +240,10 @@ public enum Pages {
     public static let pendingDropped = "The waiting volume or mute change was dropped: the speaker changed"
     /// Where to fix a chat problem, for an app that cannot open Vitruvian Speaker's
     /// settings (3.57 and before): the Section menu's Chats.
-    public static let fixChatInSettings = "Fix it in Vitruvian Settings › Extensions › Vitruvian Speaker › Section: Chats"
+    public static let fixChatInSettings = "Fix it in Vitruvian Settings › Extensions › Speaker › Section: Chats"
     /// The same, for an app that draws every section on one page: there is
     /// no Section menu, only Chats on the page.
-    public static let fixChatInSettingsOnOnePage = "Fix it in Vitruvian Settings › Extensions › Vitruvian Speaker › Chats"
+    public static let fixChatInSettingsOnOnePage = "Fix it in Vitruvian Settings › Extensions › Speaker › Chats"
     /// The warning's button, for an app that can: opens Vitruvian Speaker's
     /// settings on Chats.
     public static let openChatSettingsButton = "Open Chats…"
@@ -282,7 +282,7 @@ public enum Pages {
         + "with no key, or when Gemini fails, this Mac uses the Mac voice below."
     /// Where the rest of Vitruvian Speaker's settings are, at the foot of the
     /// island, for an app that cannot open them (3.57 and before).
-    public static let moreSettings = "More settings: Vitruvian Settings › Extensions › Vitruvian Speaker"
+    public static let moreSettings = "More settings: Vitruvian Settings › Extensions › Speaker"
     /// The button that opens them, for an app that can.
     public static let moreSettingsButton = "More settings…"
     /// The island's button that speaks what is on the clipboard.

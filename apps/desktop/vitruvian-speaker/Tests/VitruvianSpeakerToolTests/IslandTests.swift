@@ -1016,7 +1016,7 @@ final class IslandTests: XCTestCase {
             let page = tool.islandPage()
             XCTAssertNil(button(page, Pages.Block.openChatSettings), "\(features)")
             XCTAssertTrue(texts(page).contains(Pages.fixChatInSettings), "\(features)")
-            XCTAssertTrue(Pages.fixChatInSettings.contains("Vitruvian Settings › Extensions › Vitruvian Speaker"))
+            XCTAssertTrue(Pages.fixChatInSettings.contains("Vitruvian Settings › Extensions › Speaker"))
             XCTAssertTrue(Pages.fixChatInSettings.hasSuffix("Section: Chats"))
             XCTAssertEqual(tool.islandEvent(PanelEvent(block: Pages.Block.openChatSettings, kind: .tap)), .keep, "\(features)")
             XCTAssertEqual(tool.section, .general)

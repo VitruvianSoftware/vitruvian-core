@@ -245,7 +245,7 @@ final class PagesTests: XCTestCase {
     }
 
     func testTheIslandEndsWithWhereTheOtherSettingsAre() {
-        XCTAssertEqual(Pages.moreSettings, "More settings: Vitruvian Settings › Extensions › Vitruvian Speaker")
+        XCTAssertEqual(Pages.moreSettings, "More settings: Vitruvian Settings › Extensions › Speaker")
         var status = Pages.Status()
         status.config = configured
         status.account = Pages.Account(isSignedIn: true, hasOAuthClient: true)
