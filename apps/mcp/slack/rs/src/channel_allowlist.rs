@@ -259,6 +259,14 @@ pub struct ChannelGuardOptions {
 }
 
 impl ChannelGuard {
+    pub fn is_unrestricted(&self) -> bool {
+        self.unrestricted
+    }
+
+    pub fn enforces_visibility(&self) -> bool {
+        self.enforce_visibility
+    }
+
     pub fn declared_visibility(&self, channel_id: &str) -> Option<ChannelVisibility> {
         if self.unrestricted {
             return None;
