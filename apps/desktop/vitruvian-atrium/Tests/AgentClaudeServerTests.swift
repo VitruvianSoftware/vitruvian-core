@@ -464,7 +464,7 @@ enum AgentClaudeServerTests {
 
     /// Preferences in which nothing but the page could use the limits.
     private static func limitsDefaults() -> UserDefaults {
-        let domain = "com.vitruviansoftware.atrium.tests.claude-limits-use"
+        let domain = "com.vitruviansoftware.vitruvian.tests.claude-limits-use"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defaults.set(false, forKey: DefaultsKey.notchAgentsLimitAlert)

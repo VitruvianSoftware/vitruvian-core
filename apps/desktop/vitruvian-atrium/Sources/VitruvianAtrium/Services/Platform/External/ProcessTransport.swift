@@ -38,7 +38,7 @@ package final class ProcessTransport: ToolTransport {
     private let input = Pipe()
     private let output = Pipe()
     private let errorOutput = Pipe()
-    private let writing = DispatchQueue(label: "com.vitruviansoftware.atrium.tool-input", qos: .utility)
+    private let writing = DispatchQueue(label: "com.vitruviansoftware.vitruvian.tool-input", qos: .utility)
     /// Bytes queued for the tool that it has not taken yet.
     private let unread = OSAllocatedUnfairLock(initialState: 0)
     private var wasStarted = false
@@ -261,7 +261,7 @@ package enum ToolProcessGroup {
 /// Reads a tool's standard output and standard error, on a queue of its
 /// own. Everything it holds is touched on that queue only.
 private final class OutputPump: @unchecked Sendable {
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.tool-output", qos: .utility)
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.tool-output", qos: .utility)
     private let output: FileHandle
     private let errorOutput: FileHandle
     private let linesPerSecond: Int

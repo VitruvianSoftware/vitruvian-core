@@ -131,7 +131,7 @@ package enum NotchNativePlayback {
 
     // `nonisolated(unsafe)`: set once, then only read.
     nonisolated(unsafe) private static let handle = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_LAZY)
-    private static let callbacks = DispatchQueue(label: "com.vitruviansoftware.atrium.now-playing-selection-callbacks")
+    private static let callbacks = DispatchQueue(label: "com.vitruviansoftware.vitruvian.now-playing-selection-callbacks")
     private static let lock = NSLock()
     // `nonisolated(unsafe)`: `lock` guards these six.
     nonisolated(unsafe) private static var selected: Target?

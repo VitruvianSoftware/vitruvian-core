@@ -94,7 +94,7 @@ enum ScreenshotFeatureTests {
         suite.expect(copyRetry.record(for: retryCaptureID, availableRecords: [copyRecord]) == nil,
                      "successful copying clears the pending retry")
 
-        let uploadDefaultsName = "com.vitruviansoftware.atrium.tests.screenshot-upload.\(UUID().uuidString)"
+        let uploadDefaultsName = "com.vitruviansoftware.vitruvian.tests.screenshot-upload.\(UUID().uuidString)"
         let uploadDefaults = ScratchDefaults.suite(named: uploadDefaultsName)!
         defer { uploadDefaults.removePersistentDomain(forName: uploadDefaultsName) }
         suite.expect(ScreenshotShareDuration.saved(in: uploadDefaults) == .oneHour,
@@ -996,7 +996,7 @@ enum ScreenshotFeatureTests {
                 && !persistentPolicy.takesFocus && persistentPolicy.closesOnCollapse
                 && persistentPolicy.showsDismissButton,
                "preview presentation keeps timed focus behavior while persistent confirmations stay dismissible without taking focus")
-        let focusDefaultsDomain = "com.vitruviansoftware.atrium.tests.screenshot-preview-focus.\(UUID().uuidString)"
+        let focusDefaultsDomain = "com.vitruviansoftware.vitruvian.tests.screenshot-preview-focus.\(UUID().uuidString)"
         let focusDefaults = ScratchDefaults.suite(named: focusDefaultsDomain)!
         defer { focusDefaults.removePersistentDomain(forName: focusDefaultsDomain) }
         focusDefaults.set(true, forKey: DefaultsKey.screenshotPreviewTakesFocus)
@@ -1045,7 +1045,7 @@ enum ScreenshotFeatureTests {
                                                               confirmationEnabled: false),
                "automatic actions honor confirmation preferences while failed or partial actions still expose recovery controls")
         // The decision route makes after the action ran, read from settings.
-        let routeDefaultsDomain = "com.vitruviansoftware.atrium.tests.screenshot-preview-route.\(UUID().uuidString)"
+        let routeDefaultsDomain = "com.vitruviansoftware.vitruvian.tests.screenshot-preview-route.\(UUID().uuidString)"
         let routeDefaults = ScratchDefaults.suite(named: routeDefaultsDomain)!
         defer { routeDefaults.removePersistentDomain(forName: routeDefaultsDomain) }
         func routePreview(_ action: ScreenshotDefaultAction, saved: Bool = false,
@@ -1133,7 +1133,7 @@ enum ScreenshotFeatureTests {
         suite.expect(!ScreenshotSupport.selectionAcceptsPointerInput(sessionIsOver: true,
                                                                capturePending: true),
                "both at once still ignores the pointer")
-        let captureMenuSuite = "com.vitruviansoftware.atrium.tests.capture-menu.\(UUID().uuidString)"
+        let captureMenuSuite = "com.vitruviansoftware.vitruvian.tests.capture-menu.\(UUID().uuidString)"
         let captureMenuDefaults = ScratchDefaults.suite(named: captureMenuSuite)!
         defer { captureMenuDefaults.removePersistentDomain(forName: captureMenuSuite) }
         for tool in ScreenCaptureTool.allCases {
@@ -3679,7 +3679,7 @@ enum ScreenshotFeatureTests {
                 }
             }
             GlobalShortcut.refreshLayoutLabels()
-            let suiteName = "com.vitruviansoftware.atrium.tests.editor-bindings.\(UUID().uuidString)"
+            let suiteName = "com.vitruviansoftware.vitruvian.tests.editor-bindings.\(UUID().uuidString)"
             let prefs = ScratchDefaults.suite(named: suiteName)!
             defer { prefs.removePersistentDomain(forName: suiteName) }
             prefs.set(false, forKey: DefaultsKey.screenshotToolShortcutsEnabled)
@@ -3941,7 +3941,7 @@ enum ScreenshotFeatureTests {
         suite.expect(Defaults.registeredDefaults[DefaultsKey.screenshotAddToShelf] as? Bool == false
                 && SettingsBackupSupport.exportKeys().contains(DefaultsKey.screenshotAddToShelf),
                "adding captures to the shelf ships off and travels in settings backups")
-        let captureShelfSuite = "com.vitruviansoftware.atrium.tests.capture-shelf.\(UUID().uuidString)"
+        let captureShelfSuite = "com.vitruviansoftware.vitruvian.tests.capture-shelf.\(UUID().uuidString)"
         let captureShelfDefaults = ScratchDefaults.suite(named: captureShelfSuite)!
         defer { captureShelfDefaults.removePersistentDomain(forName: captureShelfSuite) }
         func capturesGoToShelf(option: Bool, installed: Bool, on: Bool) -> Bool {
@@ -4009,7 +4009,7 @@ enum ScreenshotFeatureTests {
             developerOverride: "https://test.example/")
         suite.expect(testShareEndpoint.absoluteString == "https://test.example"
                 && ScreenshotSharingSupport.endpoint(
-                    bundleIdentifier: "com.vitruviansoftware.atrium",
+                    bundleIdentifier: "com.vitruviansoftware.vitruvian",
                     developerOverride: "https://test.example").absoluteString
                     == ScreenshotSharingSupport.productionEndpoint.absoluteString
                 && ScreenshotSharingSupport.endpoint(

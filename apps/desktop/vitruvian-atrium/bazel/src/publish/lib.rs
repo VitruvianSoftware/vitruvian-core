@@ -31,6 +31,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 pub const TAG_PREFIX: &str = "vitruvian-atrium-v";
+/// The tag prefix every release up to 3.89.0 looks for updates under, and the
+/// name its updater downloads (`Vitruvian-X.Y.Z-universal.dmg`). Those
+/// releases were called Vitruvian; they ask `git ls-remote` for
+/// `refs/tags/vitruvian-v*` only. Each production release is also published
+/// under this name, so a Mac still on one of them is offered the update.
+pub const LEGACY_TAG_PREFIX: &str = "vitruvian-v";
 pub const DEFAULT_BETA_TAG: &str = "vitruvian-atrium-beta-latest";
 pub const TAP: &str = "VitruvianSoftware/homebrew-tap";
 pub const USAGE: &str =
@@ -506,6 +512,10 @@ pub fn publish(
     }
 
     if plan.grade == PublishGrade::Production {
+        publish_legacy(r, &work, plan)?;
+    }
+
+    if plan.grade == PublishGrade::Production {
         if let Some(token) = &plan.homebrew_tap_token {
             update_tap(r, &work, &plan.version, token)?;
         }
@@ -518,6 +528,60 @@ pub fn publish(
         plan.grade.as_str()
     );
     Ok(())
+}
+
+/// The same universal DMG, as a release under the name earlier releases
+/// look for (`LEGACY_TAG_PREFIX`): its own tag on this release's commit, not
+/// marked latest, holding `Vitruvian-X.Y.Z-universal.dmg`. Their updater
+/// installs it only when the app inside has their bundle id, which the app
+/// keeps for that reason.
+fn publish_legacy(r: &mut dyn Runner, work: &Path, plan: &PublishPlan) -> Result<(), i32> {
+    let tag = format!("{}{}", LEGACY_TAG_PREFIX, plan.version);
+    let dir = work.join("legacy");
+    io_step("mkdir", fs::create_dir_all(&dir))?;
+    let dmg = dir.join(format!("Vitruvian-{}-universal.dmg", plan.version));
+    io_step(
+        "cp universal dmg",
+        fs::copy(
+            work.join(format!("VitruvianAtrium-{}-universal.dmg", plan.version)),
+            &dmg,
+        ),
+    )?;
+    if !r
+        .output(&Cmd::new("gh").args(["release", "view", &tag]))
+        .success()
+    {
+        run(
+            r,
+            &Cmd::new("gh").args([
+                "release",
+                "create",
+                &tag,
+                "--target",
+                &plan.sha,
+                "--latest=false",
+                "--title",
+                &format!("Vitruvian Atrium {} (update for Vitruvian 3.89.0 and earlier)", plan.version),
+                "--notes",
+                &format!(
+                    "The update path for Macs on Vitruvian 3.89.0 or earlier, which look for releases under this name. The release itself is {}.",
+                    plan.tag
+                ),
+            ]),
+        )?;
+    }
+    println!(
+        "Uploading {} to {}...",
+        dmg.file_name().unwrap_or_default().to_string_lossy(),
+        tag
+    );
+    run(
+        r,
+        &Cmd::new("gh")
+            .args(["release", "upload", &tag])
+            .path(&dmg)
+            .arg("--clobber"),
+    )
 }
 
 /// Points the Homebrew cask at this release's universal DMG.
@@ -1195,8 +1259,12 @@ mod tests {
             r.calls[0].starts_with("bazel build"),
             "no beta guard for production"
         );
-        assert_eq!(r.count("gh release view"), 0);
-        assert_eq!(r.count("gh release create"), 0);
+        assert_eq!(r.count("gh release view vitruvian-atrium"), 0);
+        assert_eq!(
+            r.count("gh release create"),
+            0,
+            "the old-name release is there already"
+        );
         assert_eq!(r.count("gh api"), 0);
         assert_eq!(r.count("gh release edit"), 0);
         assert_eq!(r.count("git"), 0, "no tap without a token");
@@ -1205,12 +1273,58 @@ mod tests {
             .iter()
             .filter(|c| c.starts_with("gh release upload"))
             .collect();
-        assert_eq!(uploads.len(), 5);
-        assert!(uploads
+        assert_eq!(uploads.len(), 6);
+        assert!(uploads[..5]
             .iter()
             .all(|u| u.starts_with("gh release upload vitruvian-atrium-v3.86.0 ")));
         assert!(uploads[0].contains("/VitruvianAtrium-3.86.0-arm64.dmg "));
         assert!(uploads[4].contains("/VitruvianAtrium-3.86.0.dmg "));
+        assert!(
+            uploads[5].starts_with("gh release upload vitruvian-v3.86.0 ")
+                && uploads[5].contains("/Vitruvian-3.86.0-universal.dmg "),
+            "the universal DMG also goes up under the name 3.89.0 and earlier update from: {}",
+            uploads[5]
+        );
+    }
+
+    #[test]
+    fn production_creates_the_old_name_release_when_it_is_missing() {
+        let s = scene("publish_legacy");
+        let e = env(&[
+            ("GRADE", "production"),
+            ("RELEASE_TAG", "vitruvian-atrium-v3.86.0"),
+        ]);
+        let plan = resolve_publish_plan(&[], &e, "3.86.0", SHA).unwrap();
+        let mut world = beta_world(Ok(""), "");
+        world.release_exists = false;
+        let mut r = world_runner(world);
+        assert_eq!(go(&s, &mut r, &plan), Ok(()));
+        let created: Vec<&String> = r
+            .calls
+            .iter()
+            .filter(|c| c.starts_with("gh release create"))
+            .collect();
+        assert_eq!(created.len(), 1);
+        assert!(
+            created[0].starts_with("gh release create vitruvian-v3.86.0 --target ")
+                && created[0].contains("--latest=false"),
+            "{}",
+            created[0]
+        );
+        let create_at = r
+            .calls
+            .iter()
+            .position(|c| c.starts_with("gh release create"))
+            .unwrap();
+        let upload_at = r
+            .calls
+            .iter()
+            .position(|c| c.starts_with("gh release upload vitruvian-v3.86.0"))
+            .unwrap();
+        assert!(
+            create_at < upload_at,
+            "the release is made before its DMG is uploaded"
+        );
     }
 
     #[test]

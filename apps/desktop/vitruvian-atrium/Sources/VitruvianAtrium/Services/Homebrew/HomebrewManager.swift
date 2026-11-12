@@ -36,7 +36,7 @@ package final class HomebrewManager: ObservableObject {
     @Published package private(set) var didOpenShellConfig = false
     @Published package private(set) var outdatedPackagesByID: [String: HomebrewPackageUpdate] = [:]
 
-    private let workQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.homebrew", qos: .userInitiated)
+    private let workQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.homebrew", qos: .userInitiated)
     private var searchGeneration = 0
     private var detailsGeneration = 0
     private var outdatedGeneration = 0

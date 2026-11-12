@@ -24,7 +24,7 @@ package final class RecentCaptureService: ObservableObject {
     private lazy var hotkey: QuickToolHotkey = RecentCaptureService.historyShortcut(opening: { [weak self] in
         self?.showHistoryWindow()
     })
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.recent-captures",
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.recent-captures",
                                       qos: .utility)
     private let generationLock = NSLock()
     /// Thread-safe; the queue empties it on a clear.

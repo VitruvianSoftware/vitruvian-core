@@ -15,7 +15,7 @@ import VitruvianAtriumDesign
 /// bundle id; and the only thing deleted is the app's own bundle, which is moved
 /// to the Trash (reversible). Nothing leaves the machine.
 package enum SelfUninstall {
-    private static var bundleID: String { Bundle.main.bundleIdentifier ?? "com.vitruviansoftware.atrium" }
+    private static var bundleID: String { Bundle.main.bundleIdentifier ?? "com.vitruviansoftware.vitruvian" }
 
     /// What clearing and uninstalling do, step by step, and the queues they
     /// run on. `system` is the real teardown; tests pass doubles that log

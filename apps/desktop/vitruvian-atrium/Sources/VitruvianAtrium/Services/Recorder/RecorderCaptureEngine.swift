@@ -44,7 +44,7 @@ package final class RecorderCaptureEngine: NSObject, @unchecked Sendable {
 
     package weak var delegate: RecorderCaptureEngineDelegate?
 
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.recorder.capture",
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.recorder.capture",
                                       qos: .userInitiated)
     private let lifecycleLock = NSLock()
     private var lifecycle = RecorderCaptureLifecycle()
@@ -248,7 +248,7 @@ package final class RecorderMicrophoneCapture: NSObject,
                                        @unchecked Sendable {
     package var onSample: ((CMSampleBuffer) -> Void)?
 
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.recorder.microphone",
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.recorder.microphone",
                                       qos: .userInitiated)
     private let session = AVCaptureSession()
     private var targetClock: CMClock?

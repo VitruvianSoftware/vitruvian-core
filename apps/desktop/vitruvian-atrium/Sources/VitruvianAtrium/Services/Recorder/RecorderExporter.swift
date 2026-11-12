@@ -424,7 +424,7 @@ package final class RecorderExporter: Sendable {
                              cancelled: Cancellation,
                              next: @escaping () -> CMSampleBuffer?,
                              onAppended: @escaping () -> Void) async {
-        let queue = DispatchQueue(label: "com.vitruviansoftware.atrium." + label, qos: .userInitiated)
+        let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian." + label, qos: .userInitiated)
         await withCheckedContinuation { continuation in
             let finished = OnceFlag()
             // AVFoundation invokes this callback only on the serial queue above.
@@ -508,7 +508,7 @@ package final class RecorderExporter: Sendable {
             return nil
         }
         let directory = cache
-            .appendingPathComponent(Bundle.main.bundleIdentifier ?? "com.vitruviansoftware.atrium",
+            .appendingPathComponent(Bundle.main.bundleIdentifier ?? "com.vitruviansoftware.vitruvian",
                                     isDirectory: true)
             .appendingPathComponent("Temporary Recording Uploads", isDirectory: true)
         do {

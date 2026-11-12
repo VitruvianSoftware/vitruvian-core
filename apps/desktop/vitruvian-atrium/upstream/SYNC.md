@@ -89,4 +89,4 @@ Every upstream commit is in the ledger, none is `pending`, and every port is on
   `source_lints_test` names the ones missing.
 - Upstream's brand, domains and services never come in
   ([`TRADEMARKS.md`](../TRADEMARKS.md)). Upstream's files keep upstream's
-  copyright notice. Reverse-DNS names use `com.vitruviansoftware.atrium`.
+  copyright notice. Reverse-DNS names use `com.vitruviansoftware.vitruvian`.

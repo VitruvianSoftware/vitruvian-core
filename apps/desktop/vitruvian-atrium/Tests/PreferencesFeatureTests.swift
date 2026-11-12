@@ -87,7 +87,7 @@ enum PreferencesFeatureTests {
         Defaults.migrateLiquidGlassIsland(in: glassDefaults, domainName: glassDomain)
         suite.expect(!glassDefaults.bool(forKey: DefaultsKey.notchLiquidGlassEnabled),
                "an explicit island choice survives later launches")
-        let companionDomain = "com.vitruviansoftware.atrium.tests.companion-beta.\(UUID().uuidString)"
+        let companionDomain = "com.vitruviansoftware.vitruvian.tests.companion-beta.\(UUID().uuidString)"
         let companionDefaults = ScratchDefaults.suite(named: companionDomain)!
         defer { companionDefaults.removePersistentDomain(forName: companionDomain) }
         // Setup writes every feature's availability, the companion's as off.

@@ -15,8 +15,8 @@ pub const RELEASE_APP_NAME: &str = "Vitruvian Atrium";
 pub const DEV_APP_NAME: &str = "Vitruvian Atrium (Developer)";
 pub const RELEASE_EXECUTABLE: &str = "VitruvianAtrium";
 pub const DEV_EXECUTABLE: &str = "VitruvianAtriumDeveloper";
-pub const RELEASE_BUNDLE_ID: &str = "com.vitruviansoftware.atrium";
-pub const DEV_BUNDLE_ID: &str = "com.vitruviansoftware.atrium.dev";
+pub const RELEASE_BUNDLE_ID: &str = "com.vitruviansoftware.vitruvian";
+pub const DEV_BUNDLE_ID: &str = "com.vitruviansoftware.vitruvian.dev";
 pub const NOW_PLAYING_ADAPTER: &str = "libVitruvianAtriumNowPlaying.dylib";
 pub const TARGET_TRIPLE: &str = "arm64-apple-macosx14.0";
 pub const ENTITLEMENTS_REL: &str = "Resources/VitruvianAtrium.entitlements";
@@ -188,7 +188,7 @@ pub fn build_rename_fan_helper_plistbuddy_commands(helper_id: &str) -> Vec<Strin
             "Set :BundleProgram Contents/Library/LaunchServices/{}",
             helper_id
         ),
-        "Delete :MachServices:com.vitruviansoftware.atrium.fan-control".to_string(),
+        "Delete :MachServices:com.vitruviansoftware.vitruvian.fan-control".to_string(),
         format!("Add :MachServices:{} bool true", helper_id),
     ]
 }
@@ -344,10 +344,10 @@ mod tests {
         let dev_var = resolve_variant(&flags);
         assert_eq!(dev_var.app_name, "Vitruvian Atrium (Developer)");
         assert_eq!(dev_var.executable, "VitruvianAtriumDeveloper");
-        assert_eq!(dev_var.app_bundle_id, "com.vitruviansoftware.atrium.dev");
+        assert_eq!(dev_var.app_bundle_id, "com.vitruviansoftware.vitruvian.dev");
         assert_eq!(
             dev_var.fan_helper_id,
-            "com.vitruviansoftware.atrium.dev.fan-control"
+            "com.vitruviansoftware.vitruvian.dev.fan-control"
         );
         assert_eq!(dev_var.stage_directory, "build/stage.noindex");
 
@@ -355,7 +355,7 @@ mod tests {
         let rel_var = resolve_variant(&rel_flags);
         assert_eq!(rel_var.app_name, "Vitruvian Atrium");
         assert_eq!(rel_var.executable, "VitruvianAtrium");
-        assert_eq!(rel_var.app_bundle_id, "com.vitruviansoftware.atrium");
+        assert_eq!(rel_var.app_bundle_id, "com.vitruviansoftware.vitruvian");
         assert_eq!(rel_var.stage_directory, "build/stage");
     }
 
@@ -407,12 +407,12 @@ mod tests {
         assert!(resolve_sdk_flags("/Applications/Xcode.app/SDKs/MacOSX.sdk").is_empty());
 
         let cmds = build_rename_fan_helper_plistbuddy_commands(
-            "com.vitruviansoftware.atrium.dev.fan-control",
+            "com.vitruviansoftware.vitruvian.dev.fan-control",
         );
         assert_eq!(cmds.len(), 4);
         assert_eq!(
             cmds[0],
-            "Set :Label com.vitruviansoftware.atrium.dev.fan-control"
+            "Set :Label com.vitruviansoftware.vitruvian.dev.fan-control"
         );
     }
 
@@ -430,7 +430,7 @@ mod tests {
 
         let legacy_args = build_codesign_args_for_target(
             &SigningMode::LegacySelfSigned,
-            Some("com.vitruviansoftware.atrium.fan-control"),
+            Some("com.vitruviansoftware.vitruvian.fan-control"),
             None,
             "/tmp/helper",
         );

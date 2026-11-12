@@ -138,7 +138,7 @@ final class AppSide {
     }
 
     /// Vitruvian, where the extension is.
-    static let vitruvianBundleID = "com.vitruviansoftware.atrium"
+    static let vitruvianBundleID = "com.vitruviansoftware.vitruvian"
 
     /// At launch: what the role says starts, the window when it asks or is
     /// quiet, and a look every five seconds, for what no file event shows

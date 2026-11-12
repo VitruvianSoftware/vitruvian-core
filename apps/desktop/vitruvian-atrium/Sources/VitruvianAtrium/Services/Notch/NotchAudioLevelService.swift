@@ -269,8 +269,8 @@ package protocol NotchAudioLevelReading: AnyObject {
 /// starting a device can block for as long as a Bluetooth or USB device takes
 /// to reconnect, and the island must never wait on that.
 private final class NotchAudioLevelReader: NotchAudioLevelReading {
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.notch-audio-levels", qos: .utility)
-    private static let teardownQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.notch-audio-levels.teardown", qos: .utility)
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.notch-audio-levels", qos: .utility)
+    private static let teardownQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.notch-audio-levels.teardown", qos: .utility)
     private let pid: pid_t
     private let onLevels: ([Double]) -> Void
     private let onSilence: () -> Void

@@ -72,7 +72,7 @@ package final class NotchMusicService: ObservableObject {
         }
 
         package static var live: Environment {
-            let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.notch-music", qos: .utility)
+            let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.notch-music", qos: .utility)
             return Environment(
                 launch: { watchAll, read, ended in launchAdapter(watchAll: watchAll, read: read, ended: ended) },
                 main: { work in DispatchQueue.main.async { work() } },
@@ -709,7 +709,7 @@ private final class NotchMusicReaderCache: @unchecked Sendable {
 /// `buffer` and `receive` are touched only on `queue`, so it is
 /// `@unchecked Sendable`.
 private final class NotchMusicPipeReader: @unchecked Sendable {
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.notch-music-reader", qos: .utility)
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.notch-music-reader", qos: .utility)
     private var buffer = Data()
     private let receive: @Sendable (Data) -> Void
     /// `receive` runs on `queue`, so it is `@Sendable`. Without that, a closure

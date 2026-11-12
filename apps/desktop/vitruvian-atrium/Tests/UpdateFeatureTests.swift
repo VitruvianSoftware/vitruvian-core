@@ -1206,8 +1206,8 @@ enum UpdateFeatureTests {
         suite.expect(Defaults.registeredDefaults[DefaultsKey.includeBetaUpdates] as? Bool == false,
                "includeBetaUpdates defaults to false in registeredDefaults")
 
-        let testDefaults = ScratchDefaults.suite(named: "com.vitruviansoftware.atrium.tests.betaActivation")!
-        testDefaults.removePersistentDomain(forName: "com.vitruviansoftware.atrium.tests.betaActivation")
+        let testDefaults = ScratchDefaults.suite(named: "com.vitruviansoftware.vitruvian.tests.betaActivation")!
+        testDefaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.betaActivation")
         Defaults.activateBetaChannelIfRunningBeta(in: testDefaults, version: "3.3.3-beta.1")
         suite.expect(testDefaults.bool(forKey: DefaultsKey.includeBetaUpdates) == true,
                "beta channel is activated automatically on a beta build")
@@ -1217,13 +1217,13 @@ enum UpdateFeatureTests {
                "manual opt-out on a beta build is preserved across launches")
 
         // Stable version does not activate beta channel
-        let stableDefaults = ScratchDefaults.suite(named: "com.vitruviansoftware.atrium.tests.stableActivation")!
-        stableDefaults.removePersistentDomain(forName: "com.vitruviansoftware.atrium.tests.stableActivation")
+        let stableDefaults = ScratchDefaults.suite(named: "com.vitruviansoftware.vitruvian.tests.stableActivation")!
+        stableDefaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.stableActivation")
         Defaults.activateBetaChannelIfRunningBeta(in: stableDefaults, version: "3.3.3")
         suite.expect(stableDefaults.object(forKey: DefaultsKey.includeBetaUpdates) == nil,
                "stable release does not touch beta channel default")
-        stableDefaults.removePersistentDomain(forName: "com.vitruviansoftware.atrium.tests.stableActivation")
-        testDefaults.removePersistentDomain(forName: "com.vitruviansoftware.atrium.tests.betaActivation")
+        stableDefaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.stableActivation")
+        testDefaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.betaActivation")
 
         // Localization completeness & formatting
         let originalLanguage = L10n.shared.language

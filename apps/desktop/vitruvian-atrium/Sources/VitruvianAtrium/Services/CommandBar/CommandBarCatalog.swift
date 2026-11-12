@@ -1796,7 +1796,7 @@ package enum CommandBarCatalog {
     /// copied: a pasteboard of our own carries it across.
     @MainActor
     private static func keepOnShelf(_ text: String) {
-        let board = NSPasteboard(name: NSPasteboard.Name("com.vitruviansoftware.atrium.commandbar.selection"))
+        let board = NSPasteboard(name: NSPasteboard.Name("com.vitruviansoftware.vitruvian.commandbar.selection"))
         board.clearContents()
         board.setString(text, forType: .string)
         guard ShelfService.shared.accept(pasteboard: board) else {

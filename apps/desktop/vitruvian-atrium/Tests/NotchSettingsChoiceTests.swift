@@ -68,7 +68,7 @@ enum NotchSettingsChoiceTests {
         // An option that cannot be used reads off and cannot be switched,
         // whatever was saved: its feature is uninstalled, or something else
         // rules it out.
-        let domain = "com.vitruviansoftware.atrium.tests.notch-settings-choice"
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-settings-choice"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }

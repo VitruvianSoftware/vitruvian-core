@@ -143,7 +143,7 @@ package final class AppUpdatesService: ObservableObject {
     @Published package private(set) var hasCheckedThisSession = false
     @Published package private(set) var lastError: String?
 
-    package let workQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.appupdates", qos: .utility)
+    package let workQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.appupdates", qos: .utility)
     private let lookupSession: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 10

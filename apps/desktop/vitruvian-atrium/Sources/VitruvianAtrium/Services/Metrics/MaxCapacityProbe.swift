@@ -20,7 +20,7 @@ import VitruvianAtriumDesign
 package final class MaxCapacityProbe: @unchecked Sendable {
     package static let shared = MaxCapacityProbe()
 
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.maxcapacity", qos: .utility)
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.maxcapacity", qos: .utility)
     private let lock = NSLock()
     private var cached: Int?
     private var lastRefresh: TimeInterval = -.greatestFiniteMagnitude

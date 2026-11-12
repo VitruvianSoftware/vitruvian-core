@@ -280,7 +280,7 @@ enum NotchWatchTests {
     }
 
     private static func gateContracts(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.atrium.tests.notch-watch"
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-watch"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }

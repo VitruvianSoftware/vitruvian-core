@@ -423,7 +423,7 @@ mod tests {
         // A new test suite and the test program's own domain are caught; an
         // app's preferences are none of this check's business.
         fs::write(
-            dir.join("com.vitruviansoftware.atrium.tests.new.plist"),
+            dir.join("com.vitruviansoftware.vitruvian.tests.new.plist"),
             "{}",
         )
         .unwrap();
@@ -432,7 +432,7 @@ mod tests {
         assert_eq!(
             changed_test_preferences(&before, &test_preferences(&dir)),
             vec![
-                "com.vitruviansoftware.atrium.tests.new.plist",
+                "com.vitruviansoftware.vitruvian.tests.new.plist",
                 "metrics-tests.plist"
             ]
         );

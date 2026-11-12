@@ -81,7 +81,7 @@ package final class WindowLayoutService: ObservableObject {
     /// drops it.
     private var edgeSnapStillCheckGeneration = 0
     private var edgeSnapStillCheckPending = false
-    private let edgeSnapResolveQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.edge-snap-resolve",
+    private let edgeSnapResolveQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.edge-snap-resolve",
                                                      qos: .userInitiated)
     private var edgeSnapPreviewPanel: NSPanel?
     private var edgeSnapPreviewGeneration = 0
@@ -2432,7 +2432,7 @@ package final class WindowLayoutService: ObservableObject {
     /// where the pointer no longer is. Coalescing, because a slow write must
     /// not build a backlog the window then animates through after the drag has
     /// finished: only the newest position is ever pending.
-    private let gestureApplyQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.window-gesture-apply",
+    private let gestureApplyQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.window-gesture-apply",
                                                   qos: .userInteractive)
     private let gestureApplyLock = NSLock()
     // Guarded by gestureApplyLock, so the apply queue reads them off the main actor.

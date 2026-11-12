@@ -17,7 +17,7 @@ enum LinearScrollTapTests {
     }
 
     static func run(_ suite: TestSuite) {
-        let name = "com.vitruviansoftware.atrium.tests.linear-scroll-tap.\(UUID().uuidString)"
+        let name = "com.vitruviansoftware.vitruvian.tests.linear-scroll-tap.\(UUID().uuidString)"
         let defaults = ScratchDefaults.suite(named: name)!
         let exceptions = Exceptions()
         let targets = ScrollInverter.WheelTapTargets(excludes: { scope, _, _ in exceptions.excepted.contains(scope) },

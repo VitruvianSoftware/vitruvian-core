@@ -65,7 +65,7 @@ package final class WhatsAppDownloadManager: ObservableObject {
     @Published package var candidates: [Candidate] = []
     package private(set) var reviewVisible = false
 
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.whatsapp-downloads",
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.whatsapp-downloads",
                                       qos: .userInitiated)
     private var operationToken = UUID()
 
