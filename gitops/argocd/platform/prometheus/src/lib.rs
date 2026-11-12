@@ -339,10 +339,15 @@ mod tests {
             .filter_map(|r| r.get("record").and_then(Value::as_str))
             .map(|rec| rec.split(':').next().unwrap_or(rec))
             .collect();
-        let expected_apps: HashSet<&str> =
-            ["backstage", "buzz", "mcp_slack", "storybook", "whoami"]
-                .into_iter()
-                .collect();
+        let expected_apps: HashSet<&str> = [
+            "backstage",
+            "buzz",
+            "vitruvian_slack_mcp",
+            "storybook",
+            "whoami",
+        ]
+        .into_iter()
+        .collect();
         assert_eq!(apps, expected_apps);
         assert_eq!(rules.len(), 10);
         for r in rules {

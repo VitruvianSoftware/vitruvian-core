@@ -1945,7 +1945,7 @@
             "uid": "Prometheus-Data"
           },
           "editorMode": "code",
-          "expr": "sum by (name, phase) (rate(argocd_app_sync_total{name=~\"buzz|backstage|mcp-slack|nexus-agent|.*\", project=~\"$project\"}[$__rate_interval]))",
+          "expr": "sum by (name, phase) (rate(argocd_app_sync_total{name=~\"buzz|backstage|vitruvian-slack-mcp|nexus-agent|.*\", project=~\"$project\"}[$__rate_interval]))",
           "legendFormat": "{{name}} ({{phase}})",
           "range": true,
           "refId": "A"
@@ -2047,7 +2047,7 @@
             "uid": "Prometheus-Data"
           },
           "editorMode": "code",
-          "expr": "sum by (name) (rate(argocd_app_sync_duration_seconds_total{name=~\"buzz|backstage|mcp-slack|nexus-agent|.*\"}[$__rate_interval])) / clamp_min(sum by (name) (rate(argocd_app_sync_total{name=~\"buzz|backstage|mcp-slack|nexus-agent|.*\"}[$__rate_interval])), 0.0001)",
+          "expr": "sum by (name) (rate(argocd_app_sync_duration_seconds_total{name=~\"buzz|backstage|vitruvian-slack-mcp|nexus-agent|.*\"}[$__rate_interval])) / clamp_min(sum by (name) (rate(argocd_app_sync_total{name=~\"buzz|backstage|vitruvian-slack-mcp|nexus-agent|.*\"}[$__rate_interval])), 0.0001)",
           "legendFormat": "Sync Latency: {{name}}",
           "range": true,
           "refId": "B"

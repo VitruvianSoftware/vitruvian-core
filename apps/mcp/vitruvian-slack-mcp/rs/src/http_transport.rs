@@ -1700,7 +1700,9 @@ async fn handle_post(
                 Ok(message) => message,
                 Err(join) => {
                     let detail = panic_message(join);
-                    write_stderr(&format!("vitruvian-slack-mcp: request handler panicked: {detail}\n"));
+                    write_stderr(&format!(
+                        "vitruvian-slack-mcp: request handler panicked: {detail}\n"
+                    ));
                     error_message(&id_for_error, -32603, &detail)
                 }
             };
@@ -2033,7 +2035,7 @@ mod tests {
                 "GET",
                 "/.well-known/oauth-protected-resource/mcp",
                 &[
-                    ("x-forwarded-host", "mcp-slack.ipv1337.dev"),
+                    ("x-forwarded-host", "vitruvian-slack-mcp.ipv1337.dev"),
                     ("cf-visitor", "{\"scheme\":\"https\"}"),
                 ],
                 "",
@@ -2043,7 +2045,7 @@ mod tests {
             let data = JsonValue::parse(&res.body).unwrap();
             assert_eq!(
                 data.get("resource").and_then(|v| v.as_str()),
-                Some("https://mcp-slack.ipv1337.dev/mcp")
+                Some("https://vitruvian-slack-mcp.ipv1337.dev/mcp")
             );
         });
     }

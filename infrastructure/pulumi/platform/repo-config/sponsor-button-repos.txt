@@ -19,8 +19,8 @@ vitruvian-remote              apps/mobile/android-remote/.github/FUNDING.yml
 esp32-desk-companion          apps/embedded/esp32-s3/.github/FUNDING.yml
 vitruvian-code                apps/desktop/vitruvian-code/.github/FUNDING.yml
 oauth-user-inspector          apps/web/oauth-user-inspector/.github/FUNDING.yml
-mcp-slack                     apps/mcp/slack/.github/FUNDING.yml
-mcp-roborock                  apps/mcp/roborock/.github/FUNDING.yml
+mcp-slack                     apps/mcp/vitruvian-slack-mcp/.github/FUNDING.yml
+mcp-roborock                  apps/mcp/vitruvian-roborock-mcp/.github/FUNDING.yml
 gh-watch                      apps/antigravity/plugins/gh-watch/.github/FUNDING.yml
 devx                          apps/cli/devx/.github/FUNDING.yml
 homelab                       apps/cli/homelab/.github/FUNDING.yml

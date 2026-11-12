@@ -47,4 +47,4 @@ spec:
   system: vitruvian-code
   consumesApis:
     - tabula-api
-    - mcp-slack-api
+    - vitruvian-slack-mcp-api

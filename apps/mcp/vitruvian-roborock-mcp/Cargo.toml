@@ -21,7 +21,7 @@
 # The Roborock daemon, CLI (rrctl) and MCP server.
 #
 # Its own workspace and its own Cargo.lock, apart from the root one, for the
-# same reason as apps/mcp/vitruvian-slack-mcp/rs: the standalone mirror (mcp-roborock)
+# same reason as apps/mcp/vitruvian-slack-mcp/rs: the standalone mirror (vitruvian-roborock-mcp)
 # receives apps/mcp/vitruvian-roborock-mcp alone, and `cargo install --locked` there needs
 # the lock to live in here. Bazel reads the same lock through the
 # @vitruvian_roborock_mcp_crates hub (MODULE.bazel). Re-lock with

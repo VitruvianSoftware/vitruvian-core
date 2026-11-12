@@ -76,7 +76,7 @@ jobs:
                 path-to-signatures: "signatures/version1/cla.json"
                 branch: "cla-signatures"
                 # The CLA text contributors must read. Must be PUBLICLY readable on
-                # mcp-slack main; verify the URL resolves at cutover.
+                # vitruvian-slack-mcp main; verify the URL resolves at cutover.
                 path-to-document: "https://github.com/VitruvianSoftware/mcp-slack/blob/main/CLA.md"
                 # Do not require a CLA from automation accounts.
                 allowlist: "dependabot[bot],renovate[bot],*[bot]"

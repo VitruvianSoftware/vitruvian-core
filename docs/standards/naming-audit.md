@@ -114,7 +114,7 @@ The monorepo contains 22 root-level directories and 840 unique subdirectories.
 | `gitops/` | `lower_single` | ArgoCD application definitions & Kubernetes manifests |
 | `apps/cli/homelab/` | `lower_single` | Homelab infrastructure management Go CLI |
 | `infrastructure/` | `lower_single` | Production Pulumi GCP infrastructure stacks |
-| `apps/mcp/slack/` | `kebab-case` | Model Context Protocol Slack server application |
+| `apps/mcp/vitruvian-slack-mcp/` | `kebab-case` | Model Context Protocol Slack server application |
 | `apps/desktop/nexus-agent/` | `kebab-case` | Native macOS menu-bar agent application |
 | `apps/web/oauth-user-inspector/` | `kebab-case` | OAuth inspection web app and API backend |
 | `tools/ops/` | `lower_single` | Operational scripts and maintenance tasks |

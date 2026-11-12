@@ -58,12 +58,12 @@ oauth-user-inspector:
   url: "https://donate.stripe.com/3cI28q4bXaRr2E91PRbwk05"
 
 mcp-slack:
-  name: mcp-slack
+  name: Vitruvian Slack MCP
   repo: https://github.com/VitruvianSoftware/mcp-slack
   url: "https://donate.stripe.com/dRm3cu4bXf7H3Idamnbwk09"
 
 mcp-roborock:
-  name: mcp-roborock
+  name: Vitruvian Roborock MCP
   repo: https://github.com/VitruvianSoftware/mcp-roborock
   url: "https://donate.stripe.com/9B6bJ06k5aRr1A57abbwk04"
 

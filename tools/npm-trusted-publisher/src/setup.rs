@@ -178,7 +178,7 @@ pub fn mirror_for(mf: &str) -> &'static str {
         "pulumi/library/ts/packages/",
     ]) {
         "VitruvianSoftware/pulumi-library"
-    } else if any(&["apps/mcp/slack/", "mcp-slack/"]) {
+    } else if any(&["apps/mcp/vitruvian-slack-mcp/", "vitruvian-slack-mcp/"]) {
         "VitruvianSoftware/mcp-slack"
     } else if any(&[
         "packages/vitruvian-sdk/kits/typescript/",
@@ -196,8 +196,8 @@ pub fn search_dirs() -> Vec<String> {
     [
         "packages/pulumi/library/ts/packages",
         "pulumi/library/ts/packages",
-        "apps/mcp/slack",
-        "mcp-slack",
+        "apps/mcp/vitruvian-slack-mcp",
+        "vitruvian-slack-mcp",
         "packages/vitruvian-sdk/kits/typescript",
         "vitruvian-sdk/kits/typescript",
     ]
@@ -555,7 +555,7 @@ mod tests {
             "VitruvianSoftware/pulumi-library"
         );
         assert_eq!(
-            mirror_for("mcp-slack/package.json"),
+            mirror_for("vitruvian-slack-mcp/package.json"),
             "VitruvianSoftware/mcp-slack"
         );
         assert_eq!(

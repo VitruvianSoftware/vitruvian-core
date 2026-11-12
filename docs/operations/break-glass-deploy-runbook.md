@@ -102,12 +102,12 @@ Releases normally flow: `release-please` bumps the manifest → `//tools/copybar
 bazel run //tools/copybara/sync -- export <component>     # push the bump to the mirror
 ```
 
-**npm packages + Go modules** (mcp-slack, and the pulumi-library `ts/packages/*` + `go/pkg/*`) — one tool, dry-run by default:
+**npm packages + Go modules** (vitruvian-slack-mcp, and the pulumi-library `ts/packages/*` + `go/pkg/*`) — one tool, dry-run by default:
 
 ```bash
 bazel run //tools/release:publish-local -- pulumi-library            # dry run: prints the plan
 bazel run //tools/release:publish-local -- pulumi-library --execute  # publish (npm + slash-form go tags)
-bazel run //tools/release:publish-local -- mcp-slack --execute
+bazel run //tools/release:publish-local -- vitruvian-slack-mcp --execute
 #   --package <name> limits to one; already-published versions/tags are skipped.
 ```
 

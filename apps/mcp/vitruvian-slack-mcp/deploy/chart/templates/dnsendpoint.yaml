@@ -52,7 +52,7 @@
 #
 # THIS FILE COSTS US A CONTAINMENT LEVER, AND THAT IS A DELIBERATE TRADE.
 #
-# Before it existed, deleting the `mcp-slack.ipv1337.dev` record by hand stayed
+# Before it existed, deleting the `vitruvian-slack-mcp.ipv1337.dev` record by hand stayed
 # deleted — the only kill switch not reverted by ArgoCD on a timer, since the
 # in-cluster ones (scale to zero, delete the HTTPRoute) are desired state and
 # come back within ~2-3 minutes. That worked by OMISSION: external-dns runs

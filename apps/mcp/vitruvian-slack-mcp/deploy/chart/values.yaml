@@ -32,7 +32,7 @@ image:
 
 # Public hostname. Permanent name chosen deliberately rather than "-poc":
 # renaming later costs a DNS/HTTPRoute change plus reconfiguring the client.
-hostname: mcp-slack.ipv1337.dev
+hostname: vitruvian-slack-mcp.ipv1337.dev
 
 tunnel:
   # Cloudflare Tunnel UUID, from gitops/argocd/platform/cloudflared/configmap.yaml.

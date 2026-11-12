@@ -264,7 +264,7 @@ Pick the category that matches the artifact you are shipping. Each section is se
 | **Environments & promotion** | None — distribution-only. |
 | **Secrets & config** | Tokens read from `process.env` with a clear required-vars error; ship a committed `.env.example` documenting the keys **(target)** (some servers lack one). |
 | **Observability** | Structured logger and a minimal unit suite wired as a Bazel test target so the app enters the test sweep **(target)** — several agents have zero tests and only `console`/`stderr` output today. MCP stdio transports legitimately log to stderr, but the logs should still be structured. |
-| **Example apps** | `mcp-slack` (MCP server, dual-token), `nexus-agent` (Telegram→CLI bridge; also ships a Swift macOS client — see §3.5). |
+| **Example apps** | `vitruvian-slack-mcp` (MCP server, dual-token), `nexus-agent` (Telegram→CLI bridge; also ships a Swift macOS client — see §3.5). |
 
 ---
 

@@ -346,7 +346,7 @@ COMPONENTS = [
     {
         "name": "mcp-roborock",
         "repo": "mcp-roborock",
-        "subtree": "apps/mcp/roborock",
+        "subtree": "apps/mcp/vitruvian-roborock-mcp",
         "standalone_rev_id": "MCP_ROBOROCK_REV_ID",
         "standalone_only": [".github/workflows/sync-to-monorepo.yaml"],
         "is_one_way": True,
@@ -354,7 +354,7 @@ COMPONENTS = [
     {
         "name": "mcp-slack",
         "repo": "mcp-slack",
-        "subtree": "apps/mcp/slack",
+        "subtree": "apps/mcp/vitruvian-slack-mcp",
         "standalone_rev_id": "MCP_SLACK_REV_ID",
         "standalone_only": ["package-lock.json", ".github/workflows/sync-to-monorepo.yaml"],
         "is_one_way": True,

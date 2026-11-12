@@ -158,22 +158,22 @@
     "release-type": "simple",
     "tag-separator": "-"
   },
-  "apps/mcp/slack/release-please-config.json": {
+  "apps/mcp/vitruvian-slack-mcp/release-please-config.json": {
     "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
     "bootstrap-sha": "df9b391b59b6549053583b7d0c61fcab105d098f",
     "include-component-in-tag": true,
     "include-v-in-tag": true,
     "packages": {
-      "apps/mcp/slack": {
+      "apps/mcp/vitruvian-slack-mcp": {
         "changelog-path": "CHANGELOG.md",
-        "component": "mcp-slack",
+        "component": "vitruvian-slack-mcp",
         "extra-files": [
           {
             "path": "deploy/chart/Chart.yaml",
             "type": "generic"
           }
         ],
-        "package-name": "@vitruviansoftware/mcp-slack",
+        "package-name": "@vitruviansoftware/vitruvian-slack-mcp",
         "release-type": "node"
       }
     },

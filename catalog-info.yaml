@@ -46,8 +46,8 @@ spec:
     - ./apps/cli/devx/catalog-info.yaml
     - ./apps/cli/homelab/catalog-info.yaml
     - ./apps/embedded/esp32-s3/catalog-info.yaml
-    - ./apps/mcp/slack/catalog-info.yaml
-    - ./apps/mcp/roborock/catalog-info.yaml
+    - ./apps/mcp/vitruvian-slack-mcp/catalog-info.yaml
+    - ./apps/mcp/vitruvian-roborock-mcp/catalog-info.yaml
     - ./apps/desktop/vitruvian-code/catalog-info.yaml
     - ./apps/desktop/vitruvian-tool-github/catalog-info.yaml
     - ./apps/antigravity/plugins/ext-marketplace/catalog-info.yaml
@@ -261,8 +261,8 @@ spec:
 apiVersion: backstage.io/v1alpha1
 kind: System
 metadata:
-  name: mcp-slack
-  title: MCP Slack Integration
+  name: vitruvian-slack-mcp
+  title: Vitruvian Slack MCP Integration
   description: Model Context Protocol server exposing Slack workspace tools, message search, and canvas operations
 spec:
   owner: mcp-slack-team
@@ -378,21 +378,21 @@ spec:
 apiVersion: backstage.io/v1alpha1
 kind: API
 metadata:
-  name: mcp-slack-api
-  title: MCP Slack Tool Protocol
+  name: vitruvian-slack-mcp-api
+  title: Vitruvian Slack MCP Tool Protocol
   description: Model Context Protocol (MCP) JSON-RPC schema for Slack channels, messaging, and canvas tools
   links:
-    - url: https://github.com/VitruvianSoftware/vitruvian-core/pkgs/container/mcp-slack
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/pkgs/container/vitruvian-slack-mcp
       title: Container Image
       icon: web
 spec:
   type: mcp-jsonrpc
   lifecycle: production
   owner: mcp-slack-team
-  system: mcp-slack
+  system: vitruvian-slack-mcp
   definition: |
     jsonrpc: "2.0"
-    title: MCP Slack Tools
+    title: Vitruvian Slack MCP Tools
     tools:
       - name: slack_post_message
         description: Post a message to a Slack channel

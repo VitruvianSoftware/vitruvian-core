@@ -181,7 +181,7 @@ Criteria dynamically adapt based on **`spec.type`**:
 | **`oauth-user-inspector`** | `service` | `oauth-user-inspector-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |
 | **`backstage`** | `service` | `platform-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |
 | **`buzz`** | `service` | `platform-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |
-| **`mcp-slack`** | `service` | `mcp-slack-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |
+| **`vitruvian-slack-mcp`** | `service` | `mcp-slack-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |
 | **`devx`** | `tool` | `devx-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |
 | **`homelab`** | `tool` | `homelab-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |
 | **`nexus-agent`** | `tool` | `nexus-agent-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |

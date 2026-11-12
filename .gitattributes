@@ -27,7 +27,7 @@ packages/vitruvian-sdk/kits/**/generated/** rules-lint-ignored=true
 # diverged from its source on the next export.
 devx/**         rules-lint-ignored=true
 homelab/**      rules-lint-ignored=true
-mcp-slack/**    rules-lint-ignored=true
+vitruvian-slack-mcp/**    rules-lint-ignored=true
 apps/web/gods-eye-view/** rules-lint-ignored=true
 
 # Imported GPL fork (apps/desktop/vitruvian/UPSTREAM.md): upstream files stay

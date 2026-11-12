@@ -1,4 +1,4 @@
-# Decision record: mcp-slack remote exposure (Gemini Spark PoC)
+# Decision record: vitruvian-slack-mcp remote exposure (Gemini Spark PoC)
 
 **Status:** all six decisions resolved to a team-level call or a specific pending confirmation from
 James; nothing is blocked on re-litigating a decision, only on four concrete admin-side actions
@@ -14,9 +14,9 @@ console route entirely and wants the Zitadel-instance work done in code, same as
 this repo; corrected throughout, including "What's still James's to do." It gets one more if Phase
 1/2 land materially different from what's written here, then lands once, accurate, when the
 decisions have actually stopped moving.
-**Context:** James asked whether mcp-slack — today a local stdio tool for harnesses like Claude Code
+**Context:** James asked whether vitruvian-slack-mcp — today a local stdio tool for harnesses like Claude Code
 — could also serve remote agent harnesses (Google Gemini Spark). Wren and Atlas scoped six calls by
-reading `apps/mcp/slack/src/index.ts` and `apps/mcp/slack/manifest.json` directly; James answered on
+reading `apps/mcp/vitruvian-slack-mcp/src/index.ts` and `apps/mcp/vitruvian-slack-mcp/manifest.json` directly; James answered on
 2026-08-06; Beacon, Pace, Wren and Atlas then resolved the two answers that collided with the
 team's earlier recommendations. This doc is the product-level companion to
 [`application-alignment-gaps.md` §3.5](application-alignment-gaps.md#35-no-written-app-type--hosting-target-rule),
@@ -26,7 +26,7 @@ which Atlas annotates on the hosting side — this doc is not a duplicate of tha
 
 ### 1. When a local stdio tool goes network-exposed, the credential is the access-control boundary
 
-Not the transport, and not a tool-list filter maintained by hand. mcp-slack holds two Slack tokens
+Not the transport, and not a tool-list filter maintained by hand. vitruvian-slack-mcp holds two Slack tokens
 and picks one per API call. They partition cleanly:
 - **Bot token** (`manifest.json` bot scopes): every method is a read. Zero write scopes granted
   originally.
@@ -76,13 +76,13 @@ opens with an assumption about what the other side "requires."
 
 ### 3. An audience claim is only a boundary at the granularity the IdP scopes it to
 
-Surfaced by Wren while reviewing this record, generalized by Beacon: mcp-slack's Zitadel OIDC
+Surfaced by Wren while reviewing this record, generalized by Beacon: vitruvian-slack-mcp's Zitadel OIDC
 client lives in its **own** Zitadel project (PR #1417, `zitadel-apps-mcp-slack`) rather than as a
 second application inside oauth-user-inspector's existing project — and the reason isn't tidiness.
 Zitadel's audience-granting scope is `urn:zitadel:iam:org:project:id:{projectId}:aud`, which is
-scoped to the **project**, not the individual application. Had mcp-slack's client been created
+scoped to the **project**, not the individual application. Had vitruvian-slack-mcp's client been created
 inside oauth-user-inspector's project, a token minted with that project's audience would have
-validated at *both* apps — mcp-slack's local `aud` check would have kept passing while silently
+validated at *both* apps — vitruvian-slack-mcp's local `aud` check would have kept passing while silently
 providing no isolation at all between the two integrations.
 
 The general form: **before trusting an `aud` (or any claim an IdP lets you check locally), confirm
@@ -187,7 +187,7 @@ within twenty minutes of each other on two different stacks in this build. Patte
 gap in *what's checked*; this one is about what happens when a check runs and the input can't be
 parsed at all.
 
-**Instance one, mcp-slack:** `channelIdFromParams` returning `undefined` for a non-string channel
+**Instance one, vitruvian-slack-mcp:** `channelIdFromParams` returning `undefined` for a non-string channel
 argument, which `guardParams` then read as "not channel-scoped" — the permissive branch — rather
 than "couldn't determine the channel," the restrictive one. Covered above as the pattern-5 worked
 example; it's also an instance of this narrower rule.
@@ -270,7 +270,7 @@ the extraction boundary itself, regardless of how careful the payload-level chec
 
 ### 7. A check that serves two purposes should say so, or the second purpose dies in a refactor that looks like a simplification
 
-Per Beacon (2026-08-06T20:41:27Z): `looksLikeJwt()` in mcp-slack's auth path is a string-split
+Per Beacon (2026-08-06T20:41:27Z): `looksLikeJwt()` in vitruvian-slack-mcp's auth path is a string-split
 and a regex that rejects an obviously-malformed bearer token before any network call or
 cryptographic work. Wren wrote it as a diagnostic — so a garbage token gets a self-describing
 "this isn't a JWT" error instead of a generic 401. Reviewing the rate-limiting gap, Atlas traced
@@ -405,7 +405,7 @@ certainty about it.
 
 Per Aegis's design-level review (2026-08-06T20:55:43Z), answering the question the whole build had
 been implicitly avoiding — not "does the implementation match the design" but "is the design
-right." mcp-slack has (at least) three places a control over what the endpoint can reach could
+right." vitruvian-slack-mcp has (at least) three places a control over what the endpoint can reach could
 live, from weakest to strongest:
 
 | | Layer | Enforced by | Survives | Built, as of this review |
@@ -443,7 +443,7 @@ them, or only for the one we happened to be looking at."
 Per Beacon (2026-08-06T20:58:17Z), on Atlas's Zitadel exposure analysis. Two open questions —
 whether the instance permits self-registration, and whether a different OIDC client in the org can
 request this project's audience scope — were each assessed independently and each, alone, judged
-insufficient to reach mcp-slack: self-registration alone still requires a token scoped to this
+insufficient to reach vitruvian-slack-mcp: self-registration alone still requires a token scoped to this
 project, which needs a client that can request it; a permissive audience alone still requires an
 account to authenticate with, which registration being closed would prevent. **Together, they
 compose into a live path:** anyone on the internet registers, authenticates through some other
@@ -494,7 +494,7 @@ authorization. Any resource server here authorizes on subject or role — never 
   on `OIDC_ALLOWED_SUBJECTS`).
 
 **The half that makes the rule stick — why three reviews passed a check that isn't one, per
-Beacon:** `apps/mcp/slack/src/auth.ts:135-152`'s `AudienceMismatchError` hands the caller
+Beacon:** `apps/mcp/vitruvian-slack-mcp/src/auth.ts:135-152`'s `AudienceMismatchError` hands the caller
 `fullScopeString(projectId)` on failure — the literal scope string to request in order to *obtain*
 the audience it just failed to present — and the comment at `:131-133` states outright that the
 audience "is granted by a scope the client requests." **The code documents that `aud` is
@@ -505,7 +505,7 @@ like one and wasn't,"* not *"we forgot a control"* — the first framing is what
 from reaching for audience validation the same reasonable, wrong way.
 
 **Composed with two other findings from tonight (self-registration open, `projectRoleCheck: false`
-on every project so far checked), this is a live go-live blocker for mcp-slack specifically** — see
+on every project so far checked), this is a live go-live blocker for vitruvian-slack-mcp specifically** — see
 the go-live gate correction immediately below.
 
 Sources: [`token.go`@v4.15.3](https://github.com/zitadel/zitadel/blob/v4.15.3/internal/domain/token.go) ·
@@ -546,9 +546,9 @@ every proposed lever, not one.
 **Worked example of Consequence A, and sharper than pattern 7's `looksLikeJwt` case, because there
 is no version of "just don't make that change" that would have been right here (Beacon,
 2026-08-06T22:16Z).** The Cloudflare DNS record fronting the tunnel was, for a few hours, a real
-containment lever: hand-deleting it worked because mcp-slack's chart shipped no `DNSEndpoint` for
+containment lever: hand-deleting it worked because vitruvian-slack-mcp's chart shipped no `DNSEndpoint` for
 the hostname, so nothing reconciled the record back. `54c295ab` fixes that chart gap — correctly;
-every other tunnel-exposed app on this cluster ships a `DNSEndpoint`, and mcp-slack's absence was
+every other tunnel-exposed app on this cluster ships a `DNSEndpoint`, and vitruvian-slack-mcp's absence was
 its own defect, the same "renders clean while missing the thing that makes it work" shape as an
 unloaded `PrometheusRule`. Shipping the fix hands the record to external-dns's `policy: sync` loop,
 which silently deletes the only containment lever that had survived reconciliation. Nobody would
@@ -809,7 +809,7 @@ nothing had checked at all.
 | 3 | Slack write credential (was bot-only/read-only; reopened by decision 6) | **Option A: bot-token-only write via `chat:write` (no `chat:write.public`), never the user token.** No user token enters the cluster. Writes on the HTTP path route through the bot token; stdio keeps user-token routing unchanged. **Mechanism updated 2026-08-06T20:50Z: a new, dedicated Slack app is now the recommended way to deliver this, not reinstalling the existing "Vitruvian Slack MCP" app.** See "Option A" section below — the ladder, the reordering, and why the new-app rung is now preferred on more than cost. | See "Option A" section below — the full resolution and the reordering rationale. |
 | 4 | Public exposure via cloudflared, gated only by Zitadel | **Accepted.** | Spark is Google-hosted and reaches the endpoint over the public internet through the existing tunnel; Cloudflare Access can't gate an OIDC flow, so Zitadel is the only gate — reasonable given decisions 1–3. |
 | 5 | Homelab k3s deployment lifetime | **Potentially permanent**, pending a post-PoC monetization decision — not throwaway-then-Cloud-Run as the team first recommended. | Changes what gets built, not just how long it lasts (see "Consequences of decision 5," below). |
-| 6 | Done criteria + hostname | Spark connects → Zitadel OAuth → lists tools → **reads and writes across an explicit, allowlisted set of channels**. Deployed at **`mcp-slack.ipv1337.dev`** (not `-poc`) — "PoC" lives in the namespace and this written decision, not the URL, since renaming later turned out to be free (DNS/HTTPRoute + Spark UI edit) once Wren corrected the redirect-URI assumption, but the team is keeping the real hostname anyway now that decision 5 says permanence is the plan. | Read+write was James's actual ask (scheduled reports/updates); satisfied via Option A rather than the user token. |
+| 6 | Done criteria + hostname | Spark connects → Zitadel OAuth → lists tools → **reads and writes across an explicit, allowlisted set of channels**. Deployed at **`vitruvian-slack-mcp.ipv1337.dev`** (not `-poc`) — "PoC" lives in the namespace and this written decision, not the URL, since renaming later turned out to be free (DNS/HTTPRoute + Spark UI edit) once Wren corrected the redirect-URI assumption, but the team is keeping the real hostname anyway now that decision 5 says permanence is the plan. | Read+write was James's actual ask (scheduled reports/updates); satisfied via Option A rather than the user token. |
 
 ## Option A — how decision 3/7's collision with decision 6 was actually resolved
 
@@ -1114,7 +1114,7 @@ that ships with a comment saying someone will change this later" failure mode pa
 generalized, here manifesting as a decision that was never encoded as a task at all and quietly
 drifted from "planned" to "assumed shipped" in a teammate's own memory. Not folded into the transport
 PR (that PR is frozen with three independent reviews against one head), but now **elevated from
-follow-up PR to a hard Phase 2b go-live gate, per Beacon 2026-08-06T21:48Z:** *mcp-slack rejects a
+follow-up PR to a hard Phase 2b go-live gate, per Beacon 2026-08-06T21:48Z:** *vitruvian-slack-mcp rejects a
 validly-signed token whose `sub` is not in `OIDC_ALLOWED_SUBJECTS`, proven by a test, before the
 server accepts its first real request.* Pace has this on the Phase 2b DoD as blocking, not tracked.
 **Does not replace `projectRoleCheck: true`** on the path it actually covers — **but it is not
@@ -1122,7 +1122,7 @@ uniformly "L2 in two places," and stating it that way overstated the redundancy.
 Beacon (2026-08-06T21:59Z), on their own earlier framing:** Zitadel's documented `aud`-scope
 behavior lets *any* OIDC client in the org request a token carrying this project's audience,
 without that client verifying the caller holds a grant on the project. `projectRoleCheck` gates
-logins **through mcp-slack's own client** — it says nothing about a token minted via a *different*
+logins **through vitruvian-slack-mcp's own client** — it says nothing about a token minted via a *different*
 org client that requested this project's `aud`. So on the path that question 2 (above) is about,
 there is only one control, and it's `OIDC_ALLOWED_SUBJECTS`, not two. **This elevates the PR from
 defense-in-depth to load-bearing:** "separate PR, built after #1418 merges" is still the right
@@ -1140,7 +1140,7 @@ zero built.
 **Coupling constraint, per Atlas/Beacon (2026-08-06T21:53Z): the role grant and
 `projectRoleCheck: true` must land in the same apply, never staggered.** James currently holds zero
 grants on any Zitadel project — `oauth-user-inspector` works today specifically because its own
-role check is off. Flipping mcp-slack's check on without the grant already in place produces a
+role check is off. Flipping vitruvian-slack-mcp's check on without the grant already in place produces a
 login failure on James's own first attempt that presents as a bug in the auth guard rather than as
 the config gap it actually is, at exactly the moment he's trying to validate the PoC end to end.
 Tracked as one atomic change, not two tasks — if grant and flag can't both land together, neither
@@ -1175,7 +1175,7 @@ over introspection in the Zitadel/OAuth section, above, which this ratifies rath
 contradicts).
 
 **Phase 2b acceptance criteria — the runtime half of the boundary, which exists in none of #1416,
-#1417, or #1418 as of this writing (there is no `apps/mcp/slack/deploy/` and no gitops reference yet;
+#1417, or #1418 as of this writing (there is no `apps/mcp/vitruvian-slack-mcp/deploy/` and no gitops reference yet;
 this is unwritten work, not an unreviewed gap):**
 
 1. **Tunnel ingress scoped to the MCP path only; `/health` stays in-cluster.** Kubelet probes hit
@@ -1190,7 +1190,7 @@ this is unwritten work, not an unreviewed gap):**
    else. No workload on this cluster currently has egress restricted (zero `CiliumNetworkPolicy`
    resources exist in `gitops/` today), and the one prior attempt (on `argocd-image-updater`) was
    reverted because it needed apiserver access the policy didn't correctly grant — moot for
-   mcp-slack, which needs no apiserver access at all, making it a better first candidate than the
+   vitruvian-slack-mcp, which needs no apiserver access at all, making it a better first candidate than the
    workload that failed. **`toFQDNs` requires an explicit DNS-proxy rule or it silently matches
    nothing** — the same fail-open shape as the reverted attempt, worth getting right the first time
    given the precedent.
@@ -1202,7 +1202,7 @@ this is unwritten work, not an unreviewed gap):**
    readiness and being useless are different states, and nothing currently distinguishes them),
    `terminationGracePeriodSeconds` + `preStop` paired with the app's own `SIGTERM` handler.
 
-**Gate 5 — Cloudflare WAF/rate-limit block on `mcp-slack.ipv1337.dev`, promoted to a hard go-live
+**Gate 5 — Cloudflare WAF/rate-limit block on `vitruvian-slack-mcp.ipv1337.dev`, promoted to a hard go-live
 blocker rather than folded into criterion 3 (Beacon, 2026-08-06T22:16Z), owner James (his
 Cloudflare account).** Distinct from criterion 3's edge rate limit in kind, not just severity:
 criterion 3 hardens the endpoint against load; this gate is the incident-response stop button.
@@ -1233,12 +1233,12 @@ door under an outage — reversibility, not just survival, is the bar).
   requirement — Cloudflare's Terraform provider can express the rule, but applying it through this
   repo's CI reintroduces the exact coupling the gate exists to avoid).
 - **Held per Aegis's condition, restated by Beacon 2026-08-06T22:16Z:** the containment runbook in
-  `PLANS/MCP_SLACK_ROLLOUT_TRACKER.md` is not published as ready until this gate is closed. A
+  `PLANS/VITRUVIAN_SLACK_MCP_ROLLOUT_TRACKER.md` is not published as ready until this gate is closed. A
   runbook whose fastest row is aspirational reads as available at the moment someone needs it and
   isn't — worse than no runbook.
 
 **Both go-live blockers below are now resolved, not open — updated 2026-08-06T21:49Z.** They remain
-unowned by this record because they're bigger than mcp-slack, and the platform-wide question stays
+unowned by this record because they're bigger than vitruvian-slack-mcp, and the platform-wide question stays
 tracked at the platform level, not folded into this build's gate — but the answers are in, and per
 pattern 11 they compose into a real path, not a bounded one:
 
@@ -1263,12 +1263,12 @@ pattern 11 they compose into a real path, not a bounded one:
    is no "different OIDC client in the org" precondition left to worry about — any authenticated
    subject can request any project's audience directly, no other client involved.
 
-**What this means specifically for mcp-slack, per Atlas (2026-08-06T21:46Z):** compose
-self-registration (open) with the audience finding (pattern 12) with mcp-slack's current
+**What this means specifically for vitruvian-slack-mcp, per Atlas (2026-08-06T21:46Z):** compose
+self-registration (open) with the audience finding (pattern 12) with vitruvian-slack-mcp's current
 `auth.ts` (`:302-322` — issuer, RS256/JWKS, `aud` contains `config.projectId`, non-empty `sub`, and
 **nothing else** — confirmed by Beacon's independent whole-tree grep, zero `OIDC_ALLOWED_SUBJECTS`
 matches) and the result is: **any self-registered stranger on the internet would be accepted by
-mcp-slack**, the moment its Zitadel project exists and the server is deployed. **Not live today** —
+vitruvian-slack-mcp**, the moment its Zitadel project exists and the server is deployed. **Not live today** —
 PR #1417 (`zitadel-apps-mcp-slack`) hasn't applied and the server isn't deployed, so this is a
 go-live blocker, not a current exposure. It is the reason `OIDC_ALLOWED_SUBJECTS` was just elevated
 to a hard Phase 2b gate rather than a follow-up PR, above — audience validation contributes nothing
@@ -1304,11 +1304,11 @@ Verified against Google's own docs
   It's a pre-registered confidential client — Client ID, Client Secret, Authorization URL, and Token
   URL are pasted into Spark's UI directly; Spark appends `client_id`/`redirect_uri`/`scope` itself,
   so the Authorization URL is entered with no query parameters.
-- **No dynamic client registration and no `/.well-known/` discovery requirement** — mcp-slack only
+- **No dynamic client registration and no `/.well-known/` discovery requirement** — vitruvian-slack-mcp only
   needs to validate the bearer token Zitadel issued. This is a real scope reduction in Wren's
   transport PR (no OAuth-metadata-discovery endpoints to build).
 - **The redirect URI is Google's own fixed value**, identical across every environment:
-  `https://vertexaisearch.cloud.google.com/oauth-redirect`. mcp-slack is a resource server with no
+  `https://vertexaisearch.cloud.google.com/oauth-redirect`. vitruvian-slack-mcp is a resource server with no
   callback URL of its own — there is no per-env redirect URI to register, retiring a work item the
   thread had been carrying since the second message.
 - **PKCE: not applicable, closed.** The pulumiverse/zitadel provider exposes no PKCE field on
@@ -1338,18 +1338,18 @@ It gets its **own Zitadel project** rather than a second application inside
 oauth-user-inspector's, for the reason pattern 3 (above) exists to generalize: Zitadel's
 audience-granting scope (`urn:zitadel:iam:org:project:id:{projectId}:aud`) is project-scoped, so
 sharing a project would have made a token minted for either app valid at both — `aud` would stop
-being a real boundary while still passing mcp-slack's local check.
+being a real boundary while still passing vitruvian-slack-mcp's local check.
 
 Two more decisions baked into that stack, worth recording because they explain constraints
 elsewhere in this doc and in Wren's PR:
 - **Token validation is local JWT/JWKS verification, not introspection** (`AccessTokenType: JWT`
-  on the client). Introspection would require mcp-slack to hold its own Zitadel credential
+  on the client). Introspection would require vitruvian-slack-mcp to hold its own Zitadel credential
   in-cluster on top of the Slack bot token — a second secret, right after Option A's whole point
   was getting the cluster down to bot-token-plus-team-ID. JWKS is public and needs none.
 - **`AccessTokenType` sits in the client's `IgnoreChanges` list**, along with `appType`, `version`,
   the three assertion booleans, and `clockSkew` — so it is the one setting Pulumi will never
   reconcile after creation. If the live client ever drifts off `JWT`, the stack reports clean
-  forever while mcp-slack rejects every request, indistinguishable from a broken transport. Verify
+  forever while vitruvian-slack-mcp rejects every request, indistinguishable from a broken transport. Verify
   it once after first apply (`pulumi stack output accessTokenType`, after a `:refresh` — the
   refresh matters, since it's the only way the output reflects live state rather than what Pulumi
   last wrote) — there's no ongoing check after that.
@@ -1381,7 +1381,7 @@ any future Zitadel-client Pulumi stack in this repo:
    own Zitadel user via the console — he's currently signed in only as the bootstrap admin
    (`admin@vitruvian.auth.ipv1337.dev`) and hasn't confirmed whether a personal account already
    exists. The resulting user ID becomes stack config for the `zitadel.UserGrant` binding him to
-   `mcp-slack-user`.
+   `vitruvian-slack-mcp-user`.
 4. **Superseded 2026-08-06T22:17Z — item 4 was "flip `allowRegister` to `false` in the console
    tonight"; James declined the console route entirely (see the corrected go-live-blocker paragraph
    above).** What actually needs his sign-off: **approve a new `zitadel-instance` Pulumi stack and
@@ -1391,9 +1391,9 @@ any future Zitadel-client Pulumi stack in this repo:
    `james.nguyen@vitruvian.auth.ipv1337.dev` against his gmail address, so he stops operating as the
    bootstrap `admin`. Per decision 2, the **user** itself stays out of any Pulumi stack (a `pulumi
    destroy` on what's still called a PoC would delete his identity); only the `zitadel.UserGrant`
-   binding him to `mcp-slack-user` is code. Atlas's `grantUserIds` work is unblocked on the value now,
+   binding him to `vitruvian-slack-mcp-user` is code. Atlas's `grantUserIds` work is unblocked on the value now,
    not on a decision.
-5. **New, 2026-08-06T22:16Z — create the Cloudflare WAF/rate-limit block on `mcp-slack.ipv1337.dev`
+5. **New, 2026-08-06T22:16Z — create the Cloudflare WAF/rate-limit block on `vitruvian-slack-mcp.ipv1337.dev`
    (Gate 5, above).** His Cloudflare account, so this is his to create, not a spec someone else can
    apply. Hard go-live gate, not Phase 2b hardening — the endpoint does not go live without it, and
    the containment runbook stays unpublished until it exists. Deliberately unmanaged config (see
@@ -1435,7 +1435,7 @@ much longer:
           A["OAuth 2.0 Auth"] --> B["Bearer JWT Token"]
       end
 
-      subgraph Service["mcp-slack HTTP Server"]
+      subgraph Service["vitruvian-slack-mcp HTTP Server"]
           B --> C["Validate JWT against Zitadel JWKS"]
           C --> D{"User Token Present?"}
           D -->|Yes - Impersonation Mode| E["Expose All 22 Tools + Unrestricted Channels/DMs"]
@@ -1453,6 +1453,6 @@ much longer:
   the sole gate, or Spark starts supporting an auth model Cloudflare Access can gate.
 - **Homelab permanence (5):** the monetization brainstorm James mentioned; also revisit if this
   cluster needs uptime/on-call guarantees it doesn't have today as a laptop-hosted target.
-- **Hostname `mcp-slack.ipv1337.dev` (6):** cheap to change if needed — no Zitadel apply required,
+- **Hostname `vitruvian-slack-mcp.ipv1337.dev` (6):** cheap to change if needed — no Zitadel apply required,
   per Wren's correction — so this is a low-stakes reversal if James ever wants a different name.
 

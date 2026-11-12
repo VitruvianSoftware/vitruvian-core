@@ -117,7 +117,7 @@ Each app type has its own inner loop. The table below is the practical per-type 
 | **Containerized SaaS web app** | `oauth-user-inspector` | `pnpm dev` (concurrently Vite + nodemon/tsc backend on `:8080) | `bazel test //apps/web/oauth-user-inspector/...` (jest server suite) |
 | **Go CLI** | `devx` | `bazel run //apps/cli/devx:devx -- <args>` (developer build of record); release builds via goreleaser only | `bazel test //apps/cli/devx/...` |
 | **Go CLI (infra/ops)** | `homelab` | `bazel run //apps/cli/homelab/cmd/homelab -- <args>` | `bazel test //apps/cli/homelab/...` |
-| **Agent / MCP (Rust)** | `mcp-slack` | `bazel run //apps/mcp/slack:mcp-slack` (the MCP host injects the Slack tokens as env) | `bazel test //apps/mcp/slack/...` |
+| **Agent / MCP (Rust)** | `vitruvian-slack-mcp` | `bazel run //apps/mcp/vitruvian-slack-mcp:vitruvian-slack-mcp` (the MCP host injects the Slack tokens as env) | `bazel test //apps/mcp/vitruvian-slack-mcp/...` |
 | **Agent / MCP + macOS** | `vitruvian-code` | `pnpm start` / `pnpm dev` for the bot; `bazel build --config=macos-app //apps/desktop/vitruvian-code/macos:VitruvianCode` for the menu-bar app | — (no tests yet) |
 
 > **Known divergences you will hit (all tracked in the Alignment Gaps doc):**
@@ -154,7 +154,7 @@ There is **no documented local-vs-dev-project split** yet — that's a known loc
 | `devx` | `.env` / `.env.keys` | managed via `devx config secrets`; keys: `CF_TUNNEL_TOKEN`, `DEV_HOSTNAME` |
 | Pulumi stacks | `infrastructure/pulumi/<project>/Pulumi.<stack>.yaml` | gitignored; non-secret config is committed, secrets are not (Section 7) |
 
-> **Gap:** `oauth-user-inspector`, `mcp-slack`, and `homelab` ship **no `.env.example`**, so "how do I supply secrets to run this locally" is partly tribal knowledge. **🎯 Target:** every app that reads env/secret config commits a placeholder `.env.example`. See the Alignment Gaps doc.
+> **Gap:** `oauth-user-inspector`, `vitruvian-slack-mcp`, and `homelab` ship **no `.env.example`**, so "how do I supply secrets to run this locally" is partly tribal knowledge. **🎯 Target:** every app that reads env/secret config commits a placeholder `.env.example`. See the Alignment Gaps doc.
 
 ---
 
@@ -329,7 +329,7 @@ addlicense -check -c "VitruvianSoftware" -l mit \
 - **Not covered:** `json`, `md`, lockfiles, `_helpers.tpl`, generated/scaffold trees (`docs/**`, `internal/scaffold/templates/**`, `dev-local/{crds,values,dashboards}/**`, prisma migrations, `Pulumi.*.yaml`).
 - **The HTML gotcha:** addlicense inserts an **HTML comment** (`<!-- ... -->`) header into `.html`/`.css`-style files. If a header looks "missing," check that it wasn't stripped by a formatter or templating step — addlicense will re-add it; run `addlicense` without `-check` (or `bazel run //:tidy` adjacent flows) to fix locally.
 
-> **`-check` only verifies a header is *present*, not that it's MIT or that the holder is VitruvianSoftware.** An Apache/wrong-holder header passes silently. So today `homelab`, `mcp-slack`, and `vitruvian-code` ship **Apache-2.0** LICENSE files (and `mcp-slack`'s source carries an Apache header), and `tabula`'s LICENSE names `BlueCentre` — all slip through. **🎯 Target:** MIT `(c) 2026 VitruvianSoftware` everywhere, plus a content gate that fails on non-MIT/wrong-holder. New code must use the MIT/VitruvianSoftware header; do not copy headers from the Apache-licensed apps. See the Alignment Gaps doc.
+> **`-check` only verifies a header is *present*, not that it's MIT or that the holder is VitruvianSoftware.** An Apache/wrong-holder header passes silently. So today `homelab`, `vitruvian-slack-mcp`, and `vitruvian-code` ship **Apache-2.0** LICENSE files (and `vitruvian-slack-mcp`'s source carries an Apache header), and `tabula`'s LICENSE names `BlueCentre` — all slip through. **🎯 Target:** MIT `(c) 2026 VitruvianSoftware` everywhere, plus a content gate that fails on non-MIT/wrong-holder. New code must use the MIT/VitruvianSoftware header; do not copy headers from the Apache-licensed apps. See the Alignment Gaps doc.
 
 ### Governance files
 
@@ -368,7 +368,7 @@ Deploy mechanics are determined by **app type** (see the Applications & Categori
 |----------|--------|-----------|
 | **SaaS web service** (`tabula`, `oauth-user-inspector`) | **GCP Cloud Run** | image → Artifact Registry → **Pulumi `cloudrunv2`**, deployed by GitHub Actions via **keyless WIF**, keyed on a per-app **GitHub Environment** |
 | **CLI / developer tool** (`devx`, `homelab`) | Standalone-repo **GitHub Releases + Homebrew tap** | `goreleaser` + `release-please` from the mirror (**released, not deployed**) |
-| **Agent / MCP** (`mcp-slack`, `vitruvian-code`) | container image (`mcp-slack`) / DMG (`vitruvian-code`) | `release-please`; `mcp-slack` publishes its image from `main`; *DMG publishing CI is a gap — see below* |
+| **Agent / MCP** (`vitruvian-slack-mcp`, `vitruvian-code`) | container image (`vitruvian-slack-mcp`) / DMG (`vitruvian-code`) | `release-please`; `vitruvian-slack-mcp` publishes its image from `main`; *DMG publishing CI is a gap — see below* |
 | **Self-hosted platform** (`gitops/`) | dev-local **k3s** | **ArgoCD app-of-apps**, reconciled from git only (Section 9) |
 
 ### Cloud Run deploy (the two SaaS apps)
@@ -404,7 +404,7 @@ Deploy auth is **keyless** Workload Identity Federation per GCP project, **codif
 
 ### Releases
 
-- **`apps-release.yaml`** runs per-app `release-please` for the four released apps (`devx`, `homelab`, `mcp-slack`, `vitruvian-code`) — version bumps in the app's manifest drive the release, so releases stay **manifest-driven by design** (not path- or graph-gated like deploys). The monorepo is the **single release authority**; mirrors self-tag off the exported manifest.
+- **`apps-release.yaml`** runs per-app `release-please` for the four released apps (`devx`, `homelab`, `vitruvian-slack-mcp`, `vitruvian-code`) — version bumps in the app's manifest drive the release, so releases stay **manifest-driven by design** (not path- or graph-gated like deploys). The monorepo is the **single release authority**; mirrors self-tag off the exported manifest.
 - The generated `charts-publish` job (`tools/charts/publish.sh`, break-glass `bazel run //tools/charts:publish`) publishes **OCI Helm charts to GHCR**, scoped to the chart whose directory changed in the push (fail-open to all on manual dispatch); container images stay in **GCP Artifact Registry**.
 
 ---
@@ -429,7 +429,7 @@ bazel run //tools/gitops:<target> -- <args>
 
 ## 10. Code sharing / Copybara
 
-Five of the six first-party apps (`devx`, `homelab`, `mcp-slack`, `vitruvian-code`, `oauth-user-inspector`) are **one-way Copybara-mirrored** to a standalone repo in the `VitruvianSoftware` org. `tabula` is currently **not** mirrored.
+Five of the six first-party apps (`devx`, `homelab`, `vitruvian-slack-mcp`, `vitruvian-code`, `oauth-user-inspector`) are **one-way Copybara-mirrored** to a standalone repo in the `VitruvianSoftware` org. `tabula` is currently **not** mirrored.
 
 - **Edit in the monorepo. Never edit the standalone mirror** for first-party work — Copybara exports one-way (monorepo → mirror). Config lives in `tools/copybara/copy.bara.sky`; per-component export workflows are `.github/workflows/copybara-export-<app>.yaml` (plus the shared `_copybara-export.yaml`).
 - A cron **import** workflow (`copybara-import-pr.yaml`) opens monorepo PRs and re-runs `//:tidy`.

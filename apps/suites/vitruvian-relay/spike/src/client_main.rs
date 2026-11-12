@@ -29,8 +29,6 @@
 //! RELAY_PROJECT_ID, RELAY_TOKEN_FILE (default ~/.config/vitruvian-relay-spike/token.json).
 //! Output is one JSON object per line on stdout, like the server's log.
 
-use vitruvian_slack_mcp_rs_lib::{auth::full_scope_string, base64, tls, url::encode_query_params};
-use vitruvian_relay_spike::client::*;
 use serde_json::{json, Value};
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -39,6 +37,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio_tungstenite::tungstenite::{
     self, client::IntoClientRequest, protocol::Message, Error as WsError,
 };
+use vitruvian_relay_spike::client::*;
+use vitruvian_slack_mcp_rs_lib::{auth::full_scope_string, base64, tls, url::encode_query_params};
 
 struct Config {
     issuer: String,

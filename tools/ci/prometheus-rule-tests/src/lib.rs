@@ -306,7 +306,7 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("oom.test.yml"), "tests: []\n").unwrap();
         fs::write(dir.join("argocd.test.yml"), "tests: []\n").unwrap();
-        fs::write(dir.join("mcp-slack.test.yml"), "tests: []\n").unwrap();
+        fs::write(dir.join("vitruvian-slack-mcp.test.yml"), "tests: []\n").unwrap();
         fs::write(dir.join("ignored.yml"), "tests: []\n").unwrap();
 
         let files = list_test_yml_files(&dir);
@@ -316,7 +316,11 @@ mod tests {
             .collect();
         assert_eq!(
             names,
-            vec!["argocd.test.yml", "mcp-slack.test.yml", "oom.test.yml"]
+            vec![
+                "argocd.test.yml",
+                "oom.test.yml",
+                "vitruvian-slack-mcp.test.yml"
+            ]
         );
         let _ = fs::remove_dir_all(&dir);
     }

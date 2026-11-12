@@ -35,7 +35,7 @@
 //
 // WHY ITS OWN PROJECT: Zitadel's audience scope is per project, so sharing a
 // project with another app would blur that boundary. But note what the sibling
-// mcp-slack stack established: in this instance `aud` is caller-authored (any
+// vitruvian-slack-mcp stack established: in this instance `aud` is caller-authored (any
 // authenticated user can request any project's audience scope). The relay must
 // therefore authorise on the token's client id (azp) and subject, never on
 // `aud` alone. Exported clientIds exist for exactly that pin.

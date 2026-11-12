@@ -28,5 +28,5 @@ fn main() {
         .skip(1)
         .map(OsString::into_vec)
         .collect();
-    std::process::exit(design_sync_lib::mcp_slack_e2e::run(&args));
+    std::process::exit(design_sync_lib::vitruvian_slack_mcp_e2e::run(&args));
 }

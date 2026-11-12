@@ -76,7 +76,7 @@ terminator)" step in the workflow sketch below.
 > this file (its `:38` evidence cell) and `apps/web/oauth-user-inspector/docs/OPERATIONS.md`.
 > Measured at two **immutable commits**, so the demonstration cannot itself go
 > stale: **1 workflow at `90c1f362`, 2 at `d17b7583`** — the latter added the
-> mcp-slack apply job as a second consumer. A count stated against `main` would
+> vitruvian-slack-mcp apply job as a second consumer. A count stated against `main` would
 > have been false within minutes of being written; this one reports the set at a
 > commit rather than asserting a number about a moving ref.
 >

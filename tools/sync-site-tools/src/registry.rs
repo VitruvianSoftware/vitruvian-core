@@ -200,7 +200,7 @@ pub fn ecosystems() -> Vec<Value> {
             "Model Context Protocol servers that work across Claude Code, Antigravity, OpenCode, Codex, and Cursor.",
             Some((
                 "Add Slack MCP server",
-                "claude mcp add slack -- docker run -i --rm -e SLACK_BOT_TOKEN -e SLACK_USER_TOKEN -e SLACK_TEAM_ID -e MCP_TRANSPORT=stdio ghcr.io/vitruviansoftware/mcp-slack:main",
+                "claude mcp add slack -- docker run -i --rm -e SLACK_BOT_TOKEN -e SLACK_USER_TOKEN -e SLACK_TEAM_ID -e MCP_TRANSPORT=stdio ghcr.io/vitruviansoftware/vitruvian-slack-mcp:main",
                 "/ai/catalog.json",
             )),
         ),
@@ -675,15 +675,15 @@ fn additional() -> Vec<Ext> {
     let ecos = |items: &[&str]| items.iter().map(|&c| s(c)).collect::<Vec<_>>();
     vec![
         Ext {
-            id: s("mcp-roborock"),
-            name: s("mcp-roborock"),
+            id: s("vitruvian-roborock-mcp"),
+            name: s("vitruvian-roborock-mcp"),
             kind: s("plugin"),
             category: s("Home Automation & MCP"),
             status: s("mirror"),
             summary: s("A Roborock vacuum integration: a local daemon, an MCP server and plugins that let a coding agent check status, start room cleans or send the robot home."),
             repo: s("https://github.com/VitruvianSoftware/mcp-roborock"),
             mirror_repo: s("https://github.com/VitruvianSoftware/mcp-roborock"),
-            source: s("apps/mcp/roborock"),
+            source: s("apps/mcp/vitruvian-roborock-mcp"),
             ecosystems: ecos(&["claude-code", "antigravity", "codex-opencode", "mcp"]),
             capabilities: caps(&["MCP Server", "2 Skills", "CLI Daemon"]),
             skills: caps(&["roborock-control", "roborock-setup"]),
@@ -697,7 +697,7 @@ fn additional() -> Vec<Ext> {
                 install("Claude Code", "claude-code", "Claude Code, step 2: install", "claude plugin install vitruvian-roborock"),
                 install("Antigravity", "antigravity", "Install in Antigravity", "agy plugin install https://github.com/VitruvianSoftware/mcp-roborock"),
             ],
-            claude_marketplace_source: s("./apps/mcp/roborock/plugin"),
+            claude_marketplace_source: s("./apps/mcp/vitruvian-roborock-mcp/plugin"),
         },
         Ext {
             id: s("vitruvian-code"),
@@ -723,15 +723,15 @@ fn additional() -> Vec<Ext> {
             claude_marketplace_source: s(""),
         },
         Ext {
-            id: s("mcp-slack"),
-            name: s("mcp-slack"),
+            id: s("vitruvian-slack-mcp"),
+            name: s("vitruvian-slack-mcp"),
             kind: s("mcp"),
             category: s("Team Communication MCP"),
             status: s("mirror"),
             summary: s("A Slack MCP server with dual-token auth: around forty tools covering channels, threads, search, files, user groups and Canvas editing, acting as the bot or as you."),
             repo: s("https://github.com/VitruvianSoftware/mcp-slack"),
             mirror_repo: s("https://github.com/VitruvianSoftware/mcp-slack"),
-            source: s("apps/mcp/slack"),
+            source: s("apps/mcp/vitruvian-slack-mcp"),
             ecosystems: ecos(&["claude-code", "antigravity", "codex-opencode", "mcp"]),
             capabilities: caps(&["MCP Server", "40+ Slack Tools", "Dual-Token Auth"]),
             skills: vec![],
@@ -741,9 +741,9 @@ fn additional() -> Vec<Ext> {
             needs: s("Docker, plus a Slack bot token, user token and team ID, passed to the server as environment variables (add an --env flag for each; the README lists them)"),
             note: s(""),
             installs: vec![
-                install("Claude Code", "claude-code", "Install in Claude Code", "claude mcp add slack -- docker run -i --rm -e SLACK_BOT_TOKEN -e SLACK_USER_TOKEN -e SLACK_TEAM_ID -e MCP_TRANSPORT=stdio ghcr.io/vitruviansoftware/mcp-slack:main"),
-                install("Antigravity", "antigravity", "Install in Antigravity", "agy mcp add slack -- docker run -i --rm -e SLACK_BOT_TOKEN -e SLACK_USER_TOKEN -e SLACK_TEAM_ID -e MCP_TRANSPORT=stdio ghcr.io/vitruviansoftware/mcp-slack:main"),
-                install("Codex / OpenCode", "codex-opencode", "Run the container (stdio MCP)", "docker run -i --rm -e SLACK_BOT_TOKEN -e SLACK_USER_TOKEN -e SLACK_TEAM_ID -e MCP_TRANSPORT=stdio ghcr.io/vitruviansoftware/mcp-slack:main"),
+                install("Claude Code", "claude-code", "Install in Claude Code", "claude mcp add slack -- docker run -i --rm -e SLACK_BOT_TOKEN -e SLACK_USER_TOKEN -e SLACK_TEAM_ID -e MCP_TRANSPORT=stdio ghcr.io/vitruviansoftware/vitruvian-slack-mcp:main"),
+                install("Antigravity", "antigravity", "Install in Antigravity", "agy mcp add slack -- docker run -i --rm -e SLACK_BOT_TOKEN -e SLACK_USER_TOKEN -e SLACK_TEAM_ID -e MCP_TRANSPORT=stdio ghcr.io/vitruviansoftware/vitruvian-slack-mcp:main"),
+                install("Codex / OpenCode", "codex-opencode", "Run the container (stdio MCP)", "docker run -i --rm -e SLACK_BOT_TOKEN -e SLACK_USER_TOKEN -e SLACK_TEAM_ID -e MCP_TRANSPORT=stdio ghcr.io/vitruviansoftware/vitruvian-slack-mcp:main"),
             ],
             claude_marketplace_source: s(""),
         },
@@ -1122,9 +1122,9 @@ mod tests {
                 "gh-watch",
                 "alpha",
                 "zeta",
-                "mcp-roborock",
+                "vitruvian-roborock-mcp",
                 "vitruvian-code",
-                "mcp-slack",
+                "vitruvian-slack-mcp",
                 "devx"
             ]
         );

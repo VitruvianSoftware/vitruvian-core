@@ -439,7 +439,7 @@ crate.from_cargo(
 use_repo(crate, "vitruvian_relay_spike_crates")
 
 # The Vitruvian Roborock MCP daemon/CLI/server's crates. A separate hub with its own
-# Cargo.lock because the mcp-roborock mirror builds from apps/mcp/vitruvian-roborock-mcp
+# Cargo.lock because the vitruvian-roborock-mcp mirror builds from apps/mcp/vitruvian-roborock-mcp
 # alone (see apps/mcp/vitruvian-roborock-mcp/Cargo.toml).
 # Re-lock: bazel run //tools/crates:lock -- --dir apps/mcp/vitruvian-roborock-mcp
 crate.from_cargo(

@@ -20,7 +20,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! Rust port of `tools/test-mcp-slack-e2e.sh`.
+//! Rust port of `tools/test-vitruvian-slack-mcp-e2e.sh`.
 
 use serde_json::Value;
 use shell_compat::{env_or, env_or_empty, err, os, out, status_code, subst};
@@ -150,7 +150,7 @@ fn curl_capture(args: &[&[u8]]) -> (i32, String) {
 }
 
 pub fn run(args: &[Vec<u8>]) -> i32 {
-    let mcp_url = env_or("MCP_URL", b"https://mcp-slack.ipv1337.dev/mcp");
+    let mcp_url = env_or("MCP_URL", b"https://vitruvian-slack-mcp.ipv1337.dev/mcp");
     let default_disc = {
         let base = mcp_url.strip_suffix(b"/mcp").unwrap_or(&mcp_url);
         let mut v = base.to_vec();
@@ -168,7 +168,7 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
     };
 
     out(b"============================================================\n");
-    out(b"  mcp-slack Live End-to-End Validation\n");
+    out(b"  vitruvian-slack-mcp Live End-to-End Validation\n");
     out(b"============================================================\n\n");
 
     out(b"\xE2\x96\xB6 [1/4] Checking RFC 9728 OAuth Resource Discovery...\n");
@@ -209,7 +209,7 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
         out(b"\xE2\x96\xB6 [3/4] Authenticated checks skipped (no MCP_TOKEN provided).\n");
         out(b"  To run authenticated JSON-RPC tests:\n");
         out(b"    export MCP_TOKEN=\"<your-jwt-token>\"\n");
-        out(b"    ./tools/test-mcp-slack-e2e.sh\n\n");
+        out(b"    ./tools/test-vitruvian-slack-mcp-e2e.sh\n\n");
         out(b"\xE2\x9C\x93 Base infrastructure and OAuth discovery validation PASSED.\n");
         return 0;
     }
@@ -237,8 +237,8 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
         return init_rc;
     }
 
-    if init_resp.contains("\"serverInfo\":{\"name\":\"mcp-slack\"") {
-        out(b"  \xE2\x9C\x93 MCP Initialize succeeded (server: mcp-slack v2.0.0)\n");
+    if init_resp.contains("\"serverInfo\":{\"name\":\"vitruvian-slack-mcp\"") {
+        out(b"  \xE2\x9C\x93 MCP Initialize succeeded (server: vitruvian-slack-mcp v2.0.0)\n");
     } else {
         err(b"  \xE2\x9C\x97 MCP Initialize failed:\n");
         err(format!("{init_resp}\n").as_bytes());

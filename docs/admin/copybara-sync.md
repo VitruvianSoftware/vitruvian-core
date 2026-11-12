@@ -20,7 +20,7 @@ bidirectionally — see [§0 Sync shapes](#0-sync-shapes-what-replaced-bidirecti
 
 | Shape | Flag | Components | Generates |
 |---|---|---|---|
-| **One-way w/ PR-import** | `is_one_way=True` | `mcp-slack`, `mcp-roborock`, `devx`, `homelab`, `vitruvian-code`, `oauth-user-inspector` | `export_<comp>` (push to mirror `main`) + `import_pr_<comp>` (a labelled mirror PR → a **monorepo PR**, `CHANGE_REQUEST` mode) |
+| **One-way w/ PR-import** | `is_one_way=True` | `vitruvian-slack-mcp`, `vitruvian-roborock-mcp`, `devx`, `homelab`, `vitruvian-code`, `oauth-user-inspector` | `export_<comp>` (push to mirror `main`) + `import_pr_<comp>` (a labelled mirror PR → a **monorepo PR**, `CHANGE_REQUEST` mode) |
 | **Export-only** | `export_only=True` | `pulumi-library`, `pulumi_go-example-foundation`, `pulumi_ts-example-foundation`, `site-vitruviansoftware-dev`, `gh-watch`, `vitruvian-sdk`, `vitruvian-tool-github`, `vitruvian`, `courier`, `home-speaker`, `vitruvian-remote`, `esp32-desk-companion` | `export_<comp>` only — no import path of any kind |
 | **Bidirectional** | `is_one_way=False` | *(none)* | legacy shape, retained as a knob only |
 
@@ -68,7 +68,7 @@ flowchart LR
     pr -- "reviewed + merged here" --> comp
 ```
 
-> §3–§4 walk the flow using **mcp-slack** as the worked example; every one-way component behaves
+> §3–§4 walk the flow using **vitruvian-slack-mcp** as the worked example; every one-way component behaves
 > identically (substitute `<comp>` and its `<COMP>_*` secrets / `<COMP>_REV_ID` label).
 
 ### Moving parts
@@ -99,13 +99,13 @@ flowchart LR
 
 ## 3. How the EXPORT flow works (monorepo → standalone)
 
-**Trigger:** a push to `vitruvian-core` `main` touching `apps/mcp/slack/**`.
+**Trigger:** a push to `vitruvian-core` `main` touching `apps/mcp/vitruvian-slack-mcp/**`.
 
-1. `copybara-export.yaml` fires (`on: push`, `paths: apps/mcp/slack/**`).
+1. `copybara-export.yaml` fires (`on: push`, `paths: apps/mcp/vitruvian-slack-mcp/**`).
 2. It writes auth to the runner: the deploy key → `~/.ssh/id_rsa` (with a guaranteed trailing
    newline), and `GITHUB_TOKEN` → `~/.git-credentials`.
 3. It runs `docker run olivr/copybara@sha256:… copybara` with `COPYBARA_WORKFLOW=export_mcp_slack`.
-4. Copybara **reads** vitruvian-core over **HTTPS** (`GITHUB_TOKEN`), strips the `apps/mcp/slack/` prefix
+4. Copybara **reads** vitruvian-core over **HTTPS** (`GITHUB_TOKEN`), strips the `apps/mcp/vitruvian-slack-mcp/` prefix
    (`core.move`), and **pushes** the migrated commit(s) to the standalone over **SSH** (deploy key),
    stamping each with `MONOREPO_REV_ID`.
 5. Nothing on the mirror side reacts. The mirror is read-only; the only way a change re-enters the
@@ -118,9 +118,9 @@ sequenceDiagram
     participant VC as vitruvian-core main
     participant EXP as copybara-export.yaml
     participant CB as Copybara image
-    participant MS as mcp-slack main
+    participant MS as vitruvian-slack-mcp main
     participant IMP as import (via dispatch)
-    Dev->>VC: push under apps/mcp/slack/**
+    Dev->>VC: push under apps/mcp/vitruvian-slack-mcp/**
     VC->>EXP: on: push
     EXP->>CB: docker run (export_mcp_slack, ITERATIVE)
     CB->>VC: read origin (HTTPS + GITHUB_TOKEN)
@@ -141,20 +141,20 @@ no push trigger and no `repository_dispatch` — a push to a mirror does **not**
    is the approval gate** — nothing is imported without it.
 3. On the next hourly cycle the workflow queries each mirror for open PRs carrying the label.
 4. For each one it runs `COPYBARA_WORKFLOW=import_pr_mcp_slack` in **`CHANGE_REQUEST`** mode:
-   Copybara reads the mirror PR, adds the `apps/mcp/slack/` prefix, and opens a **monorepo PR** on branch
-   `mcp-slack-import-pr-<N>`, stamping `MCP_SLACK_REV_ID` and embedding a
+   Copybara reads the mirror PR, adds the `apps/mcp/vitruvian-slack-mcp/` prefix, and opens a **monorepo PR** on branch
+   `vitruvian-slack-mcp-import-pr-<N>`, stamping `VITRUVIAN_SLACK_MCP_REV_ID` and embedding a
    `Mirror-Of: VitruvianSoftware/mcp-slack#<N>` footer.
 5. That monorepo PR goes through normal review and the merge queue like any other change.
 6. On merge, `copybara-import-pr-close.yaml` reads the `Mirror-Of:` footer and closes the
    originating mirror PR by API (a commit trailer can't close a PR cross-repo).
-7. The merge to `main` touches `apps/mcp/slack/**`, so the **export** fires and reflects the change back
-   out to the mirror — where the export's own skip-guard sees `MCP_SLACK_REV_ID` and does not
+7. The merge to `main` touches `apps/mcp/vitruvian-slack-mcp/**`, so the **export** fires and reflects the change back
+   out to the mirror — where the export's own skip-guard sees `VITRUVIAN_SLACK_MCP_REV_ID` and does not
    re-import it.
 
 ```mermaid
 sequenceDiagram
     actor Ext as External contributor
-    participant MS as mcp-slack (mirror)
+    participant MS as vitruvian-slack-mcp (mirror)
     actor Maint as Maintainer
     participant IMP as copybara-import-pr.yaml (hourly)
     participant CB as Copybara image
@@ -163,7 +163,7 @@ sequenceDiagram
     Maint->>MS: apply label import-to-monorepo
     IMP->>MS: poll for labelled PRs
     IMP->>CB: docker run (import_pr_mcp_slack, CHANGE_REQUEST)
-    CB->>VC: open monorepo PR, stamp MCP_SLACK_REV_ID + Mirror-Of footer
+    CB->>VC: open monorepo PR, stamp VITRUVIAN_SLACK_MCP_REV_ID + Mirror-Of footer
     VC->>VC: review + merge queue
     VC->>MS: on merge, auto-close the mirror PR (API)
     Note over VC,MS: merge triggers export - change reflected back out
@@ -179,7 +179,7 @@ sequenceDiagram
 
 Two cooperating mechanisms, **both required**:
 
-1. **Per-direction rev-id labels.** Export stamps `MONOREPO_REV_ID`; import stamps `MCP_SLACK_REV_ID`
+1. **Per-direction rev-id labels.** Export stamps `MONOREPO_REV_ID`; import stamps `VITRUVIAN_SLACK_MCP_REV_ID`
    (via `experimental_custom_rev_id`). A change's label tells you which side it originated on.
 2. **A per-commit skip-guard** (`core.dynamic_transform` → `core.fail_with_noop`): if a commit
    carries the *other* direction's label, drop it instead of migrating it back.
@@ -214,18 +214,18 @@ flowchart TD
     subgraph P["Pulumi: infrastructure/pulumi/platform/repo-config (project repo-config, stack dev)"]
         key["tls ED25519 keypair"]
     end
-    key -- "public half → WRITE deploy key" --> msk["mcp-slack: Deploy keys"]
-    key -- "private half → secret" --> vck["vitruvian-core: MCP_SLACK_SYNC_SSH_KEY"]
+    key -- "public half → WRITE deploy key" --> msk["vitruvian-slack-mcp: Deploy keys"]
+    key -- "private half → secret" --> vck["vitruvian-core: VITRUVIAN_SLACK_MCP_SYNC_SSH_KEY"]
     app["GitHub App vitruvian-copybara-sync (App ID 3863936)<br/>MANUAL one-time operator bootstrap"]
-    app -- "App id + private key → secrets" --> mss["mcp-slack: MCP_SLACK_DISPATCH_APP_ID + _PRIVATE_KEY"]
+    app -- "App id + private key → secrets" --> mss["vitruvian-slack-mcp: VITRUVIAN_SLACK_MCP_DISPATCH_APP_ID + _PRIVATE_KEY"]
 ```
 
-- **Export push** (vitruvian-core → mcp-slack): the **write deploy key** on mcp-slack. Private half
-  is `MCP_SLACK_SYNC_SSH_KEY` in vitruvian-core.
+- **Export push** (vitruvian-core → vitruvian-slack-mcp): the **write deploy key** on vitruvian-slack-mcp. Private half
+  is `VITRUVIAN_SLACK_MCP_SYNC_SSH_KEY` in vitruvian-core.
 - **Reading vitruvian-core / writing it on import:** the workflow's `GITHUB_TOKEN` over HTTPS.
-- **The dispatch** (mcp-slack → vitruvian-core): the **GitHub App**. The App is installed on
+- **The dispatch** (vitruvian-slack-mcp → vitruvian-core): the **GitHub App**. The App is installed on
   `vitruvian-core` only (least-privilege; `repository_dispatch` needs Contents: write there). Its
-  credentials live as secrets in mcp-slack.
+  credentials live as secrets in vitruvian-slack-mcp.
 - **Provisioned by Pulumi** (`internal/copybara_sync/sync.go` inside `repo-config`): per
   component, the deploy key + all three secrets — it loops `syncedProjects`. The App itself is
   created/installed by hand (GitHub has no headless App-creation API); Pulumi only places its
@@ -529,13 +529,13 @@ invariants across releases, downloads, and documentation:
 
 **Diff the component across both repos:**
 ```bash
-gh api repos/VitruvianSoftware/vitruvian-core/contents/apps/mcp/slack/<file>?ref=main --jq .content | base64 -d
+gh api repos/VitruvianSoftware/vitruvian-core/contents/apps/mcp/vitruvian-slack-mcp/<file>?ref=main --jq .content | base64 -d
 gh api repos/VitruvianSoftware/mcp-slack/contents/<file>?ref=main --jq .content | base64 -d
 ```
 
 **Context files that must NOT cross the boundary** (already configured in `copy.bara.sky`):
 - export keeps each standalone's `.github/workflows/sync-to-monorepo.yaml` (and `package-lock.json`
-  for npm components: mcp-slack, nexus-agent);
+  for npm components: vitruvian-slack-mcp, nexus-agent);
 - both directions keep the monorepo-only gazelle `**/BUILD` files (devx alone has 57).
 
 ---
@@ -660,7 +660,7 @@ places**, both `addlicense@v1.2.0` with `-c "VitruvianSoftware" -l mit`:
 - **Monorepo `CI` → `license-check` (shift-left).** Runs over the **whole repo** so a missing header
   is caught on the PR, *before* fan-out. The binary lands in `GOPATH/bin` (not on the runner PATH), so
   it's invoked as `"$(go env GOPATH)/bin/addlicense"`.
-- **Each standalone's OWN CI.** devx checks in its `lint` job; homelab and mcp-slack each have a
+- **Each standalone's OWN CI.** devx checks in its `lint` job; homelab and vitruvian-slack-mcp each have a
   `license-check` job; nexus-agent (which had no CI) gets a dedicated `license-check.yml`. This is the
   only check that covers **standalone-only** files (e.g. `sync-to-monorepo.yaml`) the monorepo never sees.
 
@@ -682,7 +682,7 @@ Per-standalone ignore sets (no `**/BUILD` — standalones have no Bazel files):
 |---|---|
 | devx | `docs/**`, `internal/scaffold/templates/**` |
 | homelab | *(none)* |
-| mcp-slack | `package-lock.json`, `node_modules/**` |
+| vitruvian-slack-mcp | `package-lock.json`, `node_modules/**` |
 | nexus-agent | `package-lock.json`, `node_modules/**`, `.release-please-manifest.json` |
 
 **Bulk-header many files:** run add-mode (drop `-check`) from the repo root with the monorepo ignore

@@ -40,7 +40,7 @@
 # WHERE THE ALLOW-LIST CAME FROM — MEASURED, NOT ASSUMED
 #
 # Hubble flows from the live controller pod over a 6-minute window that
-# covered a full update cycle for all three ImageUpdater CRs (buzz, mcp-slack,
+# covered a full update cycle for all three ImageUpdater CRs (buzz, vitruvian-slack-mcp,
 # backstage): the only destinations were the kube-apiserver entity (:6443,
 # via the 10.43.0.1 ClusterIP after socket-LB translation) and github.com
 # (:22). The registry calls to ghcr.io ran in the same window (the controller
@@ -79,7 +79,7 @@
 # That was the plan in #1365, and it does not work here: Cilium's L7 DNS
 # proxy never answers on this cluster, so any `rules.dns` block times out
 # every lookup and toFQDNs matches nothing. Tracked in #1428; see the longer
-# write-up in apps/mcp/slack/deploy/chart/templates/networkpolicy.yaml. The
+# write-up in apps/mcp/vitruvian-slack-mcp/deploy/chart/templates/networkpolicy.yaml. The
 # day #1428 is fixed, the 443/22 rule here should become toFQDNs for
 # ghcr.io, *.githubusercontent.com and github.com.
 #
@@ -88,7 +88,7 @@
 # A compromised controller can still send the deploy key to any public host
 # on 443 or 22, and DNS query content is unrestricted (DNS tunnelling). This
 # policy bounds LATERAL movement inside the cluster and home network; it does
-# not bound exfiltration. Same limit, same reason (#1428) as mcp-slack.
+# not bound exfiltration. Same limit, same reason (#1428) as vitruvian-slack-mcp.
 #
 # ALLOW-ONLY ON PURPOSE. Do not add an egressDeny: deny rules outrank allows,
 # and a deny on the cluster CIDR also blocks kube-dns (10.43.0.10).

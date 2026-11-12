@@ -12,7 +12,7 @@ Gemini Spark requires specific protocol handshakes when connecting to an OAuth-p
    - Gemini probes `GET /.well-known/oauth-protected-resource` or `GET /.well-known/oauth-protected-resource/mcp`.
    - The response must return HTTP 200 with JSON describing the resource URI, authorization servers (`https://auth.ipv1337.dev`), and supported scopes.
 2. **RFC 6750 / RFC 9728 `WWW-Authenticate` Header on 401 Responses**:
-   - When `/mcp` is called without credentials or with an invalid token, the HTTP 401 response must include `WWW-Authenticate: Bearer error="...", error_description="...", resource_metadata="https://mcp-slack.ipv1337.dev/.well-known/oauth-protected-resource/mcp"`.
+   - When `/mcp` is called without credentials or with an invalid token, the HTTP 401 response must include `WWW-Authenticate: Bearer error="...", error_description="...", resource_metadata="https://vitruvian-slack-mcp.ipv1337.dev/.well-known/oauth-protected-resource/mcp"`.
 3. **Gateway Routing**:
    - The Kubernetes Gateway API `HTTPRoute` must route both `/mcp` and `/.well-known/oauth-protected-resource` through to the pod.
 4. **Zitadel OIDC Client**:
@@ -86,7 +86,7 @@ sequenceDiagram
 #### [MODIFY] [main.go](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/infrastructure/pulumi/platform/zitadel-apps-mcp-slack/main.go)
 - Update `RedirectUris` in `ApplicationOidcArgs` to include:
   - `https://vertexaisearch.cloud.google.com/oauth-redirect`
-  - `https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-106163123583431838693-mcp-slack_ipv1337_dev`
+  - `https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-106163123583431838693-vitruvian-slack-mcp_ipv1337_dev`
   - Generic/standard Google Cloud OAuth redirect URIs.
 
 ---

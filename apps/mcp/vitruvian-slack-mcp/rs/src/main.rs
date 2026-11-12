@@ -18,6 +18,9 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+use std::collections::HashMap;
+use std::io::{BufRead, Write};
+use std::sync::Arc;
 use vitruvian_slack_mcp_rs_lib::auth::{
     create_token_verifier, full_scope_string, TokenVerifier, TokenVerifierConfig,
 };
@@ -28,9 +31,6 @@ use vitruvian_slack_mcp_rs_lib::http_transport::{
 };
 use vitruvian_slack_mcp_rs_lib::slack_client::SlackClient;
 use vitruvian_slack_mcp_rs_lib::tools::tools_for;
-use std::collections::HashMap;
-use std::io::{BufRead, Write};
-use std::sync::Arc;
 
 /// SHUTDOWN_GRACE_MS (the chart derives it from terminationGracePeriodSeconds),
 /// else the 10 s the TS `close()` defaulted to.

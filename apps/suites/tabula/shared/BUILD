@@ -26,7 +26,7 @@ load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # @tabula/shared: types + utilities consumed by //tabula/extension and
 # //tabula/web as a pnpm workspace package (main: dist/index.js).
-# Hand-authored for the same reason as //mcp-slack.
+# Hand-authored for the same reason as //vitruvian-slack-mcp.
 # gazelle:ignore
 # gazelle:exclude src
 

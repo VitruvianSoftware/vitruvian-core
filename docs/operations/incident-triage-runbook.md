@@ -20,7 +20,7 @@ This document serves as the standard operational incident response guide across 
 | **tabula** | N/A | Cloud Run | `gcloud run services rollback tabula` |
 | **oauth-user-inspector**| N/A | Cloud Run | `gcloud run services rollback oauth-user-inspector` |
 | **buzz** | `buzz` | Kubernetes (Helm) | `helm rollback buzz -n buzz` |
-| **mcp-slack** | `mcp-slack` | Kubernetes (Deployment) | `kubectl rollout undo deployment mcp-slack -n mcp-slack` |
+| **vitruvian-slack-mcp** | `vitruvian-slack-mcp` | Kubernetes (Deployment) | `kubectl rollout undo deployment vitruvian-slack-mcp -n mcp-slack` |
 | **whoami** | `whoami` | Kubernetes (Argo Rollouts) | `kubectl argo rollouts undo whoami -n whoami` |
 | **storybook** | `storybook` | Kubernetes (Deployment) | `kubectl rollout undo deployment storybook -n storybook` |
 
@@ -73,7 +73,7 @@ This document serves as the standard operational incident response guide across 
 
 ### Sealed Secrets Rotation
 **Symptoms**: Pods fail to start due to missing or invalid secrets.
-**Context**: Secrets like `mcp-slack` tokens are managed via SealedSecrets. If the cluster's sealing key is rotated or lost, old SealedSecrets cannot be decrypted.
+**Context**: Secrets like `vitruvian-slack-mcp` tokens are managed via SealedSecrets. If the cluster's sealing key is rotated or lost, old SealedSecrets cannot be decrypted.
 **Resolution**:
 1. Check the SealedSecret status: `kubectl get sealedsecret <secret-name> -n <namespace> -o yaml`.
 2. If decryption fails, you must re-encrypt the secret using the current public certificate (`kubeseal --cert pub-cert.pem`).

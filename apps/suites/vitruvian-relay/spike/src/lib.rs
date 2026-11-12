@@ -392,7 +392,10 @@ mod tests {
     fn metadata_matches_what_claude_requires() {
         let s = settings();
         let m = protected_resource_metadata(&s);
-        assert_eq!(m["resource"], "https://vitruvian-relay-spike.example.dev/mcp");
+        assert_eq!(
+            m["resource"],
+            "https://vitruvian-relay-spike.example.dev/mcp"
+        );
         assert_eq!(m["authorization_servers"][0], "https://auth.example.dev");
         assert_eq!(m["authorization_servers"].as_array().unwrap().len(), 1);
         assert_eq!(

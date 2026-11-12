@@ -1,7 +1,7 @@
 {
   "id": "dev.vitruvian.github",
   "name": {
-    "en": "GitHub"
+    "en": "Vitruvian GitHub"
   },
   "description": {
     "en": "Shows whether main is green on the repositories you watch and where your pull requests stand.",

@@ -24,7 +24,7 @@ instance James pokes at is *not* launched.
 | --- | --- | --- | --- |
 | oauth-user-inspector | **No** | — | Public demo tool, but no external users yet. Free to reshape (region standardization, build-stack strip). |
 | tabula | **No** | — | Pre-launch. Free to reshape. |
-| mcp-slack | **No** | — | Not deployed as a hosted service. |
+| vitruvian-slack-mcp | **No** | — | Not deployed as a hosted service. |
 | nexus-agent | **No** | — | Not deployed as a hosted service. |
 
 ## When an app launches

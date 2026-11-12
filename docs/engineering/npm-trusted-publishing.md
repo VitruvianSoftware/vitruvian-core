@@ -99,7 +99,7 @@ package ever needs inspecting under Settings → Trusted Publisher:
 | field | value |
 |---|---|
 | Organization or user | `VitruvianSoftware` |
-| Repository | the **mirror** (`mcp-slack`, `pulumi-library`) — *not* `vitruvian-core` |
+| Repository | the **mirror** (`vitruvian-slack-mcp`, `pulumi-library`) — *not* `vitruvian-core` |
 | Workflow filename | `release.yml` — the filename only, never a path |
 | Environment | leave empty (these jobs bind no GitHub Environment) |
 | Allowed actions | `npm publish` |

@@ -371,14 +371,14 @@ To connect your hosted Vitruvian Slack MCP server to Gemini Spark as a Custom MC
 1. In Gemini Spark, go to **Custom MCP Apps → Add App**.
 2. Fill in the connection settings:
    - **App Name**: `Slack Workspace`
-   - **Server URL**: `https://mcp-slack.ipv1337.dev/mcp`
+   - **Server URL**: `https://vitruvian-slack-mcp.ipv1337.dev/mcp`
    - **Authentication**: `OAuth 2.0` (Authorization Code flow)
    - **Authorization URL**: `https://auth.ipv1337.dev/oauth/v2/authorize`
    - **Token URL**: `https://auth.ipv1337.dev/oauth/v2/token`
    - **Client ID**: `<clientId>` *(from `pulumi stack output clientId` on `zitadel-apps-mcp-slack`)*
    - **Client Secret**: `<clientSecret>` *(from Zitadel app credentials)*
    - **Scope**: `openid offline_access urn:zitadel:iam:org:project:id:<projectId>:aud`
-   - **Redirect URI**: `https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-106163123583431838693-mcp-slack_ipv1337_dev`
+   - **Redirect URI**: `https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-106163123583431838693-vitruvian-slack-mcp_ipv1337_dev`
 3. Click **Connect & Authenticate** to log into Zitadel and grant consent.
 
 ---

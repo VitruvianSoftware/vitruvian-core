@@ -21,7 +21,7 @@
 # Builds and publishes the Vitruvian Relay P0 spike server image
 # (apps/suites/vitruvian-relay/spike). A copy of vitruvian-slack-mcp-image.yaml,
 # which explains each step; the differences are the image name, the paths, and
-# a second named build context (`mcpslack`) because the spike reuses
+# a second named build context (`slackmcp`) because the spike reuses
 # vitruvian-slack-mcp's crate.
 #
 # The first push creates a NEW GHCR package, and new packages start private.
@@ -106,7 +106,7 @@ jobs:
             --build-arg GIT_REVISION="${GITHUB_SHA}" \
             --platform linux/amd64 \
             --tag vitruvian-relay-spike:verify \
-            --build-context mcpslack=apps/mcp/vitruvian-slack-mcp/rs \
+            --build-context slackmcp=apps/mcp/vitruvian-slack-mcp/rs \
             apps/suites/vitruvian-relay/spike/
 
       # ASSERTION 1 — the pod runs as UID 10001 (deployment.yaml securityContext),
@@ -170,7 +170,7 @@ jobs:
           docker buildx build \
             --build-arg GIT_REVISION="${GITHUB_SHA}" \
             --platform "${PLATFORMS}" \
-            --build-context mcpslack=apps/mcp/vitruvian-slack-mcp/rs \
+            --build-context slackmcp=apps/mcp/vitruvian-slack-mcp/rs \
             apps/suites/vitruvian-relay/spike/
 
       # Everything above runs on pull_request too. Everything below is the
@@ -197,7 +197,7 @@ jobs:
             --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
             --tag "${IMAGE}:${GITHUB_SHA}" \
             --tag "${IMAGE}:main" \
-            --build-context mcpslack=apps/mcp/vitruvian-slack-mcp/rs \
+            --build-context slackmcp=apps/mcp/vitruvian-slack-mcp/rs \
             apps/suites/vitruvian-relay/spike/
           # Read the digest back FROM THE REGISTRY rather than from buildx's
           # --metadata-file, whose shape varies by driver. This @sha256 ref is
