@@ -3740,6 +3740,26 @@ public class RemoteState(
                                 "OpenCode ${if (it) "on" else "off"}", announceOpenCode = it)
                           })
                 }
+                // Hidden on a Mac too old to label announcements (the catalog lacks it).
+                if (Derive.catalogShown(hs.catalog, "announce_source")) {
+                  add(
+                      ModuleRow(
+                          title = lbl("announce_source"),
+                          error = Derive.settingError(homeSpeakerErrors, "announce_source"),
+                          subtitle =
+                              "starts each announcement with the app, or app and session, it came from",
+                          trailing =
+                              Derive.catalogChoiceLabel(
+                                  hs.catalog, "announce_source", hs.announceSource),
+                          tone = StatusTone.Neutral,
+                          choices =
+                              catalogChoiceActions(hs, "announce_source", hs.announceSource) {
+                                  wire,
+                                  label ->
+                                setHomeSpeaker("Say who it's from: $label", announceSource = wire)
+                              },
+                      ))
+                }
                 hs.agents.forEach { a ->
                   val slug = a.canonicalSlug
                   // HomeSpeaker installs a hook for each of these (CodingAgent.supportsHook).
@@ -4568,6 +4588,7 @@ public class RemoteState(
       phonePauseMedia: Boolean? = null,
       phoneHeadphonesOnly: Boolean? = null,
       courierEnabled: Boolean? = null,
+      announceSource: String? = null,
       courierAnnounce: String? = null,
       courierNetworkKey: String? = null,
       courierNetworkReading: Boolean? = null,
@@ -4613,6 +4634,7 @@ public class RemoteState(
               announceClaudeCode != null -> "announce_claude_code"
               announceAntigravity != null -> "announce_antigravity"
               announceOpenCode != null -> "announce_opencode"
+              announceSource != null -> "announce_source"
               chatMonitorAction != null -> "Chat monitor"
               slackEnabled != null -> "slack_enabled"
               slackToken != null -> "Slack user token"
@@ -4684,6 +4706,7 @@ public class RemoteState(
                   announceClaudeCode = announceClaudeCode,
                   announceAntigravity = announceAntigravity,
                   announceOpenCode = announceOpenCode,
+                  announceSource = announceSource,
                   slackEnabled = slackEnabled,
                   googleChatEnabled = googleChatEnabled,
                   beeperEnabled = beeperEnabled,
