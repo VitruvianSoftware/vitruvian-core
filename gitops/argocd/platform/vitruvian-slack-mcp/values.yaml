@@ -1,0 +1,41 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Helm values for the vitruvian-slack-mcp Application (gitops/argocd/applications/vitruvian-slack-mcp.yaml),
+# extracted out of that Application's inline `helm.values` block so
+# argocd-image-updater's git write-back has a real file to patch
+# (`image.digest`) — it can't target a string embedded in an Application
+# manifest. Referenced via the `$values` source ref in vitruvian-slack-mcp.yaml.
+
+image:
+  # Updated automatically by argocd-image-updater when a new digest lands
+  # behind ghcr.io/vitruviansoftware/vitruvian-slack-mcp:main.
+  digest: "main@sha256:7e4c0e084fd88f846d41f152c5a34b163a39eb4ba0c39209dd5a586dff26e842"
+  repository: ghcr.io/vitruviansoftware/vitruvian-slack-mcp
+oidc:
+  projectId: "385463212784486211" # pulumi stack output projectId — REQUIRED
+  allowedSubjects: "378818267051722263,379361013981513322" # numeric Zitadel user ids — REQUIRED
+  clientId: "385463214025999229" # pulumi stack output clientId — REQUIRED (#1491)
+slack:
+  channelIds: "" # empty string = unrestricted (all channels, DMs, and groups)
+  userTokenEnabled: true # impersonation mode — posts as the human
+  writeMode: "user" # "user" = impersonate, "bot" = post as bot
+networkPolicy:
+  enabled: true

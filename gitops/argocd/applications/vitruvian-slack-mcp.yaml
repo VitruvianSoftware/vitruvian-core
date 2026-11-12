@@ -1,0 +1,414 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# ══════════════════════════════════════════════════════════════════════════
+# DISABLED ON PURPOSE. `.disabled` because ArgoCD's directory recursion only
+# reads .yaml/.yml/.json, so this file is inert until it is renamed — the same
+# mechanism tabula.yaml.disabled uses.
+#
+# It is NOT disabled because it is unfinished. It is disabled because five
+# required values do not exist yet, and every one of them is a security
+# boundary rather than a setting. The chart refuses to render without them
+# (see apps/mcp/vitruvian-slack-mcp/deploy/chart/templates/_helpers.tpl), so enabling this early
+# would produce a failed sync rather than an exposed endpoint — but a failed
+# sync on a publicly-routed hostname is still not a state worth entering.
+#
+# A sixth, networkPolicy.enabled, is required in the same fail-closed sense but
+# is a DECISION rather than a lookup — see criterion 7. It has no placeholder
+# to fill from elsewhere; someone has to choose, and the render aborts until
+# they do.
+#
+# TO ENABLE, all EIGHT must be true:
+#
+#   1. image.digest — the vitruvian-slack-mcp image is built and pushed, and you have
+#      its sha256 digest. Never a tag: an internet-facing workload must run
+#      the artifact that was reviewed, not whatever the tag moved to.
+#
+#      MET as of this commit, at `sha256:303c712c…`, whose
+#      org.opencontainers.image.revision is `2998affe` (#1514).
+#
+#      DO NOT WRITE A NEW PR NUMBER INTO THIS TEST. Earlier versions asserted
+#      "contains #1499's merge commit". That is true of every image built
+#      after #1499 landed, forever, so it passes against an arbitrarily stale
+#      digest and cannot express the property anyone actually cares about.
+#      This pin has been wrong once already for exactly that reason. The test
+#      below has no identifier in it and does not decay.
+#
+#      TWO INDEPENDENT ASSERTIONS. The first binds the digest to a commit; the
+#      second says that commit is current. Both are needed — a correct
+#      artifact can be superseded, and a current commit says nothing about
+#      what was published from it.
+#
+#      A. ARTIFACT BINDING — read from the registry, anonymously, no build:
+#         - org.opencontainers.image.revision on BOTH platform manifests,
+#           read separately. They must agree and must name a commit on `main`.
+#         - `git merge-base --is-ancestor <that revision> origin/main` exits 0.
+#           Exit 0 alone is also what a test that can never fail looks like, so
+#           show the test can say no — but run that control against a KNOWN-OLDER
+#           revision (`is-ancestor origin/main 03cf6dab` → 1), NOT by reversing
+#           the arguments on the pinned revision. When the pin is `main`'s tip —
+#           the normal state right after a re-pin — BOTH directions exit 0,
+#           because a commit is its own ancestor. Same degeneracy as B below,
+#           from the same trigger (`R == origin/main`), and it has to be checked
+#           separately for each arm: catching it in one says nothing about the
+#           other. Aegis's catch on the first draft of this very paragraph,
+#           which asserted the reverse "must exit 1" and did not reproduce.
+#         - the index carries spdx.dev/Document alongside
+#           slsa.dev/provenance/v1, on both platforms. Positive control: the
+#           pre-#1504 image de6e4203 carries provenance and NOTHING else, so
+#           this arm distinguishes rather than always agreeing.
+#
+#      B. CURRENCY — nothing newer has been published:
+#           paths := the `on.push.paths` list, read from
+#                    `git show origin/main:.github/workflows/vitruvian-slack-mcp-image.yaml`
+#                    — from the REF, never the working tree, which in a
+#                    worktree or a parked checkout is a third copy that can
+#                    disagree with both sides. Assert the list is non-empty.
+#           git rev-list --count <revision>..origin/main -- <paths>   == 0
+#         Build that argv directly (python `subprocess`), never via a shell.
+#         Every shell form of this has been measured wrong in some
+#         environment: a `$VAR` round-trip doesn't word-split in zsh; an
+#         inline `$(...)` gets glob-expanded by bash against the working tree,
+#         which silently drops `apps/mcp/vitruvian-slack-mcp/.github/**` because `*` skips
+#         dotfiles. All of them fail toward 0, i.e. "nothing newer".
+#
+#      B IS VACUOUS IMMEDIATELY AFTER A RE-PIN AND THAT IS NOT A NIT. When the
+#      pinned revision IS `origin/main`, the range is empty before any filter
+#      applies, so B returns 0 for a working derivation, a dead one, a garbage
+#      pathspec, and no pathspec at all. It is asserting that a commit is not
+#      ahead of itself. B discriminates only while the pin is already stale —
+#      it goes blind at the exact moment someone re-pins and most wants to
+#      certify the result. **So run B against a known-stale revision in the
+#      same invocation as a live control** (`03cf6dab` returns 3 here, and 0
+#      under a bogus pathspec). Without that row, a broken derivation passes
+#      unnoticed and then keeps returning 0 after `main` moves, when 0 has
+#      become wrong.
+#
+#      WHY NOT "the publish that fired after the PR merged": the merge queue
+#      batches up to 5 entries (ruleset 17645603, `max_entries_to_merge: 5`,
+#      `min_entries_to_merge_wait_minutes: 5`), and only the batch TIP fires a
+#      `push`. Measured twice: #1499 published under #1505's commit, #1509
+#      under #1513's. Looking for "PR N's image" finds nothing and the absence
+#      is the batch, not a failure. Assertion A's revision label is the only
+#      reliable link from artifact back to commit.
+#
+#      PIN THE INDEX DIGEST, NOT A PLATFORM MANIFEST. `_helpers.tpl` emits
+#      `repository@digest` verbatim, and this cluster is mixed-arch; pinning
+#      `sha256:a718e0be…` (amd64) would fail to schedule on arm64 nodes AND
+#      orphan the SBOM, because the attestations hang off the index.
+#
+#      NOT COVERED BY THIS CRITERION: there are no `imagePullSecrets` anywhere
+#      in apps/mcp/vitruvian-slack-mcp/deploy, so the pull is anonymous and works only because the
+#      GHCR package is public.
+#
+#      Everything below cites STEP NAMES and comment headers, never absolute
+#      line numbers. That is deliberate: a comment-only PR elsewhere in the
+#      tree shifts line numbers without changing behaviour, so nothing in
+#      review and no check flags it, and a durable comment quietly starts
+#      pointing at the wrong place. Not hypothetical: this paragraph was
+#      drafted citing the gate step by number, and #1509 — a comment-only PR,
+#      in flight at the same time — inserted 28 lines above it and moved it.
+#      Caught by Ridge before either landed. A step name survives exactly the
+#      edit that breaks a number.
+#
+#      CORRECTION to what #1510 landed here, which said "nothing asserts it".
+#      That was wrong, and wrong in the direction that costs a reader work: it
+#      invites building a control that already exists, or adding an
+#      imagePullSecret that this workload deliberately does not have.
+#
+#        - The absence is a DESIGN CHOICE, not an oversight.
+#          `.github/workflows/vitruvian-slack-mcp-image.yaml`, under the header "WHY GHCR
+#          AND NOT ARTIFACT REGISTRY", argues it: this image
+#          is consumed by the k3s homelab, which has no ambient cloud identity,
+#          so Artifact Registry would make a pull secret MANDATORY — a
+#          credential to seal and rotate forever. A public GHCR package needs
+#          none. Adding `imagePullSecrets` would put a registry credential on
+#          an internet-facing pod to protect against a state nobody has chosen.
+#        - The property IS asserted, by an anonymous request — the only
+#          instrument that can answer it, since an authenticated check succeeds
+#          on a private package. `vitruvian-slack-mcp-image.yaml`'s step "Verify the
+#          image is anonymously pullable" exits 1 with the `gh api … -f
+#          visibility=public` remedy, and the "ASSERTION 4" comment directly
+#          above that step names THIS chart's missing `imagePullSecrets` as
+#          the reason it matters.
+#
+#      The real gap is narrower and is about WHEN, not whether — see #1512.
+#      Assertion 4 reads `steps.publish.outputs.digest`, so it is bound to a
+#      publish: it asserts the package was public AT PUBLISH TIME, for the
+#      digest that publish created. ArgoCD pulls on every sync, restart,
+#      reschedule and node replacement, forever, off a digest pinned in git,
+#      and a visibility flip generates no publish event — so for an
+#      already-pinned digest that gate never runs again. Because this chart
+#      pins by digest, a healthy deployment can go a long time with no
+#      `apps/mcp/vitruvian-slack-mcp/**` push at all.
+#
+#      `workflow_dispatch` IS NOT the re-check it looks like. Dispatch takes
+#      the same `!= 'pull_request'` branch as "Build and push" at
+#      vitruvian-slack-mcp-image.yaml's step "Build and push (multi-platform)", so it
+#      builds and pushes a NEW image and
+#      verifies that digest, moving `:main` in the process. Re-verifying the
+#      currently pinned digest is not expressible today without publishing a
+#      new one. Aegis's catch, and the reason "just dispatch the workflow" is
+#      the wrong answer under incident.
+#
+#      SO THE FIRST SIGNAL IS GENERIC AND ~15 MINUTES LATE. All three
+#      vitruvian-slack-mcp alerts are Envoy-traffic-derived, and a pod that never starts
+#      serves no requests, so none of them fires (they are at
+#      VitruvianSlackMcpSustained5xx, VitruvianSlackMcpIdpUnavailable and
+#      VitruvianSlackMcpSustainedForbidden, in platform/prometheus/applicationset.yaml).
+#      `PodNotReadyLong` in that same file (`for: 15m`, phase Pending|Unknown)
+#      does — an ImagePullBackOff pod is `Pending`.
+#      `NodeContainersStuckWaiting` needs >= 3 waiting
+#      containers on a node, so `replicas: 1` will not trip it. A
+#      registry-permissions change therefore presents as "has not reached
+#      Running for >15m", not as anything naming the registry.
+#
+#      IF YOU ARE HERE UNDER INCIDENT: the chart has no ServiceAccount template
+#      and no `serviceAccountName`, so the pod runs on the namespace default
+#      SA. That is a place a pull secret can be attached out-of-band, which
+#      means invisibly to GitOps — do not fix it there. Note that
+#      `automountServiceAccountToken: false` in the chart's deployment.yaml
+#      pod spec does NOT
+#      close that door: pull secrets are applied from the ServiceAccount by
+#      admission regardless of whether its token is mounted. #1512's remedy is an
+#      empty-default `imagePullSecrets` hook in the chart so the fix is a
+#      values change, plus a scheduled re-assertion that reads `image.digest`
+#      out of THIS file and runs the token+manifest check against that digest
+#      with no build and no push.
+#
+#      Adding a pull secret pre-emptively is explicitly NOT the remedy: the
+#      package is public, measured by three of us on two instruments, and a
+#      registry credential nobody needs on an internet-facing pod is its own
+#      liability.
+#
+#      Tracked on #1512 rather than #1507: that one is "the gate cannot fail
+#      because the package is public", this is "the pull only works because
+#      the package is public" — same property, opposite dependents, different
+#      remedies. Beacon's call on the split, and correct.
+#
+#   2. oidc.projectId — `pulumi stack output projectId` on the
+#      zitadel-apps-mcp-slack stack (PR #1417), which has not been applied.
+#      Hand-typing this defeats the per-project audience isolation the
+#      dedicated Zitadel project exists to provide.
+#
+#   3. slack.channelIds — real channel IDs, which requires the Slack admin
+#      session that has not happened. Note the standing constraint: no real
+#      channel goes in here while the endpoint is publicly reachable and
+#      caller identity is unenforced. That is a sequencing rule, not a
+#      preference — the allow-list bounds which conversations a caller can
+#      reach, and it is doing that work alone until caller identity lands.
+#
+#      That rule got stricter, not looser, now that the app manifest carries
+#      groups:read and groups:history: the list gates PRIVATE channels too,
+#      so the thing it is holding back alone is private-conversation
+#      disclosure. Public-only would have been a defensible risk to carry for
+#      a short PoC window. This is not.
+#
+#   4. The Secret `mcp-slack-tokens` exists in the mcp-slack namespace,
+#      carrying SLACK_BOT_TOKEN and SLACK_TEAM_ID and nothing else. Created
+#      out-of-band via a SealedSecret (the ntfy alertmanager-ntfy-endpoint
+#      precedent) because it needs that same Slack admin session. No user
+#      token is ever mounted here.
+#
+#   5. THE BOT IS ALREADY IN EVERY CHANNEL NAMED IN slack.channelIds, AND
+#      THE INVITE HAPPENS BEFORE THE DEPLOY, NOT AFTER.
+#
+#      The intuitive order — add the ID, deploy, then invite the bot — does
+#      not work and does not look like a missing step when it fails. Since
+#      #1421 the server verifies each allow-listed conversation's visibility
+#      at startup, and `conversations.info` on a private channel the bot has
+#      not joined returns `channel_not_found`, so the process exits non-zero.
+#      With replicas: 1 and self-heal that presents as CrashLoopBackOff —
+#      i.e. "the deploy is broken", pointing at the chart rather than at the
+#      skipped invite. Aegis's catch on #1421.
+#
+#   6. A REVERSIBLE fast containment lever exists — currently the Cloudflare
+#      WAF/rate-limit rule (criterion 3, James's account). Not "a stop button"
+#      but a reversible one: revoking the Slack bot token also stops the
+#      endpoint, but restoring it needs a re-seal and a deploy, so under a CI
+#      outage it is a one-way door. The test to apply to any lever proposed
+#      later is whether UNDOING it requires CI.
+#
+#      THIS RULE IS DELIBERATELY NOT IN IaC, and "no managed path exists" is
+#      too weak a reason — it reads as a limitation, which invites someone to
+#      fix it. The actual argument, which a future proposal has to defeat:
+#
+#      Codifying it makes the ENABLED state a managed field. Toggle the rule
+#      on in the console during an incident and that is drift, so the next
+#      apply turns your containment back off — the reconciler-undoes-your-
+#      deviation property this lever exists to escape. Avoid that with
+#      IgnoreChanges on the enabled field and you have rebuilt
+#      `accessTokenType` from zitadel-apps-mcp-slack: a security-relevant
+#      setting the stack will never reconcile, reporting clean forever while
+#      the live value is whatever someone last set by hand. That stack needed
+#      a dedicated output just to detect it.
+#
+#      So unmanaged is not the compromise here; it is the only shape with no
+#      reconciler between an operator and the stop button. Aegis's framing.
+#
+#      Narrowly scoped on purpose: this applies to the enabled state of an
+#      EMERGENCY control, not to configuration generally. Nobody contains a
+#      breach by editing a token lifetime, so it does not license unmanaged
+#      config elsewhere.
+#
+#   7. THE EGRESS CiliumNetworkPolicy ACTUALLY PASSES TRAFFIC. IT DOES NOT
+#      TODAY — measured 2026-08-06 (`7711924c`), not suspected.
+#
+#      Cilium's L7 DNS proxy does not answer on this cluster, so with the
+#      policy applied the pod cannot resolve anything — including the two
+#      names the rule explicitly allows. Widening to `matchPattern: "*"`
+#      does not help. Dropping `rules.dns` restores DNS but then `toFQDNs`
+#      matches nothing, because the proxy is what populates the FQDN→IP
+#      mapping, so `:443` is blocked instead. Both ways out are closed.
+#      Tracked as a platform defect in #1428.
+#
+#      IF YOU ARE HERE BECAUSE SLACK CALLS FAIL AND THE CNP LOOKS LIKE THE
+#      CAUSE: it is the cause, and deleting it does fix it. DO NOT DELETE IT.
+#      That policy is the only control that survives compromise of the bot
+#      token — every other one on this endpoint is enforced by our own
+#      process and is void the moment the token leaves the pod. Removing it
+#      leaves an internet-facing pod holding a Slack credential with no
+#      egress bounding at all, and it will look like a successful fix.
+#      Escalate on #1428 instead.
+#
+#      The chart makes this a value rather than a warning: `networkPolicy.
+#      enabled` must be set explicitly to a boolean or the render aborts.
+#      #1487 (merged 2026-08-08) fixed this: the CNP now pins DNS to kube-dns
+#      at L3/L4 with no `rules.dns` block, so it passes traffic without
+#      depending on the broken L7 DNS proxy. `true` is the correct value —
+#      it costs nothing against #1428 (no bound exists for :443/DNS-content
+#      exfil either way) and buys the entire lateral bound (apiserver, other
+#      namespaces, Postgres, the Buzz relay — NOT Zitadel: the `world` :443
+#      rule stays open deliberately so the pod can reach the IdP's JWKS on
+#      every token verification). `false` is now the dangerous choice: zero
+#      in-cluster containment on an internet-facing
+#      pod holding a Slack token. This criterion is met once it is set true.
+#
+#      Written as a numbered criterion rather than left in the template's
+#      header because criteria 1-8 are the list someone reads before
+#      enabling, and this is the item most likely to be acted on wrongly by
+#      someone who never opens the template. Aegis's ask on #1420.
+#
+#   8. oidc.allowedSubjects — the comma-separated Zitadel subjects (NUMERIC
+#      user ids) permitted to call this endpoint.
+#
+#      Added late, and the omission is the point: this criterion list ran to
+#      seven items across eight commits while the chart already refused to
+#      render without this value. A checklist that is shorter than the set of
+#      things that block the render is worse than no checklist — it reads as
+#      complete, so the reader stops when they reach the end of it.
+#
+#      It is NOT a duplicate of criterion 2. projectId is the audience check,
+#      and the audience check is not an identity check: `aud` is caller-
+#      authored — any authenticated principal can add this project to it with
+#      a scope string — so issuer + audience together admit every account this
+#      Zitadel instance will issue a token to. THIS is the only per-request
+#      identity control. Criterion 2 being satisfied says nothing about this
+#      one.
+#
+#      Nothing outside this repo has to happen first, unlike 1-5: the ids come
+#      from Zitadel and can be read today. That makes it the cheapest of the
+#      eight, which is its own hazard — cheap items get assumed done.
+#
+# NOT YET A NUMBERED CRITERION: oidc.clientId (#1491) is also render-blocking
+# as of this file's "helm" values block below — work criteria 1-8 top to
+# bottom, satisfy all eight, still get a failed render. Full write-up is
+# item 4's job; this line exists so the header — "the list someone reads
+# before enabling" (criterion 7's own words) — doesn't silently omit it.
+#
+# The alert for this workload is NOT in the chart — it lives in
+# gitops/argocd/platform/prometheus/applicationset.yaml, group `vitruvian-slack-mcp`.
+# This cluster has no prometheus-operator, so a PrometheusRule would sync
+# Healthy and never load. See the chart's values.yaml for the full note.
+# ══════════════════════════════════════════════════════════════════════════
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vitruvian-slack-mcp
+  namespace: argocd
+  annotations:
+    # Wave 2, same as cloudflared/whoami/ntfy: the Gateway (envoy-gateway) and
+    # the tunnel (cloudflared) must be up before this HTTPRoute can resolve.
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  # Scoped per-app project, not the shared applications-project — see
+  # gitops/argocd/projects/vitruvian-slack-mcp-project.yaml.
+  project: vitruvian-slack-mcp-project
+  sources:
+    # Source 1: The co-located Helm chart from this repo.
+    - repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
+      targetRevision: main
+      path: apps/mcp/vitruvian-slack-mcp/deploy/chart
+      helm:
+        valueFiles:
+          - $values/gitops/argocd/platform/vitruvian-slack-mcp/values.yaml
+
+    # Source 2: Values file kept in platform/vitruvian-slack-mcp, referenced from source 1
+    # as `$values`. Extracted so argocd-image-updater can write resolved image
+    # digests directly into a real file.
+    - repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: mcp-slack
+  # CONTAINMENT NOTE — READ BEFORE REACHING FOR kubectl IN AN INCIDENT.
+  #
+  # selfHeal is on, and this cluster reconciles every 120s with 60s of jitter
+  # (argocd-cm: timeout.reconciliation 120s, timeout.reconciliation.jitter
+  # 60s). So `kubectl scale deploy/vitruvian-slack-mcp --replicas=0` and
+  # `kubectl delete httproute vitruvian-slack-mcp` DO NOT CONTAIN ANYTHING — both are
+  # desired state here, and ArgoCD reverts them within ~2-3 minutes.
+  #
+  # That is the worst shape a containment action can have: it appears to work,
+  # then silently undoes itself on a timer while someone believes the endpoint
+  # is down.
+  #
+  # THERE ARE TWO RECONCILERS, AND SUSPENDING ONLY THIS APPLICATION IS NOT
+  # ENOUGH. `app-of-applications` (gitops/argocd/root-applications.yaml) also
+  # runs selfHeal: true and owns this Application object, so patching this
+  # file's syncPolicy is itself reverted by the root app-of-apps. Verified
+  # against the live root Application, which lists every leaf as a managed
+  # resource.
+  #
+  # To actually stop traffic fast, suspend from the ROOT DOWN, then act:
+  #
+  #   kubectl patch application app-of-applications -n argocd --type=json \
+  #     -p '[{"op":"remove","path":"/spec/syncPolicy/automated"}]'
+  #   kubectl patch application vitruvian-slack-mcp -n argocd --type=json \
+  #     -p '[{"op":"remove","path":"/spec/syncPolicy/automated"}]'
+  #   kubectl scale deploy/vitruvian-slack-mcp -n mcp-slack --replicas=0
+  #
+  # Seconds, and it survives, because nothing is reconciling any layer back.
+  # Restore in reverse order. Skipping the first command produces the exact
+  # failure this note exists to prevent, one level up: the suspend appears to
+  # work and is quietly undone.
+  #
+  # The alternative — revert the git commit — is correct and durable but runs
+  # at GitOps speed (commit, CI, sync, rollout), which is minutes and depends
+  # on CI being up. Prefer it for anything non-urgent; it leaves git as the
+  # source of truth rather than a cluster that silently disagrees with it.
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

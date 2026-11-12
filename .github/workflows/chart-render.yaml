@@ -23,7 +23,7 @@
 # and runnable locally (`bazel run //tools/ci:chart_render`, needs only helm).
 #
 # Until this existed, no CI job rendered a chart. Every statement about the
-# mcp-slack chart — which `required` calls fire, whether the boolean type-check
+# vitruvian-slack-mcp chart — which `required` calls fire, whether the boolean type-check
 # refuses a quoted "false" — was a source read by someone who could not run it.
 # Several of those reads disagreed before converging, which is the honest
 # argument for the job: not that people read carelessly, but that reading is not

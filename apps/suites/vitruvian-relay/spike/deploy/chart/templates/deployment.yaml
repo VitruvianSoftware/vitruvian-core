@@ -1,0 +1,78 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "vitruvian-relay-spike.name" . }}
+  labels: {{- include "vitruvian-relay-spike.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {{- include "vitruvian-relay-spike.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "vitruvian-relay-spike.selectorLabels" . | nindent 8 }}
+    spec:
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      automountServiceAccountToken: false
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "1"
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: vitruvian-relay-spike
+          image: {{ include "vitruvian-relay-spike.imageRef" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: PORT
+              value: "3000"
+            - name: PUBLIC_URL
+              value: {{ printf "https://%s" .Values.hostname | quote }}
+            - name: ISSUER
+              value: {{ .Values.oidc.issuer | quote }}
+            - name: PROJECT_ID
+              value: {{ required "oidc.projectId is required (zitadel-apps-relay output projectId)" .Values.oidc.projectId | quote }}
+            - name: MCP_CLIENT_IDS
+              value: {{ required "oidc.mcpClientIds is required (zitadel-apps-relay output claudeClientId)" .Values.oidc.mcpClientIds | quote }}
+            - name: CONNECTOR_CLIENT_ID
+              value: {{ required "oidc.connectorClientId is required (zitadel-apps-relay output connectorClientId)" .Values.oidc.connectorClientId | quote }}
+            - name: ALLOWED_SUBJECTS
+              value: {{ required "oidc.allowedSubjects is required: an empty list would admit every account in the instance" .Values.oidc.allowedSubjects | quote }}
+          ports:
+            - name: http
+              containerPort: 3000
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 20
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+          resources: {{- toYaml .Values.resources | nindent 12 }}

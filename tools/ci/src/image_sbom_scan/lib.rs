@@ -155,7 +155,7 @@ fn fetch_blob(
 
 /// What the blocking arm does, given APP_TREE and the package count under
 /// APP_PREFIX. APP_TREE=absent is for an image whose application carries no
-/// package-managed dependency tree at all (mcp-slack since #3985: a Rust
+/// package-managed dependency tree at all (vitruvian-slack-mcp since #3985: a Rust
 /// binary built `--locked` from a lockfile osv-scan covers). There the blocking arm has
 /// nothing to cover, so it asserts the tree is still absent instead: a tree
 /// that reappears refuses rather than going unscanned.
@@ -234,7 +234,7 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
     let image = match env("IMAGE") {
         Some(v) if !v.is_empty() => v,
         _ => {
-            err(b"::error::IMAGE is required (e.g. ghcr.io/vitruviansoftware/mcp-slack)\n");
+            err(b"::error::IMAGE is required (e.g. ghcr.io/vitruviansoftware/vitruvian-slack-mcp)\n");
             return 1;
         }
     };
@@ -677,9 +677,9 @@ mod tests {
 
     #[test]
     fn test_parse_image() {
-        let (reg, repo) = parse_image(b"ghcr.io/vitruviansoftware/mcp-slack").unwrap();
+        let (reg, repo) = parse_image(b"ghcr.io/vitruviansoftware/vitruvian-slack-mcp").unwrap();
         assert_eq!(reg, b"ghcr.io");
-        assert_eq!(repo, b"vitruviansoftware/mcp-slack");
+        assert_eq!(repo, b"vitruviansoftware/vitruvian-slack-mcp");
 
         let (reg, repo) = parse_image(b"docker.io/library/nginx").unwrap();
         assert_eq!(reg, b"docker.io");

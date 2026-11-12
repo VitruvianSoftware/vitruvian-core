@@ -47,7 +47,7 @@ on:
       - "apps/antigravity/plugins/savvy-fleet/**"
       - "apps/antigravity/plugins/security-guidance/**"
       - "apps/antigravity/plugins/worktree-band/**"
-      - "apps/mcp/slack/**"
+      - "apps/mcp/vitruvian-slack-mcp/**"
       - "apps/desktop/vitruvian-code/**"
       - "apps/web/oauth-user-inspector/**"
       - ".github/workflows/apps-release.yaml"
@@ -87,7 +87,7 @@ jobs:
             apps/antigravity/plugins/savvy-fleet
             apps/antigravity/plugins/security-guidance
             apps/antigravity/plugins/worktree-band
-            apps/mcp/slack
+            apps/mcp/vitruvian-slack-mcp
             apps/desktop/vitruvian-code
             apps/web/oauth-user-inspector
             apps/web/oauth-user-inspector/infra

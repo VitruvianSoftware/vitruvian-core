@@ -406,13 +406,13 @@ crate.from_cargo(
 )
 use_repo(crate, "crates")
 
-# The Slack MCP server's crates. A separate hub with its own Cargo.lock because
-# the image builds from apps/mcp/slack alone (see apps/mcp/slack/rs/Cargo.toml).
-# Re-lock: bazel run //tools/crates:lock -- --dir apps/mcp/slack/rs
+# The Vitruvian Slack MCP server's crates. A separate hub with its own Cargo.lock because
+# the image builds from apps/mcp/vitruvian-slack-mcp alone (see apps/mcp/vitruvian-slack-mcp/rs/Cargo.toml).
+# Re-lock: bazel run //tools/crates:lock -- --dir apps/mcp/vitruvian-slack-mcp/rs
 crate.from_cargo(
-    name = "mcp_slack_crates",
-    cargo_lock = "//apps/mcp/slack:rs/Cargo.lock",
-    cargo_toml = "//apps/mcp/slack:rs/Cargo.toml",
+    name = "vitruvian_slack_mcp_crates",
+    cargo_lock = "//apps/mcp/vitruvian-slack-mcp:rs/Cargo.lock",
+    cargo_toml = "//apps/mcp/vitruvian-slack-mcp:rs/Cargo.toml",
     platform_triples = [
         "aarch64-apple-darwin",
         "aarch64-unknown-linux-gnu",
@@ -420,15 +420,15 @@ crate.from_cargo(
         "x86_64-unknown-linux-gnu",
     ],
 )
-use_repo(crate, "mcp_slack_crates")
+use_repo(crate, "vitruvian_slack_mcp_crates")
 
-# The relay P0 spike server's crates. A separate hub with its own Cargo.lock
-# because its image builds with cargo from apps/suites/relay/spike (plus the
-# mcp-slack crate it reuses). Re-lock: bazel run //tools/crates:lock -- --dir apps/suites/relay/spike
+# The Vitruvian Relay P0 spike server's crates. A separate hub with its own Cargo.lock
+# because its image builds with cargo from apps/suites/vitruvian-relay/spike (plus the
+# vitruvian-slack-mcp crate it reuses). Re-lock: bazel run //tools/crates:lock -- --dir apps/suites/vitruvian-relay/spike
 crate.from_cargo(
-    name = "relay_spike_crates",
-    cargo_lock = "//apps/suites/relay/spike:Cargo.lock",
-    cargo_toml = "//apps/suites/relay/spike:Cargo.toml",
+    name = "vitruvian_relay_spike_crates",
+    cargo_lock = "//apps/suites/vitruvian-relay/spike:Cargo.lock",
+    cargo_toml = "//apps/suites/vitruvian-relay/spike:Cargo.toml",
     platform_triples = [
         "aarch64-apple-darwin",
         "aarch64-unknown-linux-gnu",
@@ -436,16 +436,16 @@ crate.from_cargo(
         "x86_64-unknown-linux-gnu",
     ],
 )
-use_repo(crate, "relay_spike_crates")
+use_repo(crate, "vitruvian_relay_spike_crates")
 
-# The Roborock daemon/CLI/MCP server's crates. A separate hub with its own
-# Cargo.lock because the mcp-roborock mirror builds from apps/mcp/roborock
-# alone (see apps/mcp/roborock/Cargo.toml).
-# Re-lock: bazel run //tools/crates:lock -- --dir apps/mcp/roborock
+# The Vitruvian Roborock MCP daemon/CLI/server's crates. A separate hub with its own
+# Cargo.lock because the mcp-roborock mirror builds from apps/mcp/vitruvian-roborock-mcp
+# alone (see apps/mcp/vitruvian-roborock-mcp/Cargo.toml).
+# Re-lock: bazel run //tools/crates:lock -- --dir apps/mcp/vitruvian-roborock-mcp
 crate.from_cargo(
-    name = "mcp_roborock_crates",
-    cargo_lock = "//apps/mcp/roborock:Cargo.lock",
-    cargo_toml = "//apps/mcp/roborock:Cargo.toml",
+    name = "vitruvian_roborock_mcp_crates",
+    cargo_lock = "//apps/mcp/vitruvian-roborock-mcp:Cargo.lock",
+    cargo_toml = "//apps/mcp/vitruvian-roborock-mcp:Cargo.toml",
     platform_triples = [
         "aarch64-apple-darwin",
         "aarch64-unknown-linux-gnu",
@@ -453,7 +453,7 @@ crate.from_cargo(
         "x86_64-unknown-linux-gnu",
     ],
 )
-use_repo(crate, "mcp_roborock_crates")
+use_repo(crate, "vitruvian_roborock_mcp_crates")
 
 # The Ostation 2 Pro CLI's crates. A separate hub with its own Cargo.lock, like
 # the Roborock one above, so apps/cli/ostation stays self-contained.
@@ -484,8 +484,8 @@ crate.annotation(
     build_script_tools = ["@@//apps/desktop/courier/libsignal:cc_in_execroot"],
     crate = "ring",
     repositories = [
-        "mcp_roborock_crates",
-        "mcp_slack_crates",
+        "vitruvian_roborock_mcp_crates",
+        "vitruvian_slack_mcp_crates",
     ],
 )
 

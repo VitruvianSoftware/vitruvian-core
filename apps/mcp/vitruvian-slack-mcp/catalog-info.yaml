@@ -1,0 +1,77 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Machine-readable app metadata (#500): the single per-app source for
+# ownership, deploy identity, and release model. Backstage-compatible
+# Component; consumed today by tools/conformance (owner must match
+# .github/CODEOWNERS) and by humans/agents doing impact analysis.
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: vitruvian-slack-mcp
+  title: Vitruvian Slack MCP
+  description: Vitruvian Slack MCP server exposing Slack tools — Rust, published as a container image (ghcr.io/vitruviansoftware/vitruvian-slack-mcp), and deployed as a hosted Streamable HTTP OAuth service
+  annotations:
+    github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/techdocs-ref: dir:.
+    opentelemetry.io/service-name: vitruvian-slack-mcp
+    prometheus.io/rule: "vitruvian_slack_mcp:requests_per_second|code_class,vitruvian_slack_mcp:ready_pods|namespace,vitruvian_slack_mcp:cpu_cores|pod,vitruvian_slack_mcp:memory_bytes|pod"
+    # "all" plus the labels line = every alert rule, but only the alerts whose
+    # namespace label is this component's namespace. Without the labels line
+    # the page lists every alert in the cluster.
+    prometheus.io/alert: all
+    prometheus.io/labels: namespace=mcp-slack
+    backstage.io/kubernetes-id: vitruvian-slack-mcp
+    backstage.io/kubernetes-namespace: mcp-slack
+    backstage.io/kubernetes-label-selector: app.kubernetes.io/name=vitruvian-slack-mcp
+    argocd/app-name: vitruvian-slack-mcp
+    vitruvian.dev/release-workflow: apps-release.yaml
+    vitruvian.dev/release-model: gitops-argocd
+    vitruvian.dev/environments: production
+    vitruvian.dev/mirror: VitruvianSoftware/mcp-slack
+  links:
+    - url: https://status.ipv1337.dev
+      title: Uptime Status
+      icon: web
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/pkgs/container/vitruvian-slack-mcp
+      title: Container Image
+      icon: web
+    - url: https://github.com/VitruvianSoftware/mcp-slack
+      title: GitHub Mirror
+      icon: github
+    - url: https://argocd.lab.ipv1337.dev/applications/vitruvian-slack-mcp
+      title: ArgoCD Application
+      icon: cloud
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/pkgs/container/vitruvian-slack-mcp
+      title: Container Image (GHCR)
+      icon: docker
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/docs/operations/incident-triage-runbook.md
+      title: Incident Triage Runbook
+      icon: docs
+spec:
+  type: service
+  lifecycle: production
+  owner: mcp-slack-team
+  system: vitruvian-slack-mcp
+  providesApis:
+    - vitruvian-slack-mcp-api
+  dependsOn:
+    - resource:default/sealed-secrets
+    - resource:default/pulumi-zitadel-apps-mcp-slack
