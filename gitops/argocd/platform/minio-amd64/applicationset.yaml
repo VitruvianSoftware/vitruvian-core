@@ -133,6 +133,13 @@ spec:
               - name: buzz-media
                 policy: none
                 purge: false
+              # Sentry self-hosted backing store buckets (CNPG backups and filestore).
+              - name: sentry-db-backups
+                policy: none
+                purge: false
+              - name: sentry-filestore
+                policy: none
+                purge: false
             # SERVER image. MinIO stopped publishing images (see mcImage below), so
             # quay.io/minio/minio can no longer be pulled: the old pods only ran
             # from node image caches, and a pod moved to a node without the cache
@@ -320,6 +327,38 @@ spec:
                       - "s3:DeleteObject"
                       - "s3:AbortMultipartUpload"
                       - "s3:ListMultipartUploadParts"
+              - name: sentry-db-backup-rw
+                statements:
+                  - resources:
+                      - 'arn:aws:s3:::sentry-db-backups'
+                    actions:
+                      - "s3:GetBucketLocation"
+                      - "s3:ListBucket"
+                      - "s3:ListBucketMultipartUploads"
+                  - resources:
+                      - 'arn:aws:s3:::sentry-db-backups/*'
+                    actions:
+                      - "s3:GetObject"
+                      - "s3:PutObject"
+                      - "s3:DeleteObject"
+                      - "s3:AbortMultipartUpload"
+                      - "s3:ListMultipartUploadParts"
+              - name: sentry-filestore-rw
+                statements:
+                  - resources:
+                      - 'arn:aws:s3:::sentry-filestore'
+                    actions:
+                      - "s3:GetBucketLocation"
+                      - "s3:ListBucket"
+                      - "s3:ListBucketMultipartUploads"
+                  - resources:
+                      - 'arn:aws:s3:::sentry-filestore/*'
+                    actions:
+                      - "s3:GetObject"
+                      - "s3:PutObject"
+                      - "s3:DeleteObject"
+                      - "s3:AbortMultipartUpload"
+                      - "s3:ListMultipartUploadParts"
             users:
               - accessKey: grafana-db-backup
                 existingSecret: minio-user-grafana-db-backup
@@ -345,6 +384,14 @@ spec:
                 existingSecret: minio-user-umami-db-backup
                 existingSecretKey: secretKey
                 policy: umami-db-backup
+              - accessKey: sentry-db-backup
+                existingSecret: minio-user-sentry-db-backup
+                existingSecretKey: secretKey
+                policy: sentry-db-backup-rw
+              - accessKey: sentry-filestore
+                existingSecret: minio-user-sentry-filestore
+                existingSecretKey: secretKey
+                policy: sentry-filestore-rw
               # Tempo (traces) and Thanos (metrics blocks), each limited to its own
               # bucket. Both used the root user until 2026-09-26.
               - accessKey: tempo

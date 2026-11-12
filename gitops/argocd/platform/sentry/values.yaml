@@ -1,0 +1,201 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# Sentry self-hosted Helm chart 36.0.0 values for homelab k3s cluster.
+# Configured for "errors-only" profile using external platform backing stores:
+# - CloudNativePG Postgres (sentry-db)
+# - Valkey / Redis (sentry-valkey)
+# - ClickHouse (sentry-clickhouse)
+# - Kafka KRaft (sentry-kafka)
+# - MinIO S3 filestore (sentry-filestore)
+
+# Profile: errors-only to save RAM/CPU and omit redundant traces/profiling/metrics
+profiles:
+  - errors-only
+
+# Global node placement: pin all pods to wired amd64 servers
+global:
+  nodeSelector:
+    kubernetes.io/arch: amd64
+    node.ipv1337.dev/link: wired
+
+# ArgoCD compatibility: use ArgoCD annotations on hooks and do not treat deployments as hooks
+useArgoCdCompatibleAnnotations: true
+asHook: false
+
+hooks:
+  enabled: true
+  preUpgrade: false
+
+system:
+  url: "https://sentry.lab.ipv1337.dev"
+  adminEmail: "admin@ipv1337.dev"
+
+auth:
+  register: false
+
+user:
+  create: true
+  email: "admin@ipv1337.dev"
+  existingSecret: sentry-secrets
+  existingSecretKey: admin-password
+
+sentry:
+  existingSecret: sentry-secrets
+  existingSecretKey: key
+  singleOrganization: true
+  web:
+    replicas: 1
+    uwsgiEnableThreads: true
+    resources:
+      requests:
+        memory: 1536Mi
+      limits:
+        memory: 2560Mi
+  taskWorker:
+    resources:
+      requests:
+        memory: 1024Mi
+      limits:
+        memory: 2048Mi
+  taskBroker:
+    store:
+      adapter: sqlite
+    persistence:
+      enabled: true
+      size: 1Gi
+      storageClass: local-path
+  cleanup:
+    enabled: true
+    days: 30
+    activeDeadlineSeconds: 3600
+
+relay:
+  enabled: true
+  asHook: false
+  replicas: 1
+  resources:
+    requests:
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+snuba:
+  api:
+    resources:
+      requests:
+        memory: 512Mi
+      limits:
+        memory: 1024Mi
+
+nginx:
+  enabled: false
+
+# External PostgreSQL (CloudNativePG sentry-db)
+postgresql:
+  enabled: false
+pgbouncer:
+  enabled: false
+
+externalPostgresql:
+  host: sentry-db-rw.sentry.svc.cluster.local
+  port: 5432
+  username: sentry
+  database: sentry
+  connMaxAge: 60
+  existingSecret: sentry-db-credentials
+  existingSecretKeys:
+    password: password
+
+# External Redis (Valkey sentry-valkey)
+redis:
+  enabled: false
+
+externalRedis:
+  host: sentry-valkey-primary.sentry.svc.cluster.local
+  port: 6379
+  existingSecret: sentry-valkey-auth
+  existingSecretKey: password
+
+# External ClickHouse (sentry-clickhouse on nuc9i9)
+externalClickhouse:
+  host: sentry-clickhouse.sentry.svc.cluster.local
+  tcpPort: 9000
+  httpPort: 8123
+  username: sentry
+  database: default
+  singleNode: true
+  existingSecret: sentry-secrets
+  existingSecretKey: clickhouse-password
+
+# External Kafka (sentry-kafka KRaft)
+kafka:
+  enabled: false
+
+externalKafka:
+  host: sentry-kafka.sentry.svc.cluster.local
+  port: 9092
+  security:
+    protocol: plaintext
+  provisioning:
+    enabled: true
+    replicationFactor: 1
+    numPartitions: 1
+    topicctl:
+      placementStrategy: any
+
+# MinIO S3 Object Storage for filestore
+filestore:
+  backend: s3
+  s3:
+    existingSecret: sentry-secrets
+    accessKeyIdRef: s3-access-key-id
+    secretAccessKeyRef: s3-secret-access-key
+    bucketName: sentry-filestore
+    endpointUrl: "http://minio-amd64.minio.svc.cluster.local:9000"
+    region_name: us-east-1
+    default_acl: private
+
+# In-cluster Memcached
+memcached:
+  enabled: true
+  config:
+    memoryLimit: 256
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      memory: 384Mi
+  nodeSelector:
+    kubernetes.io/arch: amd64
+    node.ipv1337.dev/link: wired
+
+# Application configuration
+config:
+  configYml:
+    beacon.anonymous: true
+  sentryConfPy: |
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    USE_X_FORWARDED_HOST = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SOCIAL_AUTH_REDIRECT_IS_HTTPS = True
+    CSRF_TRUSTED_ORIGINS = ["https://sentry.lab.ipv1337.dev"]
