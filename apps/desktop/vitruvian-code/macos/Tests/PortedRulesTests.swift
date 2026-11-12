@@ -195,21 +195,21 @@ final class PortedRulesTests: XCTestCase {
     }
 
     func testStream() {
-        XCTAssertTrue(VitruvianCodeStreamEvent.parse(#"{"event":"init","conversation_id":"c9"}"#) == .started(conversationID: "c9"),
+        XCTAssertTrue(AgentEvent.parse(#"{"event":"init","conversation_id":"c9"}"#) == .started(conversationID: "c9"),
                       "init carries the conversation id")
-        XCTAssertTrue(VitruvianCodeStreamEvent.parse(#"{"event":"step_update","step_update":{"step_type":"agent_response","text_delta":"Hi"}}"#) == .text("Hi"),
+        XCTAssertTrue(AgentEvent.parse(#"{"event":"step_update","step_update":{"step_type":"agent_response","text_delta":"Hi"}}"#) == .text("Hi"),
                       "a response step carries its text delta")
-        XCTAssertTrue(VitruvianCodeStreamEvent.parse(#"{"event":"step_update","step_update":{"step_type":"tool","tool_name":"grep","state":"RUNNING"}}"#)
+        XCTAssertTrue(AgentEvent.parse(#"{"event":"step_update","step_update":{"step_type":"tool","tool_name":"grep","state":"RUNNING"}}"#)
                          == .tool(name: "grep", finished: false)
-                      && VitruvianCodeStreamEvent.parse(#"{"event":"step_update","step_update":{"step_type":"tool","state":"done"}}"#)
+                      && AgentEvent.parse(#"{"event":"step_update","step_update":{"step_type":"tool","state":"done"}}"#)
                          == .tool(name: "tool", finished: true),
                       "a tool step says which tool runs and when it is done")
-        XCTAssertTrue(VitruvianCodeStreamEvent.parse(#"{"event":"result","result":{"status":"ok","response":"All","conversation_id":"c9"}}"#)
+        XCTAssertTrue(AgentEvent.parse(#"{"event":"result","result":{"status":"ok","response":"All","conversation_id":"c9"}}"#)
                       == .finished(status: "ok", response: "All", error: nil, conversationID: "c9"),
                       "the result carries the status, the whole reply and the id")
-        XCTAssertTrue(VitruvianCodeStreamEvent.parse("") == nil && VitruvianCodeStreamEvent.parse("Error: boom") == nil
-                      && VitruvianCodeStreamEvent.parse(#"{"event":"heartbeat"}"#) == nil
-                      && VitruvianCodeStreamEvent.parse(#"{"event":"step_update","step_update":{"step_type":"agent_response","text_delta":""}}"#) == nil,
+        XCTAssertTrue(AgentEvent.parse("") == nil && AgentEvent.parse("Error: boom") == nil
+                      && AgentEvent.parse(#"{"event":"heartbeat"}"#) == nil
+                      && AgentEvent.parse(#"{"event":"step_update","step_update":{"step_type":"agent_response","text_delta":""}}"#) == nil,
                       "noise, unknown events and empty deltas are skipped")
 
         var buffer = VitruvianCodeLineBuffer()
@@ -384,7 +384,7 @@ final class PortedRulesTests: XCTestCase {
         let resultJson = """
         {"event":"result","result":{"status":"ok","duration_ms":3400,"input_tokens":1200,"output_tokens":450,"cached_tokens":100,"num_turns":1,"tool_calls":2,"response":"Done."}}
         """
-        let event = VitruvianCodeStreamEvent.parse(resultJson)
+        let event = AgentEvent.parse(resultJson)
         if case .finished(_, _, _, _, let parsedMetrics) = event {
             XCTAssertTrue(parsedMetrics?.durationMs == 3400 && parsedMetrics?.outputTokens == 450, "result event parsed into finished with metrics")
         } else {

@@ -94,12 +94,47 @@ public struct VitruvianCodeCLIProvider: Codable, Identifiable, Equatable, Sendab
     public var name: String
     public var commandTemplate: String
     public var isBuiltIn: Bool
+    public var connection: AgentConnectionKind?
 
-    public init(id: UUID, name: String, commandTemplate: String, isBuiltIn: Bool = true) {
+    public init(
+        id: UUID,
+        name: String,
+        commandTemplate: String,
+        isBuiltIn: Bool = true,
+        connection: AgentConnectionKind? = nil
+    ) {
         self.id = id
         self.name = name
         self.commandTemplate = commandTemplate
         self.isBuiltIn = isBuiltIn
+        self.connection = connection
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case commandTemplate
+        case isBuiltIn
+        case connection
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(UUID.self, forKey: .id)
+        self.name = try container.decode(String.self, forKey: .name)
+        self.commandTemplate = try container.decode(String.self, forKey: .commandTemplate)
+        self.isBuiltIn = try container.decode(Bool.self, forKey: .isBuiltIn)
+        let rawConnection = try container.decodeIfPresent(String.self, forKey: .connection)
+        self.connection = rawConnection.flatMap(AgentConnectionKind.init(rawValue:))
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(commandTemplate, forKey: .commandTemplate)
+        try container.encode(isBuiltIn, forKey: .isBuiltIn)
+        try container.encodeIfPresent(connection, forKey: .connection)
     }
 
     public static let antigravity = VitruvianCodeCLIProvider(
@@ -145,6 +180,7 @@ public struct VitruvianCodeCLIProvider: Codable, Identifiable, Equatable, Sendab
             // The last saved copy wins, as it does where the standalone app reads them.
             if let copy = saved.last(where: { $0.id == builtIn.id && $0.isBuiltIn }) {
                 provider.commandTemplate = copy.commandTemplate
+                provider.connection = copy.connection
             }
             return provider
         }
@@ -1572,7 +1608,7 @@ public struct VitruvianCodeContextUsage: Equatable, Sendable, Codable {
     }
 }
 
-public struct VitruvianCodeTurnMetrics: Equatable {
+public struct VitruvianCodeTurnMetrics: Equatable, Sendable {
     public var durationMs: Int?
     public var inputTokens: Int?
     public var outputTokens: Int?
@@ -1605,9 +1641,12 @@ public struct VitruvianCodeTurnMetrics: Equatable {
     }
 }
 
+/// Kept for one release while callers move to `AgentEvent`.
+public typealias VitruvianCodeStreamEvent = AgentEvent
+
 /// One line of `agy --output-format stream-json`, Claude Code stream-json or
 /// `opencode run --format json`, reduced to what the Quick Prompt shows.
-public enum VitruvianCodeStreamEvent: Equatable {
+public enum AgentEvent: Equatable, Sendable {
     case started(conversationID: String?)
     case text(String)
     case tool(name: String, finished: Bool)
@@ -1631,13 +1670,13 @@ public enum VitruvianCodeStreamEvent: Equatable {
     /// The first event of a line; nil for blank lines, non-JSON noise and
     /// events the prompt ignores. A line can hold several events (a Claude
     /// message with three tool calls); `parseAll` gives them all.
-    public static func parse(_ line: String) -> VitruvianCodeStreamEvent? {
+    public static func parse(_ line: String) -> AgentEvent? {
         parseAll(line).first
     }
 
     /// Every event of one line, in order. Empty for blank lines, non-JSON
     /// noise and events the prompt ignores.
-    public static func parseAll(_ line: String) -> [VitruvianCodeStreamEvent] {
+    public static func parseAll(_ line: String) -> [AgentEvent] {
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let data = trimmed.data(using: .utf8),
               let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
@@ -1661,13 +1700,13 @@ public enum VitruvianCodeStreamEvent: Equatable {
     /// its index and `tool_info` (name, parameters, and once done, output),
     /// so it is sent as a step the bubble can list; an older agy that says
     /// only the tool's name is sent as activity.
-    private static func parseAntigravity(event: String, json: [String: Any]) -> [VitruvianCodeStreamEvent] {
+    private static func parseAntigravity(event: String, json: [String: Any]) -> [AgentEvent] {
         switch event {
         case "init":
             return [.started(conversationID: nonEmpty(json["conversation_id"]))]
         case "step_update":
             guard let step = json["step_update"] as? [String: Any] else { return [] }
-            var events: [VitruvianCodeStreamEvent] = []
+            var events: [AgentEvent] = []
             if let thinking = step["thinking_delta"] as? String, !thinking.isEmpty {
                 events.append(.thinking(thinking))
             }
@@ -1743,7 +1782,7 @@ public enum VitruvianCodeStreamEvent: Equatable {
     /// (`stream_event`); the whole `assistant` message that follows repeats
     /// them, so only its tool calls and usage are read. Lines a subagent
     /// sent (`parent_tool_use_id` set) are left out of the reply.
-    private static func parseClaude(type: String, json: [String: Any]) -> [VitruvianCodeStreamEvent] {
+    private static func parseClaude(type: String, json: [String: Any]) -> [AgentEvent] {
         let fromSubagent = nonEmpty(json["parent_tool_use_id"]) != nil
         switch type {
         case "system":
@@ -1753,7 +1792,7 @@ public enum VitruvianCodeStreamEvent: Equatable {
                 guard let count = (json["estimated_tokens"] as? NSNumber)?.intValue, !fromSubagent else { return [] }
                 return [.thinkingTokens(count)]
             }
-            var events: [VitruvianCodeStreamEvent] = []
+            var events: [AgentEvent] = []
             if let sid = nonEmpty(json["session_id"]) { events.append(.started(conversationID: sid)) }
             if subtype == "init", let names = json["slash_commands"] as? [String] {
                 events.append(.slashCommands(names))
@@ -1798,7 +1837,7 @@ public enum VitruvianCodeStreamEvent: Equatable {
             }
         case "assistant":
             guard !fromSubagent, let message = json["message"] as? [String: Any] else { return [] }
-            var events: [VitruvianCodeStreamEvent] = []
+            var events: [AgentEvent] = []
             // A step of the turn has ended; its usage is what it sent and got.
             if let usage = message["usage"] as? [String: Any], let context = VitruvianCodeContextUsage.claude(usage: usage) {
                 events.append(.contextUsage(context))
@@ -1861,7 +1900,7 @@ public enum VitruvianCodeStreamEvent: Equatable {
             }
             let isError = (json["is_error"] as? Bool) ?? false
             let resultText = json["result"] as? String
-            var events: [VitruvianCodeStreamEvent] = [.finished(
+            var events: [AgentEvent] = [.finished(
                 status: (json["stop_reason"] as? String) ?? (isError ? "error" : "completed"),
                 response: isError ? nil : resultText,
                 error: isError ? (resultText ?? "Error") : nil,
@@ -1878,7 +1917,7 @@ public enum VitruvianCodeStreamEvent: Equatable {
 
     /// An explicit permission prompt as an approval card: the tool, and
     /// the command or file it wants.
-    private static func approval(from json: [String: Any], requestID: String? = nil) -> VitruvianCodeStreamEvent? {
+    private static func approval(from json: [String: Any], requestID: String? = nil) -> AgentEvent? {
         guard let name = nonEmpty(json["tool_name"]) ?? nonEmpty(json["name"]) ?? nonEmpty(json["tool"]) else {
             return nil
         }
@@ -1901,7 +1940,7 @@ public enum VitruvianCodeStreamEvent: Equatable {
     /// Its tokens and cost are that last step's. Every step's tokens are
     /// sent on as context use (`.contextUsage`). Reasoning parts, which
     /// OpenCode prints with `--thinking`, are sent as thinking.
-    private static func parseOpenCode(type: String, json: [String: Any], sessionID: String?) -> [VitruvianCodeStreamEvent] {
+    private static func parseOpenCode(type: String, json: [String: Any], sessionID: String?) -> [AgentEvent] {
         let part = json["part"] as? [String: Any] ?? [:]
         switch type {
         case "step_start":
@@ -1920,7 +1959,7 @@ public enum VitruvianCodeStreamEvent: Equatable {
             guard let id = nonEmpty(part["callID"]) ?? nonEmpty(part["id"]) else {
                 return [.tool(name: name, finished: finished)]
             }
-            var events: [VitruvianCodeStreamEvent] = [
+            var events: [AgentEvent] = [
                 .toolStep(.from(id: id, name: name, input: state?["input"] as? [String: Any])),
             ]
             if finished {
@@ -1933,7 +1972,7 @@ public enum VitruvianCodeStreamEvent: Equatable {
             let reason = (part["reason"] as? String) ?? ""
             let tokens = part["tokens"] as? [String: Any]
             let reasoning = (tokens?["reasoning"] as? NSNumber)?.intValue ?? 0
-            let thinking: [VitruvianCodeStreamEvent] = reasoning > 0 ? [.thinkingTokens(reasoning)] : []
+            let thinking: [AgentEvent] = reasoning > 0 ? [.thinkingTokens(reasoning)] : []
             // A step that ends to call tools does not end the turn, but the
             // context it used is shown at once.
             guard !["tool-calls", "tool_calls"].contains(reason) else {

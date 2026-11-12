@@ -49,7 +49,7 @@ final class BidirectionalApprovalTests: XCTestCase {
     // MARK: - Parsing and the wire format
 
     func testACanUseToolRequestCarriesItsRequestID() {
-        XCTAssertEqual(VitruvianCodeStreamEvent.parseAll(Self.askBash), [.approval(VitruvianCodeApprovalRequest(
+        XCTAssertEqual(AgentEvent.parseAll(Self.askBash), [.approval(VitruvianCodeApprovalRequest(
             id: "toolu_1", toolName: "Bash", commandOrPath: "echo probe-ok > out.txt", status: .pending,
             requestID: "req-1"))])
     }

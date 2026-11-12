@@ -194,8 +194,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     private let environment: VitruvianCodeEngine.Environment
     /// The app's settings, text and notices. Asked each time, never kept.
     private let host: any VitruvianCodeHost
-    private var running: VitruvianCodeRunningAgent?
-    private var buffer = VitruvianCodeLineBuffer()
+    private var connection: CommandLineConnection?
     private var replyID: UUID?
     /// When this turn's first thought arrived, for the "Thought for" timer.
     private var thinkingStartedAt: Date?
@@ -275,10 +274,6 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     private var reportedErrorText: String?
     /// Output that is not stream JSON (agy's own errors), kept for a failure.
     private var noise: [String] = []
-    /// Everything a provider's own command has printed this turn, and
-    /// everything it has written to standard error, kept apart.
-    private var commandOutput = Data()
-    private var commandErrors = Data()
 
     // MARK: - Orca ADE Capabilities (Waves A, B, C)
 
@@ -580,7 +575,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         awaitingModel = false
         stop()
         turn += 1
-        running = nil
+        connection = nil
         isRunning = false
         activity = nil
         replyID = nil
@@ -715,7 +710,6 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     /// so that those of a turn since stopped or replaced are dropped.
     private func beginTurn(configuration: VitruvianCodeConfiguration, followsTranscript: Bool) -> Int {
         turn += 1
-        buffer = VitruvianCodeLineBuffer()
         noise = []
         stoppedByUser = false
         reportedError = false
@@ -724,8 +718,6 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         awaitingAnswers = []
         turnInputClosed = false
         turnReportedContext = false
-        commandOutput = Data()
-        commandErrors = Data()
         thinkingStartedAt = nil
         // The files as they are before the agent touches them, for Undo
         // Turn. Outside a git repository (or in read-only plan mode or an
@@ -783,15 +775,24 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         }
         // A plain command keeps no transcript to follow.
         let current = beginTurn(configuration: configuration, followsTranscript: false)
-        let childEnvironment = VitruvianCodeSupport.commandEnvironment(base: environment.processEnvironment,
-                                                                    fileExists: environment.fileExists)
+        let directory = workingDirectory(for: configuration)
+        let turnConnection = CommandLineConnection(environment: environment)
+        connection = turnConnection
         do {
-            running = try environment.launchCommand(
-                path, command.arguments, workingDirectory(for: configuration), childEnvironment,
-                { [weak self] data in self?.receiveCommand(data, isErrors: false, turn: current) },
-                { [weak self] data in self?.receiveCommand(data, isErrors: true, turn: current) },
-                { [weak self] status in self?.commandDidExit(status, turn: current) })
+            try turnConnection.startCommandTurn(
+                executablePath: path,
+                arguments: command.arguments,
+                workingDirectory: directory,
+                onPartialOutput: { [weak self] printed in
+                    guard let self, current == self.turn else { return }
+                    self.replace(reply: printed, isError: false)
+                },
+                onExit: { [weak self] status, outcome, printed in
+                    self?.commandDidExit(status, outcome: outcome, printed: printed, turn: current)
+                }
+            )
         } catch {
+            connection = nil
             isRunning = false
             elapsedTimer?.invalidate()
             elapsedTimer = nil
@@ -818,32 +819,13 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
                                     failureDetail: reason))
     }
 
-    private func receiveCommand(_ data: Data, isErrors: Bool, turn current: Int) {
+    private func commandDidExit(_ status: Int32, outcome: VitruvianCodeCommandOutcome, printed: String, turn current: Int) {
         guard current == turn else { return }
-        guard !isErrors else {
-            commandErrors.append(data)
-            return
-        }
-        commandOutput.append(data)
-        // The reply grows as the command prints. A piece can end in the
-        // middle of a letter; then the reply waits for the rest of it.
-        if let printed = String(data: commandOutput, encoding: .utf8) {
-            replace(reply: printed, isError: false)
-        }
-    }
-
-    private func commandDidExit(_ status: Int32, turn current: Int) {
-        guard current == turn else { return }
-        running = nil
+        connection = nil
         isRunning = false
         activity = nil
         elapsedTimer?.invalidate()
         elapsedTimer = nil
-        let outcome = VitruvianCodeSupport.commandOutcome(output: commandOutput, errors: commandErrors, status: status)
-        let printed = String(data: commandOutput, encoding: .utf8)?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        commandOutput = Data()
-        commandErrors = Data()
         var completedReply = ""
         var failed = false
         var endedCleanly = false
@@ -923,30 +905,36 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     /// the modes the prompt was sent in, not the ones set by now.
     private func launch(_ text: String, configuration: VitruvianCodeConfiguration, agentPath: String,
                         modes: TurnModes, ollamaDefaultModel: String, turn current: Int) {
-        let arguments = VitruvianCodeSupport.agentArguments(
-            prompt: text,
-            configuration: Self.turnConfiguration(configuration, planMode: modes.plan),
-            conversationID: conversationID,
-            planMode: modes.plan,
-            worktreeMode: modes.worktree,
-            ollamaDefaultModel: ollamaDefaultModel,
-            attachments: modes.attachments,
-            forkSession: modes.fork)
-        let childEnvironment = VitruvianCodeSupport.childEnvironment(base: environment.processEnvironment,
-                                                                  home: environment.home)
+        let turnConfiguration = Self.turnConfiguration(configuration, planMode: modes.plan)
+        let directory = workingDirectory(for: configuration)
+        let turnConnection = CommandLineConnection(environment: environment)
+        connection = turnConnection
         do {
-            running = try environment.launchAgent(agentPath, arguments, workingDirectory(for: configuration),
-                                                  childEnvironment,
-                                                  { [weak self] data in self?.receive(data, turn: current) },
-                                                  { [weak self] status in self?.agentDidExit(status, turn: current) })
-            if VitruvianCodeSupport.asksOverStandardInput(configuration: Self.turnConfiguration(configuration, planMode: modes.plan),
-                                                       planMode: modes.plan) {
-                // The prompt was left off the command line; it goes in as
-                // the first line, and the input stays open for answers.
-                let prompt = VitruvianCodeSupport.promptWithAttachments(text, modes.attachments)
-                running?.sendInput?(VitruvianCodeSupport.stdinUserMessage(prompt))
-            }
+            try turnConnection.startAgentTurn(
+                prompt: text,
+                configuration: turnConfiguration,
+                agentPath: agentPath,
+                workingDirectory: directory,
+                conversationID: conversationID,
+                planMode: modes.plan,
+                worktreeMode: modes.worktree,
+                ollamaDefaultModel: ollamaDefaultModel,
+                attachments: modes.attachments,
+                forkSession: modes.fork,
+                onEvent: { [weak self] event in
+                    guard let self, current == self.turn else { return }
+                    self.handle(event: event)
+                },
+                onNoise: { [weak self] trimmed in
+                    guard let self, current == self.turn else { return }
+                    self.noise = Array((self.noise + [trimmed]).suffix(5))
+                },
+                onExit: { [weak self] status in
+                    self?.agentDidExit(status, turn: current)
+                }
+            )
         } catch {
+            connection = nil
             isRunning = false
             stopTranscriptFollower()
             elapsedTimer?.invalidate()
@@ -969,7 +957,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         stopTranscriptFollower()
         elapsedTimer?.invalidate()
         elapsedTimer = nil
-        running?.terminate()
+        connection?.terminate()
         refreshPendingApproval()
         if awaitingModel {
             // The agent has not started, so nothing will report an exit:
@@ -1020,7 +1008,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         stopTranscriptFollower()
         activeSubagents = []
         turn += 1
-        running = nil
+        connection = nil
         isRunning = false
         hasPendingApproval = false
         activity = nil
@@ -1067,24 +1055,6 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
 
     // MARK: - Stream
 
-    private func receive(_ data: Data, turn current: Int) {
-        guard current == turn else { return }
-        for line in buffer.append(data) { handle(line) }
-    }
-
-    /// One line of the agent's output: every event in it, in order (one
-    /// line of Claude's can carry several tool calls). A line with none is
-    /// kept as noise, for a failure's message.
-    private func handle(_ line: String) {
-        let events = VitruvianCodeStreamEvent.parseAll(line)
-        guard !events.isEmpty else {
-            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty { noise = Array((noise + [trimmed]).suffix(5)) }
-            return
-        }
-        for event in events { handle(event: event) }
-    }
-
     private func refreshPendingApproval() {
         let pending = isRunning && messages.contains { $0.approvalRequest?.status == .pending }
         if hasPendingApproval != pending {
@@ -1100,7 +1070,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
         thinkingStartedAt = nil
     }
 
-    private func handle(event: VitruvianCodeStreamEvent) {
+    private func handle(event: AgentEvent) {
         switch event {
         case .started(let id):
             if let id { conversationID = id }
@@ -1204,7 +1174,7 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
             // until its input ends; the turn is over, so it is ended.
             turnInputClosed = true
             awaitingAnswers = []
-            running?.closeInput?()
+            connection?.closeInput()
             if let id { conversationID = id }
             if let response, currentReplyText.isEmpty { appendToReply(response) }
             if let replyID, let idx = messages.firstIndex(where: { $0.id == replyID }) {
@@ -1261,14 +1231,13 @@ public final class VitruvianCodeQuickPromptSession: ObservableObject {
     private func answer(_ request: VitruvianCodeApprovalRequest, decision: VitruvianCodeApprovalRequest.Status) {
         guard let requestID = request.requestID, awaitingAnswers.remove(requestID) != nil,
               let line = VitruvianCodeSupport.approvalResponseJSON(for: request, decision: decision) else { return }
-        running?.sendInput?(line)
+        connection?.sendInput(line)
     }
 
     private func agentDidExit(_ status: Int32, turn current: Int) {
         guard current == turn else { return }
-        if let rest = buffer.finish() { handle(rest) }
         finishThinkingIfNeeded()
-        running = nil
+        connection = nil
         isRunning = false
         refreshPendingApproval()
         recordCurrentTranscriptState()
