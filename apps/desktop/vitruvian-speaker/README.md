@@ -1,5 +1,7 @@
 # Vitruvian Speaker
 
+Formerly **HomeSpeaker**. Releases up to 1.41.0 are tagged `home-speaker-v*`; later ones are `vitruvian-speaker-v*`.
+
 <p align="center">
   <img src="docs/hero_banner.jpg" alt="Vitruvian Speaker Hero Banner" width="100%" />
 </p>
