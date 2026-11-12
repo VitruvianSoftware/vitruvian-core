@@ -347,13 +347,13 @@ final class ReadAloudTests: XCTestCase {
     }
 
     private let extensionTool =
-        "/Users/someone/Library/Application Support/com.vitruviansoftware.vitruvian/Tools/dev.vitruvian.homespeaker/bin/tool"
+        "/Users/someone/Library/Application Support/com.vitruviansoftware.atrium/Tools/dev.vitruvian.homespeaker/bin/tool"
 
     func testTheVitruvianExtensionsHomeSpeakerIsFoundAndVitruvianIsWhatOpens() {
         let found = locator(executables: [extensionTool],
-                            apps: ["com.vitruviansoftware.vitruvian": "/Applications/Vitruvian.app"])
+                            apps: ["com.vitruviansoftware.atrium": "/Applications/Vitruvian Atrium.app"])
         XCTAssertEqual(found.binaryURL()?.path, extensionTool)
-        XCTAssertEqual(found.applicationURL()?.path, "/Applications/Vitruvian.app")
+        XCTAssertEqual(found.applicationURL()?.path, "/Applications/Vitruvian Atrium.app")
     }
 
     func testTheInstalledAppIsUsedWhenThereIsNoExtension() {

@@ -642,7 +642,7 @@ jobs:
 
           # Vitruvian desktop app (GPL fork, apps/desktop/vitruvian-atrium): build only.
           # Changes to the app itself are built AND tested by the generated
-          # vitruvian-desktop-macos presubmit unit, so its path is deliberately
+          # vitruvian-atrium-macos presubmit unit, so its path is deliberately
           # not in the detect-macos filter (that would compile it twice per PR).
           # This line covers what the unit's planner does not: an Xcode or
           # toolchain bump (.xcode-version, tools/**) and the push-to-main run

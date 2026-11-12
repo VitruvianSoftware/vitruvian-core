@@ -20,7 +20,7 @@
 
 # release-please for the Vitruvian Atrium macOS app:
 # 1. Authors release PRs from conventional commits under apps/desktop/vitruvian-atrium/.
-# 2. When the release PR merges, cuts the GitHub Release (tag: vitruvian-vX.Y.Z).
+# 2. When the release PR merges, cuts the GitHub Release (tag: vitruvian-atrium-vX.Y.Z).
 # The DMG is NOT built here: that release fires the `vitruvian-atrium` unit's
 # production rung in the generated delivery-vitruvian-atrium.yaml, which attaches
 # VitruvianAtrium-X.Y.Z.dmg (declared in apps/desktop/vitruvian-atrium/BUILD).
