@@ -137,13 +137,30 @@ pub fn trim_space(s: &[u8]) -> &[u8] {
     &s[start..end]
 }
 
+/// Mirrors renamed in place keep the rev-id label their history was stamped
+/// with, so the export pre-check still finds the peer's last import. The label
+/// is in copy.bara.sky (`standalone_rev_id`), which does not move with the
+/// repository name.
+const RENAMED_MIRROR_LABELS: &[(&[u8], &[u8])] = &[
+    (b"vitruvian-code", b"NEXUS_AGENT_REV_ID"),
+    (b"vitruvian-roborock-mcp", b"MCP_ROBOROCK_REV_ID"),
+    (b"vitruvian-atrium", b"VITRUVIAN_REV_ID"),
+    (b"vitruvian-courier", b"COURIER_REV_ID"),
+    (b"vitruvian-speaker", b"HOME_SPEAKER_REV_ID"),
+    (b"vitruvian-deck", b"ESP32_DESK_COMPANION_REV_ID"),
+    // Not renamed yet; listed so the next rename needs no change here.
+    (b"vitruvian-slack-mcp", b"MCP_SLACK_REV_ID"),
+    (b"vitruvian-devx", b"DEVX_REV_ID"),
+    (b"vitruvian-homelab", b"HOMELAB_REV_ID"),
+];
+
 /// "mcp-slack" -> "MCP_SLACK_REV_ID", "devx" -> "DEVX_REV_ID".
-/// "vitruvian-code" keeps "NEXUS_AGENT_REV_ID" so export pre-checks continue
-/// to match the historical import rev-id label declared in copy.bara.sky.
+/// A mirror renamed in place ("vitruvian-code", "vitruvian-courier", ...) keeps
+/// its historical label ("NEXUS_AGENT_REV_ID", "COURIER_REV_ID", ...) so export
+/// pre-checks continue to match the rev-id declared in copy.bara.sky.
 pub fn import_label(component: &[u8]) -> Vec<u8> {
-    if component == b"vitruvian-code" {
-        // legacy name: NEXUS_AGENT_REV_ID stamp retained in copy.bara.sky
-        return b"NEXUS_AGENT_REV_ID".to_vec();
+    if let Some((_, label)) = RENAMED_MIRROR_LABELS.iter().find(|(c, _)| *c == component) {
+        return label.to_vec();
     }
     let replaced: Vec<u8> = component
         .iter()

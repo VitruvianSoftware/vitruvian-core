@@ -20,8 +20,8 @@ bidirectionally — see [§0 Sync shapes](#0-sync-shapes-what-replaced-bidirecti
 
 | Shape | Flag | Components | Generates |
 |---|---|---|---|
-| **One-way w/ PR-import** | `is_one_way=True` | `mcp-slack`, `mcp-roborock`, `devx`, `homelab`, `vitruvian-code`, `oauth-user-inspector` | `export_<comp>` (push to mirror `main`) + `import_pr_<comp>` (a labelled mirror PR → a **monorepo PR**, `CHANGE_REQUEST` mode) |
-| **Export-only** | `export_only=True` | `pulumi-library`, `pulumi_go-example-foundation`, `pulumi_ts-example-foundation`, `site-vitruviansoftware-dev`, `gh-watch`, `vitruvian-sdk`, `vitruvian-tool-github`, `vitruvian`, `courier`, `vitruvian-speaker`, `vitruvian-remote`, `esp32-desk-companion` | `export_<comp>` only — no import path of any kind |
+| **One-way w/ PR-import** | `is_one_way=True` | `mcp-slack`, `vitruvian-roborock-mcp`, `devx`, `homelab`, `vitruvian-code`, `oauth-user-inspector` | `export_<comp>` (push to mirror `main`) + `import_pr_<comp>` (a labelled mirror PR → a **monorepo PR**, `CHANGE_REQUEST` mode) |
+| **Export-only** | `export_only=True` | `pulumi-library`, `pulumi_go-example-foundation`, `pulumi_ts-example-foundation`, `site-vitruviansoftware-dev`, `gh-watch`, `vitruvian-sdk`, `vitruvian-tool-github`, `vitruvian-atrium`, `vitruvian-courier`, `vitruvian-speaker`, `vitruvian-remote`, `vitruvian-deck` | `export_<comp>` only — no import path of any kind |
 | **Bidirectional** | `is_one_way=False` | *(none)* | legacy shape, retained as a knob only |
 
 There is deliberately **no push-to-`main` `import_<comp>`** for any component. External
@@ -348,6 +348,25 @@ pulumi up --stack dev
 > `tls.PrivateKey` from state last. Meanwhile `ActionsSecret` `repository` inputs update in place,
 > and an adopted mirror renamed in place keeps its `Adopt` block and original `ImportID` (e.g.
 > `"nexus-agent"`) so Pulumi neither deletes nor re-imports the protected `Repository` resource.
+
+> **Renaming a mirror in place (no repository is ever deleted).** A repository is renamed by
+> changing `StandaloneRepo` in `sync.go`, never by hand and never through the API.
+> - A mirror `repo-config` creates (`CreateRepo`) records its old name in `LegacyRepo`. The Pulumi
+>   resource keeps that name (`repoResourceName`), so only the `Name` argument changes and the
+>   provider renames the repository in place; releases, stars and tags come with it, and GitHub
+>   redirects the old URL. A renamed repository is also `Protect`ed, so a change that planned a
+>   replace or a delete would fail the update instead of removing it.
+> - A mirror `repo-config` does not yet manage (`devx`, `homelab`, `mcp-slack`) is adopted first
+>   with an `Adopt` block, at its live name. Pulumi fails an import that also renames, so the rename
+>   is a second change, after the adoption has applied: it moves `StandaloneRepo` and keeps the
+>   original `ImportID`.
+> - Keep the logical `name`, the `<COMP>_*` secret names, the `*_REV_ID` label and the workflow file
+>   names. Move `repo` in `copy.bara.sky`, `component:` in the export workflow, the `notify-ci-issues`
+>   list, `sponsor-button-repos.txt`, the site data and the mirror's own links. The export workflow
+>   name follows `repo` (`export_vitruvian_courier`), so update the list in
+>   `copybara-config-smoketest.yaml` too, and give `conflict-precheck`'s `import_label` the old label.
+> - Order: the `repo-config` apply on merge renames first. An export that runs before it fails to
+>   push to the new name; re-run it (`workflow_dispatch`, `--ignore-noop`) once the apply is green.
 
 ### 8e. Rotate / replace the GitHub App private key
 The App is a manual resource. Generate a new private key in the App settings. The program reads it

@@ -17,8 +17,8 @@ If the roborock tools are missing, or the MCP server "failed to connect", the
 2. Install `rrctl` if missing: in the vitruvian-core monorepo,
    `bazel build //apps/mcp/vitruvian-roborock-mcp:rrctl` and copy
    `bazel-bin/apps/mcp/vitruvian-roborock-mcp/rrctl` to `~/.local/bin/`; otherwise
-   `cargo install --locked --git https://github.com/VitruvianSoftware/mcp-roborock`,
-   or a release binary from https://github.com/VitruvianSoftware/mcp-roborock/releases.
+   `cargo install --locked --git https://github.com/VitruvianSoftware/vitruvian-roborock-mcp`,
+   or a release binary from https://github.com/VitruvianSoftware/vitruvian-roborock-mcp/releases.
 3. Restart the agent session so the server starts again.
 
 ## Steps

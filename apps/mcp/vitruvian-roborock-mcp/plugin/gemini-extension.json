@@ -7,7 +7,7 @@
       "command": "sh",
       "args": [
         "-c",
-        "command -v rrctl >/dev/null 2>&1 || { echo \"vitruvian-roborock-mcp: rrctl is not on your PATH. Install it: https://github.com/VitruvianSoftware/mcp-roborock#quick-installation\" >&2; exit 127; }; exec rrctl mcp"
+        "command -v rrctl >/dev/null 2>&1 || { echo \"vitruvian-roborock-mcp: rrctl is not on your PATH. Install it: https://github.com/VitruvianSoftware/vitruvian-roborock-mcp#quick-installation\" >&2; exit 127; }; exec rrctl mcp"
       ]
     }
   }

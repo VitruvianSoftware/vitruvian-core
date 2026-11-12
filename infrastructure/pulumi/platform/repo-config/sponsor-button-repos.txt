@@ -12,15 +12,15 @@
 # fails when a listed FUNDING.yml is missing. Editing this file re-runs the
 # apply, since it sits under repo-config.
 vitruvian-core                .github/FUNDING.yml
-vitruvian                     apps/desktop/vitruvian-atrium/.github/FUNDING.yml
-courier                       apps/desktop/vitruvian-courier/.github/FUNDING.yml
-home-speaker                  apps/desktop/vitruvian-speaker/.github/FUNDING.yml
+vitruvian-atrium              apps/desktop/vitruvian-atrium/.github/FUNDING.yml
+vitruvian-courier             apps/desktop/vitruvian-courier/.github/FUNDING.yml
+vitruvian-speaker             apps/desktop/vitruvian-speaker/.github/FUNDING.yml
 vitruvian-remote              apps/mobile/android-remote/.github/FUNDING.yml
-esp32-desk-companion          apps/embedded/vitruvian-deck/.github/FUNDING.yml
+vitruvian-deck                apps/embedded/vitruvian-deck/.github/FUNDING.yml
 vitruvian-code                apps/desktop/vitruvian-code/.github/FUNDING.yml
 oauth-user-inspector          apps/web/oauth-user-inspector/.github/FUNDING.yml
 mcp-slack                     apps/mcp/vitruvian-slack-mcp/.github/FUNDING.yml
-mcp-roborock                  apps/mcp/vitruvian-roborock-mcp/.github/FUNDING.yml
+vitruvian-roborock-mcp        apps/mcp/vitruvian-roborock-mcp/.github/FUNDING.yml
 gh-watch                      apps/antigravity/plugins/gh-watch/.github/FUNDING.yml
 devx                          apps/cli/vitruvian-devx/.github/FUNDING.yml
 homelab                       apps/cli/vitruvian-homelab/.github/FUNDING.yml

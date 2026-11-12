@@ -253,7 +253,7 @@ projects:
       plugins that let a coding agent check status, start room cleans or send
       the robot home.
     tags: [Rust, MCP]
-    repo: https://github.com/VitruvianSoftware/mcp-roborock
+    repo: https://github.com/VitruvianSoftware/vitruvian-roborock-mcp
     source: apps/mcp/vitruvian-roborock-mcp
     extension:
       kind: plugin
@@ -261,12 +261,12 @@ projects:
       installs:
         - tool: Claude Code
           label: "Claude Code, step 1: add the marketplace"
-          command: claude plugin marketplace add VitruvianSoftware/mcp-roborock
+          command: claude plugin marketplace add VitruvianSoftware/vitruvian-roborock-mcp
         - tool: Claude Code
           label: "Claude Code, step 2: install"
           command: claude plugin install vitruvian-roborock
         - tool: Antigravity
-          command: agy plugin install https://github.com/VitruvianSoftware/mcp-roborock
+          command: agy plugin install https://github.com/VitruvianSoftware/vitruvian-roborock-mcp
 
   - name: Vitruvian Code
     group: agents

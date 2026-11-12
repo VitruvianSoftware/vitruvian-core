@@ -16,8 +16,8 @@
         "name": "VitruvianSoftware",
         "url": "https://github.com/VitruvianSoftware"
       },
-      "homepage": "https://github.com/VitruvianSoftware/mcp-roborock",
-      "repository": "https://github.com/VitruvianSoftware/mcp-roborock",
+      "homepage": "https://github.com/VitruvianSoftware/vitruvian-roborock-mcp",
+      "repository": "https://github.com/VitruvianSoftware/vitruvian-roborock-mcp",
       "license": "MIT",
       "keywords": ["roborock", "vacuum", "home-automation", "mcp"]
     }

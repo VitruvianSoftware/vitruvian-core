@@ -24,17 +24,17 @@ development:
 
 vitruvian:
   name: Vitruvian
-  repo: https://github.com/VitruvianSoftware/vitruvian
+  repo: https://github.com/VitruvianSoftware/vitruvian-atrium
   url: "https://donate.stripe.com/7sYeVc23PcZz5Ql9ijbwk00"
 
 courier:
   name: Vitruvian Courier
-  repo: https://github.com/VitruvianSoftware/courier
+  repo: https://github.com/VitruvianSoftware/vitruvian-courier
   url: "https://donate.stripe.com/14A9ASaAlaRr7Yt9ijbwk08"
 
 home-speaker:
   name: Vitruvian Speaker
-  repo: https://github.com/VitruvianSoftware/home-speaker
+  repo: https://github.com/VitruvianSoftware/vitruvian-speaker
   url: "https://donate.stripe.com/aFa28qdMx2kVdiN2TVbwk02"
 
 vitruvian-remote:
@@ -44,7 +44,7 @@ vitruvian-remote:
 
 esp32-desk-companion:
   name: Vitruvian Deck
-  repo: https://github.com/VitruvianSoftware/esp32-desk-companion
+  repo: https://github.com/VitruvianSoftware/vitruvian-deck
   url: "https://donate.stripe.com/7sYbJ04bXaRr0w13XZbwk03"
 
 # legacy name: Stripe product key in infrastructure/pulumi/platform/stripe
@@ -65,7 +65,7 @@ mcp-slack:
 
 mcp-roborock:
   name: Vitruvian Roborock MCP
-  repo: https://github.com/VitruvianSoftware/mcp-roborock
+  repo: https://github.com/VitruvianSoftware/vitruvian-roborock-mcp
   url: "https://donate.stripe.com/9B6bJ06k5aRr1A57abbwk04"
 
 gh-watch:
