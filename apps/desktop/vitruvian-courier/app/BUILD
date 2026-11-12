@@ -13,6 +13,7 @@ load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application")
 load("@build_bazel_rules_apple//apple:versioning.bzl", "apple_bundle_version")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("//tools/apple:defs.bzl", "APPLE_TOOLCHAIN_ONLY")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 load("//tools/swift-test-preferences:defs.bzl", "swift_test")
 load(":version.bzl", "VITRUVIAN_COURIER_VERSION")
@@ -25,14 +26,14 @@ swift_library(
     name = "VitruvianCourierCore",
     srcs = glob(["Sources/VitruvianCourierCore/**/*.swift"]),
     module_name = "VitruvianCourierCore",
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
 )
 
 swift_library(
     name = "VitruvianCourierLib",
     srcs = glob(["Sources/VitruvianCourier/**/*.swift"]),
     module_name = "VitruvianCourier",
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [":VitruvianCourierCore"],
 )
 
@@ -48,7 +49,7 @@ swift_library(
     features = ["swift.enable_testing"],
     module_name = "VitruvianCourier",
     tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [":VitruvianCourierCore"],
 )
 
@@ -70,7 +71,7 @@ swift_test(
         "//apps/desktop/vitruvian-courier/protocol:richtext_cases",
     ] + glob(["Sources/**/*.swift"]),
     tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [":VitruvianCourierCore"],
 )
 
@@ -91,7 +92,7 @@ swift_test(
         "exclusive",
         "manual",
     ],
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
         ":VitruvianCourierCore",
         ":VitruvianCourierViews",

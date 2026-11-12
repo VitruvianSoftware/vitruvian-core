@@ -1,5 +1,6 @@
 load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
+load("//tools/apple:defs.bzl", "APPLE_TOOLCHAIN_ONLY")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 load("//tools/swift-test-preferences:defs.bzl", "swift_test")
 
@@ -17,7 +18,7 @@ swift_library(
     srcs = glob(["Sources/BridgeCore/*.swift"]),
     module_name = "BridgeCore",
     tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
 )
 
 swift_test(
@@ -25,7 +26,7 @@ swift_test(
     size = "small",
     srcs = glob(["Tests/BridgeCoreTests/*.swift"]),
     tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [":BridgeCore"],
 )
 
@@ -47,7 +48,7 @@ swift_library(
     srcs = glob(["Sources/NexusAgentBridge/*.swift"]),
     module_name = "NexusAgent",
     tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [":BridgeCore"],
 )
 

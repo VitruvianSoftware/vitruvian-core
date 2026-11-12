@@ -3,7 +3,7 @@
     "name": "Vitruvian Slack MCP (Remote)",
     "description": "Read and post in a fixed set of channels, for the network-reachable MCP endpoint. Deliberately narrower than the local app.",
     "background_color": "#1a1a2e",
-    "long_description": "Backs the HTTP transport of mcp-slack, which is reachable from the public internet and authenticated with OAuth 2.0 bearer tokens. It is a separate Slack app from the local stdio one on purpose, and its scopes are derived from the tools that transport actually exposes rather than copied from the local app. It holds no user-token scopes at all: the HTTP transport refuses to start if a user token is present, so search, canvases, bookmark-writes and topic-set are unavailable there by construction and remain features of the local app only."
+    "long_description": "Backs the HTTP transport of mcp-slack, which is reachable from the public internet and authenticated with OAuth 2.0 bearer tokens. It is a separate Slack app from the local stdio one on purpose, and its bot scopes cover the bot-backed tools that transport exposes. A user token (SLACK_USER_TOKEN) is optional on the HTTP transport: without one, user-scoped tools are withheld and SLACK_CHANNEL_IDS is required; when a user token is configured, user-scoped tools are enabled and the channel allow-list is optional (enforced across reads, writes, search, files and canvases whenever set)."
   },
   "features": {
     "bot_user": {
