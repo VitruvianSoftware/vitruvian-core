@@ -43,8 +43,8 @@ metadata:
 spec:
   targets:
     - ./apps/web/backstage/catalog-info.yaml
-    - ./apps/cli/devx/catalog-info.yaml
-    - ./apps/cli/homelab/catalog-info.yaml
+    - ./apps/cli/vitruvian-devx/catalog-info.yaml
+    - ./apps/cli/vitruvian-homelab/catalog-info.yaml
     - ./apps/embedded/esp32-s3/catalog-info.yaml
     - ./apps/mcp/vitruvian-slack-mcp/catalog-info.yaml
     - ./apps/mcp/vitruvian-roborock-mcp/catalog-info.yaml

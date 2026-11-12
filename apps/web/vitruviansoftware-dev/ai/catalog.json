@@ -756,14 +756,14 @@
     },
     {
       "id": "devx",
-      "name": "devx",
+      "name": "Vitruvian DevX CLI",
       "kind": "skill",
       "category": "Local Dev & K3s Skills",
       "status": "released",
       "summary": "A local development orchestrator. One CLI provisions container VMs, ephemeral databases and cloud emulators, local K3s clusters and Cloudflare tunnel ingress, and starts everything in dependency order.",
       "repo": "https://github.com/VitruvianSoftware/devx",
       "mirrorRepo": "https://github.com/VitruvianSoftware/devx",
-      "source": "apps/cli/devx",
+      "source": "apps/cli/vitruvian-devx",
       "ecosystems": [
         "antigravity",
         "claude-code",

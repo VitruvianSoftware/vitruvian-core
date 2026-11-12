@@ -74,8 +74,8 @@ vitruvian-core/
 ├── apps/
 │   ├── suites/vitruvian-tabs/            # SaaS, multi-component (API→Cloud Run, extension, web, cli, shared)
 │   ├── web/oauth-user-inspector/ # SaaS, single-container web app → Cloud Run
-│   ├── cli/devx/                 # CLI / developer tool (Go)
-│   ├── cli/homelab/              # CLI / infra-ops tool (Go)
+│   ├── cli/vitruvian-devx/       # CLI / developer tool (Go)
+│   ├── cli/vitruvian-homelab/    # CLI / infra-ops tool (Go)
 │   ├── mcp/slack/                # Agent / MCP service (Node/TS)
 │   └── desktop/vitruvian-code/   # Agent / MCP service (Node bot + Swift macOS app)
 │
@@ -115,8 +115,8 @@ Each app type has its own inner loop. The table below is the practical per-type 
 |----------|------|---------------|------|
 | **Bazel monorepo (multi-component SaaS)** | `vitruvian-tabs` | `bazel run //apps/suites/vitruvian-tabs/cli:vitruvian-tabs`; load extension from `bazel-bin/apps/suites/vitruvian-tabs/extension/dist`; backing Postgres/Redis come up as Bazel-managed hermetic test services | `bazel test //apps/suites/vitruvian-tabs/...` |
 | **Containerized SaaS web app** | `oauth-user-inspector` | `pnpm dev` (concurrently Vite + nodemon/tsc backend on `:8080) | `bazel test //apps/web/oauth-user-inspector/...` (jest server suite) |
-| **Go CLI** | `devx` | `bazel run //apps/cli/devx:devx -- <args>` (developer build of record); release builds via goreleaser only | `bazel test //apps/cli/devx/...` |
-| **Go CLI (infra/ops)** | `homelab` | `bazel run //apps/cli/homelab/cmd/homelab -- <args>` | `bazel test //apps/cli/homelab/...` |
+| **Go CLI** | `devx` | `bazel run //apps/cli/vitruvian-devx:devx -- <args>` (developer build of record); release builds via goreleaser only | `bazel test //apps/cli/vitruvian-devx/...` |
+| **Go CLI (infra/ops)** | `homelab` | `bazel run //apps/cli/vitruvian-homelab:homelab -- <args>` | `bazel test //apps/cli/vitruvian-homelab/...` |
 | **Agent / MCP (Rust)** | `vitruvian-slack-mcp` | `bazel run //apps/mcp/vitruvian-slack-mcp:vitruvian-slack-mcp` (the MCP host injects the Slack tokens as env) | `bazel test //apps/mcp/vitruvian-slack-mcp/...` |
 | **Agent / MCP + macOS** | `vitruvian-code` | `pnpm start` / `pnpm dev` for the bot; `bazel build --config=macos-app //apps/desktop/vitruvian-code/macos:VitruvianCode` for the menu-bar app | — (no tests yet) |
 
@@ -164,7 +164,7 @@ The default branch is **`main`**.
 
 1. **Branch first — never commit on `main`, and branch work happens in a worktree.** `bazel run //tools/worktree -- <branch>` creates an isolated worktree with its own Bazel server. This is **enforced, not convention** (#502): `bazel build/run/test` from the *primary* checkout on a non-`main` HEAD fails via the workspace-status guard (`tools/githooks/check-config.sh`) with recovery instructions. `VITRUVIAN_ALLOW_PRIMARY_BRANCH=1` is the break-glass override; CI and linked worktrees are exempt.
 2. **Conventional Commits.** Use `feat:`, `fix:`, `docs:`, `chore:`, scoped where helpful (`fix(gitops): …`). This feeds `release-please`. A `feat` or `fix` releases **every** product whose folder the pull request changes, so the scope must name the product it releases (`feat(vitruvian-sdk): …`). The required `release-scope` check fails a pull request that would release a product it does not name; one that truly changes two says so with a `Releases: a, b` line in its description ([`.github/workflows/README.md`](.github/workflows/README.md)).
-3. **Co-Authored-By trailer.** End commit messages authored with an assistant with the appropriate `Co-Authored-By:` trailer (documented in `apps/cli/devx/CONTRIBUTING.md`, the de-facto template).
+3. **Co-Authored-By trailer.** End commit messages authored with an assistant with the appropriate `Co-Authored-By:` trailer (documented in `apps/cli/vitruvian-devx/CONTRIBUTING.md`, the de-facto template).
 4. **Finish branches with a PR.** When a branch is done, **push and open a GitHub PR** (`gh pr create`) for review + CI. **Never merge locally.**
 5. **The merge queue is the single enforcement authority.** Branch protection, required reviews, and the merge queue are codified as IaC in `infrastructure/pulumi/platform/repo_config` (merge queue on; `requireStatusChecks` intentionally `false` because the queue runs them). A PR merges by **entering the queue**, which runs the full required-check set against the rebased result.
 
@@ -246,7 +246,7 @@ bazel test  //...
 
 # Scope to one app
 bazel test //apps/suites/vitruvian-tabs/...
-bazel test //apps/cli/devx/...
+bazel test //apps/cli/vitruvian-devx/...
 
 # Format + BUILD hygiene — run this before every PR. It is a REQUIRED check.
 bazel run //:tidy        # gazelle + buildifier + prettier/gofmt
@@ -261,7 +261,7 @@ bazel run //:tidy        # gazelle + buildifier + prettier/gofmt
 ```bash
 pnpm install               # workspace install (root)
 pnpm --filter <pkg> dev    # run one TS app's dev loop
-go test ./...              # inside apps/cli/devx/ or apps/cli/homelab/ (gazelle keeps go_test in the Bazel sweep)
+go test ./...              # inside apps/cli/vitruvian-devx/ or apps/cli/vitruvian-homelab/ (gazelle keeps go_test in the Bazel sweep)
 ```
 
 ### How CI decides what to run
@@ -445,7 +445,7 @@ Five of the six first-party apps (`devx`, `homelab`, `vitruvian-slack-mcp`, `vit
 - **Companion docs (this orientation layer):**
   - **Applications & Categories** — what each app is and its category (the shared vocabulary).
   - **Alignment Gaps** — every "🎯 Target / not yet adopted" item above, tracked with severity and recommendation.
-- **Per-app:** each app's `README.md` / `CONTRIBUTING.md` / `AGENTS.md`; `apps/cli/devx/docs/`, `apps/desktop/vitruvian-code/docs/`, `apps/cli/devx/FEATURES.md`/`IDEAS.md`.
+- **Per-app:** each app's `README.md` / `CONTRIBUTING.md` / `AGENTS.md`; `apps/cli/vitruvian-devx/docs/`, `apps/desktop/vitruvian-code/docs/`, `apps/cli/vitruvian-devx/FEATURES.md`/`IDEAS.md`.
 - **Repo-root `AGENTS.md`** and `README.bazel.md` for Bazel-specific guidance.
 - **CI/CD vocabulary:** [`.github/CI_DEFINITIONS.md`](.github/CI_DEFINITIONS.md) (presubmit/postsubmit/affected targets/safety floor/deploy gate). **Flaky tests:** [`docs/engineering/flaky-tests.md`](docs/engineering/flaky-tests.md) (quarantine + culprit-finder).
 

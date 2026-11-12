@@ -37,7 +37,7 @@ const DOCS_PREFIXES: &[&str] = &[
     ".agents/skills/",
     ".agents/rules/",
     "devx/docs/",
-    "apps/cli/devx/docs/",
+    "apps/cli/vitruvian-devx/docs/",
 ];
 const DOCS_SUFFIXES: &[&str] = &[".md", ".png", ".jpg", ".jpeg", ".svg", ".txt"];
 const DOCS_NAMES: &[&str] = &["catalog-info.yaml", "OWNERS", "CODEOWNERS"];
@@ -165,9 +165,9 @@ const BACKEND_PREFIXES: &[&str] = &[
     "apps/suites/vitruvian-tabs/api/",
     "apps/suites/vitruvian-tabs/cli/",
     "devx/",
-    "apps/cli/devx/",
+    "apps/cli/vitruvian-devx/",
     "homelab/",
-    "apps/cli/homelab/",
+    "apps/cli/vitruvian-homelab/",
     "vitruvian-slack-mcp/",
     "apps/mcp/vitruvian-slack-mcp/",
     "oauth-user-inspector/",

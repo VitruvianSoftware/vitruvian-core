@@ -1,0 +1,319 @@
+// Copyright (c) 2026 VitruvianSoftware
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
+// Package lima handles generating Lima configuration files and managing
+// VM lifecycle (create, start, stop, delete, status) on remote hosts.
+package lima
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"strings"
+
+	"github.com/VitruvianSoftware/vitruvian-devx/internal/multinode/config"
+	"github.com/VitruvianSoftware/vitruvian-devx/internal/multinode/remote"
+	"github.com/VitruvianSoftware/vitruvian-devx/internal/multinode/util"
+)
+
+// VMStatus represents the state of a Lima VM.
+type VMStatus string
+
+const (
+	VMStatusRunning    VMStatus = "Running"
+	VMStatusStopped    VMStatus = "Stopped"
+	VMStatusNotCreated VMStatus = "NotCreated"
+	VMStatusUnknown    VMStatus = "Unknown"
+)
+
+// NodePackages are the apt packages installed on every Lima node during
+// provisioning. socat is required for `kubectl port-forward` (and devx
+// bridge) to carry traffic on Docker-runtime k3s nodes — without it the
+// forward binds locally but connections fail with "socat not found". Keeping
+// this list in one place lets both initial provisioning (GenerateConfig) and
+// `devx cluster reconcile` install the exact same set on existing nodes.
+const NodePackages = "curl open-iscsi nfs-common socat"
+
+// Manager handles Lima VM operations on a remote host.
+type Manager struct {
+	runner *remote.Runner
+	node   config.NodeConfig
+	vmName string
+}
+
+// NewManager creates a new Lima manager for the given host and node config.
+func NewManager(runner *remote.Runner, node config.NodeConfig) *Manager {
+	return &Manager{
+		runner: runner,
+		node:   node,
+		vmName: node.GetVMName(),
+	}
+}
+
+// Status returns the current VM status on the remote host.
+func (m *Manager) Status(ctx context.Context) (VMStatus, error) {
+	out, err := m.runner.Run(ctx, "limactl list --json")
+	if err != nil {
+		if strings.Contains(err.Error(), "command not found") {
+			return VMStatusNotCreated, fmt.Errorf("lima is not installed on %s", m.runner.Host)
+		}
+		return VMStatusUnknown, err
+	}
+
+	// limactl list --json outputs one JSON object per line.
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var entry struct {
+			Name   string `json:"name"`
+			Status string `json:"status"`
+		}
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			continue
+		}
+		if entry.Name == m.vmName {
+			return VMStatus(entry.Status), nil
+		}
+	}
+
+	return VMStatusNotCreated, nil
+}
+
+// DefaultDockerVersion and DefaultContainerdVersion pin the node container
+// runtime when cluster.yaml (which is local, not in git) does not override them
+// via docker.dockerVersion / docker.containerdVersion. They MUST be a
+// mutually-compatible apt pair — docker-ce depends on a matching containerd.io —
+// so bump them together. Pinning + holding them is what stops a node restart or
+// unattended upgrade from pairing a v2.3 containerd with a v2.2 shim, which
+// produces the "unsupported protocol" pod-sandbox failures. See GenerateConfig.
+const (
+	DefaultDockerVersion     = "29.5.2"
+	DefaultContainerdVersion = "2.2.4"
+)
+
+// GenerateConfig returns the Lima YAML config for this node. mounts is the raw
+// cluster mount set; it is resolved via ResolveMounts (nil -> default home mount,
+// empty -> none).
+func (m *Manager) GenerateConfig(socketPath string, docker config.DockerConfig, mounts []config.MountConfig) string {
+	cfg := fmt.Sprintf(`vmType: "vz"
+images:
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-arm64.img"
+    arch: "aarch64"
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img"
+    arch: "x86_64"
+cpus: %d
+memory: "%s"
+disk: "%s"
+networks:
+  - socket: "%s"
+`, m.node.VM.CPUs, m.node.VM.Memory, m.node.VM.Disk, socketPath)
+
+	cfg += renderMounts(ResolveMounts(mounts))
+
+	if docker.Enabled {
+		cfg += `portForwards:
+  - guestSocket: "/var/run/docker.sock"
+    hostSocket: "{{.Dir}}/sock/docker.sock"
+`
+	}
+
+	cfg += fmt.Sprintf(`provision:
+  - mode: system
+    script: |
+      #!/bin/bash
+      apt-get update -qq && apt-get install -y -qq %s
+`, NodePackages)
+	if docker.Enabled {
+		dockerVer := docker.DockerVersion
+		if dockerVer == "" {
+			dockerVer = DefaultDockerVersion
+		}
+		containerdVer := docker.ContainerdVersion
+		if containerdVer == "" {
+			containerdVer = DefaultContainerdVersion
+		}
+		// Pinned, single-source container runtime (replaces the unpinned
+		// `curl get.docker.com | sh`). docker-ce + containerd.io are installed at
+		// an exact, mutually-compatible apt version resolved from the Docker repo
+		// and then held, so a node restart or unattended upgrade can never pair a
+		// mismatched containerd<->shim (the cause of "unsupported protocol"
+		// pod-sandbox failures). madison resolves the full repo version string for
+		// the pin so we stay codename-agnostic; a missing pin fails loudly.
+		cfg += fmt.Sprintf(`      install -m0755 -d /etc/apt/keyrings
+      curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+      chmod a+r /etc/apt/keyrings/docker.asc
+      . /etc/os-release
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu ${VERSION_CODENAME} stable" > /etc/apt/sources.list.d/docker.list
+      apt-get update -qq
+      docker_pin=$(apt-cache madison docker-ce | awk -v v='%[1]s' 'index($3, v){print $3; exit}')
+      containerd_pin=$(apt-cache madison containerd.io | awk -v v='%[2]s' 'index($3, v){print $3; exit}')
+      if [ -z "$docker_pin" ] || [ -z "$containerd_pin" ]; then
+        echo "FATAL: pinned docker-ce=%[1]s / containerd.io=%[2]s not found in apt repo" >&2
+        exit 1
+      fi
+      apt-get install -y -qq docker-ce="$docker_pin" docker-ce-cli="$docker_pin" docker-ce-rootless-extras="$docker_pin" containerd.io="$containerd_pin"
+      apt-mark hold docker-ce docker-ce-cli docker-ce-rootless-extras containerd.io
+      # Add all interactive users (UID >= 1000 or UID == 501) to the docker group
+      for u in $(awk -F: '$3 >= 1000 || $3 == 501 {print $1}' /etc/passwd); do
+        usermod -aG docker "$u" || true
+      done
+      # Register QEMU binfmt handlers so this node's Docker can run and build
+      # foreign-arch images (e.g. linux/amd64 on an arm64 host) under emulation.
+      # binfmt-support + systemd-binfmt re-apply the handlers on every boot, so
+      # multi-arch survives VM reboots; they register with the fix-binary (F)
+      # flag, which is required for the emulator to work inside containers.
+      apt-get install -y -qq qemu-user-static binfmt-support
+`, dockerVer, containerdVer)
+	}
+
+	return cfg
+}
+
+// Provision creates and starts the Lima VM on the remote host.
+func (m *Manager) Provision(ctx context.Context, docker config.DockerConfig, mounts []config.MountConfig) error {
+	status, err := m.Status(ctx)
+	if err != nil && status != VMStatusNotCreated {
+		return err
+	}
+
+	switch status {
+	case VMStatusRunning:
+		slog.Debug("VM already running, skipping provision", "host", m.runner.Host, "vm", m.vmName)
+		fmt.Printf("  [%s] VM already running, skipping provision\n", m.runner.Host)
+	case VMStatusStopped:
+		slog.Info("VM stopped, starting", "host", m.runner.Host, "vm", m.vmName)
+		fmt.Printf("  [%s] VM exists but stopped, starting...\n", m.runner.Host)
+		if _, err := m.runner.Run(ctx, fmt.Sprintf("limactl start %s", m.vmName)); err != nil {
+			return err
+		}
+	case VMStatusNotCreated:
+		slog.Info("creating and starting VM", "host", m.runner.Host, "vm", m.vmName,
+			"cpus", m.node.VM.CPUs, "memory", m.node.VM.Memory, "disk", m.node.VM.Disk)
+		fmt.Printf("  [%s] Creating and starting VM...\n", m.runner.Host)
+
+		// Detect socket_vmnet socket path on the remote host.
+		socketPath, err := m.detectSocketPath(ctx)
+		if err != nil {
+			return fmt.Errorf("detecting socket_vmnet path: %w", err)
+		}
+
+		// Write the config file to the remote host via base64 to avoid
+		// shell quoting issues with multiline content.
+		limaConfig := m.GenerateConfig(socketPath, docker, mounts)
+		configPath := fmt.Sprintf("~/%s.yaml", m.vmName)
+		encoded := util.Base64Encode(limaConfig)
+		_, err = m.runner.Run(ctx, fmt.Sprintf("echo %s | base64 -d > %s", encoded, configPath))
+		if err != nil {
+			return fmt.Errorf("writing lima config: %w", err)
+		}
+
+		// Start the VM with a generous timeout for boot scripts.
+		_, err = m.runner.Run(ctx, fmt.Sprintf("limactl start --name=%s %s --tty=false --timeout=15m0s", m.vmName, configPath))
+		if err != nil {
+			// limactl may timeout even though the VM is running fine.
+			// Check if the VM actually started despite the error.
+			status, checkErr := m.Status(ctx)
+			if checkErr == nil && status == VMStatusRunning {
+				slog.Warn("limactl start returned error but VM is running", "host", m.runner.Host)
+			} else {
+				return fmt.Errorf("starting lima VM: %w", err)
+			}
+		}
+
+	default:
+		return fmt.Errorf("unexpected VM status: %s", status)
+	}
+
+	// Self-recovery: install the keeper LaunchAgent so the node comes back on its
+	// own after a host reboot or sleep. Best-effort — never fails provisioning.
+	if err := m.InstallNodeKeeper(ctx); err != nil {
+		slog.Warn("failed to install node-vm-keeper (non-fatal)", "host", m.runner.Host, "error", err)
+	}
+	return nil
+}
+
+// GetBridgedIP returns the bridged LAN IP address of the VM.
+func (m *Manager) GetBridgedIP(ctx context.Context) (string, error) {
+	// Try lima0 interface first (socket_vmnet typically creates this).
+	out, err := m.runner.LimaShell(ctx, m.vmName, "ip -4 addr show lima0 2>/dev/null | awk '/inet / {split($2,a,\"/\"); print a[1]}'")
+	if err == nil && out != "" {
+		return strings.TrimSpace(out), nil
+	}
+
+	// Fallback: use ip route to find the source IP for external traffic.
+	out, err = m.runner.LimaShell(ctx, m.vmName, "ip -4 route get 1.1.1.1 | awk '/src/ {for(i=1;i<=NF;i++) if($i==\"src\") print $(i+1)}'")
+	if err != nil {
+		return "", fmt.Errorf("could not determine bridged IP: %w", err)
+	}
+
+	return strings.TrimSpace(out), nil
+}
+
+// Destroy stops and deletes the Lima VM.
+func (m *Manager) Destroy(ctx context.Context) error {
+	status, err := m.Status(ctx)
+	if err != nil && status != VMStatusNotCreated {
+		return err
+	}
+
+	if status == VMStatusNotCreated {
+		slog.Debug("no VM found, skipping destroy", "host", m.runner.Host, "vm", m.vmName)
+		fmt.Printf("  [%s] No VM found, skipping\n", m.runner.Host)
+		return nil
+	}
+
+	slog.Info("destroying VM", "host", m.runner.Host, "vm", m.vmName)
+	fmt.Printf("  [%s] Destroying VM...\n", m.runner.Host)
+	_, err = m.runner.Run(ctx, fmt.Sprintf("limactl stop %s --force 2>/dev/null; limactl delete %s --force", m.vmName, m.vmName))
+	return err
+}
+
+// detectSocketPath finds the actual socket_vmnet socket on the remote host.
+// The path varies by Homebrew installation: /opt/homebrew/var/run/ on ARM64,
+// /usr/local/var/run/ on Intel.
+func (m *Manager) detectSocketPath(ctx context.Context) (string, error) {
+	candidates := []string{
+		"/opt/homebrew/var/run/socket_vmnet",
+		"/usr/local/var/run/socket_vmnet",
+		"/var/run/socket_vmnet",
+	}
+
+	for _, path := range candidates {
+		_, err := m.runner.RunShell(ctx, fmt.Sprintf("sudo test -S %s", path))
+		if err == nil {
+			slog.Debug("found socket_vmnet", "host", m.runner.Host, "path", path)
+			return path, nil
+		}
+	}
+
+	// Fallback: try to find it via brew --prefix.
+	out, err := m.runner.RunShell(ctx, "brew --prefix 2>/dev/null")
+	if err == nil {
+		prefix := strings.TrimSpace(out)
+		path := prefix + "/var/run/socket_vmnet"
+		slog.Debug("using brew prefix for socket_vmnet", "host", m.runner.Host, "path", path)
+		return path, nil
+	}
+
+	return "", fmt.Errorf("[%s] could not find socket_vmnet socket — ensure socket_vmnet is installed and running", m.runner.Host)
+}

@@ -22,7 +22,7 @@ version: 2
 updates:
   # ─── Go modules (per go.work member; root //:go.mod is an empty placeholder) ───
   - package-ecosystem: "gomod"
-    directory: "/apps/cli/devx"
+    directory: "/apps/cli/vitruvian-devx"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
@@ -42,7 +42,7 @@ updates:
           - "minor"
           - "patch"
   - package-ecosystem: "gomod"
-    directory: "/apps/cli/homelab"
+    directory: "/apps/cli/vitruvian-homelab"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
@@ -66,8 +66,8 @@ updates:
     directories:
       - "/"
       - "/.github/actions/*"
-      - "/apps/cli/devx/.github/workflows"
-      - "/apps/cli/homelab/.github/workflows"
+      - "/apps/cli/vitruvian-devx/.github/workflows"
+      - "/apps/cli/vitruvian-homelab/.github/workflows"
       - "/apps/antigravity/plugins/ext-marketplace/.github/workflows"
       - "/apps/antigravity/plugins/gh-watch/.github/workflows"
       - "/apps/antigravity/plugins/hookify/.github/workflows"

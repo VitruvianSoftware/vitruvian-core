@@ -98,7 +98,7 @@
   ["bazel run //tools/worktree -- feat/x", "allow", null, ""],
   ["bazel run //tools/git:commit -- -m 'feat: x' a.go", "allow", null, ""],
   ["bazel run //tools/agent-app -- pr-create --title x", "allow", null, ""],
-  ["bazelisk build //apps/cli/devx/...", "allow", null, ""],
+  ["bazelisk build //apps/cli/vitruvian-devx/...", "allow", null, ""],
   ["aspect lint //tools/...", "allow", null, ""],
   ["bazel clean", "allow", null, ""],
   ["bazel run //tools/agent-guard:install -- --dry-run", "allow", null, ""],

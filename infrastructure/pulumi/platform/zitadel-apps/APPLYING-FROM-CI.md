@@ -116,7 +116,7 @@ internal Envoy, transparently to the provider (which still uses
    matches §2.6; not a static auth key.)
 2. **ACL**: allow `tag:ci` to reach the gateway, e.g.
    `{"action":"accept","src":["tag:ci"],"dst":["10.44.86.211:80"]}`
-   (the tailnet is devx-managed — `apps/cli/devx/internal/tailscale`).
+   (the tailnet is devx-managed — `apps/cli/vitruvian-devx/internal/tailscale`).
 
 ### Workflow change (`zitadel-infra` job in `oauth-user-inspector-deploy.yaml`)
 ```yaml

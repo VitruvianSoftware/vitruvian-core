@@ -120,7 +120,7 @@ On the first `--execute` it **prompts you** for the npm token (a `@vitruviansoft
 # mirror AND the homebrew-tap repo). homelab is darwin-only; vitruvian-code needs Swift + create-dmg.
 git clone https://github.com/VitruvianSoftware/<component>.git && cd <component>
 git tag vX.Y.Z && git push origin vX.Y.Z           # vitruvian-code: plain vX.Y.Z, NOT vitruvian-code-vX
-GITHUB_TOKEN="$(gh auth token)" goreleaser release --clean   # apps/cli/devx, apps/cli/homelab; apps/desktop/vitruvian-code: see its release.yml
+GITHUB_TOKEN="$(gh auth token)" goreleaser release --clean   # apps/cli/vitruvian-devx, apps/cli/vitruvian-homelab; apps/desktop/vitruvian-code: see its release.yml
 ```
 
 ## Guardrails — do not skip

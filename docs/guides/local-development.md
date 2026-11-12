@@ -10,7 +10,7 @@ The repo-wide setup (toolchain, worktrees, the merge queue) lives in
 ```bash
 nvm use && corepack enable    # Node 22 + pnpm, versions from .nvmrc / packageManager
 bazel run //:doctor           # core toolchain check
-bazel run //<app>:doctor      # per-app check — //apps/suites/vitruvian-tabs:doctor, //apps/cli/devx:doctor, …
+bazel run //<app>:doctor      # per-app check — //apps/suites/vitruvian-tabs:doctor, //apps/cli/vitruvian-devx:doctor, …
 ```
 
 Every app has a `doctor` target (`vitruvian-tabs`, `oauth-user-inspector`, `devx`, `homelab`,
@@ -31,8 +31,8 @@ bazel run //tools/worktree -- my-branch
 | **vitruvian-tabs** (CLI) | `bazel run //apps/suites/vitruvian-tabs/cli:vitruvian-tabs -- --help` | `bazel test //apps/suites/vitruvian-tabs/...` | — |
 | **vitruvian-tabs** (extension) | `bazel build //apps/suites/vitruvian-tabs/extension:dist`, then load `bazel-bin/apps/suites/vitruvian-tabs/extension/dist` unpacked | `bazel test //apps/suites/vitruvian-tabs/...` | — |
 | **oauth-user-inspector** | `pnpm dev` (Vite `:5173` + Express `:8080`) — or `devx up` | `bazel test //apps/web/oauth-user-inspector/...` | none (GCP Secret Manager) |
-| **devx** | `bazel run //apps/cli/devx:devx -- <args>` | `bazel test //apps/cli/devx/...` | — |
-| **homelab** | `bazel run //apps/cli/homelab/cmd/homelab -- <args>` | `bazel test //apps/cli/homelab/...` | — |
+| **devx** | `bazel run //apps/cli/vitruvian-devx:devx -- <args>` | `bazel test //apps/cli/vitruvian-devx/...` | — |
+| **homelab** | `bazel run //apps/cli/vitruvian-homelab:homelab -- <args>` | `bazel test //apps/cli/vitruvian-homelab/...` | — |
 | **vitruvian-slack-mcp** | `bazel run //apps/mcp/vitruvian-slack-mcp:vitruvian-slack-mcp` | `bazel test //apps/mcp/vitruvian-slack-mcp/...` | — |
 | **vitruvian-code** | `pnpm dev` (bot); macOS app: `bazel build --config=macos-app //apps/desktop/vitruvian-code/macos:VitruvianCode` | `bazel test --config=macos-app //apps/desktop/vitruvian-code/...` | — |
 
@@ -99,7 +99,7 @@ Secrets never live in git. Local dev uses **gitignored** files seeded from a com
 |---|---|---|
 | `vitruvian-tabs` (API) | `apps/suites/vitruvian-tabs/api/.env` | ✅ `apps/suites/vitruvian-tabs/api/.env.example` |
 | `vitruvian-code` | `apps/desktop/vitruvian-code/.env` | ✅ `apps/desktop/vitruvian-code/.env.example` |
-| `devx` | `.env` / `.env.keys` | ✅ `apps/cli/devx/.env.example` (also `devx config secrets`) |
+| `devx` | `.env` / `.env.keys` | ✅ `apps/cli/vitruvian-devx/.env.example` (also `devx config secrets`) |
 | `oauth-user-inspector` | env vars / GCP Secret Manager | ❌ no `.env.example` yet |
 | `homelab`, `vitruvian-slack-mcp` | env vars | ❌ no `.env.example` yet |
 

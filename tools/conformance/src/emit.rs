@@ -362,7 +362,7 @@ mod tests {
             "go",
             GLYPH_FAIL,
             "",
-            "apps/cli/devx/go.mod",
+            "apps/cli/vitruvian-devx/go.mod",
             "1.22",
             "1.23",
             "mismatch",

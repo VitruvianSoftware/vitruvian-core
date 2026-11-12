@@ -171,7 +171,7 @@ categories:
     blurb: High-performance CLI tools for local development orchestration, declarative K3s clusters, and peripheral control.
     items:
       - id: devx
-        name: devx
+        name: Vitruvian DevX CLI
         version: "0.74.5"
         summary: >-
           A local development orchestrator. One CLI provisions container VMs, ephemeral
@@ -179,20 +179,20 @@ categories:
         platforms: ["macOS (arm64, amd64)", "Linux (arm64, amd64)"]
         brew_formula: vitruviansoftware/tap/devx
         releases_url: https://github.com/VitruvianSoftware/devx/releases
-        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/cli/devx
+        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/cli/vitruvian-devx
         extensions_url: /ai/#eco-codex-opencode
         extensions_label: Agent Skills & Init
 
       - id: homelab
-        name: homelab
+        name: Vitruvian Homelab
         version: "1.6.1"
         summary: >-
-          Declarative multi-node K3s clusters on macOS. Describe nodes in one file and homelab
+          Declarative multi-node K3s clusters on macOS. Describe nodes in one file and Vitruvian Homelab
           provisions Lima VZ virtual machines, networking, and the cluster to match.
         platforms: ["macOS (Apple Silicon, Intel)"]
         brew_formula: vitruviansoftware/tap/homelab
         releases_url: https://github.com/VitruvianSoftware/homelab/releases
-        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/cli/homelab
+        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/cli/vitruvian-homelab
 
       - id: gravastar-mouse
         name: gravastar-mouse

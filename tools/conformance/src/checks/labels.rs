@@ -603,8 +603,8 @@ mod tests {
             Some(Ref::Target("//tools/ci:gen".into()))
         );
         assert_eq!(
-            classify("//apps/cli/devx/..."),
-            Some(Ref::Recursive("apps/cli/devx".into()))
+            classify("//apps/cli/vitruvian-devx/..."),
+            Some(Ref::Recursive("apps/cli/vitruvian-devx".into()))
         );
         assert_eq!(classify("//tools:all"), Some(Ref::Package("tools".into())));
         assert_eq!(classify("//..."), None);

@@ -36,8 +36,8 @@ on:
   push:
     branches: [main]
     paths:
-      - "apps/cli/devx/**"
-      - "apps/cli/homelab/**"
+      - "apps/cli/vitruvian-devx/**"
+      - "apps/cli/vitruvian-homelab/**"
       - "apps/antigravity/plugins/ext-marketplace/**"
       - "apps/antigravity/plugins/gh-watch/**"
       - "apps/antigravity/plugins/hookify/**"
@@ -76,8 +76,8 @@ jobs:
           set -euo pipefail
 
           ALL_APPS=(
-            apps/cli/devx
-            apps/cli/homelab
+            apps/cli/vitruvian-devx
+            apps/cli/vitruvian-homelab
             apps/antigravity/plugins/ext-marketplace
             apps/antigravity/plugins/gh-watch
             apps/antigravity/plugins/hookify

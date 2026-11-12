@@ -269,7 +269,7 @@ Critically, the **license-check CI does not actually enforce MIT-ness or the hol
 
 **Priority: P2 · Effort: S**
 
-**Current state.** Per-app governance is patchy: **vitruvian-tabs** has no standalone `CLA.md` and no `CODE_OF_CONDUCT.md` (only an inline section in a 747-line `CONTRIBUTING.md`); **homelab** and **vitruvian-code** lack `CODE_OF_CONDUCT.md`. There is **no root-level governance set** — every app reimplements its own, ranging from 21-line stubs to 747 lines, and only `apps/cli/devx/CONTRIBUTING.md` documents the `Co-Authored-By` trailer. Also: **vitruvian-tabs is the only first-party app not Copybara-mirrored** (the other five are in `tools/copybara/copy.bara.sky`), and whether that's intentional is undocumented.
+**Current state.** Per-app governance is patchy: **vitruvian-tabs** has no standalone `CLA.md` and no `CODE_OF_CONDUCT.md` (only an inline section in a 747-line `CONTRIBUTING.md`); **homelab** and **vitruvian-code** lack `CODE_OF_CONDUCT.md`. There is **no root-level governance set** — every app reimplements its own, ranging from 21-line stubs to 747 lines, and only `apps/cli/vitruvian-devx/CONTRIBUTING.md` documents the `Co-Authored-By` trailer. Also: **vitruvian-tabs is the only first-party app not Copybara-mirrored** (the other five are in `tools/copybara/copy.bara.sky`), and whether that's intentional is undocumented.
 
 **Target.** Identical governance quartet (LICENSE, CONTRIBUTING, CLA, CODE_OF_CONDUCT) per app, generated from one template; a thin per-app CONTRIBUTING that links a canonical root CONTRIBUTING/CODE_OF_CONDUCT (which should be added). Commit/PR/merge-queue conventions documented once at root.
 

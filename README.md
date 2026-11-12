@@ -22,8 +22,8 @@ app type).
 | [`vitruvian-tabs`](apps/suites/vitruvian-tabs/) | SaaS web service | Browser tab-management product: a TypeScript API on Cloud Run, an MV3 browser extension, a web dashboard, and a CLI. The most mature deploy in the repo. |
 | [`oauth-user-inspector`](apps/web/oauth-user-inspector/) | SaaS web service | Full-stack OAuth/token inspector (React + Vite frontend + Express backend) served as one container on Cloud Run. |
 | [`vitruviansoftware-dev`](apps/web/vitruviansoftware-dev/) | Website | The public [vitruviansoftware.dev](https://vitruviansoftware.dev) Jekyll site. Edited here, exported to its standalone repo, which publishes it on GitHub Pages. |
-| [`devx`](apps/cli/devx/) | CLI / developer tool | Local-dev orchestrator: provisions Lima VMs & devcontainers, ephemeral DBs/emulators, K3s clusters, and tunnel ingress. |
-| [`homelab`](apps/cli/homelab/) | CLI / developer tool | Declarative multi-node K3s homelab manager for macOS (Lima VZ). |
+| [Vitruvian DevX CLI](apps/cli/vitruvian-devx/) | CLI / developer tool | Local-dev orchestrator: provisions Lima VMs & devcontainers, ephemeral DBs/emulators, K3s clusters, and tunnel ingress. |
+| [Vitruvian Homelab](apps/cli/vitruvian-homelab/) | CLI / developer tool | Declarative multi-node K3s homelab manager for macOS (Lima VZ). |
 | [`vitruvian-slack-mcp`](apps/mcp/vitruvian-slack-mcp/) | Agent / MCP service | Slack MCP server (dual-token; ~22 tools including Canvas CRUD). |
 | [`vitruvian-code`](apps/desktop/vitruvian-code/) | Agent / MCP service | Telegram bot + macOS menu-bar app that bridges chats to a local AI coding CLI. |
 | [`vitruvian-atrium`](apps/desktop/vitruvian-atrium/) | Desktop app (Vitruvian Atrium) | macOS menu-bar utility hub (volume mixer, system monitor, app switcher, notch, capture). GPL-3.0-or-later fork, being renamed and refactored; not yet distributed. |
@@ -47,7 +47,7 @@ Each application type has its own conventions — see the
 ├── apps/                            # Applications by tier (suites, web, cli, mcp, desktop, mobile, embedded)
 │   ├── suites/vitruvian-tabs/       # Browser tab-management SaaS suite
 │   ├── web/                         # Containerized web apps (oauth-user-inspector, backstage, gods-eye-view)
-│   ├── cli/                         # Developer & platform CLIs (devx, homelab)
+│   ├── cli/                         # Developer & platform CLIs (Vitruvian DevX CLI, Vitruvian Homelab)
 │   ├── mcp/                         # Model Context Protocol servers (slack)
 │   ├── desktop/                     # Native desktop applications (vitruvian-code, vitruvian-speaker, vitruvian-atrium)
 │   ├── mobile/                      # Mobile apps (android-remote)

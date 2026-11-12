@@ -231,11 +231,11 @@ exports_files(
 # as infrastructure/pulumi. Keep gazelle out of the subtree.
 # gazelle:exclude packages/pulumi/examples
 # apps contains subtrees with hand-authored BUILD files or non-Go toolchains.
-# Keep Gazelle out of non-Go app subtrees, while letting Gazelle manage apps/cli/devx
+# Keep Gazelle out of non-Go app subtrees, while letting Gazelle manage apps/cli/vitruvian-devx
 # and apps/desktop/courier (Go modules). The other apps are listed one by one
 # because Gazelle cannot un-exclude a child of an excluded directory.
 # gazelle:exclude apps/antigravity
-# gazelle:exclude apps/cli/homelab
+# gazelle:exclude apps/cli/vitruvian-homelab
 # gazelle:exclude apps/desktop/vitruvian-speaker
 # gazelle:exclude apps/desktop/vitruvian-atrium
 # gazelle:exclude apps/desktop/vitruvian-code

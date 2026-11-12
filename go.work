@@ -2,7 +2,7 @@ go 1.26.10
 
 use (
 	.
-	./apps/cli/devx
+	./apps/cli/vitruvian-devx
 	./apps/desktop/courier/engine
 
 	// The Vitruvian SDK's Go kit. The public mirror holds it at go/, so its

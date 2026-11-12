@@ -71,7 +71,7 @@ const EXTENSIONS: &[&str] = &["*.md", "*.html", "*.yml", "*.yaml", "*.json"];
 const SKIP_PREFIXES: &[&str] = &[
     "docs/superpowers/",
     "docs/archive/",
-    "apps/cli/devx/docs/plans/",
+    "apps/cli/vitruvian-devx/docs/plans/",
 ];
 
 fn skipped(rel: &str) -> bool {
@@ -240,9 +240,9 @@ mod tests {
 
     #[test]
     fn records_and_machinery_are_skipped() {
-        assert!(skipped("apps/cli/devx/CHANGELOG.md"));
+        assert!(skipped("apps/cli/vitruvian-devx/CHANGELOG.md"));
         assert!(skipped("docs/superpowers/plans/x.md"));
-        assert!(skipped("apps/cli/devx/docs/plans/idea.md"));
+        assert!(skipped("apps/cli/vitruvian-devx/docs/plans/idea.md"));
         assert!(skipped(".github/workflows/x.yaml"));
         assert!(skipped("apps/desktop/x/.github/workflows/release.yml"));
         assert!(skipped("tools/sync-downloads/testdata/downloads.yml"));
@@ -250,6 +250,6 @@ mod tests {
             "apps/web/vitruviansoftware-dev/_data/downloads.yml"
         ));
         assert!(!skipped("CONTRIBUTING.md"));
-        assert!(!skipped("apps/cli/homelab/README.md"));
+        assert!(!skipped("apps/cli/vitruvian-homelab/README.md"));
     }
 }

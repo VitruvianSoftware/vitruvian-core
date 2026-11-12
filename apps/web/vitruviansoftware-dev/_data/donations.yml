@@ -74,11 +74,11 @@ gh-watch:
   url: "https://donate.stripe.com/fZuaEWeQB1gRguZ2TVbwk0a"
 
 devx:
-  name: devx
+  name: Vitruvian DevX CLI
   repo: https://github.com/VitruvianSoftware/devx
   url: "https://donate.stripe.com/fZu5kC37T1gRguZdyzbwk06"
 
 homelab:
-  name: homelab
+  name: Vitruvian Homelab
   repo: https://github.com/VitruvianSoftware/homelab
   url: "https://donate.stripe.com/3cIfZgbEp9Nn4Mh3XZbwk07"

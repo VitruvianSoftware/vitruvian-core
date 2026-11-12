@@ -86,7 +86,7 @@ reason = "npm deepmerge (4.3.1), reached via build/test/CLI dependencies (@rollu
 [[IgnoredVulns]]
 id = "GO-2026-6911"
 ignoreUntil = 2026-12-23
-reason = "Go github.com/mark3labs/mcp-go (1.5.0) in apps/cli/devx/go.mod. Advisory published 2026-11-05 against client/transport.NewStreamableHTTP following untrusted HTTP redirects with bearer tokens. No fixed release exists upstream (1.5.0 is latest), and devx only uses mcp-go/server (stdio server) and never imports client/transport. Time-boxed to pick up an upstream release when available."
+reason = "Go github.com/mark3labs/mcp-go (1.5.0) in apps/cli/vitruvian-devx/go.mod. Advisory published 2026-11-05 against client/transport.NewStreamableHTTP following untrusted HTTP redirects with bearer tokens. No fixed release exists upstream (1.5.0 is latest), and devx only uses mcp-go/server (stdio server) and never imports client/transport. Time-boxed to pick up an upstream release when available."
 
 # libsignal (apps/desktop/courier/libsignal/Cargo.lock, added 2026-10-16 for Courier's
 # Signal bridge). Signal's own crate graph pulls in three crates whose only

@@ -35,8 +35,8 @@ body:
       label: Affected Component / Area
       description: Which area or package in the repository is affected?
       options:
-        - apps/cli/devx
-        - apps/cli/homelab
+        - apps/cli/vitruvian-devx
+        - apps/cli/vitruvian-homelab
         - apps/suites/vitruvian-tabs
         - apps/mcp/vitruvian-slack-mcp
         - apps/desktop/vitruvian-code

@@ -101,7 +101,11 @@ fn docs_only_fast_gate() {
             true,
         ),
         (
-            &["OWNERS", "apps/cli/devx/OWNERS", ".github/CODEOWNERS"],
+            &[
+                "OWNERS",
+                "apps/cli/vitruvian-devx/OWNERS",
+                ".github/CODEOWNERS",
+            ],
             true,
         ),
         (

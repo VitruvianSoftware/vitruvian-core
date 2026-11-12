@@ -108,11 +108,11 @@ The monorepo contains 22 root-level directories and 840 unique subdirectories.
 | `.vscode/` | `lower_single` | Workspace-level editor configurations |
 | `architecture/` | `lower_single` | System architectural blueprints and diagrams |
 | `apps/web/backstage/` | `lower_single` | Spotify Backstage developer portal application & plugins |
-| `apps/cli/devx/` | `lower_single` | DevX local development CLI and environment orchestrator |
+| `apps/cli/vitruvian-devx/` | `lower_single` | DevX local development CLI and environment orchestrator |
 | `docs/` | `lower_single` | Central monorepo documentation hub |
 | `tools/githooks/` | `lower_single` | Git pre-commit and pre-push hook automation |
 | `gitops/` | `lower_single` | ArgoCD application definitions & Kubernetes manifests |
-| `apps/cli/homelab/` | `lower_single` | Homelab infrastructure management Go CLI |
+| `apps/cli/vitruvian-homelab/` | `lower_single` | Homelab infrastructure management Go CLI |
 | `infrastructure/` | `lower_single` | Production Pulumi GCP infrastructure stacks |
 | `apps/mcp/vitruvian-slack-mcp/` | `kebab-case` | Model Context Protocol Slack server application |
 | `apps/desktop/vitruvian-code/` | `kebab-case` | Native macOS menu-bar agent application |
@@ -133,7 +133,7 @@ The monorepo contains 22 root-level directories and 840 unique subdirectories.
 - **`snake_case`** (91 dirs, 10.8%): Concentrated in Go package directories (`packages/pulumi/library/go/pkg/cloud_run/`, `infrastructure/pulumi/**/modules/shared_vpc/`) and Prisma migrations (`20260714205548_add_tab_notes/`).
 - **`PascalCase`** (6 dirs, 0.7%): Swift/Apple directories (`apps/desktop/vitruvian-code/macos/Sources/VitruvianCodeCore/`).
 - **`camelCase`** (2 dirs, 0.2%): `apps/web/backstage/packages/backend/src/plugins/cloudRun/`.
-- **Other / Spec** (2 dirs, 0.2%): `apps/cli/devx/.github/ISSUE_TEMPLATE/` (UPPER_SNAKE), `apps/suites/tabula/web/src/app/[relayId]/` (Next.js dynamic route).
+- **Other / Spec** (2 dirs, 0.2%): `apps/cli/vitruvian-devx/.github/ISSUE_TEMPLATE/` (UPPER_SNAKE), `apps/suites/tabula/web/src/app/[relayId]/` (Next.js dynamic route).
 
 ---
 

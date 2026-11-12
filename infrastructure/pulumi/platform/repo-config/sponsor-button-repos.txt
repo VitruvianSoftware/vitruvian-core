@@ -22,8 +22,8 @@ oauth-user-inspector          apps/web/oauth-user-inspector/.github/FUNDING.yml
 mcp-slack                     apps/mcp/vitruvian-slack-mcp/.github/FUNDING.yml
 mcp-roborock                  apps/mcp/vitruvian-roborock-mcp/.github/FUNDING.yml
 gh-watch                      apps/antigravity/plugins/gh-watch/.github/FUNDING.yml
-devx                          apps/cli/devx/.github/FUNDING.yml
-homelab                       apps/cli/homelab/.github/FUNDING.yml
+devx                          apps/cli/vitruvian-devx/.github/FUNDING.yml
+homelab                       apps/cli/vitruvian-homelab/.github/FUNDING.yml
 vitruvian-tool-github         apps/desktop/vitruvian-tool-github/.github/FUNDING.yml
 vitruvian-sdk                 packages/vitruvian-sdk/.github/FUNDING.yml
 pulumi-library                packages/pulumi/library/.github/FUNDING.yml

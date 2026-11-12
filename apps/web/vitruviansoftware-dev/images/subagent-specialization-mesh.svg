@@ -46,7 +46,7 @@
     <text x="12" y="76" class="box-text">• CLI &amp; Desktop</text>
     <text x="12" y="92" class="box-text">• Web services</text>
     <rect x="8" y="108" width="124" height="32" class="scope-badge" />
-    <text x="70" y="122" class="scope-text" text-anchor="middle">apps/cli/devx/</text>
+    <text x="70" y="122" class="scope-text" text-anchor="middle">apps/cli/vitruvian-devx/</text>
     <text x="70" y="134" class="scope-text" text-anchor="middle">apps/desktop/*</text>
   </g>
 

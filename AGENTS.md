@@ -13,7 +13,7 @@
 > - **No tool-specific instructions in this file.** If setup only applies to one vendor,
 >   it goes in `docs/` and is linked from here (as the homelab access section does) —
 >   everything in this guide should be actionable by every agent that reads it.
-> - **Nested `AGENTS.md` files scope to their subtree** (`apps/cli/devx/`, `apps/suites/vitruvian-tabs/`, `apps/suites/vitruvian-wand/`,
+> - **Nested `AGENTS.md` files scope to their subtree** (`apps/cli/vitruvian-devx/`, `apps/suites/vitruvian-tabs/`, `apps/suites/vitruvian-wand/`,
 >   `apps/web/oauth-user-inspector/`, `apps/web/vitruviansoftware-dev/`, `apps/mobile/android-remote/`, `apps/desktop/`, `apps/desktop/vitruvian-speaker/`,
 >   `apps/desktop/vitruvian-atrium/`, `apps/embedded/esp32-s3/`) — put per-component detail there, not here. Note that an
 >   `AGENTS.md` only applies to the directory it sits in and below, so one in a
@@ -269,7 +269,7 @@ Run every change to completion — an unmerged branch is unfinished work, not a 
 - **Dependency changes** = edit the manifest, then re-lock, then gazelle:
   - Python: `pyproject.toml` → `./tools/repin` → `bazel run //:gazelle`
   - JS/TS: `pnpm add …` (one pnpm workspace / `pnpm-lock.yaml`)
-  - Go: `go mod tidy` → `bazel mod tidy` → `bazel run //:gazelle` (multi-module `go.work`: `.`, `apps/cli/homelab`, `apps/cli/devx`)
+  - Go: `go mod tidy` → `bazel mod tidy` → `bazel run //:gazelle` (multi-module `go.work`: `.`, `apps/cli/vitruvian-homelab`, `apps/cli/vitruvian-devx`)
   - JVM: edit `maven.install` in `MODULE.bazel` → `bazel run @maven//:pin`; Rust: `Cargo.toml` → `bazel run //tools/crates:lock` (resolves for the Bazel toolchain's Rust version); Ruby: `Gemfile`
   - GitOps Helm chart pins (`gitops/argocd/**` `Application`/`ApplicationSet` `targetRevision`): tracked by Renovate
     (`renovate.json5`, scoped to `enabledManagers: ["argocd"]` only — it never touches the ecosystems above,
