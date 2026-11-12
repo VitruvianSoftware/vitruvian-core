@@ -174,14 +174,24 @@ type adoptedRepo struct {
 // pointing at the same App), so onboarding a component is just an entry here.
 var syncedProjects = []syncedProject{
 	{
-		// Adopted into Pulumi state with NO rename in the same change. The rename
-		// goes in a LATER change, once this one has applied: Pulumi fails an import
-		// whose declared name differs from the live repository (an import must be a
-		// zero-diff). The next step is StandaloneRepo "vitruvian-slack-mcp" with
-		// ImportID "mcp-slack" kept, exactly as nexus-agent did in #4581 then #4582.
+		// Adopted via pulumi.Import as mcp-slack in PR #4651 and renamed in place
+		// to VitruvianSoftware/vitruvian-slack-mcp, preserving releases, stars and
+		// tags.
+		//
+		// Why Name stays "mcp-slack": secretPrefix(Name) drives MCP_SLACK_SYNC_SSH_KEY
+		// (read by copybara-export-mcp-slack.yaml), MCP_SLACK_DISPATCH_APP_* (read by
+		// the mirror's standalone-only dispatch workflow), the MCP_SLACK_REV_ID commit
+		// trailer, and the Pulumi logical name/URN.
+		//
+		// Why Adopt and ImportID: "mcp-slack" stay: removing Adopt would cause Pulumi
+		// to plan deleting the protected Repository resource, and changing ImportID to
+		// "vitruvian-slack-mcp" would make Pulumi re-import because
+		// terraform-provider-github retains state ID "mcp-slack" across an in-place
+		// repository rename.
 		Name:           "mcp-slack",
-		StandaloneRepo: "mcp-slack",
+		StandaloneRepo: "vitruvian-slack-mcp",
 		Adopt: &adoptedRepo{
+			ImportID:                 "mcp-slack",
 			Description:              "Production-ready Slack MCP Server with dual-token capabilities for deep workspace orchestration and user context preservation.",
 			Visibility:               "public",
 			DeleteBranchOnMerge:      false,
@@ -204,11 +214,17 @@ var syncedProjects = []syncedProject{
 		},
 	},
 	{
-		// Adopted, rename to follow (see mcp-slack). Next step is StandaloneRepo
-		// "vitruvian-devx" with ImportID "devx" kept.
+		// Adopted via pulumi.Import as devx in PR #4651 and renamed in place to
+		// VitruvianSoftware/vitruvian-devx, preserving releases, stars and tags.
+		// Name stays "devx" so DEVX_SYNC_SSH_KEY, DEVX_DISPATCH_APP_*, DEVX_REV_ID
+		// and the Repository URN are unchanged; Adopt and ImportID: "devx" stay
+		// because terraform-provider-github keeps state ID "devx" across the rename
+		// and removing Adopt would plan deleting the protected repository (see
+		// mcp-slack and nexus-agent).
 		Name:           "devx",
-		StandaloneRepo: "devx",
+		StandaloneRepo: "vitruvian-devx",
 		Adopt: &adoptedRepo{
+			ImportID:                 "devx",
 			Description:              "Supercharged local dev environment",
 			Visibility:               "public",
 			DeleteBranchOnMerge:      true,
@@ -231,11 +247,17 @@ var syncedProjects = []syncedProject{
 		},
 	},
 	{
-		// Adopted, rename to follow (see mcp-slack). Next step is StandaloneRepo
-		// "vitruvian-homelab" with ImportID "homelab" kept.
+		// Adopted via pulumi.Import as homelab in PR #4651 and renamed in place to
+		// VitruvianSoftware/vitruvian-homelab, preserving releases, stars and tags.
+		// Name stays "homelab" so HOMELAB_SYNC_SSH_KEY, HOMELAB_DISPATCH_APP_*,
+		// HOMELAB_REV_ID and the Repository URN are unchanged; Adopt and ImportID:
+		// "homelab" stay because terraform-provider-github keeps state ID "homelab"
+		// across the rename and removing Adopt would plan deleting the protected
+		// repository (see mcp-slack and nexus-agent).
 		Name:           "homelab",
-		StandaloneRepo: "homelab",
+		StandaloneRepo: "vitruvian-homelab",
 		Adopt: &adoptedRepo{
+			ImportID:                 "homelab",
 			Description:              "A CLI tool for declaratively provisioning and managing multi-node Kubernetes homelab clusters on macOS using Lima VZ and K3s",
 			Visibility:               "public",
 			DeleteBranchOnMerge:      true,

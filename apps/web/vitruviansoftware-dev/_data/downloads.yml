@@ -178,7 +178,7 @@ categories:
           databases and cloud emulators, local K3s clusters, and Cloudflare tunnel ingress in dependency order.
         platforms: ["macOS (arm64, amd64)", "Linux (arm64, amd64)"]
         brew_formula: vitruviansoftware/tap/devx
-        releases_url: https://github.com/VitruvianSoftware/devx/releases
+        releases_url: https://github.com/VitruvianSoftware/vitruvian-devx/releases
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/cli/vitruvian-devx
         extensions_url: /ai/#eco-codex-opencode
         extensions_label: Agent Skills & Init
@@ -191,7 +191,7 @@ categories:
           provisions Lima VZ virtual machines, networking, and the cluster to match.
         platforms: ["macOS (Apple Silicon, Intel)"]
         brew_formula: vitruviansoftware/tap/homelab
-        releases_url: https://github.com/VitruvianSoftware/homelab/releases
+        releases_url: https://github.com/VitruvianSoftware/vitruvian-homelab/releases
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/cli/vitruvian-homelab
 
       - id: gravastar-mouse

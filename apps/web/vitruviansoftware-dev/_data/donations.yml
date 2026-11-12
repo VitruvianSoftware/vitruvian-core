@@ -60,7 +60,7 @@ oauth-user-inspector:
 
 mcp-slack:
   name: Vitruvian Slack MCP
-  repo: https://github.com/VitruvianSoftware/mcp-slack
+  repo: https://github.com/VitruvianSoftware/vitruvian-slack-mcp
   url: "https://donate.stripe.com/dRm3cu4bXf7H3Idamnbwk09"
 
 mcp-roborock:
@@ -75,10 +75,10 @@ gh-watch:
 
 devx:
   name: Vitruvian DevX CLI
-  repo: https://github.com/VitruvianSoftware/devx
+  repo: https://github.com/VitruvianSoftware/vitruvian-devx
   url: "https://donate.stripe.com/fZu5kC37T1gRguZdyzbwk06"
 
 homelab:
   name: Vitruvian Homelab
-  repo: https://github.com/VitruvianSoftware/homelab
+  repo: https://github.com/VitruvianSoftware/vitruvian-homelab
   url: "https://donate.stripe.com/3cIfZgbEp9Nn4Mh3XZbwk07"

@@ -125,12 +125,12 @@ jobs:
           # repo appearing here means "we alert on it", which is a decision, not
           # a side effect of an export existing.
           MIRRORS: >-
-            VitruvianSoftware/mcp-slack
+            VitruvianSoftware/vitruvian-slack-mcp
             VitruvianSoftware/vitruvian-roborock-mcp
             VitruvianSoftware/gh-watch
             VitruvianSoftware/vitruvian-code
-            VitruvianSoftware/devx
-            VitruvianSoftware/homelab
+            VitruvianSoftware/vitruvian-devx
+            VitruvianSoftware/vitruvian-homelab
             VitruvianSoftware/pulumi-library
             VitruvianSoftware/oauth-user-inspector
             VitruvianSoftware/pulumi_go-example-foundation

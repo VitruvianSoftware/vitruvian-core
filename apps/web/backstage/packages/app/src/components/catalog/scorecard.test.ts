@@ -101,13 +101,16 @@ describe("evaluateScorecard Level 3 Multi-Track engine", () => {
           "vitruvian.dev/release-workflow": "apps-release.yaml",
           "vitruvian.dev/release-model": "goreleaser",
           "vitruvian.dev/environments": "production",
-          "vitruvian.dev/mirror": "VitruvianSoftware/devx",
+          "vitruvian.dev/mirror": "VitruvianSoftware/vitruvian-devx",
           "grafana/dashboard-selector": "devx",
         },
         links: [
-          { url: "https://github.com/VitruvianSoftware/devx", title: "GitHub" },
           {
-            url: "https://github.com/VitruvianSoftware/devx/releases",
+            url: "https://github.com/VitruvianSoftware/vitruvian-devx",
+            title: "GitHub",
+          },
+          {
+            url: "https://github.com/VitruvianSoftware/vitruvian-devx/releases",
             title: "Releases",
           },
         ],

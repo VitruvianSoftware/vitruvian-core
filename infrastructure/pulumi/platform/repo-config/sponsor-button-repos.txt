@@ -19,11 +19,11 @@ vitruvian-remote              apps/mobile/android-remote/.github/FUNDING.yml
 vitruvian-deck                apps/embedded/vitruvian-deck/.github/FUNDING.yml
 vitruvian-code                apps/desktop/vitruvian-code/.github/FUNDING.yml
 oauth-user-inspector          apps/web/oauth-user-inspector/.github/FUNDING.yml
-mcp-slack                     apps/mcp/vitruvian-slack-mcp/.github/FUNDING.yml
+vitruvian-slack-mcp           apps/mcp/vitruvian-slack-mcp/.github/FUNDING.yml
 vitruvian-roborock-mcp        apps/mcp/vitruvian-roborock-mcp/.github/FUNDING.yml
 gh-watch                      apps/antigravity/plugins/gh-watch/.github/FUNDING.yml
-devx                          apps/cli/vitruvian-devx/.github/FUNDING.yml
-homelab                       apps/cli/vitruvian-homelab/.github/FUNDING.yml
+vitruvian-devx                apps/cli/vitruvian-devx/.github/FUNDING.yml
+vitruvian-homelab             apps/cli/vitruvian-homelab/.github/FUNDING.yml
 vitruvian-tool-github         apps/desktop/vitruvian-tool-github/.github/FUNDING.yml
 vitruvian-sdk                 packages/vitruvian-sdk/.github/FUNDING.yml
 pulumi-library                packages/pulumi/library/.github/FUNDING.yml

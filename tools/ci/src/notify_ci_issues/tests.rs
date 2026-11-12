@@ -464,7 +464,7 @@ fn cutoff_minutes_defaults_to_twenty_when_unset_or_empty() {
 fn mirror_failure_notifies_naming_the_mirror() {
     let p = Poll::new();
     let o = p.run(&[
-        ("MIRRORS", "VitruvianSoftware/mcp-slack"),
+        ("MIRRORS", "VitruvianSoftware/vitruvian-slack-mcp"),
         (
             "FAKE_MIRROR_FAILURE_JSON",
             &runs(&[("Release", "https://x/mirror/9", &recent())]),
@@ -473,12 +473,12 @@ fn mirror_failure_notifies_naming_the_mirror() {
     assert_eq!(o.code, 0, "{o:?}");
     assert_body_has(
         &p,
-        "\"title\": \"[ci] mcp-slack broken: Release\"",
+        "\"title\": \"[ci] vitruvian-slack-mcp broken: Release\"",
         "named by mirror",
     );
     assert_body_has(
         &p,
-        "\"message\": \"Failed on VitruvianSoftware/mcp-slack's main after landing. This is an exported \
+        "\"message\": \"Failed on VitruvianSoftware/vitruvian-slack-mcp's main after landing. This is an exported \
          mirror; the fix usually belongs in vitruvian-core. https://x/mirror/9\"",
         "says where the fix belongs",
     );
@@ -490,7 +490,7 @@ fn mirror_failure_notifies_naming_the_mirror() {
 fn mirror_backlog_is_filtered_by_the_cutoff() {
     let p = Poll::new();
     p.run(&[
-        ("MIRRORS", "VitruvianSoftware/mcp-slack"),
+        ("MIRRORS", "VitruvianSoftware/vitruvian-slack-mcp"),
         (
             "FAKE_MIRROR_FAILURE_JSON",
             &runs(&[("Release", "https://x/mirror/8", &stale())]),
@@ -505,9 +505,9 @@ fn unreadable_mirror_warns_loudly_and_the_poll_continues() {
     let o = p.run(&[
         (
             "MIRRORS",
-            "VitruvianSoftware/mcp-slack VitruvianSoftware/devx",
+            "VitruvianSoftware/vitruvian-slack-mcp VitruvianSoftware/vitruvian-devx",
         ),
-        ("FAKE_UNREADABLE", "mcp-slack"),
+        ("FAKE_UNREADABLE", "vitruvian-slack-mcp"),
         (
             "FAKE_MIRROR_FAILURE_JSON",
             &runs(&[("Release", "https://x/mirror/9", &recent())]),
@@ -516,12 +516,12 @@ fn unreadable_mirror_warns_loudly_and_the_poll_continues() {
     assert_eq!(o.code, 0, "{o:?}");
     assert_has(
         &o.stderr,
-        "WARN: cannot read VitruvianSoftware/mcp-slack's runs -- NOT watching it: HTTP 404",
+        "WARN: cannot read VitruvianSoftware/vitruvian-slack-mcp's runs -- NOT watching it: HTTP 404",
         "loud",
     );
     assert_body_has(
         &p,
-        "devx broken: Release",
+        "vitruvian-devx broken: Release",
         "the next mirror is still checked",
     );
 }
@@ -530,7 +530,7 @@ fn unreadable_mirror_warns_loudly_and_the_poll_continues() {
 fn own_failure_is_not_mislabelled_as_a_mirror() {
     let p = Poll::new();
     p.run(&[
-        ("MIRRORS", "VitruvianSoftware/mcp-slack"),
+        ("MIRRORS", "VitruvianSoftware/vitruvian-slack-mcp"),
         (
             "FAKE_FAILURE_JSON",
             &runs(&[("CI", "https://x/own/7", &recent())]),

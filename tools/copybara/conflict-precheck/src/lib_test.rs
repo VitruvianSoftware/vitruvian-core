@@ -116,6 +116,9 @@ fn import_label_cases() {
         ("vitruvian-courier", "COURIER_REV_ID"),
         ("vitruvian-speaker", "HOME_SPEAKER_REV_ID"),
         ("vitruvian-deck", "ESP32_DESK_COMPANION_REV_ID"),
+        ("vitruvian-slack-mcp", "MCP_SLACK_REV_ID"),
+        ("vitruvian-devx", "DEVX_REV_ID"),
+        ("vitruvian-homelab", "HOMELAB_REV_ID"),
         ("vitruvian-remote", "VITRUVIAN_REMOTE_REV_ID"),
     ] {
         assert_eq!(import_label(c.as_bytes()), want.as_bytes());

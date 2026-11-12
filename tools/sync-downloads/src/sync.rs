@@ -451,8 +451,8 @@ pub fn sync_catalog(
 
     // 4. devx and 5. homelab: the version only.
     for (repo, id) in [
-        ("VitruvianSoftware/devx", "devx"),
-        ("VitruvianSoftware/homelab", "homelab"),
+        ("VitruvianSoftware/vitruvian-devx", "devx"),
+        ("VitruvianSoftware/vitruvian-homelab", "homelab"),
     ] {
         if let Some(rel) = get_latest_release(repo, None, token)? {
             if rel.truthy() {
