@@ -20,7 +20,7 @@
 
 name: Copybara Export (mcp-roborock)
 
-# Exports vitruvian-core/apps/mcp/vitruvian-roborock-mcp/ to VitruvianSoftware/mcp-roborock on every push
+# Exports vitruvian-core/apps/mcp/vitruvian-roborock-mcp/ to VitruvianSoftware/vitruvian-roborock-mcp on every push
 # under apps/mcp/vitruvian-roborock-mcp/**. Thin caller — logic lives in _copybara-export.yaml.
 on:
     push:
@@ -45,7 +45,7 @@ jobs:
     export:
         uses: ./.github/workflows/_copybara-export.yaml
         with:
-            component: mcp-roborock
+            component: vitruvian-roborock-mcp
             standalone-only: ".github/workflows/sync-to-monorepo.yaml"
             copybara-options: ${{ inputs['copybara-options'] || github.event.inputs['copybara-options'] || '--force --ignore-noop' }}
         secrets:

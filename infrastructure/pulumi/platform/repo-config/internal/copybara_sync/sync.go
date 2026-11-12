@@ -90,6 +90,17 @@ type syncedProject struct {
 	// "vitruvian-code" when an adopted mirror was renamed in place).
 	StandaloneRepo string
 
+	// LegacyRepo is the repository's name BEFORE it was renamed in place, for a
+	// CreateRepo mirror that has since been renamed. The Pulumi resource keeps
+	// this name, so its URN (github:index/repository:Repository::<LegacyRepo>)
+	// does not change: a new resource name would plan to delete the old
+	// repository and create an empty one. Only the Name argument moves to
+	// StandaloneRepo, which the provider applies as an in-place rename (releases,
+	// stars and tags come with it, and GitHub redirects the old URL). A renamed
+	// repository is also protected, so if a change ever did plan a replace or a
+	// delete, the update would fail instead of removing it.
+	LegacyRepo string
+
 	// OneWay marks a component exported monorepo -> standalone only
 	// (copy.bara.sky is_one_way): it has no import-back dispatch workflow,
 	// so it needs no GitHub App dispatch credentials — only the export SSH
@@ -163,16 +174,88 @@ type adoptedRepo struct {
 // pointing at the same App), so onboarding a component is just an entry here.
 var syncedProjects = []syncedProject{
 	{
+		// Adopted into Pulumi state with NO rename in the same change. The rename
+		// goes in a LATER change, once this one has applied: Pulumi fails an import
+		// whose declared name differs from the live repository (an import must be a
+		// zero-diff). The next step is StandaloneRepo "vitruvian-slack-mcp" with
+		// ImportID "mcp-slack" kept, exactly as nexus-agent did in #4581 then #4582.
 		Name:           "mcp-slack",
 		StandaloneRepo: "mcp-slack",
+		Adopt: &adoptedRepo{
+			Description:              "Production-ready Slack MCP Server with dual-token capabilities for deep workspace orchestration and user context preservation.",
+			Visibility:               "public",
+			DeleteBranchOnMerge:      false,
+			HasIssues:                true,
+			HasProjects:              true,
+			HasWiki:                  true,
+			HasDiscussions:           false,
+			AllowSquashMerge:         true,
+			AllowMergeCommit:         true,
+			AllowRebaseMerge:         true,
+			AllowAutoMerge:           false,
+			AllowUpdateBranch:        false,
+			AllowForking:             true,
+			IsTemplate:               false,
+			Archived:                 false,
+			WebCommitSignoffRequired: false,
+			SquashMergeCommitTitle:   "COMMIT_OR_PR_TITLE",
+			SquashMergeCommitMessage: "COMMIT_MESSAGES",
+			Topics:                   []string{"ai-agent", "mcp", "model-context-protocol", "slack", "typescript"},
+		},
 	},
 	{
+		// Adopted, rename to follow (see mcp-slack). Next step is StandaloneRepo
+		// "vitruvian-devx" with ImportID "devx" kept.
 		Name:           "devx",
 		StandaloneRepo: "devx",
+		Adopt: &adoptedRepo{
+			Description:              "Supercharged local dev environment",
+			Visibility:               "public",
+			DeleteBranchOnMerge:      true,
+			HasIssues:                true,
+			HasProjects:              false,
+			HasWiki:                  false,
+			HasDiscussions:           true,
+			AllowSquashMerge:         true,
+			AllowMergeCommit:         true,
+			AllowRebaseMerge:         true,
+			AllowAutoMerge:           false,
+			AllowUpdateBranch:        false,
+			AllowForking:             true,
+			IsTemplate:               false,
+			Archived:                 false,
+			WebCommitSignoffRequired: false,
+			SquashMergeCommitTitle:   "COMMIT_OR_PR_TITLE",
+			SquashMergeCommitMessage: "COMMIT_MESSAGES",
+			Topics:                   []string{"cli", "cloudflare", "developer-experience", "developer-tools", "devops", "golang", "local-development", "ngrok-alternative", "platform", "platform-engineering", "podman", "tailscale"},
+		},
 	},
 	{
+		// Adopted, rename to follow (see mcp-slack). Next step is StandaloneRepo
+		// "vitruvian-homelab" with ImportID "homelab" kept.
 		Name:           "homelab",
 		StandaloneRepo: "homelab",
+		Adopt: &adoptedRepo{
+			Description:              "A CLI tool for declaratively provisioning and managing multi-node Kubernetes homelab clusters on macOS using Lima VZ and K3s",
+			Visibility:               "public",
+			DeleteBranchOnMerge:      true,
+			HasIssues:                true,
+			HasProjects:              true,
+			HasWiki:                  true,
+			HasDiscussions:           false,
+			AllowSquashMerge:         true,
+			AllowMergeCommit:         false,
+			AllowRebaseMerge:         false,
+			AllowAutoMerge:           true,
+			AllowUpdateBranch:        false,
+			AllowForking:             true,
+			IsTemplate:               false,
+			Archived:                 false,
+			WebCommitSignoffRequired: false,
+			SquashMergeCommitTitle:   "PR_TITLE",
+			SquashMergeCommitMessage: "BLANK",
+			Topics:                   []string{},
+		},
 	},
 	{
 		// Adopted via pulumi.Import as nexus-agent in PR #4581 and renamed in place
@@ -253,8 +336,12 @@ var syncedProjects = []syncedProject{
 	{
 		// Export-only standalone mirror for the Roborock vacuum integration,
 		// CLI, FastMCP server, and plugins (apps/mcp/vitruvian-roborock-mcp).
+		// Renamed in place from VitruvianSoftware/mcp-roborock to VitruvianSoftware/vitruvian-roborock-mcp.
+		// The Pulumi resource keeps the name "mcp-roborock" (LegacyRepo), and so do the
+		// secret names and the export workflow file, so nothing is deleted.
 		Name:           "mcp-roborock",
-		StandaloneRepo: "mcp-roborock",
+		StandaloneRepo: "vitruvian-roborock-mcp",
+		LegacyRepo:     "mcp-roborock",
 		OneWay:         true,
 		CreateRepo:     true,
 		Description:    "Roborock vacuum integration, local daemon, FastMCP server, and plugins for Claude Code and Antigravity",
@@ -317,8 +404,12 @@ var syncedProjects = []syncedProject{
 		// GPL owes with every DMG; releases still ship from the monorepo. Name
 		// uppercase-snakes to VITRUVIAN_SYNC_SSH_KEY, consumed by
 		// copybara-export-vitruvian.yaml.
+		// Renamed in place from VitruvianSoftware/vitruvian to VitruvianSoftware/vitruvian-atrium.
+		// The Pulumi resource keeps the name "vitruvian" (LegacyRepo), and so do the
+		// secret names and the export workflow file, so nothing is deleted.
 		Name:           "vitruvian",
-		StandaloneRepo: "vitruvian",
+		StandaloneRepo: "vitruvian-atrium",
+		LegacyRepo:     "vitruvian",
 		OneWay:         true,
 		CreateRepo:     true,
 		Description:    "Vitruvian, a macOS menu-bar utility hub. GPL-3.0 fork of vorssaint-utils, not an official Vorssaint build",
@@ -327,8 +418,12 @@ var syncedProjects = []syncedProject{
 		// Courier (apps/desktop/courier), AGPL-3.0-or-later. Export-only: the
 		// mirror is the public source the AGPL owes; releases ship from the
 		// monorepo. COURIER_SYNC_SSH_KEY, consumed by copybara-export-courier.yaml.
+		// Renamed in place from VitruvianSoftware/courier to VitruvianSoftware/vitruvian-courier.
+		// The Pulumi resource keeps the name "courier" (LegacyRepo), and so do the
+		// secret names and the export workflow file, so nothing is deleted.
 		Name:           "courier",
-		StandaloneRepo: "courier",
+		StandaloneRepo: "vitruvian-courier",
+		LegacyRepo:     "courier",
 		OneWay:         true,
 		CreateRepo:     true,
 		Description:    "Courier: every chat app in one inbox, as a native macOS app",
@@ -336,8 +431,12 @@ var syncedProjects = []syncedProject{
 	{
 		// HomeSpeaker (apps/desktop/home-speaker), MIT. Export-only.
 		// HOME_SPEAKER_SYNC_SSH_KEY, consumed by copybara-export-home-speaker.yaml.
+		// Renamed in place from VitruvianSoftware/home-speaker to VitruvianSoftware/vitruvian-speaker.
+		// The Pulumi resource keeps the name "home-speaker" (LegacyRepo), and so do the
+		// secret names and the export workflow file, so nothing is deleted.
 		Name:           "home-speaker",
-		StandaloneRepo: "home-speaker",
+		StandaloneRepo: "vitruvian-speaker",
+		LegacyRepo:     "home-speaker",
 		OneWay:         true,
 		CreateRepo:     true,
 		Description:    "HomeSpeaker: a macOS menu bar app that reads agent replies and messages aloud on Google Home speakers, this Mac or your phone",
@@ -356,8 +455,12 @@ var syncedProjects = []syncedProject{
 		// The ESP32-S3 Desk Companion firmware (apps/embedded/esp32-s3), MIT.
 		// Export-only. ESP32_DESK_COMPANION_SYNC_SSH_KEY, consumed by
 		// copybara-export-esp32-desk-companion.yaml.
+		// Renamed in place from VitruvianSoftware/esp32-desk-companion to VitruvianSoftware/vitruvian-deck.
+		// The Pulumi resource keeps the name "esp32-desk-companion" (LegacyRepo), and so do the
+		// secret names and the export workflow file, so nothing is deleted.
 		Name:           "esp32-desk-companion",
-		StandaloneRepo: "esp32-desk-companion",
+		StandaloneRepo: "vitruvian-deck",
+		LegacyRepo:     "esp32-desk-companion",
 		OneWay:         true,
 		CreateRepo:     true,
 		Description:    "Firmware that turns a Waveshare ESP32-S3 touch display into a Mac desk companion: live metrics and shortcut buttons",
@@ -369,6 +472,17 @@ var syncedProjects = []syncedProject{
 // then ToUpper). e.g. "mcp-slack" -> "MCP_SLACK".
 func secretPrefix(projectName string) string {
 	return strings.ToUpper(strings.ReplaceAll(projectName, "-", "_"))
+}
+
+// repoResourceName is the Pulumi resource name of a CreateRepo mirror's
+// Repository: the name it was first declared under (LegacyRepo once renamed),
+// never the live GitHub name. Keeping it fixed is what makes a rename an
+// in-place update rather than a delete and create.
+func repoResourceName(p syncedProject) string {
+	if p.LegacyRepo != "" {
+		return p.LegacyRepo
+	}
+	return p.StandaloneRepo
 }
 
 // syncAppCreds returns the shared GitHub App id + private key. A single App backs
@@ -398,7 +512,11 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 		var adoptedRepoRes *github.Repository
 		if project.CreateRepo {
 			var repoErr error
-			repo, repoErr = github.NewRepository(ctx, project.StandaloneRepo, &github.RepositoryArgs{
+			var repoOpts []pulumi.ResourceOption
+			if project.LegacyRepo != "" {
+				repoOpts = append(repoOpts, pulumi.Protect(true))
+			}
+			repo, repoErr = github.NewRepository(ctx, repoResourceName(project), &github.RepositoryArgs{
 				Name:                pulumi.String(project.StandaloneRepo),
 				Description:         pulumi.String(project.Description),
 				Visibility:          pulumi.String("public"),
@@ -414,7 +532,7 @@ func ManageSyncAuth(ctx *pulumi.Context) error {
 						Status: pulumi.String("enabled"),
 					},
 				},
-			})
+			}, repoOpts...)
 			if repoErr != nil {
 				return repoErr
 			}

@@ -17,11 +17,11 @@ Welcome to **Vitruvian Roborock MCP**! This guide walks you through installing a
 The plugins start it as `rrctl mcp`, so put `rrctl` on your `PATH` first, one of
 these ways:
 
-- **Download it** from a [release](https://github.com/VitruvianSoftware/mcp-roborock/releases)
+- **Download it** from a [release](https://github.com/VitruvianSoftware/vitruvian-roborock-mcp/releases)
   (macOS universal, Linux x86_64). Check the download against its `.sha256`,
   and put `rrctl` in a directory on your `PATH`, such as `~/.local/bin`.
 - **Build it** with Rust installed:
-  `cargo install --locked --git https://github.com/VitruvianSoftware/mcp-roborock`
+  `cargo install --locked --git https://github.com/VitruvianSoftware/vitruvian-roborock-mcp`
 - **In the vitruvian-core monorepo:** `bazel build //apps/mcp/vitruvian-roborock-mcp:rrctl`,
   then copy `bazel-bin/apps/mcp/vitruvian-roborock-mcp/rrctl` onto your `PATH`.
 
@@ -31,7 +31,7 @@ Add our repository as a plugin marketplace and install `vitruvian-roborock-mcp`:
 
 ```bash
 # 1. Register the Vitruvian Roborock MCP marketplace
-claude plugin marketplace add VitruvianSoftware/mcp-roborock
+claude plugin marketplace add VitruvianSoftware/vitruvian-roborock-mcp
 
 # 2. Install the plugin
 claude plugin install vitruvian-roborock-mcp
@@ -46,7 +46,7 @@ Once installed, Claude Code has access to:
 ### Option B: Antigravity
 
 ```bash
-agy plugin install https://github.com/VitruvianSoftware/mcp-roborock
+agy plugin install https://github.com/VitruvianSoftware/vitruvian-roborock-mcp
 ```
 
 No clone is needed: Antigravity finds the plugin in the repository's `plugin/`

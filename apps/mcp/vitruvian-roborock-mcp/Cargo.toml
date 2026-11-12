@@ -40,7 +40,7 @@ edition = "2021"
 rust-version = "1.75"
 license = "MIT"
 description = "Local daemon, CLI (rrctl) and MCP server for Roborock vacuums"
-repository = "https://github.com/VitruvianSoftware/mcp-roborock"
+repository = "https://github.com/VitruvianSoftware/vitruvian-roborock-mcp"
 publish = false
 
 [lib]

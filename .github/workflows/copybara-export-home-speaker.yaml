@@ -21,8 +21,8 @@
 name: Copybara Export (home-speaker)
 
 # EXPORT-ONLY mirror of Vitruvian Speaker: monorepo apps/desktop/vitruvian-speaker/ ->
-# VitruvianSoftware/home-speaker (repo root) on every push under that subtree. Thin
-# caller -- logic lives in _copybara-export.yaml; the export_home_speaker workflow is
+# VitruvianSoftware/vitruvian-speaker (repo root) on every push under that subtree. Thin
+# caller -- logic lives in _copybara-export.yaml; the export_vitruvian_speaker workflow is
 # defined in tools/copybara/copy.bara.sky.
 #
 # The mirror is the app's public source (MIT). Releases still ship from this
@@ -49,7 +49,7 @@ jobs:
     export:
         uses: ./.github/workflows/_copybara-export.yaml
         with:
-            component: home-speaker
+            component: vitruvian-speaker
             copybara-options: ${{ inputs['copybara-options'] || github.event.inputs['copybara-options'] || '--force --ignore-noop' }}
         secrets:
             sync_ssh_key: ${{ secrets.HOME_SPEAKER_SYNC_SSH_KEY }}

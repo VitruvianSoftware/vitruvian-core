@@ -627,8 +627,8 @@
       "category": "Home Automation & MCP",
       "status": "mirror",
       "summary": "A Roborock vacuum integration: a local daemon, an MCP server and plugins that let a coding agent check status, start room cleans or send the robot home.",
-      "repo": "https://github.com/VitruvianSoftware/mcp-roborock",
-      "mirrorRepo": "https://github.com/VitruvianSoftware/mcp-roborock",
+      "repo": "https://github.com/VitruvianSoftware/vitruvian-roborock-mcp",
+      "mirrorRepo": "https://github.com/VitruvianSoftware/vitruvian-roborock-mcp",
       "source": "apps/mcp/vitruvian-roborock-mcp",
       "ecosystems": [
         "claude-code",
@@ -654,7 +654,7 @@
           "tool": "Claude Code",
           "ecosystem": "claude-code",
           "label": "Claude Code, step 1: add the marketplace",
-          "command": "claude plugin marketplace add VitruvianSoftware/mcp-roborock"
+          "command": "claude plugin marketplace add VitruvianSoftware/vitruvian-roborock-mcp"
         },
         {
           "tool": "Claude Code",
@@ -666,7 +666,7 @@
           "tool": "Antigravity",
           "ecosystem": "antigravity",
           "label": "Install in Antigravity",
-          "command": "agy plugin install https://github.com/VitruvianSoftware/mcp-roborock"
+          "command": "agy plugin install https://github.com/VitruvianSoftware/vitruvian-roborock-mcp"
         }
       ]
     },

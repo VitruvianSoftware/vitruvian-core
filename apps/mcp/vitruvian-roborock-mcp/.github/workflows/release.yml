@@ -21,7 +21,7 @@
 # Publish-on-version-bump: rrctl binaries on a GitHub release.
 #
 # This file is developed in the vitruvian-core monorepo and exported to the
-# VitruvianSoftware/mcp-roborock mirror, which is where it runs. It never runs
+# VitruvianSoftware/vitruvian-roborock-mcp mirror, which is where it runs. It never runs
 # in the monorepo: a workflow only runs from a repository's root .github/.
 #
 # On every push to the mirror's main it reads the version from Cargo.toml's

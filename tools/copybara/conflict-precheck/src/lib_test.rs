@@ -110,6 +110,13 @@ fn import_label_cases() {
         // legacy name: NEXUS_AGENT_REV_ID stamps Copybara commits for vitruvian-code
         ("vitruvian-code", "NEXUS_AGENT_REV_ID"),
         ("homelab", "HOMELAB_REV_ID"),
+        // Mirrors renamed in place keep the label their history carries.
+        ("vitruvian-roborock-mcp", "MCP_ROBOROCK_REV_ID"),
+        ("vitruvian-atrium", "VITRUVIAN_REV_ID"),
+        ("vitruvian-courier", "COURIER_REV_ID"),
+        ("vitruvian-speaker", "HOME_SPEAKER_REV_ID"),
+        ("vitruvian-deck", "ESP32_DESK_COMPANION_REV_ID"),
+        ("vitruvian-remote", "VITRUVIAN_REMOTE_REV_ID"),
     ] {
         assert_eq!(import_label(c.as_bytes()), want.as_bytes());
     }

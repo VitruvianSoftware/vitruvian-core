@@ -158,41 +158,143 @@ func TestTheGitHubToolMirrorIsMadePublicWithItsExportKeyAndNoTapKey(t *testing.T
 // this package makes, each with the export's write key on it, the key's
 // private half in the monorepo, a read-only main, and no App key or tap key:
 // they are source mirrors that release nothing.
+//
+// Four of the five were renamed in place to their Vitruvian names, so each
+// case has the Pulumi resource name (the name the repository was first
+// declared under, which must not change) and the live GitHub name.
 func TestTheShippedAppMirrorsAreMadePublicWithTheirExportKeys(t *testing.T) {
 	got := run(t)
-	for _, mirror := range []struct{ repo, secret string }{
-		{"vitruvian", "VITRUVIAN_SYNC_SSH_KEY"},
-		{"courier", "COURIER_SYNC_SSH_KEY"},
-		{"home-speaker", "HOME_SPEAKER_SYNC_SSH_KEY"},
-		{"vitruvian-remote", "VITRUVIAN_REMOTE_SYNC_SSH_KEY"},
-		{"esp32-desk-companion", "ESP32_DESK_COMPANION_SYNC_SSH_KEY"},
+	for _, mirror := range []struct{ resource, repo, secret string }{
+		{"vitruvian", "vitruvian-atrium", "VITRUVIAN_SYNC_SSH_KEY"},
+		{"courier", "vitruvian-courier", "COURIER_SYNC_SSH_KEY"},
+		{"home-speaker", "vitruvian-speaker", "HOME_SPEAKER_SYNC_SSH_KEY"},
+		{"vitruvian-remote", "vitruvian-remote", "VITRUVIAN_REMOTE_SYNC_SSH_KEY"},
+		{"esp32-desk-companion", "vitruvian-deck", "ESP32_DESK_COMPANION_SYNC_SSH_KEY"},
 	} {
 		t.Run(mirror.repo, func(t *testing.T) {
-			if r := got[mirror.repo]; r.typeToken != "github:index/repository:Repository" {
-				t.Fatalf("%s is %q, want a github repository", mirror.repo, r.typeToken)
+			if r := got[mirror.resource]; r.typeToken != "github:index/repository:Repository" {
+				t.Fatalf("%s is %q, want a github repository", mirror.resource, r.typeToken)
 			}
-			if v := text(t, got, mirror.repo, "visibility"); v != "public" {
+			if v := text(t, got, mirror.resource, "name"); v != mirror.repo {
+				t.Errorf("the repository is named %q, want %s", v, mirror.repo)
+			}
+			if v := text(t, got, mirror.resource, "visibility"); v != "public" {
 				t.Errorf("visibility is %q, want public: the mirror is the app's published source", v)
 			}
-			if v := text(t, got, mirror.repo+"-standalone-deploy-key", "repository"); v != mirror.repo {
+			if v := text(t, got, mirror.resource+"-standalone-deploy-key", "repository"); v != mirror.repo {
 				t.Errorf("the export key is on %q, want %s", v, mirror.repo)
 			}
-			if v := text(t, got, mirror.repo+"-sync-ssh-key-secret", "secretName"); v != mirror.secret {
+			if v := text(t, got, mirror.resource+"-sync-ssh-key-secret", "secretName"); v != mirror.secret {
 				t.Errorf("the export secret is %q, want %s", v, mirror.secret)
 			}
-			if v := text(t, got, mirror.repo+"-sync-ssh-key-secret", "repository"); v != "vitruvian-core" {
+			if v := text(t, got, mirror.resource+"-sync-ssh-key-secret", "repository"); v != "vitruvian-core" {
 				t.Errorf("the export secret is in %q, want vitruvian-core", v)
 			}
-			if _, ok := got[mirror.repo+"-mirror-readonly"]; !ok {
+			if _, ok := got[mirror.resource+"-mirror-readonly"]; !ok {
 				t.Error("the mirror's main is not made read-only")
 			}
-			if _, ok := got[mirror.repo+"-dispatch-app-private-key-secret"]; ok {
+			if _, ok := got[mirror.resource+"-dispatch-app-private-key-secret"]; ok {
 				t.Error("an export-only mirror must not hold the App's key")
 			}
-			if _, ok := got[mirror.repo+"-homebrew-tap-key"]; ok {
+			if _, ok := got[mirror.resource+"-homebrew-tap-key"]; ok {
 				t.Error("a source mirror must hold no key to the tap")
 			}
 		})
+	}
+}
+
+// A mirror renamed in place keeps its Pulumi resource name: only the Name
+// argument changes, which the provider applies as a rename. A new resource
+// name would plan to delete the live repository (releases, stars, tags and
+// all) and create an empty one, so this is the test that stops that, for
+// every renamed mirror, not just a listed few.
+func TestARenamedMirrorIsRenamedInPlaceNeverReplaced(t *testing.T) {
+	got := run(t)
+	renamed := 0
+	for _, p := range syncedProjects {
+		if p.LegacyRepo == "" {
+			continue
+		}
+		renamed++
+		t.Run(p.StandaloneRepo, func(t *testing.T) {
+			if p.LegacyRepo == p.StandaloneRepo {
+				t.Fatalf("LegacyRepo and StandaloneRepo are both %q: that is no rename", p.LegacyRepo)
+			}
+			if !p.CreateRepo {
+				t.Fatalf("LegacyRepo is only for a CreateRepo mirror; an adopted one keeps its name in ImportID")
+			}
+			r, ok := got[p.LegacyRepo]
+			if !ok || r.typeToken != "github:index/repository:Repository" {
+				t.Fatalf("no Repository resource under the old name %q: the URN would change and Pulumi would delete the live repository", p.LegacyRepo)
+			}
+			if v := text(t, got, p.LegacyRepo, "name"); v != p.StandaloneRepo {
+				t.Errorf("the repository's name argument is %q, want %q", v, p.StandaloneRepo)
+			}
+			if !r.protect {
+				t.Error("a renamed repository must be protected, so a replace or delete fails the update")
+			}
+			if r.importID != "" {
+				t.Errorf("importID = %q: a created repository is not imported", r.importID)
+			}
+			if _, ok := got[p.StandaloneRepo]; ok {
+				t.Errorf("a resource named %q exists: a Repository under the new name would be a second, empty repository", p.StandaloneRepo)
+			}
+			// The export key moves to a fresh key pair (named for the new repo), so
+			// replacing the deploy key never collides with the old key on GitHub.
+			if k, ok := got[p.StandaloneRepo+"-sync-key"]; !ok || k.typeToken != "tls:index/privateKey:PrivateKey" {
+				t.Errorf("no fresh key pair %q-sync-key for the export deploy key", p.StandaloneRepo)
+			}
+			if _, ok := got[p.LegacyRepo+"-sync-key"]; ok {
+				t.Errorf("%s-sync-key is still declared: the deploy key would reuse a key GitHub already holds", p.LegacyRepo)
+			}
+		})
+	}
+	if renamed != 5 {
+		t.Errorf("%d mirrors are marked renamed, want 5 (courier, home-speaker, vitruvian, esp32-desk-companion, mcp-roborock)", renamed)
+	}
+}
+
+// devx, homelab and mcp-slack are adopted into Pulumi at their live names
+// first (no rename in the same change: an import must be a zero-diff), with
+// the live settings spelled out and the repository protected.
+func TestTheTwoWayMirrorsAreAdoptedAtTheirLiveNamesBeforeAnyRename(t *testing.T) {
+	got := run(t)
+	for _, repo := range []string{"devx", "homelab", "mcp-slack"} {
+		t.Run(repo, func(t *testing.T) {
+			r, ok := got[repo]
+			if !ok || r.typeToken != "github:index/repository:Repository" {
+				t.Fatalf("%s is not declared as a github repository", repo)
+			}
+			if r.importID != repo {
+				t.Errorf("importID = %q, want %q", r.importID, repo)
+			}
+			if !r.protect {
+				t.Error("an adopted repository must be protected")
+			}
+			if v := text(t, got, repo, "name"); v != repo {
+				t.Errorf("name = %q, want the live name %q: renaming in the same change as the import fails the import", v, repo)
+			}
+			if _, autoInit := r.inputs["autoInit"]; autoInit {
+				t.Error("an imported repository must not set autoInit")
+			}
+			if v := text(t, got, repo, "visibility"); v != "public" {
+				t.Errorf("visibility = %q, want public", v)
+			}
+		})
+	}
+	// Spot-check the settings that differ between the three, so a copy-paste
+	// of one repository's block over another's is caught.
+	if flag(t, got, "devx", "hasDiscussions") != true || flag(t, got, "devx", "allowMergeCommit") != true {
+		t.Error("devx live settings: discussions and merge commits are on")
+	}
+	if flag(t, got, "homelab", "allowAutoMerge") != true || flag(t, got, "homelab", "allowMergeCommit") != false {
+		t.Error("homelab live settings: auto-merge on, merge commits off")
+	}
+	if text(t, got, "homelab", "squashMergeCommitTitle") != "PR_TITLE" {
+		t.Error("homelab squashMergeCommitTitle is not PR_TITLE")
+	}
+	if flag(t, got, "mcp-slack", "deleteBranchOnMerge") != false || flag(t, got, "mcp-slack", "hasWiki") != true {
+		t.Error("mcp-slack live settings: no branch delete on merge, wiki on")
 	}
 }
 
@@ -385,9 +487,12 @@ func TestRepositoryDeclarationMatchesCreateOrAdoptMode(t *testing.T) {
 		}
 		switch {
 		case p.CreateRepo:
-			r, declared := got[p.StandaloneRepo]
+			r, declared := got[repoResourceName(p)]
 			if !declared || r.typeToken != "github:index/repository:Repository" {
 				t.Errorf("%s: CreateRepo=true must declare github:index/repository:Repository", p.Name)
+			}
+			if v := text(t, got, repoResourceName(p), "name"); v != p.StandaloneRepo {
+				t.Errorf("%s: RepositoryArgs.Name = %q, want %q", p.Name, v, p.StandaloneRepo)
 			}
 			if r.importID != "" {
 				t.Errorf("%s: CreateRepo=true must not set importID (%q)", p.Name, r.importID)

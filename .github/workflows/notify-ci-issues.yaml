@@ -126,7 +126,7 @@ jobs:
           # a side effect of an export existing.
           MIRRORS: >-
             VitruvianSoftware/mcp-slack
-            VitruvianSoftware/mcp-roborock
+            VitruvianSoftware/vitruvian-roborock-mcp
             VitruvianSoftware/gh-watch
             VitruvianSoftware/vitruvian-code
             VitruvianSoftware/devx
@@ -138,11 +138,11 @@ jobs:
             VitruvianSoftware/site-vitruviansoftware-dev
             VitruvianSoftware/vitruvian-sdk
             VitruvianSoftware/vitruvian-tool-github
-            VitruvianSoftware/vitruvian
-            VitruvianSoftware/courier
-            VitruvianSoftware/home-speaker
+            VitruvianSoftware/vitruvian-atrium
+            VitruvianSoftware/vitruvian-courier
+            VitruvianSoftware/vitruvian-speaker
             VitruvianSoftware/vitruvian-remote
-            VitruvianSoftware/esp32-desk-companion
+            VitruvianSoftware/vitruvian-deck
           NOTIFY_BIN: ${{ steps.notify-bin.outputs.path }}
         run: '"$NOTIFY_BIN"'
 
