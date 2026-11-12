@@ -116,6 +116,7 @@ public class MainActivity : ComponentActivity() {
         val reallyGranted = granted && hasPostNotificationsPermission()
         val shouldShowRationale = !reallyGranted && shouldShowPostNotificationsRationale()
         if (reallyGranted && BridgeHub.enabled()) {
+          // The service re-posts its foreground notice on start (PhoneBridgeService.kt:108).
           PhoneBridgeService.start(this)
         }
         callback?.invoke(reallyGranted, shouldShowRationale)
@@ -311,11 +312,12 @@ public class MainActivity : ComponentActivity() {
   override fun onResume() {
     super.onResume()
     val hadNotifications = state.notificationsGranted
-    state.onForeground(true)
     // All three change while the app is away: permissions granted or revoked in
-    // Settings, and everything the bridge did while nobody was looking.
-    state.refreshNotificationPermission()
+    // Settings (re-read by onForeground), and everything the bridge did while
+    // nobody was looking.
+    state.onForeground(true)
     if (!hadNotifications && state.notificationsGranted && BridgeHub.enabled()) {
+      // The service re-posts its foreground notice on start (PhoneBridgeService.kt:108).
       PhoneBridgeService.start(this)
     }
     state.refreshBridgePermissions()
