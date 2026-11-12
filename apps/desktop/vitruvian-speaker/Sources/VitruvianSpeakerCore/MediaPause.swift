@@ -1425,6 +1425,14 @@ public final class MediaPauseCoordinator: ObservableObject {
         await withCheckedContinuation { releaseWaiters.append($0) }
     }
 
+    /// When the current hold ends; nil when nothing is held. For tests,
+    /// which check where a hold ends instead of racing its timer.
+    var holdEndsAt: Date? { isHolding ? resumeAt : nil }
+
+    /// Returns once every request queued so far has run. For tests: `extend`
+    /// only queues its work.
+    func settle() async { await tail?.value }
+
     private func addOrUpdateLease(seconds: Double, id: String?, now: Date = Date()) {
         let clamped = max(seconds, 0)
         if let id, let idx = leases.firstIndex(where: { $0.id == id }) {
