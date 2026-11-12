@@ -198,13 +198,13 @@ final class ContextUsageTests: XCTestCase {
 
     func testAClaudeStepSaysItsContextAsItEnds() {
         let line = #"{"type":"assistant","message":{"model":"claude-opus-5-5","content":[],"usage":{"input_tokens":3,"cache_read_input_tokens":30000,"cache_creation_input_tokens":2000,"output_tokens":100}}}"#
-        XCTAssertEqual(VitruvianCodeStreamEvent.parse(line), .contextUsage(usage(3, 32_000, 100, window: 0)))
-        XCTAssertNil(VitruvianCodeStreamEvent.parse(#"{"type":"assistant","message":{"content":[]}}"#))
+        XCTAssertEqual(AgentEvent.parse(line), .contextUsage(usage(3, 32_000, 100, window: 0)))
+        XCTAssertNil(AgentEvent.parse(#"{"type":"assistant","message":{"content":[]}}"#))
     }
 
     func testAClaudeResultGivesOneStepsShareAndTheExactWindow() throws {
         let line = #"{"type":"result","num_turns":2,"usage":{"input_tokens":10,"cache_read_input_tokens":60000,"cache_creation_input_tokens":4000,"output_tokens":200},"modelUsage":{"claude-haiku":{"inputTokens":50,"contextWindow":200000},"claude-opus-5-5":{"inputTokens":10,"cacheReadInputTokens":60000,"contextWindow":1000000}},"result":"ok"}"#
-        guard case .finished(_, _, _, _, let metrics)? = VitruvianCodeStreamEvent.parse(line) else {
+        guard case .finished(_, _, _, _, let metrics)? = AgentEvent.parse(line) else {
             return XCTFail("a result finishes the turn")
         }
         XCTAssertEqual(metrics?.contextUsage, usage(5, 32_000, 100, window: 1_000_000),
@@ -213,12 +213,12 @@ final class ContextUsageTests: XCTestCase {
 
     func testAnOpenCodeToolStepSaysItsContext() {
         let line = #"{"type":"step_finish","sessionID":"ses_1","part":{"reason":"tool-calls","tokens":{"input":5,"output":2,"cache":{"read":100,"write":10}}}}"#
-        XCTAssertEqual(VitruvianCodeStreamEvent.parse(line), .contextUsage(usage(5, 110, 2, window: 0)))
+        XCTAssertEqual(AgentEvent.parse(line), .contextUsage(usage(5, 110, 2, window: 0)))
     }
 
     func testAnAntigravityResultGivesOneTurnsShare() {
         let line = #"{"event":"result","result":{"status":"ok","num_turns":2,"usage":{"input_tokens":400,"output_tokens":60,"cache_read_tokens":8000}}}"#
-        guard case .finished(_, _, _, _, let metrics)? = VitruvianCodeStreamEvent.parse(line) else {
+        guard case .finished(_, _, _, _, let metrics)? = AgentEvent.parse(line) else {
             return XCTFail("a result finishes the turn")
         }
         XCTAssertEqual(metrics?.contextUsage, usage(200, 4_000, 30, window: 0))

@@ -107,8 +107,8 @@ public struct VitruvianCodeParsedEvent: Equatable, Sendable {
         self.outputTokens = outputTokens
     }
 
-    /// Converts the parsed event into the shared `VitruvianCodeStreamEvent` representation.
-    public var streamEvent: VitruvianCodeStreamEvent {
+    /// Converts the parsed event into the shared `AgentEvent` representation.
+    public var streamEvent: AgentEvent {
         switch kind {
         case .started:
             return .started(conversationID: sessionID)

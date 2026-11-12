@@ -31,12 +31,12 @@ final class StreamParityTests: XCTestCase {
 
     func testAToolStartingIsActivityNotAnApproval() {
         let line = #"{"type":"stream_event","event":{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_1","name":"Read","input":{}}}}"#
-        XCTAssertEqual(VitruvianCodeStreamEvent.parseAll(line), [.tool(name: "Read", finished: false)])
+        XCTAssertEqual(AgentEvent.parseAll(line), [.tool(name: "Read", finished: false)])
     }
 
     func testAnAssistantToolUseIsAStepWithItsInput() {
         let line = #"{"type":"assistant","message":{"model":"claude-haiku-5-5","content":[{"type":"tool_use","id":"toolu_1","name":"Edit","input":{"file_path":"/r/a.swift","old_string":"a","new_string":"b"}},{"type":"tool_use","id":"toolu_2","name":"Bash","input":{"command":"ls -la\nmore"}}],"usage":{"input_tokens":2,"cache_read_input_tokens":10,"output_tokens":5}}}"#
-        let events = VitruvianCodeStreamEvent.parseAll(line)
+        let events = AgentEvent.parseAll(line)
         XCTAssertEqual(events.count, 3)
         guard case .contextUsage = events.first else { return XCTFail("usage first, for parse's sake: \(events)") }
         guard case .toolStep(let edit) = events[1], case .toolStep(let bash) = events[2] else {
@@ -50,20 +50,20 @@ final class StreamParityTests: XCTestCase {
         XCTAssertFalse(edit.isFinished)
         XCTAssertEqual(bash.kind, .bash)
         XCTAssertEqual(bash.title, "ls -la")
-        XCTAssertEqual(VitruvianCodeStreamEvent.parse(line), events.first, "parse keeps giving the first")
+        XCTAssertEqual(AgentEvent.parse(line), events.first, "parse keeps giving the first")
     }
 
     func testAnAssistantMessageDoesNotRepeatTheTextTheDeltasSent() {
         let line = #"{"type":"assistant","message":{"content":[{"type":"text","text":"banana"},{"type":"thinking","thinking":"hm"}]}}"#
-        XCTAssertEqual(VitruvianCodeStreamEvent.parseAll(line), [])
+        XCTAssertEqual(AgentEvent.parseAll(line), [])
     }
 
     func testAToolResultFinishesItsStep() {
         let text = #"{"type":"user","message":{"role":"user","content":[{"tool_use_id":"toolu_1","type":"tool_result","content":"1\tbanana split\n"}]},"parent_tool_use_id":null}"#
-        XCTAssertEqual(VitruvianCodeStreamEvent.parseAll(text),
+        XCTAssertEqual(AgentEvent.parseAll(text),
                        [.toolStepResult(id: "toolu_1", output: "1\tbanana split\n", isError: false)])
         let parts = #"{"type":"user","message":{"content":[{"tool_use_id":"t2","type":"tool_result","is_error":true,"content":[{"type":"text","text":"no"},{"type":"text","text":"such file"}]}]}}"#
-        XCTAssertEqual(VitruvianCodeStreamEvent.parseAll(parts),
+        XCTAssertEqual(AgentEvent.parseAll(parts),
                        [.toolStepResult(id: "t2", output: "no\nsuch file", isError: true)])
     }
 
@@ -76,37 +76,37 @@ final class StreamParityTests: XCTestCase {
 
     func testASubagentsLinesStayOutOfTheReply() {
         let line = #"{"type":"assistant","parent_tool_use_id":"toolu_agent","message":{"content":[{"type":"tool_use","id":"inner","name":"Read","input":{}}],"usage":{"input_tokens":2,"output_tokens":1}}}"#
-        XCTAssertEqual(VitruvianCodeStreamEvent.parseAll(line), [])
+        XCTAssertEqual(AgentEvent.parseAll(line), [])
     }
 
     func testInitGivesTheSessionAndItsSlashCommands() {
         let line = #"{"type":"system","subtype":"init","cwd":"/r","session_id":"s1","slash_commands":["compact","review","antigravity:delegate"]}"#
-        XCTAssertEqual(VitruvianCodeStreamEvent.parseAll(line),
+        XCTAssertEqual(AgentEvent.parseAll(line),
                        [.started(conversationID: "s1"), .slashCommands(["compact", "review", "antigravity:delegate"])])
-        XCTAssertEqual(VitruvianCodeStreamEvent.parse(line), .started(conversationID: "s1"))
+        XCTAssertEqual(AgentEvent.parse(line), .started(conversationID: "s1"))
         let changed = #"{"type":"system","subtype":"commands_changed","commands":[{"name":"bitwarden","description":"x","argumentHint":""}],"session_id":"s1"}"#
-        XCTAssertEqual(VitruvianCodeStreamEvent.parseAll(changed), [.started(conversationID: "s1"), .slashCommands(["bitwarden"])])
+        XCTAssertEqual(AgentEvent.parseAll(changed), [.started(conversationID: "s1"), .slashCommands(["bitwarden"])])
     }
 
     func testThinkingDeltasAndTokens() {
         let delta = #"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Let me see"}}}"#
-        XCTAssertEqual(VitruvianCodeStreamEvent.parseAll(delta), [.thinking("Let me see")])
+        XCTAssertEqual(AgentEvent.parseAll(delta), [.thinking("Let me see")])
         let redacted = #"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"","estimated_tokens":50}}}"#
-        XCTAssertEqual(VitruvianCodeStreamEvent.parseAll(redacted), [])
+        XCTAssertEqual(AgentEvent.parseAll(redacted), [])
         let tokens = #"{"type":"system","subtype":"thinking_tokens","estimated_tokens":216,"estimated_tokens_delta":166,"session_id":"s1"}"#
-        XCTAssertEqual(VitruvianCodeStreamEvent.parseAll(tokens), [.thinkingTokens(216)])
+        XCTAssertEqual(AgentEvent.parseAll(tokens), [.thinkingTokens(216)])
         let result = #"{"type":"result","stop_reason":"end_turn","session_id":"s1","result":"ok","usage":{"input_tokens":4,"output_tokens":174,"output_tokens_details":{"thinking_tokens":105}}}"#
-        let events = VitruvianCodeStreamEvent.parseAll(result)
+        let events = AgentEvent.parseAll(result)
         guard case .finished? = events.first else { return XCTFail("finished first: \(events)") }
         XCTAssertEqual(events.last, .thinkingTokens(105))
     }
 
     func testOnlyAnExplicitPromptIsAnApproval() {
         let request = #"{"type":"permission_request","id":"p1","tool_name":"Bash","input":{"command":"rm -rf build"}}"#
-        XCTAssertEqual(VitruvianCodeStreamEvent.parseAll(request), [.approval(VitruvianCodeApprovalRequest(
+        XCTAssertEqual(AgentEvent.parseAll(request), [.approval(VitruvianCodeApprovalRequest(
             id: "p1", toolName: "Bash", commandOrPath: "rm -rf build", status: .pending))])
         let control = #"{"type":"control_request","request_id":"r1","request":{"subtype":"can_use_tool","tool_name":"Write","input":{"file_path":"/r/x"},"tool_use_id":"t9"}}"#
-        XCTAssertEqual(VitruvianCodeStreamEvent.parseAll(control), [.approval(VitruvianCodeApprovalRequest(
+        XCTAssertEqual(AgentEvent.parseAll(control), [.approval(VitruvianCodeApprovalRequest(
             id: "t9", toolName: "Write", commandOrPath: "/r/x", status: .pending, requestID: "r1"))])
     }
 
@@ -114,18 +114,18 @@ final class StreamParityTests: XCTestCase {
 
     func testAnAgyToolStepAndItsResult() {
         let active = #"{"event":"step_update","step_update":{"conversation_id":"c","step_index":4,"state":"ACTIVE","step_type":"tool","tool_name":"read_file","tool_info":{"name":"read_file","parameters":{"Path":"/tmp/x.txt"}}}}"#
-        guard case .toolStep(let step)? = VitruvianCodeStreamEvent.parseAll(active).first else { return XCTFail() }
+        guard case .toolStep(let step)? = AgentEvent.parseAll(active).first else { return XCTFail() }
         XCTAssertEqual(step.id, "agy-c-4")
         XCTAssertEqual(step.kind, .read)
         XCTAssertEqual(step.filePath, "/tmp/x.txt")
         let done = #"{"event":"step_update","step_update":{"conversation_id":"c","step_index":4,"state":"DONE","step_type":"tool","tool_name":"read_file","tool_info":{"name":"read_file","parameters":{"Path":"/tmp/x.txt"},"output":"1 lines, 13 bytes"}}}"#
-        XCTAssertEqual(VitruvianCodeStreamEvent.parseAll(done).last,
+        XCTAssertEqual(AgentEvent.parseAll(done).last,
                        .toolStepResult(id: "agy-c-4", output: "1 lines, 13 bytes", isError: false))
     }
 
     func testAnOpenCodeToolPartIsAStep() {
         let line = #"{"type":"tool_use","sessionID":"ses","part":{"tool":"bash","callID":"call_1","state":{"status":"completed","input":{"command":"pwd"},"output":"/r\n"}}}"#
-        let events = VitruvianCodeStreamEvent.parseAll(line)
+        let events = AgentEvent.parseAll(line)
         guard case .toolStep(let step)? = events.first else { return XCTFail("\(events)") }
         XCTAssertEqual(step.kind, .bash)
         XCTAssertEqual(events.last, .toolStepResult(id: "call_1", output: "/r\n", isError: false))
@@ -279,7 +279,7 @@ final class StreamParityTests: XCTestCase {
 
     func testClaudeErrorResultPopulatesErrorWithoutDuplicatingResponse() {
         let errLine = #"{"type":"result","is_error":true,"stop_reason":"error","session_id":"s1","result":"API Error: Overloaded"}"#
-        let events = VitruvianCodeStreamEvent.parseAll(errLine)
+        let events = AgentEvent.parseAll(errLine)
         guard case .finished(_, let response, let error, _, _)? = events.first else {
             return XCTFail("expected finished event: \(events)")
         }

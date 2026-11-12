@@ -24,7 +24,7 @@
 import Foundation
 
 /// How the standalone app keeps its providers between launches: two lists
-/// of JSON, one for the three built-in providers (all three, each with the
+/// of JSON, one for the four built-in providers (all four, each with the
 /// command the user may have edited) and one for the user's own. The rules
 /// are here, apart from the app, so they can be tested; the app supplies
 /// the two pieces of data and decides where they are kept.
@@ -58,11 +58,12 @@ extension VitruvianCodeCLIProvider {
 
     /// The two lists to write when `providers` is saved.
     ///
-    /// The built-in list always holds all three, in their fixed order and
+    /// The built-in list always holds all four, in their fixed order and
     /// under today's names, which is what the standalone wrote. Each takes
-    /// its command from `providers` if it is there, and otherwise keeps the
-    /// one already stored (`previousBuiltIn`): a caller that saves only the
-    /// user's own providers must not undo an edit to a built-in one.
+    /// its command and connection choice from `providers` if it is there,
+    /// and otherwise keeps the ones already stored (`previousBuiltIn`): a
+    /// caller that saves only the user's own providers must not undo an edit
+    /// to a built-in one.
     ///
     /// The user's list is every entry not marked built-in, in order.
     public static func storedLists(saving providers: [VitruvianCodeCLIProvider],
