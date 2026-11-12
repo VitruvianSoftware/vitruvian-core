@@ -1,28 +1,40 @@
 # vitruvian-orchestrator (Claude Code)
 
-Claude Code plugin for routing multi-domain engineering work across the Vitruvian specialist subagent roster with a live orchestration panel and above-prompt status band.
+Claude Code plugin for coordinating specialist helpers across a planned engineering flow, with a live **Orchestrator** panel and an above-prompt status band on both terminal and desktop surfaces.
 
 ## What is in this plugin
 
-- **`orchestrate` lead skill (`skills/orchestrate/SKILL.md`)**: Generated from `.agents/roster/` by `//tools/agent-roster`. Turns the active Claude Code session into the lead orchestrator that plans across five phases (`plan` → `design` → `delegate` → `review` → `close`), staffs every change with an implementer, `scout` for QA, `compass` for UAT and `quill` for docs, dispatches them as Haiku drivers that hand the work to Gemini via `agy-delegate` (only the lead runs on Opus), and does the final review. See [How the agent team works](../../../../docs/concepts/agent-team.md).
-- **Specialist subagents**: Live in the repository's `.claude/agents/*.md` (also generated from `.agents/roster/`), where Claude Code loads them automatically for the project.
-- **Live orchestration panel (`hooks/register.tsx`)**: A Claude Code mod that renders a live `Orchestrator` pane (`id: "vitruvian-orchestrator"`) and an `AbovePrompt` status band on both terminal and desktop surfaces, backed by the vendored `hooks/lib/orchestrator-core.mjs` state machine:
-  1. **Header**: Flow title, phase pills (`plan`, `design`, `delegate`, `review`, `close` with muted checks for completed phases and highlighted active phase), `"accepted N of M"`, and estimated cost so far (`est.`).
-  2. **Burn-down**: Remaining unaccepted tasks over time with a dashed ideal line and re-plan markers (rendered as an SVG chart on desktop and a one-line text sparkline on terminal).
-  3. **Task board**: One row per planned task showing `#n`, title, specialist, tier, status (`waiting`, `ready`, `running`, `review`, `returned`, `accepted`), return round, and `"waits on #x"` when blocked on dependencies.
-  4. **Agents**: One row per run (lead and subagent workers) showing the agent name and chibi mascot (on desktop), full model ID (for a Gemini driver, `driver → gemini model`), effort, step progress (`done/total`) or context window percentage, token count, estimated cost (`est.`) or `unpriced`, elapsed time, and run status.
-  5. **Spend**: Estimated spend split between `lead` and `workers`, per-model breakdown, unpriced runs reported by token count rather than dollars, and a count of runs delegated to Gemini.
-  - **AbovePrompt band**: Appears once a flow exists, showing `title · phase · N of M accepted` and a crew-size button (`×N`) that opens the `Orchestrator` pane. The pane auto-opens once per flow when the first plan arrives.
+- **`orchestrate` lead skill (`skills/orchestrate/SKILL.md`)**: Turns the active Claude Code session into the lead that plans across five phases (`plan` → `design` → `delegate` → `review` → `close`), dispatches specialist helpers (`wren`, `scout`, `compass`, `quill`, and peers), reviews their work, and closes the flow. See [How the agent team works](../../../../docs/concepts/agent-team.md).
+- **Specialist subagents**: Loaded automatically for the project from `.claude/agents/*.md`.
+- **Live orchestration panel (`hooks/register.tsx`)**: Renders the `Orchestrator` pane and an `AbovePrompt` status band:
+  1. **Header**: Flow title, phase pills (`plan`, `design`, `delegate`, `review`, `close`), `"accepted N of M"`, and estimated cost (`est.`).
+  2. **Burn-down**: Remaining tasks over time with an ideal line and re-plan markers (SVG chart on desktop, text sparkline in terminal).
+  3. **Task board**: Numbered tasks with title, specialist, tier, status, return round, and `"waits on #x"` dependency notes.
+  4. **Agents**: One row per lead or helper run with mascot (on desktop), model, effort, step progress or context percentage, tokens, estimated cost, elapsed time, and status (`running`, `done`, `error`, amber `paused: <reason>` in place of `running`, or red `killed`). Open and closed flows without board posts or pause/kill events look identical to classic flows.
+  5. **Board**: Hidden until the first post arrives, then shows the newest six numbered posts with sender, recipients (`@all` shown as `everyone`), reply reference (`↩ #<n>`), age, kind badge, and single-line text.
+  6. **Spend**: Lead vs. worker spend, per-model breakdown, and unpriced token counts.
 
-## Tools and commands
+## Shared board, tools, waking, and member states
 
-- **`mcp__vitruvian-orchestrator__progress`** (registered as `progress`): Called by the lead orchestrator to create or re-plan tasks (`title`, `tasks`), transition `phase` (`plan`, `design`, `delegate`, `review`, `close`), `accept` or `return` a 1-based task number after review, and mark the flow `finished`.
-- **`mcp__vitruvian-orchestrator__step`** (registered as `step`): Called by a worker subagent to report its own step progress (`done`, `total`, `note`), matched automatically to the calling subagent's `agentId`.
-- **`/orchestrator-panel`**: Slash command that toggles the `Orchestrator` live pane open or closed.
+- **What the board is**: The board is a shared message list for the helpers and the lead, recorded as numbered posts (`#1`, `#2`, and so on).
+- **What helpers post**: Helpers post results, questions, and defect lists (as well as short notes) so findings stay visible to the whole team.
+- **Tools and commands**:
+  - `post` (`mcp__vitruvian-orchestrator__post`): Adds a numbered post to the board (`text`, optional `to`, `kind`, and `replyTo`).
+  - `board` (`mcp__vitruvian-orchestrator__board`): Reads numbered posts from the board (`to`, `from`, `kind`, `search`, `limit`). When a helper omits `to` or passes `to: "me"`, it reads posts addressed to that helper or to everyone.
+  - `step` (`mcp__vitruvian-orchestrator__step`): Called by a helper to report step progress (`done`, `total`, `note`) or a pause reason (`paused: "quota"` or `paused: "error"`, with optional `detail`).
+  - `progress` (`mcp__vitruvian-orchestrator__progress`): Called only by the lead to plan or re-plan tasks, advance phases, accept or return tasks, close the flow, or `retire` / `kill` a helper.
+  - `/orchestrator-panel`: Slash command that opens or closes the live `Orchestrator` pane.
+- **How waking works**: In Claude Code, mentioning a waiting helper (`@name`) wakes it through the lead, who passes the post on with `SendMessage` (once per mention; `@lead` also notifies the lead). Only the lead's `@all` wakes everyone who is waiting; `@all` from a helper never wakes everyone. Every post delivered in a wake is clearly marked and shown to other agents as helper content, never as instructions from the user, the lead, or the system.
+- **Member states**:
+  - `working`: Actively running its turn or waiting on its own background work.
+  - `waiting`: Finished its turn and standing by so an `@mention` on the board can wake it.
+  - `paused`: Stopped early with a pause reason (`quota` or `error`); shown in amber as `paused: <reason>` in place of `running` while the flow is open.
+  - `retired`: Done with the flow — either retired by the lead with `progress` (`retire`) or finished when the flow closes. Retired helpers are no longer woken by mentions, and `retired` never appears on agent run rows.
+  - `killed`: The lead marked the helper as killed with `progress` (`kill`). It shows a red `killed` badge and is no longer woken by board posts. This does not stop a helper that is still running; the lead stops it in the tool itself.
 
 ## Attribution
 
-The subagent lifecycle hooks, above-prompt progress band, and pane rendering mechanics in `hooks/register.tsx` are adapted from [`savvy-progress`](https://github.com/johnnyvizz/claude-kit/tree/main/plugins/savvy-progress) by `johnnyvizz` (`johnnyvizz/claude-kit`, MIT License — see [`LICENSE-THIRD-PARTY`](./LICENSE-THIRD-PARTY)), combined with James Nguyen's custom 30×28 anime-style chibi specialist mascots (`MASCOTS`).
+Adapted from [`savvy-progress`](https://github.com/johnnyvizz/claude-kit/tree/main/plugins/savvy-progress) by `johnnyvizz` (`johnnyvizz/claude-kit`, MIT License — see [`LICENSE-THIRD-PARTY`](./LICENSE-THIRD-PARTY)), combined with custom 30×28 chibi specialist mascots.
 
 ## Install
 
@@ -47,6 +59,5 @@ claude plugin install vitruvian-orchestrator@vitruvian-core
 ```
 
 ## Subdirectories & Boundaries
-- [hooks](./hooks/README.md): Component package providing implementation for apps/claude-code/plugins/vitruvian-orche...
-- [types](./types/README.md): Component package providing implementation for apps/claude-code/plugins/vitruvian-orche...
-
+- [hooks](./hooks/README.md): Live pane, status band, and tool handlers for Claude Code.
+- [types](./types/README.md): Shared TypeScript definitions for the Claude Code plugin.

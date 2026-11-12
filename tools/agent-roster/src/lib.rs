@@ -761,20 +761,27 @@ pub fn render_skill(roster: &Roster, harness: &str, raw_template: &str) -> Strin
 }
 
 /// The tools a Claude Code driver may use: enough to run `agy-delegate`, read the result,
-/// run verification and report progress, and nothing that edits files.
+/// run verification, report progress, and read/post to the shared board, and nothing that edits files.
 pub const CLAUDE_CODE_DRIVER_TOOLS: &str =
-    "Bash, Read, Grep, Glob, mcp__vitruvian-orchestrator__step";
+    "Bash, Read, Grep, Glob, mcp__vitruvian-orchestrator__step, mcp__vitruvian-orchestrator__post, mcp__vitruvian-orchestrator__board";
 
 /// Body of a driver agent (Claude Code or OpenCode) whose tier does its work on Gemini.
-/// `step_tool` is the harness's name for the panel's step tool.
-pub fn render_driver_body(agent: &AgentRow, gemini: &str, step_tool: &str, role: &str) -> String {
+/// `step_tool`, `post_tool`, and `board_tool` are the harness's names for the panel's tools.
+pub fn render_driver_body(
+    agent: &AgentRow,
+    gemini: &str,
+    step_tool: &str,
+    post_tool: &str,
+    board_tool: &str,
+    role: &str,
+) -> String {
     let name = &agent.name;
     format!(
-        r#"You are {name}, a driver. You do not write the code, tests or docs yourself. You hand the work to Gemini (`{gemini}`) through Antigravity, check what comes back, and report to the lead. The "Your role" section below is what Gemini works as.
+        r#"You are {name}, a driver. You do not write the code, tests or docs yourself. You hand the work to Gemini (`{gemini}`) through Antigravity, check what comes back, post to the shared board, and report to the lead. The "Your role" section below is what Gemini works as.
 
 ## How you run a task
 
-1. **Write the brief to a file.** Save the lead's brief, unchanged, to a new file such as `$TMPDIR/{name}-<short task name>.md`, and keep its path in `BRIEF`. Append, word for word, the "Your role" section below, then this line: `Do not commit or push unless the brief says so. Do not run speaker-broadcast or any other notification or announcement command. Report: files changed, each command you ran with its exit code, and anything you could not finish.`
+1. **Read the board and write the brief to a file.** Read the board posts that mention you (`@{name}` or `@all`) with the {board_tool} when you start and whenever you are woken, and fold any referenced findings or defect list into the task context. Save the brief to a new file such as `$TMPDIR/{name}-<short task name>.md`, and keep its path in `BRIEF`. Append, word for word, the "Your role" section below, then this line: `Do not commit or push unless the brief says so. Do not run speaker-broadcast or any other notification or announcement command. Report: files changed, each command you ran with its exit code, and anything you could not finish.`
 2. **Hand it to Gemini** from the repository root:
 
    ```sh
@@ -784,18 +791,18 @@ pub fn render_driver_body(agent: &AgentRow, gemini: &str, step_tool: &str, role:
    - If the brief asks only for a review or an answer and must not change files, use `--mode plan` instead of `--yolo`.
    - Run it in the background for long work; it prints Gemini's digest when it finishes.
    - Exit codes: 0 ok, 2 agy failed, 3 empty answer, 10 quota, 11 auth, 12 timeout.
-3. **Report progress** with the {step_tool}: `done`, `total`, a short `note`, and `delegate: "{gemini}"`. Call it when you hand off, when Gemini returns, and after you verify. After each `agy-delegate` run, read its `AGY_USAGE` line and pass the running totals across all calls so far as `delegateUsage` (`input`, `output`, `thinking`, and `cache_read` as `cacheRead`) in the next {step_tool} call alongside `delegate`. If the tool is missing, skip it silently.
+3. **Report progress** with the {step_tool}: `done`, `total`, a short `note`, and `delegate: "{gemini}"`. Call it when you hand off, when Gemini returns, and after you verify. After each `agy-delegate` run, read its `AGY_USAGE` line and pass the running totals across all calls so far as `delegateUsage` (`input`, `output`, `thinking`, and `cache_read` as `cacheRead`) in the next {step_tool} call alongside `delegate`. On a Gemini quota error (`agy-delegate` exit code `10`), call the {step_tool} with `paused: "quota"` (and `detail` naming the exit or error). If you need clarification, post your question on the board with the {post_tool} (`kind: "question"`, mentioning `@lead`). If the tool is missing, skip it silently.
 4. **Check the work yourself.** Gemini has been seen claiming passes it did not get, and changing its environment to force them. Never pass on its "done" unchecked.
    - Run `git status --short` and `git diff --stat`, and confirm the change stays inside the brief's scope.
    - Read the changed files that matter.
    - Run the brief's verification commands yourself and note each exit code.
 5. **Correct it, at most twice.** If the work is wrong or incomplete, send Gemini a new brief: the original, plus a precise defect list with file and line references. Do not resume an earlier conversation, because other drivers may be running Gemini at the same time.
-6. **Report to the lead** in under 200 words: `DONE`, `NEEDS_WORK` or `BLOCKED`; the files changed; each verification command with its exit code; and open risks. Do not paste Gemini's raw output.
+6. **Post to the board and report to the lead.** Post your summary to the shared board with the {post_tool}: use `kind: "result"` when the task or review passes (or `kind: "defect"` mentioning the implementer and `@lead` when pushing back in a review). Then report to the lead in under 200 words: `DONE`, `NEEDS_WORK` or `BLOCKED`; the files changed; each verification command with its exit code; and open risks. Do not paste Gemini's raw output.
 
 ## Rules
 
 - Do not edit files yourself; your tools are limited for that reason. Even a one-line fix goes to Gemini, or into your report for the lead.
-- If `agy-delegate` exits 10, 11 or 12, or fails twice in a row, stop and report `BLOCKED` with the exit code. The lead decides whether the task is finished on Claude.
+- If `agy-delegate` exits 10, 11 or 12, or fails twice in a row, stop and report `BLOCKED` with the exit code (calling the {step_tool} with `paused: "quota"` on exit 10). The lead decides whether the task is finished on Claude.
 - Never use `flash-lo`, a `-lite` model or any `-low` model.
 - `AGENTS.md` binds Gemini as it binds you. Make sure every brief tells it to use the repository's Bazel targets for build, test, format and git.
 
@@ -828,7 +835,14 @@ pub fn render_claude_code_agent(agent: &AgentRow, spec: &TierSpec, body: &str) -
     let (tools_line, body) = match &spec.gemini {
         Some(g) => (
             format!("tools: {CLAUDE_CODE_DRIVER_TOOLS}\n"),
-            render_driver_body(agent, g, "`mcp__vitruvian-orchestrator__step` tool", body),
+            render_driver_body(
+                agent,
+                g,
+                "`mcp__vitruvian-orchestrator__step` tool",
+                "`mcp__vitruvian-orchestrator__post` tool",
+                "`mcp__vitruvian-orchestrator__board` tool",
+                body,
+            ),
         ),
         None => (String::new(), body.to_string()),
     };
@@ -854,7 +868,7 @@ pub fn render_opencode_agent(agent: &AgentRow, spec: &TierSpec, body: &str) -> S
     let (tools_block, body) = match &spec.gemini {
         Some(g) => (
             "tools:\n  write: false\n  edit: false\n  patch: false\n".to_string(),
-            render_driver_body(agent, g, "`step` tool", body),
+            render_driver_body(agent, g, "`step` tool", "`post` tool", "`board` tool", body),
         ),
         None => (String::new(), body.to_string()),
     };
@@ -1201,7 +1215,7 @@ wren\tdeep\tApplication engineer for vitruvian-core.
         assert!(cc.starts_with(concat!(
             "---\nname: wren\ndescription: Application engineer for vitruvian-core.\n",
             "model: haiku\neffort: medium\n",
-            "tools: Bash, Read, Grep, Glob, mcp__vitruvian-orchestrator__step\n---\n",
+            "tools: Bash, Read, Grep, Glob, mcp__vitruvian-orchestrator__step, mcp__vitruvian-orchestrator__post, mcp__vitruvian-orchestrator__board\n---\n",
         )));
         assert!(cc.contains("You are wren, a driver."));
         assert!(cc.contains("agy-delegate -m gemini-4-argon-high -d \"$(git rev-parse --show-toplevel)\" --yolo --digest --timeout 45m - < \"$BRIEF\""));
@@ -1960,5 +1974,83 @@ scout\tcore\tSecond scout.
             check_code, 1,
             "check must fail when a vendored prices.mjs differs"
         );
+    }
+
+    #[test]
+    fn driver_body_mentions_board_post_and_quota_pause() {
+        let roster = load_and_validate(GEMINI_TIERS, GEMINI_AGENTS, &gemini_prompts())
+            .expect("gemini roster should be valid");
+        let files = render_all(&roster);
+
+        let cc = &files[".claude/agents/wren.md"];
+        assert!(
+            cc.contains("tools: Bash, Read, Grep, Glob, mcp__vitruvian-orchestrator__step, mcp__vitruvian-orchestrator__post, mcp__vitruvian-orchestrator__board\n"),
+            "claude driver must grant mcp__vitruvian-orchestrator__board alongside step and post"
+        );
+        assert!(
+            cc.contains("Read the board posts that mention you (`@wren` or `@all`) with the `mcp__vitruvian-orchestrator__board` tool"),
+            "claude driver must name mcp__vitruvian-orchestrator__board where it instructs reading board posts"
+        );
+        assert!(
+            cc.contains("mcp__vitruvian-orchestrator__post"),
+            "claude driver must allow and reference mcp__vitruvian-orchestrator__post"
+        );
+        assert!(
+            cc.contains("kind: \"result\""),
+            "claude driver must instruct posting results with kind: \"result\""
+        );
+        assert!(
+            cc.contains("kind: \"question\"") && cc.contains("@lead"),
+            "claude driver must instruct posting questions mentioning @lead"
+        );
+        assert!(
+            cc.contains("paused: \"quota\""),
+            "claude driver must instruct calling step with paused: \"quota\" on quota errors"
+        );
+
+        let oc = &files[".opencode/agents/wren.md"];
+        assert!(
+            oc.contains(
+                "Read the board posts that mention you (`@wren` or `@all`) with the `board` tool"
+            ),
+            "opencode driver must name the board tool where it instructs reading board posts"
+        );
+        assert!(
+            oc.contains("`post` tool"),
+            "opencode driver must reference the post tool"
+        );
+        assert!(!oc.contains("mcp__vitruvian-orchestrator__post"));
+        assert!(!oc.contains("mcp__vitruvian-orchestrator__board"));
+        assert!(oc.contains("kind: \"result\""));
+        assert!(oc.contains("paused: \"quota\""));
+    }
+
+    #[test]
+    fn lead_skill_templates_describe_board_review_flow() {
+        for path in [
+            ".agents/roster/skills/orchestrate/claude-code.md",
+            ".agents/roster/skills/orchestrate/antigravity.md",
+            ".agents/roster/skills/orchestrate/opencode.md",
+        ] {
+            let content =
+                fs::read_to_string(path).unwrap_or_else(|e| panic!("failed to read {path}: {e}"));
+            assert!(
+                content.contains("kind: \"defect\""),
+                "{path} must mention reviewers posting defects with kind: \"defect\""
+            );
+            assert!(
+                content.contains("reviewer's board post is the defect list"),
+                "{path} must state that a reviewer's board post is the defect list"
+            );
+            assert!(
+                content.contains("Return round") && content.contains("see board post #"),
+                "{path} must reference the board post in return rounds"
+            );
+            assert!(
+                content.contains("still rule")
+                    || content.contains("you rule") && content.contains("still decide"),
+                "{path} must state that the lead still rules/decides"
+            );
+        }
     }
 }

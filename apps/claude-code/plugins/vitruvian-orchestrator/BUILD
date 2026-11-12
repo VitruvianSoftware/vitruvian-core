@@ -26,6 +26,11 @@
 # gazelle:exclude hooks
 # gazelle:exclude tsconfig.json
 
+exports_files(
+    ["README.md"],
+    visibility = ["//packages/orchestrator-core:__pkg__"],
+)
+
 filegroup(
     name = "site_sources",
     srcs = glob(

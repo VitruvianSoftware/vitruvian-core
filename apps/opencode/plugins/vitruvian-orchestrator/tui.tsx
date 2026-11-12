@@ -253,6 +253,55 @@ function OrchestratorSidebarContent(props: {
             </text>
           </Show>
         </box>
+
+        {/* 6. Shared board (newest 5 single-line clipped posts) & pending wakes */}
+        <Show when={(view().board?.posts.length ?? 0) > 0}>
+          <box flexDirection="column">
+            <text fg={palette().base}>Board ({view().board!.total})</text>
+            <Show when={(view().board?.postsDropped ?? 0) > 0}>
+              <text fg={palette().muted}>
+                {view().board!.postsDropped} older posts not shown
+              </text>
+            </Show>
+            <For each={view().board!.posts}>
+              {(p) => (
+                <text fg={palette().base}>
+                  <span style={{ fg: palette().muted }}>#{p.seq} </span>
+                  {p.from}
+                  <Show when={Boolean(p.recipientsText)}>
+                    <span style={{ fg: palette().muted }}>
+                      {" "}
+                      {p.recipientsText}
+                    </span>
+                  </Show>
+                  <Show when={Boolean(p.replyText)}>
+                    <span style={{ fg: palette().muted }}> {p.replyText}</span>
+                  </Show>
+                  <span style={{ fg: palette().muted }}> · {p.ageText} </span>
+                  <span style={{ fg: colorForToken(palette(), p.color) }}>
+                    [{p.kind}]
+                  </span>{" "}
+                  {p.text}
+                </text>
+              )}
+            </For>
+          </box>
+        </Show>
+
+        <Show when={(view().pendingWakes?.length ?? 0) > 0}>
+          <box flexDirection="column">
+            <text fg={palette().warning}>
+              Pending wakes ({view().pendingWakes!.length})
+            </text>
+            <For each={view().pendingWakes}>
+              {(w) => (
+                <text fg={palette().warning}>
+                  #{w.seq} {w.from} → @{w.target}: "{w.excerpt}"
+                </text>
+              )}
+            </For>
+          </box>
+        </Show>
       </Show>
     </box>
   );

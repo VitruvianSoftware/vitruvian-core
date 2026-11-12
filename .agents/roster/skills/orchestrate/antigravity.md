@@ -62,7 +62,7 @@ Every change that edits code runs through this team. Leave a role out only when 
 | Others | `pace`, … | When their domain is involved: release sequencing. |
 | Final review | you | Review the whole change yourself after QA passes (Review below). |
 
-The loop: implementer → `scout` QA → `aegis` security review (when it applies) → `compass` UAT. On `PUSH_BACK` or `REJECT`, send the findings to the implementer as a return round, then back through `scout` (and `aegis` or `compass`, whichever pushed back). Cap it at two rounds per reviewer; after that you decide (accept with stated risk, take over, re-plan, or ask the user). Where a reviewer and the implementer disagree, you rule.
+The loop: implementer → `scout` QA → `aegis` security review (when it applies) → `compass` UAT. Reviewers (`scout`, `aegis`, `compass`) post their verdict and defect list to the shared board with `kind: "defect"` (or `kind: "result"` for a pass), mentioning the implementer and `@lead`. A reviewer's board post is the defect list. You still decide: on `PUSH_BACK` or `REJECT`, send a return round to the implementer (`Return round N: see board post #M`, plus any ruling), then back through `scout` (and `aegis` or `compass`, whichever pushed back). Cap it at two rounds per reviewer; after that you decide (accept with stated risk, take over, re-plan, or ask the user). Where a reviewer and the implementer disagree, you still rule.
 
 Plan the QA task with `after` set to the implementer's task, the security review (when it applies) with `after` set to the QA task, the UAT task with `after` set to the last review task (give `compass` the acceptance criteria and the docs to follow), and the docs task with `after: none` so it runs in parallel. Your final review comes after UAT and docs.
 
@@ -102,7 +102,7 @@ Review starts only after `scout` has passed the change and `compass` has accepte
 4. Re-run the exact verification commands yourself to confirm they pass on the current tree.
 5. Choose one outcome per task:
    - **Accept**: the diff matches the brief, edge cases hold, and verification passes.
-   - **Return**: send the task back to the specialist with a precise defect list and file and line references, not a re-explanation of the task.
+   - **Return**: send the task back to the specialist referencing the reviewer's board post (`Return round N: see board post #M`, plus any ruling or extra defect file and line references), not a re-explanation of the task.
    - **Take over**: edit directly only for a one-line fix where a return round would cost more than the edit.
 6. Cap return rounds at two per task. After two failed return rounds, stop returning the task and either re-plan or ask the user.
 
@@ -152,11 +152,12 @@ only knows what you tell it, so keep it current. If the tool is not available, s
   - on every phase change: `phase`;
   - after each review outcome: `accept: <task number>` or `return: <task number>`;
   - when the plan changes: the full new `tasks` list;
+  - when a specialist member is done for good or stuck/rogue: `retire: <run id or agent name>` or `kill: <run id or agent name>`;
   - when you do a task yourself, `accept: <task number>` once it passes your own checks;
   - once at the end: `finished: true`.
+- Use the shared board (`post` tool: `{ text, to?, kind?, replyTo? }` → `{ seq }`; `board` tool: `{ to?, from?, kind?, search?, limit? }`) to record rulings, read posts, or message specialists (`@name`, `@all`).
 - Post the plan on every run of this skill, even a one-task plan you do yourself (see section 1).
 - Use each task's title, unchanged, as the run's label when you dispatch it (see "How to dispatch"): the
   panel matches runs to tasks by it.
-- Tell each specialist in its brief: "Report your own progress with the `step` tool of the same server: `done`, `total`,
-  and a short `note`, after each step."
+- Tell each specialist in its brief: "Read the board posts that mention you with the `board` tool when starting or woken; report progress with the `step` tool (`done`, `total`, `note`, or `paused: \"quota\"` on quota errors); and post your outcome (`kind: \"result\"`), review findings (`kind: \"defect\"` mentioning the implementer and `@lead`), or questions (`kind: \"question\"` mentioning `@lead`) with the `post` tool."
 - Offer the user the pill `[Orchestrator](sidecar://vitruvian-orchestrator/panel/)` to open the panel.

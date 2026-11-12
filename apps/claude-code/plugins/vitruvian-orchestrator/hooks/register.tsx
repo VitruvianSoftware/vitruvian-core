@@ -31,9 +31,15 @@ import type {
   DelegateTokenCounts,
   Flow,
   FlowEvent,
+  MemberRow,
+  MembersView,
   Panel,
+  PauseReason,
+  PendingWake,
   Phase,
   PlanTaskInput,
+  Post,
+  PostKind,
   Run,
   SpendSummary,
   StallRow,
@@ -43,9 +49,13 @@ import type {
   Tier,
 } from "../types";
 import {
+  board as boardView,
   burnDown,
   delegateCost,
+  formatWake,
   initialFlow,
+  members,
+  pendingWakes,
   reduce,
   remaining,
   runCost,
@@ -54,11 +64,22 @@ import {
   taskBoard,
 } from "./lib/orchestrator-core.mjs";
 
+const VALID_HANDLE_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
+
 const PLUGIN = "vitruvian-orchestrator";
 const PANE = "vitruvian-orchestrator";
 const PANE_TITLE = "Orchestrator";
 const TOOL = "mcp__vitruvian-orchestrator__progress";
 const STEP_TOOL = "mcp__vitruvian-orchestrator__step";
+const POST_TOOL = "mcp__vitruvian-orchestrator__post";
+const BOARD_TOOL = "mcp__vitruvian-orchestrator__board";
+const POST_KINDS: readonly PostKind[] = [
+  "note",
+  "question",
+  "defect",
+  "result",
+];
+const PAUSE_REASONS: readonly PauseReason[] = ["quota", "error"];
 const PHASES: readonly Phase[] = [
   "plan",
   "design",
@@ -92,6 +113,8 @@ type ProgressInput = {
   }[];
   accept?: number;
   return?: number;
+  retire?: string;
+  kill?: string;
   finished?: boolean;
 };
 
@@ -101,6 +124,23 @@ type StepInput = {
   note?: string;
   delegate?: string;
   delegateUsage?: Partial<DelegateTokenCounts>;
+  paused?: PauseReason;
+  detail?: string;
+};
+
+type PostInput = {
+  text?: string;
+  to?: string[];
+  kind?: PostKind;
+  replyTo?: number;
+};
+
+type BoardInput = {
+  to?: string;
+  from?: string;
+  kind?: PostKind;
+  search?: string;
+  limit?: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -1690,28 +1730,114 @@ ${idealLine}${replanMarks}${poly}${dots}
   );
 };
 
-// How a running worker's silence reads: shown after its status, and coloured
-// amber (quiet) or red (stalled). "waiting" is silence by design (a Gemini
-// job, a background command) and keeps the running colour.
-const stallLabel = (r: Run, stall: StallState | null): string =>
-  r.status === "running" && stall && stall !== "active"
+const fmtRelTime = (postAt: number, nowAt: number): string => {
+  const sec = Math.max(0, Math.round((nowAt - postAt) / 1000));
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m`;
+  return `${Math.floor(min / 60)}h`;
+};
+
+const clipLine = (s: string, maxCols: number): string => {
+  const clean = s.replace(/\s+/g, " ").trim();
+  if (clean.length <= maxCols) return clean;
+  return `${clean.slice(0, Math.max(1, maxCols - 1))}…`;
+};
+
+const postKindHex = (kind: PostKind | string): string => {
+  if (kind === "question") return AMBER;
+  if (kind === "defect") return RED;
+  if (kind === "result") return GREEN;
+  return NEUTRAL;
+};
+
+const postKindTermColor = (
+  kind: PostKind | string,
+): "yellow" | "red" | "green" | undefined => {
+  if (kind === "question") return "yellow";
+  if (kind === "defect") return "red";
+  if (kind === "result") return "green";
+  return undefined;
+};
+
+// How a running worker's silence or member override reads: shown after its
+// status, and coloured amber (quiet/paused) or red (stalled/killed). "waiting"
+// is silence by design (a Gemini job, a background command) and keeps the
+// running colour.
+const stallLabel = (
+  r: Run,
+  stall: StallState | null,
+  member: MemberRow | null = null,
+): string => {
+  if (member?.state === "killed") return "killed";
+  if (member?.state === "paused") return `paused: ${member.reason ?? "error"}`;
+  return r.status === "running" && stall && stall !== "active"
     ? `${r.status} (${stall})`
     : r.status;
-const stallHex = (r: Run, stall: StallState | null): string =>
-  r.status === "running" && stall === "stalled"
+};
+const stallHex = (
+  r: Run,
+  stall: StallState | null,
+  member: MemberRow | null = null,
+): string => {
+  if (member?.state === "killed") return RED;
+  if (member?.state === "paused") return AMBER;
+  return r.status === "running" && stall === "stalled"
     ? RED
     : r.status === "running" && stall === "quiet"
       ? AMBER
       : statusHex(r.status);
+};
+
+const formatBoardRecipient = (t: string): string =>
+  t.toLowerCase() === "all" ? "everyone" : `@${t}`;
+
+const boardSvg = (W: number, posts: Post[], at: number): string => {
+  const rowH = 22;
+  const padY = 6;
+  const H_px = padY * 2 + posts.length * rowH;
+  const rows = posts
+    .map((pt, idx) => {
+      const y = padY + idx * rowH + 15;
+      const toPart =
+        pt.to.length > 0
+          ? ` → ${pt.to.map(formatBoardRecipient).join(", ")}`
+          : "";
+      const replyPart =
+        typeof pt.replyTo === "number" ? ` ↩ #${pt.replyTo}` : "";
+      const rel = fmtRelTime(pt.at, at);
+      const badgeColor = postKindHex(pt.kind);
+      const prefix = `#${pt.seq} ${pt.from}${toPart}${replyPart} · ${rel} `;
+      const badgeText = pt.kind;
+      const badgeW = Math.round(textWidth(badgeText, 9.5) + 10);
+      const prefixW = Math.round(textWidth(prefix, 10.5));
+      const badgeX = Math.min(W - badgeW - 8, 8 + prefixW + 2);
+      const bodyX = badgeX + badgeW + 6;
+      const bodyBudget = Math.max(24, W - bodyX - 8);
+      const cleanBody = pt.text.replace(/\s+/g, " ").trim();
+      const fittedBody = fitText(cleanBody, 10.5, bodyBudget);
+      return `<text class="s" x="8" y="${y}" font-family="${FONT}" font-size="10.5">${xml(fitText(prefix, 10.5, Math.max(40, W - 80)))}</text>
+<rect x="${badgeX}" y="${y - 10}" width="${badgeW}" height="14" rx="7" fill="${badgeColor}" opacity="0.18"/>
+<text x="${badgeX + badgeW / 2}" y="${y}" text-anchor="middle" font-family="${FONT}" font-size="9.5" font-weight="600" fill="${badgeColor}">${xml(badgeText)}</text>
+<text class="t" x="${bodyX}" y="${y}" font-family="${FONT}" font-size="10.5">${xml(fittedBody)}</text>`;
+    })
+    .join("\n");
+  return svg(
+    W,
+    H_px,
+    `<rect class="tile" x="0" y="0" width="${W}" height="${H_px}" rx="6"/>\n${rows}`,
+  );
+};
 
 const agentRowSvg = (
   W: number,
   r: Run,
   at: number,
   stall: StallState | null = null,
+  member: MemberRow | null = null,
 ): string => {
   const costume = costumeOf(r.agent);
-  const color = stallHex(r, stall);
+  const color = stallHex(r, stall, member);
   const mascotColor = colorOf(costume);
   const textW = Math.max(80, W - 44 - 16);
   const cost = runCost(r);
@@ -1736,7 +1862,7 @@ const agentRowSvg = (
     modelLabel,
     ...(r.effort ? [r.effort] : []),
     ...(r.role === "lead" ? ["lead"] : []),
-    stallLabel(r, stall),
+    stallLabel(r, stall, member),
   ].join(" · ");
   const stats = `${stepText} · ${tokLabel} · ${costLabel} · ${timeLabel}`;
 
@@ -1795,8 +1921,95 @@ const cleanTasks = (raw: ProgressInput["tasks"]): PlanTaskInput[] =>
       };
     });
 
+const resolveMemberRunId = (
+  f: Flow | null,
+  ref: string | undefined,
+): string | null => {
+  if (!f || typeof ref !== "string") return null;
+  const trimmed = ref.trim();
+  if (!trimmed) return null;
+  const exact = f.runs.find((r) => r.role !== "lead" && r.id === trimmed);
+  if (exact) return exact.id;
+  const targetAgent = trimmed.replace(/^@+/, "").toLowerCase();
+  for (let i = f.runs.length - 1; i >= 0; i -= 1) {
+    const r = f.runs[i];
+    if (!r || r.role === "lead") continue;
+    if (
+      r.agent.trim().toLowerCase() === targetAgent &&
+      r.memberState !== "killed" &&
+      r.memberState !== "retired"
+    ) {
+      return r.id;
+    }
+  }
+  for (let i = f.runs.length - 1; i >= 0; i -= 1) {
+    const r = f.runs[i];
+    if (
+      r &&
+      r.role !== "lead" &&
+      r.agent.trim().toLowerCase() === targetAgent
+    ) {
+      return r.id;
+    }
+  }
+  return null;
+};
+
 // Per-dispatch transient correlations (cleaned up in finally / turn.complete).
 const effortByToolUseId = new Map<string, string | null>();
+
+// Per-session wake deduplication keyed by flow.startedAt -> Set<"seq:target">.
+const wokenMentionsByFlow = new Map<number, Set<string>>();
+
+function getWokenSet(startedAt: number): Set<string> {
+  let set = wokenMentionsByFlow.get(startedAt);
+  if (!set) {
+    set = new Set<string>();
+    wokenMentionsByFlow.set(startedAt, set);
+  }
+  return set;
+}
+
+async function deliverPendingWakes(
+  $: EngineInterface,
+  f: Flow | null,
+): Promise<void> {
+  if (!f || f.closedAt !== null) return;
+  const woken = getWokenSet(f.startedAt);
+  const wakes = pendingWakes(f, woken) as PendingWake[];
+  for (const w of wakes) {
+    const key = `${w.seq}:${w.target}`;
+    if (woken.has(key)) continue;
+    const fullPost = (f.posts ?? []).find((p) => p.seq === w.seq);
+    const text = formatWake(w, fullPost, {
+      mode: w.target === "lead" ? "worker" : "lead",
+      harness: "claude-code",
+    });
+    woken.add(key);
+    try {
+      await $.prompt.submit({ text });
+    } catch {
+      // Session busy or unavailable; remove in-flight key so the next turn.complete or stallTick retries.
+      woken.delete(key);
+      continue;
+    }
+    try {
+      const wakeAt = await $.clock.now();
+      await update($, flow, (prev) =>
+        prev
+          ? reduce(prev, {
+              type: "wake",
+              at: wakeAt,
+              seq: w.seq,
+              target: w.target,
+            })
+          : prev,
+      );
+    } catch {
+      // Prompt was already submitted; keep key in woken so we do not double-send.
+    }
+  }
+}
 
 // The stall watch: every 30 s while a flow is open, redraw (so "quiet" and
 // "stalled" appear without waiting for another event) and tell the person,
@@ -1806,11 +2019,19 @@ const STALL_TICK_MS = 30_000;
 const STALL_NOTICE_MAX_IDLE_MS = 2 * 60 * 60 * 1000;
 const noticedStalls = new Set<string>();
 let stallTimer: { cancel: () => void } | null = null;
+let stallTimerFlowAt: number | null = null;
 
 // Started by the first plan rather than at session start, so a session that
 // never orchestrates runs no timer.
-function ensureStallTimer($: EngineInterface): void {
-  if (stallTimer) return;
+function ensureStallTimer($: EngineInterface, startedAt?: number): void {
+  if (
+    stallTimer &&
+    (startedAt === undefined || stallTimerFlowAt === startedAt)
+  ) {
+    return;
+  }
+  stallTimer?.cancel();
+  stallTimerFlowAt = startedAt ?? null;
   stallTimer = $.clock.every(STALL_TICK_MS, () => {
     void stallTick($).catch(() => {});
   });
@@ -1823,6 +2044,7 @@ async function stallTick($: EngineInterface): Promise<void> {
     stallTimer = null;
     return;
   }
+  await deliverPendingWakes($, f);
   if (!f.runs.some((r) => r.status === "running" && r.role !== "lead")) return;
   const at = await $.clock.now();
   await update($, now, () => at);
@@ -1858,8 +2080,10 @@ export const register: Register = (on) => {
     spawnedToolUseIds.clear();
     seenStepTurns.clear();
     noticedStalls.clear();
+    wokenMentionsByFlow.clear();
     stallTimer?.cancel();
     stallTimer = null;
+    stallTimerFlowAt = null;
 
     await $.tool.register({
       name: "progress",
@@ -1904,6 +2128,14 @@ export const register: Register = (on) => {
             minimum: 1,
             description: "1-based task number returned for rework.",
           },
+          retire: {
+            type: "string",
+            description: "Run id or specialist agent name to retire.",
+          },
+          kill: {
+            type: "string",
+            description: "Run id or specialist agent name to kill.",
+          },
           finished: {
             type: "boolean",
             description: "True to close the flow.",
@@ -1915,7 +2147,7 @@ export const register: Register = (on) => {
     await $.tool.register({
       name: "step",
       description:
-        "For worker subagents: report your own step progress (done, total, note) to the Orchestrator live panel.",
+        "For worker subagents: report your own step progress (done, total, note) or pause status to the Orchestrator live panel.",
       inputSchema: {
         type: "object",
         properties: {
@@ -1949,8 +2181,84 @@ export const register: Register = (on) => {
               cacheRead: { type: "integer", minimum: 0 },
             },
           },
+          paused: {
+            type: "string",
+            enum: [...PAUSE_REASONS],
+            description:
+              "Optional pause reason ('quota' or 'error') when blocked.",
+          },
+          detail: {
+            type: "string",
+            description: "Optional detail describing why the run paused.",
+          },
         },
-        required: ["done", "total"],
+      },
+    });
+
+    await $.tool.register({
+      name: "post",
+      description:
+        "Post a message to the shared Orchestrator board (results, defect lists, questions, or notes). Supports @name, @all, and @lead mentions.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          text: {
+            type: "string",
+            description: "Message body (capped at 4000 characters).",
+          },
+          to: {
+            type: "array",
+            items: { type: "string" },
+            description: "Optional explicit recipient agent names.",
+          },
+          kind: {
+            type: "string",
+            enum: [...POST_KINDS],
+            description: "Post kind: note, question, defect, or result.",
+          },
+          replyTo: {
+            type: "integer",
+            minimum: 1,
+            description: "Optional post seq number this message replies to.",
+          },
+        },
+        required: ["text"],
+      },
+    });
+
+    await $.tool.register({
+      name: "board",
+      description:
+        'Read posts from the shared Orchestrator board. Subagents with omitted `to` (or `to: "me"`) receive posts mentioning them (@name or @all); otherwise returns the newest matching posts.',
+      inputSchema: {
+        type: "object",
+        properties: {
+          to: {
+            type: "string",
+            description:
+              "Filter by mentioned recipient handle (use 'me' for posts mentioning the caller).",
+          },
+          from: {
+            type: "string",
+            description: "Filter by author handle.",
+          },
+          kind: {
+            type: "string",
+            enum: [...POST_KINDS],
+            description: "Filter by post kind: note, question, defect, result.",
+          },
+          search: {
+            type: "string",
+            description:
+              "Case-insensitive substring search across text, from, and to.",
+          },
+          limit: {
+            type: "integer",
+            minimum: 1,
+            maximum: 100,
+            description: "Max newest posts to return (default 20, max 100).",
+          },
+        },
       },
     });
 
@@ -1969,6 +2277,11 @@ export const register: Register = (on) => {
       })();
     });
 
+    const resumed = await read($, flow);
+    if (resumed && resumed.closedAt === null) {
+      ensureStallTimer($, resumed.startedAt);
+    }
+
     return started;
   });
 
@@ -1982,6 +2295,9 @@ export const register: Register = (on) => {
   });
 
   on("tool.call", { tool: TOOL }, async ($, e) => {
+    if (e.agentId) {
+      return { result: "progress is for the lead only", isError: true };
+    }
     const input = e as unknown as ProgressInput;
     const at = await $.clock.now();
     const prevFlow = await read($, flow);
@@ -2011,6 +2327,18 @@ export const register: Register = (on) => {
       if (typeof input.return === "number" && Number.isInteger(input.return)) {
         f = reduce(f, { type: "task.return", at, n: input.return });
       }
+      if (typeof input.retire === "string" && input.retire.trim().length > 0) {
+        const targetId = resolveMemberRunId(f, input.retire);
+        if (targetId) {
+          f = reduce(f, { type: "member.retire", at, id: targetId });
+        }
+      }
+      if (typeof input.kill === "string" && input.kill.trim().length > 0) {
+        const targetId = resolveMemberRunId(f, input.kill);
+        if (targetId) {
+          f = reduce(f, { type: "member.kill", at, id: targetId });
+        }
+      }
       if (input.finished === true) {
         f = reduce(f, { type: "close", at });
       }
@@ -2018,7 +2346,9 @@ export const register: Register = (on) => {
     });
 
     await update($, now, () => at);
-    if (nextFlow && nextFlow.closedAt === null) ensureStallTimer($);
+    if (nextFlow && nextFlow.closedAt === null) {
+      ensureStallTimer($, nextFlow.startedAt);
+    }
     if (isFirstPlan && nextFlow) {
       await autoOpen($, `${nextFlow.startedAt}:${nextFlow.title || "flow"}`);
     }
@@ -2043,36 +2373,178 @@ export const register: Register = (on) => {
       if (!prev) return prev;
       const existing = prev.runs.find((r) => r.id === agentId);
       if (!existing) return prev;
-      const total = Math.max(
-        0,
-        Math.round(input.total ?? existing.steps?.total ?? 0),
-      );
-      const rawDone = Math.max(
-        0,
-        Math.round(input.done ?? existing.steps?.done ?? 0),
-      );
-      const done = total > 0 ? Math.min(total, rawDone) : rawDone;
-      const note =
-        typeof input.note === "string"
-          ? input.note.trim()
-          : (existing.steps?.note ?? "");
-      const delegate =
-        typeof input.delegate === "string" && input.delegate.trim().length > 0
-          ? input.delegate.trim()
-          : undefined;
-      return reduce(prev, {
-        type: "run.progress",
-        at,
-        id: agentId,
-        steps: { done, total, note },
-        ...(delegate ? { delegate } : {}),
-        ...(input.delegateUsage !== undefined
-          ? { delegateTokens: input.delegateUsage }
-          : {}),
-      });
+      const hasStepUpdate =
+        input.done !== undefined ||
+        input.total !== undefined ||
+        input.note !== undefined ||
+        input.delegate !== undefined ||
+        input.delegateUsage !== undefined;
+      let next: Flow | null = prev;
+      if (hasStepUpdate) {
+        const total = Math.max(
+          0,
+          Math.round(input.total ?? existing.steps?.total ?? 0),
+        );
+        const rawDone = Math.max(
+          0,
+          Math.round(input.done ?? existing.steps?.done ?? 0),
+        );
+        const done = total > 0 ? Math.min(total, rawDone) : rawDone;
+        const note =
+          typeof input.note === "string"
+            ? input.note.trim()
+            : (existing.steps?.note ?? "");
+        const delegate =
+          typeof input.delegate === "string" && input.delegate.trim().length > 0
+            ? input.delegate.trim()
+            : undefined;
+        next = reduce(next, {
+          type: "run.progress",
+          at,
+          id: agentId,
+          steps: { done, total, note },
+          ...(delegate ? { delegate } : {}),
+          ...(input.delegateUsage !== undefined
+            ? { delegateTokens: input.delegateUsage }
+            : {}),
+        });
+      }
+      if (
+        typeof input.paused === "string" &&
+        (PAUSE_REASONS as readonly string[]).includes(input.paused)
+      ) {
+        next = reduce(next, {
+          type: "member.pause",
+          at,
+          id: agentId,
+          reason: input.paused,
+          ...(typeof input.detail === "string" && input.detail.trim().length > 0
+            ? { detail: input.detail.trim() }
+            : {}),
+        });
+      }
+      return next;
     });
     await update($, now, () => at);
     return { result: "ok" };
+  });
+
+  on("tool.call", { tool: POST_TOOL }, async ($, e) => {
+    const input = e as unknown as PostInput;
+    const text = typeof input.text === "string" ? input.text : "";
+    const current = await read($, flow);
+    if (!current || text.trim().length === 0) {
+      return { result: JSON.stringify({ seq: 0 }) };
+    }
+    const at = await $.clock.now();
+    const agentId = e.agentId;
+    const callerRun = agentId
+      ? current.runs.find((r) => r.role !== "lead" && r.id === agentId)
+      : undefined;
+    const candidateHandle = callerRun
+      ? String(callerRun.agent ?? "")
+          .trim()
+          .replace(/^@+/, "")
+          .toLowerCase()
+      : "";
+    const from = agentId
+      ? candidateHandle &&
+        candidateHandle !== "lead" &&
+        VALID_HANDLE_RE.test(candidateHandle)
+        ? candidateHandle
+        : "helper"
+      : "lead";
+    const prevPosts = current.posts ?? [];
+    const prevLastSeq =
+      prevPosts.length > 0 ? (prevPosts[prevPosts.length - 1]?.seq ?? 0) : 0;
+
+    const nextFlow = await update($, flow, (prev) => {
+      if (!prev) return prev;
+      return reduce(prev, {
+        type: "post",
+        at,
+        from,
+        text,
+        ...(Array.isArray(input.to) ? { to: input.to } : {}),
+        ...(typeof input.kind === "string" &&
+        (POST_KINDS as readonly string[]).includes(input.kind)
+          ? { kind: input.kind }
+          : {}),
+        ...(typeof input.replyTo === "number" &&
+        Number.isInteger(input.replyTo) &&
+        input.replyTo > 0
+          ? { replyTo: input.replyTo }
+          : {}),
+        ...(callerRun ? { runId: callerRun.id } : {}),
+      });
+    });
+
+    await update($, now, () => at);
+    if (nextFlow && nextFlow.closedAt === null) {
+      ensureStallTimer($, nextFlow.startedAt);
+    }
+    const posts = nextFlow?.posts ?? [];
+    const lastSeq = posts.length > 0 ? (posts[posts.length - 1]?.seq ?? 0) : 0;
+    const seq = lastSeq > prevLastSeq ? lastSeq : 0;
+    return { result: JSON.stringify({ seq }) };
+  });
+
+  on("tool.call", { tool: BOARD_TOOL }, async ($, e) => {
+    const input = e as unknown as BoardInput;
+    const current = await read($, flow);
+    if (!current) {
+      return { result: "[]" };
+    }
+    const agentId = e.agentId;
+    const callerRun = agentId
+      ? current.runs.find((r) => r.role !== "lead" && r.id === agentId)
+      : undefined;
+    const rawCallerAgent = callerRun
+      ? String(callerRun.agent ?? "")
+          .trim()
+          .replace(/^@+/, "")
+          .toLowerCase()
+      : "";
+    const callerAgent = agentId
+      ? rawCallerAgent &&
+        rawCallerAgent !== "lead" &&
+        VALID_HANDLE_RE.test(rawCallerAgent)
+        ? rawCallerAgent
+        : "helper"
+      : null;
+
+    const rawTo = typeof input.to === "string" ? input.to.trim() : "";
+    const cleanTo = rawTo.replace(/^@+/, "").toLowerCase();
+    const effectiveTo =
+      cleanTo === "me"
+        ? (callerAgent ?? "lead")
+        : rawTo.length > 0
+          ? rawTo
+          : callerAgent
+            ? callerAgent
+            : undefined;
+    const limit =
+      typeof input.limit === "number" && Number.isFinite(input.limit)
+        ? Math.max(1, Math.min(100, Math.floor(input.limit)))
+        : 20;
+    const rows = (
+      boardView(current, {
+        ...(effectiveTo !== undefined ? { to: effectiveTo } : {}),
+        ...(typeof input.from === "string" ? { from: input.from } : {}),
+        ...(typeof input.kind === "string" ? { kind: input.kind } : {}),
+        ...(typeof input.search === "string" ? { search: input.search } : {}),
+        limit,
+      }) as Post[]
+    ).map((p) => ({
+      seq: p.seq,
+      from: p.from,
+      to: p.to,
+      kind: p.kind,
+      replyTo: p.replyTo,
+      at: p.at,
+      text: p.text,
+    }));
+    return { result: JSON.stringify(rows) };
   });
 
   // Capture effort from the Agent tool call and provide a fallback run.start when
@@ -2319,6 +2791,9 @@ export const register: Register = (on) => {
       await update($, now, () => at);
     }
 
+    const afterTurnFlow = await read($, flow);
+    await deliverPendingWakes($, afterTurnFlow);
+
     return completed;
   });
 
@@ -2408,9 +2883,12 @@ export const register: Register = (on) => {
       await read($, now),
       f.startedAt,
       ...f.runs.map((r) => r.endedAt ?? r.startedAt),
+      ...(f.posts ?? []).map((pt) => pt.at),
       0,
     );
     const board: TaskBoardRow[] = taskBoard(f);
+    const recentPosts: Post[] = boardView(f, { limit: 6 });
+    const postCount = f.posts?.length ?? 0;
     const bd: BurnDown = burnDown(f);
     const sp: SpendSummary = spend(f);
     const total = f.tasks.length;
@@ -2503,8 +2981,13 @@ export const register: Register = (on) => {
     const stallById = new Map(
       (stalls(f, at) as StallRow[]).map((row) => [row.id, row.state]),
     );
+    const mv = members(f) as MembersView;
+    const memberById = new Map<string, MemberRow>(
+      [...mv.active, ...mv.standingBy, ...mv.retired].map((m) => [m.id, m]),
+    );
     const renderAgentRow = (r: Run) => {
       const stall = stallById.get(r.id) ?? null;
+      const member = memberById.get(r.id) ?? null;
       const cost = runCost(r);
       const costText = cost !== null ? `est. ${fmtCost(cost)}` : "unpriced";
       const stepOrCtx =
@@ -2537,8 +3020,8 @@ export const register: Register = (on) => {
         <Box key={`run-${r.id}`} flexDirection="column" marginBottom={1}>
           {hasDesktopSvg && "Svg" in ui ? (
             <ui.Svg
-              source={agentRowSvg(W, r, at, stall)}
-              alt={`${agentName} (${modelLabel}): ${stallLabel(r, stall)}, ${costText}`}
+              source={agentRowSvg(W, r, at, stall, member)}
+              alt={`${agentName} (${modelLabel}): ${stallLabel(r, stall, member)}, ${costText}`}
               width={W}
               height={58}
             />
@@ -2558,14 +3041,18 @@ export const register: Register = (on) => {
                 <Text bold>{agentName}</Text>{" "}
                 <Text
                   color={
-                    r.status === "running" && stall === "stalled"
+                    member?.state === "killed"
                       ? "red"
-                      : r.status === "running" && stall === "quiet"
+                      : member?.state === "paused"
                         ? "yellow"
-                        : statusTermColor(r.status)
+                        : r.status === "running" && stall === "stalled"
+                          ? "red"
+                          : r.status === "running" && stall === "quiet"
+                            ? "yellow"
+                            : statusTermColor(r.status)
                   }
                 >
-                  {stallLabel(r, stall)}
+                  {stallLabel(r, stall, member)}
                 </Text>
               </Text>
               {detailLines.map((line, i) => (
@@ -2660,6 +3147,45 @@ export const register: Register = (on) => {
                 f.runs.map(renderAgentRow)
               )}
             </Box>
+
+            {/* 4b. Board (shown once posts exist) */}
+            {(postCount > 0 || (f.postsDropped ?? 0) > 0) && (
+              <Box flexDirection="column" marginTop={1}>
+                <Text bold>Board ({postCount})</Text>
+                {(f.postsDropped ?? 0) > 0 && (
+                  <Text
+                    dimColor
+                  >{`${f.postsDropped} older posts not shown`}</Text>
+                )}
+                {hasDesktopSvg && "Svg" in ui ? (
+                  <ui.Svg
+                    source={boardSvg(W, recentPosts, at)}
+                    alt={`Board: ${recentPosts.length} of ${postCount} posts`}
+                    width={W}
+                    height={12 + recentPosts.length * 22}
+                  />
+                ) : (
+                  recentPosts.map((pt) => {
+                    const toPart =
+                      pt.to.length > 0
+                        ? ` → ${pt.to.map(formatBoardRecipient).join(",")}`
+                        : "";
+                    const replyPart =
+                      typeof pt.replyTo === "number" ? ` ↩ #${pt.replyTo}` : "";
+                    const rel = fmtRelTime(pt.at, at);
+                    const head = `#${pt.seq} ${pt.from}${toPart}${replyPart} (${rel}) [${pt.kind}] `;
+                    const bodyBudget = Math.max(8, cols - head.length);
+                    const clippedBody = clipLine(pt.text, bodyBudget);
+                    return (
+                      <Text key={`post-${pt.seq}`}>
+                        <Text color={postKindTermColor(pt.kind)}>{head}</Text>
+                        <Text>{clippedBody}</Text>
+                      </Text>
+                    );
+                  })
+                )}
+              </Box>
+            )}
 
             {/* 5. Spend */}
             <Box flexDirection="column" marginTop={1}>

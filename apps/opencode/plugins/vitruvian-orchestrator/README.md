@@ -1,53 +1,39 @@
 # Vitruvian Orchestrator — OpenCode Live Panel
 
-OpenCode server + TUI plugin for the `orchestrate` skill (`packages/orchestrator-core`). It registers the `progress` and `step` tools, tracks subagent sessions (`parentID`) and lead/worker token usage per root session, and renders a live orchestrator sidebar in the OpenCode TUI.
+OpenCode plugin for the `orchestrate` workflow. It registers the orchestration tools, watches helper sessions, wakes waiting helpers when they are mentioned on the board, and renders a live **Orchestrator** sidebar in the OpenCode TUI.
 
-## What It Shows
+## What the sidebar shows
 
-1. **Header**: Flow title, 5-phase lifecycle pills (`plan`, `design`, `delegate`, `review`, `close` — completed phases marked `✓`, current phase highlighted), `accepted N of M`, and total estimated cost (`est. $X.XX`).
-2. **Burn-down**: Compact Unicode text sparkline (`▁▂▃▄▅▆▇█`) of remaining task counts over time against the linear ideal line (`total → 0`), plus replan markers (`⟳`).
-3. **Task Board**: One row per task (`#id`, `title`, `[specialist/tier]`, derived `state`, return round `rN` when `round > 0`, and `waits on #x` when blocked by upstream dependencies).
-4. **Agents**: One row per lead/worker run (`agent`, `model` (for a Gemini driver, `driver → gemini model`), `effort`, `steps` `done/total` or `ctx %`, token count, `est. $cost` or `unpriced`, elapsed duration, and `status`).
-5. **Spend**: Breakdown of `lead` vs `workers` USD spend, per-model spend, unpriced model token counts, and a count of runs delegated to Gemini.
+1. **Header**: Flow title, five phase pills (`plan`, `design`, `delegate`, `review`, `close`), accepted task count (`accepted N of M`), and estimated spend (`est. $X.XX`).
+2. **Burn-down**: Compact sparkline of remaining tasks over time against the ideal line, plus re-plan markers (`⟳`).
+3. **Tasks**: Numbered tasks with title, `[specialist/tier]`, state, return round, and dependency badges (`waits on #x`).
+4. **Agents**: One row per lead or helper run showing model, effort, step count or context usage, tokens, estimated cost, elapsed time, and run status (`running`, `done`, `error`, amber `paused: <reason>` in place of `running`, or red `killed`). Open and closed flows with no board posts and no pause/kill events look identical to classic flows.
+5. **Spend**: Lead vs. worker spend, per-model spend, and unpriced token counts.
+6. **Board** (hidden until the first post): Newest five numbered posts (`#1`, `#2`, …) with sender, recipients (`@all` shown as `everyone`), reply tag (`↩ #<n>`), age, kind badge, and single-line summary.
 
-When no plan has been reported for the active root session, the sidebar shows:
+When no plan has been reported yet, the sidebar shows:
 `Orchestrator panel fills in when the lead skill reports a plan.`
 
-## Tools Registered
+## Shared board, tools, waking, and member states
 
-- `progress({ title?, phase?, tasks?, accept?, return?, finished? })` — called by the lead orchestrator to publish or replan tasks, advance phases, accept/return reviewed tasks, and close the flow.
-- `step({ done, total, note? })` — called by worker subagents to report sub-step progress (`0 <= done <= total`, `total >= 1`).
+- **What the board is**: The board is a shared message list for the helpers and the lead, kept as numbered posts so everyone can follow the conversation in order.
+- **What helpers post**: Helpers post results, questions, and defect lists (along with brief notes).
+- **Tools**:
+  - `post`: Posts a message to the board (`text`, optional `to`, `kind`, and `replyTo`).
+  - `board`: Reads numbered posts from the board (`to`, `from`, `kind`, `search`, `limit`). When a helper omits `to` or passes `to: "me"`, it receives posts addressed to that helper or to everyone.
+  - `step`: Called by a helper to report step progress (`done`, `total`, `note`) or a pause reason (`paused: "quota"` or `paused: "error"`, plus optional `detail`).
+  - `progress`: Called only by the lead to create or update the plan, advance phases, accept or return tasks, close the flow, or `retire` / `kill` a helper.
+- **How waking works**: Mentioning a waiting helper (`@name`) sends the post straight to the helper's own conversation once for that mention (`@lead` wakes the lead conversation). Only the lead's `@all` wakes everyone who is waiting; a helper's `@all` never wakes everyone. Each woken post is clearly labeled and shown to other agents as helper content, never as instructions from the user, the lead, or the system.
+- **Member states**:
+  - `working`: Actively running its turn or delegated task.
+  - `waiting`: Finished its turn and standing by so an `@mention` on the board can wake it.
+  - `paused`: Stopped early with a pause reason (`quota` or `error`); shown on the helper's row in amber (`paused: quota` or `paused: error`) in place of `running` while the flow is open.
+  - `retired`: Finished for good — either retired by the lead with `progress` (`retire`) or when the flow closes. Retired helpers are no longer woken by mentions, and `retired` is never shown on agent run rows.
+  - `killed`: The lead marked the helper as killed with `progress` (`kill`). It shows a red `killed` badge and is no longer woken by board posts. This does not stop a helper that is still running; the lead stops it in the tool itself.
 
-## Discovery & State Sharing
+## Setup and verification
 
-- **Project-level discovery (zero install inside this repo)**: OpenCode scans `.opencode/plugins/` when started from the repository root. `.opencode/plugins/vitruvian-orchestrator/{server.ts,tui.tsx}` re-export `apps/opencode/plugins/vitruvian-orchestrator/{server.mjs,tui.tsx}`.
-  > Note: OpenCode 2.2.5's `ConfigPluginSource.scan` verifies that `Bun.resolveSync` stays inside the scanned plugin directory, so `.opencode/plugins/vitruvian-orchestrator/` uses real loader files rather than a directory symlink.
-- **Optional user-level install (for sessions outside this repo)**: Run `./apps/opencode/plugins/vitruvian-orchestrator/install.sh` to install the loader files into `~/.config/opencode/plugins/vitruvian-orchestrator/`.
-- **State sharing**: The server plugin writes per-root-session flow state atomically to `~/.local/state/opencode/vitruvian-orchestrator/state.json` (and `<rootSessionID>.json`), which the TUI sidebar component reads.
-
-## Testing
-
-```sh
-bazel test //apps/opencode/plugins/vitruvian-orchestrator/...
-```
-
-## Interface
-- `[install.sh:script entrypoint]`
-- `[server.mjs:PLUGIN_ID]`
-- `[server.mjs:getStateDir]`
-- `[server.mjs:getStateFilePath]`
-- `[tui.tsx:PLUGIN_ID]`
-- Subdirectory: [lib](./lib/README.md)
-
-## Invariants
-- None
-
-## Side Effects
-- [server.mjs:50]: `if (!fs.existsSync(file)) {`
-- [server.mjs:53]: `const parsed = JSON.parse(fs.readFileSync(file, "utf8"));`
-- [server.mjs:65]: `fs.mkdirSync(dir, { recursive: true });`
-- [tui.tsx:44]: `if (!fs.existsSync(file)) return null;`
-- [tui.tsx:45]: `const parsed = JSON.parse(fs.readFileSync(file, "utf8"));`
-
-## Verification
-- Run: `bazel test //apps/opencode/plugins/vitruvian-orchestrator/...`
+- **In this repository**: OpenCode automatically loads `.opencode/plugins/vitruvian-orchestrator/` when started from the repository root.
+- **Outside this repository**: Run `./apps/opencode/plugins/vitruvian-orchestrator/install.sh` to install the loader files into `~/.config/opencode/plugins/vitruvian-orchestrator/`.
+- **Subdirectory**: [lib](./lib/README.md)
+- **Verification**: `bazel test //apps/opencode/plugins/vitruvian-orchestrator/...`

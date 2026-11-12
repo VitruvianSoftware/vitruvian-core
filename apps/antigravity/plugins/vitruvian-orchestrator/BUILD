@@ -45,7 +45,10 @@ js_library(
 js_test(
     name = "server_test",
     size = "small",
-    data = [":server_lib"],
+    data = [
+        "sidecars/panel/testdata/sample-flow.jsonl",
+        ":server_lib",
+    ],
     entry_point = "mcp/server.test.mjs",
 )
 
@@ -66,6 +69,8 @@ js_test(
     name = "panel_test",
     size = "small",
     data = [
+        "README.md",
+        "sidecars/panel/README.md",
         ":panel_lib",
         ":server_lib",
     ],
