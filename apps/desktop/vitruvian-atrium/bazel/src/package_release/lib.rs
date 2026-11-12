@@ -599,7 +599,7 @@ mod tests {
                         format!("ditto {}", first)
                     }
                 } else if word == "MAKE_DMG" || word == "NOTARIZE" {
-                    let rest = c.strip_prefix(word).unwrap().trim_start();
+                    let rest = c.strip_prefix(word.as_str()).unwrap().trim_start();
                     let tail = if rest.ends_with(".app") {
                         let parent = Path::new(rest)
                             .parent()

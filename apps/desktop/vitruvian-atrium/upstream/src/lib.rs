@@ -56,7 +56,7 @@ pub const BRAND_SUBSTITUTIONS: &[(&str, &str)] = &[
     ("com.vorssaint.utils", "com.vitruviansoftware.atrium"),
     ("com.vorssaint.", "com.vitruviansoftware.atrium."),
     ("import Vorssaint", "import VitruvianAtrium"),
-    ("Vorssaint", "Vitruvian Atrium"),
+    ("Vorssaint", "VitruvianAtrium"),
     ("vorssaint", "vitruvian"),
     ("VORSSAINT", "VITRUVIAN"),
 ];
@@ -828,11 +828,12 @@ impl PathMap {
         }
         diff_args.push(APP_DIR);
         let raw_str = out(&diff_args, Some(root), None)?;
-        let strip_app = |p: &str| {
-            p.strip_prefix(&prefix)
-                .or_else(|| p.strip_prefix(&import_prefix))
+        fn strip_prefixes<'a>(p: &'a str, prefix: &str, import_prefix: &str) -> &'a str {
+            p.strip_prefix(prefix)
+                .or_else(|| p.strip_prefix(import_prefix))
                 .unwrap_or(p)
-        };
+        }
+        let strip_app = |p| strip_prefixes(p, &prefix, &import_prefix);
         let raw: Vec<&str> = raw_str.split('\0').filter(|x| !x.is_empty()).collect();
         let mut i = 0;
         while i < raw.len() {

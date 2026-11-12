@@ -6,5 +6,5 @@ use std::process;
 
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
-    process::exit(vitruvian_upstream_rs::run_cli(&args));
+    process::exit(vitruvian_atrium_upstream_rs::run_cli(&args));
 }
