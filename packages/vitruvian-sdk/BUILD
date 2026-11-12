@@ -50,6 +50,7 @@ load("@build_bazel_rules_swift//swift:swift_binary.bzl", "swift_binary")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@rules_go//go:def.bzl", "go_binary")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("//tools/apple:defs.bzl", "APPLE_TOOLCHAIN_ONLY")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 load("//tools/pytest:defs.bzl", pytest_test = "py_test")
 load("//tools/swift-test-preferences:defs.bzl", "swift_test")
@@ -114,7 +115,7 @@ swift_library(
     srcs = [":protocol_sources"],
     features = ["swift.enable_v6"],
     module_name = "VitruvianToolProtocol",
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     visibility = [
         "//packages/vitruvian-sdk/consumers:app",
         "//packages/vitruvian-sdk/consumers:tools",
@@ -129,7 +130,7 @@ swift_library(
     srcs = glob(["Sources/VitruvianToolKit/**/*.swift"]),
     features = ["swift.enable_v6"],
     module_name = "VitruvianToolKit",
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     visibility = ["//packages/vitruvian-sdk/consumers:tools"],
     deps = [":VitruvianToolProtocol"],
 )
@@ -178,7 +179,7 @@ swift_library(
     srcs = glob(["Sources/VitruvianToolCLI/**/*.swift"]),
     features = ["swift.enable_v6"],
     module_name = "VitruvianToolCLI",
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [":VitruvianToolProtocol"],
 )
 
@@ -191,7 +192,7 @@ swift_binary(
     features = ["swift.enable_v6"],
     module_name = "VitruvianToolCommandLine",
     tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     # The GitHub, Vitruvian Code and Vitruvian Speaker tools' folder tests run `validate` on what
     # they built.
     visibility = ["//packages/vitruvian-sdk/consumers:tools"],
@@ -207,7 +208,7 @@ swift_test(
     srcs = glob(["Tests/VitruvianToolProtocolTests/**/*.swift"]),
     data = PROTOCOL_FILES + REFERENCE_MANIFESTS,
     tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [":VitruvianToolProtocol"],
 )
 
@@ -217,7 +218,7 @@ swift_test(
     size = "small",
     srcs = glob(["Tests/VitruvianToolKitTests/**/*.swift"]),
     tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [":VitruvianToolKit"],
 )
 
@@ -241,7 +242,7 @@ swift_test(
         "VITRUVIAN_TOOL_BINARY": "$(rootpath :vitruvian-tool)",
     },
     tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
         ":VitruvianToolCLI",
         ":VitruvianToolProtocol",

@@ -2,20 +2,21 @@ load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application")
 load("@build_bazel_rules_swift//swift:swift_binary.bzl", "swift_binary")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("//tools/apple:defs.bzl", "APPLE_TOOLCHAIN_ONLY")
 load("//tools/swift-test-preferences:defs.bzl", "swift_test")
 
 swift_library(
     name = "VitruvianSpeakerCore",
     srcs = glob(["Sources/VitruvianSpeakerCore/**/*.swift"]),
     module_name = "VitruvianSpeakerCore",
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
 )
 
 swift_library(
     name = "VitruvianSpeakerLib",
     srcs = glob(["Sources/VitruvianSpeaker/**/*.swift"]),
     module_name = "VitruvianSpeaker",
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [":VitruvianSpeakerCore"],
 )
 
@@ -43,7 +44,7 @@ swift_test(
         "VITRUVIAN_SPEAKER_COURIER_URL": "http://localhost:9",
     },
     tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [":VitruvianSpeakerCore"],
 )
 
@@ -60,7 +61,7 @@ swift_library(
     features = ["swift.enable_testing"],
     module_name = "VitruvianSpeaker",
     tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [":VitruvianSpeakerCore"],
 )
 
@@ -79,7 +80,7 @@ swift_test(
         "VITRUVIAN_SPEAKER_COURIER_URL": "http://localhost:9",
     },
     tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
         ":VitruvianSpeakerCore",
         ":VitruvianSpeakerViews",
@@ -98,7 +99,7 @@ swift_library(
     features = ["swift.enable_v6"],
     module_name = "VitruvianSpeakerToolCore",
     tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
         ":VitruvianSpeakerCore",
         "//packages/vitruvian-sdk:VitruvianToolKit",
@@ -118,7 +119,7 @@ swift_test(
         "VITRUVIAN_SPEAKER_COURIER_URL": "http://localhost:9",
     },
     tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
         ":VitruvianSpeakerCore",
         ":VitruvianSpeakerToolCore",
@@ -135,7 +136,7 @@ swift_binary(
     features = ["swift.enable_v6"],
     module_name = "VitruvianSpeakerToolProgram",
     tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
+    target_compatible_with = APPLE_TOOLCHAIN_ONLY,
     deps = [
         ":VitruvianSpeakerCore",
         ":VitruvianSpeakerToolCore",
