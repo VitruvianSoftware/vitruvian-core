@@ -33,7 +33,7 @@
 //! Stamping happens HERE and not in the Bazel genrule: a genrule's action sees
 //! neither the workflow's env nor `.git`. The genrule produces the three raw
 //! images; this tool wraps them with `build_info.json` and the Rust flash helper
-//! sources into `vitruvian-deck-mac-controller.zip`.
+//! sources into `vitruvian-deck.zip`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -226,7 +226,7 @@ pub fn build_info_json(cfg: &PublishConfig, built_at: &str) -> String {
 
 pub fn beta_notes(cfg: &PublishConfig, built_at: &str) -> String {
     format!(
-        "Latest Beta Firmware Build: {}\nCommit: {}\nBuilt: {}\n\nArtifacts Included:\n* firmware.bin: Application binary (Flash at 0x10000)\n* bootloader.bin: ESP32-S3 second-stage bootloader (Flash at 0x0000)\n* partitions.bin: 16MB partition table (Flash at 0x8000)\n* build_info.json: version / grade / commit stamp\n* vitruvian-deck-mac-controller.zip: Full flashable archive with the Rust flash helper (flash/).",
+        "Latest Beta Firmware Build: {}\nCommit: {}\nBuilt: {}\n\nArtifacts Included:\n* firmware.bin: Application binary (Flash at 0x10000)\n* bootloader.bin: ESP32-S3 second-stage bootloader (Flash at 0x0000)\n* partitions.bin: 16MB partition table (Flash at 0x8000)\n* build_info.json: version / grade / commit stamp\n* vitruvian-deck.zip: Full flashable archive with the Rust flash helper (flash/).",
         cfg.version, cfg.sha, built_at
     )
 }
@@ -246,7 +246,11 @@ fn work_dir(r: &dyn Runner) -> PathBuf {
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_nanos())
                 .unwrap_or(0);
-            std::env::temp_dir().join(format!("vitruvian-deck-publish-{}-{}", std::process::id(), nanos))
+            std::env::temp_dir().join(format!(
+                "vitruvian-deck-publish-{}-{}",
+                std::process::id(),
+                nanos
+            ))
         }
     };
     base.join("vitruvian-deck-dist")
@@ -304,7 +308,7 @@ pub fn publish(cfg: &PublishConfig, r: &dyn Runner) -> Result<(), String> {
     )
     .map_err(|e| format!("write build_info.json: {}", e))?;
 
-    let zip = work.join("vitruvian-deck-mac-controller.zip");
+    let zip = work.join("vitruvian-deck.zip");
     let mut zip_args = sv(&["-q", zip.to_str().unwrap_or("")]);
     zip_args.extend(sv(&[
         "firmware.bin",
@@ -537,7 +541,10 @@ mod tests {
         let root = workspace("prod-cfg");
         let c = resolve_config(&envs(
             &root,
-            &[("GRADE", "production"), ("RELEASE_TAG", "vitruvian-deck-v3.1.0")],
+            &[
+                ("GRADE", "production"),
+                ("RELEASE_TAG", "vitruvian-deck-v3.1.0"),
+            ],
         ))
         .unwrap();
         assert!(!c.is_beta);
@@ -586,7 +593,7 @@ mod tests {
         assert_eq!(l[0], format!("bazel build //{}:firmware", PKG));
         // zip bundles images + stamp + flash helper (c: the old zip shipped flash.sh)
         let zip = l.iter().find(|x| x.starts_with("zip ")).expect("zip step");
-        assert!(zip.contains("vitruvian-deck-mac-controller.zip firmware.bin bootloader.bin partitions.bin build_info.json flash/main.rs flash/lib.rs flash/README.txt"), "{}", zip);
+        assert!(zip.contains("vitruvian-deck.zip firmware.bin bootloader.bin partitions.bin build_info.json flash/main.rs flash/lib.rs flash/README.txt"), "{}", zip);
         // release view -> create (release absent)
         assert!(l.contains(&format!("gh release view {}", BETA_TAG)));
         assert!(l.iter().any(|x| x.starts_with(&format!("gh release create {} --prerelease --target {} --title Vitruvian Deck Firmware (Beta Rolling Release) --notes", BETA_TAG, sha))));
@@ -600,7 +607,7 @@ mod tests {
             "bootloader.bin",
             "partitions.bin",
             "build_info.json",
-            "vitruvian-deck-mac-controller.zip",
+            "vitruvian-deck.zip",
             "--clobber",
         ] {
             assert!(up.contains(n), "upload missing {}: {}", n, up);
@@ -622,7 +629,7 @@ mod tests {
             .expect("release edit");
         assert!(iu < ip && ip < ie);
         assert!(l[ie].contains("Built: 2026-01-02T03:04:05Z"));
-        assert!(l[ie].contains("vitruvian-deck-mac-controller.zip"));
+        assert!(l[ie].contains("vitruvian-deck.zip"));
     }
 
     #[test]

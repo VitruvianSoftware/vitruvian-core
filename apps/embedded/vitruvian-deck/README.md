@@ -151,7 +151,7 @@ bazel run //apps/embedded/vitruvian-deck:publish
 GRADE=production RELEASE_TAG=vitruvian-deck-vX.Y.Z bazel run //apps/embedded/vitruvian-deck:publish
 ```
 
-Each published bundle (`vitruvian-deck-mac-controller.zip`) contains the three
+Each published bundle (`vitruvian-deck.zip`) contains the three
 images, `build_info.json`, and the Rust flasher source (`flash/main.rs`, `flash/lib.rs`, `flash/README.txt`)
 that builds natively with `rustc --edition 2021 -O flash/main.rs -o flash-vitruvian-deck`.
 

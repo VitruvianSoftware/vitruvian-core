@@ -1,4 +1,4 @@
-# mac-controller Architecture & Subsystems
+# Vitruvian Deck Architecture & Subsystems
 
 This document describes the architectural design of the Vitruvian Deck, detailing the composite USB OTG stack, graphics rendering pipeline, capacitive touch driver, haptic feedback mechanism, dynamic carousel navigation engine, and host helper architecture.
 

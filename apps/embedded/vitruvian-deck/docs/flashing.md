@@ -1,4 +1,4 @@
-# mac-controller Firmware Flashing & Host Setup Guide
+# Vitruvian Deck Firmware Flashing & Host Setup Guide
 
 This guide provides step-by-step instructions for building and flashing the Vitruvian Deck firmware using Bazel, PlatformIO, or esptool, setting up the macOS helper daemon, and troubleshooting common issues.
 
@@ -30,7 +30,7 @@ Outputs are compiled in `bazel-bin/apps/embedded/vitruvian-deck/`:
 - `firmware.bin` (Application binary)
 - `bootloader.bin` (ESP32-S3 second-stage bootloader)
 - `partitions.bin` (Partition layout)
-- `vitruvian-deck-mac-controller.zip` (Self-contained release zip)
+- `vitruvian-deck.zip` (Self-contained release zip)
 
 ### Step 2: Flash to a Connected Vitruvian Deck
 Plug your board into a USB-C port on your Mac, then run:
@@ -98,7 +98,7 @@ For flashing distributed binary release zips without compiling from source:
 
 ```bash
 # Extract distribution zip
-unzip vitruvian-deck-mac-controller.zip -d mac-ctrl-release
+unzip vitruvian-deck.zip -d mac-ctrl-release
 cd mac-ctrl-release
 
 # Build the std-only flasher beside the images, then run it

@@ -260,9 +260,7 @@ pub fn run_suite() -> usize {
     let root = repo_root();
     let root_catalog = root.join("catalog-info.yaml");
     if let Ok(root_raw) = fs::read_to_string(&root_catalog) {
-        assert!(
-            root_raw.contains("./apps/embedded/vitruvian-deck/catalog-info.yaml")
-        );
+        assert!(root_raw.contains("./apps/embedded/vitruvian-deck/catalog-info.yaml"));
         checks += 1;
     }
 
@@ -275,12 +273,7 @@ pub fn run_suite() -> usize {
                 continue;
             }
             let parts: Vec<&str> = trimmed.split_whitespace().collect();
-            if parts.len() >= 2
-                && matches!(
-                    parts[0],
-                    "/apps/embedded/vitruvian-deck/"
-                )
-            {
+            if parts.len() >= 2 && matches!(parts[0], "/apps/embedded/vitruvian-deck/") {
                 assert!(parts[1..].contains(&"@VitruvianSoftware/platform-team"));
                 matched_team = parts[1].rsplit('/').next().map(|s| s.to_string());
                 break;
@@ -348,9 +341,7 @@ mod tests {
         let root_catalog = repo_root().join("catalog-info.yaml");
         if let Ok(root_raw) = fs::read_to_string(&root_catalog) {
             assert!(root_raw.contains("name: vitruvian-core-apps"));
-            assert!(
-                root_raw.contains("./apps/embedded/vitruvian-deck/catalog-info.yaml")
-            );
+            assert!(root_raw.contains("./apps/embedded/vitruvian-deck/catalog-info.yaml"));
         }
     }
 

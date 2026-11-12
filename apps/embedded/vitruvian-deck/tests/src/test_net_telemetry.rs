@@ -164,9 +164,7 @@ pub fn test_udp_transport_loopback() {
     assert!(msg2.contains("\"type\":\"agent_ci\""));
 
     let cmd_line = "{\"type\":\"cmd\",\"action\":\"run_checks\"}\n";
-    esp_sock
-        .send_to(cmd_line.as_bytes(), helper_addr)
-        .unwrap();
+    esp_sock.send_to(cmd_line.as_bytes(), helper_addr).unwrap();
     let (n_cmd, from_addr) = helper_sock.recv_from(&mut buf).unwrap();
     assert_eq!(from_addr.ip(), esp_addr.ip());
     let cmd_str = std::str::from_utf8(&buf[..n_cmd]).unwrap().trim();

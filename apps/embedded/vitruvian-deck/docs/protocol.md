@@ -1,4 +1,4 @@
-# mac-controller Wire Protocol Specification
+# Vitruvian Deck Wire Protocol Specification
 
 This specification defines the bidirectional communication protocol between the macOS host helper daemon and the Vitruvian Deck.
 

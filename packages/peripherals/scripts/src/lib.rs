@@ -618,7 +618,14 @@ mod tests {
     fn plan_production_refuses_to_guess() {
         let e = plan("production", None, None, "s", "1.0.0").unwrap_err();
         assert!(e.contains("GRADE=production needs RELEASE_TAG=gravastar-mouse-vX.Y.Z"));
-        let e = plan("production", None, Some("vitruvian-deck-v1.0.0"), "s", "1.0.0").unwrap_err();
+        let e = plan(
+            "production",
+            None,
+            Some("vitruvian-deck-v1.0.0"),
+            "s",
+            "1.0.0",
+        )
+        .unwrap_err();
         assert!(e.contains("is not a gravastar-mouse-v* release"));
         let e = plan(
             "production",
