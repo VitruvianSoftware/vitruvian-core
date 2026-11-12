@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.42.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-speaker-v1.41.0...vitruvian-speaker-v1.42.0) (2026-11-12)
+
+
+### Features
+
+* **vitruvian-speaker:** every Vitruvian Speaker option on the phone, with checks that stop them drifting ([#4634](https://github.com/VitruvianSoftware/vitruvian-core/issues/4634)) ([9cd41ed](https://github.com/VitruvianSoftware/vitruvian-core/commit/9cd41ed6f4a637ca62bee60bc1c7ef9e8e1d2842))
+* **vitruvian-speaker:** Read Aloud from Vitruvian Courier, with a per-chat choice ([#4612](https://github.com/VitruvianSoftware/vitruvian-core/issues/4612)) ([9cd41ed](https://github.com/VitruvianSoftware/vitruvian-core/commit/9cd41ed6f4a637ca62bee60bc1c7ef9e8e1d2842))
+* **vitruvian-speaker:** say which app and session an announcement came from ([#4601](https://github.com/VitruvianSoftware/vitruvian-core/issues/4601)) ([9cd41ed](https://github.com/VitruvianSoftware/vitruvian-core/commit/9cd41ed6f4a637ca62bee60bc1c7ef9e8e1d2842))
+
+
+### Bug Fixes
+
+* **vitruvian-code,vitruvian-speaker:** show the full Vitruvian names in the tool list ([#4644](https://github.com/VitruvianSoftware/vitruvian-core/issues/4644)) ([f611431](https://github.com/VitruvianSoftware/vitruvian-core/commit/f6114315740d4fc9a975722d507ba49ad25f4c0a))
+
 ## [1.41.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.40.0...home-speaker-v1.41.0) (2026-11-10)
 
 
