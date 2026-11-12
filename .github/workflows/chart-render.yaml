@@ -76,7 +76,7 @@ jobs:
       # helm installs drifting apart is a difference nobody would look for when
       # a chart renders in one job and not the other.
       - name: Install Helm
-        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
 
       - name: Build //tools/ci:chart_render (no Bazel on this job)
         id: chart-render-bin
@@ -112,7 +112,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Helm
-        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
 
       # Explicit, not assumed. The discovery step parses the gitops tree with
       # PyYAML; if it were merely present-by-default on the runner image, an
