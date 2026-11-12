@@ -1,3 +1,5 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+
 # Copyright (c) 2026 VitruvianSoftware
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -25,5 +27,11 @@
 config_setting(
     name = "apple_cc_toolchain",
     values = {"extra_toolchains": "@local_config_apple_cc_toolchains//:all"},
+    visibility = ["//visibility:public"],
+)
+
+bzl_library(
+    name = "defs",
+    srcs = ["defs.bzl"],
     visibility = ["//visibility:public"],
 )
