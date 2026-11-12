@@ -25,7 +25,7 @@ use std::fs::OpenOptions;
 use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::base64;
 use crate::channel_allowlist::{
@@ -45,6 +45,8 @@ const UNREAD_MAX_RETRIES: usize = 3;
 const UNREAD_MAX_WAIT_SECONDS: u64 = 30;
 const UNREAD_MAX_PAGES: usize = 5;
 const DEFAULT_READ_CAP: usize = 1_048_576;
+const API_RATE_LIMIT_MAX_RETRIES: usize = 2;
+const API_RATE_LIMIT_MAX_WAIT_SECONDS: f64 = 10.0;
 
 const UNREAD_IGNORED_SUBTYPES: &[&str] =
     &["channel_join", "channel_leave", "group_join", "group_leave"];
@@ -201,6 +203,47 @@ fn install_mock(mock: Option<FetchHandler>) {
     THREAD_MOCK_FETCH.with(|cell| {
         *cell.borrow_mut() = mock;
     });
+}
+
+#[cfg(test)]
+thread_local! {
+    static THREAD_MOCK_SLEEP: RefCell<Option<Arc<Mutex<Vec<Duration>>>>> = const { RefCell::new(None) };
+}
+
+#[cfg(test)]
+pub struct MockSleepGuard {
+    pub sleeps: Arc<Mutex<Vec<Duration>>>,
+}
+
+#[cfg(test)]
+impl Drop for MockSleepGuard {
+    fn drop(&mut self) {
+        THREAD_MOCK_SLEEP.with(|cell| {
+            *cell.borrow_mut() = None;
+        });
+    }
+}
+
+#[cfg(test)]
+pub fn set_mock_sleep() -> MockSleepGuard {
+    let sleeps = Arc::new(Mutex::new(Vec::new()));
+    let cloned = Arc::clone(&sleeps);
+    THREAD_MOCK_SLEEP.with(|cell| {
+        *cell.borrow_mut() = Some(cloned);
+    });
+    MockSleepGuard { sleeps }
+}
+
+fn sleep_for_retry(duration: Duration) {
+    #[cfg(test)]
+    {
+        let recorded = THREAD_MOCK_SLEEP.with(|cell| cell.borrow().clone());
+        if let Some(sink) = recorded {
+            sink.lock().unwrap().push(duration);
+            return;
+        }
+    }
+    std::thread::sleep(duration);
 }
 
 /// Longest a single Slack Web API call may take, end to end.
@@ -445,6 +488,51 @@ fn is_text_file(file: &JsonValue) -> bool {
     filetype == "text" || filetype == "markdown"
 }
 
+fn is_canvas_file(file: &JsonValue) -> bool {
+    let mimetype = file
+        .get("mimetype")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if mimetype == "application/vnd.slack-docs" {
+        return true;
+    }
+    let filetype = file
+        .get("filetype")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    filetype == "canvas" || filetype == "quip"
+}
+
+fn search_message_match_allowed(guard: &ChannelGuard, item: &JsonValue) -> bool {
+    let channel_id = match item.get("channel") {
+        Some(JsonValue::String(s)) if !s.is_empty() => Some(s.as_str()),
+        Some(obj) => obj
+            .get("id")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty()),
+        None => None,
+    };
+    channel_id.is_some_and(|id| guard.is_allowed(id))
+}
+
+fn search_file_match_allowed(guard: &ChannelGuard, item: &JsonValue) -> bool {
+    if assert_file_share_allowed(guard, &FileShares::from_json(item)).is_ok() {
+        return true;
+    }
+    if let Some(shares) = item.get("shares") {
+        for bucket in ["public", "private"] {
+            if let Some(entries) = shares.get(bucket).and_then(|v| v.as_object()) {
+                if entries.iter().any(|(cid, _)| guard.is_allowed(cid)) {
+                    return true;
+                }
+            }
+        }
+    }
+    search_message_match_allowed(guard, item)
+}
+
 fn public_file(file: &JsonValue) -> JsonValue {
     let Some(entries) = file.as_object() else {
         return JsonValue::empty_object();
@@ -457,6 +545,72 @@ fn public_file(file: &JsonValue) -> JsonValue {
         shown.push((k.clone(), v.clone()));
     }
     JsonValue::Object(shown)
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ChannelHistoryOptions {
+    pub limit: Option<f64>,
+    pub oldest: Option<String>,
+    pub latest: Option<String>,
+    pub since: Option<String>,
+    pub cursor: Option<String>,
+    pub include_activity: Option<bool>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ThreadRepliesOptions {
+    pub limit: Option<f64>,
+    pub cursor: Option<String>,
+    pub oldest: Option<String>,
+    pub latest: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SearchOptions {
+    pub count: Option<f64>,
+    pub sort: Option<String>,
+    pub sort_dir: Option<String>,
+    pub page: Option<f64>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct PostMessageOptions {
+    pub thread_ts: Option<String>,
+    pub reply_broadcast: Option<bool>,
+    pub unfurl_links: Option<bool>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ReplyToThreadOptions {
+    pub reply_broadcast: Option<bool>,
+    pub unfurl_links: Option<bool>,
+}
+
+fn parse_relative_since(raw: &str, now_epoch_secs: f64) -> Result<String, SlackClientError> {
+    let trimmed = raw.trim();
+    let invalid = || {
+        SlackClientError::Message(format!(
+            "Invalid since value {raw:?}: expected a positive duration like \"30m\", \"24h\", or \"7d\"."
+        ))
+    };
+    let Some(unit_ch) = trimmed.chars().last() else {
+        return Err(invalid());
+    };
+    let unit_secs = match unit_ch {
+        's' | 'S' => 1.0,
+        'm' | 'M' => 60.0,
+        'h' | 'H' => 3_600.0,
+        'd' | 'D' => 86_400.0,
+        'w' | 'W' => 604_800.0,
+        _ => return Err(invalid()),
+    };
+    let num_part = &trimmed[..trimmed.len() - unit_ch.len_utf8()];
+    let amount: f64 = num_part.trim().parse().map_err(|_| invalid())?;
+    if !amount.is_finite() || amount <= 0.0 {
+        return Err(invalid());
+    }
+    let oldest = (now_epoch_secs - amount * unit_secs).max(0.0);
+    Ok(format!("{oldest:.6}"))
 }
 
 #[derive(Debug, Clone)]
@@ -535,6 +689,17 @@ impl SlackClient {
         token: WriteTokenPreference,
         http_method: &str,
     ) -> Result<JsonValue, SlackClientError> {
+        self.api_inner(method, params, token, http_method, true)
+    }
+
+    fn api_inner(
+        &self,
+        method: &str,
+        params: JsonValue,
+        token: WriteTokenPreference,
+        http_method: &str,
+        retry_rate_limit: bool,
+    ) -> Result<JsonValue, SlackClientError> {
         self.guard_params(&params)?;
 
         let auth_header = match token {
@@ -578,22 +743,61 @@ impl SlackClient {
             }
         };
 
-        let res = execute_http(&req).map_err(SlackClientError::Message)?;
+        let max_retries = if retry_rate_limit {
+            API_RATE_LIMIT_MAX_RETRIES
+        } else {
+            0
+        };
+        let mut rate_limit_attempt = 0usize;
+        let res = loop {
+            let res = execute_http(&req).map_err(SlackClientError::Message)?;
+            if res.status == 429 {
+                let retry_after = retry_after_seconds(&res);
+                if rate_limit_attempt < max_retries {
+                    let wait_secs = js_min(retry_after, API_RATE_LIMIT_MAX_WAIT_SECONDS);
+                    if wait_secs.is_finite() && wait_secs > 0.0 {
+                        sleep_for_retry(Duration::from_secs_f64(wait_secs));
+                    }
+                    rate_limit_attempt += 1;
+                    continue;
+                }
+                let body_str = decode_utf8_like_text_decoder(&res.body);
+                let mut data = match JsonValue::parse(&body_str) {
+                    Ok(val @ JsonValue::Object(_)) => val,
+                    _ => JsonValue::object(vec![
+                        ("ok", false.into()),
+                        ("error", "ratelimited".into()),
+                    ]),
+                };
+                if data.get("ok").is_none() {
+                    data.insert("ok", false.into());
+                }
+                if data.get("error").is_none() {
+                    data.insert("error", "ratelimited".into());
+                }
+                data.insert("retry_after", JsonValue::Number(retry_after));
+                return Ok(data);
+            }
+            break res;
+        };
         // res.json(): UTF-8 with a leading BOM dropped.
         let body_str = decode_utf8_like_text_decoder(&res.body);
-        let mut data = JsonValue::parse(&body_str).map_err(SlackClientError::Message)?;
-
-        if res.status == 429 {
-            data.insert("retry_after", JsonValue::Number(retry_after_seconds(&res)));
-        }
+        let data = JsonValue::parse(&body_str).map_err(SlackClientError::Message)?;
 
         let err_str = data.get("error").and_then(|v| v.as_str()).unwrap_or("");
         if !is_ok(&data)
             && token == WriteTokenPreference::Bot
             && self.user_auth.is_some()
+            && self.channel_guard.is_unrestricted()
             && (err_str == "not_in_channel" || err_str == "channel_not_found")
         {
-            return self.api(method, params, WriteTokenPreference::User, http_method);
+            return self.api_inner(
+                method,
+                params,
+                WriteTokenPreference::User,
+                http_method,
+                retry_rate_limit,
+            );
         }
 
         Ok(data)
@@ -754,7 +958,21 @@ and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.{remedy}",
         channel_id: &str,
         limit: Option<f64>,
     ) -> Result<JsonValue, SlackClientError> {
-        self.history_with_channel_param(channel_id.into(), limit)
+        self.get_channel_history_with_options(
+            channel_id,
+            ChannelHistoryOptions {
+                limit,
+                ..ChannelHistoryOptions::default()
+            },
+        )
+    }
+
+    pub fn get_channel_history_with_options(
+        &self,
+        channel_id: &str,
+        opts: ChannelHistoryOptions,
+    ) -> Result<JsonValue, SlackClientError> {
+        self.history_with_channel_param(channel_id.into(), opts)
     }
 
     pub fn get_channel_history_param(
@@ -762,23 +980,69 @@ and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.{remedy}",
         channel_param: JsonValue,
         limit: Option<usize>,
     ) -> Result<JsonValue, SlackClientError> {
-        self.history_with_channel_param(channel_param, limit.map(|n| n as f64))
+        self.history_with_channel_param(
+            channel_param,
+            ChannelHistoryOptions {
+                limit: limit.map(|n| n as f64),
+                ..ChannelHistoryOptions::default()
+            },
+        )
     }
 
     fn history_with_channel_param(
         &self,
         channel_param: JsonValue,
-        limit: Option<f64>,
+        opts: ChannelHistoryOptions,
     ) -> Result<JsonValue, SlackClientError> {
-        self.api(
+        let resolved_oldest = match opts.oldest.as_deref().filter(|s| !s.is_empty()) {
+            Some(explicit) => Some(explicit.to_string()),
+            None => match opts.since.as_deref() {
+                Some(raw) => {
+                    let now_secs = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or(Duration::ZERO)
+                        .as_secs_f64();
+                    Some(parse_relative_since(raw, now_secs)?)
+                }
+                None => None,
+            },
+        };
+
+        let mut params = JsonValue::object(vec![
+            ("channel", channel_param),
+            ("limit", opts.limit.unwrap_or(10.0).into()),
+        ]);
+        if let Some(oldest) = resolved_oldest {
+            params.insert("oldest", oldest.into());
+        }
+        if let Some(latest) = opts.latest.as_deref().filter(|s| !s.is_empty()) {
+            params.insert("latest", latest.into());
+        }
+        if let Some(cursor) = opts.cursor.as_deref().filter(|s| !s.is_empty()) {
+            params.insert("cursor", cursor.into());
+        }
+
+        let mut data = self.api(
             "conversations.history",
-            JsonValue::object(vec![
-                ("channel", channel_param),
-                ("limit", limit.unwrap_or(10.0).into()),
-            ]),
+            params,
             WriteTokenPreference::Bot,
             "GET",
-        )
+        )?;
+
+        if opts.include_activity == Some(false) && is_ok(&data) {
+            if let Some(messages) = data.get("messages").and_then(|v| v.as_array()) {
+                let filtered: Vec<JsonValue> = messages
+                    .iter()
+                    .filter(|m| {
+                        let subtype = m.get("subtype").and_then(|v| v.as_str()).unwrap_or("");
+                        !UNREAD_IGNORED_SUBTYPES.contains(&subtype)
+                    })
+                    .cloned()
+                    .collect();
+                data.insert("messages", JsonValue::Array(filtered));
+            }
+        }
+        Ok(data)
     }
 
     pub fn get_thread_replies(
@@ -786,12 +1050,34 @@ and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.{remedy}",
         channel_id: &str,
         thread_ts: &str,
     ) -> Result<JsonValue, SlackClientError> {
+        self.get_thread_replies_with_options(channel_id, thread_ts, ThreadRepliesOptions::default())
+    }
+
+    pub fn get_thread_replies_with_options(
+        &self,
+        channel_id: &str,
+        thread_ts: &str,
+        opts: ThreadRepliesOptions,
+    ) -> Result<JsonValue, SlackClientError> {
+        let mut params = JsonValue::object(vec![
+            ("channel", channel_id.into()),
+            ("ts", thread_ts.into()),
+        ]);
+        if let Some(limit) = opts.limit {
+            params.insert("limit", js_min(limit, 200.0).into());
+        }
+        if let Some(cursor) = opts.cursor.as_deref().filter(|s| !s.is_empty()) {
+            params.insert("cursor", cursor.into());
+        }
+        if let Some(oldest) = opts.oldest.as_deref().filter(|s| !s.is_empty()) {
+            params.insert("oldest", oldest.into());
+        }
+        if let Some(latest) = opts.latest.as_deref().filter(|s| !s.is_empty()) {
+            params.insert("latest", latest.into());
+        }
         self.api(
             "conversations.replies",
-            JsonValue::object(vec![
-                ("channel", channel_id.into()),
-                ("ts", thread_ts.into()),
-            ]),
+            params,
             WriteTokenPreference::Bot,
             "GET",
         )
@@ -979,11 +1265,13 @@ and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.{remedy}",
                     if let Some(c) = &cursor {
                         params.insert("cursor", c.clone());
                     }
-                    let data = self.api(
+                    // No api()-level 429 retry: list_unread keeps main's call count.
+                    let data = self.api_inner(
                         "users.conversations",
                         params,
                         WriteTokenPreference::User,
                         "GET",
+                        false,
                     )?;
                     if !is_ok(&data) {
                         skipped.push(JsonValue::object(vec![
@@ -1118,7 +1406,13 @@ and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.{remedy}",
     fn patient(&self, method: &str, params: JsonValue) -> Result<JsonValue, SlackClientError> {
         let mut attempt = 0;
         loop {
-            let data = self.api(method, params.clone(), WriteTokenPreference::User, "GET")?;
+            let data = self.api_inner(
+                method,
+                params.clone(),
+                WriteTokenPreference::User,
+                "GET",
+                false,
+            )?;
             let err = data.get("error").and_then(|v| v.as_str());
             if err != Some("ratelimited") || attempt >= UNREAD_MAX_RETRIES {
                 return Ok(data);
@@ -1383,6 +1677,26 @@ and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.{remedy}",
         )
     }
 
+    pub fn whoami(&self) -> Result<JsonValue, SlackClientError> {
+        let bot = self.api(
+            "auth.test",
+            JsonValue::empty_object(),
+            WriteTokenPreference::Bot,
+            "POST",
+        )?;
+        let user = if self.user_auth.is_some() {
+            self.api(
+                "auth.test",
+                JsonValue::empty_object(),
+                WriteTokenPreference::User,
+                "POST",
+            )?
+        } else {
+            JsonValue::Null
+        };
+        Ok(JsonValue::object(vec![("bot", bot), ("user", user)]))
+    }
+
     // ── Search ─────────────────────────────────────────────────────────
 
     pub fn search_messages(
@@ -1400,7 +1714,22 @@ and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.{remedy}",
         count: Option<f64>,
         sort: Option<&str>,
     ) -> Result<JsonValue, SlackClientError> {
-        self.search("search.messages", query, count, sort)
+        self.search_messages_with_options(
+            query,
+            SearchOptions {
+                count,
+                sort: sort.map(str::to_string),
+                ..SearchOptions::default()
+            },
+        )
+    }
+
+    pub fn search_messages_with_options(
+        &self,
+        query: &str,
+        opts: SearchOptions,
+    ) -> Result<JsonValue, SlackClientError> {
+        self.search("search.messages", query, opts)
     }
 
     pub fn search_files(
@@ -1418,26 +1747,93 @@ and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.{remedy}",
         count: Option<f64>,
         sort: Option<&str>,
     ) -> Result<JsonValue, SlackClientError> {
-        self.search("search.files", query, count, sort)
+        self.search_files_with_options(
+            query,
+            SearchOptions {
+                count,
+                sort: sort.map(str::to_string),
+                ..SearchOptions::default()
+            },
+        )
+    }
+
+    pub fn search_files_with_options(
+        &self,
+        query: &str,
+        opts: SearchOptions,
+    ) -> Result<JsonValue, SlackClientError> {
+        self.search("search.files", query, opts)
     }
 
     fn search(
         &self,
         method: &str,
         query: &str,
-        count: Option<f64>,
-        sort: Option<&str>,
+        opts: SearchOptions,
     ) -> Result<JsonValue, SlackClientError> {
-        self.api(
-            method,
-            JsonValue::object(vec![
-                ("query", query.into()),
-                ("count", js_min(count.unwrap_or(20.0), 100.0).into()),
-                ("sort", sort.unwrap_or("score").into()),
-            ]),
-            WriteTokenPreference::User,
-            "GET",
-        )
+        if let Some(dir) = opts.sort_dir.as_deref().filter(|s| !s.is_empty()) {
+            if dir != "asc" && dir != "desc" {
+                return Err(SlackClientError::Message(format!(
+                    "Argument sort_dir must be \"asc\" or \"desc\" (got {dir:?})."
+                )));
+            }
+        }
+        if let Some(page) = opts.page {
+            if !page.is_finite() || page < 1.0 || page.fract() != 0.0 {
+                return Err(SlackClientError::Message(format!(
+                    "Argument page must be a whole number >= 1 (got {}).",
+                    js_number_to_string(page)
+                )));
+            }
+        }
+        let mut params = JsonValue::object(vec![
+            ("query", query.into()),
+            ("count", js_min(opts.count.unwrap_or(20.0), 100.0).into()),
+            ("sort", opts.sort.as_deref().unwrap_or("score").into()),
+        ]);
+        if let Some(dir) = opts.sort_dir.as_deref().filter(|s| !s.is_empty()) {
+            params.insert("sort_dir", dir.into());
+        }
+        if let Some(page) = opts.page {
+            params.insert("page", page.into());
+        }
+        let mut data = self.api(method, params, WriteTokenPreference::User, "GET")?;
+        if !self.channel_guard.is_unrestricted() && is_ok(&data) {
+            let container_key = if method == "search.files" {
+                "files"
+            } else {
+                "messages"
+            };
+            let mut filtered_out = 0usize;
+            if let Some(mut updated_container) = data.get(container_key).cloned() {
+                if let Some(matches) = updated_container.get("matches").and_then(|v| v.as_array()) {
+                    let mut kept = Vec::with_capacity(matches.len());
+                    for item in matches {
+                        let allowed = if method == "search.files" {
+                            search_file_match_allowed(&self.channel_guard, item)
+                        } else {
+                            search_message_match_allowed(&self.channel_guard, item)
+                        };
+                        if allowed {
+                            kept.push(item.clone());
+                        } else {
+                            filtered_out += 1;
+                        }
+                    }
+                    updated_container.insert("matches", JsonValue::Array(kept));
+                }
+                if let Some(entries) = updated_container.as_object_mut() {
+                    entries
+                        .retain(|(k, _)| !matches!(k.as_str(), "total" | "paging" | "pagination"));
+                }
+                data.insert(container_key, updated_container);
+            }
+            if let Some(entries) = data.as_object_mut() {
+                entries.retain(|(k, _)| !matches!(k.as_str(), "total" | "paging" | "pagination"));
+            }
+            data.insert("filtered_out", filtered_out.into());
+        }
+        Ok(data)
     }
 
     // ── Messaging ──────────────────────────────────────────────────────
@@ -1447,12 +1843,27 @@ and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.{remedy}",
         channel_id: &str,
         text: &str,
     ) -> Result<JsonValue, SlackClientError> {
-        self.api(
-            "chat.postMessage",
-            JsonValue::object(vec![("channel", channel_id.into()), ("text", text.into())]),
-            self.write_token,
-            "POST",
-        )
+        self.post_message_with_options(channel_id, text, PostMessageOptions::default())
+    }
+
+    pub fn post_message_with_options(
+        &self,
+        channel_id: &str,
+        text: &str,
+        opts: PostMessageOptions,
+    ) -> Result<JsonValue, SlackClientError> {
+        let mut params =
+            JsonValue::object(vec![("channel", channel_id.into()), ("text", text.into())]);
+        if let Some(ts) = opts.thread_ts.as_deref().filter(|s| !s.is_empty()) {
+            params.insert("thread_ts", ts.into());
+        }
+        if let Some(rb) = opts.reply_broadcast {
+            params.insert("reply_broadcast", rb.into());
+        }
+        if let Some(ul) = opts.unfurl_links {
+            params.insert("unfurl_links", ul.into());
+        }
+        self.api("chat.postMessage", params, self.write_token, "POST")
     }
 
     pub fn reply_to_thread(
@@ -1461,16 +1872,33 @@ and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.{remedy}",
         thread_ts: &str,
         text: &str,
     ) -> Result<JsonValue, SlackClientError> {
-        self.api(
-            "chat.postMessage",
-            JsonValue::object(vec![
-                ("channel", channel_id.into()),
-                ("thread_ts", thread_ts.into()),
-                ("text", text.into()),
-            ]),
-            self.write_token,
-            "POST",
+        self.reply_to_thread_with_options(
+            channel_id,
+            thread_ts,
+            text,
+            ReplyToThreadOptions::default(),
         )
+    }
+
+    pub fn reply_to_thread_with_options(
+        &self,
+        channel_id: &str,
+        thread_ts: &str,
+        text: &str,
+        opts: ReplyToThreadOptions,
+    ) -> Result<JsonValue, SlackClientError> {
+        let mut params = JsonValue::object(vec![
+            ("channel", channel_id.into()),
+            ("thread_ts", thread_ts.into()),
+            ("text", text.into()),
+        ]);
+        if let Some(rb) = opts.reply_broadcast {
+            params.insert("reply_broadcast", rb.into());
+        }
+        if let Some(ul) = opts.unfurl_links {
+            params.insert("unfurl_links", ul.into());
+        }
+        self.api("chat.postMessage", params, self.write_token, "POST")
     }
 
     pub fn update_message(
@@ -1503,6 +1931,24 @@ and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.{remedy}",
                 ("channel", channel_id.into()),
                 ("timestamp", timestamp.into()),
                 ("name", reaction.into()),
+            ]),
+            WriteTokenPreference::User,
+            "POST",
+        )
+    }
+
+    pub fn remove_reaction(
+        &self,
+        channel_id: &str,
+        timestamp: &str,
+        emoji: &str,
+    ) -> Result<JsonValue, SlackClientError> {
+        self.api(
+            "reactions.remove",
+            JsonValue::object(vec![
+                ("channel", channel_id.into()),
+                ("timestamp", timestamp.into()),
+                ("name", emoji.into()),
             ]),
             WriteTokenPreference::User,
             "POST",
@@ -1636,6 +2082,9 @@ and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.{remedy}",
         markdown: Option<&str>,
         section_id: Option<&str>,
     ) -> Result<JsonValue, SlackClientError> {
+        if !self.channel_guard.is_unrestricted() {
+            self.fetch_file_info(canvas_id)?;
+        }
         let mut change = JsonValue::object(vec![("operation", operation.into())]);
         if let Some(md) = markdown.filter(|s| !s.is_empty()) {
             if operation == "rename" {
@@ -1670,6 +2119,9 @@ and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.{remedy}",
         section_types: Option<&[String]>,
         contains_text: Option<&str>,
     ) -> Result<JsonValue, SlackClientError> {
+        if !self.channel_guard.is_unrestricted() {
+            self.fetch_file_info(canvas_id)?;
+        }
         let mut criteria = JsonValue::empty_object();
         if let Some(types) = section_types.filter(|t| !t.is_empty()) {
             criteria.insert(
@@ -1692,6 +2144,9 @@ and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.{remedy}",
     }
 
     pub fn delete_canvas(&self, canvas_id: &str) -> Result<JsonValue, SlackClientError> {
+        if !self.channel_guard.is_unrestricted() {
+            self.fetch_file_info(canvas_id)?;
+        }
         self.api(
             "canvases.delete",
             JsonValue::object(vec![("canvas_id", canvas_id.into())]),
@@ -1713,9 +2168,14 @@ and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.{remedy}",
             WriteTokenPreference::Bot,
             "GET",
         )?;
-        // The bot cannot see files in conversations it is not in.
+        // The bot cannot see files in conversations it is not in. Slack says
+        // `file_not_found` for most files and `not_visible` for canvases.
+        // The share check below still applies to whatever the user token sees.
         let err_str = data.get("error").and_then(|v| v.as_str()).unwrap_or("");
-        if !is_ok(&data) && err_str == "file_not_found" && self.user_auth.is_some() {
+        if !is_ok(&data)
+            && (err_str == "file_not_found" || err_str == "not_visible")
+            && self.user_auth.is_some()
+        {
             token = WriteTokenPreference::User;
             data = self.api(
                 "files.info",
@@ -1742,7 +2202,13 @@ and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.{remedy}",
         file: &JsonValue,
         token: WriteTokenPreference,
     ) -> Result<Vec<u8>, SlackClientError> {
-        let url_private = file.get("url_private");
+        let url_private = if is_canvas_file(file) {
+            file.get("url_private")
+                .filter(|v| js_truthy(Some(v)))
+                .or_else(|| file.get("url_private_download"))
+        } else {
+            file.get("url_private")
+        };
         if !js_truthy(url_private) {
             return Err(SlackClientError::Message(format!(
                 "File {} has no downloadable content.",
@@ -1803,7 +2269,8 @@ and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.{remedy}",
         let max_bytes = max_bytes.unwrap_or(DEFAULT_READ_CAP as f64);
         let (file, token) = self.fetch_file_info(file_id)?;
         let id = template(file.get("id"));
-        if !is_text_file(&file) {
+        let is_canvas = is_canvas_file(&file);
+        if !is_text_file(&file) && !is_canvas {
             return Err(SlackClientError::Message(format!(
                 "File {id} ({}) is not a text file. Use slack_download_file to save it locally instead.",
                 string_or(file.get("mimetype"), "unknown type")
@@ -1820,9 +2287,19 @@ and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.{remedy}",
             }
         }
         let bytes = self.fetch_file_bytes(&file, token)?;
+        if is_canvas && (bytes.len() as f64) > max_bytes {
+            return Err(SlackClientError::Message(format!(
+                "File {id} is {} bytes, larger than the {} byte cap. Raise max_bytes or use slack_download_file.",
+                js_number_to_string(bytes.len() as f64),
+                js_number_to_string(max_bytes)
+            )));
+        }
         let mut out = JsonValue::object(vec![("ok", true.into())]);
         for key in ["id", "name", "title", "mimetype"] {
             copy_if_present(&mut out, &file, key);
+        }
+        if is_canvas {
+            out.insert("format", "html".into());
         }
         out.insert("size", bytes.len().into());
         out.insert("content", decode_utf8_like_text_decoder(&bytes).into());
@@ -2076,7 +2553,7 @@ and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.{remedy}",
 mod tests {
     use super::*;
     use crate::config::{resolve_config, EnvSource};
-    use crate::tools::{all_tools, tools_for, HTTP_WITHHELD_ALWAYS};
+    use crate::tools::{all_tools, tools_for, HTTP_WITHHELD_ALWAYS, HTTP_WITHHELD_DESTRUCTIVE};
     use crate::url::ParsedUrl;
     use std::collections::BTreeMap;
 
@@ -2215,10 +2692,32 @@ mod tests {
             .collect();
         assert_eq!(
             imp_tools.len(),
-            all_tools().len() - HTTP_WITHHELD_ALWAYS.len()
+            all_tools().len() - HTTP_WITHHELD_ALWAYS.len() - HTTP_WITHHELD_DESTRUCTIVE.len()
         );
         assert!(imp_tools.contains(&"slack_search_messages"));
         assert!(imp_tools.contains(&"slack_create_canvas"));
+        for withheld in HTTP_WITHHELD_DESTRUCTIVE {
+            assert!(!imp_tools.contains(withheld), "{withheld} must be withheld");
+        }
+
+        http_imp.insert(
+            "SLACK_HTTP_ALLOW_DESTRUCTIVE".to_string(),
+            "true".to_string(),
+        );
+        let imp_destructive_tools: Vec<&str> = tools_for(&resolve_config(&http_imp).unwrap())
+            .iter()
+            .map(|t| t.name)
+            .collect();
+        assert_eq!(
+            imp_destructive_tools.len(),
+            all_tools().len() - HTTP_WITHHELD_ALWAYS.len()
+        );
+        for allowed in HTTP_WITHHELD_DESTRUCTIVE {
+            assert!(
+                imp_destructive_tools.contains(allowed),
+                "{allowed} must be enabled"
+            );
+        }
     }
 
     #[test]
@@ -2896,6 +3395,7 @@ mod tests {
 
     #[test]
     fn retry_after_is_read_as_javascript_number_did() {
+        let _sleep = set_mock_sleep();
         let cases: Vec<(Vec<&str>, f64)> = vec![
             (vec![], 1.0),
             (vec![""], 0.0),
@@ -3050,8 +3550,13 @@ mod tests {
     }
 
     fn unread_with_channel(
-        channel: JsonValue,
+        mut channel: JsonValue,
     ) -> (Result<JsonValue, SlackClientError>, Vec<String>) {
+        if let JsonValue::Object(ref mut entries) = channel {
+            if !entries.iter().any(|(k, _)| k == "is_private") {
+                entries.push(("is_private".to_string(), false.into()));
+            }
+        }
         let _guard = set_mock_fetch(move |req| {
             if req.url.contains("/api/conversations.info") {
                 return Ok(HttpResponse::json(
@@ -3151,7 +3656,10 @@ mod tests {
                         ("ok", true.into()),
                         (
                             "channel",
-                            JsonValue::object(vec![("last_read", "1.0".into())]),
+                            JsonValue::object(vec![
+                                ("is_private", false.into()),
+                                ("last_read", "1.0".into()),
+                            ]),
                         ),
                     ]),
                 ));
@@ -3256,6 +3764,46 @@ mod tests {
                 body: bytes.to_vec(),
             })
         })
+    }
+
+    #[test]
+    fn read_file_retries_with_the_user_token_when_the_bot_gets_not_visible() {
+        // Live Slack answers `not_visible` (not `file_not_found`) when the bot
+        // cannot see a canvas; the user token can. Found in UAT 2026-11-11.
+        let _guard = set_mock_fetch(|req| {
+            if req.url.contains("/api/files.info") {
+                if req.auth() == Some("Bearer xoxp-test") {
+                    return Ok(HttpResponse::json(
+                        200,
+                        JsonValue::object(vec![
+                            ("ok", true.into()),
+                            (
+                                "file",
+                                JsonValue::object(vec![
+                                    ("id", "F1".into()),
+                                    ("filetype", "text".into()),
+                                    (
+                                        "url_private",
+                                        "https://files.slack.com/files-pri/T-F1/x".into(),
+                                    ),
+                                ]),
+                            ),
+                        ]),
+                    ));
+                }
+                return Ok(HttpResponse::json(
+                    200,
+                    JsonValue::object(vec![("ok", false.into()), ("error", "not_visible".into())]),
+                ));
+            }
+            Ok(HttpResponse {
+                status: 200,
+                headers: vec![],
+                body: b"hello".to_vec(),
+            })
+        });
+        let res = client_for(&stdio_env()).read_file("F1", None).unwrap();
+        assert_eq!(res.get("content").and_then(|v| v.as_str()), Some("hello"));
     }
 
     #[test]
@@ -3372,5 +3920,743 @@ mod tests {
         assert_eq!(calls[1].url, "https://files.slack.com/upload/v1/abc");
         assert_eq!(calls[1].body.as_deref(), Some(&b"hello"[..]));
         assert_eq!(calls[1].auth(), None);
+    }
+
+    // ── A1-A4 allow-list gap guards ─────────────────────────────────────
+
+    #[test]
+    fn bot_to_user_fallback_only_when_channel_guard_is_unrestricted() {
+        let guard = set_mock_fetch(|req| {
+            if req.auth() == Some("Bearer xoxb-test") {
+                let err = if req.url.contains("C_MISSING") {
+                    "channel_not_found"
+                } else {
+                    "not_in_channel"
+                };
+                Ok(HttpResponse::json(
+                    200,
+                    JsonValue::object(vec![("ok", false.into()), ("error", err.into())]),
+                ))
+            } else {
+                Ok(HttpResponse::json(
+                    200,
+                    JsonValue::object(vec![
+                        ("ok", true.into()),
+                        (
+                            "messages",
+                            JsonValue::Array(vec![JsonValue::object(vec![
+                                ("ts", "1.0".into()),
+                                ("text", "secret".into()),
+                            ])]),
+                        ),
+                    ]),
+                ))
+            }
+        });
+
+        // Restricted HTTP with user token: must NOT retry with user token.
+        let mut restricted_http = http_env();
+        restricted_http.insert("SLACK_USER_TOKEN".to_string(), "xoxp-test".to_string());
+        restricted_http.insert(
+            "SLACK_CHANNEL_IDS".to_string(),
+            "C_ALLOWED,C_MISSING".to_string(),
+        );
+        let res = client_for(&restricted_http)
+            .get_channel_history("C_ALLOWED", None)
+            .unwrap();
+        assert_eq!(res.get("ok").and_then(|v| v.as_bool()), Some(false));
+        assert_eq!(
+            res.get("error").and_then(|v| v.as_str()),
+            Some("not_in_channel")
+        );
+        assert_eq!(guard.calls.lock().unwrap().len(), 1);
+
+        guard.calls.lock().unwrap().clear();
+        let res_missing = client_for(&restricted_http)
+            .get_channel_history("C_MISSING", None)
+            .unwrap();
+        assert_eq!(res_missing.get("ok").and_then(|v| v.as_bool()), Some(false));
+        assert_eq!(
+            res_missing.get("error").and_then(|v| v.as_str()),
+            Some("channel_not_found")
+        );
+        assert_eq!(guard.calls.lock().unwrap().len(), 1);
+
+        // Restricted stdio with allow-list: also must NOT retry with user token.
+        guard.calls.lock().unwrap().clear();
+        let mut restricted_stdio = stdio_env();
+        restricted_stdio.insert("SLACK_CHANNEL_IDS".to_string(), "C_ALLOWED".to_string());
+        let res_stdio = client_for(&restricted_stdio)
+            .get_channel_history("C_ALLOWED", None)
+            .unwrap();
+        assert_eq!(res_stdio.get("ok").and_then(|v| v.as_bool()), Some(false));
+        assert_eq!(guard.calls.lock().unwrap().len(), 1);
+
+        // Unrestricted stdio: fallback to user token still works.
+        guard.calls.lock().unwrap().clear();
+        let ok_res = client_for(&stdio_env())
+            .get_channel_history("C_ALLOWED", None)
+            .unwrap();
+        assert_eq!(ok_res.get("ok").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(guard.calls.lock().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn http_enforces_visibility_whenever_allowlist_is_configured_even_with_user_token() {
+        let _guard = set_mock_fetch(|_| {
+            Ok(HttpResponse::json(
+                200,
+                JsonValue::object(vec![
+                    ("ok", true.into()),
+                    (
+                        "channel",
+                        JsonValue::object(vec![
+                            ("id", "C_ACTUALLY_PRIVATE".into()),
+                            ("is_private", true.into()),
+                        ]),
+                    ),
+                ]),
+            ))
+        });
+
+        let mut env = http_env();
+        env.insert("SLACK_USER_TOKEN".to_string(), "xoxp-test".to_string());
+        env.insert(
+            "SLACK_CHANNEL_IDS".to_string(),
+            "C_ACTUALLY_PRIVATE".to_string(),
+        );
+        let client = client_for(&env);
+        assert!(matches!(
+            client.verify_allowlist_visibility(),
+            Err(SlackClientError::ChannelAllowlist(
+                ChannelAllowlistError::ChannelVisibilityMismatch { .. }
+            ))
+        ));
+        assert!(matches!(
+            client.get_channel_info("C_ACTUALLY_PRIVATE"),
+            Err(SlackClientError::ChannelAllowlist(
+                ChannelAllowlistError::ChannelVisibilityMismatch { .. }
+            ))
+        ));
+
+        // Unrestricted HTTP with user token: allow-list remains optional and visibility unguarded.
+        let mut unrestricted_http = http_env();
+        unrestricted_http.insert("SLACK_USER_TOKEN".to_string(), "xoxp-test".to_string());
+        unrestricted_http.insert("SLACK_CHANNEL_IDS".to_string(), "".to_string());
+        let unrestricted_client = client_for(&unrestricted_http);
+        assert!(unrestricted_client.verify_allowlist_visibility().is_ok());
+        assert!(unrestricted_client
+            .get_channel_info("C_ACTUALLY_PRIVATE")
+            .is_ok());
+
+        // Restricted stdio with allow-list: visibility is enforced too.
+        let mut restricted_stdio = stdio_env();
+        restricted_stdio.insert(
+            "SLACK_CHANNEL_IDS".to_string(),
+            "C_ACTUALLY_PRIVATE".to_string(),
+        );
+        let stdio_restricted_client = client_for(&restricted_stdio);
+        assert!(matches!(
+            stdio_restricted_client.verify_allowlist_visibility(),
+            Err(SlackClientError::ChannelAllowlist(
+                ChannelAllowlistError::ChannelVisibilityMismatch { .. }
+            ))
+        ));
+        assert!(matches!(
+            stdio_restricted_client.get_channel_info("C_ACTUALLY_PRIVATE"),
+            Err(SlackClientError::ChannelAllowlist(
+                ChannelAllowlistError::ChannelVisibilityMismatch { .. }
+            ))
+        ));
+
+        // Unrestricted stdio: visibility stays unguarded.
+        let stdio_unrestricted_client = client_for(&stdio_env());
+        assert!(stdio_unrestricted_client
+            .verify_allowlist_visibility()
+            .is_ok());
+        assert!(stdio_unrestricted_client
+            .get_channel_info("C_ACTUALLY_PRIVATE")
+            .is_ok());
+    }
+
+    #[test]
+    fn search_filters_disallowed_channels_and_reports_filtered_out_count() {
+        let _guard = set_mock_fetch(|req| {
+            if req.url.contains("/api/search.messages") {
+                Ok(HttpResponse::json(
+                    200,
+                    JsonValue::parse(
+                        r#"{"ok":true,"messages":{"total":3,"matches":[{"ts":"1.0","text":"ok","channel":{"id":"C_ALLOWED","name":"general"}},{"ts":"2.0","text":"secret","channel":{"id":"C_SECRET","name":"secret"}},{"ts":"3.0","text":"priv","channel":{"id":"G_PRIVATE"}}]}}"#,
+                    )
+                    .unwrap(),
+                ))
+            } else {
+                Ok(HttpResponse::json(
+                    200,
+                    JsonValue::parse(
+                        r#"{"ok":true,"files":{"total":3,"matches":[{"id":"F_OK","channels":["C_ALLOWED"],"groups":[],"ims":[]},{"id":"F_SECRET","channels":["C_OTHER"],"groups":["G_PRIV"],"ims":[]},{"id":"F_UNSHARED","channels":[],"groups":[],"ims":[]}]}}"#,
+                    )
+                    .unwrap(),
+                ))
+            }
+        });
+
+        let mut restricted = http_env();
+        restricted.insert("SLACK_USER_TOKEN".to_string(), "xoxp-test".to_string());
+        restricted.insert("SLACK_CHANNEL_IDS".to_string(), "C_ALLOWED".to_string());
+        let client = client_for(&restricted);
+
+        let msg_res = client.search_messages("deploy", None, None).unwrap();
+        let msg_matches = msg_res
+            .get("messages")
+            .and_then(|m| m.get("matches"))
+            .and_then(|m| m.as_array())
+            .unwrap();
+        assert_eq!(msg_matches.len(), 1);
+        assert_eq!(
+            msg_matches[0].get("ts").and_then(|v| v.as_str()),
+            Some("1.0")
+        );
+        assert_eq!(
+            msg_res.get("filtered_out").and_then(|v| v.as_i64()),
+            Some(2)
+        );
+
+        let file_res = client.search_files("spec", None, None).unwrap();
+        let file_matches = file_res
+            .get("files")
+            .and_then(|f| f.get("matches"))
+            .and_then(|m| m.as_array())
+            .unwrap();
+        assert_eq!(file_matches.len(), 1);
+        assert_eq!(
+            file_matches[0].get("id").and_then(|v| v.as_str()),
+            Some("F_OK")
+        );
+        assert_eq!(
+            file_res.get("filtered_out").and_then(|v| v.as_i64()),
+            Some(2)
+        );
+
+        // Unrestricted client leaves search output untouched with no filtered_out key.
+        let unrestricted = client_for(&stdio_env());
+        let raw_msg = unrestricted.search_messages("deploy", None, None).unwrap();
+        assert_eq!(
+            raw_msg
+                .get("messages")
+                .and_then(|m| m.get("matches"))
+                .and_then(|m| m.as_array())
+                .unwrap()
+                .len(),
+            3
+        );
+        assert!(!raw_msg.contains_key("filtered_out"));
+    }
+
+    #[test]
+    fn canvas_operations_check_file_shares_when_allowlist_is_configured() {
+        let guard = set_mock_fetch(|req| {
+            if req.url.contains("/api/files.info") {
+                if req.url.contains("file=F_ALLOWED") {
+                    Ok(HttpResponse::json(
+                        200,
+                        JsonValue::parse(
+                            r#"{"ok":true,"file":{"id":"F_ALLOWED","channels":["C_ALLOWED"],"groups":[],"ims":[]}}"#,
+                        )
+                        .unwrap(),
+                    ))
+                } else {
+                    Ok(HttpResponse::json(
+                        200,
+                        JsonValue::parse(
+                            r#"{"ok":true,"file":{"id":"F_DISALLOWED","channels":["C_SECRET"],"groups":[],"ims":[]}}"#,
+                        )
+                        .unwrap(),
+                    ))
+                }
+            } else {
+                Ok(HttpResponse::json(
+                    200,
+                    JsonValue::object(vec![("ok", true.into())]),
+                ))
+            }
+        });
+
+        let mut restricted = http_env();
+        restricted.insert("SLACK_USER_TOKEN".to_string(), "xoxp-test".to_string());
+        restricted.insert("SLACK_CHANNEL_IDS".to_string(), "C_ALLOWED".to_string());
+        let client = client_for(&restricted);
+
+        assert!(matches!(
+            client.edit_canvas("F_DISALLOWED", "insert_at_end", Some("hi"), None),
+            Err(SlackClientError::ChannelAllowlist(
+                ChannelAllowlistError::FileNotAllowed { .. }
+            ))
+        ));
+        assert!(matches!(
+            client.lookup_canvas_sections("F_DISALLOWED", None, Some("hi")),
+            Err(SlackClientError::ChannelAllowlist(
+                ChannelAllowlistError::FileNotAllowed { .. }
+            ))
+        ));
+        assert!(matches!(
+            client.delete_canvas("F_DISALLOWED"),
+            Err(SlackClientError::ChannelAllowlist(
+                ChannelAllowlistError::FileNotAllowed { .. }
+            ))
+        ));
+        // None of the disallowed calls may have reached canvases.* endpoints.
+        assert!(guard
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|c| !c.url.contains("/api/canvases.")));
+
+        // Allowed canvas succeeds.
+        assert!(client
+            .edit_canvas("F_ALLOWED", "insert_at_end", Some("hi"), None)
+            .is_ok());
+        assert!(client
+            .lookup_canvas_sections("F_ALLOWED", None, Some("hi"))
+            .is_ok());
+        assert!(client.delete_canvas("F_ALLOWED").is_ok());
+
+        // Unrestricted client skips files.info pre-check altogether.
+        guard.calls.lock().unwrap().clear();
+        let unrestricted = client_for(&stdio_env());
+        assert!(unrestricted.delete_canvas("F_DISALLOWED").is_ok());
+        let calls = guard.calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert!(calls[0].url.contains("/api/canvases.delete"));
+    }
+
+    #[test]
+    fn parse_relative_since_converts_durations_and_rejects_invalid_inputs() {
+        assert_eq!(
+            parse_relative_since("30m", 1_700_001_800.0).unwrap(),
+            "1700000000.000000"
+        );
+        assert_eq!(
+            parse_relative_since("24h", 1_700_086_400.0).unwrap(),
+            "1700000000.000000"
+        );
+        assert_eq!(
+            parse_relative_since("7d", 1_700_604_800.0).unwrap(),
+            "1700000000.000000"
+        );
+        assert_eq!(
+            parse_relative_since("45s", 1_700_000_045.0).unwrap(),
+            "1700000000.000000"
+        );
+        assert_eq!(
+            parse_relative_since("1w", 1_700_604_800.0).unwrap(),
+            "1700000000.000000"
+        );
+        for bad in ["", "   ", "abc", "30", "30ms", "-5m", "0h", "5y"] {
+            let err = parse_relative_since(bad, 1_700_000_000.0).unwrap_err();
+            assert!(
+                err.to_string().contains("Invalid since value"),
+                "expected clear error for {bad:?}, got {err}"
+            );
+        }
+    }
+
+    // ── D1-D5 ergonomics & resilience ───────────────────────────────────
+
+    #[test]
+    fn whoami_calls_auth_test_for_bot_and_optional_user_token() {
+        let guard = set_mock_fetch(|req| {
+            assert!(req.url.ends_with("/api/auth.test"));
+            if req.auth() == Some("Bearer xoxb-test") {
+                Ok(HttpResponse::json(
+                    200,
+                    JsonValue::parse(
+                        r#"{"ok":true,"user_id":"U_BOT","team_id":"T123","bot_id":"B1"}"#,
+                    )
+                    .unwrap(),
+                ))
+            } else {
+                Ok(HttpResponse::json(
+                    200,
+                    JsonValue::parse(r#"{"ok":true,"user_id":"U_HUMAN","team_id":"T123"}"#)
+                        .unwrap(),
+                ))
+            }
+        });
+
+        // With user token: both bot and user populated.
+        let with_user = client_for(&stdio_env()).whoami().unwrap();
+        assert_eq!(
+            with_user
+                .get("bot")
+                .and_then(|b| b.get("user_id"))
+                .and_then(|v| v.as_str()),
+            Some("U_BOT")
+        );
+        assert_eq!(
+            with_user
+                .get("user")
+                .and_then(|u| u.get("user_id"))
+                .and_then(|v| v.as_str()),
+            Some("U_HUMAN")
+        );
+        assert_eq!(guard.calls.lock().unwrap().len(), 2);
+
+        // Without user token (bot-only HTTP): user is null, only 1 call made.
+        guard.calls.lock().unwrap().clear();
+        let bot_only = client_for(&http_env()).whoami().unwrap();
+        assert_eq!(
+            bot_only
+                .get("bot")
+                .and_then(|b| b.get("bot_id"))
+                .and_then(|v| v.as_str()),
+            Some("B1")
+        );
+        assert_eq!(bot_only.get("user"), Some(&JsonValue::Null));
+        assert_eq!(guard.calls.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn remove_reaction_uses_user_token_and_enforces_channel_allowlist() {
+        let guard = set_mock_fetch(|_| {
+            Ok(HttpResponse::json(
+                200,
+                JsonValue::object(vec![("ok", true.into())]),
+            ))
+        });
+
+        let mut restricted = http_env();
+        restricted.insert("SLACK_USER_TOKEN".to_string(), "xoxp-test".to_string());
+        restricted.insert("SLACK_CHANNEL_IDS".to_string(), "C_ALLOWED".to_string());
+        let client = client_for(&restricted);
+
+        assert!(matches!(
+            client.remove_reaction("C_DISALLOWED", "1.0", "thumbsup"),
+            Err(SlackClientError::ChannelAllowlist(
+                ChannelAllowlistError::ChannelNotAllowed { .. }
+            ))
+        ));
+        assert!(guard.calls.lock().unwrap().is_empty());
+
+        client
+            .remove_reaction("C_ALLOWED", "1.0", "thumbsup")
+            .unwrap();
+        let calls = guard.calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert!(calls[0].url.contains("/api/reactions.remove"));
+        assert_eq!(calls[0].auth(), Some("Bearer xoxp-test"));
+    }
+
+    #[test]
+    fn read_file_accepts_canvases_with_html_format_marker_and_enforces_size_cap() {
+        for meta in [
+            r#"{"id":"F_CANVAS","title":"Runbook","filetype":"canvas","url_private":"https://files.slack.com/files-pri/T-F/canvas"}"#,
+            r#"{"id":"F_QUIP","title":"Notes","filetype":"quip","url_private":"https://files.slack.com/files-pri/T-F/quip"}"#,
+            r#"{"id":"F_DOC","title":"Doc","mimetype":"application/vnd.slack-docs","url_private":"https://files.slack.com/files-pri/T-F/doc"}"#,
+        ] {
+            let file_json = JsonValue::parse(meta).unwrap();
+            let id = file_json
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap()
+                .to_string();
+            let _guard = file_mock(file_json, b"<h1>Runbook</h1><p>Step 1</p>");
+            let res = client_for(&stdio_env()).read_file(&id, None).unwrap();
+            assert_eq!(res.get("ok").and_then(|v| v.as_bool()), Some(true));
+            assert_eq!(res.get("format").and_then(|v| v.as_str()), Some("html"));
+            assert_eq!(
+                res.get("content").and_then(|v| v.as_str()),
+                Some("<h1>Runbook</h1><p>Step 1</p>")
+            );
+
+            // Size cap applies to canvases too, even when files.info omitted `size`.
+            let err = client_for(&stdio_env())
+                .read_file_num(&id, Some(10.0))
+                .unwrap_err();
+            assert!(err.message().contains("larger than the 10 byte cap"));
+        }
+    }
+
+    #[test]
+    fn api_retries_429_before_json_parsing_with_capped_backoff_then_returns_ratelimited() {
+        let sleep_guard = set_mock_sleep();
+        let attempt = Arc::new(AtomicUsize::new(0));
+        let attempt_ref = attempt.clone();
+
+        // 1. Two non-JSON 429s (plain text + HTML) followed by a 200 JSON success:
+        //    status checked before JSON parsing; waits clamped to min(Retry-After, 10s).
+        let fetch_guard = set_mock_fetch(move |_| {
+            let n = attempt_ref.fetch_add(1, Ordering::SeqCst);
+            match n {
+                0 => Ok(HttpResponse {
+                    status: 429,
+                    headers: vec![("Retry-After".to_string(), "25".to_string())],
+                    body: b"Too Many Requests".to_vec(),
+                }),
+                1 => Ok(HttpResponse {
+                    status: 429,
+                    headers: vec![("Retry-After".to_string(), "2.5".to_string())],
+                    body: b"<html><body>429</body></html>".to_vec(),
+                }),
+                _ => Ok(HttpResponse::json(
+                    200,
+                    JsonValue::parse(r#"{"ok":true,"messages":[]}"#).unwrap(),
+                )),
+            }
+        });
+
+        let client = client_for(&stdio_env());
+        let ok_res = client.get_channel_history("C1", None).unwrap();
+        assert_eq!(ok_res.get("ok").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(fetch_guard.calls.lock().unwrap().len(), 3);
+        assert_eq!(
+            *sleep_guard.sleeps.lock().unwrap(),
+            vec![Duration::from_secs(10), Duration::from_millis(2_500)]
+        );
+        drop(fetch_guard);
+
+        // 2. Persistent non-JSON 429 exhausts 2 retries (3 total attempts) and returns
+        //    {ok: false, error: "ratelimited", retry_after: 7}.
+        sleep_guard.sleeps.lock().unwrap().clear();
+        let persistent_guard = set_mock_fetch(|_| {
+            Ok(HttpResponse {
+                status: 429,
+                headers: vec![("Retry-After".to_string(), "7".to_string())],
+                body: b"upstream rate limit exceeded".to_vec(),
+            })
+        });
+        let limited = client.get_channel_history("C1", None).unwrap();
+        assert_eq!(limited.get("ok").and_then(|v| v.as_bool()), Some(false));
+        assert_eq!(
+            limited.get("error").and_then(|v| v.as_str()),
+            Some("ratelimited")
+        );
+        assert_eq!(
+            limited.get("retry_after").and_then(|v| v.as_f64()),
+            Some(7.0)
+        );
+        assert_eq!(persistent_guard.calls.lock().unwrap().len(), 3);
+        assert_eq!(
+            *sleep_guard.sleeps.lock().unwrap(),
+            vec![Duration::from_secs(7), Duration::from_secs(7)]
+        );
+        drop(persistent_guard);
+
+        // 3. Non-429 Slack errors do not trigger 429 retries.
+        sleep_guard.sleeps.lock().unwrap().clear();
+        let err_guard = set_mock_fetch(|_| {
+            Ok(HttpResponse::json(
+                200,
+                JsonValue::parse(r#"{"ok":false,"error":"invalid_auth"}"#).unwrap(),
+            ))
+        });
+        let non_429 = client.get_channel_history("C1", None).unwrap();
+        assert_eq!(
+            non_429.get("error").and_then(|v| v.as_str()),
+            Some("invalid_auth")
+        );
+        assert_eq!(err_guard.calls.lock().unwrap().len(), 1);
+        assert!(sleep_guard.sleeps.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn history_and_replies_pass_response_through_without_top_level_next_cursor() {
+        let payload = r#"{"ok":true,"messages":[{"ts":"1.0","text":"hi"}],"response_metadata":{"next_cursor":"cur_abc"}}"#;
+        let _guard = set_mock_fetch(move |_| {
+            Ok(HttpResponse::json(200, JsonValue::parse(payload).unwrap()))
+        });
+        let client = client_for(&stdio_env());
+
+        let hist = client.get_channel_history("C1", None).unwrap();
+        assert!(!hist.contains_key("next_cursor"));
+        assert_eq!(hist.to_json_string(), payload);
+
+        let replies = client.get_thread_replies("C1", "1.0").unwrap();
+        assert!(!replies.contains_key("next_cursor"));
+        assert_eq!(replies.to_json_string(), payload);
+    }
+
+    #[test]
+    fn list_unread_patient_skips_api_429_retries_so_call_count_matches_main() {
+        let sleep_guard = set_mock_sleep();
+        let guard = set_mock_fetch(|req| {
+            assert!(req.url.contains("/api/conversations.info"));
+            Ok(HttpResponse::json(
+                429,
+                JsonValue::object(vec![("ok", false.into()), ("error", "ratelimited".into())]),
+            )
+            .with_header("Retry-After", "0"))
+        });
+
+        let mut env = stdio_env();
+        env.insert("SLACK_CHANNEL_IDS".to_string(), "C1".to_string());
+        let res = client_for(&env).list_unread(None).unwrap();
+
+        // Main's patient() makes 1 initial attempt + UNREAD_MAX_RETRIES (3) = 4 HTTP calls.
+        assert_eq!(guard.calls.lock().unwrap().len(), 4);
+        assert!(sleep_guard.sleeps.lock().unwrap().is_empty());
+        let errors = res.get("errors").and_then(|v| v.as_array()).unwrap();
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].get("id").and_then(|v| v.as_str()), Some("C1"));
+        assert_eq!(
+            errors[0].get("error").and_then(|v| v.as_str()),
+            Some("ratelimited")
+        );
+    }
+
+    #[test]
+    fn read_file_post_download_size_cap_applies_only_to_canvases() {
+        // Text file with no `size` in files.info keeps main's behaviour (no post-download cap).
+        let _guard = file_mock(
+            JsonValue::parse(
+                r#"{"id":"F_TXT","filetype":"text","mimetype":"text/plain","url_private":"https://files.slack.com/files-pri/T-F/txt"}"#,
+            )
+            .unwrap(),
+            b"01234567890123456789",
+        );
+        let res = client_for(&stdio_env())
+            .read_file_num("F_TXT", Some(10.0))
+            .unwrap();
+        assert_eq!(res.get("size").and_then(|v| v.as_i64()), Some(20));
+        assert_eq!(
+            res.get("content").and_then(|v| v.as_str()),
+            Some("01234567890123456789")
+        );
+        drop(_guard);
+
+        // Text file with files.info `size` <= max_bytes also succeeds even if downloaded bytes exceed max_bytes.
+        let _guard = file_mock(
+            JsonValue::parse(
+                r#"{"id":"F_TXT2","filetype":"text","mimetype":"text/plain","size":5,"url_private":"https://files.slack.com/files-pri/T-F/txt2"}"#,
+            )
+            .unwrap(),
+            b"01234567890123456789",
+        );
+        let res2 = client_for(&stdio_env())
+            .read_file_num("F_TXT2", Some(10.0))
+            .unwrap();
+        assert_eq!(res2.get("size").and_then(|v| v.as_i64()), Some(20));
+        drop(_guard);
+
+        // Canvas without files.info `size` still enforces the post-download size cap.
+        let _guard = file_mock(
+            JsonValue::parse(
+                r#"{"id":"F_CANVAS","filetype":"canvas","url_private":"https://files.slack.com/files-pri/T-F/canvas"}"#,
+            )
+            .unwrap(),
+            b"01234567890123456789",
+        );
+        let err = client_for(&stdio_env())
+            .read_file_num("F_CANVAS", Some(10.0))
+            .unwrap_err();
+        assert!(err.message().contains("larger than the 10 byte cap"));
+    }
+
+    #[test]
+    fn read_file_url_private_download_fallback_applies_only_to_canvases() {
+        // Text file missing url_private keeps main's error even if url_private_download is present.
+        let _guard = file_mock(
+            JsonValue::parse(
+                r#"{"id":"F_TXT","filetype":"text","mimetype":"text/plain","url_private_download":"https://files.slack.com/files-pri/T-F/download/txt"}"#,
+            )
+            .unwrap(),
+            b"hello",
+        );
+        let err = client_for(&stdio_env())
+            .read_file("F_TXT", None)
+            .unwrap_err();
+        assert_eq!(err.message(), "File F_TXT has no downloadable content.");
+        drop(_guard);
+
+        // Canvas missing url_private falls back to url_private_download.
+        let _guard = file_mock(
+            JsonValue::parse(
+                r#"{"id":"F_CANVAS","filetype":"canvas","url_private_download":"https://files.slack.com/files-pri/T-F/download/canvas"}"#,
+            )
+            .unwrap(),
+            b"<p>canvas body</p>",
+        );
+        let res = client_for(&stdio_env())
+            .read_file("F_CANVAS", None)
+            .unwrap();
+        assert_eq!(res.get("format").and_then(|v| v.as_str()), Some("html"));
+        assert_eq!(
+            res.get("content").and_then(|v| v.as_str()),
+            Some("<p>canvas body</p>")
+        );
+    }
+
+    #[test]
+    fn search_strips_total_paging_and_pagination_when_allowlist_is_set() {
+        let _guard = set_mock_fetch(|req| {
+            if req.url.contains("/api/search.messages") {
+                Ok(HttpResponse::json(
+                    200,
+                    JsonValue::parse(
+                        r#"{"ok":true,"query":"deploy","messages":{"total":47,"paging":{"count":20,"total":47,"page":1,"pages":3},"pagination":{"total_count":47,"page":1,"per_page":20,"page_count":3,"first":1,"last":20},"matches":[{"ts":"1.0","text":"ok","channel":{"id":"C_ALLOWED"}},{"ts":"2.0","text":"secret","channel":{"id":"C_SECRET"}}]}}"#,
+                    )
+                    .unwrap(),
+                ))
+            } else {
+                Ok(HttpResponse::json(
+                    200,
+                    JsonValue::parse(
+                        r#"{"ok":true,"query":"spec","files":{"total":19,"paging":{"count":20,"total":19,"page":1,"pages":1},"pagination":{"total_count":19,"page":1,"per_page":20,"page_count":1,"first":1,"last":19},"matches":[{"id":"F_OK","channels":["C_ALLOWED"],"groups":[],"ims":[]},{"id":"F_SECRET","channels":["C_SECRET"],"groups":[],"ims":[]}]}}"#,
+                    )
+                    .unwrap(),
+                ))
+            }
+        });
+
+        let mut restricted = http_env();
+        restricted.insert("SLACK_USER_TOKEN".to_string(), "xoxp-test".to_string());
+        restricted.insert("SLACK_CHANNEL_IDS".to_string(), "C_ALLOWED".to_string());
+        let client = client_for(&restricted);
+
+        let msg_res = client.search_messages("deploy", None, None).unwrap();
+        let messages = msg_res.get("messages").unwrap();
+        assert!(!messages.contains_key("total"));
+        assert!(!messages.contains_key("paging"));
+        assert!(!messages.contains_key("pagination"));
+        assert_eq!(
+            messages
+                .get("matches")
+                .and_then(|m| m.as_array())
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            msg_res.get("filtered_out").and_then(|v| v.as_i64()),
+            Some(1)
+        );
+
+        let file_res = client.search_files("spec", None, None).unwrap();
+        let files = file_res.get("files").unwrap();
+        assert!(!files.contains_key("total"));
+        assert!(!files.contains_key("paging"));
+        assert!(!files.contains_key("pagination"));
+        assert_eq!(
+            files
+                .get("matches")
+                .and_then(|m| m.as_array())
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            file_res.get("filtered_out").and_then(|v| v.as_i64()),
+            Some(1)
+        );
+
+        // Unrestricted output keeps total, paging, and pagination intact.
+        let unrestricted = client_for(&stdio_env());
+        let raw_msg = unrestricted.search_messages("deploy", None, None).unwrap();
+        let raw_messages = raw_msg.get("messages").unwrap();
+        assert_eq!(raw_messages.get("total").and_then(|v| v.as_i64()), Some(47));
+        assert!(raw_messages.contains_key("paging"));
+        assert!(raw_messages.contains_key("pagination"));
+        assert!(!raw_msg.contains_key("filtered_out"));
     }
 }
