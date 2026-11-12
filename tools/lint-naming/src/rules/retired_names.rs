@@ -59,7 +59,7 @@ pub fn is_allowlisted_path(rel_path: &str) -> bool {
     let norm = normalize_rel_path(rel_path);
     let base = basename(&norm);
 
-    if base == "CHANGELOG.md" || norm == "apps/desktop/vitruvian/UPSTREAM.md" {
+    if base == "CHANGELOG.md" || norm == "apps/desktop/vitruvian-atrium/UPSTREAM.md" {
         return true;
     }
     if norm.starts_with("docs/superpowers/") || norm.starts_with("docs/archive/") {

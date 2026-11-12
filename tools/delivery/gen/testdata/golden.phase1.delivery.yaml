@@ -51,9 +51,6 @@
 #   - charts  kind=publish  run=//tools/charts:publish  envs=publish  promotion=push-all
 #       paths:  .*/deploy/chart/ tools/charts/
 #       render: transcribed from .github/workflows/charts-publish.yml job "publish"
-#   - esp32-s3  kind=publish  run=//apps/embedded/esp32-s3:publish  envs=beta,production  promotion=release:esp32-s3-v
-#       paths:  apps/embedded/esp32-s3/
-#       render: transcribed from .github/workflows/iot-esp32-s3.yaml job "release-and-publish"
 #   - gravastar-mouse-publish  kind=publish  run=//packages/peripherals:publish  envs=beta,production  promotion=release:gravastar-mouse-v
 #       paths:  packages/peripherals/
 #       render: transcribed from .github/workflows/vitruvian-release.yaml job "package"
@@ -67,30 +64,33 @@
 #   - stripe  kind=pulumi  run=//infrastructure/pulumi/platform/stripe:up  envs=sandbox,production  promotion=push-all
 #       paths:  infrastructure/pulumi/platform/stripe/
 #       render: transcribed
-#   - tabula-api  kind=cloud-run  run=//apps/suites/tabula/infra/app:deploy  envs=development,nonproduction,production  promotion=release:tabula-api-v
-#       paths:  apps/suites/tabula/infra/app/ apps/suites/tabula/infra/web/ apps/suites/tabula/web/ tools/deploy/ \.github/workflows/_deploy-cloud-run\.yaml
-#       graph:  //apps/suites/tabula/api:image_push //apps/suites/tabula/extension:chrome_zip
-#       build:  shared "tabula" → image-digest
-#       soak:   promotion blocked while development is red
-#       skip:   preflight=revision-name (deploy skipped when live already serves the desired revision)
-#   - tabula-build-stack  kind=pulumi  run=//apps/suites/tabula/infra/build:up  envs=shared  promotion=push-all
-#       paths:  apps/suites/tabula/infra/build/
-#       render: transcribed from .github/workflows/tabula-build-stack.yaml job "deploy"
-#   - tabula-dev-latest  kind=publish  run=//apps/suites/tabula/extension:publish-dev-latest  envs=publish  promotion=push-all
-#       paths:  apps/suites/tabula/infra/app/ apps/suites/tabula/extension/scripts/src/
-#       graph:  //apps/suites/tabula/api:image_push //apps/suites/tabula/extension:chrome_zip
-#       render: transcribed from .github/workflows/tabula-dev-latest.yaml job "publish"
-#   - tabula-identity  kind=pulumi  run=//apps/suites/tabula/infra/identity:up  envs=development,nonproduction,production  promotion=push-all
-#       paths:  apps/suites/tabula/infra/identity/ \.github/workflows/_tabula-identity-apply\.yaml
-#       render: reusable from .github/workflows/tabula-identity-stack.yaml job "development"
-#   - tabula-web  kind=cloud-run  run=//apps/suites/tabula/infra/web:deploy  envs=development,nonproduction,production  promotion=release:tabula-web-v
-#       paths:  apps/suites/tabula/infra/app/ apps/suites/tabula/infra/web/ apps/suites/tabula/web/ tools/deploy/ \.github/workflows/_deploy-cloud-run\.yaml
-#       graph:  //apps/suites/tabula/api:image_push //apps/suites/tabula/extension:chrome_zip
-#       build:  shared "tabula" → web-image-digest
-#       soak:   promotion blocked while development is red
 #   - vitruvian-atrium  kind=publish  run=//apps/desktop/vitruvian-atrium:publish  envs=beta,production  promotion=release:vitruvian-atrium-v
 #       paths:  apps/desktop/vitruvian-atrium/
 #       render: transcribed from .github/workflows/vitruvian-atrium-release.yaml job "package"
+#   - vitruvian-deck  kind=publish  run=//apps/embedded/vitruvian-deck:publish  envs=beta,production  promotion=release:vitruvian-deck-v
+#       paths:  apps/embedded/vitruvian-deck/
+#       render: transcribed from .github/workflows/iot-vitruvian-deck.yaml job "release-and-publish"
+#   - vitruvian-tabs-api  kind=cloud-run  run=//apps/suites/vitruvian-tabs/infra/app:deploy  envs=development,nonproduction,production  promotion=release:vitruvian-tabs-api-v
+#       paths:  apps/suites/vitruvian-tabs/infra/app/ apps/suites/vitruvian-tabs/infra/web/ apps/suites/vitruvian-tabs/web/ tools/deploy/ \.github/workflows/_deploy-cloud-run\.yaml
+#       graph:  //apps/suites/vitruvian-tabs/api:image_push //apps/suites/vitruvian-tabs/extension:chrome_zip
+#       build:  shared "vitruvian-tabs" → image-digest
+#       soak:   promotion blocked while development is red
+#       skip:   preflight=revision-name (deploy skipped when live already serves the desired revision)
+#   - vitruvian-tabs-build-stack  kind=pulumi  run=//apps/suites/vitruvian-tabs/infra/build:up  envs=shared  promotion=push-all
+#       paths:  apps/suites/vitruvian-tabs/infra/build/
+#       render: transcribed
+#   - vitruvian-tabs-dev-latest  kind=publish  run=//apps/suites/vitruvian-tabs/extension:publish-dev-latest  envs=publish  promotion=push-all
+#       paths:  apps/suites/vitruvian-tabs/infra/app/ apps/suites/vitruvian-tabs/extension/scripts/src/
+#       graph:  //apps/suites/vitruvian-tabs/api:image_push //apps/suites/vitruvian-tabs/extension:chrome_zip
+#       render: transcribed
+#   - vitruvian-tabs-identity  kind=pulumi  run=//apps/suites/vitruvian-tabs/infra/identity:up  envs=development,nonproduction,production  promotion=push-all
+#       paths:  apps/suites/vitruvian-tabs/infra/identity/ \.github/workflows/_vitruvian-tabs-identity-apply\.yaml
+#       render: reusable
+#   - vitruvian-tabs-web  kind=cloud-run  run=//apps/suites/vitruvian-tabs/infra/web:deploy  envs=development,nonproduction,production  promotion=release:vitruvian-tabs-web-v
+#       paths:  apps/suites/vitruvian-tabs/infra/app/ apps/suites/vitruvian-tabs/infra/web/ apps/suites/vitruvian-tabs/web/ tools/deploy/ \.github/workflows/_deploy-cloud-run\.yaml
+#       graph:  //apps/suites/vitruvian-tabs/api:image_push //apps/suites/vitruvian-tabs/extension:chrome_zip
+#       build:  shared "vitruvian-tabs" → web-image-digest
+#       soak:   promotion blocked while development is red
 #   - zitadel-apps  kind=pulumi  run=//infrastructure/pulumi/platform/zitadel-apps:up  envs=development,nonproduction,production  promotion=release:oauth-user-inspector-v
 #       paths:  infrastructure/pulumi/platform/zitadel-apps/ \.github/workflows/_zitadel-apps-apply\.yaml
 
@@ -125,7 +125,7 @@ permissions:
 # WHY WORKFLOW-LEVEL AND NOT PER-UNIT (spec §4.3 asks for
 # `delivery-<unit>-<env>` groups): every fan-out job below is a `uses:`
 # caller, and this repo has already paid for that experiment — #1607 put a
-# `concurrency:` on the calling jobs in tabula-deploy.yaml and every
+# `concurrency:` on the calling jobs in a deploy workflow and every
 # dispatch failed INSTANTLY with no runner assigned, reproducibly, even
 # with a static expression-free group string; workflow-level was the only
 # placement that worked. A per-workflow group is strictly STRONGER
@@ -150,7 +150,7 @@ permissions:
 # dispatching it. That is not hypothetical: two releases published in the
 # same minute during the Phase-2 rollout evicted each other (runs
 # 32345258539 / 32344982262 — harmless only because both tags were infra
-# ones with no rung of their own; a tabula-api-v + tabula-web-v pair would
+# ones with no rung of their own; a vitruvian-tabs-api-v + vitruvian-tabs-web-v pair would
 # have dropped one service's promotion). Keying release runs on the tag
 # gives every tag its own lane: two tags never evict each other, while two
 # runs of the SAME tag (a re-publish) still serialize, which is the case
@@ -187,17 +187,17 @@ jobs:
       # `if:` can actually read — expressions cannot index into JSON.
       manifest: ${{ steps.manifest.outputs.manifest }}
       affected_charts: ${{ steps.manifest.outputs.affected_charts }}
-      affected_esp32_s3: ${{ steps.manifest.outputs.affected_esp32_s3 }}
       affected_gravastar_mouse_publish: ${{ steps.manifest.outputs.affected_gravastar_mouse_publish }}
       affected_oauth_user_inspector: ${{ steps.manifest.outputs.affected_oauth_user_inspector }}
       affected_oauth_user_inspector_identity: ${{ steps.manifest.outputs.affected_oauth_user_inspector_identity }}
       affected_stripe: ${{ steps.manifest.outputs.affected_stripe }}
-      affected_tabula_api: ${{ steps.manifest.outputs.affected_tabula_api }}
-      affected_tabula_build_stack: ${{ steps.manifest.outputs.affected_tabula_build_stack }}
-      affected_tabula_dev_latest: ${{ steps.manifest.outputs.affected_tabula_dev_latest }}
-      affected_tabula_identity: ${{ steps.manifest.outputs.affected_tabula_identity }}
-      affected_tabula_web: ${{ steps.manifest.outputs.affected_tabula_web }}
       affected_vitruvian_atrium: ${{ steps.manifest.outputs.affected_vitruvian_atrium }}
+      affected_vitruvian_deck: ${{ steps.manifest.outputs.affected_vitruvian_deck }}
+      affected_vitruvian_tabs_api: ${{ steps.manifest.outputs.affected_vitruvian_tabs_api }}
+      affected_vitruvian_tabs_build_stack: ${{ steps.manifest.outputs.affected_vitruvian_tabs_build_stack }}
+      affected_vitruvian_tabs_dev_latest: ${{ steps.manifest.outputs.affected_vitruvian_tabs_dev_latest }}
+      affected_vitruvian_tabs_identity: ${{ steps.manifest.outputs.affected_vitruvian_tabs_identity }}
+      affected_vitruvian_tabs_web: ${{ steps.manifest.outputs.affected_vitruvian_tabs_web }}
       affected_zitadel_apps: ${{ steps.manifest.outputs.affected_zitadel_apps }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -258,7 +258,7 @@ jobs:
           # The units THIS workflow delivers. The engine judges only these, so
           # one app's workflow never pays for another app's target-determinator
           # sweep. A name the engine cannot find fails the manifest open.
-          ORCHESTRATE_UNITS: charts esp32-s3 gravastar-mouse-publish oauth-user-inspector oauth-user-inspector-identity stripe tabula-api tabula-build-stack tabula-dev-latest tabula-identity tabula-web vitruvian-atrium zitadel-apps
+          ORCHESTRATE_UNITS: charts gravastar-mouse-publish oauth-user-inspector oauth-user-inspector-identity stripe vitruvian-atrium vitruvian-deck vitruvian-tabs-api vitruvian-tabs-build-stack vitruvian-tabs-dev-latest vitruvian-tabs-identity vitruvian-tabs-web zitadel-apps
         run: bazel run //tools/delivery/orchestrate -- --out delivery-manifest.json
       - name: Upload the delivery manifest
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -399,32 +399,32 @@ jobs:
       workload-migrated: false
     secrets: inherit
 
-  # ======== unit: tabula-api → development ========
-  # Declared in apps/suites/tabula/infra/app/BUILD; break-glass target: //apps/suites/tabula/infra/app:deploy
+  # ======== unit: vitruvian-tabs-api → development ========
+  # Declared in apps/suites/vitruvian-tabs/infra/app/BUILD; break-glass target: //apps/suites/vitruvian-tabs/infra/app:deploy
   # GitHub Environments: tabula-development (approvals + keyless-WIF vars live there)
-  # Promotion to nonproduction/production: still the legacy ladder, on tabula-api-v* (Phase 2 migrates it).
+  # Promotion to nonproduction/production: still the legacy ladder, on vitruvian-tabs-api-v* (Phase 2 migrates it).
 
   # Render WHAT IS SHIPPING into the run page before the (gated) deploys, so
   # an approver reads the actual scope. Ungated by the manifest and
   # independent of every other job, so it never delays a rollout.
-  tabula-api-changelog:
+  vitruvian-tabs-api-changelog:
     if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && github.event_name == 'push'
     uses: ./.github/workflows/_changelog-summary.yaml
     with:
-      label: "tabula-api"
-      working-directory: "apps/suites/tabula/api"
+      label: "vitruvian-tabs-api"
+      working-directory: "apps/suites/vitruvian-tabs/api"
 
-  # BUILD ONCE for every tabula unit, promote by digest: one job pushes the
+  # BUILD ONCE for every vitruvian-tabs unit, promote by digest: one job pushes the
   # images into the shared Artifact Registry owned by the build
   # Environment's project, and every rung of every consuming unit deploys
   # those immutable @sha256 refs. Rebuilding per environment is what made
   # what reached production not be the artifact that was smoke-tested.
-  # Consumed by: tabula-api, tabula-web
-  tabula-build:
+  # Consumed by: vitruvian-tabs-api, vitruvian-tabs-web
+  vitruvian-tabs-build:
     needs: [orchestrate]
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && always() && !cancelled() && (github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_tabula_api == 'true' || needs.orchestrate.outputs.affected_tabula_web == 'true'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && always() && !cancelled() && (github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_vitruvian_tabs_api == 'true' || needs.orchestrate.outputs.affected_vitruvian_tabs_web == 'true'))
     concurrency:
-      group: delivery-tabula-build
+      group: delivery-vitruvian-tabs-build
       cancel-in-progress: false
     runs-on: ubuntu-26.04
     timeout-minutes: 30
@@ -465,7 +465,7 @@ jobs:
           set -euo pipefail
           IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/tabula/api"
           bazel run --config=remotecache-ci --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
-            //apps/suites/tabula/api:image_push -- \
+            //apps/suites/vitruvian-tabs/api:image_push -- \
             --repository "${IMAGE}" --tag "${GITHUB_SHA}" --tag latest
           DIGEST="$(gcloud artifacts docker images describe "${IMAGE}:${GITHUB_SHA}" \
             --format='value(image_summary.digest)')"
@@ -475,11 +475,11 @@ jobs:
           fi
           echo "image-digest=${IMAGE}@${DIGEST}" >> "$GITHUB_OUTPUT"
 
-      # ---- tabula/web (Docker, not Bazel) ----
+      # ---- vitruvian-tabs/web (Docker, not Bazel) ----
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
-      - name: Build and push tabula-web image
+      - name: Build and push vitruvian-tabs-web image
         id: web-image
         run: |
           set -euo pipefail
@@ -490,12 +490,12 @@ jobs:
           # environment's API host (this broke prod login: the shared image
           # shipped everywhere with development's API URL frozen into it).
           # The API URL is now a plain runtime env var (API_URL, injected per
-          # environment by apps/suites/tabula/infra/web/main.go from Pulumi's `apiUrl`
-          # config) that apps/suites/tabula/web/lib/runtime-config.ts and proxy.ts
+          # environment by apps/suites/vitruvian-tabs/infra/web/main.go from Pulumi's `apiUrl`
+          # config) that apps/suites/vitruvian-tabs/web/lib/runtime-config.ts and proxy.ts
           # read fresh on every request instead.
           IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/tabula/web"
           docker build \
-            -f apps/suites/tabula/web/Dockerfile \
+            -f apps/suites/vitruvian-tabs/web/Dockerfile \
             -t "${IMAGE}:${GITHUB_SHA}" \
             -t "${IMAGE}:latest" \
             .
@@ -511,17 +511,17 @@ jobs:
 
   # The push rung: main is the continuous-integration surface, so every
   # affected merge lands here and nowhere else.
-  tabula-api-development:
-    needs: [orchestrate, tabula-build]
+  vitruvian-tabs-api-development:
+    needs: [orchestrate, vitruvian-tabs-build]
     # The build MUST have succeeded — there is no image otherwise, and this
     # is an EQUALITY, not a `!= 'failure'`, so a SKIPPED build stops the
     # deploy too rather than promoting whatever the registry's `latest`
     # happens to hold. `!cancelled()` keeps the whole condition reachable
     # when a need was skipped, which the implicit success()-of-needs would
     # not.
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && needs.tabula-build.result == 'success' && (github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_tabula_api == 'true'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && needs.vitruvian-tabs-build.result == 'success' && (github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_vitruvian_tabs_api == 'true'))
     concurrency:
-      group: delivery-tabula-api-development
+      group: delivery-vitruvian-tabs-api-development
       cancel-in-progress: false
     # Job-level, because a called workflow's permissions can only NARROW
     # the caller's: keyless WIF needs id-token: write HERE, and granting it
@@ -536,8 +536,8 @@ jobs:
       default-region: "us-central1"
       env-prefix: "TABULA"
       environment: "development"
-      image-digest: "${{ needs.tabula-build.outputs.image-digest }}"
-      pulumi-dir: "apps/suites/tabula/infra/app"
+      image-digest: "${{ needs.vitruvian-tabs-build.outputs.image-digest }}"
+      pulumi-dir: "apps/suites/vitruvian-tabs/infra/app"
       pulumi-refresh: true
       run-migrations: true
       secret-prefix: "TABULA_"
@@ -547,24 +547,24 @@ jobs:
       workload-migrated: false
     secrets: inherit
 
-  # ======== unit: tabula-web → development ========
-  # Declared in apps/suites/tabula/infra/web/BUILD; break-glass target: //apps/suites/tabula/infra/web:deploy
+  # ======== unit: vitruvian-tabs-web → development ========
+  # Declared in apps/suites/vitruvian-tabs/infra/web/BUILD; break-glass target: //apps/suites/vitruvian-tabs/infra/web:deploy
   # GitHub Environments: tabula-development (approvals + keyless-WIF vars live there)
-  # Promotion to nonproduction/production: still the legacy ladder, on tabula-web-v* (Phase 2 migrates it).
+  # Promotion to nonproduction/production: still the legacy ladder, on vitruvian-tabs-web-v* (Phase 2 migrates it).
 
   # The push rung: main is the continuous-integration surface, so every
   # affected merge lands here and nowhere else.
-  tabula-web-development:
-    needs: [orchestrate, tabula-build]
+  vitruvian-tabs-web-development:
+    needs: [orchestrate, vitruvian-tabs-build]
     # The build MUST have succeeded — there is no image otherwise, and this
     # is an EQUALITY, not a `!= 'failure'`, so a SKIPPED build stops the
     # deploy too rather than promoting whatever the registry's `latest`
     # happens to hold. `!cancelled()` keeps the whole condition reachable
     # when a need was skipped, which the implicit success()-of-needs would
     # not.
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && needs.tabula-build.result == 'success' && (github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_tabula_web == 'true'))
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && needs.vitruvian-tabs-build.result == 'success' && (github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_vitruvian_tabs_web == 'true'))
     concurrency:
-      group: delivery-tabula-web-development
+      group: delivery-vitruvian-tabs-web-development
       cancel-in-progress: false
     # Job-level, because a called workflow's permissions can only NARROW
     # the caller's: keyless WIF needs id-token: write HERE, and granting it
@@ -579,8 +579,8 @@ jobs:
       default-region: "us-central1"
       env-prefix: "TABULA_WEB"
       environment: "development"
-      image-digest: "${{ needs.tabula-build.outputs.web-image-digest }}"
-      pulumi-dir: "apps/suites/tabula/infra/web"
+      image-digest: "${{ needs.vitruvian-tabs-build.outputs.web-image-digest }}"
+      pulumi-dir: "apps/suites/vitruvian-tabs/infra/web"
       pulumi-refresh: true
       run-migrations: false
       secret-prefix: "TABULA_"
