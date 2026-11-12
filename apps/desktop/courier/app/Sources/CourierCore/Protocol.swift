@@ -410,6 +410,8 @@ public struct InboxRow: ProtocolType, Equatable, Identifiable {
     public var localAvatarPath: String
     /// The merged chat this room belongs to, or "".
     public var mergeID: String
+    /// Per-chat Vitruvian Speaker announcement preference (`"always"`, `"never"`, or `nil` for Default).
+    public var readAloud: ChatReadAloud?
 
     public init(roomID: String, network: String, name: String, avatarPath: String, isDirect: Bool, lastTS: Int64,
                 preview: String, previewKind: PreviewKind, previewMine: Bool, unread: Int, muted: Bool,
@@ -419,7 +421,7 @@ public struct InboxRow: ProtocolType, Equatable, Identifiable {
                 typing: [String] = [], unreadMentions: Int = 0, previewMediaPath: String = "",
                 previewCall: CallNote? = nil, previewStatus: PreviewStatus = .none, loginName: String = "",
                 remoteName: String = "", localName: String = "", localAvatarPath: String = "",
-                mergeID: String = "", previewInThread: Bool = false) {
+                mergeID: String = "", previewInThread: Bool = false, readAloud: ChatReadAloud? = nil) {
         self.roomID = roomID
         self.network = network
         self.name = name
@@ -453,10 +455,14 @@ public struct InboxRow: ProtocolType, Equatable, Identifiable {
         self.localName = localName
         self.localAvatarPath = localAvatarPath
         self.mergeID = mergeID
+        self.readAloud = readAloud == .default ? nil : readAloud
     }
 
     /// Unread messages, or marked unread: what toggle read and the Unread filter go by.
     public var isUnread: Bool { unread > 0 || markedUnread }
+
+    /// Effective per-chat Vitruvian Speaker announcement preference (`.default` when omitted on the wire).
+    public var effectiveReadAloud: ChatReadAloud { readAloud ?? .default }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case roomID = "room_id"
@@ -492,6 +498,7 @@ public struct InboxRow: ProtocolType, Equatable, Identifiable {
         case localName = "local_name"
         case localAvatarPath = "local_avatar_path"
         case mergeID = "merge_id"
+        case readAloud = "read_aloud"
     }
 
     public init(from decoder: Decoder) throws {
@@ -529,6 +536,7 @@ public struct InboxRow: ProtocolType, Equatable, Identifiable {
         localName = try container.decodeIfPresent(String.self, forKey: .localName) ?? ""
         localAvatarPath = try container.decodeIfPresent(String.self, forKey: .localAvatarPath) ?? ""
         mergeID = try container.decodeIfPresent(String.self, forKey: .mergeID) ?? ""
+        readAloud = try container.decodeIfPresent(ChatReadAloud.self, forKey: .readAloud)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -566,6 +574,32 @@ public struct InboxRow: ProtocolType, Equatable, Identifiable {
         try container.encode(localName, forKey: .localName)
         try container.encode(localAvatarPath, forKey: .localAvatarPath)
         try container.encode(mergeID, forKey: .mergeID)
+        try container.encodeIfPresent(readAloud, forKey: .readAloud)
+    }
+}
+
+/// InboxRow.read_aloud and SetReadAloudParams.read_aloud: per-chat Vitruvian Speaker announcement preference.
+public struct ChatReadAloud: OpenValues, CaseIterable {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+
+    /// Follow Vitruvian Speaker's settings (omitted on `InboxRow` and the local API).
+    public static let `default` = Self(rawValue: "")
+    /// Announce every message in this chat on Vitruvian Speaker (unless muted).
+    public static let always = Self(rawValue: "always")
+    /// Never announce this chat on Vitruvian Speaker.
+    public static let never = Self(rawValue: "never")
+    public static let known: [Self] = [.always, .never]
+    /// The values `room.setReadAloud` accepts.
+    public static let settable: [Self] = [.default, .always, .never]
+    public static var allCases: [Self] { settable }
+
+    public var displayTitle: String {
+        switch self {
+        case .always: String(localized: "Every Message")
+        case .never: String(localized: "Never")
+        default: String(localized: "Default")
+        }
     }
 }
 
@@ -1010,6 +1044,24 @@ public struct RoomsFlagParams: ProtocolType, Equatable {
     enum CodingKeys: String, CodingKey, CaseIterable {
         case roomIDs = "room_ids"
         case on
+    }
+}
+
+public struct SetReadAloudParams: ProtocolType, Equatable {
+    public static let protocolName = "SetReadAloudParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    /// 1 to 500 chats.
+    public var roomIDs: [String]
+    public var readAloud: ChatReadAloud
+
+    public init(roomIDs: [String], readAloud: ChatReadAloud) {
+        self.roomIDs = roomIDs
+        self.readAloud = readAloud
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomIDs = "room_ids"
+        case readAloud = "read_aloud"
     }
 }
 
@@ -5446,6 +5498,7 @@ public enum ProtocolMethods {
         "message.retry": .userInitiatedMutation,
         "message.discard": .userInitiatedMutation,
         "room.setDisappearing": .userInitiatedMutation,
+        "room.setReadAloud": .userInitiatedMutation,
         "message.edit": .userInitiatedMutation,
         "message.unsend": .userInitiatedMutation,
         "message.deleteForMe": .userInitiatedMutation,
@@ -5524,6 +5577,7 @@ public enum ProtocolMethods {
         "room.setPinned": (SetPinnedParams.self, Empty.self),
         "room.setArchived": (ArchiveParams.self, RoomsChanged.self),
         "room.setLowPriority": (RoomsFlagParams.self, RoomsChanged.self),
+        "room.setReadAloud": (SetReadAloudParams.self, RoomsChanged.self),
         "room.setHidden": (RoomsFlagParams.self, RoomsChanged.self),
         "room.setMarkedUnread": (RoomsFlagParams.self, RoomsChanged.self),
         "room.setLabel": (SetLabelParams.self, RoomsChanged.self),
@@ -5625,7 +5679,7 @@ public enum ProtocolMethods {
         CallNote.self,
         Reminder.self, InboxListParams.self, InboxResult.self, Space.self, SpacesResult.self, SpaceLayoutParams.self,
         SpaceUpdateParams.self, LabelParams.self, LabelResult.self, LabelUpdateParams.self, LabelIDParams.self,
-        SetPinnedParams.self, ArchiveParams.self, RoomsChanged.self, RoomsFlagParams.self, SetLabelParams.self,
+        SetPinnedParams.self, ArchiveParams.self, RoomsChanged.self, RoomsFlagParams.self, SetReadAloudParams.self, SetLabelParams.self,
         DraftParams.self, ReminderParams.self, RoomsParams.self, ArchiveMatchingParams.self, SpaceParams.self,
         AutoArchiveRule.self, RulesResult.self, RuleIDParams.self, Cursor.self, RoomParams.self, MarkReadParams.self,
         ThreadParams.self, UnreadThread.self, UnreadThreadsResult.self, RoomEventsParams.self,
@@ -5668,6 +5722,8 @@ public enum ProtocolMethods {
         "InboxRow.preview_kind": PreviewKind.known.map(\.rawValue),
         "InboxRow.muted_by": MutedBy.known.map(\.rawValue),
         "InboxRow.preview_status": PreviewStatus.known.map(\.rawValue),
+        "InboxRow.read_aloud": ChatReadAloud.known.map(\.rawValue),
+        "SetReadAloudParams.read_aloud": ChatReadAloud.settable.map(\.rawValue),
         "CallNote.state": CallState.known.map(\.rawValue),
         "CallNote.media": CallMedia.known.map(\.rawValue),
         "Reminder.condition": ReminderCondition.known.map(\.rawValue),

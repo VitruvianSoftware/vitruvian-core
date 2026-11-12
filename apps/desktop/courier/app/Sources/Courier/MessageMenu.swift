@@ -172,6 +172,15 @@ enum MessageRowActions {
                   let action = conversation.replyAction(for: message) else { return }
             perform(action, id)
         }
+        func resolvedChatTitle(for msg: TimelineMessage) -> String {
+            conversation.otherPerson ?? conversation.chatInfo?.name ?? msg.senderName
+        }
+        func resolvedTranscript(for msg: TimelineMessage) -> String? {
+            guard case let .transcribed(text, _, _)? = conversation.voiceNoteTranscripts.entry(for: msg.id) else {
+                return nil
+            }
+            return text
+        }
         let dispatcher = composer.hotkeyDispatcher
         let registry = dispatcher?.hotkeys ?? HotkeyRegistry()
         return MessageActions(
@@ -187,6 +196,12 @@ enum MessageRowActions {
             waitingHelp: { StatusLine.waitingHelp(network: conversation.network) },
             menu: { message in
                 guard dispatcher?.lifecycle.isLocked != true else { return [] }
+                let transcript = resolvedTranscript(for: message)
+                let canReadAloud = ReadAloudText.forMessage(
+                    message,
+                    transcript: transcript,
+                    chatTitle: resolvedChatTitle(for: message)
+                ) != nil
                 return MessageMenu.sections(
                     for: message,
                     available: conversation.availableActions(for: message),
@@ -196,7 +211,9 @@ enum MessageRowActions {
                     includeDiagnostics: true,
                     isAIAvailable: composer.aiProvider.isAvailable,
                     responseLanguage: composer.aiPreferences.responseLanguage,
-                    translationLanguages: composer.aiPreferences.translationLanguages
+                    translationLanguages: composer.aiPreferences.translationLanguages,
+                    canReadAloud: canReadAloud,
+                    isReadingAloud: messageActions.readAloud.isReadingOnVitruvianSpeaker
                 )
             },
             perform: { command, id in
@@ -225,6 +242,14 @@ enum MessageRowActions {
                     guard let msg = conversation.message(id, from: source) else { return }
                     let store = conversation.voiceNoteTranscripts
                     Task { await store.transcribe(eventID: msg.id, mediaPath: msg.mediaPath) }
+                case .readAloud:
+                    guard let msg = conversation.message(id, from: source) else { return }
+                    messageActions.readAloudMessage(
+                        id,
+                        transcript: resolvedTranscript(for: msg),
+                        chatTitle: resolvedChatTitle(for: msg),
+                        from: source
+                    )
                 case .info: break
                 }
             },
@@ -258,7 +283,10 @@ enum MessageRowActions {
             audioPlayer: conversation.audioPlayer,
             voiceNoteTranscripts: conversation.voiceNoteTranscripts,
             copyPlainText: { text in messageActions.copyPlainText(text) },
-            chatTitle: { msg in conversation.otherPerson ?? conversation.chatInfo?.name ?? msg.senderName },
+            readAloudTranscript: { msg, text in
+                messageActions.readAloudTranscript(text, message: msg, chatTitle: resolvedChatTitle(for: msg))
+            },
+            chatTitle: { msg in resolvedChatTitle(for: msg) },
             voiceNoteQueue: { id in
                 conversation.voiceNoteQueue(
                     startingAt: id,

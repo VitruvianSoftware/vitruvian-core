@@ -127,6 +127,8 @@ public final class MessageActionsModel: ObservableObject {
     }
     /// Where "Create quick reply from draft" saves; nil offers none.
     public var quickReplies: QuickReplies?
+    /// Shared Read Aloud service (`VitruvianSpeaker --say` or `AVSpeechSynthesizer` fallback).
+    public let readAloud: ReadAloudService
     /// How long a forward waits for the engine's answer; nil is the client's own limit. Tests shorten it.
     var forwardTimeout: TimeInterval?
 
@@ -148,15 +150,25 @@ public final class MessageActionsModel: ObservableObject {
     private var toldEdits: Set<String> = []
 
     public init(conversation: ConversationModel, appModel: AppModel, preferences: ComposerPreferences,
-                pasteboard: TextPasteboard) {
+                pasteboard: TextPasteboard, readAloud: ReadAloudService? = nil) {
+        let resolvedReadAloud = readAloud ?? ReadAloudService()
         self.conversation = conversation
         self.appModel = appModel
         self.preferences = preferences
         self.pasteboard = pasteboard
+        self.readAloud = resolvedReadAloud
         self.formatTime = { [weak preferences] date in
             (preferences?.timeFormat ?? .system).formatDateTime(date, dateStyle: .short)
         }
+        if readAloud == nil {
+            resolvedReadAloud.onNotice = { [weak self] message in
+                self?.onToast(message)
+            }
+        }
         appModel.onChange { [weak self] change in self?.handle(change) }
+        subscriptions.append(resolvedReadAloud.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        })
         // @Published hands over the new value before it is stored: it is the one looked at.
         subscriptions.append(conversation.$items.sink { [weak self] items in self?.timelineChanged(items) })
         subscriptions.append(conversation.thread.$items.sink { [weak self] items in self?.timelineChanged(items) })
@@ -269,6 +281,53 @@ public final class MessageActionsModel: ObservableObject {
         guard !isLocked, !text.isEmpty else { return }
         pasteboard.setString(text)
         onToast(String(localized: "Copied to clipboard"))
+    }
+
+    /// Reads a timeline message aloud (`docs/read-aloud.md` §1) when unlocked.
+    public func readAloudMessage(
+        _ messageID: String,
+        transcript: String? = nil,
+        chatTitle: String = "",
+        from source: MessageSource = .chat
+    ) {
+        guard !isLocked else { return }
+        guard let message = conversation.message(messageID, from: source) else { return }
+        guard let spoken = ReadAloudText.forMessage(message, transcript: transcript, chatTitle: chatTitle) else { return }
+        let service = readAloud
+        Task { [weak self] in
+            await service.readAloud(spoken) { [weak self] notice in
+                self?.onToast(notice)
+            }
+        }
+    }
+
+    /// Reads a voice-note transcript aloud (`"<Sender> says: <transcript>"` or `"You said: <transcript>"`).
+    public func readAloudTranscript(_ transcript: String, message: TimelineMessage, chatTitle: String = "") {
+        guard !isLocked else { return }
+        guard let spoken = ReadAloudText.forTranscript(
+            transcript,
+            mine: message.mine,
+            senderName: message.senderName,
+            chatTitle: chatTitle
+        ) else { return }
+        let service = readAloud
+        Task { [weak self] in
+            await service.readAloud(spoken) { [weak self] notice in
+                self?.onToast(notice)
+            }
+        }
+    }
+
+    /// Reads an AI chat summary aloud.
+    public func readAloudSummary(_ summary: String) {
+        guard !isLocked else { return }
+        guard let spoken = ReadAloudText.forSummary(summary) else { return }
+        let service = readAloud
+        Task { [weak self] in
+            await service.readAloud(spoken) { [weak self] notice in
+                self?.onToast(notice)
+            }
+        }
     }
 
     // MARK: - The menu

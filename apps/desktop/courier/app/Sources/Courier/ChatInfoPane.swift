@@ -25,6 +25,9 @@ public struct ChatInfoPane: View {
     public var now: () -> Date = Date.init
     public var timerChoices: [DisappearingChoice] = []
     public var onSelectTimer: (DisappearingChoice) -> Void = { _ in }
+    /// The chat's "Read Aloud on Vitruvian Speaker" choice; nil hides the row (Vitruvian Speaker is not installed).
+    public var readAloud: ChatReadAloud? = nil
+    public var onSelectReadAloud: (ChatReadAloud) -> Void = { _ in }
     public var onEditTitleAndAvatar: () -> Void = {}
     public var onAddParticipants: () -> Void = {}
     public var onSelectMember: (Member) -> Void = { _ in }
@@ -70,6 +73,8 @@ public struct ChatInfoPane: View {
         now: @escaping () -> Date = Date.init,
         timerChoices: [DisappearingChoice] = [],
         onSelectTimer: @escaping (DisappearingChoice) -> Void = { _ in },
+        readAloud: ChatReadAloud? = nil,
+        onSelectReadAloud: @escaping (ChatReadAloud) -> Void = { _ in },
         onEditTitleAndAvatar: @escaping () -> Void = {},
         onAddParticipants: @escaping () -> Void = {},
         onSelectMember: @escaping (Member) -> Void = { _ in },
@@ -102,6 +107,8 @@ public struct ChatInfoPane: View {
         self.now = now
         self.timerChoices = timerChoices
         self.onSelectTimer = onSelectTimer
+        self.readAloud = readAloud
+        self.onSelectReadAloud = onSelectReadAloud
         self.onEditTitleAndAvatar = onEditTitleAndAvatar
         self.onAddParticipants = onAddParticipants
         self.onSelectMember = onSelectMember
@@ -657,6 +664,39 @@ public struct ChatInfoPane: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                }
+            }
+
+            if let readAloud {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "speaker.wave.2")
+                            .foregroundStyle(.secondary)
+                            .frame(width: 16)
+                        Text(String(localized: "Read Aloud on Vitruvian Speaker"))
+                            .font(.callout)
+                            .lineLimit(1)
+                            .layoutPriority(1)
+                    }
+                    // On its own line under the title, so the title never wraps mid-word in the narrow pane.
+                    HStack(spacing: 8) {
+                        Spacer().frame(width: 16)
+                        Picker(
+                            String(localized: "Read Aloud on Vitruvian Speaker"),
+                            selection: Binding(get: { readAloud }, set: onSelectReadAloud)
+                        ) {
+                            ForEach(ChatReadAloud.settable, id: \.rawValue) { choice in
+                                Text(choice.displayTitle).tag(choice)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .fixedSize()
+                    }
+                    Text(String(localized: "Muted chats are never read aloud."))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.leading, 24)
                 }
             }
         }

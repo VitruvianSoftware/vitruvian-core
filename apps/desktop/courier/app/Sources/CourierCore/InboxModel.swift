@@ -1010,6 +1010,21 @@ public final class InboxModel: ObservableObject {
         await setFlag("room.setLowPriority", on, ids: ids, toast: String(localized: "Moved to Low Priority"))
     }
 
+    /// Sets the per-chat Vitruvian Speaker announcement preference (`""`, `"always"`, `"never"`).
+    public func setReadAloud(_ value: ChatReadAloud, ids: [String]? = nil) async {
+        let expandedIDs = expandRoomIDs(beginAction(ids))
+        guard !expandedIDs.isEmpty else { return }
+        do {
+            _ = try await changeEach("room.setReadAloud", expandedIDs) {
+                SetReadAloudParams(roomIDs: $0, readAloud: value)
+            }
+            finishBulk()
+        } catch {
+            fail(error)
+        }
+        requestRead(waiting: false)
+    }
+
     /// Hides the targets on this Mac, or shows them again.
     public func setHidden(_ on: Bool, ids: [String]? = nil) async {
         await setFlag("room.setHidden", on, ids: ids, toast: String(localized: "Hidden"))

@@ -880,7 +880,14 @@ public final class SettingsNavigationModel: ObservableObject {
             keywords: ["send later", "reminders", "undo send", "incognito", "low priority", "auto-archive"]
         ),
 
-        // MARK: - Integrations (6)
+        // MARK: - Integrations (7)
+        SettingDefinition(
+            id: "integrations.vitruvianSpeaker",
+            pane: .integrations,
+            section: "Vitruvian Speaker",
+            title: "Vitruvian Speaker",
+            keywords: ["vitruvian-speaker", "read aloud", "voice", "announce", "speaker"]
+        ),
         SettingDefinition(
             id: "integrations.localAPI",
             pane: .integrations,
@@ -1039,6 +1046,7 @@ public final class SettingsNavigationModel: ObservableObject {
         "plan.overview",
         "plan.features",
         // IntegrationsSettingsPane
+        "integrations.vitruvianSpeaker",
         "integrations.localAPI",
         "integrations.remoteAccess",
         "integrations.connections",

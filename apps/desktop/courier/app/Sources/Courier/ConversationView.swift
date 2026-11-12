@@ -64,6 +64,9 @@ struct ConversationView: View {
                     now: { conversation.currentTime },
                     timerChoices: conversation.timerChoices,
                     onSelectTimer: { choice in Task { await conversation.setTimer(choice) } },
+                    readAloud: messageActions.readAloud.isVitruvianSpeakerInstalled
+                        ? inbox.row(of: info.roomID)?.effectiveReadAloud : nil,
+                    onSelectReadAloud: { choice in Task { await inbox.setReadAloud(choice, ids: [info.roomID]) } },
                     onEditTitleAndAvatar: {
                         Task { await conversation.beginEditChat(info: info) }
                     },
@@ -150,6 +153,7 @@ struct ConversationView: View {
                         NSPasteboard.general.setString(text, forType: .string)
                         conversation.onToast(String(localized: "Copied summary"))
                     },
+                    onReadAloudSummary: { text in messageActions.readAloudSummary(text) },
                     onOpenAISettings: { conversation.onOpenAISettings() },
                     onClose: { conversation.isShowingAIPane = false },
                     headerInToolbar: drawsLiquidGlass
@@ -170,11 +174,11 @@ struct ConversationView: View {
             ) ?? .accentColor
         )
         .courierChatToolbar {
-            ConversationHeaderContainer(inbox: inbox, conversation: conversation, redactNamesAndPictures: redact,
-                                        part: .identity)
+            ConversationHeaderContainer(inbox: inbox, conversation: conversation, readAloud: messageActions.readAloud,
+                                        redactNamesAndPictures: redact, part: .identity)
         } actions: {
-            ConversationHeaderContainer(inbox: inbox, conversation: conversation, redactNamesAndPictures: redact,
-                                        part: .actions)
+            ConversationHeaderContainer(inbox: inbox, conversation: conversation, readAloud: messageActions.readAloud,
+                                        redactNamesAndPictures: redact, part: .actions)
         } panes: {
             sidePaneHeaders
         }
@@ -333,7 +337,8 @@ struct ConversationView: View {
         return VStack(spacing: 0) {
             // With glass the chat's name and buttons are in the window's toolbar (courierChatToolbar), not a strip.
             if !drawsLiquidGlass {
-                ConversationHeaderContainer(inbox: inbox, conversation: conversation, redactNamesAndPictures: redact)
+                ConversationHeaderContainer(inbox: inbox, conversation: conversation, readAloud: messageActions.readAloud,
+                                            redactNamesAndPictures: redact)
                 Divider()
             }
             ZStack {
@@ -861,6 +866,7 @@ struct ConversationView: View {
 private struct ConversationHeaderContainer: View {
     @ObservedObject var inbox: InboxModel
     @ObservedObject var conversation: ConversationModel
+    let readAloud: ReadAloudService
     var redactNamesAndPictures: Bool = false
     var part: ConversationHeader.Part = .strip
 
@@ -870,6 +876,11 @@ private struct ConversationHeaderContainer: View {
             row: headerRow,
             networkName: headerRow.map { inbox.networkName($0.network) },
             conversation: conversation,
+            readAloud: readAloud.isVitruvianSpeakerInstalled ? headerRow?.effectiveReadAloud : nil,
+            onSelectReadAloud: { choice in
+                guard let roomID = headerRow?.roomID else { return }
+                Task { await inbox.setReadAloud(choice, ids: [roomID]) }
+            },
             redactNamesAndPictures: redactNamesAndPictures,
             part: part
         )
@@ -931,6 +942,9 @@ struct ConversationHeader: View {
     let row: InboxRow?
     let networkName: String?
     @ObservedObject var conversation: ConversationModel
+    /// The chat's Read Aloud on Vitruvian Speaker choice; nil hides the menu (Vitruvian Speaker is not installed).
+    var readAloud: ChatReadAloud? = nil
+    var onSelectReadAloud: (ChatReadAloud) -> Void = { _ in }
     var redactNamesAndPictures: Bool = false
     var part: Part = .strip
 
@@ -1003,6 +1017,22 @@ struct ConversationHeader: View {
             }
             .disabled(!conversation.composer.aiProvider.isAvailable)
             .help(conversation.composer.aiProvider.isAvailable ? "" : String(localized: "Set up AI in Settings"))
+            if let readAloud {
+                Divider()
+                Menu(String(localized: "Read Aloud on Vitruvian Speaker")) {
+                    Picker(
+                        String(localized: "Read Aloud on Vitruvian Speaker"),
+                        selection: Binding(get: { readAloud }, set: onSelectReadAloud)
+                    ) {
+                        ForEach(ChatReadAloud.settable, id: \.rawValue) { choice in
+                            Text(choice.displayTitle).tag(choice)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                    Divider()
+                    Text(String(localized: "Muted chats are never read aloud."))
+                }
+            }
         }
         .help(String(localized: "Chat Info (⌘⇧I)"))
         .accessibilityLabel(String(localized: "Chat Info"))
