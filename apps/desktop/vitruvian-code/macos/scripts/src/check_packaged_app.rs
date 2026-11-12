@@ -26,9 +26,6 @@ use std::process::Command;
 const SCRIPT_NAME: &str = "mermaid.min.js";
 const LICENCE_NAME: &str = "mermaid-LICENSE.txt";
 const UI_RESOURCES: &str = "VitruvianCode_VitruvianCodeUI.bundle";
-/// The bridge, the last release of Nexus Agent: no chat view, so no Mermaid and
-/// no notices to check, but still a signed program for the processors named.
-const BRIDGE_APP: &str = "NexusAgent.app";
 
 fn fail(app: &str, msg: &str) -> i32 {
     eprintln!("error: {}", msg);
@@ -144,14 +141,6 @@ pub fn run(args: &[String]) -> i32 {
     let mut sorted_archs: Vec<&str> = archs.iter().map(|s| s.as_str()).collect();
     sorted_archs.sort();
     let want_archs = format!("{} ", sorted_archs.join(" "));
-
-    if Path::new(app).file_name().and_then(|n| n.to_str()) == Some(BRIDGE_APP) {
-        println!("==> Checking {}", app);
-        if !Path::new(app).is_dir() {
-            return fail(app, &format!("no app at {}", app));
-        }
-        return check_program_and_signature(app, "NexusAgent", &want_archs, require_notarized);
-    }
 
     // Resolve THIRD_PARTY_NOTICES.md relative to the binary's location,
     // mirroring the shell script's SCRIPT_DIR/../../THIRD_PARTY_NOTICES.md,

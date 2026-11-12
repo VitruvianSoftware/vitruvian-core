@@ -227,7 +227,7 @@ package struct NotchAgentRestingWing: View {
         } else {
             switch restingWing {
             case .words(let words)?:
-                // A tool's own words, drawn as Nexus Agent's text is.
+                // A tool's own words, drawn as Vitruvian Code's text is.
                 restingText(words)
             case .seconds(let since)?:
                 restingText(RestingStatus.seconds(since: since, now: now, language: l10n.language))
@@ -245,7 +245,7 @@ package struct NotchAgentRestingWing: View {
 
 extension NotchAgentRestingWing {
     /// The right-hand wing's text for a tool's words or seconds: the look of
-    /// Nexus Agent's text, drawn as written, with no markup.
+    /// Vitruvian Code's text, drawn as written, with no markup.
     fileprivate func restingText(_ words: String) -> some View {
         Text(verbatim: words)
             .font(.system(size: 9, weight: .semibold, design: .monospaced))

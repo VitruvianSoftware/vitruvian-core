@@ -290,11 +290,10 @@ mod tests {
         for (tag, want) in [
             ("home-speaker-v1.11.0", "1.11.0"),
             ("vitruvian-v3.37.1", "3.37.1"),
-            ("nexus-agent-v1.20.1", "1.20.1"),
             ("vitruvian-code-v1.33.0", "1.33.0"),
             ("v2.0.4", "2.0.4"),
             ("4.5.6", "4.5.6"),
-            ("nexus-agent-1.20.1", "1.20.1"),
+            ("vitruvian-code-1.33.0", "1.33.0"),
             ("vitruvian-v3.38.0-beta.1", "3.38.0-beta.1"),
             ("x-v12.3", "12.3"),
             ("1.2.3.4", "1.2.3"),
@@ -314,7 +313,7 @@ mod tests {
     fn cask_names() {
         for (app, want) in [
             ("HomeSpeaker", "home-speaker"),
-            ("NexusAgent", "nexus-agent"),
+            ("VitruvianCode", "vitruvian-code"),
             ("Vitruvian", "vitruvian"),
             ("MyNewDesktopClient", "my-new-desktop-client"),
             ("HTTPServer", "http-server"),

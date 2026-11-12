@@ -24,6 +24,9 @@ use crate::pystr::{cmp_str, strip};
 use crate::rules::bazel::{validate_build_file_content, validate_starlark_file_name};
 use crate::rules::configs::{validate_config_file_name, validate_workflow_yaml_content};
 use crate::rules::directories::validate_directory_name;
+use crate::rules::retired_names::{
+    has_binary_extension, validate_retired_file_bytes, validate_retired_path,
+};
 use crate::rules::source_files::validate_file_name;
 use crate::textio::{os_to_str, read_text_ignore, str_to_os};
 use crate::violation::{Severity, Violation};
@@ -332,6 +335,7 @@ impl Scanner {
             if !rel_root.is_empty() {
                 let is_root = !rel_root.replace('\\', "/").contains('/');
                 violations.extend(validate_directory_name(&rel_root, is_root));
+                violations.extend(validate_retired_path(&rel_root));
             }
 
             for (file_name, raw) in &files {
@@ -341,6 +345,12 @@ impl Scanner {
                 }
                 let abs_file = dir.join(raw);
                 violations.extend(validate_file_name(&rel_file));
+                violations.extend(validate_retired_path(&rel_file));
+                if !has_binary_extension(&rel_file) {
+                    if let Ok(bytes) = std::fs::read(&abs_file) {
+                        violations.extend(validate_retired_file_bytes(&rel_file, &bytes));
+                    }
+                }
                 if file_name.ends_with(".bzl") {
                     violations.extend(validate_starlark_file_name(&rel_file));
                 }
@@ -531,5 +541,55 @@ mod tests {
                 "expected violations on testdata/violations"
             );
         }
+    }
+
+    #[test]
+    fn retired_name_mention_fails_check() {
+        let dir = std::env::temp_dir().join(format!("lint-naming-retired-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("docs/guides")).unwrap();
+        std::fs::write(
+            dir.join("CHANGELOG.md"),
+            concat!("Historical release for ", "Nexus", " Agent.\n"),
+        )
+        .unwrap();
+
+        let argv = |root: &str| -> Vec<OsString> {
+            vec![
+                OsString::from("lint-naming"),
+                OsString::from("--root"),
+                OsString::from(root),
+                OsString::from("--check"),
+            ]
+        };
+
+        // Allowlisted CHANGELOG entry alone passes --check.
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        assert_eq!(
+            crate::cli::run(argv(dir.to_str().unwrap()), &mut out, &mut err),
+            0
+        );
+
+        // Adding a stray mention outside the allowlist fails --check with RET001.
+        std::fs::write(
+            dir.join("docs/guides/overview.md"),
+            concat!("Open ", "Nexus", " Agent to inspect logs.\n"),
+        )
+        .unwrap();
+        out.clear();
+        err.clear();
+        assert_eq!(
+            crate::cli::run(argv(dir.to_str().unwrap()), &mut out, &mut err),
+            1
+        );
+        let report = String::from_utf8_lossy(&out);
+        assert!(
+            report.contains("[RET001] ERROR"),
+            "expected RET001 error in report, got: {}",
+            report
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

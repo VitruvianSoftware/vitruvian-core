@@ -107,7 +107,7 @@ fn import_label_cases() {
     for (c, want) in [
         ("mcp-slack", "MCP_SLACK_REV_ID"),
         ("devx", "DEVX_REV_ID"),
-        ("nexus-agent", "NEXUS_AGENT_REV_ID"),
+        // legacy name: NEXUS_AGENT_REV_ID stamps Copybara commits for vitruvian-code
         ("vitruvian-code", "NEXUS_AGENT_REV_ID"),
         ("homelab", "HOMELAB_REV_ID"),
     ] {

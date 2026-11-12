@@ -37,7 +37,6 @@ Component package providing implementation for `apps/desktop/vitruvian/Sources/V
 - Subdirectory: [MouseClickDebounce](./MouseClickDebounce/README.md)
 - Subdirectory: [MouseExceptions](./MouseExceptions/README.md)
 - Subdirectory: [MouseNavigation](./MouseNavigation/README.md)
-- Subdirectory: [NexusAgent](./NexusAgent/README.md)
 - Subdirectory: [Notch](./Notch/README.md)
 - Subdirectory: [Platform](./Platform/README.md)
 - Subdirectory: [PortManager](./PortManager/README.md)

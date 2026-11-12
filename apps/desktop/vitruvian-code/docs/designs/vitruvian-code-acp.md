@@ -8,7 +8,7 @@
 
 ## Overview
 
-Vitruvian Code (formerly Nexus Agent, `apps/desktop/vitruvian-code/`) is a
+Vitruvian Code (`apps/desktop/vitruvian-code/`) is a
 macOS app that runs coding agents such as Claude Code and Antigravity (agy).
 It ships in two forms:
 

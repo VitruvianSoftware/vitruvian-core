@@ -25,6 +25,7 @@
 # infrastructure/pulumi/platform/repo-config/sponsor-button-repos.txt.
 # This folder is exported to the root of the public mirror repository, so the
 # file lands in the mirror's own .github/ (tools/copybara/copy.bara.sky).
-# It opens Vitruvian Code's own page, so donations through it are counted for
-# Vitruvian Code in Stripe, not for Vitruvian Software as a whole.
+# It opens Vitruvian Code's donate page (backed by the `nexus-agent` Stripe key
+# in infrastructure/pulumi/platform/stripe), so donations through it are counted
+# for Vitruvian Code in Stripe, not for Vitruvian Software as a whole.
 custom: ["https://vitruviansoftware.dev/donate/nexus-agent/"]

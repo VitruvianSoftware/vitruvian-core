@@ -556,9 +556,8 @@ pub fn sync_catalog(
 /// The label of one of Vitruvian Code's release assets that is a download.
 /// The mirror names them VitruvianCode-<v>-macos.dmg (the build for every Mac),
 /// -arm64.dmg, -x86_64.dmg and -macos.zip (what the app updates itself from).
-/// No new asset says "universal": the one zip that does is the bridge for old
-/// Nexus Agent installs, which is no download. The `.sha256` files beside the
-/// zip are not either, so a name must END with what identifies it.
+/// The `.sha256` files beside the zip and the standalone tool zip are no
+/// downloads, so a name must END with what identifies it.
 pub fn code_label(name: &str) -> Option<&'static str> {
     const LABELS: [(&str, &str); 4] = [
         ("arm64.dmg", "Apple Silicon DMG"),
@@ -643,9 +642,9 @@ mod tests {
             code_label("VitruvianCode-1.33.0-macos.zip"),
             Some("Universal ZIP")
         );
-        // The checksum beside the zip, the bridge, and the tool are no downloads.
+        // The checksum beside the zip, `-universal.zip`, and the tool are no downloads.
         assert_eq!(code_label("VitruvianCode-1.33.0-macos.zip.sha256"), None);
-        assert_eq!(code_label("NexusAgent-1.33.0-universal.zip"), None);
+        assert_eq!(code_label("VitruvianCode-1.33.0-universal.zip"), None);
         assert_eq!(code_label("vitruvian-code-tool-1.33.0.zip"), None);
     }
 
@@ -654,7 +653,7 @@ mod tests {
         assert_eq!(semver("v1.2.3"), (1, 2, 3));
         assert_eq!(semver("home-speaker-v1.11.0"), (1, 11, 0));
         assert_eq!(semver("vitruvian-v3.37.1"), (3, 37, 1));
-        assert_eq!(semver("nexus-agent-1.20.1"), (1, 20, 1));
+        assert_eq!(semver("vitruvian-code-1.34.0"), (1, 34, 0));
         assert_eq!(semver("0.1.2"), (0, 1, 2));
         assert_eq!(semver("no-numbers"), (0, 0, 0));
     }

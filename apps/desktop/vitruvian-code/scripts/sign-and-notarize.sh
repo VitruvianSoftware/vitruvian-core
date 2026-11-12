@@ -20,8 +20,8 @@
 # SOFTWARE.
 
 # Signs, notarizes, staples, and verifies Vitruvian Code's macOS release bundles
-# (`Vitruvian Code.app`, the migration bridge `NexusAgent.app`, the standalone
-# `vitruvian-code-tool` Mach-O, and the `.dmg` disk images).
+# (`Vitruvian Code.app`, the standalone `vitruvian-code-tool` Mach-O, and the
+# `.dmg` disk images).
 #
 # Modes (controlled ONLY by explicit SIGNING; never inferred from missing secrets):
 #   SIGNING=developer-id    Default for releases. Requires all 5 VITRUVIAN_*
@@ -33,7 +33,7 @@
 #                           Application" identity in the user's keychain. Set
 #                           NOTARIZE=0 to skip notarization/stapling/spctl.
 #   SIGNING=adhoc           Explicit opt-out used ONLY by the monorepo mirror
-#                           rehearsal workflow (.github/workflows/nexus-agent-mirror-toolchain.yaml).
+#                           rehearsal workflow (.github/workflows/vitruvian-code-mirror-toolchain.yaml).
 
 set -euo pipefail
 set +x

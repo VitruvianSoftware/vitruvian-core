@@ -155,12 +155,6 @@ package enum SettingsBackupSupport {
         // Restoring it elsewhere could search a different volume or trigger a
         // protected-folder prompt without a fresh choice.
         DefaultsKey.commandBarFileScopes,
-        // The Nexus Agent feature's keys, kept one release for the hand-off to
-        // the Nexus Agent tool: the bot folder is this Mac's, the prompts are
-        // private content, and a saved provider's command is run as a program.
-        DefaultsKey.nexusAgentBotDirectory,
-        DefaultsKey.nexusAgentPromptHistory,
-        DefaultsKey.nexusAgentSavedProviders,
         DefaultsKey.notchDownloadsFolderBookmark,
         DefaultsKey.wallpaperOwnBookmarks,
         DefaultsKey.wallpaperExcludedOwnPaths,

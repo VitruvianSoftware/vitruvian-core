@@ -148,7 +148,7 @@ Part of the `vitruvian-core-repo-config` Pulumi project (previously the standalo
 `vitruvian-core-infra` project). Provisions the GitHub auth that backs
 [Copybara sync](../admin/copybara-sync.md) between the monorepo and
 each standalone component repo. For every component (`mcp-slack`, `devx`,
-`homelab`, `nexus-agent`) it creates a fresh ED25519 key pair and wires the two
+`homelab`, `vitruvian-code`) it creates a fresh ED25519 key pair and wires the two
 halves where each side of the sync needs them; it also places the shared sync
 App's credentials for the Dependabot reconcile + auto-merge automation.
 
@@ -162,7 +162,7 @@ flowchart LR
       exp["export workflow<br/>reads &lt;COMP&gt;_SYNC_SSH_KEY"]
       depbot["Dependabot + Actions<br/>SYNC_APP_ID · SYNC_APP_PRIVATE_KEY"]
     end
-    subgraph std["standalone repos<br/>devx · homelab · mcp-slack · nexus-agent"]
+    subgraph std["standalone repos<br/>devx · homelab · mcp-slack · vitruvian-code"]
       dk["write deploy key"]
       disp["dispatch workflow<br/>&lt;COMP&gt;_DISPATCH_APP_ID / _PRIVATE_KEY"]
     end

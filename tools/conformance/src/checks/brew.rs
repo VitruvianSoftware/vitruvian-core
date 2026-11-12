@@ -58,6 +58,7 @@ const OUR_NAMES: &[&str] = &[
     "gravastar-mouse",
     "home-speaker",
     "homelab",
+    // legacy name: Homebrew cask token in VitruvianSoftware/homebrew-tap
     "nexus-agent",
     "vitruvian",
     "vitruvian-tool",

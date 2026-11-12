@@ -25,7 +25,7 @@ import Foundation
 /// linking the app's `@main` (which duplicates the test binary's main) (#807).
 public enum VersionCompare {
     /// Extract a dotted semantic version (e.g. "1.4.0") from a release tag such as
-    /// "nexus-agent-v1.4.0" or "v1.4.0". Falls back to stripping a leading "v".
+    /// "vitruvian-code-v1.4.0" or "v1.4.0". Falls back to stripping a leading "v".
     public static func extractVersion(from tag: String) -> String {
         if let range = tag.range(of: "\\d+\\.\\d+\\.\\d+", options: .regularExpression) {
             return String(tag[range])
@@ -35,8 +35,6 @@ public enum VersionCompare {
 
     /// The release asset the app updates itself from: exactly
     /// `VitruvianCode-<version>-macos.zip`, which holds `Vitruvian Code.app`.
-    /// No new asset says "universal": the release's one zip that does is the
-    /// bridge for old Nexus Agent installs, and is not this app.
     public static func updateAssetName(version: String) -> String { "VitruvianCode-\(version)-macos.zip" }
 
     /// The asset to update from, among a release's asset names; nil when the

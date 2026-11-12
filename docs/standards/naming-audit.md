@@ -82,7 +82,7 @@ The audit examined all 4,226 tracked repository files, 840 unique directories, 2
    - **Database Persistence vs. API Wire Format**: PostgreSQL schema conventions mandate `snake_case` table and column identifiers, while TypeScript and OpenAPI wire formats standardize on `camelCase`.
 3. **Unintentional Drift & High-Priority Remediation Targets**:
    - **Kebab-Case Go Files**: Four Go source files in Pulumi infrastructure trees use kebab-case (`net-hubs.go`, `net-hubs-transitivity.go`), violating Go filename idioms.
-   - **Hyphenated Python Script**: `apps/desktop/nexus-agent/hooks/stream-hook.py` uses a hyphen, causing a `SyntaxError` if imported as a module.
+   - **Hyphenated Python Script**: `apps/desktop/vitruvian-code/hooks/stream-hook.py` uses a hyphen, causing a `SyntaxError` if imported as a module.
    - **`sh_test` Target Split**: 27 shell test targets are split arbitrarily between `<binary>_test` (preserving kebab-case binary name, e.g. `:ci-preflight_test`) and `<package_snake>_test` (e.g. `:agent_app_test`).
    - **Pulumi Project & Stack Drift**: Foundation Pulumi stacks use kebab-case (`foundation-bootstrap`), whereas Application Pulumi stacks use snake_case with a prefix (`pulumi_tabula_app`). Stack config files (`Pulumi.<env>.yaml`) mix `snake_case` and `camelCase` keys within the same file.
    - **Sibling Directory Drift**: `infrastructure/pulumi/platform/repo_config` (snake_case) sits directly beside `dev-local` and `zitadel-apps` (kebab-case).
@@ -115,7 +115,7 @@ The monorepo contains 22 root-level directories and 840 unique subdirectories.
 | `apps/cli/homelab/` | `lower_single` | Homelab infrastructure management Go CLI |
 | `infrastructure/` | `lower_single` | Production Pulumi GCP infrastructure stacks |
 | `apps/mcp/slack/` | `kebab-case` | Model Context Protocol Slack server application |
-| `apps/desktop/nexus-agent/` | `kebab-case` | Native macOS menu-bar agent application |
+| `apps/desktop/vitruvian-code/` | `kebab-case` | Native macOS menu-bar agent application |
 | `apps/web/oauth-user-inspector/` | `kebab-case` | OAuth inspection web app and API backend |
 | `tools/ops/` | `lower_single` | Operational scripts and maintenance tasks |
 | `packages/` | `lower_single` | Shared UI libraries and frontend packages (`design-system`) |
@@ -124,14 +124,14 @@ The monorepo contains 22 root-level directories and 840 unique subdirectories.
 | `apps/suites/tabula/` | `lower_single` | Tabula Chrome extension, API backend, and web app |
 | `tools/` | `lower_single` | Monorepo build, CI, release, security, and admin tooling |
 
-**Root Rule**: Multi-word top-level applications strictly use **`kebab-case`** (`mcp-slack`, `nexus-agent`, `oauth-user-inspector`). Single-word domains use lowercase. No root directory uses `_` (snake_case).
+**Root Rule**: Multi-word top-level applications strictly use **`kebab-case`** (`mcp-slack`, `vitruvian-code`, `oauth-user-inspector`). Single-word domains use lowercase. No root directory uses `_` (snake_case).
 
 #### Subdirectory Casing Distribution (840 Total Subdirectories)
 
 - **`lower_single`** (572 dirs, 68.1%): `cmd`, `internal`, `pkg`, `src`, `components`, `lib`, `config`, `modules`.
 - **`kebab-case`** (167 dirs, 19.9%): `gcp-bootstrap`, `ci-preflight`, `cloud-run`, `agent-app`, `gitops-validate`.
 - **`snake_case`** (91 dirs, 10.8%): Concentrated in Go package directories (`packages/pulumi/library/go/pkg/cloud_run/`, `infrastructure/pulumi/**/modules/shared_vpc/`) and Prisma migrations (`20260714205548_add_tab_notes/`).
-- **`PascalCase`** (6 dirs, 0.7%): Swift/Apple directories (`apps/desktop/nexus-agent/macos/Sources/NexusAgentCore/`).
+- **`PascalCase`** (6 dirs, 0.7%): Swift/Apple directories (`apps/desktop/vitruvian-code/macos/Sources/VitruvianCodeCore/`).
 - **`camelCase`** (2 dirs, 0.2%): `apps/web/backstage/packages/backend/src/plugins/cloudRun/`.
 - **Other / Spec** (2 dirs, 0.2%): `apps/cli/devx/.github/ISSUE_TEMPLATE/` (UPPER_SNAKE), `apps/suites/tabula/web/src/app/[relayId]/` (Next.js dynamic route).
 
@@ -160,10 +160,10 @@ The monorepo contains 22 root-level directories and 840 unique subdirectories.
 
 #### Python Ecosystem (3 Files)
 - **Standard**: **`snake_case.py`** (`devx/scripts/migrate_to_docker.py`, `pulumi/examples/go-foundation/patch_sa.py`).
-- **Identified Violation**: `nexus-agent/hooks/stream-hook.py` uses kebab-case. Because Python modules cannot contain hyphens, `import stream-hook` fails with `SyntaxError: invalid syntax`.
+- **Identified Violation**: `vitruvian-code/hooks/stream-hook.py` uses kebab-case. Because Python modules cannot contain hyphens, `import stream-hook` fails with `SyntaxError: invalid syntax`.
 
 #### Swift / macOS Ecosystem (11 Files)
-- **Standard**: **`PascalCase.swift`** (`NexusAgentApp.swift`, `NexusAgentCore.swift`, `StatusBarController.swift`). Single entry point `main.swift` follows standard Apple compiler conventions.
+- **Standard**: **`PascalCase.swift`** (`VitruvianCodeApp.swift`, `VitruvianCodeCore.swift`, `StatusBarController.swift`). Single entry point `main.swift` follows standard Apple compiler conventions.
 
 #### Starlark & Bazel Rules (11 Files)
 - **Standard**: **`snake_case.bzl`** (100% compliance across `defs.bzl`, `go_image.bzl`, `node_image.bzl`, `py3_image.bzl`, `linters.bzl`). All rule definitions, macros, and parameter names adhere to Starlark `snake_case` specifications.
@@ -239,9 +239,9 @@ Across 299 `BUILD` / `BUILD.bazel` files containing 293 packages and 546 targets
 | `sh_test` | 27 | **SPLIT CONVENTION** | 8 use `<kebab>_test`, 11 use `<snake>_test` |
 | `ts_project` | 9 | `snake_case` (`:lib`, `:tests_lib`, `:tools_lib`) | TypeScript compilation rules |
 | `js_binary` | 7 | `snake_case` (`:tabcli`, `:api_bin`, `:migrate_deploy_bin`) | Node runtime binary targets |
-| `swift_library` | 4 | `PascalCase` (`:NexusAgentCore`, `:NexusAgent_lib`) | Apple naming + mixed snake suffix |
-| `swift_test` | 1 | `PascalCase_snake` (`:NexusAgent_tests`) | Apple test target |
-| `macos_application` | 1 | `PascalCase` (`:NexusAgent`) | App bundle identifier |
+| `swift_library` | 4 | `PascalCase` (`:VitruvianCodeCore`, `:VitruvianCode_lib`) | Apple naming + mixed snake suffix |
+| `swift_test` | 1 | `PascalCase_snake` (`:VitruvianCode_tests`) | Apple test target |
+| `macos_application` | 1 | `PascalCase` (`:VitruvianCode`) | App bundle identifier |
 | `pulumi_project` | 76 | Stack / Env name (`:development`, `:production`, `:repo_config`) | Pulumi stack entrypoint wrapper |
 | `delivery` | 9 | `kebab-case` (`:oauth-user-inspector`, `:tabula-api`) | Delivery orchestrator registration |
 
@@ -500,7 +500,7 @@ The Tabula system (`tabula/api/prisma/schema.prisma` and `tabula/api/openapi.yam
 | `infrastructure/pulumi/foundation/gcp-networks/envs/shared/net-hubs-transitivity.go` | `net-hubs-transitivity.go` | `net_hubs_transitivity.go` | Low / Safe | Violates standard Go filename idioms |
 | `pulumi/examples/go-foundation/3-networks-hub-and-spoke/envs/shared/net-hubs.go` | `net-hubs.go` | `net_hubs.go` | Low / Safe | Violates standard Go filename idioms |
 | `pulumi/examples/go-foundation/3-networks-hub-and-spoke/envs/shared/net-hubs-transitivity.go` | `net-hubs-transitivity.go` | `net_hubs_transitivity.go` | Low / Safe | Violates standard Go filename idioms |
-| `nexus-agent/hooks/stream-hook.py` | `stream-hook.py` | `stream_hook.py` | **High / Broken** | `import stream-hook` fails with SyntaxError |
+| `vitruvian-code/hooks/stream-hook.py` | `stream-hook.py` | `stream_hook.py` | **High / Broken** | `import stream-hook` fails with SyntaxError |
 | `tabula/web/__tests__/relay-landing.test.tsx` | `relay-landing.test.tsx` | `RelayLanding.test.tsx` | Low / Safe | Inconsistent with sibling React PascalCase tests |
 | `tabula/web/__tests__/space-detail.test.tsx` | `space-detail.test.tsx` | `SpaceDetail.test.tsx` | Low / Safe | Inconsistent with sibling React PascalCase tests |
 
@@ -529,9 +529,9 @@ The Tabula system (`tabula/api/prisma/schema.prisma` and `tabula/api/openapi.yam
 | `//tools/gcp-token:gcp_token_test` | `tools/gcp-token/BUILD:43` | `//tools/gcp-token:gcp-token` | Snake-case conversion of kebab binary | `//tools/gcp-token:gcp-token_test` |
 | `//tools/gcp-secrets:gcp_secrets_test` | `tools/gcp-secrets/BUILD:46` | `//tools/gcp-secrets:seed` | Snake-case conversion of kebab pkg | `//tools/gcp-secrets:gcp-secrets_test` |
 | `//tools/saas-cli:saas_cli_test` | `tools/saas-cli/BUILD:55` | `//tools/saas-cli:neon` | Snake-case conversion of kebab pkg | `//tools/saas-cli:saas-cli_test` |
-| `//nexus-agent/macos:NexusAgent_lib` | `nexus-agent/macos/BUILD:20` | - | Mixed PascalCase + snake suffix | `//nexus-agent/macos:NexusAgentLib` |
-| `//nexus-agent/macos:NexusAgent_tests` | `nexus-agent/macos/BUILD:32` | - | Mixed PascalCase + snake suffix | `//nexus-agent/macos:NexusAgentTests` |
-| `//nexus-agent/hooks:stream-hook` | `nexus-agent/hooks/BUILD:4` | `stream-hook.py` | `py_binary` kebab-case target | `//nexus-agent/hooks:stream_hook` |
+| `//vitruvian-code/macos:VitruvianCode_lib` | `vitruvian-code/macos/BUILD:20` | - | Mixed PascalCase + snake suffix | `//vitruvian-code/macos:VitruvianCodeLib` |
+| `//vitruvian-code/macos:VitruvianCode_tests` | `vitruvian-code/macos/BUILD:32` | - | Mixed PascalCase + snake suffix | `//vitruvian-code/macos:VitruvianCodeTests` |
+| `//vitruvian-code/hooks:stream-hook` | `vitruvian-code/hooks/BUILD:4` | `stream-hook.py` | `py_binary` kebab-case target | `//vitruvian-code/hooks:stream_hook` |
 
 ---
 

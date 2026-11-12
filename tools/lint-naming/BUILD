@@ -24,7 +24,10 @@ rust_library(
     name = "lint_naming_lib",
     srcs = glob(
         ["src/**/*.rs"],
-        exclude = ["src/main.rs"],
+        exclude = [
+            "src/check_retired.rs",
+            "src/main.rs",
+        ],
     ),
     crate_name = "lint_naming",
     crate_root = "src/lib.rs",
@@ -36,6 +39,15 @@ rust_library(
 rust_binary(
     name = "lint-naming",
     srcs = ["src/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [":lint_naming_lib"],
+)
+
+rust_binary(
+    name = "check-retired",
+    srcs = ["src/check_retired.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],

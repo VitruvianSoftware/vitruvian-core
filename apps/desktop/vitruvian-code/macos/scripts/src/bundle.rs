@@ -29,34 +29,6 @@ const APP_NAME: &str = "Vitruvian Code";
 const EXECUTABLE_NAME: &str = "VitruvianCode";
 const BUNDLE_ID: &str = "com.vitruviansoftware.code";
 const DISPLAY_NAME: &str = "Vitruvian Code";
-
-/// What differs between the two apps this bundles. The bridge is the last
-/// release of Nexus Agent: a tiny app under the old name and ID whose only job
-/// is to install Vitruvian Code (apps/desktop/vitruvian-code/bridge).
-struct Flavor {
-    app: &'static str,
-    exe: &'static str,
-    bundle_id: &'static str,
-    display: &'static str,
-    /// Whether the chat view's resources and the icon go in.
-    full: bool,
-}
-
-const MAIN: Flavor = Flavor {
-    app: APP_NAME,
-    exe: EXECUTABLE_NAME,
-    bundle_id: BUNDLE_ID,
-    display: DISPLAY_NAME,
-    full: true,
-};
-
-const BRIDGE: Flavor = Flavor {
-    app: "NexusAgent",
-    exe: "NexusAgent",
-    bundle_id: "com.vitruviansoftware.nexusagent",
-    display: "Nexus Agent",
-    full: false,
-};
 const UI_RESOURCES: &str = "VitruvianCode_VitruvianCodeUI.bundle";
 
 fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
@@ -76,19 +48,14 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
 
 pub fn run(args: &[String]) -> i32 {
     let rest = if args.len() > 1 { &args[1..] } else { &[] };
-    if rest.len() < 3 {
-        eprintln!("Usage: bundle-app <executable> <version> <output_dir> [--bridge]");
+    if rest.len() != 3 {
+        eprintln!("Usage: bundle-app <executable> <version> <output_dir>");
         return 2;
     }
 
     let executable = &rest[0];
     let version = &rest[1];
     let output_dir = &rest[2];
-    let flavor = if rest.get(3).map(|a| a.as_str()) == Some("--bridge") {
-        &BRIDGE
-    } else {
-        &MAIN
-    };
 
     let exe_path = PathBuf::from(executable);
 
@@ -111,9 +78,9 @@ pub fn run(args: &[String]) -> i32 {
         .find(|p| p.is_dir())
         .unwrap_or_else(|| script_dir.join("../Resources"));
 
-    let app_bundle = PathBuf::from(output_dir).join(format!("{}.app", flavor.app));
+    let app_bundle = PathBuf::from(output_dir).join(format!("{}.app", APP_NAME));
 
-    println!("==> Assembling {}.app v{}", flavor.app, version);
+    println!("==> Assembling {}.app v{}", APP_NAME, version);
 
     // Clean and create bundle structure
     let _ = fs::remove_dir_all(&app_bundle);
@@ -129,7 +96,7 @@ pub fn run(args: &[String]) -> i32 {
     }
 
     // Copy executable
-    let dest_exe = macos_dir.join(flavor.exe);
+    let dest_exe = macos_dir.join(EXECUTABLE_NAME);
     if let Err(e) = fs::copy(&exe_path, &dest_exe) {
         eprintln!("error: cannot copy executable: {}", e);
         return 1;
@@ -138,7 +105,7 @@ pub fn run(args: &[String]) -> i32 {
 
     // Copy icon
     let icon = resources_dir.join("AppIcon.icns");
-    if flavor.full && icon.exists() {
+    if icon.exists() {
         if let Err(e) = fs::copy(&icon, res_dir.join("AppIcon.icns")) {
             eprintln!("error: cannot copy icon: {}", e);
             return 1;
@@ -151,7 +118,7 @@ pub fn run(args: &[String]) -> i32 {
     let ui_dir = exe_parent.join(UI_RESOURCES);
     let has_mermaid = ui_dir.join("mermaid.min.js").exists()
         || ui_dir.join("Contents/Resources/mermaid.min.js").exists();
-    if flavor.full && !has_mermaid {
+    if !has_mermaid {
         eprintln!("error: mermaid.min.js not found in {}.", ui_dir.display());
         eprintln!(
             "       Keep {} beside the executable: SwiftPM writes both to the same folder.",
@@ -159,20 +126,14 @@ pub fn run(args: &[String]) -> i32 {
         );
         return 1;
     }
-    if flavor.full {
-        if let Err(e) = copy_dir_recursive(&ui_dir, &res_dir.join(UI_RESOURCES)) {
-            eprintln!("error: cannot copy UI resources: {}", e);
-            return 1;
-        }
-        println!("    \u{2713} Chat resources copied");
+    if let Err(e) = copy_dir_recursive(&ui_dir, &res_dir.join(UI_RESOURCES)) {
+        eprintln!("error: cannot copy UI resources: {}", e);
+        return 1;
     }
+    println!("    \u{2713} Chat resources copied");
 
     // Generate Info.plist
-    let apple_events_usage = if flavor.full {
-        "\n    <key>NSAppleEventsUsageDescription</key>\n    <string>Vitruvian Code launches AI coding tools (such as Claude and Gemini) that may run AppleScript to automate other Mac apps when a task asks for it.</string>"
-    } else {
-        ""
-    };
+    let apple_events_usage = "\n    <key>NSAppleEventsUsageDescription</key>\n    <string>Vitruvian Code launches AI coding tools (such as Claude and Gemini) that may run AppleScript to automate other Mac apps when a task asks for it.</string>";
     let plist = format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -207,9 +168,9 @@ pub fn run(args: &[String]) -> i32 {
 </dict>
 </plist>
 "#,
-        exe = flavor.exe,
-        bundle_id = flavor.bundle_id,
-        display_name = flavor.display,
+        exe = EXECUTABLE_NAME,
+        bundle_id = BUNDLE_ID,
+        display_name = DISPLAY_NAME,
         ver = version,
         apple_events_usage = apple_events_usage,
     );

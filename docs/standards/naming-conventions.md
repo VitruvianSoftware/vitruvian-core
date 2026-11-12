@@ -39,7 +39,7 @@ This specification eliminates ambiguity by providing:
 | **`snake_case`** | `^[a-z0-9]+(_[a-z0-9]+)*$` | Lowercase alphanumeric, underscore delimiter | `cloud_build`, `net_hubs.go` |
 | **`SCREAMING_SNAKE_CASE`** | `^[A-Z0-9]+(_[A-Z0-9]+)*$` | Uppercase alphanumeric, underscore delimiter | `GOOGLE_CLOUD_PROJECT`, `GH_TOKEN` |
 | **`camelCase`** | `^[a-z][a-zA-Z0-9]*$` | Initial lowercase, upper camel hump, no delimiter | `runtimeServiceAccount`, `customDomain` |
-| **`PascalCase`** | `^[A-Z][a-zA-Z0-9]*$` | Initial uppercase, upper camel hump, no delimiter | `NexusAgentCore.swift`, `EntityPage.tsx` |
+| **`PascalCase`** | `^[A-Z][a-zA-Z0-9]*$` | Initial uppercase, upper camel hump, no delimiter | `VitruvianCodeCore.swift`, `EntityPage.tsx` |
 | **`lower_single`** | `^[a-z0-9]+$` | Flat lowercase alphanumeric, no delimiter | `cmd`, `pkg`, `docs`, `main.go` |
 | **`UPPERCASE`** | `^[A-Z0-9]+$` | Flat uppercase alphanumeric, no delimiter | `README.md`, `AGENTS.md`, `LICENSE` |
 | **`Qualified Dot`** | `^[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)+$` | Multi-part dot-separated qualifiers | `tabula-api.delivery.json`, `defs.bzl` |
@@ -102,8 +102,8 @@ This specification eliminates ambiguity by providing:
 │ Directory Type         │ Canonical Casing  │ Constraints & Examples                                 │
 ├────────────────────────┼───────────────────┼────────────────────────────────────────────────────────┤
 │ Top-Level Root Dirs    │ kebab-case /      │ All root dirs must be lowercase.                       │
-│                        │ lower_single      │ Compliant: mcp-slack, nexus-agent, devx, infrastructure│
-│                        │                   │ Non-compliant: mcp_slack, NexusAgent                   │
+│                        │ lower_single      │ Compliant: mcp-slack, vitruvian-code, devx, apps       │
+│                        │                   │ Non-compliant: mcp_slack, VitruvianCode                │
 ├────────────────────────┼───────────────────┼────────────────────────────────────────────────────────┤
 │ Package & Tool Dirs    │ kebab-case        │ All multi-word packages under tools/, packages/, etc.  │
 │                        │                   │ Compliant: tools/agent-app, tools/ci-preflight         │
@@ -118,8 +118,8 @@ This specification eliminates ambiguity by providing:
 │                        │                   │ Non-compliant: tools/lint-naming/ (if imported as pkg) │
 ├────────────────────────┼───────────────────┼────────────────────────────────────────────────────────┤
 │ Swift macOS Sources    │ PascalCase        │ Apple / SPM convention for source trees.               │
-│                        │                   │ Compliant: apps/desktop/nexus-agent/macos/Sources/NexusAgentCore/ │
-│                        │                   │ Non-compliant: apps/desktop/nexus-agent/macos/sources/nexus_agent/ │
+│                        │                   │ Compliant: apps/desktop/vitruvian-code/macos/Sources/VitruvianCodeCore/ │
+│                        │                   │ Non-compliant: apps/desktop/vitruvian-code/macos/sources/vitruvian_code/ │
 ├────────────────────────┼───────────────────┼────────────────────────────────────────────────────────┤
 │ GitOps & K8s Trees     │ kebab-case        │ RFC 1123 compliant paths.                              │
 │                        │                   │ Compliant: gitops/argocd/applications/sealed-secrets/  │
@@ -232,7 +232,7 @@ Regex: ^([A-Z][a-zA-Z0-9]*|main)\.swift$
 #### Examples: Swift Filenames
 | Compliant (DO) | Non-Compliant (DON'T) | Rationale |
 |---|---|---|
-| `NexusAgentCore.swift` | `nexus-agent-core.swift` | Apple/Swift tooling standard |
+| `VitruvianCodeCore.swift` | `vitruvian-code-core.swift` | Apple/Swift tooling standard |
 | `AppDelegate.swift` | `app_delegate.swift` | Apple/Swift tooling standard |
 | `main.swift` | `Main.swift` | Standard Swift entrypoint file |
 
@@ -454,11 +454,11 @@ Stack configurations format keys as `<namespace>:<property>`.
 ├──────────────────────┼──────────────────────┼────────────────────────────────────────────────────────┤
 │ jest_test            │ snake_case           │ :unit_tests, :jest_suite                               │
 ├──────────────────────┼──────────────────────┼────────────────────────────────────────────────────────┤
-│ swift_library        │ PascalCase           │ :NexusAgentCore, :NexusAgentLib                        │
+│ swift_library        │ PascalCase           │ :VitruvianCodeCore, :VitruvianCodeUI                   │
 ├──────────────────────┼──────────────────────┼────────────────────────────────────────────────────────┤
-│ swift_test           │ PascalCase           │ :NexusAgentTests                                       │
+│ swift_test           │ PascalCase           │ :VitruvianCodeTests                                    │
 ├──────────────────────┼──────────────────────┼────────────────────────────────────────────────────────┤
-│ macos_application    │ PascalCase           │ :NexusAgent                                            │
+│ macos_application    │ PascalCase           │ :VitruvianCode                                         │
 ├──────────────────────┼──────────────────────┼────────────────────────────────────────────────────────┤
 │ delivery             │ kebab-case           │ :oauth-user-inspector, :tabula-api                     │
 ├──────────────────────┼──────────────────────┼────────────────────────────────────────────────────────┤
@@ -753,7 +753,7 @@ Every exception to the primary monorepo naming rules is cataloged below with its
 | **EXC-01** | Go Packages | `packages/pulumi/library/go/pkg/*`, `infrastructure/pulumi/**/modules/*` | Go language grammar (`package <ident>`) strictly forbids `-` in package identifiers. | Isolated to Go package subdirectories. Directory name must exactly match declared Go package name. |
 | **EXC-02** | Python Modules | All `.py` source files monorepo-wide | Python `import` statement grammar treats hyphens as subtraction operators (`import stream-hook` fails). | All Python modules MUST use `snake_case.py`. |
 | **EXC-03** | React UI Components | `*.tsx` files across `apps/suites/tabula/`, `apps/web/backstage/`, `packages/`, `apps/web/oauth-user-inspector/` | React JSX compiler treats lowercase tags as HTML DOM nodes; components must be `PascalCase`. | Isolated to `.tsx` component definitions and co-located `.test.tsx` files. |
-| **EXC-04** | Swift / Apple App | `apps/desktop/nexus-agent/macos/**/*` | Xcode, Apple toolchains, and SPM mandate `PascalCase` module and file conventions. | Quarantined strictly within `apps/desktop/nexus-agent/macos/`. |
+| **EXC-04** | Swift / Apple App | `apps/desktop/vitruvian-code/macos/**/*` | Xcode, Apple toolchains, and SPM mandate `PascalCase` module and file conventions. | Quarantined strictly within `apps/desktop/vitruvian-code/macos/`. |
 | **EXC-05** | Kubernetes Metadata | All manifests in `gitops/` and app `deploy/` | Kubernetes API schema enforces RFC 1123 DNS subdomains (`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`). | Underscores strictly forbidden in all K8s metadata names and namespaces. |
 | **EXC-06** | Prisma Migrations | `apps/suites/tabula/api/prisma/migrations/*` | Prisma engine auto-generates timestamped migration directories (`YYYYMMDDHHMMSS_name`). | Quarantined to Prisma migration directories; tool-generated artifacts are not manually renamed. |
 | **EXC-07** | Upstream Config Schemas | `Pulumi.yaml`, `Chart.yaml`, `Cargo.toml`, `Gemfile`, `BUILD`, `MODULE.bazel` | Upstream CLI tools mandate specific, case-sensitive configuration filenames. | Explicitly registered as schema-mandated exceptions. |
@@ -868,7 +868,7 @@ ignore_paths:
   - "apps/web/backstage/packages/**"           # Backstage plugin upstream conventions
   - ".github/actions/**/action.yml"   # GHA required action manifest
   - "**/mkdocs.yml"                   # MkDocs required manifest
-  - "apps/desktop/nexus-agent/macos/**"            # Apple Swift / Xcode PascalCase tree
+  - "apps/desktop/vitruvian-code/macos/**"            # Apple Swift / Xcode PascalCase tree
 ```
 
 ---

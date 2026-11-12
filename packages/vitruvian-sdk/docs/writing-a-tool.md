@@ -1538,13 +1538,13 @@ language's own time (a `Date`, a `datetime`, a `time.Time`, a
 `SystemTime`) and write Unix seconds.
 
 - **Six characters or fewer, and a number is best.** The words are drawn in
-  about 30 points, in the look of Nexus Agent's text: about six characters
+  about 30 points, in the look of Vitruvian Code's text: about six characters
   at full size, eight once shrunk, and then cut with "…". The app keeps at
   most 12. Digits need no translation; `activity` may be a map of languages
   for words that do. Some scripts are wider: three or four characters there.
 - **Only the shown mark's words are drawn.** If the mark that wins has none,
   the percent is drawn, never another tool's words.
-- **A Nexus Agent session outranks every tool**, as it does for the mark.
+- **A Vitruvian Code session outranks every tool**, as it does for the mark.
   Your words come back when it ends.
 - **VoiceOver hears the words** after the status's own, as part of the
   closed island's button: "GitHub: Checks are running, 3". It does not hear

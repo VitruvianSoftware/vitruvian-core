@@ -85,22 +85,6 @@ pub const MUTATIONS: &[Mutation] = &[
         diagnostic: "Copy text waits while the after-capture copy is still being prepared",
     },
     Mutation {
-        name: "the Nexus Agent hand-off forgets the shortcut",
-        group: "platform",
-        relative: "Sources/Vitruvian/Services/NexusAgent/NexusAgentHandoff.swift",
-        before: "        if let shortcut { parts.saveShortcut(shortcut) }\n",
-        after: "",
-        diagnostic: "the Quick Prompt's shortcut is given to the tool's command",
-    },
-    Mutation {
-        name: "the Nexus Agent hand-off forgets the pinned sessions",
-        group: "platform",
-        relative: "Sources/Vitruvian/Services/NexusAgent/NexusAgentHandoff.swift",
-        before: "        if !pinned.isEmpty { values[Key.pinnedSessions] = .string(json(pinned.sorted())) }\n",
-        after: "",
-        diagnostic: "each as JSON text, in order",
-    },
-    Mutation {
         name: "a notice needs no notify",
         group: "tool-runtime",
         relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolCalls.swift",

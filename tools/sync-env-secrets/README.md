@@ -152,8 +152,8 @@ The local install reads the same two files from `secrets/courier-release/`
 Secrets of the GitHub Environment on the public mirror
 `VitruvianSoftware/vitruvian-code` that
 [`apps/desktop/vitruvian-code/.github/workflows/release.yml`](../../apps/desktop/vitruvian-code/.github/workflows/release.yml)'s
-`package` job binds to sign and notarize `Vitruvian Code.app`, the migration
-bridge `NexusAgent.app`, the standalone `vitruvian-code-tool` Mach-O, and the
+`package` job binds to sign and notarize `Vitruvian Code.app`, the standalone
+`vitruvian-code-tool` Mach-O, and the
 release `.dmg` disk images. The environment is declared in
 [`copybara_sync`](../../infrastructure/pulumi/platform/repo-config/internal/copybara_sync/vitruvian_code_release.go):
 only branch `main` may deploy to it.

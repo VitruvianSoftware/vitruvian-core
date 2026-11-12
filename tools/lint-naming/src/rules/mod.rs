@@ -25,4 +25,5 @@ pub mod configs;
 pub mod directories;
 pub mod environment;
 pub mod migration;
+pub mod retired_names;
 pub mod source_files;

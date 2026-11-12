@@ -255,6 +255,7 @@ metadata:
   title: Vitruvian Code
   description: AI desktop assistant (macOS menu bar app in Swift and Telegram bot bridge in Node.js)
 spec:
+  # legacy name: GitHub team slug in infrastructure/pulumi/platform/repo-config
   owner: nexus-agent-team
   domain: products-and-services
 ---

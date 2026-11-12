@@ -125,12 +125,12 @@ fn workflow_names() {
     assert_eq!(workflow_name(b"import", b"mcp-slack"), b"import_mcp_slack");
     assert_eq!(workflow_name(b"export", b"devx"), b"export_devx");
     assert_eq!(
-        workflow_name(b"import", b"nexus-agent"),
-        b"import_nexus_agent"
+        workflow_name(b"import", b"vitruvian-code"),
+        b"import_vitruvian_code"
     );
     assert_eq!(
-        workflow_name(b"import_pr", b"nexus-agent"),
-        b"import_pr_nexus_agent"
+        workflow_name(b"import_pr", b"vitruvian-code"),
+        b"import_pr_vitruvian_code"
     );
 }
 

@@ -253,7 +253,7 @@ swift_test(
 )
 
 # Produces bazel-bin/apps/desktop/vitruvian-code/macos/VitruvianCode.zip
-# containing NexusAgent.app (bundle_name stays NexusAgent until brand step 2).
+# containing Vitruvian Code.app.
 #
 # `tags = ["manual"]` keeps this out of wildcard builds (`//...`, `//apps/desktop/vitruvian-code/...`)
 # so a Linux `bazel build //...` skips it. `target_compatible_with` does NOT work

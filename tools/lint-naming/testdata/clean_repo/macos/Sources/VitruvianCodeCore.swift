@@ -1,7 +1,7 @@
 import Foundation
 
-public struct NexusAgentCore {
+public struct VitruvianCodeCore {
     public static func start() {
-        print("NexusAgent initialized")
+        print("VitruvianCode initialized")
     }
 }

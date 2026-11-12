@@ -18,7 +18,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-name: Nexus Agent Mirror Toolchain
+name: Vitruvian Code Mirror Toolchain
 
 # Rehearses the standalone Vitruvian Code app's release the way its public mirror
 # runs it: the same runner image and the same steps as the build-macos and
@@ -59,7 +59,6 @@ on:
   pull_request:
     paths:
       - 'apps/desktop/vitruvian-code/macos/Package.swift'
-      - 'apps/desktop/vitruvian-code/bridge/**'
       - 'apps/desktop/vitruvian-code/macos/Sources/**'
       - 'apps/desktop/vitruvian-code/macos/Tests/**'
       - 'apps/desktop/vitruvian-code/macos/Resources/**'
@@ -68,13 +67,13 @@ on:
       - 'apps/desktop/vitruvian-code/testdata/**'
       - 'apps/desktop/vitruvian-code/THIRD_PARTY_NOTICES.md'
       - 'apps/desktop/vitruvian-code/.github/workflows/release.yml'
-      - '.github/workflows/nexus-agent-mirror-toolchain.yaml'
+      - '.github/workflows/vitruvian-code-mirror-toolchain.yaml'
   # Run it by hand after changing the mirror's runner image.
   workflow_dispatch:
 
 # A newer push to the same pull request replaces the older run.
 concurrency:
-  group: nexus-agent-mirror-toolchain-${{ github.event.pull_request.number || github.ref }}
+  group: vitruvian-code-mirror-toolchain-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 # Least privilege: checkout and build.
@@ -123,21 +122,6 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-      # The bridge: the last release of Nexus Agent, the one old installs
-      # update to. It installs Vitruvian Code (bridge/ holds its own package).
-      - name: Build the bridge for ${{ matrix.arch }}
-        run: |
-          cd apps/desktop/vitruvian-code/bridge
-          swift build -c release --arch ${{ matrix.arch }}
-
-      - name: Upload bridge binary
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: NexusAgent-${{ matrix.arch }}
-          path: apps/desktop/vitruvian-code/bridge/.build/release/NexusAgent
-          if-no-files-found: error
-          retention-days: 1
-
       # The mirror's release does not run the tests, so this is the one place
       # they are compiled and run with its Swift. Once is enough: the runner
       # is arm64. The pipe keeps the full log and the check below fails a run
@@ -149,15 +133,6 @@ jobs:
           cd apps/desktop/vitruvian-code/macos
           swift test 2>&1 | tee "$RUNNER_TEMP/swift-test.log"
           grep -E 'Executed [1-9][0-9]* tests?, with 0 failures' "$RUNNER_TEMP/swift-test.log"
-
-      # The bridge has a package of its own, so its tests are run apart.
-      - name: Run the bridge's tests
-        if: matrix.arch == 'arm64'
-        run: |
-          set -euo pipefail
-          cd apps/desktop/vitruvian-code/bridge
-          swift test 2>&1 | tee "$RUNNER_TEMP/swift-bridge-test.log"
-          grep -E 'Executed [1-9][0-9]* tests?, with 0 failures' "$RUNNER_TEMP/swift-bridge-test.log"
 
   # release.yml: package, up to the ZIP. Then what the release never checks:
   # that each app it would publish can draw a diagram.
@@ -185,12 +160,6 @@ jobs:
           name: VitruvianCode-x86_64
           path: /tmp/x86_64
 
-      - name: Download the bridge binaries
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          pattern: NexusAgent-*
-          path: /tmp/bridge
-
       # What came through the artifacts, before anything reads it: when a
       # later step fails, this says whether a file was missing or misplaced.
       - name: Show what was downloaded
@@ -215,13 +184,6 @@ jobs:
             /tmp/x86_64/vitruvian-code-tool \
             -output /tmp/universal/vitruvian-code-tool
           lipo -info /tmp/universal/vitruvian-code-tool
-          # The bridge, one binary for both as well.
-          mkdir -p /tmp/bridge-universal
-          lipo -create \
-            /tmp/bridge/NexusAgent-arm64/NexusAgent \
-            /tmp/bridge/NexusAgent-x86_64/NexusAgent \
-            -output /tmp/bridge-universal/NexusAgent
-          lipo -info /tmp/bridge-universal/NexusAgent
 
       - name: Assemble .app bundles
         run: |
@@ -241,17 +203,12 @@ jobs:
           mkdir -p /tmp/dist-x86_64
           "$RUNNER_TEMP/bundle-app" /tmp/x86_64/VitruvianCode "$VERSION" /tmp/dist-x86_64
 
-          # The bridge: NexusAgent.app, under the name and ID old installs know.
-          mkdir -p /tmp/dist-bridge
-          "$RUNNER_TEMP/bundle-app" /tmp/bridge-universal/NexusAgent "$VERSION" /tmp/dist-bridge --bridge
-
       - name: Sign and notarize apps and tool
         run: |
           apps/desktop/vitruvian-code/scripts/sign-and-notarize.sh apps \
             --entitlements-app "/tmp/dist-universal/Vitruvian Code.app" \
             --entitlements-app "/tmp/dist-arm64/Vitruvian Code.app" \
             --entitlements-app "/tmp/dist-x86_64/Vitruvian Code.app" \
-            --plain-app /tmp/dist-bridge/NexusAgent.app \
             --macho /tmp/universal/vitruvian-code-tool
 
       # Each app holds the copy of Mermaid where the chat view looks for it,
@@ -269,7 +226,6 @@ jobs:
           "$RUNNER_TEMP/check-packaged-app" "/tmp/dist-universal/Vitruvian Code.app" arm64 x86_64
           "$RUNNER_TEMP/check-packaged-app" "/tmp/dist-arm64/Vitruvian Code.app" arm64
           "$RUNNER_TEMP/check-packaged-app" "/tmp/dist-x86_64/Vitruvian Code.app" x86_64
-          "$RUNNER_TEMP/check-packaged-app" "/tmp/dist-bridge/NexusAgent.app" arm64 x86_64
 
       # The checks above read the app; this starts it, which nothing else
       # does between a change and a release. A runner has no settings and no
@@ -360,9 +316,7 @@ jobs:
           VERSION="0.0.0-rehearsal"
 
           for arch in universal arm64 x86_64; do
-            # The build for every Mac is the "macos" one: no new file says
-            # "universal". Old updaters take the zip that does, and only the
-            # bridge's zip is to be that.
+            # The build for every Mac is the "macos" one.
             name="$arch"
             if [ "$arch" = universal ]; then name="macos"; fi
             stage="$RUNNER_TEMP/dmg-stage-${arch}"
@@ -393,11 +347,7 @@ jobs:
         run: |
           VERSION="0.0.0-rehearsal"
           ditto -c -k --keepParent "/tmp/dist-universal/Vitruvian Code.app" "${GITHUB_WORKSPACE}/VitruvianCode-${VERSION}-macos.zip"
-          # The bridge, in the zip old updaters take: the only one that says
-          # "universal", with NexusAgent.app inside.
-          ditto -c -k --keepParent /tmp/dist-bridge/NexusAgent.app "${GITHUB_WORKSPACE}/NexusAgent-${VERSION}-universal.zip"
           cd "${GITHUB_WORKSPACE}"
-          # What the bridge and the new updater check the new app's zip against.
           shasum -a 256 "VitruvianCode-${VERSION}-macos.zip" > "VitruvianCode-${VERSION}-macos.zip.sha256"
           cat "VitruvianCode-${VERSION}-macos.zip.sha256"
           ls -lh *.zip
@@ -471,20 +421,4 @@ jobs:
           ditto -x -k VitruvianCode-0.0.0-rehearsal-macos.zip "$RUNNER_TEMP/unzipped"
           "$RUNNER_TEMP/check-packaged-app" \
             "$RUNNER_TEMP/unzipped/Vitruvian Code.app" arm64 x86_64
-
-          # The bridge is the zip old installs take, so what comes out of that
-          # one is checked too, and it must be the only file that says
-          # "universal": an old updater takes the first zip that does.
-          mkdir -p "$RUNNER_TEMP/unzipped-bridge"
-          ditto -x -k NexusAgent-0.0.0-rehearsal-universal.zip "$RUNNER_TEMP/unzipped-bridge"
-          "$RUNNER_TEMP/check-packaged-app" \
-            "$RUNNER_TEMP/unzipped-bridge/NexusAgent.app" arm64 x86_64
-          says_universal=0
-          for f in *.zip *.dmg; do
-            case "$f" in *universal*) says_universal=$((says_universal + 1));; esac
-          done
-          test "$says_universal" = 1
-          ls NexusAgent-0.0.0-rehearsal-universal.zip
-
-          # The checksum the bridge and the new updater verify the zip by.
           shasum -a 256 -c VitruvianCode-0.0.0-rehearsal-macos.zip.sha256

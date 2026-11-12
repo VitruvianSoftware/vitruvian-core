@@ -42,7 +42,7 @@ public struct VitruvianCodeChatChrome {
     public var errorScheme: String
     /// Whether the sessions drawer has the button that deletes every
     /// conversation of the working folder. The standalone app's own chat,
-    /// removed in step 3c (last shipped in nexus-agent-v1.19.0), always had
+    /// removed in step 3c (last shipped in v1.19.0), always had
     /// it, and the standalone app still offers it; an app whose drawer
     /// never did passes false.
     public var offersClearAll: Bool
