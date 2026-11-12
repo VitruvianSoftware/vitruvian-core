@@ -251,6 +251,10 @@ public struct SpeakerConfig: Codable, Equatable {
     /// home; never a baked-in default, because every user has their own.
     public var structureId: String
     public var structureName: String?
+    /// Every Google Home structure seen at the last saved discovery, so
+    /// `--state` can offer all of the account's homes to the phone. Optional
+    /// so older config files without this key still decode.
+    public var homes: [HomeStructure]?
     public var targets: [String: SpeakerDevice]
     /// How much of the reply to speak. Optional so older config files decode;
     /// read through `effectiveSpeechLength`.
@@ -313,6 +317,7 @@ public struct SpeakerConfig: Codable, Equatable {
         case defaultTarget = "default_target"
         case structureId = "structure_id"
         case structureName = "structure_name"
+        case homes
         case targets
         case speechLength = "speech_length"
         case pauseMedia = "pause_media"
@@ -392,6 +397,7 @@ public struct SpeakerConfig: Codable, Equatable {
         self.defaultTarget = try container.decode(String.self, forKey: .defaultTarget)
         self.structureId = try container.decode(String.self, forKey: .structureId)
         self.structureName = try container.decodeIfPresent(String.self, forKey: .structureName)
+        self.homes = try container.decodeIfPresent([HomeStructure].self, forKey: .homes)
         self.targets = try container.decode([String: SpeakerDevice].self, forKey: .targets)
         self.speechLength = try container.decodeIfPresent(SpeechLength.self, forKey: .speechLength)
         self.pauseMedia = try container.decodeIfPresent(Bool.self, forKey: .pauseMedia)
@@ -433,6 +439,7 @@ public struct SpeakerConfig: Codable, Equatable {
         try container.encode(defaultTarget, forKey: .defaultTarget)
         try container.encode(structureId, forKey: .structureId)
         try container.encodeIfPresent(structureName, forKey: .structureName)
+        try container.encodeIfPresent(homes, forKey: .homes)
         try container.encode(targets, forKey: .targets)
         try container.encodeIfPresent(speechLength, forKey: .speechLength)
         try container.encodeIfPresent(pauseMedia, forKey: .pauseMedia)
@@ -782,11 +789,26 @@ public struct SpeakerConfig: Codable, Equatable {
     /// never left pointing at a key that no longer exists.
     /// Returns false with nothing changed if discovered is empty.
     @discardableResult
-    public mutating func applyDiscovery(structureId: String, structureName: String?, targets discovered: [String: SpeakerDevice]) -> Bool {
+    public mutating func applyDiscovery(
+        structureId: String,
+        structureName: String?,
+        targets discovered: [String: SpeakerDevice],
+        homes discoveredHomes: [HomeStructure]? = nil
+    ) -> Bool {
         guard !discovered.isEmpty else { return false }
         let sameHome = self.structureId.isEmpty || self.structureId == structureId
         self.structureId = structureId
         self.structureName = structureName
+        if let discoveredHomes, !discoveredHomes.isEmpty {
+            _ = rememberHomes(discoveredHomes)
+        } else if var existingHomes = self.homes, !structureId.isEmpty {
+            if let index = existingHomes.firstIndex(where: { $0.id == structureId }) {
+                existingHomes[index] = HomeStructure(id: structureId, name: structureName ?? existingHomes[index].name)
+            } else {
+                existingHomes.append(HomeStructure(id: structureId, name: structureName ?? structureId))
+            }
+            self.homes = existingHomes
+        }
 
         let liveIds = Set(discovered.values.map(\.id))
         var merged: [String: SpeakerDevice] = [:]
@@ -805,6 +827,22 @@ public struct SpeakerConfig: Codable, Equatable {
             let ordered = uniqueTargets()
             defaultTarget = ordered.first(where: { !$0.device.isWholeHome })?.key ?? ordered.first?.key ?? ""
         }
+        return true
+    }
+
+    /// Records the Google Home structures visible on the account without
+    /// changing `structureId` or `targets`. Deduplicates by structure `id`
+    /// while preserving discovery order.
+    @discardableResult
+    public mutating func rememberHomes(_ discoveredHomes: [HomeStructure]) -> Bool {
+        guard !discoveredHomes.isEmpty else { return false }
+        var seen = Set<String>()
+        var deduplicated: [HomeStructure] = []
+        for home in discoveredHomes where !home.id.isEmpty && seen.insert(home.id).inserted {
+            deduplicated.append(home)
+        }
+        guard !deduplicated.isEmpty, self.homes != deduplicated else { return false }
+        self.homes = deduplicated
         return true
     }
 

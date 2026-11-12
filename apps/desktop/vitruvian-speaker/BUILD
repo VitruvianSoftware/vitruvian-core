@@ -341,10 +341,12 @@ test_suite(
 exports_files(
     [
         ".github/FUNDING.yml",
+        "Sources/VitruvianSpeakerToolCore/Pages.swift",
+        "testdata/controls.json",
         "testdata/state_v1.json",
     ],
     visibility = [
-        "//apps/mobile/android-remote/macagent:__pkg__",
+        "//apps/mobile/android-remote:__subpackages__",
         "//infrastructure/pulumi/platform/stripe:__pkg__",
     ],
 )

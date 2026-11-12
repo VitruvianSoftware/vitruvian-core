@@ -980,7 +980,7 @@ public enum SettingsActions {
     }
 
     /// Pure in-memory reset: returns a fresh default `SpeakerConfig` keeping
-    /// the discovered home, speakers, and custom voices from `existing`.
+    /// the discovered home, known homes, speakers, and custom voices from `existing`.
     public static func resetSettings(preservingDiscoveryFrom existing: SpeakerConfig) -> SpeakerConfig {
         var fresh = SpeakerConfig(
             defaultTarget: existing.defaultTarget,
@@ -988,6 +988,7 @@ public enum SettingsActions {
             structureName: existing.structureName,
             targets: existing.targets
         )
+        fresh.homes = existing.homes
         fresh.customVoices = existing.customVoices
         return fresh
     }

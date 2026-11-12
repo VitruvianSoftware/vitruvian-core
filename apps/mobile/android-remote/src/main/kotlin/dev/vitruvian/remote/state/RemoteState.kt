@@ -483,15 +483,15 @@ public class RemoteState(
     private set
 
   /**
-   * Epoch ms when "Grant…" was tapped; cleared once a poll reports
-   * [AgentVitruvianSpeaker.hasChatAccess] or after [Derive.SIGN_IN_TIMEOUT_MS].
+   * Epoch ms when "Grant…" was tapped; cleared once a poll reports [AgentVitruvianSpeaker.hasChatAccess]
+   * or after [Derive.SIGN_IN_TIMEOUT_MS].
    */
   public var vitruvianSpeakerChatGrantPendingSinceMs: Long? by mutableStateOf(null)
     private set
 
   /**
-   * True after tapping "Sign in on Mac" until the next poll reports
-   * [AgentVitruvianSpeaker.signedIn] or the 5-minute timeout elapses.
+   * True after tapping "Sign in on Mac" until the next poll reports [AgentVitruvianSpeaker.signedIn] or
+   * the 5-minute timeout elapses.
    */
   public val vitruvianSpeakerSignInPending: Boolean
     get() =
@@ -503,8 +503,8 @@ public class RemoteState(
             .pending
 
   /**
-   * True after tapping "Grant…" until the next poll reports [AgentVitruvianSpeaker.hasChatAccess]
-   * or the 5-minute timeout elapses.
+   * True after tapping "Grant…" until the next poll reports [AgentVitruvianSpeaker.hasChatAccess] or the
+   * 5-minute timeout elapses.
    */
   public val vitruvianSpeakerChatGrantPending: Boolean
     get() =
@@ -529,6 +529,8 @@ public class RemoteState(
 
   /** Monotonic/wall timestamp when "Reset settings" was first tapped (5 s confirmation window). */
   private var vitruvianSpeakerResetArmedAtMs: Long? by mutableStateOf(null)
+  /** The speaker whose Remove was tapped once, and when; a second tap within the window removes. */
+  private var speakerRemoveArmed: Pair<String, Long>? by mutableStateOf(null)
 
   private fun applyAgentVitruvianSpeaker(
       hs: AgentVitruvianSpeaker,
@@ -2501,6 +2503,7 @@ public class RemoteState(
     val newest = Derive.newestBroadcast(hs?.recent.orEmpty(), hs?.last)
     val canSpeak = vitruvianSpeakerCanAct && available && hs!!.installed
     val canReplay = canSpeak && Derive.isReplayable(newest)
+    val placement = Derive.CatalogPlacement()
     return ModuleDashboard(
         id = "speaker",
         name = "Vitruvian Speaker",
@@ -2573,18 +2576,22 @@ public class RemoteState(
                           tone = StatusTone.Warn,
                           titleLines = 3,
                       ))
-              else -> vitruvianSpeakerRows(hs)
+              else -> vitruvianSpeakerRows(hs, placement)
             },
         extraLists =
             if (!hasCatalog) emptyList()
             else
-                vitruvianSpeakerExtraLists(hs!!).map { list ->
-                  list.copy(
-                      rows =
-                          list.rows.map { r ->
-                            r.copy(error = vitruvianSpeakerErrors[r.title] ?: r.error)
-                          })
-                },
+                vitruvianSpeakerExtraLists(hs!!, placement)
+                    // Every list is still built (so placement sees every drawn key), but with
+                    // Settings collapsed only the broadcasts stay on screen (UAT 2026-11-12).
+                    .filter { vitruvianSpeakerSettingsExpanded || it.label == RECENT_BROADCASTS_LABEL }
+                    .map { list ->
+                      list.copy(
+                          rows =
+                              list.rows.map { r ->
+                                r.copy(error = vitruvianSpeakerErrors[r.title] ?: r.error)
+                              })
+                    },
         composer =
             ModuleComposer(
                 placeholder = "Announce on ${selectedDisplay ?: "the speaker"}…",
@@ -2593,16 +2600,27 @@ public class RemoteState(
                 enabled = vitruvianSpeakerCanAct && available && announceDraft.isNotBlank(),
                 onValueChange = ::updateAnnounceDraft,
                 onSubmit = ::announce,
+                controlId = VitruvianSpeakerControls.SAY,
             ),
         quick = vitruvianSpeakerQuick(hs),
         streamActions =
             listOf(
-                RowAction("Replay", enabled = canReplay, error = vitruvianSpeakerErrors["replay"]) {
+                RowAction(
+                    "Replay",
+                    enabled = canReplay,
+                    error = vitruvianSpeakerErrors["replay"],
+                    controlId = VitruvianSpeakerControls.REPLAY,
+                ) {
                   if (newest != null) {
                     replayAnnouncement(newest.text, newest.id, controlId = "replay")
                   }
                 },
-                RowAction("Test", enabled = canSpeak, error = vitruvianSpeakerErrors["test"]) {
+                RowAction(
+                    "Test",
+                    enabled = canSpeak,
+                    error = vitruvianSpeakerErrors["test"],
+                    controlId = VitruvianSpeakerControls.SAY,
+                ) {
                   testVitruvianSpeaker()
                 },
             ),
@@ -2623,7 +2641,7 @@ public class RemoteState(
 
   private fun speakerTargetChoices(
       hs: AgentVitruvianSpeaker,
-      controlId: String = "default_target",
+      errorKey: String = "default_target",
   ): List<RowAction> {
     val catalogChoices = Derive.catalogChoices(hs.catalog, "default_target")
     if (catalogChoices.isNotEmpty()) {
@@ -2631,16 +2649,24 @@ public class RemoteState(
       return catalogChoices.map { ch ->
         val isSelected = ch.value == selectedKey
         RowAction(
-            ch.label, enabled = vitruvianSpeakerCanAct && !isSelected, selected = isSelected) {
-              setVitruvianSpeaker(
-                  "speaker ${ch.label}", defaultTarget = ch.value, controlId = controlId)
-            }
+            ch.label,
+            enabled = vitruvianSpeakerCanAct && !isSelected,
+            selected = isSelected,
+            controlId = VitruvianSpeakerControls.SET_DEFAULT_SPEAKER,
+        ) {
+          setVitruvianSpeaker("speaker ${ch.label}", defaultTarget = ch.value, controlId = errorKey)
+        }
       }
     }
     return hs.targets.map { t ->
       val label = Derive.phoneWording(t.displayLine.ifBlank { t.name })
-      RowAction(label, enabled = vitruvianSpeakerCanAct && !t.selected, selected = t.selected) {
-        setVitruvianSpeaker("speaker $label", defaultTarget = t.key, controlId = controlId)
+      RowAction(
+          label,
+          enabled = vitruvianSpeakerCanAct && !t.selected,
+          selected = t.selected,
+          controlId = VitruvianSpeakerControls.SET_DEFAULT_SPEAKER,
+      ) {
+        setVitruvianSpeaker("speaker $label", defaultTarget = t.key, controlId = errorKey)
       }
     }
   }
@@ -2652,8 +2678,7 @@ public class RemoteState(
     val v = agentSpeakerVolume
     val selected = hs?.targets?.firstOrNull { it.selected }
     val newest = Derive.newestBroadcast(hs?.recent.orEmpty(), hs?.last)
-    val roomChoices =
-        if (hasCatalog) speakerTargetChoices(hs!!, controlId = "room") else emptyList()
+    val roomChoices = if (hasCatalog) speakerTargetChoices(hs!!, errorKey = "room") else emptyList()
     val specs =
         Derive.vitruvianSpeakerQuickActions(
             hasCatalog = hasCatalog,
@@ -2689,6 +2714,7 @@ public class RemoteState(
                 onClick = { setSpeakerVolume(muted = !(v?.muted == true), controlId = "mute") },
                 contentDescription = spec.contentDescription,
                 error = vitruvianSpeakerErrors["mute"],
+                controlId = VitruvianSpeakerControls.MUTE,
             )
         "quiet_hours" ->
             QuickAction(
@@ -2705,6 +2731,7 @@ public class RemoteState(
                 },
                 contentDescription = spec.contentDescription,
                 error = vitruvianSpeakerErrors["quiet_hours"],
+                controlId = VitruvianSpeakerControls.CATALOG_SETTING,
             )
         "room" ->
             QuickAction(
@@ -2721,6 +2748,7 @@ public class RemoteState(
                         ?.let { Derive.catalogLabel(it, "default_target") }
                         .orEmpty()
                         .ifBlank { "Speaker" },
+                controlId = VitruvianSpeakerControls.SET_DEFAULT_SPEAKER,
             )
         "replay" ->
             QuickAction(
@@ -2735,6 +2763,7 @@ public class RemoteState(
                 },
                 contentDescription = spec.contentDescription,
                 error = vitruvianSpeakerErrors["replay"],
+                controlId = VitruvianSpeakerControls.REPLAY,
             )
         "snooze" ->
             QuickAction(
@@ -2744,14 +2773,14 @@ public class RemoteState(
                 active = spec.active,
                 onClick = {
                   if (spec.active) {
-                    setVitruvianSpeaker(
-                        "resume announcements", snoozeUntil = "", controlId = "snooze")
+                    setVitruvianSpeaker("resume announcements", snoozeUntil = "", controlId = "snooze")
                   } else {
                     setVitruvianSpeaker("snooze 30m", snoozeMinutes = 30, controlId = "snooze")
                   }
                 },
                 contentDescription = spec.contentDescription,
                 error = vitruvianSpeakerErrors["snooze"],
+                controlId = VitruvianSpeakerControls.SNOOZE,
             )
         else ->
             QuickAction(
@@ -2766,7 +2795,10 @@ public class RemoteState(
     }
   }
 
-  private fun vitruvianSpeakerRows(hs: AgentVitruvianSpeaker): List<ModuleRow> {
+  private fun vitruvianSpeakerRows(
+      hs: AgentVitruvianSpeaker,
+      placement: Derive.CatalogPlacement,
+  ): List<ModuleRow> {
     val disclosure =
         ModuleRow(
             title = "Settings",
@@ -2775,11 +2807,10 @@ public class RemoteState(
             tone = StatusTone.Neutral,
             onSelect = ::toggleVitruvianSpeakerSettings,
         )
+    val settingsRows = vitruvianSpeakerSettingsRows(hs, placement)
     if (!vitruvianSpeakerSettingsExpanded) return listOf(disclosure)
     return listOf(disclosure) +
-        vitruvianSpeakerSettingsRows(hs).map { row ->
-          row.copy(error = vitruvianSpeakerErrors[row.title] ?: row.error)
-        }
+        settingsRows.map { row -> row.copy(error = vitruvianSpeakerErrors[row.title] ?: row.error) }
   }
 
   private fun vitruvianSpeakerMirrorRow(): ModuleRow {
@@ -2820,7 +2851,12 @@ public class RemoteState(
   ): List<RowAction> =
       Derive.catalogChoices(hs.catalog, key).map { ch ->
         val isCurrent = ch.value == current
-        RowAction(ch.label, enabled = vitruvianSpeakerCanAct && !isCurrent, selected = isCurrent) {
+        RowAction(
+            ch.label,
+            enabled = vitruvianSpeakerCanAct && !isCurrent,
+            selected = isCurrent,
+            controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+        ) {
           apply(ch.value, ch.label)
         }
       }
@@ -2831,339 +2867,440 @@ public class RemoteState(
       key: String,
       current: Double,
       enabled: Boolean = true,
+      controlId: String = VitruvianSpeakerControls.CATALOG_SETTING,
       apply: (Double) -> Unit,
   ): List<RowAction> {
     val limits = Derive.catalogLimits(hs.catalog, key) ?: return emptyList()
     val spec = Derive.catalogStepper(current, limits, vitruvianSpeakerCanAct && enabled)
     return listOf(
-        RowAction(spec.minusLabel, enabled = spec.minusEnabled) { apply(spec.minusNext) },
-        RowAction(spec.plusLabel, enabled = spec.plusEnabled) { apply(spec.plusNext) },
+        RowAction(spec.minusLabel, enabled = spec.minusEnabled, controlId = controlId) {
+          apply(spec.minusNext)
+        },
+        RowAction(spec.plusLabel, enabled = spec.plusEnabled, controlId = controlId) {
+          apply(spec.plusNext)
+        },
     )
   }
 
-  private fun vitruvianSpeakerSettingsRows(hs: AgentVitruvianSpeaker): List<ModuleRow> = buildList {
+  private fun vitruvianSpeakerSettingsRows(
+      hs: AgentVitruvianSpeaker,
+      placement: Derive.CatalogPlacement,
+  ): List<ModuleRow> {
     // Every label, choice list, limit and show/hide rule below is Vitruvian Speaker's own, from the
     // catalog it sent (`settings[]`); the phone keeps none of them.
     val catalog = hs.catalog
     fun shown(key: String) = Derive.catalogShown(catalog, key)
     fun lbl(key: String) = Derive.catalogLabel(catalog, key).ifBlank { key }
     fun err(key: String) = Derive.settingError(vitruvianSpeakerErrors, key)
-    // Broadcasting off: nothing else on this plate changes what is heard, so
-    // the master switch is the whole plate.
-    if (!hs.enabled) {
-      add(
-          ModuleRow(
-              title = lbl("enabled"),
-              error = err("enabled"),
-              subtitle = "replies stay silent · automatic broadcasts are off",
-              trailing = "off",
-              tone = StatusTone.Neutral,
-              toggle =
-                  RowToggle(checked = false, enabled = vitruvianSpeakerCanAct) {
-                    setVitruvianSpeaker("broadcasting on", enabled = true)
-                  },
-          ))
-      // A phone-side setting: it shows announcements made with broadcasting back on, so it stays
-      // reachable while broadcasting is off.
-      add(vitruvianSpeakerMirrorRow())
-      return@buildList
-    }
-    add(
-        ModuleRow(
-            title = lbl("enabled"),
-            error = err("enabled"),
-            subtitle = "replies are read aloud",
-            trailing = "on",
-            tone = StatusTone.Ok,
-            toggle =
-                RowToggle(checked = true, enabled = vitruvianSpeakerCanAct) {
-                  setVitruvianSpeaker("broadcasting off", enabled = false)
-                },
-        ))
-    val geminiVoiceName = Derive.catalogChoiceLabel(catalog, "gemini_voice", hs.geminiVoice)
-    // Which speaker: one dropdown rather than a row per speaker.
-    fun addSpeakerRow() {
-      if (hs.targets.isEmpty()) {
-        add(
+    fun <T> placed(key: String, build: () -> T): T? = placement.placed(key, build)
+
+    val enabledRow =
+        placed("enabled") {
+          if (!hs.enabled) {
             ModuleRow(
-                "No speakers found yet",
-                "open Vitruvian Speaker on the Mac and run Find speakers",
-                "",
-                StatusTone.Warn))
-        return
-      }
-      val current = hs.targets.firstOrNull { it.selected }
-      add(
-          ModuleRow(
-              title = lbl("default_target"),
-              error = err("default_target"),
-              subtitle =
-                  current?.let {
-                    if (it.type == "Structure") "every speaker at once"
-                    else "${it.room} · ${it.type}"
-                  } ?: "no speaker picked",
-              trailing =
-                  current?.let { Derive.phoneWording(it.displayLine.ifBlank { it.name }) }
-                      ?: "None",
-              tone = if (current != null) StatusTone.Ok else StatusTone.Neutral,
-              actions =
-                  if (current != null)
-                      listOf(
-                          RowAction("Remove", enabled = vitruvianSpeakerCanAct) {
-                            setVitruvianSpeaker(
-                                "remove speaker ${current.name}", removeTarget = current.key)
-                          })
-                  else emptyList(),
-              choices = speakerTargetChoices(hs),
-          ))
-    }
-    // The outputs, from an agent that can switch them (v1.8+); an older
-    // one gets no switches rather than ones that would be refused. All off
-    // is kept -- the user asked for it -- and the rows turn amber to say
-    // nothing will be spoken.
-    val speakHome = hs.speakHome
-    val speakLocal = hs.speakLocal
-    val voiceSectionShown = shown("gemini_voice")
-    fun addGeminiApiKeyRow() {
-      val hasKey = hs.hasGeminiKey
-      add(
-          ModuleRow(
-              title = "Gemini API key",
-              subtitle = if (hasKey) "API key saved on Mac" else "Tap to paste Gemini API key",
-              trailing = if (hasKey) "saved" else "missing",
-              tone = if (hasKey) StatusTone.Ok else StatusTone.Warn,
-              textPrompt =
-                  RowTextPrompt(
-                      title = "Gemini API key",
-                      hasValue = hasKey,
-                      placeholder = "AIzaSy...",
-                      secret = true,
-                      submitLabel = "Save Key",
-                      clearLabel = if (hasKey) "Clear Key" else null,
-                      enabled = vitruvianSpeakerCanAct,
-                      onClear =
-                          if (hasKey) {
-                            { setVitruvianSpeaker("clear Gemini API key", geminiApiKey = "") }
-                          } else null,
-                      onSubmit = { key ->
-                        setVitruvianSpeaker("save Gemini API key", geminiApiKey = key)
-                      },
-                  ),
-          ))
-    }
-    if (speakHome != null && speakLocal != null) {
-      val silent = !speakHome && !speakLocal && hs.speakPhone != true
-      if (shown("speak_home"))
-          add(
-              ModuleRow(
-                  title = lbl("speak_home"),
-                  error = err("speak_home"),
-                  subtitle =
-                      if (speakHome) "announcements play on Google Home"
-                      else "Google Home stays quiet",
-                  trailing = if (speakHome) "on" else "off",
-                  tone =
-                      when {
-                        silent -> StatusTone.Warn
-                        speakHome -> StatusTone.Ok
-                        else -> StatusTone.Neutral
-                      },
-                  toggle =
-                      RowToggle(checked = speakHome, enabled = vitruvianSpeakerCanAct) { next ->
-                        setVitruvianSpeaker(
-                            "home speakers ${if (next) "on" else "off"}", speakHome = next)
-                      },
-              ))
-      if (speakHome) {
-        val accountSpec =
-            Derive.googleHomeAccountRow(
-                signedIn = hs.signedIn,
-                accountEmail = hs.accountEmail,
-                hasAntigravityTokens = hs.hasAntigravityTokens,
-                signInPending = vitruvianSpeakerSignInPending,
-                canAct = vitruvianSpeakerCanAct,
-                installed = hs.installed,
-                signInPendingSinceMs = vitruvianSpeakerSignInPendingSinceMs,
-                nowMs = System.currentTimeMillis(),
-            )
-        add(
-            ModuleRow(
-                title = "Google Home account",
-                subtitle = accountSpec.subtitle,
-                trailing = accountSpec.trailing,
-                tone = if (accountSpec.healthy) StatusTone.Ok else StatusTone.Neutral,
-                error = vitruvianSpeakerErrors["Google Home account"] ?: accountSpec.inlineNote,
-                actions =
-                    buildList {
-                      if (accountSpec.showSignOut) {
-                        add(
-                            RowAction("Sign out", enabled = accountSpec.signOutEnabled) {
-                              setVitruvianSpeaker(
-                                  "sign out", signOut = true, controlId = "Google Home account")
-                            })
-                      }
-                      if (accountSpec.showSignIn) {
-                        add(
-                            RowAction("Sign in on Mac", enabled = accountSpec.signInEnabled) {
-                              setVitruvianSpeaker(
-                                  "sign in on Mac",
-                                  signIn = true,
-                                  controlId = "Google Home account")
-                            })
-                      }
-                      if (accountSpec.showImportLogin) {
-                        add(
-                            RowAction("Import login", enabled = accountSpec.importLoginEnabled) {
-                              setVitruvianSpeaker(
-                                  "import antigravity",
-                                  importAntigravity = true,
-                                  controlId = "Google Home account")
-                            })
-                      }
+                title = lbl("enabled"),
+                error = err("enabled"),
+                subtitle = "replies stay silent · automatic broadcasts are off",
+                trailing = "off",
+                tone = StatusTone.Neutral,
+                controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+                toggle =
+                    RowToggle(checked = false, enabled = vitruvianSpeakerCanAct) {
+                      setVitruvianSpeaker("broadcasting on", enabled = true)
                     },
-            ))
-        add(
+            )
+          } else {
             ModuleRow(
-                title = "Find speakers",
-                subtitle =
-                    if (hs.targets.isEmpty()) "0 speakers discovered"
-                    else "${hs.targets.size} speakers discovered",
-                // The button says it; "discover" beside it only narrowed the title.
-                trailing = "",
-                actions =
-                    listOf(
-                        RowAction("Find speakers", enabled = vitruvianSpeakerCanAct) {
-                          setVitruvianSpeaker("discover", discover = true)
-                        }),
-            ))
-        if (hs.homes.isNotEmpty()) {
+                title = lbl("enabled"),
+                error = err("enabled"),
+                subtitle = "replies are read aloud",
+                trailing = "on",
+                tone = StatusTone.Ok,
+                controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+                toggle =
+                    RowToggle(checked = true, enabled = vitruvianSpeakerCanAct) {
+                      setVitruvianSpeaker("broadcasting off", enabled = false)
+                    },
+            )
+          }
+        }
+    val detailRows = buildList {
+      val geminiVoiceName = Derive.catalogChoiceLabel(catalog, "gemini_voice", hs.geminiVoice)
+      // Which speaker: default picker plus a row per speaker so any speaker can be removed.
+      fun addSpeakerRow(visible: Boolean = true) {
+        val defaultTargetRow =
+            placed("default_target") {
+              if (!visible || hs.targets.isEmpty()) null
+              else {
+                val current = hs.targets.firstOrNull { it.selected }
+                ModuleRow(
+                    title = lbl("default_target"),
+                    error = err("default_target"),
+                    subtitle =
+                        current?.let {
+                          if (it.type == "Structure") "every speaker at once"
+                          else "${it.room} · ${it.type}"
+                        } ?: "no speaker picked",
+                    trailing =
+                        current?.let { Derive.phoneWording(it.displayLine.ifBlank { it.name }) }
+                            ?: "None",
+                    tone = if (current != null) StatusTone.Ok else StatusTone.Neutral,
+                    controlId = VitruvianSpeakerControls.SET_DEFAULT_SPEAKER,
+                    choices = speakerTargetChoices(hs),
+                )
+              }
+            }
+        if (!visible) return
+        if (hs.targets.isEmpty()) {
           add(
               ModuleRow(
-                  title = "Home structure",
-                  subtitle = "Google Home structure",
-                  trailing = hs.structureName.ifBlank { "Home" },
-                  choices =
-                      hs.homes.map { h ->
-                        val current = h.id == hs.structureId
-                        RowAction(
-                            h.name,
-                            enabled = vitruvianSpeakerCanAct && !current,
-                            selected = current) {
-                              setVitruvianSpeaker("home ${h.name}", structureId = h.id)
-                            }
-                      },
+                  "No speakers found yet",
+                  "open Vitruvian Speaker on the Mac and run Find speakers",
+                  "",
+                  StatusTone.Warn))
+          return
+        }
+        defaultTargetRow?.let(::add)
+        val wireTargets =
+            hs.targets.map { t ->
+              VitruvianSpeakerTargetWire(
+                  key = t.key,
+                  name = t.name,
+                  room = t.room,
+                  type = t.type,
+                  selected = t.selected,
+                  displayLine = t.displayLine,
+              )
+            }
+        Derive.speakerRowSpecs(wireTargets, canAct = vitruvianSpeakerCanAct).forEach { spec ->
+          add(
+              ModuleRow(
+                  title = spec.title,
+                  subtitle = spec.subtitle,
+                  trailing = spec.trailing,
+                  tone = if (spec.selected) StatusTone.Ok else StatusTone.Neutral,
+                  selected = spec.selected,
+                  actions =
+                      listOf(
+                          RowAction(
+                              if (isSpeakerRemoveArmed(spec.key)) "Confirm" else "Remove",
+                              enabled = spec.removeEnabled,
+                              danger = isSpeakerRemoveArmed(spec.key),
+                              controlId = VitruvianSpeakerControls.REMOVE_SPEAKER,
+                          ) {
+                            onTapRemoveSpeaker(spec.key, spec.name, spec.title)
+                          }),
               ))
         }
-        addSpeakerRow()
       }
-      if (shown("home_cast_voice")) {
+      // The outputs, from an agent that can switch them (v1.8+); an older
+      // one gets no switches rather than ones that would be refused. All off
+      // is kept -- the user asked for it -- and the rows turn amber to say
+      // nothing will be spoken.
+      val speakHome = hs.speakHome
+      val speakLocal = hs.speakLocal
+      val voiceSectionShown = shown("gemini_voice")
+      fun addGeminiApiKeyRow() {
+        val hasKey = hs.hasGeminiKey
         add(
             ModuleRow(
-                title = lbl("home_cast_voice"),
-                error = err("home_cast_voice"),
-                subtitle =
-                    if (hs.homeCastVoice) "streams Gemini voice to Google Home"
-                    else "Google Home speaks with its own cloud voice",
-                trailing = if (hs.homeCastVoice) "on" else "off",
-                tone = if (hs.homeCastVoice) StatusTone.Ok else StatusTone.Neutral,
-                toggle =
-                    RowToggle(checked = hs.homeCastVoice, enabled = vitruvianSpeakerCanAct) { next
-                      ->
-                      setVitruvianSpeaker(
-                          "cast selected voice ${if (next) "on" else "off"}", homeCastVoice = next)
-                    },
+                title = "Gemini API key",
+                subtitle = if (hasKey) "API key saved on Mac" else "Tap to paste Gemini API key",
+                trailing = if (hasKey) "saved" else "missing",
+                tone = if (hasKey) StatusTone.Ok else StatusTone.Warn,
+                controlId = VitruvianSpeakerControls.SAVE_GEMINI_KEY,
+                textPrompt =
+                    RowTextPrompt(
+                        title = "Gemini API key",
+                        hasValue = hasKey,
+                        placeholder = "AIzaSy...",
+                        secret = true,
+                        submitLabel = "Save Key",
+                        enabled = vitruvianSpeakerCanAct,
+                        clearAction =
+                            if (hasKey) {
+                              RowAction(
+                                  "Clear Key",
+                                  enabled = vitruvianSpeakerCanAct,
+                                  danger = true,
+                                  controlId = VitruvianSpeakerControls.CLEAR_GEMINI_KEY,
+                              ) {
+                                setVitruvianSpeaker("clear Gemini API key", geminiApiKey = "")
+                              }
+                            } else null,
+                        onSubmit = { key ->
+                          setVitruvianSpeaker("save Gemini API key", geminiApiKey = key)
+                        },
+                    ),
             ))
       }
-      if (shown("speak_local"))
+      if (speakHome != null && speakLocal != null) {
+        val silent = !speakHome && !speakLocal && hs.speakPhone != true
+        placed("speak_home") {
+              if (shown("speak_home"))
+                  ModuleRow(
+                      title = lbl("speak_home"),
+                      error = err("speak_home"),
+                      subtitle =
+                          if (speakHome) "announcements play on Google Home"
+                          else "Google Home stays quiet",
+                      trailing = if (speakHome) "on" else "off",
+                      tone =
+                          when {
+                            silent -> StatusTone.Warn
+                            speakHome -> StatusTone.Ok
+                            else -> StatusTone.Neutral
+                          },
+                      controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+                      toggle =
+                          RowToggle(checked = speakHome, enabled = vitruvianSpeakerCanAct) { next ->
+                            setVitruvianSpeaker(
+                                "home speakers ${if (next) "on" else "off"}", speakHome = next)
+                          },
+                  )
+              else null
+            }
+            ?.let(::add)
+        if (speakHome) {
+          val accountSpec =
+              Derive.googleHomeAccountRow(
+                  signedIn = hs.signedIn,
+                  accountEmail = hs.accountEmail,
+                  hasAntigravityTokens = hs.hasAntigravityTokens,
+                  signInPending = vitruvianSpeakerSignInPending,
+                  canAct = vitruvianSpeakerCanAct,
+                  installed = hs.installed,
+                  signInPendingSinceMs = vitruvianSpeakerSignInPendingSinceMs,
+                  nowMs = System.currentTimeMillis(),
+              )
           add(
               ModuleRow(
-                  title = lbl("speak_local"),
-                  error = err("speak_local"),
-                  // The Apple voice is chosen on the Mac; Gemini TTS voice can be switched below.
-                  subtitle =
-                      Derive.macVoiceLabel(
-                          hs.localVoiceName,
-                          hs.localVoice,
-                          hs.localEngine,
-                          geminiVoiceName,
-                          hs.hasGeminiKey),
-                  trailing = if (speakLocal) "on" else "off",
-                  tone =
-                      when {
-                        silent -> StatusTone.Warn
-                        speakLocal -> StatusTone.Ok
-                        else -> StatusTone.Neutral
-                      },
-                  toggle =
-                      RowToggle(checked = speakLocal, enabled = vitruvianSpeakerCanAct) { next ->
-                        setVitruvianSpeaker(
-                            "this Mac ${if (next) "on" else "off"}", speakLocal = next)
+                  title = "Google Home account",
+                  subtitle = accountSpec.subtitle,
+                  trailing = accountSpec.trailing,
+                  tone = if (accountSpec.healthy) StatusTone.Ok else StatusTone.Neutral,
+                  error = vitruvianSpeakerErrors["Google Home account"] ?: accountSpec.inlineNote,
+                  actions =
+                      buildList {
+                        if (accountSpec.showSignOut) {
+                          add(
+                              RowAction(
+                                  "Sign out",
+                                  enabled = accountSpec.signOutEnabled,
+                                  controlId = VitruvianSpeakerControls.SIGN_OUT,
+                              ) {
+                                setVitruvianSpeaker(
+                                    "sign out", signOut = true, controlId = "Google Home account")
+                              })
+                        }
+                        if (accountSpec.showSignIn) {
+                          add(
+                              RowAction(
+                                  "Sign in on Mac",
+                                  enabled = accountSpec.signInEnabled,
+                                  controlId = VitruvianSpeakerControls.SIGN_IN,
+                              ) {
+                                setVitruvianSpeaker(
+                                    "sign in on Mac",
+                                    signIn = true,
+                                    controlId = "Google Home account")
+                              })
+                        }
+                        if (accountSpec.showImportLogin) {
+                          add(
+                              RowAction(
+                                  "Import login",
+                                  enabled = accountSpec.importLoginEnabled,
+                                  controlId = VitruvianSpeakerControls.IMPORT_ANTIGRAVITY,
+                              ) {
+                                setVitruvianSpeaker(
+                                    "import antigravity",
+                                    importAntigravity = true,
+                                    controlId = "Google Home account")
+                              })
+                        }
                       },
               ))
-      if (shown("local_voice")) {
-        add(
-            ModuleRow(
-                title = lbl("local_voice"),
-                error = err("local_voice"),
-                subtitle = hs.localVoiceName.ifBlank { "System default" },
-                trailing = hs.localVoiceName.ifBlank { "default" },
-                actions =
-                    listOf(
-                        RowAction("Preview", enabled = vitruvianSpeakerCanAct) {
-                          setVitruvianSpeaker("preview voice", previewVoice = true)
-                        }),
-                choices =
-                    // Vitruvian Speaker's catalog lists the voices itself. Only a catalog entry
-                    // with
-                    // no choices falls back to `available_voices` (the same list, older shape).
-                    if (Derive.catalogChoices(catalog, "local_voice").isNotEmpty())
-                        catalogChoiceActions(hs, "local_voice", hs.localVoice) { id, label ->
-                          setVitruvianSpeaker("Mac voice $label", localVoice = id)
-                        }
-                    else
-                        hs.availableVoices.map { v ->
-                          val current = v.id == hs.localVoice
+          add(
+              ModuleRow(
+                  title = "Find speakers",
+                  subtitle =
+                      if (hs.targets.isEmpty()) "0 speakers discovered"
+                      else "${hs.targets.size} speakers discovered",
+                  // The button says it; "discover" beside it only narrowed the title.
+                  trailing = "",
+                  actions =
+                      listOf(
                           RowAction(
-                              v.name,
-                              enabled = vitruvianSpeakerCanAct && !current,
-                              selected = current) {
-                                setVitruvianSpeaker("Mac voice ${v.name}", localVoice = v.id)
+                              "Find speakers",
+                              enabled = vitruvianSpeakerCanAct,
+                              controlId = VitruvianSpeakerControls.FIND_SPEAKERS,
+                          ) {
+                            setVitruvianSpeaker("discover", discover = true)
+                          }),
+              ))
+          Derive.homePickerSpec(
+                  homes = hs.homes,
+                  structureId = hs.structureId,
+                  structureName = hs.structureName,
+                  canAct = vitruvianSpeakerCanAct,
+              )
+              ?.let { homeSpec ->
+                add(
+                    ModuleRow(
+                        title = "Home structure",
+                        subtitle = "Google Home structure",
+                        trailing = homeSpec.trailing,
+                        controlId = VitruvianSpeakerControls.CHOOSE_HOME,
+                        choices =
+                            homeSpec.choices.map { h ->
+                              RowAction(
+                                  h.name,
+                                  enabled = h.enabled,
+                                  selected = h.selected,
+                                  controlId = VitruvianSpeakerControls.CHOOSE_HOME,
+                              ) {
+                                setVitruvianSpeaker(
+                                    "switch to ${h.name}",
+                                    structureId = h.id,
+                                    controlId = "Home structure",
+                                )
                               }
-                        },
-            ))
-      }
-      val speakPhone = hs.speakPhone
-      if (speakPhone != null) {
+                            },
+                    ))
+              }
+          addSpeakerRow(visible = true)
+        } else {
+          addSpeakerRow(visible = false)
+        }
+        placed("home_cast_voice") {
+              if (shown("home_cast_voice"))
+                  ModuleRow(
+                      title = lbl("home_cast_voice"),
+                      error = err("home_cast_voice"),
+                      subtitle =
+                          if (hs.homeCastVoice) "streams Gemini voice to Google Home"
+                          else "Google Home speaks with its own cloud voice",
+                      trailing = if (hs.homeCastVoice) "on" else "off",
+                      tone = if (hs.homeCastVoice) StatusTone.Ok else StatusTone.Neutral,
+                      controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+                      toggle =
+                          RowToggle(checked = hs.homeCastVoice, enabled = vitruvianSpeakerCanAct) { next
+                            ->
+                            setVitruvianSpeaker(
+                                "cast selected voice ${if (next) "on" else "off"}",
+                                homeCastVoice = next)
+                          },
+                  )
+              else null
+            }
+            ?.let(::add)
+        placed("speak_local") {
+              if (shown("speak_local"))
+                  ModuleRow(
+                      title = lbl("speak_local"),
+                      error = err("speak_local"),
+                      // The Apple voice is chosen on the Mac; Gemini TTS voice can be switched
+                      // below.
+                      subtitle =
+                          Derive.macVoiceLabel(
+                              hs.localVoiceName,
+                              hs.localVoice,
+                              hs.localEngine,
+                              geminiVoiceName,
+                              hs.hasGeminiKey),
+                      trailing = if (speakLocal) "on" else "off",
+                      tone =
+                          when {
+                            silent -> StatusTone.Warn
+                            speakLocal -> StatusTone.Ok
+                            else -> StatusTone.Neutral
+                          },
+                      controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+                      toggle =
+                          RowToggle(checked = speakLocal, enabled = vitruvianSpeakerCanAct) { next ->
+                            setVitruvianSpeaker(
+                                "this Mac ${if (next) "on" else "off"}", speakLocal = next)
+                          },
+                  )
+              else null
+            }
+            ?.let(::add)
+        placed("local_voice") {
+              if (shown("local_voice"))
+                  ModuleRow(
+                      title = lbl("local_voice"),
+                      error = err("local_voice"),
+                      subtitle = hs.localVoiceName.ifBlank { "System default" },
+                      trailing = hs.localVoiceName.ifBlank { "default" },
+                      controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+                      actions =
+                          listOf(
+                              RowAction(
+                                  "Preview",
+                                  enabled = vitruvianSpeakerCanAct,
+                                  controlId = VitruvianSpeakerControls.VOICE_PREVIEW,
+                              ) {
+                                setVitruvianSpeaker("preview voice", previewVoice = true)
+                              }),
+                      choices =
+                          // Vitruvian Speaker's catalog lists the voices itself. Only a catalog entry
+                          // with no choices falls back to `available_voices` (the same list, older
+                          // shape).
+                          if (Derive.catalogChoices(catalog, "local_voice").isNotEmpty())
+                              catalogChoiceActions(hs, "local_voice", hs.localVoice) { id, label ->
+                                setVitruvianSpeaker("Mac voice $label", localVoice = id)
+                              }
+                          else
+                              hs.availableVoices.map { v ->
+                                val current = v.id == hs.localVoice
+                                RowAction(
+                                    v.name,
+                                    enabled = vitruvianSpeakerCanAct && !current,
+                                    selected = current,
+                                    controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+                                ) {
+                                  setVitruvianSpeaker("Mac voice ${v.name}", localVoice = v.id)
+                                }
+                              },
+                  )
+              else null
+            }
+            ?.let(::add)
+        val speakPhone = hs.speakPhone
         val phoneConnected = hs.phoneConnected || bridgeLinked
-        if (shown("speak_phone"))
-            add(
-                ModuleRow(
-                    title = lbl("speak_phone"),
-                    error = err("speak_phone"),
-                    subtitle =
-                        Derive.phoneVoiceLabel(
-                            hs.localEngine,
-                            geminiVoiceName,
-                            hs.hasGeminiKey,
-                            phoneConnected,
-                            hs.phoneHeadphonesOnly),
-                    trailing = if (speakPhone) "on" else "off",
-                    tone =
-                        when {
-                          silent -> StatusTone.Warn
-                          speakPhone && !phoneConnected -> StatusTone.Warn
-                          speakPhone -> StatusTone.Ok
-                          else -> StatusTone.Neutral
-                        },
-                    toggle =
-                        RowToggle(checked = speakPhone, enabled = vitruvianSpeakerCanAct) { next ->
-                          setVitruvianSpeaker(
-                              "this phone ${if (next) "on" else "off"}", speakPhone = next)
-                        },
-                ))
-        if (speakPhone) {
-          if (shown("phone_pause_media"))
-              add(
+        placed("speak_phone") {
+              if (speakPhone != null && shown("speak_phone"))
+                  ModuleRow(
+                      title = lbl("speak_phone"),
+                      error = err("speak_phone"),
+                      subtitle =
+                          Derive.phoneVoiceLabel(
+                              hs.localEngine,
+                              geminiVoiceName,
+                              hs.hasGeminiKey,
+                              phoneConnected,
+                              hs.phoneHeadphonesOnly),
+                      trailing = if (speakPhone) "on" else "off",
+                      tone =
+                          when {
+                            silent -> StatusTone.Warn
+                            speakPhone && !phoneConnected -> StatusTone.Warn
+                            speakPhone -> StatusTone.Ok
+                            else -> StatusTone.Neutral
+                          },
+                      controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+                      toggle =
+                          RowToggle(checked = speakPhone, enabled = vitruvianSpeakerCanAct) { next ->
+                            setVitruvianSpeaker(
+                                "this phone ${if (next) "on" else "off"}", speakPhone = next)
+                          },
+                  )
+              else null
+            }
+            ?.let(::add)
+        placed("phone_pause_media") {
+              if (speakPhone == true && shown("phone_pause_media"))
                   ModuleRow(
                       title = lbl("phone_pause_media"),
                       error = err("phone_pause_media"),
@@ -3172,17 +3309,20 @@ public class RemoteState(
                           else "phone media keeps playing",
                       trailing = if (hs.phonePauseMedia) "on" else "off",
                       tone = if (hs.phonePauseMedia) StatusTone.Ok else StatusTone.Neutral,
+                      controlId = VitruvianSpeakerControls.CATALOG_SETTING,
                       toggle =
-                          RowToggle(
-                              checked = hs.phonePauseMedia, enabled = vitruvianSpeakerCanAct) { next
-                                ->
-                                setVitruvianSpeaker(
-                                    "phone pause media ${if (next) "on" else "off"}",
-                                    phonePauseMedia = next)
-                              },
-                  ))
-          if (shown("phone_headphones_only"))
-              add(
+                          RowToggle(checked = hs.phonePauseMedia, enabled = vitruvianSpeakerCanAct) {
+                              next ->
+                            setVitruvianSpeaker(
+                                "phone pause media ${if (next) "on" else "off"}",
+                                phonePauseMedia = next)
+                          },
+                  )
+              else null
+            }
+            ?.let(::add)
+        placed("phone_headphones_only") {
+              if (speakPhone == true && shown("phone_headphones_only"))
                   ModuleRow(
                       title = lbl("phone_headphones_only"),
                       error = err("phone_headphones_only"),
@@ -3192,412 +3332,545 @@ public class RemoteState(
                           else "speaks on phone speaker or headphones",
                       trailing = if (hs.phoneHeadphonesOnly) "on" else "off",
                       tone = if (hs.phoneHeadphonesOnly) StatusTone.Ok else StatusTone.Neutral,
+                      controlId = VitruvianSpeakerControls.CATALOG_SETTING,
                       toggle =
                           RowToggle(
-                              checked = hs.phoneHeadphonesOnly, enabled = vitruvianSpeakerCanAct) {
-                                  next ->
+                              checked = hs.phoneHeadphonesOnly, enabled = vitruvianSpeakerCanAct) { next
+                                ->
                                 setVitruvianSpeaker(
                                     "phone headphones only ${if (next) "on" else "off"}",
                                     phoneHeadphonesOnly = next)
                               },
-                  ))
-        }
-      }
-      // The local engine and its voice only matter when something speaks with them.
-      if (shown("local_engine")) {
-        add(
-            ModuleRow(
-                title = lbl("local_engine"),
-                error = err("local_engine"),
-                subtitle =
-                    if (hs.localEngine == "gemini" && !hs.hasGeminiKey)
-                        "needs Gemini API key on the Mac"
-                    else "how This Mac synthesizes speech",
-                trailing = Derive.catalogChoiceLabel(catalog, "local_engine", hs.localEngine),
-                tone =
-                    if (hs.localEngine == "gemini" && !hs.hasGeminiKey) StatusTone.Warn
-                    else StatusTone.Neutral,
-                choices =
-                    catalogChoiceActions(hs, "local_engine", hs.localEngine) { wire, label ->
-                      setVitruvianSpeaker("local engine $label", localEngine = wire)
-                    },
-            ))
-        if (voiceSectionShown) {
-          add(
-              ModuleRow(
-                  title = lbl("gemini_voice"),
-                  error = err("gemini_voice"),
-                  subtitle = "Gemini TTS voice",
-                  trailing = geminiVoiceName,
-                  tone = StatusTone.Neutral,
-                  choices =
-                      catalogChoiceActions(hs, "gemini_voice", hs.geminiVoice) { voice, label ->
-                        setVitruvianSpeaker("Gemini voice $label", geminiVoice = voice)
-                      },
-              ))
+                  )
+              else null
+            }
+            ?.let(::add)
+        // The local engine and its voice only matter when something speaks with them.
+        val engineShown = shown("local_engine")
+        placed("local_engine") {
+              if (engineShown)
+                  ModuleRow(
+                      title = lbl("local_engine"),
+                      error = err("local_engine"),
+                      subtitle =
+                          if (hs.localEngine == "gemini" && !hs.hasGeminiKey)
+                              "needs Gemini API key on the Mac"
+                          else "how This Mac synthesizes speech",
+                      trailing = Derive.catalogChoiceLabel(catalog, "local_engine", hs.localEngine),
+                      tone =
+                          if (hs.localEngine == "gemini" && !hs.hasGeminiKey) StatusTone.Warn
+                          else StatusTone.Neutral,
+                      controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+                      choices =
+                          catalogChoiceActions(hs, "local_engine", hs.localEngine) { wire, label ->
+                            setVitruvianSpeaker("local engine $label", localEngine = wire)
+                          },
+                  )
+              else null
+            }
+            ?.let(::add)
+        placed("gemini_voice") {
+              if (engineShown && voiceSectionShown)
+                  ModuleRow(
+                      title = lbl("gemini_voice"),
+                      error = err("gemini_voice"),
+                      subtitle = "Gemini TTS voice",
+                      trailing = geminiVoiceName,
+                      tone = StatusTone.Neutral,
+                      controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+                      choices =
+                          catalogChoiceActions(hs, "gemini_voice", hs.geminiVoice) { voice, label ->
+                            setVitruvianSpeaker("Gemini voice $label", geminiVoice = voice)
+                          },
+                  )
+              else null
+            }
+            ?.let(::add)
+        if (engineShown && voiceSectionShown) {
           addGeminiApiKeyRow()
         }
+      } else {
+        // An agent too old to switch outputs always speaks on the home speaker.
+        addSpeakerRow(visible = true)
       }
-    } else {
-      // An agent too old to switch outputs always speaks on the home speaker.
-      addSpeakerRow()
-    }
-    // Vitruvian Speaker's own explanation of where it speaks and how, word for word.
-    Derive.outputsSummary(hs.outputsFooter)?.let { footer ->
-      add(
-          ModuleRow(
-              title = footer,
-              subtitle = Derive.outputsSummary(hs.outputsLabel).orEmpty(),
-              trailing = "",
-              tone = StatusTone.Neutral,
-              titleLines = 6,
-          ))
-    }
-    // How much to say bounds chat announcements and typed announcements as well as coding agents.
-    if (shown("speech_length")) {
-      add(
-          ModuleRow(
-              title = lbl("speech_length"),
-              error = err("speech_length"),
-              subtitle = "of each reply, read aloud",
-              trailing = Derive.catalogChoiceLabel(catalog, "speech_length", hs.speechLength),
-              tone = StatusTone.Neutral,
-              choices =
-                  catalogChoiceActions(hs, "speech_length", hs.speechLength) { wire, label ->
-                    setVitruvianSpeaker("say $label", speechLength = wire)
-                  },
-          ))
-    }
-    // How announcements are phrased: only coding-agent replies are rewritten,
-    // so with every coding agent off these shape nothing.
-    if (shown("announcement_style")) {
-      add(
-          ModuleRow(
-              title = lbl("announcement_style"),
-              error = err("announcement_style"),
-              subtitle =
-                  if (hs.announcementStyle == "custom")
-                      Format.clip(
-                          hs.customStylePrompt.ifBlank { "no instruction set on the Mac" }, 60)
-                  else "how announcements are phrased before speaking",
-              trailing =
-                  Derive.catalogChoiceLabel(catalog, "announcement_style", hs.announcementStyle),
-              tone =
-                  if (hs.announcementStyle == "custom" && hs.customStylePrompt.isBlank())
-                      StatusTone.Warn
-                  else StatusTone.Neutral,
-              choices =
-                  catalogChoiceActions(hs, "announcement_style", hs.announcementStyle) { wire, label
-                    ->
-                    setVitruvianSpeaker("style $label", announcementStyle = wire)
-                  },
-          ))
-    }
-    // Each row below is shown by its own key, not by the row above it.
-    if (shown("custom_style_prompt")) {
-      run {
+      // Vitruvian Speaker's own explanation of where it speaks and how, word for word.
+      Derive.outputsSummary(hs.outputsFooter)?.let { footer ->
         add(
             ModuleRow(
-                title = lbl("custom_style_prompt"),
-                error = err("custom_style_prompt"),
-                subtitle = hs.customStylePrompt.ifBlank { "Tap to set rewrite prompt" },
-                trailing = if (hs.customStylePrompt.isNotBlank()) "set" else "none",
-                textPrompt =
-                    RowTextPrompt(
-                        title = lbl("custom_style_prompt"),
-                        initialValue = hs.customStylePrompt,
-                        placeholder = "e.g. Speak like a pirate.",
-                        clearLabel = if (hs.customStylePrompt.isNotBlank()) "Clear" else null,
-                        enabled = vitruvianSpeakerCanAct,
-                        onClear =
-                            if (hs.customStylePrompt.isNotBlank()) {
-                              {
-                                setVitruvianSpeaker(
-                                    "clear custom style prompt", customStylePrompt = "")
-                              }
-                            } else null,
-                        onSubmit = { text ->
-                          setVitruvianSpeaker("custom style prompt", customStylePrompt = text)
-                        },
-                    ),
+                title = footer,
+                subtitle = Derive.outputsSummary(hs.outputsLabel).orEmpty(),
+                trailing = "",
+                tone = StatusTone.Neutral,
+                titleLines = 6,
             ))
       }
-    }
-    if (shown("style_model")) {
-      add(
-          ModuleRow(
-              title = lbl("style_model"),
-              error = err("style_model"),
-              subtitle =
-                  if (hs.styleModel == "gemini" && !hs.hasGeminiKey)
-                      "needs Gemini API key on the Mac"
-                  else
-                      "rewrites announcements into ${Derive.catalogChoiceLabel(catalog, "announcement_style", hs.announcementStyle)}",
-              trailing = Derive.catalogChoiceLabel(catalog, "style_model", hs.styleModel),
-              tone =
-                  if (hs.styleModel == "gemini" && !hs.hasGeminiKey) StatusTone.Warn
-                  else StatusTone.Neutral,
-              choices =
-                  catalogChoiceActions(hs, "style_model", hs.styleModel) { wire, label ->
-                    setVitruvianSpeaker("style model $label", styleModel = wire)
-                  },
-          ))
+      // How much to say bounds chat announcements and typed announcements as well as coding agents.
+      placed("speech_length") {
+            if (shown("speech_length"))
+                ModuleRow(
+                    title = lbl("speech_length"),
+                    error = err("speech_length"),
+                    subtitle = "of each reply, read aloud",
+                    trailing = Derive.catalogChoiceLabel(catalog, "speech_length", hs.speechLength),
+                    tone = StatusTone.Neutral,
+                    controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+                    choices =
+                        catalogChoiceActions(hs, "speech_length", hs.speechLength) { wire, label ->
+                          setVitruvianSpeaker("say $label", speechLength = wire)
+                        },
+                )
+            else null
+          }
+          ?.let(::add)
+      // How announcements are phrased: only coding-agent replies are rewritten,
+      // so with every coding agent off these shape nothing.
+      placed("announcement_style") {
+            if (shown("announcement_style"))
+                ModuleRow(
+                    title = lbl("announcement_style"),
+                    error = err("announcement_style"),
+                    subtitle =
+                        if (hs.announcementStyle == "custom")
+                            Format.clip(
+                                hs.customStylePrompt.ifBlank { "no instruction set on the Mac" },
+                                60)
+                        else "how announcements are phrased before speaking",
+                    trailing =
+                        Derive.catalogChoiceLabel(
+                            catalog, "announcement_style", hs.announcementStyle),
+                    tone =
+                        if (hs.announcementStyle == "custom" && hs.customStylePrompt.isBlank())
+                            StatusTone.Warn
+                        else StatusTone.Neutral,
+                    controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+                    choices =
+                        catalogChoiceActions(hs, "announcement_style", hs.announcementStyle) {
+                            wire,
+                            label ->
+                          setVitruvianSpeaker("style $label", announcementStyle = wire)
+                        },
+                )
+            else null
+          }
+          ?.let(::add)
+      // Each row below is shown by its own key, not by the row above it.
+      placed("custom_style_prompt") {
+            if (shown("custom_style_prompt"))
+                ModuleRow(
+                    title = lbl("custom_style_prompt"),
+                    error = err("custom_style_prompt"),
+                    subtitle = hs.customStylePrompt.ifBlank { "Tap to set rewrite prompt" },
+                    trailing = if (hs.customStylePrompt.isNotBlank()) "set" else "none",
+                    controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+                    textPrompt =
+                        RowTextPrompt(
+                            title = lbl("custom_style_prompt"),
+                            initialValue = hs.customStylePrompt,
+                            placeholder = "e.g. Speak like a pirate.",
+                            clearLabel = if (hs.customStylePrompt.isNotBlank()) "Clear" else null,
+                            enabled = vitruvianSpeakerCanAct,
+                            onClear =
+                                if (hs.customStylePrompt.isNotBlank()) {
+                                  {
+                                    setVitruvianSpeaker(
+                                        "clear custom style prompt", customStylePrompt = "")
+                                  }
+                                } else null,
+                            onSubmit = { text ->
+                              setVitruvianSpeaker("custom style prompt", customStylePrompt = text)
+                            },
+                        ),
+                )
+            else null
+          }
+          ?.let(::add)
+      val styleModelShown = shown("style_model")
+      placed("style_model") {
+            if (styleModelShown)
+                ModuleRow(
+                    title = lbl("style_model"),
+                    error = err("style_model"),
+                    subtitle =
+                        if (hs.styleModel == "gemini" && !hs.hasGeminiKey)
+                            "needs Gemini API key on the Mac"
+                        else
+                            "rewrites announcements into ${Derive.catalogChoiceLabel(catalog, "announcement_style", hs.announcementStyle)}",
+                    trailing = Derive.catalogChoiceLabel(catalog, "style_model", hs.styleModel),
+                    tone =
+                        if (hs.styleModel == "gemini" && !hs.hasGeminiKey) StatusTone.Warn
+                        else StatusTone.Neutral,
+                    controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+                    choices =
+                        catalogChoiceActions(hs, "style_model", hs.styleModel) { wire, label ->
+                          setVitruvianSpeaker("style model $label", styleModel = wire)
+                        },
+                )
+            else null
+          }
+          ?.let(::add)
       // The key row is the phone's own (Vitruvian Speaker never lists it); it appears when Gemini
       // does the rewriting and the voice section has not already shown it.
-      if (hs.styleModel == "gemini" && !voiceSectionShown) {
+      if (styleModelShown && hs.styleModel == "gemini" && !voiceSectionShown) {
         addGeminiApiKeyRow()
       }
-    }
-    run {
       // The speaker's own volume. −10 / +10 rather than a slider: each change
       // is a round trip to Google that takes seconds to confirm.
-      agentSpeakerVolume
-          ?.takeIf { shown("speaker_volume") }
-          ?.let { v ->
+      placed("speaker_volume") {
+            val v = agentSpeakerVolume?.takeIf { shown("speaker_volume") } ?: return@placed null
             val usable = vitruvianSpeakerCanAct && v.available && v.online && !speakerVolumeBusy
-            add(
-                ModuleRow(
-                    title = lbl("speaker_volume"),
-                    error = err("speaker_volume"),
-                    subtitle =
-                        when {
-                          speakerVolumeBusy -> "changing… Google confirms in a few seconds"
-                          !v.available -> Format.clip(v.reason, 60)
-                          !v.online -> "${v.speaker} is offline"
-                          else -> v.speaker
-                        },
-                    // "…" while changing, like the Volume plate: the old level is
-                    // not the answer any more, and the new one is not confirmed yet.
-                    trailing =
-                        if (speakerVolumeBusy) "…"
-                        else Derive.speakerVolumeLabel(v.available, v.online, v.muted, v.percent),
-                    tone = if (v.available && v.online) StatusTone.Ok else StatusTone.Neutral,
-                    actions =
-                        if (!v.available) emptyList()
-                        else
-                            catalogStepActions(
-                                hs,
-                                "speaker_volume",
-                                v.percent.toDouble(),
-                                enabled = usable && !v.muted) { next ->
-                                  setSpeakerVolume(percent = next.toInt())
-                                } +
-                                RowAction(if (v.muted) "Unmute" else "Mute", enabled = usable) {
-                                  setSpeakerVolume(muted = !v.muted)
-                                },
-                    choices =
-                        if (usable)
-                            Derive.catalogChoices(catalog, "speaker_volume").map { ch ->
-                              val current = ch.value.toIntOrNull() == v.percent
-                              RowAction(
-                                  ch.label,
-                                  enabled = vitruvianSpeakerCanAct && !current,
-                                  selected = current) {
-                                    ch.value.toIntOrNull()?.let { setSpeakerVolume(percent = it) }
-                                  }
-                            }
-                        else emptyList(),
-                ))
-          }
-      // Announce at a set volume: the speaker is set to one level for each
-      // announcement and put back after, on the Mac.
-      if (shown("announce_volume_enabled"))
-          add(
-              ModuleRow(
-                  title = lbl("announce_volume_enabled"),
-                  error = err("announce_volume_enabled"),
-                  subtitle =
-                      if (hs.announceVolumeEnabled)
-                          "each announcement at ${hs.announceVolume}%, then back"
-                      else "announcements use the speaker's own volume",
-                  trailing = if (hs.announceVolumeEnabled) "${hs.announceVolume}%" else "off",
-                  tone = if (hs.announceVolumeEnabled) StatusTone.Ok else StatusTone.Neutral,
-                  toggle =
-                      RowToggle(
-                          checked = hs.announceVolumeEnabled, enabled = vitruvianSpeakerCanAct) {
-                              next ->
-                            setVitruvianSpeaker(
-                                "announce volume ${if (next) "on" else "off"}",
-                                announceVolumeEnabled = next)
-                          },
-                  actions =
-                      if (hs.announceVolumeEnabled && shown("announce_volume"))
-                          catalogStepActions(hs, "announce_volume", hs.announceVolume.toDouble()) {
-                              next ->
-                            setVitruvianSpeaker(
-                                "announce at ${next.toInt()}%", announceVolume = next.toInt())
-                          }
-                      else emptyList(),
-                  choices =
-                      if (hs.announceVolumeEnabled)
-                          Derive.catalogChoices(catalog, "announce_volume").map { ch ->
-                            val current = ch.value.toIntOrNull() == hs.announceVolume
-                            RowAction(
-                                ch.label,
-                                enabled = vitruvianSpeakerCanAct && !current,
-                                selected = current) {
-                                  ch.value.toIntOrNull()?.let {
-                                    setVitruvianSpeaker(
-                                        "announce volume ${ch.label}", announceVolume = it)
-                                  }
-                                }
-                          }
-                      else emptyList(),
-              ))
-    }
-    // Pause what the Mac is playing while the speaker talks. The margin is
-    // the one knob worth having here: whether it resumes too early is heard
-    // in the room, not seen at the Mac.
-    if (shown("pause_media"))
-        add(
             ModuleRow(
-                title = lbl("pause_media"),
-                error = err("pause_media"),
-                // One line on a folded phone: the margin is the part worth
-                // reading, so it is the whole subtitle. "YouTube and other players
-                // on the Mac · " in front of it pushed the number into an ellipsis.
+                title = lbl("speaker_volume"),
+                error = err("speaker_volume"),
                 subtitle =
-                    if (hs.pauseMedia)
-                        "${lbl("pause_media_extra_seconds")} ${Format.decimal(hs.pauseMediaExtraSeconds)} s"
-                    else "Mac media keeps playing over the speaker",
-                trailing = if (hs.pauseMedia) "on" else "off",
-                tone = if (hs.pauseMedia) StatusTone.Ok else StatusTone.Neutral,
-                toggle =
-                    RowToggle(checked = hs.pauseMedia, enabled = vitruvianSpeakerCanAct) { next ->
-                      setVitruvianSpeaker(
-                          "pause media ${if (next) "on" else "off"}", pauseMedia = next)
+                    when {
+                      speakerVolumeBusy -> "changing… Google confirms in a few seconds"
+                      !v.available -> Format.clip(v.reason, 60)
+                      !v.online -> "${v.speaker} is offline"
+                      else -> v.speaker
                     },
+                // "…" while changing, like the Volume plate: the old level is
+                // not the answer any more, and the new one is not confirmed yet.
+                trailing =
+                    if (speakerVolumeBusy) "…"
+                    else Derive.speakerVolumeLabel(v.available, v.online, v.muted, v.percent),
+                tone = if (v.available && v.online) StatusTone.Ok else StatusTone.Neutral,
+                controlId = VitruvianSpeakerControls.VOLUME,
                 actions =
-                    buildList {
-                      if (hs.pauseMedia) {
-                        addAll(
-                            catalogStepActions(
-                                hs, "pause_media_extra_seconds", hs.pauseMediaExtraSeconds) { next
-                                  ->
-                                  setVitruvianSpeaker(
-                                      "${lbl("pause_media_extra_seconds")} ${Format.decimal(next)} s",
-                                      pauseMediaExtraSeconds = next)
-                                })
-                        add(
-                            RowAction("Test", enabled = vitruvianSpeakerCanAct) {
-                              setVitruvianSpeaker("test media pause", testMediaPause = true)
-                            })
-                      }
-                    },
+                    if (!v.available) emptyList()
+                    else
+                        catalogStepActions(
+                            hs,
+                            "speaker_volume",
+                            v.percent.toDouble(),
+                            enabled = usable && !v.muted,
+                            controlId = VitruvianSpeakerControls.VOLUME,
+                        ) { next ->
+                          setSpeakerVolume(percent = next.toInt())
+                        } +
+                            RowAction(
+                                if (v.muted) "Unmute" else "Mute",
+                                enabled = usable,
+                                controlId = VitruvianSpeakerControls.MUTE,
+                            ) {
+                              setSpeakerVolume(muted = !v.muted)
+                            },
                 choices =
-                    if (hs.pauseMedia)
-                        Derive.catalogChoices(catalog, "pause_media_extra_seconds").map { ch ->
-                          val current = ch.value.toDoubleOrNull() == hs.pauseMediaExtraSeconds
+                    if (usable)
+                        Derive.catalogChoices(catalog, "speaker_volume").map { ch ->
+                          val current = ch.value.toIntOrNull() == v.percent
                           RowAction(
                               ch.label,
                               enabled = vitruvianSpeakerCanAct && !current,
-                              selected = current) {
-                                ch.value.toDoubleOrNull()?.let {
-                                  setVitruvianSpeaker(
-                                      "${lbl("pause_media_extra_seconds")} ${ch.label}",
-                                      pauseMediaExtraSeconds = it)
-                                }
-                              }
+                              selected = current,
+                              controlId = VitruvianSpeakerControls.VOLUME,
+                          ) {
+                            ch.value.toIntOrNull()?.let { setSpeakerVolume(percent = it) }
+                          }
                         }
                     else emptyList(),
-            ))
-    if (shown("quiet_hours_enabled"))
+            )
+          }
+          ?.let(::add)
+      // Announce at a set volume: the speaker is set to one level for each
+      // announcement and put back after, on the Mac.
+      val announceVolInline =
+          placed("announce_volume") {
+            if (hs.announceVolumeEnabled && shown("announce_volume")) {
+              val step =
+                  catalogStepActions(hs, "announce_volume", hs.announceVolume.toDouble()) { next ->
+                    setVitruvianSpeaker("announce at ${next.toInt()}%", announceVolume = next.toInt())
+                  }
+              val choices =
+                  Derive.catalogChoices(catalog, "announce_volume").map { ch ->
+                    val current = ch.value.toIntOrNull() == hs.announceVolume
+                    RowAction(
+                        ch.label,
+                        enabled = vitruvianSpeakerCanAct && !current,
+                        selected = current,
+                        controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+                    ) {
+                      ch.value.toIntOrNull()?.let {
+                        setVitruvianSpeaker("announce volume ${ch.label}", announceVolume = it)
+                      }
+                    }
+                  }
+              step to choices
+            } else {
+              emptyList<RowAction>() to emptyList<RowAction>()
+            }
+          }
+      placed("announce_volume_enabled") {
+            if (shown("announce_volume_enabled"))
+                ModuleRow(
+                    title = lbl("announce_volume_enabled"),
+                    error = err("announce_volume_enabled"),
+                    subtitle =
+                        if (hs.announceVolumeEnabled)
+                            "each announcement at ${hs.announceVolume}%, then back"
+                        else "announcements use the speaker's own volume",
+                    trailing = if (hs.announceVolumeEnabled) "${hs.announceVolume}%" else "off",
+                    tone = if (hs.announceVolumeEnabled) StatusTone.Ok else StatusTone.Neutral,
+                    controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+                    toggle =
+                        RowToggle(
+                            checked = hs.announceVolumeEnabled, enabled = vitruvianSpeakerCanAct) { next
+                              ->
+                              setVitruvianSpeaker(
+                                  "announce volume ${if (next) "on" else "off"}",
+                                  announceVolumeEnabled = next)
+                            },
+                    actions = announceVolInline?.first.orEmpty(),
+                    choices = announceVolInline?.second.orEmpty(),
+                )
+            else null
+          }
+          ?.let(::add)
+      // Pause what the Mac is playing while the speaker talks. The margin is
+      // the one knob worth having here: whether it resumes too early is heard
+      // in the room, not seen at the Mac.
+      val pauseMarginInline =
+          placed("pause_media_extra_seconds") {
+            if (hs.pauseMedia && shown("pause_media_extra_seconds")) {
+              val step =
+                  catalogStepActions(hs, "pause_media_extra_seconds", hs.pauseMediaExtraSeconds) {
+                      next ->
+                    setVitruvianSpeaker(
+                        "${lbl("pause_media_extra_seconds")} ${Format.decimal(next)} s",
+                        pauseMediaExtraSeconds = next)
+                  }
+              val choices =
+                  Derive.catalogChoices(catalog, "pause_media_extra_seconds").map { ch ->
+                    val current = ch.value.toDoubleOrNull() == hs.pauseMediaExtraSeconds
+                    RowAction(
+                        ch.label,
+                        enabled = vitruvianSpeakerCanAct && !current,
+                        selected = current,
+                        controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+                    ) {
+                      ch.value.toDoubleOrNull()?.let {
+                        setVitruvianSpeaker(
+                            "${lbl("pause_media_extra_seconds")} ${ch.label}",
+                            pauseMediaExtraSeconds = it)
+                      }
+                    }
+                  }
+              step to choices
+            } else {
+              emptyList<RowAction>() to emptyList<RowAction>()
+            }
+          }
+      placed("pause_media") {
+            if (shown("pause_media"))
+                ModuleRow(
+                    title = lbl("pause_media"),
+                    error = err("pause_media"),
+                    // One line on a folded phone: the margin is the part worth
+                    // reading, so it is the whole subtitle. "YouTube and other players
+                    // on the Mac · " in front of it pushed the number into an ellipsis.
+                    subtitle =
+                        if (hs.pauseMedia)
+                            "${lbl("pause_media_extra_seconds")} ${Format.decimal(hs.pauseMediaExtraSeconds)} s"
+                        else "Mac media keeps playing over the speaker",
+                    trailing = if (hs.pauseMedia) "on" else "off",
+                    tone = if (hs.pauseMedia) StatusTone.Ok else StatusTone.Neutral,
+                    controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+                    toggle =
+                        RowToggle(checked = hs.pauseMedia, enabled = vitruvianSpeakerCanAct) { next ->
+                          setVitruvianSpeaker(
+                              "pause media ${if (next) "on" else "off"}", pauseMedia = next)
+                        },
+                    actions =
+                        buildList {
+                          addAll(pauseMarginInline?.first.orEmpty())
+                          if (hs.pauseMedia) {
+                            add(
+                                RowAction(
+                                    "Test",
+                                    enabled = vitruvianSpeakerCanAct,
+                                    controlId = VitruvianSpeakerControls.TEST_MEDIA_PAUSE,
+                                ) {
+                                  setVitruvianSpeaker("test media pause", testMediaPause = true)
+                                })
+                          }
+                        },
+                    choices = pauseMarginInline?.second.orEmpty(),
+                )
+            else null
+          }
+          ?.let(::add)
+      placed("quiet_hours_enabled") {
+            if (shown("quiet_hours_enabled"))
+                ModuleRow(
+                    title = lbl("quiet_hours_enabled"),
+                    error = err("quiet_hours_enabled"),
+                    subtitle =
+                        Derive.quietHoursSubtitle(
+                            enabled = hs.quietHoursEnabled,
+                            active = hs.quietHoursActive,
+                            start = hs.quietHoursStart,
+                            end = hs.quietHoursEnd),
+                    trailing = if (hs.quietHoursEnabled) "on" else "off",
+                    tone =
+                        if (hs.quietHoursEnabled && hs.quietHoursActive) StatusTone.Warn
+                        else if (hs.quietHoursEnabled) StatusTone.Ok else StatusTone.Neutral,
+                    controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+                    toggle =
+                        RowToggle(checked = hs.quietHoursEnabled, enabled = vitruvianSpeakerCanAct) {
+                            next ->
+                          setVitruvianSpeaker(
+                              "quiet hours ${if (next) "on" else "off"}", quietHoursEnabled = next)
+                        },
+                )
+            else null
+          }
+          ?.let(::add)
+      placed("quiet_hours_start") {
+            if (shown("quiet_hours_start"))
+                ModuleRow(
+                    title = lbl("quiet_hours_start"),
+                    error = err("quiet_hours_start"),
+                    subtitle = "starts at ${hs.quietHoursStart}",
+                    trailing = hs.quietHoursStart,
+                    controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+                    choices =
+                        catalogChoiceActions(hs, "quiet_hours_start", hs.quietHoursStart) { t, label
+                          ->
+                          setVitruvianSpeaker("quiet hours from $label", quietHoursStart = t)
+                        },
+                )
+            else null
+          }
+          ?.let(::add)
+      placed("quiet_hours_end") {
+            if (shown("quiet_hours_end"))
+                ModuleRow(
+                    title = lbl("quiet_hours_end"),
+                    error = err("quiet_hours_end"),
+                    subtitle = "ends at ${hs.quietHoursEnd}",
+                    trailing = hs.quietHoursEnd,
+                    controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+                    choices =
+                        catalogChoiceActions(hs, "quiet_hours_end", hs.quietHoursEnd) { t, label ->
+                          setVitruvianSpeaker("quiet hours until $label", quietHoursEnd = t)
+                        },
+                )
+            else null
+          }
+          ?.let(::add)
+      add(
+          ModuleRow(
+              title = "Speak clipboard",
+              subtitle = "reads text on the Mac clipboard aloud",
+              trailing = "",
+              actions =
+                  listOf(
+                      RowAction(
+                          "Speak",
+                          enabled = vitruvianSpeakerCanAct,
+                          controlId = VitruvianSpeakerControls.SPEAK_CLIPBOARD,
+                      ) {
+                        setVitruvianSpeaker("speak clipboard", speakClipboard = true)
+                      }),
+          ))
+      add(vitruvianSpeakerMirrorRow())
+      val doorOptions =
+          Derive.doorSwitchOptions(
+              activeDoor = hs.activeDoor,
+              appInstalled = hs.appInstalled,
+              extensionInstalled = hs.extensionInstalled,
+              canAct = vitruvianSpeakerCanAct,
+              copySupported = Derive.supportsDoorCopy(hs.vitruvianSpeakerVersion),
+          )
+      if (doorOptions.isNotEmpty()) {
         add(
             ModuleRow(
-                title = lbl("quiet_hours_enabled"),
-                error = err("quiet_hours_enabled"),
+                title = "Vitruvian Speaker door",
                 subtitle =
-                    Derive.quietHoursSubtitle(
-                        enabled = hs.quietHoursEnabled,
-                        active = hs.quietHoursActive,
-                        start = hs.quietHoursStart,
-                        end = hs.quietHoursEnd),
-                trailing = if (hs.quietHoursEnabled) "on" else "off",
-                tone =
-                    if (hs.quietHoursEnabled && hs.quietHoursActive) StatusTone.Warn
-                    else if (hs.quietHoursEnabled) StatusTone.Ok else StatusTone.Neutral,
-                toggle =
-                    RowToggle(checked = hs.quietHoursEnabled, enabled = vitruvianSpeakerCanAct) {
-                        next ->
-                      setVitruvianSpeaker(
-                          "quiet hours ${if (next) "on" else "off"}", quietHoursEnabled = next)
+                    if (hs.activeDoor == "extension") "running as Vitruvian extension"
+                    else "running as standalone app",
+                trailing = hs.activeDoor,
+                controlId = VitruvianSpeakerControls.DOOR_SWITCH,
+                choices =
+                    doorOptions.map { opt ->
+                      if (opt.copy) {
+                        RowAction(
+                            opt.label,
+                            enabled = opt.enabled,
+                            selected = opt.selected,
+                            controlId = VitruvianSpeakerControls.DOOR_COPY_SETTINGS,
+                        ) {
+                          setVitruvianSpeaker(
+                              "door ${opt.targetDoor} (copy)",
+                              activeDoor = opt.targetDoor,
+                              copy = true,
+                              controlId = "Vitruvian Speaker door",
+                          )
+                        }
+                      } else {
+                        RowAction(
+                            opt.label,
+                            enabled = opt.enabled,
+                            selected = opt.selected,
+                            controlId = VitruvianSpeakerControls.DOOR_SWITCH,
+                        ) {
+                          setVitruvianSpeaker(
+                              "door ${opt.targetDoor}",
+                              activeDoor = opt.targetDoor,
+                              controlId = "Vitruvian Speaker door",
+                          )
+                        }
+                      }
                     },
             ))
-    if (shown("quiet_hours_start")) {
+      }
       add(
           ModuleRow(
-              title = lbl("quiet_hours_start"),
-              error = err("quiet_hours_start"),
-              subtitle = "starts at ${hs.quietHoursStart}",
-              trailing = hs.quietHoursStart,
-              choices =
-                  catalogChoiceActions(hs, "quiet_hours_start", hs.quietHoursStart) { t, label ->
-                    setVitruvianSpeaker("quiet hours from $label", quietHoursStart = t)
-                  },
-          ))
-    }
-    if (shown("quiet_hours_end")) {
-      add(
-          ModuleRow(
-              title = lbl("quiet_hours_end"),
-              error = err("quiet_hours_end"),
-              subtitle = "ends at ${hs.quietHoursEnd}",
-              trailing = hs.quietHoursEnd,
-              choices =
-                  catalogChoiceActions(hs, "quiet_hours_end", hs.quietHoursEnd) { t, label ->
-                    setVitruvianSpeaker("quiet hours until $label", quietHoursEnd = t)
-                  },
-          ))
-    }
-    add(
-        ModuleRow(
-            title = "Speak clipboard",
-            subtitle = "reads text on the Mac clipboard aloud",
-            trailing = "",
-            actions =
-                listOf(
-                    RowAction("Speak", enabled = vitruvianSpeakerCanAct) {
-                      setVitruvianSpeaker("speak clipboard", speakClipboard = true)
-                    }),
-        ))
-    add(vitruvianSpeakerMirrorRow())
-    if (hs.extensionInstalled || hs.activeDoor == "extension") {
-      add(
-          ModuleRow(
-              title = "Vitruvian Speaker door",
+              title = "Settings & diagnostics",
               subtitle =
-                  if (hs.activeDoor == "extension") "running as Vitruvian extension"
-                  else "running as standalone app",
-              trailing = hs.activeDoor,
-              choices =
-                  listOf("app", "extension").map { d ->
-                    val current = d == hs.activeDoor
-                    RowAction(
-                        if (d == "app") "App" else "Extension",
-                        enabled = vitruvianSpeakerCanAct && !current,
-                        selected = current) {
-                          setVitruvianSpeaker("door $d", activeDoor = d)
-                        }
-                  },
+                  if (hs.vitruvianSpeakerVersion.isNotBlank()) "Vitruvian Speaker v${hs.vitruvianSpeakerVersion}"
+                  else "Vitruvian Speaker",
+              trailing = "",
           ))
     }
-    add(
-        ModuleRow(
-            title = "Settings & diagnostics",
-            subtitle =
-                if (hs.vitruvianSpeakerVersion.isNotBlank())
-                    "Vitruvian Speaker v${hs.vitruvianSpeakerVersion}"
-                else "Vitruvian Speaker",
-            trailing = "",
-        ))
+    // Broadcasting off: nothing else on this plate changes what is heard, so
+    // the master switch (plus phone-side notification mirror) is the whole plate.
+    if (!hs.enabled) {
+      return listOfNotNull(enabledRow, vitruvianSpeakerMirrorRow())
+    }
+    return listOfNotNull(enabledRow) + detailRows
+  }
+
+  private fun isSpeakerRemoveArmed(key: String, nowMs: Long = System.currentTimeMillis()): Boolean =
+      speakerRemoveArmed?.takeIf { it.first == key }?.let { Derive.isResetArmed(it.second, nowMs) }
+          ?: false
+
+  /** Remove asks twice, like Reset: removing a speaker can't be undone from the phone. */
+  public fun onTapRemoveSpeaker(
+      key: String,
+      name: String,
+      rowTitle: String,
+      nowMs: Long = System.currentTimeMillis(),
+  ) {
+    val armedAt = speakerRemoveArmed?.takeIf { it.first == key }?.second
+    val result = Derive.tapReset(armedAt, nowMs)
+    if (result.shouldReset) {
+      speakerRemoveArmed = null
+      setVitruvianSpeaker("remove speaker $name", removeTarget = key, controlId = rowTitle)
+    } else {
+      val stamp = result.nextArmedAtMs ?: nowMs
+      speakerRemoveArmed = key to stamp
+      scope.launch {
+        delay(Derive.RESET_CONFIRM_WINDOW_MS)
+        if (speakerRemoveArmed == key to stamp) speakerRemoveArmed = null
+      }
+    }
   }
 
   public fun onTapResetVitruvianSpeaker(nowMs: Long = System.currentTimeMillis()) {
     val result = Derive.tapReset(vitruvianSpeakerResetArmedAtMs, nowMs)
     vitruvianSpeakerResetArmedAtMs = result.nextArmedAtMs
     if (result.shouldReset) {
-      setVitruvianSpeaker(
-          "reset settings", resetSettings = true, controlId = "Reset Vitruvian Speaker")
+      setVitruvianSpeaker("reset settings", resetSettings = true, controlId = "Reset Vitruvian Speaker")
     } else {
       val armedStamp = result.nextArmedAtMs
       scope.launch {
@@ -3628,6 +3901,7 @@ public class RemoteState(
                     label = spec.actionLabel,
                     enabled = spec.enabled,
                     danger = spec.danger,
+                    controlId = VitruvianSpeakerControls.RESET,
                 ) {
                   onTapResetVitruvianSpeaker()
                 }),
@@ -3654,7 +3928,7 @@ public class RemoteState(
   ): List<ModuleRow> = buildList {
     networks.forEach { net ->
       val row = Derive.chatNetworkRow(app, net)
-      add(
+      val baseRow =
           ModuleRow(
               title = row.title,
               subtitle = row.subtitle,
@@ -3681,7 +3955,17 @@ public class RemoteState(
                               courierReadAnywayOn = next)
                         }
                   },
-          ))
+          )
+      add(
+          when {
+            row.switch == Derive.NetworkSwitch.Mute && app == "Courier" ->
+                baseRow.copy(controlId = VitruvianSpeakerControls.COURIER_NETWORK)
+            row.switch == Derive.NetworkSwitch.Mute ->
+                baseRow.copy(controlId = VitruvianSpeakerControls.BEEPER_NETWORK)
+            row.switch == Derive.NetworkSwitch.ReadAnyway ->
+                baseRow.copy(controlId = VitruvianSpeakerControls.COURIER_READ_ANYWAY)
+            else -> baseRow
+          })
     }
     Derive.networksLaterLine(app, listed)?.let {
       add(
@@ -3690,9 +3974,13 @@ public class RemoteState(
     }
   }
 
-  private fun vitruvianSpeakerExtraLists(hs: AgentVitruvianSpeaker): List<ModuleList> = buildList {
+  private fun vitruvianSpeakerExtraLists(
+      hs: AgentVitruvianSpeaker,
+      placement: Derive.CatalogPlacement,
+  ): List<ModuleList> = buildList {
     val catalog = hs.catalog
     fun lbl(key: String) = Derive.catalogLabel(catalog, key).ifBlank { key }
+    fun <T> placed(key: String, build: () -> T): T? = placement.placed(key, build)
 
     // A switch for the Vitruvian Speaker setting [key]: titled with the catalog's label, its inline
     // error read by that key, and null (so not added) when the catalog says it is not shown.
@@ -3711,8 +3999,8 @@ public class RemoteState(
                 subtitle = if (on) onLine else offLine,
                 trailing = if (on) "on" else "off",
                 tone = if (on) StatusTone.Ok else StatusTone.Neutral,
-                toggle =
-                    RowToggle(checked = on, enabled = vitruvianSpeakerCanAct) { next -> set(next) },
+                controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+                toggle = RowToggle(checked = on, enabled = vitruvianSpeakerCanAct) { next -> set(next) },
             )
 
     // Lets `add(sourceRow(...))` skip a switch the catalog hides.
@@ -3723,61 +4011,67 @@ public class RemoteState(
     val claude = hs.announceClaudeCode
     val antigravity = hs.announceAntigravity
     val opencode = hs.announceOpenCode
-    // Broadcasting off holds every sender: the switches would only say "held".
-    if (hs.enabled && claude != null && antigravity != null) {
+    if (claude != null && antigravity != null) {
       add(
           ModuleList(
               "Coding agents",
               buildList {
                 add(
-                    sourceRow(
-                        "announce_claude_code",
-                        claude,
-                        "its replies are read aloud",
-                        "its replies stay silent") {
-                          setVitruvianSpeaker(
-                              "Claude Code ${if (it) "on" else "off"}", announceClaudeCode = it)
-                        })
-                add(
-                    sourceRow(
-                        "announce_antigravity",
-                        antigravity,
-                        "its replies are read aloud",
-                        "its replies stay silent") {
-                          setVitruvianSpeaker(
-                              "Antigravity ${if (it) "on" else "off"}", announceAntigravity = it)
-                        })
-                if (opencode != null) {
-                  add(
+                    placed("announce_claude_code") {
                       sourceRow(
-                          "announce_opencode",
-                          opencode,
+                          "announce_claude_code",
+                          claude,
                           "its replies are read aloud",
                           "its replies stay silent") {
                             setVitruvianSpeaker(
-                                "OpenCode ${if (it) "on" else "off"}", announceOpenCode = it)
-                          })
+                                "Claude Code ${if (it) "on" else "off"}", announceClaudeCode = it)
+                          }
+                    })
+                add(
+                    placed("announce_antigravity") {
+                      sourceRow(
+                          "announce_antigravity",
+                          antigravity,
+                          "its replies are read aloud",
+                          "its replies stay silent") {
+                            setVitruvianSpeaker(
+                                "Antigravity ${if (it) "on" else "off"}", announceAntigravity = it)
+                          }
+                    })
+                if (opencode != null) {
+                  add(
+                      placed("announce_opencode") {
+                        sourceRow(
+                            "announce_opencode",
+                            opencode,
+                            "its replies are read aloud",
+                            "its replies stay silent") {
+                              setVitruvianSpeaker(
+                                  "OpenCode ${if (it) "on" else "off"}", announceOpenCode = it)
+                            }
+                      })
                 }
                 // Hidden on a Mac too old to label announcements (the catalog lacks it).
                 if (Derive.catalogShown(hs.catalog, "announce_source")) {
                   add(
-                      ModuleRow(
-                          title = lbl("announce_source"),
-                          error = Derive.settingError(vitruvianSpeakerErrors, "announce_source"),
-                          subtitle =
-                              "starts each announcement with the app, or app and session, it came from",
-                          trailing =
-                              Derive.catalogChoiceLabel(
-                                  hs.catalog, "announce_source", hs.announceSource),
-                          tone = StatusTone.Neutral,
-                          choices =
-                              catalogChoiceActions(hs, "announce_source", hs.announceSource) {
-                                  wire,
-                                  label ->
-                                setVitruvianSpeaker(
-                                    "Say who it's from: $label", announceSource = wire)
-                              },
-                      ))
+                      placed("announce_source") {
+                        ModuleRow(
+                            title = lbl("announce_source"),
+                            error = Derive.settingError(vitruvianSpeakerErrors, "announce_source"),
+                            subtitle =
+                                "starts each announcement with the app, or app and session, it came from",
+                            trailing =
+                                Derive.catalogChoiceLabel(
+                                    hs.catalog, "announce_source", hs.announceSource),
+                            tone = StatusTone.Neutral,
+                            choices =
+                                catalogChoiceActions(hs, "announce_source", hs.announceSource) {
+                                    wire,
+                                    label ->
+                                  setVitruvianSpeaker("Say who it's from: $label", announceSource = wire)
+                                },
+                        )
+                      })
                 }
                 hs.agents.forEach { a ->
                   val slug = a.canonicalSlug
@@ -3792,56 +4086,82 @@ public class RemoteState(
                       }
                   val actions = mutableListOf<RowAction>()
                   if (supportsHook) {
-                    val installed = a.hookState == "installed"
-                    val stale = a.hookState == "stale"
-                    if (a.speaksTwice) {
+                    val hookSpec =
+                        Derive.agentHookRowSpec(
+                            status = a,
+                            installed = hs.installed,
+                            appInstalled = hs.appInstalled,
+                            extensionInstalled = hs.extensionInstalled,
+                            canAct = vitruvianSpeakerCanAct,
+                            busy = vitruvianSpeakerBusy != null,
+                        )
+                    if (hookSpec.showDisableRival) {
                       actions.add(
                           RowAction(
                               "Turn off duplicate",
-                              enabled = vitruvianSpeakerCanAct && vitruvianSpeakerBusy == null) {
-                                setVitruvianSpeaker(
-                                    "turn off duplicate $agentName hook",
-                                    agentHookAction = "disable-rival:claude-code")
-                              })
+                              enabled = hookSpec.removeOrRivalEnabled,
+                              controlId = VitruvianSpeakerControls.HOOK_TURN_OFF_RIVAL,
+                          ) {
+                            setVitruvianSpeaker(
+                                "turn off duplicate $agentName hook",
+                                agentHookAction = "disable-rival:$slug",
+                                controlId = "$agentName hook",
+                            )
+                          })
                     }
-                    if (installed) {
-                      actions.add(
-                          RowAction(
-                              "Remove hook",
-                              enabled = vitruvianSpeakerCanAct && vitruvianSpeakerBusy == null) {
-                                setVitruvianSpeaker(
-                                    "remove $agentName hook", agentHookAction = "remove:$slug")
-                              })
-                    } else if (stale) {
+                    if (hookSpec.showUpdate) {
                       actions.add(
                           RowAction(
                               "Update hook",
-                              enabled = vitruvianSpeakerCanAct && vitruvianSpeakerBusy == null) {
-                                setVitruvianSpeaker(
-                                    "update $agentName hook", agentHookAction = "install:$slug")
-                              })
-                    } else {
+                              enabled = hookSpec.installOrUpdateEnabled,
+                              controlId = VitruvianSpeakerControls.HOOK_UPDATE,
+                          ) {
+                            setVitruvianSpeaker(
+                                "update $agentName hook",
+                                agentHookAction = "install:$slug",
+                                controlId = "$agentName hook",
+                            )
+                          })
+                    }
+                    if (hookSpec.showInstall) {
                       actions.add(
                           RowAction(
                               "Install hook",
-                              enabled = vitruvianSpeakerCanAct && vitruvianSpeakerBusy == null) {
-                                setVitruvianSpeaker(
-                                    "install $agentName hook", agentHookAction = "install:$slug")
-                              })
+                              enabled = hookSpec.installOrUpdateEnabled,
+                              controlId = VitruvianSpeakerControls.HOOK_INSTALL,
+                          ) {
+                            setVitruvianSpeaker(
+                                "install $agentName hook",
+                                agentHookAction = "install:$slug",
+                                controlId = "$agentName hook",
+                            )
+                          })
                     }
-                    val statusLabel =
-                        Derive.agentHookStatusLabel(
-                            a.hookState, a.speaksTwice, a.configuredByInstruction)
+                    if (hookSpec.showRemove) {
+                      actions.add(
+                          RowAction(
+                              hookSpec.removeLabel,
+                              enabled = hookSpec.removeOrRivalEnabled,
+                              controlId = VitruvianSpeakerControls.HOOK_REMOVE,
+                          ) {
+                            setVitruvianSpeaker(
+                                "remove $agentName hook",
+                                agentHookAction = "remove:$slug",
+                                controlId = "$agentName hook",
+                            )
+                          })
+                    }
                     add(
                         ModuleRow(
                             title = "$agentName hook",
-                            subtitle = statusLabel,
-                            trailing =
-                                if (installed) "installed" else if (stale) "outdated" else "none",
+                            subtitle = hookSpec.subtitle,
+                            trailing = hookSpec.trailing,
                             tone =
-                                if (a.speaksTwice) StatusTone.Warn
-                                else if (installed) StatusTone.Ok
-                                else if (stale) StatusTone.Warn else StatusTone.Neutral,
+                                when {
+                                  hookSpec.warn -> StatusTone.Warn
+                                  hookSpec.healthy -> StatusTone.Ok
+                                  else -> StatusTone.Neutral
+                                },
                             actions = actions,
                         ))
                   } else {
@@ -3849,11 +4169,15 @@ public class RemoteState(
                       actions.add(
                           RowAction(
                               "Add instruction",
-                              enabled = vitruvianSpeakerCanAct && vitruvianSpeakerBusy == null) {
-                                setVitruvianSpeaker(
-                                    "add instruction to $agentName",
-                                    agentHookAction = "add-instruction:$slug")
-                              })
+                              enabled = vitruvianSpeakerCanAct && vitruvianSpeakerBusy == null,
+                              controlId = VitruvianSpeakerControls.HOOK_ADD_INSTRUCTION,
+                          ) {
+                            setVitruvianSpeaker(
+                                "add instruction to $agentName",
+                                agentHookAction = "add-instruction:$slug",
+                                controlId = "$agentName instruction",
+                            )
+                          })
                       add(
                           ModuleRow(
                               title = "$agentName instruction",
@@ -3887,12 +4211,16 @@ public class RemoteState(
                           actions =
                               listOf(
                                   RowAction(
-                                      legacySpec.actionLabel, enabled = legacySpec.actionEnabled) {
-                                        setVitruvianSpeaker(
-                                            "remove legacy agent",
-                                            agentHookAction = "remove-legacy-agent",
-                                            controlId = legacySpec.title)
-                                      }),
+                                      legacySpec.actionLabel,
+                                      enabled = legacySpec.actionEnabled,
+                                      controlId = VitruvianSpeakerControls.REMOVE_LEGACY_AGENT,
+                                  ) {
+                                    setVitruvianSpeaker(
+                                        "remove legacy agent",
+                                        agentHookAction = "remove-legacy-agent",
+                                        controlId = legacySpec.title,
+                                    )
+                                  }),
                       ))
                 }
               }))
@@ -3900,18 +4228,31 @@ public class RemoteState(
     val slack = hs.slackEnabled
     val googleChat = hs.googleChatEnabled
     val beeper = hs.beeperEnabled
-    if (hs.enabled && slack != null && googleChat != null && beeper != null) {
+    if (slack != null && googleChat != null && beeper != null) {
       add(
           ModuleList(
               "Chat apps",
               buildList {
+                val courier = hs.courierEnabled
+                val anyChat = slack || googleChat || beeper || courier == true
                 val monitorRunning = hs.monitorRunning
                 val runtimeError = Derive.chatDiagnosticError(hs.chatRuntimeError)
                 val pollRel = Format.relativeTime(hs.lastPollAt, System.currentTimeMillis())
-                add(
+                val showMonitorToggle =
+                    Derive.showsChatMonitorControl(
+                        ownerRunning = hs.ownerRunning,
+                        anySourceEnabled = anyChat,
+                    )
+                val monitorRow =
                     ModuleRow(
                         title = "Chat monitor",
-                        subtitle = Derive.chatMonitorSubtitle(monitorRunning, pollRel),
+                        subtitle =
+                            Derive.chatMonitorSubtitle(
+                                monitorRunning,
+                                pollRel,
+                                ownerRunning = hs.ownerRunning,
+                                anySourceEnabled = anyChat,
+                            ),
                         trailing = if (monitorRunning) "running" else "stopped",
                         tone =
                             when {
@@ -3920,13 +4261,23 @@ public class RemoteState(
                               else -> StatusTone.Neutral
                             },
                         toggle =
-                            RowToggle(checked = monitorRunning, enabled = vitruvianSpeakerCanAct) {
-                                next ->
-                              setVitruvianSpeaker(
-                                  "${if (next) "Start" else "Stop"} chat monitor",
-                                  chatMonitorAction = if (next) "start" else "stop")
-                            },
-                    ))
+                            if (showMonitorToggle) {
+                              RowToggle(checked = monitorRunning, enabled = vitruvianSpeakerCanAct) {
+                                  next ->
+                                setVitruvianSpeaker(
+                                    "${if (next) "Start" else "Stop"} chat monitor",
+                                    chatMonitorAction = if (next) "start" else "stop",
+                                )
+                              }
+                            } else null,
+                    )
+                add(
+                    when {
+                      !showMonitorToggle -> monitorRow
+                      monitorRunning ->
+                          monitorRow.copy(controlId = VitruvianSpeakerControls.STOP_CHAT_MONITOR)
+                      else -> monitorRow.copy(controlId = VitruvianSpeakerControls.START_CHAT_MONITOR)
+                    })
                 if (runtimeError != null) {
                   add(
                       ModuleRow(
@@ -3937,10 +4288,12 @@ public class RemoteState(
                       ))
                 }
                 add(
-                    sourceRow(
-                        "slack_enabled", slack, "new messages are read aloud", "not watched") {
-                          setVitruvianSpeaker("Slack ${if (it) "on" else "off"}", slackEnabled = it)
-                        })
+                    placed("slack_enabled") {
+                      sourceRow(
+                          "slack_enabled", slack, "new messages are read aloud", "not watched") {
+                            setVitruvianSpeaker("Slack ${if (it) "on" else "off"}", slackEnabled = it)
+                          }
+                    })
                 if (slack) {
                   val hasToken = hs.hasSlackToken == true
                   add(
@@ -3949,6 +4302,7 @@ public class RemoteState(
                           subtitle = Derive.slackTokenSubtitle(hasToken, hs.slackIdentity),
                           trailing = if (hasToken) "saved" else "missing",
                           tone = if (hasToken) StatusTone.Ok else StatusTone.Warn,
+                          controlId = VitruvianSpeakerControls.SAVE_SLACK_TOKEN,
                           textPrompt =
                               RowTextPrompt(
                                   title = "Slack User Token",
@@ -3956,11 +4310,15 @@ public class RemoteState(
                                   placeholder = "xoxp-...",
                                   secret = true,
                                   submitLabel = "Save Token",
-                                  clearLabel = if (hasToken) "Clear Token" else null,
                                   enabled = vitruvianSpeakerCanAct,
-                                  onClear =
+                                  clearAction =
                                       if (hasToken) {
-                                        {
+                                        RowAction(
+                                            "Clear Token",
+                                            enabled = vitruvianSpeakerCanAct,
+                                            danger = true,
+                                            controlId = VitruvianSpeakerControls.CLEAR_SLACK_TOKEN,
+                                        ) {
                                           setVitruvianSpeaker("clear Slack token", slackToken = "")
                                         }
                                       } else null,
@@ -3971,22 +4329,23 @@ public class RemoteState(
                       ))
                 }
                 add(
-                    sourceRow(
-                        "google_chat_enabled",
-                        googleChat,
-                        "new messages are read aloud",
-                        "not watched") {
-                          setVitruvianSpeaker(
-                              "Google Chat ${if (it) "on" else "off"}", googleChatEnabled = it)
-                        })
-                if (googleChat) {
-                  val currentSource = hs.googleChatSource ?: "auto"
-                  if (Derive.catalogShown(hs.catalog, "google_chat_source"))
-                      add(
+                    placed("google_chat_enabled") {
+                      sourceRow(
+                          "google_chat_enabled",
+                          googleChat,
+                          "new messages are read aloud",
+                          "not watched") {
+                            setVitruvianSpeaker(
+                                "Google Chat ${if (it) "on" else "off"}", googleChatEnabled = it)
+                          }
+                    })
+                val currentSource = hs.googleChatSource ?: "auto"
+                add(
+                    placed("google_chat_source") {
+                      if (googleChat && Derive.catalogShown(hs.catalog, "google_chat_source"))
                           ModuleRow(
                               title = lbl("google_chat_source"),
-                              error =
-                                  Derive.settingError(vitruvianSpeakerErrors, "google_chat_source"),
+                              error = Derive.settingError(vitruvianSpeakerErrors, "google_chat_source"),
                               subtitle =
                                   Derive.googleChatSourceSubtitle(
                                       Derive.catalogChoiceLabel(
@@ -4000,6 +4359,7 @@ public class RemoteState(
                                   Derive.catalogChoiceLabel(
                                       hs.catalog, "google_chat_source", currentSource),
                               tone = StatusTone.Neutral,
+                              controlId = VitruvianSpeakerControls.CATALOG_SETTING,
                               choices =
                                   catalogChoiceActions(hs, "google_chat_source", currentSource) {
                                       src,
@@ -4007,34 +4367,78 @@ public class RemoteState(
                                     setVitruvianSpeaker(
                                         "Google Chat source $label", googleChatSource = src)
                                   },
-                          ))
-                  val chatDiag =
-                      Derive.googleChatAccountDiag(
-                          source = currentSource,
-                          activeBackend = hs.activeGoogleChatBackend,
-                          accountEmail = hs.accountEmail,
-                          gwsAccount = hs.gwsAccount,
-                          hasChatAccess = hs.hasChatAccess,
-                          gwsInstalled = hs.gwsInstalled,
-                          grantPending = vitruvianSpeakerChatGrantPending,
-                          canAct = vitruvianSpeakerCanAct,
-                          installed = hs.installed,
-                          grantPendingSinceMs = vitruvianSpeakerChatGrantPendingSinceMs,
-                          nowMs = System.currentTimeMillis(),
-                      )
+                          )
+                      else null
+                    })
+                val chatDiag =
+                    if (googleChat)
+                        Derive.googleChatAccountDiag(
+                            source = currentSource,
+                            activeBackend = hs.activeGoogleChatBackend,
+                            accountEmail = hs.accountEmail,
+                            gwsAccount = hs.gwsAccount,
+                            hasChatAccess = hs.hasChatAccess,
+                            gwsInstalled = hs.gwsInstalled,
+                            grantPending = vitruvianSpeakerChatGrantPending,
+                            canAct = vitruvianSpeakerCanAct,
+                            installed = hs.installed,
+                            grantPendingSinceMs = vitruvianSpeakerChatGrantPendingSinceMs,
+                            nowMs = System.currentTimeMillis(),
+                        )
+                    else null
+                val gwsPrompt =
+                    placed("gws_account") {
+                      if (chatDiag != null &&
+                          chatDiag.showGwsPrompt &&
+                          Derive.catalogShown(hs.catalog, "gws_account")) {
+                        RowTextPrompt(
+                            title = lbl("gws_account"),
+                            initialValue = hs.gwsAccount,
+                            placeholder = "you@gmail.com",
+                            submitLabel = "Save account",
+                            enabled = chatDiag.gwsPromptEnabled,
+                            clearAction =
+                                if (hs.gwsAccount.isNotBlank()) {
+                                  RowAction(
+                                      "Clear",
+                                      enabled = chatDiag.gwsPromptEnabled,
+                                      danger = true,
+                                      controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+                                  ) {
+                                    setVitruvianSpeaker(
+                                        "clear gws account",
+                                        gwsAccount = "",
+                                        controlId = "Google Chat account")
+                                  }
+                                } else null,
+                            onSubmit = { acct ->
+                              setVitruvianSpeaker(
+                                  "gws account $acct",
+                                  gwsAccount = acct,
+                                  controlId = "Google Chat account")
+                            },
+                        )
+                      } else null
+                    }
+                if (chatDiag != null) {
                   add(
                       ModuleRow(
                           title = "Google Chat account",
                           subtitle = chatDiag.subtitle,
                           trailing = chatDiag.trailing,
                           tone = if (chatDiag.healthy) StatusTone.Ok else StatusTone.Warn,
-                          error =
-                              vitruvianSpeakerErrors["Google Chat account"] ?: chatDiag.inlineNote,
+                          error = vitruvianSpeakerErrors["Google Chat account"] ?: chatDiag.inlineNote,
+                          controlId =
+                              if (gwsPrompt != null) VitruvianSpeakerControls.CATALOG_SETTING else null,
                           actions =
                               buildList {
                                 if (chatDiag.showGrant) {
                                   add(
-                                      RowAction("Grant…", enabled = chatDiag.grantEnabled) {
+                                      RowAction(
+                                          "Grant…",
+                                          enabled = chatDiag.grantEnabled,
+                                          controlId = VitruvianSpeakerControls.GRANT_GOOGLE_CHAT,
+                                      ) {
                                         setVitruvianSpeaker(
                                             "grant Google Chat",
                                             grantChat = true,
@@ -4044,48 +4448,27 @@ public class RemoteState(
                                 if (chatDiag.showDisconnect) {
                                   add(
                                       RowAction(
-                                          "Disconnect", enabled = chatDiag.disconnectEnabled) {
-                                            setVitruvianSpeaker(
-                                                "disconnect Google Chat",
-                                                disconnectChat = true,
-                                                controlId = "Google Chat account")
-                                          })
+                                          "Disconnect",
+                                          enabled = chatDiag.disconnectEnabled,
+                                          controlId = VitruvianSpeakerControls.DISCONNECT_GOOGLE_CHAT,
+                                      ) {
+                                        setVitruvianSpeaker(
+                                            "disconnect Google Chat",
+                                            disconnectChat = true,
+                                            controlId = "Google Chat account")
+                                      })
                                 }
                               },
-                          textPrompt =
-                              if (chatDiag.showGwsPrompt) {
-                                RowTextPrompt(
-                                    title = lbl("gws_account"),
-                                    initialValue = hs.gwsAccount,
-                                    placeholder = "you@gmail.com",
-                                    submitLabel = "Save account",
-                                    clearLabel = if (hs.gwsAccount.isNotBlank()) "Clear" else null,
-                                    enabled = chatDiag.gwsPromptEnabled,
-                                    onClear =
-                                        if (hs.gwsAccount.isNotBlank()) {
-                                          {
-                                            setVitruvianSpeaker(
-                                                "clear gws account",
-                                                gwsAccount = "",
-                                                controlId = "Google Chat account")
-                                          }
-                                        } else null,
-                                    onSubmit = { acct ->
-                                      setVitruvianSpeaker(
-                                          "gws account $acct",
-                                          gwsAccount = acct,
-                                          controlId = "Google Chat account")
-                                    },
-                                )
-                              } else null,
+                          textPrompt = gwsPrompt,
                       ))
                 }
                 add(
-                    sourceRow(
-                        "beeper_enabled", beeper, "new messages are read aloud", "not watched") {
-                          setVitruvianSpeaker(
-                              "Beeper ${if (it) "on" else "off"}", beeperEnabled = it)
-                        })
+                    placed("beeper_enabled") {
+                      sourceRow(
+                          "beeper_enabled", beeper, "new messages are read aloud", "not watched") {
+                            setVitruvianSpeaker("Beeper ${if (it) "on" else "off"}", beeperEnabled = it)
+                          }
+                    })
                 if (beeper) {
                   val hasToken = hs.hasBeeperToken == true
                   add(
@@ -4096,6 +4479,7 @@ public class RemoteState(
                               else "Tap to paste Beeper access token",
                           trailing = if (hasToken) "saved" else "missing",
                           tone = if (hasToken) StatusTone.Ok else StatusTone.Warn,
+                          controlId = VitruvianSpeakerControls.SAVE_BEEPER_TOKEN,
                           textPrompt =
                               RowTextPrompt(
                                   title = "Beeper Access Token",
@@ -4103,13 +4487,16 @@ public class RemoteState(
                                   placeholder = "Paste access token",
                                   secret = true,
                                   submitLabel = "Save Token",
-                                  clearLabel = if (hasToken) "Clear Token" else null,
                                   enabled = vitruvianSpeakerCanAct,
-                                  onClear =
+                                  clearAction =
                                       if (hasToken) {
-                                        {
-                                          setVitruvianSpeaker(
-                                              "clear Beeper token", beeperToken = "")
+                                        RowAction(
+                                            "Clear Token",
+                                            enabled = vitruvianSpeakerCanAct,
+                                            danger = true,
+                                            controlId = VitruvianSpeakerControls.CLEAR_BEEPER_TOKEN,
+                                        ) {
+                                          setVitruvianSpeaker("clear Beeper token", beeperToken = "")
                                         }
                                       } else null,
                                   onSubmit = { token ->
@@ -4117,50 +4504,68 @@ public class RemoteState(
                                   },
                               ),
                       ))
-                  add(
-                      ModuleRow(
-                          title = lbl("beeper_announce"),
-                          error = Derive.settingError(vitruvianSpeakerErrors, "beeper_announce"),
-                          subtitle = "which Beeper messages are read aloud",
-                          trailing =
-                              Derive.catalogChoiceLabel(
-                                  hs.catalog, "beeper_announce", hs.beeperAnnounce),
-                          tone = StatusTone.Neutral,
-                          choices =
-                              catalogChoiceActions(hs, "beeper_announce", hs.beeperAnnounce) {
-                                  wire,
-                                  label ->
-                                setVitruvianSpeaker("Beeper announce $label", beeperAnnounce = wire)
-                              },
-                      ))
+                }
+                add(
+                    placed("beeper_announce") {
+                      if (beeper && Derive.catalogShown(hs.catalog, "beeper_announce"))
+                          ModuleRow(
+                              title = lbl("beeper_announce"),
+                              error = Derive.settingError(vitruvianSpeakerErrors, "beeper_announce"),
+                              subtitle = "which Beeper messages are read aloud",
+                              trailing =
+                                  Derive.catalogChoiceLabel(
+                                      hs.catalog, "beeper_announce", hs.beeperAnnounce),
+                              tone = StatusTone.Neutral,
+                              controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+                              choices =
+                                  catalogChoiceActions(hs, "beeper_announce", hs.beeperAnnounce) {
+                                      wire,
+                                      label ->
+                                    setVitruvianSpeaker("Beeper announce $label", beeperAnnounce = wire)
+                                  },
+                          )
+                      else null
+                    })
+                if (beeper) {
                   addAll(chatNetworkRows("Beeper", hs.beeperNetworks, hs.beeperNetworksListed))
                 }
-                val courier = hs.courierEnabled
+                // Placed here, not in "Other settings": two rows both titled "Address" there
+                // gave no clue which app each belonged to (UAT 2026-11-12).
+                add(
+                    placed("beeper_address") {
+                      catalogRowFor(hs, "beeper_address", "where Beeper Desktop's API answers")
+                    })
                 if (Derive.showsCourierRow(courier)) {
                   val courierOn = courier == true
                   val hasToken = hs.hasCourierToken
                   add(
-                      ModuleRow(
-                          title = lbl("courier_enabled"),
-                          error = Derive.settingError(vitruvianSpeakerErrors, "courier_enabled"),
-                          subtitle =
-                              when {
-                                courierOn -> "new messages are read aloud"
-                                hasToken -> "not watched"
-                                else -> "needs a token on the Mac first"
-                              },
-                          trailing = if (courierOn) "on" else "off",
-                          tone = if (courierOn) StatusTone.Ok else StatusTone.Neutral,
-                          toggle =
-                              RowToggle(
-                                  checked = courierOn,
-                                  enabled =
-                                      vitruvianSpeakerCanAct &&
-                                          Derive.courierSwitchEnabled(hasToken, courierOn)) {
-                                    setVitruvianSpeaker(
-                                        "Courier ${if (it) "on" else "off"}", courierEnabled = it)
-                                  },
-                      ))
+                      placed("courier_enabled") {
+                        if (Derive.catalogShown(hs.catalog, "courier_enabled"))
+                            ModuleRow(
+                                title = lbl("courier_enabled"),
+                                error = Derive.settingError(vitruvianSpeakerErrors, "courier_enabled"),
+                                subtitle =
+                                    when {
+                                      courierOn -> "new messages are read aloud"
+                                      hasToken -> "not watched"
+                                      else -> "needs a token on the Mac first"
+                                    },
+                                trailing = if (courierOn) "on" else "off",
+                                tone = if (courierOn) StatusTone.Ok else StatusTone.Neutral,
+                                controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+                                toggle =
+                                    RowToggle(
+                                        checked = courierOn,
+                                        enabled =
+                                            vitruvianSpeakerCanAct &&
+                                                Derive.courierSwitchEnabled(hasToken, courierOn)) {
+                                          setVitruvianSpeaker(
+                                              "Courier ${if (it) "on" else "off"}",
+                                              courierEnabled = it)
+                                        },
+                            )
+                        else null
+                      })
                   if (courierOn || !hasToken) {
                     val courierSpec =
                         Derive.courierTokenRow(hasToken = hasToken, canAct = vitruvianSpeakerCanAct)
@@ -4170,6 +4575,7 @@ public class RemoteState(
                             subtitle = courierSpec.subtitle,
                             trailing = courierSpec.trailing,
                             tone = if (courierSpec.healthy) StatusTone.Ok else StatusTone.Warn,
+                            controlId = VitruvianSpeakerControls.SAVE_COURIER_TOKEN,
                             textPrompt =
                                 RowTextPrompt(
                                     title = courierSpec.promptTitle,
@@ -4177,17 +4583,21 @@ public class RemoteState(
                                     placeholder = courierSpec.placeholder,
                                     secret = true,
                                     submitLabel = courierSpec.submitLabel,
-                                    clearLabel = courierSpec.clearLabel,
                                     enabled = courierSpec.promptEnabled,
-                                    onClear =
-                                        if (hasToken) {
-                                          {
+                                    clearAction =
+                                        courierSpec.clearLabel?.let { clearLbl ->
+                                          RowAction(
+                                              clearLbl,
+                                              enabled = courierSpec.promptEnabled,
+                                              danger = true,
+                                              controlId = VitruvianSpeakerControls.CLEAR_COURIER_TOKEN,
+                                          ) {
                                             setVitruvianSpeaker(
                                                 "clear Courier token",
                                                 courierToken = "",
                                                 controlId = courierSpec.title)
                                           }
-                                        } else null,
+                                        },
                                     onSubmit = { token ->
                                       setVitruvianSpeaker(
                                           "save Courier token",
@@ -4197,64 +4607,77 @@ public class RemoteState(
                                 ),
                         ))
                   }
+                  add(
+                      placed("courier_announce") {
+                        if (courierOn && Derive.catalogShown(hs.catalog, "courier_announce"))
+                            ModuleRow(
+                                title = lbl("courier_announce"),
+                                error = Derive.settingError(vitruvianSpeakerErrors, "courier_announce"),
+                                subtitle = "which Courier messages are read aloud",
+                                trailing =
+                                    Derive.catalogChoiceLabel(
+                                        hs.catalog, "courier_announce", hs.courierAnnounce),
+                                tone = StatusTone.Neutral,
+                                controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+                                choices =
+                                    catalogChoiceActions(
+                                        hs, "courier_announce", hs.courierAnnounce) { wire, label ->
+                                          setVitruvianSpeaker(
+                                              "Courier announce $label", courierAnnounce = wire)
+                                        },
+                            )
+                        else null
+                      })
                   if (courierOn) {
-                    add(
-                        ModuleRow(
-                            title = lbl("courier_announce"),
-                            error = Derive.settingError(vitruvianSpeakerErrors, "courier_announce"),
-                            subtitle = "which Courier messages are read aloud",
-                            trailing =
-                                Derive.catalogChoiceLabel(
-                                    hs.catalog, "courier_announce", hs.courierAnnounce),
-                            tone = StatusTone.Neutral,
-                            choices =
-                                catalogChoiceActions(hs, "courier_announce", hs.courierAnnounce) {
-                                    wire,
-                                    label ->
-                                  setVitruvianSpeaker(
-                                      "Courier announce $label", courierAnnounce = wire)
-                                },
-                        ))
                     addAll(chatNetworkRows("Courier", hs.courierNetworks, hs.courierNetworksListed))
                   }
-                }
-                val anyChat = slack || googleChat || beeper || courier == true
-                if (anyChat && Derive.catalogShown(hs.catalog, "poll_interval_seconds")) {
-                  val interval =
-                      hs.pollInterval
-                          ?: Derive.catalogLimits(hs.catalog, "poll_interval_seconds")
-                              ?.defaultValue
-                              ?.toInt()
-                          ?: 0
                   add(
-                      ModuleRow(
-                          title = lbl("poll_interval_seconds"),
-                          error =
-                              Derive.settingError(vitruvianSpeakerErrors, "poll_interval_seconds"),
-                          subtitle = "how often chat apps are checked",
-                          trailing = "$interval s",
-                          tone = StatusTone.Neutral,
-                          actions =
-                              catalogStepActions(
-                                  hs, "poll_interval_seconds", interval.toDouble()) { next ->
-                                    setVitruvianSpeaker(
-                                        "poll interval ${next.toInt()}s",
-                                        pollInterval = next.toInt())
-                                  },
-                      ))
+                      placed("courier_address") {
+                        catalogRowFor(hs, "courier_address", "where Courier's API answers")
+                      })
                 }
+                add(
+                    placed("poll_interval_seconds") {
+                      if (anyChat && Derive.catalogShown(hs.catalog, "poll_interval_seconds")) {
+                        val interval =
+                            hs.pollInterval
+                                ?: Derive.catalogLimits(hs.catalog, "poll_interval_seconds")
+                                    ?.defaultValue
+                                    ?.toInt()
+                                ?: 0
+                        ModuleRow(
+                            title = lbl("poll_interval_seconds"),
+                            error = Derive.settingError(vitruvianSpeakerErrors, "poll_interval_seconds"),
+                            subtitle = "how often chat apps are checked",
+                            trailing = "$interval s",
+                            tone = StatusTone.Neutral,
+                            controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+                            actions =
+                                catalogStepActions(
+                                    hs, "poll_interval_seconds", interval.toDouble()) { next ->
+                                      setVitruvianSpeaker(
+                                          "poll interval ${next.toInt()}s",
+                                          pollInterval = next.toInt())
+                                    },
+                        )
+                      } else null
+                    })
                 val muteOwn = hs.muteOwnMessages
-                if (anyChat && muteOwn != null) {
+                if (muteOwn != null) {
                   add(
-                      sourceRow(
-                          "mute_own_messages",
-                          muteOwn,
-                          "messages from your own account stay silent",
-                          "your own messages are read aloud too") {
-                            setVitruvianSpeaker(
-                                "skip own messages ${if (it) "on" else "off"}",
-                                muteOwnMessages = it)
-                          })
+                      placed("mute_own_messages") {
+                        if (anyChat)
+                            sourceRow(
+                                "mute_own_messages",
+                                muteOwn,
+                                "messages from your own account stay silent",
+                                "your own messages are read aloud too") {
+                                  setVitruvianSpeaker(
+                                      "skip own messages ${if (it) "on" else "off"}",
+                                      muteOwnMessages = it)
+                                }
+                        else null
+                      })
                 }
               }))
     }
@@ -4288,17 +4711,22 @@ public class RemoteState(
                     subtitle = clientIdSpec.subtitle,
                     trailing = clientIdSpec.trailing,
                     tone = if (clientIdSpec.healthy) StatusTone.Ok else StatusTone.Neutral,
+                    controlId = VitruvianSpeakerControls.SAVE_OAUTH_CLIENT,
                     textPrompt =
                         RowTextPrompt(
                             title = clientIdSpec.title,
                             initialValue = clientId,
                             placeholder = "...apps.googleusercontent.com",
                             submitLabel = "Save Client ID",
-                            clearLabel = if (clientIdSpec.hasValue) "Clear" else null,
                             enabled = vitruvianSpeakerCanAct && clientIdSpec.enabled,
-                            onClear =
+                            clearAction =
                                 if (clientIdSpec.hasValue) {
-                                  {
+                                  RowAction(
+                                      "Clear",
+                                      enabled = vitruvianSpeakerCanAct && clientIdSpec.enabled,
+                                      danger = true,
+                                      controlId = VitruvianSpeakerControls.CLEAR_OAUTH_CLIENT,
+                                  ) {
                                     setVitruvianSpeaker("clear OAuth client ID", oauthClientId = "")
                                   }
                                 } else null,
@@ -4312,6 +4740,7 @@ public class RemoteState(
                     subtitle = secretSpec.subtitle,
                     trailing = secretSpec.trailing,
                     tone = if (secretSpec.healthy) StatusTone.Ok else StatusTone.Neutral,
+                    controlId = VitruvianSpeakerControls.SAVE_OAUTH_CLIENT,
                     textPrompt =
                         RowTextPrompt(
                             title = secretSpec.title,
@@ -4319,22 +4748,36 @@ public class RemoteState(
                             placeholder = "Paste client secret",
                             secret = true,
                             submitLabel = "Save Secret",
-                            clearLabel = if (secretSpec.hasValue) "Clear Secret" else null,
                             enabled = vitruvianSpeakerCanAct && secretSpec.enabled,
-                            onClear =
+                            clearAction =
                                 if (secretSpec.hasValue) {
-                                  {
+                                  RowAction(
+                                      "Clear Secret",
+                                      enabled = vitruvianSpeakerCanAct && secretSpec.enabled,
+                                      danger = true,
+                                      controlId = VitruvianSpeakerControls.CLEAR_OAUTH_CLIENT,
+                                  ) {
                                     setVitruvianSpeaker(
                                         "clear OAuth client secret", oauthClientSecret = "")
                                   }
                                 } else null,
                             onSubmit = { secret ->
-                              setVitruvianSpeaker(
-                                  "save OAuth client secret", oauthClientSecret = secret)
+                              setVitruvianSpeaker("save OAuth client secret", oauthClientSecret = secret)
                             },
                         ),
                 ),
             )))
+    val genericRows =
+        Derive.genericVitruvianSpeakerRows(
+            catalog = hs.catalog,
+            canAct = vitruvianSpeakerCanAct,
+            errors = vitruvianSpeakerErrors,
+            drawnKeys = placement.drawnKeys,
+            genericSettingsSupported = hs.genericSettings,
+        )
+    if (genericRows.isNotEmpty()) {
+      add(ModuleList("Other settings", genericRows.map(::genericSettingModuleRow)))
+    }
     // An agent older than v1.10 sends only `last`: a one-row list, still replayable.
     val recent = hs.recent.ifEmpty { listOfNotNull(hs.last) }
     if (recent.isNotEmpty()) {
@@ -4342,7 +4785,7 @@ public class RemoteState(
       val canReplay = vitruvianSpeakerCanAct && hs.installed
       add(
           ModuleList(
-              "Recent broadcasts",
+              RECENT_BROADCASTS_LABEL,
               recent.map { b ->
                 ModuleRow(
                     title = b.text,
@@ -4356,7 +4799,11 @@ public class RemoteState(
                     titleLines = 2,
                     actions =
                         listOf(
-                            RowAction("Replay", enabled = canReplay) {
+                            RowAction(
+                                "Replay",
+                                enabled = canReplay,
+                                controlId = VitruvianSpeakerControls.REPLAY,
+                            ) {
                               replayAnnouncement(b.text, b.id)
                             }),
                     onSelect = if (canReplay) ({ replayAnnouncement(b.text, b.id) }) else null,
@@ -4364,6 +4811,165 @@ public class RemoteState(
               }))
     }
     add(ModuleList("Reset Vitruvian Speaker", listOf(resetVitruvianSpeakerModuleRow())))
+  }
+
+  /**
+   * The generic control for one catalog setting, drawn inside a hand-designed section with a
+   * subtitle that gives it context. Null when the catalog hides it or the helper can't set it.
+   */
+  private fun catalogRowFor(hs: AgentVitruvianSpeaker, key: String, subtitle: String): ModuleRow? =
+      Derive.genericVitruvianSpeakerRows(
+              catalog = hs.catalog,
+              canAct = vitruvianSpeakerCanAct,
+              errors = vitruvianSpeakerErrors,
+              drawnKeys = hs.catalog.settings.map { it.key }.toSet() - key,
+              genericSettingsSupported = hs.genericSettings,
+          )
+          .firstOrNull()
+          ?.let { genericSettingModuleRow(it.copy(subtitle = subtitle)) }
+
+  private fun genericSettingModuleRow(row: Derive.GenericSettingRow): ModuleRow {
+    val tone = if (row.healthy) StatusTone.Ok else StatusTone.Neutral
+    return when (val c = row.control) {
+      is Derive.GenericSettingControl.Toggle ->
+          ModuleRow(
+              title = row.title,
+              subtitle = row.subtitle,
+              trailing = row.trailing,
+              tone = tone,
+              error = row.error,
+              controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+              toggle =
+                  RowToggle(checked = c.checked, enabled = c.enabled) { next ->
+                    setVitruvianSpeaker(
+                        "set ${row.key}",
+                        settings = mapOf(row.key to next),
+                        controlId = row.key,
+                    )
+                  },
+          )
+      is Derive.GenericSettingControl.Choices ->
+          ModuleRow(
+              title = row.title,
+              subtitle = row.subtitle,
+              trailing = row.trailing,
+              tone = tone,
+              error = row.error,
+              controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+              choices =
+                  c.options.map { opt ->
+                    val current = opt.value == c.current
+                    RowAction(
+                        opt.label,
+                        enabled = c.enabled && !current,
+                        selected = current,
+                        controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+                    ) {
+                      setVitruvianSpeaker(
+                          "set ${row.key} ${opt.label}",
+                          settings = mapOf(row.key to opt.value),
+                          controlId = row.key,
+                      )
+                    }
+                  },
+          )
+      is Derive.GenericSettingControl.NumberStepper -> {
+        fun wireNumber(v: Double): Any = if (c.isInteger && v % 1.0 == 0.0) v.toLong() else v
+        ModuleRow(
+            title = row.title,
+            subtitle = row.subtitle,
+            trailing = row.trailing,
+            tone = tone,
+            error = row.error,
+            controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+            actions =
+                c.stepper
+                    ?.let { s ->
+                      listOf(
+                          RowAction(
+                              s.minusLabel,
+                              enabled = s.minusEnabled,
+                              controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+                          ) {
+                            setVitruvianSpeaker(
+                                "set ${row.key}",
+                                settings = mapOf(row.key to wireNumber(s.minusNext)),
+                                controlId = row.key,
+                            )
+                          },
+                          RowAction(
+                              s.plusLabel,
+                              enabled = s.plusEnabled,
+                              controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+                          ) {
+                            setVitruvianSpeaker(
+                                "set ${row.key}",
+                                settings = mapOf(row.key to wireNumber(s.plusNext)),
+                                controlId = row.key,
+                            )
+                          },
+                      )
+                    }
+                    .orEmpty(),
+            choices =
+                c.options.map { opt ->
+                  val current = opt.value.toDoubleOrNull() == c.current
+                  RowAction(
+                      opt.label,
+                      enabled = c.enabled && !current,
+                      selected = current,
+                      controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+                  ) {
+                    opt.value.toDoubleOrNull()?.let { next ->
+                      setVitruvianSpeaker(
+                          "set ${row.key} ${opt.label}",
+                          settings = mapOf(row.key to wireNumber(next)),
+                          controlId = row.key,
+                      )
+                    }
+                  }
+                },
+        )
+      }
+      is Derive.GenericSettingControl.TextPrompt ->
+          ModuleRow(
+              title = row.title,
+              subtitle = row.subtitle,
+              trailing = row.trailing,
+              tone = tone,
+              error = row.error,
+              controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+              textPrompt =
+                  RowTextPrompt(
+                      title = row.title,
+                      initialValue = c.value,
+                      submitLabel = "Save",
+                      enabled = c.enabled,
+                      clearAction =
+                          if (c.hasValue) {
+                            RowAction(
+                                "Clear",
+                                enabled = c.enabled,
+                                danger = true,
+                                controlId = VitruvianSpeakerControls.CATALOG_SETTING,
+                            ) {
+                              setVitruvianSpeaker(
+                                  "clear ${row.key}",
+                                  settings = mapOf(row.key to ""),
+                                  controlId = row.key,
+                              )
+                            }
+                          } else null,
+                      onSubmit = { text ->
+                        setVitruvianSpeaker(
+                            "set ${row.key}",
+                            settings = mapOf(row.key to text),
+                            controlId = row.key,
+                        )
+                      },
+                  ),
+          )
+    }
   }
 
   // The same status, health and outputs line on Home's "Running now" row and
@@ -4555,9 +5161,9 @@ public class RemoteState(
   }
 
   /**
-   * One change to Vitruvian Speaker's settings. The reply is the Mac's state read back, so the
-   * dashboard shows what the file now says; a refused change (an unknown speaker, say) surfaces as
-   * a log line and leaves the plate as it was.
+   * One change to Vitruvian Speaker's settings. The reply is the Mac's state read back, so the dashboard
+   * shows what the file now says; a refused change (an unknown speaker, say) surfaces as a log line
+   * and leaves the plate as it was.
    */
   private fun setVitruvianSpeaker(
       what: String,
@@ -4585,6 +5191,7 @@ public class RemoteState(
       styleModel: String? = null,
       homeCastVoice: Boolean? = null,
       activeDoor: String? = null,
+      copy: Boolean? = null,
       discover: Boolean = false,
       structureId: String? = null,
       removeTarget: String? = null,
@@ -4626,11 +5233,13 @@ public class RemoteState(
       courierNetworkReading: Boolean? = null,
       courierReadAnywayKey: String? = null,
       courierReadAnywayOn: Boolean? = null,
+      settings: Map<String, Any>? = null,
       controlId: String? = null,
   ) {
     val key =
         controlId
             ?: when {
+              !settings.isNullOrEmpty() -> settings.keys.first()
               enabled != null -> "enabled"
               defaultTarget != null || removeTarget != null -> "default_target"
               discover -> "Find speakers"
@@ -4714,6 +5323,7 @@ public class RemoteState(
                   styleModel = styleModel,
                   homeCastVoice = homeCastVoice,
                   activeDoor = activeDoor,
+                  copy = copy,
                   discover = discover,
                   structureId = structureId,
                   removeTarget = removeTarget,
@@ -4755,6 +5365,7 @@ public class RemoteState(
                   courierNetworkReading = courierNetworkReading,
                   courierReadAnywayKey = courierReadAnywayKey,
                   courierReadAnywayOn = courierReadAnywayOn,
+                  settings = settings,
               )
             }
             .onSuccess {
@@ -4787,8 +5398,7 @@ public class RemoteState(
               log("info", "speaker · $what")
               // A different speaker has a different volume; show it now.
               if (defaultTarget != null && !speakerVolumeBusy) {
-                runCatching { client.vitruvianSpeakerVolume() }
-                    .onSuccess { v -> agentSpeakerVolume = v }
+                runCatching { client.vitruvianSpeakerVolume() }.onSuccess { v -> agentSpeakerVolume = v }
               }
             }
             .onFailure {
@@ -4796,11 +5406,15 @@ public class RemoteState(
               val isSignInGrantOrDisconnect =
                   signIn || signOut || importAntigravity || grantChat || disconnectChat
               if (!isSignInGrantOrDisconnect) {
+                // The same plain sentence the row shows, not the helper's raw wrapper
+                // ("agent: set structure failed: exit status 1"); the log keeps the raw text.
                 vitruvianSpeakerNotice =
-                    "✗ speaker · $what: ${
-                      if (it is AgentAuthException) failureText(it) else it.message ?: "failed"
-                    }" to
-                        StatusTone.Crit
+                    "✗ " +
+                        Derive.vitruvianSpeakerInlineError(
+                            what = what,
+                            reason = it.message,
+                            authFailed = it is AgentAuthException,
+                        ) to StatusTone.Crit
               }
               actFailed("speaker · $what", it)
             }
@@ -4819,8 +5433,7 @@ public class RemoteState(
       muted: Boolean? = null,
       controlId: String = "speaker_volume",
   ) {
-    // The speaker's live volume is the device's 0-100, not a Vitruvian Speaker setting: clamp it
-    // here.
+    // The speaker's live volume is the device's 0-100, not a Vitruvian Speaker setting: clamp it here.
     val sent = percent?.let(Derive::clampSpeakerVolume)
     val what = if (sent != null) "volume $sent%" else if (muted == true) "mute" else "unmute"
     val client = actClient("speaker · $what") ?: return
@@ -4869,7 +5482,9 @@ public class RemoteState(
               // waiting for the slow poll.
               runCatching { client.vitruvianSpeaker() }.onSuccess { applyAgentVitruvianSpeaker(it) }
             } else {
-              log("warn", "speaker · not spoken · ${result.output.ifBlank { "no reason given" }}")
+              log(
+                  "warn",
+                  "speaker · not spoken · ${result.output.ifBlank { "no reason given" }}")
             }
           }
           .onFailure { actFailed("speaker · say", it) }
@@ -4892,7 +5507,9 @@ public class RemoteState(
                   Derive.vitruvianSpeakerInlineError(
                       what = "test", reason = result.output.ifBlank { "not spoken" })
               vitruvianSpeakerErrors = vitruvianSpeakerErrors + (controlId to err)
-              log("warn", "speaker · not spoken · ${result.output.ifBlank { "no reason given" }}")
+              log(
+                  "warn",
+                  "speaker · not spoken · ${result.output.ifBlank { "no reason given" }}")
             }
           }
           .onFailure {
@@ -4928,7 +5545,9 @@ public class RemoteState(
                   Derive.vitruvianSpeakerInlineError(
                       what = "replay", reason = result.output.ifBlank { "not spoken" })
               vitruvianSpeakerErrors = vitruvianSpeakerErrors + (controlId to err)
-              log("warn", "speaker · not replayed · ${result.output.ifBlank { "no reason given" }}")
+              log(
+                  "warn",
+                  "speaker · not replayed · ${result.output.ifBlank { "no reason given" }}")
             }
           }
           .onFailure {
@@ -6382,9 +7001,7 @@ public class RemoteState(
     sendHid(if (delta >= 0) HidAction.BrightnessUp else HidAction.BrightnessDown)
   }
 
-  /**
-   * Mission Control, Spaces and friends: the chords the Vitruvian Deck board already proves work.
-   */
+  /** Mission Control, Spaces and friends: the chords the Vitruvian Deck board already proves work. */
   public fun sendMacChord(action: HidAction) {
     sendHid(action)
     log("info", "desktop · ${desktopLabel(action)}")
@@ -8167,6 +8784,9 @@ public class RemoteState(
   private fun plural(count: Int): String = if (count == 1) "" else "s"
 
   private companion object {
+    /** The one Vitruvian Speaker list that stays visible with Settings collapsed. */
+    const val RECENT_BROADCASTS_LABEL = "Recent broadcasts"
+
     /** How `AgentAuthException` words a refusal, and so how the bridge's link status reads one. */
     const val LINK_REFUSED_PREFIX = "not paired (HTTP"
 

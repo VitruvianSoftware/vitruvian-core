@@ -139,7 +139,10 @@ rust_test(
     name = "macagent_test",
     size = "small",
     crate = ":macagent_lib",
-    data = ["//apps/desktop/vitruvian-speaker:testdata/state_v1.json"],
+    data = [
+        "//apps/desktop/vitruvian-speaker:testdata/controls.json",
+        "//apps/desktop/vitruvian-speaker:testdata/state_v1.json",
+    ],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = ["//apps/mobile/android-remote/macagent/metrics"],

@@ -59,6 +59,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -114,8 +115,11 @@ import dev.vitruvian.remote.state.ModuleRow
 import dev.vitruvian.remote.state.PendingPermission
 import dev.vitruvian.remote.state.QuickAction
 import dev.vitruvian.remote.state.RemoteState
+import dev.vitruvian.remote.state.RowAction
 import dev.vitruvian.remote.state.RowTextPrompt
 import kotlinx.coroutines.delay
+
+private fun Modifier.controlTag(id: String?): Modifier = if (id != null) testTag(id) else this
 
 private val METRIC_MIN = 150.dp
 private val QUICK_FOUR_UP_MIN = 520.dp
@@ -305,7 +309,8 @@ private fun QuickActionCell(action: QuickAction, modifier: Modifier = Modifier) 
         label = action.label,
         secondary = action.secondary,
         onClick = { if (hasChoices) sheetOpen = true else action.onClick() },
-        modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = Hit.h1),
+        modifier =
+            Modifier.fillMaxWidth().defaultMinSize(minHeight = Hit.h1).controlTag(action.controlId),
         variant = ButtonVariant.Secondary,
         borderColor = if (action.active) colors.accent else null,
         contentColor = if (action.active) colors.accentText else null,
@@ -588,6 +593,7 @@ private fun StreamPlate(state: RemoteState, module: ModuleDashboard) {
             VButton(
                 label = action.label,
                 onClick = action.onClick,
+                modifier = Modifier.controlTag(action.controlId),
                 enabled = action.enabled,
                 variant = if (action.danger) ButtonVariant.Danger else ButtonVariant.Secondary,
                 contentPadding = PaddingValues(horizontal = Space.s3),
@@ -690,6 +696,7 @@ private fun ComposerRow(state: RemoteState, composer: ModuleComposer) {
     VButton(
         composer.buttonLabel,
         composer.onSubmit,
+        modifier = Modifier.controlTag(composer.controlId),
         enabled = composer.enabled,
         variant = ButtonVariant.Primary)
   }
@@ -762,7 +769,7 @@ private fun ModuleListRow(row: ModuleRow) {
         VButton(
             label = action.label,
             onClick = action.onClick,
-            modifier = inline,
+            modifier = inline.controlTag(action.controlId),
             enabled = action.enabled,
             variant = if (action.danger) ButtonVariant.Danger else ButtonVariant.Secondary,
             contentPadding = PaddingValues(horizontal = Space.s4),
@@ -795,6 +802,7 @@ private fun ModuleListRow(row: ModuleRow) {
     ListItem(
         title = row.title,
         subtitle = row.subtitle,
+        modifier = Modifier.controlTag(row.controlId),
         status = row.tone,
         onClick = onRowClick,
         // The same accent rule the Hosts list uses for the selected Mac:
@@ -816,6 +824,7 @@ private fun ModuleListRow(row: ModuleRow) {
         VButton(
             label = action.label,
             onClick = action.onClick,
+            modifier = Modifier.controlTag(action.controlId),
             enabled = action.enabled,
             variant = if (action.danger) ButtonVariant.Danger else ButtonVariant.Secondary,
         )
@@ -901,13 +910,22 @@ private fun RowPromptDialog(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(Space.s3, Alignment.End),
     ) {
-      if (prompt.clearLabel != null && prompt.onClear != null) {
+      val clear =
+          prompt.clearAction
+              ?: if (prompt.clearLabel != null && prompt.onClear != null) {
+                RowAction(prompt.clearLabel, danger = true, onClick = prompt.onClear)
+              } else {
+                null
+              }
+      if (clear != null) {
         VButton(
-            label = prompt.clearLabel,
+            label = clear.label,
             onClick = {
-              prompt.onClear.invoke()
+              clear.onClick()
               onDismiss()
             },
+            modifier = Modifier.controlTag(clear.controlId),
+            enabled = clear.enabled,
             variant = ButtonVariant.Danger,
         )
       }
@@ -1038,7 +1056,8 @@ private fun WrappingRow(
   val colors = Vitruvian
   Row(
       modifier =
-          Modifier.fillMaxWidth()
+          Modifier.controlTag(row.controlId)
+              .fillMaxWidth()
               .defaultMinSize(minHeight = Hit.h2)
               .bottomHairline(colors.line)
               .then(

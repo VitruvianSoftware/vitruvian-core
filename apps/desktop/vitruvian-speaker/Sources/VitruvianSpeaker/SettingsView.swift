@@ -1190,7 +1190,9 @@ public struct SettingsView: View {
                 viewModel.selectedHomeId = home.id
                 let targets = try await GoogleHomeClient.shared.discoverBroadcastTargets(structureId: home.id)
                 if !targets.isEmpty {
-                    configManager.applyDiscovery(structure: home, targets: targets)
+                    configManager.applyDiscovery(structure: home, targets: targets, homes: homes)
+                } else {
+                    configManager.rememberHomes(homes)
                 }
                 status(targets.isEmpty ? "No speakers or displays found in \(home.name)." : "Found \(targets.count) target(s) in \(home.name).", isError: targets.isEmpty)
             } catch {

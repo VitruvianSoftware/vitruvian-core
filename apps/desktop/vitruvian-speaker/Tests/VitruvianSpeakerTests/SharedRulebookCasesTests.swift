@@ -69,6 +69,7 @@ struct SharedRulebookCasesTests {
             "outputs_label.json",
             "chat_monitor_status.json",
             "oauth_client_override.json",
+            "controls.json",
             "state_v1.json",
         ]
         #expect(jsonFiles == expectedFiles)

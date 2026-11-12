@@ -366,9 +366,25 @@ public class ConfigManager: ObservableObject {
     }
 
     @discardableResult
-    public func applyDiscovery(structure: HomeStructure, targets: [String: SpeakerDevice]) -> Bool {
+    public func applyDiscovery(
+        structure: HomeStructure,
+        targets: [String: SpeakerDevice],
+        homes: [HomeStructure]? = nil
+    ) -> Bool {
         guard !targets.isEmpty else { return false }
-        let changed = config.applyDiscovery(structureId: structure.id, structureName: structure.name, targets: targets)
+        let changed = config.applyDiscovery(
+            structureId: structure.id,
+            structureName: structure.name,
+            targets: targets,
+            homes: homes
+        )
+        if changed { saveConfig() }
+        return changed
+    }
+
+    @discardableResult
+    public func rememberHomes(_ homes: [HomeStructure]) -> Bool {
+        let changed = config.rememberHomes(homes)
         if changed { saveConfig() }
         return changed
     }
