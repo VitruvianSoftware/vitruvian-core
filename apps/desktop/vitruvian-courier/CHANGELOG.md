@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.18](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-courier-v0.3.17...vitruvian-courier-v0.3.18) (2026-11-12)
+
+
+### Features
+
+* **vitruvian-courier:** Read Aloud through Vitruvian Speaker, and a per-chat Read Aloud choice ([#4612](https://github.com/VitruvianSoftware/vitruvian-core/issues/4612)) ([10cc060](https://github.com/VitruvianSoftware/vitruvian-core/commit/10cc0609e67d8f9676d82f31bd23a48a6aa364af))
+
+
+### Bug Fixes
+
+* **vitruvian-courier:** stop the Starfield chat background crashing the app ([#4646](https://github.com/VitruvianSoftware/vitruvian-core/issues/4646)) ([5360875](https://github.com/VitruvianSoftware/vitruvian-core/commit/5360875ebb1feb1ea66dd694423190660438e49a))
+
 ## [0.3.17](https://github.com/VitruvianSoftware/vitruvian-core/compare/courier-v0.3.16...courier-v0.3.17) (2026-11-12)
 
 
