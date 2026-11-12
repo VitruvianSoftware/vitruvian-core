@@ -60,6 +60,9 @@
         <button type="button" id="tab-btn-members" class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-pane-members" data-tab="members">
           Members <span id="tab-badge-members" class="tab-badge" hidden>0</span>
         </button>
+        <button type="button" id="tab-btn-graph" class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-pane-graph" data-tab="graph">
+          Graph
+        </button>
       </nav>
 
       <div id="tab-pane-flow" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-flow">
@@ -154,6 +157,28 @@
               <div id="members-retired" class="list-stack member-retired-list"></div>
             </details>
           </div>
+        </section>
+      </div>
+
+      <div id="tab-pane-graph" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-graph" hidden>
+        <section class="card" aria-labelledby="graph-heading">
+          <div class="section-header">
+            <h2 id="graph-heading">Mention Graph</h2>
+            <div class="graph-header-actions">
+              <button type="button" id="graph-hide-inactive" class="control-btn small" aria-pressed="false">Hide inactive</button>
+              <button type="button" id="graph-live" class="control-btn small active" aria-pressed="true" disabled>Live</button>
+            </div>
+          </div>
+          <div class="graph-controls">
+            <button type="button" id="graph-play-pause" class="control-btn small" aria-pressed="false" aria-label="Play or pause replay" disabled>Play</button>
+            <button type="button" id="graph-step-back" class="control-btn small" aria-label="Step back" disabled>◀</button>
+            <button type="button" id="graph-step-forward" class="control-btn small" aria-label="Step forward" disabled>▶</button>
+            <input type="range" id="graph-seq-slider" class="graph-slider" min="1" max="1" value="1" aria-label="Replay post sequence" disabled>
+            <span id="graph-seq-label" class="mono small muted">seq 0 / 0</span>
+          </div>
+          <p id="graph-range-note" class="muted small" hidden></p>
+          <div id="graph-container" class="graph-container"></div>
+          <p id="graph-empty" class="muted small">No board mentions recorded yet.</p>
         </section>
       </div>
     </div>

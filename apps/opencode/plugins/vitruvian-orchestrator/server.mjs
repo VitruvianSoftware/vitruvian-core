@@ -109,6 +109,16 @@ const PROGRESS_INPUT_SCHEMA = {
             type: "array",
             items: { type: "number" },
           },
+          model: {
+            type: "string",
+            description:
+              "Optional Gemini model override for this task (e.g. gemini-4-carbon-high).",
+          },
+          worktree: {
+            type: "string",
+            description:
+              "Optional git worktree branch name for isolating parallel edits.",
+          },
         },
         required: ["title", "specialist", "tier"],
         additionalProperties: false,
@@ -186,6 +196,11 @@ const STEP_INPUT_SCHEMA = {
     detail: {
       type: "string",
       description: "Optional detail explaining why the member paused.",
+    },
+    worktree: {
+      type: "string",
+      description:
+        "Optional git worktree branch name created or used by this helper.",
     },
   },
   additionalProperties: false,

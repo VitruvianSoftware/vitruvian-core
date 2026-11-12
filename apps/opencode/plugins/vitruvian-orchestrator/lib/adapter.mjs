@@ -26,7 +26,9 @@ import {
   delegateCost,
   formatWake,
   initialFlow,
+  isValidWorktree,
   members,
+  mentionGraph,
   mentions,
   pendingWakes,
   reduce,
@@ -45,7 +47,9 @@ export {
   delegateCost,
   formatWake,
   initialFlow,
+  isValidWorktree,
   members,
+  mentionGraph,
   mentions,
   pendingWakes,
   reduce,
@@ -289,6 +293,12 @@ export function mapProgressInputToEvents(input, at, currentFlow = null) {
         after: Array.isArray(t.after)
           ? t.after.map(toTaskNumber).filter((n) => Number.isFinite(n))
           : [],
+        ...(t.model !== undefined && t.model !== null
+          ? { model: t.model }
+          : {}),
+        ...(t.worktree !== undefined && t.worktree !== null
+          ? { worktree: t.worktree }
+          : {}),
       })),
     });
   } else if (!currentFlow) {
@@ -465,6 +475,15 @@ export function applyStepCall(flow, callerRunId, input, at = Date.now()) {
       ? input.detail.trim()
       : undefined;
 
+  const rawWt =
+    typeof input?.worktree === "string" ? input.worktree.trim() : "";
+  const validWt = isValidWorktree(rawWt) ? rawWt : undefined;
+  const hasOtherField =
+    hasPaused ||
+    validWt !== undefined ||
+    delegate !== undefined ||
+    input?.delegateUsage !== undefined;
+
   if (hasPaused && rawPaused !== "quota" && rawPaused !== "error") {
     throw new Error(
       `step paused must be "quota" or "error" (got paused=${JSON.stringify(input?.paused)})`,
@@ -483,14 +502,20 @@ export function applyStepCall(flow, callerRunId, input, at = Date.now()) {
         `step requires integers 0 <= done <= total and total >= 1 (got done=${input?.done}, total=${input?.total})`,
       );
     }
-  } else if (!hasPaused) {
+  } else if (!hasOtherField) {
     throw new Error(
-      "step requires integers 0 <= done <= total and total >= 1, or paused ('quota' | 'error')",
+      "step requires integers 0 <= done <= total and total >= 1, paused ('quota' | 'error'), or a valid worktree",
     );
   }
 
   const label =
-    hasDone && hasTotal ? `${done}/${total}` : `paused: ${rawPaused}`;
+    hasDone && hasTotal
+      ? `${done}/${total}`
+      : hasPaused
+        ? `paused: ${rawPaused}`
+        : validWt
+          ? `worktree: ${validWt}`
+          : `delegate: ${delegate || "usage"}`;
 
   if (!flow) {
     return {
@@ -527,7 +552,8 @@ export function applyStepCall(flow, callerRunId, input, at = Date.now()) {
   if (
     (hasDone && hasTotal) ||
     delegate !== undefined ||
-    input?.delegateUsage !== undefined
+    input?.delegateUsage !== undefined ||
+    validWt !== undefined
   ) {
     next = reduce(next, {
       type: "run.progress",
@@ -551,6 +577,7 @@ export function applyStepCall(flow, callerRunId, input, at = Date.now()) {
               ),
           }
         : {}),
+      ...(validWt ? { worktree: validWt } : {}),
     });
   }
 
@@ -571,7 +598,9 @@ export function applyStepCall(flow, callerRunId, input, at = Date.now()) {
     summary:
       hasDone && hasTotal
         ? `step updated: ${done}/${total}${note ? ` (${note})` : ""}${hasPaused ? ` [${label}]` : ""}`
-        : `member paused: ${rawPaused}${detail ? ` (${detail})` : ""}`,
+        : hasPaused
+          ? `member paused: ${rawPaused}${detail ? ` (${detail})` : ""}`
+          : `step updated: ${label}${note ? ` (${note})` : ""}`,
   };
 }
 
@@ -879,6 +908,9 @@ export function formatSidebarData(flow, now = Date.now()) {
       t.waitingOn.length > 0
         ? `waits on ${t.waitingOn.map((n) => `#${n}`).join(", ")}`
         : "",
+    ...(t.model ? { model: sanitizeShortField(t.model, 128) } : {}),
+    ...(t.worktree ? { worktree: sanitizeShortField(t.worktree, 128) } : {}),
+    ...(t.warning ? { warning: sanitizeShortField(t.warning, 240) } : {}),
   }));
 
   const stallRows = stalls(flow, now);
@@ -908,14 +940,22 @@ export function formatSidebarData(flow, now = Date.now()) {
     const endMs = r.endedAt ?? now;
     const elapsedMs = Math.max(0, endMs - (r.startedAt || endMs));
     const baseModel = shortModelName(r.model);
-    const delegateModel = r.delegate ? shortModelName(r.delegate) : null;
-    const modelLabel = delegateModel
-      ? `${baseModel} → ${delegateModel}`
-      : baseModel;
+    const member = memberById.get(r.id);
+    const effectiveDelegateRaw = r.delegate || member?.taskModel || null;
+    const delegateModel = effectiveDelegateRaw
+      ? shortModelName(effectiveDelegateRaw)
+      : null;
+    const modelLabel =
+      delegateModel && delegateModel !== baseModel
+        ? `${baseModel} → ${delegateModel}`
+        : baseModel;
+    const worktree =
+      r.worktree || member?.worktree
+        ? sanitizeShortField(r.worktree || member?.worktree, 128)
+        : undefined;
     const stallRow = stallByRunId.get(r.id);
     const stallState = stallRow?.state ?? null;
     const idleMs = stallRow?.idleMs ?? 0;
-    const member = memberById.get(r.id);
     const memberBadge =
       member?.state === "killed"
         ? "killed"
@@ -949,6 +989,10 @@ export function formatSidebarData(flow, now = Date.now()) {
       model: modelLabel,
       fullModel: r.model,
       delegate: r.delegate ?? null,
+      ...(member?.taskModel
+        ? { taskModel: sanitizeShortField(member.taskModel, 128) }
+        : {}),
+      ...(worktree ? { worktree } : {}),
       effort: r.effort || "high",
       stepsText,
       tokens: totalTokens,
@@ -1009,6 +1053,16 @@ export function formatSidebarData(flow, now = Date.now()) {
     Number.isInteger(flow.postsDropped) && flow.postsDropped > 0
       ? flow.postsDropped
       : 0;
+  const topEdges = totalPosts > 0 ? mentionGraph(flow).edges.slice(0, 5) : [];
+  const whoTalksText =
+    topEdges.length > 0
+      ? topEdges
+          .map(
+            (e) =>
+              `${sanitizeShortField(e.from, 64)} → ${sanitizeShortField(e.to, 64)} ×${e.count}`,
+          )
+          .join(", ")
+      : "";
   const recentPosts = board(flow, { limit: 5 }).map((p) => ({
     seq: p.seq,
     at: p.at,
@@ -1067,6 +1121,7 @@ export function formatSidebarData(flow, now = Date.now()) {
       total: totalPosts,
       postsDropped,
       posts: recentPosts,
+      ...(whoTalksText ? { whoTalksText } : {}),
     },
     pendingWakes: wakes,
     spend: {
@@ -1127,9 +1182,22 @@ export function formatSidebarLines(flow, now = Date.now()) {
     lines.push("  (no tasks planned yet)");
   } else {
     for (const t of data.tasks) {
-      const extras = [t.roundText, t.waitsOnText].filter(Boolean).join(" · ");
+      const specPart = [
+        `${t.specialist}/${t.tier}`,
+        t.model || "",
+        t.worktree ? `⎇ ${t.worktree}` : "",
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      const extras = [
+        t.roundText,
+        t.waitsOnText,
+        t.warning ? `⚠ ${t.warning}` : "",
+      ]
+        .filter(Boolean)
+        .join(" · ");
       lines.push(
-        `  #${t.id} ${t.title} [${t.specialist}/${t.tier}] — ${t.state}${extras ? ` (${extras})` : ""}`,
+        `  #${t.id} ${t.title} [${specPart}] — ${t.state}${extras ? ` (${extras})` : ""}`,
       );
     }
   }
@@ -1141,8 +1209,15 @@ export function formatSidebarLines(flow, now = Date.now()) {
   } else {
     for (const a of data.agents) {
       const taskRef = a.taskId ? ` #${a.taskId}` : "";
+      const modelAndEffort = [
+        a.model,
+        a.effort,
+        a.worktree ? `⎇ ${a.worktree}` : "",
+      ]
+        .filter(Boolean)
+        .join(" · ");
       lines.push(
-        `  ${a.agent}${taskRef} (${a.model} · ${a.effort}) · ${a.stepsText} · ${a.tokensText} · ${a.costText} · ${a.elapsedText} · ${a.status}`,
+        `  ${a.agent}${taskRef} (${modelAndEffort}) · ${a.stepsText} · ${a.tokensText} · ${a.costText} · ${a.elapsedText} · ${a.status}`,
       );
     }
   }
@@ -1167,6 +1242,9 @@ export function formatSidebarLines(flow, now = Date.now()) {
   // 6. Shared board (newest 5 clipped single-line posts) & pending wakes
   if (data.board.total > 0 || data.board.postsDropped > 0) {
     lines.push(`Board (${data.board.total}):`);
+    if (data.board.whoTalksText) {
+      lines.push(`  Who talks to whom: ${data.board.whoTalksText}`);
+    }
     if (data.board.postsDropped > 0) {
       lines.push(`  ${data.board.postsDropped} older posts not shown`);
     }

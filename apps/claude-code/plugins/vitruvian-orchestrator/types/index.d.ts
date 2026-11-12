@@ -66,8 +66,26 @@ export type MemberRow = {
   taskN?: number;
   model: string;
   delegate?: string;
+  taskModel?: string;
+  worktree?: string;
   lastPostSeq?: number;
   lastActivityAt: number;
+};
+
+export type MentionGraphNode = {
+  id: string;
+  posts: number;
+};
+
+export type MentionGraphEdge = {
+  from: string;
+  to: string;
+  count: number;
+};
+
+export type MentionGraph = {
+  nodes: MentionGraphNode[];
+  edges: MentionGraphEdge[];
 };
 
 export type MembersView = {
@@ -122,6 +140,9 @@ export type Task = {
   after: number[];
   state: TaskState;
   round: number;
+  model?: string;
+  warning?: string;
+  worktree?: string;
 };
 
 export type Run = {
@@ -131,6 +152,7 @@ export type Run = {
   model: string;
   effort: string | null;
   delegate: string | null;
+  worktree?: string;
   title: string;
   taskN: number | null;
   startedAt: number;
@@ -169,6 +191,8 @@ export type PlanTaskInput = {
   specialist: string;
   tier: Tier;
   after?: number[];
+  model?: string;
+  worktree?: string;
 };
 
 export type BurnDown = {
@@ -186,6 +210,9 @@ export type TaskBoardRow = {
   round: number;
   after: number[];
   waitingOn: number[];
+  model?: string;
+  warning?: string;
+  worktree?: string;
 };
 
 export type UnpricedSummary = {
@@ -220,6 +247,7 @@ export type FlowEvent = {
   model?: string;
   effort?: string | null;
   delegate?: string | null;
+  worktree?: string;
   role?: RunRole;
   tokens?: Partial<TokenCounts>;
   delegateTokens?: Partial<DelegateTokenCounts> | null;

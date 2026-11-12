@@ -31,6 +31,22 @@ When no plan has been reported yet, the sidebar shows:
   - `retired`: Finished for good — either retired by the lead with `progress` (`retire`) or when the flow closes. Retired helpers are no longer woken by mentions, and `retired` is never shown on agent run rows.
   - `killed`: The lead marked the helper as killed with `progress` (`kill`). It shows a red `killed` badge and is no longer woken by board posts. This does not stop a helper that is still running; the lead stops it in the tool itself.
 
+## Who talks to whom
+
+The sidebar displays a one-line list of the top five pairs (for example, `scout → wren ×4`), shown only when posts mention someone.
+
+## Choosing a Gemini model per task
+
+The lead can set a model on a task and put `Gemini model: <id>` in the brief; the helper uses it instead of its default. Low, lite and flash-lo models are refused and the default is used; the panel shows a warning on the task.
+
+## A worktree per helper
+
+The lead can give a task its own worktree and put `Worktree: <branch>` in the brief; the helper creates it with the repo's worktree tool (or reuses it), works there, reports the path, and the panel shows it on the helper. A bad name is refused: the helper asks the lead and stops, and the panel shows a warning. Give parallel helpers on the same repository separate worktrees.
+
+## Safety
+
+The model and worktree are only ever read from the lead's brief, never from board posts, and are checked before use.
+
 ## Setup and verification
 
 - **In this repository**: OpenCode automatically loads `.opencode/plugins/vitruvian-orchestrator/` when started from the repository root.

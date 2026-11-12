@@ -2312,4 +2312,330 @@ describe("security hardening (items 1, 2, 3, 5, 6)", () => {
       assert.match(doc, new RegExp(`\`${state}\``));
     }
   });
+
+  it("phase 2 items 3, 4 & 5: OpenCode renders Who talks to whom top 5 edges and per-task model/warning/worktree via progress and step", async () => {
+    const tmpDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "opencode-orch-phase2-"),
+    );
+    const prevDir = process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR;
+    process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR = tmpDir;
+    try {
+      const tools = new Map();
+      await serverPlugin.setup({
+        session: {
+          get: async ({ sessionID }) => {
+            if (sessionID === "ses_root") {
+              return {
+                id: "ses_root",
+                title: "Root",
+                agent: "beacon",
+                model: "anthropic/claude-opus-5-5",
+              };
+            }
+            const agent = sessionID.replace(/^ses_/, "");
+            return {
+              id: sessionID,
+              parentID: "ses_root",
+              title: sessionID === "ses_wren" ? "Build graph" : "Helper",
+              agent,
+              model: "anthropic/claude-haiku-5-5",
+            };
+          },
+          prompt: async () => {},
+        },
+        tool: {
+          transform: async (fn) => {
+            fn({ add: (def) => tools.set(def.name, def) });
+          },
+        },
+      });
+
+      // Schema check: PROGRESS_INPUT_SCHEMA and STEP_INPUT_SCHEMA expose model and worktree
+      const progTaskProps =
+        tools.get("progress").input.properties.tasks.items.properties;
+      assert.ok(progTaskProps.model, "progress task schema missing model");
+      assert.ok(
+        progTaskProps.worktree,
+        "progress task schema missing worktree",
+      );
+      const stepProps = tools.get("step").input.properties;
+      assert.ok(stepProps.worktree, "step schema missing worktree");
+
+      await tools.get("progress").execute(
+        {
+          title: "Phase 2 OC Flow",
+          phase: "delegate",
+          tasks: [
+            {
+              title: "Build graph",
+              specialist: "wren",
+              tier: "core",
+              after: [],
+              model: "gemini-4-carbon-high",
+              worktree: "feat/oc-graph",
+            },
+            {
+              title: "QA graph",
+              specialist: "scout",
+              tier: "fast",
+              after: [1],
+              model: "gemini-3-flash-lite",
+              worktree: "../bad-wt",
+            },
+          ],
+        },
+        { sessionID: "ses_root" },
+      );
+
+      // Seed worker run in persisted flow so step matches ses_wren
+      const statePath = path.join(tmpDir, "state.json");
+      const stateObj = JSON.parse(fs.readFileSync(statePath, "utf8"));
+      stateObj.flows.ses_root = reduce(stateObj.flows.ses_root, {
+        type: "run.start",
+        at: Date.now(),
+        id: "ses_wren",
+        harness: "opencode",
+        role: "worker",
+        agent: "wren",
+        title: "Build graph",
+        model: "anthropic/claude-haiku-5-5",
+        effort: "high",
+      });
+      fs.writeFileSync(statePath, JSON.stringify(stateObj, null, 2) + "\n");
+
+      // Reload so server picks up seeded run
+      await serverPlugin.setup({
+        session: {
+          get: async ({ sessionID }) => {
+            if (sessionID === "ses_root") {
+              return {
+                id: "ses_root",
+                title: "Root",
+                agent: "beacon",
+                model: "anthropic/claude-opus-5-5",
+              };
+            }
+            const agent = sessionID.replace(/^ses_/, "");
+            return {
+              id: sessionID,
+              parentID: "ses_root",
+              title: sessionID === "ses_wren" ? "Build graph" : "Helper",
+              agent,
+              model: "anthropic/claude-haiku-5-5",
+            };
+          },
+          prompt: async () => {},
+        },
+        tool: {
+          transform: async (fn) => {
+            fn({ add: (def) => tools.set(def.name, def) });
+          },
+        },
+      });
+
+      // Before any posts: no "Who talks to whom"
+      const preFlow = JSON.parse(fs.readFileSync(statePath, "utf8")).flows
+        .ses_root;
+      assert.equal(formatSidebarData(preFlow).board.whoTalksText, undefined);
+      assert.doesNotMatch(
+        formatSidebarLines(preFlow).join("\n"),
+        /Who talks to whom/,
+      );
+
+      // Step updates valid worktree and ignores invalid worktree
+      await tools.get("step").execute(
+        {
+          done: 1,
+          total: 3,
+          note: "in /wt/feat-oc-graph",
+          worktree: "feat/oc-graph-step",
+        },
+        { sessionID: "ses_wren", agent: "wren" },
+      );
+      await tools.get("step").execute(
+        {
+          done: 2,
+          total: 3,
+          note: "testing",
+          worktree: "../escape",
+        },
+        { sessionID: "ses_wren", agent: "wren" },
+      );
+
+      // 6 directed edges + @all
+      for (let i = 0; i < 4; i += 1) {
+        await tools
+          .get("post")
+          .execute(
+            { to: ["wren", "all"], text: "Check @wren @all", kind: "defect" },
+            { sessionID: "ses_scout", agent: "scout" },
+          );
+      }
+      for (let i = 0; i < 3; i += 1) {
+        await tools
+          .get("post")
+          .execute(
+            { to: ["lead"], text: "Done @lead", kind: "result" },
+            { sessionID: "ses_wren", agent: "wren" },
+          );
+      }
+      for (const [sid, ag, count] of [
+        ["ses_aegis", "aegis", 2],
+        ["ses_atlas", "atlas", 2],
+        ["ses_forge", "forge", 2],
+        ["ses_quill", "quill", 1],
+      ]) {
+        for (let i = 0; i < count; i += 1) {
+          await tools
+            .get("post")
+            .execute(
+              { to: ["wren"], text: "Note @wren", kind: "note" },
+              { sessionID: sid, agent: ag },
+            );
+        }
+      }
+
+      const finalFlow = JSON.parse(fs.readFileSync(statePath, "utf8")).flows
+        .ses_root;
+      assert.equal(finalFlow.tasks[0].model, "gemini-4-carbon-high");
+      assert.equal(finalFlow.tasks[0].worktree, "feat/oc-graph");
+      assert.equal("model" in finalFlow.tasks[1], false);
+      assert.match(finalFlow.tasks[1].warning, /gemini-3-flash-lite/);
+      assert.equal("worktree" in finalFlow.tasks[1], false);
+      const wrenRun = finalFlow.runs.find((r) => r.id === "ses_wren");
+      assert.equal(wrenRun?.worktree, "feat/oc-graph-step");
+
+      const data = formatSidebarData(finalFlow, Date.now());
+      assert.equal(
+        data.board.whoTalksText,
+        "scout → wren ×4, wren → lead ×3, aegis → wren ×2, atlas → wren ×2, forge → wren ×2",
+      );
+      assert.equal(data.tasks[0].model, "gemini-4-carbon-high");
+      assert.equal(data.tasks[0].worktree, "feat/oc-graph");
+      assert.match(data.tasks[1].warning, /gemini-3-flash-lite/);
+      const wrenAgent = data.agents.find((a) => a.id === "ses_wren");
+      assert.equal(wrenAgent?.worktree, "feat/oc-graph-step");
+      assert.match(wrenAgent?.model ?? "", /gemini-4-carbon-high/);
+
+      const linesText = formatSidebarLines(finalFlow, Date.now()).join("\n");
+      assert.match(
+        linesText,
+        /Who talks to whom: scout → wren ×4, wren → lead ×3, aegis → wren ×2, atlas → wren ×2, forge → wren ×2/,
+      );
+      assert.doesNotMatch(linesText, /quill → wren/);
+      assert.match(linesText, /gemini-4-carbon-high/);
+      assert.match(linesText, /gemini-3-flash-lite/);
+      assert.match(linesText, /feat\/oc-graph-step/);
+
+      const here = path.dirname(fileURLToPath(import.meta.url));
+      const tuiSrc = fs.readFileSync(path.join(here, "..", "tui.tsx"), "utf8");
+      assert.match(tuiSrc, /Who talks to whom:/);
+      assert.match(tuiSrc, /whoTalksText/);
+      assert.match(tuiSrc, /\.worktree/);
+      assert.match(tuiSrc, /\.warning/);
+    } finally {
+      if (prevDir === undefined) {
+        delete process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR;
+      } else {
+        process.env.VITRUVIAN_ORCHESTRATOR_STATE_DIR = prevDir;
+      }
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("return round 1 item 2: step accepts worktree alone without done/total and rejects invalid worktree alone", () => {
+    let flow = reduce(null, {
+      type: "plan",
+      at: 1000,
+      title: "WT Only OC Flow",
+      tasks: [{ title: "Build", specialist: "wren", tier: "core" }],
+    });
+    flow = reduce(flow, {
+      type: "run.start",
+      at: 1050,
+      id: "ses_wren",
+      harness: "opencode",
+      role: "worker",
+      agent: "wren",
+      title: "Build",
+      model: "anthropic/claude-haiku-5-5",
+      effort: "high",
+    });
+
+    const res = applyStepCall(
+      flow,
+      "ses_wren",
+      { worktree: "feat/only-wt" },
+      1100,
+    );
+    assert.equal(res.matched, true);
+    assert.equal(res.flow.runs[0].worktree, "feat/only-wt");
+    assert.equal(res.flow.runs[0].steps, null);
+    assert.doesNotMatch(res.summary, /undefined|paused/);
+
+    assert.throws(
+      () => applyStepCall(res.flow, "ses_wren", { worktree: "../bad" }, 1200),
+      /step requires/,
+    );
+  });
+
+  it("return round 1 item 4: OpenCode agent rows do not duplicate task model when model matches or delegate is set", () => {
+    let flow = reduce(null, {
+      type: "plan",
+      at: 1000,
+      title: "No Dup Model OC",
+      tasks: [
+        {
+          title: "Same model",
+          specialist: "wren",
+          tier: "core",
+          model: "gemini-4-carbon-high",
+        },
+        {
+          title: "Different delegate",
+          specialist: "atlas",
+          tier: "core",
+          model: "gemini-4-argon-high",
+        },
+      ],
+    });
+    flow = reduce(flow, {
+      type: "run.start",
+      at: 1050,
+      id: "ses_wren",
+      harness: "opencode",
+      role: "worker",
+      agent: "wren",
+      title: "Same model",
+      model: "google/gemini-4-carbon-high",
+      effort: "high",
+    });
+    flow = reduce(flow, {
+      type: "run.start",
+      at: 1060,
+      id: "ses_atlas",
+      harness: "opencode",
+      role: "worker",
+      agent: "atlas",
+      title: "Different delegate",
+      model: "anthropic/claude-haiku-5-5",
+      effort: "high",
+    });
+    flow = reduce(flow, {
+      type: "run.progress",
+      at: 1070,
+      id: "ses_atlas",
+      steps: { done: 1, total: 2, note: "delegated" },
+      delegate: "gemini-3.8-flash-high",
+    });
+
+    const data = formatSidebarData(flow, 1100);
+    assert.equal(data.agents[0].model, "gemini-4-carbon-high");
+    assert.equal("extraTaskModel" in data.agents[1], false);
+    const lines = formatSidebarLines(flow, 1100).join("\n");
+    assert.doesNotMatch(lines, /gemini-4-carbon-high → gemini-4-carbon-high/);
+    const atlasAgentLine =
+      formatSidebarLines(flow, 1100).find((l) => l.includes("atlas #2")) ?? "";
+    assert.doesNotMatch(atlasAgentLine, /gemini-4-argon-high/);
+  });
 });

@@ -38,6 +38,7 @@ js_test(
     name = "adapter_test",
     data = [
         "README.md",
+        "tui.tsx",
         ":adapter",
     ],
     entry_point = "lib/adapter.test.mjs",
