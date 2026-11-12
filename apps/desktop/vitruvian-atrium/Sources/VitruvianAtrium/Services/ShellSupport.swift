@@ -4,8 +4,8 @@
 import AppKit
 import CoreServices
 import Darwin
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 package enum Shell {
     /// A command that stops answering must not keep a thread forever. Nothing
@@ -28,7 +28,7 @@ package enum Shell {
 
 /// Runs a command with administrator privileges (system password prompt).
 package enum AdminShell {
-    // Vitruvian is a menu-bar agent (LSUIElement), so it is rarely the active
+    // Vitruvian Atrium is a menu-bar agent (LSUIElement), so it is rarely the active
     // app. SecurityAgent attaches its password dialog to the requesting process;
     // when that process is an inactive agent the dialog can open behind the
     // frontmost app and read as "no prompt appeared". Bringing the app forward
@@ -127,17 +127,10 @@ package enum AdminShell {
 /// toggle without asking for the administrator password every time.
 /// The password is asked once, when installing (or removing) the rule.
 package enum Sudoers {
-    package static let rulePath = "/etc/sudoers.d/vitruvian-clamshell"
-    // Rule files written under earlier names; removed whenever the rule is
-    // (re)installed or removed, so the closed-lid permission migrates without an
-    // extra password prompt.
-    private static let legacyRulePaths = [
-        "/etc/sudoers.d/vitruvian-utils-clamshell",
-        "/etc/sudoers.d/vitru-clamshell",
-    ]
+    package static let rulePath = "/etc/sudoers.d/vitruvian-atrium-clamshell"
     /// Every rule file the app looks for and removes, under the current name
     /// and each earlier one. `Tools/uninstall.sh` looks for the same files.
-    package static let ruleFiles = [rulePath] + legacyRulePaths
+    package static let ruleFiles = [rulePath]
 
     /// Proves the passwordless path by running it; see `SleepOverride`, which
     /// owns the writes and the probes.
@@ -159,14 +152,11 @@ package enum Sudoers {
         // SSO-enrolled Macs (name@company.com, #915) and the old validation
         // rejected it before the password prompt could even appear.
         let rule = SudoersSupport.clamshellRule(uid: getuid())
-        // Clear any earlier-named rule first, then write and validate the new one
-        // (a failed check rolls back). Same password prompt either way.
-        let legacy = legacyRulePaths.joined(separator: " ")
-        return "mkdir -p /etc/sudoers.d && chmod 0755 /etc/sudoers.d && rm -f \(legacy) && echo '\(rule)' > \(rulePath) && chmod 0440 \(rulePath) && /usr/sbin/visudo -c -f \(rulePath) || { rm -f \(rulePath); exit 1; }"
+        // Write and validate the rule (a failed check rolls back).
+        return "mkdir -p /etc/sudoers.d && chmod 0755 /etc/sudoers.d && echo '\(rule)' > \(rulePath) && chmod 0440 \(rulePath) && /usr/sbin/visudo -c -f \(rulePath) || { rm -f \(rulePath); exit 1; }"
     }
 
     package static func remove(completion: @escaping (Bool) -> Void) {
-        // Also removes the rules left behind by earlier app names.
         let all = ruleFiles.joined(separator: " ")
         AdminShell.run("rm -f \(all)",
                        prompt: L10n.shared.s.adminPromptSudoersRemove) { ok in

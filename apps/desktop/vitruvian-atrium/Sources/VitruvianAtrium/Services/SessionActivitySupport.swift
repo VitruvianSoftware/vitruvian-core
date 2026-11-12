@@ -3,8 +3,8 @@
 
 import CoreGraphics
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Reading whether a login session is the one on screen.
 package enum SessionActivitySupport {

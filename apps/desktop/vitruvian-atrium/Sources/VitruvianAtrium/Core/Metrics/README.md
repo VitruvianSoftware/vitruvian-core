@@ -1,7 +1,7 @@
 # Metrics
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/Sources/Vitruvian/Core/Metrics`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Core/Metrics`.
 
 ## Interface
 - Internal implementation components
@@ -13,4 +13,4 @@ Component package providing implementation for `apps/desktop/vitruvian/Sources/V
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/Sources/Vitruvian/Core/Metrics/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Core/Metrics/...`

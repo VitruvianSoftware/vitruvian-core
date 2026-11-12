@@ -21,7 +21,7 @@
 // The tool's words, in the fifteen languages the Vitruvian app speaks. The
 // fifty-six keys the app's Code feature had were written by
 // VitruvianSoftware for that app and released under MIT with this file on
-// 2026-10-13 (apps/desktop/vitruvian/UPSTREAM.md); the twenty-two others were
+// 2026-10-13 (apps/desktop/vitruvian-atrium/UPSTREAM.md); the twenty-two others were
 // written with the English. The app draws them as written and never
 // translates them.
 

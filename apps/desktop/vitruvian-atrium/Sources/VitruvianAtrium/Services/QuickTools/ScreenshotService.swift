@@ -4,8 +4,8 @@
 import AppKit
 import ImageIO
 import UniformTypeIdentifiers
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// The screenshot tool: freeze-first area, window and full screen capture
 /// with an annotation editor, pinned floating captures and direct clipboard
@@ -67,8 +67,8 @@ package final class ScreenshotService: ObservableObject {
         case scrolling
     }
 
-    private var hideVitruvianWindows: Bool {
-        UserDefaults.standard[Preferences.screenshotHideVitruvianWindows]
+    private var hideAtriumWindows: Bool {
+        UserDefaults.standard[Preferences.screenshotHideAtriumWindows]
     }
 
     /// The surfaces that make up the act of capturing. The quick preview is
@@ -89,7 +89,7 @@ package final class ScreenshotService: ObservableObject {
         return ids
     }
 
-    /// Ordinary windows somebody left on screen, which the "Hide Vitruvian
+    /// Ordinary windows somebody left on screen, which the "Hide Vitruvian Atrium
     /// windows" preference owns.
     private var contentWindowIDs: Set<CGWindowID> {
         var ids: Set<CGWindowID> = []
@@ -292,7 +292,7 @@ package final class ScreenshotService: ObservableObject {
                 : defaults[Preferences.screenshotFreeze],
             includePointer: defaults[Preferences.screenshotIncludePointer],
             showLastRegion: defaults[Preferences.screenshotShowLastRegion],
-            hideVitruvianWindows: hideVitruvianWindows,
+            hideAtriumWindows: hideAtriumWindows,
             protectedWindowIDs: { [weak self] in self?.protectedWindowIDs ?? [] },
             purpose: mode == .scrolling ? strings.scrollingCaptureTitle : nil,
             mode: mode == .scrolling ? .geometry : .image,
@@ -343,13 +343,13 @@ package final class ScreenshotService: ObservableObject {
         let scale = screen.scale
         let frame = screen.frame
         let includePointer = UserDefaults.standard[Preferences.screenshotIncludePointer]
-        let hideWindows = hideVitruvianWindows
+        let hideWindows = hideAtriumWindows
         let protectedIDs = protectedWindowIDs
         directCaptureTask = Task { @MainActor [weak self] in
             let image = await ScreenshotCaptureEngine.captureDisplay(
                 displayID,
                 includePointer: includePointer,
-                hideVitruvianWindows: hideWindows,
+                hideAtriumWindows: hideWindows,
                 protectedWindowIDs: protectedIDs)
             guard let self, !Task.isCancelled else { return }
             self.directCaptureTask = nil
@@ -376,7 +376,7 @@ package final class ScreenshotService: ObservableObject {
             onCancel: { [weak self] in self?.scrollingTask?.cancel() })
         // Read after the controls are on screen so their window is protected,
         // and once for the whole run: the picture must not change halfway.
-        let hideWindows = hideVitruvianWindows
+        let hideWindows = hideAtriumWindows
         let protectedIDs = protectedWindowIDs
         let captureID = UUID()
         scrollingCaptureID = captureID
@@ -385,7 +385,7 @@ package final class ScreenshotService: ObservableObject {
             let result = await ScreenshotScrollingCapture.capture(
                 region: region,
                 includePointer: false,
-                hideVitruvianWindows: hideWindows,
+                hideAtriumWindows: hideWindows,
                 protectedWindowIDs: protectedIDs,
                 finishSignal: finishSignal,
                 onProgress: { height in
@@ -936,7 +936,7 @@ package final class ScreenshotService: ObservableObject {
     }
 
     /// The shelf gets a copy of its own, not the file a Save wrote, which can
-    /// later be deleted or moved to the Trash outside Vitruvian. A saved
+    /// later be deleted or moved to the Trash outside Vitruvian Atrium. A saved
     /// capture lends its bytes and name, so nothing is encoded twice. Any
     /// other is encoded off the main thread. Each capture owns its task so
     /// taking another capture cannot lose one still being prepared. Quiet on
@@ -1205,7 +1205,7 @@ package final class ScreenshotService: ObservableObject {
 /// without holding a full-resolution screenshot in memory while the app rests.
 package enum ScreenshotLastCaptureStore {
     private static let writeQueue = DispatchQueue(
-        label: "com.vitruviansoftware.vitruvian.latest-screenshot",
+        label: "com.vitruviansoftware.atrium.latest-screenshot",
         qos: .utility)
     private static let stateLock = NSLock()
     // Both guarded by stateLock.

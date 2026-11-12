@@ -2,10 +2,10 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// Runs the production handoff of a history image to the screenshot editor,
 /// on the real queues, with the history and the editor replaced by a record.

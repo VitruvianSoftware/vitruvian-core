@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// One text snippet: typing the trigger inserts the replacement. Stored as
 /// JSON in defaults; ids and raw values are persisted, so keep them stable.

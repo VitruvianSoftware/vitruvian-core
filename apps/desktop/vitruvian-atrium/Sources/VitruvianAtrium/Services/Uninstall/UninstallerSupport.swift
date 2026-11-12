@@ -3,8 +3,8 @@
 
 import Darwin
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Pure ownership and leftover-matching rules for the Uninstaller. Bundle
 /// identifiers never become paths by concatenation with a display name;
@@ -55,7 +55,7 @@ package enum UninstallerSupport {
         case sharedIdentifier
         /// Shipped inside another app, which needs it.
         case insideAnotherApp
-        /// Vitruvian itself, which removes itself from Advanced settings.
+        /// Vitruvian Atrium itself, which removes itself from Advanced settings.
         case thisApp
         /// A link to an app kept somewhere else, never its destination.
         case link
@@ -860,10 +860,10 @@ package enum UninstallerSupport {
         }
     }
 
-    /// Vitruvian's own identifiers, among the protected ones.
+    /// Vitruvian Atrium's own identifiers, among the protected ones.
     private static func isOwnBundleID(_ id: String) -> Bool {
         let lowered = id.lowercased()
-        return lowered == "com.vitruvian" || lowered.hasPrefix("com.vitruviansoftware.vitruvian.")
+        return lowered == "com.vitruvian" || lowered.hasPrefix("com.vitruviansoftware.atrium.")
             || lowered.hasPrefix("vorss.")
     }
 

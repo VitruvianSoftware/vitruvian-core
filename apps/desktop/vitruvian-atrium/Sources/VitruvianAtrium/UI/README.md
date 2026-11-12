@@ -1,7 +1,7 @@
 # Ui
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/Sources/Vitruvian/UI`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/UI`.
 
 ## Interface
 - Internal implementation components
@@ -38,4 +38,4 @@ Component package providing implementation for `apps/desktop/vitruvian/Sources/V
 - [SnippetLibraryView.swift:51]: `if !library.query.isEmpty {`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/Sources/Vitruvian/UI/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/UI/...`

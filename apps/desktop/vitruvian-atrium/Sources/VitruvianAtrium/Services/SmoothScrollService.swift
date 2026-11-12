@@ -6,8 +6,8 @@ import ApplicationServices
 import Combine
 @preconcurrency import CoreGraphics
 import QuartzCore
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Turns the mouse wheel's discrete jumps into short glides: a tap swallows
 /// each wheel tick and replays its distance as a stream of continuous pixel

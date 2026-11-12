@@ -3,9 +3,9 @@
 
 import AppKit
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
 
 extension AgentProvider {
     /// Each agent keeps one color across the page, the strip and notices.
@@ -338,7 +338,7 @@ package struct NotchAgentHeatmap: View {
 
 /// Each agent's own mark, taken from its maker's app on this Mac: the
 /// monochrome image the app shows in the menu bar, or else the app's icon.
-/// None of that artwork ships with Vitruvian, so a Mac without the app
+/// None of that artwork ships with Vitruvian Atrium, so a Mac without the app
 /// keeps a symbol. Looked up once; the strip redraws every second.
 @MainActor package enum AgentMarks {
     package enum Mark {

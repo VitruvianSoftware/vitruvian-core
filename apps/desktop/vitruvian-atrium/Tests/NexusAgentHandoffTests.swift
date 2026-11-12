@@ -2,8 +2,8 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 import VitruvianToolProtocol
 
 /// What the Nexus Agent feature kept goes to the Nexus Agent tool once,
@@ -29,7 +29,7 @@ enum NexusAgentHandoffTests {
                                     {"id": "settings", "title": {"en": "Code"}, "placement": "settings"}]},
          "preferences": [
            {"id": "botDirectory", "title": {"en": "Bot folder"}, "type": "string", "default": ""},
-           {"id": "autoStart", "title": {"en": "Start the bot when Vitruvian opens"}, "type": "boolean", "default": false},
+           {"id": "autoStart", "title": {"en": "Start the bot when Vitruvian Atrium opens"}, "type": "boolean", "default": false},
            {"id": "planMode", "title": {"en": "Plan mode"}, "type": "boolean", "default": false},
            {"id": "worktreeMode", "title": {"en": "Worktree mode"}, "type": "boolean", "default": false},
            {"id": "chosenProvider", "type": "string", "default": ""},
@@ -54,7 +54,7 @@ enum NexusAgentHandoffTests {
     /// a person might have it: a bot folder, the bot at launch, plan mode,
     /// a provider of their own chosen, a history, and the shortcut on.
     static func defaults(_ name: String) -> UserDefaults {
-        let domain = "com.vitruviansoftware.vitruvian.tests.nexus-agent.handoff.\(name)"
+        let domain = "com.vitruviansoftware.atrium.tests.nexus-agent.handoff.\(name)"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         // No register(defaults:): it writes the process's registration domain,

@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 package struct RecentCaptureEntry: Codable, Equatable, Identifiable {
     package enum Kind: String, Codable {

@@ -7,8 +7,8 @@ import Carbon.HIToolbox
 import Combine
 @preconcurrency import CoreGraphics
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 private struct SwitcherSourceContext {
     let itemID: String?
@@ -206,7 +206,7 @@ package final class AppSwitcher: ObservableObject {
 
     /// Enumeration touches every regular app through Accessibility, so it runs
     /// away from the event tap on one serial queue.
-    private let enumerationQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.switcher.enumeration",
+    private let enumerationQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.switcher.enumeration",
                                                   qos: .userInitiated)
     private var pendingShow: DispatchWorkItem?
     /// True once the user moved the selection themselves.
@@ -442,7 +442,7 @@ package final class AppSwitcher: ObservableObject {
             let thread = Thread { [weak self] in
                 self?.runEventTap()
             }
-            thread.name = "Vitruvian Switcher"
+            thread.name = "Vitruvian Atrium Switcher"
             thread.qualityOfService = .userInteractive
             tapThread = thread
             return thread

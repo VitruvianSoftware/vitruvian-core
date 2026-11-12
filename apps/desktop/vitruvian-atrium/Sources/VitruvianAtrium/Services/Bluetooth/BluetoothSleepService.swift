@@ -3,8 +3,8 @@
 
 import AppKit
 import IOKit
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Switches Bluetooth off while the Mac sleeps, so a closed laptop in a bag
 /// stops grabbing the headphones the user is listening to elsewhere.
@@ -40,7 +40,7 @@ package final class BluetoothSleepService {
         // off and never saw the wake, because the Mac was shut down (or the
         // app quit) while it slept. The debt is paid before anything else,
         // and paid even when the feature has since been switched off, so
-        // nothing Vitruvian took away is ever kept.
+        // nothing Vitruvian Atrium took away is ever kept.
         restoreIfOwed()
         if AppFeature.bluetoothSleep.isAvailable,
            UserDefaults.standard[Preferences.bluetoothSleepEnabled] {

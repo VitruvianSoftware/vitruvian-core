@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// What to do with an incoming physical trackpad press.
 package enum MiddleClickClickAction: Equatable {

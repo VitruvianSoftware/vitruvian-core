@@ -3,8 +3,8 @@
 
 import AppKit
 import ServiceManagement
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Clears the app's own footprint on the system, for a clean uninstall.
 ///
@@ -15,7 +15,7 @@ import VitruvianDesign
 /// bundle id; and the only thing deleted is the app's own bundle, which is moved
 /// to the Trash (reversible). Nothing leaves the machine.
 package enum SelfUninstall {
-    private static var bundleID: String { Bundle.main.bundleIdentifier ?? "com.vitruviansoftware.vitruvian" }
+    private static var bundleID: String { Bundle.main.bundleIdentifier ?? "com.vitruviansoftware.atrium" }
 
     /// What clearing and uninstalling do, step by step, and the queues they
     /// run on. `system` is the real teardown; tests pass doubles that log
@@ -213,7 +213,7 @@ package enum SelfUninstall {
     }
 
     /// Clears permissions, removes preferences and saved state, sends the app
-    /// bundle to the Trash and quits. Used by "Uninstall Vitruvian completely".
+    /// bundle to the Trash and quits. Used by "Uninstall Vitruvian Atrium completely".
     /// A failure passes the message explaining what stopped it.
     package static func uninstallCompletely(steps: Steps = .system,
                                             onFailure: @escaping @MainActor @Sendable (String) -> Void) {
@@ -385,7 +385,7 @@ package enum SelfUninstall {
                      })
     }
 
-    /// What `Vitruvian --uninstall` prints about sleep, or nil when no
+    /// What `Vitruvian Atrium --uninstall` prints about sleep, or nil when no
     /// closed-lid session left it to restore. That path runs before the app
     /// has a password dialog, so only the password-free rule can put sleep
     /// back; a reading taken first, that answered and answered "on", counts as

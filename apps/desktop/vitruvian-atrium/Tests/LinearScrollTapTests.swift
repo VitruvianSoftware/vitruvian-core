@@ -3,10 +3,10 @@
 
 import CoreGraphics
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The raw wheel tap's decision runs as shipped on real wheel events. Only
 /// the exception lists it asks and the defaults it reads are replaced here.
@@ -17,7 +17,7 @@ enum LinearScrollTapTests {
     }
 
     static func run(_ suite: TestSuite) {
-        let name = "com.vitruviansoftware.vitruvian.tests.linear-scroll-tap.\(UUID().uuidString)"
+        let name = "com.vitruviansoftware.atrium.tests.linear-scroll-tap.\(UUID().uuidString)"
         let defaults = ScratchDefaults.suite(named: name)!
         let exceptions = Exceptions()
         let targets = ScrollInverter.WheelTapTargets(excludes: { scope, _, _ in exceptions.excepted.contains(scope) },

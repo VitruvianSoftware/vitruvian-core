@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// A failed read must never authorize a later autosave or migration cleanup.
 package struct ScratchpadStore {

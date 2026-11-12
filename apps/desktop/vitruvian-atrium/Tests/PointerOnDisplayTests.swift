@@ -2,10 +2,10 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The production checks of whether the pointer is on a display run against
 /// stand-in display frames, so the edges between displays are covered without

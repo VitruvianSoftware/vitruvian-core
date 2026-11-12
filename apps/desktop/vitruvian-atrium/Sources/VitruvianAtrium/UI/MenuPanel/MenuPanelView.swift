@@ -4,9 +4,9 @@
 import AppKit
 import Combine
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
 
 /// Content of the menu bar popover: keep-awake controls, the volume mixer and
 /// the system monitor.

@@ -10,10 +10,10 @@ import Darwin
 import Foundation
 import ImageIO
 import VMStatisticsCompat
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 enum SwitcherModelFeatureTests {
     /// A running app that logs the activation requests made of it.
@@ -1879,7 +1879,7 @@ enum SwitcherModelFeatureTests {
                                                                   DefaultsKey.monitorPwrTemperature,
                                                                   DefaultsKey.monitorSysBattery]),
                "preview appearance and moved battery visibility travel in settings backups")
-        let batteryVisibilitySuite = "com.vitruviansoftware.vitruvian.tests.batteryVisibility.\(UUID().uuidString)"
+        let batteryVisibilitySuite = "com.vitruviansoftware.atrium.tests.batteryVisibility.\(UUID().uuidString)"
         if let batteryVisibilityDefaults = ScratchDefaults.suite(named: batteryVisibilitySuite) {
             batteryVisibilityDefaults.removePersistentDomain(forName: batteryVisibilitySuite)
             batteryVisibilityDefaults.set(false, forKey: DefaultsKey.monitorSysTemps)
@@ -2219,7 +2219,7 @@ enum SwitcherModelFeatureTests {
                "update showcase media override is empty by default")
         suite.expect(!AppInfo.hasCommunityChannels && !SupportUpdateIntroInfo.isOffered
                      && !SupportUpdateIntroInfo.shouldShow(appVersion: "3.4.0", lastSeenVersion: nil),
-               "Vitruvian has no community channels, so upstream's post-update support prompt never shows")
+               "Vitruvian Atrium has no community channels, so upstream's post-update support prompt never shows")
         suite.expect(AppInfo.donateURL.absoluteString == "https://vitruviansoftware.dev/donate/vitruvian/"
                      && AppInfo.coffeeURL == AppInfo.donateURL,
                "the Donate button opens our own redirect, never a Stripe URL that a replaced Payment Link would break")
@@ -2250,12 +2250,12 @@ enum SwitcherModelFeatureTests {
             suite.expect(url.host == "github.com"
                          && url.pathComponents.prefix(3) == ["/", "VitruvianSoftware", "vitruvian-core"]
                          && !url.absoluteString.lowercased().contains("vorssaint"),
-                   "every outbound app link points at Vitruvian's own repository, never upstream's channels")
+                   "every outbound app link points at Vitruvian Atrium's own repository, never upstream's channels")
         }
         suite.expect(AppInfo.websiteURL.absoluteString == "https://vitruviansoftware.dev",
-               "the website link is Vitruvian's own site")
+               "the website link is Vitruvian Atrium's own site")
         // AppInfo.version falls back to "dev" in this bare harness, so parse
-        // the plist the shipped app will actually carry. In Vitruvian, releases
+        // the plist the shipped app will actually carry. In Vitruvian Atrium, releases
         // are automated via release-please, which updates CFBundleShortVersionString.
         // Verify that the shipped Info.plist carries a valid non-empty release version.
         let releasePlist = (try? Data(contentsOf: URL(fileURLWithPath: "Resources/Info.plist")))
@@ -2567,13 +2567,13 @@ enum SwitcherModelFeatureTests {
                "an app the person switched to while the panel was open keeps activation")
         suite.expect(!StatusItemAnchorSupport.shouldReturnActivation(to: 501, ownPID: 900, frontmostPID: 900,
                                                                      ownWindowIsKey: true, closeReason: .escape),
-               "a Vitruvian window that took focus from the panel keeps Vitruvian active")
+               "a Vitruvian Atrium window that took focus from the panel keeps Vitruvian Atrium active")
         suite.expect(!StatusItemAnchorSupport.shouldReturnActivation(to: nil, ownPID: 900, frontmostPID: 900,
                                                                      ownWindowIsKey: false, closeReason: .escape),
-               "a panel opened while Vitruvian was already in front has nothing to hand back")
+               "a panel opened while Vitruvian Atrium was already in front has nothing to hand back")
         suite.expect(!StatusItemAnchorSupport.shouldReturnActivation(to: 900, ownPID: 900, frontmostPID: 900,
                                                                      ownWindowIsKey: false, closeReason: .escape),
-               "Vitruvian never hands activation back to itself")
+               "Vitruvian Atrium never hands activation back to itself")
         suite.expect(!StatusItemAnchorSupport.shouldReturnActivation(to: 501, ownPID: 900, frontmostPID: nil,
                                                                      ownWindowIsKey: false, closeReason: .escape),
                "no known frontmost app means nothing is taken from anyone")
@@ -2587,7 +2587,7 @@ enum SwitcherModelFeatureTests {
         }
         suite.expect(!StatusItemAnchorSupport.shouldReturnActivation(to: 501, ownPID: 900, frontmostPID: 900,
                                                                      ownWindowIsKey: false, closeReason: nil),
-               "a close Vitruvian did not ask for leaves activation alone")
+               "a close Vitruvian Atrium did not ask for leaves activation alone")
 
         let showing: Set<UInt64> = [3, 7]
         suite.expect(StatusItemAnchorSupport.handbackWouldSwitchDesktop(windowSpaces: [[1], [2]],
@@ -2615,7 +2615,7 @@ enum SwitcherModelFeatureTests {
                "another app becoming active while the panel is open replaces the remembered app")
         suite.expect(StatusItemAnchorSupport.panelActivationSource(after: .appActivated(900), current: 501,
                                                                    isOwnApp: ownApp) == 501,
-               "Vitruvian taking activation back from the panel keeps the remembered app")
+               "Vitruvian Atrium taking activation back from the panel keeps the remembered app")
         suite.expect(StatusItemAnchorSupport.panelActivationSource(after: .appActivated(777), current: nil,
                                                                    isOwnApp: ownApp) == 777,
                "an app activated after the remembered one was dropped becomes the one to return to")
@@ -2846,7 +2846,7 @@ enum SwitcherModelFeatureTests {
         // back to the app.
         suite.expect(registeredDefaults[DefaultsKey.notchHidesMenuBarIcon] as? Bool == false,
                "Dynamic Island only takes the icon's place when asked")
-        let islandIconSuite = "com.vitruviansoftware.vitruvian.tests.islandMenuBarIcon"
+        let islandIconSuite = "com.vitruviansoftware.atrium.tests.islandMenuBarIcon"
         if let islandDefaults = ScratchDefaults.suite(named: islandIconSuite) {
             islandDefaults.removePersistentDomain(forName: islandIconSuite)
             defer { islandDefaults.removePersistentDomain(forName: islandIconSuite) }
@@ -2910,19 +2910,19 @@ enum SwitcherModelFeatureTests {
                                                                   showsCountdown: true,
                                                                   hasEndDate: false),
                "idle, hidden and indefinite Keep Awake titles need no timer")
-        let statusPlacementSuite = "com.vitruviansoftware.vitruvian.tests.statusItemPlacement"
+        let statusPlacementSuite = "com.vitruviansoftware.atrium.tests.statusItemPlacement"
         if let statusDefaults = ScratchDefaults.suite(named: statusPlacementSuite) {
             statusDefaults.removePersistentDomain(forName: statusPlacementSuite)
             suite.expect(StatusItemPlacementSupport.placementGeneration(in: statusDefaults) == 0,
                    "initial placement generation is 0")
-            suite.expect(StatusItemPlacementSupport.mainAutosaveName(in: statusDefaults) == "VitruvianMenuBarItem",
+            suite.expect(StatusItemPlacementSupport.mainAutosaveName(in: statusDefaults) == "VitruvianAtriumMenuBarItem",
                    "generation 0 uses base autosave name")
 
             // The coordinate macOS saves for the icon is what puts it back in
             // the same spot on the next launch. 3.3.3 deleted the one written
             // by the older recovery on every launch, which moved the icon to
             // where a first-time item goes and, on a full bar, out of sight.
-            let legacyKey = "NSStatusItem Preferred Position VitruvianMenuBarItem"
+            let legacyKey = "NSStatusItem Preferred Position VitruvianAtriumMenuBarItem"
             statusDefaults.set(64.0, forKey: legacyKey)
             StatusItemPlacementSupport.clearRememberedVisibility(in: statusDefaults)
             suite.expect(statusDefaults.double(forKey: legacyKey) == 64.0,
@@ -2935,29 +2935,29 @@ enum SwitcherModelFeatureTests {
 
             StatusItemPlacementSupport.bumpPlacementGeneration(in: statusDefaults)
             let gen1Name = StatusItemPlacementSupport.mainAutosaveName(in: statusDefaults)
-            suite.expect(gen1Name == "VitruvianMenuBarItem.1",
+            suite.expect(gen1Name == "VitruvianAtriumMenuBarItem.1",
                    "bumped generation produces numbered autosave name")
-            suite.expect(statusDefaults.object(forKey: "NSStatusItem Preferred Position VitruvianMenuBarItem.1") == nil,
+            suite.expect(statusDefaults.object(forKey: "NSStatusItem Preferred Position VitruvianAtriumMenuBarItem.1") == nil,
                    "a reset lets macOS place the full item without a machine-specific position")
-            suite.expect(statusDefaults.object(forKey: "NSStatusItem Preferred Position VitruvianMenuBarItem") == nil,
+            suite.expect(statusDefaults.object(forKey: "NSStatusItem Preferred Position VitruvianAtriumMenuBarItem") == nil,
                    "bumping drops the previous identity's preferred position")
 
             // Recovery keeps the spot the person arranged and only drops the
             // hidden state macOS remembered: an item that starts over with no
             // saved position is born against the notch, the first place a
             // crowded bar hides.
-            let gen1Position = "NSStatusItem Preferred Position VitruvianMenuBarItem.1"
+            let gen1Position = "NSStatusItem Preferred Position VitruvianAtriumMenuBarItem.1"
             statusDefaults.set(280.0, forKey: gen1Position)
-            statusDefaults.set(false, forKey: "NSStatusItem Visible VitruvianMenuBarItem.1")
-            statusDefaults.set(false, forKey: "NSStatusItem VisibleCC VitruvianMenuBarItem.1")
+            statusDefaults.set(false, forKey: "NSStatusItem Visible VitruvianAtriumMenuBarItem.1")
+            statusDefaults.set(false, forKey: "NSStatusItem VisibleCC VitruvianAtriumMenuBarItem.1")
             StatusItemPlacementSupport.clearRememberedVisibility(in: statusDefaults)
             suite.expect(statusDefaults.double(forKey: gen1Position) == 280.0,
                    "clearing the remembered visibility keeps the arranged position")
             suite.expect(StatusItemPlacementSupport.placementGeneration(in: statusDefaults) == 1
                     && StatusItemPlacementSupport.mainAutosaveName(in: statusDefaults) == gen1Name,
                    "recovery leaves the item's identity alone, so reopening cannot churn it")
-            suite.expect(statusDefaults.object(forKey: "NSStatusItem Visible VitruvianMenuBarItem.1") == nil
-                    && statusDefaults.object(forKey: "NSStatusItem VisibleCC VitruvianMenuBarItem.1") == nil,
+            suite.expect(statusDefaults.object(forKey: "NSStatusItem Visible VitruvianAtriumMenuBarItem.1") == nil
+                    && statusDefaults.object(forKey: "NSStatusItem VisibleCC VitruvianAtriumMenuBarItem.1") == nil,
                    "clearing the remembered visibility drops both spellings macOS has used")
 
             // Giving the spot up is what an explicit recovery escalates to,
@@ -2967,28 +2967,28 @@ enum SwitcherModelFeatureTests {
                    "only the identity reset gives up a saved position")
             // Leave orphan keys for older generations the way a long-running
             // install accumulates them, then confirm a bump sweeps them.
-            statusDefaults.set(11.0, forKey: "NSStatusItem Preferred Position VitruvianMenuBarItem")
-            statusDefaults.set(false, forKey: "NSStatusItem Visible VitruvianMenuBarItem")
-            statusDefaults.set(false, forKey: "NSStatusItem VisibleCC VitruvianMenuBarItem.1")
-            let metricPosition = "NSStatusItem Preferred Position VitruvianMetric.cpu"
+            statusDefaults.set(11.0, forKey: "NSStatusItem Preferred Position VitruvianAtriumMenuBarItem")
+            statusDefaults.set(false, forKey: "NSStatusItem Visible VitruvianAtriumMenuBarItem")
+            statusDefaults.set(false, forKey: "NSStatusItem VisibleCC VitruvianAtriumMenuBarItem.1")
+            let metricPosition = "NSStatusItem Preferred Position VitruvianAtriumMetric.cpu"
             statusDefaults.set(42.0, forKey: metricPosition)
             StatusItemPlacementSupport.bumpPlacementGeneration(in: statusDefaults)
             suite.expect(statusDefaults.object(forKey: gen1Position) == nil
-                    && statusDefaults.object(forKey: "NSStatusItem Preferred Position VitruvianMenuBarItem") == nil
-                    && statusDefaults.object(forKey: "NSStatusItem Visible VitruvianMenuBarItem") == nil
-                    && statusDefaults.object(forKey: "NSStatusItem VisibleCC VitruvianMenuBarItem.1") == nil
+                    && statusDefaults.object(forKey: "NSStatusItem Preferred Position VitruvianAtriumMenuBarItem") == nil
+                    && statusDefaults.object(forKey: "NSStatusItem Visible VitruvianAtriumMenuBarItem") == nil
+                    && statusDefaults.object(forKey: "NSStatusItem VisibleCC VitruvianAtriumMenuBarItem.1") == nil
                     && StatusItemPlacementSupport.mainAutosaveName(in: statusDefaults)
-                        == "VitruvianMenuBarItem.2"
-                    && statusDefaults.object(forKey: "NSStatusItem Preferred Position VitruvianMenuBarItem.2") == nil,
+                        == "VitruvianAtriumMenuBarItem.2"
+                    && statusDefaults.object(forKey: "NSStatusItem Preferred Position VitruvianAtriumMenuBarItem.2") == nil,
                    "the identity reset gives the saved position up and sweeps orphaned identities")
             suite.expect(statusDefaults.double(forKey: metricPosition) == 42.0,
                    "recovering the main item leaves metric-item positions alone")
             statusDefaults.set(StatusItemPlacementSupport.maxPlacementGeneration,
                                forKey: DefaultsKey.statusItemPlacementGeneration)
-            statusDefaults.set(false, forKey: "NSStatusItem Visible VitruvianMenuBarItem.9999")
+            statusDefaults.set(false, forKey: "NSStatusItem Visible VitruvianAtriumMenuBarItem.9999")
             StatusItemPlacementSupport.bumpPlacementGeneration(in: statusDefaults)
-            suite.expect(StatusItemPlacementSupport.mainAutosaveName(in: statusDefaults) == "VitruvianMenuBarItem.1"
-                    && statusDefaults.object(forKey: "NSStatusItem Visible VitruvianMenuBarItem.9999") == nil
+            suite.expect(StatusItemPlacementSupport.mainAutosaveName(in: statusDefaults) == "VitruvianAtriumMenuBarItem.1"
+                    && statusDefaults.object(forKey: "NSStatusItem Visible VitruvianAtriumMenuBarItem.9999") == nil
                     && statusDefaults.double(forKey: metricPosition) == 42.0,
                    "generation wrap clears old main-item state without touching metric placements")
             suite.expect(StatusItemAnchorSupport.isSettlingStatusFrame(CGRect(x: 0, y: 0, width: 36, height: 0)),
@@ -3168,13 +3168,13 @@ enum SwitcherModelFeatureTests {
             return [["bundle": ["_0": bundleID]], entry]
         }
         let trackedApplications: [Any] = tracked("com.lowtechguys.Clop", allowed: true)
-            + tracked("com.vitruviansoftware.vitruvian", allowed: false)
-            + tracked("com.vitruviansoftware.vitruvian.dev", allowed: true)
+            + tracked("com.vitruviansoftware.atrium", allowed: false)
+            + tracked("com.vitruviansoftware.atrium.dev", allowed: true)
             + tracked("com.example.legacy", allowed: nil)
-        suite.expect(MenuBarAllowanceSupport.allowance(forBundleID: "com.vitruviansoftware.vitruvian",
+        suite.expect(MenuBarAllowanceSupport.allowance(forBundleID: "com.vitruviansoftware.atrium",
                                                        trackedApplications: trackedApplications) == .disallowed,
                "an app switched off under Allow in the Menu Bar reads as disallowed")
-        suite.expect(MenuBarAllowanceSupport.allowance(forBundleID: "com.vitruviansoftware.vitruvian.dev",
+        suite.expect(MenuBarAllowanceSupport.allowance(forBundleID: "com.vitruviansoftware.atrium.dev",
                                                        trackedApplications: trackedApplications) == .allowed,
                "a sibling bundle id with its own entry does not bleed over")
         suite.expect(MenuBarAllowanceSupport.allowance(forBundleID: "com.example.legacy",
@@ -3183,7 +3183,7 @@ enum SwitcherModelFeatureTests {
         suite.expect(MenuBarAllowanceSupport.allowance(forBundleID: "com.example.absent",
                                                        trackedApplications: trackedApplications) == .unknown,
                "an app Control Center has never tracked is unknown")
-        suite.expect(MenuBarAllowanceSupport.allowance(forBundleID: "com.vitruviansoftware.vitruvian",
+        suite.expect(MenuBarAllowanceSupport.allowance(forBundleID: "com.vitruviansoftware.atrium",
                                                        trackedApplications: ["garbage", 3]) == .unknown,
                "a malformed store is unknown rather than a crash or a verdict")
         // The on-disk shape: an outer plist whose trackedApplications value is
@@ -3196,10 +3196,10 @@ enum SwitcherModelFeatureTests {
                                                 format: .binary, options: 0)
         }
         suite.expect(outerData.map {
-                MenuBarAllowanceSupport.allowance(forBundleID: "com.vitruviansoftware.vitruvian", groupContainerPlist: $0)
+                MenuBarAllowanceSupport.allowance(forBundleID: "com.vitruviansoftware.atrium", groupContainerPlist: $0)
             } == .disallowed,
                "the nested Control Center store decodes down to the per-app verdict")
-        suite.expect(MenuBarAllowanceSupport.allowance(forBundleID: "com.vitruviansoftware.vitruvian",
+        suite.expect(MenuBarAllowanceSupport.allowance(forBundleID: "com.vitruviansoftware.atrium",
                                                        groupContainerPlist: Data([0x00, 0x01])) == .unknown,
                "an unreadable store is unknown")
         do {
@@ -3387,7 +3387,7 @@ enum SwitcherModelFeatureTests {
                "battery time is shown in the Power panel by default")
         suite.expect(registeredDefaults[DefaultsKey.monitorPwrPeripherals] as? Bool == false,
                "peripheral batteries stay out of the Power card until turned on")
-        let peripheralsSuite = "com.vitruviansoftware.vitruvian.tests.powerPeripherals.\(UUID().uuidString)"
+        let peripheralsSuite = "com.vitruviansoftware.atrium.tests.powerPeripherals.\(UUID().uuidString)"
         if let peripheralsDefaults = ScratchDefaults.suite(named: peripheralsSuite) {
             peripheralsDefaults.removePersistentDomain(forName: peripheralsSuite)
             peripheralsDefaults.set(false, forKey: DefaultsKey.menuBarPeripheralBattery)
@@ -4053,7 +4053,7 @@ enum SwitcherModelFeatureTests {
         } else {
             UserDefaults.standard.removeObject(forKey: DefaultsKey.switcherPreviewSize)
         }
-        let previewSizeSuite = "com.vitruviansoftware.vitruvian.tests.switcher-preview-size.\(UUID().uuidString)"
+        let previewSizeSuite = "com.vitruviansoftware.atrium.tests.switcher-preview-size.\(UUID().uuidString)"
         if let previewSizeDefaults = ScratchDefaults.suite(named: previewSizeSuite) {
             previewSizeDefaults.set("large", forKey: DefaultsKey.previewSize)
             Defaults.migrateSwitcherPreviewSize(in: previewSizeDefaults)
@@ -4072,7 +4072,7 @@ enum SwitcherModelFeatureTests {
                    "a Dock Preview size chosen after the first launch leaves the switcher at its default size")
             previewSizeDefaults.removePersistentDomain(forName: previewSizeSuite)
         }
-        let excludedAppsSuite = "com.vitruviansoftware.vitruvian.tests.switcher-preview-excluded-apps.\(UUID().uuidString)"
+        let excludedAppsSuite = "com.vitruviansoftware.atrium.tests.switcher-preview-excluded-apps.\(UUID().uuidString)"
         if let excludedAppsDefaults = ScratchDefaults.suite(named: excludedAppsSuite) {
             excludedAppsDefaults.set(["com.example.vault"], forKey: DefaultsKey.windowPreviewExcludedApps)
             Defaults.migrateSwitcherPreviewExcludedApps(in: excludedAppsDefaults)
@@ -4092,7 +4092,7 @@ enum SwitcherModelFeatureTests {
         }
         // The module's own check, with preferences of its own and the app in
         // front passed in.
-        let previewSuite = "com.vitruviansoftware.vitruvian.tests.preview-pause"
+        let previewSuite = "com.vitruviansoftware.atrium.tests.preview-pause"
         let previewDefaults = ScratchDefaults.suite(named: previewSuite)!
         previewDefaults.removePersistentDomain(forName: previewSuite)
         previewDefaults.set(["com.example.vault"], forKey: DefaultsKey.windowPreviewExcludedApps)
@@ -4362,7 +4362,7 @@ enum SwitcherModelFeatureTests {
             suite.expect(!handingOffBefore && handOffSteps.first == "self-activate as own",
                    "the activation handoff stamps the self-activation before asking for it")
             // Only the activation the handoff caused stays out of the history;
-            // the Dock icon, Settings and Vitruvian's own windows are real uses.
+            // the Dock icon, Settings and Vitruvian Atrium's own windows are real uses.
             suite.expect(!handingOffBefore
                    && ActivationHandoff.isHandoffActivation(of: ownPID)
                    && !ActivationHandoff.isHandoffActivation(of: ownPID + 1),
@@ -4583,8 +4583,8 @@ enum SwitcherModelFeatureTests {
                "a click after hiding lets the Dock bring the app back")
         suite.expect(DockClickSupport.repeatDecision(lastAction: .hide, elapsed: 0.1) == .swallow,
                "an accidental double-click never hides and immediately reopens the app")
-        suite.expect(DockClickSupport.isOwnBundleIdentifier("com.vitruviansoftware.vitruvian")
-                && DockClickSupport.isOwnBundleIdentifier("com.vitruviansoftware.vitruvian.dev")
+        suite.expect(DockClickSupport.isOwnBundleIdentifier("com.vitruviansoftware.atrium")
+                && DockClickSupport.isOwnBundleIdentifier("com.vitruviansoftware.atrium.dev")
                 && !DockClickSupport.isOwnBundleIdentifier("com.example.editor")
                 && !DockClickSupport.isOwnBundleIdentifier(nil),
                "Dock clicks never target either build of this app")
@@ -6956,7 +6956,7 @@ enum SwitcherModelFeatureTests {
                "App Switcher leaves unrelated middle-mouse-up events alone")
         let searchRecords = [
             SwitcherSearchRecord(id: "alpha", title: "Inbox", appName: "Alpha"),
-            SwitcherSearchRecord(id: "beta", title: "Vitruvian Roadmap", appName: "Beta"),
+            SwitcherSearchRecord(id: "beta", title: "Vitruvian Atrium Roadmap", appName: "Beta"),
             SwitcherSearchRecord(id: "gamma", title: "Café notes", appName: "Gamma"),
         ]
         suite.expect(SwitcherSupport.filteredSearchIDs(records: searchRecords, query: "") == ["alpha", "beta", "gamma"],

@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Pure state machine for the cleaning-mode unlock gesture: it counts deliberate
 /// presses of one required key. Other keys reset the count, auto-repeat is ignored,

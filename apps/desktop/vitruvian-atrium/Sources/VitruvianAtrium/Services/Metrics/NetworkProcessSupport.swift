@@ -3,8 +3,8 @@
 
 import Darwin
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 package struct NetworkProcessSample: Equatable {
     package let pid: pid_t

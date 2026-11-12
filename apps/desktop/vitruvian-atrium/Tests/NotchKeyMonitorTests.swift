@@ -3,10 +3,10 @@
 
 import AppKit
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The island's local event route runs against plain doubles. No window is
 /// shown, no native monitor is installed and no key is posted.

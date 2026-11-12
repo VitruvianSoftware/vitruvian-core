@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 //! Native Rust implementation of `apps/desktop/vitruvian-atrium/build.sh`.
-//! Builds Vitruvian (or runs the standalone test suite), assembles the `.app` bundle,
+//! Builds Vitruvian Atrium (or runs the standalone test suite), assembles the `.app` bundle,
 //! computes the fan-control helper SHA-256 version stamp, signs the bundle (Developer ID,
 //! `"Vitruvian Signing"`, or ad-hoc), and optionally installs it into `/Applications`.
 
@@ -382,9 +382,9 @@ mod tests {
                 "Sources/VitruvianAtrium/main.swift",
             ],
         );
-        assert!(
-            json.contains("\"swift-dependencies\": \"build/objects/VitruvianAtrium/master.swiftdeps\"")
-        );
+        assert!(json.contains(
+            "\"swift-dependencies\": \"build/objects/VitruvianAtrium/master.swiftdeps\""
+        ));
         assert!(json.contains(
             "\"object\": \"build/objects/VitruvianAtrium/Sources__VitruvianAtrium__Core__Defaults.o\""
         ));
@@ -437,14 +437,20 @@ mod tests {
         assert!(!legacy_args.contains(&"runtime".to_string()));
         assert!(legacy_args.contains(&"Vitruvian Signing".to_string()));
 
-        let adhoc_args =
-            build_codesign_args_for_target(&SigningMode::AdHoc, None, None, "/tmp/Vitruvian Atrium.app");
+        let adhoc_args = build_codesign_args_for_target(
+            &SigningMode::AdHoc,
+            None,
+            None,
+            "/tmp/Vitruvian Atrium.app",
+        );
         assert!(adhoc_args.contains(&"-".to_string()));
     }
 
     #[test]
     fn test_process_name_length_matching() {
         assert!(!should_use_full_path_process_match("VitruvianAtrium"));
-        assert!(should_use_full_path_process_match("VitruvianAtriumDeveloper"));
+        assert!(should_use_full_path_process_match(
+            "VitruvianAtriumDeveloper"
+        ));
     }
 }

@@ -1,7 +1,7 @@
 # Snippets
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/Sources/Vitruvian/Services/Snippets`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/Snippets`.
 
 ## Interface
 - Internal implementation components
@@ -18,4 +18,4 @@ Component package providing implementation for `apps/desktop/vitruvian/Sources/V
 - [TextSnippetSupport.swift:479]: `private static func timeZoneMatchRank(_ identifier: String, query: String) ->...`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/Sources/Vitruvian/Services/Snippets/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/Snippets/...`

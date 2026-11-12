@@ -1,13 +1,13 @@
 # Switcher
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/Sources/Vitruvian/Services/Switcher`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/Switcher`.
 
 ## Interface
 - Internal implementation components
 
 ## Invariants
-- [WindowEnumerator.swift:19]: `/// Window titles require Screen Recording on modern macOS; Vitruvian's own`
+- [WindowEnumerator.swift:19]: `/// Window titles require Screen Recording on modern macOS; Vitruvian Atrium's own`
 
 ## Side Effects
 - [SpaceWindowBridge.swift:50]: `/// Keep an unavailable query distinct from an explicit ordered-out answer.`
@@ -19,4 +19,4 @@ Component package providing implementation for `apps/desktop/vitruvian/Sources/V
 - [WindowUseOrder.swift:88]: `// A WindowServer query must not erase focus recorded while it ran.`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/Sources/Vitruvian/Services/Switcher/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/Switcher/...`

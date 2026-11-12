@@ -5,10 +5,10 @@ import AppKit
 import Combine
 import Foundation
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The module's island (`NotchIslandFixture`) presents through a recording
 /// window host, without showing UI or starting the island's hardware
@@ -61,7 +61,7 @@ enum NotchPresentationRefreshContract {
     }
 
     static func run(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.vitruvian.tests.notch-presentation-refresh"
+        let domain = "com.vitruviansoftware.atrium.tests.notch-presentation-refresh"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         Self.defaults = defaults

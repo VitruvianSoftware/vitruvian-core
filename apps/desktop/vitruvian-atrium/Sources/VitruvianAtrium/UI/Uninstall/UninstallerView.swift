@@ -2,9 +2,9 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
 
 /// The uninstaller, embedded as a Settings page: drop an app (or pick one),
 /// review the leftover files it found with their sizes, then move the selected

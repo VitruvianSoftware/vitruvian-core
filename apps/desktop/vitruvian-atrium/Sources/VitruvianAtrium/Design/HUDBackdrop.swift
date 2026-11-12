@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// Translucent HUD material behind floating panels (the shelf, the switcher, the
 /// cut-feedback HUD). Mirrors the switcher's backdrop so every floating surface

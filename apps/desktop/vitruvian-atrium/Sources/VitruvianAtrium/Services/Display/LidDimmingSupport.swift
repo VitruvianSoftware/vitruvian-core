@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// What closed-lid screen dimming should do next, decided from plain values
 /// so it can be tested without a display, a lid or the option ever having

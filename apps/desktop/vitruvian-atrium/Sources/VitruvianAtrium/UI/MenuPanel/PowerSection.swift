@@ -2,9 +2,9 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
 
 /// The "Power" card: how much the Mac is drawing overall, from the adapter, and
 /// to/from the battery. Rows that the hardware cannot report are simply hidden;

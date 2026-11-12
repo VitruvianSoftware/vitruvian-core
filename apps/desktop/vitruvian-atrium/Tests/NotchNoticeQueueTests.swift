@@ -2,10 +2,10 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The island's notice queue (`NotchNoticeQueue`) on its own: which notice
 /// may take the screen, and how each arrives and leaves.

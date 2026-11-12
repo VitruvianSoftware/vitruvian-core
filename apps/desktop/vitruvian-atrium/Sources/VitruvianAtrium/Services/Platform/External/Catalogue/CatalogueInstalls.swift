@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// The one install or update from the catalog that is under way, and its
 /// result until the Extensions page takes it. It lives here, not in the

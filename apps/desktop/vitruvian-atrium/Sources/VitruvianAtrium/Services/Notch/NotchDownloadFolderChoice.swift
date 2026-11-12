@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Choosing the folder the island watches for downloads, from its Downloads
 /// page or from Settings, and returning to the page it was chosen from.

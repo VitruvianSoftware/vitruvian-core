@@ -5,8 +5,8 @@ import AVFoundation
 import CoreGraphics
 import ImageIO
 import UniformTypeIdentifiers
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Writes the finished file: reads the master, applies the edit and encodes.
 ///
@@ -424,7 +424,7 @@ package final class RecorderExporter: Sendable {
                              cancelled: Cancellation,
                              next: @escaping () -> CMSampleBuffer?,
                              onAppended: @escaping () -> Void) async {
-        let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian." + label, qos: .userInitiated)
+        let queue = DispatchQueue(label: "com.vitruviansoftware.atrium." + label, qos: .userInitiated)
         await withCheckedContinuation { continuation in
             let finished = OnceFlag()
             // AVFoundation invokes this callback only on the serial queue above.
@@ -508,7 +508,7 @@ package final class RecorderExporter: Sendable {
             return nil
         }
         let directory = cache
-            .appendingPathComponent(Bundle.main.bundleIdentifier ?? "com.vitruviansoftware.vitruvian",
+            .appendingPathComponent(Bundle.main.bundleIdentifier ?? "com.vitruviansoftware.atrium",
                                     isDirectory: true)
             .appendingPathComponent("Temporary Recording Uploads", isDirectory: true)
         do {

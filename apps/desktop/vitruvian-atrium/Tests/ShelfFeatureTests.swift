@@ -10,10 +10,10 @@ import Darwin
 import Foundation
 import ImageIO
 import VMStatisticsCompat
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 enum ShelfFeatureTests {
     static func run(_ suite: TestSuite) {
@@ -201,7 +201,7 @@ enum ShelfFeatureTests {
             NSPasteboard.PasteboardType.string.rawValue),
                "plain text still counts as droppable shelf content")
         suite.expect(!ShelfPasteboardSupport.isDroppablePasteboardType(
-            "com.vitruviansoftware.vitruvian.tests.not-a-real-pasteboard-type"),
+            "com.vitruviansoftware.atrium.tests.not-a-real-pasteboard-type"),
                "unrelated pasteboard types do not activate the shelf")
         ShelfFilePromiseTests.run(suite)
         ShelfDropRoutingTests.run(suite)
@@ -481,7 +481,7 @@ enum ShelfFeatureTests {
 
         // MARK: Shelf dock placement
 
-        let placementDomain = "com.vitruviansoftware.vitruvian.tests.shelf-dock-placement"
+        let placementDomain = "com.vitruviansoftware.atrium.tests.shelf-dock-placement"
         let placementDefaults = ScratchDefaults.suite(named: placementDomain)!
         placementDefaults.removePersistentDomain(forName: placementDomain)
         defer { placementDefaults.removePersistentDomain(forName: placementDomain) }

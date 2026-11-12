@@ -2,9 +2,9 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
-import VitruvianCore
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 enum ScreenshotCanvasSupportTests {
     static func image(width: Int, height: Int) -> CGImage {

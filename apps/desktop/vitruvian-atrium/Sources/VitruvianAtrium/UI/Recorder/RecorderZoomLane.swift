@@ -3,9 +3,9 @@
 
 import AppKit
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
 
 /// The lane where the zooms live: a block for each one, which can be added,
 /// picked up, stretched from either end and thrown away.

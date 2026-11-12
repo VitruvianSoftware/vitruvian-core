@@ -3,7 +3,7 @@
 
 import AppKit
 import CoreGraphics
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// Shared by the green button and Window Layout. Window-server bounds are in
 /// points and need no screen capture; no window titles or images are read.

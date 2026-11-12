@@ -1,7 +1,7 @@
 # Source Lints
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/bazel/src/source_lints`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/bazel/src/source_lints`.
 
 ## Interface
 - `[lib.rs:APP_PREFIX]`
@@ -32,4 +32,4 @@ Component package providing implementation for `apps/desktop/vitruvian/bazel/src
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/bazel/src/source_lints/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/bazel/src/source_lints/...`

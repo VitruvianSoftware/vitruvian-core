@@ -5,8 +5,8 @@ import AppKit
 import Combine
 import DiskArbitration
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 package enum DiskEjectState: Equatable {
     case ejecting
@@ -93,7 +93,7 @@ package final class DiskProtectionService: ObservableObject {
             complete(diskID: disk.id, state: .failed(fallbackError.localizedDescription))
             return
         }
-        let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.disk-eject.\(ejectBSDName)", qos: .utility)
+        let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.disk-eject.\(ejectBSDName)", qos: .utility)
         DASessionSetDispatchQueue(session, queue)
 
         guard let daDisk = DADiskCreateFromBSDName(kCFAllocatorDefault, session, "/dev/\(ejectBSDName)") else {

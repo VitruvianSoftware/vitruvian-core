@@ -3,10 +3,10 @@
 
 import AppKit
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The Dynamic Island page's option rows, drawn in their card at the narrowest
 /// options column. A row wider than its column centers the page and cuts it on
@@ -68,7 +68,7 @@ enum NotchSettingsChoiceTests {
         // An option that cannot be used reads off and cannot be switched,
         // whatever was saved: its feature is uninstalled, or something else
         // rules it out.
-        let domain = "com.vitruviansoftware.vitruvian.tests.notch-settings-choice"
+        let domain = "com.vitruviansoftware.atrium.tests.notch-settings-choice"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }

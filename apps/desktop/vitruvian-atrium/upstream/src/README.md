@@ -1,7 +1,7 @@
 # Src
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/upstream/src`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/upstream/src`.
 
 ## Interface
 - `[lib.rs:UPSTREAM_URL]`
@@ -34,4 +34,4 @@ Component package providing implementation for `apps/desktop/vitruvian/upstream/
 - [lib.rs:394]: `pub fn new(url: &str, cache_dir: &Path, fetch: bool) -> Result<Self, String> {`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/upstream/src/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/upstream/src/...`

@@ -109,7 +109,7 @@ Non-secret *identifiers* (project id, region, SA email, WIF provider) **are** co
 
 **Why:** Inconsistent licensing is a legal liability; missing governance files are a contributor friction tax.
 
-**In practice:** **MIT, `(c) 2026 VitruvianSoftware`**, across all first-party code, enforced by `addlicense` in `license-check`. The one exception is the GPL-3.0-or-later fork in `apps/desktop/vitruvian/`: GPL code cannot be relicensed, so that tree keeps its upstream headers, is exempt from the MIT gates, and must never be depended on or copied from by MIT code (see its `UPSTREAM.md`). Every app ships the governance quartet: `LICENSE`, `CONTRIBUTING.md`, `CLA.md`, `CODE_OF_CONDUCT.md`. **(target):** several apps still ship Apache-2.0 `LICENSE` files or wrong holders, and `addlicense -check` only verifies a header is *present* (it won't catch a wrong license/holder) — a content gate is needed; see the gaps doc.
+**In practice:** **MIT, `(c) 2026 VitruvianSoftware`**, across all first-party code, enforced by `addlicense` in `license-check`. The one exception is the GPL-3.0-or-later fork in `apps/desktop/vitruvian-atrium/`: GPL code cannot be relicensed, so that tree keeps its upstream headers, is exempt from the MIT gates, and must never be depended on or copied from by MIT code (see its `UPSTREAM.md`). Every app ships the governance quartet: `LICENSE`, `CONTRIBUTING.md`, `CLA.md`, `CODE_OF_CONDUCT.md`. **(target):** several apps still ship Apache-2.0 `LICENSE` files or wrong holders, and `addlicense -check` only verifies a header is *present* (it won't catch a wrong license/holder) — a content gate is needed; see the gaps doc.
 
 ### 2.12 One canonical version; pins are temporary
 
@@ -298,7 +298,7 @@ Pick the category that matches the artifact you are shipping. Each section is se
 | **Environments & promotion** | Use **artifact release channels** (alpha/beta/stable) — this is a *distribution train*, orthogonal to server environments. Rolling beta releases update on push to `main`; production releases promote via release-please GitHub Release tags. |
 | **Secrets & config** | Client-side config only; backend secrets stay in the backend. Signing certificates (`SIGNING_CERT_P12`) and Apple Notary credentials (`NOTARY_API_KEY_P8`) injected via pipeline secrets into dedicated macOS runners (`runs-on: xcode-27`). |
 | **Observability** | App-appropriate client logging; a lightweight Playwright smoke for the critical render+auth path **(target)**. |
-| **Example apps** | `apps/desktop/home-speaker` (menu bar speech broadcaster), `apps/desktop/vitruvian` (agent control hub), `apps/desktop/nexus-agent/macos` (Swift menu bar bridge), `apps/suites/tabula/extension` (MV3 Chrome/Edge/Firefox). |
+| **Example apps** | `apps/desktop/home-speaker` (menu bar speech broadcaster), `apps/desktop/vitruvian-atrium` (agent control hub), `apps/desktop/nexus-agent/macos` (Swift menu bar bridge), `apps/suites/tabula/extension` (MV3 Chrome/Edge/Firefox). |
 
 ---
 

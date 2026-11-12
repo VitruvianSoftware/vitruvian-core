@@ -2,10 +2,10 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The Features hub's runtime (`FeatureRuntime`) over its own defaults, with
 /// the binding actions recorded instead of run, so no service comes to life.
@@ -17,7 +17,7 @@ enum FeatureRuntimeContract {
     }
 
     static func run(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.vitruvian.tests.feature-runtime"
+        let domain = "com.vitruviansoftware.atrium.tests.feature-runtime"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }

@@ -4,10 +4,10 @@
 import AppKit
 import Combine
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The island's update action and the module's own update control. No
 /// network, download, visible window, screenshot or input event is used.

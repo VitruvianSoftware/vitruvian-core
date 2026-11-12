@@ -3,7 +3,7 @@
 
 import Foundation
 import ObjectiveC
-import VitruvianNowPlaying
+import VitruvianAtriumNowPlaying
 
 /// The production adapter's reads, sends and source discovery, through the
 /// real selection over a recording MediaRemote. These tests never send

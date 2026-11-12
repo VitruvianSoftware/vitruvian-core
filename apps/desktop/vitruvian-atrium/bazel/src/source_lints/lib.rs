@@ -9,7 +9,8 @@ use std::path::{Path, PathBuf};
 pub const APP_PREFIX: &str = "Sources/VitruvianAtrium/";
 pub const UI_PREFIX: &str = "Sources/VitruvianAtrium/UI/";
 pub const PREFERENCES_PATH: &str = "Sources/VitruvianAtrium/Core/Preferences.swift";
-pub const AGREEMENT_SHEET: &str = "Sources/VitruvianAtrium/UI/Settings/ExternalToolAgreementSheet.swift";
+pub const AGREEMENT_SHEET: &str =
+    "Sources/VitruvianAtrium/UI/Settings/ExternalToolAgreementSheet.swift";
 pub const TOOLS_SECTION: &str = "Sources/VitruvianAtrium/UI/Settings/ExternalToolsSection.swift";
 pub const BROKER_PREFIX: &str = "Sources/VitruvianAtrium/Services/Platform/Broker/";
 pub const RUNTIME_PREFIX: &str = "Sources/VitruvianAtrium/Services/Platform/External/";
@@ -1212,7 +1213,8 @@ fn visible_text_curls_its_apostrophes(repo: &Repository) -> Vec<String> {
         .filter(|path| {
             let d = dirname(path);
             let b = basename(path);
-            (d == "Sources/VitruvianAtrium/Core" || d == "Sources/VitruvianAtrium/Core/Localizations")
+            (d == "Sources/VitruvianAtrium/Core"
+                || d == "Sources/VitruvianAtrium/Core/Localizations")
                 && (b.ends_with("Strings.swift")
                     || b.starts_with("Strings+")
                     || b == "Localization.swift")
@@ -1252,7 +1254,8 @@ fn french_punctuation_stays_on_its_line(repo: &Repository) -> Vec<String> {
         .iter()
         .filter(|path| {
             *path == "Sources/VitruvianAtrium/Core/Localizations/Strings+French.swift"
-                || (dirname(path) == "Sources/VitruvianAtrium/Core" && path.ends_with("Strings.swift"))
+                || (dirname(path) == "Sources/VitruvianAtrium/Core"
+                    && path.ends_with("Strings.swift"))
         })
         .collect();
     let breaks = [" ;", " :", " !", " ?", " »", "« "];
@@ -1591,8 +1594,9 @@ fn pointer_taps_run_off_the_main_thread(repo: &Repository) -> Vec<String> {
 }
 
 fn inverter_does_not_yield_to_the_switcher(repo: &Repository) -> Vec<String> {
-    let code =
-        code_without_comments(&repo.lines_at("Sources/VitruvianAtrium/Services/ScrollInverter.swift"));
+    let code = code_without_comments(
+        &repo.lines_at("Sources/VitruvianAtrium/Services/ScrollInverter.swift"),
+    );
     if code.is_empty()
         || code.contains("scrollNavigationActive")
         || code.contains("switcherNavigatesByWheel")
@@ -1643,10 +1647,9 @@ fn brightness_work_queue_never_touches_nsscreen(repo: &Repository) -> Vec<String
 }
 
 fn click_debounce_schedules_nothing(repo: &Repository) -> Vec<String> {
-    let code =
-        code_without_comments(&repo.lines_at(
-            "Sources/VitruvianAtrium/Services/MouseClickDebounce/MouseClickDebounceService.swift",
-        ));
+    let code = code_without_comments(&repo.lines_at(
+        "Sources/VitruvianAtrium/Services/MouseClickDebounce/MouseClickDebounceService.swift",
+    ));
     if code.is_empty() || code.contains("Timer(") || code.contains("asyncAfter") {
         return vec![
             "legacy click filtering adds no timer or delayed release to healthy clicks".into(),
@@ -1682,8 +1685,9 @@ fn smooth_scroll_disabled_tap_rearms_only_when_wanted(repo: &Repository) -> Vec<
 }
 
 fn menu_panel_switches_have_names(repo: &Repository) -> Vec<String> {
-    let code =
-        code_without_comments(&repo.lines_at("Sources/VitruvianAtrium/UI/MenuPanel/MenuPanelView.swift"));
+    let code = code_without_comments(
+        &repo.lines_at("Sources/VitruvianAtrium/UI/MenuPanel/MenuPanelView.swift"),
+    );
     if code.is_empty() {
         return vec!["the menu panel source reads back".into()];
     }
@@ -2464,7 +2468,8 @@ pub fn hotkey_id_claims(path: &str, text: &str) -> (Vec<(u32, Option<u32>, Strin
                             where_str, arg
                         ));
                     }
-                } else if path == "Sources/VitruvianAtrium/Services/QuickTools/ScreenCaptureService.swift"
+                } else if path
+                    == "Sources/VitruvianAtrium/Services/QuickTools/ScreenCaptureService.swift"
                 {
                     if let Some(first) = extract_uint32_after(text, "var next: UInt32 = ") {
                         claims.push((first, Some(first + 15 - 1), where_str));
@@ -2474,7 +2479,8 @@ pub fn hotkey_id_claims(path: &str, text: &str) -> (Vec<(u32, Option<u32>, Strin
                             where_str
                         ));
                     }
-                } else if path == "Sources/VitruvianAtrium/Services/Platform/ToolShortcutRegistrar.swift"
+                } else if path
+                    == "Sources/VitruvianAtrium/Services/Platform/ToolShortcutRegistrar.swift"
                 {
                     if let Some(first) =
                         extract_uint32_after(text, "static let firstHotkeyID: UInt32 = ")

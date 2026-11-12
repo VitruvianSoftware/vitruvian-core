@@ -11,10 +11,10 @@ import Foundation
 import ImageIO
 import SwiftUI
 import VMStatisticsCompat
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 enum PreferencesFeatureTests {
     static func run(_ suite: TestSuite) {
@@ -87,7 +87,7 @@ enum PreferencesFeatureTests {
         Defaults.migrateLiquidGlassIsland(in: glassDefaults, domainName: glassDomain)
         suite.expect(!glassDefaults.bool(forKey: DefaultsKey.notchLiquidGlassEnabled),
                "an explicit island choice survives later launches")
-        let companionDomain = "com.vitruviansoftware.vitruvian.tests.companion-beta.\(UUID().uuidString)"
+        let companionDomain = "com.vitruviansoftware.atrium.tests.companion-beta.\(UUID().uuidString)"
         let companionDefaults = ScratchDefaults.suite(named: companionDomain)!
         defer { companionDefaults.removePersistentDomain(forName: companionDomain) }
         // Setup writes every feature's availability, the companion's as off.
@@ -158,7 +158,7 @@ enum PreferencesFeatureTests {
         suite.expect(registeredDefaults[DefaultsKey.keepAwakeIconTint] as? String == KeepAwakeIconTint.orange.rawValue,
                "keep-awake active icon tint defaults to orange")
         suite.expect(registeredDefaults[DefaultsKey.keepAwakeActiveIcon] as? String == KeepAwakeActiveIcon.vitruvian.rawValue,
-               "keep-awake active icon defaults to the Vitruvian glyph")
+               "keep-awake active icon defaults to the Vitruvian Atrium glyph")
         suite.expect(registeredDefaults[DefaultsKey.keepAwakeMouseJiggleEnabled] as? Bool == false,
                "Keep Awake mouse movement is opt-in")
         suite.expect(registeredDefaults[DefaultsKey.keepAwakeMouseJiggleInterval] as? Int == 5,
@@ -174,11 +174,11 @@ enum PreferencesFeatureTests {
         suite.expect(Defaults.sanitizedKeepAwakeActiveIcon("coffee") == .coffee,
                "valid keep-awake active icon is preserved")
         suite.expect(Defaults.sanitizedKeepAwakeActiveIcon("bad") == .vitruvian,
-               "invalid keep-awake active icon falls back to the Vitruvian glyph")
+               "invalid keep-awake active icon falls back to the Vitruvian Atrium glyph")
         suite.expect(KeepAwakeActiveIcon.eye.systemSymbolName == "eye.fill",
                "keep-awake eye option maps to its menu bar symbol")
         suite.expect(registeredDefaults[DefaultsKey.menuBarIconSymbol] as? String == "",
-               "the menu bar shows the Vitruvian glyph until a symbol is chosen")
+               "the menu bar shows the Vitruvian Atrium glyph until a symbol is chosen")
         suite.expect(Defaults.sanitizedMenuBarIconSymbol("  bolt.fill\n") == "bolt.fill"
                      && Defaults.sanitizedMenuBarIconSymbol(" ") == ""
                      && Defaults.sanitizedMenuBarIconSymbol(nil) == "",

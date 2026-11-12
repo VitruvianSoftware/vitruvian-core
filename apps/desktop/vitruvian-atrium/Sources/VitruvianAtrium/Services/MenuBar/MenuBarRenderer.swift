@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// A live reading the user can pin next to the menu bar icon.
 package enum MenuBarMetric: String, CaseIterable, Identifiable {

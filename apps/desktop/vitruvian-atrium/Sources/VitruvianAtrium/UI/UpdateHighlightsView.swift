@@ -2,9 +2,9 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
 
 /// The release's Dynamic Island demonstration, stored inside the app bundle.
 package struct UpdateHighlightsView: View {
@@ -27,7 +27,7 @@ package struct UpdateHighlightsView: View {
         VStack(spacing: 16) {
             VStack(spacing: 4) {
                 Text(FeatureStrings.notch(l10n.language).title).font(.title2.weight(.semibold))
-                Text(AppInfo.isDeveloperBuild ? text.preview : "Vitruvian \(AppInfo.version)")
+                Text(AppInfo.isDeveloperBuild ? text.preview : "Vitruvian Atrium \(AppInfo.version)")
                     .font(.caption).foregroundStyle(.secondary)
             }
             .frame(height: 42)

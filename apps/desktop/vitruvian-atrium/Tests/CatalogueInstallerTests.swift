@@ -2,8 +2,8 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 
 /// Installing from the catalog, up to the agreement sheet and no further: the
 /// download, its checks in their order, the zip, and the offer. The network is

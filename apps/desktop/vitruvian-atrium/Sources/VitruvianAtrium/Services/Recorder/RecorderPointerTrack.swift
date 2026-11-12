@@ -5,8 +5,8 @@ import CoreGraphics
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Where the pointer went, when it was pressed, and which pointer it was,
 /// stored next to the master.

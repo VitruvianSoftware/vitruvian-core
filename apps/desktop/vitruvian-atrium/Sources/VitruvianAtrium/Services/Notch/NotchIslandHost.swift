@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import AppKit
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// What the island asks of the window that draws it. `NotchWindowHost` is the
 /// real one; `NotchService.Environment.makeHost` builds it, and a test can

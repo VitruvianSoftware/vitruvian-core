@@ -4,7 +4,7 @@
 import AppKit
 import Combine
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 package struct CodexProfileLimitsState: Equatable, Identifiable, Sendable {
     package var profile: CodexAccountProfile
@@ -60,7 +60,7 @@ package final class CodexProfileLimitsService: ObservableObject {
     /// Asks the due homes again while the page shows any; nil otherwise.
     package private(set) var timer: Timer?
 
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.codex-profile-limits", qos: .utility)
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.codex-profile-limits", qos: .utility)
     private let defaults: UserDefaults
     private let reader: Reader?
     private let loginShellPath: @Sendable () -> String?

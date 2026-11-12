@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import ApplicationServices
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Apps that switch into an assistive mode through the application-level
 /// AXEnhancedUserInterface attribute mishandle window frame changes while that

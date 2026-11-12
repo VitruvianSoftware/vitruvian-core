@@ -4,10 +4,10 @@
 import Combine
 import CoreAudio
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// Runs the island's volume notice with real Combine delivery, a controlled
 /// audio source and a clock of its own, without changing hardware volume.

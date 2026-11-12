@@ -3,8 +3,8 @@
 
 import CoreGraphics
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Activation is useful evidence even before Accessibility can name a window.
 /// Keep it in the same timeline as focus, rather than filing a missed window

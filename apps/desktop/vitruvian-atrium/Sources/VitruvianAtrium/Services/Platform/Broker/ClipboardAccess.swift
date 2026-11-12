@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import AppKit
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// The clipboard capabilities: writing text, reading text, and rewriting a
 /// copied link in place. Each operation checks its own capability.
@@ -25,7 +25,7 @@ package struct ClipboardAccess {
         @MainActor package static let live = Backing(write: { text, completion in
             GeneralPasteboardAccess.shared.async({
                 NSPasteboard.general.clearContents()
-                NSPasteboard.general.declareVitruvianSource()
+                NSPasteboard.general.declareAtriumSource()
                 return NSPasteboard.general.setString(text, forType: .string)
             }, then: { copied in
                 completion(copied)

@@ -4,7 +4,7 @@
 import Combine
 import Foundation
 import os
-import VitruvianCore
+import VitruvianAtriumCore
 import VitruvianToolProtocol
 
 /// A web panel's page, as the panel host holds it. The host is the one

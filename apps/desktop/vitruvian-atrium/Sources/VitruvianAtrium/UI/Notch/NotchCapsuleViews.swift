@@ -2,9 +2,9 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
 
 // A floating capsule has no camera inside it, so what the closed island shows
 // runs in one row from one round end to the other, and the capsule is as

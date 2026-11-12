@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// One harness's log line parser, chosen by `AgentProvider.reader`. What it
 /// carries from line to line lives in the shared `AgentLogState`.

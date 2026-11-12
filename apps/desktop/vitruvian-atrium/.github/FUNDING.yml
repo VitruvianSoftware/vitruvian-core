@@ -5,6 +5,6 @@
 # infrastructure/pulumi/platform/repo-config/sponsor-button-repos.txt.
 # This folder is exported to the root of the public mirror repository, so the
 # file lands in the mirror's own .github/ (tools/copybara/copy.bara.sky).
-# It opens the Vitruvian page, the one the app's Settings > Support > Donate
+# It opens the Vitruvian Atrium page, the one the app's Settings > Support > Donate
 # button opens.
 custom: ["https://vitruviansoftware.dev/donate/vitruvian/"]

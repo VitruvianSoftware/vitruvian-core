@@ -1,7 +1,7 @@
 # Preference Cleanup Tests
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/bazel/src/preference_cleanup_tests`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/bazel/src/preference_cleanup_tests`.
 
 ## Interface
 - `[lib.rs:TEST_PREF_PREFIXES]`
@@ -23,4 +23,4 @@ Component package providing implementation for `apps/desktop/vitruvian/bazel/src
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/bazel/src/preference_cleanup_tests/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/bazel/src/preference_cleanup_tests/...`

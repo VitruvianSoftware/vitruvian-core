@@ -3,8 +3,8 @@
 
 import CoreGraphics
 import Darwin
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Recognises keyboard events this app posts itself, so a filter meant for
 /// physical typing can leave them alone.

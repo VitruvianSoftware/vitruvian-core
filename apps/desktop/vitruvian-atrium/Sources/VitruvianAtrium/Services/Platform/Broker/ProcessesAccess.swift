@@ -3,7 +3,7 @@
 
 import Darwin
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// What a tool scans processes with, off the main thread. It is handed out
 /// after the broker's checks pass, and holds no way to change what it runs.

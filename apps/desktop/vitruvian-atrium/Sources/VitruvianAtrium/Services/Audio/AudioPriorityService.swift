@@ -3,8 +3,8 @@
 
 import Combine
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Automatically selects the highest-priority connected audio device.
 ///

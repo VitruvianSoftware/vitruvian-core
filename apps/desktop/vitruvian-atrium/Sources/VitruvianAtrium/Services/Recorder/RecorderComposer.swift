@@ -4,8 +4,8 @@
 import AVFoundation
 import AppKit
 import CoreImage
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Turns a recording plus an edit into the picture the person sees, for both
 /// the editor preview and the export. One function decides what a frame looks

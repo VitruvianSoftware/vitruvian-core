@@ -1,7 +1,7 @@
 # Menupanel
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/Sources/Vitruvian/UI/MenuPanel`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/UI/MenuPanel`.
 
 ## Interface
 - `[ClipboardClearRecentConfirmation.swift:ClipboardClearRecentConfirmation]`
@@ -19,4 +19,4 @@ Component package providing implementation for `apps/desktop/vitruvian/Sources/V
 - [PanelPortManagerView.swift:92]: `TextField(strings.filter, text: $service.query)`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/Sources/Vitruvian/UI/MenuPanel/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/UI/MenuPanel/...`

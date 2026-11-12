@@ -2,8 +2,8 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import AppKit
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// What services and views may ask of the running app: its windows, the menu
 /// bar popover and the status item. `AppDelegate` conforms, so nothing below

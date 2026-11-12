@@ -3,9 +3,9 @@
 
 import AppKit
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
 
 /// Every text field on the Clean URL page. A grouped Form keeps a label
 /// column even for an empty label, which left every field on the right half

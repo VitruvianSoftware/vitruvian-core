@@ -3,10 +3,10 @@
 
 import AppKit
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The real panel presentation (`MenuPanelPresenter`) over a controlled
 /// platform: displays, windows, a status button and a popover that only
@@ -204,7 +204,7 @@ enum MenuPanelRecoveryTests {
             fixture.host.popoverWillClose(Notification(name: Notification.Name("willClose")))
             fixture.host.popoverDidClose(Notification(name: Notification.Name("closed")))
         }
-        // A close Vitruvian asks for itself, which marks it app requested.
+        // A close Vitruvian Atrium asks for itself, which marks it app requested.
         func requestClose(_ fixture: Fixture, _ reason: PanelCloseReason) {
             fixture.host.closePopoverNow(animated: false, reason: reason, completion: nil)
             fixture.host.popoverWillClose(Notification(name: Notification.Name("willClose")))
@@ -501,7 +501,7 @@ enum MenuPanelRecoveryTests {
         do {
             let fixture = setup(); fixture.currentEvent = event(age: 1); close(fixture)
             expect(!fixture.popover.isShown && fixture.handbackReasons == [nil],
-                   "a close Vitruvian did not ask for carries no reason to hand activation back")
+                   "a close Vitruvian Atrium did not ask for carries no reason to hand activation back")
         }
         do {
             let fixture = setup()

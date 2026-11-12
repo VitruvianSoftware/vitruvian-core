@@ -306,8 +306,8 @@ and holding nothing but an empty `.keep-directory`.
 
 After changing a file under `Sources/VitruvianToolProtocol`, the Vitruvian app
 must take the change too:
-`bazel run //apps/desktop/vitruvian:pin_tool_protocol`, and a line in
-`apps/desktop/vitruvian/UPSTREAM.md`. A test in the app's folder fails until
+`bazel run //apps/desktop/vitruvian-atrium:pin_tool_protocol`, and a line in
+`apps/desktop/vitruvian-atrium/UPSTREAM.md`. A test in the app's folder fails until
 you do.
 
 ## Licence

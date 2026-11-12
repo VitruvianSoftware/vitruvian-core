@@ -2,10 +2,10 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The closed-lid screen dimming, through the real manager and its lid watch
 /// over the contract's machine. A fresh machine's lid is closed, so every

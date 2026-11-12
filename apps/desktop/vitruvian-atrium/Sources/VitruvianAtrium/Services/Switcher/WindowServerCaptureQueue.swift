@@ -3,8 +3,8 @@
 
 import Foundation
 import os
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Lets one window capture reach the system at a time, ScreenCaptureKit work
 /// included, and keeps the synchronous window-server calls off Swift's
@@ -50,10 +50,10 @@ package final class WindowServerCaptureQueue: @unchecked Sendable {
         return { _ = preflight("kTCCServiceScreenCapture" as CFString, nil) }
     }()
 
-    private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian",
+    private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "atrium",
                                     category: "window-capture")
 
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.window-capture", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.window-capture", qos: .userInitiated)
     private let lock = NSLock()
     private let now: () -> TimeInterval
     private let checkPermission: () -> Void

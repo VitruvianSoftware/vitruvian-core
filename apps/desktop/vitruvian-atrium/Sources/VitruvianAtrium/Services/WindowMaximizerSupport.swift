@@ -3,8 +3,8 @@
 
 import CoreGraphics
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 package enum WindowMaximizerSupport {
     /// An app on the exception list keeps the green button's own behavior, so

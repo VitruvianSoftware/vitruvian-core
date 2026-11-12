@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import AppKit
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// The services the island reads, starts, stops and asks to act.
 /// `SystemNotchIslandServices` is the app's, the shared instances; a test can

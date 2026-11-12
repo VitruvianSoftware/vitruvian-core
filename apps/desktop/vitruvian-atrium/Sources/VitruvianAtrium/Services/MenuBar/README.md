@@ -1,7 +1,7 @@
 # Menubar
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/Sources/Vitruvian/Services/MenuBar`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/MenuBar`.
 
 ## Interface
 - Internal implementation components
@@ -13,4 +13,4 @@ Component package providing implementation for `apps/desktop/vitruvian/Sources/V
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/Sources/Vitruvian/Services/MenuBar/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/MenuBar/...`

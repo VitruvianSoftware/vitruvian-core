@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Pure helpers for the self-update installer: the shell script text, the
 /// quoting for its elevated (admin) variant and the parsing of the result
@@ -20,17 +20,17 @@ package enum UpdateInstallerSupport {
     }
 
     /// What a downloaded disk image must be signed by before it is mounted:
-    /// Vitruvian's Developer ID team, the one that signs the app and its fan
+    /// Vitruvian Atrium's Developer ID team, the one that signs the app and its fan
     /// helper (`FanControlIdentifiers.teamID`).
     package static var diskImageRequirement: String {
         "anchor apple generic and certificate leaf[subject.OU] = \"\(FanControlIdentifiers.teamID)\""
     }
 
-    /// What the app inside the image must be: Vitruvian's bundle, signed by
+    /// What the app inside the image must be: Vitruvian Atrium's bundle, signed by
     /// the same team. The installer also asks Gatekeeper, which needs it
     /// notarized.
     package static var appRequirement: String {
-        "identifier \"com.vitruviansoftware.vitruvian\" and \(diskImageRequirement)"
+        "identifier \"com.vitruviansoftware.atrium\" and \(diskImageRequirement)"
     }
 
     /// The installer: waits for the app to exit, verifies and mounts the DMG,
@@ -114,7 +114,7 @@ package enum UpdateInstallerSupport {
             # app at all. The staging name is hidden: Spotlight recognizes the
             # copy as an app bundle whatever its suffix, and when the swap lands
             # while that copy is still being indexed, the installed app keeps
-            # showing up in search as "Vitruvian.app.update-new".
+            # showing up in search as "Vitruvian Atrium.app.update-new".
             STAGE="$DIR/.$NAME.update-new"
             # A copy an earlier build left behind under the visible name is the
             # same leftover, still indexed; it goes with this one.

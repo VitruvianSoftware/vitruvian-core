@@ -1,7 +1,7 @@
 # Portmanager
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/Sources/Vitruvian/Services/PortManager`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/PortManager`.
 
 ## Interface
 - Internal implementation components
@@ -15,4 +15,4 @@ Component package providing implementation for `apps/desktop/vitruvian/Sources/V
 - [PortManagerSupport.swift:35]: `components.scheme = "http"`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/Sources/Vitruvian/Services/PortManager/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/PortManager/...`

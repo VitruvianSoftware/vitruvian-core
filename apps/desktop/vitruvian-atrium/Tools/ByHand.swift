@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 VitruvianSoftware
 
-// Looks at, and presses, the controls of the running Vitruvian app from the
+// Looks at, and presses, the controls of the running Vitruvian Atrium app from the
 // shell, through the macOS Accessibility API. It is how the checks by hand
 // of the tools-from-outside work were done on 2026-10-12, kept as one
 // command. AGENTS.md, "Checking the app by hand, from the shell", says how
@@ -254,7 +254,7 @@ func selectPage(_ title: String, in app: AXUIElement) -> Bool {
 
 // MARK: - Keys
 
-/// True when Vitruvian is the app the keyboard is on.
+/// True when Vitruvian Atrium is the app the keyboard is on.
 func keyboardIsOnTheApp(_ process: NSRunningApplication) -> Bool {
     guard let focused = attribute(AXUIElementCreateSystemWide(), kAXFocusedApplicationAttribute) else { return false }
     var pid: pid_t = 0
@@ -454,7 +454,7 @@ func barResults(_ app: AXUIElement) -> [Control]? {
 }
 
 /// Leaves the bar closed: Escape, twice at most, and only while it is open
-/// and the keyboard is on Vitruvian.
+/// and the keyboard is on Vitruvian Atrium.
 func barIsOpen(_ app: AXUIElement) -> Bool {
     windows(of: app, except: Words.settingsWindow).flatMap(controls(under:))
         .contains { $0.role == "AXTextField" && $0.description == Words.commandBarPage }

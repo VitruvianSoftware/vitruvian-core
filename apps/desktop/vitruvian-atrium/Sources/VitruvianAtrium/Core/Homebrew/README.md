@@ -1,7 +1,7 @@
 # Homebrew
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/Sources/Vitruvian/Core/Homebrew`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Core/Homebrew`.
 
 ## Interface
 - Internal implementation components
@@ -15,4 +15,4 @@ Component package providing implementation for `apps/desktop/vitruvian/Sources/V
 - [HomebrewSupport.swift:437]: `return HomebrewCommand(executable: brewPath, arguments: ["search", flag, query])`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/Sources/Vitruvian/Core/Homebrew/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Core/Homebrew/...`

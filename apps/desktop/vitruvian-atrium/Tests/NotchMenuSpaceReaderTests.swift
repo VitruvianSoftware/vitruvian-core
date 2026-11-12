@@ -3,10 +3,10 @@
 
 import CoreGraphics
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// Drives the island's menu-space reader with every step run by hand: the
 /// once-a-second tick, the read off the main thread and the answer's return

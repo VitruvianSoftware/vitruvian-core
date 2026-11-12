@@ -3,10 +3,10 @@
 
 import AppKit
 import QuartzCore
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 enum NotchEqualizerTests {
     /// Real native views and layers, with visibility supplied by a window

@@ -2,10 +2,10 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 import VitruvianToolProtocol
-import VitruvianUI
+import VitruvianAtriumUI
 
 /// The one status mark the closed island shows: which of every tool's
 /// status it is. Plain values; nothing is drawn.

@@ -2,10 +2,10 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The ring between a tapped app's IO thread and the AirPlay feed. Frame
 /// positions only ever grow, so an all-day stream must stay correct once they
@@ -133,7 +133,7 @@ enum AirPlayRingBufferContract {
     }
 }
 
-/// Only Vitruvian's own AirPlay entry streams through the route picker. Every
+/// Only Vitruvian Atrium's own AirPlay entry streams through the route picker. Every
 /// other output, including AirPlay devices macOS exposes, follows the normal
 /// device rules: listed means usable, missing means fall back to the default.
 enum AirPlayRouteContract {

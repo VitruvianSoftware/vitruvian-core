@@ -3,8 +3,8 @@
 
 import Foundation
 import AppKit
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 
 /// The capability broker against services that record what they were asked
 /// and do nothing.

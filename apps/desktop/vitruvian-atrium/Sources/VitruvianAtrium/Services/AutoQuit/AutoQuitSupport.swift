@@ -3,8 +3,8 @@
 
 import ApplicationServices
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 package enum AutoQuitWindowEvent: Equatable {
     case windowDestroyed

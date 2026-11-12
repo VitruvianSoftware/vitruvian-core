@@ -2,9 +2,9 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
 
 /// The Paste as plain text section of Settings › Clipboard. It is a file of
 /// its own so that everything in it can be held to the tool's own rules; the

@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// When fan control starts and stops on its own: bringing back the user's
 /// manual speed or curve after a launch or wake while resume is on, keeping

@@ -3,8 +3,8 @@
 
 import AppKit
 import QuartzCore
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// The drop that carries the Command Bar out of the Dynamic Island, in a
 /// window of its own at the island's level. `CommandBarDropletMotion` works

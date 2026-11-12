@@ -4,10 +4,10 @@
 import AppKit
 import CoreGraphics
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The module's own `NotchScreenRefresh`, wired the way `NotchService` wires
 /// it, to a scripted island; the clock, scheduling, permission and menu reads
@@ -60,7 +60,7 @@ enum NotchScreenRefreshContract {
         final class Workspace { var frontmostApplication: RunningApplication? }
     }
     enum OwnApp {
-        static let main = RunningApplication(bundleIdentifier: "com.vitruviansoftware.vitruvian.tests.notch")
+        static let main = RunningApplication(bundleIdentifier: "com.vitruviansoftware.atrium.tests.notch")
     }
     enum Clipboard {
         static let shared = History()

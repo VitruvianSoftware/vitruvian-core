@@ -4,8 +4,8 @@
 import AppKit
 import ApplicationServices
 import Combine
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Keeps only notifications received during this unlocked, opted-in session.
 /// Native banners are preserved; no notification databases or message stores are read.
@@ -17,7 +17,7 @@ package final class NotchNotificationService: ObservableObject {
     @Published package private(set) var monitoring = false
     @Published package private(set) var openingID: UUID?
     package let received = PassthroughSubject<NotchSystemNotification, Never>()
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.notch-notifications", qos: .utility)
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.notch-notifications", qos: .utility)
     private var appIcons: [String: NSImage] = [:]
     private var sourceApplications: [UUID: String] = [:]
     @Published package private(set) var unavailableID: UUID?

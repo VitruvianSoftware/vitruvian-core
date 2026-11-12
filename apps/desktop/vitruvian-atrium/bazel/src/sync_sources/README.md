@@ -1,7 +1,7 @@
 # Sync Sources
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/bazel/src/sync_sources`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/bazel/src/sync_sources`.
 
 ## Interface
 - `[lib.rs:HEADER]`
@@ -29,4 +29,4 @@ Component package providing implementation for `apps/desktop/vitruvian/bazel/src
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/bazel/src/sync_sources/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/bazel/src/sync_sources/...`

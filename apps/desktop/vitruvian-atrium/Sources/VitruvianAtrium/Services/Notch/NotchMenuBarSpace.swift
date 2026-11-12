@@ -3,8 +3,8 @@
 
 import AppKit
 import ApplicationServices
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Geometry only: never reads menu titles, opens menus or requests permission.
 /// Run off-main. Missing geometry fails closed rather than covering a menu.

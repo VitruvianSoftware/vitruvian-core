@@ -3,8 +3,8 @@
 
 import AppKit
 import ApplicationServices
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// One menu command of the app in front, as the bar offers it.
 package struct CommandBarMenuItem {
@@ -27,7 +27,7 @@ package struct CommandBarMenuItem {
 }
 
 /// Reads the menu bar of whichever app is in front and lets the command bar
-/// run any of its commands. This is what makes the bar reach past Vitruvian:
+/// run any of its commands. This is what makes the bar reach past Vitruvian Atrium:
 /// every menu of every app becomes searchable by name.
 ///
 /// The whole walk happens away from the main thread and behind a per-app

@@ -28,7 +28,7 @@
 #    it, attaches the DMGs, the ZIP and their checksums to the release, and
 #    pushes Casks/courier.rb to VitruvianSoftware/homebrew-tap.
 # Unlike HomeSpeaker, Courier is notarised: the signing step and the notary
-# key are the ones delivery-vitruvian.yaml's production rung uses (one
+# key are the ones delivery-vitruvian-atrium.yaml's production rung uses (one
 # Developer ID for every Mac app). There is no beta channel: nothing is
 # published on a push, only when a release PR merges.
 #
@@ -130,7 +130,7 @@ jobs:
           SIGNING_CERT_P12: ${{ secrets.VITRUVIAN_SIGNING_CERT_P12 }}
           SIGNING_CERT_PASSWORD: ${{ secrets.VITRUVIAN_SIGNING_CERT_PASSWORD }}
           REQUIRE_SIGNING: "1"
-        run: bazel run //apps/desktop/vitruvian:ci_setup_signing
+        run: bazel run //apps/desktop/vitruvian-atrium:ci_setup_signing
 
       - name: Mint App token for the Homebrew tap
         id: tap-token

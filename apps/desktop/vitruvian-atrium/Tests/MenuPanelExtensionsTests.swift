@@ -4,10 +4,10 @@
 import AppKit
 import Foundation
 import SwiftUI
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 import VitruvianToolProtocol
-import VitruvianUI
+import VitruvianAtriumUI
 
 /// The menu bar panel's Extensions tab: its place among the panel's saved
 /// sections, when it shows by default, the switch each extension has for it,
@@ -41,7 +41,7 @@ enum MenuPanelExtensionsTests {
 
     /// Preferences of their own, empty, for one check.
     static func withDefaults(_ name: String, _ body: (UserDefaults) -> Void) {
-        let domain = "com.vitruviansoftware.vitruvian.tests.menu-extensions.\(name)"
+        let domain = "com.vitruviansoftware.atrium.tests.menu-extensions.\(name)"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
@@ -99,7 +99,7 @@ enum MenuPanelExtensionsTests {
             MenuPanelExtensionsSupport.setShown(false, for: board, in: defaults)
             suite.expect(defaults.string(forKey: DefaultsKey.panelHiddenExtensions) == "com.acme.board,com.acme.deploys",
                          "the extensions turned off are saved as their ids, in order")
-            let again = ScratchDefaults.suite(named: "com.vitruviansoftware.vitruvian.tests.menu-extensions.switches")!
+            let again = ScratchDefaults.suite(named: "com.vitruviansoftware.atrium.tests.menu-extensions.switches")!
             suite.expect(!MenuPanelExtensionsSupport.isShown(deploys, in: again)
                              && !MenuPanelExtensionsSupport.isShown(board, in: again)
                              && MenuPanelExtensionsSupport.isShown(notes, in: again),

@@ -1,7 +1,7 @@
 # Agentusage
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/Sources/Vitruvian/Services/AgentUsage`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/AgentUsage`.
 
 ## Interface
 - `[AgentLogObject.swift:AgentLogObject]`
@@ -23,4 +23,4 @@ Component package providing implementation for `apps/desktop/vitruvian/Sources/V
 - [AgentPriceSource.swift:89]: `func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didRecei...`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/Sources/Vitruvian/Services/AgentUsage/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/AgentUsage/...`

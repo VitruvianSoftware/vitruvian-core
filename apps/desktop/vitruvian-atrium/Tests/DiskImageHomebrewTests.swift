@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianServices
+import VitruvianAtriumServices
 
 /// The installer's Homebrew rule over temporary folders. No disk image is
 /// mounted and no app is installed or opened.

@@ -1,7 +1,7 @@
 # Run Unit Tests
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/bazel/src/run_unit_tests`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/bazel/src/run_unit_tests`.
 
 ## Interface
 - `[lib.rs:Config]`
@@ -25,4 +25,4 @@ Component package providing implementation for `apps/desktop/vitruvian/bazel/src
 - [lib.rs:202]: `let t_out = thread::spawn(move || {`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/bazel/src/run_unit_tests/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/bazel/src/run_unit_tests/...`

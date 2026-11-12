@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// The app's live table of tools and their commands. A surface asks it what
 /// to list and tells it what to run, and names no tool's service.

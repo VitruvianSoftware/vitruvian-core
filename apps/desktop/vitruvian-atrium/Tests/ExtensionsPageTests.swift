@@ -2,9 +2,9 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The Extensions page in Settings, as plain values: where it sits in the
 /// sidebar, the line the Features page shows in place of the old card, the

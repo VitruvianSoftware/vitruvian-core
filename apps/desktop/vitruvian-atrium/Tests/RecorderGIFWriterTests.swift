@@ -6,8 +6,8 @@ import Darwin
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 
 enum RecorderGIFWriterTests {
     static func run(_ suite: TestSuite) {

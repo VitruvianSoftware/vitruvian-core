@@ -3,10 +3,10 @@
 
 import CoreGraphics
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 enum DockAutohideHoldTests {
     /// The preview service's side of a held session, recorded. No event tap
@@ -65,7 +65,7 @@ enum DockAutohideHoldTests {
     }
 
     static func run(_ suite: TestSuite) {
-        let name = "com.vitruviansoftware.vitruvian.tests.dock-hold.\(UUID().uuidString)"
+        let name = "com.vitruviansoftware.atrium.tests.dock-hold.\(UUID().uuidString)"
         let defaults = ScratchDefaults.suite(named: name)!
         defer { defaults.removePersistentDomain(forName: name) }
         let marker = DefaultsKey.dockPreviewRestoreAutohide

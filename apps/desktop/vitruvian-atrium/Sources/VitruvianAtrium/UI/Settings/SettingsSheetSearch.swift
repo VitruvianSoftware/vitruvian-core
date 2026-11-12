@@ -2,21 +2,21 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// What an extension's settings sheet holds, as the sheet's search and its
 /// row of section links read it: every setting with the section it is in,
 /// the words it can be found by, and where it is on the page. Plain values,
 /// so the tests check what a search finds without drawing the sheet.
 ///
-/// The sheet is one page: Vitruvian's own rows (the island switches and the
+/// The sheet is one page: Vitruvian Atrium's own rows (the island switches and the
 /// settings the manifest declares), then the extension's page, then its
-/// commands, then what it uses. Vitruvian builds the sections and does the
+/// commands, then what it uses. Vitruvian Atrium builds the sections and does the
 /// search from what the extension sends, so every extension has them.
 package struct SettingsSheetIndex: Equatable {
     /// A place on the sheet a link scrolls to, or a setting is drawn at.
     package enum Anchor: Hashable, Sendable {
-        /// One of Vitruvian's own rows, by its key (`showsInIsland`,
+        /// One of Vitruvian Atrium's own rows, by its key (`showsInIsland`,
         /// `showsStatus`, `setting(_:)`); the empty key is their heading.
         case vitruvian(String)
         /// The top of the extension's page: the sheet's settings title,
@@ -30,7 +30,7 @@ package struct SettingsSheetIndex: Equatable {
         /// The heading of what the extension uses.
         case uses
 
-        /// The heading of Vitruvian's own rows.
+        /// The heading of Vitruvian Atrium's own rows.
         package static let vitruvianHeading = Anchor.vitruvian("")
         /// The switch that lists the extension's page in the island.
         package static let showsInIsland = Anchor.vitruvian("island")
@@ -60,7 +60,7 @@ package struct SettingsSheetIndex: Equatable {
         package let anchor: Anchor
         /// The items of the extension's page drawn with it when a search
         /// keeps it: its own, its section's heading, its sub-heading and
-        /// the caption read as its help. Empty for a row Vitruvian draws.
+        /// the caption read as its help. Empty for a row Vitruvian Atrium draws.
         package let items: [Int]
 
         package init(section: String, sectionAnchor: Anchor, title: String, text: [String], anchor: Anchor,
@@ -107,7 +107,7 @@ package struct SettingsSheetIndex: Equatable {
             anchors.append(anchor)
         }
 
-        // Vitruvian's own rows.
+        // Vitruvian Atrium's own rows.
         let own = strings.vitruvianSection
         var vitruvian: [Entry] = []
         if detail.showsInIsland != nil {
@@ -154,7 +154,7 @@ package struct SettingsSheetIndex: Equatable {
     }
 
     /// The index of an extension's settings page alone, as the Dynamic
-    /// Island page draws it, without Vitruvian's own rows, the commands or
+    /// Island page draws it, without Vitruvian Atrium's own rows, the commands or
     /// what the extension uses: its sections, or one titled `title` when it
     /// sends none. `page` is nil while there is none to read (it is
     /// loading, or a web page: `isWeb`).

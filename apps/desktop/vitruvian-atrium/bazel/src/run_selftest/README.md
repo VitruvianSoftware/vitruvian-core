@@ -1,7 +1,7 @@
 # Run Selftest
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/bazel/src/run_selftest`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/bazel/src/run_selftest`.
 
 ## Interface
 - `[lib.rs:select_bundle_candidate]`
@@ -17,4 +17,4 @@ Component package providing implementation for `apps/desktop/vitruvian/bazel/src
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/bazel/src/run_selftest/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/bazel/src/run_selftest/...`

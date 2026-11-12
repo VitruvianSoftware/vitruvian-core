@@ -1,7 +1,7 @@
 # Toolpanels
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/Sources/Vitruvian/UI/ToolPanels`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/UI/ToolPanels`.
 
 ## Interface
 - `[BlockTreeView.swift:ChoiceRow]`
@@ -13,4 +13,4 @@ Component package providing implementation for `apps/desktop/vitruvian/Sources/V
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/Sources/Vitruvian/UI/ToolPanels/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/UI/ToolPanels/...`

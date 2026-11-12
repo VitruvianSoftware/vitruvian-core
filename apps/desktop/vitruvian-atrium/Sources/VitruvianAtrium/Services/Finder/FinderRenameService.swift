@@ -6,8 +6,8 @@ import ApplicationServices
 import Carbon.HIToolbox
 import CoreGraphics
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Turns one chosen key combination into Finder's native Rename command.
 /// Unrelated keys stay on the tap thread's fast path, and the tap only lives
@@ -67,7 +67,7 @@ package final class FinderRenameService: @unchecked Sendable {
             shouldStopTapThread = false
             pendingStartAfterStop = false
             let thread = Thread { [weak self] in self?.runEventTap() }
-            thread.name = "Vitruvian Finder Rename"
+            thread.name = "Vitruvian Atrium Finder Rename"
             thread.qualityOfService = .userInteractive
             tapThread = thread
             return thread

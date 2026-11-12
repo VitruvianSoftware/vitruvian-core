@@ -7,8 +7,8 @@ import Carbon.HIToolbox
 import Combine
 @preconcurrency import CoreGraphics
 import UniformTypeIdentifiers
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Turns the standard Back and Forward side buttons into the matching app
 /// commands. File managers and browsers expose those commands as Command-[ and
@@ -364,7 +364,7 @@ package final class MouseNavigationService: ObservableObject {
                                in app: NSRunningApplication?) -> MenuPressOutcome {
         guard let app else { return .missed(.unanswered) }
         let application = AXUIElementCreateApplication(app.processIdentifier)
-        // A busy target must not hold Vitruvian's main thread for AX's
+        // A busy target must not hold Vitruvian Atrium's main thread for AX's
         // multi-second default timeout. Child menu elements get the same
         // bound as they are traversed below.
         AXUIElementSetMessagingTimeout(application, 0.35)

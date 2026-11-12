@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 import VitruvianToolProtocol
 
 /// One tool the catalog lists, as `catalog/catalog.schema.json` describes

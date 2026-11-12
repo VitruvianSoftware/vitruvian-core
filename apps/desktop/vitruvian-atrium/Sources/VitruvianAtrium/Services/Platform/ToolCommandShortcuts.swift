@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// The shortcuts people gave to tool commands: one preference, a map from a
 /// command id's text to a combination. Keyed by the text, not by

@@ -2,9 +2,9 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
 
 /// A small history graph: a filled area under a smooth polyline. Hand-drawn with
 /// `Path` so the app needs no charting framework (and stays clear of the SwiftUI

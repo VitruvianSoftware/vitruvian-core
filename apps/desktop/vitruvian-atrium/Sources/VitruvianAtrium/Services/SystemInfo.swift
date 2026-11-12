@@ -4,8 +4,8 @@
 import Darwin
 import Foundation
 import IOKit.ps
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 package struct BatteryInfo: Equatable {
     package let percent: Int

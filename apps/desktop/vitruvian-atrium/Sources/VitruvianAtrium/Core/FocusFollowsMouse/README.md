@@ -1,7 +1,7 @@
 # Focusfollowsmouse
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/Sources/Vitruvian/Core/FocusFollowsMouse`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Core/FocusFollowsMouse`.
 
 ## Interface
 - Internal implementation components
@@ -15,4 +15,4 @@ Component package providing implementation for `apps/desktop/vitruvian/Sources/V
 - [FocusFollowsMouseSupport.swift:47]: `return query(processID)`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/Sources/Vitruvian/Core/FocusFollowsMouse/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Core/FocusFollowsMouse/...`

@@ -2,10 +2,10 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// Progress saved by one launch and picked up by the next must leave the
 /// store exactly as reading every log from its start would.
@@ -245,9 +245,9 @@ enum AgentUsageArchiveTests {
         // may parse differently.
         let release: [String: Any] = ["CFBundleShortVersionString": "3.5", "CFBundleVersion": "120"]
         var developer = release
-        developer["VitruvianBuildCommit"] = "abc1234 · 2026-10-01 09:00"
+        developer["VitruvianAtriumBuildCommit"] = "abc1234 · 2026-10-01 09:00"
         var rebuilt = release
-        rebuilt["VitruvianBuildCommit"] = "abc1234-dirty · 2026-10-01 09:05"
+        rebuilt["VitruvianAtriumBuildCommit"] = "abc1234-dirty · 2026-10-01 09:05"
         suite.expect(AgentUsageArchive.build(info: release) == "3.5-120"
                         && AgentUsageArchive.build(info: developer) != AgentUsageArchive.build(info: release)
                         && AgentUsageArchive.build(info: developer) != AgentUsageArchive.build(info: rebuilt),
@@ -397,7 +397,7 @@ enum AgentUsageArchiveTests {
 /// section off and quitting at once must still remove saved progress.
 enum AgentUsageArchiveSettleTests {
     static func run(_ suite: TestSuite) {
-        let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.agent-usage.settle-test")
+        let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.agent-usage.settle-test")
         var saved = 0
         var removed = 0
         func settle(keeping keeps: Bool) {

@@ -3,8 +3,8 @@
 
 import Darwin
 import Foundation
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 import VitruvianToolProtocol
 
 /// Adding a tool from a folder: its two folders, the store that holds what
@@ -741,7 +741,7 @@ enum ExternalToolStoreTests {
                          && after.store.listed.isEmpty && !after.exists(after.files) && !after.exists(after.data),
                      "a tool that is held back is removed like any other")
 
-        let domain = "com.vitruviansoftware.vitruvian.tests.tool-store"
+        let domain = "com.vitruviansoftware.atrium.tests.tool-store"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }

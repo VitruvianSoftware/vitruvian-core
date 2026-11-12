@@ -3,10 +3,10 @@
 
 import AVFoundation
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// Runs the editor's actual aiming lifecycle, and the undo that can take its
 /// zoom away, on the production editor model. The recording opens as a

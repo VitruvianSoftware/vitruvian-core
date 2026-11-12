@@ -4,15 +4,15 @@
 import AppKit
 import CoreGraphics
 import Foundation
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 
 /// Runs the production paste and restore sequence on a private pasteboard,
 /// read on the main queue as the test reads it. Held modifiers and the posted
 /// Command-V are the rig's; no system keys are posted.
 enum TransientPasteTests {
     final class Rig {
-        let pasteboard = NSPasteboard(name: NSPasteboard.Name("VitruvianTransientPasteTests-" + UUID().uuidString))
+        let pasteboard = NSPasteboard(name: NSPasteboard.Name("VitruvianAtriumTransientPasteTests-" + UUID().uuidString))
         var held: CGEventFlags = []
         /// What the pasteboard held as each Command-V went down.
         var inserted: [String] = []

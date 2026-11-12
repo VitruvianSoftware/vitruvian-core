@@ -6,8 +6,8 @@ import AppKit
 import IOKit.graphics
 import ObjectiveC.runtime
 import os
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// One display the brightness feature can talk to.
 package struct BrightnessDisplay: Identifiable, Equatable {
@@ -92,7 +92,7 @@ package final class BrightnessService: ObservableObject {
     /// here (issue #301 kind of reports), so the display pipeline narrates
     /// its decisions to the unified log, where a user can collect them with
     /// one `log show` command after something goes wrong.
-    nonisolated private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian",
+    nonisolated private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "atrium",
                                     category: "display")
 
     @Published package private(set) var displays: [BrightnessDisplay] = []
@@ -224,7 +224,7 @@ package final class BrightnessService: ObservableObject {
 
         /// Main-actor: it hands over the island.
         @MainActor package static var live: Environment {
-            let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.brightness", qos: .userInitiated)
+            let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.brightness", qos: .userInitiated)
             return Environment(
                 work: { queue.async(execute: $0) },
                 workSync: { work in queue.sync { work() } },
@@ -1670,7 +1670,7 @@ package final class BrightnessService: ObservableObject {
             shouldStopFunctionKeyThread = false
             pendingFunctionKeyRestart = false
             let thread = Thread { [weak self] in self?.runFunctionKeyTap() }
-            thread.name = "Vitruvian Brightness Keys"
+            thread.name = "Vitruvian Atrium Brightness Keys"
             thread.qualityOfService = .userInteractive
             functionKeyThread = thread
             return thread

@@ -3,7 +3,7 @@
 
 import AppKit
 import SwiftUI
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// Hosts the invisible view the system share sheet is anchored to. SwiftUI
 /// creates and owns that view, so the button reaches whichever one is on

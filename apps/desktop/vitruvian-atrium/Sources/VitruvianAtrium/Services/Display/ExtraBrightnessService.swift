@@ -4,8 +4,8 @@
 import AppKit
 import Metal
 import QuartzCore
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Pushes the built-in XDR display past its regular maximum brightness by
 /// using the panel's HDR headroom for everything on screen.

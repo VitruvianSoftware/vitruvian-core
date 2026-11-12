@@ -100,10 +100,10 @@ plus about 590 text-extracted method bodies.
 
 Change, in order:
 
-1. `VitruvianCore`: the `*Support.swift` pure logic, catalogs, preferences keys
+1. `VitruvianAtriumCore`: the `*Support.swift` pure logic, catalogs, preferences keys
    and strings. It must import no AppKit service singletons. Make what other
    modules use `public` (or `package`).
-2. `VitruvianServices` (depends on Core) and `VitruvianUI` (depends on Core and
+2. `VitruvianAtriumServices` (depends on Core) and `VitruvianAtriumUI` (depends on Core and
    Services). `App` becomes the thin executable.
 3. Tests depend on the modules directly (`@testable import`). Each
    `generate_sources.py` extraction is replaced as the code it targets moves
@@ -115,7 +115,7 @@ or UI), and no test reads production source as text.
 
 Landed (3.1, first cut):
 
-- **`VitruvianCore` is `Core/`, minus 16 files that still reach a service.**
+- **`VitruvianAtriumCore` is `Core/`, minus 16 files that still reach a service.**
   They were listed in `CORE_FILES_STILL_IN_APP` in `BUILD` (gone since 3.1c).
   - **Contents:** 83 files, which are the preferences keys, localization and all
     15 languages, the strings and pure helpers.
@@ -159,7 +159,7 @@ Landed (3.1b, the catalog and its helpers):
     fan helper compiles them too. Both depend on the module, and the helper
     links nothing else of the app.
   - **Imports:** Core re-exports the module (`@_exported import`), so app code
-    sees it through `import VitruvianCore`. The helper's `main.swift` and the
+    sees it through `import VitruvianAtriumCore`. The helper's `main.swift` and the
     three files it shares with the app import it directly.
 - **Still in the app:**
   - `AppKitExtensions` needs a screenshot service's `NSScreen.displayID`.
@@ -199,7 +199,7 @@ Landed (3.1c, the folder is the module):
   this step's own rule neither belongs in Core. The earlier plan was to split
   the permission-guide call out of `Permissions`, but that would still have
   left a service singleton in Core. No Core file uses either.
-- **`CORE_FILES_STILL_IN_APP` is gone.** `VitruvianCore` is now exactly the
+- **`CORE_FILES_STILL_IN_APP` is gone.** `VitruvianAtriumCore` is now exactly the
   `Core/` folder: a file there that reaches a service fails to compile.
 - **Checks that ran before macOS, on Linux:** the whole folder type-checks as
   one module with the SDK stand-ins, adding only SDK-gap errors (`NSScreen`
@@ -231,9 +231,9 @@ The order:
    - **3.2c-2, the view factory** (landed, below).
 4. **3.2d, the Notch cluster** (landed, below).
 5. **3.2e, the split**, one module per step, smallest first:
-   - **3.2e-1, `VitruvianDesign`** (landed, below);
-   - **3.2e-2, `VitruvianServices`** (landed, below);
-   - **3.2e-3, `VitruvianUI`** (landed, below). `App` stays the executable's library.
+   - **3.2e-1, `VitruvianAtriumDesign`** (landed, below);
+   - **3.2e-2, `VitruvianAtriumServices`** (landed, below);
+   - **3.2e-3, `VitruvianAtriumUI`** (landed, below). `App` stays the executable's library.
 
    `bazel/layering.py` retires once Bazel holds the whole direction (it did, in 3.2e-3).
 
@@ -391,7 +391,7 @@ of a later layer.
 The ratchet's baseline is empty, so any new wrong-way reference fails
 `layering_test`. Step 3.2e can now make the layers modules.
 
-Landed (3.2e-1, `VitruvianDesign`): `Design/` is its own module, which
+Landed (3.2e-1, `VitruvianAtriumDesign`): `Design/` is its own module, which
 depends on Core alone, so Bazel now enforces the bottom of the stack.
 
 - **Access:** its declarations are `package`.
@@ -405,7 +405,7 @@ depends on Core alone, so Bazel now enforces the bottom of the stack.
     open class can be subclassed outside its module. Its override is
     `public`, as an override in an open class must be at least as visible as
     the AppKit method it overrides. Both rules were tried the same way.
-- **Imports:** every app and test file imports it next to `VitruvianCore`, as
+- **Imports:** every app and test file imports it next to `VitruvianAtriumCore`, as
   do the generated test sources.
   - The exceptions are the files the fan helper and the Now Playing adapter
     also compile, which link neither module.
@@ -421,7 +421,7 @@ depends on Core alone, so Bazel now enforces the bottom of the stack.
   - `Design` declares no extensions.
   - The generated test sources still build from the annotated declarations.
 
-Landed (3.2e-2, `VitruvianServices`): `Services/` is its own module, which
+Landed (3.2e-2, `VitruvianAtriumServices`): `Services/` is its own module, which
 depends on Core and Design, so Bazel now enforces Core <- Design <- Services.
 
 - **Five hidden edges cut first.** The layering check sees type names, not
@@ -487,7 +487,7 @@ depends on Core and Design, so Bazel now enforces Core <- Design <- Services.
   - Generated test sources match the previous ones but for the spelled-out
     initializers in their copies.
 
-Landed (3.2e-3, `VitruvianUI`): `UI/` is its own module, which depends on
+Landed (3.2e-3, `VitruvianAtriumUI`): `UI/` is its own module, which depends on
 Core, Design and Services. With it, Bazel holds the whole direction, and the
 layering ratchet is gone.
 
@@ -3257,8 +3257,8 @@ Every service it uses comes through its `Environment`, as
 - Concurrency: mark UI-state holders `@MainActor`. Turn on Swift 6 strict
   concurrency module by module, Core first.
 
-Landed (6a, Swift 6 for Core and Design): `VitruvianCore` and
-`VitruvianDesign` build in the Swift 6 language mode
+Landed (6a, Swift 6 for Core and Design): `VitruvianAtriumCore` and
+`VitruvianAtriumDesign` build in the Swift 6 language mode
 (`features = ["swift.enable_v6"]`), so the compiler rejects shared state that
 does not say what protects it. Services and UI stay in Swift 5 mode.
 
@@ -3315,7 +3315,7 @@ modules were built with complete concurrency checking, which only warns.
   Services, put `copts = ["-strict-concurrency=complete"]` on the module and
   build with `--experimental_ui_max_stdouterr_bytes=-1`.
 
-Landed (6d, UI clean under complete checking): `VitruvianUI` builds with
+Landed (6d, UI clean under complete checking): `VitruvianAtriumUI` builds with
 no concurrency warning under complete checking. It is still in Swift 5
 mode, and the build keeps complete checking on, so a new one shows. Each
 of the 136 places now says what isolates it:
@@ -3346,7 +3346,7 @@ of the 136 places now says what isolates it:
   closure UI hands to a system or Objective-C API is checked for the queue
   it runs on.
 
-Landed (6e, UI in Swift 6 mode): `VitruvianUI` builds in the Swift 6
+Landed (6e, UI in Swift 6 mode): `VitruvianAtriumUI` builds in the Swift 6
 language mode (`features = ["swift.enable_v6"]`), so a concurrency mistake
 there is an error, not a warning.
 
@@ -4402,7 +4402,7 @@ Landed (6zu, static state, and complete checking for Services): in Swift 6
 mode a static that any thread can reach must say what protects it. A
 Swift 6 type-check of Services on Linux listed 80 statics that did not.
 
-- **Complete checking on:** `VitruvianServices` builds with
+- **Complete checking on:** `VitruvianAtriumServices` builds with
   `-strict-concurrency=complete`, as UI did from 6d. Each build now lists,
   as warnings, what Swift 6 mode would reject (in CI in full since 6zv). The Linux check cannot see
   AppKit's own main-actor annotations, so this macOS list is the real one.
@@ -4544,7 +4544,7 @@ there. None of them changes behavior.
 
 Measured (6zy, what stands between Services and Swift 6 mode): the
 complete-checking warning list overstates it. One build of
-`VitruvianServices` in Swift 6 mode (`swift.enable_v6`, continuing after
+`VitruvianAtriumServices` in Swift 6 mode (`swift.enable_v6`, continuing after
 errors) failed with **46 errors**, where the same code under complete
 checking printed 429 concurrency warnings.
 
@@ -4625,7 +4625,7 @@ Landed (6zza, the 27 errors in 13 files): the rest of 6zy's list.
 - **The two SDK globals:** the Accessibility prompt option is spelled as
   its value, `"AXTrustedCheckOptionPrompt"`, and the kernel page size is
   read by the VM statistics C shim, which already reads those statistics.
-- **Measured again:** a build of `VitruvianServices` in Swift 6 mode with
+- **Measured again:** a build of `VitruvianAtriumServices` in Swift 6 mode with
   one compiler process per file (batch mode off) shows none of the 27, and
   **99 errors in 50 files**.
 - **Why 6zy's 46 was a floor:** batch mode hands each compiler process a
@@ -4818,7 +4818,7 @@ that runs it.
   closures after a removed tap callback in the same `start()` count from one
   lower. The unit tests and self test pass.
 
-Landed (6zzi, Services in Swift 6 mode): `VitruvianServices` builds in the
+Landed (6zzi, Services in Swift 6 mode): `VitruvianAtriumServices` builds in the
 Swift 6 language mode (`features = ["swift.enable_v6"]`), as Core, Design and
 UI already do. A concurrency mistake in Services is now an error, not a
 warning.
@@ -4855,7 +4855,7 @@ does (6zzk moves it).
 
 Landed (6zzk, `FanControlKit` and the fan helper in Swift 6 mode): both build
 in the Swift 6 language mode. `FanControlKit` holds the fan-control policy
-the app reaches through `VitruvianCore` and the fan helper links. The lists
+the app reaches through `VitruvianAtriumCore` and the fan helper links. The lists
 in 6zzi and 6zzj had left it out.
 
 - **Measured:** a probe built both in Swift 6 mode and found no errors.
@@ -5023,8 +5023,8 @@ stopped working when `build.sh` stopped building the app.
   run refuses to start while a file it mutates has uncommitted changes, so
   `git checkout` can always restore it.
 - **Where it runs:** `bazel run --config=macos-app
-  //apps/desktop/vitruvian:mutation_checks`, and weekly in
-  `.github/workflows/vitruvian-mutation-checks.yaml` on the macOS runner.
+  //apps/desktop/vitruvian-atrium:mutation_checks`, and weekly in
+  `.github/workflows/vitruvian-atrium-mutation-checks.yaml` on the macOS runner.
   Each of the 56 mutations rebuilds a module and reruns a suite, so no PR
   waits on it. A red run files or refreshes one tracking issue.
 - **Fixtures:** all 56 still apply. One needed `package func toggle()`.

@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// What the menu bar panel's Extensions tab lists: of each extension that is
 /// switched on and is what the person agreed to, its island page, with the

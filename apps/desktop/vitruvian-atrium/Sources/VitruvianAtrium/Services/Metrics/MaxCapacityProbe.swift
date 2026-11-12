@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Reads the battery "Maximum Capacity" percentage exactly as macOS System
 /// Information shows it. On Apple Silicon that figure is a smoothed value Apple
@@ -20,7 +20,7 @@ import VitruvianDesign
 package final class MaxCapacityProbe: @unchecked Sendable {
     package static let shared = MaxCapacityProbe()
 
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.maxcapacity", qos: .utility)
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.maxcapacity", qos: .utility)
     private let lock = NSLock()
     private var cached: Int?
     private var lastRefresh: TimeInterval = -.greatestFiniteMagnitude

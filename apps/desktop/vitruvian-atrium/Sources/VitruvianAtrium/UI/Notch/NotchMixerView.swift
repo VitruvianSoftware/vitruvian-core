@@ -3,9 +3,9 @@
 
 import AppKit
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
 
 /// The mixer as a desk: the output and microphone faders on the left, one fader per app
 /// running sideways, pinned ones first. Every row action of the panel's list

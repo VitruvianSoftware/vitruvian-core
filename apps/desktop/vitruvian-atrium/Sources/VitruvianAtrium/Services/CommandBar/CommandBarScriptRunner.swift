@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Runs a saved script link's command in the background, debounced so typing
 /// does not spawn a process per keystroke, and cached by exactly what was

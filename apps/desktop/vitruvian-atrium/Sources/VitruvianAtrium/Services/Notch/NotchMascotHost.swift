@@ -3,7 +3,7 @@
 
 import AppKit
 import QuartzCore
-import VitruvianCore
+import VitruvianAtriumCore
 
 extension Notification.Name {
     /// A file is being dragged toward the island while it shows where to drop it.

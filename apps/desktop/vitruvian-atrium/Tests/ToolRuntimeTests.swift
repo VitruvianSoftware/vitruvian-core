@@ -2,8 +2,8 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 import VitruvianToolProtocol
 
 /// The parts the tool runtime is built from: the lines a tool writes, the

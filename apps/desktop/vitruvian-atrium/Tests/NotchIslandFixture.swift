@@ -3,8 +3,8 @@
 
 import AppKit
 import Combine
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 
 /// A real island, the module's `NotchService`, built over test doubles: a
 /// window host that draws nothing, services that record what the island asks

@@ -2,10 +2,10 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import AppKit
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The app shell services and views reach through `appShell()`. Every other
 /// requirement is met by `AppDelegate`'s existing methods.

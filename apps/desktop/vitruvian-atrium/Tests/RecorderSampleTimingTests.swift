@@ -2,10 +2,10 @@
 // Copyright (C) 2026 Vorssaint
 
 import AVFoundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 enum RecorderSampleTimingTests {
     static func run(_ suite: TestSuite) {

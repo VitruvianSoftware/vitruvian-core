@@ -3,10 +3,10 @@
 
 import CoreGraphics
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The real service starts its tap thread against a macOS that refuses every
 /// event tap. The thread body runs inline, hidutil is a recording, and the

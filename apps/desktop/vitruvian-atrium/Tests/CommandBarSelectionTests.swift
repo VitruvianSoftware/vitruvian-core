@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 
 /// Builds the production selection rows and records what their actions type
 /// and copy, instead of posting keys or changing the clipboard.

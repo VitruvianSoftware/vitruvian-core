@@ -208,7 +208,7 @@ pub fn render_homebrew_cask(version: &str, universal_dmg_sha256: &str) -> String
         String::new(),
         format!("  url \"https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-atrium-v{v}/VitruvianAtrium-{v}-universal.dmg\"", v = version),
         "  name \"Vitruvian Atrium\"".to_string(),
-        "  desc \"Desktop control hub for Vitruvian and AI coding sessions\"".to_string(),
+        "  desc \"Desktop control hub for Vitruvian Atrium and AI coding sessions\"".to_string(),
         "  homepage \"https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-atrium\"".to_string(),
         String::new(),
         "  app \"Vitruvian Atrium.app\"".to_string(),
@@ -386,14 +386,20 @@ pub fn publish(
         .find(|l| l.ends_with(".zip"))
         .map(|l| root.join(l));
     let Some(archive) = archive.filter(|a| a.is_file()) else {
-        eprintln!("publish: bazel produced no VitruvianAtrium.zip for {}", target);
+        eprintln!(
+            "publish: bazel produced no VitruvianAtrium.zip for {}",
+            target
+        );
         return Err(1);
     };
 
     let dist = pkg.join("dist");
     let _ = fs::remove_dir_all(&dist);
     packager.package(r, &archive)?;
-    let universal = dist.join(format!("VitruvianAtrium-{}-universal.dmg", plan.app_version));
+    let universal = dist.join(format!(
+        "VitruvianAtrium-{}-universal.dmg",
+        plan.app_version
+    ));
     if !universal.is_file() {
         eprintln!(
             "publish: package_release did not produce VitruvianAtrium-{}-universal.dmg",
@@ -404,7 +410,10 @@ pub fn publish(
 
     let base = match runner_temp {
         Some(t) => t.to_path_buf(),
-        None => io_step("mktemp", make_temp_dir(tmp_root, "vitruvian-atrium-publish"))?,
+        None => io_step(
+            "mktemp",
+            make_temp_dir(tmp_root, "vitruvian-atrium-publish"),
+        )?,
     };
     let work = base.join("vitruvian-atrium-dist");
     let _ = fs::remove_dir_all(&work);
@@ -558,7 +567,10 @@ fn update_tap(r: &mut dyn Runner, work: &Path, version: &str, token: &str) -> Re
             ]),
         )?;
         run(r, &git(&["push", "-q", "origin", "HEAD"]))?;
-        println!("publish: {} Casks/vitruvian-atrium.rb is now {}", TAP, version);
+        println!(
+            "publish: {} Casks/vitruvian-atrium.rb is now {}",
+            TAP, version
+        );
     }
     Ok(())
 }
@@ -704,7 +716,10 @@ mod tests {
                     "VitruvianAtrium-3.86.0-universal.zip".into(),
                     "VitruvianAtrium-beta-universal.zip".into()
                 ),
-                ("VitruvianAtrium-3.86.0.dmg".into(), "VitruvianAtrium-beta.dmg".into()),
+                (
+                    "VitruvianAtrium-3.86.0.dmg".into(),
+                    "VitruvianAtrium-beta.dmg".into()
+                ),
             ]
         );
         let local =
@@ -736,7 +751,10 @@ mod tests {
             (plan.version.as_str(), plan.primary_asset.as_str()),
             ("3.86.0", "VitruvianAtrium-3.86.0.dmg")
         );
-        assert_eq!(plan.staged_assets[0].1, "VitruvianAtrium-3.86.0-universal.dmg");
+        assert_eq!(
+            plan.staged_assets[0].1,
+            "VitruvianAtrium-3.86.0-universal.dmg"
+        );
         assert_eq!(plan.staged_assets[4].1, "VitruvianAtrium-3.86.0.dmg");
 
         // A dispatch from the release tag names the release.
@@ -779,7 +797,7 @@ mod tests {
         let cask = render_homebrew_cask("3.86.0", "deadbeef");
         assert_eq!(
             cask,
-            "cask \"vitruvian-atrium\" do\n  version \"3.86.0\"\n  sha256 \"deadbeef\"\n\n  url \"https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-atrium-v3.86.0/VitruvianAtrium-3.86.0-universal.dmg\"\n  name \"Vitruvian Atrium\"\n  desc \"Desktop control hub for Vitruvian and AI coding sessions\"\n  homepage \"https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-atrium\"\n\n  app \"Vitruvian Atrium.app\"\nend\n"
+            "cask \"vitruvian-atrium\" do\n  version \"3.86.0\"\n  sha256 \"deadbeef\"\n\n  url \"https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-atrium-v3.86.0/VitruvianAtrium-3.86.0-universal.dmg\"\n  name \"Vitruvian Atrium\"\n  desc \"Desktop control hub for Vitruvian Atrium and AI coding sessions\"\n  homepage \"https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-atrium\"\n\n  app \"Vitruvian Atrium.app\"\nend\n"
         );
     }
 
@@ -1158,7 +1176,9 @@ mod tests {
             "{}",
             out
         );
-        assert!(out.contains("dry-run: upload dist/VitruvianAtrium-3.86.0.dmg as VitruvianAtrium-beta.dmg"));
+        assert!(out.contains(
+            "dry-run: upload dist/VitruvianAtrium-3.86.0.dmg as VitruvianAtrium-beta.dmg"
+        ));
     }
 
     #[test]

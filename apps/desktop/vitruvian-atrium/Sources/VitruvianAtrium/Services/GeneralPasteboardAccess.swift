@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Serializes every access the app makes to the general pasteboard.
 /// NSPasteboard keeps a mutable type cache on its shared instance, so reading
@@ -28,7 +28,7 @@ package final class GeneralPasteboardAccess: @unchecked Sendable {
 
     /// `queue` replaces the lane's own, for a test that keeps a private
     /// pasteboard on the main queue it reads it from.
-    package init(label: String = "Vitruvian.Pasteboard.general",
+    package init(label: String = "Vitruvian Atrium.Pasteboard.general",
          queue: DispatchQueue? = nil,
          now: @escaping @Sendable () -> TimeInterval = {
              TimeInterval(DispatchTime.now().uptimeNanoseconds) / 1_000_000_000

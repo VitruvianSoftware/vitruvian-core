@@ -3,8 +3,8 @@
 
 import AppKit
 import CoreGraphics
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// macOS's on-screen Accessibility Keyboard.
 ///

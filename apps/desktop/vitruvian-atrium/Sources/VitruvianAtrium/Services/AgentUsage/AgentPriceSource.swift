@@ -2,15 +2,15 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Where the price list comes from: the copy inside the app, the last one
 /// downloaded, and the one published with the project, fetched at most once a
 /// day while the AI section is on and the person keeps prices up to date. The
 /// request carries no usage and nothing from this Mac.
 package enum AgentPriceSource {
-    package static let remote = URL(string: "https://raw.githubusercontent.com/VitruvianSoftware/vitruvian-core/main/apps/desktop/vitruvian/Resources/agent-prices.json")!
+    package static let remote = URL(string: "https://raw.githubusercontent.com/VitruvianSoftware/vitruvian-core/main/apps/desktop/vitruvian-atrium/Resources/agent-prices.json")!
     package static let refreshInterval: TimeInterval = 86_400
     /// After a failed download, the next attempt waits this long.
     package static let retryInterval: TimeInterval = 6 * 3_600
@@ -67,7 +67,7 @@ private final class AgentDownload: NSObject, URLSessionDataDelegate {
 
     static func start(_ url: URL, limit: Int, completion: @escaping (Data?) -> Void) {
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
-        request.setValue("Vitruvian/\(AppInfo.version)", forHTTPHeaderField: "User-Agent")
+        request.setValue("Vitruvian Atrium/\(AppInfo.version)", forHTTPHeaderField: "User-Agent")
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 15
         configuration.timeoutIntervalForResource = 30

@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import AppKit
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// A scroll as the gallery reads it. `NSEvent` is one; tests pass their own.
 @MainActor

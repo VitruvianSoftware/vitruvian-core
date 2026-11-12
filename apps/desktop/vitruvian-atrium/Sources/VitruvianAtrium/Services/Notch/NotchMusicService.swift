@@ -4,8 +4,8 @@
 import AppKit
 import Combine
 @preconcurrency import Dispatch
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// A running Now Playing adapter: whether it still runs, the pipe its
 /// commands go into, and ending it.
@@ -72,7 +72,7 @@ package final class NotchMusicService: ObservableObject {
         }
 
         package static var live: Environment {
-            let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.notch-music", qos: .utility)
+            let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.notch-music", qos: .utility)
             return Environment(
                 launch: { watchAll, read, ended in launchAdapter(watchAll: watchAll, read: read, ended: ended) },
                 main: { work in DispatchQueue.main.async { work() } },
@@ -87,7 +87,7 @@ package final class NotchMusicService: ObservableObject {
 
         private static var adapter: [String]? {
             guard let script = Bundle.main.url(forResource: "now-playing", withExtension: "pl"),
-                  let library = Bundle.main.privateFrameworksURL?.appendingPathComponent("libVitruvianNowPlaying.dylib"),
+                  let library = Bundle.main.privateFrameworksURL?.appendingPathComponent("libVitruvianAtriumNowPlaying.dylib"),
                   FileManager.default.fileExists(atPath: library.path) else { return nil }
             return [script.path, library.path]
         }
@@ -709,7 +709,7 @@ private final class NotchMusicReaderCache: @unchecked Sendable {
 /// `buffer` and `receive` are touched only on `queue`, so it is
 /// `@unchecked Sendable`.
 private final class NotchMusicPipeReader: @unchecked Sendable {
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.notch-music-reader", qos: .utility)
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.notch-music-reader", qos: .utility)
     private var buffer = Data()
     private let receive: @Sendable (Data) -> Void
     /// `receive` runs on `queue`, so it is `@Sendable`. Without that, a closure

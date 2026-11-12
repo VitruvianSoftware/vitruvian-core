@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// The `keystrokes` capability: paste text into the app in front, and press
 /// one of its menu commands. It rides on Accessibility, so every operation

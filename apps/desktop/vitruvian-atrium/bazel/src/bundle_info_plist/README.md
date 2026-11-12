@@ -1,7 +1,7 @@
 # Bundle Info Plist
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/bazel/src/bundle_info_plist`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/bazel/src/bundle_info_plist`.
 
 ## Interface
 - `[lib.rs:Config]`
@@ -23,4 +23,4 @@ Component package providing implementation for `apps/desktop/vitruvian/bazel/src
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/bazel/src/bundle_info_plist/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/bazel/src/bundle_info_plist/...`

@@ -3,7 +3,7 @@
 
 import AppKit
 import Combine
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// The island's subscriptions to the services whose state it shows: changes
 /// that resize its strip or its pages, the notices those services raise, and

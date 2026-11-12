@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import AppKit
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// Files dragged onto the island. A drop the media tools can take offers two
 /// destinations, the shelf and the tools, and the pointer picks one; any

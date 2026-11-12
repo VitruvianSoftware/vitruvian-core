@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 package struct SystemShortcutTransition: Equatable {
     package let suppress: Set<Int32>
@@ -77,7 +77,7 @@ package enum SystemShortcutTakeoverSupport {
 }
 
 /// What the recorder does with a combination that has already passed every
-/// Vitruvian-side check. One rule for all four rows, and testable.
+/// Vitruvian Atrium-side check. One rule for all four rows, and testable.
 package enum RecorderTakeOverDecision: Equatable {
     /// Save it. `clearTakeOver` drops a stale take-over entry once the row has
     /// moved to a key macOS does not answer.
@@ -88,7 +88,7 @@ package enum RecorderTakeOverDecision: Equatable {
 }
 
 extension SystemShortcutTakeoverSupport {
-    /// Whether macOS would answer this combination if Vitruvian were not
+    /// Whether macOS would answer this combination if Vitruvian Atrium were not
     /// holding it. The live rule only counts entries that are enabled, so a
     /// key already taken over reads as free; the ids the service suppresses
     /// are macOS's too, and count here.

@@ -3,8 +3,8 @@
 
 import AppKit
 import Combine
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Runs the safe part of the cleanup on a schedule the user picked: daily or
 /// weekly at a chosen time. Only ever cleans what a manual scan would start

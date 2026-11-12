@@ -48,7 +48,7 @@ about that licence and that size, not about code.
    `macos/Tests/MermaidPageTests.swift`. Those tests draw a diagram with the
    new copy and fail if the page asks the network for anything.
 4. In the monorepo, re-pin the Vitruvian app
-   (`bazel run //apps/desktop/vitruvian:pin_vitruvian_code_shared`) and add a line
+   (`bazel run //apps/desktop/vitruvian-atrium:pin_vitruvian_code_shared`) and add a line
    to its `UPSTREAM.md`.
 
 ```text

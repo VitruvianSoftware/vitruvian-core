@@ -5,8 +5,8 @@ import AppKit
 import Combine
 import IOKit.ps
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 package struct NotchNotice: Equatable {
     package let event: NotchEvent
@@ -1488,7 +1488,7 @@ package final class NotchService: ObservableObject {
     }
     /// A detail's title, the app panel's, or the island's own with no sections.
     package var detailTitle: String {
-        if showingAppPanel { return "Vitruvian" }
+        if showingAppPanel { return "Vitruvian Atrium" }
         let language = L10n.shared.language
         guard let metric = selectedMetric else { return FeatureStrings.notch(language).title }
         // The fan card opens Fan Control, so its page shares that title.
@@ -2122,7 +2122,7 @@ package final class NotchService: ObservableObject {
     package func toggle() { expanded ? collapse() : open() }
 
     /// The island stays on screen, so only a manual resign takes its keyboard.
-    /// While Vitruvian stays the active app (its Settings window is open, for
+    /// While Vitruvian Atrium stays the active app (its Settings window is open, for
     /// example), that clears just the panel's own flag: AppKit keeps the island
     /// as its key window, typing still lands there, and a later makeKey()
     /// changes nothing, so a reopened Scratchpad gets no caret. The keyboard

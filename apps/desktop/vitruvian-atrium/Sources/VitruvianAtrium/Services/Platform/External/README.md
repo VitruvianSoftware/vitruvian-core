@@ -1,7 +1,7 @@
 # External
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/Sources/Vitruvian/Services/Platform/External`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/Platform/External`.
 
 ## Interface
 - Internal implementation components
@@ -16,4 +16,4 @@ Component package providing implementation for `apps/desktop/vitruvian/Sources/V
 - [ProcessTransport.swift:13]: `/// How it is started is `Foundation.Process` and nothing else: no spawn`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/Sources/Vitruvian/Services/Platform/External/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/Platform/External/...`

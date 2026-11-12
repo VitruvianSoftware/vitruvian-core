@@ -2,9 +2,9 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
 import VitruvianToolProtocol
 
 /// A tool's island page, as Explore lists it among the island's sections,

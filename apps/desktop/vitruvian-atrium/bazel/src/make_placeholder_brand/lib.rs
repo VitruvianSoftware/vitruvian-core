@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 VitruvianSoftware
 
-//! Generate Vitruvian's placeholder brand masters (`logo.png`,
+//! Generate Vitruvian Atrium's placeholder brand masters (`logo.png`,
 //! `AppIcon-Default.png`, `AppIcon.icon/Assets/vitruvian-mark.svg`, and
 //! `AppIcon.icon/icon.json`).
 //!
@@ -279,7 +279,7 @@ pub fn icon_composer_project_json() -> &'static str {
             "solid": "srgb:1.00000,1.00000,1.00000,1.00000"
           },
           "image-name": "vitruvian-mark.svg",
-          "name": "VitruvianMark",
+          "name": "VitruvianAtriumMark",
           "position": {
             "scale": 1.0,
             "translation-in-points": [

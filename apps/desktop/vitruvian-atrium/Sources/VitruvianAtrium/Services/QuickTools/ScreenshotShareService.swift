@@ -3,8 +3,8 @@
 
 import AppKit
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 package enum ScreenshotShareError: Error {
     case invalidImage
@@ -178,7 +178,7 @@ package final class ScreenshotShareService: ObservableObject {
     package func copy(_ url: URL) -> Bool {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.declareVitruvianSource()
+        pasteboard.declareAtriumSource()
         return pasteboard.setString(url.absoluteString, forType: .string)
     }
 

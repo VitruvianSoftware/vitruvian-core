@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// The system-wide `pmset disablesleep` override that closed-lid mode sets,
 /// through the passwordless sudoers rule or, failing that, an administrator
@@ -44,7 +44,7 @@ package final class SleepOverride: @unchecked Sendable {
 
         /// One serial queue, `pmset` through `Shell` and the prompt through `AdminShell`.
         package static var live: Transport {
-            let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.pmset-state")
+            let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.pmset-state")
             return Transport(
                 async: { queue.async(execute: $0) },
                 sync: { queue.sync(execute: $0) },

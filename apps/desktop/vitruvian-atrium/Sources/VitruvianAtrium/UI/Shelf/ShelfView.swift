@@ -3,9 +3,9 @@
 
 import AppKit
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
 
 /// Contents of the floating shelf panel: a header (a move handle plus actions)
 /// and the item tiles. Dropping onto the card adds items; the tiles themselves

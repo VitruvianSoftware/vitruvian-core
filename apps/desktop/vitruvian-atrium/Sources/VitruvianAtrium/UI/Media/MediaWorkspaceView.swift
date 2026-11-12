@@ -5,9 +5,9 @@ import AppKit
 import AVFoundation
 import SwiftUI
 import UniformTypeIdentifiers
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
 
 package struct MediaSettings: View {
     package var body: some View {
@@ -1667,7 +1667,7 @@ package struct MediaWorkspaceView: View {
     private func copy(_ text: String) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.declareVitruvianSource()
+        pasteboard.declareAtriumSource()
         pasteboard.setString(text, forType: .string)
     }
 

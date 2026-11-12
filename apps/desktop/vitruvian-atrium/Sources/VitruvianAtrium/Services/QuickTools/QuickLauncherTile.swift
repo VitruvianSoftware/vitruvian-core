@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// One tile of the Quick panel: one of the app's own, or a registry command
 /// that no built-in tile runs. Its raw value is what the saved order and the

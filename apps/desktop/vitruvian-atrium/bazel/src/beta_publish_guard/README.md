@@ -1,7 +1,7 @@
 # Beta Publish Guard
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/bazel/src/beta_publish_guard`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/bazel/src/beta_publish_guard`.
 
 ## Interface
 - `[lib.rs:Decision]`
@@ -14,4 +14,4 @@ Component package providing implementation for `apps/desktop/vitruvian/bazel/src
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/bazel/src/beta_publish_guard/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/bazel/src/beta_publish_guard/...`

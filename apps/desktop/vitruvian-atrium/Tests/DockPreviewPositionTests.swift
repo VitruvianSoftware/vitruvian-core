@@ -3,10 +3,10 @@
 
 import CoreGraphics
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// Where a shown Dock Preview goes when its cards change size, from the
 /// frame rules the service places it with. No native windows, Dock changes

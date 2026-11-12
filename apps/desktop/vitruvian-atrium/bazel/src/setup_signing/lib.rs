@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 // Copyright (C) 2026 VitruvianSoftware
 
-//! Creates a stable, self-signed code-signing identity named "Vitruvian
+//! Creates a stable, self-signed code-signing identity named "Vitruvian Atrium
 //! Signing" in a dedicated keychain. build.sh runs it (through
 //! `bazel run //apps/desktop/vitruvian-atrium:setup_signing`) for a build that
 //! installs, giving every build the same code signature, so macOS keeps
@@ -80,7 +80,7 @@ pub fn openssl_commands(work: &Path) -> (Cmd, Cmd) {
         .arg("-out")
         .path(&cert)
         .args(["-days", "3650", "-nodes", "-subj"])
-        .arg(format!("/CN={}/O=Vitruvian", IDENTITY_NAME))
+        .arg(format!("/CN={}/O=Vitruvian Atrium", IDENTITY_NAME))
         .args([
             "-addext",
             "keyUsage=critical,digitalSignature",

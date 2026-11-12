@@ -4,7 +4,7 @@
 import ApplicationServices
 import CoreGraphics
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// Why the broker would not do something.
 package enum BrokerRefusal: Error, Equatable, Sendable {

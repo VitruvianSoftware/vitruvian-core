@@ -4,8 +4,8 @@
 import AppKit
 import Combine
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Apps whose copies never reach the clipboard history (issue #423).
 ///
@@ -107,10 +107,10 @@ package final class ClipboardIgnoredApps: ObservableObject {
     /// have copied it, and naming none is better than naming the wrong one.
     /// An app that names itself on the pasteboard is believed over the
     /// guess, and is left out just the same when it is on the list.
-    /// Vitruvian's own writes, which never take the front, name no app at
+    /// Vitruvian Atrium's own writes, which never take the front, name no app at
     /// all, and neither does a copy that came from another device. The
     /// history's own panel never takes the front either: a copy made while
-    /// it held the keys is Vitruvian's own and comes back as
+    /// it held the keys is Vitruvian Atrium's own and comes back as
     /// `fromHistoryPanel`. Closing the panel makes one last check of its own,
     /// so the next copy belongs to the app the user went back to; only when
     /// that check could not run does the first check after it still count

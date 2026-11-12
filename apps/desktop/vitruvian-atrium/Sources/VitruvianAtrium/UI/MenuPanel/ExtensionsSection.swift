@@ -2,9 +2,9 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
 
 /// The menu bar panel's Extensions tab: each extension's island page, under a
 /// collapsible header with its symbol and name, drawn by the same view the

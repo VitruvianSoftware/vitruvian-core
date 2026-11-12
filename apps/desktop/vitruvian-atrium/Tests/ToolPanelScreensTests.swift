@@ -2,10 +2,10 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 import VitruvianToolProtocol
-import VitruvianUI
+import VitruvianAtriumUI
 
 /// A page as the app draws it, checked as the plain value the view draws:
 /// the person's language, the line limits, the defaults, a picture found

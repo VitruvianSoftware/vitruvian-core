@@ -1,7 +1,7 @@
 # Ci Setup Signing
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/bazel/src/ci_setup_signing`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/bazel/src/ci_setup_signing`.
 
 ## Interface
 - `[lib.rs:KEYCHAIN_PASSWORD]`
@@ -21,4 +21,4 @@ Component package providing implementation for `apps/desktop/vitruvian/bazel/src
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/bazel/src/ci_setup_signing/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/bazel/src/ci_setup_signing/...`

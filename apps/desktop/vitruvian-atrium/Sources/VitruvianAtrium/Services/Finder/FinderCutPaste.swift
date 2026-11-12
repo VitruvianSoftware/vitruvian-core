@@ -6,8 +6,8 @@ import ApplicationServices
 import Combine
 @preconcurrency import CoreGraphics
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Cut and paste for files in Finder: ⌘X marks the current selection, ⌘V moves
 /// it into the folder you're viewing. A global event tap claims those two
@@ -191,7 +191,7 @@ package final class FinderCutPaste: ObservableObject {
             shouldStopTapThread = false
             pendingTapRestart = false
             let thread = Thread { [weak self] in self?.runEventTap() }
-            thread.name = "Vitruvian File Shortcuts"
+            thread.name = "Vitruvian Atrium File Shortcuts"
             thread.qualityOfService = .userInteractive
             tapThread = thread
             return thread

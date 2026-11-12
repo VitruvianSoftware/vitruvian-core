@@ -1,7 +1,7 @@
 # Helper Version Plist
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/bazel/src/helper_version_plist`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/bazel/src/helper_version_plist`.
 
 ## Interface
 - `[lib.rs:Config]`
@@ -14,11 +14,11 @@ Component package providing implementation for `apps/desktop/vitruvian/bazel/src
 - `[lib.rs:run_cli]`
 
 ## Invariants
-- [lib.rs:208]: `assert!(xml.contains("<key>VitruvianFanControlHelperVersion</key>"));`
+- [lib.rs:208]: `assert!(xml.contains("<key>VitruvianAtriumFanControlHelperVersion</key>"));`
 - [lib.rs:209]: `assert!(xml.contains(&format!("<string>{}</string>", v)));`
 
 ## Side Effects
 - [lib.rs:147]: `<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com...`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/bazel/src/helper_version_plist/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/bazel/src/helper_version_plist/...`

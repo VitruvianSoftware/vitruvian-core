@@ -1,7 +1,7 @@
 # Notarize
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/bazel/src/notarize`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/bazel/src/notarize`.
 
 ## Interface
 - `[lib.rs:USAGE]`
@@ -22,4 +22,4 @@ Component package providing implementation for `apps/desktop/vitruvian/bazel/src
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/bazel/src/notarize/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/bazel/src/notarize/...`

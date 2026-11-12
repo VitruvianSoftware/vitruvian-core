@@ -5,8 +5,8 @@ import AppKit
 import CoreImage
 import ImageIO
 import UniformTypeIdentifiers
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Draws annotations into a CGContext. The editor canvas and the exporter
 /// share this code, so what is on screen is exactly what leaves the app.

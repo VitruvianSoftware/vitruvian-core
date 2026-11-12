@@ -3,8 +3,8 @@
 
 import AppKit
 import Vision
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Screen OCR: the user picks an area on the app's own capture surface, the
 /// text in it is recognized offline with Vision and lands on the clipboard.
@@ -242,7 +242,7 @@ package final class ScreenTextService: ObservableObject {
     package static func copyToPasteboard(_ value: String) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.declareVitruvianSource()
+        pasteboard.declareAtriumSource()
         pasteboard.setString(value, forType: .string)
     }
 }

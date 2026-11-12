@@ -3,8 +3,8 @@
 
 import CryptoKit
 import Foundation
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 
 /// The list of tools: its signature, reading it, where it comes from, and
 /// how it is asked for. No test here touches the network.

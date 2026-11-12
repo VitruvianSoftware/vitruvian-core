@@ -3,8 +3,8 @@
 
 import AppKit
 import Carbon.HIToolbox
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 
 enum ScreenshotImageLayerTests {
     static func run(_ suite: TestSuite) {

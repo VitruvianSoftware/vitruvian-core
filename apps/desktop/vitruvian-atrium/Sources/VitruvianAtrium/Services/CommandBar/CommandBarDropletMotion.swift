@@ -3,7 +3,7 @@
 
 import CoreGraphics
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// One moment of the drop that carries the Command Bar out of the Dynamic
 /// Island, in points from the top left of the area it falls through.

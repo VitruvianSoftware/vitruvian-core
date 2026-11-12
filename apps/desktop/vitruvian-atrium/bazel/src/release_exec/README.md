@@ -1,7 +1,7 @@
 # Release Exec
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/bazel/src/release_exec`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/bazel/src/release_exec`.
 
 ## Interface
 - `[lib.rs:Cmd]`
@@ -34,4 +34,4 @@ Component package providing implementation for `apps/desktop/vitruvian/bazel/src
 - [lib.rs:251]: `let mut child = match c.spawn() {`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/bazel/src/release_exec/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/bazel/src/release_exec/...`

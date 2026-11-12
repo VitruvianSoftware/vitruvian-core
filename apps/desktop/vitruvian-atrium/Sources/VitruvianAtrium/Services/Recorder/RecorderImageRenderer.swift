@@ -3,8 +3,8 @@
 
 import CoreGraphics
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Turns an overlay's picture into the pixels a frame composites, once.
 ///

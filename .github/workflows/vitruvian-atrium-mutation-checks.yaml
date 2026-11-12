@@ -18,9 +18,9 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-name: Vitruvian Mutation Checks
+name: Vitruvian Atrium Mutation Checks
 
-# //apps/desktop/vitruvian:mutation_checks plants real regressions, one
+# //apps/desktop/vitruvian-atrium:mutation_checks plants real regressions, one
 # at a time, and requires each to fail the unit test meant to catch it. A test
 # that still passes with its regression in place is too weak to rely on
 # (REFACTOR.md step 7).
@@ -29,7 +29,7 @@ name: Vitruvian Mutation Checks
 # module and reruns a suite on macOS. NOT a required check: it gates nothing,
 # and a red run files (or refreshes) one tracking issue.
 #
-# What does run per PR is //apps/desktop/vitruvian:mutation_fixtures_test, which
+# What does run per PR is //apps/desktop/vitruvian-atrium:mutation_fixtures_test, which
 # only reads: every mutation still quotes its source exactly.
 
 on:
@@ -41,7 +41,7 @@ on:
 
 # One run at a time; never cancel a running one (its result is the signal).
 concurrency:
-  group: vitruvian-mutation-checks
+  group: vitruvian-atrium-mutation-checks
   cancel-in-progress: false
 
 # Least privilege: checkout and build, plus issue filing from the failure step.
@@ -73,21 +73,21 @@ jobs:
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel run --config=macos-app "${cache_flags[@]}" //apps/desktop/vitruvian:mutation_checks -- "${cache_flags[@]}"
+          bazel run --config=macos-app "${cache_flags[@]}" //apps/desktop/vitruvian-atrium:mutation_checks -- "${cache_flags[@]}"
 
       - name: Open or refresh the tracking issue
         if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          title="Vitruvian mutation checks are red"
+          title="Vitruvian Atrium mutation checks are red"
           run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          body="The weekly mutation checks for \`apps/desktop/vitruvian\` failed on \`main\`.
+          body="The weekly mutation checks for \`apps/desktop/vitruvian-atrium\` failed on \`main\`.
 
           Either a planted regression no longer fails the test meant to catch it, so that test
           has gone weak, or a mutation no longer applies because its code moved. The run log
           names the mutation: strengthen the test, or update the mutation in
-          \`//apps/desktop/vitruvian:mutation_checks\`.
+          \`//apps/desktop/vitruvian-atrium:mutation_checks\`.
 
           Failing run: ${run_url}"
           existing="$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')"

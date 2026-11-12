@@ -4,8 +4,8 @@
 import AppKit
 import Foundation
 import IOKit
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// One row of the per-app breakdown shown when a System stat is expanded.
 package struct ProcessUsage: Identifiable, Equatable {

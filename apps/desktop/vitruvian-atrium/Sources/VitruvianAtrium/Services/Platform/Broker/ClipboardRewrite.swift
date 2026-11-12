@@ -3,7 +3,7 @@
 
 import AppKit
 import UniformTypeIdentifiers
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// What a tool wants done to a link somebody copied. The host asks these on
 /// the clipboard lane, in the middle of one look at the clipboard, so each

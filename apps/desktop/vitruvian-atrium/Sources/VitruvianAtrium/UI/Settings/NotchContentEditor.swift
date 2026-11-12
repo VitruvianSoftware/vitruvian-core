@@ -2,9 +2,9 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
 
 /// The open island for one section, hanging from a slice of menu bar: the
 /// island's own pages at their real size, scaled into Settings, so every
@@ -730,7 +730,7 @@ package struct NotchExtensionDetail: View {
 /// An extension's own settings page on the Dynamic Island page: the same
 /// page, search field and row of links the Extensions sheet shows
 /// (`ExtensionSettingsOnePage`), so a change here is the change made
-/// there. Vitruvian's own rows are left out: the Dynamic Island page has
+/// there. Vitruvian Atrium's own rows are left out: the Dynamic Island page has
 /// its own switch for the page, and the rest is in Extensions. It is one
 /// more viewer of the page the sheet shows (`ToolPanelHost.openAsViewer`).
 package struct NotchExtensionSettings: View {

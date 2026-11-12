@@ -1,7 +1,7 @@
 # Metrics
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/Sources/Vitruvian/Services/Metrics`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/Metrics`.
 
 ## Interface
 - Internal implementation components
@@ -15,4 +15,4 @@ Component package providing implementation for `apps/desktop/vitruvian/Sources/V
 - [DiskSampler.swift:216]: `let fileSystemType = withUnsafeBytes(of: fs.f_fstypename) { rawBuffer -> Stri...`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/Sources/Vitruvian/Services/Metrics/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/Metrics/...`

@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 extension ToolRegistry {
     /// The commands a surface should add to its own fixed list: those that

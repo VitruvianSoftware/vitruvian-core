@@ -1,7 +1,7 @@
 # Pin Vitruvian Code Shared
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/bazel/src/pin_vitruvian_code_shared`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/bazel/src/pin_vitruvian_code_shared`.
 
 ## Interface
 - `[lib.rs:PINS]`
@@ -17,4 +17,4 @@ Component package providing implementation for `apps/desktop/vitruvian/bazel/src
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/bazel/src/pin_vitruvian_code_shared/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/bazel/src/pin_vitruvian_code_shared/...`

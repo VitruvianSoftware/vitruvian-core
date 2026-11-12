@@ -4,9 +4,9 @@
 import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
 
 package struct NotchFilesView: View {
     @ObservedObject package var service: NotchService

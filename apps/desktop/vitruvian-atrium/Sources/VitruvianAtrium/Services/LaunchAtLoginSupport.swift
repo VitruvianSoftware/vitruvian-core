@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Decision logic for keeping the launch at login registration alive.
 ///
@@ -16,7 +16,7 @@ import VitruvianDesign
 package enum LaunchAtLoginSupport {
     /// Settings keeps its view alive when the window closes, so onAppear
     /// alone cannot refresh a choice made in System Settings.
-    package static let settingsRefreshRequested = Notification.Name("Vitruvian.launchAtLoginSettingsRefreshRequested")
+    package static let settingsRefreshRequested = Notification.Name("Vitruvian Atrium.launchAtLoginSettingsRefreshRequested")
 
     /// What the system holds for this app. `needsApproval` is a registration
     /// that exists but is not allowed to run. Background permission can block

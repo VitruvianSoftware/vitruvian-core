@@ -3,8 +3,8 @@
 
 import AppKit
 import Combine
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Applies the user's light/dark choice to every window the app owns.
 ///

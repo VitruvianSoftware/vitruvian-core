@@ -3,8 +3,8 @@
 
 import Combine
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Optional Monitor notifications. Everything is off by default, throttled, and
 /// driven by the existing SystemMonitor sampler.

@@ -5,8 +5,8 @@ import AppKit
 import ApplicationServices
 import Combine
 @preconcurrency import CoreGraphics
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Types a keyboard shortcut when an extra mouse button is pressed. The
 /// mapped button's click is the shortcut's alone: the whole gesture is

@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// Which introduction an update shows next, what closing one means, and the
 /// markers that keep each from coming back. The app shell owns the windows;

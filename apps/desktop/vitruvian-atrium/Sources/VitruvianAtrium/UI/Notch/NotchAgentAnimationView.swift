@@ -3,9 +3,9 @@
 
 import AppKit
 import QuartzCore
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
 
 /// Small decorative layers, stepped at a limited rate while they show.
 /// Settings retains its view hierarchy when closed, so disappearance alone

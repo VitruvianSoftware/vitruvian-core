@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Copies each file inside AppKit's coordinated reader, before exposing it to
 /// the shelf. Cancellation stops our copies, not the sending application's
@@ -51,7 +51,7 @@ package final class ShelfFilePromiseTransfer: @unchecked Sendable {
         self.storeDirectory = storeDirectory
         self.maximumFiles = maximumFiles
         self.completion = completion
-        queue.name = "com.vitruviansoftware.vitruvian.shelf-file-promises"
+        queue.name = "com.vitruviansoftware.atrium.shelf-file-promises"
         queue.qualityOfService = .utility
         queue.maxConcurrentOperationCount = 1
     }

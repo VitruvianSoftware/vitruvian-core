@@ -4,8 +4,8 @@
 import Darwin
 import Foundation
 import os
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 import VitruvianToolProtocol
 
 /// A link to a tool that is a real child process: the fixture tool

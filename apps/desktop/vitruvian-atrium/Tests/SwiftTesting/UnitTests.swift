@@ -137,7 +137,7 @@ struct UnitTests {
     private static func enterAppDirectory() {
         let environment = ProcessInfo.processInfo.environment
         guard let runfiles = environment["TEST_SRCDIR"], let workspace = environment["TEST_WORKSPACE"] else { return }
-        let app = "\(runfiles)/\(workspace)/apps/desktop/vitruvian"
+        let app = "\(runfiles)/\(workspace)/apps/desktop/vitruvian-atrium"
         if FileManager.default.fileExists(atPath: app + "/Sources") {
             FileManager.default.changeCurrentDirectoryPath(app)
         }

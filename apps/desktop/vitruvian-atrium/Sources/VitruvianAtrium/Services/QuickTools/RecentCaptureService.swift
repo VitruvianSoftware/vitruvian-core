@@ -6,8 +6,8 @@ import AVFoundation
 import Carbon.HIToolbox
 import ImageIO
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// A bounded, on-demand list of captures. Screenshots live in this cache so
 /// copy-only captures can return after their preview closes. Recordings keep
@@ -24,7 +24,7 @@ package final class RecentCaptureService: ObservableObject {
     private lazy var hotkey: QuickToolHotkey = RecentCaptureService.historyShortcut(opening: { [weak self] in
         self?.showHistoryWindow()
     })
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.recent-captures",
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.recent-captures",
                                       qos: .utility)
     private let generationLock = NSLock()
     /// Thread-safe; the queue empties it on a clear.

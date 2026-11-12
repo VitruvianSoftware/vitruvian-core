@@ -114,7 +114,7 @@ func renderAppIcon(px: Int) -> Data? {
 
 // MARK: - Menu bar glyph (template)
 
-// The Vitruvian mark is a 1:1 circle. Scale it to 18.0 pt height to fill
+// The Vitruvian Atrium mark is a 1:1 circle. Scale it to 18.0 pt height to fill
 // the 20 pt vertical menu bar canvas with 1 pt edge margin.
 let menuBarGlyphHeight: CGFloat = 18.0
 // Centered vertically on the canvas.

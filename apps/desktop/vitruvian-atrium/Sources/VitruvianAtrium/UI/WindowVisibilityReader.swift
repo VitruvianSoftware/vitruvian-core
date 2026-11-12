@@ -3,9 +3,9 @@
 
 import AppKit
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
 
 /// A retained SwiftUI hierarchy does not disappear when its NSWindow closes.
 /// Report visibility asynchronously so clients can suspend live previews

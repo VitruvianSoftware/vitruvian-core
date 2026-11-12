@@ -3,8 +3,8 @@
 
 import CoreGraphics
 import Foundation
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 
 /// The companion's model: its preferences, faces, outlines and strolls, and
 /// the drop that carries the Command Bar out of the island.
@@ -90,7 +90,7 @@ enum NotchMascotTests {
     }
 
     private static func preferenceContracts(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.vitruvian.tests.notch-mascot"
+        let domain = "com.vitruviansoftware.atrium.tests.notch-mascot"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
@@ -406,7 +406,7 @@ enum NotchMascotTests {
     /// it last did anything, with a yawn where it rests, and still comes out
     /// to visit and to react.
     private static func hidingContracts(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.vitruvian.tests.notch-mascot-hiding"
+        let domain = "com.vitruviansoftware.atrium.tests.notch-mascot-hiding"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }

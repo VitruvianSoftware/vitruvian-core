@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import SwiftUI
-import VitruvianCore
+import VitruvianAtriumCore
 
 // `@AppStorage(Preferences.someSetting) var someSetting: Bool` stores a
 // preference under its key and starts from its declared default, so a view

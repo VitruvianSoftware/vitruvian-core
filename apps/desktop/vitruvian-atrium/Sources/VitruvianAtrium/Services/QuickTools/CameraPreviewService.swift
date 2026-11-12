@@ -5,8 +5,8 @@ import AppKit
 @preconcurrency import AVFoundation
 import Carbon.HIToolbox
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// A quick mirror before video calls: a small floating panel with the live
 /// camera image, summoned from the panel, the quick panel or a global
@@ -36,7 +36,7 @@ package final class CameraPreviewService: ObservableObject {
     private let hotkey = QuickToolHotkey(id: 16)
     /// startRunning blocks for a moment, so every session mutation happens
     /// here and only state lands back on the main thread.
-    private let sessionQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.camera-preview")
+    private let sessionQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.camera-preview")
     private var panel: NSPanel?
     private var keyMonitor: Any?
     private var localClickMonitor: Any?
@@ -375,7 +375,7 @@ package final class CameraPreviewService: ObservableObject {
     private func ensurePanel() -> NSPanel {
         if let panel { return panel }
         let panel = Self.makePanel()
-        panel.title = "Vitruvian"
+        panel.title = "Vitruvian Atrium"
         panel.isReleasedWhenClosed = false
         // A mirror is something the user drags next to the meeting window.
         panel.isMovableByWindowBackground = true

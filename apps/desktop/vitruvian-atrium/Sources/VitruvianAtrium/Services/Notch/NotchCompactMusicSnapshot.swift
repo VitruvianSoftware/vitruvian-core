@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// The last visible compact track stays intact while its island retracts.
 package struct NotchCompactMusicSnapshot {

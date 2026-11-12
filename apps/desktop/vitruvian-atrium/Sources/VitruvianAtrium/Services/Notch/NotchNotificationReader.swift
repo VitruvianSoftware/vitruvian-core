@@ -3,8 +3,8 @@
 
 import AppKit
 import ApplicationServices
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 package typealias NotchNotificationReader = NotchNotificationReaderCore<NotchNativeNotificationAccess>
 

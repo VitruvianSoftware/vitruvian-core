@@ -4,7 +4,7 @@
 import Combine
 import Foundation
 import os
-import VitruvianCore
+import VitruvianAtriumCore
 import VitruvianToolProtocol
 
 /// The tools from outside that the person added: which they are, that the
@@ -233,7 +233,7 @@ package final class ExternalToolStore {
             makeTransport: { program, dataFolder in ProcessTransport(program: program, directory: dataFolder) },
             language: { L10n.shared.language.rawValue },
             stoppedWorking: { id in
-                Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian", category: "tools")
+                Logger(subsystem: Bundle.main.bundleIdentifier ?? "atrium", category: "tools")
                     .error("the tool \(id.rawValue, privacy: .public) stopped working")
             },
             forgetPreferences: { ExternalToolStore.forgetPreferences(of: $0, in: .standard) },
@@ -248,7 +248,7 @@ package final class ExternalToolStore {
             // Nexus Agent became Vitruvian Code: a tool added under the old
             // id is the same tool under the new one.
             renamed: { folders in
-                let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian", category: "tools")
+                let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "atrium", category: "tools")
                 // Only once the catalog the app has kept lists the new id.
                 let kept = CatalogueWatch.keptCatalogue(
                     at: folders.root.appendingPathComponent(CatalogueWatch.keptFileName), source: .inUse)
@@ -443,7 +443,7 @@ package final class ExternalToolStore {
             return
         case .unreadable:
             recordsUnreadable = true
-            Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian", category: "tools")
+            Logger(subsystem: Bundle.main.bundleIdentifier ?? "atrium", category: "tools")
                 .error("the record of added tools could not be read: no tool from outside is loaded")
             return
         case .records(let saved):
@@ -691,7 +691,7 @@ package final class ExternalToolStore {
         // Its commands have no row on the Shortcuts page any more, so the
         // keys the person gave them are given back, whatever else is kept.
         parts.forgetShortcuts(id)
-        let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian", category: "tools")
+        let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "atrium", category: "tools")
         // What it saved goes only once its program is gone.
         let data = deletingData && gone
         if deletingData, !gone {

@@ -56,7 +56,7 @@ pub const BRAND_SUBSTITUTIONS: &[(&str, &str)] = &[
     ("com.vorssaint.utils", "com.vitruviansoftware.atrium"),
     ("com.vorssaint.", "com.vitruviansoftware.atrium."),
     ("import Vorssaint", "import VitruvianAtrium"),
-    ("Vorssaint", "Vitruvian"),
+    ("Vorssaint", "Vitruvian Atrium"),
     ("vorssaint", "vitruvian"),
     ("VORSSAINT", "VITRUVIAN"),
 ];
@@ -792,7 +792,14 @@ pub struct PathMap {
 impl PathMap {
     pub fn new(root: &Path, import_commit: &str) -> Result<Self, String> {
         let desktop_tree = out(
-            &["ls-tree", "-r", "--name-only", import_commit, "--", "apps/desktop"],
+            &[
+                "ls-tree",
+                "-r",
+                "--name-only",
+                import_commit,
+                "--",
+                "apps/desktop",
+            ],
             Some(root),
             None,
         )
@@ -847,20 +854,23 @@ impl PathMap {
         }
 
         let ls_tree = out(
-            &["ls-tree", "-r", "--name-only", import_commit, "--", &import_app_dir],
+            &[
+                "ls-tree",
+                "-r",
+                "--name-only",
+                import_commit,
+                "--",
+                &import_app_dir,
+            ],
             Some(root),
             None,
         )?;
-        let at_import: HashSet<String> = ls_tree
-            .lines()
-            .map(|p| strip_app(p).to_string())
-            .collect();
+        let at_import: HashSet<String> =
+            ls_tree.lines().map(|p| strip_app(p).to_string()).collect();
 
         let ls_files = out(&["ls-files", "--", APP_DIR], Some(root), None)?;
-        let current: BTreeSet<String> = ls_files
-            .lines()
-            .map(|p| strip_app(p).to_string())
-            .collect();
+        let current: BTreeSet<String> =
+            ls_files.lines().map(|p| strip_app(p).to_string()).collect();
 
         let mut by_name: HashMap<String, Vec<String>> = HashMap::new();
         for p in &current {
@@ -1447,7 +1457,11 @@ fn merge_file(
     labels: (&str, &str, &str),
 ) -> Result<(Vec<u8>, i32), String> {
     let id = MERGE_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let tmp = env::temp_dir().join(format!("vitruvian-atrium-merge3-{}-{}", std::process::id(), id));
+    let tmp = env::temp_dir().join(format!(
+        "vitruvian-atrium-merge3-{}-{}",
+        std::process::id(),
+        id
+    ));
     fs::create_dir_all(&tmp).map_err(|e| e.to_string())?;
     let ours_p = tmp.join("ours");
     let base_p = tmp.join("base");
@@ -1858,7 +1872,11 @@ pub fn port_commit(
     let parent = parent_list.get(1).copied();
     let label_base = format!("upstream {}^", short);
     let label_theirs = format!("upstream {}", short);
-    let labels = ("vitruvian-atrium", label_base.as_str(), label_theirs.as_str());
+    let labels = (
+        "vitruvian-atrium",
+        label_base.as_str(),
+        label_theirs.as_str(),
+    );
 
     let changes = upstream.changes(sha)?;
     if !(allow_dirty || dry_run) {
@@ -2415,7 +2433,10 @@ fn run_cli_inner(args: &[String]) -> Result<i32, String> {
             let upstream = Upstream::new(&upstream_url, &cache, !no_fetch)?;
             let pathmap = PathMap::new(&root, &import_commit)?;
             let report_dir = report_dir_arg.unwrap_or_else(|| {
-                env::temp_dir().join(format!("vitruvian-atrium-upstream-port-{}", std::process::id()))
+                env::temp_dir().join(format!(
+                    "vitruvian-atrium-upstream-port-{}",
+                    std::process::id()
+                ))
             });
             fs::create_dir_all(&report_dir).map_err(|e| e.to_string())?;
             let mut report = vec!["# Upstream port report".to_string(), String::new()];
@@ -2507,7 +2528,7 @@ mod tests {
         let line = "let VorssaintURL = \"https://vorssaint.com/x\"\n";
         assert_eq!(
             to_fork_line(line),
-            "let VitruvianURL = \"https://vorssaint.com/x\"\n"
+            "let VitruvianAtriumURL = \"https://vorssaint.com/x\"\n"
         );
     }
 
@@ -2768,7 +2789,7 @@ suite.expect(keyCode == 53)
             Self::write(
                 &mono,
                 &format!("{}/Sources/VitruvianAtrium/Core/App.swift", APP_DIR),
-                "// Copyright (C) 2026 Vorssaint\nimport Foundation\npackage struct VitruvianApp {\n    package let forkOnly = true\n    package let id = \"com.vitruviansoftware.atrium\"\n    package let count = 1\n}\n",
+                "// Copyright (C) 2026 Vorssaint\nimport Foundation\npackage struct VitruvianAtriumApp {\n    package let forkOnly = true\n    package let id = \"com.vitruviansoftware.atrium\"\n    package let count = 1\n}\n",
             );
             Self::write(
                 &mono,
@@ -2980,7 +3001,7 @@ suite.expect(keyCode == 53)
         )
         .unwrap();
         assert!(merged.contains("// Copyright (C) 2026 Vorssaint\n"));
-        assert!(merged.contains("package struct VitruvianApp"));
+        assert!(merged.contains("package struct VitruvianAtriumApp"));
         assert!(merged.contains("package let count = 2"));
         assert!(merged.contains("package let tag = \"vitruvian\""));
         assert!(merged.contains("package let forkOnly = true"));
@@ -3014,11 +3035,11 @@ suite.expect(keyCode == 53)
         let placed = f
             .mono
             .join(APP_DIR)
-            .join("Sources/VitruvianAtrium/Core/VitruvianHelper.swift");
+            .join("Sources/VitruvianAtrium/Core/VitruvianAtriumHelper.swift");
         assert!(placed.exists());
         assert_eq!(
             fs::read_to_string(&placed).unwrap(),
-            "struct VitruvianHelper {}\n"
+            "struct VitruvianAtriumHelper {}\n"
         );
     }
 }

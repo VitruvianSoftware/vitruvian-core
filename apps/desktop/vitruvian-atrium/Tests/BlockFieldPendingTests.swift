@@ -3,10 +3,10 @@
 
 import AppKit
 import SwiftUI
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 import VitruvianToolProtocol
-import VitruvianUI
+import VitruvianAtriumUI
 
 /// Text typed in a tool's field reaches the tool before the click that
 /// uses it. On macOS a click on a button leaves the field focused, so a

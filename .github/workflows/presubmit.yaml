@@ -224,7 +224,7 @@ jobs:
           QUEUED: ${{ steps.queued.outputs.verdict }}
           QUEUED_RUN: ${{ steps.queued.outputs.run }}
           FAST_LANE: ${{ steps.fastlane.outputs.verdict }}
-          ALL_UNITS: '["antigravity-ext-marketplace","antigravity-gh-watch","antigravity-hookify","antigravity-live-context","antigravity-plugins-conformance","antigravity-ralph-loop","antigravity-receipts-report","antigravity-savvy-fleet","antigravity-security-guidance","antigravity-worktree-band","backstage-backend","courier-app-macos","courier-engine-macos","design-system","backstage-app","design-system-android","devx-cli","gods-eye-view","homelab","mcp-slack-service","oauth-user-inspector","peripherals","pulumi-repo-config","relay-spike-service","remote","remote-boot","remote-mac-agent","remote-mac-menu","tabula-shared","tabula-api","tabula-cli","tabula-extension","tabula-web","vitruvian-code-src","vitruvian-code-bridge","vitruvian-code-macos","vitruvian-desktop-macos","vitruvian-sdk","vitruvian-tool-github","wand-android","wand-linux","wand-macos"]'
+          ALL_UNITS: '["antigravity-ext-marketplace","antigravity-gh-watch","antigravity-hookify","antigravity-live-context","antigravity-plugins-conformance","antigravity-ralph-loop","antigravity-receipts-report","antigravity-savvy-fleet","antigravity-security-guidance","antigravity-worktree-band","backstage-backend","courier-app-macos","courier-engine-macos","design-system","backstage-app","design-system-android","devx-cli","gods-eye-view","homelab","mcp-slack-service","oauth-user-inspector","peripherals","pulumi-repo-config","relay-spike-service","remote","remote-boot","remote-mac-agent","remote-mac-menu","tabula-shared","tabula-api","tabula-cli","tabula-extension","tabula-web","vitruvian-atrium-macos","vitruvian-code-src","vitruvian-code-bridge","vitruvian-code-macos","vitruvian-sdk","vitruvian-tool-github","wand-android","wand-linux","wand-macos"]'
         run: |
           set +e -u -o pipefail
           if [ "$RELEASE_SKIP" = "true" ]; then
@@ -1692,6 +1692,38 @@ jobs:
           pre-count: ${{ steps.llvm-contents.outputs.pre-count }}
           pin-path: ${{ steps.llvm-contents.outputs.pin-path }}
 
+  unit-vitruvian-atrium-macos:
+    name: vitruvian-atrium-macos
+    runs-on: xcode-27
+    timeout-minutes: 60
+    needs: [plan]
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'vitruvian-atrium-macos')) }}
+    env:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Select the pinned Xcode
+        uses: ./.github/actions/select-xcode
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: Build & Test Unit vitruvian-atrium-macos
+        run: |
+          set -euo pipefail
+          cache_flags=()
+          extra_flags=()
+          extra_flags=(--config=macos-app)
+          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
+            cache_flags=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+          fi
+          extra_flags+=("--experimental_ui_max_stdouterr_bytes=-1")
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/desktop/vitruvian-atrium:VitruvianAtrium //apps/desktop/vitruvian-atrium:VitruvianAtriumLibWithSampleTool //apps/desktop/vitruvian-atrium:by-hand //apps/desktop/vitruvian-atrium:fan_helper_selftest //apps/desktop/vitruvian-atrium:mutation_fixtures_test //apps/desktop/vitruvian-atrium:selftest //apps/desktop/vitruvian-atrium:setup_signing_test //apps/desktop/vitruvian-atrium:source_lints_test //apps/desktop/vitruvian-atrium:sources_in_sync_test //apps/desktop/vitruvian-atrium:tool_protocol_pin_test //apps/desktop/vitruvian-atrium:unit_tests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/desktop/vitruvian-atrium:VitruvianAtrium //apps/desktop/vitruvian-atrium:VitruvianAtriumLibWithSampleTool //apps/desktop/vitruvian-atrium:by-hand //apps/desktop/vitruvian-atrium:fan_helper_selftest //apps/desktop/vitruvian-atrium:mutation_fixtures_test //apps/desktop/vitruvian-atrium:selftest //apps/desktop/vitruvian-atrium:setup_signing_test //apps/desktop/vitruvian-atrium:source_lints_test //apps/desktop/vitruvian-atrium:sources_in_sync_test //apps/desktop/vitruvian-atrium:tool_protocol_pin_test //apps/desktop/vitruvian-atrium:unit_tests; else exit $rc; fi; }
+
   unit-vitruvian-code-src:
     name: vitruvian-code-src
     runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
@@ -1796,38 +1828,6 @@ jobs:
             cache_flags=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
           bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/desktop/vitruvian-code/macos:VitruvianCodeTests //apps/desktop/vitruvian-code/macos:VitruvianCodeToolTests //apps/desktop/vitruvian-code/macos:mirror_build_test //apps/desktop/vitruvian-code/macos:tool_conformance_test //apps/desktop/vitruvian-code/macos:tool_version_test //apps/desktop/vitruvian-code/macos:vitruvian-code-tool || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/desktop/vitruvian-code/macos:VitruvianCodeTests //apps/desktop/vitruvian-code/macos:VitruvianCodeToolTests //apps/desktop/vitruvian-code/macos:mirror_build_test //apps/desktop/vitruvian-code/macos:tool_conformance_test //apps/desktop/vitruvian-code/macos:tool_version_test //apps/desktop/vitruvian-code/macos:vitruvian-code-tool; else exit $rc; fi; }
-
-  unit-vitruvian-desktop-macos:
-    name: vitruvian-desktop-macos
-    runs-on: xcode-27
-    timeout-minutes: 60
-    needs: [plan]
-    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'vitruvian-desktop-macos')) }}
-    env:
-      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-
-      - name: Select the pinned Xcode
-        uses: ./.github/actions/select-xcode
-
-      - name: Set up Bazel
-        uses: ./.github/actions/setup-bazel
-
-      - name: Build & Test Unit vitruvian-desktop-macos
-        run: |
-          set -euo pipefail
-          cache_flags=()
-          extra_flags=()
-          extra_flags=(--config=macos-app)
-          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
-            cache_flags=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
-          fi
-          extra_flags+=("--experimental_ui_max_stdouterr_bytes=-1")
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/desktop/vitruvian:Vitruvian //apps/desktop/vitruvian:VitruvianLibWithSampleTool //apps/desktop/vitruvian:by-hand //apps/desktop/vitruvian:fan_helper_selftest //apps/desktop/vitruvian:mutation_fixtures_test //apps/desktop/vitruvian:selftest //apps/desktop/vitruvian:setup_signing_test //apps/desktop/vitruvian:source_lints_test //apps/desktop/vitruvian:sources_in_sync_test //apps/desktop/vitruvian:tool_protocol_pin_test //apps/desktop/vitruvian:unit_tests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/desktop/vitruvian:Vitruvian //apps/desktop/vitruvian:VitruvianLibWithSampleTool //apps/desktop/vitruvian:by-hand //apps/desktop/vitruvian:fan_helper_selftest //apps/desktop/vitruvian:mutation_fixtures_test //apps/desktop/vitruvian:selftest //apps/desktop/vitruvian:setup_signing_test //apps/desktop/vitruvian:source_lints_test //apps/desktop/vitruvian:sources_in_sync_test //apps/desktop/vitruvian:tool_protocol_pin_test //apps/desktop/vitruvian:unit_tests; else exit $rc; fi; }
 
   unit-vitruvian-sdk:
     name: vitruvian-sdk
@@ -2073,7 +2073,7 @@ jobs:
 
   gate:
     name: gate/all-required-passed
-    needs: [plan, unit-antigravity-ext-marketplace, unit-antigravity-gh-watch, unit-antigravity-hookify, unit-antigravity-live-context, unit-antigravity-plugins-conformance, unit-antigravity-ralph-loop, unit-antigravity-receipts-report, unit-antigravity-savvy-fleet, unit-antigravity-security-guidance, unit-antigravity-worktree-band, unit-backstage-backend, unit-courier-app-macos, unit-courier-engine-macos, unit-design-system, unit-backstage-app, unit-design-system-android, unit-devx-cli, unit-gods-eye-view, unit-homelab, unit-mcp-slack-service, unit-oauth-user-inspector, unit-peripherals, unit-pulumi-repo-config, unit-relay-spike-service, unit-remote, unit-remote-boot, unit-remote-mac-agent, unit-remote-mac-menu, unit-tabula-shared, unit-tabula-api, unit-tabula-cli, unit-tabula-extension, unit-tabula-web, unit-vitruvian-code-src, unit-vitruvian-code-bridge, unit-vitruvian-code-macos, unit-vitruvian-desktop-macos, unit-vitruvian-sdk, unit-vitruvian-tool-github, unit-wand-android, unit-wand-linux, unit-wand-macos]
+    needs: [plan, unit-antigravity-ext-marketplace, unit-antigravity-gh-watch, unit-antigravity-hookify, unit-antigravity-live-context, unit-antigravity-plugins-conformance, unit-antigravity-ralph-loop, unit-antigravity-receipts-report, unit-antigravity-savvy-fleet, unit-antigravity-security-guidance, unit-antigravity-worktree-band, unit-backstage-backend, unit-courier-app-macos, unit-courier-engine-macos, unit-design-system, unit-backstage-app, unit-design-system-android, unit-devx-cli, unit-gods-eye-view, unit-homelab, unit-mcp-slack-service, unit-oauth-user-inspector, unit-peripherals, unit-pulumi-repo-config, unit-relay-spike-service, unit-remote, unit-remote-boot, unit-remote-mac-agent, unit-remote-mac-menu, unit-tabula-shared, unit-tabula-api, unit-tabula-cli, unit-tabula-extension, unit-tabula-web, unit-vitruvian-atrium-macos, unit-vitruvian-code-src, unit-vitruvian-code-bridge, unit-vitruvian-code-macos, unit-vitruvian-sdk, unit-vitruvian-tool-github, unit-wand-android, unit-wand-linux, unit-wand-macos]
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 5

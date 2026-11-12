@@ -10,10 +10,10 @@ import Darwin
 import Foundation
 import ImageIO
 import VMStatisticsCompat
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 enum LocalizationFeatureContractTests {
     static func run(_ suite: TestSuite) {
@@ -412,7 +412,7 @@ enum LocalizationFeatureContractTests {
         suite.expect(bundleLocalizations.contains("tr"), "Info.plist declares Turkish as a bundle localization")
         suite.expect(bundleLocalizations.contains("ko"), "Info.plist declares Korean as a bundle localization")
         let baseAudioPrompt = infoPlist["NSAudioCaptureUsageDescription"] as? String ?? ""
-        suite.expect(baseAudioPrompt.contains("Vitruvian uses each app's audio"),
+        suite.expect(baseAudioPrompt.contains("Vitruvian Atrium uses each app's audio"),
                "base audio permission prompt is an English fallback")
         let organizerFolderPromptKeys = [
             "NSDesktopFolderUsageDescription", "NSDocumentsFolderUsageDescription",
@@ -455,7 +455,7 @@ enum LocalizationFeatureContractTests {
         // to and the helper listens on (FanControlIdentifiers), as its label,
         // its program and its Mach service.
         let releaseHelperID = FanControlIdentifiers.helperID
-        let helperTemplatePath = "Resources/com.vitruviansoftware.vitruvian.fan-control.plist"
+        let helperTemplatePath = "Resources/com.vitruviansoftware.atrium.fan-control.plist"
         let helperTemplate = ShippedResource.dictionary(helperTemplatePath) ?? [:]
         let templateLabel = helperTemplate["Label"] as? String
         let templateProgram = helperTemplate["BundleProgram"] as? String
@@ -470,7 +470,7 @@ enum LocalizationFeatureContractTests {
         // fan control would just never answer. Its rename (build.sh) runs here
         // on a copy of the shipped plist, written out rather than copied: in
         // the test's runfiles the shipped file is a link into the checkout.
-        let developerHelperID = "com.vitruviansoftware.vitruvian.dev.fan-control"
+        let developerHelperID = "com.vitruviansoftware.atrium.dev.fan-control"
         let renameFolder = FileManager.default.temporaryDirectory
             .appendingPathComponent("vitru-helper-rename-\(UUID().uuidString)")
         let renamedPlist = renameFolder.appendingPathComponent("helper.plist")

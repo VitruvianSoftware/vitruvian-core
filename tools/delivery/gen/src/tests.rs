@@ -43,7 +43,7 @@ const FIXTURES: &[&str] = &[
     "tabula-dev-latest",
     "tabula-identity",
     "tabula-web",
-    "vitruvian",
+    "vitruvian-atrium",
     "zitadel-apps",
 ];
 const WF: &str = "delivery-fixture.yaml";
@@ -426,7 +426,7 @@ fn group_by_app_gives_every_app_its_own_workflow() {
                 "tabula-web",
             ],
         ),
-        ("vitruvian", vec!["vitruvian"]),
+        ("vitruvian-atrium", vec!["vitruvian-atrium"]),
     ]
     .into_iter()
     .map(|(a, us)| (a.to_string(), us.into_iter().map(String::from).collect()))

@@ -5,10 +5,10 @@ import AppKit
 import CoreGraphics
 import Foundation
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// On a display without a camera the island can float in the menu bar as a
 /// capsule. The capsule sits centred inside the bar; closed, it runs its
@@ -87,7 +87,7 @@ enum NotchCapsuleTests {
     }
 
     private static func preferenceContracts(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.vitruvian.tests.notch-capsule"
+        let domain = "com.vitruviansoftware.atrium.tests.notch-capsule"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
@@ -359,7 +359,7 @@ enum NotchCapsuleTests {
     /// A fitted capsule grows from its top edge, keeps its margins, lowers
     /// open and closed alike, and leaves every other island untouched.
     private static func fitContracts(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.vitruvian.tests.notch-capsule-fit"
+        let domain = "com.vitruviansoftware.atrium.tests.notch-capsule-fit"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }

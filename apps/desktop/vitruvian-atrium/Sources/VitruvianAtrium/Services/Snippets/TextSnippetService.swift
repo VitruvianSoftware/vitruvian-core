@@ -5,8 +5,8 @@ import AppKit
 import AudioToolbox
 import Carbon.HIToolbox
 import CoreGraphics
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Text snippets: typing a trigger replaces it with its expansion, with
 /// {{date}}, {{time}}, {{datetime}} and {{clipboard}} filled in. The key tap,
@@ -146,7 +146,7 @@ package final class TextSnippetService: @unchecked Sendable {
             shouldStopTapThread = false
             pendingTapRestart = false
             let thread = Thread { [weak self] in self?.runEventTap() }
-            thread.name = "Vitruvian Text Expansion"
+            thread.name = "Vitruvian Atrium Text Expansion"
             thread.qualityOfService = .userInteractive
             tapThread = thread
             return thread

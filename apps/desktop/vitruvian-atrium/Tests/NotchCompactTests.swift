@@ -3,10 +3,10 @@
 
 import AppKit
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The compact pages' real views and rules: the camera page, calendar rows,
 /// the rail, the scratchpad's editor and focus, and page sizing. Windows stay
@@ -237,7 +237,7 @@ enum NotchCompactTests {
     private static func scratchpad(_ suite: TestSuite) {
         let manager = FileManager.default
         let root = manager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        let domain = "com.vitruviansoftware.vitruvian.tests.notch-compact"
+        let domain = "com.vitruviansoftware.atrium.tests.notch-compact"
         let defaults = ScratchDefaults.suite(named: domain)!
         // A real pad over a directory of its own, on a real island's page.
         let harness = ScratchpadHarness(root: root)
@@ -497,7 +497,7 @@ enum NotchCompactTests {
     /// `NotchMusicControls`, and the player's size, which no longer holds a
     /// row of controls under it.
     private static func musicControls(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.vitruvian.tests.notch-music-controls"
+        let domain = "com.vitruviansoftware.atrium.tests.notch-music-controls"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }

@@ -2,10 +2,10 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The production service's online sources run with controlled responses and a
 /// clock. No installed app is scanned, opened or changed by these contracts.
@@ -128,7 +128,7 @@ enum AppUpdatesContract {
             ("companion identity", [entry(name: "Other.app", ids: ["com.example.other", app.bundleID])], false, 0),
             ("incompatible", [entry(minimum: ["99"])], false, 0),
             ("unknown compatibility", [entry(unsupported: true)], false, 0),
-            ("ignored", [entry(token: "vitruvian")], false, 0),
+            ("ignored", [entry(token: "vitruvian-atrium")], false, 0),
             ("current", [entry(version: "1.0")], true, 0),
             ("installed newer", [entry(version: "0.9")], true, 0),
             ("available update", [entry()], true, 1),

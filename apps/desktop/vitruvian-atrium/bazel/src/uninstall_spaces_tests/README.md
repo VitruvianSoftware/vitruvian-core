@@ -1,7 +1,7 @@
 # Uninstall Spaces Tests
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/bazel/src/uninstall_spaces_tests`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/bazel/src/uninstall_spaces_tests`.
 
 ## Interface
 - `[lib.rs:ProbeEnv]`
@@ -23,4 +23,4 @@ Component package providing implementation for `apps/desktop/vitruvian/bazel/src
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/bazel/src/uninstall_spaces_tests/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/bazel/src/uninstall_spaces_tests/...`

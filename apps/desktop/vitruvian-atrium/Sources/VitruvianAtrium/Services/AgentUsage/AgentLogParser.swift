@@ -3,8 +3,8 @@
 
 import Darwin
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// What one log line says, reduced to the few facts the island keeps. Only
 /// usage counters, model names, times and folder names leave a line, besides

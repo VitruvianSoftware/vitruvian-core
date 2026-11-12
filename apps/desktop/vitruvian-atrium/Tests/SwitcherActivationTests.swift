@@ -3,10 +3,10 @@
 
 import AppKit
 import ApplicationServices
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The production activation and window fronting run against apps and
 /// window-server calls that never activate an app or post input. Native

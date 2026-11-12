@@ -2,10 +2,10 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// Every independently selectable suite, in run order. Swift Testing runs
 /// each as one case (`Tests/SwiftTesting/UnitTests.swift`).
@@ -139,7 +139,7 @@ enum TestGroups {
                 UpdateAdminInstallContract.run(suite)
                 UpdateHighlightsTests.run(suite)
                 UpdateIntroFlowTests.run(suite)
-                VitruvianReleaseFeedContract.run(suite)
+                VitruvianAtriumReleaseFeedContract.run(suite)
                 UpdateSignerContract.run(suite)
                 AboutPageContract.run(suite)
             }),

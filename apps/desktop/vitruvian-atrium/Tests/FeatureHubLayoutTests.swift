@@ -3,8 +3,8 @@
 
 import AppKit
 import SwiftUI
-import VitruvianCore
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumUI
 
 /// The hub's scroll layout, on the page's own scroll page and stable groups,
 /// with inert cards in place of the real ones: installing a feature must not

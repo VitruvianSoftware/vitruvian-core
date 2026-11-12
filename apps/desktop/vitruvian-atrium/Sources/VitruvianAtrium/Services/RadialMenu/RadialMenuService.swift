@@ -5,8 +5,8 @@ import AppKit
 import Carbon.HIToolbox
 @preconcurrency import CoreGraphics
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// The radial menu: a wheel of user-configured actions summoned by a global
 /// shortcut. Its configurable activation mode can keep the wheel open after
@@ -947,7 +947,7 @@ package final class RadialMenuService: ObservableObject {
     private func ensurePanel() -> NSPanel {
         if let panel { return panel }
         let panel = Self.makePanel()
-        panel.title = "Vitruvian"
+        panel.title = "Vitruvian Atrium"
         panel.isReleasedWhenClosed = false
         panel.isMovableByWindowBackground = false
         panel.hidesOnDeactivate = false

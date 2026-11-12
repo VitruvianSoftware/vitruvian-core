@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// The gallery rests on a row boundary at all times: rows step whole, and a
 /// highlighted tile pulls its row into view with the least movement.

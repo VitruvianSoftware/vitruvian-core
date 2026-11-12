@@ -6,8 +6,8 @@ import Combine
 import IOKit.ps
 import IOKit.pwr_mgt
 import os
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Core of the energy feature: manages "keep awake" sessions through IOKit power
 /// assertions, the closed-lid mode (pmset disablesleep, administrator password)
@@ -100,7 +100,7 @@ package final class KeepAwakeManager: ObservableObject {
     }
 
     package static let shared = KeepAwakeManager(system: .live)
-    private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian",
+    private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "atrium",
                                     category: "keep-awake")
 
     package enum EndReason { case manual, timer, battery, quit }
@@ -776,7 +776,7 @@ package final class KeepAwakeManager: ObservableObject {
 
     private func applyAssertions() {
         if !hasSystemAssertion,
-           let id = system.assert("PreventUserIdleSystemSleep", "Vitruvian: keep the Mac awake") {
+           let id = system.assert("PreventUserIdleSystemSleep", "Vitruvian Atrium: keep the Mac awake") {
             systemAssertion = id
             hasSystemAssertion = true
         }
@@ -785,7 +785,7 @@ package final class KeepAwakeManager: ObservableObject {
             system.releaseAssertion(displayAssertion)
             hasDisplayAssertion = false
         } else if !allowDisplaySleep, !hasDisplayAssertion,
-                  let id = system.assert("PreventUserIdleDisplaySleep", "Vitruvian: keep the display on") {
+                  let id = system.assert("PreventUserIdleDisplaySleep", "Vitruvian Atrium: keep the display on") {
             displayAssertion = id
             hasDisplayAssertion = true
         }

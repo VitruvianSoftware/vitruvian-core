@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Vorssaint
 
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 #if VITRUVIAN_DEVELOPMENT
 import AppKit
@@ -25,7 +25,7 @@ enum NotchPresentationProbe {
     /// The floating buttons take the same glass choice as `surface`. The suite
     /// is only registered, so nothing is written to disk.
     private static let glassDefaults: UserDefaults = {
-        let defaults = UserDefaults(suiteName: "com.vitruviansoftware.vitruvian.tests.notch-presentation")!
+        let defaults = UserDefaults(suiteName: "com.vitruviansoftware.atrium.tests.notch-presentation")!
         defaults.register(defaults: [DefaultsKey.notchLiquidGlassEnabled: CommandLine.arguments.contains("--glass")])
         return defaults
     }()

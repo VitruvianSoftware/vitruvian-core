@@ -3,10 +3,10 @@
 
 import AppKit
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The module's own window strips and search run over synthetic entries,
 /// with same-sized empty tiles in place of previews and titles to isolate

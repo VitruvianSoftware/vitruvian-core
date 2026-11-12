@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import AppKit
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// Keeping the island current as the displays, the app in front and the
 /// preferences change: one deferred pass per burst of preference or screen

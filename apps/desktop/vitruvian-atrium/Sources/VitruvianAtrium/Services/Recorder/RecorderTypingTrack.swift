@@ -3,8 +3,8 @@
 
 import AppKit
 import QuartzCore
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Moments when typing happened during one recording. No key or text is kept.
 package struct RecorderTypingTrack: Codable, Equatable {

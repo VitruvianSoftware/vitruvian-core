@@ -3,8 +3,8 @@
 
 import CoreGraphics
 import Foundation
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 
 /// Runs the real Screen OCR entry points and completion with controlled
 /// queues. Recognition, the feature runtime, the preferences and the clipboard

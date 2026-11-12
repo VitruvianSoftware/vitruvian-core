@@ -4,8 +4,8 @@
 import AVFoundation
 import AppKit
 import ScreenCaptureKit
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Why a recording could not start, or why one ended on its own. Kept
 /// separate from the system error so the surfaces have one small thing to
@@ -44,7 +44,7 @@ package final class RecorderCaptureEngine: NSObject, @unchecked Sendable {
 
     package weak var delegate: RecorderCaptureEngineDelegate?
 
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.recorder.capture",
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.recorder.capture",
                                       qos: .userInitiated)
     private let lifecycleLock = NSLock()
     private var lifecycle = RecorderCaptureLifecycle()
@@ -57,7 +57,7 @@ package final class RecorderCaptureEngine: NSObject, @unchecked Sendable {
 
     // MARK: - Lifecycle
 
-    /// Builds the filter and starts the stream. Existing ordinary Vitruvian
+    /// Builds the filter and starts the stream. Existing ordinary Vitruvian Atrium
     /// windows remain recordable, while new app chrome stays excluded.
     package func start(region: RecorderSupport.Region,
                frameRate: Int,
@@ -248,7 +248,7 @@ package final class RecorderMicrophoneCapture: NSObject,
                                        @unchecked Sendable {
     package var onSample: ((CMSampleBuffer) -> Void)?
 
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.recorder.microphone",
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.recorder.microphone",
                                       qos: .userInitiated)
     private let session = AVCaptureSession()
     private var targetClock: CMClock?

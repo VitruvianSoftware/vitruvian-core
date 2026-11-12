@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Picks the color of any pixel from the shared capture surface and copies it
 /// in the configured format. The native sampler remains the permission-free
@@ -61,7 +61,7 @@ package final class ColorSamplerService: ObservableObject {
         guard let value = formattedValue(color) else { return nil }
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.declareVitruvianSource()
+        pasteboard.declareAtriumSource()
         pasteboard.setString(value, forType: .string)
         return value
     }

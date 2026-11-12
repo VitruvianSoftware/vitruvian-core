@@ -1,7 +1,7 @@
 # Uninstall
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/bazel/src/uninstall`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/bazel/src/uninstall`.
 
 ## Interface
 - `[lib.rs:DEFAULT_BUNDLE_ID]`
@@ -29,4 +29,4 @@ Component package providing implementation for `apps/desktop/vitruvian/bazel/src
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/bazel/src/uninstall/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/bazel/src/uninstall/...`

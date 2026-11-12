@@ -1,7 +1,7 @@
 # Fancontrolhelper
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/Sources/FanControlHelper`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/Sources/FanControlHelper`.
 
 ## Interface
 - Internal implementation components
@@ -13,4 +13,4 @@ Component package providing implementation for `apps/desktop/vitruvian/Sources/F
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/Sources/FanControlHelper/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/Sources/FanControlHelper/...`

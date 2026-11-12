@@ -6,8 +6,8 @@ import AppKit
 import Combine
 import CoreAudio
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Reads the current player's audio output and turns it into seven levels
 /// for the island's bars. Off unless chosen, and running only while that
@@ -269,8 +269,8 @@ package protocol NotchAudioLevelReading: AnyObject {
 /// starting a device can block for as long as a Bluetooth or USB device takes
 /// to reconnect, and the island must never wait on that.
 private final class NotchAudioLevelReader: NotchAudioLevelReading {
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.notch-audio-levels", qos: .utility)
-    private static let teardownQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.notch-audio-levels.teardown", qos: .utility)
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.notch-audio-levels", qos: .utility)
+    private static let teardownQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.notch-audio-levels.teardown", qos: .utility)
     private let pid: pid_t
     private let onLevels: ([Double]) -> Void
     private let onSilence: () -> Void
@@ -347,7 +347,7 @@ private final class NotchAudioLevelReader: NotchAudioLevelReading {
         guard !objects.isEmpty else { return false }
         tapped = objects
         let description = CATapDescription(stereoMixdownOfProcesses: objects)
-        description.name = "Vitruvian Island Levels"
+        description.name = "Vitruvian Atrium Island Levels"
         description.isPrivate = true
         description.muteBehavior = .unmuted
         var tapID = AudioObjectID(0)
@@ -388,7 +388,7 @@ private final class NotchAudioLevelReader: NotchAudioLevelReading {
     private func buildPipeline() -> Bool {
         guard aggregateID == 0, tapID != 0, let hostUID = Self.hostDeviceUID() else { return false }
         let aggregate: [String: Any] = [
-            kAudioAggregateDeviceNameKey: "Vitruvian Island Levels",
+            kAudioAggregateDeviceNameKey: "Vitruvian Atrium Island Levels",
             kAudioAggregateDeviceUIDKey: UUID().uuidString,
             kAudioAggregateDeviceIsPrivateKey: true,
             kAudioAggregateDeviceMainSubDeviceKey: hostUID,

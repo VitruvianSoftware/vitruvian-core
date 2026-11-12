@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import CoreGraphics
-import VitruvianServices
+import VitruvianAtriumServices
 
 /// The native Command-Tab switcher as quit protection follows it from the
 /// tap's events. Only values are built; no event reaches the system.

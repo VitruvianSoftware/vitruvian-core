@@ -3,10 +3,10 @@
 
 import AppKit
 import Carbon.HIToolbox
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 enum ScreenshotToolShortcutTests {
 static func run(_ suite: TestSuite) {

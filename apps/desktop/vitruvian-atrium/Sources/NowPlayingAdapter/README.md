@@ -1,12 +1,12 @@
 # Nowplayingadapter
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/Sources/NowPlayingAdapter`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/Sources/NowPlayingAdapter`.
 
 ## Interface
-- `[NowPlayingAdapter.swift:vitruvianNowPlayingGet]`
-- `[NowPlayingAdapter.swift:vitruvianNowPlayingWatchAll]`
-- `[NowPlayingAdapter.swift:vitruvianNowPlayingWatch]`
+- `[NowPlayingAdapter.swift:vitruvianAtriumNowPlayingGet]`
+- `[NowPlayingAdapter.swift:vitruvianAtriumNowPlayingWatchAll]`
+- `[NowPlayingAdapter.swift:vitruvianAtriumNowPlayingWatch]`
 - `[NowPlayingQueue.swift:NotchNativeQueue]`
 
 ## Invariants
@@ -16,4 +16,4 @@ Component package providing implementation for `apps/desktop/vitruvian/Sources/N
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/Sources/NowPlayingAdapter/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/Sources/NowPlayingAdapter/...`

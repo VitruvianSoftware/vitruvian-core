@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 import VitruvianToolProtocol
 
 /// What a tool reads its preferences with. It is handed out after the

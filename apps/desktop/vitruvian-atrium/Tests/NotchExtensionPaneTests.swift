@@ -4,10 +4,10 @@
 import AppKit
 import Foundation
 import SwiftUI
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 import VitruvianToolProtocol
-import VitruvianUI
+import VitruvianAtriumUI
 
 /// The Dynamic Island page's pane for an extension, drawn in a window of its
 /// own: its live preview and its settings card each ask for their page once

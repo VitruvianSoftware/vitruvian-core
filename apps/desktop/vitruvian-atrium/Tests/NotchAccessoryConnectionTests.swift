@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianServices
+import VitruvianAtriumServices
 
 /// Exercise the production lifecycle and its real run loop without connecting
 /// to a device, changing radio power, or stalling bluetoothd on the test Mac.

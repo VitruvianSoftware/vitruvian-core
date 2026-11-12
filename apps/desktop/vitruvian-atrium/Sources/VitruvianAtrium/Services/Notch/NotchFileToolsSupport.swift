@@ -4,8 +4,8 @@
 import Darwin
 import Foundation
 import UniformTypeIdentifiers
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 package enum NotchFileToolsSupport {
     package static let dropSpacing: CGFloat = 12

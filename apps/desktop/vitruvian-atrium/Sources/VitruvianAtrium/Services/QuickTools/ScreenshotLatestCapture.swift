@@ -2,8 +2,8 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// The latest capture and what may publish it through the upload shortcut:
 /// the editors open, the shortcut's pending upload and a link whose copy

@@ -4,8 +4,8 @@
 import AppKit
 import Carbon.HIToolbox
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// The capture surface: one borderless panel per screen, above everything,
 /// where the user drags a region, clicks a window or confirms a full screen.
@@ -73,15 +73,15 @@ package final class ScreenshotSelectionController {
         /// Every display, the one with the menu bar first.
         package var displays: @MainActor () -> [Display]
         package var pointer: @MainActor () -> CGPoint
-        package var captureAllDisplays: @MainActor (_ includePointer: Bool, _ hideVitruvianWindows: Bool,
+        package var captureAllDisplays: @MainActor (_ includePointer: Bool, _ hideAtriumWindows: Bool,
                                                     _ protectedWindowIDs: Set<CGWindowID>) async -> [CGDirectDisplayID: CGImage]
         /// Window ids with their bounds in window-server coordinates.
-        package var pickableWindows: @MainActor (_ hideVitruvianWindows: Bool,
+        package var pickableWindows: @MainActor (_ hideAtriumWindows: Bool,
                                                  _ protectedWindowIDs: Set<CGWindowID>) -> [(id: CGWindowID, bounds: CGRect)]
         package var captureWindow: @MainActor (_ id: CGWindowID, _ scale: CGFloat) async
             -> (image: CGImage, scale: CGFloat)?
         package var captureDisplay: @MainActor (_ id: CGDirectDisplayID, _ includePointer: Bool,
-                                                _ hideVitruvianWindows: Bool,
+                                                _ hideAtriumWindows: Bool,
                                                 _ protectedWindowIDs: Set<CGWindowID>) async -> CGImage?
         /// Puts the panels on screen, making `key` the key window when given.
         package var show: @MainActor (_ panels: [NSPanel], _ key: NSPanel?) -> Void
@@ -127,17 +127,17 @@ package final class ScreenshotSelectionController {
         }
 
         @MainActor private static func liveCaptureAllDisplays(
-            _ includePointer: Bool, _ hideVitruvianWindows: Bool, _ protectedWindowIDs: Set<CGWindowID>
+            _ includePointer: Bool, _ hideAtriumWindows: Bool, _ protectedWindowIDs: Set<CGWindowID>
         ) async -> [CGDirectDisplayID: CGImage] {
             await ScreenshotCaptureEngine.captureAllDisplays(includePointer: includePointer,
-                                                             hideVitruvianWindows: hideVitruvianWindows,
+                                                             hideAtriumWindows: hideAtriumWindows,
                                                              protectedWindowIDs: protectedWindowIDs)
         }
 
         @MainActor private static func livePickableWindows(
-            _ hideVitruvianWindows: Bool, _ protectedWindowIDs: Set<CGWindowID>
+            _ hideAtriumWindows: Bool, _ protectedWindowIDs: Set<CGWindowID>
         ) -> [(id: CGWindowID, bounds: CGRect)] {
-            ScreenshotCaptureEngine.pickableWindows(hideVitruvianWindows: hideVitruvianWindows,
+            ScreenshotCaptureEngine.pickableWindows(hideAtriumWindows: hideAtriumWindows,
                                                     protectedWindowIDs: protectedWindowIDs)
         }
 
@@ -147,11 +147,11 @@ package final class ScreenshotSelectionController {
         }
 
         @MainActor private static func liveCaptureDisplay(
-            _ id: CGDirectDisplayID, _ includePointer: Bool, _ hideVitruvianWindows: Bool,
+            _ id: CGDirectDisplayID, _ includePointer: Bool, _ hideAtriumWindows: Bool,
             _ protectedWindowIDs: Set<CGWindowID>
         ) async -> CGImage? {
             await ScreenshotCaptureEngine.captureDisplay(id, includePointer: includePointer,
-                                                         hideVitruvianWindows: hideVitruvianWindows,
+                                                         hideAtriumWindows: hideAtriumWindows,
                                                          protectedWindowIDs: protectedWindowIDs)
         }
     }
@@ -175,7 +175,7 @@ package final class ScreenshotSelectionController {
     private var freeze: Bool
     private var includePointer: Bool
     private let showLastRegion: Bool
-    private var hideVitruvianWindows: Bool
+    private var hideAtriumWindows: Bool
     private let otherProtectedWindowIDs: () -> Set<CGWindowID>
     private let baseMode: Mode
     private let supportsScrollingCapture: Bool
@@ -294,7 +294,7 @@ package final class ScreenshotSelectionController {
     package init(freeze: Bool,
          includePointer: Bool,
          showLastRegion: Bool,
-         hideVitruvianWindows: Bool = true,
+         hideAtriumWindows: Bool = true,
          protectedWindowIDs: @escaping () -> Set<CGWindowID> = { [] },
          purpose: String? = nil,
          mode: Mode = .image,
@@ -306,7 +306,7 @@ package final class ScreenshotSelectionController {
         self.freeze = freeze
         self.includePointer = includePointer
         self.showLastRegion = showLastRegion
-        self.hideVitruvianWindows = hideVitruvianWindows
+        self.hideAtriumWindows = hideAtriumWindows
         self.otherProtectedWindowIDs = protectedWindowIDs
         self.purpose = purpose
         self.baseMode = mode
@@ -321,8 +321,8 @@ package final class ScreenshotSelectionController {
         self.capturePolicy = ScreenshotSupport.UnifiedCapturePolicy(
             freeze: freeze,
             includePointer: includePointer,
-            hideVitruvianWindows: hideVitruvianWindows,
-            keepsContentWindowsOut: hideVitruvianWindows
+            hideAtriumWindows: hideAtriumWindows,
+            keepsContentWindowsOut: hideAtriumWindows
                 || screenCaptureOptions?.selectedTool == .recording,
             usesGeometry: mode == .geometry)
         defaults[Preferences.screenshotLoupeLastZoom] = Double(loupeZoom)
@@ -350,7 +350,7 @@ package final class ScreenshotSelectionController {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 let images = await self.environment.captureAllDisplays(
-                    self.includePointer, self.hideVitruvianWindows, self.captureExcludedWindowIDs)
+                    self.includePointer, self.hideAtriumWindows, self.captureExcludedWindowIDs)
                 guard !images.isEmpty else {
                     self.finish(.failed)
                     return
@@ -364,7 +364,7 @@ package final class ScreenshotSelectionController {
 
     private func present(frozenImages: [CGDirectDisplayID: CGImage]) {
         guard !finished else { return }
-        let pickable = environment.pickableWindows(hideVitruvianWindows, captureExcludedWindowIDs)
+        let pickable = environment.pickableWindows(hideAtriumWindows, captureExcludedWindowIDs)
         let displays = environment.displays()
         let mainHeight = displays.first?.geometry.frame.height ?? 0
 
@@ -423,7 +423,7 @@ package final class ScreenshotSelectionController {
                 for: activeTool,
                 screenshotFreeze: defaults[Preferences.screenshotFreeze],
                 screenshotIncludePointer: defaults[Preferences.screenshotIncludePointer],
-                screenshotHideVitruvianWindows: defaults[Preferences.screenshotHideVitruvianWindows])
+                screenshotHideAtriumWindows: defaults[Preferences.screenshotHideAtriumWindows])
             if !nextPolicy.sharesSource(with: capturePolicy) {
                 adoptCapturePolicy(nextPolicy)
             }
@@ -443,7 +443,7 @@ package final class ScreenshotSelectionController {
         capturePolicy = policy
         freeze = policy.freeze
         includePointer = policy.includePointer
-        hideVitruvianWindows = policy.hideVitruvianWindows
+        hideAtriumWindows = policy.hideAtriumWindows
         sourceRefreshPending = true
         sourceGeneration += 1
         let generation = sourceGeneration
@@ -454,7 +454,7 @@ package final class ScreenshotSelectionController {
         Task { @MainActor [weak self] in
             guard let self else { return }
             let images = await self.environment.captureAllDisplays(
-                policy.includePointer, policy.hideVitruvianWindows, self.captureExcludedWindowIDs)
+                policy.includePointer, policy.hideAtriumWindows, self.captureExcludedWindowIDs)
             guard !self.finished, self.sourceGeneration == generation else { return }
             self.applySource(frozenImages: images)
         }
@@ -467,7 +467,7 @@ package final class ScreenshotSelectionController {
             finish(.failed)
             return
         }
-        let pickable = environment.pickableWindows(hideVitruvianWindows, captureExcludedWindowIDs)
+        let pickable = environment.pickableWindows(hideAtriumWindows, captureExcludedWindowIDs)
         let mainHeight = environment.displays().first?.geometry.frame.height ?? 0
         for panel in panels {
             let image = freeze ? frozenImages[panel.displayID] : nil
@@ -508,7 +508,7 @@ package final class ScreenshotSelectionController {
     /// excludes this app's own panels, so the screen itself remains live.
     package func loadLiveLoupeImages() {
         let generation = sourceGeneration
-        let hideWindows = hideVitruvianWindows
+        let hideWindows = hideAtriumWindows
         let excludedIDs = captureExcludedWindowIDs
         let captureAllDisplays = environment.captureAllDisplays
         Task { @MainActor [weak self] in
@@ -818,7 +818,7 @@ package final class ScreenshotSelectionController {
             guard let self else { return }
             try? await Task.sleep(nanoseconds: 120_000_000)
             guard var image = await self.environment.captureDisplay(
-                displayID, self.includePointer, self.hideVitruvianWindows, self.captureExcludedWindowIDs)
+                displayID, self.includePointer, self.hideAtriumWindows, self.captureExcludedWindowIDs)
             else {
                 self.finish(.failed)
                 return

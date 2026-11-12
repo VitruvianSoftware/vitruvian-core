@@ -1,7 +1,7 @@
 # Quicktools
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/Sources/Vitruvian/Services/QuickTools`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/QuickTools`.
 
 ## Interface
 - Internal implementation components
@@ -17,4 +17,4 @@ Component package providing implementation for `apps/desktop/vitruvian/Sources/V
 - [ScreenshotShareService.swift:127]: `guard let http = response as? HTTPURLResponse else {`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/Sources/Vitruvian/Services/QuickTools/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/QuickTools/...`

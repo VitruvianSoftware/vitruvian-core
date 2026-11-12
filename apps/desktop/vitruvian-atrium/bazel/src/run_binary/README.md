@@ -1,7 +1,7 @@
 # Run Binary
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/bazel/src/run_binary`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/bazel/src/run_binary`.
 
 ## Interface
 - `[lib.rs:run_cli]`
@@ -13,4 +13,4 @@ Component package providing implementation for `apps/desktop/vitruvian/bazel/src
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/bazel/src/run_binary/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/bazel/src/run_binary/...`

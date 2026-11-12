@@ -10,10 +10,10 @@ import Darwin
 import Foundation
 import ImageIO
 import VMStatisticsCompat
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 enum NetworkFeatureTests {
     static func run(_ suite: TestSuite) {

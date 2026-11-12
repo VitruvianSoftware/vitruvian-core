@@ -100,12 +100,12 @@ package enum StatusItemAnchorSupport {
         return CGRect(origin: .zero, size: lastFrame.size).contains(event.locationInWindow)
     }
 
-    /// Opening the panel activates Vitruvian so its controls take keys, which
+    /// Opening the panel activates Vitruvian Atrium so its controls take keys, which
     /// makes it the frontmost app for as long as nothing else claims focus.
     /// Once the panel is gone, the app that was in front before it opened gets
     /// activation back, but only when the person dismissed the panel with
     /// nothing taking over, and has not moved on meanwhile: another app is
-    /// already in front, or one of Vitruvian's own windows (Settings,
+    /// already in front, or one of Vitruvian Atrium's own windows (Settings,
     /// Feedback, an editor) took focus from the panel.
     package static func shouldReturnActivation(to sourcePID: pid_t?,
                                        ownPID: pid_t,
@@ -136,9 +136,9 @@ package enum StatusItemAnchorSupport {
     }
 
     /// The app to hand activation back to after a change seen while the panel
-    /// is open. The panel joins every desktop and stays up when Vitruvian
+    /// is open. The panel joins every desktop and stays up when Vitruvian Atrium
     /// deactivates, so the person can move on without closing it. Another app
-    /// becoming active replaces the remembered one; Vitruvian itself taking
+    /// becoming active replaces the remembered one; Vitruvian Atrium itself taking
     /// activation back (a click in the panel) keeps it. A desktop switch drops
     /// it, since activating it later would travel back to the desktop it is on.
     package static func panelActivationSource<App>(after change: PanelActivationChange<App>,

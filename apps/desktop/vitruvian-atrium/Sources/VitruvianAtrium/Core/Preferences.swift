@@ -413,7 +413,7 @@ package enum Preferences {
     package static let recentCapturesShortcutEnabled = Preference(DefaultsKey.recentCapturesShortcutEnabled, default: false)
     package static let screenshotClipboardShortcutEnabled = Preference(DefaultsKey.screenshotClipboardShortcutEnabled, default: false)
     package static let screenshotFreeze = Preference(DefaultsKey.screenshotFreeze, default: true)
-    package static let screenshotHideVitruvianWindows = Preference(DefaultsKey.screenshotHideVitruvianWindows, default: true)
+    package static let screenshotHideAtriumWindows = Preference(DefaultsKey.screenshotHideAtriumWindows, default: true)
     package static let screenshotIncludePointer = Preference(DefaultsKey.screenshotIncludePointer, default: false)
     package static let screenshotShowLastRegion = Preference(DefaultsKey.screenshotShowLastRegion, default: true)
     package static let screenshotHighlightWindows = Preference(DefaultsKey.screenshotHighlightWindows, default: true)

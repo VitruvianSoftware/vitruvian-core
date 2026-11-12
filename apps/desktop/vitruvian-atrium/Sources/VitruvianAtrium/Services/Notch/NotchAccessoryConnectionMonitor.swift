@@ -3,7 +3,7 @@
 
 import Foundation
 @preconcurrency import IOBluetooth
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// Only values cross into presentation; reading an IOBluetoothDevice there
 /// would put a synchronous Bluetooth request back on the main thread.
@@ -202,7 +202,7 @@ private final class NotchAccessoryBluetoothRunLoop: @unchecked Sendable {
         if let runLoop = action.runLoop { scheduleDrain(on: runLoop) }
         if action.launch {
             let thread = Thread { self.run() }
-            thread.name = "Vitruvian Bluetooth Accessories"
+            thread.name = "Vitruvian Atrium Bluetooth Accessories"
             thread.qualityOfService = .utility
             thread.start()
         }

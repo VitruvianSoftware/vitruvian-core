@@ -3,9 +3,9 @@
 
 import AppKit
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
 
 /// Decorative motion is stepped on the bars' own layers at a limited rate,
 /// without a SwiftUI timeline or repeated Canvas drawing in the app process.

@@ -3,7 +3,7 @@
 
 import Combine
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// The island's volume notice. It follows the system output's level and
 /// mute, stays silent for a new output's first reading and, while the island

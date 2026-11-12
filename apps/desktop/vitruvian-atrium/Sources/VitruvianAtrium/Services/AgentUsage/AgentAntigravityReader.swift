@@ -4,8 +4,8 @@
 import Darwin
 import Foundation
 import SQLite3
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Reads Antigravity session telemetry from `~/.gemini/antigravity/.telemetry_state.json`
 /// and conversation metadata from `conversation_summaries.db`, and probes the local

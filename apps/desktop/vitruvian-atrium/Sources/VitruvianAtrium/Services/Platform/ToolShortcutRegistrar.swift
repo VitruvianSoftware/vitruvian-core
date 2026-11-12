@@ -3,7 +3,7 @@
 
 import AppKit
 import Combine
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// What the registrar needs of a global hotkey. `QuickToolHotkey` is one; a
 /// test passes a double that registers nothing.

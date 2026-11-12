@@ -3,8 +3,8 @@
 
 import AppKit
 import Foundation
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 
 /// The URL cleaner over a clipboard and a preference suite of its own, with
 /// the clipboard lane, the main queue and the timer run by hand. Nothing here
@@ -42,7 +42,7 @@ enum URLCleanerTests {
         var undeclared: [String] = []
 
         init() {
-            let domain = "com.vitruviansoftware.vitruvian.tests.url-cleaner"
+            let domain = "com.vitruviansoftware.atrium.tests.url-cleaner"
             let defaults = ScratchDefaults.suite(named: domain)!
             defaults.removePersistentDomain(forName: domain)
             self.defaults = defaults
@@ -50,7 +50,7 @@ enum URLCleanerTests {
         }
 
         func close() {
-            defaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.url-cleaner")
+            defaults.removePersistentDomain(forName: "com.vitruviansoftware.atrium.tests.url-cleaner")
             board.releaseGlobally()
         }
 
@@ -143,7 +143,7 @@ enum URLCleanerTests {
         probe.clearContents()
         probe.setString("a", forType: .string)
         let counted = probe.changeCount
-        probe.declareVitruvianSource()
+        probe.declareAtriumSource()
         return probe.changeCount != counted
     }
 

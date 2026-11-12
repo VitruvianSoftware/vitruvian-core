@@ -1,7 +1,7 @@
 # Setup Signing
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/bazel/src/setup_signing`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/bazel/src/setup_signing`.
 
 ## Interface
 - `[lib.rs:IDENTITY_NAME]`
@@ -23,4 +23,4 @@ Component package providing implementation for `apps/desktop/vitruvian/bazel/src
 - [lib.rs:383]: `("openssl", "exec /usr/bin/openssl \"$@\"\n"),`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/bazel/src/setup_signing/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/bazel/src/setup_signing/...`

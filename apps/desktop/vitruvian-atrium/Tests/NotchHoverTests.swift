@@ -3,10 +3,10 @@
 
 import AppKit
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The module's hover handling on a real island (`NotchIslandFixture`), with
 /// the fixture's clock and pointer. No input is posted and the user's
@@ -195,7 +195,7 @@ enum NotchHoverTests {
     }
 
     static func run(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.vitruvian.tests.notch-hover"
+        let domain = "com.vitruviansoftware.atrium.tests.notch-hover"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         Self.defaults = defaults

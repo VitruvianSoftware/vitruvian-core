@@ -4,10 +4,10 @@
 import AppKit
 import Foundation
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The Notifications page's list: one compact row per message, newest first,
 /// and each app's messages stacked into one row that opens in place.
@@ -20,7 +20,7 @@ enum NotchNotificationListTests {
     }
 
     /// A morning's messages: four from Slack, and one each from Claude,
-    /// Vitruvian and Mail, received a few minutes apart.
+    /// Vitruvian Atrium and Mail, received a few minutes apart.
     static func sample(at start: Date = sampleStart) -> [NotchSystemNotification] {
         let messages: [(minutes: Double, app: String, title: String, subtitle: String, body: String)] = [
             (0, "Slack", "Priya Raman", "#platform", "Deploy to staging is green, promoting to prod after standup."),
@@ -28,7 +28,7 @@ enum NotchNotificationListTests {
             (6, "Slack", "Marcus Lee", "#design-review", "Left two comments on the island mockups, mostly spacing."),
             (9, "Claude", "Scheduled task completed", "", "Weekly dependency audit finished: 3 updates are ready for review."),
             (12, "Slack", "Priya Raman", "#platform", "Can you look at the cache key change before 11?"),
-            (15, "Vitruvian", "App updates", "", "2 apps have updates: Raycast 1.98 and Figma 125.4."),
+            (15, "Vitruvian Atrium", "App updates", "", "2 apps have updates: Raycast 1.98 and Figma 125.4."),
             (17, "Slack", "Dana Whitfield", "", "Lunch at 12:30? The new ramen place on 4th."),
         ]
         // The inbox keeps each arrival in front.
@@ -171,7 +171,7 @@ enum NotchNotificationListTests {
     // MARK: The setting
 
     private static func settings(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.vitruvian.tests.notch-notification-list"
+        let domain = "com.vitruviansoftware.atrium.tests.notch-notification-list"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
@@ -271,7 +271,7 @@ enum NotchNotificationListTests {
                 icons[app] = NSWorkspace.shared.icon(forFile: url.path)
             }
         }
-        icons["Vitruvian"] = NSImage(contentsOf: URL(fileURLWithPath: "Resources/Brand/AppIcon-Default.png"))
+        icons["Vitruvian Atrium"] = NSImage(contentsOf: URL(fileURLWithPath: "Resources/Brand/AppIcon-Default.png"))
         let text = FeatureStrings.notchNotifications(.enUS)
         let shots: [(String, NotchNotificationLayout, Bool, Set<String>)] = [
             ("notifications-1-cards.png", .cards, false, []),

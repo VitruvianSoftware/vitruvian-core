@@ -3,10 +3,10 @@
 
 import AppKit
 import QuartzCore
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 // No panel is created: layout and animation configuration run on the real
 // HUD's content view, offscreen.

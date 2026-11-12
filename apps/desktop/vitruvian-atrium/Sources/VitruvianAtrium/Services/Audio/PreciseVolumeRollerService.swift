@@ -4,8 +4,8 @@
 import AppKit
 import Combine
 @preconcurrency import CoreGraphics
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Turns coarse hardware volume wheel bursts into macOS' fine volume step.
 /// Active only while enabled and Accessibility is granted.

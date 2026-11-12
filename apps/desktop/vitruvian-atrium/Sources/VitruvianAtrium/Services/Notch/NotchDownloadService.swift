@@ -4,8 +4,8 @@
 import AppKit
 import Combine
 import Darwin
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 @MainActor
 package final class NotchDownloadService: ObservableObject {
@@ -60,7 +60,7 @@ package final class NotchDownloadService: ObservableObject {
         adopt: { [weak self] in self?.adoptFolder(bookmark: $0) },
         markUnavailable: { [weak self] in self?.folderUnavailable = true }))
     package var isChoosingFolder: Bool { folderChoice.isChoosing }
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.notch.downloads", qos: .utility)
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.notch.downloads", qos: .utility)
 
     private init() {}
 

@@ -2,10 +2,10 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 struct ClipboardHistoryAccessTests {
     static func run(_ suite: TestSuite) {
@@ -70,7 +70,7 @@ struct ClipboardHistoryAccessTests {
         let clock = TestClock()
         let deadlines = ManualDeadlineScheduler(clock: clock)
         let lane = GeneralPasteboardAccess(
-            label: "Vitruvian.Tests.ClipboardDeadline",
+            label: "Vitruvian Atrium.Tests.ClipboardDeadline",
             now: clock.read,
             scheduleDeadline: deadlines.schedule
         )

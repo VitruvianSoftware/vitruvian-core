@@ -1,7 +1,7 @@
 # Killprocess
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/Sources/Vitruvian/Services/KillProcess`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/KillProcess`.
 
 ## Interface
 - Internal implementation components
@@ -14,4 +14,4 @@ Component package providing implementation for `apps/desktop/vitruvian/Sources/V
 - [KillProcessService.swift:129]: `let needle = query.trimmingCharacters(in: .whitespaces).lowercased()`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/Sources/Vitruvian/Services/KillProcess/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/KillProcess/...`

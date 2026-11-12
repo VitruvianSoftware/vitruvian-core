@@ -1,7 +1,7 @@
 # Commandbar
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/Sources/Vitruvian/Services/CommandBar`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/CommandBar`.
 
 ## Interface
 - Internal implementation components
@@ -22,4 +22,4 @@ Component package providing implementation for `apps/desktop/vitruvian/Sources/V
 - [CommandBarLinks.swift:100]: `case query`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/Sources/Vitruvian/Services/CommandBar/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/CommandBar/...`

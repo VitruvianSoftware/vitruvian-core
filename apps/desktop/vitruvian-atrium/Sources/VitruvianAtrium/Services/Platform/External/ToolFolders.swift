@@ -3,7 +3,7 @@
 
 import Darwin
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// Where a tool that runs as its own program lives once it is added: two
 /// folders under the app's support folder, each named by the tool's id.

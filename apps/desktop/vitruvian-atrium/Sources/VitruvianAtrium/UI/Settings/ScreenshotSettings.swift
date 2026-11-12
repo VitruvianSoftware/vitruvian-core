@@ -2,9 +2,9 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
 
 /// Screenshot-specific sections inside the shared screen-capture page.
 package struct ScreenshotCaptureSettings: View {
@@ -19,7 +19,7 @@ package struct ScreenshotCaptureSettings: View {
     @AppStorage(Preferences.screenshotClipboardShortcutEnabled)
     private var clipboardShortcutEnabled: Bool
     @AppStorage(Preferences.screenshotFreeze) private var freeze: Bool
-    @AppStorage(Preferences.screenshotHideVitruvianWindows) private var hideVitruvianWindows: Bool
+    @AppStorage(Preferences.screenshotHideAtriumWindows) private var hideAtriumWindows: Bool
     @AppStorage(Preferences.screenshotSaveFolder) private var saveFolder: String
     @AppStorage(Preferences.screenshotSaveSubfolder) private var saveSubfolder: String
     @AppStorage(Preferences.screenshotFileNamePattern) private var fileNamePattern: String
@@ -132,7 +132,7 @@ package struct ScreenshotCaptureSettings: View {
                 Text(strings.freezeCaption)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Toggle(strings.hideVitruvianWindowsToggle, isOn: $hideVitruvianWindows)
+                Toggle(strings.hideAtriumWindowsToggle, isOn: $hideAtriumWindows)
                 Picker(strings.delayLabel, selection: $delay) {
                     ForEach(ScreenshotSupport.allowedDelays, id: \.self) { seconds in
                         if seconds == 0 {

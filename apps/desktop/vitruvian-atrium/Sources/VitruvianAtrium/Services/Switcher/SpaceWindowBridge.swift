@@ -3,8 +3,8 @@
 
 import AppKit
 import ApplicationServices
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Window-server queries and requests around Spaces, resolved at runtime so a
 /// macOS that drops a symbol degrades to the previous behavior (windows on

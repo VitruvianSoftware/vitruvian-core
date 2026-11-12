@@ -3,13 +3,13 @@
 
 import AppKit
 import SwiftUI
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 
 /// An extension's settings as one page: a search field and a row of links
 /// to its sections, which stay in place, over the page, which scrolls. A
 /// link scrolls to its section; the link of the section in view is lit as
-/// the page scrolls. The Extensions sheet draws Vitruvian's own rows, the
+/// the page scrolls. The Extensions sheet draws Vitruvian Atrium's own rows, the
 /// commands and what the extension uses around the extension's page
 /// (`lists`); the Dynamic Island page draws the extension's page alone.
 /// Both show the same page, so a change in either is the same change.

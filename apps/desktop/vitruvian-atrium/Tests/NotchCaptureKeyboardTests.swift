@@ -4,10 +4,10 @@
 import AppKit
 import Carbon.HIToolbox
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The production routing of a capture preview's and a capture chooser's
 /// keys, decided from plain values. No windows are shown, no native monitors

@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 // Sonoma+ Index.plist + kill WallpaperAgent = Show on all Spaces
 // (setDesktopImageURL alone only hits the current Space)
@@ -29,7 +29,7 @@ package enum WallpaperStore {
     // lives with the app, not in the system wallpaper store
     package static var backupURL: URL {
         let fallback = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
-            .appendingPathComponent("Library/Application Support/com.vitruviansoftware.vitruvian",
+            .appendingPathComponent("Library/Application Support/com.vitruviansoftware.atrium",
                                     isDirectory: true)
         let container = PrivateFileStore.containerURL ?? fallback
         return container.appendingPathComponent("WallpaperIndex.vitruvian-bak",

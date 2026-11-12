@@ -26,7 +26,7 @@ Every upstream commit is in the ledger, none is `pending`, and every port is on
 1. Start from the latest `origin/main`. If an open pull request already ports an
    upstream batch (its title contains "port upstream batch"), drive that one to
    merged before starting another.
-2. Run `bazel run //apps/desktop/vitruvian:track_upstream -- status`. If nothing
+2. Run `bazel run //apps/desktop/vitruvian-atrium:track_upstream -- status`. If nothing
    is untriaged or pending, stop and report "caught up at" the upstream commit.
 3. Run `triage`, and commit the ledger on its own as
    `chore(vitruvian): triage N upstream commits from <date>`.
@@ -39,13 +39,13 @@ Every upstream commit is in the ledger, none is `pending`, and every port is on
      paragraph naming every way the port differs from upstream, and every
      upstream check left out and why.
 5. Before every push, run
-   `bazel test //apps/desktop/vitruvian:source_lints_test //apps/desktop/vitruvian:sources_in_sync_test //apps/desktop/vitruvian:upstream_test`
+   `bazel test //apps/desktop/vitruvian-atrium:source_lints_test //apps/desktop/vitruvian-atrium:sources_in_sync_test //apps/desktop/vitruvian-atrium:upstream_test`
    and check its exit status. Piping it through `tail` hides a failure. Linux has
    no Swift compiler, so read the diff again against the rules below.
 6. Open the pull request, titled
    `feat(vitruvian): port upstream batch <n>, <summary>` and numbered after the
    last merged batch. Its body is a table of each upstream commit, what changes
-   for Vitruvian and how it was ported, then a test plan. Then push a commit that
+   for Vitruvian Atrium and how it was ported, then a test plan. Then push a commit that
    sets the ported ledger rows to `ported` with the pull request's number
    (`check-ledger` must pass), turn on auto-merge, and follow the pull request's
    activity.
@@ -89,4 +89,4 @@ Every upstream commit is in the ledger, none is `pending`, and every port is on
   `source_lints_test` names the ones missing.
 - Upstream's brand, domains and services never come in
   ([`TRADEMARKS.md`](../TRADEMARKS.md)). Upstream's files keep upstream's
-  copyright notice. Reverse-DNS names use `com.vitruviansoftware.vitruvian`.
+  copyright notice. Reverse-DNS names use `com.vitruviansoftware.atrium`.

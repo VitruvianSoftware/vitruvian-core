@@ -4,7 +4,7 @@
 import Compression
 import Foundation
 import ImageIO
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// Firefox and the browsers built on it publish no cover to macOS Now Playing,
 /// or a 60-pixel one for YouTube Music. Their saved session lists every open

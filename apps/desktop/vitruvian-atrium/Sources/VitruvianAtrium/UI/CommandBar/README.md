@@ -1,7 +1,7 @@
 # Commandbar
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/Sources/Vitruvian/UI/CommandBar`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/UI/CommandBar`.
 
 ## Interface
 - Internal implementation components
@@ -15,4 +15,4 @@ Component package providing implementation for `apps/desktop/vitruvian/Sources/V
 - [CommandBarView.swift:267]: `TextField(fieldPlaceholder, text: $service.query)`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/Sources/Vitruvian/UI/CommandBar/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/UI/CommandBar/...`

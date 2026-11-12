@@ -4,8 +4,8 @@
 import Foundation
 import IOKit
 import IOKit.usb
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// An external USB device plugged into the Mac.
 package struct ConnectedUSBDevice: Identifiable, Equatable, Hashable {

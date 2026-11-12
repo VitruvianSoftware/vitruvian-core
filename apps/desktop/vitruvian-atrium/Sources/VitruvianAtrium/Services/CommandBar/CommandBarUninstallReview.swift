@@ -3,7 +3,7 @@
 
 import Carbon.HIToolbox
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// The command bar's uninstall review: the checklist an uninstall row opens,
 /// the extra confirmation a package-managed app asks for, and every way back

@@ -1,7 +1,7 @@
 # Radialmenu
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/Sources/Vitruvian/Services/RadialMenu`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/RadialMenu`.
 
 ## Interface
 - Internal implementation components
@@ -14,4 +14,4 @@ Component package providing implementation for `apps/desktop/vitruvian/Sources/V
 - [RadialNowPlayingService.swift:410]: `func fetch(completion: @escaping (RadialNowPlayingSnapshot?) -> Void) {`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/Sources/Vitruvian/Services/RadialMenu/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/RadialMenu/...`

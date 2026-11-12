@@ -5,8 +5,8 @@ import AppKit
 import Carbon.HIToolbox
 import Combine
 import IOKit
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Watches macOS Secure Event Input and reports the app that was active when
 /// it turned on, the only lead macOS gives on who holds it.

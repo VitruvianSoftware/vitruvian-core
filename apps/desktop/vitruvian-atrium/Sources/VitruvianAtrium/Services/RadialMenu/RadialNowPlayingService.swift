@@ -4,8 +4,8 @@
 import AppKit
 import Foundation
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// A session-scoped view of macOS Now Playing. The read itself lives in the
 /// bridge below, out of process; a failed run, a timeout and malformed
@@ -294,15 +294,15 @@ package enum RadialNowPlayingApplication {
         package var isHidden: Bool
         package var bundleURL: URL?
         package var unhide: () -> Void
-        /// Hands Vitruvian's activation over to the player.
+        /// Hands Vitruvian Atrium's activation over to the player.
         package var handOffActivation: () -> Void
-        /// Asks the player to activate on Vitruvian's behalf; false when refused.
-        package var activateFromVitruvian: (NSApplication.ActivationOptions) -> Bool
+        /// Asks the player to activate on Vitruvian Atrium's behalf; false when refused.
+        package var activateFromAtrium: (NSApplication.ActivationOptions) -> Bool
         package var activate: (NSApplication.ActivationOptions) -> Void
 
         package init(pid: pid_t, activationPolicy: NSApplication.ActivationPolicy, isHidden: Bool,
                      bundleURL: URL?, unhide: @escaping () -> Void, handOffActivation: @escaping () -> Void,
-                     activateFromVitruvian: @escaping (NSApplication.ActivationOptions) -> Bool,
+                     activateFromAtrium: @escaping (NSApplication.ActivationOptions) -> Bool,
                      activate: @escaping (NSApplication.ActivationOptions) -> Void) {
             self.pid = pid
             self.activationPolicy = activationPolicy
@@ -310,7 +310,7 @@ package enum RadialNowPlayingApplication {
             self.bundleURL = bundleURL
             self.unhide = unhide
             self.handOffActivation = handOffActivation
-            self.activateFromVitruvian = activateFromVitruvian
+            self.activateFromAtrium = activateFromAtrium
             self.activate = activate
         }
 
@@ -319,7 +319,7 @@ package enum RadialNowPlayingApplication {
                       isHidden: application.isHidden, bundleURL: application.bundleURL,
                       unhide: { application.unhide() },
                       handOffActivation: { ActivationHandoff.yield(to: application) },
-                      activateFromVitruvian: { application.activate(from: NSRunningApplication.current, options: $0) },
+                      activateFromAtrium: { application.activate(from: NSRunningApplication.current, options: $0) },
                       activate: { _ = application.activate(options: $0) })
         }
     }
@@ -350,18 +350,18 @@ package enum RadialNowPlayingApplication {
         }
     }
 
-    /// The island and the radial card are non-activating panels, so Vitruvian
+    /// The island and the radial card are non-activating panels, so Vitruvian Atrium
     /// rarely holds activation when one is clicked. Since macOS 14 a bare
     /// request from an inactive app is refused, and the player stayed behind.
     package static func open(_ snapshot: RadialNowPlayingSnapshot, using opening: Opening = .system) {
         if let application = opening.player(snapshot) {
-            // A helper takes no activation; the handoff would leave Vitruvian in front.
+            // A helper takes no activation; the handoff would leave Vitruvian Atrium in front.
             guard application.activationPolicy == .regular else { return }
             // Read before the unhide below: a hidden player's windows come back with it.
             let showsNoWindow = !application.isHidden && !opening.hasWindowOnScreen(application.pid)
             if application.isHidden { application.unhide() }
             application.handOffActivation()
-            if !application.activateFromVitruvian([.activateAllWindows]) {
+            if !application.activateFromAtrium([.activateAllWindows]) {
                 application.activate([.activateAllWindows])
             }
             // Like a Dock click, a player that keeps playing with its window
@@ -398,7 +398,7 @@ package enum RadialNowPlayingApplication {
 /// missing script or library, a failed run, a timeout and malformed output
 /// all read as an empty playback session.
 private final class MediaRemoteNowPlayingBridge {
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.radial-now-playing", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.radial-now-playing", qos: .userInitiated)
     /// 2 s: a cold perl load measured 500 ms with no session playing, and a
     /// real reply adds the MediaRemote round trip plus up to 16 MB of base64
     /// artwork through the pipe. A kill reads as nothing playing, so a deadline
@@ -410,7 +410,7 @@ private final class MediaRemoteNowPlayingBridge {
     func fetch(completion: @escaping (RadialNowPlayingSnapshot?) -> Void) {
         guard let script = Bundle.main.url(forResource: "now-playing", withExtension: "pl"),
               let library = Bundle.main.privateFrameworksURL?
-                .appendingPathComponent("libVitruvianNowPlaying.dylib"),
+                .appendingPathComponent("libVitruvianAtriumNowPlaying.dylib"),
               FileManager.default.fileExists(atPath: library.path) else {
             completion(nil)
             return

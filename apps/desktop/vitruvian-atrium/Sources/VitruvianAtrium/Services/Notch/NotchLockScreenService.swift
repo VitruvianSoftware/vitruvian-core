@@ -5,8 +5,8 @@ import AppKit
 import AudioToolbox
 import Combine
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// The island over the lock screen: music on a pane of Liquid Glass between
 /// the clock and the login controls, the activities as a line under the

@@ -2,10 +2,10 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The production handoff a timed session makes when it runs out. It is the
 /// one place that decides whether a session the user started by hand carries
@@ -34,7 +34,7 @@ enum KeepAwakeTimerHandoffTests {
     }
 
     static func run(expect: (Bool, String) -> Void) {
-        let domain = "com.vitruviansoftware.vitruvian.tests.keep-awake-handoff"
+        let domain = "com.vitruviansoftware.atrium.tests.keep-awake-handoff"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }

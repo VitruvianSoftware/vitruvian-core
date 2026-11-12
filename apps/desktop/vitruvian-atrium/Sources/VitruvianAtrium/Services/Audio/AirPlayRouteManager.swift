@@ -8,10 +8,10 @@ import Combine
 import CoreMedia
 import Foundation
 import ObjectiveC
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
-/// Bridges macOS native AirPlay output routing into Vitruvian.
+/// Bridges macOS native AirPlay output routing into Vitruvian Atrium.
 ///
 /// Discovers and connects AirPlay devices using the system's trusted routing
 /// stack (`AVOutputContext` / `AVRoutePickerView`), bypassing Core Audio HAL's
@@ -20,7 +20,7 @@ import VitruvianDesign
 package final class AirPlayRouteManager: NSObject, ObservableObject {
     package static let shared = AirPlayRouteManager()
 
-    /// Virtual UID used by Vitruvian to represent an AirPlay output route.
+    /// Virtual UID used by Vitruvian Atrium to represent an AirPlay output route.
     nonisolated package static let airPlaySentinelUID = MixerRoutingSupport.airPlaySentinelUID
 
     @Published package private(set) var isAvailable: Bool = false
@@ -28,7 +28,7 @@ package final class AirPlayRouteManager: NSObject, ObservableObject {
     @Published package private(set) var activeSpeakerName: String?
     /// Main thread. Static so the panel's dismissal check can read it
     /// without creating the manager, which loads the private routing stack:
-    /// a Vitruvian without the mixer must not pay for AirPlay at all.
+    /// a Vitruvian Atrium without the mixer must not pay for AirPlay at all.
     package private(set) static var isPresentingPicker = false
 
     /// What the mixer's device refresh needs, readable from its HAL queue
@@ -743,7 +743,7 @@ package final class AirPlayStreamRegistration: @unchecked Sendable {
 /// of them never read the mixing source at once. `stop()` returns only after a
 /// step that is already running has finished, and no step starts afterwards.
 package final class AirPlayFeedDriver: @unchecked Sendable {
-    package static let sharedQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.airplay.render", qos: .userInitiated)
+    package static let sharedQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.airplay.render", qos: .userInitiated)
     private static let queueKey = DispatchSpecificKey<Void>()
 
     private let queue: DispatchQueue

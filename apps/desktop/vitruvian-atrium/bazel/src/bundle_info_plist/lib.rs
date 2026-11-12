@@ -258,9 +258,9 @@ mod tests {
 ";
         let out = transform_upstream_info_plist(Path::new("Info.plist"), src).unwrap();
         assert!(out.contains("<key>CFBundleShortVersionString</key>\n\t<string>3.4.1</string>"));
-        assert!(
-            out.contains("<key>VitruvianAtriumUpstreamVersion</key>\n\t<string>3.4.1-beta.1</string>")
-        );
+        assert!(out.contains(
+            "<key>VitruvianAtriumUpstreamVersion</key>\n\t<string>3.4.1-beta.1</string>"
+        ));
     }
 
     #[test]

@@ -1,7 +1,7 @@
 # Services
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/Sources/Vitruvian/Services`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services`.
 
 ## Interface
 - `[DockTileResolver.swift:DockTileResolver]`
@@ -77,4 +77,4 @@ Component package providing implementation for `apps/desktop/vitruvian/Sources/V
 - [WindowMaximizer.swift:298]: `/// An application element answers a role query by switching a Chromium app's`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/Sources/Vitruvian/Services/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/...`

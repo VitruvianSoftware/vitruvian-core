@@ -4,8 +4,8 @@
 import AppKit
 import Combine
 import CoreServices
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Finds which of the installed apps have a newer version waiting, in one
 /// list, and updates the ones the person picks.
@@ -143,7 +143,7 @@ package final class AppUpdatesService: ObservableObject {
     @Published package private(set) var hasCheckedThisSession = false
     @Published package private(set) var lastError: String?
 
-    package let workQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.appupdates", qos: .utility)
+    package let workQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.appupdates", qos: .utility)
     private let lookupSession: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 10
@@ -1007,7 +1007,7 @@ package final class AppUpdatesService: ObservableObject {
         bundleID == Bundle.main.bundleIdentifier || bundleID.hasPrefix("com.vitruvian")
     }
 
-    nonisolated private static let ownPackageTokens: Set<String> = ["vitruvian", "vitruvian@beta", "vitruvian-beta"]
+    nonisolated private static let ownPackageTokens: Set<String> = ["vitruvian-atrium", "vitruvian-atrium@beta", "vitruvian-atrium-beta"]
 
     /// The package manager refreshes its own catalog on the way, which can sit
     /// on a slow network. A ceiling keeps a stalled command from leaving the

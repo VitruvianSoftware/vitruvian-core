@@ -3,10 +3,10 @@
 
 import AppKit
 import SwiftUI
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 import VitruvianToolProtocol
-import VitruvianUI
+import VitruvianAtriumUI
 
 /// The detail of an extension whose lists scroll, drawn at its tallest:
 /// every line of the extension's own words at its limit, an update, a
@@ -27,7 +27,7 @@ enum ExternalToolDetailHeightTests {
     /// less its margins.
     static let listsWidth: CGFloat = 480 - 22 * 2
 
-    /// HomeSpeaker's eight links in `language`: Vitruvian's own rows, its
+    /// HomeSpeaker's eight links in `language`: Vitruvian Atrium's own rows, its
     /// five sections, its commands and what it uses.
     static func homeSpeakerLinks(_ language: AppLanguage) -> [(title: String, anchor: SettingsSheetIndex.Anchor)] {
         let text = FeatureStrings.externalTools(language)

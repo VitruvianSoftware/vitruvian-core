@@ -10,10 +10,10 @@ import Darwin
 import Foundation
 import ImageIO
 import VMStatisticsCompat
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 enum RepositoryFeatureTests {
     /// What a Homebrew wait asked its stand-ins, from the worker thread it
@@ -210,7 +210,7 @@ enum RepositoryFeatureTests {
                "in-app uninstall aborts unless fans and normal sleep are restored before removal: "
                + "\(restoring.events), \(refusing.events)")
 
-        // `Vitruvian --uninstall` has no password dialog. What it prints about
+        // `Vitruvian Atrium --uninstall` has no password dialog. What it prints about
         // sleep follows the password-free restore, or a reading taken first
         // that sleep is on: a restore result thrown away would print sleep as
         // still off right after the rule put it back.
@@ -1291,7 +1291,7 @@ enum RepositoryFeatureTests {
         let uninstallScratch = scratchFolder("uninstall")
         defer { try? FileManager.default.removeItem(at: uninstallScratch) }
         let uninstallHome = uninstallScratch.appendingPathComponent("home").path
-        let releaseBundleID = "com.vitruviansoftware.vitruvian"
+        let releaseBundleID = "com.vitruviansoftware.atrium"
         let appRemoves = SelfUninstall.ownedPaths(home: uninstallHome, bundleID: releaseBundleID)
         let byHostPreferences = "\(uninstallHome)/Library/Preferences/ByHost/\(releaseBundleID).0123-ABCD.plist"
         let notTheApp = [
@@ -1423,7 +1423,7 @@ enum RepositoryFeatureTests {
 
         // The session records the app that was active when secure input
         // turned on, not the process holding it, and Settings makes
-        // Vitruvian that app.
+        // Vitruvian Atrium that app.
         let secureInputOwnPid: pid_t = 77
         suite.expect(SecureInputSupport.holder(isEnabled: false,
                                          read: .noHolder,
@@ -1496,32 +1496,32 @@ enum RepositoryFeatureTests {
         suite.expect(SecureInputSupport.holder(isEnabled: true,
                                          read: .holder(secureInputOwnPid),
                                          ownPid: secureInputOwnPid,
-                                         runningApp: { pid in ("Vitruvian", pid) },
+                                         runningApp: { pid in ("Vitruvian Atrium", pid) },
                                          isProcessAlive: { _ in
                                              secureInputOwnLivenessChecks += 1
                                              return true
                                          }) == .unknown,
-               "Vitruvian recorded as the active app is never named as holding secure input")
+               "Vitruvian Atrium recorded as the active app is never named as holding secure input")
         suite.expect(secureInputOwnLivenessChecks == 0,
-               "naming Vitruvian is refused before any liveness check")
+               "naming Vitruvian Atrium is refused before any liveness check")
         suite.expect(SecureInputSupport.holder(isEnabled: true,
                                          read: .holder(5555),
                                          ownPid: secureInputOwnPid,
-                                         runningApp: { _ in ("Vitruvian", secureInputOwnPid) },
+                                         runningApp: { _ in ("Vitruvian Atrium", secureInputOwnPid) },
                                          isProcessAlive: { _ in true }) == .unknown,
-               "a recorded helper owned by Vitruvian is not named either")
+               "a recorded helper owned by Vitruvian Atrium is not named either")
         suite.expect(SecureInputSupport.holder(isEnabled: true,
                                          read: .holder(secureInputOwnPid),
                                          ownPid: secureInputOwnPid,
                                          runningApp: { _ in nil },
                                          isProcessAlive: { _ in true }) == .unknown,
-               "Vitruvian recorded while it is not a regular app is never sent to log out")
+               "Vitruvian Atrium recorded while it is not a regular app is never sent to log out")
         suite.expect(SecureInputSupport.holder(isEnabled: true,
                                          read: .holder(4242),
                                          ownPid: secureInputOwnPid,
-                                         runningApp: { pid in ("Vitruvian", pid) },
+                                         runningApp: { pid in ("Vitruvian Atrium", pid) },
                                          isProcessAlive: { _ in true })
-                   == .app(name: "Vitruvian", pid: 4242),
+                   == .app(name: "Vitruvian Atrium", pid: 4242),
                "another copy of the app is told apart from this one by pid, not by name")
 
         var secureInputUnavailableLookups = 0

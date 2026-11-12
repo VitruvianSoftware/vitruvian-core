@@ -4,8 +4,8 @@
 import AppKit
 import Foundation
 import ServiceManagement
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 @MainActor
 package final class FanControlService: ObservableObject {
@@ -23,7 +23,7 @@ package final class FanControlService: ObservableObject {
     @Published package private(set) var error: FanControlErrorCode?
     @Published package private(set) var isWorking = false
 
-    private let probeQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.fan-control.probe",
+    private let probeQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.fan-control.probe",
                                            qos: .utility)
     // Only probeQueue touches it.
     nonisolated(unsafe) private var probeHardware: FanControlHardware?
@@ -61,7 +61,7 @@ package final class FanControlService: ObservableObject {
     }
 
     nonisolated private static var helperVersion: String {
-        Bundle.main.object(forInfoDictionaryKey: "VitruvianFanControlHelperVersion") as? String
+        Bundle.main.object(forInfoDictionaryKey: "VitruvianAtriumFanControlHelperVersion") as? String
             ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
             ?? AppInfo.version
     }

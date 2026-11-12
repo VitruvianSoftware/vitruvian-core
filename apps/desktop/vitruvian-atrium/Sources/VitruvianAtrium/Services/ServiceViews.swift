@@ -3,8 +3,8 @@
 
 import AppKit
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// The SwiftUI content services host in their own panels and windows.
 ///

@@ -3,8 +3,8 @@
 
 import CoreGraphics
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 package enum RecordingShareDuration: Int, CaseIterable, Codable, Identifiable {
     case oneHour = 3_600
@@ -72,11 +72,11 @@ package enum RecordingSharingSupport {
     }
 
     /// Temporary links were served by upstream's own backend, which the fork
-    /// must not send users' captures to. Until Vitruvian runs its own, uploads
+    /// must not send users' captures to. Until Vitruvian Atrium runs its own, uploads
     /// go to a reserved `.invalid` host (RFC 6761) that never resolves, so they
     /// fail closed and nothing leaves the Mac.
     package static let productionEndpoint = URL(string: "https://sharing.invalid")!
-    package static let developerBundleIdentifier = "com.vitruviansoftware.vitruvian.dev"
+    package static let developerBundleIdentifier = "com.vitruviansoftware.atrium.dev"
     /// Leaves transport headroom below the public 100 MB request ceiling.
     package static let maximumUploadBytes = 96_000_000
     package static let targetUploadBytes = 90_000_000

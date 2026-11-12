@@ -1,7 +1,7 @@
 # Autoquit
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/Sources/Vitruvian/Services/AutoQuit`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/AutoQuit`.
 
 ## Interface
 - Internal implementation components
@@ -14,4 +14,4 @@ Component package providing implementation for `apps/desktop/vitruvian/Sources/V
 - [AutoQuitSupport.swift:309]: `/// even if it retains a title (#2696). A failed query proves nothing, and`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/Sources/Vitruvian/Services/AutoQuit/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/AutoQuit/...`

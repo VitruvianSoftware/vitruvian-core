@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// Reads Codex session logs. Token records and running-total events become
 /// usage, task events open and close turns, and limit readings become the

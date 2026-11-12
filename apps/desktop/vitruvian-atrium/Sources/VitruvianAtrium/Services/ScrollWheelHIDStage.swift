@@ -3,7 +3,7 @@
 
 import CoreGraphics
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// Watches the HID stage for the wheel taps that sit further down, so they can
 /// leave remote scrolling alone (see `ScrollWheelHIDStageLedger`).

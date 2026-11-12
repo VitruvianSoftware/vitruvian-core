@@ -3,8 +3,8 @@
 
 import AppKit
 import CoreText
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Turns a line of overlay text into pixels, once.
 ///

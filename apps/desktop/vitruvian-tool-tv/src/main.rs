@@ -1339,7 +1339,7 @@ mod tests {
             state.set_dry_run_for("/tmp/conformance");
             assert!(state.dry_run);
         }
-        state.set_dry_run_for("/Users/x/Library/Application Support/com.vitruviansoftware.vitruvian/Tools/dev.vitruvian.tv");
+        state.set_dry_run_for("/Users/x/Library/Application Support/com.vitruviansoftware.atrium/Tools/dev.vitruvian.tv");
         assert!(!state.dry_run);
     }
 

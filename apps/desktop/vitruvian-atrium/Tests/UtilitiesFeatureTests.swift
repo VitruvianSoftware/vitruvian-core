@@ -10,10 +10,10 @@ import Darwin
 import Foundation
 import ImageIO
 import VMStatisticsCompat
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 enum UtilitiesFeatureTests {
     static func run(_ suite: TestSuite) {
@@ -1027,8 +1027,8 @@ enum UtilitiesFeatureTests {
         suite.expect(RadialMenuSupport.needsAccessibility([shortcutProfile]),
                "profile with keyboard shortcut slice needs Accessibility")
 
-        let profileTestDefaults = ScratchDefaults.suite(named: "com.vitruviansoftware.vitruvian.tests.radialProfiles")!
-        profileTestDefaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.radialProfiles")
+        let profileTestDefaults = ScratchDefaults.suite(named: "com.vitruviansoftware.atrium.tests.radialProfiles")!
+        profileTestDefaults.removePersistentDomain(forName: "com.vitruviansoftware.atrium.tests.radialProfiles")
         profileTestDefaults.set(true, forKey: AppFeature.radialMenu.availabilityKey)
         profileTestDefaults.set(true, forKey: DefaultsKey.radialMenuEnabled)
 
@@ -1105,7 +1105,7 @@ enum UtilitiesFeatureTests {
         profileTestDefaults.removeObject(forKey: DefaultsKey.radialMenuProfiles)
         suite.expect(wheelShortcuts() == [seedShortcut],
                "until a wheel is saved the role key is the shortcut the page lists")
-        profileTestDefaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.radialProfiles")
+        profileTestDefaults.removePersistentDomain(forName: "com.vitruviansoftware.atrium.tests.radialProfiles")
 
         let testImage = NSImage(size: NSSize(width: 16, height: 16))
         testImage.lockFocus()
@@ -1134,8 +1134,8 @@ enum UtilitiesFeatureTests {
                 && RadialMenuSupport.claimedMouseButtons(iconProfilesData) == fullyDecodedButtons,
                "claimed mouse buttons read without the items match the full profile decode")
 
-        let legacyButtonDefaults = ScratchDefaults.suite(named: "com.vitruviansoftware.vitruvian.tests.radialLegacyButton")!
-        legacyButtonDefaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.radialLegacyButton")
+        let legacyButtonDefaults = ScratchDefaults.suite(named: "com.vitruviansoftware.atrium.tests.radialLegacyButton")!
+        legacyButtonDefaults.removePersistentDomain(forName: "com.vitruviansoftware.atrium.tests.radialLegacyButton")
         legacyButtonDefaults.set(RadialMenuMouseTrigger.forward.rawValue,
                                  forKey: DefaultsKey.radialMenuMouseButton)
         suite.expect(RadialMenuSupport.claimedMouseButtons(nil, defaults: legacyButtonDefaults)
@@ -1144,7 +1144,7 @@ enum UtilitiesFeatureTests {
                                                          defaults: legacyButtonDefaults)
                 == [MouseButtonShortcutSupport.forwardButtonNumber],
                "claimed mouse buttons fall back to the legacy button key like the full decode")
-        legacyButtonDefaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.radialLegacyButton")
+        legacyButtonDefaults.removePersistentDomain(forName: "com.vitruviansoftware.atrium.tests.radialLegacyButton")
 
         var reorderItems = [
             RadialMenuItem(kind: .app, name: "A"),

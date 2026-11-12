@@ -4,8 +4,8 @@
 import AppKit
 import Combine
 import CoreGraphics
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Rewrites mouse wheel events only, leaving the trackpad on macOS natural
 /// scrolling: a modifying tap after the window server annotates the event,

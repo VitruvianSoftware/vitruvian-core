@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Only the installed dictionary's playback vocabulary is accepted. Event codes
 /// are data supplied by that dictionary, never inferred from an application's name.

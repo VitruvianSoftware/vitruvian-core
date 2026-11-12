@@ -4,8 +4,8 @@
 import AppKit
 import ApplicationServices
 import ScreenCaptureKit
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Raw pixel acquisition for the screenshot tool. Displays go through
 /// ScreenCaptureKit; a clicked window prefers the window server so the result
@@ -18,7 +18,7 @@ package enum ScreenshotCaptureEngine {
     /// Full-resolution capture of one display.
     package static func captureDisplay(_ displayID: CGDirectDisplayID,
                                includePointer: Bool,
-                               hideVitruvianWindows: Bool,
+                               hideAtriumWindows: Bool,
                                protectedWindowIDs: Set<CGWindowID>) async -> CGImage? {
         guard let content = try? await SCShareableContent.excludingDesktopWindows(
             false, onScreenWindowsOnly: true)
@@ -27,7 +27,7 @@ package enum ScreenshotCaptureEngine {
         else { return nil }
 
         let ownWindows = await excludedOwnWindows(in: content,
-                                            hideVitruvianWindows: hideVitruvianWindows,
+                                            hideAtriumWindows: hideAtriumWindows,
                                             protectedWindowIDs: protectedWindowIDs)
         return await captureDisplay(display,
                                     scale: screenScale(for: displayID),
@@ -38,11 +38,11 @@ package enum ScreenshotCaptureEngine {
     package static func captureDisplayRegion(displayID: CGDirectDisplayID,
                                      pixelRect: CGRect,
                                      includePointer: Bool,
-                                     hideVitruvianWindows: Bool,
+                                     hideAtriumWindows: Bool,
                                      protectedWindowIDs: Set<CGWindowID>) async -> CGImage? {
         guard let capture = await prepareDisplayRegion(
             displayID: displayID, pixelRect: pixelRect, includePointer: includePointer,
-            hideVitruvianWindows: hideVitruvianWindows, protectedWindowIDs: protectedWindowIDs)
+            hideAtriumWindows: hideAtriumWindows, protectedWindowIDs: protectedWindowIDs)
         else { return nil }
         return await capture.image()
     }
@@ -69,7 +69,7 @@ package enum ScreenshotCaptureEngine {
     package static func prepareDisplayRegion(displayID: CGDirectDisplayID,
                                      pixelRect: CGRect,
                                      includePointer: Bool,
-                                     hideVitruvianWindows: Bool,
+                                     hideAtriumWindows: Bool,
                                      protectedWindowIDs: Set<CGWindowID>,
                                      keepsIslandOut: Bool = false) async -> RegionCapture? {
         guard let content = try? await SCShareableContent.excludingDesktopWindows(
@@ -83,7 +83,7 @@ package enum ScreenshotCaptureEngine {
         let clamped = ScreenshotSupport.clamp(pixelRect, to: displayPixels).integral
         guard !clamped.isEmpty else { return nil }
         let ownWindows = await excludedOwnWindows(in: content,
-                                            hideVitruvianWindows: hideVitruvianWindows,
+                                            hideAtriumWindows: hideAtriumWindows,
                                             protectedWindowIDs: protectedWindowIDs,
                                             keepsIslandOut: keepsIslandOut)
         let filter = SCContentFilter(display: display, excludingWindows: ownWindows)
@@ -102,13 +102,13 @@ package enum ScreenshotCaptureEngine {
     /// Captures every given screen, keyed by display id. Screens that fail
     /// are simply absent; the caller decides how to degrade.
     package static func captureAllDisplays(includePointer: Bool,
-                                   hideVitruvianWindows: Bool,
+                                   hideAtriumWindows: Bool,
                                    protectedWindowIDs: Set<CGWindowID>) async -> [CGDirectDisplayID: CGImage] {
         guard let content = try? await SCShareableContent.excludingDesktopWindows(
             false, onScreenWindowsOnly: true)
         else { return [:] }
         let ownWindows = await excludedOwnWindows(in: content,
-                                            hideVitruvianWindows: hideVitruvianWindows,
+                                            hideAtriumWindows: hideAtriumWindows,
                                             protectedWindowIDs: protectedWindowIDs)
         var result: [CGDirectDisplayID: CGImage] = [:]
         for screen in NSScreen.screens {
@@ -129,7 +129,7 @@ package enum ScreenshotCaptureEngine {
     /// The app's own windows a display capture must leave out, resolved
     /// against the same shareable-content snapshot the capture will use.
     private static func excludedOwnWindows(in content: SCShareableContent,
-                                           hideVitruvianWindows: Bool,
+                                           hideAtriumWindows: Bool,
                                            protectedWindowIDs: Set<CGWindowID>,
                                            keepsIslandOut: Bool = false) async -> [SCWindow] {
         let ownWindowIDs = Set(content.windows.compactMap { window in
@@ -137,7 +137,7 @@ package enum ScreenshotCaptureEngine {
         })
         // Only window ids cross to the main actor; the snapshot stays here.
         let excludedIDs = await excludedWindowIDs(ownWindowIDs: ownWindowIDs,
-                                                  hideVitruvianWindows: hideVitruvianWindows,
+                                                  hideAtriumWindows: hideAtriumWindows,
                                                   protectedWindowIDs: protectedWindowIDs,
                                                   keepsIslandOut: keepsIslandOut)
         return content.windows.filter { excludedIDs.contains($0.windowID) }
@@ -145,7 +145,7 @@ package enum ScreenshotCaptureEngine {
 
     @MainActor
     private static func excludedWindowIDs(ownWindowIDs: Set<CGWindowID>,
-                                          hideVitruvianWindows: Bool,
+                                          hideAtriumWindows: Bool,
                                           protectedWindowIDs: Set<CGWindowID>,
                                           keepsIslandOut: Bool) -> Set<CGWindowID> {
         // The island has its own preference for captures, independent of
@@ -155,7 +155,7 @@ package enum ScreenshotCaptureEngine {
         let islandIDs = !keepsIslandOut && NotchSupport.isEnabled()
             ? NotchService.shared.captureVisibleWindowIDs : []
         return ScreenshotCapturePolicy.excludedWindowIDs(
-            hideVitruvianWindows: hideVitruvianWindows,
+            hideAtriumWindows: hideAtriumWindows,
             ownWindowIDs: ownWindowIDs,
             protectedWindowIDs: protectedWindowIDs,
             islandWindowIDs: islandIDs)
@@ -492,7 +492,7 @@ package enum ScreenshotCaptureEngine {
     /// On-screen windows a click can capture, front to back, in the window
     /// server's global top-left coordinates. Ordinary layer-zero windows from
     /// this process follow the visibility preference, except for capture UI.
-    package static func pickableWindows(hideVitruvianWindows: Bool,
+    package static func pickableWindows(hideAtriumWindows: Bool,
                                 protectedWindowIDs: Set<CGWindowID>)
         -> [(id: CGWindowID, bounds: CGRect)] {
         guard let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],
@@ -510,7 +510,7 @@ package enum ScreenshotCaptureEngine {
                   ScreenshotCapturePolicy.canPickWindow(
                 id,
                 isOwnWindow: pid == ownPID,
-                hideVitruvianWindows: hideVitruvianWindows,
+                hideAtriumWindows: hideAtriumWindows,
                 protectedWindowIDs: protectedWindowIDs)
             else { return nil }
             let bounds = CGRect(x: boundsDict["X"] ?? 0,

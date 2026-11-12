@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// Reads OpenCode database rows as handed over by `AgentOpenCodeReader`.
 /// Every session keeps its own turn and model tracking inside the shared

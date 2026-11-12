@@ -5,8 +5,8 @@ import AppKit
 import Carbon.HIToolbox
 import SwiftUI
 import Vision
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Everything the annotation editor can do to one capture: the mutable
 /// document (image, annotations, undo history) and the export paths. The
@@ -1732,7 +1732,7 @@ package final class ScreenshotEditorController: NSObject, NSWindowDelegate {
             item.setData(tiff, forType: .tiff)
         }
         guard pasteboard.writeObjects([item]) else { return false }
-        pasteboard.declareVitruvianSource()
+        pasteboard.declareAtriumSource()
         return true
     }
 
@@ -1771,7 +1771,7 @@ package final class ScreenshotEditorController: NSObject, NSWindowDelegate {
             item.setData(tiff, forType: .tiff)
         }
         guard pasteboard.writeObjects([item]) else { return false }
-        pasteboard.declareVitruvianSource()
+        pasteboard.declareAtriumSource()
         return true
     }
 
@@ -1846,7 +1846,7 @@ package final class ScreenshotEditorController: NSObject, NSWindowDelegate {
         guard !text.isEmpty else { return }
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.declareVitruvianSource()
+        pasteboard.declareAtriumSource()
         pasteboard.setString(text, forType: .string)
         QuickToolHUD.show(icon: "text.viewfinder", message: L10n.shared.s.ocrCopied)
     }

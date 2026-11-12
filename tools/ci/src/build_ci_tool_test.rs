@@ -678,7 +678,7 @@ esac
 /// The exact `gh pr list` the fallback must run, one argument a line: the
 /// gate's own branch, open PRs only, and a filter that skips forks and reports
 /// whether auto-merge is armed.
-const FALLBACK_LIST_ARGV: &str = "pr\nlist\n--repo\no/r\n--head\nrelease-please--branches--main--components--vitruvian\n--state\nopen\n--json\nnumber,autoMergeRequest,isCrossRepository\n--jq\nmap(select(.isCrossRepository | not)) | .[0] // empty | \"\\(.number) \\(.autoMergeRequest != null)\"\n";
+const FALLBACK_LIST_ARGV: &str = "pr\nlist\n--repo\no/r\n--head\nrelease-please--branches--main--components--vitruvian-atrium\n--state\nopen\n--json\nnumber,autoMergeRequest,isCrossRepository\n--jq\nmap(select(.isCrossRepository | not)) | .[0] // empty | \"\\(.number) \\(.autoMergeRequest != null)\"\n";
 
 #[test]
 fn a_beta_gate_that_cannot_run_turns_auto_merge_off() {
@@ -690,7 +690,7 @@ fn a_beta_gate_that_cannot_run_turns_auto_merge_off() {
         .expect("release-beta-gate.yaml has the auto-merge-off fallback");
     let gate = lines
         .iter()
-        .position(|l| l.trim() == "- name: Gate vitruvian's release PR on the beta DMG")
+        .position(|l| l.trim() == "- name: Gate vitruvian-atrium's release PR on the beta DMG")
         .expect("the gate step");
     let build = lines
         .iter()
@@ -708,7 +708,8 @@ fn a_beta_gate_that_cannot_run_turns_auto_merge_off() {
         step.join("\n")
     );
     assert!(
-        step.iter().any(|l| l.trim() == "COMPONENT: vitruvian"),
+        step.iter()
+            .any(|l| l.trim() == "COMPONENT: vitruvian-atrium"),
         "same component as the gate"
     );
     let script = run_block(&lines, name);
@@ -737,7 +738,7 @@ fn a_beta_gate_that_cannot_run_turns_auto_merge_off() {
             .env("GH_ARGV", &argv)
             .env("JQ", &jq)
             .env("REPO", "o/r")
-            .env("COMPONENT", "vitruvian")
+            .env("COMPONENT", "vitruvian-atrium")
             .env("FAKE_JSON", json);
         for (k, v) in extra {
             c.env(k, v);

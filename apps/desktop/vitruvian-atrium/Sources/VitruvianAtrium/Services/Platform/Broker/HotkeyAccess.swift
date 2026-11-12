@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// The global keys tools hold. A key belongs to a `GlobalShortcutRole`: its
 /// combination is the one saved for the role and it is claimed under the

@@ -119,8 +119,8 @@ package enum NotchNativePlayback {
                 application: { NSRunningApplication(processIdentifier: $0).map(NowPlayingApplication.init) },
                 runningApplications: { NSWorkspace.shared.runningApplications.map(NowPlayingApplication.init) },
                 uptime: { ProcessInfo.processInfo.systemUptime },
-                emit: { VitruvianNowPlaying.emit($0) },
-                refresh: { vitruvianNowPlayingGet() },
+                emit: { VitruvianAtriumNowPlaying.emit($0) },
+                refresh: { vitruvianAtriumNowPlayingGet() },
                 configureQueue: { NotchNativeQueue.configure($0) },
                 playQueue: { NotchNativeQueue.play($0) })
         }
@@ -131,7 +131,7 @@ package enum NotchNativePlayback {
 
     // `nonisolated(unsafe)`: set once, then only read.
     nonisolated(unsafe) private static let handle = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_LAZY)
-    private static let callbacks = DispatchQueue(label: "com.vitruviansoftware.vitruvian.now-playing-selection-callbacks")
+    private static let callbacks = DispatchQueue(label: "com.vitruviansoftware.atrium.now-playing-selection-callbacks")
     private static let lock = NSLock()
     // `nonisolated(unsafe)`: `lock` guards these six.
     nonisolated(unsafe) private static var selected: Target?

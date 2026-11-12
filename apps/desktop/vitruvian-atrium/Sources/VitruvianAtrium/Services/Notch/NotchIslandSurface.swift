@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// The island as a chooser begun from one of its pages sees it, to decide
 /// whether it can still return there.

@@ -6,8 +6,8 @@ import ApplicationServices
 import Combine
 @preconcurrency import CoreGraphics
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 @discardableResult
 private func requestDockPreviewApplicationQuit(_ item: SwitcherItem) -> Bool {

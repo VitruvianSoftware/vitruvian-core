@@ -3,10 +3,10 @@
 
 import AppKit
 import CoreServices
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// Only the permission system, scheduling and final Apple Event delivery are
 /// doubles. The production command/validation/cancellation bodies are generated.

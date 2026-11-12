@@ -4,10 +4,10 @@
 import CoreGraphics
 import Darwin
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 enum KeyboardDebounceTapTests {
     // The module's tap rule, with the state it reads supplied here; no event

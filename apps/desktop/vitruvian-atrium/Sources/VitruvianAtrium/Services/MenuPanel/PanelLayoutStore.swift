@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Something a person can reorder: it has a text id to save and to drag.
 /// An enum that conforms is `CaseIterable` in its own right; the Quick

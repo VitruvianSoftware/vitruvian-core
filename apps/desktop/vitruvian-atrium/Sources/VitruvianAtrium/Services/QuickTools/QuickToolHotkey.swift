@@ -3,8 +3,8 @@
 
 import Carbon.HIToolbox
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// One Carbon global hotkey with the register/unregister lifecycle the quick
 /// tools share. A single process-wide event handler routes presses to the

@@ -2,10 +2,10 @@
 // Copyright (C) 2026 Vorssaint
 
 import AVFoundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// Nonisolated: the writer checks run in a detached task while the main
 /// thread waits for them.

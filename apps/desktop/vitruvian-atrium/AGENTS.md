@@ -1,4 +1,4 @@
-# Agent guide: apps/desktop/vitruvian
+# Agent guide: apps/desktop/vitruvian-atrium
 
 This guide adds to the root `AGENTS.md` for this subtree. Read
 [`UPSTREAM.md`](UPSTREAM.md) first.
@@ -16,7 +16,7 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
   update feed, upload/feedback server or community link in what the app shows or
   calls (see `TRADEMARKS.md`). Keep upstream's copyright lines, which are legal
   notices, not branding. Releases ship as DMGs from the `vitruvian` delivery
-  unit (`bazel run //apps/desktop/vitruvian:publish`); check anything that
+  unit (`bazel run //apps/desktop/vitruvian-atrium:publish`); check anything that
   lands in the bundle (artwork, GIFs, strings) for upstream's brand first.
 
 ## Building
@@ -58,12 +58,12 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
   quotes breaks that run, so update the mutation in the same change.
   `:mutation_fixtures_test` holds you to it: it runs with the pull-request
   tests and fails when a mutation's quoted text is not in its file exactly
-  once (`bazel test //apps/desktop/vitruvian:mutation_fixtures_test`).
+  once (`bazel test //apps/desktop/vitruvian-atrium:mutation_fixtures_test`).
 - After changing the test, fan-helper or Now Playing source lists in `build.sh`,
   or the extractions in `Tests/generate_sources.py`, run
-  `bazel run //apps/desktop/vitruvian:sync_sources`.
+  `bazel run //apps/desktop/vitruvian-atrium:sync_sources`.
 - Swift has no Gazelle. `BUILD` is hand-written and carries `# gazelle:ignore`.
-- `Core/` is its own module, `VitruvianCore`, which depends on no other app
+- `Core/` is its own module, `VitruvianAtriumCore`, which depends on no other app
   module:
   - What the app or tests use from it must be `package` (an implicit
     memberwise initializer is never visible outside, so write it out).
@@ -86,19 +86,19 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
 - A service shows SwiftUI content through `ServiceViews.factory`
   (`ServiceViewFactory`), never by naming a view. A new hosted view gets a
   method there and in `UI/UIServiceViewFactory.swift`.
-- `Design/` is the `VitruvianDesign` module, which depends on Core alone. The
+- `Design/` is the `VitruvianAtriumDesign` module, which depends on Core alone. The
   same rules apply as for Core: what others use is `package`, initializers are
   spelled out, and every app and test file imports it. The exception is the
   files the fan helper or the Now Playing adapter also compile. A class that
   another module subclasses must be `open`, with its overrides `public`
   (`OverlayPanel`).
-- `Services/` is the `VitruvianServices` module, which depends on Core and
+- `Services/` is the `VitruvianAtriumServices` module, which depends on Core and
   Design. The same rules apply again: every struct spells out its
   initializer, and a type that outside code builds as `Foo()` despite private
   stored properties spells out `package init() {}`. An extension member that a
   later layer declares is invisible to a service: put it in the lowest layer
   that uses it.
-- `UI/` is the `VitruvianUI` module, which depends on Core, Design and
+- `UI/` is the `VitruvianAtriumUI` module, which depends on Core, Design and
   Services; `App/`, `Support/` and `main.swift` are the app around it. The same
   rules apply. A SwiftUI view that `App/`, `Support/` or a test builds spells
   out its initializer, taking what the synthesized one took: its non-private
@@ -110,7 +110,7 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
 
 ## Conventions (from upstream)
 
-- App lifecycle lives in `Sources/Vitruvian/App`, shared catalogs and preferences
+- App lifecycle lives in `Sources/VitruvianAtrium/App`, shared catalogs and preferences
   in `Core`, behavior in `Services`, views in `UI`, diagnostics in `Support`.
   Keep decisions outside views where tests can reach them. Pure logic goes in a
   `*Support.swift` file with injectable `UserDefaults`.
@@ -355,7 +355,7 @@ of it but the protocol.
   three together and can only see a difference an example crosses.
 - `Core` links `VitruvianToolProtocol`. A file that uses it imports it by
   name. It is not re-exported from `Core`, and it never imports a
-  `Vitruvian*` module. Nothing is copied between the two folders: the
+  `Vitruvian Atrium*` module. Nothing is copied between the two folders: the
   package is MIT and this app is GPL.
 - The rules the app refuses a tool's folder by are written twice: here, in
   `ExternalToolManifest.read(folder:)` and `ExternalToolStore.offer(from:)`,
@@ -369,7 +369,7 @@ of it but the protocol.
   a named pipe with the execute permission is refused as no program.
 - After changing a file under
   `packages/vitruvian-sdk/Sources/VitruvianToolProtocol`, run
-  `bazel run //apps/desktop/vitruvian:pin_tool_protocol` and add a line to the
+  `bazel run //apps/desktop/vitruvian-atrium:pin_tool_protocol` and add a line to the
   log in `UPSTREAM.md`. `tool_protocol_pin_test` fails until you do.
 - What the pin protects, exactly. For a change made only in the package, the
   presubmit planner lists `tool_protocol_pin_test` among the affected tests.
@@ -834,11 +834,11 @@ hand of the tools from outside (the spec's section 15) were done on
 built in CI so it keeps compiling, and run by no test.
 
 ```sh
-bazel run --config=macos-app //apps/desktop/vitruvian:by-hand -- open-settings
-bazel run --config=macos-app //apps/desktop/vitruvian:by-hand -- tools
-bazel run --config=macos-app //apps/desktop/vitruvian:by-hand -- add-tool "$PWD/bazel-bin/packages/vitruvian-sdk/built/hello-swift" --agree
-bazel run --config=macos-app //apps/desktop/vitruvian:by-hand -- run-command "Say hello from Swift"
-bazel run --config=macos-app //apps/desktop/vitruvian:by-hand -- remove-tool "Hello, in Swift" --delete-data
+bazel run --config=macos-app //apps/desktop/vitruvian-atrium:by-hand -- open-settings
+bazel run --config=macos-app //apps/desktop/vitruvian-atrium:by-hand -- tools
+bazel run --config=macos-app //apps/desktop/vitruvian-atrium:by-hand -- add-tool "$PWD/bazel-bin/packages/vitruvian-sdk/built/hello-swift" --agree
+bazel run --config=macos-app //apps/desktop/vitruvian-atrium:by-hand -- run-command "Say hello from Swift"
+bazel run --config=macos-app //apps/desktop/vitruvian-atrium:by-hand -- remove-tool "Hello, in Swift" --delete-data
 ```
 
 Run it with no command for the whole list: `windows`, `dump`, `find`,
@@ -854,11 +854,11 @@ Before you use it:
 - **It drives the app that is running, the person's own.** Tell them before
   you start, and do not use it while they or another session are using the
   Mac: three commands send keys, and keys go to whichever app is in front.
-  The command brings Vitruvian forward and sends nothing unless the
+  The command brings Vitruvian Atrium forward and sends nothing unless the
   keyboard is then on it.
 - **Save first, compare after.** The clipboard
   (`pbpaste > "$TMPDIR/clip.before"`), the app's settings
-  (`defaults export com.vitruviansoftware.vitruvian "$TMPDIR/settings.before.plist"`)
+  (`defaults export com.vitruviansoftware.atrium "$TMPDIR/settings.before.plist"`)
   and a listing of its support folder. A check that copies, or flips a
   switch by mistake, shows up in the comparison and nowhere else.
 - It finds the app by its bundle id and needs the terminal to have
@@ -930,18 +930,18 @@ a page. It takes no screenshots: use `screencapture`.
 ## Porting from upstream
 
 - Follow `UPSTREAM.md`, "Tracking and porting upstream". Start a port with
-  `bazel run //apps/desktop/vitruvian:track_upstream -- port <sha>...`. Never copy
+  `bazel run //apps/desktop/vitruvian-atrium:track_upstream -- port <sha>...`. Never copy
   upstream files over this tree: that undoes the rename and the refactor.
 - Update the ledger (`upstream/ledger.tsv`) in the same PR: `ported` with the PR
-  number, or `skipped` with why. `bazel test //apps/desktop/vitruvian:upstream_test`
+  number, or `skipped` with why. `bazel test //apps/desktop/vitruvian-atrium:upstream_test`
   checks it.
 - A port is not done while the tool's report lists a brand-review line. Nothing
   may point at upstream's brand, servers, update feed or repository.
 
 ## Verifying
 
-`bazel test --config=macos-app //apps/desktop/vitruvian:unit_tests
-//apps/desktop/vitruvian:selftest` is the minimum before claiming a change works.
+`bazel test --config=macos-app //apps/desktop/vitruvian-atrium:unit_tests
+//apps/desktop/vitruvian-atrium:selftest` is the minimum before claiming a change works.
 Tests and `--selftest` do not exercise windows, permissions or hardware. For those,
 describe what you actually ran and on which Mac and macOS version, and state what
 remains untested.

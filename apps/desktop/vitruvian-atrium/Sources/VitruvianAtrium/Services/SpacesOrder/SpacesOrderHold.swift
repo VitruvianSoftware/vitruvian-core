@@ -5,7 +5,7 @@ import AppKit
 import Darwin
 import Foundation
 import os
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// How the Dock arranges Spaces, as its `mru-spaces` preference reads.
 /// A missing key is the system default, which rearranges by most recent use.
@@ -227,7 +227,7 @@ package protocol SpacesOrderScheduler: AnyObject, Sendable {
 /// overlap. Its queue and key are set at init and never change, so it is
 /// `@unchecked Sendable`.
 package final class SpacesOrderQueues: SpacesOrderScheduler, @unchecked Sendable {
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.spaces-order")
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.spaces-order")
     private let queueKey = DispatchSpecificKey<Bool>()
 
     package init() {
@@ -262,7 +262,7 @@ package final class SpacesOrderQueues: SpacesOrderScheduler, @unchecked Sendable
 package final class SpacesOrderHold: @unchecked Sendable {
     package static let shared = SpacesOrderHold(defaults: .standard, system: .live)
 
-    private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian",
+    private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "atrium",
                                     category: "spaces-order")
     private let defaults: UserDefaults
     private let system: SpacesOrderSystem
@@ -549,7 +549,7 @@ package final class SpacesOrderHold: @unchecked Sendable {
                     watch(isWanted)
                 }
             }
-            Self.log.info("Space rearranging was turned back on outside Vitruvian; fixed order turned off")
+            Self.log.info("Space rearranging was turned back on outside Vitruvian Atrium; fixed order turned off")
         }
     }
 

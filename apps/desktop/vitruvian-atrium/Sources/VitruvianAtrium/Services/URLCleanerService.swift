@@ -4,8 +4,8 @@
 import AppKit
 import Combine
 import UniformTypeIdentifiers
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 @MainActor
 package final class URLCleanerService: ObservableObject {

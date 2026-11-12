@@ -3,9 +3,9 @@
 
 import AppKit
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
 
 /// Kill Process, embedded as a Settings page: a live, searchable list of
 /// every running process with kill, force-kill, kill-all, kill-tree, and
@@ -282,7 +282,7 @@ package struct KillProcessView: View {
 
     private func copy(_ value: String) {
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.declareVitruvianSource()
+        NSPasteboard.general.declareAtriumSource()
         NSPasteboard.general.setString(value, forType: .string)
     }
 

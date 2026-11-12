@@ -3,8 +3,8 @@
 
 import Darwin
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Starting something that has to outlive this app: the update installer, the
 /// uninstall and rename scripts, and the relaunch helpers — every one of them

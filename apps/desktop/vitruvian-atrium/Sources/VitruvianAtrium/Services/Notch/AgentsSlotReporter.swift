@@ -4,7 +4,7 @@
 import Combine
 import CoreGraphics
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 import VitruvianToolProtocol
 
 /// Tells the tools in the Agents page's slot where it is (`ui/slot`): when

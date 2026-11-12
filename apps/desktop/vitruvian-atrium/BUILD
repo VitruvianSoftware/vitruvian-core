@@ -48,7 +48,7 @@ package(default_visibility = ["//visibility:private"])
 
 MACOS_ONLY = ["@platforms//os:macos"]
 
-# Bundle identity: Vitruvian's own, never upstream's (TRADEMARKS.md). Nothing
+# Bundle identity: Vitruvian Atrium's own, never upstream's (TRADEMARKS.md). Nothing
 # built here is published yet -- CI builds and tests only; see UPSTREAM.md for
 # what has to exist before a first release.
 BUNDLE_ID = "com.vitruviansoftware.atrium"

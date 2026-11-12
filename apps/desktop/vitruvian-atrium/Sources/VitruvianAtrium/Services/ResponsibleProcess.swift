@@ -3,8 +3,8 @@
 
 import AppKit
 import Darwin
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Maps helper processes to the app responsible for them and gives processes
 /// a human name. Shared by the resource breakdown and the volume mixer, so

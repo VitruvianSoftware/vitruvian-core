@@ -1,7 +1,7 @@
 # Update
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/Sources/Vitruvian/Services/Update`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/Update`.
 
 ## Interface
 - Internal implementation components
@@ -20,4 +20,4 @@ Component package providing implementation for `apps/desktop/vitruvian/Sources/V
 - [UpdateShowcaseMedia.swift:102]: `/// session back; `load()` passes `startDownload` when there is a video to fe...`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/Sources/Vitruvian/Services/Update/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/Update/...`

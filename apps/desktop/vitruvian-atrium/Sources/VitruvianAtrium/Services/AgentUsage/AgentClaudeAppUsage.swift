@@ -2,12 +2,12 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// The Claude app checks the plan's limits itself and keeps a month of them on
 /// this Mac, a percentage for each window every few minutes, while its menu
-/// bar icon is on. Vitruvian reads that file, without a sign-in and sending
+/// bar icon is on. Vitruvian Atrium reads that file, without a sign-in and sending
 /// nothing, when Claude Code cannot check the account itself. The format is
 /// the app's own, so a version or an entry this reader does not know is left
 /// out rather than guessed.

@@ -2,10 +2,10 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 import VitruvianToolProtocol
-import VitruvianUI
+import VitruvianAtriumUI
 
 /// A tool's own settings: the preferences its manifest gives a title, as
 /// the store lists them, as the tool's detail shows them, and what happens
@@ -568,7 +568,7 @@ extension ExternalToolSettingsTests {
                         {"type": "toggle", "id": "loud", "title": "Tell me when a deploy ends", "value": true}]}
             """#)
         let index = SettingsSheetIndex(detail: detail, panel: page, panelIsWeb: false, strings: english)
-        suite.expect(index.sections == ["Vitruvian", "Settings", detail.commandsTitle, detail.usesTitle]
+        suite.expect(index.sections == ["Vitruvian Atrium", "Settings", detail.commandsTitle, detail.usesTitle]
                          && index.anchors.filter { if case .panelItem = $0 { return true } else { return false } }.isEmpty
                          && index.matches("deploy ends").map(\.section) == ["Settings"],
                      "a page with no section headings is one link, titled Settings, and its sub-heading is no link: "

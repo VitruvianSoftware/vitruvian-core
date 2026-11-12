@@ -5,10 +5,10 @@ import AudioToolbox
 import Combine
 import CoreAudio
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The real input and mute services over an in-memory HAL, queues the test
 /// runs by hand and a private settings suite. The HAL calls back the listeners

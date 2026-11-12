@@ -82,7 +82,7 @@ package enum SupportUpdateIntroInfo {
             && version.patch >= release.patch && version.prerelease.isEmpty
     }
 
-    /// The invitation asks for upstream's donations, so Vitruvian keeps it off
+    /// The invitation asks for upstream's donations, so Vitruvian Atrium keeps it off
     /// until it has channels of its own (AppInfo.hasCommunityChannels). Tests
     /// switch it on to keep the retained flow covered.
     ///
@@ -151,7 +151,7 @@ package enum KeepAwakeActiveIcon: String, CaseIterable, Identifiable {
 
     package func title(_ strings: Strings) -> String {
         switch self {
-        case .vitruvian: return strings.keepAwakeActiveIconVitruvian
+        case .vitruvian: return strings.keepAwakeActiveIconAtrium
         case .coffee: return strings.keepAwakeActiveIconCoffee
         case .eye: return strings.keepAwakeActiveIconEye
         case .moon: return strings.keepAwakeActiveIconMoon
@@ -927,7 +927,7 @@ package enum Defaults {
         DefaultsKey.screenshotClipboardShortcutEnabled: Preferences.screenshotClipboardShortcutEnabled.defaultValue,
         DefaultsKey.screenshotClipboardShortcut: Preferences.screenshotClipboardShortcut.defaultValue,
         DefaultsKey.screenshotFreeze: Preferences.screenshotFreeze.defaultValue,
-        DefaultsKey.screenshotHideVitruvianWindows: Preferences.screenshotHideVitruvianWindows.defaultValue,
+        DefaultsKey.screenshotHideAtriumWindows: Preferences.screenshotHideAtriumWindows.defaultValue,
         DefaultsKey.screenshotSaveFolder: Preferences.screenshotSaveFolder.defaultValue,
         DefaultsKey.screenshotSaveSubfolder: Preferences.screenshotSaveSubfolder.defaultValue,
         DefaultsKey.screenshotFileNamePattern: Preferences.screenshotFileNamePattern.defaultValue,
@@ -1533,14 +1533,14 @@ package enum Defaults {
     }
 
     /// A typed symbol name without the spaces around it; empty keeps the
-    /// Vitruvian glyph. Whether this Mac has the symbol is left to the menu
+    /// Vitruvian Atrium glyph. Whether this Mac has the symbol is left to the menu
     /// bar drawing, since a backup can carry a name from a newer macOS.
     package static func sanitizedMenuBarIconSymbol(_ rawValue: String?) -> String {
         rawValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
     /// What the menu bar icon field saves as it is typed: a name this Mac has
-    /// a symbol for, nothing for the Vitruvian icon, and otherwise the name
+    /// a symbol for, nothing for the Vitruvian Atrium icon, and otherwise the name
     /// the field opened with, so a typo never leaves a valid half behind.
     package static func menuBarIconSymbolToSave(typed: String?, opening: String,
                                         exists: (String) -> Bool) -> String {
@@ -1548,7 +1548,7 @@ package enum Defaults {
         return name.isEmpty || exists(name) ? name : opening
     }
 
-    /// The symbols the menu bar icon gallery offers after the Vitruvian icon:
+    /// The symbols the menu bar icon gallery offers after the Vitruvian Atrium icon:
     /// solid shapes that still read at menu bar size, all present on macOS 14
     /// (some under older names, which later versions still accept). Keep
     /// Awake's symbols stay out, so an active session still stands out.

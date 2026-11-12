@@ -3,8 +3,8 @@
 
 import CryptoKit
 import Foundation
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 
 /// Keeping the list current: when it is fetched, what is kept, what is
 /// refused, and which tools have a newer version. Time is a manual clock and

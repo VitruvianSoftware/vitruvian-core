@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// AppKit owns first-responder timing inside a menu-bar popover. SwiftUI can
 /// request focus before its backing field has joined the popover window; this

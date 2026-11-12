@@ -2,8 +2,8 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import AppKit
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Puts the app's own tools in the registry: one tool per hub feature, and a
 /// handler for each command. This is the only place that knows which service

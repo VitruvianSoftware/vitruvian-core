@@ -1,7 +1,7 @@
 # Swifttesting
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/Tests/SwiftTesting`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/Tests/SwiftTesting`.
 
 ## Interface
 - `[UnitTests.swift:UnitTests]`
@@ -13,4 +13,4 @@ Component package providing implementation for `apps/desktop/vitruvian/Tests/Swi
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/Tests/SwiftTesting/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/Tests/SwiftTesting/...`

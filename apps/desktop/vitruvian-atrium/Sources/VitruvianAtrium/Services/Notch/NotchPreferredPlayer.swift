@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// The music app the island opens when nothing is playing and a playback
 /// button or the cover is clicked. Opening it never starts playback.

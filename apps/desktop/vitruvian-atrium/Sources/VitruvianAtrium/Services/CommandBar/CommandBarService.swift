@@ -4,8 +4,8 @@
 import AppKit
 import Carbon.HIToolbox
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// The command bar: one floating field, summoned by a global shortcut, that
 /// finds and runs everything the app can do. The panel never activates, so
@@ -787,7 +787,7 @@ package final class CommandBarService: ObservableObject {
         refreshAfterPreferenceChange()
     }
 
-    /// Every Vitruvian-side reason to refuse a combination. Whether macOS
+    /// Every Vitruvian Atrium-side reason to refuse a combination. Whether macOS
     /// answers it is asked afterwards, so a row can offer to take it over.
     private func rowShortcutIssue(_ shortcut: GlobalShortcut, for entry: CommandBarEntry) -> String? {
         let strings = L10n.shared.s
@@ -2461,7 +2461,7 @@ package final class CommandBarService: ObservableObject {
     /// fields in Settings use, and it gives every key back, not only ours.
     private func beginCapturingShortcut(_ entry: CommandBarEntry) {
         // The tap sits ahead of the app's own menu. Without it, Command Q
-        // never reaches the local monitor. It quits Vitruvian instead of
+        // never reaches the local monitor. It quits Vitruvian Atrium instead of
         // landing on the card (issue #1193). When Accessibility cannot
         // create the tap, the monitor below still records as before.
         ShortcutListening.live.begin { [weak self] keyCode, modifiers, _ in
@@ -3176,7 +3176,7 @@ package final class CommandBarService: ObservableObject {
     private func ensurePanel() -> NSPanel {
         if let panel { return panel }
         let panel = Self.makePanel()
-        panel.title = "Vitruvian"
+        panel.title = "Vitruvian Atrium"
         panel.isReleasedWhenClosed = false
         panel.isMovableByWindowBackground = false
         panel.hidesOnDeactivate = false
@@ -3477,7 +3477,7 @@ package enum CommandBarKeys {
     /// A Command combination the bar answers itself.
     package enum CommandKey: Equatable {
         /// ⌘Q, ⌘W, ⌘M or ⌘H. The app's menu owns these combinations and the
-        /// panel is key, so they would quit, close or hide Vitruvian while
+        /// panel is key, so they would quit, close or hide Vitruvian Atrium while
         /// the person believes they are acting on the app the bar is
         /// floating over. Swallowed.
         case appMenu

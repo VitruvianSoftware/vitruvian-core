@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 package enum FeedbackKind: String, Codable, CaseIterable {
     case bug
@@ -73,7 +73,7 @@ package enum FeedbackError: Error {
 package final class FeedbackService {
     package static let shared = FeedbackService()
 
-    /// Feedback went to upstream's backend. Until Vitruvian has its own, it
+    /// Feedback went to upstream's backend. Until Vitruvian Atrium has its own, it
     /// targets a reserved `.invalid` host (RFC 6761) and fails closed.
     private let endpoint = URL(string: "https://feedback.invalid/v1/feedback")!
     private let session: URLSession

@@ -2,10 +2,10 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 enum NotchKeyboardLightTests {
     static func run(_ suite: TestSuite) {
@@ -21,7 +21,7 @@ enum NotchKeyboardLightTests {
                 }
             }
         }
-        let domain = "com.vitruviansoftware.vitruvian.tests.notch-keyboard-light"
+        let domain = "com.vitruviansoftware.atrium.tests.notch-keyboard-light"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }

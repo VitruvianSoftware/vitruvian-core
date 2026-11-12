@@ -3,8 +3,8 @@
 
 import CoreGraphics
 import Foundation
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 
 /// A desk of scripted displays for the production `BrightnessService`: what
 /// the system reports about each display, a DDC monitor behind each external

@@ -4,8 +4,8 @@
 import ApplicationServices
 import CoreGraphics
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Resolves an Accessibility window element to its WindowServer id and vice versa.
 /// Exported by ApplicationServices and SkyLight / HIServices; used by macOS window switchers.

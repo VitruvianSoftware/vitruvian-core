@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import AppKit
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// A key or click as the island's local monitor reads it. `NSEvent` is one;
 /// tests pass their own.

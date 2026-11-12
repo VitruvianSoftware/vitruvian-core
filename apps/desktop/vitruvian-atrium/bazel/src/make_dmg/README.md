@@ -1,7 +1,7 @@
 # Make Dmg
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/bazel/src/make_dmg`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/bazel/src/make_dmg`.
 
 ## Interface
 - `[lib.rs:APP_NAME]`
@@ -22,4 +22,4 @@ Component package providing implementation for `apps/desktop/vitruvian/bazel/src
 - [lib.rs:107]: `.args(["-exec", "xattr", "-c", "{}", "+"]),`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/bazel/src/make_dmg/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/bazel/src/make_dmg/...`

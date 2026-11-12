@@ -11,10 +11,10 @@ import Foundation
 import ImageIO
 import ServiceManagement
 import VMStatisticsCompat
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 enum UpdateFeatureTests {
     static func run(_ suite: TestSuite) {
@@ -982,13 +982,13 @@ enum UpdateFeatureTests {
         suite.expect(UpdateInstallerSupport.installFailureCode(fromMarker: "") == nil,
                "an empty marker is not a failure")
         suite.expect(UpdateInstallerSupport.runsFromImmutableLocation(
-                   appPath: "/private/var/folders/ab/xyz/T/AppTranslocation/1F2/d/Vitruvian.app",
+                   appPath: "/private/var/folders/ab/xyz/T/AppTranslocation/1F2/d/Vitruvian Atrium.app",
                    volumeIsReadOnly: { _ in false }),
                "translocated apps are flagged as not updatable in place")
-        suite.expect(UpdateInstallerSupport.runsFromImmutableLocation(appPath: "/Volumes/Vitruvian/Vitruvian.app",
+        suite.expect(UpdateInstallerSupport.runsFromImmutableLocation(appPath: "/Volumes/Vitruvian Atrium/Vitruvian Atrium.app",
                                                                 volumeIsReadOnly: { _ in true }),
                "apps on a read-only volume (the DMG) are flagged as not updatable in place")
-        suite.expect(!UpdateInstallerSupport.runsFromImmutableLocation(appPath: "/Volumes/ExternalSSD/Vitruvian.app",
+        suite.expect(!UpdateInstallerSupport.runsFromImmutableLocation(appPath: "/Volumes/ExternalSSD/Vitruvian Atrium.app",
                                                                  volumeIsReadOnly: { _ in false }),
                "apps on a writable external volume stay updatable in place")
         let installerScript = UpdateInstallerSupport.installerScript()
@@ -1028,7 +1028,7 @@ enum UpdateFeatureTests {
                 && !installerScript.contains("note() { /bin/echo \"$1\" > \"$RESULT.progress\""),
                "elevated marker writes drop to the original user's credentials")
         let elevated = UpdateInstallerSupport.elevatedInstallCommand(
-            appPath: "/Applications/Vitruvian.app",
+            appPath: "/Applications/Vitruvian Atrium.app",
             dmgPath: "/tmp/Vitruvian-update.dmg",
             pid: 123,
             resultPath: "/tmp/result",
@@ -1038,7 +1038,7 @@ enum UpdateFeatureTests {
                "elevated installer leaves this app's session so it outlives the app it replaces")
         suite.expect(elevated.contains("nohup"),
                "elevated installer keeps the nohup fallback if setsid is unavailable")
-        suite.expect(elevated.contains("'/Applications/Vitruvian.app'"),
+        suite.expect(elevated.contains("'/Applications/Vitruvian Atrium.app'"),
                "elevated installer passes the app path quoted for the shell")
         suite.expect(elevated.contains("'3.3.3'"),
                "elevated installer passes the expected version quoted for the shell")
@@ -1053,7 +1053,7 @@ enum UpdateFeatureTests {
         // is the payload's own. Every `exit 1` inside the installer script would
         // otherwise start the whole installer a second time, as root.
         let detachRoot = FileManager.default.temporaryDirectory
-            .appendingPathComponent("VitruvianDetachTests-\(UUID().uuidString)")
+            .appendingPathComponent("VitruvianAtriumDetachTests-\(UUID().uuidString)")
         try? FileManager.default.createDirectory(at: detachRoot, withIntermediateDirectories: true)
         let detachPayload = detachRoot.appendingPathComponent("payload.sh")
         let detachLedger = detachRoot.appendingPathComponent("runs")
@@ -1097,7 +1097,7 @@ enum UpdateFeatureTests {
         // the same. 0/1/2 must still be open (on /dev/null), or the child's
         // first open() takes stdout's slot.
         let fdRoot = FileManager.default.temporaryDirectory
-            .appendingPathComponent("VitruvianDetachFDTests-\(UUID().uuidString)")
+            .appendingPathComponent("VitruvianAtriumDetachFDTests-\(UUID().uuidString)")
         try? FileManager.default.createDirectory(at: fdRoot, withIntermediateDirectories: true)
         let fdHolder = fdRoot.appendingPathComponent("holder")
         let fdReport = fdRoot.appendingPathComponent("report")
@@ -1176,8 +1176,8 @@ enum UpdateFeatureTests {
                "the beta channel offers the hotfix while the stable channel ignores it")
 
         // Release candidate selection
-        let dummyDMG = URL(string: "https://github.com/vitruvian/vitruvian-utils/releases/download/v3.3.4/Vitruvian.dmg")!
-        let dummyBetaDMG = URL(string: "https://github.com/vitruvian/vitruvian-utils/releases/download/v3.3.4-beta.1/Vitruvian.dmg")!
+        let dummyDMG = URL(string: "https://github.com/vitruvian/vitruvian-utils/releases/download/v3.3.4/VitruvianAtrium.dmg")!
+        let dummyBetaDMG = URL(string: "https://github.com/vitruvian/vitruvian-utils/releases/download/v3.3.4-beta.1/VitruvianAtrium.dmg")!
 
         let candidateList = [
             UpdateServiceSupport.ReleaseCandidate(tagName: "v3.3.4-beta.1", isPrerelease: true, isDraft: false, dmgURL: dummyBetaDMG, dmgExpectedBytes: 1000, body: "Beta notes"),
@@ -1206,8 +1206,8 @@ enum UpdateFeatureTests {
         suite.expect(Defaults.registeredDefaults[DefaultsKey.includeBetaUpdates] as? Bool == false,
                "includeBetaUpdates defaults to false in registeredDefaults")
 
-        let testDefaults = ScratchDefaults.suite(named: "com.vitruviansoftware.vitruvian.tests.betaActivation")!
-        testDefaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.betaActivation")
+        let testDefaults = ScratchDefaults.suite(named: "com.vitruviansoftware.atrium.tests.betaActivation")!
+        testDefaults.removePersistentDomain(forName: "com.vitruviansoftware.atrium.tests.betaActivation")
         Defaults.activateBetaChannelIfRunningBeta(in: testDefaults, version: "3.3.3-beta.1")
         suite.expect(testDefaults.bool(forKey: DefaultsKey.includeBetaUpdates) == true,
                "beta channel is activated automatically on a beta build")
@@ -1217,13 +1217,13 @@ enum UpdateFeatureTests {
                "manual opt-out on a beta build is preserved across launches")
 
         // Stable version does not activate beta channel
-        let stableDefaults = ScratchDefaults.suite(named: "com.vitruviansoftware.vitruvian.tests.stableActivation")!
-        stableDefaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.stableActivation")
+        let stableDefaults = ScratchDefaults.suite(named: "com.vitruviansoftware.atrium.tests.stableActivation")!
+        stableDefaults.removePersistentDomain(forName: "com.vitruviansoftware.atrium.tests.stableActivation")
         Defaults.activateBetaChannelIfRunningBeta(in: stableDefaults, version: "3.3.3")
         suite.expect(stableDefaults.object(forKey: DefaultsKey.includeBetaUpdates) == nil,
                "stable release does not touch beta channel default")
-        stableDefaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.stableActivation")
-        testDefaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.betaActivation")
+        stableDefaults.removePersistentDomain(forName: "com.vitruviansoftware.atrium.tests.stableActivation")
+        testDefaults.removePersistentDomain(forName: "com.vitruviansoftware.atrium.tests.betaActivation")
 
         // Localization completeness & formatting
         let originalLanguage = L10n.shared.language
@@ -1373,7 +1373,7 @@ enum UpdateFeatureTests {
         ### Fixed
         - Update preview stays focused on changes.
 
-        Signed with an Apple Developer ID and notarized by Apple, so it downloads and opens normally. Requires macOS 14 or later. Open the .dmg below and drag Vitruvian to Applications.
+        Signed with an Apple Developer ID and notarized by Apple, so it downloads and opens normally. Requires macOS 14 or later. Open the .dmg below and drag Vitruvian Atrium to Applications.
         """
         let inAppUpdateBody = ReleaseNotes.inAppUpdateNotes(from: githubReleaseBodyWithFooter) ?? ""
         suite.expect(!inAppUpdateBody.contains("Signed with an Apple Developer ID"),
@@ -1546,12 +1546,12 @@ enum UpdateFeatureTests {
         suite.expect(packageRows.allSatisfy { $0.canInstallInPlace },
                "package rows can be installed on the spot")
         let ownPackageRows = AppUpdatesSupport.packageUpdates(
-            outdated: [caskUpdate("vitruvian", installed: "3.1.12", current: "3.2.0")],
+            outdated: [caskUpdate("vitruvian-atrium", installed: "3.1.12", current: "3.2.0")],
             installed: [],
-            ignoredTokens: ["vitruvian"],
+            ignoredTokens: ["vitruvian-atrium"],
             apps: [])
         suite.expect(ownPackageRows.isEmpty,
-               "the app update list never offers to replace Vitruvian through its own package")
+               "the app update list never offers to replace Vitruvian Atrium through its own package")
 
         let storeApps = [
             AppUpdatesSupport.InstalledApp(name: "Blocker", bundleID: "net.example.blocker",

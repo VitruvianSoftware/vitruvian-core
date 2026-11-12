@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// What the tool host holds: something it can start, stop, run a command on
 /// and ask which commands can run. There are two kinds. A tool compiled

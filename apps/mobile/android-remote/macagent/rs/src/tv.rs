@@ -50,7 +50,7 @@ impl TVController {
             legacy_config_path: home_path
                 .join("Library")
                 .join("Application Support")
-                .join("com.vitruviansoftware.vitruvian")
+                .join("com.vitruviansoftware.atrium")
                 .join("ToolData")
                 .join("dev.vitruvian.tv")
                 .join("storage.json"),

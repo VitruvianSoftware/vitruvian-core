@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 import VitruvianToolProtocol
 
 /// A tool's manifest file, read into the platform's own manifest. Nothing

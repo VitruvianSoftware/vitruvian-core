@@ -4,8 +4,8 @@
 import Darwin
 import Foundation
 import HIDEventSystem
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 package enum MouseAccelerationRecovery {
     private static let journalName = "MouseAccelerationRecovery.json"

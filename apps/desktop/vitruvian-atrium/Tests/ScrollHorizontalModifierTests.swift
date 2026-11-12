@@ -4,10 +4,10 @@
 import AppKit
 import CoreGraphics
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 enum ScrollHorizontalModifierTests {
     /// A plain wheel moves a strip that scrolls only sideways, but never one

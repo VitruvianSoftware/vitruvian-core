@@ -3,7 +3,7 @@
 
 import AppKit
 import SwiftUI
-import VitruvianCore
+import VitruvianAtriumCore
 
 package struct NotchShape: Shape {
     package var attached: Bool

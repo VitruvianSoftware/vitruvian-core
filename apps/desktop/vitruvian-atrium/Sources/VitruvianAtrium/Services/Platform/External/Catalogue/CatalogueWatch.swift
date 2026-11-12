@@ -4,7 +4,7 @@
 import Combine
 import Foundation
 import os
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// The list of tools, kept current: fetched with its signature, verified,
 /// remembered, and asked which tools from the catalog have a newer version.

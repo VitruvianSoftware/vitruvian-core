@@ -5,8 +5,8 @@ import AppKit
 import Carbon.HIToolbox
 import SwiftUI
 import UniformTypeIdentifiers
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// A floating pad for short-lived text: meeting notes, numbers, fragments on
 /// their way somewhere else. Summoned from the panel, the quick panel or a
@@ -360,7 +360,7 @@ package final class ScratchpadService: NSObject, ObservableObject, NSWindowDeleg
         guard !text.isEmpty else { return }
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.declareVitruvianSource()
+        pasteboard.declareAtriumSource()
         pasteboard.setString(text, forType: .string)
     }
 
@@ -546,7 +546,7 @@ package final class ScratchpadService: NSObject, ObservableObject, NSWindowDeleg
     private func ensurePanel() -> NSPanel {
         if let panel { return panel }
         let panel = Self.makePanel()
-        panel.title = "Vitruvian"
+        panel.title = "Vitruvian Atrium"
         panel.isReleasedWhenClosed = false
         // Dragging inside the pad must select text, never move the window;
         // the header strip is the handle.

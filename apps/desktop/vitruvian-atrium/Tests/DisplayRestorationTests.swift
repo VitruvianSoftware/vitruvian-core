@@ -4,10 +4,10 @@
 import AppKit
 import CoreGraphics
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// Switching displays off and back on, on a started production service over
 /// a scripted desk: the built-in panel (1) and two external screens (2, 3).

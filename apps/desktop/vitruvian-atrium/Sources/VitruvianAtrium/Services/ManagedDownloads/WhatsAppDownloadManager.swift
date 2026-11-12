@@ -3,8 +3,8 @@
 
 import AppKit
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Scans only the top level of Downloads, surfaces files that macOS itself
 /// attributes to WhatsApp, and moves reviewed/eligible items to the Trash.
@@ -65,7 +65,7 @@ package final class WhatsAppDownloadManager: ObservableObject {
     @Published package var candidates: [Candidate] = []
     package private(set) var reviewVisible = false
 
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.whatsapp-downloads",
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.whatsapp-downloads",
                                       qos: .userInitiated)
     private var operationToken = UUID()
 

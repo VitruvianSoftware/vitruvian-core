@@ -3,9 +3,9 @@
 
 import AVFoundation
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
 
 /// What the camera page starts, stops and watches. The app's is
 /// `CameraPreviewService.shared`.

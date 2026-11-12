@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// The environment `brew` runs with. An app launched from Finder gets launchd's
 /// environment, not the one a Terminal has after `~/.zprofile`, so a proxy or a
@@ -45,7 +45,7 @@ package enum HomebrewEnvironment {
     /// its exports and skip slow or interactive work, the way editors that read
     /// the shell environment mark their run: `[[ -n $VITRUVIAN_RESOLVING_ENVIRONMENT ]]`.
     /// The run is a child of this app, so a protected folder a startup file
-    /// touches asks for access in Vitruvian's name.
+    /// touches asks for access in Vitruvian Atrium's name.
     package static let resolvingVariable = "VITRUVIAN_RESOLVING_ENVIRONMENT"
 
     /// A login shell reads `~/.zprofile`; an interactive one also reads

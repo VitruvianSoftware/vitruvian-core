@@ -3,8 +3,8 @@
 
 import Darwin
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Keeps the selected key recoverable if the app is killed before normal
 /// termination can remove its HID mapping. A tiny shell waits on a pipe owned

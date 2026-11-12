@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianServices
+import VitruvianAtriumServices
 
 extension NotchPresentationRefreshContract {
     /// The island's handling of the Command Bar's measured height, on a real

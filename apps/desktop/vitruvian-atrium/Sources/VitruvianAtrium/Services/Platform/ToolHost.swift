@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// Owns the live tools. It builds a tool the first time somebody needs it,
 /// hands the same one to everybody after, starts and stops it as the hub,

@@ -4,13 +4,13 @@
 import AppKit
 import Carbon.HIToolbox
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// The snippet library: a small floating panel, summoned by its own global
 /// shortcut, that shows the snippets marked for it grouped by folder. Typing
 /// filters, Enter (or a click) types the snippet into the app that was
-/// active, Esc closes. The panel never activates Vitruvian, so the target
+/// active, Esc closes. The panel never activates Vitruvian Atrium, so the target
 /// app keeps focus the whole time. The hotkey only lives while the library
 /// toggle is on. Requires Accessibility (the synthesized typing).
 @MainActor
@@ -153,7 +153,7 @@ package final class SnippetLibraryService: ObservableObject {
     package func insert(_ snippet: TextSnippet) {
         hide()
         // The panel never activates, so focus normally sits in the target
-        // app. When Vitruvian itself is frontmost (its Settings window, for
+        // app. When Vitruvian Atrium itself is frontmost (its Settings window, for
         // example), the synthetic typing would land in our own fields.
         if NSWorkspace.shared.frontmostApplication?.processIdentifier
             == ProcessInfo.processInfo.processIdentifier {
@@ -237,7 +237,7 @@ package final class SnippetLibraryService: ObservableObject {
     private func ensurePanel() -> NSPanel {
         if let panel { return panel }
         let panel = Self.makePanel()
-        panel.title = "Vitruvian"
+        panel.title = "Vitruvian Atrium"
         panel.isReleasedWhenClosed = false
         panel.isMovableByWindowBackground = true
         panel.hidesOnDeactivate = false

@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import AppKit
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// The closed island following the pointer to another display. Movement is
 /// watched only while the island can follow it there, each event only checks

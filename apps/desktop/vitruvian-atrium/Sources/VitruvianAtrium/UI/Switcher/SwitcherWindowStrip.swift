@@ -2,8 +2,8 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import SwiftUI
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 
 /// What a window strip reads from the switcher: every window in order, and
 /// which one is selected.

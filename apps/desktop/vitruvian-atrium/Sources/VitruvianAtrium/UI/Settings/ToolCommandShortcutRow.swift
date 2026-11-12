@@ -2,9 +2,9 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
 
 /// One tool's commands that may have a shortcut, for the Shortcuts page.
 package struct ToolCommandShortcutSection: Identifiable, Equatable {

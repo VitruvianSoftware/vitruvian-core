@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import AVFoundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// The two sound sources a take can carry. Their stable identifiers live in
 /// track metadata so new recordings never depend on track order.
@@ -12,7 +12,7 @@ package enum RecorderAudioSource: String, CaseIterable, Hashable {
     case microphone
 
     private var contentIdentifier: String {
-        "com.vitruviansoftware.vitruvian.recorder.audio." + rawValue
+        "com.vitruviansoftware.atrium.recorder.audio." + rawValue
     }
 
     package var trackMetadata: [AVMetadataItem] {

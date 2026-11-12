@@ -2,14 +2,14 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// Opening the player from the island's cover or the radial Now Playing card
 /// runs as shipped against doubles that never activate, unhide or launch an
-/// app. Both are non-activating panels, so Vitruvian rarely holds activation
+/// app. Both are non-activating panels, so Vitruvian Atrium rarely holds activation
 /// of its own, and a bare request left the player where it was.
 enum NowPlayingOpenContract {
     /// What opening asked for, in order. Only the test's thread touches it.
@@ -27,7 +27,7 @@ enum NowPlayingOpenContract {
             .init(pid: 20, activationPolicy: policy, isHidden: isHidden, bundleURL: bundle,
                   unhide: { record.events.append("unhide:20") },
                   handOffActivation: { record.events.append("yield:20") },
-                  activateFromVitruvian: {
+                  activateFromAtrium: {
                       record.events.append("activate:20:\($0.contains(.activateAllWindows))")
                       return cooperative
                   },
@@ -49,7 +49,7 @@ enum NowPlayingOpenContract {
         }
         open(player())
         suite.expect(record.events == ["yield:20", "activate:20:true"],
-                     "the cover hands Vitruvian's activation to the player before asking for all its windows")
+                     "the cover hands Vitruvian Atrium's activation to the player before asking for all its windows")
         open(player(cooperative: false))
         suite.expect(record.events == ["yield:20", "activate:20:true", "fallback:20:true"],
                      "a refused cooperative request still falls back to a direct one")
@@ -59,7 +59,7 @@ enum NowPlayingOpenContract {
         for policy in [NSApplication.ActivationPolicy.accessory, .prohibited] {
             open(player(policy: policy), installedAt: bundle)
             suite.expect(record.events.isEmpty,
-                         "a helper that takes no activation leaves Vitruvian inactive and launches nothing")
+                         "a helper that takes no activation leaves Vitruvian Atrium inactive and launches nothing")
         }
         open(player(), window: false)
         suite.expect(record.events == ["yield:20", "activate:20:true", "reopen:Player.app"],

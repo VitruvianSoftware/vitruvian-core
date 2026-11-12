@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 //! Native Rust implementation of `Tools/uninstall.sh`.
-//! Cleanly removes Vitruvian and every piece of system state it created:
+//! Cleanly removes Vitruvian Atrium and every piece of system state it created:
 //! the fan helper daemon, login item, TCC permissions, preferences, saved state,
 //! application data, closed-lid sudoers rules, and checks sleep/Space arrangement recovery.
 
@@ -358,7 +358,9 @@ pub fn run_cli(args: &[String]) -> i32 {
     }
 
     println!("▸ Quitting…");
-    let _ = Command::new("pkill").args(["-x", "VitruvianAtrium"]).output();
+    let _ = Command::new("pkill")
+        .args(["-x", "VitruvianAtrium"])
+        .output();
     thread::sleep(Duration::from_millis(500));
 
     let mut detached = true;
@@ -473,7 +475,9 @@ pub fn run_cli(args: &[String]) -> i32 {
     }
 
     if warnings.fan_helper_still_registered {
-        eprintln!("⚠ Vitruvian Atrium removed, but its fan helper is still registered with the system.");
+        eprintln!(
+            "⚠ Vitruvian Atrium removed, but its fan helper is still registered with the system."
+        );
         eprintln!(
             "  Reinstall Vitruvian Atrium, then use Settings › Advanced to uninstall from inside the app."
         );

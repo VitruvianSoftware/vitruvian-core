@@ -2,10 +2,10 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// Resuming fan control after a restart or wake runs the production lifecycle
 /// against a recording host and a defaults domain of its own: nothing here
@@ -23,7 +23,7 @@ enum FanControlResumeContract {
     }
 
     static func run(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.vitruvian.tests.fan-control-resume"
+        let domain = "com.vitruviansoftware.atrium.tests.fan-control-resume"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }

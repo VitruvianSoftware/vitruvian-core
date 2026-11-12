@@ -3,8 +3,8 @@
 
 import AppKit
 import CoreGraphics
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Watches a selected region while the person scrolls it, then joins only
 /// overlaps that can be identified confidently. Pixel polling also handles
@@ -52,7 +52,7 @@ package enum ScreenshotScrollingCapture {
 
     package static func capture(region: RecorderSupport.Region,
                         includePointer: Bool,
-                        hideVitruvianWindows: Bool,
+                        hideAtriumWindows: Bool,
                         protectedWindowIDs: Set<CGWindowID>,
                         finishSignal: FinishSignal,
                         onProgress: @escaping @MainActor (Int) -> Void) async -> Result {
@@ -61,7 +61,7 @@ package enum ScreenshotScrollingCapture {
         return await capture(region: region, finishSignal: finishSignal, onProgress: onProgress) {
             guard let source = await ScreenshotCaptureEngine.prepareDisplayRegion(
                 displayID: displayID, pixelRect: pixelRect,
-                includePointer: includePointer, hideVitruvianWindows: hideVitruvianWindows,
+                includePointer: includePointer, hideAtriumWindows: hideAtriumWindows,
                 protectedWindowIDs: protectedWindowIDs) else { return nil }
             return FrameSource { await source.image() }
         }

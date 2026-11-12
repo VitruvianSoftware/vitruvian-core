@@ -2,8 +2,8 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import AppKit
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// A display as the menu panel sees it. `NSScreen` is one.
 @MainActor
@@ -128,7 +128,7 @@ extension NSPopover: MenuPanelPopover {
 
 /// The main menu panel's presentation: where it opens, how it holds its spot
 /// while the menu bar shifts, how it closes, and how it comes back after
-/// something other than Vitruvian closed it. `AppDelegate` owns the popover
+/// something other than Vitruvian Atrium closed it. `AppDelegate` owns the popover
 /// and the rest of the panel (its monitors, its keys, following activation)
 /// and reaches this through `Environment`.
 @MainActor

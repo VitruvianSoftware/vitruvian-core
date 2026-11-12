@@ -3,8 +3,8 @@
 
 import AppKit
 import CoreGraphics
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// A Dock preview that keeps an auto-hidden Dock visible: the hold itself, the
 /// window geometry from before it, the key tap that ends it and the workspace

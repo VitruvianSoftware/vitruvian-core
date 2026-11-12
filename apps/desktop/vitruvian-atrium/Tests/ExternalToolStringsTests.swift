@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 import VitruvianToolProtocol
 
 /// The app's own words about tools from outside, in all fifteen languages.
@@ -51,12 +51,12 @@ enum ExternalToolStringsTests {
                          "no text about tools from outside is left in English in \(language.rawValue) "
                              + "(\(untranslated.joined(separator: ", ")))")
         }
-        suite.expect(AppLanguage.allCases.allSatisfy { FeatureStrings.externalTools($0).vitruvianSection == "Vitruvian" },
-                     "the heading of Vitruvian's own rows on an extension's settings sheet is the app's name, in every "
+        suite.expect(AppLanguage.allCases.allSatisfy { FeatureStrings.externalTools($0).vitruvianSection == "Vitruvian Atrium" },
+                     "the heading of Vitruvian Atrium's own rows on an extension's settings sheet is the app's name, in every "
                          + "language")
 
         let strings = FeatureStrings.externalTools(.enUS)
-        suite.expect(strings.agreeTitle("Deploys") == "Add “Deploys” to Vitruvian?"
+        suite.expect(strings.agreeTitle("Deploys") == "Add “Deploys” to Vitruvian Atrium?"
                          && strings.updateVersions(agreed: "1.2.0", offered: "1.3.0")
                          == "You have version 1.2.0. This folder has version 1.3.0."
                          && strings.updateVersionsFromCatalog(agreed: "1.2.0", offered: "1.3.0")
@@ -70,10 +70,10 @@ enum ExternalToolStringsTests {
                      "a format is filled with what it is handed, in the order the sentence names it")
         func size(_ bytes: Int) -> String { ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .memory) }
         suite.expect(strings.panelRefused("HomeSpeaker", .notWellFormed("blocks[76].id"))
-                         == "HomeSpeaker sent a page Vitruvian can’t show (blocks[76].id is not well formed). "
+                         == "HomeSpeaker sent a page Vitruvian Atrium can’t show (blocks[76].id is not well formed). "
                          + "Updating the extension may fix it."
                          && strings.panelRefused("HomeSpeaker", .tooLarge(bytes: 300_000))
-                         == "HomeSpeaker sent a page Vitruvian can’t show (over the \(size(UILimits.maxTreeBytes)) "
+                         == "HomeSpeaker sent a page Vitruvian Atrium can’t show (over the \(size(UILimits.maxTreeBytes)) "
                          + "size limit). Updating the extension may fix it."
                          && size(UILimits.maxTreeBytes) == "256 KB",
                      "a refused page is said in plain words, with the extension's name and why")
@@ -84,7 +84,7 @@ enum ExternalToolStringsTests {
                      "each of the seven services a tool from outside may list has its own plain words, and no other has any")
         suite.expect(FeatureStrings.externalTools(.de).removeTitle("Deploys") == "„Deploys“ entfernen?"
                          && FeatureStrings.externalTools(.fr).agreeTitle("Deploys")
-                         == "Ajouter «\u{00A0}Deploys\u{00A0}» à Vitruvian\u{00A0}?"
+                         == "Ajouter «\u{00A0}Deploys\u{00A0}» à Vitruvian Atrium\u{00A0}?"
                          && FeatureStrings.externalTools(.fr).installRefused("Deploys")
                          == "«\u{00A0}Deploys\u{00A0}» n’a pas été installé"
                          && FeatureStrings.externalTools(.ja).installRefused("Deploys") == "「Deploys」はインストールされませんでした",

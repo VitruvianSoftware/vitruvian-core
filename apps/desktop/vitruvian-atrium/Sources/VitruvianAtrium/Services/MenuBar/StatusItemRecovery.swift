@@ -3,7 +3,7 @@
 
 import CoreGraphics
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// The menu bar icon's anchoring and recovery decisions. The app delegate and
 /// the status item controller own the live items and call these with what

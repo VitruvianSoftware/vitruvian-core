@@ -3,8 +3,8 @@
 
 import AppKit
 import CoreGraphics
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Whether this login session is the one on screen, for the services that own
 /// an event tap.

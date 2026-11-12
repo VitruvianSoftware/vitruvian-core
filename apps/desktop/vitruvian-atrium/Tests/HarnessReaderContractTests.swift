@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 
 /// Every provider resolves to the reader for its own harness, and each reader
 /// parses its harness's lines into the entries the island keeps.

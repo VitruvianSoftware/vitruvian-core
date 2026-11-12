@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 
 /// The production hand-off and return over workspace replies the test gives.
 /// No application or store URL is opened, and nothing is scanned.

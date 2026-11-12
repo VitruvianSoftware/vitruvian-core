@@ -3,10 +3,10 @@
 
 import AppKit
 import Carbon.HIToolbox
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The production lookups of the display under the pointer run against
 /// stand-in displays, so the edges between displays are checked without a

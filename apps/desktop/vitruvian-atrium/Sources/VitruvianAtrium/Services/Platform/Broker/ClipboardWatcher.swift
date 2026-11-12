@@ -3,7 +3,7 @@
 
 import AppKit
 import UniformTypeIdentifiers
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// The broker's hold on the clipboard: the one timer that looks at it for
 /// the tools that ask, and the reads and writes those tools make. Every
@@ -276,7 +276,7 @@ package final class ClipboardWatcher {
             let pasteboard = board()
             let changeCount = ClipboardRewrite.write(link, to: pasteboard)
             // Unlike a rewrite of what another app copied, this link is the app's own.
-            pasteboard.declareVitruvianSource()
+            pasteboard.declareAtriumSource()
             main {
                 if let self, let watch = self.held(by: tool) {
                     watch.lastChangeCount = max(watch.lastChangeCount, changeCount)

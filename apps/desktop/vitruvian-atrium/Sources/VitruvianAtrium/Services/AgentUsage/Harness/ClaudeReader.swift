@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// Reads Claude Code session logs. A prompt opens a turn, a reply keeps it
 /// going and records its usage, and an interruption, a local command's

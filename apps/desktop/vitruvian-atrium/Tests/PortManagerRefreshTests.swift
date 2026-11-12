@@ -3,10 +3,10 @@
 
 import Darwin
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// Runs the production refresh and snapshot with inert process data and a
 /// manual queue. No real process is inspected, signalled or launched.

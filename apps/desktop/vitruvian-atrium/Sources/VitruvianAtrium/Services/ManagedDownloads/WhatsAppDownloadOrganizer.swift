@@ -5,8 +5,8 @@ import AppKit
 import CryptoKit
 import Darwin
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Experimental organizer for confirmed WhatsApp downloads. It watches only
 /// the top level of Downloads, waits until a file is stable, then moves it to
@@ -100,7 +100,7 @@ package final class WhatsAppDownloadOrganizer: ObservableObject {
         Self.validUndoTransactions().last != nil
     }
 
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.whatsapp-organizer",
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.whatsapp-organizer",
                                       qos: .utility)
     private var directorySource: DispatchSourceFileSystemObject?
     private var timer: Timer?

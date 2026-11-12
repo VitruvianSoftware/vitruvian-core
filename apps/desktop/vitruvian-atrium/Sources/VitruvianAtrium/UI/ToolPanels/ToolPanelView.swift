@@ -2,9 +2,9 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
 import VitruvianToolProtocol
 
 /// One open panel of a tool from outside, in any place: a small spinner

@@ -1,7 +1,7 @@
 # Notch
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/Sources/Vitruvian/Services/Notch`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/Notch`.
 
 ## Interface
 - Internal implementation components
@@ -22,4 +22,4 @@ Component package providing implementation for `apps/desktop/vitruvian/Sources/V
 - [NotchLyricsSupport.swift:336]: `/// One broader query, only after precise searches have no eligible result.`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/Sources/Vitruvian/Services/Notch/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/Notch/...`

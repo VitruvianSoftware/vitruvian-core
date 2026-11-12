@@ -3,8 +3,8 @@
 
 import CoreServices
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// The other names macOS itself knows an app by.
 ///

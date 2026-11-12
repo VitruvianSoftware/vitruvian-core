@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// How often the island looks for Mission Control while it shows or hides
 /// for it, and when a look is worth a frame probe. `NotchWindowHost` owns it

@@ -3,7 +3,7 @@
 
 import CoreAudio
 import Foundation
-import VitruvianServices
+import VitruvianAtriumServices
 
 /// One IO cycle of a tap engine, rendered and limited by the production code
 /// without an audio device. The tap can supply fewer frames than the output

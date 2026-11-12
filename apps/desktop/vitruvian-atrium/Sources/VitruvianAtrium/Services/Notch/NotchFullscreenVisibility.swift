@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import AppKit
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// The island stepping aside while its display shows a full-screen Space, or
 /// an app's own full screen, an opt-in. Stepping aside puts down whatever the

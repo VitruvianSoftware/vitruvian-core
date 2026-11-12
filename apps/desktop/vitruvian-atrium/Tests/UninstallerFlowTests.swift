@@ -4,10 +4,10 @@
 import AppKit
 import Carbon.HIToolbox
 import Combine
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The production uninstaller and the command bar's uninstall review run with
 /// recorded scans, removals and package-manager calls on a manual queue.

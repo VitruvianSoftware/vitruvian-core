@@ -5,8 +5,8 @@ import Accelerate
 import AVFoundation
 import CoreAudio
 import Darwin
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// A flag the audio thread raises and another thread reads later.
 package final class RecorderAudioFlag {
@@ -144,18 +144,18 @@ package final class RecorderSystemAudioTap: @unchecked Sendable {
     /// Destroying a device or a tap can park inside a broken audio path, so
     /// it never happens on a queue anything waits for. Serial, so the device
     /// that hosts a tap is always gone before the tap itself.
-    private static let teardownQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.recorder.systemaudio.teardown",
+    private static let teardownQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.recorder.systemaudio.teardown",
                                                      qos: .utility)
     /// The global listener must not wait behind a device destruction that
     /// can remain stuck for the rest of the session.
-    private static let listenerQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.recorder.systemaudio.listeners",
+    private static let listenerQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.recorder.systemaudio.listeners",
                                                      qos: .utility)
 
     /// The tap, or nothing when the audio system refuses one. A `pid` narrows
     /// it to that app's sound.
     package static func make(hearing pid: pid_t?) async -> RecorderSystemAudioTap? {
         guard #available(macOS 14.4, *) else { return nil }
-        let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.recorder.systemaudio",
+        let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.recorder.systemaudio",
                                   qos: .userInitiated)
         return await withCheckedContinuation { continuation in
             queue.async {
@@ -195,7 +195,7 @@ package final class RecorderSystemAudioTap: @unchecked Sendable {
         } else {
             description = CATapDescription(stereoGlobalTapButExcludeProcesses: [ownProcess])
         }
-        description.name = "Vitruvian Recorder"
+        description.name = "Vitruvian Atrium Recorder"
         description.isPrivate = true
         var tapID = AudioObjectID(0)
         guard AudioHardwareCreateProcessTap(description, &tapID) == noErr, tapID != 0 else {
@@ -283,7 +283,7 @@ package final class RecorderSystemAudioTap: @unchecked Sendable {
         guard aggregateID == 0, let clock,
               let hostUID = Self.hostDeviceUID() else { return }
         let aggregate: [String: Any] = [
-            kAudioAggregateDeviceNameKey: "Vitruvian Recorder",
+            kAudioAggregateDeviceNameKey: "Vitruvian Atrium Recorder",
             kAudioAggregateDeviceUIDKey: UUID().uuidString,
             kAudioAggregateDeviceIsPrivateKey: true,
             kAudioAggregateDeviceMainSubDeviceKey: hostUID,

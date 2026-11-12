@@ -3,15 +3,15 @@
 
 import Combine
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 package enum UpdateShowcaseInfo {
     package static let releaseVersion = "3.1.4"
     package static let mediaAssetName = "vitruvian-3.1.4-showcase-1.mp4"
     package static let mediaSHA256 = "88031b2b48708b8eb96248fef1143432a0600382b59ad5ea39e0746af27ab9e8"
 
-    /// Where the showcase video is published. Vitruvian publishes none: the
+    /// Where the showcase video is published. Vitruvian Atrium publishes none: the
     /// video and its 3.1.4 release are upstream's, and upstream's servers are
     /// not ours to use (TRADEMARKS.md). So the loader asks no server and shows
     /// its "unavailable" state; a Developer build can still play a local file.
@@ -30,7 +30,7 @@ package enum UpdateShowcaseInfo {
     package static var cacheDirectory: URL {
         let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
-        let bundleID = Bundle.main.bundleIdentifier ?? "com.vitruviansoftware.vitruvian"
+        let bundleID = Bundle.main.bundleIdentifier ?? "com.vitruviansoftware.atrium"
         return base
             .appendingPathComponent(bundleID, isDirectory: true)
             .appendingPathComponent("UpdateShowcase", isDirectory: true)

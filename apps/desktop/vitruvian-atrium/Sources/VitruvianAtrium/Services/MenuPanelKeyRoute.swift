@@ -3,7 +3,7 @@
 
 import AppKit
 import Carbon.HIToolbox
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// A key as the menu bar panel's monitor reads it. `NSEvent` is one, with
 /// the `targetWindow` the island's route also reads; tests pass their own.

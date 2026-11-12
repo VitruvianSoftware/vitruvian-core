@@ -3,8 +3,8 @@
 
 import Darwin
 import Foundation
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 
 /// Run the real identity binding and eligibility guards; no process is signalled.
 enum ProcessForceQuitTests {

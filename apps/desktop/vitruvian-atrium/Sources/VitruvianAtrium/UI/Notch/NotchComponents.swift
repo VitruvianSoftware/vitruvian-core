@@ -3,9 +3,9 @@
 
 import AppKit
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
 
 extension NotchArtworkTint {
     package var color: Color { Color(.sRGB, red: red, green: green, blue: blue, opacity: 1) }

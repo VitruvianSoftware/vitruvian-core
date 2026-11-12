@@ -1,7 +1,7 @@
 # Include
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/Sources/HIDEventSystem/include`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/Sources/HIDEventSystem/include`.
 
 ## Interface
 - Internal implementation components
@@ -13,4 +13,4 @@ Component package providing implementation for `apps/desktop/vitruvian/Sources/H
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/Sources/HIDEventSystem/include/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/Sources/HIDEventSystem/include/...`

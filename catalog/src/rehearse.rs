@@ -445,7 +445,10 @@ fn run(port: i64) -> Res<i32> {
             },
         )
     });
-    let bundle = pypath::join(&workspace, "bazel-bin/apps/desktop/vitruvian/Vitruvian.zip");
+    let bundle = pypath::join(
+        &workspace,
+        "bazel-bin/apps/desktop/vitruvian-atrium/Vitruvian.zip",
+    );
     let public = signing::public_key_of(&private).map_err(|m| Crash::new("ValueError", m))?;
     let mut out = std::io::stdout();
     let mut say = |line: String| {
@@ -457,9 +460,9 @@ fn run(port: i64) -> Res<i32> {
         base
     ));
     say("Quit Vitruvian, then open a by-hand build (made with --define=vitruvian_sample_tool=true) pointed at it:".into());
-    say(format!("  ditto -x -k {} /tmp/vitruvian", bundle));
+    say(format!("  ditto -x -k {} /tmp/vitruvian-atrium", bundle));
     say(format!(
-        "  open -n --env VITRUVIAN_CATALOGUE_URL={}/tools.json --env VITRUVIAN_CATALOGUE_KEY={} /tmp/vitruvian/Vitruvian.app",
+        "  open -n --env VITRUVIAN_CATALOGUE_URL={}/tools.json --env VITRUVIAN_CATALOGUE_KEY={} \"/tmp/vitruvian-atrium/Vitruvian Atrium.app\"",
         base, public
     ));
     say("Scenarios (type one and press Return; Control-D ends):".into());

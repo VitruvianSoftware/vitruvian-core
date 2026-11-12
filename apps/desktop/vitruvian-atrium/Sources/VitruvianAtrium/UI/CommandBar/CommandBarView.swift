@@ -3,9 +3,9 @@
 
 import AppKit
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
 
 /// The command bar's face: one field, one list. Reads top to bottom with no
 /// chrome to learn; every row is icon, name in plain words, where it lives,

@@ -15,23 +15,23 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "call audio protection is absent by default",
         group: "mixer",
-        relative: "Sources/Vitruvian/Core/Audio/MixerRoutingSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Audio/MixerRoutingSupport.swift",
         before: "        if !allowCallAppVolume, needsScreenSharingProtection(bundleIdentifier: bundleIdentifier) {\n            return true\n        }\n",
         after: "",
         diagnostic: "com.hnc.Discord bypasses processing before any user override, preventing screen-share echo",
     },
     Mutation {
-        name: "Vitruvian named as the secure input lead",
+        name: "Vitruvian Atrium named as the secure input lead",
         group: "repository",
-        relative: "Sources/Vitruvian/Core/SecureInputSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/SecureInputSupport.swift",
         before: "                guard app.pid != ownPid else { return .unknown }\n",
         after: "",
-        diagnostic: "Vitruvian recorded as the active app is never named as holding secure input",
+        diagnostic: "Vitruvian Atrium recorded as the active app is never named as holding secure input",
     },
     Mutation {
         name: "the switcher page names the secure input holder",
         group: "localization",
-        relative: "Sources/Vitruvian/Core/Localization.swift",
+        relative: "Sources/VitruvianAtrium/Core/Localization.swift",
         before: "secureInputSwitcherHeldFormat: \"%@ was the active app when it turned on and may be holding it. ",
         after: "secureInputSwitcherHeldFormat: \"%@ is holding it. ",
         diagnostic: "the switcher page offers the recorded app as a lead, never as the holder",
@@ -39,7 +39,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the switcher page sends people to log out",
         group: "localization",
-        relative: "Sources/Vitruvian/Core/Localization.swift",
+        relative: "Sources/VitruvianAtrium/Core/Localization.swift",
         before: "secureInputSwitcherUnattributed: \"The app holding it cannot be named. Until it turns off, macOS hides your keystrokes from the switcher and ⌘Tab opens the macOS switcher instead. Dismiss any open password field, or log out and back in, to clear it.\"",
         after: "secureInputSwitcherUnattributed: \"No running app claims it. Until it turns off, macOS hides your keystrokes from the switcher and ⌘Tab opens the macOS switcher instead. Log out and back in to clear it.\"",
         diagnostic: "localization en-US switcher secure input captions give the typing captions' advice",
@@ -47,7 +47,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "screenshot OCR reuses a request generation",
         group: "screenshots",
-        relative: "Sources/Vitruvian/Services/QuickTools/ScreenTextService.swift",
+        relative: "Sources/VitruvianAtrium/Services/QuickTools/ScreenTextService.swift",
         before: "        recognitionGeneration += 1\n        let generation",
         after: "        let generation",
         diagnostic: "only the latest OCR request copies, with newestFirst=false",
@@ -55,7 +55,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "screenshot OCR ignores the line-break preference",
         group: "screenshots",
-        relative: "Sources/Vitruvian/Services/QuickTools/ScreenTextService.swift",
+        relative: "Sources/VitruvianAtrium/Services/QuickTools/ScreenTextService.swift",
         before: "        let removeLineBreaks = environment.removesLineBreaks()",
         after: "        let removeLineBreaks = true",
         diagnostic: "OCR respects QR=false, joinLines=false, preview=true",
@@ -63,7 +63,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "screenshot OCR ignores the unified QR preference",
         group: "screenshots",
-        relative: "Sources/Vitruvian/Services/QuickTools/ScreenTextService.swift",
+        relative: "Sources/VitruvianAtrium/Services/QuickTools/ScreenTextService.swift",
         before: "        recognize(capture.image, detectQRCodes: environment.detectsQRCodes())",
         after: "        recognize(capture.image, detectQRCodes: true)",
         diagnostic: "OCR respects QR=false, joinLines=false, preview=false",
@@ -71,7 +71,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "preview Copy text races the after-capture copy",
         group: "screenshots",
-        relative: "Sources/Vitruvian/Services/QuickTools/ScreenshotQuickPreviewController.swift",
+        relative: "Sources/VitruvianAtrium/Services/QuickTools/ScreenshotQuickPreviewController.swift",
         before: "        textCopy.afterAutoCopy {\n            copyText(image)\n        }\n",
         after: "        copyText(image)\n",
         diagnostic: "Copy text closes at once and waits for a pending after-capture copy",
@@ -79,7 +79,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Copy text stops waiting for the after-capture copy",
         group: "screenshots",
-        relative: "Sources/Vitruvian/Services/QuickTools/ScreenshotService.swift",
+        relative: "Sources/VitruvianAtrium/Services/QuickTools/ScreenshotService.swift",
         before: "            await pending.value\n",
         after: "",
         diagnostic: "Copy text waits while the after-capture copy is still being prepared",
@@ -87,7 +87,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the Nexus Agent hand-off forgets the shortcut",
         group: "platform",
-        relative: "Sources/Vitruvian/Services/NexusAgent/NexusAgentHandoff.swift",
+        relative: "Sources/VitruvianAtrium/Services/NexusAgent/NexusAgentHandoff.swift",
         before: "        if let shortcut { parts.saveShortcut(shortcut) }\n",
         after: "",
         diagnostic: "the Quick Prompt's shortcut is given to the tool's command",
@@ -95,7 +95,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the Nexus Agent hand-off forgets the pinned sessions",
         group: "platform",
-        relative: "Sources/Vitruvian/Services/NexusAgent/NexusAgentHandoff.swift",
+        relative: "Sources/VitruvianAtrium/Services/NexusAgent/NexusAgentHandoff.swift",
         before: "        if !pinned.isEmpty { values[Key.pinnedSessions] = .string(json(pinned.sorted())) }\n",
         after: "",
         diagnostic: "each as JSON text, in order",
@@ -103,7 +103,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a notice needs no notify",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolCalls.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolCalls.swift",
         before: "            guard let asked = Self.read(NotifyNoticeParams.self, params) else { return reply(Self.badParams) }\n            if let refusal = services.gate(.notify)() { return reply(.failure(Self.error(for: refusal))) }\n",
         after: "            guard let asked = Self.read(NotifyNoticeParams.self, params) else { return reply(Self.badParams) }\n",
         diagnostic: "a tool that does not list notify is refused a notice",
@@ -111,7 +111,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool with no slot docks all the same",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolPanelHost.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolPanelHost.swift",
         before: "        guard parts.described(tool)?.slot == .agents else { return .noSlot }\n",
         after: "",
         diagnostic: "a tool whose manifest declares no slot is refused ui/dock",
@@ -119,7 +119,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "popping the slot out is told as the slot going",
         group: "platform",
-        relative: "Sources/Vitruvian/Core/Notch/AgentsSlotSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Notch/AgentsSlotSupport.swift",
         before: "            return UISlotParams(visible: false, popOut: poppedOut)\n",
         after: "            return UISlotParams(visible: false, popOut: false)\n",
         diagnostic: "popped out, it says so",
@@ -127,7 +127,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the slot shows on the Telemetry tab",
         group: "platform",
-        relative: "Sources/Vitruvian/Core/Notch/AgentsSlotSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Notch/AgentsSlotSupport.swift",
         before: "        guard expanded, section == .module(.agents), tab == .chat, slotTool, let rect,\n",
         after: "        guard expanded, section == .module(.agents), slotTool, let rect,\n",
         diagnostic: "the Telemetry tab shows none",
@@ -135,7 +135,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool removed while it is being added is added all the same",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolStore.swift",
         before: "        // nothing and hands nothing over.\n        waitingAdds[id] = nil\n",
         after: "        // nothing and hands nothing over.\n",
         diagnostic: "an add whose wait ends after the tool was removed is dropped, and whoever asked is told so",
@@ -143,7 +143,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the app says it does not draw a name it claims",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolStore.swift",
         before: "    nonisolated package static let notDrawnYet: [ProtocolFeature] = []\n",
         after: "    nonisolated package static let notDrawnYet: [ProtocolFeature] = [.sections]\n",
         diagnostic: "the app has or knows every feature of the protocol, each once",
@@ -151,7 +151,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the app forgets a name of the protocol",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolStore.swift",
         before: "                                                                  .chips, .sections, .notice, .slot,\n                                                                  .folderPicker]\n",
         after: "                                                                  .chips, .sections, .notice, .slot]\n",
         diagnostic: "the app has or knows every feature of the protocol, each once",
@@ -159,7 +159,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "an add that waits adds at once",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolStore.swift",
         before: "        parts.beforeAdding(id) { [weak self] in\n",
         after: "        done(add(consent))\n        parts.beforeAdding(id) { [weak self] in\n",
         diagnostic: "Add Tool returns while the add waits, and nothing is added, handed or started yet",
@@ -167,7 +167,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "agreeing to a tool twice adds it twice",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolStore.swift",
         before: "            guard let self, self.waitingAdds[id] == turn else { return done(nil) }\n",
         after: "            guard let self else { return done(nil) }\n",
         diagnostic: "the later agreement is the one that adds; the earlier is dropped",
@@ -175,7 +175,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "compact rail eagerly builds history",
         group: "notch",
-        relative: "Sources/Vitruvian/UI/Notch/NotchComponents.swift",
+        relative: "Sources/VitruvianAtrium/UI/Notch/NotchComponents.swift",
         before: "                    LazyHStack(alignment: .top, spacing: spacing) {",
         after: "                    HStack(alignment: .top, spacing: spacing) {",
         diagnostic: "a thousand history entries create only the visible rail neighborhood",
@@ -183,7 +183,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "home page tiles scroll instead of closing their gaps",
         group: "notch",
-        relative: "Sources/Vitruvian/Core/Notch/NotchSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Notch/NotchSupport.swift",
         before: "    package static let shortcutLeastSpacing: CGFloat = 0\n",
         after: "    package static let shortcutLeastSpacing: CGFloat = 8\n",
         diagnostic: "the home page's tiles never scroll while they fit side by side",
@@ -191,7 +191,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "rail ignores its least gap",
         group: "notch",
-        relative: "Sources/Vitruvian/UI/Notch/NotchComponents.swift",
+        relative: "Sources/VitruvianAtrium/UI/Notch/NotchComponents.swift",
         before: "least: leastSpacing ?? spacing",
         after: "least: spacing",
         diagnostic: "a rail that closes its gaps keeps four tiles whole across the narrowest page",
@@ -199,7 +199,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "home page rows scroll instead of closing",
         group: "notch",
-        relative: "Sources/Vitruvian/Core/Notch/NotchSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Notch/NotchSupport.swift",
         before: "    package static let shortcutLeastRowSpacing: CGFloat = 6\n",
         after: "    package static let shortcutLeastRowSpacing: CGFloat = 8\n",
         diagnostic: "a home page rail that would scroll takes the row it is a few points short of",
@@ -207,7 +207,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "home page rows close past their titles",
         group: "notch",
-        relative: "Sources/Vitruvian/Core/Notch/NotchSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Notch/NotchSupport.swift",
         before: "    package static let shortcutLeastRowSpacing: CGFloat = 6\n",
         after: "    package static let shortcutLeastRowSpacing: CGFloat = 0\n",
         diagnostic: "rows close no further than 6 points",
@@ -215,7 +215,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "fitting home page rail closes its rows",
         group: "notch",
-        relative: "Sources/Vitruvian/Core/Notch/NotchSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Notch/NotchSupport.swift",
         before: "spacing: shortcutSpacing, least: shortcutLeastSpacing, width: width) == nil,",
         after: "spacing: shortcutSpacing, least: shortcutLeastSpacing, width: width) == nil || true,",
         diagnostic: "any other home page rail keeps its rows and their gaps",
@@ -223,7 +223,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a custom width stops at a fitted page's own",
         group: "notch",
-        relative: "Sources/Vitruvian/Core/Notch/NotchSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Notch/NotchSupport.swift",
         before: "let preferred = layout == .custom ? chosen : pageContentWidth.map",
         after: "let preferred = pageContentWidth.map",
         diagnostic: "a width set by hand is the island's on the player, the timer and the home page",
@@ -231,7 +231,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a preset's fitted pages take its whole width",
         group: "notch",
-        relative: "Sources/Vitruvian/Core/Notch/NotchSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Notch/NotchSupport.swift",
         before: "let preferred = layout == .custom ? chosen :",
         after: "let preferred = layout != .compact ? chosen :",
         diagnostic: "the player is no wider than it needs",
@@ -239,7 +239,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Tools page tiles scroll instead of closing their gaps",
         group: "notch",
-        relative: "Sources/Vitruvian/Core/Notch/NotchSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Notch/NotchSupport.swift",
         before: "    package static let toolLeastSpacing: CGFloat = 0\n",
         after: "    package static let toolLeastSpacing: CGFloat = 6\n",
         diagnostic: "the Tools page's tiles never scroll while they fit side by side",
@@ -247,7 +247,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Tools arrows walk the columns of a rail that closed its gaps",
         group: "notch",
-        relative: "Sources/Vitruvian/Core/Notch/NotchSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Notch/NotchSupport.swift",
         before: "least: NotchLayout.toolLeastSpacing, width: contentWidth) != nil",
         after: "least: NotchLayout.toolSpacing, width: contentWidth) != nil",
         diagnostic: "the Tools arrows walk rows exactly when the rail draws rows",
@@ -255,7 +255,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "closed Tools rail runs its titles together",
         group: "notch",
-        relative: "Sources/Vitruvian/Core/Notch/NotchSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Notch/NotchSupport.swift",
         before: "max(0, toolSpacing - (gap ?? toolSpacing)) / 2",
         after: "max(0, toolSpacing - (gap ?? toolSpacing)) * 0",
         diagnostic: "titles in a Tools rail that closed its gaps stay as far apart as its spacing keeps them",
@@ -263,7 +263,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "preview recreates the scratchpad editor",
         group: "notch",
-        relative: "Sources/Vitruvian/UI/Notch/NotchScratchpadView.swift",
+        relative: "Sources/VitruvianAtrium/UI/Notch/NotchScratchpadView.swift",
         before: "                        .opacity(pad.isPreviewing ? 0 : 1)",
         after: "                        .id(pad.isPreviewing)\n                        .opacity(pad.isPreviewing ? 0 : 1)",
         diagnostic: "preview preserves the same editor and undo history",
@@ -271,7 +271,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "floating scratchpad takes another host's focus",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/QuickTools/ScratchpadFocus.swift",
+        relative: "Sources/VitruvianAtrium/Services/QuickTools/ScratchpadFocus.swift",
         before: "guard let window, window.isVisible, !requiresKeyWindow || window.isKeyWindow else { return }",
         after: "guard let window, window.isVisible else { return }",
         diagnostic: "document actions preserve island focus with the floating host visible or hidden",
@@ -279,7 +279,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "closing the island takes the keyboard from the app in front",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchIslandHost.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchIslandHost.swift",
         before: "        guard keyWindow === panel, appIsFrontmost else { return nil }\n",
         after: "        guard keyWindow === panel else { return nil }\n",
         diagnostic: "closing the island leaves the keyboard alone while another app takes over",
@@ -287,7 +287,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "closing the island hands the keyboard to the backmost window",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchIslandHost.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchIslandHost.swift",
         before: "        return ordered.first { $0 !== panel && takesKeyboard($0) }\n",
         after: "        return ordered.last { $0 !== panel && takesKeyboard($0) }\n",
         diagnostic: "closing the island hands the keyboard to the frontmost window that can take it",
@@ -295,7 +295,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a shelf tile dragged out never closes the island",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "            self.heldDrag = false\n            self.collapse()\n",
         after: "            self.heldDrag = false\n",
         diagnostic: "a tile that stays out closes the island on either display and lets the drag go on without it",
@@ -303,7 +303,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a shelf drag closes the island before releasing its hold",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "            self.heldDrag = false\n            self.collapse()\n",
         after: "            self.collapse()\n            self.heldDrag = false\n",
         diagnostic: "a tile that stays out closes the island on either display and lets the drag go on without it",
@@ -311,7 +311,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a shelf tile back inside the island keeps its close deadline",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "guard heldDrag, expanded, !pinned, windowHost?.containsHover(point) != true,",
         after: "guard heldDrag, expanded, !pinned,",
         diagnostic: "leaving again starts the close delay over",
@@ -319,7 +319,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "every move of a shelf drag restarts the close delay",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "        guard shelfDragExitWork == nil else { return }\n",
         after: "        shelfDragExitWork?.cancel()\n",
         diagnostic: "further moves outside keep the first deadline",
@@ -327,7 +327,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a drag from another shelf moves the island aside",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Shelf/ShelfInternalDrag.swift",
+        relative: "Sources/VitruvianAtrium/Services/Shelf/ShelfInternalDrag.swift",
         before: "        guard isActive, let window, window === host.island().window else { return }\n        host.islandDragMoved",
         after: "        guard isActive else { return }\n        host.islandDragMoved",
         diagnostic: "only a drag from the island, while it lasts, can move the island aside",
@@ -335,7 +335,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "emoji family offers unsupported tones",
         group: "emoji",
-        relative: "Sources/Vitruvian/Services/CommandBar/CommandBarEmoji.swift",
+        relative: "Sources/VitruvianAtrium/Services/CommandBar/CommandBarEmoji.swift",
         before: "scalar.value != 0x1F46A && scalar.properties.isEmojiModifierBase",
         after: "scalar.properties.isEmojiModifierBase",
         diagnostic: "family stays unchanged instead of offering unsupported skin tones",
@@ -343,7 +343,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "one-off emoji skips usage learning",
         group: "emoji",
-        relative: "Sources/Vitruvian/Services/CommandBar/CommandBarRunRecorder.swift",
+        relative: "Sources/VitruvianAtrium/Services/CommandBar/CommandBarRunRecorder.swift",
         before: "                self.record(entry)\n",
         after: "",
         diagnostic: "a one-off tone records exactly one use under the original emoji",
@@ -351,7 +351,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "one-off emoji learns the action field instead of its search",
         group: "emoji",
-        relative: "Sources/Vitruvian/Services/CommandBar/CommandBarRunRecorder.swift",
+        relative: "Sources/VitruvianAtrium/Services/CommandBar/CommandBarRunRecorder.swift",
         before: "        case .argument, .actions:\n",
         after: "        case .argument:\n",
         diagnostic: "a one-off tone learns the search saved before opening actions",
@@ -359,7 +359,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "output switches reuse another device's volume baseline",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchVolumeFeedback.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchVolumeFeedback.swift",
         before: "                self.volumeBaseline = nil\n                self.muteBaseline = nil\n",
         after: "",
         diagnostic: "switching output never replaces its connection notice with stored volume or mute",
@@ -367,7 +367,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "volume observation reads partially published controls",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchVolumeFeedback.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchVolumeFeedback.swift",
         before: ".receive(on: DispatchQueue.main)\n            .sink { [weak self] _ in",
         after: ".sink { [weak self] _ in",
         diagnostic: "switching output never replaces its connection notice with stored volume or mute",
@@ -375,7 +375,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "device alerts return to the fixed level width",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "min(maximum, max(NotchNoticeLayout.minimumWing, ceil(content) + NotchNoticeLayout.inset + cameraGap))",
         after: "112",
         diagnostic: "power labels and connection status fit beside their icon",
@@ -383,7 +383,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "levels return to a fixed wing with empty black at the end",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "let wing = ceil(NotchNoticeLayout.levelInset + NotchNoticeLayout.symbolWidth + NotchNoticeLayout.spacing + leading)",
         after: "let wing: CGFloat = 80",
         diagnostic: "a level's wings fit its mark and reading, with no empty black at the end",
@@ -391,7 +391,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a banner's short side takes its longer side's width",
         group: "notch",
-        relative: "Sources/Vitruvian/Core/Notch/NotchNotificationSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Notch/NotchNotificationSupport.swift",
         before: "return NotchNoticeWings(leading: fitted(title), trailing: fitted(detail))",
         after: "return NotchNoticeWings(leading: fitted(max(title, detail)), trailing: fitted(max(title, detail)))",
         diagnostic: "a one-word message leaves no band of empty black beside it",
@@ -399,7 +399,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "device alert window ignores its content width",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "guard noticeExpanded else { return geometry.noticeSize(wings: notice.wings(in: geometry)) }",
         after: "guard noticeExpanded else { return geometry.notice }",
         diagnostic: "a device notice widens the actual presentation toward its longer name",
@@ -407,7 +407,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a lopsided notice stays centred on the camera",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "if let notice { return noticeExpanded ? 0 : geometry.noticeShift(notice.wings(in: geometry)) }",
         after: "if let notice { return 0 }",
         diagnostic: "a device notice widens the actual presentation toward its longer name",
@@ -415,7 +415,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Nothing loses its music gate",
         group: "notch",
-        relative: "Sources/Vitruvian/Core/Notch/NotchSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Notch/NotchSupport.swift",
         before: "            && (choice != .none || companionOccupiesRest)\n",
         after: "",
         diagnostic: "selecting Nothing retracts already visible music and stops its reader with cached playback still present",
@@ -423,7 +423,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "resting music bypasses automatic opt-out",
         group: "notch",
-        relative: "Sources/Vitruvian/Core/Notch/NotchSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Notch/NotchSupport.swift",
         before: "        if showsMusicActivity(isPlaying: isPlaying, in: defaults),\n",
         after: "        if isPlaying,\n",
         diagnostic: "disabled automatic music stops the reader even when resting content is Music",
@@ -431,7 +431,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "resting music retains a disabled reader",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "                && (NotchSupport.watchesMusicActivity(in: defaults) || NotchSupport.routes(.track, in: defaults))))",
         after: "                && (NotchSupport.idleContent(in: defaults) == .music || NotchSupport.watchesMusicActivity(in: defaults) || NotchSupport.routes(.track, in: defaults))))",
         diagnostic: "disabled automatic music stops the reader even when resting content is Music",
@@ -439,7 +439,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "closing music retains its on-demand reader",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "        removeEventMonitors()\n        syncVisibleConsumers()\n        closeCapture?()\n        services.closeToolPanel()\n",
         after: "        removeEventMonitors()\n        closeCapture?()\n        services.closeToolPanel()\n",
         diagnostic: "closing manually opened controls stops the reader and never leaves a music strip behind",
@@ -447,7 +447,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Escape leaves Explore while its sections are being customized",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchLocalEventRoute.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchLocalEventRoute.swift",
         before: "                if editing { island.stopEditingSections() } else { island.toggleSections() }\n",
         after: "                island.toggleSections()\n",
         diagnostic: "Escape ends editing Explore's sections before it leaves Explore",
@@ -455,7 +455,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the island's empty page counts only its own sections",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "    package var hasNoSections: Bool { sections.isEmpty }\n",
         after: "    package var hasNoSections: Bool { modules.isEmpty }\n",
         diagnostic: "with only a tool's page showing, the island still has a section and its Explore button",
@@ -463,7 +463,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "picking one of the island's own sections leaves a tool's page open",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "        } else if !keepsToolPage {\n            closeExtensionPage()\n        }\n",
         after: "        }\n",
         diagnostic: "picking one of the island's own sections closes a tool's page",
@@ -471,7 +471,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the reopening picker shows a hidden tool's page as some other page",
         group: "notch",
-        relative: "Sources/Vitruvian/Core/Notch/NotchSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Notch/NotchSupport.swift",
         before: "            return NotchReopeningChoice(selection: item.rawValue, waiting: sections.contains(item) ? nil : item)\n",
         after: "            if sections.contains(item) { return NotchReopeningChoice(selection: item.rawValue) }\n",
         diagnostic: "a hidden tool's page reopens the first section, and the picker keeps it chosen, waiting",
@@ -479,7 +479,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "reopening lands on a section that is not showing",
         group: "notch",
-        relative: "Sources/Vitruvian/Core/Notch/NotchSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Notch/NotchSupport.swift",
         before: "        if sections.contains(wanted) { return .section(wanted) }\n",
         after: "        if !sections.isEmpty { return .section(wanted) }\n",
         diagnostic: "a hidden section of the island's own is handled the same way",
@@ -487,7 +487,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool's quick-access button shows whether or not its page does",
         group: "notch",
-        relative: "Sources/Vitruvian/Core/Notch/NotchSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Notch/NotchSupport.swift",
         before: "        case .extensionPanel(let tool): return shownIslandTools.contains(tool)\n",
         after: "        case .extensionPanel: return true\n",
         diagnostic: "the island shows a tool's button while it lists the page; not once it is hidden or gone",
@@ -495,7 +495,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the island draws a hidden tool page's quick-access button",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "        NotchQuickAccessConfiguration.current(in: defaults, shownIslandTools: Set(services.islandPanels.map(\\.tool)))\n",
         after: "        NotchQuickAccessConfiguration.current(in: defaults, shownIslandTools: Set(services.availableIslandPanels.map(\\.tool)))\n",
         diagnostic: "and leaves it out once the page is hidden, keeping its place saved",
@@ -503,7 +503,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool's quick-access button ignores the person's language",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchExtensionActions.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchExtensionActions.swift",
         before: "            return Entry(tool: key.tool, title: declared.title.text(for: language.rawValue) ?? key.panel,\n",
         after: "            return Entry(tool: key.tool, title: declared.title.text(for: \"en\") ?? key.panel,\n",
         diagnostic: "a tool's button has its island page's title in the person's language, and its symbol",
@@ -511,7 +511,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a hidden island set to show activity stays out of sight for it",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "            && !(NotchSupport.hiddenShowsActivity(in: defaults) && (notice != nil\n                || compactActivity != nil && (geometry.isNotched || geometry.compactSideRoom != nil)))\n",
         after: "",
         diagnostic: "a hidden island set to show activity reads the song and shows its strip",
@@ -519,7 +519,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a hidden island with no room to draw its activity stops watching for the pointer",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "                || compactActivity != nil && (geometry.isNotched || geometry.compactSideRoom != nil)))\n",
         after: "                || compactActivity != nil))\n",
         diagnostic: "with no room beside a simulated cutout, a hidden island set to show activity waits out of sight",
@@ -527,7 +527,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a hidden island set to show activity refuses notices",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "        acceptsSystemFeedback && (!hiddenUntilHover || NotchSupport.hiddenShowsActivity(in: defaults))",
         after: "        acceptsSystemFeedback && !hiddenUntilHover",
         diagnostic: "a hidden island set to show activity reads the song and shows its strip",
@@ -535,7 +535,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "copies of a hidden island hide the activity it shows",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchMirrors.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchMirrors.swift",
         before: "        let hidesAtRest = environment.hidesUntilHover() && (activity == nil || !environment.hiddenShowsActivity())",
         after: "        let hidesAtRest = environment.hidesUntilHover()",
         diagnostic: "copies of a hidden island set to show activity draw the activity it shows",
@@ -543,7 +543,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a hidden island set to show activity stops measuring the menus",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchScreenRefresh.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchScreenRefresh.swift",
         before: "            && (!island.hiddenUntilHover() || environment.hiddenShowsActivity()) && !island.expanded()",
         after: "            && !island.hiddenUntilHover() && !island.expanded()",
         diagnostic: "a hidden island set to show activity keeps measuring the menus for an activity to come",
@@ -551,7 +551,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a hidden island set to show activity stops reading music",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "            || ((!hiddenUntilHover || NotchSupport.hiddenShowsActivity(in: defaults))",
         after: "            || ((!hiddenUntilHover)",
         diagnostic: "paused and out of sight, a hidden island set to show activity keeps reading for the next song",
@@ -559,7 +559,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the display hint ignores the pointer choices",
         group: "notch",
-        relative: "Sources/Vitruvian/Core/Notch/NotchSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Notch/NotchSupport.swift",
         before: "        if preference == .pointer || preference == .all { return true }\n",
         after: "",
         diagnostic: "the pointer can take the island to a monitor: pointer",
@@ -567,7 +567,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the display hint counts a camera-only setup as reached",
         group: "notch",
-        relative: "Sources/Vitruvian/Core/Notch/NotchSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Notch/NotchSupport.swift",
         before: "        guard notched.contains(false) else { return false }\n",
         after: "",
         diagnostic: "no display without a notch is reached when none is connected: pointer",
@@ -575,7 +575,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the display hint reads a missing built-in display as reached",
         group: "notch",
-        relative: "Sources/Vitruvian/Core/Notch/NotchSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Notch/NotchSupport.swift",
         before: "hasLid: hasLid) else { return false }",
         after: "hasLid: hasLid) else { return true }",
         diagnostic: "the built-in choice reaches no monitor while the lid is closed",
@@ -583,7 +583,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a simulated cutout hidden in full screen ignores the hover set to open it",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "guard running, !suspended, !hiddenAtRestInFullscreen || watchesHiddenHover else",
         after: "guard running, !suspended, !hiddenAtRestInFullscreen else",
         diagnostic: "hovering a simulated cutout hidden in full screen opens it as hover is set to",
@@ -591,7 +591,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a simulated cutout hidden in full screen opens only over its bare cutout",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "in: self.watchesHiddenHover ? self.geometry.collapsed : self.surfaceSize)",
         after: "in: self.hiddenUntilHover ? self.geometry.collapsed : self.surfaceSize)",
         diagnostic: "hovering a simulated cutout hidden in full screen opens it as hover is set to",
@@ -599,7 +599,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a simulated cutout hidden in full screen stops following the pointer",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "        guard running, !suspended, watchesHiddenHover, windowHost != nil else {",
         after: "        guard running, !suspended, hiddenUntilHover, windowHost != nil else {",
         diagnostic: "a simulated cutout hidden in full screen keeps one pair of movement observers",
@@ -607,7 +607,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a simulated cutout hidden in full screen follows the pointer with fullscreen hover off",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "captureControls == nil\n            && hoverOpeningEnabled)",
         after: "captureControls == nil)",
         diagnostic: "a simulated cutout hidden in full screen waits for a shortcut when it opens on click",
@@ -615,7 +615,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "fullscreen hiding inherits the desktop hover preference",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "        hiddenInFullscreen ? defaults[Preferences.notchHoverInFullscreen] : defaults[Preferences.notchOpenOnHover]",
         after: "        defaults[Preferences.notchOpenOnHover]",
         diagnostic: "fullscreen hiding blocks hover unless separately enabled, on every display and opening mode",
@@ -623,7 +623,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "moves over an island hidden in full screen hold its timed capture",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "        if !watchesHiddenHover { captureHover?(entered) }",
         after: "        if !hiddenUntilHover { captureHover?(entered) }",
         diagnostic: "moves followed over a simulated cutout hidden in full screen leave a held capture's dismissal alone",
@@ -631,7 +631,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the display is probed before its picture is restored when software dimming is turned off",
         group: "software-dimming",
-        relative: "Sources/Vitruvian/Services/Display/BrightnessService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Display/BrightnessService.swift",
         before: "        guard !preferred else {\n            refresh(force: true)\n            return\n        }\n        // Handing the display back to DDC has to hand the picture back with\n        // it. The scaled curve belongs to this app, and the level behind it\n        // describes the gamma route, not the monitor: left in place they show\n        // a dark screen the monitor's own controls cannot explain, and the\n        // first write to the panel then dims what is already dimmed. The\n        // curve goes back before the rebuild, so the probe reads a display\n        // showing its own picture.\n        stateLock.lock()\n        lastApplied[id] = nil\n        levelKnownAt[id] = nil\n        stateLock.unlock()\n        environment.work { [weak self] in\n            guard let self else { return }\n            self.applySoftwareDim(id, value: 1)\n            self.environment.main { [weak self] in self?.refresh(force: true) }\n        }\n",
         after: "        refresh(force: true)\n",
         diagnostic: "the rebuild waits for the restored curve, so the probe reads an undimmed display",
@@ -639,7 +639,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a timed session hands over on one condition",
         group: "keep-awake",
-        relative: "Sources/Vitruvian/Services/KeepAwakeManager.swift",
+        relative: "Sources/VitruvianAtrium/Services/KeepAwakeManager.swift",
         before: "        guard KeepAwakeAutomationSupport.conditionsSatisfied(\n                matching: matches,\n                enabled: enabled(),\n                requireAll: requireAll()) else { return nil }\n",
         after: "        guard !matches.isEmpty else { return nil }\n",
         diagnostic: "a timer running out on battery hands nothing over to an All automation",
@@ -647,7 +647,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "lid sleep ignores a display connection in progress",
         group: "keep-awake",
-        relative: "Sources/Vitruvian/Core/KeepAwakeAutomationSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/KeepAwakeAutomationSupport.swift",
         before: "return appliesToLid && assertion[\"AssertLevel\"] as? Int != 0",
         after: "return false",
         diagnostic: "a live monitor transition overrides a stale allowed lid policy",
@@ -655,7 +655,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "lid sleep forgets to retry a refusal",
         group: "keep-awake",
-        relative: "Sources/Vitruvian/Services/KeepAwakeManager.swift",
+        relative: "Sources/VitruvianAtrium/Services/KeepAwakeManager.swift",
         before: "guard result != kIOReturnSuccess, attemptsLeft > 1 else { return }",
         after: "guard false else { return }",
         diagnostic: "a refused lid sleep retries until the system accepts it",
@@ -663,7 +663,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "match mode labels grow back into sentences",
         group: "preferences",
-        relative: "Sources/Vitruvian/Core/KeepAwakeStrings.swift",
+        relative: "Sources/VitruvianAtrium/Core/KeepAwakeStrings.swift",
         before: "        matchAny: \"L’une\",\n        matchAll: \"Toutes\",\n",
         after: "        matchAny: \"N’importe quelle condition\",\n        matchAll: \"Toutes les conditions\",\n",
         diagnostic: "fr: the match mode labels fit the panel card",
@@ -671,7 +671,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "recording metadata rebases after startup",
         group: "recording",
-        relative: "Sources/Vitruvian/Core/Recorder/RecorderSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Recorder/RecorderSupport.swift",
         before: "return timeline.eventTime(time, since: origin)",
         after: "return timeline.eventTime(time, since: origin + 0.3)",
         diagnostic: "stored pointer, click and typing markers align with decoded video after delayed startup and pauses",
@@ -679,7 +679,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "microphone returns to its changing native format",
         group: "recording",
-        relative: "Sources/Vitruvian/Services/Recorder/RecorderWriter.swift",
+        relative: "Sources/VitruvianAtrium/Services/Recorder/RecorderWriter.swift",
         before: "let interleaved = Self.interleavedAudioSample(sampleBuffer, converter: &microphoneConverter)",
         after: "let interleaved = Optional(sampleBuffer)",
         diagnostic: "writer dropped required microphone fixture sample",
@@ -687,7 +687,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "system audio returns to its changing native format",
         group: "recording",
-        relative: "Sources/Vitruvian/Services/Recorder/RecorderWriter.swift",
+        relative: "Sources/VitruvianAtrium/Services/Recorder/RecorderWriter.swift",
         before: "let interleaved = Self.interleavedAudioSample(sampleBuffer, converter: &systemAudioConverter)",
         after: "let interleaved = Optional(sampleBuffer)",
         diagnostic: "writer dropped required systemAudio fixture sample",
@@ -695,7 +695,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "GIF chunk lets the previous frame show through",
         group: "recorder",
-        relative: "Sources/Vitruvian/Services/Recorder/RecorderGIFWriter.swift",
+        relative: "Sources/VitruvianAtrium/Services/Recorder/RecorderGIFWriter.swift",
         before: "                    || Self.hasTransparency(pending[0]) {",
         after: "                    || false {",
         diagnostic: "chunk boundaries never let an earlier frame show through",
@@ -703,7 +703,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "silent app tap keeps its trust",
         group: "recorder",
-        relative: "Sources/Vitruvian/Core/Recorder/RecorderSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Recorder/RecorderSupport.swift",
         before: "        return time > CMClockMakeHostTimeFromSystemUnits(pipelineStart) + appTapSettling\n",
         after: "        return false\n",
         diagnostic: "sound the stream hears once an app's tap has settled counts against it",
@@ -711,7 +711,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "display recording waits for its tap's pipeline",
         group: "recorder",
-        relative: "Sources/Vitruvian/Core/Recorder/RecorderSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Recorder/RecorderSupport.swift",
         before: "        guard hearsOneApp else { return true }\n",
         after: "",
         diagnostic: "display and area recordings hold the tap to all of the stream's sound, as before",
@@ -719,7 +719,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "long GIF copies its whole data",
         group: "recorder",
-        relative: "Sources/Vitruvian/Services/Recorder/RecorderGIFClipboard.swift",
+        relative: "Sources/VitruvianAtrium/Services/Recorder/RecorderGIFClipboard.swift",
         before: "        if bytes <= inlineByteLimit {",
         after: "        if true {",
         diagnostic: "a GIF past the inline limit is copied as its file alone",
@@ -727,7 +727,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "one undecodable frame fails the GIF",
         group: "recorder",
-        relative: "Sources/Vitruvian/Services/Recorder/RecorderExporter.swift",
+        relative: "Sources/VitruvianAtrium/Services/Recorder/RecorderExporter.swift",
         before: "                let decoded = try? await generator.image(at: time).image\n",
         after: "                guard let decoded = try? await generator.image(at: time).image else {\n                    return cancelled.isCancelled ? .cancelled : .readFailed\n                }\n",
         diagnostic: "a GIF exports past frames that do not decode",
@@ -735,7 +735,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "export progress redraws the editor on every frame",
         group: "recorder",
-        relative: "Sources/Vitruvian/Services/Recorder/RecorderExporter.swift",
+        relative: "Sources/VitruvianAtrium/Services/Recorder/RecorderExporter.swift",
         before: "        guard value - lastValue >= Self.step, now - lastTime >= Self.interval else {",
         after: "        guard true else {",
         diagnostic: "video export progress reaches the editor a few times a second",
@@ -743,7 +743,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "missing feed loses fallback requirement",
         group: "app-updates",
-        relative: "Sources/Vitruvian/Core/AppUpdates/AppUpdateFeedSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/AppUpdates/AppUpdateFeedSupport.swift",
         before: "return Findings(catalogFallbackPaths: Set(apps.map(\\.path)))",
         after: "return Findings()",
         diagnostic: "manifest 404 missing: only usable catalog coverage clears a missing-feed warning",
@@ -751,7 +751,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "current catalog app loses coverage",
         group: "app-updates",
-        relative: "Sources/Vitruvian/Core/AppUpdates/AppUpdatesSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/AppUpdates/AppUpdatesSupport.swift",
         before: "if !isUncomparable(app.version) { checkedPaths.insert(app.path) }",
         after: "if isNewer(versionCore(entry.version), than: app.version) { checkedPaths.insert(app.path) }",
         diagnostic: "manifest 404 current: only usable catalog coverage clears a missing-feed warning",
@@ -759,7 +759,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "ambiguous catalog claims coverage",
         group: "app-updates",
-        relative: "Sources/Vitruvian/Core/AppUpdates/AppUpdatesSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/AppUpdates/AppUpdatesSupport.swift",
         before: "guard matches.count == 1, let entry = matches.first else { return nil }",
         after: "guard !matches.isEmpty, let entry = matches.first else { return nil }",
         diagnostic: "manifest 404 ambiguous: only usable catalog coverage clears a missing-feed warning",
@@ -767,7 +767,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a build after a dash reports a current app",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/AppUpdates/AppUpdatesSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/AppUpdates/AppUpdatesSupport.swift",
         before: "let release = catalogRelease(latest, installedVersion: app.version, installedBuild: app.buildVersion)",
         after: "let release = latest",
         diagnostic: "a build after a dash is left out when the bundle reports only its release",
@@ -775,7 +775,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a short number after a dash is dropped",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/AppUpdates/AppUpdatesSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/AppUpdates/AppUpdatesSupport.swift",
         before: "guard build.count >= 3, isNumber(build),",
         after: "guard isNumber(build),",
         diagnostic: "only a dotted release followed by a build number loses the part after its dash",
@@ -783,7 +783,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a further installed number is ignored",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/AppUpdates/AppUpdatesSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/AppUpdates/AppUpdatesSupport.swift",
         before: "              parts(of: installed).dropFirst(releaseParts.count).allSatisfy({\n                  $0.allSatisfy(\\.isNumber) && stripLeadingZeros($0).isEmpty\n              }) else { return catalogVersion }",
         after: "              true else { return catalogVersion }",
         diagnostic: "a bundle that reports its own dash or further number, and a dated version, are compared whole",
@@ -791,7 +791,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a template bundle reports catalog updates",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/AppUpdates/AppUpdatesSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/AppUpdates/AppUpdatesSupport.swift",
         before: "        if reportsPlaceholderVersion(app) {\n            return compare(release, versionCore(app.version)) != .orderedSame\n        }\n",
         after: "",
         diagnostic: "a bundle still carrying the template version and build is named, neither updated nor current",
@@ -799,7 +799,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a coarse bundle reports catalog updates",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/AppUpdates/AppUpdatesSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/AppUpdates/AppUpdatesSupport.swift",
         before: "&& zip(installedParts, catalogParts).allSatisfy { compareDigits($0, $1) == .orderedSame }",
         after: "&& false",
         diagnostic: "a bundle that reports only the front of a longer catalog number is named, neither updated nor current",
@@ -807,7 +807,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a different release reads as unreported parts",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/AppUpdates/AppUpdatesSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/AppUpdates/AppUpdatesSupport.swift",
         before: "&& zip(installedParts, catalogParts).allSatisfy { compareDigits($0, $1) == .orderedSame }",
         after: "",
         diagnostic: "a different release, or one more short part, is still an update",
@@ -815,7 +815,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "one more short part reads as unreported",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/AppUpdates/AppUpdatesSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/AppUpdates/AppUpdatesSupport.swift",
         before: "return (catalogParts.count >= installedParts.count + 2 || addsBuild)",
         after: "return (catalogParts.count > installedParts.count || addsBuild)",
         diagnostic: "a different release, or one more short part, is still an update",
@@ -823,7 +823,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a short dash suffix reports catalog updates",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/AppUpdates/AppUpdatesSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/AppUpdates/AppUpdatesSupport.swift",
         before: "return (1...2).contains(suffix.count) && suffix",
         after: "return false && suffix",
         diagnostic: "a short number after a dash the bundle never shows is named for its release",
@@ -831,7 +831,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a newer release before a dash reads as unreported",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/AppUpdates/AppUpdatesSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/AppUpdates/AppUpdatesSupport.swift",
         before: "            && compare(release, installed) == .orderedSame\n",
         after: "",
         diagnostic: "a short number after a dash can be a fix release, so it still counts",
@@ -839,7 +839,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "uncomparable apps never reach the service",
         group: "app-updates",
-        relative: "Sources/Vitruvian/Services/AppUpdates/AppUpdatesService.swift",
+        relative: "Sources/VitruvianAtrium/Services/AppUpdates/AppUpdatesService.swift",
         before: ",\n                            uncomparableApps: findings.uncomparableApps)",
         after: ")",
         diagnostic: "a catalog match with an uncomparable version reaches the service named, not as a row",
@@ -847,7 +847,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "uncomparable apps are not published",
         group: "app-updates",
-        relative: "Sources/Vitruvian/Services/AppUpdates/AppUpdatesService.swift",
+        relative: "Sources/VitruvianAtrium/Services/AppUpdates/AppUpdatesService.swift",
         before: "        uncomparableAppNames = result.uncomparableAppNames\n",
         after: "",
         diagnostic: "an app whose version cannot be compared is named without a row, a count or a notice",
@@ -855,7 +855,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a newer build of the same release reads as current",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/AppUpdates/AppUpdatesSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/AppUpdates/AppUpdatesSupport.swift",
         before: "           compareDigits(String(build), ownBuild) == .orderedDescending {",
         after: "           false {",
         diagnostic: "a bundle that numbers its builds like the catalog still shows a newer build of the same release",
@@ -863,7 +863,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a first release that repeats its version reads as the template",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/AppUpdates/AppUpdatesSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/AppUpdates/AppUpdatesSupport.swift",
         before: "            && app.buildVersion.trimmingCharacters(in: .whitespacesAndNewlines) == \"1\"",
         after: "            && compare(versionCore(app.buildVersion), \"1\") == .orderedSame",
         diagnostic: "a first release whose build repeats its version is still compared, not taken for the template",
@@ -871,7 +871,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a missing feed ignores the catalog's uncompared answer",
         group: "app-updates",
-        relative: "Sources/Vitruvian/Services/AppUpdates/AppUpdatesService.swift",
+        relative: "Sources/VitruvianAtrium/Services/AppUpdates/AppUpdatesService.swift",
         before: "resolvingCatalogFallback(checkedPaths: catalog.answeredPaths, candidates: candidates)",
         after: "resolvingCatalogFallback(checkedPaths: catalog.checkedPaths, candidates: candidates)",
         diagnostic: "a missing feed answered by an uncomparable catalog match is not also reported as unchecked",
@@ -879,7 +879,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "an app its own feed compared is still named",
         group: "app-updates",
-        relative: "Sources/Vitruvian/Services/AppUpdates/AppUpdatesService.swift",
+        relative: "Sources/VitruvianAtrium/Services/AppUpdates/AppUpdatesService.swift",
         before: "AppUpdatesSupport.uncheckedAppNames(uncomparableApps, checkedPaths: feeds.checkedPaths)",
         after: "AppUpdatesSupport.uncheckedAppNames(uncomparableApps, checkedPaths: [])",
         diagnostic: "an app its own feed compared is not also named as not compared",
@@ -887,7 +887,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a build that is the catalog's number is ignored",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/AppUpdates/AppUpdatesSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/AppUpdates/AppUpdatesSupport.swift",
         before: "            if buildMatchesCatalog(app, catalogVersion: latest) {",
         after: "            if false {",
         diagnostic: "a bundle whose build is the catalog's whole number counts as current",
@@ -895,7 +895,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a short build stands in for the catalog's number",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/AppUpdates/AppUpdatesSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/AppUpdates/AppUpdatesSupport.swift",
         before: "        return isSpecific(build) && isSpecific(catalogVersion)\n            && compare(",
         after: "        return compare(",
         diagnostic: "a newer catalog number, or a short build, is still compared with the shown version",
@@ -903,7 +903,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a build counter stands in for a catalog number",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/AppUpdates/AppUpdatesSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/AppUpdates/AppUpdatesSupport.swift",
         before: "(digits >= 5 || (digits >= 3",
         after: "(digits >= 3 || (digits >= 3",
         diagnostic: "a newer catalog number, or a short build, is still compared with the shown version",
@@ -911,7 +911,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a build the bundle does not show stands in for a catalog number",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/AppUpdates/AppUpdatesSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/AppUpdates/AppUpdatesSupport.swift",
         before: "&& shown.contains(numbers[0])",
         after: "&& true",
         diagnostic: "a newer catalog number, or a short build, is still compared with the shown version",
@@ -919,7 +919,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a build number the bundle shows is ignored",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/AppUpdates/AppUpdatesSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/AppUpdates/AppUpdatesSupport.swift",
         before: "&& shown.contains(numbers[0])",
         after: "&& false",
         diagnostic: "a bundle whose build is the catalog's whole number counts as current",
@@ -927,7 +927,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a trailing zero lets a build stand in for a shorter catalog number",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/AppUpdates/AppUpdatesSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/AppUpdates/AppUpdatesSupport.swift",
         before: "        return isSpecific(build) && isSpecific(catalogVersion)\n",
         after: "        return isSpecific(build)\n",
         diagnostic: "a newer catalog number, or a short build, is still compared with the shown version",
@@ -935,7 +935,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a dotted build is compared without the bundle's build",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/AppUpdates/AppUpdatesSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/AppUpdates/AppUpdatesSupport.swift",
         before: "        return \"\\(shown).\\(build)\"",
         after: "        return app.version",
         diagnostic: "a build written as one more dotted number is current when the bundle's own build is the same or later",
@@ -943,7 +943,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "any bundle build completes a dotted build",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/AppUpdates/AppUpdatesSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/AppUpdates/AppUpdatesSupport.swift",
         before: "stripLeadingZeros(build).count == stripLeadingZeros(catalogBuild).count else { return app.version }",
         after: "true else { return app.version }",
         diagnostic: "a build number the bundle never shows is named for its release",
@@ -951,7 +951,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "an update check ignores the bundle's dotted build",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/AppUpdates/AppUpdatesSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/AppUpdates/AppUpdatesSupport.swift",
         before: "guard isNewer(release, than: installedNumber(app, against: release)) else { return nil }",
         after: "guard isNewer(release, than: app.version) else { return nil }",
         diagnostic: "a build written as one more dotted number is current when the bundle's own build is the same or later",
@@ -959,7 +959,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "an unreported build reads as an update",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/AppUpdates/AppUpdatesSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/AppUpdates/AppUpdatesSupport.swift",
         before: "return (catalogParts.count >= installedParts.count + 2 || addsBuild)",
         after: "return (catalogParts.count >= installedParts.count + 2)",
         diagnostic: "a build number the bundle never shows is named for its release",
@@ -967,7 +967,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a short extra part reads as an unreported build",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/AppUpdates/AppUpdatesSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/AppUpdates/AppUpdatesSupport.swift",
         before: "&& stripLeadingZeros(catalogParts[installedParts.count]).count >= 3",
         after: "&& stripLeadingZeros(catalogParts[installedParts.count]).count >= 1",
         diagnostic: "one more short part, also before a dash build, and a newer release are still updates",
@@ -975,7 +975,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a version without a number reads as an update",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/AppUpdates/AppUpdatesSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/AppUpdates/AppUpdatesSupport.swift",
         before: "        guard versionCore(app.version).contains(where: \\.isNumber) else { return true }\n",
         after: "",
         diagnostic: "a bundle version with no number in it is named, neither updated nor current",
@@ -983,7 +983,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a version of only zeros reads as an update",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/AppUpdates/AppUpdatesSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/AppUpdates/AppUpdatesSupport.swift",
         before: "        compare(versionCore(app.version), \"0\") == .orderedSame\n            || (",
         after: "        false\n            || (",
         diagnostic: "a version of only zeros is named unless the catalog lists the same, and 0.0.1 is still compared",
@@ -991,7 +991,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a commit hash reads as an update",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/AppUpdates/AppUpdatesSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/AppUpdates/AppUpdatesSupport.swift",
         before: "        let catalogVersion = withoutBuildLabel(catalogVersion)\n",
         after: "",
         diagnostic: "a commit hash after a dash, or build metadata after a plus, is left out of the comparison",
@@ -999,7 +999,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a short hex label reads as a commit hash",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/AppUpdates/AppUpdatesSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/AppUpdates/AppUpdatesSupport.swift",
         before: "let isHash = label.count >= 7 && label",
         after: "let isHash = label.count >= 1 && label",
         diagnostic: "a newer release in front of a hash or a newer build after a plus still counts, and a short or worded label is compared whole",
@@ -1007,7 +1007,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a build after a plus is dropped unread",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/AppUpdates/AppUpdatesSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/AppUpdates/AppUpdatesSupport.swift",
         before: "? String(version[..<plus]) + \"-\" + metadata : String(version[..<plus])",
         after: "? String(version[..<plus]) : String(version[..<plus])",
         diagnostic: "a newer release in front of a hash or a newer build after a plus still counts, and a short or worded label is compared whole",
@@ -1015,7 +1015,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a short dotted part completes the bundle's build",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/AppUpdates/AppUpdatesSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/AppUpdates/AppUpdatesSupport.swift",
         before: "let catalogBuild = releaseParts.last, stripLeadingZeros(catalogBuild).count >= 3,",
         after: "let catalogBuild = releaseParts.last, stripLeadingZeros(catalogBuild).count >= 1,",
         diagnostic: "an older build of the same release, or an older release, is still an update",
@@ -1023,7 +1023,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a full build after a dash is read as another number",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/AppUpdates/AppUpdatesSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/AppUpdates/AppUpdatesSupport.swift",
         before: "        if ownParts.count == releaseParts.count + 1, ownParts.allSatisfy(isNumber),\n",
         after: "        if false, ownParts.allSatisfy(isNumber),\n",
         diagnostic: "an older build of the same release, or an older release, is still an update",
@@ -1031,7 +1031,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a build in the catalog's form is not compared",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/AppUpdates/AppUpdatesSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/AppUpdates/AppUpdatesSupport.swift",
         before: "        if buildParts.count == releaseParts.count,\n",
         after: "        if false,\n",
         diagnostic: "an older build of the same release, or an older release, is still an update",
@@ -1039,7 +1039,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Positron's own release is never read",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/AppUpdates/AppUpdatesSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/AppUpdates/AppUpdatesSupport.swift",
         before: "let version = fields[\"positronVersion\"] as? String,",
         after: "let version = fields[\"version\"] as? String,",
         diagnostic: "Positron's own release is read from its product file, and other products keep their bundle version",
@@ -1047,7 +1047,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the scan ignores Positron's own release",
         group: "app-updates",
-        relative: "Sources/Vitruvian/Services/AppUpdates/AppUpdatesService.swift",
+        relative: "Sources/VitruvianAtrium/Services/AppUpdates/AppUpdatesService.swift",
         before: "version: product?.version ?? version,",
         after: "version: version,",
         diagnostic: "the scan reads Positron's own release from its product file and leaves other bundles alone",
@@ -1055,7 +1055,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "switcher ignores resized viewport",
         group: "switcher",
-        relative: "Sources/Vitruvian/UI/Switcher/SwitcherWindowStrip.swift",
+        relative: "Sources/VitruvianAtrium/UI/Switcher/SwitcherWindowStrip.swift",
         before: "            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { _ in\n                DispatchQueue.main.async {\n                    revealSelection(in: proxy, animated: false)\n                }\n            }",
         after: "",
         diagnostic: "previews search/narrowed without changing selection",
@@ -1063,7 +1063,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "paused silence writes off the resumed play",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchAudioLevelService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchAudioLevelService.swift",
         before: "        if stopWork == nil { silence.giveUp(on: identity) }",
         after: "        silence.giveUp(on: identity)",
         diagnostic: "silence heard during the pause grace does not write the next play off",
@@ -1071,7 +1071,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "resumed play keeps a reader still reporting paused silence",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchAudioLevelService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchAudioLevelService.swift",
         before: "        guard readerPID != pid || resumeBeforeSound else { return }",
         after: "        guard readerPID != pid else { return }",
         diagnostic: "a delayed silence report from the pause cannot write off the resumed play",
@@ -1079,7 +1079,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "switcher loses replacement identity",
         group: "switcher",
-        relative: "Sources/Vitruvian/UI/Switcher/SwitcherWindowStrip.swift",
+        relative: "Sources/VitruvianAtrium/UI/Switcher/SwitcherWindowStrip.swift",
         before: "            .onChange(of: windows.map(\\.element.id)) { _, _ in",
         after: "            .onChange(of: windows.count) { _, _ in",
         diagnostic: "previews boundary close/next app at unchanged index",
@@ -1087,7 +1087,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "secure input still takes ⌘Tab over",
         group: "switcher-model",
-        relative: "Sources/Vitruvian/Core/Switcher/SwitcherSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Switcher/SwitcherSupport.swift",
         before: "        guard !secureInputEnabled else { return [] }\n",
         after: "",
         diagnostic: "while Secure Event Input hides every key from the tap, ⌘Tab and ⌘` stay with macOS",
@@ -1095,7 +1095,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "switcher follows window count",
         group: "switcher-model",
-        relative: "Sources/Vitruvian/Core/Switcher/SwitcherSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Switcher/SwitcherSupport.swift",
         before: ": min(2, max(windowCount, maximumWindowCount))",
         after: ": min(2, windowCount)",
         diagnostic: "App Switcher keeps short icon rows stationary when changing apps",
@@ -1103,7 +1103,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "one entry per app hops to a fullscreen desktop",
         group: "switcher-model",
-        relative: "Sources/Vitruvian/Services/Switcher/WindowEnumerator.swift",
+        relative: "Sources/VitruvianAtrium/Services/Switcher/WindowEnumerator.swift",
         before: "                return isOnHiddenSpace(windowID)\n            })",
         after: "                return false\n            })",
         diagnostic: "one entry per app keeps the window here over a later fullscreen window on another desktop",
@@ -1111,7 +1111,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "icon row hops to a fullscreen desktop",
         group: "switcher-model",
-        relative: "Sources/Vitruvian/Core/Switcher/SwitcherSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Switcher/SwitcherSupport.swift",
         before: "$0.pid == item.pid && !$0.isOnHiddenSpace",
         after: "$0.pid == item.pid",
         diagnostic: "current-desktop icon row picks the app's window here over its fullscreen window on another desktop",
@@ -1119,7 +1119,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "icon row steps ignore the current desktop",
         group: "switcher-model",
-        relative: "Sources/Vitruvian/Services/Switcher/AppSwitcher.swift",
+        relative: "Sources/VitruvianAtrium/Services/Switcher/AppSwitcher.swift",
         before: "                                                              wrapping: wrapping,\n                                                              currentSpaceOnly: currentSpaceOnly)",
         after: "                                                              wrapping: wrapping)",
         diagnostic: "the icon row's first selection, app steps, icon clicks and edge hover share the current-desktop entry",
@@ -1127,7 +1127,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a slow permission check lets the capture through",
         group: "switcher",
-        relative: "Sources/Vitruvian/Services/Switcher/WindowServerCaptureQueue.swift",
+        relative: "Sources/VitruvianAtrium/Services/Switcher/WindowServerCaptureQueue.swift",
         before: "            let prompt = answered - asked < Self.slowPermissionCheck\n",
         after: "            let prompt = true\n",
         diagnostic: "a slow permission check keeps the capture from reaching the system",
@@ -1135,7 +1135,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "capture backoff never resets after a quick capture",
         group: "switcher",
-        relative: "Sources/Vitruvian/Services/Switcher/WindowServerCaptureQueue.swift",
+        relative: "Sources/VitruvianAtrium/Services/Switcher/WindowServerCaptureQueue.swift",
         before: "            } else {\n                slowTurns = 0\n            }\n",
         after: "            }\n",
         diagnostic: "a quick capture resets the backoff, so the next slow turn pauses for half a minute again",
@@ -1143,7 +1143,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a turn given up after its check stays open",
         group: "switcher",
-        relative: "Sources/Vitruvian/Services/Switcher/WindowServerCaptureQueue.swift",
+        relative: "Sources/VitruvianAtrium/Services/Switcher/WindowServerCaptureQueue.swift",
         before: "            lock.withLock { turnStartedAt = nil }\n            return nil\n",
         after: "            return nil\n",
         diagnostic: "a turn given up after its check closes, so later captures are not refused",
@@ -1151,7 +1151,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a refused turn keeps its place in the count",
         group: "switcher",
-        relative: "Sources/Vitruvian/Services/Switcher/WindowServerCaptureQueue.swift",
+        relative: "Sources/VitruvianAtrium/Services/Switcher/WindowServerCaptureQueue.swift",
         before: "                        self.lock.withLock { self.pendingCount -= 1 }\n",
         after: "",
         diagnostic: "background warming captures again once cancelled requests have left the queue",
@@ -1159,7 +1159,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "thumbnails capture with sleeping displays",
         group: "switcher",
-        relative: "Sources/Vitruvian/Services/Switcher/WindowPreviewProvider.swift",
+        relative: "Sources/VitruvianAtrium/Services/Switcher/WindowPreviewProvider.swift",
         before: "            && !displaysAsleep\n",
         after: "\n",
         diagnostic: "no thumbnail is captured for another account, a locked screen or sleeping displays",
@@ -1175,7 +1175,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "invalid saved zoom",
         group: "screenshots",
-        relative: "Sources/Vitruvian/Core/QuickTools/ScreenshotSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/QuickTools/ScreenshotSupport.swift",
         before: "guard requested.isFinite else { return 1 }",
         after: "guard requested.isFinite else { return requested }",
         diagnostic: "an invalid saved magnifier zoom falls back safely",
@@ -1183,7 +1183,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a posted Command-C closes the editor under a stroke",
         group: "screenshots",
-        relative: "Sources/Vitruvian/Core/QuickTools/ScreenshotSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/QuickTools/ScreenshotSupport.swift",
         before: "            && now - lastPointerActivity < editorPostedCopyGrace",
         after: "            && now - lastPointerActivity < 0",
         diagnostic: "a Command-C another app posts as a canvas drag ends does not copy and close the editor",
@@ -1191,7 +1191,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "recording starts before the launcher hides",
         group: "launcher",
-        relative: "Sources/Vitruvian/Services/QuickTools/QuickLauncherService.swift",
+        relative: "Sources/VitruvianAtrium/Services/QuickTools/QuickLauncherService.swift",
         before: "        case .keepAwake, .micMute:\n            environment.perform(item)\n        case .screenOCR, .screenshot, .screenRecorder, .colorPicker, .scratchpad:",
         after: "        case .keepAwake, .micMute, .screenRecorder:\n            environment.perform(item)\n        case .screenOCR, .screenshot, .colorPicker, .scratchpad:",
         diagnostic: "screenRecorder executes the intended action exactly once",
@@ -1199,7 +1199,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "incorrect recording icon",
         group: "launcher",
-        relative: "Sources/Vitruvian/UI/QuickLauncher/QuickLauncherView.swift",
+        relative: "Sources/VitruvianAtrium/UI/QuickLauncher/QuickLauncherView.swift",
         before: "case .screenRecorder: return state.recording ? \"stop.circle\" : \"record.circle\"",
         after: "case .screenRecorder: return \"record.circle\"",
         diagnostic: "an active recording tile offers stopping",
@@ -1207,7 +1207,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "missing translation",
         group: "localization",
-        relative: "Sources/Vitruvian/Core/FeatureStrings.swift",
+        relative: "Sources/VitruvianAtrium/Core/FeatureStrings.swift",
         before: "shortcutHint: \"Clique numa linha para colar no app anterior. ⌘+clique seleciona várias; ⌘C copia sem colar.\"",
         after: "shortcutHint: \"\"",
         diagnostic: "clipboard/pt-BR: missing text in shortcutHint",
@@ -1223,7 +1223,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "unreachable window visibility preference",
         group: "screenshots",
-        relative: "Sources/Vitruvian/Services/QuickTools/ScreenshotCapturePolicy.swift",
+        relative: "Sources/VitruvianAtrium/Services/QuickTools/ScreenshotCapturePolicy.swift",
         before: "        honoursVisibilityPreference\n            ? workflowWindowIDs\n            : workflowWindowIDs.union(contentWindowIDs)",
         after: "        workflowWindowIDs.union(contentWindowIDs)",
         diagnostic: "a screenshot protects only the surfaces taking it",
@@ -1231,7 +1231,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "island preference overrides a caller that keeps it out",
         group: "screenshots",
-        relative: "Sources/Vitruvian/Services/QuickTools/ScreenshotCapturePolicy.swift",
+        relative: "Sources/VitruvianAtrium/Services/QuickTools/ScreenshotCapturePolicy.swift",
         before: "        return excluded.subtracting(islandWindowIDs.subtracting(protectedWindowIDs))",
         after: "        return excluded.subtracting(islandWindowIDs)",
         diagnostic: "a caller that protects the island keeps it out even when it shows in captures",
@@ -1239,7 +1239,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "capture controls photographed in the island",
         group: "screenshots",
-        relative: "Sources/Vitruvian/Services/QuickTools/ScreenshotCapturePolicy.swift",
+        relative: "Sources/VitruvianAtrium/Services/QuickTools/ScreenshotCapturePolicy.swift",
         before: "        guard showsCaptureTool, let mainWindowID else { return islandWindowIDs }",
         after: "        guard let mainWindowID else { return islandWindowIDs }",
         diagnostic: "the island at rest, or open on a page, is in the picture when it shows in captures",
@@ -1247,15 +1247,15 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "tool switch keeps a stale picture of own windows",
         group: "screenshots",
-        relative: "Sources/Vitruvian/Core/QuickTools/ScreenshotSupport.swift",
-        before: "                && hideVitruvianWindows == other.hideVitruvianWindows\n                && keepsContentWindowsOut == other.keepsContentWindowsOut",
-        after: "                && hideVitruvianWindows == other.hideVitruvianWindows",
+        relative: "Sources/VitruvianAtrium/Core/QuickTools/ScreenshotSupport.swift",
+        before: "                && hideAtriumWindows == other.hideAtriumWindows\n                && keepsContentWindowsOut == other.keepsContentWindowsOut",
+        after: "                && hideAtriumWindows == other.hideAtriumWindows",
         diagnostic: "switching between recording and screenshot, text or color refreshes the picture and pickable windows both ways",
     },
     Mutation {
         name: "capture accepts a refreshing source",
         group: "capture",
-        relative: "Sources/Vitruvian/Services/QuickTools/ScreenshotSelectionController.swift",
+        relative: "Sources/VitruvianAtrium/Services/QuickTools/ScreenshotSelectionController.swift",
         before: "        sourceRefreshPending = true",
         after: "        sourceRefreshPending = false",
         diagnostic: "pending refresh rejects region, window, full-screen, repeat and color confirmations",
@@ -1263,7 +1263,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "capture reuses a failed display",
         group: "capture",
-        relative: "Sources/Vitruvian/Services/QuickTools/ScreenshotSelectionController.swift",
+        relative: "Sources/VitruvianAtrium/Services/QuickTools/ScreenshotSelectionController.swift",
         before: "guard !freeze || panels.allSatisfy({ frozenImages[$0.displayID] != nil }) else",
         after: "guard true else",
         diagnostic: "missing refreshed display closes selection safely",
@@ -1271,7 +1271,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "old loupe overwrites the selected tool",
         group: "capture",
-        relative: "Sources/Vitruvian/Services/QuickTools/ScreenshotSelectionController.swift",
+        relative: "Sources/VitruvianAtrium/Services/QuickTools/ScreenshotSelectionController.swift",
         before: "guard let self, !self.finished, self.sourceGeneration == generation else",
         after: "guard let self, !self.finished else",
         diagnostic: "a previous tool's delayed live loupe cannot replace the current source",
@@ -1279,7 +1279,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "full-screen action loses its first click",
         group: "screenshots",
-        relative: "Sources/Vitruvian/Services/QuickTools/ScreenshotSelectionController.swift",
+        relative: "Sources/VitruvianAtrium/Services/QuickTools/ScreenshotSelectionController.swift",
         before: "        acceptsFirstClick = true",
         after: "        acceptsFirstClick = false",
         diagnostic: "the interactive full-screen host receives its first click while Dynamic Island owns key focus",
@@ -1287,7 +1287,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "full-screen hover highlights the window underneath",
         group: "capture",
-        relative: "Sources/Vitruvian/Services/QuickTools/ScreenshotSelectionController.swift",
+        relative: "Sources/VitruvianAtrium/Services/QuickTools/ScreenshotSelectionController.swift",
         before: "                && !pointerIsOverFullScreenControl(point)",
         after: "                && true",
         diagnostic: "hovering the full-screen action suppresses the window capture highlight",
@@ -1295,7 +1295,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "island collapse moves a hovered full-screen action",
         group: "capture",
-        relative: "Sources/Vitruvian/Services/QuickTools/ScreenshotSelectionController.swift",
+        relative: "Sources/VitruvianAtrium/Services/QuickTools/ScreenshotSelectionController.swift",
         before: "        if fullScreenControlHovered {",
         after: "        if false {",
         diagnostic: "an island collapse cannot move the full-screen action while it is hovered",
@@ -1303,7 +1303,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "hidden full-screen action keeps stale hover",
         group: "capture",
-        relative: "Sources/Vitruvian/Services/QuickTools/ScreenshotSelectionController.swift",
+        relative: "Sources/VitruvianAtrium/Services/QuickTools/ScreenshotSelectionController.swift",
         before: "        if hidden { resetFullScreenControlHover() }",
         after: "        if false { resetFullScreenControlHover() }",
         diagnostic: "hiding a hovered full-screen action clears hover and applies deferred island geometry",
@@ -1311,7 +1311,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "lowered capsule overlaps the full-screen action",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "            geometry.screen, geometry.floatingDrop + size.height)",
         after: "            geometry.screen, size.height)",
         diagnostic: "a lowered capsule publishes its drop plus height so it cannot cover the full-screen action",
@@ -1319,7 +1319,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "full-screen action appears on every display",
         group: "screenshots",
-        relative: "Sources/Vitruvian/Core/QuickTools/ScreenshotSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/QuickTools/ScreenshotSupport.swift",
         before: "        isAvailable && pointerOnDisplay && !selectionInProgress && !capturePending",
         after: "        isAvailable && !selectionInProgress && !capturePending",
         diagnostic: "the full-screen action stays on the pointer display and disappears as soon as selection or capture starts",
@@ -1327,7 +1327,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "overwrite unreadable notes",
         group: "storage",
-        relative: "Sources/Vitruvian/Services/QuickTools/ScratchpadStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/QuickTools/ScratchpadStore.swift",
         before: "        guard canSave else { return false }",
         after: "        // guard canSave else { return false }",
         diagnostic: "damaged scratchpad blocks subsequent saves of empty and nonempty documents",
@@ -1335,7 +1335,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "island forgets a preview stays until dismissed",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "        captureClosesOnCollapse = closeOnCollapse\n",
         after: "",
         diagnostic: "capture controls detach a persistent preview before closing it after island takeover",
@@ -1343,7 +1343,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "hidden island tells a timed capture every move is an entry",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "        if !watchesHiddenHover { captureHover?(entered) }\n        else if inside != wasInside { captureHover?(inside) }\n",
         after: "        captureHover?(entered)\n",
         diagnostic: "moves away from the hidden island never tell its timed capture the pointer entered",
@@ -1351,7 +1351,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "island hidden in full screen never pauses its timed capture under the pointer",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "        else if inside != wasInside { captureHover?(inside) }",
         after: "        else if hiddenUntilHover, inside != wasInside { captureHover?(inside) }",
         diagnostic: "the pointer reaching a simulated cutout hidden in full screen pauses its held capture once",
@@ -1359,7 +1359,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "confirmation switch stops hiding previews",
         group: "screenshots",
-        relative: "Sources/Vitruvian/Core/QuickTools/ScreenshotSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/QuickTools/ScreenshotSupport.swift",
         before: "confirmationEnabled: defaults[Preferences.screenshotPreviewEnabled])",
         after: "confirmationEnabled: true)",
         diagnostic: "with confirmations off a successful action shows nothing",
@@ -1367,7 +1367,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "upload shortcut publishes an edited capture's original",
         group: "screenshots",
-        relative: "Sources/Vitruvian/Services/QuickTools/ScreenshotLatestCapture.swift",
+        relative: "Sources/VitruvianAtrium/Services/QuickTools/ScreenshotLatestCapture.swift",
         before: "        withhold()\n        editors.append(editor)",
         after: "        editors.append(editor)",
         diagnostic: "a capture that went through an editor is not published",
@@ -1375,7 +1375,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "island link click publishes at once",
         group: "screenshots",
-        relative: "Sources/Vitruvian/Services/QuickTools/ScreenshotQuickPreviewController.swift",
+        relative: "Sources/VitruvianAtrium/Services/QuickTools/ScreenshotQuickPreviewController.swift",
         before: "        embedded ? .opensDurations : .sharesSavedLink\n",
         after: "        .sharesSavedLink\n",
         diagnostic: "the island's link button opens the durations on a click",
@@ -1383,7 +1383,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "clipboard highlight searches the whole preview",
         group: "clipboard",
-        relative: "Sources/Vitruvian/Services/Clipboard/ClipboardHistorySupport.swift",
+        relative: "Sources/VitruvianAtrium/Services/Clipboard/ClipboardHistorySupport.swift",
         before: "        let visible = excerpt(string)\n",
         after: "        let visible = string\n",
         diagnostic: "a long preview is searched and styled only as far as a row can show",
@@ -1391,7 +1391,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "clipboard highlight restyles the whole row",
         group: "clipboard",
-        relative: "Sources/Vitruvian/Services/Clipboard/ClipboardHistorySupport.swift",
+        relative: "Sources/VitruvianAtrium/Services/Clipboard/ClipboardHistorySupport.swift",
         before: "        var attributed = AttributedString(visible)\n",
         after: "        var attributed = AttributedString(visible)\n        attributed.foregroundColor = .primary\n",
         diagnostic: "a highlighted row styles only its matches and leaves the rest to its text's modifiers",
@@ -1399,7 +1399,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "agent log written again in place goes unnoticed",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/AgentUsageStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/AgentUsageStore.swift",
         before: "        if identity != cursor.identity || size < cursor.offset\n            || (size > cursor.offset && !cursor.holdsWhatWasRead) {\n",
         after: "        if identity != cursor.identity || size < cursor.offset {\n",
         diagnostic: "a log written again in place while the app runs is read again at once",
@@ -1407,7 +1407,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "agent progress keeps a log that started over",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/AgentUsageService.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/AgentUsageService.swift",
         before: "let kept = cursors.values.filter { !$0.restarted && $0.provider != .opencode }",
         after: "let kept = cursors.values.filter { $0.provider != .opencode }",
         diagnostic: "a log replaced or written again while the app ran is left out of saved progress",
@@ -1415,7 +1415,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a copy covers the island's own display",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchMirrors.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchMirrors.swift",
         before: "if id != island.displayID || id == island.heldForArrival, !hidesAtRest, !fullscreenDisplays.contains(id),",
         after: "if !hidesAtRest, !fullscreenDisplays.contains(id),",
         diagnostic: "every display but the island's own shows a copy, at once",
@@ -1423,7 +1423,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "closing the copies leaves their windows open",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchMirrors.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchMirrors.swift",
         before: "        copies.values.forEach { $0.host.close() }\n",
         after: "",
         diagnostic: "choosing one display closes every copy",
@@ -1431,7 +1431,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "edge-click refresh stacks monitors",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchScreenEdgeClicks.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchScreenEdgeClicks.swift",
         before: "        guard monitors.isEmpty else { return }\n",
         after: "",
         diagnostic: "refreshes keep exactly one pair of edge-click monitors",
@@ -1439,7 +1439,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a drag off the island keeps the edge click",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchScreenEdgeClicks.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchScreenEdgeClicks.swift",
         before: "                  !(pressArea.map { NotchSupport.screenEdgeArea($0, contains: point) } ?? false) else { return }\n            pressArea = nil\n",
         after: "                  !(pressArea.map { NotchSupport.screenEdgeArea($0, contains: point) } ?? false) else { return }\n",
         diagnostic: "dragging off the island or releasing outside cancels an edge click",
@@ -1447,7 +1447,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the island moves under Mission Control",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchPointerFollower.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchPointerFollower.swift",
         before: "island.canFollow(), !island.isConcealedForMissionControl(),",
         after: "island.canFollow(),",
         diagnostic: "the island waits for Mission Control to end before it moves",
@@ -1455,7 +1455,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "each pointer move schedules its own follow",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchPointerFollower.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchPointerFollower.swift",
         before: "        guard cancelPending == nil, island.canFollow() else { return }",
         after: "        guard island.canFollow() else { return }",
         diagnostic: "a burst of moves on another display waits once",
@@ -1463,7 +1463,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a movement watch stacks monitors",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchMovementWatch.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchMovementWatch.swift",
         before: "        guard monitors.isEmpty else { return }\n",
         after: "",
         diagnostic: "hidden mode keeps one pair of native movement observers",
@@ -1471,7 +1471,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a short strip keeps full-size agent marks",
         group: "agents",
-        relative: "Sources/Vitruvian/Core/Notch/NotchAgentSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Notch/NotchAgentSupport.swift",
         before: "        min(working > 1 ? 11 : 14, max(8, height - NotchLayout.compactEdgeGap * 2 - 4))\n",
         after: "        working > 1 ? 11 : 14\n",
         diagnostic: "a short strip shrinks its agent marks to fit between its edge gaps",
@@ -1479,7 +1479,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a media target change goes unannounced",
         group: "shelf",
-        relative: "Sources/Vitruvian/Services/Notch/NotchFileDrop.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchFileDrop.swift",
         before: "    package private(set) var targetsMedia = false {\n        willSet { island.willChange() }\n    }\n",
         after: "    package private(set) var targetsMedia = false\n",
         diagnostic: "the island announces each change of the drop's destinations, and only a change",
@@ -1487,7 +1487,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "capture teardown keeps its movement watch",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "    private func removeCaptureControlsClickThrough() {\n        captureControlsWatch.stop()\n",
         after: "    private func removeCaptureControlsClickThrough() {\n",
         diagnostic: "capture teardown leaves no scheduled work or capture monitors",
@@ -1495,7 +1495,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the header's halves overlap the camera",
         group: "notch",
-        relative: "Sources/Vitruvian/Core/Notch/NotchSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Notch/NotchSupport.swift",
         before: "        headerCameraGap > 0 ? (contentWidth - headerCameraGap) / 2 : nil\n",
         after: "        headerCameraGap > 0 ? contentWidth / 2 : nil\n",
         diagnostic: "the header's halves leave exactly the camera between them, or one row spans the top",
@@ -1503,7 +1503,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a reverted Codex thread's log loses its turn",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/AgentUsageStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/AgentUsageStore.swift",
         before: "provider == .codex ? !state.codexSubagent : true",
         after: "provider == .codex ? !state.codexSubagent && !(path as NSString).lastPathComponent.contains(\"_\") : true",
         diagnostic: "a reverted Codex thread goes on in its underscored log with its live turn, usage and limits",
@@ -1511,7 +1511,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "copied parent metadata takes over a Codex child's log",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/Harness/CodexReader.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/Harness/CodexReader.swift",
         before: "            guard !state.codexHeaderRead else { return [] }\n",
         after: "",
         diagnostic: "a Codex spawned log keeps its own metadata and owns no turn when its parent's is copied after it",
@@ -1519,7 +1519,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a Codex memory task owns a turn",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/Harness/CodexReader.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/Harness/CodexReader.swift",
         before: "source?[\"subagent\"] != nil || source?[\"internal\"] != nil",
         after: "source?[\"subagent\"] != nil",
         diagnostic: "a Codex memory log keeps its own metadata and owns no turn when its parent's is copied after it",
@@ -1527,7 +1527,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a Codex subagent's work leaves its thread's turn idle",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/AgentUsageService.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/AgentUsageService.swift",
         before: "                : cursor.parent ?? cursor.codexParent(among: cursors)\n",
         after: "                : cursor.parent\n",
         diagnostic: "a Codex subagent's responses count toward its thread's turn and keep it working while the thread waits",
@@ -1535,7 +1535,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a Codex subagent misses its thread's log read after it",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/AgentUsageStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/AgentUsageStore.swift",
         before: "if codexParentSearch != cursors.count ||",
         after: "if codexParentSearch < 0 ||",
         diagnostic: "a Codex subagent read before its thread's log counts toward it once that log is read",
@@ -1543,7 +1543,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a Codex subagent loses its thread's moved log",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/AgentUsageStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/AgentUsageStore.swift",
         before: " || codexParentLog.map({ cursors[$0] == nil }) == true {",
         after: " {",
         diagnostic: "a Codex subagent follows its thread's log when the log moves",
@@ -1551,7 +1551,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a Codex child's copied running totals count again",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/Harness/CodexReader.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/Harness/CodexReader.swift",
         before: "let key = \"codex:\\(state.codexTotalsSession):total:\\(total.total)\"",
         after: "let key = \"codex:\\(state.session):total:\\(total.total)\"",
         diagnostic: "a Codex child's copy of its parent's running totals is not counted again",
@@ -1559,7 +1559,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a Codex subagent counts toward its reverted thread's old log",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/AgentUsageStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/AgentUsageStore.swift",
         before: ".max { $0.modified < $1.modified }?.path",
         after: ".min { $0.modified < $1.modified }?.path",
         diagnostic: "a Codex subagent's responses count toward its thread's turn and keep it working while the thread waits",
@@ -1567,7 +1567,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Codex conversation starts its plugins",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/AgentCodexServer.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/AgentCodexServer.swift",
         before: "super.init(executable, arguments: [\"-c\", \"features.plugins=false\", \"app-server\"],",
         after: "super.init(executable, arguments: [\"app-server\"],",
         diagnostic: "a conversation starts Codex's server with its plugins off",
@@ -1575,7 +1575,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "radial slice runs another tool's command",
         group: "platform",
-        relative: "Sources/Vitruvian/Core/RadialMenu/RadialMenuSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/RadialMenu/RadialMenuSupport.swift",
         before: "        case .screenshot: return .screenshotCapture\n",
         after: "        case .screenshot: return .screenRecorderToggle\n",
         diagnostic: "every radial tool runs the command of its own feature",
@@ -1583,7 +1583,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a bar row whose command stopped being runnable is picked in silence",
         group: "platform",
-        relative: "Sources/Vitruvian/Services/CommandBar/CommandBarCatalog.swift",
+        relative: "Sources/VitruvianAtrium/Services/CommandBar/CommandBarCatalog.swift",
         before: "                    if !registry.run(command.id) { refuse() }\n",
         after: "                    _ = registry.run(command.id)\n",
         diagnostic: "Return on a row whose command stopped being runnable since the bar opened runs nothing, and is refused aloud, once: it is never silent",
@@ -1591,7 +1591,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a wheel slice whose command stopped being runnable is picked in silence",
         group: "platform",
-        relative: "Sources/Vitruvian/Services/RadialMenu/RadialMenuService.swift",
+        relative: "Sources/VitruvianAtrium/Services/RadialMenu/RadialMenuService.swift",
         before: "        if !registry.run(id) { refuse() }\n",
         after: "        _ = registry.run(id)\n",
         diagnostic: "a slice whose command stopped being runnable since the wheel opened runs nothing, and is refused aloud, once: it is never silent",
@@ -1599,7 +1599,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "switched-off tool still runs",
         group: "platform",
-        relative: "Sources/Vitruvian/Services/Platform/ToolRegistry.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/ToolRegistry.swift",
         before: "        guard isToolAvailable(id.tool) else { return false }\n",
         after: "",
         diagnostic: "a command of a switched-off tool neither lists nor runs",
@@ -1607,7 +1607,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a radial action whose tool is away shows its raw id",
         group: "platform",
-        relative: "Sources/Vitruvian/UI/RadialMenu/RadialMenuView.swift",
+        relative: "Sources/VitruvianAtrium/UI/RadialMenu/RadialMenuView.swift",
         before: "                ?? FeatureStrings.radialMenu(language).kindTool\n",
         after: "                ?? item.payload\n",
         diagnostic: "a slice whose command is not registered is listed in plain words, never by its id",
@@ -1615,7 +1615,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "an outside tool with an island page keeps its tile in the Tools grid",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/ToolRegistry+Surfaces.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/ToolRegistry+Surfaces.swift",
         before: "        return listed.filter { !hasIslandPage($0.id.tool) }\n",
         after: "        return listed\n",
         diagnostic: "an outside tool with an island page has no tile in the Tools grid, though it asks for one",
@@ -1623,7 +1623,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool's island panel is never noted, so its tile stays in the Tools grid",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolRegistry+ExternalTools.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolRegistry+ExternalTools.swift",
         before: "        if tool.panel(in: .island) != nil { try setHasIslandPage(for: descriptor.id) }\n",
         after: "",
         diagnostic: "only a manifest with an island panel gives a tool an island page",
@@ -1631,7 +1631,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "built-in commands with no tile ask for the panel",
         group: "platform",
-        relative: "Sources/Vitruvian/Services/Platform/BuiltinTools.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/BuiltinTools.swift",
         before: "surfaces: tiled.contains(command) ? [.radial, .quickPanel] : [.radial])",
         after: "surfaces: [.radial, .quickPanel])",
         diagnostic: "a built-in command asks for the panel only when a tile runs it",
@@ -1639,7 +1639,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "reordering forgets a tile that is not showing",
         group: "platform",
-        relative: "Sources/Vitruvian/Core/QuickTools/QuickToolsSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/QuickTools/QuickToolsSupport.swift",
         before: "            } else if isWellFormed(id) {\n                result.append(id)\n            }\n",
         after: "            }\n",
         diagnostic: "a tile that is not showing now keeps its place in the saved order",
@@ -1647,7 +1647,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a switched-off tool keeps its key",
         group: "platform",
-        relative: "Sources/Vitruvian/Services/Platform/ToolShortcutRegistrar.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/ToolShortcutRegistrar.swift",
         before: "let id = CommandID(text), asking.contains(id),",
         after: "let id = CommandID(text),",
         diagnostic: "a shortcut whose command is not registered holds no key",
@@ -1655,7 +1655,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool command holds no combination at all",
         group: "platform",
-        relative: "Sources/Vitruvian/Services/ShortcutConflicts.swift",
+        relative: "Sources/VitruvianAtrium/Services/ShortcutConflicts.swift",
         before: "        if let command = ToolCommandShortcuts.holder(of: shortcut, in: named, excluding: excludingCommand) {\n            return .toolCommand(command)\n        }\n",
         after: "",
         diagnostic: "a combination a tool command holds is taken",
@@ -1663,7 +1663,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Reset writes a default somebody else holds",
         group: "platform",
-        relative: "Sources/Vitruvian/Services/ShortcutConflicts.swift",
+        relative: "Sources/VitruvianAtrium/Services/ShortcutConflicts.swift",
         before: "            if let name = holder(shortcut) { return .refuse(holder: name) }\n",
         after: "",
         diagnostic: "a default a Command Bar row took meanwhile is not written back by Reset",
@@ -1671,7 +1671,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the broker does work for a tool that did not ask",
         group: "platform",
-        relative: "Sources/Vitruvian/Services/Platform/Broker/CapabilityBroker.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/Broker/CapabilityBroker.swift",
         before: "        guard tool.declares(capability) else {\n            environment.reportUndeclared(tool.id, capability)\n            return .notDeclared(capability)\n        }\n",
         after: "",
         diagnostic: "a capability the manifest does not list is refused, and reported as a mistake",
@@ -1679,7 +1679,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the Port manager ends a process the host does not offer to end",
         group: "platform",
-        relative: "Sources/Vitruvian/Services/Platform/Broker/ProcessesAccess.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/Broker/ProcessesAccess.swift",
         before: "        guard backing.terminationAvailable() else { return .unavailable }\n",
         after: "",
         diagnostic: "without the Kill process feature, ending a process is not offered and does nothing",
@@ -1687,7 +1687,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the clipboard is rewritten after it changed under the look",
         group: "platform",
-        relative: "Sources/Vitruvian/Services/Platform/Broker/ClipboardRewrite.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/Broker/ClipboardRewrite.swift",
         before: "        guard !token.isCancelled, pasteboard.changeCount == changeCount else {\n",
         after: "        guard !token.isCancelled else {\n",
         diagnostic: "a copy that changed while the rule was deciding is not overwritten",
@@ -1695,7 +1695,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a watch takes its own rewrite for a new copy",
         group: "platform",
-        relative: "Sources/Vitruvian/Services/Platform/Broker/ClipboardWatcher.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/Broker/ClipboardWatcher.swift",
         before: "                watch.lastChangeCount = result.changeCount\n",
         after: "",
         diagnostic: "a copy is rewritten once: the watch's own rewrite is not a new copy to it",
@@ -1703,7 +1703,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool reads a preference its manifest does not declare",
         group: "platform",
-        relative: "Sources/Vitruvian/Services/Platform/Broker/StorageAccess.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/Broker/StorageAccess.swift",
         before: "        guard keys.contains(preference.key) else {\n            undeclared(preference.key)\n            return preference.defaultValue\n        }\n",
         after: "",
         diagnostic: "a preference the manifest does not declare is not read, and is reported as a mistake",
@@ -1711,7 +1711,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the host starts a tool that is switched off",
         group: "platform",
-        relative: "Sources/Vitruvian/Services/Platform/ToolHost.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/ToolHost.swift",
         before: "        if let on = switchedOn(), !on { return false }\n",
         after: "",
         diagnostic: "installed true, switched on false: the host leaves the tool unbuilt",
@@ -1719,7 +1719,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a capability is used without the macOS grant it rides on",
         group: "platform",
-        relative: "Sources/Vitruvian/Services/Platform/Broker/CapabilityBroker.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/Broker/CapabilityBroker.swift",
         before: "        if let missing = capability.ridesOn.first(where: { !environment.isGranted($0) }) {\n            return .notGranted(missing)\n        }\n",
         after: "",
         diagnostic: "a capability that rides on a macOS grant is refused without it",
@@ -1727,7 +1727,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the host waits for a grant the tool said it starts without",
         group: "platform",
-        relative: "Sources/Vitruvian/Core/Platform/ToolManifest.swift",
+        relative: "Sources/VitruvianAtrium/Core/Platform/ToolManifest.swift",
         before: "        capabilities.filter { !$0.startsWithoutGrant }.flatMap(\\.capability.ridesOn)\n",
         after: "        capabilities.flatMap(\\.capability.ridesOn)\n",
         diagnostic: "Accessibility false: a tool that needs it waits, and a tool that says it starts without it starts",
@@ -1735,7 +1735,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a paste presses the tool's own Command-V shortcut",
         group: "clipboard",
-        relative: "Sources/Vitruvian/Services/Platform/Broker/KeystrokesAccess.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/Broker/KeystrokesAccess.swift",
         before: "                      { released = hotkeys.release(of: tool, where: { $0.isStandardPasteCommand }) },\n",
         after: "                      {},\n",
         diagnostic: "a shortcut saved as Command-V is let go just before the paste is typed",
@@ -1743,7 +1743,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the menu walk presses an item that is switched off",
         group: "clipboard",
-        relative: "Sources/Vitruvian/Services/Platform/Broker/FrontAppMenu.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/Broker/FrontAppMenu.swift",
         before: "        if wanted, item.isEnabled { return node }\n",
         after: "        if wanted { return node }\n",
         diagnostic: "a matching item that is switched off is passed over",
@@ -1751,7 +1751,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a press without Accessibility asks every time",
         group: "clipboard",
-        relative: "Sources/Vitruvian/Services/QuickTools/PastePlainService.swift",
+        relative: "Sources/VitruvianAtrium/Services/QuickTools/PastePlainService.swift",
         before: "                promptedForAccessibility = true\n",
         after: "",
         diagnostic: "every press after that only beeps, from the shortcut or from the command bar",
@@ -1759,7 +1759,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool's program may be a link out of its folder",
         group: "platform",
-        relative: "Sources/Vitruvian/Core/Platform/ExternalToolManifest.swift",
+        relative: "Sources/VitruvianAtrium/Core/Platform/ExternalToolManifest.swift",
         before: "        guard inside else { return .programOutsideFolder(program) }\n",
         after: "",
         diagnostic: "a program that is a link to a file outside the folder is refused",
@@ -1767,7 +1767,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool's program may be a named pipe",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Core/Platform/ExternalToolManifest.swift",
+        relative: "Sources/VitruvianAtrium/Core/Platform/ExternalToolManifest.swift",
         before: "        guard (try? fileManager.attributesOfItem(atPath: file.path))?[.type] as? FileAttributeType == .typeRegular\n        else { return .programMissing(program) }\n",
         after: "",
         diagnostic: "a named pipe where the program should be, with the execute permission: the app says ok",
@@ -1775,7 +1775,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "an outside tool waits for a macOS grant before it starts",
         group: "platform",
-        relative: "Sources/Vitruvian/Core/Platform/ToolManifest.swift",
+        relative: "Sources/VitruvianAtrium/Core/Platform/ToolManifest.swift",
         before: "        self.startsWithoutGrant = !capability.ridesOn.isEmpty\n",
         after: "        self.startsWithoutGrant = false\n",
         diagnostic: "an outside tool that uses keystrokes starts without Accessibility, and is refused call by call",
@@ -1783,7 +1783,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool's log grows without end",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolLog.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolLog.swift",
         before: "        while bytes > limit, first < kept.count - 1 {\n            bytes -= Self.cost(kept[first].text)\n            first += 1\n        }\n",
         after: "",
         diagnostic: "past its size the oldest lines go first",
@@ -1791,7 +1791,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a line over the limit is taken for one that is not a message",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolLineReader.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolLineReader.swift",
         before: "                return .tooLong\n",
         after: "                return .notAMessage\n",
         diagnostic: "a line over the limit is reported once, as soon as it is known, and the rest of it is dropped",
@@ -1799,7 +1799,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool speaks a protocol version the app did not offer",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolLink.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolLink.swift",
         before: "            guard let result = try? value.decode(InitializeResult.self),\n                  hello.protocolVersions.contains(result.protocolVersion) else {\n",
         after: "            guard let result = try? value.decode(InitializeResult.self) else {\n",
         diagnostic: "a tool that picks a version the app did not offer is stopped",
@@ -1807,7 +1807,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool's request is answered twice",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolLink.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolLink.swift",
         before: "        guard serving.remove(id) != nil, state == .ready else { return }\n",
         after: "        guard state == .ready else { return }\n",
         diagnostic: "the answer goes back under the tool's id, once",
@@ -1815,7 +1815,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool that ignores being asked to end is never killed",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolLink.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolLink.swift",
         before: "            transport.kill()\n",
         after: "",
         diagnostic: "and one second later it is killed",
@@ -1823,7 +1823,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a flood is put up with for ever",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolLink.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolLink.swift",
         before: "        if busySeconds + 1 >= limits.floodSeconds { fail(.flood) }\n",
         after: "",
         diagnostic: "more than 200 messages a second for five seconds in a row is a flood, and stops the tool",
@@ -1831,7 +1831,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the app works for a tool that is over its limit",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolLink.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolLink.swift",
         before: "        guard !tooMany else {\n            write(.failure(id: id, error: RefusalCode.unavailable.error()))\n            return\n        }\n",
         after: "",
         diagnostic: "past the limit for a second, what a tool asks is refused as not available and nothing is done",
@@ -1839,7 +1839,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool's program runs in the app's own folder",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ProcessTransport.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ProcessTransport.swift",
         before: "        process.currentDirectoryURL = directory\n",
         after: "",
         diagnostic: "it runs in its data folder, and was told that folder and the language",
@@ -1847,7 +1847,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the app goes on writing to a tool that does not read",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ProcessTransport.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ProcessTransport.swift",
         before: "        guard queued <= limits.unreadBytes else {\n            unread.withLock { $0 -= count }\n            return false\n        }\n",
         after: "",
         diagnostic: "a tool that takes nothing of what the app writes is stopped once 4 MB waits for it",
@@ -1855,7 +1855,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a signal that ended a program is taken for its exit status",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ProcessTransport.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ProcessTransport.swift",
         before: "        process.terminationReason == .uncaughtSignal ? 128 + process.terminationStatus : process.terminationStatus\n",
         after: "        process.terminationStatus\n",
         diagnostic: "a tool killed while it runs a command ends its link, and the command fails",
@@ -1863,7 +1863,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool that keeps crashing is started for ever",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalTool.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalTool.swift",
         before: "            gaveUp = true\n",
         after: "",
         diagnostic: "three crashes within a minute and the tool stays stopped",
@@ -1871,7 +1871,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a command the tool said cannot run is offered",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalTool.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalTool.swift",
         before: "        return runnable?.contains(command.name) ?? true\n",
         after: "        return true\n",
         diagnostic: "a command the tool leaves out cannot run",
@@ -1879,7 +1879,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool that starts with the app is stopped for being idle",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalTool.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalTool.swift",
         before: "        guard !startsAtLaunch, openPanels.isEmpty else { return }\n",
         after: "        guard openPanels.isEmpty else { return }\n",
         diagnostic: "and is kept running however long nothing is asked of it",
@@ -1887,7 +1887,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool that was removed is left running",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolLink.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolLink.swift",
         before: "            stepTimer = clock.after(grace) { [self] in escalate() }\n",
         after: "            stepTimer = clock.after(grace) { [weak self] in self?.escalate() }\n",
         diagnostic: "a tool nobody holds any more still has its program ended",
@@ -1895,7 +1895,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the host runs a command of a tool that is not installed",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/ToolHost.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/ToolHost.swift",
         before: "              broker.environment.isInstalled(command.tool),\n",
         after: "",
         diagnostic: "nor any command of a tool that is not installed, whatever the tool says",
@@ -1903,7 +1903,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "at quit a program that will not leave is left running",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/ToolHost.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/ToolHost.swift",
         before: "            for tool in lingering where !tool.hasEnded { tool.escalate() }\n",
         after: "",
         diagnostic: "one that has not left is asked to end; when that ends it, the host waits no more",
@@ -1911,7 +1911,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "an outside tool is handed over under one of the app's own ids",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/ToolHost.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/ToolHost.swift",
         before: "        guard !id.isBundledForm, types[id] == nil, added[id] == nil else { return false }\n",
         after: "        guard types[id] == nil, added[id] == nil else { return false }\n",
         diagnostic: "a tool under an id with no dot, the form of the app's own, is refused",
@@ -1919,7 +1919,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "an outside tool's preference is saved under a bare key",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolCalls.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolCalls.swift",
         before: "        ExternalToolManifest.storageKey(tool: tool, preference: preference)\n",
         after: "        preference\n",
         diagnostic: "storage/get reads a preference under the tool's id",
@@ -1927,7 +1927,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "an outside tool ends a process the app protects",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolCalls.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolCalls.swift",
         before: "            guard processes.canTerminate, !processes.isProtected(pid: pid, name: name) else {\n",
         after: "            guard processes.canTerminate else {\n",
         diagnostic: "a process the app protects is not ended: not available",
@@ -1935,7 +1935,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a preference is saved as another kind of value",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/Broker/StorageAccess.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/Broker/StorageAccess.swift",
         before: "        default:\n            return .wrongKind(key)\n",
         after: "        default:\n            backing.write(key, value.defaultsValue)\n            return nil\n",
         diagnostic: "is answered invalid params, and saves nothing",
@@ -1943,7 +1943,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "an id that names nothing counts as installed",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/Broker/CapabilityBroker.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/Broker/CapabilityBroker.swift",
         before: "                    return AppFeature(rawValue: id.rawValue)?.isAvailable ?? false\n",
         after: "                    return AppFeature(rawValue: id.rawValue)?.isAvailable ?? true\n",
         diagnostic: "an id with no dot that names no feature of the app is not installed",
@@ -1951,7 +1951,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the app's copy of a tool is copied over itself",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolFolders.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolFolders.swift",
         before: "        guard !holds(source) else { return .failure(.insideTheApp) }\n",
         after: "",
         diagnostic: "the app's own copy cannot be added over itself, which would lose it",
@@ -1959,7 +1959,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool is added under an id something else answers to",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolStore.swift",
         before: "        guard installed[id] != nil || (parts.registry().tool(id) == nil && parts.host().manifest(for: id) == nil) else {\n            return .failure(.alreadyInstalled(id))\n        }\n",
         after: "",
         diagnostic: "a tool whose id something else in the app answers to is not added, and nothing is copied",
@@ -1967,15 +1967,15 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a sentence about tools from outside left in English",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Core/ExternalToolStrings.swift",
-        before: "        agreeHeadline: \"Dieses Werkzeug kann auf diesem Mac alles tun, was Vitruvian kann.\",\n",
-        after: "        agreeHeadline: \"This tool can do anything Vitruvian can on this Mac.\",\n",
+        relative: "Sources/VitruvianAtrium/Core/ExternalToolStrings.swift",
+        before: "        agreeHeadline: \"Dieses Werkzeug kann auf diesem Mac alles tun, was Vitruvian Atrium kann.\",\n",
+        after: "        agreeHeadline: \"This tool can do anything Vitruvian Atrium can on this Mac.\",\n",
         diagnostic: "no text about tools from outside is left in English in de (agreeHeadline)",
     },
     Mutation {
         name: "a folder that changed after it was shown is added",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolStore.swift",
         before: "        guard ToolFingerprint.ofManifest(in: offer.folder) == offer.fingerprint else {\n            return .failure(.changedSinceOffered)\n        }\n",
         after: "",
         diagnostic: "a folder whose manifest changed after it was shown is not added: what is added is what was agreed to",
@@ -1983,7 +1983,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a link to a tool's folder is copied as a link",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolStore.swift",
         before: "        let folder = picked.resolvingSymlinksInPath().standardizedFileURL\n",
         after: "        let folder = picked\n",
         diagnostic: "picking a link to a folder copies the folder, not the link: the copy outlives the folder it came from",
@@ -1991,7 +1991,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a folder with too many things in it is added",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolFolders.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolFolders.swift",
         before: "            if bytes > limit.bytes || items > limit.items { return nil }\n",
         after: "            if bytes > limit.bytes { return nil }\n",
         diagnostic: "one thing more is refused too, a link counted as one thing and not followed; nothing is copied",
@@ -1999,7 +1999,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a quarantined program is offered",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolStore.swift",
         before: "        if ToolFolders.isQuarantined(folder.appendingPathComponent(tool.program)) {\n            return .failure(.quarantined(folder))\n        }\n",
         after: "",
         diagnostic: "a program macOS has quarantined is refused before anything is copied, with the folder to clear",
@@ -2007,7 +2007,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a copy that changed is started at launch",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolStore.swift",
         before: "              ToolFingerprint.ofManifest(in: place.files) == record.agreement.fingerprint,\n",
         after: "",
         diagnostic: "a copy whose manifest is not, byte for byte, the one agreed to is held back at launch: listed by the name agreed to, and never started",
@@ -2015,7 +2015,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool that is switched off comes back at launch",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolStore.swift",
         before: "        guard record.isOn else {\n            resting[id] = tool\n            return\n        }\n",
         after: "",
         diagnostic: "a tool that is switched off stays off at the next launch",
@@ -2023,7 +2023,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a file of records that cannot be read is written over",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolStore.swift",
         before: "            recordsUnreadable = true\n",
         after: "",
         diagnostic: "adding a tool then puts the old file aside, whole, and starts a new one (damaged)",
@@ -2031,7 +2031,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a later version's file of records is read",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolRecords.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolRecords.swift",
         before: "              let file = try? decoder.decode(File.self, from: data), file.version == version else {\n",
         after: "              let file = try? decoder.decode(File.self, from: data) else {\n",
         diagnostic: "a file of records that is from a later version is not read",
@@ -2039,7 +2039,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "removing a tool deletes what it saved when the person kept it",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolFolders.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolFolders.swift",
         before: "        for (folder, parent) in [(place.files, \"Tools\")] + (data ? [(place.data, \"ToolData\")] : []) {\n",
         after: "        for (folder, parent) in [(place.files, \"Tools\"), (place.data, \"ToolData\")] {\n",
         diagnostic: "deleting a tool's copy leaves what it saved, and leaves every other tool alone",
@@ -2047,7 +2047,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a delete reaches through a link out of the app's folder",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolFolders.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolFolders.swift",
         before: "            guard stays(folder.deletingLastPathComponent(), at: home + [parent], fileManager),\n                  Self.remove(folder, fileManager) else {\n",
         after: "            guard Self.remove(folder, fileManager) else {\n",
         diagnostic: "with Tools a link to another place, nothing there is deleted",
@@ -2055,7 +2055,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a read-only tool folder cannot be added",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolFolders.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolFolders.swift",
         before: "        Self.letOwnerChange(copy, files: true, fileManager)\n",
         after: "",
         diagnostic: "a folder nothing may be written in is added, and nothing half-made is left beside the copy",
@@ -2063,7 +2063,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a file in the app's copy of a tool stays read-only",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolFolders.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolFolders.swift",
         before: "        Self.letOwnerChange(copy, files: true, fileManager)\n",
         after: "        Self.letOwnerChange(copy, files: false, fileManager)\n",
         diagnostic: "in the app's copy the person may write every folder and file; nothing else about who may do what is changed: what could be run can be, and nothing more",
@@ -2071,7 +2071,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "every file in the app's copy of a tool becomes a program",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolFolders.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolFolders.swift",
         before: "            if mode & 0o600 != 0o600 { _ = lchmod(url.path, mode | 0o600) }\n",
         after: "            if mode & 0o700 != 0o700 { _ = lchmod(url.path, mode | 0o700) }\n",
         diagnostic: "in the app's copy the person may write every folder and file; nothing else about who may do what is changed: what could be run can be, and nothing more",
@@ -2079,7 +2079,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "opening up the app's copy follows a link out of it",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolFolders.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolFolders.swift",
         before: "        guard lstat(url.path, &entry) == 0 else { return }\n",
         after: "        guard stat(url.path, &entry) == 0 else { return }\n",
         diagnostic: "the picked folder is left as it was, and so is what a link in it points at: only the copy is opened up",
@@ -2087,7 +2087,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a copy that failed is left beside the tool's place",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolFolders.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolFolders.swift",
         before: "        defer { Self.remove(incoming, fileManager) }\n",
         after: "        defer { try? fileManager.removeItem(at: incoming) }\n",
         diagnostic: "a read-only folder that cannot be copied whole is not added, and what was copied of it is gone",
@@ -2095,7 +2095,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "what an earlier failed copy left blocks the next",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolFolders.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolFolders.swift",
         before: "        Self.remove(incoming, fileManager)\n        defer",
         after: "        try? fileManager.removeItem(at: copy)\n        defer",
         diagnostic: "a read-only copy an earlier failure left behind is cleared first: it does not stop the tool being added, and none of it is in the new copy",
@@ -2103,7 +2103,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a read-only copy of a tool cannot be replaced",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolFolders.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolFolders.swift",
         before: "        Self.remove(place.files, fileManager)\n",
         after: "        try? fileManager.removeItem(at: place.files)\n",
         diagnostic: "a copy nothing may be written in is replaced whole by the newer folder",
@@ -2111,7 +2111,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a read-only folder of a tool cannot be deleted",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolFolders.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolFolders.swift",
         before: "        letOwnerChange(url, files: false, fileManager)\n        return (try? fileManager.removeItem(at: url)) != nil\n",
         after: "        return false\n",
         diagnostic: "a copy nothing may be written in is deleted, and what the tool saved is left as it was",
@@ -2119,7 +2119,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a removed tool's preferences outlive what it saved",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolStore.swift",
         before: "        if data, !left.contains(where: { $0 == dataFolder }) { parts.forgetPreferences(id) }\n",
         after: "",
         diagnostic: "removing it with what it saved deletes its data folder and its own preferences, and no other",
@@ -2127,7 +2127,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the person is told at every crash of a tool",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolStore.swift",
         before: "        guard told.insert(id).inserted else { return }\n",
         after: "        told.insert(id)\n",
         diagnostic: "a tool that was updated is still the same tool: the person was told already",
@@ -2135,7 +2135,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Return adds the tool",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExternalToolAgreementSheet.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExternalToolAgreementSheet.swift",
         before: "    package static let defaultChoice: Choice = .cancel\n",
         after: "    package static let defaultChoice: Choice = .agree\n",
         diagnostic: "Return presses Cancel, never the button that adds the tool",
@@ -2143,7 +2143,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the agreement sheet opens with its agreeing button focused",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExternalToolAgreementSheet.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExternalToolAgreementSheet.swift",
         before: "    package var initialFocus: Choice { .cancel }\n",
         after: "    package var initialFocus: Choice { .agree }\n",
         diagnostic: "the sheet opens with Cancel focused, so Space cannot add the tool",
@@ -2151,7 +2151,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool's detail opens with its first setting focused",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExternalToolsSection.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExternalToolsSection.swift",
         before: "    package var initialFocus: Focus { .close }\n",
         after: "    package var initialFocus: Focus { settings.first.map { .setting($0.id) } ?? .close }\n",
         diagnostic: "a tool's detail opens with Close focused, whatever its settings are: a switch first, a field first, one of each kind, or sixteen switches, so Space cannot flip a setting",
@@ -2159,7 +2159,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the command that clears a quarantine breaks on a quote",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExternalToolAgreementSheet.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExternalToolAgreementSheet.swift",
         before: "        \"'\" + path.replacingOccurrences(of: \"'\", with: \"'\\\\''\") + \"'\"\n",
         after: "        \"'\" + path + \"'\"\n",
         diagnostic: "a quarantined folder says the app will not clear it, and gives the command for the person to run",
@@ -2167,7 +2167,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool's data is deleted while its program still runs",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolStore.swift",
         before: "        let data = deletingData && gone\n",
         after: "        let data = deletingData\n",
         diagnostic: "a program still there after the kill keeps what it saved, whatever was asked: only its copy and its record go",
@@ -2175,7 +2175,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool's folders are deleted without waiting for its program to be gone",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolStore.swift",
         before: "        let gone = deactivate(id, seeingItOut: true)\n",
         after: "        let gone = deactivate(id)\n",
         diagnostic: "and what it saved was deleted after that: the folder it kept writing into is gone, and stays gone",
@@ -2183,7 +2183,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool the app will restart by itself offers Start Again",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExternalToolsSection.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExternalToolsSection.swift",
         before: "                status = .stopped(canStartAgain: false)\n",
         after: "                status = .stopped(canStartAgain: true)\n",
         diagnostic: "a tool that crashed says so, with no button while the app will start it again by itself",
@@ -2191,7 +2191,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Return removes the tool",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExternalToolsSection.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExternalToolsSection.swift",
         before: "    package static let defaultChoice: Choice = .cancel\n",
         after: "    package static let defaultChoice: Choice = .keepData\n",
         diagnostic: "Return presses Cancel there too",
@@ -2199,7 +2199,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool that is held back looks ready",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExternalToolsSection.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExternalToolsSection.swift",
         before: "        if listed.isHeld {\n",
         after: "        if listed.isHeld, listed.tool != nil {\n",
         diagnostic: "a tool whose copy is not what was agreed to says so, under the name and version agreed to",
@@ -2207,7 +2207,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the button that keeps what a tool saved deletes it",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExternalToolsSection.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExternalToolsSection.swift",
         before: "            case .keepData: return false\n",
         after: "            case .keepData: return true\n",
         diagnostic: "the button that says Keep What It Saved removes the tool and keeps its data folder and its settings",
@@ -2215,7 +2215,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the button that deletes what a tool saved keeps it",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExternalToolsSection.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExternalToolsSection.swift",
         before: "            case .deleteData: return true\n",
         after: "            case .deleteData: return false\n",
         diagnostic: "the button that says Delete What It Saved removes the tool with its data folder and its settings",
@@ -2223,7 +2223,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the two buttons that remove a tool carry each other's words",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExternalToolsSection.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExternalToolsSection.swift",
         before: "        case .keepData: return keepData\n",
         after: "        case .keepData: return deleteData\n",
         diagnostic: "each button of the question carries its own words, and Cancel removes nothing",
@@ -2231,7 +2231,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the switch of a tool that is held back can be turned",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExternalToolsSection.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExternalToolsSection.swift",
         before: "    package var canSwitch: Bool { status != .changed }\n",
         after: "    package var canSwitch: Bool { true }\n",
         diagnostic: "a tool that is held back has a switch that does nothing, and is never started",
@@ -2239,7 +2239,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool's detail draws every line the tool logged",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExternalToolsSection.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExternalToolsSection.swift",
         before: "        var bytes = text.utf8.suffix(logBytes)\n",
         after: "        var bytes = text.utf8.suffix(text.utf8.count)\n",
         diagnostic: "the log a detail shows is the newest of what the tool wrote, at most so many lines and bytes, as plain text",
@@ -2247,7 +2247,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool's detail grows with every command the tool adds",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExternalToolsSection.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExternalToolsSection.swift",
         before: "    package var listsScroll: Bool { listRows > ToolAgreementContent.rowsDrawnWhole || settingsPanel != nil }\n",
         after: "    package var listsScroll: Bool { settingsPanel != nil }\n",
         diagnostic: "a tool with the most a tool may have scrolls its two lists in the detail, as on the sheet",
@@ -2255,7 +2255,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a manifest's long words fill the alert that refuses it",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExternalToolAgreementSheet.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExternalToolAgreementSheet.swift",
         before: "            message = strings.refusalMistake(ToolOwnWords.oneLine(String(describing: problem)))\n",
         after: "            message = strings.refusalMistake(String(describing: problem))\n",
         diagnostic: "a manifest with a 50 KB service name, surface or program path is refused in one short line",
@@ -2263,7 +2263,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool's name turns the app's sentence round",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Core/Platform/ExternalToolManifest.swift",
+        relative: "Sources/VitruvianAtrium/Core/Platform/ExternalToolManifest.swift",
         before: "        for scalar in text.unicodeScalars where !turnsTextRound(scalar) {\n",
         after: "        for scalar in text.unicodeScalars {\n",
         diagnostic: "the characters that turn a line of text round are taken out, so a tool's name cannot reorder the sentence it is put in; letters of any script, and an emoji made of several, stay",
@@ -2271,7 +2271,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the person is told a tool's data was deleted when it was kept",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolStore.swift",
         before: "        if deletingData, !gone { return .keptStillRunning(data: dataFolder) }\n",
         after: "",
         diagnostic: "a tool whose program never leaves keeps its data folder and its settings, and removing it says so: kept, though deleting was asked, and in which folder",
@@ -2279,7 +2279,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "nobody is told that what a tool saved was kept",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExternalToolsSection.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExternalToolsSection.swift",
         before: "        case .keptStillRunning(let data):\n",
         after: "        case .keptStillRunning(let data) where data == nil:\n",
         diagnostic: "when a tool's program would not stop, the person is told that what it saved was kept, and where it is",
@@ -2287,7 +2287,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a setting the person changes is saved under a bare key",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolStore.swift",
         before: "        let key = ExternalToolManifest.storageKey(tool: id, preference: preference)\n",
         after: "        let key = preference\n",
         diagnostic: "a changed setting is saved under the tool's id, a slash and the preference's own, the key the tool reads it by, and under no other",
@@ -2295,7 +2295,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a running tool is not told that its setting changed",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolStore.swift",
         before: "        tools[id]?.preferencesChanged([preference: ExternalToolCalls.json(value)])\n",
         after: "",
         diagnostic: "a running tool is sent preferences/changed once for each change, with the preference's own id and its new value",
@@ -2303,7 +2303,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a preference with no title is shown by its id",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolStore.swift",
         before: "            guard let title = tool.preferenceTitles[declared.key] else { return nil }\n",
         after: "            let title = tool.preferenceTitles[declared.key] ?? LocalizedText([\"en\": name])\n",
         diagnostic: "a tool's settings are the preferences its author gave a title, in the manifest's order, each with its default while nothing is saved; the one with no title is not among them",
@@ -2311,7 +2311,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool is told of a change before it has answered initialize",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolLink.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolLink.swift",
         before: "    private func tell<Params: Encodable>(_ method: ToolMethod, _ params: Params) {\n        guard state == .ready else { return }\n",
         after: "    private func tell<Params: Encodable>(_ method: ToolMethod, _ params: Params) {\n",
         diagnostic: "a tool that has not answered initialize yet is told nothing: until then neither side says anything else",
@@ -2319,7 +2319,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "text of any length is saved as a preference",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/Broker/StorageAccess.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/Broker/StorageAccess.swift",
         before: "        case (.string, .string(let text)) where text.unicodeScalars.count > StorageLimits.maxTextLength:\n            return .tooLong(key)\n",
         after: "",
         diagnostic: "storage/set saves text of 4,096 characters, and answers one character more as invalid params with nothing saved",
@@ -2327,7 +2327,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a command tile that cannot run looks like one that can",
         group: "launcher",
-        relative: "Sources/Vitruvian/Services/QuickTools/QuickLauncherService.swift",
+        relative: "Sources/VitruvianAtrium/Services/QuickTools/QuickLauncherService.swift",
         before: "        case .command(let id): return !isEditing && !environment.canRunCommand(id)\n",
         after: "        case .command: return false\n",
         diagnostic: "a command that cannot run now keeps its tile and its place, and the tile is drawn as unavailable",
@@ -2335,7 +2335,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a command tile that cannot run is run all the same",
         group: "launcher",
-        relative: "Sources/Vitruvian/Services/QuickTools/QuickLauncherService.swift",
+        relative: "Sources/VitruvianAtrium/Services/QuickTools/QuickLauncherService.swift",
         before: "            guard !isEditing, environment.canRunCommand(id) else { return }\n",
         after: "            guard !isEditing else { return }\n",
         diagnostic: "a tile whose command cannot run does nothing when clicked, on Return or by its digit, and the panel stays as it is",
@@ -2343,7 +2343,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a removed tool keeps the shortcuts of its commands",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolStore.swift",
         before: "        parts.forgetShortcuts(id)\n",
         after: "",
         diagnostic: "removing a tool clears the shortcut of each of its commands, whether or not what it saved is kept, and no other command's",
@@ -2351,7 +2351,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a saved shortcut whose command is not here still takes its keys",
         group: "platform",
-        relative: "Sources/Vitruvian/Services/Platform/ToolCommandShortcuts.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/ToolCommandShortcuts.swift",
         before: "        shortcuts.filter { CommandID($0.key).map(asking.contains) ?? false }\n",
         after: "        shortcuts\n",
         diagnostic: "the shortcut of a tool that is switched off stays saved, holds no key and holds no combination",
@@ -2359,7 +2359,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a folder that could not be deleted is said to be deleted",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolStore.swift",
         before: "        guard left.isEmpty else { return .notDeleted(folders: left) }\n",
         after: "",
         diagnostic: "a tool whose data folder could not be deleted is removed, and removing it says so, and which folder is left",
@@ -2367,7 +2367,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "nobody is told that a removed tool's folder could not be deleted",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExternalToolsSection.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExternalToolsSection.swift",
         before: "        case .notDeleted(let folders) where !folders.isEmpty:\n",
         after: "        case .notDeleted(let folders) where folders.count > 2:\n",
         diagnostic: "when a removed tool's folder could not be deleted, the person is told so, and where what is left is",
@@ -2375,7 +2375,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool's settings are deleted while the folder of what it saved stays",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolStore.swift",
         before: "        if data, !left.contains(where: { $0 == dataFolder }) { parts.forgetPreferences(id) }\n",
         after: "        if data { parts.forgetPreferences(id) }\n",
         diagnostic: "its record and its copy are gone; the tool's settings stay as long as the folder of what it saved does",
@@ -2383,7 +2383,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a running tool is not told that the language changed",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolStore.swift",
         before: "            tools[id]?.languageChanged(language)\n",
         after: "",
         diagnostic: "a running tool is sent language/changed once for each change, and what it is sent is the protocol's own example of the message: a notice with no id, whose params hold the tag",
@@ -2391,7 +2391,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool greeted in a language that changed meanwhile is never told",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolLink.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolLink.swift",
         before: "            if language != hello.language { tell(.languageChanged, LanguageChangedParams(language: language)) }\n",
         after: "",
         diagnostic: "once the tool has answered initialize it is told the language the app has now, once, when that is not the one it was greeted in",
@@ -2399,7 +2399,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the language a tool already has is sent again",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolLink.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolLink.swift",
         before: "        guard language != self.language else { return }\n",
         after: "",
         diagnostic: "the language a tool was last told is not sent again",
@@ -2407,7 +2407,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "killing a tool does not kill the programs it started",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ProcessTransport.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ProcessTransport.swift",
         before: "            groups.signal(group, SIGKILL)\n",
         after: "            Darwin.kill(process.processIdentifier, SIGKILL)\n",
         diagnostic: "killing a tool kills the programs it started in the same stroke: nothing has to be looked over afterwards for them to be gone",
@@ -2415,7 +2415,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "what a tool left running outlives it",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ProcessTransport.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ProcessTransport.swift",
         before: "            if let group { groups.sweep(group) }\n",
         after: "            _ = group\n",
         diagnostic: "a tool that crashes does not leave its helper behind",
@@ -2423,7 +2423,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a process group the tool does not lead is signalled",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ProcessTransport.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ProcessTransport.swift",
         before: "        guard child > 1, group == child, group != mine, group != getpid() else { return nil }\n",
         after: "        guard child > 1, group != mine, group != getpid() else { return nil }\n",
         diagnostic: "a child in the app's own group, in another's, or already gone, has no group the app may signal",
@@ -2431,7 +2431,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the app's own process group may be signalled",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ProcessTransport.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ProcessTransport.swift",
         before: "        guard child > 1, group == child, group != mine, group != getpid() else { return nil }\n",
         after: "        guard child > 1, group == child else { return nil }\n",
         diagnostic: "group 0, group 1, a group that is no group and the app's own are never signalled, whatever is asked",
@@ -2439,7 +2439,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a group is looked over while a process has its leader's id",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ProcessTransport.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ProcessTransport.swift",
         before: "        guard Darwin.kill(group, 0) == -1, errno == ESRCH else { return }\n",
         after: "",
         diagnostic: "what is left of a process group is ended only when no process has its leader's id: while one has, nothing is signalled",
@@ -2487,7 +2487,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a status outlives its program",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolPanelHost.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolPanelHost.swift",
         before: "        for key in shown.keys where key.tool == tool { forgetPanel(key) }\n        forgetStatus(of: tool)\n",
         after: "        for key in shown.keys where key.tool == tool { forgetPanel(key) }\n",
         diagnostic: "a status goes when the tool's program ends, at once: it never outlives its program",
@@ -2495,7 +2495,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool that declared no status may show one",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolPanelHost.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolPanelHost.swift",
         before: "        guard parts.described(tool)?.showsStatus == true else { return .noStatus }\n",
         after: "",
         diagnostic: "a status from a tool whose manifest declares none is refused, and none is kept",
@@ -2503,7 +2503,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a switched-off status is listed",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolStore.swift",
         before: "            guard let id = ToolID(record.id), record.showsStatus ?? true,\n",
         after: "            guard let id = ToolID(record.id),\n",
         diagnostic: "a tool whose status the person switched off is left out",
@@ -2511,7 +2511,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the mildest status wins",
         group: "platform",
-        relative: "Sources/Vitruvian/Core/Platform/ToolStatus.swift",
+        relative: "Sources/VitruvianAtrium/Core/Platform/ToolStatus.swift",
         before: "            if severity > (best?.severity ?? -1) { best = (.tool(tool, status), severity) }\n",
         after: "            if severity < (best?.severity ?? 4) { best = (.tool(tool, status), severity) }\n",
         diagnostic: "of two tools the worse status wins, whichever was added first",
@@ -2519,7 +2519,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the app says it has nothing",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolStore.swift",
         before: "                                            dataFolder: data.path,\n                                            features: Self.features.map(\\.rawValue)),\n",
         after: "                                            dataFolder: data.path),\n",
         diagnostic: "the hello names what this app has: a status, a choice block, options on a preference, a status's words, a tool's own settings opened from its panel, chips, and sections and help",
@@ -2535,7 +2535,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the app forgets words it draws",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolStore.swift",
         before: "                                                                  .statusActivity, .openSettings,\n",
         after: "                                                                  .openSettings,\n",
         diagnostic: "the hello names what this app has: a status, a choice block, options on a preference, a status's words, a tool's own settings opened from its panel, chips, and sections and help",
@@ -2543,7 +2543,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the app forgets it opens a tool's settings",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolStore.swift",
         before: "                                                                  .statusActivity, .openSettings,\n",
         after: "                                                                  .statusActivity,\n",
         diagnostic: "the hello names what this app has: a status, a choice block, options on a preference, a status's words, a tool's own settings opened from its panel, chips, and sections and help",
@@ -2551,7 +2551,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool's settings panel is opened as a window",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolPanelHost.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolPanelHost.swift",
         before: "        if parts.described(tool)?.panel(panel)?.placement == .settings {\n            return parts.openSettings(tool)\n        }\n",
         after: "",
         diagnostic: "an answer that names the tool's settings panel opens Settings on that tool's detail, and no window",
@@ -2559,7 +2559,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "any panel that is not a window opens Settings",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolPanelHost.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolPanelHost.swift",
         before: "        if parts.described(tool)?.panel(panel)?.placement == .settings {\n",
         after: "        if parts.described(tool)?.panel(panel)?.placement != .window {\n",
         diagnostic: "an id the manifest does not declare, or its island page, opens nothing, and the tool's log says so",
@@ -2567,7 +2567,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool's settings hint outlives another request",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Core/Settings/FeatureVisibilitySupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Settings/FeatureVisibilitySupport.swift",
         before: "        notchCompanion = false\n        extensionTool = nil\n",
         after: "        notchCompanion = false\n",
         diagnostic: "any other request drops a hint nobody took, one for the Extensions page itself included",
@@ -2575,7 +2575,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool's settings hint outlives a change of page",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Core/Settings/FeatureVisibilitySupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Settings/FeatureVisibilitySupport.swift",
         before: "            pendingFeatureTarget = nil\n            extensionTool = nil\n",
         after: "            pendingFeatureTarget = nil\n",
         diagnostic: "so does going to another page",
@@ -2583,7 +2583,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a waiting settings request outlives the Settings window",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Core/Settings/FeatureVisibilitySupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Settings/FeatureVisibilitySupport.swift",
         before: "    package func settingsWindowClosed() {\n        extensionTool = nil\n",
         after: "    package func settingsWindowClosed() {\n",
         diagnostic: "closing the Settings window drops a request still waiting, and keeps the page",
@@ -2591,7 +2591,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a removed tool's settings request is kept",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Core/Settings/ExtensionsPageSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Settings/ExtensionsPageSupport.swift",
         before: "        guard listed.contains(asked) else { return .drop }\n",
         after: "",
         diagnostic: "a detail already up, or a tool no longer added, drops the request and leaves the page as it is",
@@ -2599,7 +2599,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a settings request for the detail already up is kept",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Core/Settings/ExtensionsPageSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Settings/ExtensionsPageSupport.swift",
         before: "        guard showing != asked else { return .drop }\n",
         after: "",
         diagnostic: "a detail already up, or a tool no longer added, drops the request and leaves the page as it is",
@@ -2607,7 +2607,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool's settings take another sheet away",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Core/Settings/ExtensionsPageSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Settings/ExtensionsPageSupport.swift",
         before: "        return showing == nil && !busy ? .show(asked) : .wait\n",
         after: "        return .show(asked)\n",
         diagnostic: "another tool's detail, the agreement sheet or an alert is never taken away: the request waits",
@@ -2615,7 +2615,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "undeclared words are drawn",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolPanelHost.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolPanelHost.swift",
         before: "        if parts.described(tool)?.showsActivity != true, asked.activity != nil || asked.since != nil {\n",
         after: "        if parts.described(tool)?.showsStatus != true, asked.activity != nil || asked.since != nil {\n",
         diagnostic: "a status with words its tool did not declare is kept without them, and answered with no refusal: the mark is drawn",
@@ -2623,7 +2623,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "seconds beat the tool's words",
         group: "platform",
-        relative: "Sources/Vitruvian/Core/Platform/ToolStatus.swift",
+        relative: "Sources/VitruvianAtrium/Core/Platform/ToolStatus.swift",
         before: "        if let words = fewWords(status.activity, language: language) { return .words(words) }\n        if let since = status.since { return .seconds(since: since) }\n",
         after: "        if let since = status.since { return .seconds(since: since) }\n        if let words = fewWords(status.activity, language: language) { return .words(words) }\n",
         diagnostic: "a status with words and a start time draws the words",
@@ -2631,7 +2631,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a future start counts down",
         group: "platform",
-        relative: "Sources/Vitruvian/Core/Platform/ToolStatus.swift",
+        relative: "Sources/VitruvianAtrium/Core/Platform/ToolStatus.swift",
         before: "        let elapsed = max(0, Int64(now.timeIntervalSince(since).rounded(.down)))\n",
         after: "        let elapsed = Int64(now.timeIntervalSince(since).rounded(.down))\n",
         diagnostic: "a start time in the future counts from 0, never down",
@@ -2639,7 +2639,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "another tool's words sit beside the mark",
         group: "platform",
-        relative: "Sources/Vitruvian/Core/Platform/ToolStatus.swift",
+        relative: "Sources/VitruvianAtrium/Core/Platform/ToolStatus.swift",
         before: "        rightWing(winner(tools: tools), nexusRunning: nexusRunning, language: language)\n",
         after: "        rightWing(tools.first(where: { $0.1.activity != nil }).map { .tool($0.0, $0.1) } ?? winner(tools: tools),\n                  nexusRunning: nexusRunning, language: language)\n",
         diagnostic: "the worse mark has no words, so the percent is drawn, never another tool's words",
@@ -2647,7 +2647,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the button reads the seconds aloud",
         group: "platform",
-        relative: "Sources/Vitruvian/Core/Platform/ToolStatus.swift",
+        relative: "Sources/VitruvianAtrium/Core/Platform/ToolStatus.swift",
         before: "        let few = fewWords(status.activity, language: language) ?? \"\"\n",
         after: "        let few = fewWords(status.activity, language: language)\n            ?? status.since.map { seconds(since: $0, now: Date(), language: language) } ?? \"\"\n",
         diagnostic: "the seconds are not said: they would rename the button every second",
@@ -2655,7 +2655,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a stored value that is no option is dropped from the menu",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExternalToolsSection.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExternalToolsSection.swift",
         before: "            if !options.contains(where: { $0.value == selected }) {\n",
         after: "            if options.isEmpty {\n",
         diagnostic: "a stored value that is no option is shown as written, as the first row, and selected",
@@ -2663,7 +2663,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a click follows a tool's mark the Nexus session hides",
         group: "platform",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolPanelHost.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolPanelHost.swift",
         before: "        guard !nexusRunning else { return nil }\n",
         after: "",
         diagnostic: "while a Nexus session runs the wings show it, so a click opens the Agents page",
@@ -2671,7 +2671,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a green mark opens the tool's page",
         group: "platform",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolPanelHost.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolPanelHost.swift",
         before: "        guard case .tool(let tool, let status)? = mark, status.state != .ok else { return nil }\n",
         after: "        guard case .tool(let tool, _)? = mark else { return nil }\n",
         diagnostic: "a green mark asks for nothing: the click does what it does today",
@@ -2679,7 +2679,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the Nexus sparkles swing under Reduce Motion",
         group: "agents",
-        relative: "Sources/Vitruvian/UI/Notch/NotchAgentStrip.swift",
+        relative: "Sources/VitruvianAtrium/UI/Notch/NotchAgentStrip.swift",
         before: "        if reduceMotion { return 1 }\n",
         after: "",
         diagnostic: "under Reduce Motion the sparkles keep still at their own size",
@@ -2687,7 +2687,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "busy does not breathe",
         group: "platform",
-        relative: "Sources/Vitruvian/UI/ToolPanels/ToolStatusMark.swift",
+        relative: "Sources/VitruvianAtrium/UI/ToolPanels/ToolStatusMark.swift",
         before: "        breathes = status.state == .busy\n",
         after: "        breathes = false\n",
         diagnostic: "busy is amber: 9 points, medium, orange, breathing",
@@ -2695,7 +2695,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the agreement sheet says nothing of a status",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExternalToolAgreementSheet.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExternalToolAgreementSheet.swift",
         before: "        showsStatus = tool.showsActivity ? strings.agreeShowsStatusAndWords\n            : tool.showsStatus ? strings.agreeShowsStatus : nil\n",
         after: "        showsStatus = nil\n",
         diagnostic: "the agreement sheet says, in the app's words, that the tool shows a status on the closed",
@@ -2703,7 +2703,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the sheet says a status but not its words",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExternalToolAgreementSheet.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExternalToolAgreementSheet.swift",
         before: "        showsStatus = tool.showsActivity ? strings.agreeShowsStatusAndWords\n",
         after: "        showsStatus = tool.showsActivity ? strings.agreeShowsStatus\n",
         diagnostic: "a tool whose status says activity: true is said to show a mark and a few words, in the person's language",
@@ -2711,7 +2711,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the island's button does not say a tool's mark",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "        windowHost?.setActivationArea(activationRect, title: expanded ? text.collapse : closedTitle,\n",
         after: "        windowHost?.setActivationArea(activationRect, title: expanded ? text.collapse : text.open,\n",
         diagnostic: "a tool's status mark on the closed island is said by the island's button, the one element VoiceOver reaches",
@@ -2719,7 +2719,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the island does not hear a status change",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "            self?.restingStatusChanged()\n",
         after: "            _ = self\n",
         diagnostic: "the island hears a status change by itself and names its button again",
@@ -2727,7 +2727,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the button says a mark the wings do not draw",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "            && compactActivity == nil && idleContent == .agents\n",
         after: "            && idleContent == .agents\n",
         diagnostic: "an activity's strip takes the wings' place, the mark is not drawn, and the button does not say it",
@@ -2735,7 +2735,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a copy's button never says a changed mark",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchMirrors.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchMirrors.swift",
         before: "                if said[id] != title {\n",
         after: "                if said[id] != said[id] {\n",
         diagnostic: "a status mark that changes is said by the copy's button, with the copy left as it is",
@@ -2743,7 +2743,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the button's name leaves the mark out",
         group: "platform",
-        relative: "Sources/Vitruvian/Core/Platform/ToolStatus.swift",
+        relative: "Sources/VitruvianAtrium/Core/Platform/ToolStatus.swift",
         before: "        default: return title + \", \" + said\n",
         after: "        default: return title\n",
         diagnostic: "the closed island's button is named with the mark's words after its own name",
@@ -2751,7 +2751,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a page over 256 KB is drawn",
         group: "platform",
-        relative: "Sources/Vitruvian/Core/Platform/ToolPanel.swift",
+        relative: "Sources/VitruvianAtrium/Core/Platform/ToolPanel.swift",
         before: "        guard data.count <= UILimits.maxTreeBytes else { return .failure(.tooLarge(bytes: data.count)) }\n",
         after: "",
         diagnostic: "a page over 262,144 bytes is refused, and the reason says how large it was",
@@ -2767,7 +2767,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a web panel may go into a folder whose name starts as its own does",
         group: "platform",
-        relative: "Sources/Vitruvian/Core/Platform/ToolPanel.swift",
+        relative: "Sources/VitruvianAtrium/Core/Platform/ToolPanel.swift",
         before: "        return file.count > root.count && Array(file.prefix(root.count)) == root\n",
         after: "        return url.resolvingSymlinksInPath().path.hasPrefix(folder.resolvingSymlinksInPath().path)\n",
         diagnostic: "a web panel may go nowhere else: not above its folder, not into one whose name starts the same",
@@ -2775,7 +2775,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a web panel may go to the network",
         group: "platform",
-        relative: "Sources/Vitruvian/Core/Platform/ToolPanel.swift",
+        relative: "Sources/VitruvianAtrium/Core/Platform/ToolPanel.swift",
         before: "        guard url.isFileURL else { return false }\n",
         after: "        guard url.isFileURL else { return true }\n",
         diagnostic: "a web panel may go nowhere else: not above its folder, not into one whose name starts the same",
@@ -2783,7 +2783,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "an open panel does not keep its tool from being stopped as idle",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalTool.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalTool.swift",
         before: "        guard !startsAtLaunch, openPanels.isEmpty else { return }\n",
         after: "        guard !startsAtLaunch else { return }\n",
         diagnostic: "while a panel is open the tool is not stopped for being idle",
@@ -2791,7 +2791,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a flood of pages is handed on",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolLink.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolLink.swift",
         before: "        guard counted.count <= UILimits.floodRendersPerSecond else { return fail(.flood) }\n",
         after: "",
         diagnostic: "the forty-first page for one panel in one second is a flood",
@@ -2799,7 +2799,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a panel outlives its tool's program",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalTool.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalTool.swift",
         before: "        openPanels = []\n",
         after: "",
         diagnostic: "a panel ends with its tool's program",
@@ -2807,7 +2807,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool that does not list notify shows a badge",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolCalls.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolCalls.swift",
         before: "            if let refusal = services.gate(.notify)() { return reply(.failure(Self.error(for: refusal))) }\n            badge(asked)\n",
         after: "            badge(asked)\n",
         diagnostic: "a tool that does not list notify is refused a badge, and none is shown",
@@ -2815,7 +2815,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a page for a panel the manifest does not declare is taken",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolPanelHost.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolPanelHost.swift",
         before: "        guard parts.described(tool)?.panel(panel) != nil else {\n",
         after: "        guard true else {\n",
         diagnostic: "a page for a panel the manifest does not declare is dropped, and logged",
@@ -2823,7 +2823,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "every page a tool sends is drawn at once",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolPanelHost.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolPanelHost.swift",
         before: "        if state.timer == nil, state.last.map({ now - $0 >= gap }) ?? true {\n",
         after: "        if true {\n",
         diagnostic: "pages that come within a quarter of a second of the last one drawn wait",
@@ -2831,7 +2831,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a page read late is drawn over a newer one",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolPanelHost.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolPanelHost.swift",
         before: "            guard let self, self.drawing[key]?.sequence == mine, self.shown[key] != nil else { return }\n",
         after: "            guard let self, self.shown[key] != nil else { return }\n",
         diagnostic: "a page that was read after a newer one is not drawn over it",
@@ -2839,7 +2839,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a page is read on the main thread",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolPanelHost.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolPanelHost.swift",
         before: "        DispatchQueue.global(qos: .userInitiated).async {\n            let read = ToolPanelTree.read(value)\n            DispatchQueue.main.async { MainActor.assumeIsolated { then(read) } }\n        }\n",
         after: "        then(ToolPanelTree.read(value))\n",
         diagnostic: "a page is not read in the call that asks for it",
@@ -2847,7 +2847,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a web panel's page outlives its panel",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolPanelHost.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolPanelHost.swift",
         before: "        pages.removeValue(forKey: key)?.close()\n",
         after: "        _ = pages[key]\n",
         diagnostic: "every panel ends with its tool's program, and a web page with it",
@@ -2855,7 +2855,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a page's call reaches the tool for a service its manifest does not list",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolPanelHost.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolPanelHost.swift",
         before: "                return reply(.failure(RefusalCode.notInUses.error(service: service)))\n",
         after: "                _ = service\n",
         diagnostic: "a call for a service the manifest does not list",
@@ -2863,7 +2863,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a flood of calls from a page never stops the tool",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolPanelHost.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolPanelHost.swift",
         before: "            parts.misbehaved(key.tool)\n",
         after: "",
         diagnostic: "three busy seconds in a row, as the link counts, are a flood",
@@ -2871,7 +2871,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a refused first page leaves its panel waiting for ever",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolPanelHost.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolPanelHost.swift",
         before: "                if Self.awaitsAPage(self.shown[key]) { self.shown[key] = .notShown(problem) }\n",
         after: "",
         diagnostic: "a first page that is not well formed leaves the panel not shown, saying where, not waiting",
@@ -2879,7 +2879,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a refused page takes the place of the page drawn before it",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolPanelHost.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolPanelHost.swift",
         before: "                if Self.awaitsAPage(self.shown[key]) { self.shown[key] = .notShown(problem) }\n",
         after: "                self.shown[key] = .notShown(problem)\n",
         diagnostic: "a refused page after one was drawn keeps that page",
@@ -2887,7 +2887,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "an open answer after a refused page is dropped",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolPanelHost.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolPanelHost.swift",
         before: "            guard Self.awaitsAPage(now) else { return }\n",
         after: "            guard case .waiting = now else { return }\n",
         diagnostic: "a refused page the tool sent before answering the open does not stop the answer's page being drawn",
@@ -2895,7 +2895,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a refused panel says the log's sentence instead of why",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/ToolPanels/ToolPanelView.swift",
+        relative: "Sources/VitruvianAtrium/UI/ToolPanels/ToolPanelView.swift",
         before: "            ToolPanelNotShown(size: size, why: refused.map(why))\n",
         after: "            ToolPanelNotShown(size: size, why: nil)\n",
         diagnostic: "the refused panel draws",
@@ -2903,7 +2903,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a refused panel names the tool by its id",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/ToolPanels/ToolPanelView.swift",
+        relative: "Sources/VitruvianAtrium/UI/ToolPanels/ToolPanelView.swift",
         before: "            .panelRefused(host.name(of: key.tool, language: l10n.language.rawValue), problem)\n",
         after: "            .panelRefused(key.tool.rawValue, problem)\n",
         diagnostic: "the refused panel draws",
@@ -2911,7 +2911,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the sentence for a panel that could not be shown left in English",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Core/ExternalToolStrings.swift",
+        relative: "Sources/VitruvianAtrium/Core/ExternalToolStrings.swift",
         before: "        panelNotShown: \"Diese Seite konnte nicht angezeigt werden. Das Protokoll des Werkzeugs in den Einstellungen nennt den Grund.\",\n",
         after: "        panelNotShown: \"This page could not be shown. The tool’s log, in Settings, says why.\",\n",
         diagnostic: "no text about tools from outside is left in English in de (panelNotShown)",
@@ -2919,7 +2919,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a link block may open any address",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/ToolPanels/BlockTreeView.swift",
+        relative: "Sources/VitruvianAtrium/UI/ToolPanels/BlockTreeView.swift",
         before: "                    url.scheme.map { ToolPanelHost.linkSchemes.contains($0.lowercased()) } == true ? url : nil\n",
         after: "                    url.scheme != nil ? url : nil\n",
         diagnostic: "a link opens only a web or mail address; any other is drawn as plain words",
@@ -2927,7 +2927,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a chip that cannot be turned is turned",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/ToolPanels/BlockTreeView.swift",
+        relative: "Sources/VitruvianAtrium/UI/ToolPanels/BlockTreeView.swift",
         before: "        guard enabled, let turned = options.first(where: { $0.value == value }), turned.enabled else { return }\n",
         after: "        guard options.contains(where: { $0.value == value }) else { return }\n",
         diagnostic: "tapping a chip that cannot be turned does nothing",
@@ -2935,7 +2935,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a second quick chip tap undoes the first",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/ToolPanels/BlockTreeView.swift",
+        relative: "Sources/VitruvianAtrium/UI/ToolPanels/BlockTreeView.swift",
         before: "            Set(picks[id].flatMap { $0.revision == revision ? $0.on : nil } ?? options.filter(\\.on).map(\\.value))\n",
         after: "            Set(options.filter(\\.on).map(\\.value))\n",
         diagnostic: "two taps before the page returns send [a] then [a, b], not [a] then [b]",
@@ -2943,7 +2943,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the settings sheet's search reads no help",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/SettingsSheetSearch.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/SettingsSheetSearch.swift",
         before: "                let text = [help?.text, subheading?.title, section.title].compactMap { $0 } + more\n",
         after: "                let text = [subheading?.title, section.title].compactMap { $0 } + more\n",
         diagnostic: "a control's own help is searched",
@@ -2951,7 +2951,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a short last section's link is never lit",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/SettingsSheetSearch.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/SettingsSheetSearch.swift",
         before: "        if let chosen, let top = tops[chosen], top >= -1, top < height { return chosen }\n",
         after: "",
         diagnostic: "a short last section that cannot reach the top is lit while its link was just used",
@@ -2959,7 +2959,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool's text is drawn whole however long it is",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/ToolPanels/BlockTreeView.swift",
+        relative: "Sources/VitruvianAtrium/UI/ToolPanels/BlockTreeView.swift",
         before: "            return shown.count > Self.maxCharacters ? String(shown.prefix(Self.maxCharacters - 1)) + \"…\" : shown\n",
         after: "            return shown\n",
         diagnostic: "text is cut to 2,000 characters",
@@ -2967,7 +2967,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a link that is no web or mail address is handed to the open service",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolPanelHost.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolPanelHost.swift",
         before: "        guard let scheme = url.scheme?.lowercased(), Self.linkSchemes.contains(scheme), parts.openLink(key.tool, url) else {\n",
         after: "        guard parts.openLink(key.tool, url) else {\n",
         diagnostic: "a link that is no web or mail address is never handed to the service",
@@ -2975,7 +2975,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool that is switched off draws its Settings panel",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExternalToolsSection.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExternalToolsSection.swift",
         before: "        let panels = listed.standing == nil ? [] : listed.tool?.panels ?? []\n",
         after: "        let panels = listed.tool?.panels ?? []\n",
         diagnostic: "a tool that is switched off draws no panel and opens no window",
@@ -2983,7 +2983,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "turning a tool's island page off leaves it open",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolStore.swift",
         before: "            parts.panels()?.close(ToolPanelHost.Key(tool: id, panel: island.id))\n",
         after: "            _ = island\n",
         diagnostic: "turned off, it is remembered, its open island page closes",
@@ -2991,7 +2991,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a Settings panel may push the detail's buttons out of view",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExternalToolsSection.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExternalToolsSection.swift",
         before: " || settingsPanel != nil }\n",
         after: " }\n",
         diagnostic: "with a Settings panel of any height the lists scroll",
@@ -2999,7 +2999,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool's island page the person turned off still has a tile",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolStore.swift",
         before: "            guard let id = ToolID(record.id), record.showsInIsland ?? true,\n",
         after: "            guard let id = ToolID(record.id),\n",
         diagnostic: "a page the person turned off has no tile",
@@ -3007,7 +3007,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a badge's count over 99 is drawn whole",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/ToolPanels/ToolIslandTile.swift",
+        relative: "Sources/VitruvianAtrium/UI/ToolPanels/ToolIslandTile.swift",
         before: "            self.count = count > Self.mostCounted ? \"\\(Self.mostCounted)+\" : \"\\(count)\"\n",
         after: "            self.count = \"\\(count)\"\n",
         diagnostic: "a count over 99 is drawn as 99+",
@@ -3015,7 +3015,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a web panel's page may go outside its tool's folder",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/ToolPanels/ToolWebPanel.swift",
+        relative: "Sources/VitruvianAtrium/UI/ToolPanels/ToolWebPanel.swift",
         before: "        guard let url, ToolWebPolicy.allows(url, in: folder) else { return .refuse }\n",
         after: "        guard url != nil else { return .refuse }\n",
         diagnostic: "a page may go nowhere outside its folder",
@@ -3023,7 +3023,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "what a web panel's page is told is written into its script as it is",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/ToolPanels/ToolWebPanel.swift",
+        relative: "Sources/VitruvianAtrium/UI/ToolPanels/ToolWebPanel.swift",
         before: "        let settings = (try? JSONSerialization.data(withJSONObject: [\"language\": language, \"appearance\": appearance]))\n            .map { String(decoding: $0, as: UTF8.self) } ?? \"{}\"\n",
         after: "        let settings = \"{\\\"language\\\":\\\"\\(language)\\\",\\\"appearance\\\":\\\"\\(appearance)\\\"}\"\n",
         diagnostic: "what the page is told is written as JSON",
@@ -3031,7 +3031,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a refusal reaches a web panel's page as an empty reply",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/ToolPanels/ToolWebPanel.swift",
+        relative: "Sources/VitruvianAtrium/UI/ToolPanels/ToolWebPanel.swift",
         before: "            return (nil, \"\\(error.code) \\(error.message)\")\n",
         after: "            return (nil, nil)\n",
         diagnostic: "a refusal rejects the page's promise with its code and its words",
@@ -3039,7 +3039,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a sentence about the catalog left in English",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Core/ExternalToolStrings.swift",
+        relative: "Sources/VitruvianAtrium/Core/ExternalToolStrings.swift",
         before: "        agreeCatalog: \"Aus dem Vitruvian-Katalog: VitruvianSoftware hat dieses Werkzeug aufgenommen, und der Download ist genau der aufgeführte.\",\n",
         after: "        agreeCatalog: \"From the Vitruvian catalog: VitruvianSoftware listed this tool, and the download is exactly the one it listed.\",\n",
         diagnostic: "no text about tools from outside is left in English in de (agreeCatalog)",
@@ -3047,7 +3047,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a list with a bad signature is accepted",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/Catalogue/CatalogueSigning.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/Catalogue/CatalogueSigning.swift",
         before: "        return key.isValidSignature(signature, for: list)\n",
         after: "        return key.isValidSignature(signature, for: list) || !signature.isEmpty\n",
         diagnostic: "a list verifies only with its own bytes and the key that signed it",
@@ -3055,7 +3055,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the catalog fetches over plain http",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/Catalogue/CatalogueClient.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/Catalogue/CatalogueClient.swift",
         before: "        if url.scheme == \"https\", url.host?.isEmpty == false { return true }\n",
         after: "        if url.host?.isEmpty == false { return true }\n",
         diagnostic: "the app reads the website's signed list, and fetches over https only",
@@ -3063,7 +3063,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a download with a bad checksum is accepted",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/Catalogue/CatalogueInstaller.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/Catalogue/CatalogueInstaller.swift",
         before: "        case .complete where got.size == entry.download.size && got.digest == entry.download.sha256:\n",
         after: "        case .complete where got.size == entry.download.size:\n",
         diagnostic: "each check refuses with its own reason, in its order: the size and the checksum before the zip, the zip before the manifest (a download whose checksum is not its pin)",
@@ -3071,7 +3071,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a zip entry that leaves its folder is unpacked",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/Catalogue/CatalogueArchive.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/Catalogue/CatalogueArchive.swift",
         before: "            guard isInside(name) else { return .failure(.leavesTheFolder(name)) }\n",
         after: "",
         diagnostic: "a zip is refused before anything is unpacked when it would leave its folder",
@@ -3079,7 +3079,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool from the catalog is installed before the person agrees",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/Catalogue/CatalogueInstaller.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/Catalogue/CatalogueInstaller.swift",
         before: "                then(.success(offer))\n",
         after: "                _ = store().add(ToolConsent(to: offer))\n                then(.success(offer))\n",
         diagnostic: "until the person agrees nothing is installed, started or remembered",
@@ -3087,7 +3087,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool added from a folder is never offered the catalog's newer version",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/Catalogue/CatalogueWatch.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/Catalogue/CatalogueWatch.swift",
         before: "            return listed.isHeld ? nil : listed.record.agreement.version\n",
         after: "            return nil\n",
         diagnostic: "a tool added from a folder is offered the catalog's newer version under its id",
@@ -3095,7 +3095,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool added from a folder is offered the catalog's same or older version",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/Catalogue/CatalogueWatch.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/Catalogue/CatalogueWatch.swift",
         before: "            return listed.isHeld ? nil : listed.record.agreement.version\n",
         after: "            return listed.isHeld ? nil : \"0.0.0\"\n",
         diagnostic: "a tool added from a folder is never offered the catalog's version when it is not newer",
@@ -3103,7 +3103,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a held-back tool added from a folder is offered the catalog's version",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/Catalogue/CatalogueWatch.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/Catalogue/CatalogueWatch.swift",
         before: "        guard let origin = listed.record.catalogue else {\n            return listed.isHeld ? nil : listed.record.agreement.version\n",
         after: "        guard let origin = listed.record.catalogue else {\n            return listed.record.agreement.version\n",
         diagnostic: "a held-back tool added from a folder is not offered the catalog's version",
@@ -3111,7 +3111,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "an update is offered for an older version",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/Catalogue/CatalogueWatch.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/Catalogue/CatalogueWatch.swift",
         before: "        return entries.first { $0.id == listed.id && Catalogue.isNewer($0.version, than: installed) }\n",
         after: "        return entries.first { $0.id == listed.id && $0.version != installed }\n",
         diagnostic: "a tool from the catalog has an update only when the catalog lists a newer version this app can install (an older version)",
@@ -3119,7 +3119,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool updated from the catalog stays one added from a folder",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolStore.swift",
         before: "            next[known].catalogue = offer.catalogue\n",
         after: "            if offer.catalogue == nil { next[known].catalogue = nil }\n",
         diagnostic: "updated from the catalog, a tool added from a folder is recorded as from the catalog",
@@ -3127,7 +3127,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the sheet says nothing of a folder tool moving onto the catalog",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExternalToolAgreementSheet.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExternalToolAgreementSheet.swift",
         before: "        movesToCatalogue = offer.movesFromFolder.map { strings.updateMovesToCatalog(Self.abbreviated($0, home: home)) }\n",
         after: "        movesToCatalogue = nil\n",
         diagnostic: "updating from the catalog a tool added from a folder is asked on the usual sheet",
@@ -3135,7 +3135,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the update sheet calls the catalog's download a folder",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExternalToolAgreementSheet.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExternalToolAgreementSheet.swift",
         before: "            return offer.catalogue == nil ? strings.updateVersions(agreed: agreed, offered: offered)\n                : strings.updateVersionsFromCatalog(agreed: agreed, offered: offered)\n",
         after: "            return strings.updateVersions(agreed: agreed, offered: offered)\n",
         diagnostic: "an update from the catalog says the catalog has the new version",
@@ -3143,7 +3143,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "every update from the catalog says the tool moves from a folder",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ExternalToolStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ExternalToolStore.swift",
         before: "        let movesFromFolder = catalogue != nil && known?.catalogue == nil ? known?.agreement.source : nil\n",
         after: "        let movesFromFolder = catalogue != nil ? known?.agreement.source : nil\n",
         diagnostic: "its next update from the catalog is the usual one",
@@ -3151,7 +3151,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a tool added from a folder offers plain Update",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExternalToolsSection.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExternalToolsSection.swift",
         before: "        listed.record.catalogue == nil ? strings.updateFromCatalog : strings.updateNow\n",
         after: "        strings.updateNow\n",
         diagnostic: "a tool added from a folder whose newer version the catalog lists says Update available",
@@ -3159,7 +3159,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "an older list signed by us replaces a newer one",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/Catalogue/CatalogueWatch.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/Catalogue/CatalogueWatch.swift",
         before: "           catalogue.generated < before.generated {\n",
         after: "           catalogue.generated < before.generated, catalogue.tools.isEmpty {\n",
         diagnostic: "a list signed by us but older than the one accepted before is refused",
@@ -3167,7 +3167,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the agreement sheet says nothing of the catalog",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExternalToolAgreementSheet.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExternalToolAgreementSheet.swift",
         before: "        catalogue = offer.catalogue == nil ? nil : strings.agreeCatalog\n",
         after: "        catalogue = nil\n",
         diagnostic: "a tool from the catalog is asked about on the same sheet, with one more line",
@@ -3175,7 +3175,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a catalog row's pill calls an extension a tool",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExternalToolCatalogueSheet.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExternalToolCatalogueSheet.swift",
         before: "                    kindBadge: entry.panels.map { $0.isEmpty ? strings.kindTool : strings.kindExtension },\n",
         after: "                    kindBadge: entry.panels.map { _ in strings.kindTool },\n",
         diagnostic: "each tool is listed with its name, publisher, version, kind pill when its entry carries panels",
@@ -3183,7 +3183,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the Extensions page lists installed tools in the catalog again",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExternalToolCatalogueSheet.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExternalToolCatalogueSheet.swift",
         before: "        let left = rows.filter { $0.action == .install }\n",
         after: "        let left = rows\n",
         diagnostic: "the Extensions page lists the catalog's tools that are not installed",
@@ -3191,7 +3191,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the Features page says 1 extensions installed",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Core/Settings/ExtensionsPageSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Settings/ExtensionsPageSupport.swift",
         before: "        case 1:\n",
         after: "        case 99:\n",
         diagnostic: "the Features page says how many extensions are added, one in the singular",
@@ -3199,7 +3199,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Extensions comes after the Dynamic Island in the sidebar",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Settings/SettingsDirectory.swift",
+        relative: "Sources/VitruvianAtrium/Services/Settings/SettingsDirectory.swift",
         before: "items: Array(core.prefix(4)) + island + Array(core.dropFirst(4))),\n",
         after: "items: Array(core.prefix(3)) + island + Array(core.dropFirst(3))),\n",
         diagnostic: "the sidebar lists Extensions once, in Essentials, right after Features",
@@ -3207,7 +3207,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the sidebar counts every added tool as an update",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExternalToolsSection.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExternalToolsSection.swift",
         before: "        store.listed.filter { watch.update(for: $0) != nil }.count\n",
         after: "        store.listed.count\n",
         diagnostic: "the sidebar counts the tools installed from the catalog that it lists a newer version of",
@@ -3215,7 +3215,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the Settings search finds the Extensions page only by its name",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Core/Settings/ExtensionsPageSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Settings/ExtensionsPageSupport.swift",
         before: "        [strings.sectionTitle, strings.catalogTitle, strings.addButton]\n",
         after: "        []\n",
         diagnostic: "find the Extensions page by \"extensions\", \"tools\", \"catalog\" and its Add button",
@@ -3223,7 +3223,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a row's Update shows no spinner while its tool downloads",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExternalToolsSection.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExternalToolsSection.swift",
         before: "        if fetching == id || adding.contains(id) { return .progress }\n",
         after: "        if adding.contains(id) { return .progress }\n",
         diagnostic: "while a tool downloads, its row's Update or Install is a spinner",
@@ -3231,7 +3231,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "every Install and Update can be pressed while a tool downloads",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExternalToolsSection.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExternalToolsSection.swift",
         before: "        return fetching == nil && !waiting && adding.isEmpty ? .enabled : .disabled\n",
         after: "        return .enabled\n",
         diagnostic: "while a tool downloads, its row's Update or Install is a spinner",
@@ -3239,7 +3239,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a second install starts while one downloads",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/Catalogue/CatalogueInstalls.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/Catalogue/CatalogueInstalls.swift",
         before: "        guard !isBusy else { return false }\n",
         after: "",
         diagnostic: "a second press while it downloads fetches nothing",
@@ -3247,7 +3247,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a download that finishes with the page closed is dropped",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/Catalogue/CatalogueInstalls.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/Catalogue/CatalogueInstalls.swift",
         before: "            case .success(let offer): self.waiting = .ready(offer)\n",
         after: "            case .success: break\n",
         diagnostic: "a download that finishes with no page open keeps its offer for the page",
@@ -3255,7 +3255,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a companion staying to react is sent away by the strip",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "        if mascotRestedInView, compactActivity != nil, !mascotLingers,\n",
         after: "        if mascotRestedInView, compactActivity != nil,\n",
         diagnostic: "a companion staying to react is not told to fade out ahead of the strip",
@@ -3263,7 +3263,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the companion's stand-in stays over what took its place",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "        if mascotBridging, !mascotBridgeTargetShows { endMascotBridgeNow(fading: true) }\n",
         after: "",
         diagnostic: "a stand-in still headed for its place stays, and one whose place went to something else fades out once",
@@ -3271,7 +3271,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the island stops asking the brightness service about the keyboard light",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Display/BrightnessService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Display/BrightnessService.swift",
         before: "        keyboardLightIsSupported = { supported }\n",
         after: "        _ = supported\n",
         diagnostic: "launch asks the brightness service whether this Mac has a keyboard light",
@@ -3279,7 +3279,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "three levels squeeze beside the camera",
         group: "notch",
-        relative: "Sources/Vitruvian/Core/Notch/NotchSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Notch/NotchSupport.swift",
         before: "        return count <= 2 && band.leadingRoom >= bandLevelMinimumWidth ? count : 0\n",
         after: "        return count\n",
         diagnostic: "the island and its Settings preview give three levels beside a camera a row below it, over the player card",
@@ -3287,7 +3287,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the switched-off record is written after the disable transaction",
         group: "display-restoration",
-        relative: "Sources/Vitruvian/Services/Display/BrightnessService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Display/BrightnessService.swift",
         before: "        if !enabled { rememberDisplaySwitchedOff(display.id, fingerprint: fingerprint) }\n        let result = configureDisplay(display.id, enabled: enabled)\n",
         after: "        let result = configureDisplay(display.id, enabled: enabled)\n        if !enabled { rememberDisplaySwitchedOff(display.id, fingerprint: fingerprint) }\n",
         diagnostic: "the original display identity reaches preferences before the disable transaction",
@@ -3295,7 +3295,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "an explicit toggle leaves a pending wake restoration queued",
         group: "display-restoration",
-        relative: "Sources/Vitruvian/Services/Display/BrightnessService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Display/BrightnessService.swift",
         before: "        deferredRestoration.record(display.id, result: .success)\n        syncLidObserver()\n        if enabled { forgetDisplaySwitchedOff(display.id) }\n",
         after: "        syncLidObserver()\n        if enabled { forgetDisplaySwitchedOff(display.id) }\n",
         diagnostic: "an explicit disable cancels a pending wake enable and keeps the monitor off",
@@ -3303,7 +3303,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "typing while the drop falls no longer hurries it",
         group: "command-bar",
-        relative: "Sources/Vitruvian/Services/CommandBar/CommandBarDroplet.swift",
+        relative: "Sources/VitruvianAtrium/Services/CommandBar/CommandBarDroplet.swift",
         before: "        guard presentation == .droplet, keyCode != 53 else { return }\n        hurry()\n",
         after: "        guard presentation == .droplet, keyCode != 53 else { return }\n",
         diagnostic: "typing while the drop falls hurries it: the bar shows at once and fades in over the hurried reveal",
@@ -3311,7 +3311,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "closing a falling drop cancels it before it can rewind",
         group: "command-bar",
-        relative: "Sources/Vitruvian/Services/CommandBar/CommandBarDroplet.swift",
+        relative: "Sources/VitruvianAtrium/Services/CommandBar/CommandBarDroplet.swift",
         before: "        if falling, !reducesMotion, rewind(homecoming: mood) { return }\n        let unseen = falling\n        cancel()\n",
         after: "        let unseen = falling\n        cancel()\n        if unseen, !reducesMotion, rewind(homecoming: mood) { return }\n",
         diagnostic: "closing a drop that still falls rewinds it before anything cancels it: it stays to rise, and the companion is not home yet",
@@ -3319,7 +3319,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a failed save of off lets the fixed Space order's recovery go",
         group: "spaces-order",
-        relative: "Sources/Vitruvian/Services/SpacesOrder/SpacesOrderHold.swift",
+        relative: "Sources/VitruvianAtrium/Services/SpacesOrder/SpacesOrderHold.swift",
         before: "            guard persisted else { return }\n",
         after: "",
         diagnostic: "failed off persistence and a reentrant sync cannot discard recovery",
@@ -3327,7 +3327,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a superseded Space order reconcile reads the Dock's setting",
         group: "spaces-order",
-        relative: "Sources/Vitruvian/Services/SpacesOrder/SpacesOrderHold.swift",
+        relative: "Sources/VitruvianAtrium/Services/SpacesOrder/SpacesOrderHold.swift",
         before: "    private func reconcileOnQueue(wanted: Bool, generation: UInt64) -> Bool {\n        guard generation == currentRequest() else { return false }\n",
         after: "    private func reconcileOnQueue(wanted: Bool, generation: UInt64) -> Bool {\n",
         diagnostic: "a reconcile superseded before admission returns false without system work",
@@ -3335,15 +3335,15 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the update check reads a repository that does not exist",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/Update/VitruvianReleases.swift",
+        relative: "Sources/VitruvianAtrium/Core/Update/VitruvianAtriumReleases.swift",
         before: "    package static let repository = \"vitruvian-core\"\n",
         after: "    package static let repository = \"vitruvian\"\n",
-        diagnostic: "the update check lists Vitruvian's release tags in the public vitruvian-core repository",
+        diagnostic: "the update check lists Vitruvian Atrium's release tags in the public vitruvian-core repository",
     },
     Mutation {
         name: "the update check takes the last tag GitHub lists, not the newest version",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/Update/VitruvianReleases.swift",
+        relative: "Sources/VitruvianAtrium/Core/Update/VitruvianAtriumReleases.swift",
         before: "            if newest.map({ version > $0.version }) ?? true {\n",
         after: "            if true {\n",
         diagnostic: "the newest stable release is found by version among other products' tags",
@@ -3351,31 +3351,31 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the update check asks api.github.com first and git only when that fails",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/Update/VitruvianReleases.swift",
+        relative: "Sources/VitruvianAtrium/Core/Update/VitruvianAtriumReleases.swift",
         before: "            list = try await transport(tagListRequest())\n",
         after: "            let api = try await transport(URLRequest(url: URL(string: \"https://api.github.com/repos/\\(owner)/\\(repository)/git/matching-refs/tags/\\(tagPrefix)\")!))\n            list = try await api.status == 200 ? api : transport(tagListRequest())\n",
         diagnostic: "the check asks git, then the download link, and never api.github.com",
     },
     Mutation {
-        name: "the update check takes another product's vitruvian-v... tag for Vitruvian's",
+        name: "the update check takes another product's vitruvian-atrium-v... tag for Vitruvian Atrium's",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/Update/VitruvianReleases.swift",
+        relative: "Sources/VitruvianAtrium/Core/Update/VitruvianAtriumReleases.swift",
         before: "        let version = String(tag.dropFirst(tagPrefix.count))\n",
         after: "        let version = tag.components(separatedBy: \"-v\").last ?? \"\"\n",
-        diagnostic: "another product whose tag starts with vitruvian-v is never taken for Vitruvian's newest release",
+        diagnostic: "another product whose tag starts with vitruvian-atrium-v is never taken for Vitruvian Atrium's newest release",
     },
     Mutation {
         name: "the updater downloads the arm64 disk image",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/Update/VitruvianReleases.swift",
-        before: "        \"Vitruvian-\\(version)-universal.dmg\"\n",
-        after: "        \"Vitruvian-\\(version)-arm64.dmg\"\n",
+        relative: "Sources/VitruvianAtrium/Core/Update/VitruvianAtriumReleases.swift",
+        before: "        \"VitruvianAtrium-\\(version)-universal.dmg\"\n",
+        after: "        \"VitruvianAtrium-\\(version)-arm64.dmg\"\n",
         diagnostic: "the updater downloads the release's universal disk image",
     },
     Mutation {
         name: "the update check offers a release whose disk image is not uploaded yet",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/Update/VitruvianReleases.swift",
+        relative: "Sources/VitruvianAtrium/Core/Update/VitruvianAtriumReleases.swift",
         before: "            // Tagged, but the pipeline has not uploaded the image yet.\n            url = nil\n",
         after: "            // Tagged, but the pipeline has not uploaded the image yet.\n            url = diskImageURL(tag: tag, version: version)\n",
         diagnostic: "a release whose universal image is not uploaded yet offers no download",
@@ -3383,7 +3383,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the updater ignores the size the download link gives",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/Update/VitruvianReleases.swift",
+        relative: "Sources/VitruvianAtrium/Core/Update/VitruvianAtriumReleases.swift",
         before: "            bytes = image.header(\"Content-Length\").flatMap { Int64($0) }.flatMap { $0 > 0 ? $0 : nil }\n",
         after: "            bytes = nil\n",
         diagnostic: "the updater bounds the download by the size the HEAD reply gave",
@@ -3391,16 +3391,16 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the updater trusts upstream's signing team",
         group: "updates",
-        relative: "Sources/Vitruvian/Services/FanControl/FanControlXPC.swift",
+        relative: "Sources/VitruvianAtrium/Services/FanControl/FanControlXPC.swift",
         before: "    package static let teamID = \"Q5MH753M3F\"\n",
         after: "    package static let teamID = \"3D485NHW29\"\n",
-        diagnostic: "the app trusts the Developer ID team that signs Vitruvian's releases",
+        diagnostic: "the app trusts the Developer ID team that signs Vitruvian Atrium's releases",
     },
     Mutation {
         name: "View on GitHub leads to a repository that does not exist",
         group: "updates",
-        relative: "Sources/Vitruvian/Core/AppInfo.swift",
-        before: "    package static let repositoryURL = URL(string: \"https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian\")!\n",
+        relative: "Sources/VitruvianAtrium/Core/AppInfo.swift",
+        before: "    package static let repositoryURL = URL(string: \"https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-atrium\")!\n",
         after: "    package static let repositoryURL = URL(string: \"https://github.com/VitruvianSoftware/vitruvian\")!\n",
         diagnostic: "View on GitHub opens this app's source in the public vitruvian-core repository",
     },
@@ -3415,7 +3415,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the notification list orders groups by arrival in the inbox, not by their newest message",
         group: "notch",
-        relative: "Sources/Vitruvian/Core/Notch/NotchNotificationListSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Notch/NotchNotificationListSupport.swift",
         before: "        for item in newestFirst(items) {\n",
         after: "        for item in items {\n",
         diagnostic: "groups are ordered by their newest message",
@@ -3423,7 +3423,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "an app with one notification is drawn as a stack of one",
         group: "notch",
-        relative: "Sources/Vitruvian/Core/Notch/NotchNotificationListSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Notch/NotchNotificationListSupport.swift",
         before: "            guard group.count > 1 else { return [.single(group.newest)] }\n",
         after: "            guard group.count > 0 else { return [.single(group.newest)] }\n",
         diagnostic: "an app with a single message is shown as a plain row, not as a group of one",
@@ -3431,7 +3431,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the Notifications page defaults to the list",
         group: "notch",
-        relative: "Sources/Vitruvian/Core/Preferences.swift",
+        relative: "Sources/VitruvianAtrium/Core/Preferences.swift",
         before: "                                                             default: NotchNotificationLayout.cards.rawValue)\n",
         after: "                                                             default: NotchNotificationLayout.list.rawValue)\n",
         diagnostic: "the registered default layout is the cards",
@@ -3439,7 +3439,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "an unknown saved layout reads as the list",
         group: "notch",
-        relative: "Sources/Vitruvian/Core/Notch/NotchNotificationListSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Notch/NotchNotificationListSupport.swift",
         before: "        self = saved.flatMap(Self.init(rawValue:)) ?? .cards\n",
         after: "        self = saved.flatMap(Self.init(rawValue:)) ?? .list\n",
         diagnostic: "an absent or unknown saved layout reads as the cards",
@@ -3447,7 +3447,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the grouping switch stacks the cards too",
         group: "notch",
-        relative: "Sources/Vitruvian/Core/Notch/NotchNotificationListSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Notch/NotchNotificationListSupport.swift",
         before: "        layout(in: defaults) == .list && defaults[Preferences.notchNotificationsGrouped]\n",
         after: "        defaults[Preferences.notchNotificationsGrouped]\n",
         diagnostic: "the cards never group, so an untouched Mac sees no stacks",
@@ -3455,7 +3455,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "clicking an open stack leaves it open",
         group: "notch",
-        relative: "Sources/Vitruvian/Core/Notch/NotchNotificationListSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Notch/NotchNotificationListSupport.swift",
         before: "        if next.remove(group) == nil { next.insert(group) }\n",
         after: "        next.insert(group)\n",
         diagnostic: "clicking a stack opens it and clicking again closes it",
@@ -3463,7 +3463,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a stack that drops to one message stays open",
         group: "notch",
-        relative: "Sources/Vitruvian/Core/Notch/NotchNotificationListSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Notch/NotchNotificationListSupport.swift",
         before: "        expanded.intersection(groups(items).filter { $0.count > 1 }.map(\\.id))\n",
         after: "        expanded.intersection(groups(items).map(\\.id))\n",
         diagnostic: "a stack that drops to one message forgets it was open",
@@ -3471,7 +3471,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "dismissing a stack leaves its messages",
         group: "notch",
-        relative: "Sources/Vitruvian/Core/Notch/NotchNotificationSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Notch/NotchNotificationSupport.swift",
         before: "    package mutating func dismiss(_ ids: Set<UUID>) { items.removeAll { ids.contains($0.id) } }\n",
         after: "    package mutating func dismiss(_ ids: Set<UUID>) {}\n",
         diagnostic: "dismissing a stack clears that app's messages and no other app's",
@@ -3479,7 +3479,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a stack opens with motion under Reduce Motion",
         group: "notch",
-        relative: "Sources/Vitruvian/UI/Notch/NotchNotificationsView.swift",
+        relative: "Sources/VitruvianAtrium/UI/Notch/NotchNotificationsView.swift",
         before: "        reduceMotion ? nil : .smooth(duration: duration)\n",
         after: "        .smooth(duration: duration)\n",
         diagnostic: "a stack opens and closes with a quick animation, and without one under Reduce Motion",
@@ -3487,7 +3487,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "an opening stack's summary fades as slowly as the stack opens",
         group: "notch",
-        relative: "Sources/Vitruvian/UI/Notch/NotchNotificationsView.swift",
+        relative: "Sources/VitruvianAtrium/UI/Notch/NotchNotificationsView.swift",
         before: "    package static let summaryFade: Double = 0.06\n",
         after: "    package static let summaryFade: Double = 0.22\n",
         diagnostic: "an opening stack's summary is gone well before its first message slides in",
@@ -3495,7 +3495,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the island letting go closes the Extensions tab's page",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolPanelHost.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolPanelHost.swift",
         before: "              inMenuPanel[key] == nil, viewers[key] == nil else { return }\n",
         after: "              viewers[key] == nil else { return }\n",
         diagnostic: "the island letting go leaves the tab's page open, and the tool is not told",
@@ -3503,7 +3503,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the island refuses a page the Extensions tab has open",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolPanelHost.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolPanelHost.swift",
         before: "            hold(key, in: place)\n            return nil\n",
         after: "            return nil\n",
         diagnostic: "the island opening a page the tab has open makes it the island's page, asking nothing",
@@ -3511,7 +3511,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the Extensions tab shows on a Mac with no extension",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/MenuPanel/PanelLayoutStore.swift",
+        relative: "Sources/VitruvianAtrium/Services/MenuPanel/PanelLayoutStore.swift",
         before: "        self == .extensions ? MenuPanelExtensionsSupport.shownByDefault(anyIslandPanel: anyIslandPanel) : true\n",
         after: "        true\n",
         diagnostic: "the Extensions tab is on by default only while an extension has an island page",
@@ -3519,7 +3519,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the Extensions tab ignores an extension's switch",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/MenuPanel/MenuPanelExtensions.swift",
+        relative: "Sources/VitruvianAtrium/Services/MenuPanel/MenuPanelExtensions.swift",
         before: "        return entries.filter { kept.contains($0.key.tool) }\n",
         after: "        return entries\n",
         diagnostic: "one turned off leaves the tab and stays in edit mode, where it can be turned on again",
@@ -3527,7 +3527,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the Extensions tab ignores its saved order",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/MenuPanel/MenuPanelExtensions.swift",
+        relative: "Sources/VitruvianAtrium/Services/MenuPanel/MenuPanelExtensions.swift",
         before: "        let entries = ordered(store: store, defaults: defaults, language: language)\n",
         after: "        let entries = available(store: store, language: language)\n",
         diagnostic: "the tab and its edit mode list the extensions in the saved order",
@@ -3535,7 +3535,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the Extensions tab takes a web page from the island",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolPanelHost.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolPanelHost.swift",
         before: "        return island == key\n",
         after: "        return false\n",
         diagnostic: "a web page the island shows is a line in the tab, so the island keeps its one web view",
@@ -3543,7 +3543,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the Extensions tab leads to the Features page",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/MenuPanel/MenuPanelExtensions.swift",
+        relative: "Sources/VitruvianAtrium/Services/MenuPanel/MenuPanelExtensions.swift",
         before: "        ExtensionsPageSupport.destination\n",
         after: "        FeatureSettingsDestination(.features)\n",
         diagnostic: "the tab's empty state leads to Settings' Extensions page, where every link to the extensions goes",
@@ -3551,7 +3551,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a card of the Extensions tab lets go of every card's view",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolPanelHost.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolPanelHost.swift",
         before: "        guard var views = inMenuPanel[key], views.remove(viewer) != nil else { return }\n",
         after: "        guard var views = inMenuPanel[key] else { return }\n        views = []\n",
         diagnostic: "the old card going after the new card appeared leaves the new card's page open",
@@ -3559,7 +3559,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the island closes a page a viewer in Settings shows",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolPanelHost.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolPanelHost.swift",
         before: "              inMenuPanel[key] == nil, viewers[key] == nil else { return }\n",
         after: "              inMenuPanel[key] == nil else { return }\n",
         diagnostic: "the island letting go of a page a viewer shows leaves it open, and the tool is not told",
@@ -3567,7 +3567,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the island page's preview never lets go of its page",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/NotchContentEditor.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/NotchContentEditor.swift",
         before: "        .onDisappear {\n            viewing.onScreen = false\n            look()\n        }\n",
         after: "",
         diagnostic: "the preview going lets go of the page, and the tool is told once",
@@ -3575,7 +3575,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the island page's settings card never lets go of its page",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/NotchContentEditor.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/NotchContentEditor.swift",
         before: "        .onDisappear {\n            viewing.onScreen = false\n            ask()\n        }\n",
         after: "",
         diagnostic: "the card going lets go of the page, and the tool is told once",
@@ -3583,7 +3583,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the island page's preview keeps its page after Settings closes",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/NotchContentEditor.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/NotchContentEditor.swift",
         before: "        .onChange(of: window.isVisible) { _, _ in look() }\n",
         after: "",
         diagnostic: "the preview asks for its page when the window can be seen",
@@ -3591,7 +3591,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the island page's settings card keeps its page after Settings closes",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/NotchContentEditor.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/NotchContentEditor.swift",
         before: "        .onChange(of: window.isVisible) { _, _ in ask() }\n",
         after: "",
         diagnostic: "the settings card asks for its page when the window can be seen",
@@ -3599,7 +3599,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "an extension's settings links scroll off the sheet's edge",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExtensionSettingsPage.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExtensionSettingsPage.swift",
         before: "        ChipFlow(spacing: 4) {\n            // Each link has an id of its own, never its section's anchor:\n            // the lists' reader scrolls to the first view with that id, and\n            // would find the link.\n            ForEach(Array(links.enumerated()), id: \\.offset) { position, link in\n                reported(focused(button(link), link.anchor), position)\n                    .id(SettingsSheetMark.Link(anchor: link.anchor))\n            }\n        }\n",
         after: "        ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 4) {\n            // Each link has an id of its own, never its section's anchor:\n            // the lists' reader scrolls to the first view with that id, and\n            // would find the link.\n            ForEach(Array(links.enumerated()), id: \\.offset) { position, link in\n                reported(focused(button(link), link.anchor), position)\n                    .id(SettingsSheetMark.Link(anchor: link.anchor))\n            }\n        }\n }\n",
         diagnostic: "links all lie within the sheet's",
@@ -3607,7 +3607,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "an extension's settings links are cut short to fit one row",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExtensionSettingsPage.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExtensionSettingsPage.swift",
         before: "        ChipFlow(spacing: 4) {\n",
         after: "        HStack(spacing: 4) {\n",
         diagnostic: "no link is cut short to fit",
@@ -3615,7 +3615,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a field named only by its placeholder is not found",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/SettingsSheetSearch.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/SettingsSheetSearch.swift",
         before: "                add(title ?? \"\", help: help(own), more: placeholder.isEmpty ? [] : [placeholder])\n",
         after: "                add(title ?? \"\", help: help(own))\n",
         diagnostic: "a field is found by its placeholder",
@@ -3623,7 +3623,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a click on the island page's preview reaches the tool",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/NotchContentEditor.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/NotchContentEditor.swift",
         before: "            .allowsHitTesting(false)\n            .padding(14)\n",
         after: "            .padding(14)\n",
         diagnostic: "a click anywhere on the live preview never reaches the tool",
@@ -3631,7 +3631,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the island page's preview grows past its card",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/NotchContentEditor.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/NotchContentEditor.swift",
         before: "            .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .topLeading)\n",
         after: "            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)\n",
         diagnostic: "the preview's island is cut to its card, inside its margins",
@@ -3639,23 +3639,23 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a lit settings link is drawn bolder, and wider",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExtensionSettingsPage.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExtensionSettingsPage.swift",
         before: "                .font(.callout.weight(.medium))\n",
         after: "                .font(.callout.weight(on ? .semibold : .regular))\n",
         diagnostic: "every link is where it is with none lit",
     },
     Mutation {
-        name: "Vitruvian's own switch sits after its title",
+        name: "Vitruvian Atrium's own switch sits after its title",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExternalToolsSection.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExternalToolsSection.swift",
         before: "            Spacer(minLength: 8)\n            Toggle(title, isOn: Binding(get: { isOn }, set: { set($0) }))\n",
         after: "            Toggle(title, isOn: Binding(get: { isOn }, set: { set($0) }))\n",
-        diagnostic: "every switch on the sheet, Vitruvian's own and the extension's, ends at one edge",
+        diagnostic: "every switch on the sheet, Vitruvian Atrium's own and the extension's, ends at one edge",
     },
     Mutation {
         name: "the sheet's settings region keeps its least height in any window",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExtensionSettingsPage.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExtensionSettingsPage.swift",
         before: "        return max(min(least, max(floor, left)), min(ideal, left))\n",
         after: "        return least\n",
         diagnostic: "the region grows with the room the window has",
@@ -3663,7 +3663,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a menu on the island keeps its options' width and cuts its title",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/ToolPanels/BlockTreeView.swift",
+        relative: "Sources/VitruvianAtrium/UI/ToolPanels/BlockTreeView.swift",
         before: "        let menuWidth = max(menuLeast, min(menuIdeal, room - titleWidth))\n",
         after: "        let menuWidth = menuIdeal\n",
         diagnostic: "title is drawn whole at the island's width",
@@ -3671,7 +3671,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a long choice title leaves its menu its least width",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/ToolPanels/BlockTreeView.swift",
+        relative: "Sources/VitruvianAtrium/UI/ToolPanels/BlockTreeView.swift",
         before: "        let titleWidth = min(titleIdeal, max(room * titleShare, room - menuIdeal))\n",
         after: "        let titleWidth = min(titleIdeal, room - menuLeast)\n",
         diagnostic: "the menu keeps room to show its value",
@@ -3679,7 +3679,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the lit settings link is told apart by its colour alone",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExtensionSettingsPage.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExtensionSettingsPage.swift",
         before: "                    .strokeBorder(on ? Color.accentColor : Color.clear, lineWidth: 1.5))\n",
         after: "                    .strokeBorder(Color.clear, lineWidth: 1.5))\n",
         diagnostic: "its outline is plain in greyscale",
@@ -3687,7 +3687,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "an unlit settings link has no pill",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExtensionSettingsPage.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExtensionSettingsPage.swift",
         before: "                    .fill(on ? Color.accentColor.opacity(0.14) : Color.primary.opacity(0.05)))\n",
         after: "                    .fill(on ? Color.accentColor.opacity(0.14) : Color.clear))\n",
         diagnostic: "every other link has a pill to see",
@@ -3695,7 +3695,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the sheet opens before it knows its window's room",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/Settings/ExternalToolsSection.swift",
+        relative: "Sources/VitruvianAtrium/UI/Settings/ExternalToolsSection.swift",
         before: "        _room = State(initialValue: room)\n",
         after: "        _room = State(initialValue: nil)\n",
         diagnostic: "the sheet opens at its height",
@@ -3703,7 +3703,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a viewer in Settings lets go of every viewer's page",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Services/Platform/External/ToolPanelHost.swift",
+        relative: "Sources/VitruvianAtrium/Services/Platform/External/ToolPanelHost.swift",
         before: "        guard var held = viewers[key], held.remove(viewer) != nil else { return }\n",
         after: "        guard var held = viewers[key] else { return }\n        held = []\n",
         diagnostic: "one of them letting go leaves the page open for the other",
@@ -3711,7 +3711,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "an Extensions tab card draws nothing before it asks for its page",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/UI/MenuPanel/ExtensionsSection.swift",
+        relative: "Sources/VitruvianAtrium/UI/MenuPanel/ExtensionsSection.swift",
         before: "        VStack(alignment: .leading, spacing: 0) {\n            if host.defersToIsland(entry.key) {\n",
         after: "        Group {\n            if !asked, host.shown[entry.key] == nil {\n                ToolPanelView(key: entry.key, size: size, host: host)\n            } else if host.defersToIsland(entry.key) {\n",
         diagnostic: "a drawn card that is expanded asks for its page as it appears",
@@ -3719,7 +3719,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the agent mark stays beside a tool's words",
         group: "platform",
-        relative: "Sources/Vitruvian/Core/Platform/ToolStatus.swift",
+        relative: "Sources/VitruvianAtrium/Core/Platform/ToolStatus.swift",
         before: "    package static func showsAgentMark(_ wing: RightWing?) -> Bool {\n        wing == .allowance\n",
         after: "    package static func showsAgentMark(_ wing: RightWing?) -> Bool {\n        wing != nil\n",
         diagnostic: "the agent mark shows only while the right wing draws the allowance percent",
@@ -3727,7 +3727,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the Extensions page's SDK link points at the website's /sdk/ page, which does not exist",
         group: "tool-runtime",
-        relative: "Sources/Vitruvian/Core/AppInfo.swift",
+        relative: "Sources/VitruvianAtrium/Core/AppInfo.swift",
         before: "    package static let sdkURL = URL(string: \"https://github.com/VitruvianSoftware/vitruvian-sdk\")!\n",
         after: "    package static let sdkURL = URL(string: \"https://vitruviansoftware.dev/sdk/\")!\n",
         diagnostic: "the SDK link opens the vitruvian-sdk repository on GitHub",
@@ -3735,7 +3735,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a Claude mid-week reset moves the week's renewal",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/AgentClaudeAppUsage.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/AgentClaudeAppUsage.swift",
         before: "let confirmed = (agreed ?? newest).moment",
         after: "let confirmed = last.moment",
         diagnostic: "a reset used mid-week empties the week without moving its renewal",
@@ -3743,7 +3743,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a confirmed Claude week outlives a renewal that went by without a drop",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/AgentClaudeAppUsage.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/AgentClaudeAppUsage.swift",
         before: "if !missed(confirmed, history: history, drops: drops, key: key, length: length, until: reading) {",
         after: "if true {",
         diagnostic: "a schedule whose renewal went by in plain sight without a drop has moved, so the last drop stands",
@@ -3751,7 +3751,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a Claude week checks only the first renewal its old schedule places",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/AgentClaudeAppUsage.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/AgentClaudeAppUsage.swift",
         before: "while next <= reading {",
         after: "if next <= reading {",
         diagnostic: "a renewal seen going by without a drop moves the schedule even after an earlier one went unseen",
@@ -3759,7 +3759,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Claude limits trade places with the Claude app's",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/AgentUsageService.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/AgentUsageService.swift",
         before: "guard let latest = recent ?? [desktop, account].compactMap({ $0 }).max(by: { $0.observedAt < $1.observedAt })",
         after: "guard let latest = [desktop, account].compactMap({ $0 }).max(by: { $0.observedAt < $1.observedAt })",
         diagnostic: "a recent account reading keeps its place when the Claude app saves a newer one",
@@ -3767,7 +3767,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Claude Code's saved usage copy reads as new",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/AgentClaudeServer.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/AgentClaudeServer.swift",
         before: "if let fetched = saved.usageFetched, started.timeIntervalSince(fetched) > AgentClaudeServer.reuse {",
         after: "if let fetched = saved.usageFetched, started.timeIntervalSince(fetched) > .infinity {",
         diagnostic: "an answer from Claude Code's saved copy keeps its own time and an old copy is a failure",
@@ -3775,7 +3775,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Claude Code's saved usage copy is dated now",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/AgentClaudeServer.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/AgentClaudeServer.swift",
         before: "AgentClaudeServer.limits(result, observed: min(Date(), saved.usageFetched ?? Date()))",
         after: "AgentClaudeServer.limits(result, observed: Date())",
         diagnostic: "an answer from Claude Code's saved copy keeps its own time and an old copy is a failure",
@@ -3783,7 +3783,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Claude limits check lets Claude Code update itself",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/AgentClaudeServer.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/AgentClaudeServer.swift",
         before: "        environment[\"DISABLE_AUTOUPDATER\"] = \"1\"\n",
         after: "",
         diagnostic: "a check keeps the person's Claude Code opt-outs and proxy, never updates it and turns nothing else off",
@@ -3791,7 +3791,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Claude limits check drops the person's opt-outs",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/AgentClaudeServer.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/AgentClaudeServer.swift",
         before: "            case let text as String: environment[key] = text\n",
         after: "            case let text as String: _ = text\n",
         diagnostic: "a check keeps the person's Claude Code opt-outs and proxy, never updates it and turns nothing else off",
@@ -3799,7 +3799,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Claude limits asked every minute off the AI page",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/AgentClaudeServer.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/AgentClaudeServer.swift",
         before: "case nil: return pageVisible ? freshness : backgroundFreshness",
         after: "case nil: return freshness",
         diagnostic: "Claude Code is asked every minute only while the AI page shows",
@@ -3807,7 +3807,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Claude limits retried soon after a settled failure",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/AgentClaudeServer.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/AgentClaudeServer.swift",
         before: "case .missing?, .needsSignIn?, .outdated?: return settledRetry",
         after: "case .missing?, .needsSignIn?, .outdated?: return retryAfter",
         diagnostic: "Claude Code is asked every minute only while the AI page shows",
@@ -3815,7 +3815,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a Claude Code too old for get_usage reads as unreachable",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/AgentClaudeServer.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/AgentClaudeServer.swift",
         before: "if error.contains(\"supported\") || error.contains(\"unknown\") { return .failure(.outdated) }",
         after: "if error.contains(\"not supported\") || error.contains(\"unknown\") { return .failure(.outdated) }",
         diagnostic: "old CLIs, signed-out accounts and temporary failures retain distinct outcomes",
@@ -3823,7 +3823,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Claude account percentages are not clamped",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/AgentClaudeServer.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/AgentClaudeServer.swift",
         before: "usedPercent: min(100, max(0, percent.doubleValue)), resetsAt: end)",
         after: "usedPercent: percent.doubleValue, resetsAt: end)",
         diagnostic: "account percentages outside 0 to 100 are clamped as the Claude app history is",
@@ -3831,7 +3831,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "an idle Claude session loses its row",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/AgentClaudeServer.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/AgentClaudeServer.swift",
         before: "guard resets == nil || end.map({ $0 > observed }) == true else { return nil }",
         after: "guard end.map({ $0 > observed }) == true else { return nil }",
         diagnostic: "an idle session without a renewal keeps its row for as long as the Claude app history would",
@@ -3839,7 +3839,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a Claude limit read by another source warns again",
         group: "agents",
-        relative: "Sources/Vitruvian/Core/AgentUsage/AgentUsageSummary.swift",
+        relative: "Sources/VitruvianAtrium/Core/AgentUsage/AgentUsageSummary.swift",
         before: "return resets.timeIntervalSince(was) > 60 && observedAt >= was",
         after: "return resets.timeIntervalSince(was) > 60",
         diagnostic: "the Claude app taking over a warned session warns no more",
@@ -3847,7 +3847,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a reset used on a warned Claude week renews at the renewal it kept",
         group: "agents",
-        relative: "Sources/Vitruvian/Core/AgentUsage/AgentUsageSummary.swift",
+        relative: "Sources/VitruvianAtrium/Core/AgentUsage/AgentUsageSummary.swift",
         before: "        if window.usedPercent + 1 < before.usedPercent { return true }\n",
         after: "",
         diagnostic: "a reset used mid-week renews a warned week at the drop",
@@ -3855,7 +3855,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Claude Code that never answers is asked every five minutes",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/AgentClaudeServer.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/AgentClaudeServer.swift",
         before: "case .unreachable?: return min(settledRetry, retryAfter * Double(1 << min(3, max(0, repeated - 1))))",
         after: "case .unreachable?: return retryAfter",
         diagnostic: "Claude Code that never answers is asked less and less often",
@@ -3863,7 +3863,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Claude Code is asked while the Mac is offline",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/AgentUsageService.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/AgentUsageService.swift",
         before: "guard online, limitsInUse else { return false }",
         after: "guard limitsInUse else { return false }",
         diagnostic: "nothing asks Claude Code while the Mac is offline",
@@ -3871,7 +3871,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Claude Code stays rarely asked once the Mac is back online",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/AgentUsageService.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/AgentUsageService.swift",
         before: "        online ? 0 : previous\n",
         after: "        previous\n",
         diagnostic: "back online the wait starts over",
@@ -3879,7 +3879,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Claude Code is asked while nothing uses the limits",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/AgentUsageService.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/AgentUsageService.swift",
         before: "guard online, limitsInUse else { return false }",
         after: "guard online else { return false }",
         diagnostic: "Claude Code is not asked while nothing shows or alerts on the limits",
@@ -3887,7 +3887,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Claude limits miss a session that began after the last reading",
         group: "agents",
-        relative: "Sources/Vitruvian/Core/AgentUsage/AgentUsageSummary.swift",
+        relative: "Sources/VitruvianAtrium/Core/AgentUsage/AgentUsageSummary.swift",
         before: "\n                || current.source == .account && began(window, after: previous.observedAt)",
         after: "",
         diagnostic: "a session that began after the last reading warns",
@@ -3895,7 +3895,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the resting island's AI limits do not count as using them",
         group: "agents",
-        relative: "Sources/Vitruvian/Core/Notch/NotchAgentSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Notch/NotchAgentSupport.swift",
         before: "            || NotchSupport.idleContent(in: defaults) == .agents\n",
         after: "",
         diagnostic: "limits are in use for their alerts, a live limit reading, the resting island or the page's Limits card",
@@ -3903,7 +3903,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Claude Code installed with a version manager is not found",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/AgentClaudeServer.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/AgentClaudeServer.swift",
         before: "        folders += toolFolders(home: home)\n",
         after: "",
         diagnostic: "Claude Code is found where version managers, Bun and pnpm keep it",
@@ -3911,7 +3911,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Node versions sort by name when looking for Claude Code",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/AgentClaudeServer.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/AgentClaudeServer.swift",
         before: ".sorted { $1.version.lexicographicallyPrecedes($0.version) }",
         after: ".sorted { $1.path < $0.path }",
         diagnostic: "the newest Node's Claude Code comes first",
@@ -3919,7 +3919,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a Claude Code on Node misses the Node a version manager keeps",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/AgentClaudeServer.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/AgentClaudeServer.swift",
         before: "([path] + toolFolders(home: home)).joined(separator: \":\")",
         after: "path",
         diagnostic: "a Claude Code in ~/.claude/local runs on the Node a version manager keeps",
@@ -3927,7 +3927,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Claude Code's PATH puts version managers before the system's tools",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/AgentClaudeServer.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/AgentClaudeServer.swift",
         before: "([path] + toolFolders(home: home))",
         after: "(toolFolders(home: home) + [path])",
         diagnostic: "a Claude Code in ~/.claude/local runs on the Node a version manager keeps, after the system's tools",
@@ -3935,7 +3935,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Claude limits check drops the proxy the person set for Claude Code",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/AgentClaudeServer.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/AgentClaudeServer.swift",
         before: "for key in optOuts + networkSettings {",
         after: "for key in optOuts {",
         diagnostic: "a check keeps the person's Claude Code opt-outs and proxy",
@@ -3943,7 +3943,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Settings gives two Claude Code failures the same reason",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/AgentClaudeServer.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/AgentClaudeServer.swift",
         before: "case .outdated: return claudeCodeOutdated",
         after: "case .outdated: return claudeCodeUnreachable",
         diagnostic: "Settings says in every language why Claude Code could not check",
@@ -3951,7 +3951,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Codex account checks ask Codex to renew the sign-in",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/CodexAccountLimits.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/CodexAccountLimits.swift",
         before: "conversation.ask(\"account/read\", [\"refreshToken\": false])",
         after: "conversation.ask(\"account/read\")",
         diagnostic: "two Codex homes keep their own plans and limits",
@@ -3959,7 +3959,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "failed Codex account checks retry soon though only the person can fix them",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/CodexAccountLimits.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/CodexAccountLimits.swift",
         before: "case .invalidProfile?, .missingCLI?, .needsSignIn?, .outdated?: return settledRetry",
         after: "case .invalidProfile?, .missingCLI?, .needsSignIn?, .outdated?: return retryAfter",
         diagnostic: "a Codex account is asked every five minutes, and after a failure only the person can fix every half hour",
@@ -3967,7 +3967,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a renewal Codex already reported keeps asking every minute",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/CodexProfileLimitsService.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/CodexProfileLimitsService.swift",
         before: "reading.windows.contains { $0.resetsAt.map { $0 > reading.observedAt && $0 <= now } ?? false }",
         after: "reading.windows.contains { $0.resetsAt.map { $0 <= now } ?? false }",
         diagnostic: "a window that renews after the reading is asked about a minute later, once",
@@ -3975,7 +3975,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "closing the AI page kills a Codex account check",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/CodexProfileLimitsService.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/CodexProfileLimitsService.swift",
         before: "        visible = false\n        syncTimer()\n        let dropped",
         after: "        visible = false\n        cancelChecks()\n        syncTimer()\n        let dropped",
         diagnostic: "closing the page lets a check under way finish, and opening it again does not start it over",
@@ -3983,7 +3983,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a card refreshed during another check is ignored",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/CodexProfileLimitsService.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/CodexProfileLimitsService.swift",
         before: "guard isEnabled, visible || force else { return }",
         after: "guard isEnabled, running == nil, visible || force else { return }",
         diagnostic: "a card refreshed while another check runs shows it waiting and is checked next",
@@ -3991,7 +3991,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the Settings preview starts Codex account checks",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/CodexProfileLimitsService.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/CodexProfileLimitsService.swift",
         before: "if !preview { visible = true }",
         after: "visible = true",
         diagnostic: "the Settings preview of the page shows account cards without checking them",
@@ -3999,7 +3999,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the AI page runs an account timer without accounts",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/CodexProfileLimitsService.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/CodexProfileLimitsService.swift",
         before: "guard visible, isEnabled, !states.isEmpty else {",
         after: "guard visible, isEnabled else {",
         diagnostic: "the page runs no account timer when no account was added",
@@ -4007,7 +4007,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a check the page asks for runs the login shell",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/CodexProfileLimitsService.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/CodexProfileLimitsService.swift",
         before: "let searching = next.asked && states[index].failure == .missingCLI && shellPath == nil",
         after: "let searching = states[index].failure == .missingCLI && shellPath == nil",
         diagnostic: "a check the page asks for never runs the login shell",
@@ -4015,7 +4015,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "renaming a Codex account restarts its check",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/CodexProfileLimitsService.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/CodexProfileLimitsService.swift",
         before: "guard var state = previous.first(where: { $0.id == profile.id && $0.profile.directory == profile.directory })",
         after: "guard var state = previous.first(where: { $0.profile == profile })",
         diagnostic: "renaming an account keeps its check under way and its reading",
@@ -4023,7 +4023,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a Codex account check stopped by a lock is not asked again",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/CodexProfileLimitsService.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/CodexProfileLimitsService.swift",
         before: "            if let index = states.firstIndex(where: { $0.id == running.id }) { states[index].attempted = nil }\n",
         after: "",
         diagnostic: "locking the Mac stops a check under way, and the page asks again when it shows",
@@ -4031,7 +4031,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Codex account cards dim the default Codex card",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/CodexAccountLimits.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/CodexAccountLimits.swift",
         before: "return provider == .claude && age >= AgentClaudeAppUsage.freshness",
         after: "return age >= AgentClaudeAppUsage.freshness",
         diagnostic: "a default card dims only an old Claude reading, as before Codex accounts",
@@ -4039,7 +4039,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Codex account folders travel in settings backups",
         group: "agents",
-        relative: "Sources/Vitruvian/Core/SettingsBackupSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/SettingsBackupSupport.swift",
         before: "        DefaultsKey.notchAgentsCodexProfiles,\n",
         after: "",
         diagnostic: "neither a settings export nor an import carries Codex account folders",
@@ -4047,7 +4047,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Codex account checks run while the Limits card is hidden",
         group: "agents",
-        relative: "Sources/Vitruvian/Core/Notch/NotchAgentSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Notch/NotchAgentSupport.swift",
         before: "providers(in: defaults).contains(.codex) && !hiddenCards(in: defaults).contains(.limits)",
         after: "providers(in: defaults).contains(.codex)",
         diagnostic: "with the Limits card hidden no account is checked, even when asked",
@@ -4055,7 +4055,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "removing a Codex account leaves its check running",
         group: "agents",
-        relative: "Sources/Vitruvian/Services/AgentUsage/CodexProfileLimitsService.swift",
+        relative: "Sources/VitruvianAtrium/Services/AgentUsage/CodexProfileLimitsService.swift",
         before: "            if let running, !kept.contains(running.id) {\n                running.cancellation.cancel()\n                self.running = nil\n                startNext()\n            }\n",
         after: "",
         diagnostic: "removing an account stops its check and leaves its late answer unused",
@@ -4063,7 +4063,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a failed Codex account card shows its failure twice",
         group: "agents",
-        relative: "Sources/Vitruvian/Core/Notch/NotchAgentSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Notch/NotchAgentSupport.swift",
         before: "guard hasWindows else { return (checking ? loading : failure ?? hint, nil) }",
         after: "guard hasWindows else { return (checking ? loading : failure ?? hint, failure) }",
         diagnostic: "a failed account card says so once, in place of its windows or under them",
@@ -4071,7 +4071,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the Resets card names the default account without room for it",
         group: "agents",
-        relative: "Sources/Vitruvian/Core/Notch/NotchAgentSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Notch/NotchAgentSupport.swift",
         before: "case .resets: return cardHeight + (tile.namesDefaultAccount ? accountLineHeight : 0)",
         after: "case .resets: return cardHeight",
         diagnostic: "the Resets card beside accounts makes room for the account it names",
@@ -4079,7 +4079,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Codex account text speaks informally in Russian",
         group: "agents",
-        relative: "Sources/Vitruvian/Core/CodexAccountStrings.swift",
+        relative: "Sources/VitruvianAtrium/Core/CodexAccountStrings.swift",
         before: "chooseFolder: \"Выберите папку Codex\",",
         after: "chooseFolder: \"Выбери папку Codex\",",
         diagnostic: "Codex account text uses the formal register in ru",
@@ -4087,7 +4087,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "saved app volumes are not moved onto the new curve",
         group: "mixer",
-        relative: "Sources/Vitruvian/Core/Defaults.swift",
+        relative: "Sources/VitruvianAtrium/Core/Defaults.swift",
         before: "positions[id] = MixerRoutingSupport.volume(forGain: sanitizedAppVolume(gain))",
         after: "positions[id] = sanitizedAppVolume(gain)",
         diagnostic: "an app saved below 100% plays exactly as loud after the update, converted once",
@@ -4095,7 +4095,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a microphone's non-finite gain is published",
         group: "mixer",
-        relative: "Sources/Vitruvian/Services/Audio/AudioInputDeviceManager.swift",
+        relative: "Sources/VitruvianAtrium/Services/Audio/AudioInputDeviceManager.swift",
         before: "return volume.isFinite ? min(max(volume, 0), 1) : nil",
         after: "return volume",
         diagnostic: "positive infinity main gain is hidden",
@@ -4103,7 +4103,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "panel Super key link shows the mapping without Accessibility",
         group: "pointer-input",
-        relative: "Sources/Vitruvian/UI/MenuPanel/MenuPanelView.swift",
+        relative: "Sources/VitruvianAtrium/UI/MenuPanel/MenuPanelView.swift",
         before: "? (permissions.accessibility ? mappingLabel : superKeyStrings.manageButton)",
         after: "? mappingLabel",
         diagnostic: "the panel Super key row shows its mapping link only while the key is on with",
@@ -4111,7 +4111,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "panel Super key link shows the whole caption sentence",
         group: "pointer-input",
-        relative: "Sources/Vitruvian/UI/MenuPanel/MenuPanelView.swift",
+        relative: "Sources/VitruvianAtrium/UI/MenuPanel/MenuPanelView.swift",
         before: "let mappingLabel = \"\\(superKeyStrings.sourceLabel(superKeySource)) \\(keyCaps)\"",
         after: "let mappingLabel = modifierCaption",
         diagnostic: "the panel Super key link reads the key and its key caps without the verb",
@@ -4119,7 +4119,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the Power detail starts the peripheral battery reads",
         group: "metrics",
-        relative: "Sources/Vitruvian/Services/SystemMonitor/SystemMonitor.swift",
+        relative: "Sources/VitruvianAtrium/Services/SystemMonitor/SystemMonitor.swift",
         before: "|| (panelNeeds.powerCard && defaults[Preferences.monitorPwrPeripherals])",
         after: "|| (panelNeeds.power && defaults[Preferences.monitorPwrPeripherals])",
         diagnostic: "the Power and Battery time detail does not read peripheral batteries",
@@ -4127,7 +4127,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "an update lists peripheral batteries in Power for everyone",
         group: "switcher-model",
-        relative: "Sources/Vitruvian/Core/Defaults.swift",
+        relative: "Sources/VitruvianAtrium/Core/Defaults.swift",
         before: "defaults.set(defaults.object(forKey: DefaultsKey.menuBarPeripheralBattery) as? Bool ?? false,",
         after: "defaults.set(true,",
         diagnostic: "an update with the menu bar item off starts no peripheral reads in Power",
@@ -4135,7 +4135,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a finished Bluetooth refresh waits for the next stride",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Metrics/PeripheralBatterySampler.swift",
+        relative: "Sources/VitruvianAtrium/Services/Metrics/PeripheralBatterySampler.swift",
         before: "onRefresh?()",
         after: "_ = onRefresh",
         diagnostic: "a finished Bluetooth refresh asks for one read",
@@ -4143,7 +4143,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a paused Bluetooth cache comes back as current",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Metrics/PeripheralBatterySampler.swift",
+        relative: "Sources/VitruvianAtrium/Services/Metrics/PeripheralBatterySampler.swift",
         before: "if enabled, currentTime() - bluetoothObservedAt >= bluetoothCacheInterval {",
         after: "if false {",
         diagnostic: "a Bluetooth cache older than its refresh interval is not shown after a pause",
@@ -4151,7 +4151,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the Power card stops asking for peripheral batteries",
         group: "metrics",
-        relative: "Sources/Vitruvian/UI/MenuPanel/MenuPanelView.swift",
+        relative: "Sources/VitruvianAtrium/UI/MenuPanel/MenuPanelView.swift",
         before: "case .power: return SystemMonitorPanelNeeds(power: true, powerCard: true)",
         after: "case .power: return SystemMonitorPanelNeeds(power: true)",
         diagnostic: "the Power card reads peripheral batteries with the menu bar option off",
@@ -4159,7 +4159,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the Power detail asks for the Power card's reads",
         group: "metrics",
-        relative: "Sources/Vitruvian/Services/SystemMonitor/MetricDetailKind.swift",
+        relative: "Sources/VitruvianAtrium/Services/SystemMonitor/MetricDetailKind.swift",
         before: "return SystemMonitorPanelNeeds(power: true)",
         after: "return SystemMonitorPanelNeeds(power: true, powerCard: true)",
         diagnostic: "the Power and Battery time detail does not read peripheral batteries",
@@ -4167,7 +4167,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "browser covers start on",
         group: "notch-music",
-        relative: "Sources/Vitruvian/Core/Preferences.swift",
+        relative: "Sources/VitruvianAtrium/Core/Preferences.swift",
         before: "Preference(DefaultsKey.notchBrowserCovers, default: false)",
         after: "Preference(DefaultsKey.notchBrowserCovers, default: true)",
         diagnostic: "browser covers stay off until their option is turned on",
@@ -4175,7 +4175,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "browser covers ignore their option",
         group: "notch-music",
-        relative: "Sources/Vitruvian/Services/Notch/NotchBrowserArtworkSupport.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchBrowserArtworkSupport.swift",
         before: "NotchSupport.isEnabled(in: defaults) && defaults[Preferences.notchBrowserCovers]",
         after: "NotchSupport.isEnabled(in: defaults)",
         diagnostic: "browser covers stay off until their option is turned on",
@@ -4183,7 +4183,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a browser tab that starts with the song gives its cover",
         group: "notch-music",
-        relative: "Sources/Vitruvian/Services/Notch/NotchBrowserArtworkSupport.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchBrowserArtworkSupport.swift",
         before: "        if page == track { return true }\n",
         after: "        if page.hasPrefix(track) { return true }\n",
         diagnostic: "a short song title takes only the tab that names it whole, never one that starts with or mentions it",
@@ -4191,7 +4191,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a browser tab reads as its newest history entry",
         group: "notch-music",
-        relative: "Sources/Vitruvian/Services/Notch/NotchBrowserArtworkSupport.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchBrowserArtworkSupport.swift",
         before: "let current = min(max((tab[\"index\"] as? Int ?? entries.count) - 1, 0), entries.count - 1)",
         after: "let current = entries.count - 1",
         diagnostic: "each tab reads as the page it shows now, not its back history or the page it went back from",
@@ -4199,7 +4199,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Apple is asked from a session saved before the lookup",
         group: "notch-music",
-        relative: "Sources/Vitruvian/Services/Notch/NotchBrowserArtworkSupport.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchBrowserArtworkSupport.swift",
         before: "        savedAt >= lookupStarted && tabs.contains",
         after: "        tabs.contains",
         diagnostic: "only YouTube tabs stay after reading, and only a session saved since the lookup began that shows YouTube Music lets Apple be asked",
@@ -4207,7 +4207,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "browser covers are looked up with their option off",
         group: "notch-music",
-        relative: "Sources/Vitruvian/Services/Notch/NotchBrowserArtworkSupport.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchBrowserArtworkSupport.swift",
         before: "        guard isEnabled(in: defaults),\n              let bundle = playback.track.appBundleIdentifier,",
         after: "        guard let bundle = playback.track.appBundleIdentifier,",
         diagnostic: "browser covers stay off until their option is turned on",
@@ -4215,7 +4215,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "two songs that share a title share a browser cover",
         group: "notch-music",
-        relative: "Sources/Vitruvian/Services/Notch/NotchBrowserArtworkSupport.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchBrowserArtworkSupport.swift",
         before: "        return [bundle, playback.track.artist ?? \"\", title].joined(separator: \"\\n\")\n",
         after: "        return [bundle, title].joined(separator: \"\\n\")\n",
         diagnostic: "only a Firefox-family song is looked up, and two songs that share a title keep their own covers",
@@ -4223,7 +4223,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a browser session of any size is decoded",
         group: "notch-music",
-        relative: "Sources/Vitruvian/Services/Notch/NotchBrowserArtworkSupport.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchBrowserArtworkSupport.swift",
         before: "        guard size > 0, size <= maximumSessionBytes else { return nil }\n",
         after: "        guard size > 0 else { return nil }\n",
         diagnostic: "a session that would decode past its size cap reads as nothing",
@@ -4231,7 +4231,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Apple album art loads from any host",
         group: "notch-music",
-        relative: "Sources/Vitruvian/Services/Notch/NotchBrowserArtworkSupport.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchBrowserArtworkSupport.swift",
         before: "              cover.host?.lowercased().hasSuffix(\".mzstatic.com\") == true else { return nil }\n",
         after: "              cover.host != nil else { return nil }\n",
         diagnostic: "album art loads only from Apple's image servers, whatever the reply names",
@@ -4239,7 +4239,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "an output level the labels show as 0% stays unmuted",
         group: "mixer",
-        relative: "Sources/Vitruvian/Services/Audio/MixerOutputControl.swift",
+        relative: "Sources/VitruvianAtrium/Services/Audio/MixerOutputControl.swift",
         before: "                let mutes = MixerRoutingSupport.mutesOutput(atVolume: value)\n",
         after: "                let mutes = value == 0\n",
         diagnostic: "a coarse key step from a reading a hair above one step lands on 0% and mutes",
@@ -4247,7 +4247,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "hover hands focus between a window and its own suggestion list",
         group: "pointer-input",
-        relative: "Sources/Vitruvian/Core/FocusFollowsMouse/FocusFollowsMouseSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/FocusFollowsMouse/FocusFollowsMouseSupport.swift",
         before: "            && !focusedWindowSharesRoot\n",
         after: "\n",
         diagnostic: "hover keeps focus within a window and the suggestion list or popover it holds",
@@ -4255,7 +4255,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a pop-up's root stops at the overlay it hangs from",
         group: "pointer-input",
-        relative: "Sources/Vitruvian/Core/FocusFollowsMouse/FocusFollowsMouseSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/FocusFollowsMouse/FocusFollowsMouseSupport.swift",
         before: "            root = parent\n        }\n        return root",
         after: "            root = parent\n            break\n        }\n        return root",
         diagnostic: "child windows lead back to the window they hang from, through an overlay in between",
@@ -4263,7 +4263,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "an app's name keeps the .app the Finder shows",
         group: "app-management",
-        relative: "Sources/Vitruvian/Services/InstalledApps.swift",
+        relative: "Sources/VitruvianAtrium/Services/InstalledApps.swift",
         before: "        var name = finderName\n        if name.hasSuffix(\".app\") { name.removeLast(4) }\n        return name\n",
         after: "        return finderName\n",
         diagnostic: "an app's name is shown without the .app the file manager adds while the Finder shows every extension",
@@ -4271,7 +4271,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "an app named from its bundle identifier keeps the .app the Finder shows",
         group: "app-management",
-        relative: "Sources/Vitruvian/Services/InstalledApps.swift",
+        relative: "Sources/VitruvianAtrium/Services/InstalledApps.swift",
         before: "        return displayName(fromFinderName: finderName(url.path))\n",
         after: "        return finderName(url.path)\n",
         diagnostic: "an app is named from the file manager's name without its .app",
@@ -4279,7 +4279,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "an app routed during the silence opens a second AirPlay session",
         group: "mixer",
-        relative: "Sources/Vitruvian/Services/Audio/AirPlayRouteManager.swift",
+        relative: "Sources/VitruvianAtrium/Services/Audio/AirPlayRouteManager.swift",
         before: "guard let pauseBegan, let rendererStartedAt, rendererStartedAt < pauseBegan else { return false }",
         after: "guard let pauseBegan else { return false }",
         diagnostic: "a renderer started during the silence, for an app routed meanwhile, is kept when it plays",
@@ -4287,7 +4287,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "AirPlay resumes on the renderer the speaker paused",
         group: "mixer",
-        relative: "Sources/Vitruvian/Services/Audio/AirPlayRouteManager.swift",
+        relative: "Sources/VitruvianAtrium/Services/Audio/AirPlayRouteManager.swift",
         before: "        return now - pauseBegan >= Self.freshStreamAfter\n",
         after: "        return false\n",
         diagnostic: "a renderer that played through a pause of a few seconds is replaced by a fresh one",
@@ -4295,7 +4295,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a gap between tracks restarts the AirPlay stream",
         group: "mixer",
-        relative: "Sources/Vitruvian/Services/Audio/AirPlayRouteManager.swift",
+        relative: "Sources/VitruvianAtrium/Services/Audio/AirPlayRouteManager.swift",
         before: "now - pauseBegan >= Self.freshStreamAfter",
         after: "now - pauseBegan >= 0",
         diagnostic: "a gap shorter than the threshold keeps the stream running",
@@ -4303,7 +4303,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the AirPlay stream never stops for silence",
         group: "mixer",
-        relative: "Sources/Vitruvian/Services/Audio/AirPlayRouteManager.swift",
+        relative: "Sources/VitruvianAtrium/Services/Audio/AirPlayRouteManager.swift",
         before: "              remaining <= 0 else { return false }",
         after: "              remaining < 0 else { return false }",
         diagnostic: "after the delay of silence the running renderer stops",
@@ -4311,7 +4311,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "silence pauses an AirPlay stream that has no renderer",
         group: "mixer",
-        relative: "Sources/Vitruvian/Services/Audio/AirPlayRouteManager.swift",
+        relative: "Sources/VitruvianAtrium/Services/Audio/AirPlayRouteManager.swift",
         before: "guard rendererStartedAt != nil,\n              let remaining",
         after: "guard let remaining",
         diagnostic: "with no renderer running there is nothing to pause, and the next engine starts one",
@@ -4319,7 +4319,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a renderer routed during the silence stops before its own delay",
         group: "mixer",
-        relative: "Sources/Vitruvian/Services/Audio/AirPlayRouteManager.swift",
+        relative: "Sources/VitruvianAtrium/Services/Audio/AirPlayRouteManager.swift",
         before: "let quietSince = max(silentSince, rendererStartedAt ?? silentSince)",
         after: "let quietSince = silentSince",
         diagnostic: "a renderer started during the silence gets the whole delay before it stops for silence",
@@ -4327,7 +4327,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the AirPlay backup check keeps waking up while the stream is paused",
         group: "mixer",
-        relative: "Sources/Vitruvian/Services/Audio/AirPlayRouteManager.swift",
+        relative: "Sources/VitruvianAtrium/Services/Audio/AirPlayRouteManager.swift",
         before: "        rendererRunning && mixerActive && available\n",
         after: "        mixerActive && available\n",
         diagnostic: "the backup check stops while the stream is paused for silence and no renderer runs",
@@ -4335,7 +4335,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "an engine joining a paused AirPlay stream wakes the speaker",
         group: "mixer",
-        relative: "Sources/Vitruvian/Services/Audio/AirPlayRouteManager.swift",
+        relative: "Sources/VitruvianAtrium/Services/Audio/AirPlayRouteManager.swift",
         before: "var startsRendererForNewStream: Bool { !isPaused }",
         after: "var startsRendererForNewStream: Bool { true }",
         diagnostic: "an engine that joins while the stream is paused starts no renderer and does not wake the speaker",
@@ -4343,7 +4343,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the next sound after a pause for silence stays off AirPlay",
         group: "mixer",
-        relative: "Sources/Vitruvian/Services/Audio/AirPlayRouteManager.swift",
+        relative: "Sources/VitruvianAtrium/Services/Audio/AirPlayRouteManager.swift",
         before: "        if isPaused {\n            isPaused = false\n            return true\n        }\n",
         after: "",
         diagnostic: "the next sound after a pause for silence starts a renderer",
@@ -4351,7 +4351,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the AirPlay stream stays paused after its last stream ended",
         group: "mixer",
-        relative: "Sources/Vitruvian/Services/Audio/AirPlayRouteManager.swift",
+        relative: "Sources/VitruvianAtrium/Services/Audio/AirPlayRouteManager.swift",
         before: "    package mutating func lastStreamEnded() {\n        isPaused = false\n    }\n",
         after: "    package mutating func lastStreamEnded() {\n    }\n",
         diagnostic: "once the last stream ended nothing is paused, and the next engine starts a renderer",
@@ -4359,7 +4359,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the AirPlay stream stops before the mixer reported anything",
         group: "mixer",
-        relative: "Sources/Vitruvian/Services/Audio/AirPlayRouteManager.swift",
+        relative: "Sources/VitruvianAtrium/Services/Audio/AirPlayRouteManager.swift",
         before: "        guard let silentSince else { return nil }\n",
         after: "        guard let silentSince else { return 0 }\n",
         diagnostic: "nothing is stopped before the mixer has reported anything",
@@ -4367,7 +4367,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "AirPlay keeps counting silence after the mixer stops",
         group: "mixer",
-        relative: "Sources/Vitruvian/Services/Audio/AirPlayRouteManager.swift",
+        relative: "Sources/VitruvianAtrium/Services/Audio/AirPlayRouteManager.swift",
         before: "    package mutating func forgetSilence() {\n        silentSince = nil\n    }\n",
         after: "    package mutating func forgetSilence() {\n    }\n",
         diagnostic: "once the mixer stops, nothing is stopped until it reports silence again",
@@ -4375,7 +4375,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "an open but silent app keeps the AirPlay stream going",
         group: "mixer",
-        relative: "Sources/Vitruvian/Core/Audio/MixerRoutingSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Audio/MixerRoutingSupport.swift",
         before: "isPlaying && effectiveOutputDeviceUID.map(isAirPlaySentinel) == true",
         after: "effectiveOutputDeviceUID.map(isAirPlaySentinel) == true",
         diagnostic: "an app routed to AirPlay that is open but silent lets the stream pause",
@@ -4383,7 +4383,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "an app playing on the Mac keeps the AirPlay stream going",
         group: "mixer",
-        relative: "Sources/Vitruvian/Core/Audio/MixerRoutingSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Audio/MixerRoutingSupport.swift",
         before: "isPlaying && effectiveOutputDeviceUID.map(isAirPlaySentinel) == true",
         after: "isPlaying",
         diagnostic: "an app playing on the Mac lets the stream pause, even one set to AirPlay with no speaker picked",
@@ -4391,7 +4391,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a script's run never hands its answer to the row that ran it",
         group: "command-bar",
-        relative: "Sources/Vitruvian/Services/CommandBar/CommandBarScriptRunner.swift",
+        relative: "Sources/VitruvianAtrium/Services/CommandBar/CommandBarScriptRunner.swift",
         before: "                whenAnswered?(result)\n",
         after: "",
         diagnostic: "a script run from part of its name runs once, copies its output and closes the bar",
@@ -4399,7 +4399,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Return on a script already running drops its answer",
         group: "command-bar",
-        relative: "Sources/Vitruvian/Services/CommandBar/CommandBarScriptRunner.swift",
+        relative: "Sources/VitruvianAtrium/Services/CommandBar/CommandBarScriptRunner.swift",
         before: "        answerHandlers = whenAnswered.map { [cacheKey: $0] } ?? [:]\n        guard !inFlight.contains(cacheKey) else { return }\n",
         after: "        guard !inFlight.contains(cacheKey) else { return }\n        answerHandlers = whenAnswered.map { [cacheKey: $0] } ?? [:]\n",
         diagnostic: "Return while that same run is already going waits for it instead of losing its output",
@@ -4407,7 +4407,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the first script to answer closes the bar over a later Return",
         group: "command-bar",
-        relative: "Sources/Vitruvian/Services/CommandBar/CommandBarScriptRunner.swift",
+        relative: "Sources/VitruvianAtrium/Services/CommandBar/CommandBarScriptRunner.swift",
         before: "answerHandlers = whenAnswered.map { [cacheKey: $0] } ?? [:]",
         after: "if let whenAnswered { answerHandlers[cacheKey] = whenAnswered }",
         diagnostic: "Return on another script while one runs copies the last one picked",
@@ -4415,7 +4415,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a script still running closes the bar over a row that shows its own answer",
         group: "command-bar",
-        relative: "Sources/Vitruvian/Services/CommandBar/CommandBarScriptRunner.swift",
+        relative: "Sources/VitruvianAtrium/Services/CommandBar/CommandBarScriptRunner.swift",
         before: "answerHandlers = whenAnswered.map { [cacheKey: $0] } ?? [:]",
         after: "if let whenAnswered { answerHandlers = [cacheKey: whenAnswered] }",
         diagnostic: "Return on a row that shows its own answer takes over from a script still running",
@@ -4423,7 +4423,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "new wheel input keeps the previous pane's glide budget",
         group: "pointer-input",
-        relative: "Sources/Vitruvian/Services/SmoothScrollService.swift",
+        relative: "Sources/VitruvianAtrium/Services/SmoothScrollService.swift",
         before: "|| glideFromContinuous != continuous || retargeted {",
         after: "|| glideFromContinuous != continuous {",
         diagnostic: "fresh input in another pane drops the old tail and fractional carry immediately",
@@ -4431,7 +4431,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "smooth scroll restarts its glide when the pointer drifts a point",
         group: "pointer-input",
-        relative: "Sources/Vitruvian/Core/SmoothScrollSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/SmoothScrollSupport.swift",
         before: "|| hypot(input.point.x - target.point.x, input.point.y - target.point.y) > Self.driftTolerance",
         after: "|| target.point != input.point",
         diagnostic: "a tick a few points along in the same window extends the glide from its own point",
@@ -4439,7 +4439,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "smooth scroll cuts the glide of a pointer moving while it scrolls",
         group: "pointer-input",
-        relative: "Sources/Vitruvian/Core/SmoothScrollSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/SmoothScrollSupport.swift",
         before: "static let driftTolerance: CGFloat = 24",
         after: "static let driftTolerance: CGFloat = 8",
         diagnostic: "a tick a few points along in the same window extends the glide from its own point",
@@ -4447,7 +4447,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the open switcher ignores Scroll Direction",
         group: "switcher-model",
-        relative: "Sources/Vitruvian/Core/Switcher/SwitcherSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Switcher/SwitcherSupport.swift",
         before: "            event = turned\n",
         after: "",
         diagnostic: "fractional wheel movement retains its remainder across pauses and inversion",
@@ -4455,7 +4455,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "wheel features go dead without the HID stage watch",
         group: "pointer-input",
-        relative: "Sources/Vitruvian/Services/ScrollWheelHIDStage.swift",
+        relative: "Sources/VitruvianAtrium/Services/ScrollWheelHIDStage.swift",
         before: "        guard isWatching else { return true }\n",
         after: "        guard isWatching else { return false }\n",
         diagnostic: "with no HID tap noting anything, every wheel event counts as local",
@@ -4463,7 +4463,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the HID stage judges hardware wheels by their timestamp",
         group: "pointer-input",
-        relative: "Sources/Vitruvian/Services/ScrollWheelHIDStage.swift",
+        relative: "Sources/VitruvianAtrium/Services/ScrollWheelHIDStage.swift",
         before: "        guard sourceProcessID != 0 else { return true }\n",
         after: "",
         diagnostic: "a hardware wheel event always counts as local",
@@ -4471,7 +4471,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the HID stage ledger keeps only the newest event",
         group: "pointer-input",
-        relative: "Sources/Vitruvian/Services/ScrollWheelHIDStage.swift",
+        relative: "Sources/VitruvianAtrium/Services/ScrollWheelHIDStage.swift",
         before: "next = (next + 1) % Self.capacity",
         after: "next = 0",
         diagnostic: "the HID stage ledger keeps the last events, not only the newest, since they overtake one another",
@@ -4479,7 +4479,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Quit on close takes a minimize click for a close without Accessibility",
         group: "app-management",
-        relative: "Sources/Vitruvian/Core/WindowServerSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/WindowServerSupport.swift",
         before: "return dx >= 0 && dy >= 0 && max(dx, dy) <= 35 && abs(dx - dy) <= 9",
         after: "return dx >= 0 && dy >= 0 && dx <= 52 && dy <= 46",
         diagnostic: "without Accessibility, a click on the minimize or zoom button is never taken for the close button (#3249)",
@@ -4487,7 +4487,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Quit on close reads a minimized window as closed",
         group: "app-management",
-        relative: "Sources/Vitruvian/Services/AutoQuit/AutoQuitSupport.swift",
+        relative: "Sources/VitruvianAtrium/Services/AutoQuit/AutoQuitSupport.swift",
         before: "            if windowIsMinimized(CGWindowID(windowID)) != false { return true }\n",
         after: "",
         diagnostic: "a window minimized into the Dock keeps its app running when Accessibility cannot see it (#3249)",
@@ -4495,7 +4495,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Extra Brightness covers the screen with one full screen window",
         group: "app-management",
-        relative: "Sources/Vitruvian/Services/Display/ExtraBrightnessSupport.swift",
+        relative: "Sources/VitruvianAtrium/Services/Display/ExtraBrightnessSupport.swift",
         before: "        return [lower, upper]\n",
         after: "        return [lower.union(upper)]\n",
         diagnostic: "no extra brightness overlay window reads as a full screen window",
@@ -4503,7 +4503,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the opening island starts a further resize again from rest",
         group: "notch",
-        relative: "Sources/Vitruvian/Core/Notch/NotchSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/Notch/NotchSupport.swift",
         before: "        var next = self\n        next.width = width\n        next.height = height\n",
         after: "        var next = NotchMotionTimeline(from: self.size(at: time), to: size, begin: time)\n        _ = (width, height)\n",
         diagnostic: "the width keeps its speed, where starting again from rest stalled it",
@@ -4511,7 +4511,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "the island fits the Command Bar inside the pass that drew its rows",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "        guard !waiting else { return }\n",
         after: "        guard !waiting else { return }\n        commandBarHeight = measured\n        refreshPresentation()\n",
         diagnostic: "the bar's measured height waits for the next turn of the main loop, not the pass that drew the rows",
@@ -4519,7 +4519,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "quit protection keeps the native switcher open after Command is let go",
         group: "pointer-input",
-        relative: "Sources/Vitruvian/Services/QuitProtection/QuitProtectionService.swift",
+        relative: "Sources/VitruvianAtrium/Services/QuitProtection/QuitProtectionService.swift",
         before: "        guard flags.contains(.maskCommand) else { isActive = false; return }\n",
         after: "        guard flags.contains(.maskCommand) else { return }\n",
         diagnostic: "letting go of Command closes the switcher",
@@ -4527,7 +4527,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "quit protection keeps the native switcher open on Escape",
         group: "pointer-input",
-        relative: "Sources/Vitruvian/Services/QuitProtection/QuitProtectionService.swift",
+        relative: "Sources/VitruvianAtrium/Services/QuitProtection/QuitProtectionService.swift",
         before: "        } else if keyCode == 53 || (isActive && isPeriod()) {\n",
         after: "        } else if isActive && isPeriod() {\n",
         diagnostic: "Escape dismisses the switcher",
@@ -4535,7 +4535,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "saved GIFs are readable only by their owner",
         group: "recorder",
-        relative: "Sources/Vitruvian/Services/Recorder/RecorderGIFWriter.swift",
+        relative: "Sources/VitruvianAtrium/Services/Recorder/RecorderGIFWriter.swift",
         before: "        guard FileManager.default.createFile(atPath: url.path, contents: nil) else {\n",
         after: "        guard FileManager.default.createFile(atPath: url.path, contents: nil,\n                                            attributes: [.posixPermissions: 0o600]) else {\n",
         diagnostic: "a saved GIF gets the same permissions as any other saved file",
@@ -4543,7 +4543,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a backup carries app volumes as slider positions",
         group: "mixer",
-        relative: "Sources/Vitruvian/Core/SettingsBackupSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/SettingsBackupSupport.swift",
         before: "        settings = exportedAppVolumes(settings)\n",
         after: "",
         diagnostic: "a backup saves app volumes as the gains older versions play, at the same loudness",
@@ -4551,7 +4551,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a game's own full screen waits for a change of Space",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchService.swift",
         before: "        appFullscreenDisplays = covered\n        fullscreenEnvironmentDidChange()\n",
         after: "        appFullscreenDisplays = covered\n",
         diagnostic: "a game going full screen while it stays frontmost hides the island at the next read",
@@ -4559,7 +4559,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a normal window filling the display reads as a game's full screen",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchAppFullscreen.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchAppFullscreen.swift",
         before: "$0.ownerPID == frontmostPID && $0.layer > 0 && $0.alpha > 0",
         after: "$0.ownerPID == frontmostPID && $0.alpha > 0",
         diagnostic: "a normal window filling the display under an auto-hidden menu bar keeps the island",
@@ -4567,7 +4567,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a cycle without tap audio skips the limiter's delay",
         group: "mixer",
-        relative: "Sources/Vitruvian/Services/Audio/MixerRender.swift",
+        relative: "Sources/VitruvianAtrium/Services/Audio/MixerRender.swift",
         before: "        _ = renderCycle(input: input, output: output, tapChannels: tapChannels, gain: gain, countCycle: countCycle)\n",
         after: "        guard renderCycle(input: input, output: output, tapChannels: tapChannels, gain: gain,\n                          countCycle: countCycle) > 0 else { return }\n",
         diagnostic: "a missing tap drains the valid lookahead tail before emitting silence",
@@ -4575,7 +4575,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "a Bluetooth event queued before a restart reaches the new activation",
         group: "notch",
-        relative: "Sources/Vitruvian/Services/Notch/NotchAccessoryConnectionMonitor.swift",
+        relative: "Sources/VitruvianAtrium/Services/Notch/NotchAccessoryConnectionMonitor.swift",
         before: "                deliver { [weak session] in\n                    guard let session, !session.isCancelled else { return }\n",
         after: "                deliver { [weak session] in\n                    guard session != nil else { return }\n",
         diagnostic: "an event already waiting on the UI is discarded after reenable",
@@ -4583,7 +4583,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "Stage Manager's strip ignores a right-to-left desktop",
         group: "window-layout",
-        relative: "Sources/Vitruvian/Services/WindowLayout/WindowStageManagerSupport.swift",
+        relative: "Sources/VitruvianAtrium/Services/WindowLayout/WindowStageManagerSupport.swift",
         before: "        let onRight = dockPosition == \"left\" || (dockPosition != \"right\" && rightToLeft)\n",
         after: "        let onRight = dockPosition == \"left\"\n",
         diagnostic: "right-to-left desktops use the right strip unless the Dock occupies that side",
@@ -4591,7 +4591,7 @@ pub const MUTATIONS: &[Mutation] = &[
     Mutation {
         name: "capturing the Spaces drag refuses the middle button",
         group: "pointer-input",
-        relative: "Sources/Vitruvian/Core/MouseButtons/MouseButtonShortcutSupport.swift",
+        relative: "Sources/VitruvianAtrium/Core/MouseButtons/MouseButtonShortcutSupport.swift",
         before: "(capturesSpacesGesture ? MouseSpacesGestureSupport.canBind(button) : canMap(button))",
         after: "canMap(button)",
         diagnostic: "the middle button is captured for the Spaces drag, while shortcut capture leaves it alone",

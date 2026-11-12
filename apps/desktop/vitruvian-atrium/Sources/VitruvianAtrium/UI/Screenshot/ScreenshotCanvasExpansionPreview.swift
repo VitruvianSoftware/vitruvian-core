@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 
 package struct ScreenshotCanvasExpansionPreview: View {
     let originalSize: CGSize

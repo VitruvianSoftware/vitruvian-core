@@ -1,7 +1,7 @@
 # Make Icons
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/bazel/src/make_icons`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/bazel/src/make_icons`.
 
 ## Interface
 - `[lib.rs:PRODUCTS]`
@@ -17,4 +17,4 @@ Component package providing implementation for `apps/desktop/vitruvian/bazel/src
 - [lib.rs:105]: `.map_err(|e| format!("spawn {}: {}", staged_tool.display(), e))?;`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/bazel/src/make_icons/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/bazel/src/make_icons/...`

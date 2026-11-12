@@ -1,7 +1,7 @@
 # Tools
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/Tools`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/Tools`.
 
 ## Interface
 - `[ByHand.swift:Exit]`
@@ -21,4 +21,4 @@ Component package providing implementation for `apps/desktop/vitruvian/Tools`.
 - [uninstall.sh:25]: `# Written by URLSession on the app's behalf, so they exist without the app ever`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/Tools/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/Tools/...`

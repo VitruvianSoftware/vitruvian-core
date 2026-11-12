@@ -2,10 +2,10 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The production service's rules and scan completion, with preferences of its
 /// own and scans the test finishes. Nothing is scanned, scheduled or posted.
@@ -171,8 +171,8 @@ enum AppUpdateRulesContract {
         suite.expect(service.rules == kept, "a picked bundle without an identifier adds no rule")
         service.addExclusion(appAt: bundle("Empty", ["CFBundleIdentifier": ""]))
         suite.expect(service.rules == kept, "a picked bundle with an empty identifier adds no rule")
-        service.addExclusion(appAt: bundle("Vitruvian", ["CFBundleIdentifier": "com.vitruviansoftware.vitruvian"]))
-        suite.expect(service.rules == kept, "Vitruvian's own bundles never become exclusions")
+        service.addExclusion(appAt: bundle("Vitruvian Atrium", ["CFBundleIdentifier": "com.vitruviansoftware.atrium"]))
+        suite.expect(service.rules == kept, "Vitruvian Atrium's own bundles never become exclusions")
         service.addExclusion(appAt: bundle("Spaced", ["CFBundleIdentifier": "com.example two"]))
         suite.expect(service.rules == kept, "a picked identifier with whitespace that a reload would drop adds no rule")
         service.addExclusion(appAt: bundle("Slashed", ["CFBundleIdentifier": "com.example/two"]))

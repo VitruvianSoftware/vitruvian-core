@@ -3,9 +3,9 @@
 
 import AppKit
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
 
 /// Tools that share General's destination have their own detail content, so
 /// opening General does not also build the audio device and mixer controls.
@@ -64,7 +64,7 @@ package struct GeneralToolSettings: View {
     }
 }
 
-/// Draws a system symbol in the menu bar in place of the Vitruvian glyph,
+/// Draws a system symbol in the menu bar in place of the Vitruvian Atrium glyph,
 /// picked with one click from a gallery. The last cell takes any other symbol
 /// by name, and shows that symbol while it is the one in use.
 private struct MenuBarIconSymbolRow: View {

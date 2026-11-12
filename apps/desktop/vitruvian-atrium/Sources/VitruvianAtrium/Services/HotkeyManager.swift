@@ -4,8 +4,8 @@
 import Carbon.HIToolbox
 import Combine
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Global Keep Awake shortcut via Carbon (no Accessibility permission required).
 @MainActor

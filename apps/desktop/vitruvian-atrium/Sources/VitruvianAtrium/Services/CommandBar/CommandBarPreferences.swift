@@ -2,13 +2,13 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// A kind of result the bar can offer. Raw values are storage ids for the
 /// list of sources the person switched off, so they never change.
 package enum CommandBarSource: String, CaseIterable, Identifiable {
-    /// What Vitruvian itself can do. Always on: it is what the bar is for.
+    /// What Vitruvian Atrium itself can do. Always on: it is what the bar is for.
     case actions
     case apps
     case menus
@@ -18,7 +18,7 @@ package enum CommandBarSource: String, CaseIterable, Identifiable {
     /// "Uninstall Application" row - never in the flat search pool.
     case uninstallApps
     case settingsPages
-    /// The Mac's own Settings panes, which are not Vitruvian's and can be
+    /// The Mac's own Settings panes, which are not Vitruvian Atrium's and can be
     /// switched off on their own.
     case macSettings
     case snippets
@@ -173,7 +173,7 @@ package enum CommandBarPreferences {
 
     /// What a kind of row is worth before a single letter of it is read.
     ///
-    /// What this Mac holds (the apps, Vitruvian's own actions, the Settings
+    /// What this Mac holds (the apps, Vitruvian Atrium's own actions, the Settings
     /// pages) is what people mean; the menu commands of whatever app happens
     /// to be in front are borrowed, and one submenu of history can hold a
     /// dozen rows with the same words in them. So a borrowed row sits under an

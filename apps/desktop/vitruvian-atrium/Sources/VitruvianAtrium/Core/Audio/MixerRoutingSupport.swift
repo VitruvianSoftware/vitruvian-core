@@ -468,7 +468,7 @@ package enum MixerRoutingSupport {
                                volumes: volumes)
     }
 
-    /// Vitruvian's own AirPlay entry, streamed through the system route picker.
+    /// Vitruvian Atrium's own AirPlay entry, streamed through the system route picker.
     /// Exact match only: real AirPlay devices macOS exposes are ordinary outputs
     /// and route through the normal tap, and a device name or UID that merely
     /// mentions AirPlay must never be mistaken for this entry.
@@ -476,10 +476,10 @@ package enum MixerRoutingSupport {
         uid == airPlaySentinelUID
     }
 
-    /// Virtual UID used by Vitruvian to represent an AirPlay output route. It
+    /// Virtual UID used by Vitruvian Atrium to represent an AirPlay output route. It
     /// lives here, with the routing rules that read it, rather than on the
     /// AirPlay route manager, so these rules never depend on that service.
-    package static let airPlaySentinelUID = "vitruvian.output.airplay"
+    package static let airPlaySentinelUID = "atrium.output.airplay"
 
     /// Whether an app keeps the AirPlay stream from pausing for silence: it
     /// is producing sound, and that sound goes to AirPlay now. An app that is
@@ -491,7 +491,7 @@ package enum MixerRoutingSupport {
 
     /// The item in an app's output menu that opens the system's speaker list
     /// for every app set to AirPlay, without changing this app's output.
-    package static let airPlaySpeakerChoiceID = "vitruvian.output.airplay.choose"
+    package static let airPlaySpeakerChoiceID = "atrium.output.airplay.choose"
 
     /// Whether a running engine's output is still there to render to. The
     /// AirPlay entry stays listed while no speaker is picked, but an engine

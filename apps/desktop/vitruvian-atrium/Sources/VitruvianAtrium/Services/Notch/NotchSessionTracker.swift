@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import AppKit
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// Follows whether this user is at an awake, unlocked Mac: system sleep,
 /// display sleep, who owns the console, the lock screen and screen savers, as

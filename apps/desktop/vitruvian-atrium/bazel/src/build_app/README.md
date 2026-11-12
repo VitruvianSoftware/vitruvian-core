@@ -1,7 +1,7 @@
 # Build App
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/bazel/src/build_app`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/bazel/src/build_app`.
 
 ## Interface
 - `[lib.rs:RELEASE_APP_NAME]`
@@ -34,4 +34,4 @@ Component package providing implementation for `apps/desktop/vitruvian/bazel/src
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/bazel/src/build_app/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/bazel/src/build_app/...`

@@ -6,8 +6,8 @@ import Carbon.HIToolbox
 import Combine
 import SwiftUI
 import UniformTypeIdentifiers
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// A floating "shelf" that holds files, images, text and links you drop on it,
 /// to drag back out into any app later. It's summoned at the cursor by a global
@@ -263,9 +263,9 @@ package final class ShelfService: ObservableObject {
     private var promiseTransfers: [UUID: (target: UUID?, transfer: ShelfFilePromiseTransfer, additions: [Item])] = [:]
 
     nonisolated private let tempDir: URL = {
-        let id = Bundle.main.bundleIdentifier ?? "com.vitruviansoftware.vitruvian"
+        let id = Bundle.main.bundleIdentifier ?? "com.vitruviansoftware.atrium"
         let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("VitruvianShelf", isDirectory: true)
+            .appendingPathComponent("VitruvianAtriumShelf", isDirectory: true)
             .appendingPathComponent(id, isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
@@ -281,7 +281,7 @@ package final class ShelfService: ObservableObject {
     /// Writes coalesce per mutation cycle already; the JSON encode itself
     /// also stays off the main thread (a full shelf of large texts is real
     /// work), serialized so blobs land in mutation order.
-    nonisolated private static let persistQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.shelf-persist",
+    nonisolated private static let persistQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.shelf-persist",
                                                     qos: .utility)
 
     private var persistScheduled = false
@@ -2195,7 +2195,7 @@ package final class ShelfService: ObservableObject {
 
     nonisolated private func cleanLegacyTemporaryFiles() {
         let legacyDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("VitruvianShelf", isDirectory: true)
+            .appendingPathComponent("VitruvianAtriumShelf", isDirectory: true)
         guard legacyDir != tempDir,
               let entries = try? FileManager.default.contentsOfDirectory(at: legacyDir,
                                                                          includingPropertiesForKeys: nil)

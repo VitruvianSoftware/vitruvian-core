@@ -384,7 +384,7 @@ private struct FailableRadialMenuItem: Decodable {
     }
 }
 
-/// Vitruvian tools a slice can trigger. Raw values persist inside the items
+/// Vitruvian Atrium tools a slice can trigger. Raw values persist inside the items
 /// blob; never rename them.
 package enum RadialMenuTool: String, Codable, CaseIterable, Identifiable {
     case screenshot, screenRecorder, colorPicker, screenOCR, micMute, clipboardHistory, quickLauncher,
@@ -552,7 +552,7 @@ package enum RadialMenuMediaKey: String, Codable, CaseIterable, Identifiable {
 
     package var id: String { rawValue }
 
-    /// Now Playing opens Vitruvian's metadata card rather than posting a key.
+    /// Now Playing opens Vitruvian Atrium's metadata card rather than posting a key.
     package var auxKeyType: Int32? {
         switch self {
         case .playPause: return 16

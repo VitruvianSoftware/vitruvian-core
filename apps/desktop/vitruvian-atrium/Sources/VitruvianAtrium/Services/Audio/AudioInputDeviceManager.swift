@@ -5,8 +5,8 @@ import AudioToolbox
 import Combine
 import CoreAudio
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 package struct MixerInputDevice: Identifiable, Equatable {
     package let id: String
@@ -17,7 +17,7 @@ package struct MixerInputDevice: Identifiable, Equatable {
     fileprivate let audioObjectID: AudioObjectID
 }
 
-/// Keeps Vitruvian's preferred microphone in sync with macOS' global input.
+/// Keeps Vitruvian Atrium's preferred microphone in sync with macOS' global input.
 /// This is intentionally separate from the per-app output mixer: selecting a
 /// microphone changes the system default input, without taps or audio capture.
 @MainActor
@@ -53,7 +53,7 @@ package final class AudioInputDeviceManager: ObservableObject {
         /// Main-actor: it waits behind the shared mute.
         @MainActor package static var live: Environment {
             Environment(hal: .live,
-                        halQueue: .live(label: "com.vitruviansoftware.vitruvian.audioinput.hal"),
+                        halQueue: .live(label: "com.vitruviansoftware.atrium.audioinput.hal"),
                         main: { work in DispatchQueue.main.async { work() } },
                         after: { delay, work in
                             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {

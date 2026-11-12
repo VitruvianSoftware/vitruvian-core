@@ -3,8 +3,8 @@
 
 import Combine
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Apps that temporarily turn off every Window Layout input while focused.
 @MainActor

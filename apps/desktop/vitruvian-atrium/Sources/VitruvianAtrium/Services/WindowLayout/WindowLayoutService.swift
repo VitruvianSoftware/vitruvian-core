@@ -7,8 +7,8 @@ import Carbon.HIToolbox
 import Combine
 @preconcurrency import CoreGraphics
 import QuartzCore
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 package enum WindowLayoutError: Equatable {
     case missingAccessibility
@@ -81,7 +81,7 @@ package final class WindowLayoutService: ObservableObject {
     /// drops it.
     private var edgeSnapStillCheckGeneration = 0
     private var edgeSnapStillCheckPending = false
-    private let edgeSnapResolveQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.edge-snap-resolve",
+    private let edgeSnapResolveQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.edge-snap-resolve",
                                                      qos: .userInitiated)
     private var edgeSnapPreviewPanel: NSPanel?
     private var edgeSnapPreviewGeneration = 0
@@ -1595,7 +1595,7 @@ package final class WindowLayoutService: ObservableObject {
             // that serves the taps. It happens only for a release over a snap
             // zone, once the window server shows the window followed the
             // pointer, so the release of a drag inside an app never asks that
-            // app. A modifier move needs no such evidence: Vitruvian moved
+            // app. A modifier move needs no such evidence: Vitruvian Atrium moved
             // that window itself. Its release only skips a lookup that has
             // already come back empty every time it was tried.
             let lookupsExhausted = edgeSnapResolveAttempts >= edgeSnapResolveAttemptLimit && !edgeSnapResolving
@@ -1741,7 +1741,7 @@ package final class WindowLayoutService: ObservableObject {
                 self.edgeSnapResolving = false
                 guard let resolved, self.edgeSnapDrag == nil,
                       self.edgeSnapPressCandidate != nil else { return }
-                // A modifier move is moving from the start: Vitruvian moves that
+                // A modifier move is moving from the start: Vitruvian Atrium moves that
                 // window, so the window server is never asked to confirm it.
                 self.edgeSnapDrag = WindowEdgeSnapDrag(window: resolved.window,
                                                        key: resolved.key,
@@ -2432,7 +2432,7 @@ package final class WindowLayoutService: ObservableObject {
     /// where the pointer no longer is. Coalescing, because a slow write must
     /// not build a backlog the window then animates through after the drag has
     /// finished: only the newest position is ever pending.
-    private let gestureApplyQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.window-gesture-apply",
+    private let gestureApplyQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.window-gesture-apply",
                                                   qos: .userInteractive)
     private let gestureApplyLock = NSLock()
     // Guarded by gestureApplyLock, so the apply queue reads them off the main actor.

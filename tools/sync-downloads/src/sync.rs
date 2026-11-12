@@ -346,12 +346,12 @@ pub fn sync_catalog(
         }
     }
 
-    // 2. Vitruvian Desktop
-    if let Some(rel) = get_latest_release(CORE, Some("vitruvian-v"), token)? {
+    // 2. Vitruvian Atrium
+    if let Some(rel) = get_latest_release(CORE, Some("vitruvian-atrium-v"), token)? {
         if rel.truthy() {
-            let tag = str_of(&rel, "tag_name", "replace")?.replace("vitruvian-v", "");
-            say(&format!("✓ Vitruvian Desktop: v{}", tag));
-            cat.version("vitruvian-desktop", &tag)?;
+            let tag = str_of(&rel, "tag_name", "replace")?.replace("vitruvian-atrium-v", "");
+            say(&format!("✓ Vitruvian Atrium: v{}", tag));
+            cat.version("vitruvian-atrium", &tag)?;
             let list = assets(&rel)?;
             let mut has_universal_dmg = false;
             for a in &list {
@@ -361,7 +361,7 @@ pub fn sync_catalog(
                     break;
                 }
             }
-            let scope = r"id:\s*vitruvian-desktop[\s\S]*?";
+            let scope = r"id:\s*vitruvian-atrium[\s\S]*?";
             for a in list {
                 let Some(asset) = read_asset(&a, true)? else {
                     continue;
@@ -653,7 +653,7 @@ mod tests {
     fn test_parse_semver() {
         assert_eq!(semver("v1.2.3"), (1, 2, 3));
         assert_eq!(semver("home-speaker-v1.11.0"), (1, 11, 0));
-        assert_eq!(semver("vitruvian-v3.37.1"), (3, 37, 1));
+        assert_eq!(semver("vitruvian-atrium-v3.37.1"), (3, 37, 1));
         assert_eq!(semver("nexus-agent-1.20.1"), (1, 20, 1));
         assert_eq!(semver("0.1.2"), (0, 1, 2));
         assert_eq!(semver("no-numbers"), (0, 0, 0));

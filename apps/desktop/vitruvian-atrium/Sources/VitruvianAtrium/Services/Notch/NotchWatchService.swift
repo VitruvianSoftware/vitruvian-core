@@ -3,8 +3,8 @@
 
 import AppKit
 import Combine
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// The area a watch reads: a part of one window, followed wherever the
 /// window goes, even covered or on another Space, or a fixed part of a
@@ -104,7 +104,7 @@ package final class NotchWatchService: ObservableObject {
         }
         let notch = NotchService.shared
         let controller = ScreenshotSelectionController(
-            freeze: false, includePointer: false, showLastRegion: false, hideVitruvianWindows: true,
+            freeze: false, includePointer: false, showLastRegion: false, hideAtriumWindows: true,
             protectedWindowIDs: { notch.protectedWindowIDs.union(notch.captureChromeWindowIDs) },
             purpose: FeatureStrings.notchWatch(L10n.shared.language).purpose, mode: .geometry)
         let choice = UUID()
@@ -132,7 +132,7 @@ package final class NotchWatchService: ObservableObject {
             let mainHeight = NSScreen.screens.first?.frame.height ?? 0
             let area = CGRect(x: region.anchorRect.minX, y: mainHeight - region.anchorRect.maxY,
                               width: region.anchorRect.width, height: region.anchorRect.height)
-            let windows = ScreenshotCaptureEngine.pickableWindows(hideVitruvianWindows: true,
+            let windows = ScreenshotCaptureEngine.pickableWindows(hideAtriumWindows: true,
                                                                   protectedWindowIDs: protected)
             picked = NotchWatchSupport.windowCrop(for: area, windows: windows)
         }
@@ -148,7 +148,7 @@ package final class NotchWatchService: ObservableObject {
             // closing as a change, so it stays out whatever captures show.
             guard let capture = await ScreenshotCaptureEngine.prepareDisplayRegion(
                 displayID: region.displayID, pixelRect: region.pixelRect, includePointer: false,
-                hideVitruvianWindows: true, protectedWindowIDs: protected, keepsIslandOut: true) else { return }
+                hideAtriumWindows: true, protectedWindowIDs: protected, keepsIslandOut: true) else { return }
             guard choiceGeneration == choice, NotchWatchSupport.isEnabled() else { return }
             regionCapture = capture
             target = NotchWatchTarget(windowID: nil, displayID: region.displayID, crop: region.pixelRect,

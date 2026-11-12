@@ -3,7 +3,7 @@
 
 import CoreGraphics
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 import VitruvianToolProtocol
 
 /// The Agents page's slot: when it shows, and what the tools in it are told

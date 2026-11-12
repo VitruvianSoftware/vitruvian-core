@@ -3,10 +3,10 @@
 
 import CoreAudio
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The real `MixerOutputControl` against an in-memory output and HAL and main
 /// queues the test runs one job at a time. No output device, volume, mute

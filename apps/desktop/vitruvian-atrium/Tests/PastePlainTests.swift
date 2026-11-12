@@ -4,8 +4,8 @@
 import AppKit
 import Carbon.HIToolbox
 import Foundation
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 
 /// Paste as plain text over a clipboard, a preference suite, a hotkey, a
 /// menu bar and a paste helper of its own. Nothing here registers a key,

@@ -3,10 +3,10 @@
 
 import AppKit
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The module's island (`NotchIslandFixture`) starts and stops its playback
 /// reader as it presents. The services keep their last playback after every
@@ -32,7 +32,7 @@ enum NotchMusicVisibilityTests {
     }
 
     static func run(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.vitruvian.tests.notch-music-visibility"
+        let domain = "com.vitruviansoftware.atrium.tests.notch-music-visibility"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         var islands: [NotchIslandFixture] = []

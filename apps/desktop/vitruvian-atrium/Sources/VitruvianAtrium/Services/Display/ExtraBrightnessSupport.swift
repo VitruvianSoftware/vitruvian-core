@@ -3,8 +3,8 @@
 
 import CoreGraphics
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Pure math for the extra brightness boost, kept free of AppKit and Metal so
 /// the unit tests can pin its behavior.

@@ -3,10 +3,10 @@
 
 import AppKit
 import Combine
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// Owns the menu bar presence: the black hole glyph, the optional countdown
 /// title and the tooltip. Click handling is delegated back to the AppDelegate.
@@ -65,9 +65,9 @@ final class StatusItemController {
     /// so bind() only touches it once the feature is actually available,
     /// rather than for every launch regardless of whether anyone uses it.
     private var clipboardBindingsInstalled = false
-    private static let mainAutosaveName = "VitruvianMenuBarItem"
-    private static let metricAutosavePrefix = "VitruvianMetric"
-    private static let clipboardPreviewAutosaveName = "VitruvianClipboardPreview"
+    private static let mainAutosaveName = "VitruvianAtriumMenuBarItem"
+    private static let metricAutosavePrefix = "VitruvianAtriumMetric"
+    private static let clipboardPreviewAutosaveName = "VitruvianAtriumClipboardPreview"
     private static let emptyStatusImage = NSImage()
 
     /// Cached so the countdown tooltip doesn't allocate a DateFormatter (expensive)

@@ -3,8 +3,8 @@
 
 import CoreGraphics
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// The run loop that serves the event taps standing in the path of ordinary
 /// clicks and wheel events.
@@ -57,7 +57,7 @@ package enum PointerTapRunLoop {
                 CFRunLoopRunInMode(.defaultMode, .greatestFiniteMagnitude, false)
             }
         }
-        thread.name = "Vitruvian Pointer Input"
+        thread.name = "Vitruvian Atrium Pointer Input"
         thread.qualityOfService = .userInteractive
         thread.start()
         // The wait orders the write above against the read below.

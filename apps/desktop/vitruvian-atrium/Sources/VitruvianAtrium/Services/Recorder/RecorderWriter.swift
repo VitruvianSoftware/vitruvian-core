@@ -5,8 +5,8 @@ import AVFoundation
 import CoreMedia
 import os.log
 import VideoToolbox
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Writes the master file a recording produces: the pixels exactly as they
 /// were on screen, plus one track per sound source. Nothing is composited
@@ -19,9 +19,9 @@ import VitruvianDesign
 /// and awaited, so no buffer can still be in flight.
 package final class RecorderWriter {
 
-    private static let preparationQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.recorder.prepare",
+    private static let preparationQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.recorder.prepare",
                                                          qos: .userInitiated)
-    private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian",
+    private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "atrium",
                                     category: "recorder")
 
     /// Encoder discovery can wait for VideoToolbox. Keep it off the UI thread

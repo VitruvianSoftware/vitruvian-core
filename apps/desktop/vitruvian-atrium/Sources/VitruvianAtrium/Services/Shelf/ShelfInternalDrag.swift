@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// A drag of shelf items out of a shelf, from its start to its end: which
 /// items left, whether a drop inside the shelf merged them, and what the

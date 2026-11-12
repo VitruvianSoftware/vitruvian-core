@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// A place the person goes to often, saved by them and answering to a name of
 /// their choosing: a site, a folder, a file, or a search that takes what they

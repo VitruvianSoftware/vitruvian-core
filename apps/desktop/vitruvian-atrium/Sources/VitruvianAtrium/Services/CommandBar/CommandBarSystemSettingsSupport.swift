@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// The rules behind offering the Mac's own Settings panes as rows. Pure, so
 /// what counts as a pane and what a pane answers to are pinned by tests rather

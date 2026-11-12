@@ -3,10 +3,10 @@
 
 import AppKit
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The production folder choice runs on a session of doubles that model
 /// native dismissal order without creating windows or reading UI.

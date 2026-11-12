@@ -9,8 +9,8 @@ import Combine
 import CoreGraphics
 import IOKit
 import IOKit.hidsystem
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Turns one key into the user's chosen modifiers.
 ///
@@ -141,7 +141,7 @@ package final class SuperKeyService: ObservableObject {
     private var exceptionObservation: AnyCancellable?
     /// The mapping is written off the main thread, and in the order it was
     /// asked for: a queue of one keeps an apply and a clear from crossing.
-    private let mappingQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.superkey-mapping")
+    private let mappingQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.superkey-mapping")
     /// Lives only while the mapping is owned and clears it if this process is
     /// killed before applicationWillTerminate can run.
     /// Touched only on `mappingQueue`.
@@ -265,7 +265,7 @@ package final class SuperKeyService: ObservableObject {
             shouldStopTapThread = false
             pendingTapRestart = false
             let thread = Thread { [weak self] in self?.runEventTap() }
-            thread.name = "Vitruvian Super Key"
+            thread.name = "Vitruvian Atrium Super Key"
             thread.qualityOfService = .userInteractive
             tapThread = thread
             return thread

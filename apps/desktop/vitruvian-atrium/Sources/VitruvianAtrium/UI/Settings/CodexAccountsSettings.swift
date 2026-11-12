@@ -3,8 +3,8 @@
 
 import AppKit
 import SwiftUI
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 
 /// The Codex homes that get limits cards of their own on the AI page.
 struct CodexAccountsSettings: View {

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Vorssaint
 
-# Cleanly removes Vitruvian and every piece of system state it created:
+# Cleanly removes Vitruvian Atrium and every piece of system state it created:
 # the fan helper daemon, the login item, TCC permissions, preferences, saved
 # state, the app's own data folder and (if present) the password-free
 # closed-lid sudoers rule. Leaves no dead entries behind.
@@ -184,7 +184,7 @@ fi
 
 # Whether the closed-lid feature is the reason sleep is off. Read here because
 # the preferences that hold it are deleted a few lines below, and without it a
-# check on the setting alone would blame Vitruvian for a `pmset disablesleep 1`
+# check on the setting alone would blame Vitruvian Atrium for a `pmset disablesleep 1`
 # that somebody else, or the user, had set.
 sleep_was_ours=0
 [[ "$(defaults read "$BUNDLE" vitruDisabledSleep 2>/dev/null)" == "1" ]] && sleep_was_ours=1

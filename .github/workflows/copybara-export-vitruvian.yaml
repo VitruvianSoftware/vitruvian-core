@@ -20,7 +20,7 @@
 
 name: Copybara Export (vitruvian)
 
-# EXPORT-ONLY mirror of the Vitruvian Mac app: monorepo apps/desktop/vitruvian/ ->
+# EXPORT-ONLY mirror of the Vitruvian Mac app: monorepo apps/desktop/vitruvian-atrium/ ->
 # VitruvianSoftware/vitruvian (repo root) on every push under that subtree. Thin
 # caller -- logic lives in _copybara-export.yaml; the export_vitruvian workflow is
 # defined in tools/copybara/copy.bara.sky.
@@ -31,7 +31,7 @@ name: Copybara Export (vitruvian)
 on:
     push:
         branches: [main]
-        paths: ["apps/desktop/vitruvian/**", "tools/copybara/copy.bara.sky"]
+        paths: ["apps/desktop/vitruvian-atrium/**", "tools/copybara/copy.bara.sky"]
     workflow_dispatch:
         inputs:
             copybara-options:

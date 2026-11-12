@@ -3,8 +3,8 @@
 
 import AppKit
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Wipes the system pasteboard on four independent, opt-in triggers: a delay
 /// after the last copy, computer sleep, display sleep, and screen lock.

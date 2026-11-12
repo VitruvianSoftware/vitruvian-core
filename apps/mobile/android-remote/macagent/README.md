@@ -49,7 +49,7 @@ The agent runs on your Mac and connects to your phone over your local network or
 
 There are two ways to install and run the agent:
 
-- **As a Vitruvian desktop-app tool:** The agent ships as a built-in Vitruvian tool. In the Vitruvian desktop app (`Vitruvian.app`), open the Tools catalog and enable **Vitruvian Remote**. This runs the background daemon and provides a menu bar status app.
+- **As a Vitruvian Atrium tool:** The agent ships as a built-in Vitruvian tool. In Vitruvian Atrium (`Vitruvian Atrium.app`), open the Tools catalog and enable **Vitruvian Remote**. This runs the background daemon and provides a menu bar status app.
 - **From source with Bazel (development):** Install the agent as a user LaunchAgent:
 
   ```sh

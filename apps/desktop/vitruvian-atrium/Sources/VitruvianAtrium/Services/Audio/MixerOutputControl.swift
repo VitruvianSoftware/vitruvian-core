@@ -3,7 +3,7 @@
 
 import CoreAudio
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// The default output's volume and mute as the panel, the island and the keys
 /// change them, for the output `AppVolumeMixer` follows.

@@ -4,8 +4,8 @@
 import Accelerate
 import CoreAudio
 import Darwin
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// The sample representation the mixer can render without conversion. A tap
 /// tied to a device stream inherits that stream's format; it is not always

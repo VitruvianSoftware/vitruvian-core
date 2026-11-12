@@ -4,10 +4,10 @@
 import AppKit
 import Carbon.HIToolbox
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The launcher's own tile model, activation and keys, and the tile icons,
 /// run over doubles for everything outside the grid: no window, tap,

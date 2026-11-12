@@ -2,10 +2,10 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 import VitruvianToolProtocol
-import VitruvianUI
+import VitruvianAtriumUI
 
 /// What the screens for tools from outside say, checked as the plain values
 /// the views show. No view is drawn: how a screen looks in the app is a
@@ -44,13 +44,13 @@ enum ExternalToolScreensTests {
             return
         }
         let sheet = content(offer, home: bench.root.resolvingSymlinksInPath().path)
-        suite.expect(sheet.title == "Add “Deploys” to Vitruvian?" && sheet.byline == "Acme · 1.2.0"
+        suite.expect(sheet.title == "Add “Deploys” to Vitruvian Atrium?" && sheet.byline == "Acme · 1.2.0"
                          && sheet.summary == "Copies the address of your latest deploy."
                          && sheet.from == "From ~/picked" && sheet.symbol == "shippingbox" && !sheet.isUpdate,
                      "the sheet names the tool, its publisher and version as the tool wrote them, "
                          + "and the folder it would be added from")
-        suite.expect(sheet.headline == "This tool can do anything Vitruvian can on this Mac."
-                         && sheet.detail.contains("Vitruvian does not limit or check what it does.")
+        suite.expect(sheet.headline == "This tool can do anything Vitruvian Atrium can on this Mac."
+                         && sheet.detail.contains("Vitruvian Atrium does not limit or check what it does.")
                          && sheet.detail.contains("Add it only if you trust who made it.")
                          && sheet.ownWords == english.agreeOwnWords,
                      "it says, in the app's own words, that the tool can do anything the app can, "
@@ -69,7 +69,7 @@ enum ExternalToolScreensTests {
                      "the sheet opens with Cancel focused, so Space cannot add the tool")
 
         let french = content(offer, .fr, home: "/nowhere")
-        suite.expect(french.title == "Ajouter «\u{00A0}Déploiements\u{00A0}» à Vitruvian\u{00A0}?"
+        suite.expect(french.title == "Ajouter «\u{00A0}Déploiements\u{00A0}» à Vitruvian Atrium\u{00A0}?"
                          && french.from == "Depuis " + offer.folder.path
                          && french.headline == FeatureStrings.externalTools(.fr).agreeHeadline
                          && french.commands == ["Copy latest deploy"],
@@ -164,7 +164,7 @@ enum ExternalToolScreensTests {
         suite.expect(message(.manifest(.invalid(.unknownService("camera")))).message
                          == #"Its vitruvian-tool.json file has a mistake. Tell whoever made the tool: unknownService("camera")"#
                          && message(.manifest(.notOfferedHere("island"))).message
-                         == "It needs something this version of Vitruvian does not have: island",
+                         == "It needs something this version of Vitruvian Atrium does not have: island",
                      "a manifest that breaks a rule names the rule, for whoever made the tool")
         let program = "Its program, bin/deploys, is missing or macOS will not run it."
         suite.expect(message(.manifest(.programMissing("bin/deploys"))).message == program
@@ -173,7 +173,7 @@ enum ExternalToolScreensTests {
                      "a program that cannot be started is named by its path")
         let quarantined = message(.quarantined(URL(fileURLWithPath: "/Users/me/Down loads/it's")))
         suite.expect(quarantined.message.hasPrefix("macOS has quarantined this folder because it was downloaded. "
-                                                       + "Vitruvian will not clear that for you.")
+                                                       + "Vitruvian Atrium will not clear that for you.")
                          && quarantined.command == #"xattr -dr com.apple.quarantine '/Users/me/Down loads/it'\''s'"#,
                      "a quarantined folder says the app will not clear it, and gives the command for the person to run")
         suite.expect(message(.tooBig(bytes: 256 * 1_048_576, items: 10_000)).message
@@ -197,7 +197,7 @@ enum ExternalToolScreensTests {
         let marked = ExternalToolManifestTests.file(
             #"{"name": {"en": "**Bold** [free](https://example.invalid)"}, "publisher": "_Acme_ `x`"}"#)
         if case .success(let offer) = loud.store.offer(from: loud.folder(manifest: marked)) {
-            suite.expect(content(offer).title == "Add “**Bold** [free](https://example.invalid)” to Vitruvian?"
+            suite.expect(content(offer).title == "Add “**Bold** [free](https://example.invalid)” to Vitruvian Atrium?"
                              && content(offer).byline == "_Acme_ `x` · 1.2.0",
                          "a name with markdown and a link in it is carried as the plain text the tool wrote")
         } else {
@@ -375,7 +375,7 @@ enum ExternalToolScreensTests {
 
         let removal = ToolRemovalContent(name: detail.row.name, strings: english, cancel: "Cancel")
         suite.expect(removal.title == "Remove “Deploys”?"
-                         && removal.message == "Vitruvian deletes its copy of the tool. The folder you added it from is not touched."
+                         && removal.message == "Vitruvian Atrium deletes its copy of the tool. The folder you added it from is not touched."
                          && removal.keepData == "Remove, Keep What It Saved"
                          && removal.deleteData == "Remove and Delete What It Saved" && removal.cancel == "Cancel",
                      "removing a tool asks first, says what is deleted and what is not, and offers to keep what it saved")
@@ -406,7 +406,7 @@ enum ExternalToolScreensTests {
         }
         // The sheet is made, read and cancelled: the offer is dropped.
         let sheet = content(offer)
-        suite.expect(sheet.title == "Add “Deploys” to Vitruvian?" && untouched(),
+        suite.expect(sheet.title == "Add “Deploys” to Vitruvian Atrium?" && untouched(),
                      "cancelling the agreement sheet leaves nothing copied, recorded or started")
         suite.expect(bench.store.add(ToolConsent(to: offer)).map(\.tool.manifest.id) == .success(id)
                          && bench.store.listed.map(\.id) == [id] && bench.exists(bench.files),
@@ -559,7 +559,7 @@ enum ExternalToolScreensTests {
                      }
                          && mistake.hasPrefix(#"Its vitruvian-tool.json file has a mistake. Tell whoever made the tool: unknownService("cameracamera"#)
                          && mistake.hasSuffix("…")
-                         && newer.hasPrefix("It needs something this version of Vitruvian does not have: is landcamera")
+                         && newer.hasPrefix("It needs something this version of Vitruvian Atrium does not have: is landcamera")
                          && program.hasPrefix("Its program, bin/ camera") && program.hasSuffix("…, is missing or macOS will not run it."),
                      "a manifest with a 50 KB service name, surface or program path is refused in one short line")
 
@@ -608,7 +608,7 @@ enum ExternalToolScreensTests {
                     _ language: AppLanguage = .enUS) -> ToolRemovalNotice? {
             ToolRemovalNotice(removal, name: name, strings: FeatureStrings.externalTools(language), home: "/Users/me")
         }
-        let sentence = "The tool is removed, but Vitruvian could not delete all of its files. What is left is here:"
+        let sentence = "The tool is removed, but Vitruvian Atrium could not delete all of its files. What is left is here:"
         let one = notice(.notDeleted(folders: [data]))
         suite.expect(one?.title == "Some files of “Deploys” could not be deleted" && one?.message == sentence
                          && one?.folder == "~/support/ToolData/com.acme.deploys" && one?.reveals == [data]
@@ -667,7 +667,7 @@ enum ExternalToolScreensTests {
                      "after a tool is removed nothing more is said when what was asked was done")
         undeletedAfterRemoval(suite)
         let kept = notice(.keptStillRunning(data: data))
-        let sentence = "Its program would not stop, so Vitruvian did not delete what the tool saved. It is in this folder:"
+        let sentence = "Its program would not stop, so Vitruvian Atrium did not delete what the tool saved. It is in this folder:"
         suite.expect(kept?.title == "What “Deploys” saved was kept" && kept?.message == sentence
                          && kept?.folder == "~/support/ToolData/com.acme.deploys" && kept?.reveal == data
                          && kept?.text == sentence + "\n\n~/support/ToolData/com.acme.deploys",

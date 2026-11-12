@@ -1,7 +1,7 @@
 # Make Placeholder Brand
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/bazel/src/make_placeholder_brand`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/bazel/src/make_placeholder_brand`.
 
 ## Interface
 - `[lib.rs:SIZE]`
@@ -34,4 +34,4 @@ Component package providing implementation for `apps/desktop/vitruvian/bazel/src
 - [lib.rs:237]: `<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="{le...`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/bazel/src/make_placeholder_brand/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/bazel/src/make_placeholder_brand/...`

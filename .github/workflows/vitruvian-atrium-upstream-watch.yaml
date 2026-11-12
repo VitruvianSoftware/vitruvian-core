@@ -18,11 +18,11 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-name: Vitruvian Upstream Watch
+name: Vitruvian Atrium Upstream Watch
 
-# apps/desktop/vitruvian is a fork of vorssaint-utils, which ships fixes and
+# apps/desktop/vitruvian-atrium is a fork of vorssaint-utils, which ships fixes and
 # features daily. This lists the upstream commits the ledger
-# (apps/desktop/vitruvian/upstream/ledger.tsv) has not triaged yet, and the ones
+# (apps/desktop/vitruvian-atrium/upstream/ledger.tsv) has not triaged yet, and the ones
 # triaged but not yet ported, in ONE tracking issue: created when there is work,
 # its body refreshed every run, a comment only when new upstream commits appear
 # (so watchers are told once, not daily), closed when nothing is left. See
@@ -36,7 +36,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: vitruvian-upstream-watch
+  group: vitruvian-atrium-upstream-watch
   cancel-in-progress: false
 
 permissions:
@@ -74,7 +74,7 @@ jobs:
             gh issue view "${existing}" --json body --jq .body > "${previous}"
           fi
           body="${RUNNER_TEMP}/body.md"
-          bazel run "${cache_flags[@]}" //apps/desktop/vitruvian:track_upstream -- \
+          bazel run "${cache_flags[@]}" //apps/desktop/vitruvian-atrium:track_upstream -- \
             --cache "${RUNNER_TEMP}/upstream-cache" status --markdown --previous-body "${previous}" > "${body}"
 
           marker="$(head -n 1 "${body}")"

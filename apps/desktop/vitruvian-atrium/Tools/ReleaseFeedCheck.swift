@@ -182,7 +182,7 @@ MainActor.assumeIsolated {
     let imageCheck = run("/usr/bin/codesign",
                          ["-v", "--strict", "-R=\(UpdateInstallerSupport.diskImageRequirement)", image.path])
     report(imageCheck.status == 0,
-           "the disk image is signed by Vitruvian's team (installer step fail-dmg-verify) \(imageCheck.output.trimmingCharacters(in: .whitespacesAndNewlines))")
+           "the disk image is signed by Vitruvian Atrium's team (installer step fail-dmg-verify) \(imageCheck.output.trimmingCharacters(in: .whitespacesAndNewlines))")
 
     let mount = folder.appendingPathComponent("mount", isDirectory: true)
     try? FileManager.default.createDirectory(at: mount, withIntermediateDirectories: true)
@@ -199,7 +199,7 @@ MainActor.assumeIsolated {
     let appCheck = run("/usr/bin/codesign",
                        ["-v", "--deep", "--strict", "-R=\(UpdateInstallerSupport.appRequirement)", app.path])
     report(appCheck.status == 0,
-           "the app is signed by Vitruvian's team (installer step fail-verify) \(appCheck.output.trimmingCharacters(in: .whitespacesAndNewlines))")
+           "the app is signed by Vitruvian Atrium's team (installer step fail-verify) \(appCheck.output.trimmingCharacters(in: .whitespacesAndNewlines))")
     let gatekeeper = run("/usr/sbin/spctl", ["-a", "-t", "exec", "-vv", app.path])
     report(gatekeeper.status == 0,
            "Gatekeeper accepts the app (installer step fail-verify): \(gatekeeper.output.trimmingCharacters(in: .whitespacesAndNewlines))")

@@ -2,8 +2,8 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 import VitruvianToolProtocol
 
 /// A tool added under an id that has been renamed (Nexus Agent, which became
@@ -43,7 +43,7 @@ enum ToolIDMigrationTests {
         let date = Date(timeIntervalSince1970: 1_760_000_000)
 
         init(_ name: String) {
-            let domain = "com.vitruviansoftware.vitruvian.tests.tool-id-migration.\(name)"
+            let domain = "com.vitruviansoftware.atrium.tests.tool-id-migration.\(name)"
             defaults = ScratchDefaults.suite(named: domain)!
             defaults.removePersistentDomain(forName: domain)
             try? FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)

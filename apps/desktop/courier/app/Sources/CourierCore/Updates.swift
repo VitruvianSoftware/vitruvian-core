@@ -6,7 +6,7 @@ import Darwin
 import Foundation
 
 // Courier checks for a newer release of itself and installs it (Settings ▸ About ▸ Updates, and Courier ▸ Check for
-// Updates…). The design follows the Vitruvian app's own updater (apps/desktop/vitruvian, VitruvianReleases and its
+// Updates…). The design follows the Vitruvian app's own updater (apps/desktop/vitruvian-atrium, VitruvianReleases and its
 // installer), written again here for Courier:
 // - Releases are tags of the public monorepo, `courier-v1.2.3`. That repository releases many products, so GitHub's
 //   "latest release" is usually another product's: the check lists the `courier-v` tags itself, with the request

@@ -1,7 +1,7 @@
 # Notch
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/Sources/Vitruvian/UI/Notch`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/UI/Notch`.
 
 ## Interface
 - `[AgentsSlotPlace.swift:AgentsSlotPlace]`
@@ -22,4 +22,4 @@ Component package providing implementation for `apps/desktop/vitruvian/Sources/V
 - [NotchClipboardView.swift:54]: `private var canReorder: Bool { query.trimmingCharacters(in: .whitespacesAndNe...`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/Sources/Vitruvian/UI/Notch/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/UI/Notch/...`

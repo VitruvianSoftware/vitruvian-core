@@ -1,7 +1,7 @@
 # Generate Sources
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/bazel/src/generate_sources`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/bazel/src/generate_sources`.
 
 ## Interface
 - `[lib.rs:Config]`
@@ -23,4 +23,4 @@ Component package providing implementation for `apps/desktop/vitruvian/bazel/src
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/bazel/src/generate_sources/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/bazel/src/generate_sources/...`

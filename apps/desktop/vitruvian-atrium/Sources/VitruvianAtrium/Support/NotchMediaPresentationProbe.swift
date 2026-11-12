@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Vorssaint
 
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 #if VITRUVIAN_DEVELOPMENT
 import AppKit
@@ -85,7 +85,7 @@ enum NotchMediaPresentationProbe {
         guard let screen = NSScreen.main else { print("MEDIA MOTION FAILED: no display"); exit(1) }
         // One fixed suite, emptied first, rather than a new one per run: each
         // of those stayed in ~/Library/Preferences for good.
-        let domain = "com.vitruviansoftware.vitruvian.tests.media-motion"
+        let domain = "com.vitruviansoftware.atrium.tests.media-motion"
         let defaults = UserDefaults(suiteName: domain)!
         defaults.removePersistentDomain(forName: domain)
         defaults.register(defaults: Defaults.registeredDefaults)

@@ -3,7 +3,7 @@
 
 import Foundation
 import os
-import VitruvianCore
+import VitruvianAtriumCore
 import VitruvianToolProtocol
 
 /// What the Nexus Agent feature kept goes to the Code tool
@@ -71,13 +71,13 @@ package enum NexusAgentHandoff {
 
         /// The key the feature's host kept the archived Claude sessions
         /// under, in the app's own defaults.
-        package static let hiddenClaudeSessionsKey = "vitruvian.claude.hiddenSessionIds"
+        package static let hiddenClaudeSessionsKey = "atrium.claude.hiddenSessionIds"
         /// The keys the feature's chat kept the model chosen for each
         /// provider, and the sessions pinned and renamed, under: its own,
         /// not in `Preferences`, and read here alone now the feature is gone.
-        package static let chosenModelsKey = "vitruvian.nexusAgent.chosenModels"
-        package static let pinnedSessionsKey = "vitruvian.nexusAgent.pinnedSessionIds"
-        package static let renamedSessionsKey = "vitruvian.nexusAgent.renamedSessionTitles"
+        package static let chosenModelsKey = "atrium.nexusAgent.chosenModels"
+        package static let pinnedSessionsKey = "atrium.nexusAgent.pinnedSessionIds"
+        package static let renamedSessionsKey = "atrium.nexusAgent.renamedSessionTitles"
 
         @MainActor package static let live = Parts(
             defaults: .standard,
@@ -89,7 +89,7 @@ package enum NexusAgentHandoff {
                 ToolCommandShortcuts.save(shortcuts, to: .standard)
                 ToolShortcutRegistrar.shared.sync()
             },
-            log: { Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian", category: "nexus-agent-handoff").notice("\($0, privacy: .public)") })
+            log: { Logger(subsystem: Bundle.main.bundleIdentifier ?? "atrium", category: "nexus-agent-handoff").notice("\($0, privacy: .public)") })
     }
 
     package enum Outcome: Equatable, Sendable {

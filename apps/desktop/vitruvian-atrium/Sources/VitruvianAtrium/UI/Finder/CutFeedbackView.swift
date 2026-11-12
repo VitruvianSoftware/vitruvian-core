@@ -2,9 +2,9 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
 
 /// Floating HUD that shows which files are held for a move (after ⌘X) and then
 /// confirms the move (after ⌘V). Lives in a borderless panel managed by

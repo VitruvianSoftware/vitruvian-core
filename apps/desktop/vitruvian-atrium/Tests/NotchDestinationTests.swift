@@ -3,10 +3,10 @@
 
 import AppKit
 import Carbon.HIToolbox
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The module's island opens, steps back and follows the session over test
 /// doubles (`NotchIslandFixture`): Escape arrives as the open island's own
@@ -16,7 +16,7 @@ enum NotchDestinationContract {
     /// The module's launcher over a world of doubles that reads the test's feature switches.
     enum Launcher {
         static var world = QuickLauncherContract.World()
-        static var shared: VitruvianServices.QuickLauncherService { world.launcher }
+        static var shared: VitruvianAtriumServices.QuickLauncherService { world.launcher }
         static func reset(_ defaults: UserDefaults?) {
             world = QuickLauncherContract.World()
             world.defaults = defaults
@@ -54,7 +54,7 @@ enum NotchDestinationContract {
     }
 
     static func run(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.vitruvian.tests.notch-destinations"
+        let domain = "com.vitruviansoftware.atrium.tests.notch-destinations"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         Self.defaults = defaults

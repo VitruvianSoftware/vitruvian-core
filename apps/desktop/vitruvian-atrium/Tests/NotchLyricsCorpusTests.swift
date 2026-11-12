@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 
 /// Offline replay of captured LRCLIB metadata. Lyrics are synthetic fingerprints;
 /// equal/different payloads remain equal/different without redistributing lyrics.

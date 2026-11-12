@@ -1,7 +1,7 @@
 # Settings
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/Sources/Vitruvian/UI/Settings`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/UI/Settings`.
 
 ## Interface
 - `[CodexAccountsSettings.swift:CodexAccountsSettings]`
@@ -34,4 +34,4 @@ Component package providing implementation for `apps/desktop/vitruvian/Sources/V
 - [HomebrewSettings.swift:15]: `@State private var query = ""`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/Sources/Vitruvian/UI/Settings/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/UI/Settings/...`

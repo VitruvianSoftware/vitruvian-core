@@ -11,10 +11,10 @@ import Foundation
 import ImageIO
 import SwiftUI
 import VMStatisticsCompat
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 enum ClipboardFeatureTests {
     /// Runs the production `pasteIntoPreviousApp` with a target app, the
@@ -39,7 +39,7 @@ enum ClipboardFeatureTests {
         ClipboardPreviewContract.run(suite)
         // The production source check, against the apps that came to the
         // front since the last look.
-        var source = ClipboardSourceWindow(ownBundleID: "com.vitruviansoftware.vitruvian")
+        var source = ClipboardSourceWindow(ownBundleID: "com.vitruviansoftware.atrium")
         var skipped: Set<String> = []
         var front: String?
         func sourceCheck(declared: String? = nil, remote: Bool = false,
@@ -73,8 +73,8 @@ enum ClipboardFeatureTests {
                      "a copy naming an app that is not skipped is still recorded under that app")
         skipped = []
         source.candidates = ["com.apple.Safari"]
-        suite.expect(sourceCheck(declared: "com.vitruviansoftware.vitruvian").bundleID == nil,
-                     "text Vitruvian copies itself, such as recognized text, is not credited to the app in front")
+        suite.expect(sourceCheck(declared: "com.vitruviansoftware.atrium").bundleID == nil,
+                     "text Vitruvian Atrium copies itself, such as recognized text, is not credited to the app in front")
         source.candidates = ["com.apple.Safari"]
         suite.expect(sourceCheck(declared: "com.apple.Notes").bundleID == "com.apple.Notes",
                      "an app that names itself on the pasteboard is believed over the app in front")
@@ -642,8 +642,8 @@ enum ClipboardFeatureTests {
         suite.expect(Defaults.registeredDefaults[DefaultsKey.clipboardHistoryLayout] as? String
                         == ClipboardHistoryLayout.list.rawValue,
                "the clipboard history opens as the list until the cards are chosen")
-        let layoutDefaults = ScratchDefaults.suite(named: "com.vitruviansoftware.vitruvian.tests.clipboard-layout")!
-        layoutDefaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.clipboard-layout")
+        let layoutDefaults = ScratchDefaults.suite(named: "com.vitruviansoftware.atrium.tests.clipboard-layout")!
+        layoutDefaults.removePersistentDomain(forName: "com.vitruviansoftware.atrium.tests.clipboard-layout")
         suite.expect(ClipboardHistoryLayout.current(in: layoutDefaults) == .list,
                "an unset clipboard history layout reads as the list")
         layoutDefaults.set(ClipboardHistoryLayout.cards.rawValue, forKey: DefaultsKey.clipboardHistoryLayout)
@@ -652,7 +652,7 @@ enum ClipboardFeatureTests {
         layoutDefaults.set("grid", forKey: DefaultsKey.clipboardHistoryLayout)
         suite.expect(ClipboardHistoryLayout.current(in: layoutDefaults) == .list,
                "a layout this version does not know reads as the list")
-        layoutDefaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.clipboard-layout")
+        layoutDefaults.removePersistentDomain(forName: "com.vitruviansoftware.atrium.tests.clipboard-layout")
         suite.expect(ClipboardHistoryLayout.cards.sideArrowsMoveSelection
                         && !ClipboardHistoryLayout.list.sideArrowsMoveSelection,
                "side arrows walk the cards, while the list leaves them to the search field")
@@ -1413,7 +1413,7 @@ enum ClipboardFeatureTests {
         ClipboardHistoryImageEditorTests.run(suite)
         ClipboardHistoryAccessTests.run(suite)
 
-        let pasteboardAccess = GeneralPasteboardAccess(label: "Vitruvian.Tests.PasteboardAccess")
+        let pasteboardAccess = GeneralPasteboardAccess(label: "Vitruvian Atrium.Tests.PasteboardAccess")
         let pasteboardGroup = DispatchGroup()
         let pasteboardStateLock = NSLock()
         // pasteboardStateLock guards both counts.

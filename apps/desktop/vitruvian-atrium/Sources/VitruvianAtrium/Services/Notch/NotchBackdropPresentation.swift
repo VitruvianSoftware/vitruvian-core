@@ -3,8 +3,8 @@
 
 import AppKit
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// The native host publishes the same path used by its animated mask. Keeping
 /// this in canvas coordinates avoids scaling the glass's corners independently.

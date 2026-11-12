@@ -79,7 +79,7 @@ request releases a product when what it lands as has a releasing type (`feat`,
 `fix`, `perf`, `revert`, a `!`, a `BREAKING CHANGE` footer) and it changes a
 file in the product's folder that is not under one of its `exclude-paths`. It
 names a product when the scope is the product's `component` or `package-name`,
-or an alias in `tools/release-scope/aliases.json` (`desktop` means `vitruvian`).
+or an alias in `tools/release-scope/aliases.json` (`desktop` means `vitruvian-atrium`).
 
 **What a pull request lands as:** with more than one commit, its title. With
 **one commit, that commit's message**, not the title: that is how GitHub

@@ -13,7 +13,7 @@ This directory is a fork of **vorssaint-utils**, a macOS menu-bar utility app.
 
 ## Licensing: this directory is GPL, not Apache
 
-The monorepo is Apache-2.0, but **everything under `apps/desktop/vitruvian/` is
+The monorepo is Apache-2.0, but **everything under `apps/desktop/vitruvian-atrium/` is
 GPL-3.0-or-later**, including the files added here (BUILD, `bazel/`, docs). The
 upstream project has many contributors, so it cannot be relicensed.
 
@@ -67,15 +67,15 @@ icon, bundle identity, signing identity and update feed for upstream. The rename
 
 - **Name:** Vitruvian everywhere the app shows or reads it. Upstream's
   copyright lines stay, because they are legal notices, not branding (GPL-3.0 §5).
-- **Bundle IDs:** `com.vitruviansoftware.vitruvian`, plus its fan helper and Now
+- **Bundle IDs:** `com.vitruviansoftware.atrium`, plus its fan helper and Now
   Playing adapter IDs.
 - **Icon:** Vitruvian's own app icon and menu bar mark (VitruvianSoftware/vitruvian-core#2643),
   which replaced the placeholders the import used.
 - **Update feed and price list:** the public monorepo,
   `VitruvianSoftware/vitruvian-core`. The update check reads its
-  `vitruvian-vX.Y.Z` release tags (`Core/Update/VitruvianReleases.swift`) and
+  `vitruvian-atrium-vX.Y.Z` release tags (`Core/Update/VitruvianReleases.swift`) and
   installs the universal disk image; prices come from
-  `apps/desktop/vitruvian/Resources/agent-prices.json` on `main`.
+  `apps/desktop/vitruvian-atrium/Resources/agent-prices.json` on `main`.
 - **Signing team:** the updater and the fan helper trust VitruvianSoftware's
   Developer ID team (`FanControlIdentifiers.teamID`), not upstream's.
 - **Temporary links and feedback:** these were upstream's own servers. They now
@@ -95,8 +95,8 @@ icon, bundle identity, signing identity and update feed for upstream. The rename
   its left edge, the only place upstream's planet mark showed (in the menu bar).
   `Resources/Gifs/commandBar.gif`, which showed the mark in the command bar and
   which nothing loads, is deleted.
-- **Release pipeline:** `vitruvian-release.yaml` cuts each release, and the
-  `vitruvian` delivery unit (`bazel run //apps/desktop/vitruvian:publish`) builds, signs, packages and attaches
+- **Release pipeline:** `vitruvian-atrium-release.yaml` cuts each release, and the
+  `vitruvian` delivery unit (`bazel run //apps/desktop/vitruvian-atrium:publish`) builds, signs, packages and attaches
   `Vitruvian-X.Y.Z.dmg` to it.
 - **Source:** every release is a tag of this public repository, so the source
   of each build is offered beside it, as the GPL requires.
@@ -156,7 +156,7 @@ is that notice. Add an entry for every change to upstream files.
   - `Sources/Vitruvian/Support/NotchMediaPresentationProbe.swift`: the media probe uses one fixed suite, emptied before it starts, instead of a new one per run.
 - **2026-11-01**: The island's music reader no longer stops the app when a cover arrives. `Services/Notch/NotchMusicService.swift`: the closure `launch()` hands the pipe reader runs on the reader's own queue, but was written inside the main-actor method, so Swift 6 made it main-actor too and checked at run time that it was on the main thread; the first reply with a cover (`ImageThumbnailer` in `Optional.flatMap`) crashed the app with `EXC_BREAKPOINT`. `NotchMusicPipeReader.init(receive:)` now takes a `@Sendable` closure, and the state the closure kept in captured variables lives in `NotchMusicReaderCache`, touched only on the reader's queue. `Tests/NotchMusicHardeningTests.swift`: `adapterThread` feeds a reply with a cover through the pipe on a queue of its own (`Harness.feedOffMain`); it traps on the code before this change.
 - **2026-10-31**: The release scripts are replaced by their Rust ports in `bazel/src/`, each a `bazel run` target, and deleted. Upstream files deleted: `Tools/make-dmg.sh` (now `make_dmg`), `Tools/notarize.sh` (now `notarize`), `Tools/setup-signing.sh` (now `setup_signing`) and `Tools/ci-setup-signing.sh` (now `ci_setup_signing`); the ports keep Vorssaint's copyright line and do what the scripts did, command for command. VitruvianSoftware's `publish.sh`, `Tools/package-release.sh`, `Tools/beta-publish-guard.sh` and `Tools/dmg-image-devices.sh` go the same way (`publish`, `package_release`, `beta_publish_guard`, `dmg_image_devices`). Upstream files changed:
-  - `build.sh`: an install with no signing identity runs `bazel run //apps/desktop/vitruvian:setup_signing` instead of `./Tools/setup-signing.sh`, and the ad-hoc message names it.
+  - `build.sh`: an install with no signing identity runs `bazel run //apps/desktop/vitruvian-atrium:setup_signing` instead of `./Tools/setup-signing.sh`, and the ad-hoc message names it.
   - `Tests/RepositoryFeatureTests.swift`: the check that ran `Tools/setup-signing.sh` against the stock LibreSSL openssl with stand-in `security` and `codesign` moves to `setup_signing_test` (`it_runs_end_to_end_against_the_stock_openssl`), unchanged in what it asserts.
 - **2026-10-22** (ships one release after the entry below): Tools for everyone, stage F, the removal (Task 11): the built-in Nexus Agent feature is gone, the Nexus Agent extension from the catalog (`dev.vitruvian.nexus-agent`) having taken its place. The Agents page's Chat tab stays, as the slot the extension draws in (`AgentsSlotSupport`, `AgentsSlotReporter`, `AgentsSlotPlace`, unchanged). Deleted, all VitruvianSoftware's: `Services/NexusAgent/NexusAgentService.swift` and `VitruvianNexusAgentHost.swift`, `UI/NexusAgent/`, `Core/NexusAgentStrings.swift`, `Core/NexusAgentCoreExport.swift`, `Tools/NexusAgentChatSnapshots.swift`, `Tools/NexusAgentWindowRun.swift` and its plist, `Tests/NexusAgentTests.swift`, `bazel/nexus_agent_shared.sha256` (the GitHub hand-off had already gone, #3284). The app links nothing of `apps/desktop/vitruvian-code` any more; the pin on its shared sources and `app_holds_mermaid_test` go with the link, and `bazel/pin_nexus_agent_shared.py` pins the tool protocol alone. Upstream files:
   - `Core/FeatureCatalog.swift`: the case `nexusAgent` and every arm of it; `isReplaced(in:)` and its part of `isAvailable(in:)` go with it. `Core/Settings/FeatureVisibilitySupport.swift`: the page `nexusAgent`. `Core/GlobalShortcut.swift`: the role `nexusAgent`; its default combination stays, for the hand-off. `Core/FeaturePresets.swift`, `Core/SettingsBackupSupport.swift`, `Services/FeatureRuntime.swift`, `Services/SelfUninstall.swift`, `Services/ServiceViews.swift`, `Services/Settings/FeatureHubText.swift`, `Services/Settings/SettingsDirectory.swift`, `Services/MenuPanel/PanelLayoutStore.swift`, `UI/Settings/SettingsView.swift`, `UI/UIServiceViewFactory.swift`, `App/AppDelegate.swift`: their arms for it. `UI/MenuPanel/MenuPanelView.swift`: the utility button and its switch. `UI/Settings/FeatureHubSettings.swift`: the replaced filter goes.
@@ -282,7 +282,7 @@ is that notice. Add an entry for every change to upstream files.
   - `UI/Settings/SettingsView.swift` (upstream file): the About header is `AboutHeader`, which shows the app's own icon at 128 points, as macOS's About panels show the app icon, instead of the logo drawn in white inside a 76-point tile.
   - `Core/Localization.swift` and `Core/Localizations/Strings+*.swift` (upstream files): `updateRateLimited` and `updateNoReleaseFound`, in all fifteen languages.
   - `Tests/SwitcherModelFeatureTests.swift` (upstream file): the link check names the repository instead of accepting anything under the organisation, which passed while every link was dead. `Tests/AboutAndReleaseFeedTests.swift` (VitruvianSoftware's) adds `VitruvianReleaseFeedContract`, `UpdateSignerContract` and `AboutPageContract`. `Tests/mutation_checks.py` (upstream file): six mutations for them.
-  - `Tools/ReleaseFeedCheck.swift` (VitruvianSoftware's): `bazel run //apps/desktop/vitruvian:release_feed_check` runs the update check against the live GitHub API and opens the About links; `-- --verify-download` also checks the disk image as the installer does.
+  - `Tools/ReleaseFeedCheck.swift` (VitruvianSoftware's): `bazel run //apps/desktop/vitruvian-atrium:release_feed_check` runs the update check against the live GitHub API and opens the About links; `-- --verify-download` also checks the disk image as the installer does.
 - **2026-10-15**: `packages/vitruvian-sdk/Sources/VitruvianToolProtocol/Panels.swift` (MIT, written by VitruvianSoftware): comments on `PanelPlacement.island` and `UIBadgeParams` say "the island's Explore gallery" instead of "the island's Tools area", and the pin follows (`bazel/tool_protocol.sha256`, fa537c713a96).
 - **2026-10-15**: The release's disk images are signed, and the About box names VitruvianSoftware while keeping Vorssaint's notice. Vitruvian 3.51.0 was the first release signed with the Developer ID: its app was signed and notarized, but `make-dmg.sh` never signed the disk images, so a downloaded DMG failed `spctl -t open` ("no usable signature") although Apple had notarized it.
   - `Tools/make-dmg.sh` (upstream file): signs the compressed image with the installed Developer ID and verifies it, before `notarize.sh` submits it; without an identity the image stays unsigned, as before.
@@ -426,12 +426,12 @@ is that notice. Add an entry for every change to upstream files.
   - The store remembers: new `Services/Platform/External/ToolRecords.swift` and the file `InstalledTools.json` in the app's support folder, with what the person agreed to. `main.swift`: at launch it brings back the tools the person added (`ExternalToolStore.restore`), in place of the development switch, which is gone with its build define (`BUILD`), its hidden preference and its source rule `a_release_build_adds_no_outside_tool`. A tool has a switch; choosing an added tool's folder again replaces it; a copy that is not what was agreed to is held back. `README.md` and `AGENTS.md` say so. `Tests/mutation_checks.py`: four mutations (a changed copy started at launch; a tool that is off coming back; an unreadable file written over; a later version's file read), one entry reworded, and the development switch's entry removed.
   - Removing a tool deletes the app's copy of it and, when the person says so, what it saved (`ToolFolders.delete`, `ExternalToolStore.remove(_:deletingData:)`). `Tests/mutation_checks.py`: three mutations (what a tool saved deleted when the person kept it; a delete through a link; preferences that outlive what was saved).
   - The person is told once per tool, per run of the app, that a tool stopped working, in the app's short on-screen message, and a tool the app gave up on can be started again (`ExternalToolStore.startAgain`). `Tests/mutation_checks.py`: one mutation (told at every crash).
-  - New: `UI/Settings/ExternalToolAgreementSheet.swift`, the sheet that asks before a tool is added or updated, what it says as plain values, and each refusal as a sentence; `Tests/ExternalToolScreensTests.swift`. `BUILD`: `VitruvianUI` depends on `VitruvianToolProtocol`. Nothing presents the sheet yet. `Tests/mutation_checks.py`: two mutations (Return adding the tool; the quarantine command breaking on a quote).
+  - New: `UI/Settings/ExternalToolAgreementSheet.swift`, the sheet that asks before a tool is added or updated, what it says as plain values, and each refusal as a sentence; `Tests/ExternalToolScreensTests.swift`. `BUILD`: `VitruvianAtriumUI` depends on `VitruvianToolProtocol`. Nothing presents the sheet yet. `Tests/mutation_checks.py`: two mutations (Return adding the tool; the quarantine command breaking on a quote).
   - Removing a tool waits for its program to be gone before anything is deleted: told goodbye, asked to end after half a second, killed a quarter later (`ToolHost.removeAndSeeOut`, three new `ToolLimits`), and what it saved is kept when the program is still there after the kill. `Tools/ToolFixture.swift`: a new command, `scribble`. `Tests/mutation_checks.py`: two mutations (data deleted while the program still runs; folders deleted without the wait), and the quoted line of one older entry.
   - `UI/Settings/FeatureHubSettings.swift`: the Features page ends with a new card, "Tools from outside" (new: `UI/Settings/ExternalToolsSection.swift`): a row for each added tool with its switch, its detail, and the buttons that add, update and remove. With no tool added it is one line and one button. The row and the detail cut a tool's own words short as the sheet does, the detail's two lists scroll when they are long, and it shows the newest 200 lines of a tool's log, as plain text. Which of the two buttons that remove a tool deletes what it saved is a value the tests check (`ToolRemovalContent.Choice.deletesData`), and so is what follows the folder picker (`ToolPicked`). `Tests/mutation_checks.py`: nine mutations (Start Again offered too early; Return removing the tool; a tool that is held back shown as ready; either removing button doing the other's work; the two carrying each other's words; a held-back tool's switch enabled; the whole log drawn; the detail's lists never scrolling).
   - `docs/PRIVACY.md`: a new section, "Tools you add from outside". The app's promises and its list of network connections cover the app alone.
 - **2026-10-10**: Tool platform, tools that run as their own programs, stage B (`docs/superpowers/plans/2026-10-10-vitruvian-external-tools-stage-b.md`): the runtime that starts such a tool, talks to it and stops it. Every file it adds was written by VitruvianSoftware and has no upstream header. No build a person installs behaves differently: only a build made with `--define=vitruvian_external_tools=true` can add a tool.
-  - New under `Services/Platform/External/`: `ToolLimits.swift`, `ToolClock.swift`, `ToolLineReader.swift` and `ToolLog.swift` (the numbers that hold a tool in check, the clock they are counted on, a tool's output read into messages, and its log), with `Tests/ToolRuntimeTests.swift` and `Tests/ToolRuntimeSupport.swift`. `BUILD`: `VitruvianServices` depends on `VitruvianToolProtocol`. `Tests/TestGroups.swift`: a new suite, `tool-runtime`. `bazel/source_lints.py`: `the_broker_names_no_tool` also covers `Services/Platform/External/`. `Tests/mutation_checks.py`: two mutations (a log that grows without end; a line over the limit taken for one that is not a message).
+  - New under `Services/Platform/External/`: `ToolLimits.swift`, `ToolClock.swift`, `ToolLineReader.swift` and `ToolLog.swift` (the numbers that hold a tool in check, the clock they are counted on, a tool's output read into messages, and its log), with `Tests/ToolRuntimeTests.swift` and `Tests/ToolRuntimeSupport.swift`. `BUILD`: `VitruvianAtriumServices` depends on `VitruvianToolProtocol`. `Tests/TestGroups.swift`: a new suite, `tool-runtime`. `bazel/source_lints.py`: `the_broker_names_no_tool` also covers `Services/Platform/External/`. `Tests/mutation_checks.py`: two mutations (a log that grows without end; a line over the limit taken for one that is not a message).
   - New: `Services/Platform/External/ToolTransport.swift` and `ToolLink.swift` (one run of a tool's program: the greeting, requests both ways with their deadlines, the goodbye), with `Tests/ToolLinkTests.swift`. `Tests/mutation_checks.py`: three mutations (a protocol version the app did not offer; a request answered twice; a tool that is never killed).
   - `Services/Platform/External/ToolLink.swift`: the limits on what a tool writes (a line too long, lines that are not messages, a flood). `Tests/mutation_checks.py`: two mutations (a flood put up with for ever; work done for a tool over its limit).
   - New: `Services/Platform/External/ProcessTransport.swift` (a tool's program as a child process, its pipes read and written off the main thread), `Tools/ToolFixture.swift` (a tool the tests start as a real process) and `Tests/ToolProcessTests.swift`. `BUILD`: `tool_fixture`, which `unit_tests` is handed in `VITRUVIAN_TOOL_FIXTURE`. `Tests/mutation_checks.py`: three mutations (a program run in the wrong folder; writing on to a tool that does not read; a signal taken for an exit status).
@@ -445,7 +445,7 @@ is that notice. Add an entry for every change to upstream files.
   - New files, none with an upstream header: `Core/Platform/ExternalToolManifest.swift` (reads a tool's folder into a `ToolManifest`, or a reason it cannot be added), with its tests in `Tests/ExternalToolManifestTests.swift`. Nothing in the app calls it yet, so no build behaves differently.
   - `Core/Platform/ToolManifest.swift`: `CapabilityRequest` gains a second initializer, for a service an outside tool's manifest lists, which has no reason. The one built-in tools use is unchanged.
   - `bazel/pin_nexus_agent_shared.py`: takes `--name`, so it also pins the tool protocol's sources. With no `--name` it does what it did.
-  - `BUILD`: `VitruvianCore` and the unit tests depend on the module; `pin_tool_protocol` and `tool_protocol_pin_test`, which the pipeline unit now runs.
+  - `BUILD`: `VitruvianAtriumCore` and the unit tests depend on the module; `pin_tool_protocol` and `tool_protocol_pin_test`, which the pipeline unit now runs.
   - `Tests/TestGroups.swift`: the `platform` suite also runs `ExternalToolManifestTests`.
   - `Tests/mutation_checks.py`: two mutations (a tool's program that is a link out of its folder; an outside tool held back for a macOS grant).
 - **2026-10-10**: Tool platform, the broker, stage C (`docs/superpowers/plans/2026-10-10-vitruvian-broker-stage-c.md`):
@@ -596,12 +596,12 @@ is that notice. Add an entry for every change to upstream files.
     unconditional;
   - `DockAutohideHoldTests` extended.
 - **2026-10-03**: Refactor step 3, first module (`REFACTOR.md`):
-  - `Core/` builds as the `VitruvianCore` module, and its declarations are
+  - `Core/` builds as the `VitruvianAtriumCore` module, and its declarations are
     `package`;
   - `DefaultsKey` moved out of `Core/Defaults.swift`;
   - `KeepAwakeAutomationSupport.swift` and `ScratchpadSupport.swift` moved to
     `Core/`;
-  - app and test files import `VitruvianCore`;
+  - app and test files import `VitruvianAtriumCore`;
   - `build.sh` lists the moved files;
   - `Tests/generate_sources.py` tolerates `package`;
   - `RepositoryFeatureTests` French check hardened.
@@ -718,17 +718,17 @@ is that notice. Add an entry for every change to upstream files.
   - `Tests/generate_sources.py` reads the moved declarations from their new
     files.
 - **2026-10-03**: Refactor step 3.2e-1 (`REFACTOR.md`):
-  - The files under `Design/` became the `VitruvianDesign` module. Their
+  - The files under `Design/` became the `VitruvianAtriumDesign` module. Their
     declarations are now `package`.
   - `HUDBackdrop`, `NotchButtonStyle`, `NotchShape` and
     `ShelfSharePickerAnchor` (and its `Anchor`) spell out their initializers.
   - `OverlayPanel` is `open` and its override `public`, so services can
     subclass it from their module. `Tests/generate_sources.py` no longer
     copies it into the test binary, and `OverlayPanelTests` says so.
-  - Every app and test file that imports `VitruvianCore` also imports
-    `VitruvianDesign`.
+  - Every app and test file that imports `VitruvianAtriumCore` also imports
+    `VitruvianAtriumDesign`.
 - **2026-10-03**: Refactor step 3.2e-2 (`REFACTOR.md`):
-  - The files under `Services/` became the `VitruvianServices` module. Their
+  - The files under `Services/` became the `VitruvianAtriumServices` module. Their
     declarations are now `package`; 149 structs spell out their memberwise
     initializer, and 32 structs and classes `package init() {}`.
   - `NotchMusicAutomationCapabilities.Event` and `.Position` declare their
@@ -743,7 +743,7 @@ is that notice. Add an entry for every change to upstream files.
     to `Core/Notch/NotchSupport.swift`; `View.screenshotSafeHelp` from
     `UI/Screenshot/ScreenshotEditorView.swift` to the new
     `Design/ScreenshotSafeHelp.swift`.
-  - Every `UI/`, `App/`, `Support/` and test file imports `VitruvianServices`.
+  - Every `UI/`, `App/`, `Support/` and test file imports `VitruvianAtriumServices`.
   - `Tests/generate_sources.py` reads production sources without their
     `package` modifiers, drops the `NotchModule.title` and
     `NotchActivationButton` copies, and reads `detailKind` from its new file.
@@ -751,12 +751,12 @@ is that notice. Add an entry for every change to upstream files.
     at `    package func name` (`RepositoryFeatureTests`,
     `ScreenshotFeatureTests`, `ShelfFeatureTests`, `UtilitiesFeatureTests`).
 - **2026-10-03**: Refactor step 3.2e-3 (`REFACTOR.md`):
-  - The files under `UI/` became the `VitruvianUI` module. Their declarations
+  - The files under `UI/` became the `VitruvianAtriumUI` module. Their declarations
     are now `package`; `SettingsWindow` is `open` with `public` overrides, and
     the views the app, the probes and the tests build spell out their
     initializers.
   - Every `App/`, `Support/`, `main.swift` and test file imports
-    `VitruvianUI`.
+    `VitruvianAtriumUI`.
 - **2026-10-03**: Refactor step 4a (`REFACTOR.md`):
   - `NotchService` calls the Shelf, the brightness keys and the precise volume
     roller through `NotchService.collaborators` (the new
@@ -3077,7 +3077,7 @@ weekly sync.
   order inside a merge), and those changes are in no other commit. A merge that
   only resolved conflicts between two sides this fork ports anyway is `skipped`
   with that reason.
-- **The tool**, run as `bazel run //apps/desktop/vitruvian:track_upstream -- <command>`:
+- **The tool**, run as `bazel run //apps/desktop/vitruvian-atrium:track_upstream -- <command>`:
   - `status` lists the upstream commits not yet in the ledger, and how many are
     pending.
   - `triage` adds them to the ledger. A commit that touches only paths the import
@@ -3088,9 +3088,9 @@ weekly sync.
   - `port <sha>...` applies upstream commits to this tree. It is a first pass; see
     "Porting" below.
 
-  `bazel test //apps/desktop/vitruvian:upstream_test` tests the tool and checks
+  `bazel test //apps/desktop/vitruvian-atrium:upstream_test` tests the tool and checks
   the ledger's format.
-- **The watch**, `.github/workflows/vitruvian-upstream-watch.yaml`, runs daily. It
+- **The watch**, `.github/workflows/vitruvian-atrium-upstream-watch.yaml`, runs daily. It
   keeps one issue, "Upstream vorssaint-utils: commits to triage and port", that
   lists the untriaged and pending commits. It comments when new upstream commits
   appear, and closes the issue when nothing is left.
@@ -3174,11 +3174,11 @@ Run `triage` and commit the ledger, then decide each pending commit:
      test can call, the way `KillProcessService.sorted(_:by:ascending:)` and
      `RadialMenuProfile.deleting(_:from:)` were. If that needs seams that
      don't exist yet, port the fix without the test and say so in the commit.
-   - Run `bazel test //apps/desktop/vitruvian:source_lints_test`, which runs on
+   - Run `bazel test //apps/desktop/vitruvian-atrium:source_lints_test`, which runs on
      Linux, before pushing. Compile errors only show on macOS.
    - Keep upstream's notice (`Copyright (C) 2026 Vorssaint`) on files that are
      upstream's code.
-4. If `build.sh` changed, run `bazel run //apps/desktop/vitruvian:sync_sources`.
+4. If `build.sh` changed, run `bazel run //apps/desktop/vitruvian-atrium:sync_sources`.
    Then build and test (see `README.md`).
 5. In the same PR, set each ported commit's ledger row to `ported` with the PR
    number (`#1234`). Set any commit dropped while porting to `skipped`, with why.

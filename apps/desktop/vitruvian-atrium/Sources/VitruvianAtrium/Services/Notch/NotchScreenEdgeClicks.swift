@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import AppKit
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// Clicks on the menu bar's first row above the closed island, which the
 /// menu bar owns even above the island's window level. They open the

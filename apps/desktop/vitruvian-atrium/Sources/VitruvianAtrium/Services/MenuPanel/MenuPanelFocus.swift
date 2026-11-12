@@ -4,11 +4,11 @@
 import AppKit
 import Combine
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 extension Notification.Name {
-    package static let menuPanelWillShow = Notification.Name("VitruvianMenuPanelWillShow")
+    package static let menuPanelWillShow = Notification.Name("VitruvianAtriumMenuPanelWillShow")
 }
 
 package struct MenuPanelFocusRequest: Equatable {

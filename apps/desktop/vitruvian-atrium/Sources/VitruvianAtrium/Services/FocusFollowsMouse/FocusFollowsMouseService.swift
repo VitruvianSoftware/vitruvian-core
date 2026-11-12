@@ -4,8 +4,8 @@
 import AppKit
 import ApplicationServices
 import CoreGraphics
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 @MainActor
 package final class FocusFollowsMouseService {
@@ -17,7 +17,7 @@ package final class FocusFollowsMouseService {
         .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged,
     ]
 
-    private let queryQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.focus-follows-mouse")
+    private let queryQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.focus-follows-mouse")
     private var timer: Timer?
     private var mouseMonitor: Any?
     private var observers: [NSObjectProtocol] = []

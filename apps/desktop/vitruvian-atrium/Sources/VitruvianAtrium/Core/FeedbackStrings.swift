@@ -60,7 +60,7 @@ extension FeatureStrings {
 extension FeedbackStrings {
     package static let enUS = FeedbackStrings(
         sectionTitle: "Feedback",
-        sectionCaption: "Send a bug report or feature idea directly to the person who maintains Vitruvian.",
+        sectionCaption: "Send a bug report or feature idea directly to the person who maintains Vitruvian Atrium.",
         openButton: "Send feedback",
         windowTitle: "Send feedback",
         bugTitle: "Bug",
@@ -92,7 +92,7 @@ extension FeedbackStrings {
 
     package static let ptBR = FeedbackStrings(
         sectionTitle: "Feedback",
-        sectionCaption: "Envie um relato de bug ou uma ideia de recurso diretamente para quem mantém o Vitruvian.",
+        sectionCaption: "Envie um relato de bug ou uma ideia de recurso diretamente para quem mantém o Vitruvian Atrium.",
         openButton: "Enviar feedback",
         windowTitle: "Enviar feedback",
         bugTitle: "Bug",
@@ -124,7 +124,7 @@ extension FeedbackStrings {
 
     package static let tr = FeedbackStrings(
         sectionTitle: "Geri bildirim",
-        sectionCaption: "Bir hata bildirimini veya özellik fikrini doğrudan Vitruvian bakımcısına gönderin.",
+        sectionCaption: "Bir hata bildirimini veya özellik fikrini doğrudan Vitruvian Atrium bakımcısına gönderin.",
         openButton: "Geri bildirim gönder",
         windowTitle: "Geri bildirim gönder",
         bugTitle: "Hata",
@@ -156,7 +156,7 @@ extension FeedbackStrings {
 
     package static let ru = FeedbackStrings(
         sectionTitle: "Обратная связь",
-        sectionCaption: "Отправьте сообщение об ошибке или идею функции напрямую разработчику Vitruvian.",
+        sectionCaption: "Отправьте сообщение об ошибке или идею функции напрямую разработчику Vitruvian Atrium.",
         openButton: "Отправить отзыв",
         windowTitle: "Отправить отзыв",
         bugTitle: "Ошибка",
@@ -188,7 +188,7 @@ extension FeedbackStrings {
 
     package static let es = FeedbackStrings(
         sectionTitle: "Comentarios",
-        sectionCaption: "Envía un informe de error o una idea directamente a quien mantiene Vitruvian.",
+        sectionCaption: "Envía un informe de error o una idea directamente a quien mantiene Vitruvian Atrium.",
         openButton: "Enviar comentarios",
         windowTitle: "Enviar comentarios",
         bugTitle: "Error",
@@ -220,7 +220,7 @@ extension FeedbackStrings {
 
     package static let sk = FeedbackStrings(
         sectionTitle: "Spätná väzba",
-        sectionCaption: "Pošlite hlásenie o chybe alebo nápad na funkciu priamo osobe, ktorá udržiava Vitruvian.",
+        sectionCaption: "Pošlite hlásenie o chybe alebo nápad na funkciu priamo osobe, ktorá udržiava Vitruvian Atrium.",
         openButton: "Poslať spätnú väzbu",
         windowTitle: "Poslať spätnú väzbu",
         bugTitle: "Chyba",
@@ -252,7 +252,7 @@ extension FeedbackStrings {
 
     package static let de = FeedbackStrings(
         sectionTitle: "Feedback",
-        sectionCaption: "Sende einen Fehlerbericht oder eine Funktionsidee direkt an den Vitruvian-Entwickler.",
+        sectionCaption: "Sende einen Fehlerbericht oder eine Funktionsidee direkt an den Vitruvian Atrium-Entwickler.",
         openButton: "Feedback senden",
         windowTitle: "Feedback senden",
         bugTitle: "Fehler",
@@ -284,7 +284,7 @@ extension FeedbackStrings {
 
     package static let fr = FeedbackStrings(
         sectionTitle: "Avis",
-        sectionCaption: "Envoyez un rapport de bug ou une idée directement à la personne qui maintient Vitruvian.",
+        sectionCaption: "Envoyez un rapport de bug ou une idée directement à la personne qui maintient Vitruvian Atrium.",
         openButton: "Envoyer un avis",
         windowTitle: "Envoyer un avis",
         bugTitle: "Bug",
@@ -316,7 +316,7 @@ extension FeedbackStrings {
 
     package static let it = FeedbackStrings(
         sectionTitle: "Feedback",
-        sectionCaption: "Invia una segnalazione o un’idea direttamente a chi mantiene Vitruvian.",
+        sectionCaption: "Invia una segnalazione o un’idea direttamente a chi mantiene Vitruvian Atrium.",
         openButton: "Invia feedback",
         windowTitle: "Invia feedback",
         bugTitle: "Bug",
@@ -348,7 +348,7 @@ extension FeedbackStrings {
 
     package static let ja = FeedbackStrings(
         sectionTitle: "フィードバック",
-        sectionCaption: "不具合の報告や機能のアイデアを Vitruvian の開発者へ直接送信します。",
+        sectionCaption: "不具合の報告や機能のアイデアを Vitruvian Atrium の開発者へ直接送信します。",
         openButton: "フィードバックを送信",
         windowTitle: "フィードバックを送信",
         bugTitle: "不具合",
@@ -380,7 +380,7 @@ extension FeedbackStrings {
 
     package static let ko = FeedbackStrings(
         sectionTitle: "피드백",
-        sectionCaption: "버그 신고나 기능 아이디어를 Vitruvian 관리자에게 직접 보냅니다.",
+        sectionCaption: "버그 신고나 기능 아이디어를 Vitruvian Atrium 관리자에게 직접 보냅니다.",
         openButton: "피드백 보내기",
         windowTitle: "피드백 보내기",
         bugTitle: "버그",
@@ -412,7 +412,7 @@ extension FeedbackStrings {
 
     package static let zhHans = FeedbackStrings(
         sectionTitle: "反馈",
-        sectionCaption: "将错误报告或功能建议直接发送给 Vitruvian 的维护者。",
+        sectionCaption: "将错误报告或功能建议直接发送给 Vitruvian Atrium 的维护者。",
         openButton: "发送反馈",
         windowTitle: "发送反馈",
         bugTitle: "错误",
@@ -444,7 +444,7 @@ extension FeedbackStrings {
 
     package static let zhTW = FeedbackStrings(
         sectionTitle: "意見回饋",
-        sectionCaption: "將錯誤回報或功能建議直接傳送給 Vitruvian 的維護者。",
+        sectionCaption: "將錯誤回報或功能建議直接傳送給 Vitruvian Atrium 的維護者。",
         openButton: "傳送意見",
         windowTitle: "傳送意見",
         bugTitle: "錯誤",
@@ -476,7 +476,7 @@ extension FeedbackStrings {
 
     package static let zhHK = FeedbackStrings(
         sectionTitle: "意見回饋",
-        sectionCaption: "將錯誤報告或功能建議直接傳送給 Vitruvian 的維護者。",
+        sectionCaption: "將錯誤報告或功能建議直接傳送給 Vitruvian Atrium 的維護者。",
         openButton: "傳送意見",
         windowTitle: "傳送意見",
         bugTitle: "錯誤",
@@ -507,7 +507,7 @@ extension FeedbackStrings {
     )
     package static let uk = FeedbackStrings(
         sectionTitle: "Відгук",
-        sectionCaption: "Надішліть звіт про помилку або ідею функції безпосередньо розробнику Vitruvian.",
+        sectionCaption: "Надішліть звіт про помилку або ідею функції безпосередньо розробнику Vitruvian Atrium.",
         openButton: "Надіслати відгук",
         windowTitle: "Надіслати відгук",
         bugTitle: "Помилка",

@@ -3,8 +3,8 @@
 
 import CryptoKit
 import Foundation
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 
 /// The network, for the catalog's tests, with none: each address answers
 /// from a table, in pieces, at once, on the thread that asked. An address

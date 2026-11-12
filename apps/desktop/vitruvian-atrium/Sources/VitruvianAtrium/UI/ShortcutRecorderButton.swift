@@ -4,9 +4,9 @@
 import AppKit
 import Carbon.HIToolbox
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
 
 package struct ShortcutRecorderButton: NSViewRepresentable {
     package let shortcut: GlobalShortcut

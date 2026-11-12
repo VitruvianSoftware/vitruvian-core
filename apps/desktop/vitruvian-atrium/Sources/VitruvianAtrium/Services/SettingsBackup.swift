@@ -3,8 +3,8 @@
 
 import AppKit
 import UniformTypeIdentifiers
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Settings backup: writes the exportable preferences to a plist and brings
 /// one back in. Importing replaces the current preferences and relaunches, so
@@ -16,7 +16,7 @@ package enum SettingsBackup {
     @discardableResult
     package static func runExportPanel() -> Bool? {
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = "Vitruvian Settings.plist"
+        panel.nameFieldStringValue = "Vitruvian Atrium Settings.plist"
         panel.allowedContentTypes = [.propertyList]
         panel.canCreateDirectories = true
         NSApp.activate(ignoringOtherApps: true)

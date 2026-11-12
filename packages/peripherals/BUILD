@@ -171,7 +171,7 @@ delivery(
     # job (Xcode, Bazel, one script) minus the app signing, so that is the
     # provenance recorded.
     legacy_job = "package",
-    legacy_workflow = ".github/workflows/vitruvian-release.yaml",
+    legacy_workflow = ".github/workflows/vitruvian-atrium-release.yaml",
     promotion = "release:gravastar-mouse-v",
     render = "transcribed",
     run = "//packages/peripherals:publish",

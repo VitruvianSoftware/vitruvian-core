@@ -1,7 +1,7 @@
 # Focusfollowsmouse
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/Sources/Vitruvian/Services/FocusFollowsMouse`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/FocusFollowsMouse`.
 
 ## Interface
 - Internal implementation components
@@ -15,4 +15,4 @@ Component package providing implementation for `apps/desktop/vitruvian/Sources/V
 - [FocusFollowsMouseService.swift:257]: `// changes after the ownership lookup. Never fall back to a global query.`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/Sources/Vitruvian/Services/FocusFollowsMouse/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/FocusFollowsMouse/...`

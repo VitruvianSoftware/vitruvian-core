@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import CoreGraphics
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Reads and writes the built-in display's brightness for closed-lid
 /// dimming, over the same DisplayServices route `BrightnessBridge` already

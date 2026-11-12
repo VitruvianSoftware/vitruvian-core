@@ -3,10 +3,10 @@
 
 import AppKit
 import Combine
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
-/// Checks Vitruvian's GitHub releases for a newer version and, when asked, downloads the
+/// Checks Vitruvian Atrium's GitHub releases for a newer version and, when asked, downloads the
 /// release DMG and installs it over the running app. Self-update for an app
 /// distributed outside the App Store, with no third-party framework.
 @MainActor
@@ -69,7 +69,7 @@ package final class UpdateService: ObservableObject {
     /// preview. Set alongside `.available`; cleared otherwise.
     @Published package private(set) var availableNotes: String?
 
-    /// The universal disk image of the offered release (`VitruvianReleases`
+    /// The universal disk image of the offered release (`VitruvianAtriumReleases`
     /// says where releases are and which image is the one). Never upstream's
     /// (TRADEMARKS.md).
     package private(set) var downloadURL: URL?
@@ -80,13 +80,13 @@ package final class UpdateService: ObservableObject {
     private var downloadSession: URLSession?
     private let adminInstall: AdminInstall
     /// How the check reaches GitHub; tests and release_feed_check pass their own.
-    private let transport: VitruvianReleases.Transport
+    private let transport: VitruvianAtriumReleases.Transport
     /// The notes last read for a version, so an offer that stands is not
     /// re-read from the changelog on every hourly check.
     private var notesHeld: (version: String, notes: String)?
 
     package init(adminInstall: AdminInstall = .system,
-                 transport: @escaping VitruvianReleases.Transport = VitruvianReleases.live) {
+                 transport: @escaping VitruvianAtriumReleases.Transport = VitruvianAtriumReleases.live) {
         self.adminInstall = adminInstall
         self.transport = transport
     }
@@ -176,11 +176,11 @@ package final class UpdateService: ObservableObject {
         // The release tags from git, then a HEAD of the newest one's universal
         // image, then (only for a release that will be offered) its notes.
         // None of it is api.github.com, whose 60 requests an hour are shared
-        // by everything on the network (VitruvianReleases).
+        // by everything on the network (VitruvianAtriumReleases).
         let includeBetas = includeBetaUpdates
         let transport = self.transport
         Task { [weak self] in
-            let found = await VitruvianReleases.findNewest(includeBetas: includeBetas, transport: transport)
+            let found = await VitruvianAtriumReleases.findNewest(includeBetas: includeBetas, transport: transport)
             guard let self else { return }
             switch found {
             case let .failure(failure):
@@ -193,7 +193,7 @@ package final class UpdateService: ObservableObject {
                     if let held = self.notesHeld, held.version == release.version {
                         notes = held.notes
                     } else {
-                        notes = await VitruvianReleases.releaseNotes(for: release, transport: transport)
+                        notes = await VitruvianAtriumReleases.releaseNotes(for: release, transport: transport)
                         // Notes that could not be read are asked for again next time.
                         if let notes { self.notesHeld = (release.version, notes) }
                     }
@@ -204,7 +204,7 @@ package final class UpdateService: ObservableObject {
     }
 
     /// Why a check failed, written for the person.
-    private static func reason(for failure: VitruvianReleases.Failure) -> String {
+    private static func reason(for failure: VitruvianAtriumReleases.Failure) -> String {
         switch failure {
         case .rateLimited: return L10n.shared.s.updateRateLimited
         case let .status(code): return "HTTP \(code)"
@@ -230,7 +230,7 @@ package final class UpdateService: ObservableObject {
             state = .upToDate
             return
         }
-        // The candidate's tag name is the bare version (VitruvianReleases).
+        // The candidate's tag name is the bare version (VitruvianAtriumReleases).
         let version = chosen.tagName
         downloadURL = chosen.dmgURL
         downloadExpectedBytes = chosen.dmgExpectedBytes
@@ -334,7 +334,7 @@ package final class UpdateService: ObservableObject {
                     }
                     // Move out of the session's scratch space before handing off.
                     let dmgURL = FileManager.default.temporaryDirectory
-                        .appendingPathComponent("Vitruvian-update.dmg")
+                        .appendingPathComponent("VitruvianAtrium-update.dmg")
                     try? FileManager.default.removeItem(at: dmgURL)
                     do {
                         try FileManager.default.moveItem(at: tempURL, to: dmgURL)
@@ -566,7 +566,7 @@ package final class BoundedUpdateDownloadDelegate: NSObject, URLSessionDataDeleg
         self.progress = progress
         self.completion = completion
         let temporaryFileURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("Vitruvian-update-\(UUID().uuidString).download")
+            .appendingPathComponent("VitruvianAtrium-update-\(UUID().uuidString).download")
         fileURL = temporaryFileURL
         guard FileManager.default.createFile(atPath: temporaryFileURL.path, contents: nil) else {
             throw CocoaError(.fileWriteUnknown)

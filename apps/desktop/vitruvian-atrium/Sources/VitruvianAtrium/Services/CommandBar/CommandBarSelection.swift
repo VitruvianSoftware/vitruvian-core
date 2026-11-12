@@ -3,8 +3,8 @@
 
 import AppKit
 import ApplicationServices
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// What the person had selected in the app in front when the bar opened.
 ///

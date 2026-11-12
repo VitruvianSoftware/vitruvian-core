@@ -3,8 +3,8 @@
 
 import AppKit
 import Foundation
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 import VitruvianToolProtocol
 
 /// What a tool that runs as its own program may ask of the app: each

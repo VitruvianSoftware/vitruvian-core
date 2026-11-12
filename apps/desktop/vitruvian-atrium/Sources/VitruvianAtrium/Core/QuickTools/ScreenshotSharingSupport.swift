@@ -101,11 +101,11 @@ package enum ScreenshotSharingSupport {
     }
 
     /// Temporary links were served by upstream's own backend, which the fork
-    /// must not send users' captures to. Until Vitruvian runs its own, uploads
+    /// must not send users' captures to. Until Vitruvian Atrium runs its own, uploads
     /// go to a reserved `.invalid` host (RFC 6761) that never resolves, so they
     /// fail closed and nothing leaves the Mac.
     package static let productionEndpoint = URL(string: "https://sharing.invalid")!
-    package static let developerBundleIdentifier = "com.vitruviansoftware.vitruvian.dev"
+    package static let developerBundleIdentifier = "com.vitruviansoftware.atrium.dev"
     package static let maximumUploadBytes = 25 * 1_024 * 1_024
 
     package static func endpoint(bundleIdentifier: String?, developerOverride: String?) -> URL {

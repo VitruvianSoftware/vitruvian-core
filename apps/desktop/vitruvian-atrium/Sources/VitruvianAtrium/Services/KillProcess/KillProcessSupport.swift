@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Pure helpers for the Kill Process feature: protected system processes and
 /// safety boundaries.
@@ -68,7 +68,7 @@ package enum KillProcessSupport {
         let lowerPath = path.trimmingCharacters(in: .whitespaces).lowercased()
         let protectedNames: Set<String> = [
             "kernel_task", "launchd", "windowserver", "loginwindow",
-            "vitruvian", "vitruvian (developer)", "vitruviandeveloper"
+            "vitruvianatrium", "vitruvian atrium (developer)", "vitruvianatriumdeveloper"
         ]
         if protectedNames.contains(lowerName) { return true }
         if lowerPath.hasSuffix("/windowserver") || lowerPath.hasSuffix("/loginwindow") || lowerPath.hasSuffix("/launchd") {

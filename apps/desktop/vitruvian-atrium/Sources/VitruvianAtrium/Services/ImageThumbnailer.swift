@@ -3,8 +3,8 @@
 
 import AppKit
 import ImageIO
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 package enum ImageThumbnailer {
     package static let defaultPointSize: CGFloat = 20

@@ -3,7 +3,7 @@
 
 import Darwin
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 import VitruvianToolProtocol
 
 /// What a tool that runs as its own program may ask of the app: each

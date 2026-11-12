@@ -5,8 +5,8 @@ import Combine
 import Darwin
 import Foundation
 import SystemConfiguration
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// View-owned. Every reading comes from the local interface list, so no
 /// request leaves the machine and there is no provider to name.

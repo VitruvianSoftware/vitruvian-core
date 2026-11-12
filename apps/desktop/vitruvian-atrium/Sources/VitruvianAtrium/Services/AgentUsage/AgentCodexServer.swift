@@ -3,8 +3,8 @@
 
 import Darwin
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// A banked reset: one renewal of the Codex session and weekly limits at
 /// once, kept on the account until it is used or expires.
@@ -41,7 +41,7 @@ package struct AgentCodexResetSummary: Equatable {
 }
 
 /// Codex's own server, started for one short conversation at a time, answers
-/// for the account. It signs in with Codex's credentials, which Vitruvian
+/// for the account. It signs in with Codex's credentials, which Vitruvian Atrium
 /// never reads, and hears only the questions asked here.
 package enum AgentCodexServer {
     package enum Failure: Error, Equatable {
@@ -216,7 +216,7 @@ package final class AgentCodexConversation: AgentCLIConversation {
     /// Introduces the app, as every conversation must begin.
     package func start() -> Result<Void, AgentCodexServer.Failure> {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
-        let client: [String: Any] = ["name": "vitruvian", "title": "Vitruvian", "version": version]
+        let client: [String: Any] = ["name": "vitruvian", "title": "Vitruvian Atrium", "version": version]
         return ask("initialize", ["clientInfo": client, "capabilities": NSNull()])
             .flatMap { _ -> Result<Void, AgentCodexServer.Failure> in
                 send(["method": "initialized"]) ? .success(()) : .failure(.unreachable)

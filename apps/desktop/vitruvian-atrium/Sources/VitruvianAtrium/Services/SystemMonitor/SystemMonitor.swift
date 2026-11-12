@@ -6,8 +6,8 @@ import Darwin
 import Foundation
 import IOKit
 import IOKit.ps
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Memory pressure as reported by the kernel, mapped to the traffic-light
 /// indicator shown in the panel.
@@ -202,7 +202,7 @@ package final class SystemMonitor: ObservableObject {
 
     @Published package private(set) var snapshot = SystemSnapshot()
 
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.system-monitor", qos: .utility)
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.system-monitor", qos: .utility)
     private var timer: Timer?
     private var intervalSeconds = 2
     private var panelClients = 0

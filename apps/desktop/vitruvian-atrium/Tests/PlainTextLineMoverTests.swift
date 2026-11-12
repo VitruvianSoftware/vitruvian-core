@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// Pure text math: the moved text and the selection that follows it, in
 /// UTF-16 units like NSTextView reports them.

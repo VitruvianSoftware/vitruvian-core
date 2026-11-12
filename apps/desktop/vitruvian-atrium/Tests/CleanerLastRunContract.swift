@@ -2,17 +2,17 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The scheduler's real run record, read back the way the Cleaner card reads
 /// it, feeds the card's real last-run line. Defaults live in a test domain;
 /// nothing is cleaned.
 enum CleanerLastRunContract {
     static func run(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.vitruvian.tests.cleaner-last-run"
+        let domain = "com.vitruviansoftware.atrium.tests.cleaner-last-run"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }

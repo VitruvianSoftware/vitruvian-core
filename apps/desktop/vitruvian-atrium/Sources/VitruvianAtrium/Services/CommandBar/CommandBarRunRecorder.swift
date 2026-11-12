@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// What running a row teaches the command bar: its use, counted and saved,
 /// and the search that found it, remembered for as long as the app runs. The

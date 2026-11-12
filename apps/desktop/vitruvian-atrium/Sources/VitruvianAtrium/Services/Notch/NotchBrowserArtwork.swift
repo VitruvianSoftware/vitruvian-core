@@ -3,7 +3,7 @@
 
 import Foundation
 import ImageIO
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// Finds a cover for a Firefox-family browser, which publishes none to Now
 /// Playing, or a 60-pixel one for YouTube Music. The playing tab's YouTube
@@ -24,7 +24,7 @@ package final class NotchBrowserArtwork: @unchecked Sendable {
     private static let failureCooldown: TimeInterval = 60
     private static let rememberedCovers = 8
 
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.notch-browser-artwork", qos: .utility)
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.notch-browser-artwork", qos: .utility)
     private let lock = NSLock()
     private var covers: [String: Data] = [:]
     private var coverOrder: [String] = []
@@ -295,7 +295,7 @@ private final class NotchBrowserArtworkDownload: NSObject, URLSessionDataDelegat
         configuration.urlCredentialStorage = nil
         configuration.httpCookieStorage = nil
         configuration.httpShouldSetCookies = false
-        configuration.httpAdditionalHeaders = ["User-Agent": "Vitruvian", "Accept": accept]
+        configuration.httpAdditionalHeaders = ["User-Agent": "Vitruvian Atrium", "Accept": accept]
         let delegate = NotchBrowserArtworkDownload(completion: completion)
         let session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
         session.dataTask(with: url).resume()

@@ -5,8 +5,8 @@ import AppKit
 import ApplicationServices
 import CoreGraphics
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Filters a complete accidental click immediately after a healthy click.
 /// Healthy Down and Up events are never delayed. A suppressed bounce Down owns
@@ -76,7 +76,7 @@ package final class MouseClickDebounceService: @unchecked Sendable {
                 main: { work in DispatchQueue.main.async(execute: work) },
                 startThread: { body in
                     let thread = Thread(block: body)
-                    thread.name = "Vitruvian Mouse Click Debounce"
+                    thread.name = "Vitruvian Atrium Mouse Click Debounce"
                     thread.qualityOfService = .userInteractive
                     thread.start()
                 },

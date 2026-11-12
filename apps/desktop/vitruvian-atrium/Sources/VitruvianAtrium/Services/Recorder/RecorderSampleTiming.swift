@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import CoreMedia
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 package enum RecorderSampleTiming {
     package static func converted(_ sampleBuffer: CMSampleBuffer,

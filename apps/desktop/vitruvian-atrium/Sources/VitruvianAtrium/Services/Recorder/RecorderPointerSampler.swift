@@ -3,8 +3,8 @@
 
 import AppKit
 import QuartzCore
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Records where the pointer went while a recording runs.
 ///
@@ -89,7 +89,7 @@ package final class RecorderPointerSampler: @unchecked Sendable {
             self?.loop(generation: generation)
         }
         thread.qualityOfService = .userInteractive
-        thread.name = "com.vitruviansoftware.vitruvian.recorder.pointer"
+        thread.name = "com.vitruviansoftware.atrium.recorder.pointer"
         self.thread = thread
         thread.start()
     }

@@ -5,8 +5,8 @@ import ApplicationServices
 import Combine
 import CoreGraphics
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Suppresses accidental duplicate physical key presses inside a short window.
 /// Auto-repeat from a held key is left untouched so normal key-repeat behavior
@@ -91,7 +91,7 @@ package final class KeyboardDebounceService: ObservableObject {
             let thread = Thread { [weak self] in
                 self?.runEventTap(generation: generation)
             }
-            thread.name = "Vitruvian Keyboard Debounce"
+            thread.name = "Vitruvian Atrium Keyboard Debounce"
             thread.qualityOfService = .userInteractive
             tapThread = thread
             return (thread, false, generation)

@@ -34,9 +34,9 @@ bazel run //tools/desktop-package:package-desktop -- \
 
 # Package from a Bazel-built ZIP archive (e.g. from macos_application):
 bazel run //tools/desktop-package:package-desktop -- \
-  --archive bazel-bin/apps/desktop/vitruvian/Vitruvian.zip \
+  --archive bazel-bin/apps/desktop/vitruvian-atrium/Vitruvian.zip \
   --version 3.37.1 \
-  --dist-dir apps/desktop/vitruvian/dist
+  --dist-dir apps/desktop/vitruvian-atrium/dist
 
 # Dry-run validation (builds and validates artifacts locally without publishing):
 bazel run //tools/desktop-package:package-desktop -- \

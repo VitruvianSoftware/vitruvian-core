@@ -2,16 +2,16 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// When the monitor reads connected devices, every CPU core and peripheral
 /// batteries, through the rules its sampling plan uses, against a scratch
 /// defaults suite.
 enum SystemMonitorPlanTests {
     static func run(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.vitruvian.tests.system-monitor-plan"
+        let domain = "com.vitruviansoftware.atrium.tests.system-monitor-plan"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }

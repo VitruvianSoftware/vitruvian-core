@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// The counters read so far and where reading stopped in each log, kept in
 /// the app's own cache folder so a launch reads only what the agents wrote
@@ -43,7 +43,7 @@ package enum AgentUsageArchive {
     /// its build stamp tells two of them apart.
     package static func build(info: [String: Any]?) -> String {
         let version = "\(info?["CFBundleShortVersionString"] as? String ?? "")-\(info?["CFBundleVersion"] as? String ?? "")"
-        guard let stamp = info?["VitruvianBuildCommit"] as? String else { return version }
+        guard let stamp = info?["VitruvianAtriumBuildCommit"] as? String else { return version }
         return "\(version) \(stamp)"
     }
 

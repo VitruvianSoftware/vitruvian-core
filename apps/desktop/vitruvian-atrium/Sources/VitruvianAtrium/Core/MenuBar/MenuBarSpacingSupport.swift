@@ -296,7 +296,7 @@ package enum MenuBarSpacingSupport {
 }
 
 package enum StatusItemPlacementSupport {
-    package static let mainAutosaveName = "VitruvianMenuBarItem"
+    package static let mainAutosaveName = "VitruvianAtriumMenuBarItem"
     package static let maxPlacementGeneration = 10_000
 
     package static func placementGeneration(in defaults: UserDefaults) -> Int {

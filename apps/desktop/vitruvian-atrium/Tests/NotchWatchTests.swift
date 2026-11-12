@@ -3,10 +3,10 @@
 
 import AppKit
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 enum NotchWatchTests {
     static func run(_ suite: TestSuite) {
@@ -280,7 +280,7 @@ enum NotchWatchTests {
     }
 
     private static func gateContracts(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.vitruvian.tests.notch-watch"
+        let domain = "com.vitruviansoftware.atrium.tests.notch-watch"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }

@@ -3,8 +3,8 @@
 
 import AppKit
 import Combine
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// What the service reaches outside itself, so a test can stand in for
 /// Bluetooth, the preferences and the system monitor.
@@ -12,7 +12,7 @@ package struct NotchAccessoryEnvironment {
     package var isEnabled: @MainActor () -> Bool
     /// Who connects and disconnects. Every Bluetooth query runs on the
     /// monitor's own thread, never the main one: macOS holds the first read
-    /// until the person answers "Allow Vitruvian to use Bluetooth?", asks
+    /// until the person answers "Allow Vitruvian Atrium to use Bluetooth?", asks
     /// again after an update to an ad hoc signed app, and a device can stall
     /// a later one.
     package var makeConnectionMonitor: @MainActor () -> NotchAccessoryConnectionMonitor

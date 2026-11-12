@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// A list of things that each may have a global shortcut of their own, kept
 /// as one preference: `{"<key>": "<shortcut storage value>"}`. Command Bar

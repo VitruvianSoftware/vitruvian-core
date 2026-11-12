@@ -3,10 +3,10 @@
 
 import AppKit
 import SwiftUI
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 import VitruvianToolProtocol
-import VitruvianUI
+import VitruvianAtriumUI
 
 /// An extension's settings as they are drawn, in the Extensions sheet and
 /// on the Dynamic Island page, read back from the drawing itself: the
@@ -19,7 +19,7 @@ import VitruvianUI
 /// - the pane opens at its top, and a search in it scrolls only its own
 ///   region;
 /// - the section links stay where they are whichever one is lit;
-/// - Vitruvian's own switches end where the extension's do;
+/// - Vitruvian Atrium's own switches end where the extension's do;
 /// - the sheet's scrolling region takes the room the window has;
 /// - a menu on the island never cuts its title short.
 ///
@@ -126,7 +126,7 @@ enum ExtensionSettingsLayoutTests {
         {"blocks": [
           {"type": "heading", "text": "General", "section": true},
           {"type": "heading", "text": "Which Vitruvian Remote"},
-          {"type": "row", "id": "which", "title": "Using the Vitruvian extension",
+          {"type": "row", "id": "which", "title": "Using the Vitruvian Atrium extension",
            "subtitle": "The standalone setup is quiet so only one agent runs on port 7411.", "icon": "iphone"},
           {"type": "button", "id": "copy", "title": "Copy Settings & Pairing from Standalone Setup"},
           {"type": "button", "id": "standalone", "title": "Use the Standalone App Instead"},
@@ -775,7 +775,7 @@ enum ExtensionSettingsLayoutTests {
         min(ExternalToolDetailHeightTests.room, shown.room - ToolAgreementContent.sheetMargin)
     }
 
-    /// Vitruvian's own switches, the manifest's setting and the extension's
+    /// Vitruvian Atrium's own switches, the manifest's setting and the extension's
     /// switches all end at one trailing edge, as the extension's do among
     /// themselves.
     static func theSheetLinesUpItsSwitches(_ suite: TestSuite) {
@@ -792,7 +792,7 @@ enum ExtensionSettingsLayoutTests {
                 .sorted { $0.minY < $1.minY }
             let edges = switches.map(\.maxX)
             suite.expect(switches.count >= 5 && edges.allSatisfy { abs($0 - edges[0]) <= 1 },
-                         "\(name): every switch on the sheet, Vitruvian's own and the extension's, ends at one edge: "
+                         "\(name): every switch on the sheet, Vitruvian Atrium's own and the extension's, ends at one edge: "
                              + edges.map { "\(Int($0))" }.joined(separator: ", "))
         }
     }

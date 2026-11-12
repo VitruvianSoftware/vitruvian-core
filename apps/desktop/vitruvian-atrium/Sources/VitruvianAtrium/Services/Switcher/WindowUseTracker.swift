@@ -4,8 +4,8 @@
 import AppKit
 import ApplicationServices
 import CoreGraphics
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Remembers which windows and applications the user actually used, most
 /// recent first. The switcher's order is exactly as good as this history.
@@ -188,8 +188,8 @@ package final class WindowUseTracker: @unchecked Sendable {
         guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
         let pid = app.processIdentifier
         // Our own activation during a handoff is `ActivationHandoff`
-        // self-activating on the way out; ranking it would put Vitruvian ahead
-        // of the app the user left. Every other activation of Vitruvian, the
+        // self-activating on the way out; ranking it would put Vitruvian Atrium ahead
+        // of the app the user left. Every other activation of Vitruvian Atrium, the
         // Dock icon and its own windows included, is a real use and is kept.
         let own = ActivationHandoff.isHandoffActivation(of: pid)
         // The application half is exact and free, so it lands right away; the
@@ -222,7 +222,7 @@ package final class WindowUseTracker: @unchecked Sendable {
             shouldStopWatcher = false
             pendingStartAfterStop = false
             let thread = Thread { [weak self] in self?.runWatcher() }
-            thread.name = "Vitruvian Window Focus"
+            thread.name = "Vitruvian Atrium Window Focus"
             thread.qualityOfService = .userInitiated
             watcherThread = thread
             return thread

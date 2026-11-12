@@ -3,10 +3,10 @@
 
 import AppKit
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The production chooser over a scripted desk: two 100-point displays side by
 /// side, one window of this app across both, and captures that wait until a
@@ -47,7 +47,7 @@ enum ScreenshotSelectionRefreshContract {
             defaults = ScratchDefaults.suite(named: suiteName)!
             defaults.set(true, forKey: DefaultsKey.screenshotFreeze)
             defaults.set(false, forKey: DefaultsKey.screenshotIncludePointer)
-            defaults.set(false, forKey: DefaultsKey.screenshotHideVitruvianWindows)
+            defaults.set(false, forKey: DefaultsKey.screenshotHideAtriumWindows)
         }
 
         func tearDown() {
@@ -72,7 +72,7 @@ enum ScreenshotSelectionRefreshContract {
                 pointer: { [unowned self] in self.pointer },
                 captureAllDisplays: { [unowned self] _, hide, protected in
                     let excluded = ScreenshotCapturePolicy.excludedWindowIDs(
-                        hideVitruvianWindows: hide, ownWindowIDs: Self.ownWindows,
+                        hideAtriumWindows: hide, ownWindowIDs: Self.ownWindows,
                         protectedWindowIDs: protected)
                     return await withCheckedContinuation {
                         self.requests.append(Request(excluded: excluded, continuation: $0))
@@ -80,7 +80,7 @@ enum ScreenshotSelectionRefreshContract {
                 },
                 pickableWindows: { hide, protected in
                     ScreenshotCapturePolicy.canPickWindow(
-                        Self.window, isOwnWindow: true, hideVitruvianWindows: hide,
+                        Self.window, isOwnWindow: true, hideAtriumWindows: hide,
                         protectedWindowIDs: protected)
                         ? [(Self.window, CGRect(x: 0, y: 0, width: 200, height: 100))] : []
                 },
@@ -100,12 +100,12 @@ enum ScreenshotSelectionRefreshContract {
                 for: tool,
                 screenshotFreeze: defaults.bool(forKey: DefaultsKey.screenshotFreeze),
                 screenshotIncludePointer: defaults.bool(forKey: DefaultsKey.screenshotIncludePointer),
-                screenshotHideVitruvianWindows: defaults.bool(forKey: DefaultsKey.screenshotHideVitruvianWindows))
+                screenshotHideAtriumWindows: defaults.bool(forKey: DefaultsKey.screenshotHideAtriumWindows))
             let controller = Controller(
                 freeze: policy.freeze,
                 includePointer: policy.includePointer,
                 showLastRegion: false,
-                hideVitruvianWindows: policy.hideVitruvianWindows,
+                hideAtriumWindows: policy.hideAtriumWindows,
                 protectedWindowIDs: { [weak options] in
                     let tool = options?.selectedTool
                     return ScreenshotCapturePolicy.protectedWindowIDs(
@@ -487,7 +487,7 @@ enum ScreenshotSelectionRefreshContract {
         let rf = desk.requests.count
         follow.select(.recording)
         await drain()
-        desk.defaults.set(true, forKey: DefaultsKey.screenshotHideVitruvianWindows)
+        desk.defaults.set(true, forKey: DefaultsKey.screenshotHideAtriumWindows)
         follow.select(.text)
         await drain()
         desk.complete(rf + 1, displays: [1, 2])
@@ -497,7 +497,7 @@ enum ScreenshotSelectionRefreshContract {
         expect(follow.panels.allSatisfy {
             desk.excluded($0.frozenImage)?.contains(Desk.window) == true && $0.overlayView.windows.isEmpty
         }, "later preference choice wins over old completion")
-        desk.defaults.set(false, forKey: DefaultsKey.screenshotHideVitruvianWindows)
+        desk.defaults.set(false, forKey: DefaultsKey.screenshotHideAtriumWindows)
         let rshow = desk.requests.count
         follow.select(.screenshot)
         await drain()

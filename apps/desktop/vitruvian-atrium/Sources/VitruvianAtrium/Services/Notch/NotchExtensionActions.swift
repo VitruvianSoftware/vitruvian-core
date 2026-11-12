@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// What a quick-access button that opens a tool's island page says, and
 /// whether the island shows it. Core cannot see the tools, so the island,

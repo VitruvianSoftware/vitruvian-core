@@ -4,8 +4,8 @@
 import AppKit
 import CoreAudio
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Global microphone mute: one click or shortcut cuts every microphone the Mac
 /// has, in any app. Muting only the system default is not enough, because an
@@ -53,7 +53,7 @@ package final class MicMuteService: ObservableObject {
 
         package static var live: Environment {
             Environment(hal: .live,
-                        halQueue: .live(label: "com.vitruviansoftware.vitruvian.micmute.hal"),
+                        halQueue: .live(label: "com.vitruviansoftware.atrium.micmute.hal"),
                         main: { work in DispatchQueue.main.async { work() } },
                         defaults: .standard,
                         showMicrophone: { NotchService.shared.showMicrophone(muted: $0) },

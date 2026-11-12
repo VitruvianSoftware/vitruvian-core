@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// What the person agreed to when they added a tool, or last updated it.
 /// The name, version and publisher are the tool's own words at that moment.

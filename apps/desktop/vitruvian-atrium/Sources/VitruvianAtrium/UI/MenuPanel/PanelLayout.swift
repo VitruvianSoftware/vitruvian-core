@@ -3,9 +3,9 @@
 
 import SwiftUI
 import UniformTypeIdentifiers
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
 
 /// A major panel section with a collapsible header. The header row (the section
 /// title plus a chevron) toggles a persisted collapsed state; collapsing hides

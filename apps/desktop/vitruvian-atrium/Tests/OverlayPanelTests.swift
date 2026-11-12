@@ -2,14 +2,14 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// AppKit describes a non-activating panel as a system dialog, which tiling
 /// window managers track and list on whichever space is current. The shared
-/// panel class comes from `VitruvianDesign`; each floating surface builds its
+/// panel class comes from `VitruvianAtriumDesign`; each floating surface builds its
 /// panels through its own factory, which is asked for one here. None is shown.
 enum OverlayPanelTests {
     static func run(_ suite: TestSuite) {

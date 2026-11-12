@@ -11,10 +11,10 @@ import Foundation
 import ImageIO
 import SwiftUI
 import VMStatisticsCompat
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 enum ScreenshotFeatureTests {
     /// Counts what a check's closure was asked to do.
@@ -94,7 +94,7 @@ enum ScreenshotFeatureTests {
         suite.expect(copyRetry.record(for: retryCaptureID, availableRecords: [copyRecord]) == nil,
                      "successful copying clears the pending retry")
 
-        let uploadDefaultsName = "com.vitruviansoftware.vitruvian.tests.screenshot-upload.\(UUID().uuidString)"
+        let uploadDefaultsName = "com.vitruviansoftware.atrium.tests.screenshot-upload.\(UUID().uuidString)"
         let uploadDefaults = ScratchDefaults.suite(named: uploadDefaultsName)!
         defer { uploadDefaults.removePersistentDomain(forName: uploadDefaultsName) }
         suite.expect(ScreenshotShareDuration.saved(in: uploadDefaults) == .oneHour,
@@ -146,11 +146,11 @@ enum ScreenshotFeatureTests {
 
         let ownScreenshotWindows: Set<CGWindowID> = [11, 12, 13]
         let protectedScreenshotWindows: Set<CGWindowID> = [12, 99]
-        suite.expect(Defaults.registeredDefaults[DefaultsKey.screenshotHideVitruvianWindows]
+        suite.expect(Defaults.registeredDefaults[DefaultsKey.screenshotHideAtriumWindows]
                 as? Bool == true,
-               "screenshots hide Vitruvian windows by default")
+               "screenshots hide Vitruvian Atrium windows by default")
         suite.expect(SettingsBackupSupport.exportKeys().contains(
-            DefaultsKey.screenshotHideVitruvianWindows),
+            DefaultsKey.screenshotHideAtriumWindows),
                "the screenshot window visibility preference travels in backups")
         // An editor or a pinned capture is an ordinary window, so the
         // visibility preference has to reach it; the overlays and HUDs taking
@@ -170,57 +170,57 @@ enum ScreenshotFeatureTests {
         ) == ownScreenshotWindows,
         "a recording is exempt from the preference and protects both kinds")
         suite.expect(ScreenshotCapturePolicy.excludedWindowIDs(
-            hideVitruvianWindows: false,
+            hideAtriumWindows: false,
             ownWindowIDs: ownScreenshotWindows,
             protectedWindowIDs: ScreenshotCapturePolicy.protectedWindowIDs(
                 workflowWindowIDs: workflowWindows,
                 contentWindowIDs: contentWindows,
                 honoursVisibilityPreference: true)
         ) == workflowWindows,
-        "showing Vitruvian windows leaves an editor and a pin in the capture")
+        "showing Vitruvian Atrium windows leaves an editor and a pin in the capture")
         suite.expect(ScreenshotCapturePolicy.canPickWindow(
             13,
             isOwnWindow: true,
-            hideVitruvianWindows: false,
+            hideAtriumWindows: false,
             protectedWindowIDs: ScreenshotCapturePolicy.protectedWindowIDs(
                 workflowWindowIDs: workflowWindows,
                 contentWindowIDs: contentWindows,
                 honoursVisibilityPreference: true)
-        ), "a pinned capture can be picked while Vitruvian windows are shown")
+        ), "a pinned capture can be picked while Vitruvian Atrium windows are shown")
         suite.expect(ScreenshotCapturePolicy.excludedWindowIDs(
-            hideVitruvianWindows: true,
+            hideAtriumWindows: true,
             ownWindowIDs: ownScreenshotWindows,
             protectedWindowIDs: protectedScreenshotWindows
         ) == ownScreenshotWindows,
-        "screenshot hiding Vitruvian excludes every own window")
+        "screenshot hiding Vitruvian Atrium excludes every own window")
         suite.expect(ScreenshotCapturePolicy.excludedWindowIDs(
-            hideVitruvianWindows: false,
+            hideAtriumWindows: false,
             ownWindowIDs: ownScreenshotWindows,
             protectedWindowIDs: protectedScreenshotWindows
         ) == [12],
-        "screenshot keeps protected windows excluded while Vitruvian is visible")
+        "screenshot keeps protected windows excluded while Vitruvian Atrium is visible")
         suite.expect(ScreenshotCapturePolicy.canPickWindow(
             7,
             isOwnWindow: false,
-            hideVitruvianWindows: true,
+            hideAtriumWindows: true,
             protectedWindowIDs: protectedScreenshotWindows
         ), "screenshot can always pick an ordinary external window")
         suite.expect(!ScreenshotCapturePolicy.canPickWindow(
             11,
             isOwnWindow: true,
-            hideVitruvianWindows: true,
+            hideAtriumWindows: true,
             protectedWindowIDs: protectedScreenshotWindows
-        ), "screenshot cannot pick a Vitruvian window while hiding them")
+        ), "screenshot cannot pick a Vitruvian Atrium window while hiding them")
         suite.expect(ScreenshotCapturePolicy.canPickWindow(
             11,
             isOwnWindow: true,
-            hideVitruvianWindows: false,
+            hideAtriumWindows: false,
             protectedWindowIDs: protectedScreenshotWindows
-        ), "screenshot can pick an ordinary Vitruvian window when visible")
+        ), "screenshot can pick an ordinary Vitruvian Atrium window when visible")
         suite.expect(!ScreenshotCapturePolicy.canPickWindow(
             12,
             isOwnWindow: true,
-            hideVitruvianWindows: false,
+            hideAtriumWindows: false,
             protectedWindowIDs: protectedScreenshotWindows
         ), "screenshot cannot pick its own protected capture UI")
         islandCaptureChecks(suite)
@@ -996,7 +996,7 @@ enum ScreenshotFeatureTests {
                 && !persistentPolicy.takesFocus && persistentPolicy.closesOnCollapse
                 && persistentPolicy.showsDismissButton,
                "preview presentation keeps timed focus behavior while persistent confirmations stay dismissible without taking focus")
-        let focusDefaultsDomain = "com.vitruviansoftware.vitruvian.tests.screenshot-preview-focus.\(UUID().uuidString)"
+        let focusDefaultsDomain = "com.vitruviansoftware.atrium.tests.screenshot-preview-focus.\(UUID().uuidString)"
         let focusDefaults = ScratchDefaults.suite(named: focusDefaultsDomain)!
         defer { focusDefaults.removePersistentDomain(forName: focusDefaultsDomain) }
         focusDefaults.set(true, forKey: DefaultsKey.screenshotPreviewTakesFocus)
@@ -1045,7 +1045,7 @@ enum ScreenshotFeatureTests {
                                                               confirmationEnabled: false),
                "automatic actions honor confirmation preferences while failed or partial actions still expose recovery controls")
         // The decision route makes after the action ran, read from settings.
-        let routeDefaultsDomain = "com.vitruviansoftware.vitruvian.tests.screenshot-preview-route.\(UUID().uuidString)"
+        let routeDefaultsDomain = "com.vitruviansoftware.atrium.tests.screenshot-preview-route.\(UUID().uuidString)"
         let routeDefaults = ScratchDefaults.suite(named: routeDefaultsDomain)!
         defer { routeDefaults.removePersistentDomain(forName: routeDefaultsDomain) }
         func routePreview(_ action: ScreenshotDefaultAction, saved: Bool = false,
@@ -1133,7 +1133,7 @@ enum ScreenshotFeatureTests {
         suite.expect(!ScreenshotSupport.selectionAcceptsPointerInput(sessionIsOver: true,
                                                                capturePending: true),
                "both at once still ignores the pointer")
-        let captureMenuSuite = "com.vitruviansoftware.vitruvian.tests.capture-menu.\(UUID().uuidString)"
+        let captureMenuSuite = "com.vitruviansoftware.atrium.tests.capture-menu.\(UUID().uuidString)"
         let captureMenuDefaults = ScratchDefaults.suite(named: captureMenuSuite)!
         defer { captureMenuDefaults.removePersistentDomain(forName: captureMenuSuite) }
         for tool in ScreenCaptureTool.allCases {
@@ -1249,27 +1249,27 @@ enum ScreenshotFeatureTests {
             for: .screenshot,
             screenshotFreeze: false,
             screenshotIncludePointer: true,
-            screenshotHideVitruvianWindows: true)
+            screenshotHideAtriumWindows: true)
         let recorderPolicy = ScreenshotSupport.unifiedCapturePolicy(
             for: .recording,
             screenshotFreeze: false,
             screenshotIncludePointer: true,
-            screenshotHideVitruvianWindows: true)
+            screenshotHideAtriumWindows: true)
         let textPolicy = ScreenshotSupport.unifiedCapturePolicy(
             for: .text,
             screenshotFreeze: false,
             screenshotIncludePointer: true,
-            screenshotHideVitruvianWindows: true)
+            screenshotHideAtriumWindows: true)
         suite.expect(liveScreenshotPolicy == .init(freeze: false, includePointer: true,
-                                             hideVitruvianWindows: true,
+                                             hideAtriumWindows: true,
                                              keepsContentWindowsOut: true,
                                              usesGeometry: false)
                 && recorderPolicy == .init(freeze: true, includePointer: false,
-                                           hideVitruvianWindows: false,
+                                           hideAtriumWindows: false,
                                            keepsContentWindowsOut: true,
                                            usesGeometry: true)
                 && textPolicy == .init(freeze: true, includePointer: false,
-                                       hideVitruvianWindows: true,
+                                       hideAtriumWindows: true,
                                        keepsContentWindowsOut: true,
                                        usesGeometry: false),
                "switching capture mode rebuilds the frozen frame, pointer and window policy")
@@ -1277,12 +1277,12 @@ enum ScreenshotFeatureTests {
             for: .color,
             screenshotFreeze: false,
             screenshotIncludePointer: true,
-            screenshotHideVitruvianWindows: true)
+            screenshotHideAtriumWindows: true)
         suite.expect(textPolicy.sharesSource(with: colorPolicy)
                 && !textPolicy.sharesSource(with: recorderPolicy)
                 && !textPolicy.sharesSource(with: liveScreenshotPolicy),
                "only freeze, pointer and window policy decide whether a mode needs its own photograph")
-        // With "Hide Vitruvian windows" off, freeze on and the pointer off,
+        // With "Hide Vitruvian Atrium windows" off, freeze on and the pointer off,
         // every tool wants the same pixels except for the editors and pins
         // recording keeps out, so switching to or from recording has to
         // re-photograph and re-list the pickable windows (issue #780).
@@ -1291,13 +1291,13 @@ enum ScreenshotFeatureTests {
                 for: $0,
                 screenshotFreeze: true,
                 screenshotIncludePointer: false,
-                screenshotHideVitruvianWindows: false))
+                screenshotHideAtriumWindows: false))
         })
         suite.expect(shownWindowPolicies[.recording]?.keepsContentWindowsOut == true
                 && shownWindowPolicies[.screenshot]?.keepsContentWindowsOut == false
                 && shownWindowPolicies[.text]?.keepsContentWindowsOut == false
                 && shownWindowPolicies[.color]?.keepsContentWindowsOut == false,
-               "only recording keeps editors and pins out while Vitruvian windows are shown")
+               "only recording keeps editors and pins out while Vitruvian Atrium windows are shown")
         suite.expect(shownWindowPolicies[.recording].map { recording in
             [ScreenCaptureTool.screenshot, .text, .color].allSatisfy { tool in
                 guard let other = shownWindowPolicies[tool] else { return false }
@@ -1316,10 +1316,10 @@ enum ScreenshotFeatureTests {
                 for: $0,
                 screenshotFreeze: true,
                 screenshotIncludePointer: false,
-                screenshotHideVitruvianWindows: true)
+                screenshotHideAtriumWindows: true)
         }
         suite.expect(hiddenWindowPolicies.allSatisfy(\.keepsContentWindowsOut),
-               "hiding Vitruvian windows keeps editors and pins out of every tool")
+               "hiding Vitruvian Atrium windows keeps editors and pins out of every tool")
         suite.expect(ScreenshotSupport.captureGuideIsVisible(pointerOnDisplay: true,
                                                        selectionInProgress: false,
                                                        capturePending: false)
@@ -3265,11 +3265,11 @@ enum ScreenshotFeatureTests {
                "backdrop style and presets register empty")
 
         // Watermark: the mark of your own that rides along every capture.
-        let textMark = ScreenshotSupport.WatermarkStyle(kind: .text, text: "  Vitruvian  ",
+        let textMark = ScreenshotSupport.WatermarkStyle(kind: .text, text: "  Vitruvian Atrium  ",
                                                         color: "blue", anchor: .topLeading,
                                                         size: 0.5, opacity: 0.3, rotation: 30)
         let markRoundTrip = ScreenshotSupport.WatermarkStyle.decoded(textMark.encoded())
-        suite.expect(markRoundTrip == textMark.sanitized() && markRoundTrip.text == "Vitruvian"
+        suite.expect(markRoundTrip == textMark.sanitized() && markRoundTrip.text == "Vitruvian Atrium"
                 && markRoundTrip.anchor == .topLeading && markRoundTrip.rotation == 30,
                "a watermark style round-trips through JSON, trimmed")
         suite.expect(ScreenshotSupport.WatermarkStyle.decoded(nil).kind == .none
@@ -3679,7 +3679,7 @@ enum ScreenshotFeatureTests {
                 }
             }
             GlobalShortcut.refreshLayoutLabels()
-            let suiteName = "com.vitruviansoftware.vitruvian.tests.editor-bindings.\(UUID().uuidString)"
+            let suiteName = "com.vitruviansoftware.atrium.tests.editor-bindings.\(UUID().uuidString)"
             let prefs = ScratchDefaults.suite(named: suiteName)!
             defer { prefs.removePersistentDomain(forName: suiteName) }
             prefs.set(false, forKey: DefaultsKey.screenshotToolShortcutsEnabled)
@@ -3941,7 +3941,7 @@ enum ScreenshotFeatureTests {
         suite.expect(Defaults.registeredDefaults[DefaultsKey.screenshotAddToShelf] as? Bool == false
                 && SettingsBackupSupport.exportKeys().contains(DefaultsKey.screenshotAddToShelf),
                "adding captures to the shelf ships off and travels in settings backups")
-        let captureShelfSuite = "com.vitruviansoftware.vitruvian.tests.capture-shelf.\(UUID().uuidString)"
+        let captureShelfSuite = "com.vitruviansoftware.atrium.tests.capture-shelf.\(UUID().uuidString)"
         let captureShelfDefaults = ScratchDefaults.suite(named: captureShelfSuite)!
         defer { captureShelfDefaults.removePersistentDomain(forName: captureShelfSuite) }
         func capturesGoToShelf(option: Bool, installed: Bool, on: Bool) -> Bool {
@@ -4009,7 +4009,7 @@ enum ScreenshotFeatureTests {
             developerOverride: "https://test.example/")
         suite.expect(testShareEndpoint.absoluteString == "https://test.example"
                 && ScreenshotSharingSupport.endpoint(
-                    bundleIdentifier: "com.vitruviansoftware.vitruvian",
+                    bundleIdentifier: "com.vitruviansoftware.atrium",
                     developerOverride: "https://test.example").absoluteString
                     == ScreenshotSharingSupport.productionEndpoint.absoluteString
                 && ScreenshotSharingSupport.endpoint(
@@ -4355,10 +4355,10 @@ enum ScreenshotFeatureTests {
 
         // Muting every microphone, not just the one the Mac is set to: an app
         // pointed at a device of its own has to go silent too.
-        suite.expect(MicMuteSupport.isOwnDevice(name: "Vitruvian Mixer")
-                && MicMuteSupport.isOwnDevice(name: "Vitruvian AirPlay")
-                && MicMuteSupport.isOwnDevice(name: "Vitruvian Island Levels")
-                && MicMuteSupport.isOwnDevice(name: "Vitruvian Recorder")
+        suite.expect(MicMuteSupport.isOwnDevice(name: "Vitruvian Atrium Mixer")
+                && MicMuteSupport.isOwnDevice(name: "Vitruvian Atrium AirPlay")
+                && MicMuteSupport.isOwnDevice(name: "Vitruvian Atrium Island Levels")
+                && MicMuteSupport.isOwnDevice(name: "Vitruvian Atrium Recorder")
                 && !MicMuteSupport.isOwnDevice(name: "MacBook Air Microphone"),
                "the mute skips the app's own aggregate devices and no other")
         suite.expect(!MicMuteSupport.shouldSaveVolume(nil)
@@ -4501,7 +4501,7 @@ enum ScreenshotFeatureTests {
         GlobalShortcut.refreshLayoutLabels()
     }
 
-    /// The island follows "Show in screenshots and videos" in Vitruvian's own
+    /// The island follows "Show in screenshots and videos" in Vitruvian Atrium's own
     /// captures too, area selections included, except while it is the tool
     /// taking the picture.
     private static func islandCaptureChecks(_ suite: TestSuite) {
@@ -4525,19 +4525,19 @@ enum ScreenshotFeatureTests {
             // What NotchService protects: the island windows not shown.
             let protected = islandWindows.subtracting(visible).union([overlay])
             let hidden = ScreenshotCapturePolicy.excludedWindowIDs(
-                hideVitruvianWindows: true, ownWindowIDs: ownWindows,
+                hideAtriumWindows: true, ownWindowIDs: ownWindows,
                 protectedWindowIDs: protected, islandWindowIDs: visible)
             suite.expect(hidden == ownWindows.subtracting(visible),
-                         "hiding Vitruvian windows leaves the shown island in (capture tool: \(tool))")
+                         "hiding Vitruvian Atrium windows leaves the shown island in (capture tool: \(tool))")
             let kept = ScreenshotCapturePolicy.excludedWindowIDs(
-                hideVitruvianWindows: false, ownWindowIDs: ownWindows,
+                hideAtriumWindows: false, ownWindowIDs: ownWindows,
                 protectedWindowIDs: protected, islandWindowIDs: visible)
             suite.expect(kept == protected,
-                         "showing Vitruvian windows still keeps the capture interface out (capture tool: \(tool))")
+                         "showing Vitruvian Atrium windows still keeps the capture interface out (capture tool: \(tool))")
         }
         // Watch reads an area and must never see the island, whatever the preference says.
         suite.expect(ScreenshotCapturePolicy.excludedWindowIDs(
-            hideVitruvianWindows: true, ownWindowIDs: ownWindows,
+            hideAtriumWindows: true, ownWindowIDs: ownWindows,
             protectedWindowIDs: islandWindows.union([overlay]),
             islandWindowIDs: shown(preference: true, tool: false)) == ownWindows,
                      "a caller that protects the island keeps it out even when it shows in captures")

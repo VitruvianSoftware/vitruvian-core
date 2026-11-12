@@ -3,7 +3,7 @@
 
 import Combine
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// The island's keyboard layout notice. It shows the source now typing when
 /// the person switches, and stays quiet for the announcement at launch, a

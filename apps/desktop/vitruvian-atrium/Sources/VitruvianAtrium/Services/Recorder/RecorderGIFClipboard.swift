@@ -4,8 +4,8 @@
 import AppKit
 import ImageIO
 import UniformTypeIdentifiers
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Publishes an exported recording as an animated GIF. The file is recognized
 /// as a GIF before the general pasteboard is cleared, so an export that is
@@ -39,7 +39,7 @@ package enum RecorderGIFClipboard {
         guard item.setString(fileURL.absoluteString, forType: .fileURL) else { return false }
         pasteboard.clearContents()
         guard pasteboard.writeObjects([item]) else { return false }
-        pasteboard.declareVitruvianSource()
+        pasteboard.declareAtriumSource()
         return true
     }
 }

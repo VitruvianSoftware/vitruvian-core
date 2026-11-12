@@ -3,13 +3,13 @@
 
 import Foundation
 
-/// Where Vitruvian's own releases are published, and how the update check
+/// Where Vitruvian Atrium's own releases are published, and how the update check
 /// reads them.
 ///
-/// Releases are tags of the public monorepo, `vitruvian-v3.51.0` and so on.
+/// Releases are tags of the public monorepo, `vitruvian-atrium-v3.51.0` and so on.
 /// That repository releases many products, so GitHub's "latest release" is
 /// usually some other product's. The check lists the tags that start with
-/// `vitruvian-v`, keeps those that name a version, and takes the newest.
+/// `vitruvian-atrium-v`, keeps those that name a version, and takes the newest.
 ///
 /// None of it uses api.github.com. Without a token that API allows 60
 /// requests an hour per network address, shared by every program on the
@@ -25,11 +25,11 @@ import Foundation
 ///
 /// GitHub's releases Atom feed is not used: it lists the newest ten releases
 /// of every product in the repository, so a run of other products' releases
-/// pushes Vitruvian's out of it.
-package enum VitruvianReleases {
+/// pushes Vitruvian Atrium's out of it.
+package enum VitruvianAtriumReleases {
     package static let owner = "VitruvianSoftware"
     package static let repository = "vitruvian-core"
-    package static let tagPrefix = "vitruvian-v"
+    package static let tagPrefix = "vitruvian-atrium-v"
 
     // MARK: - Where
 
@@ -47,7 +47,7 @@ package enum VitruvianReleases {
     /// The app's changelog as it was at the tag. release-please writes the
     /// release's notes from the same section.
     package static func changelogURL(tag: String) -> URL {
-        URL(string: "https://raw.githubusercontent.com/\(owner)/\(repository)/\(tag)/apps/desktop/vitruvian/CHANGELOG.md")!
+        URL(string: "https://raw.githubusercontent.com/\(owner)/\(repository)/\(tag)/apps/desktop/vitruvian-atrium/CHANGELOG.md")!
     }
 
     /// The disk image the updater installs: the universal build, signed with
@@ -55,13 +55,13 @@ package enum VitruvianReleases {
     /// alike. Named exactly, because a release carries per-architecture
     /// images too.
     package static func diskImageName(version: String) -> String {
-        "Vitruvian-\(version)-universal.dmg"
+        "VitruvianAtrium-\(version)-universal.dmg"
     }
 
     // MARK: - The requests
 
     /// Git protocol version 2's `ls-refs`, asking only for tags that start
-    /// with `tagPrefix`: the request `git ls-remote <repo> 'refs/tags/vitruvian-v*'`
+    /// with `tagPrefix`: the request `git ls-remote <repo> 'refs/tags/vitruvian-atrium-v*'`
     /// sends. Each line is a pkt-line (four hex digits giving its length,
     /// those four included); `0001` ends the command and `0000` the request.
     package static var tagListRequestBody: Data {
@@ -102,7 +102,7 @@ package enum VitruvianReleases {
 
     private static func request(_ url: URL) -> URLRequest {
         var request = URLRequest(url: url)
-        request.setValue("Vitruvian/\(AppInfo.version)", forHTTPHeaderField: "User-Agent")
+        request.setValue("Vitruvian Atrium/\(AppInfo.version)", forHTTPHeaderField: "User-Agent")
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.timeoutInterval = 30
         return request
@@ -138,9 +138,9 @@ package enum VitruvianReleases {
         return nil
     }
 
-    /// The version a tag names, or nil when it is not a Vitruvian release:
+    /// The version a tag names, or nil when it is not a Vitruvian Atrium release:
     /// another product whose name happens to start the same way
-    /// (`vitruvian-viewer-v1.0.0`), the rolling beta (`vitruvian-beta-latest`,
+    /// (`vitruvian-viewer-v1.0.0`), the rolling beta (`vitruvian-atrium-beta-latest`,
     /// whose version label sorts below the release it was built after), or
     /// anything malformed.
     package static func version(ofTag tag: String) -> String? {
@@ -197,7 +197,7 @@ package enum VitruvianReleases {
         return Reply(status: http.statusCode, body: data, headers: headers)
     }
 
-    /// The newest Vitruvian release, as the check found it.
+    /// The newest Vitruvian Atrium release, as the check found it.
     package struct Found: Sendable, Equatable {
         package let tag: String
         package let version: String
@@ -234,7 +234,7 @@ package enum VitruvianReleases {
         case status(Int)
         /// No reply at all, in the system's words.
         case unreachable(String)
-        /// The tag list names no Vitruvian release, or is not a tag list.
+        /// The tag list names no Vitruvian Atrium release, or is not a tag list.
         case noRelease
     }
 

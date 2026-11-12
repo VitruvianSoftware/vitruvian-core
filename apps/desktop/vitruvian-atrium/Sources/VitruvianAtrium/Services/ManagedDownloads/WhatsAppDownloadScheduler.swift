@@ -4,8 +4,8 @@
 import AppKit
 import Combine
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Runs one lightweight pass per day while automatic WhatsApp cleanup is on.
 /// Missed passes are recovered after launch/wake, and nothing remains alive

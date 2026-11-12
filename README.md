@@ -26,7 +26,7 @@ app type).
 | [`homelab`](apps/cli/homelab/) | CLI / developer tool | Declarative multi-node K3s homelab manager for macOS (Lima VZ). |
 | [`mcp-slack`](apps/mcp/slack/) | Agent / MCP service | Slack MCP server (dual-token; ~22 tools including Canvas CRUD). |
 | [`vitruvian-code`](apps/desktop/vitruvian-code/) | Agent / MCP service | Telegram bot + macOS menu-bar app that bridges chats to a local AI coding CLI. |
-| [`vitruvian`](apps/desktop/vitruvian/) | Desktop app | macOS menu-bar utility hub (volume mixer, system monitor, app switcher, notch, capture). GPL-3.0-or-later fork, being renamed and refactored; not yet distributed. |
+| [`vitruvian-atrium`](apps/desktop/vitruvian-atrium/) | Desktop app (Vitruvian Atrium) | macOS menu-bar utility hub (volume mixer, system monitor, app switcher, notch, capture). GPL-3.0-or-later fork, being renamed and refactored; not yet distributed. |
 
 Each application type has its own conventions — see the
 [per-category playbook](docs/engineering/application-development-principles.md#3-per-category-playbook).
@@ -49,7 +49,7 @@ Each application type has its own conventions — see the
 │   ├── web/                         # Containerized web apps (oauth-user-inspector, backstage, gods-eye-view)
 │   ├── cli/                         # Developer & platform CLIs (devx, homelab)
 │   ├── mcp/                         # Model Context Protocol servers (slack)
-│   ├── desktop/                     # Native desktop applications (vitruvian-code, home-speaker, vitruvian)
+│   ├── desktop/                     # Native desktop applications (vitruvian-code, home-speaker, vitruvian-atrium)
 │   ├── mobile/                      # Mobile apps (android-remote)
 │   └── embedded/                    # Embedded firmware (esp32-s3)
 ├── packages/                        # Shared packages (packages/pulumi, design-system)
@@ -136,10 +136,10 @@ First-party code is **MIT © 2026 VitruvianSoftware**, with each app shipping it
 consistency across apps is tracked in the
 [alignment gaps](docs/engineering/application-alignment-gaps.md).
 
-**Exception:** [`apps/desktop/vitruvian/`](apps/desktop/vitruvian/) is a fork of a GPL-3.0-or-later
+**Exception:** [`apps/desktop/vitruvian-atrium/`](apps/desktop/vitruvian-atrium/) is a fork of a GPL-3.0-or-later
 project and stays GPL-3.0-or-later, including the files we add there. It is exempt from the MIT header
 checks, nothing outside it may depend on it, and distributing it requires publishing its source. See its
-[`UPSTREAM.md`](apps/desktop/vitruvian/UPSTREAM.md).
+[`UPSTREAM.md`](apps/desktop/vitruvian-atrium/UPSTREAM.md).
 
 
 ## Subdirectories & System Boundaries

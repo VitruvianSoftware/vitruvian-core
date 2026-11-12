@@ -1,6 +1,6 @@
 # Desktop Applications Agent Guide (`apps/desktop/`)
 
-This guide is the single authoritative reference for developing, packaging, and releasing native macOS desktop and menu-bar applications in `apps/desktop/` (including [HomeSpeaker](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/apps/desktop/home-speaker), [Vitruvian](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/apps/desktop/vitruvian), [VitruvianCode](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/apps/desktop/vitruvian-code), and future desktop apps).
+This guide is the single authoritative reference for developing, packaging, and releasing native macOS desktop and menu-bar applications in `apps/desktop/` (including [HomeSpeaker](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/apps/desktop/home-speaker), [Vitruvian](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/apps/desktop/vitruvian-atrium), [VitruvianCode](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/apps/desktop/vitruvian-code), and future desktop apps).
 
 All desktop applications adhere to a **standardized 6-point release artifact contract** so that coding agents and human contributors have a uniform, predictable distribution pattern across the monorepo.
 
@@ -59,7 +59,7 @@ This builds all DMGs, universal ZIP, checksums, and prints the Homebrew Cask for
 ## 3. Architecture & Build Pipelines
 
 Desktop applications in `apps/desktop/` are built using either:
-- **Bazel rules_apple (`macos_application`)**: e.g. [Vitruvian](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/apps/desktop/vitruvian/BUILD).
+- **Bazel rules_apple (`macos_application`)**: e.g. [Vitruvian Atrium](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/apps/desktop/vitruvian-atrium/BUILD).
   - Built with `bazel build --config=macos-app --macos_cpus=arm64,x86_64 //apps/desktop/<app>:<App>`.
   - Produces a universal `.zip` containing `<App>.app`.
 - **Swift Package Manager (SwiftPM)**: e.g. [HomeSpeaker](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/apps/desktop/home-speaker).
@@ -147,7 +147,7 @@ When adding a new desktop app `apps/desktop/<app-name>`:
 
 1. **Governance & Metadata**:
    - Provide `LICENSE` (MIT `(c) 2026 VitruvianSoftware`), `README.md`, and `catalog-info.yaml`.
-   - **Exception: apps that embed copyleft code use a compatible licence instead of MIT.** `vitruvian` is GPL-3.0-or-later because it is an imported fork, and `courier` is AGPL-3.0-or-later because it embeds the AGPL mautrix bridges. Put that licence in `LICENSE` and give the sources an `SPDX-License-Identifier` header for it (never run `//tools/license:add`, which writes the MIT one). Such an app is exempt from the MIT-header content check in `tools/license/verify.sh`: add its directory to the exclusion list there, as `apps/desktop/vitruvian/` and `apps/desktop/courier/` already are. `//tools/license:check` still requires a header on every file.
+   - **Exception: apps that embed copyleft code use a compatible licence instead of MIT.** `vitruvian-atrium` is GPL-3.0-or-later because it is an imported fork, and `courier` is AGPL-3.0-or-later because it embeds the AGPL mautrix bridges. Put that licence in `LICENSE` and give the sources an `SPDX-License-Identifier` header for it (never run `//tools/license:add`, which writes the MIT one). Such an app is exempt from the MIT-header content check in `tools/license/verify.sh`: add its directory to the exclusion list there, as `apps/desktop/vitruvian-atrium/` and `apps/desktop/courier/` already are. `//tools/license:check` still requires a header on every file.
    - Add a `release-please-config.json` and `.release-please-manifest.json`.
 2. **Packaging Script**:
    - Create `apps/desktop/<app-name>/scripts/publish.sh` (or `publish.sh`) that builds the universal binary/bundle and invokes `//tools/desktop-package:package-desktop`.

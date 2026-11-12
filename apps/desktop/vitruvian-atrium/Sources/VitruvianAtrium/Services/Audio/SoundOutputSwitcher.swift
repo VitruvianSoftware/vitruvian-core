@@ -4,8 +4,8 @@
 import Carbon.HIToolbox
 import Combine
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Cycles the system output through the devices selected in the mixer panel.
 @MainActor

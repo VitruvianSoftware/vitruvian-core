@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 
 /// One bar per logical core, grouped by core class (Performance, Efficiency…)
 /// and wrapped to the available width.

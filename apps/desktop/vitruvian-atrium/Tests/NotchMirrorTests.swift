@@ -4,10 +4,10 @@
 import AppKit
 import CoreGraphics
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// With the island on every display, each other display shows a copy of
 /// what it shows closed. The copies run the module's own `NotchMirrors`;

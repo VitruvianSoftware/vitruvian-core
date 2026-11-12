@@ -2,9 +2,9 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
 
 /// The shelf docked under the menu bar icon or at the top center of the
 /// screen. It is a single thing in one place:
@@ -77,7 +77,7 @@ private struct ShelfPill: View {
 
     }
 
-    /// The Vitruvian mark, quiet, so the pill is unmistakably the app's; it
+    /// The Vitruvian Atrium mark, quiet, so the pill is unmistakably the app's; it
     /// flips to a green tick for a beat right after a catch.
     @ViewBuilder
     private var leadingGlyph: some View {

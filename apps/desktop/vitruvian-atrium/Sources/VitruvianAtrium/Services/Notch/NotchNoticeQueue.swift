@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import CoreGraphics
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// The island's notice: the one on screen, whether its message is open in
 /// place, and the one still drawn while the island closes around it. It

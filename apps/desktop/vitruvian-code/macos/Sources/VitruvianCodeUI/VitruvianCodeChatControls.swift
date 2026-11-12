@@ -20,7 +20,7 @@
 //
 // Shared by the standalone Vitruvian Code app and the Code feature of the
 // Vitruvian desktop app. Written for Vitruvian and released under MIT by its
-// copyright holder on 2026-10-09 (apps/desktop/vitruvian/UPSTREAM.md).
+// copyright holder on 2026-10-09 (apps/desktop/vitruvian-atrium/UPSTREAM.md).
 
 import AppKit
 import VitruvianCodeCore

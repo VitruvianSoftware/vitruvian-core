@@ -4,8 +4,8 @@
 import ApplicationServices
 @preconcurrency import CoreGraphics
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// While a shortcut field is listening, every key press belongs to the field.
 /// This active tap swallows key events ahead of the system, other apps'

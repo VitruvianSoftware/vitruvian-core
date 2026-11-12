@@ -194,7 +194,7 @@ package struct GlobalShortcut: Equatable, Hashable {
     // W for webcam, on the same free control-option-command layer.
     package static let cameraPreviewDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_W),
                                                      modifiers: [.control, .option, .command])
-    // V for Vitruvian: the quick launcher's own combination.
+    // V for Vitruvian Atrium: the quick launcher's own combination.
     package static let quickLauncherDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_V),
                                                      modifiers: [.control, .command])
     // Default screenshot shortcut on the available control-option-command layer.
@@ -582,7 +582,7 @@ package struct GlobalShortcut: Equatable, Hashable {
     nonisolated(unsafe) private static var layoutLabels: [LayoutLabelKey: String] = [:]
     /// Set once, by `startObservingKeyboardLayout()` on the main thread.
     nonisolated(unsafe) private static var keyboardLayoutObserver: AnyObject?
-    package static let keyboardLayoutDidChange = Notification.Name("VitruvianShortcutKeyboardLayoutDidChange")
+    package static let keyboardLayoutDidChange = Notification.Name("VitruvianAtriumShortcutKeyboardLayoutDidChange")
 
     /// Starts observing system keyboard layout changes so the keycap cache stays
     /// current across layout switches. Safe to call multiple times.

@@ -5,8 +5,8 @@ import AppKit
 import Combine
 import ImageIO
 import UniformTypeIdentifiers
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Apple stills + bookmarked own images. Apply-all hits WallpaperAgent's store.
 @MainActor
@@ -642,7 +642,7 @@ package enum WallpaperThumbnailCache {
     nonisolated(unsafe) private static var generation = UUID()
 
     private static let prefetchQueue = DispatchQueue(
-        label: "com.vitruviansoftware.vitruvian.wallpaper-thumbs",
+        label: "com.vitruviansoftware.atrium.wallpaper-thumbs",
         qos: .utility,
         attributes: .concurrent
     )

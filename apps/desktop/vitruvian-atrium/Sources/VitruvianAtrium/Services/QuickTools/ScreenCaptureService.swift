@@ -3,8 +3,8 @@
 
 import AppKit
 import Combine
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Shared state for the chooser. Every overlay panel observes the same value,
 /// so changing a mode on one display updates the controls on all displays.
@@ -210,12 +210,12 @@ package final class ScreenCaptureService: ObservableObject {
             for: options.selectedTool,
             screenshotFreeze: defaults[Preferences.screenshotFreeze],
             screenshotIncludePointer: defaults[Preferences.screenshotIncludePointer],
-            screenshotHideVitruvianWindows: defaults[Preferences.screenshotHideVitruvianWindows])
+            screenshotHideAtriumWindows: defaults[Preferences.screenshotHideAtriumWindows])
         let controller = ScreenshotSelectionController(
             freeze: policy.freeze,
             includePointer: policy.includePointer,
             showLastRegion: defaults[Preferences.screenshotShowLastRegion],
-            hideVitruvianWindows: policy.hideVitruvianWindows,
+            hideAtriumWindows: policy.hideAtriumWindows,
             protectedWindowIDs: { [weak options] in
                 var windows: Set<CGWindowID> = []
                 if AppFeature.screenshot.isAvailable {

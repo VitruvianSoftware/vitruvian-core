@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// One row the command bar can offer: something to find, read and run.
 package struct CommandBarEntry: Identifiable {
@@ -1006,7 +1006,7 @@ package enum CommandBarCatalog {
     // MARK: - Running apps and their windows
 
     /// Menu commands of the app in front, each one runnable and each one
-    /// showing its own shortcut. This is how the bar reaches past Vitruvian
+    /// showing its own shortcut. This is how the bar reaches past Vitruvian Atrium
     /// without searching files or the internet.
     package static func menuEntries(_ items: [CommandBarMenuItem],
                             appName: String,
@@ -1228,7 +1228,7 @@ package enum CommandBarCatalog {
             run: { _ in clear(recentIDs) })
     }
 
-    /// The row that relaunches Vitruvian, named for it in the person's language.
+    /// The row that relaunches Vitruvian Atrium, named for it in the person's language.
     package static func restartAppEntry(bar: CommandBarFeatureStrings,
                                         relaunch: @escaping @MainActor () -> Void) -> CommandBarEntry {
         CommandBarEntry(
@@ -1454,7 +1454,7 @@ package enum CommandBarCatalog {
         copyAnswer(value, copy: { value, then in
             GeneralPasteboardAccess.shared.async({
                 NSPasteboard.general.clearContents()
-                NSPasteboard.general.declareVitruvianSource()
+                NSPasteboard.general.declareAtriumSource()
                 return NSPasteboard.general.setString(value, forType: .string)
             }, then: then)
         }, show: { QuickToolHUD.show(icon: $0, message: $1) })
@@ -1796,7 +1796,7 @@ package enum CommandBarCatalog {
     /// copied: a pasteboard of our own carries it across.
     @MainActor
     private static func keepOnShelf(_ text: String) {
-        let board = NSPasteboard(name: NSPasteboard.Name("com.vitruviansoftware.vitruvian.commandbar.selection"))
+        let board = NSPasteboard(name: NSPasteboard.Name("com.vitruviansoftware.atrium.commandbar.selection"))
         board.clearContents()
         board.setString(text, forType: .string)
         guard ShelfService.shared.accept(pasteboard: board) else {

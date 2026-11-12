@@ -3,10 +3,10 @@
 
 import Foundation
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// Uses the view's own scroll decision with controlled environment inputs,
 /// and renders the view to see where a resting name sits.

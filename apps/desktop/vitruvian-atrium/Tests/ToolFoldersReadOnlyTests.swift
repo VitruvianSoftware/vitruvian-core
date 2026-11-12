@@ -3,8 +3,8 @@
 
 import Darwin
 import Foundation
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 
 /// A tool folder nothing may be written in, as one copied out of a build
 /// or unpacked from a zip can be: it is added, updated and removed like any

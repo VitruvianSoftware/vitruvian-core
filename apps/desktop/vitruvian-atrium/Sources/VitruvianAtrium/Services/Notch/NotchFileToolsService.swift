@@ -4,8 +4,8 @@
 import AppKit
 import Combine
 import Darwin
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 package struct NotchMediaSession: Identifiable {
     package let id = UUID()
@@ -64,7 +64,7 @@ package final class NotchFileToolsService: ObservableObject, NotchMediaHeightTra
     @Published package private(set) var failure: String?
     @Published package private(set) var wasCancelled = false
     private var operation: NotchArchiveOperation?
-    private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.notch.archive", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.notch.archive", qos: .userInitiated)
     private var generation = UUID()
     private let environment: Environment
     /// Drops onto the tools (`NotchMediaDrop`).

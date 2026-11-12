@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Everything the quick toggles tab can do. Raw values are storage ids for
 /// the user's order and the per-item visibility keys.
@@ -36,7 +36,7 @@ package final class QuickTogglesService: ObservableObject {
 
     @Published package private(set) var states: [QuickToggleAction: RunState] = [:]
 
-    private let workQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.quick-toggles", qos: .userInitiated)
+    private let workQueue = DispatchQueue(label: "com.vitruviansoftware.atrium.quick-toggles", qos: .userInitiated)
 
     private init() {}
 

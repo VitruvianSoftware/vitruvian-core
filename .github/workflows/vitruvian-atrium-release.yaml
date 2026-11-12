@@ -18,24 +18,24 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# release-please for the Vitruvian macOS app:
-# 1. Authors release PRs from conventional commits under apps/desktop/vitruvian/.
+# release-please for the Vitruvian Atrium macOS app:
+# 1. Authors release PRs from conventional commits under apps/desktop/vitruvian-atrium/.
 # 2. When the release PR merges, cuts the GitHub Release (tag: vitruvian-vX.Y.Z).
-# The DMG is NOT built here: that release fires the `vitruvian` unit's
-# production rung in the generated delivery-vitruvian.yaml, which attaches
-# Vitruvian-X.Y.Z.dmg (declared in apps/desktop/vitruvian/BUILD).
-name: vitruvian-release
+# The DMG is NOT built here: that release fires the `vitruvian-atrium` unit's
+# production rung in the generated delivery-vitruvian-atrium.yaml, which attaches
+# VitruvianAtrium-X.Y.Z.dmg (declared in apps/desktop/vitruvian-atrium/BUILD).
+name: vitruvian-atrium-release
 
 on:
   push:
     branches: [main]
     paths:
-      - "apps/desktop/vitruvian/**"
-      - ".github/workflows/vitruvian-release.yaml"
+      - "apps/desktop/vitruvian-atrium/**"
+      - ".github/workflows/vitruvian-atrium-release.yaml"
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to package and upload (e.g. vitruvian-v3.4.1). Empty runs release-please."
+        description: "Release tag to package and upload (e.g. vitruvian-atrium-v3.4.1). Empty runs release-please."
         required: false
         type: string
 
@@ -50,12 +50,12 @@ jobs:
     # Never cancel a release run; serialize them on the branch so rapid merges
     # to main cannot race the release PR / tag creation (issue #461).
     concurrency:
-      group: vitruvian-release-${{ github.ref }}
+      group: vitruvian-atrium-release-${{ github.ref }}
       cancel-in-progress: false
     outputs:
-      release_created: ${{ steps.release.outputs['apps/desktop/vitruvian--release_created'] }}
-      tag_name: ${{ steps.release.outputs['apps/desktop/vitruvian--tag_name'] }}
-      version: ${{ steps.release.outputs['apps/desktop/vitruvian--version'] }}
+      release_created: ${{ steps.release.outputs['apps/desktop/vitruvian-atrium--release_created'] }}
+      tag_name: ${{ steps.release.outputs['apps/desktop/vitruvian-atrium--tag_name'] }}
+      version: ${{ steps.release.outputs['apps/desktop/vitruvian-atrium--version'] }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -85,8 +85,8 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPO: ${{ github.repository }}
-          COMPONENT: vitruvian
-          CODE_PATH: apps/desktop/vitruvian
+          COMPONENT: vitruvian-atrium
+          CODE_PATH: apps/desktop/vitruvian-atrium
           MAIN_SHA: ${{ github.sha }}
           DEQUEUE_BIN: ${{ steps.dequeue-bin.outputs.path }}
         run: '"$DEQUEUE_BIN"'
@@ -96,6 +96,6 @@ jobs:
         if: ${{ inputs.tag == '' }}
         with:
           token: ${{ steps.app-token.outputs.token }}
-          config-file: apps/desktop/vitruvian/release-please-config.json
-          manifest-file: apps/desktop/vitruvian/.release-please-manifest.json
+          config-file: apps/desktop/vitruvian-atrium/release-please-config.json
+          manifest-file: apps/desktop/vitruvian-atrium/.release-please-manifest.json
           target-branch: main

@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import AppKit
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// Quitting while the command bar has borrowed a keyboard layout puts the
 /// person's own layout back first. `AppDelegate` asks it what to answer

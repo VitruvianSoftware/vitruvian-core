@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import AppKit
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// The island's media tools as a drop destination. They take a drop only
 /// while they are offered and not already working, and only when every

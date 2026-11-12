@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// A Space of the island's own, shown over the desktops at the default level.
 /// A stationary window stays put when the desktop is revealed, but it belongs

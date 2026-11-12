@@ -2,10 +2,10 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// Runs the updater's administrator install with the authorization, the
 /// Extra Brightness overlay, the main queue and quitting replaced by doubles
@@ -38,7 +38,7 @@ enum UpdateAdminInstallContract {
                 restoreOverlay: { record.overlayOnScreen = true; record.events.append("overlay") },
                 main: { work in record.main.append { MainActor.assumeIsolated { work() } } },
                 quit: { record.events.append("quit") }))
-            service.launchAdminInstaller(appPath: "/Applications/Vitruvian.app", dmgPath: dmg,
+            service.launchAdminInstaller(appPath: "/Applications/Vitruvian Atrium.app", dmgPath: dmg,
                                          pid: 42, resultPath: "/tmp/update-result", expectedVersion: "9.9.9")
             suite.expect(record.events == ["prompt"],
                          "the brightness overlay leaves the screen before the prompt holds the main thread")

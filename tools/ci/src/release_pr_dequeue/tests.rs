@@ -390,7 +390,7 @@ fn vitruvian_release_dequeues_before_release_please() {
     let ws = std::env::var("TEST_WORKSPACE").unwrap_or_else(|_| "_main".into());
     let wf = std::path::Path::new(&root)
         .join(ws)
-        .join(".github/workflows/vitruvian-release.yaml");
+        .join(".github/workflows/vitruvian-atrium-release.yaml");
     let text = std::fs::read_to_string(&wf).unwrap_or_else(|e| {
         panic!(
             "{}: {e} (needs data = [\"//:workflow_files\"])",
@@ -402,7 +402,7 @@ fn vitruvian_release_dequeues_before_release_please() {
     let release = at("uses: googleapis/release-please-action@");
     assert!(
         matches!((dequeue, release), (Some(a), Some(b)) if a < b),
-        "vitruvian-release.yaml must build and run release_pr_dequeue before release-please \
+        "vitruvian-atrium-release.yaml must build and run release_pr_dequeue before release-please \
          (dequeue line {dequeue:?}, release-please line {release:?})"
     );
     assert!(

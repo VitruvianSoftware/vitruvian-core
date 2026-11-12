@@ -55,8 +55,8 @@
       "feed_url": "/ai/catalog.json"
     },
     {
-      "id": "vitruvian-desktop",
-      "title": "Vitruvian Desktop (macOS)",
+      "id": "vitruvian-atrium",
+      "title": "Vitruvian Atrium (macOS)",
       "badge": "Vitruvian macOS",
       "blurb": "Ed25519-signed JSON-RPC 2.0 extensions for the macOS notch island, Command Bar, and Radial menu.",
       "bootstrap_label": "In-app catalog",
@@ -683,7 +683,7 @@
       "ecosystems": [
         "antigravity",
         "claude-code",
-        "vitruvian-desktop"
+        "vitruvian-atrium"
       ],
       "capabilities": [
         "2 Skills",

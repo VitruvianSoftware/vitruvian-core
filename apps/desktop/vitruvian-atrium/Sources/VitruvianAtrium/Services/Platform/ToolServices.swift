@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// Everything a tool may touch. A tool is built with one and reaches for
 /// nothing else. It carries the tool's manifest, so each operation is

@@ -2,10 +2,10 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// Run the production intro sequence, its close rules and its completion
 /// writes against isolated preferences, a hand-drained queue and an app shell
@@ -59,7 +59,7 @@ enum UpdateIntroFlowTests {
     }
 
     static func run(_ suite: TestSuite) {
-        // Vitruvian keeps upstream's support invitation off; exercise its flow
+        // Vitruvian Atrium keeps upstream's support invitation off; exercise its flow
         // with it switched on, then check the default below.
         let offered = SupportUpdateIntroInfo.isOffered
         SupportUpdateIntroInfo.isOffered = true
@@ -215,7 +215,7 @@ enum UpdateIntroFlowTests {
                      "onboarding on the support page's release counts as seeing it")
 
         SupportUpdateIntroInfo.isOffered = offered
-        suite.expect(!SupportUpdateIntroInfo.isOffered, "Vitruvian ships without upstream's support invitation")
+        suite.expect(!SupportUpdateIntroInfo.isOffered, "Vitruvian Atrium ships without upstream's support invitation")
         let unoffered = reset("3.4.0")
         unoffered.sequence.present()
         close(.highlights, in: unoffered)

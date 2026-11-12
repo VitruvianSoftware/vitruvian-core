@@ -3,8 +3,8 @@
 
 import AppKit
 import Combine
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Session state is intentionally memory-only: a settings restore or relaunch
 /// must never resurrect a timer from a different day or another Mac.

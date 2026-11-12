@@ -2,10 +2,10 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The production drag completion runs with stand-in windows, a recording
 /// shelf and island, and preferences of its own.
@@ -56,7 +56,7 @@ enum ShelfDragCompletionContract {
             removeItems: { self.removed += $0 }))
 
         init(closeAfterDrop: Bool = true, removeAfterDrop: Bool = true) {
-            let domain = "com.vitruviansoftware.vitruvian.tests.shelf-drag.\(UUID().uuidString)"
+            let domain = "com.vitruviansoftware.atrium.tests.shelf-drag.\(UUID().uuidString)"
             defaults = ScratchDefaults.suite(named: domain)!
             defaults.set(closeAfterDrop, forKey: DefaultsKey.shelfCloseAfterDrop)
             defaults.set(removeAfterDrop, forKey: DefaultsKey.shelfRemoveAfterDrop)

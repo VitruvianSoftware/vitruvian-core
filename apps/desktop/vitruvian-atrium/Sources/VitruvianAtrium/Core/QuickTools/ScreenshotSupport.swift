@@ -133,10 +133,10 @@ package enum ScreenshotSupport {
     package struct UnifiedCapturePolicy: Equatable {
         package let freeze: Bool
         package let includePointer: Bool
-        package let hideVitruvianWindows: Bool
+        package let hideAtriumWindows: Bool
         /// Whether editors and pinned captures stay out of the picture and the
         /// pickable windows. Recording keeps them out even while "Hide
-        /// Vitruvian windows" is off, which that flag alone cannot tell apart.
+        /// Vitruvian Atrium windows" is off, which that flag alone cannot tell apart.
         package let keepsContentWindowsOut: Bool
         package let usesGeometry: Bool
 
@@ -146,15 +146,15 @@ package enum ScreenshotSupport {
         package func sharesSource(with other: UnifiedCapturePolicy) -> Bool {
             freeze == other.freeze
                 && includePointer == other.includePointer
-                && hideVitruvianWindows == other.hideVitruvianWindows
+                && hideAtriumWindows == other.hideAtriumWindows
                 && keepsContentWindowsOut == other.keepsContentWindowsOut
         }
 
         // Spelled out because a memberwise initializer never leaves its module.
-        package init(freeze: Bool, includePointer: Bool, hideVitruvianWindows: Bool, keepsContentWindowsOut: Bool, usesGeometry: Bool) {
+        package init(freeze: Bool, includePointer: Bool, hideAtriumWindows: Bool, keepsContentWindowsOut: Bool, usesGeometry: Bool) {
             self.freeze = freeze
             self.includePointer = includePointer
-            self.hideVitruvianWindows = hideVitruvianWindows
+            self.hideAtriumWindows = hideAtriumWindows
             self.keepsContentWindowsOut = keepsContentWindowsOut
             self.usesGeometry = usesGeometry
         }
@@ -163,13 +163,13 @@ package enum ScreenshotSupport {
     package static func unifiedCapturePolicy(for tool: ScreenCaptureTool,
                                      screenshotFreeze: Bool,
                                      screenshotIncludePointer: Bool,
-                                     screenshotHideVitruvianWindows: Bool)
+                                     screenshotHideAtriumWindows: Bool)
         -> UnifiedCapturePolicy {
         UnifiedCapturePolicy(
             freeze: tool == .screenshot ? screenshotFreeze : true,
             includePointer: tool == .screenshot && screenshotIncludePointer,
-            hideVitruvianWindows: tool != .recording && screenshotHideVitruvianWindows,
-            keepsContentWindowsOut: tool == .recording || screenshotHideVitruvianWindows,
+            hideAtriumWindows: tool != .recording && screenshotHideAtriumWindows,
+            keepsContentWindowsOut: tool == .recording || screenshotHideAtriumWindows,
             usesGeometry: tool == .recording)
     }
 

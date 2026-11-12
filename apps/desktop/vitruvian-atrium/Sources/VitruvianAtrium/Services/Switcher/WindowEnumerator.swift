@@ -4,8 +4,8 @@
 import AppKit
 import ApplicationServices
 import CoreGraphics
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Builds the list of switchable windows from the window server and
 /// Accessibility.
@@ -16,7 +16,7 @@ import VitruvianDesign
 /// list, so Accessibility supplies a second pass for real app windows by id.
 /// The result is then ordered by how recently each window was used (see
 /// `WindowUseTracker`), so the switcher matches the system ⌘Tab toggle.
-/// Window titles require Screen Recording on modern macOS; Vitruvian's own
+/// Window titles require Screen Recording on modern macOS; Vitruvian Atrium's own
 /// titled windows use NSWindow metadata so Settings remains reachable even
 /// though the app is a menu-bar accessory.
 package enum WindowEnumerator {

@@ -4,10 +4,10 @@
 import AppKit
 import Carbon.HIToolbox
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The menu bar panel's key route runs against plain doubles. No popover is
 /// shown, no monitor is installed and no key is posted.

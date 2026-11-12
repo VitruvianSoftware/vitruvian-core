@@ -2,15 +2,15 @@
 // Copyright (C) 2026 Vorssaint
 
 import CoreGraphics
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Decides which of this process's windows ScreenCaptureKit must exclude.
 /// Protected IDs are intersected with the actual own IDs from the same
 /// shareable-content snapshot, so stale window numbers cannot affect another app.
 package enum ScreenshotCapturePolicy {
     /// The app's own windows one capture has to keep out before the "Hide
-    /// Vitruvian windows" preference narrows what is left.
+    /// Vitruvian Atrium windows" preference narrows what is left.
     ///
     /// Workflow surfaces — the selection overlays, the countdown and scrolling
     /// HUDs and the quick preview — are the tool taking the capture and can
@@ -30,13 +30,13 @@ package enum ScreenshotCapturePolicy {
     }
 
     /// `islandWindowIDs` are the Dynamic Island windows that show in captures.
-    /// The island has its own preference for that, so "Hide Vitruvian windows"
+    /// The island has its own preference for that, so "Hide Vitruvian Atrium windows"
     /// leaves them in, but a caller that protects them keeps them out.
-    package static func excludedWindowIDs(hideVitruvianWindows: Bool,
+    package static func excludedWindowIDs(hideAtriumWindows: Bool,
                                   ownWindowIDs: Set<CGWindowID>,
                                   protectedWindowIDs: Set<CGWindowID>,
                                   islandWindowIDs: Set<CGWindowID> = []) -> Set<CGWindowID> {
-        let excluded = hideVitruvianWindows ? ownWindowIDs : ownWindowIDs.intersection(protectedWindowIDs)
+        let excluded = hideAtriumWindows ? ownWindowIDs : ownWindowIDs.intersection(protectedWindowIDs)
         return excluded.subtracting(islandWindowIDs.subtracting(protectedWindowIDs))
     }
 
@@ -56,10 +56,10 @@ package enum ScreenshotCapturePolicy {
 
     package static func canPickWindow(_ windowID: CGWindowID,
                               isOwnWindow: Bool,
-                              hideVitruvianWindows: Bool,
+                              hideAtriumWindows: Bool,
                               protectedWindowIDs: Set<CGWindowID>) -> Bool {
         !isOwnWindow
-            || (!hideVitruvianWindows && !protectedWindowIDs.contains(windowID))
+            || (!hideAtriumWindows && !protectedWindowIDs.contains(windowID))
     }
 
     /// One on-screen window as the capture decision needs it.

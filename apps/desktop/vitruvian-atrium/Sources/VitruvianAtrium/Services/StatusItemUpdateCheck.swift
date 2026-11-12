@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import AppKit
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// The first launch of a newer version checks, for a bounded time, that the
 /// menu bar icon really came back, and rebuilds it once if it did not.

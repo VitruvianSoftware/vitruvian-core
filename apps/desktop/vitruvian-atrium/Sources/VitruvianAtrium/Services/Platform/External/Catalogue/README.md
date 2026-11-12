@@ -1,7 +1,7 @@
 # Catalogue
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/Sources/Vitruvian/Services/Platform/External/Catalogue`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/Platform/External/Catalogue`.
 
 ## Interface
 - Internal implementation components
@@ -21,4 +21,4 @@ Component package providing implementation for `apps/desktop/vitruvian/Sources/V
 - [CatalogueWatch.swift:100]: `/// Fetches the list now, unless a fetch is already in flight.`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/Sources/Vitruvian/Services/Platform/External/Catalogue/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/Platform/External/Catalogue/...`

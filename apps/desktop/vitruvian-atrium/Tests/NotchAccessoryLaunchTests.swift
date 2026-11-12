@@ -3,10 +3,10 @@
 
 import Combine
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// Launch never waits for Bluetooth. macOS holds the first Bluetooth read
 /// until the person answers its permission prompt, and asks again after an

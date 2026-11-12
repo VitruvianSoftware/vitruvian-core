@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
-import VitruvianCore
+import VitruvianAtriumCore
 
 package enum ScreenshotCanvasSupport {
     package enum Fill: Equatable {

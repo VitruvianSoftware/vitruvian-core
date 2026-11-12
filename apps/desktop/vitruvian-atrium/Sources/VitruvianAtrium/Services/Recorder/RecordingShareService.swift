@@ -3,8 +3,8 @@
 
 import AppKit
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 package enum RecordingShareError: Error {
     case invalidArtifact
@@ -175,7 +175,7 @@ package final class RecordingShareService: ObservableObject {
     package func copy(_ url: URL) -> Bool {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.declareVitruvianSource()
+        pasteboard.declareAtriumSource()
         return pasteboard.setString(url.absoluteString, forType: .string)
     }
 

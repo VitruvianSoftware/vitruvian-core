@@ -3,7 +3,7 @@
 `apps/web/gods-eye-view` is a copy of
 [bilawalsidhu/gods-eye-view](https://github.com/bilawalsidhu/gods-eye-view), which
 ships fixes and features most days. This directory keeps the copy in step with it.
-It is the counterpart of `apps/desktop/vitruvian`'s upstream tracking, adapted for
+It is the counterpart of `apps/desktop/vitruvian-atrium`'s upstream tracking, adapted for
 a copy that was not refactored. Everything in it is this repository's own: upstream
 has no `upstream/` directory.
 

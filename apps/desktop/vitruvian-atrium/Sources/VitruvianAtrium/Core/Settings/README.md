@@ -1,7 +1,7 @@
 # Settings
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/Sources/Vitruvian/Core/Settings`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Core/Settings`.
 
 ## Interface
 - Internal implementation components
@@ -16,4 +16,4 @@ Component package providing implementation for `apps/desktop/vitruvian/Sources/V
 - [SettingsSearchSupport.swift:235]: `let foldedQuery = fold(query)`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/Sources/Vitruvian/Core/Settings/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Core/Settings/...`

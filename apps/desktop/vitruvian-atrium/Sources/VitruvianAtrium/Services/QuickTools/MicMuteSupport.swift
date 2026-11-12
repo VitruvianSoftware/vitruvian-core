@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// The decisions behind a global microphone mute, kept apart from the audio
 /// calls so they can be pinned down by tests: which devices the mute has to
@@ -14,8 +14,8 @@ package enum MicMuteSupport {
     /// not a microphone, and muting one would silence the very thing it is
     /// rendering or reading; a private aggregate is still listed to the
     /// process that created it, so every device list skips them by name.
-    package static let ownDeviceNames: Set<String> = ["Vitruvian Mixer", "Vitruvian AirPlay", "Vitruvian Island Levels",
-                                              "Vitruvian Recorder"]
+    package static let ownDeviceNames: Set<String> = ["Vitruvian Atrium Mixer", "Vitruvian Atrium AirPlay", "Vitruvian Atrium Island Levels",
+                                              "Vitruvian Atrium Recorder"]
 
     /// The level a device falls back to when nothing was ever saved for it:
     /// loud enough to be usable, quiet enough not to startle.

@@ -2,17 +2,17 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 enum NotchFileToolsTests {
     static func run(_ suite: TestSuite) {
         NotchDownloadFolderChoiceTests.run(suite)
         MediaDialogHostTests.run { suite.expect($0, $1) }
         ShelfDragCompletionTests.run(suite)
-        let domain = "com.vitruviansoftware.vitruvian.tests.notch-files"
+        let domain = "com.vitruviansoftware.atrium.tests.notch-files"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }

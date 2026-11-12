@@ -244,7 +244,7 @@ package enum DefaultsKey {
     package static let startupDidNotFinish = "startupDidNotFinish"
     package static let bluetoothSleepEnabled = "bluetoothSleepEnabled"
     package static let bluetoothSleepRestoreOnWake = "bluetoothSleepRestoreOnWake"
-    // Set only while Vitruvian owes a Bluetooth restore, so a Mac shut down
+    // Set only while Vitruvian Atrium owes a Bluetooth restore, so a Mac shut down
     // while asleep still gets it back on the next launch.
     package static let bluetoothSleepRestorePending = "bluetoothSleepRestorePending"
     package static let musicBlockEnabled = "musicBlockEnabled"
@@ -673,7 +673,7 @@ package enum DefaultsKey {
     package static let screenshotClipboardShortcutEnabled = "screenshotClipboardShortcutEnabled"
     package static let screenshotClipboardShortcut = "screenshotClipboardShortcut"
     package static let screenshotFreeze = "screenshotFreeze"
-    package static let screenshotHideVitruvianWindows = "screenshotHideVitruvianWindows"
+    package static let screenshotHideAtriumWindows = "screenshotHideAtriumWindows"
     package static let screenshotSaveFolder = "screenshotSaveFolder"
     package static let screenshotSaveSubfolder = "screenshotSaveSubfolder"
     package static let screenshotFileNamePattern = "screenshotFileNamePattern"

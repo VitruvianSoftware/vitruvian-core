@@ -190,7 +190,7 @@ pub fn run_cli(args: &[String]) -> i32 {
         .find(|(k, _, _)| *k == config.name)
         .copied()
         .unwrap();
-    let pin = format!("apps/desktop/vitruvian/bazel/{}.sha256", config.name);
+    let pin = format!("apps/desktop/vitruvian-atrium/bazel/{}.sha256", config.name);
 
     if let Some(check_path) = config.check {
         let pinned = match fs::read_to_string(&check_path) {
@@ -204,14 +204,17 @@ pub fn run_cli(args: &[String]) -> i32 {
             return 0;
         }
         eprintln!(
-            "{} changed and this app's pin did not.\n  1. bazel run //apps/desktop/vitruvian-atrium:{}\n  2. add a line for the change to the log in apps/desktop/vitruvian/UPSTREAM.md\nBoth go in the same commit, so the change ships in Vitruvian's next release.",
+            "{} changed and this app's pin did not.\n  1. bazel run //apps/desktop/vitruvian-atrium:{}\n  2. add a line for the change to the log in apps/desktop/vitruvian-atrium/UPSTREAM.md\nBoth go in the same commit, so the change ships in Vitruvian Atrium's next release.",
             what, target
         );
         return 1;
     }
 
     let Ok(root) = env::var("BUILD_WORKSPACE_DIRECTORY") else {
-        eprintln!("Run with: bazel run //apps/desktop/vitruvian-atrium:{}", target);
+        eprintln!(
+            "Run with: bazel run //apps/desktop/vitruvian-atrium:{}",
+            target
+        );
         return 2;
     };
     let out_path = Path::new(&root).join(&pin);

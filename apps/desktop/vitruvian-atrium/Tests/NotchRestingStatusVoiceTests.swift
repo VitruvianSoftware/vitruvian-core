@@ -4,9 +4,9 @@
 import AppKit
 import Foundation
 import SwiftUI
-import VitruvianCore
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// What assistive technology hears of a tool's status mark. The closed
 /// island hides what it draws at rest and offers one button over it, so

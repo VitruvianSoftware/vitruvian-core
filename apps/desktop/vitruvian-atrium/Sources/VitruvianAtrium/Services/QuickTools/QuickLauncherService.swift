@@ -4,8 +4,8 @@
 import AppKit
 import Carbon.HIToolbox
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Everything the quick launcher can hold. Raw values are storage ids for
 /// the user's order and hidden set.
@@ -66,7 +66,7 @@ extension QuickLauncherItem {
 
 /// The floating quick panel: a small, pretty launcher with the user's
 /// favorite tools, summoned from anywhere with a global shortcut (⌃⌘V by
-/// default; V for Vitruvian). Fully customizable in place: items can be
+/// default; V for Vitruvian Atrium). Fully customizable in place: items can be
 /// hidden, brought back and reordered by dragging.
 @MainActor
 package final class QuickLauncherService: ObservableObject {
@@ -463,7 +463,7 @@ package final class QuickLauncherService: ObservableObject {
     private func ensurePanel() -> NSPanel {
         if let panel { return panel }
         let panel = Self.makePanel()
-        panel.title = "Vitruvian"
+        panel.title = "Vitruvian Atrium"
         panel.isReleasedWhenClosed = false
         // Item drag-to-reorder needs the mouse drag for itself; a background-
         // movable window would win the gesture and drag the whole panel.

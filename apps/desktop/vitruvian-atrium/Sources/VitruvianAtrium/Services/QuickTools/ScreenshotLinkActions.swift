@@ -2,8 +2,8 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import AppKit
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// What a screenshot surface does with a shared link outside itself: list
 /// the live ones, copy one, revoke one, and say how it went. `live` is

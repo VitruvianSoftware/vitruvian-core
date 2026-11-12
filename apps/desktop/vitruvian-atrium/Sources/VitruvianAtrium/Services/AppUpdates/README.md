@@ -1,7 +1,7 @@
 # Appupdates
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/Sources/Vitruvian/Services/AppUpdates`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/AppUpdates`.
 
 ## Interface
 - Internal implementation components
@@ -18,4 +18,4 @@ Component package providing implementation for `apps/desktop/vitruvian/Sources/V
 - [AppUpdatesService.swift:112]: `return Network(now: { Date() }, catalogSession: URLSession(configuration: con...`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/Sources/Vitruvian/Services/AppUpdates/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Services/AppUpdates/...`

@@ -3,7 +3,7 @@
 
 import AppKit
 import ApplicationServices
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// One element of an app's menu bar, as the walk meets it. Each part is
 /// asked for only when the walk gets there: reading an element is a round

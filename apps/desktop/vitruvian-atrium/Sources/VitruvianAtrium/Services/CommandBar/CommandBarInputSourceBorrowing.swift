@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// The bar's own keyboard layout: an ASCII layout borrowed when the bar
 /// opens and the person's own source put back when it closes or the app

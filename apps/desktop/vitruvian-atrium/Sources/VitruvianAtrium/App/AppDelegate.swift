@@ -7,10 +7,10 @@ import os.log
 import Combine
 import SwiftUI
 import UserNotifications
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSWindowDelegate {
@@ -70,7 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     private var popoverLocalDismissMonitor: Any?
     private var popoverKeyboardMonitor: Any?
     /// The app to hand activation back to when the panel is dismissed, so
-    /// Vitruvian does not stay in front. Captured when a click opens the panel
+    /// Vitruvian Atrium does not stay in front. Captured when a click opens the panel
     /// and kept current by the observers below while the panel is shown.
     private var panelActivationSource: NSRunningApplication?
     private var panelActivationObservers: [NSObjectProtocol] = []
@@ -427,7 +427,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     /// Whether the menu bar icon is actually visible on a screen, rather than
     /// present in the status bar but clipped or dropped by a crowded/notched menu
     /// bar (in which case the button still has a window, just not an on-screen one).
-    private static let menuBarLog = Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian",
+    private static let menuBarLog = Logger(subsystem: Bundle.main.bundleIdentifier ?? "atrium",
                                            category: "menubar")
 
     private func iconIsOnScreen() -> Bool {
@@ -875,7 +875,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         endPanelActivationTracking()
         let ownPID = NSRunningApplication.current.processIdentifier
         let front = NSWorkspace.shared.frontmostApplication
-        // Opened while Vitruvian was already in front (from Settings, say):
+        // Opened while Vitruvian Atrium was already in front (from Settings, say):
         // there is nothing to hand back when the panel closes.
         panelActivationSource = front?.processIdentifier == ownPID ? nil : front
         let center = NSWorkspace.shared.notificationCenter
@@ -916,7 +916,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         return source
     }
 
-    /// Closing the panel leaves Vitruvian active, and macOS keeps reporting it
+    /// Closing the panel leaves Vitruvian Atrium active, and macOS keeps reporting it
     /// as the frontmost app until something else is focused, which misleads
     /// window managers and anything that follows the active app.
     private func returnActivation(to source: NSRunningApplication?, after closeReason: PanelCloseReason?) {
@@ -1160,7 +1160,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         editMenu.addItem(NSMenuItem(title: strings.menuPaste, action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
         editMenu.addItem(NSMenuItem(title: strings.menuSelectAll, action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
 
-        // Drivers and other running copies of Vitruvian may translate side buttons
+        // Drivers and other running copies of Vitruvian Atrium may translate side buttons
         // into menu commands before this process ever receives a raw mouse event.
         let navigationMenuItem = NSMenuItem()
         navigationMenuItem.submenu = SettingsWindow.navigationMenu(language: L10n.shared.language)

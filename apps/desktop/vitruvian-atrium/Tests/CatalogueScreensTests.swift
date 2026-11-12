@@ -2,9 +2,9 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// What the catalog's screens say, as plain values: the sheet, the line the
 /// agreement sheet adds, the refusals, and "Update available". No test draws

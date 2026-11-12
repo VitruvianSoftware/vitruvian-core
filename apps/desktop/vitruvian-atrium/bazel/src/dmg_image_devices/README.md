@@ -1,7 +1,7 @@
 # Dmg Image Devices
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/bazel/src/dmg_image_devices`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/bazel/src/dmg_image_devices`.
 
 ## Interface
 - `[lib.rs:extract_devices]`
@@ -14,4 +14,4 @@ Component package providing implementation for `apps/desktop/vitruvian/bazel/src
 - None
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/bazel/src/dmg_image_devices/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/bazel/src/dmg_image_devices/...`

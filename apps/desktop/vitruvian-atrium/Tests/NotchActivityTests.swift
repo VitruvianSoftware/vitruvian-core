@@ -4,10 +4,10 @@
 import AppKit
 import Foundation
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 enum NotchActivityTests {
     static func run(_ suite: TestSuite) {
@@ -31,7 +31,7 @@ enum NotchActivityTests {
     /// Keep Awake as an activity: off until turned on, gated like the others,
     /// last in the automatic order, and read in whole minutes like a timer.
     private static func keepAwakeContracts(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.vitruvian.tests.notch-keep-awake"
+        let domain = "com.vitruviansoftware.atrium.tests.notch-keep-awake"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
@@ -143,7 +143,7 @@ enum NotchActivityTests {
                      && NotchSupport.earlyBatteryThreshold(150, above: 10) == 100
                      && NotchSupport.earlyBatteryThreshold(99, above: 150) == 100,
                      "the amber level stays within its range and above the red level")
-        let domain = "com.vitruviansoftware.vitruvian.tests.low-battery"
+        let domain = "com.vitruviansoftware.atrium.tests.low-battery"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
@@ -165,7 +165,7 @@ enum NotchActivityTests {
     }
 
     private static func alertContracts(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.vitruvian.tests.timer-alert"
+        let domain = "com.vitruviansoftware.atrium.tests.timer-alert"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
@@ -412,7 +412,7 @@ enum NotchActivityTests {
         suite.expect(bounded.focusMinutes == 180 && bounded.shortBreakMinutes == 1 && bounded.longBreakMinutes == 60
                && bounded.longBreakInterval == 1 && bounded.totalSessions == 24,
                "restored out-of-range values cannot overflow deadlines or create invalid cycle intervals")
-        let domain = "com.vitruviansoftware.vitruvian.tests.pomodoro"
+        let domain = "com.vitruviansoftware.atrium.tests.pomodoro"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
@@ -548,7 +548,7 @@ enum NotchActivityTests {
                && NotchTimerSupport.compactText(for: hours, at: 3601, locale: locale) == "59m",
                "compact countdowns still switch from hours to minutes at the hour boundary")
 
-        let domain = "com.vitruviansoftware.vitruvian.tests.timer-mode"
+        let domain = "com.vitruviansoftware.atrium.tests.timer-mode"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
@@ -993,7 +993,7 @@ enum NotchActivityTests {
     }
 
     private static func gateContracts(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.vitruvian.tests.notch-activities"
+        let domain = "com.vitruviansoftware.atrium.tests.notch-activities"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }

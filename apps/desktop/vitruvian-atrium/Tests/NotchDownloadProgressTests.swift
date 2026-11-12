@@ -2,10 +2,10 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// Exercise the real native observer and filesystem reader against disposable
 /// files, including callback bursts, renames and cancellation behind a busy lane.
@@ -48,7 +48,7 @@ enum NotchDownloadProgressTests {
     }
 
     private static func fastCompletion(folder: URL, suite: TestSuite) throws {
-        let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.tests.download-fast")
+        let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.tests.download-fast")
         let results = Results()
         let observer = NotchDownloadProgressObserver(folder: folder, queue: queue, changed: results.receive)
         defer { observer.stop(); queue.sync {} }
@@ -76,7 +76,7 @@ enum NotchDownloadProgressTests {
     private static func sourceCompletion(folder: URL, suite: TestSuite) throws {
         let root = folder.appendingPathComponent("source-completion")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
-        let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.tests.download-source")
+        let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.tests.download-source")
         let observer = NotchDownloadProgressObserver(folder: root, queue: queue) { _, _ in }
         defer { observer.stop(); queue.sync {} }
         let package = root.appendingPathComponent("archive.zip.download", isDirectory: true)
@@ -137,7 +137,7 @@ enum NotchDownloadProgressTests {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
         let package = root.appendingPathComponent("archive.zip.download", isDirectory: true)
         try FileManager.default.createDirectory(at: package, withIntermediateDirectories: false)
-        let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.tests.download-queued-source")
+        let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.tests.download-queued-source")
         let observer = NotchDownloadProgressObserver(folder: root, queue: queue) { _, _ in }
         defer { observer.stop(); queue.sync {} }
         let progress = Progress(totalUnitCount: 10)
@@ -166,7 +166,7 @@ enum NotchDownloadProgressTests {
     /// it ends, the file moves out under a unique name and the progress
     /// points there before it is unpublished.
     private static func safariPackage(folder: URL, suite: TestSuite) throws {
-        let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.tests.download-safari")
+        let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.tests.download-safari")
         let results = Results()
         let observer = NotchDownloadProgressObserver(folder: folder, queue: queue, changed: results.receive)
         defer { observer.stop(); queue.sync {} }
@@ -283,7 +283,7 @@ enum NotchDownloadProgressTests {
     }
 
     private static func progressAndCompletion(folder: URL, suite: TestSuite) throws {
-        let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.tests.download-progress")
+        let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.tests.download-progress")
         let results = Results()
         let observer = NotchDownloadProgressObserver(folder: folder, queue: queue, changed: results.receive)
         defer { observer.stop(); queue.sync {} }
@@ -341,7 +341,7 @@ enum NotchDownloadProgressTests {
     }
 
     private static func cancellation(folder: URL, suite: TestSuite) {
-        let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.tests.download-cancel")
+        let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.tests.download-cancel")
         let results = Results()
         let observer = NotchDownloadProgressObserver(folder: folder, queue: queue, changed: results.receive)
         let progress = Progress(totalUnitCount: 10)
@@ -361,7 +361,7 @@ enum NotchDownloadProgressTests {
     }
 
     private static func capacity(folder: URL, suite: TestSuite) {
-        let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.tests.download-capacity")
+        let queue = DispatchQueue(label: "com.vitruviansoftware.atrium.tests.download-capacity")
         let results = Results()
         let observer = NotchDownloadProgressObserver(folder: folder, queue: queue, changed: results.receive)
         defer { observer.stop(); queue.sync {} }

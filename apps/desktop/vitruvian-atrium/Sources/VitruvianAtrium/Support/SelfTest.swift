@@ -3,12 +3,12 @@
 
 import AppKit
 import IOKit.pwr_mgt
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
-/// Quick subsystem check, run with `Vitruvian --selftest`.
+/// Quick subsystem check, run with `Vitruvian Atrium --selftest`.
 /// Core capabilities fail the test; hardware-dependent readings only warn.
 enum SelfTest {
     static func runAndExit() -> Never {
@@ -18,7 +18,7 @@ enum SelfTest {
         var assertionID = IOPMAssertionID(0)
         let result = IOPMAssertionCreateWithName("PreventUserIdleSystemSleep" as CFString,
                                                  IOPMAssertionLevel(kIOPMAssertionLevelOn),
-                                                 "Vitruvian selftest" as CFString,
+                                                 "Vitruvian Atrium selftest" as CFString,
                                                  &assertionID)
         if result == kIOReturnSuccess {
             IOPMAssertionRelease(assertionID)
@@ -140,7 +140,7 @@ enum SelfTest {
                 failures.append("menu bar gallery symbol \(name) does not fit its canvas")
             }
         }
-        let missingSymbol = "vitruvian.missing.symbol"
+        let missingSymbol = "atrium.missing.symbol"
         if BlackHoleGlyph.customMark(named: missingSymbol) != nil
             || BlackHoleGlyph.mark(symbolName: missingSymbol) !== BlackHoleGlyph.mark(symbolName: "") {
             failures.append("unknown menu bar symbol does not fall back to the glyph")
@@ -205,7 +205,7 @@ enum SelfTest {
 }
 
 /// Prints every temperature sensor the monitor would consider, with its
-/// classification. Run with `Vitruvian --sensors`; handy when porting
+/// classification. Run with `Vitruvian Atrium --sensors`; handy when porting
 /// the sensor mapping to a new chip generation.
 enum SensorDump {
     static func runAndExit() -> Never {

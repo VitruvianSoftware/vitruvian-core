@@ -7,10 +7,10 @@ import CoreImage
 import Foundation
 import ImageIO
 import os
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// Nonisolated: the export probe runs in a detached task while the main
 /// thread waits for it.

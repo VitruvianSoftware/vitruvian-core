@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// Any mode of the Developer presentation probe runs it on its own, rather
 /// than launching the whole app, while ordinary launches still reach the app.
@@ -10,7 +10,7 @@ import VitruvianCore
 /// `isRequested` the check launch makes.
 enum NotchPresentationProbeArgumentTests {
     static func run(_ suite: TestSuite) {
-        let binary = "/Applications/Vitruvian (Developer).app/Contents/MacOS/VitruvianDeveloper"
+        let binary = "/Applications/Vitruvian Atrium (Developer).app/Contents/MacOS/VitruvianAtriumDeveloper"
         for mode in NotchPresentationProbeMode.allCases {
             suite.expect(NotchPresentationProbeMode.isRequested(by: [binary, mode.rawValue]),
                          "\(mode.rawValue) on its own runs the presentation probe")

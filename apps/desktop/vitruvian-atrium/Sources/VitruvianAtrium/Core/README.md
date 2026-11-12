@@ -1,7 +1,7 @@
 # Core
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/Sources/Vitruvian/Core`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Core`.
 
 ## Interface
 - Internal implementation components
@@ -46,4 +46,4 @@ Component package providing implementation for `apps/desktop/vitruvian/Sources/V
 - [URLCleaning.swift:174]: `// re-encode existing escapes when a query also contains literal Unicode.`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/Sources/Vitruvian/Core/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Core/...`

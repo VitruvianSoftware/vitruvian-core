@@ -5,7 +5,7 @@ import Foundation
 
 /// Static identity of the app, shared by UI, notifications and tooling.
 package enum AppInfo {
-    package static let name = "Vitruvian"
+    package static let name = "Vitruvian Atrium"
     /// The copyright line, exactly as the standard About box shows it: read
     /// from Info.plist's `NSHumanReadableCopyright`, so Settings > About and
     /// the About box never say different things.
@@ -13,13 +13,13 @@ package enum AppInfo {
         Bundle.main.object(forInfoDictionaryKey: "NSHumanReadableCopyright") as? String ?? copyrightNotice
     }
     /// The same line for the bare binary (`--selftest`, the tests), which has
-    /// no Info.plist; a test holds it equal to Info.plist's. Vitruvian is built
+    /// no Info.plist; a test holds it equal to Info.plist's. Vitruvian Atrium is built
     /// on Vorssaint's GPL-3.0 work, whose notice stays (GPL-3.0 §5).
     package static let copyrightNotice = "© 2026 VitruvianSoftware. Portions © 2026 Vorssaint."
     /// Public home of the source, which the GPL obliges us to offer with every
     /// distributed build: this app's folder in the public monorepo, where each
-    /// release is a tag (`VitruvianReleases`).
-    package static let repositoryURL = URL(string: "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian")!
+    /// release is a tag (`VitruvianAtriumReleases`).
+    package static let repositoryURL = URL(string: "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian-atrium")!
     package static let websiteURL = URL(string: "https://vitruviansoftware.dev")!
     /// What a person who wants to build an extension or tool starts from:
     /// the protocol, the Swift kit and the `vitruvian-tool` command. The
@@ -44,7 +44,7 @@ package enum AppInfo {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
     }
 
-    /// True for the local "Vitruvian (Developer)" build (bundle id ends in `.dev`).
+    /// True for the local "Vitruvian Atrium (Developer)" build (bundle id ends in `.dev`).
     /// It is never published and never auto-updates; all work is tested here first.
     package static var isDeveloperBuild: Bool {
         (Bundle.main.bundleIdentifier ?? "").hasSuffix(".dev")
@@ -69,6 +69,6 @@ package enum AppInfo {
     /// this into the Developer bundle only, so you can confirm at a glance that the
     /// running dev app matches the source you are about to change. nil in the official app.
     package static var buildCommit: String? {
-        Bundle.main.object(forInfoDictionaryKey: "VitruvianBuildCommit") as? String
+        Bundle.main.object(forInfoDictionaryKey: "VitruvianAtriumBuildCommit") as? String
     }
 }

@@ -12,10 +12,10 @@ import Foundation
 import ImageIO
 import SwiftUI
 import VMStatisticsCompat
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 enum RecorderFeatureTests {
     /// Which of the stream's sound an audio tap answers for. An app's tap is

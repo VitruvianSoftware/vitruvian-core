@@ -3,8 +3,8 @@
 
 import CoreAudio
 import Foundation
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 
 /// The real headphone disconnect lowering and its restore run against an
 /// in-memory pair of outputs. No device volume or mute switch is touched.

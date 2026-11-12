@@ -34,8 +34,8 @@ ecosystems:
     bootstrap_label: "Add Slack MCP server"
     bootstrap_command: "claude mcp add slack -- docker run -i --rm -e SLACK_BOT_TOKEN -e SLACK_USER_TOKEN -e SLACK_TEAM_ID -e MCP_TRANSPORT=stdio ghcr.io/vitruviansoftware/mcp-slack:main"
     feed_url: "/ai/catalog.json"
-  - id: "vitruvian-desktop"
-    title: "Vitruvian Desktop (macOS)"
+  - id: "vitruvian-atrium"
+    title: "Vitruvian Atrium (macOS)"
     badge: "Vitruvian macOS"
     blurb: "Ed25519-signed JSON-RPC 2.0 extensions for the macOS notch island, Command Bar, and Radial menu."
     bootstrap_label: "In-app catalog"
@@ -428,7 +428,7 @@ extensions:
     ecosystems:
       - "antigravity"
       - "claude-code"
-      - "vitruvian-desktop"
+      - "vitruvian-atrium"
     capabilities:
       - "2 Skills"
       - "macOS Menu Bar"

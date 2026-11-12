@@ -1,7 +1,7 @@
 # Package Release
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/bazel/src/package_release`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/bazel/src/package_release`.
 
 ## Interface
 - `[lib.rs:APP_BUNDLE_ID]`
@@ -28,4 +28,4 @@ Component package providing implementation for `apps/desktop/vitruvian/bazel/src
 - [lib.rs:304]: `.args(["-exec", "touch", "{}", "+"]),`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/bazel/src/package_release/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/bazel/src/package_release/...`

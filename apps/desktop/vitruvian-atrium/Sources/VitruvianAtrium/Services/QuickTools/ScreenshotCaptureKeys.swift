@@ -3,7 +3,7 @@
 
 import AppKit
 import Carbon.HIToolbox
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// What a key press does to a capture preview, decided from the press and
 /// the preview's place. The preview's key monitor reads the event and acts.

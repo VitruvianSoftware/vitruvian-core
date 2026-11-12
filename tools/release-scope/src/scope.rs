@@ -1005,11 +1005,11 @@ mod tests {
             Component {
                 name: PyVal::Str(py("vitruvian")),
                 package_name: PyVal::Str(py("vitruvian")),
-                path: py("apps/desktop/vitruvian"),
+                path: py("apps/desktop/vitruvian-atrium"),
                 excludes: vec![],
                 visible: vis,
-                siblings: vec![py("apps/desktop/vitruvian")],
-                config: py("apps/desktop/vitruvian/release-please-config.json"),
+                siblings: vec![py("apps/desktop/vitruvian-atrium")],
+                config: py("apps/desktop/vitruvian-atrium/release-please-config.json"),
             },
         ]
     }
@@ -1035,7 +1035,7 @@ mod tests {
                 "",
                 &[
                     "apps/cli/homelab/go.mod",
-                    "apps/desktop/vitruvian/Info.plist",
+                    "apps/desktop/vitruvian-atrium/Info.plist",
                 ],
             ),
             &components,
@@ -1061,7 +1061,7 @@ mod tests {
                 "Summary\n\nReleases: homelab, vitruvian\n",
                 &[
                     "apps/cli/homelab/main.go",
-                    "apps/desktop/vitruvian/Info.plist",
+                    "apps/desktop/vitruvian-atrium/Info.plist",
                 ],
             ),
             &components,
@@ -1076,7 +1076,7 @@ mod tests {
                 "",
                 &[
                     "apps/cli/homelab/main.go",
-                    "apps/desktop/vitruvian/Info.plist",
+                    "apps/desktop/vitruvian-atrium/Info.plist",
                 ],
             ),
             &components,

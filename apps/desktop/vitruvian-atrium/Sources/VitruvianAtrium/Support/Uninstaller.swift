@@ -3,12 +3,12 @@
 
 import Foundation
 import ServiceManagement
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
-/// `Vitruvian --uninstall`: cleanly detaches the app from the system
+/// `Vitruvian Atrium --uninstall`: cleanly detaches the app from the system
 /// before its bundle is removed. It unregisters the fan helper daemon and the
 /// login item — so no dead entry lingers in System Settings › General › Login
 /// Items — restores normal sleep if a closed-lid session left it disabled, and

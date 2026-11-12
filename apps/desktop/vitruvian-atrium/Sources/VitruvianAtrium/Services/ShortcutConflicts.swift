@@ -2,7 +2,7 @@
 // Copyright (C) 2026 VitruvianSoftware
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// Who holds a combination among the two lists `GlobalShortcutRole.conflict`
 /// cannot see: Command Bar row shortcuts and tool command shortcuts. Every

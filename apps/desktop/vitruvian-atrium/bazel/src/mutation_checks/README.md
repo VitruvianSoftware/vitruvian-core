@@ -1,7 +1,7 @@
 # Mutation Checks
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/bazel/src/mutation_checks`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/bazel/src/mutation_checks`.
 
 ## Interface
 - `[lib.rs:stale_fixtures]`
@@ -22,4 +22,4 @@ Component package providing implementation for `apps/desktop/vitruvian/bazel/src
 - [lib.rs:82]: `.spawn()`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/bazel/src/mutation_checks/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/bazel/src/mutation_checks/...`

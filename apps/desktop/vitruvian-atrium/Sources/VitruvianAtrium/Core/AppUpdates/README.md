@@ -1,7 +1,7 @@
 # Appupdates
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/Sources/Vitruvian/Core/AppUpdates`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Core/AppUpdates`.
 
 ## Interface
 - Internal implementation components
@@ -17,4 +17,4 @@ Component package providing implementation for `apps/desktop/vitruvian/Sources/V
 - [AppUpdatesSupport.swift:422]: `components?.queryItems = query`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/Sources/Vitruvian/Core/AppUpdates/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/Sources/VitruvianAtrium/Core/AppUpdates/...`

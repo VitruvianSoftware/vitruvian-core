@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// Reads the same account-wide data as /usage through Claude Code's structured
 /// control protocol. Claude handles authentication itself, including refreshing

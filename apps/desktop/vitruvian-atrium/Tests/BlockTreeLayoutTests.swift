@@ -3,9 +3,9 @@
 
 import AppKit
 import SwiftUI
-import VitruvianCore
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// A tool's page drawn as the island draws it, read back from the AppKit
 /// controls SwiftUI draws: each switch sits at the trailing edge, where a

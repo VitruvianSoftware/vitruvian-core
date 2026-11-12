@@ -3,8 +3,8 @@
 
 import AppKit
 import CoreGraphics
-import VitruvianCore
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumServices
 
 enum WindowStageManagerTests {
     static func run(_ suite: TestSuite) {

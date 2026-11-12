@@ -11,10 +11,10 @@ import Foundation
 import ImageIO
 import SwiftUI
 import VMStatisticsCompat
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 enum FeatureCatalogTests {
     /// The Shortcuts page's open rows, where a plain binding can reach them.
@@ -584,7 +584,7 @@ enum FeatureCatalogTests {
         suite.expect(AppFeature.switcher.availabilityKey == "featureAvailable.switcher",
                "availability key derives from the raw value")
 
-        let installSuiteName = "com.vitruviansoftware.vitruvian.tests.feature-install.\(UUID().uuidString)"
+        let installSuiteName = "com.vitruviansoftware.atrium.tests.feature-install.\(UUID().uuidString)"
         if let installDefaults = ScratchDefaults.suite(named: installSuiteName) {
             func savedValues() -> [String: Any] {
                 installDefaults.persistentDomain(forName: installSuiteName) ?? [:]
@@ -650,7 +650,7 @@ enum FeatureCatalogTests {
                 && (AppFeature.availabilityDefaults[AppFeature.spacesOrder.availabilityKey] as? Bool) == false
                 && (AppFeature.availabilityDefaults[AppFeature.notchMascot.availabilityKey] as? Bool) == false,
                "features added after the list was frozen wait on the Features page instead of installing themselves")
-        let linearScrollSuiteName = "com.vitruviansoftware.vitruvian.tests.linear-scroll-availability.\(UUID().uuidString)"
+        let linearScrollSuiteName = "com.vitruviansoftware.atrium.tests.linear-scroll-availability.\(UUID().uuidString)"
         if let linearDefaults = ScratchDefaults.suite(named: linearScrollSuiteName) {
             Defaults.migrateLinearScrollAvailability(in: linearDefaults)
             suite.expect(linearDefaults.object(forKey: AppFeature.linearScroll.availabilityKey) == nil,
@@ -668,7 +668,7 @@ enum FeatureCatalogTests {
             suite.expect(false, "linear scrolling availability suite can be created")
         }
 
-        let watchSuiteName = "com.vitruviansoftware.vitruvian.tests.notch-watch-availability.\(UUID().uuidString)"
+        let watchSuiteName = "com.vitruviansoftware.atrium.tests.notch-watch-availability.\(UUID().uuidString)"
         if let watchDefaults = ScratchDefaults.suite(named: watchSuiteName) {
             Defaults.migrateNotchWatchAvailability(in: watchDefaults)
             suite.expect(watchDefaults.object(forKey: AppFeature.notchWatch.availabilityKey) == nil,
@@ -723,7 +723,7 @@ enum FeatureCatalogTests {
                "an uninstalled feature is never offered")
         // The scroll axes migration saves the horizontal switch on every Mac
         // at launch, before any registered default exists.
-        let migratedAxesSuiteName = "com.vitruviansoftware.vitruvian.tests.never-switched-on.\(UUID().uuidString)"
+        let migratedAxesSuiteName = "com.vitruviansoftware.atrium.tests.never-switched-on.\(UUID().uuidString)"
         if let migratedAxesDefaults = ScratchDefaults.suite(named: migratedAxesSuiteName) {
             Defaults.migrateScrollInverterAxes(in: migratedAxesDefaults)
             let migrated = migratedAxesDefaults.persistentDomain(forName: migratedAxesSuiteName) ?? [:]
@@ -1513,7 +1513,7 @@ enum FeatureCatalogTests {
                 && decodedLegacyFanSnapshot?.temperatures == nil,
                "fan snapshots remain compatible with an older installed helper")
 
-        let fanMigrationSuite = "com.vitruviansoftware.vitruvian.tests.fan-migration.\(UUID().uuidString)"
+        let fanMigrationSuite = "com.vitruviansoftware.atrium.tests.fan-migration.\(UUID().uuidString)"
         if let fanMigration = ScratchDefaults.suite(named: fanMigrationSuite) {
             fanMigration.set(true, forKey: DefaultsKey.monitorShowFanControlBeta)
             Defaults.migrateFanControlVisibility(in: fanMigration)
@@ -1939,7 +1939,7 @@ enum FeatureCatalogTests {
                "WindowServer is protected")
         suite.expect(KillProcessSupport.isProtected(pid: 9999, name: "loginwindow", path: "/System/Library/CoreServices/loginwindow.app/Contents/MacOS/loginwindow"),
                "loginwindow is protected")
-        suite.expect(KillProcessSupport.isProtected(pid: ProcessInfo.processInfo.processIdentifier, name: "Vitruvian"),
+        suite.expect(KillProcessSupport.isProtected(pid: ProcessInfo.processInfo.processIdentifier, name: "Vitruvian Atrium"),
                "current app PID is protected")
         suite.expect(!KillProcessSupport.isProtected(pid: 12345, name: "Safari", path: "/Applications/Safari.app/Contents/MacOS/Safari"),
                "ordinary user app is not protected")
@@ -2075,7 +2075,7 @@ enum FeatureCatalogTests {
                    !$0.permissions.contains(.accessibility)
                },
                "battery and quiet needs no accessibility permission at all")
-        let firstRunSuiteName = "com.vitruviansoftware.vitruvian.tests.first-run.\(UUID().uuidString)"
+        let firstRunSuiteName = "com.vitruviansoftware.atrium.tests.first-run.\(UUID().uuidString)"
         if let firstRunDefaults = ScratchDefaults.suite(named: firstRunSuiteName) {
             firstRunDefaults.register(defaults: AppFeature.availabilityDefaults)
             FeaturePreset.prepareFirstRunAvailability(in: firstRunDefaults)
@@ -3328,7 +3328,7 @@ enum MusicLaunchBlockerContract {
     }
 
     static func run(_ suite: TestSuite) {
-        let domain = "com.vitruviansoftware.vitruvian.tests.music-launch-blocker"
+        let domain = "com.vitruviansoftware.atrium.tests.music-launch-blocker"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         let session = Session()

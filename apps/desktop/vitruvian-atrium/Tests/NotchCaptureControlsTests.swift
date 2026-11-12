@@ -4,10 +4,10 @@
 import AppKit
 import Foundation
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 extension NotchPresentationRefreshContract {
     /// The module's capture controls on a real island, with an inert window

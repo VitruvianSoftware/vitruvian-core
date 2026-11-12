@@ -4,8 +4,8 @@
 import AppKit
 import Carbon.HIToolbox
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Shows what a scanned QR code actually holds before anything is copied: the
 /// decoded content is spelled out, with a copy action and, for a plain web
@@ -100,7 +100,7 @@ package final class QRResultController {
     private func copy(_ payload: String) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.declareVitruvianSource()
+        pasteboard.declareAtriumSource()
         pasteboard.setString(payload, forType: .string)
         close()
         QuickToolHUD.show(icon: "qrcode", message: L10n.shared.s.ocrQRCopied)

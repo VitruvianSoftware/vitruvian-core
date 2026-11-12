@@ -3,10 +3,10 @@
 
 import AppKit
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The Command Bar's own rows, built by the catalog with recording actions:
 /// what each one is called, what it asks first, and what it runs.
@@ -20,7 +20,7 @@ enum CommandBarCatalogRowContract {
         let language = L10n.shared.language
         let s = L10n.shared.s
         let bar = FeatureStrings.commandBar(language)
-        let domain = "com.vitruviansoftware.vitruvian.tests.command-bar-catalog"
+        let domain = "com.vitruviansoftware.atrium.tests.command-bar-catalog"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }

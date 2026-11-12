@@ -1,7 +1,7 @@
 # Publish
 
 ## Overview
-Component package providing implementation for `apps/desktop/vitruvian/bazel/src/publish`.
+Component package providing implementation for `apps/desktop/vitruvian-atrium/bazel/src/publish`.
 
 ## Interface
 - `[lib.rs:TAG_PREFIX]`
@@ -26,4 +26,4 @@ Component package providing implementation for `apps/desktop/vitruvian/bazel/src
 - [lib.rs:291]: `} else if tag_ref.stderr.contains("HTTP 404") {`
 
 ## Verification
-- Run: `bazel test //apps/desktop/vitruvian/bazel/src/publish/...`
+- Run: `bazel test //apps/desktop/vitruvian-atrium/bazel/src/publish/...`

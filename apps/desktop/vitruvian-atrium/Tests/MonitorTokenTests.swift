@@ -3,7 +3,7 @@
 
 import AppKit
 import SwiftUI
-import VitruvianUI
+import VitruvianAtriumUI
 
 /// Clicks the production control inside its own off-screen window. Input is
 /// delivered to that window only, without changing real preferences.

@@ -4,8 +4,8 @@
 import AppKit
 import Carbon.HIToolbox
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// How the history window shows its entries: a list in a window that keeps
 /// the size the user gives it, or a shelf of cards along the bottom of the
@@ -1073,12 +1073,12 @@ extension NSPasteboard.PasteboardType {
 }
 
 extension NSPasteboard {
-    /// Signs a write Vitruvian makes for itself (copied OCR text, a Command
+    /// Signs a write Vitruvian Atrium makes for itself (copied OCR text, a Command
     /// Bar answer, a color), so the clipboard history does not credit it to
     /// whichever app happens to be in front. Called once the pasteboard is
     /// cleared, before or after the content: either way the mark joins the
     /// single item instead of adding one.
-    package func declareVitruvianSource() {
+    package func declareAtriumSource() {
         guard let bundleID = Bundle.main.bundleIdentifier else { return }
         setString(bundleID, forType: .source)
     }

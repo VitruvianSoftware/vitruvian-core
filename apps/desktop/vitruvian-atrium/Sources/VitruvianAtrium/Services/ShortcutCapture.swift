@@ -3,8 +3,8 @@
 
 import CoreGraphics
 import Foundation
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Keeps the app's own global shortcuts quiet while the user is recording a
 /// new one. Without this, typing a combination the app already answers to
@@ -53,7 +53,7 @@ package enum ShortcutCapture {
 
 /// What a listening shortcut field holds: the app's own global keys stepped
 /// aside, and the recording tap ahead of the app's menu, without which Command
-/// Q never reaches the field and quits Vitruvian instead (issue #1193).
+/// Q never reaches the field and quits Vitruvian Atrium instead (issue #1193).
 /// Settings' shortcut fields and the Command Bar's capture card both listen
 /// through this one pair, and leaving gives every key back.
 @MainActor

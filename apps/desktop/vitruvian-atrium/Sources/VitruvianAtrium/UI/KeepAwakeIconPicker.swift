@@ -2,9 +2,9 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
 
 package struct KeepAwakeIconPicker: View {
     @ObservedObject private var l10n = L10n.shared
@@ -101,7 +101,7 @@ package struct KeepAwakeIconPicker: View {
         .accessibilityLabel(title(icon))
     }
 
-    /// The Vitruvian choice draws whatever the menu bar shows, which can be a
+    /// The Vitruvian Atrium choice draws whatever the menu bar shows, which can be a
     /// symbol chosen in the menu bar settings.
     private func title(_ icon: KeepAwakeActiveIcon) -> String {
         guard icon == .vitruvian,

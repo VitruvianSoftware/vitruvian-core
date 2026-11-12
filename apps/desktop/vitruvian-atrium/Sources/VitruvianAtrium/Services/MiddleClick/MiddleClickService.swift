@@ -6,8 +6,8 @@ import ApplicationServices
 import CoreGraphics
 import Foundation
 import IOKit
-import VitruvianCore
-import VitruvianDesign
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
 
 /// Middle-click emulation for trackpads: a three-finger PHYSICAL click (four
 /// while macOS three-finger drag owns three fingers) becomes a middle click

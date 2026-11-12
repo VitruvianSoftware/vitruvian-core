@@ -3,10 +3,10 @@
 
 import AppKit
 import Combine
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// Drives the module's own `NotchEventBindings` through subjects of its own,
 /// never the app's services, and records what reaches the island.

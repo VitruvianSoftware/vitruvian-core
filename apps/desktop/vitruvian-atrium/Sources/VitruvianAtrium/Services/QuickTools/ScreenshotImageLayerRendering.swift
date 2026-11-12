@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
-import VitruvianCore
+import VitruvianAtriumCore
 
 package enum ScreenshotImageLayerRendering {
     package static func draw(_ annotation: ScreenshotSupport.Annotation, in context: CGContext) {

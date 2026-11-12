@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
+import VitruvianAtriumCore
 
 /// Reads the append-only event log Copilot CLI and the GitHub Copilot app
 /// share. Only session context, turn boundaries and cumulative model

@@ -25,7 +25,7 @@ import VitruvianToolProtocol
 
 final class FolderCheckTests: XCTestCase {
     /// The folders the app is tested against too
-    /// (`ToolFolderExamplesTests` in apps/desktop/vitruvian).
+    /// (`ToolFolderExamplesTests` in apps/desktop/vitruvian-atrium).
     func testEveryExampleFolderIsJudgedAsTheFileSays() throws {
         let scratch = Scratch()
         let (base, examples) = try FolderExample.all()

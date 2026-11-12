@@ -5,10 +5,10 @@ import AppKit
 import Combine
 import Foundation
 import UniformTypeIdentifiers
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The production lyrics service runs on a session of doubles: the
 /// preferences, the lookups, the file chooser, the island and both queues. No
@@ -1281,7 +1281,7 @@ enum NotchMusicHardeningTests {
         suite.expect(!selection(UUID(), item: "bad\0item").isValid,
                "the row, writer and native bridge share rejection of NUL identifiers")
 
-        let domain = "com.vitruviansoftware.vitruvian.tests.notch-queue-selection"
+        let domain = "com.vitruviansoftware.atrium.tests.notch-queue-selection"
         let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }

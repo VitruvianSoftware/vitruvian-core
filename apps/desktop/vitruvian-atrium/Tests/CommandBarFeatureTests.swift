@@ -10,10 +10,10 @@ import Darwin
 import Foundation
 import ImageIO
 import VMStatisticsCompat
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 enum CommandBarFeatureTests {
     /// What the production `copyAnswer` floats when the pasteboard takes the
@@ -1970,7 +1970,7 @@ enum CommandBarFeatureTests {
         suite.expect(CommandBarLinks.trailingArgument(query: "gh vitruvian utils", name: "gh")
                 == "vitruvian utils",
                "what comes after the name is what the saved search opens with")
-        suite.expect(CommandBarLinks.trailingArgument(query: "GH Vitruvian", name: "gh") == "Vitruvian",
+        suite.expect(CommandBarLinks.trailingArgument(query: "GH Vitruvian Atrium", name: "gh") == "Vitruvian Atrium",
                "the name is matched without case; the argument keeps its own")
         suite.expect(CommandBarLinks.trailingArgument(query: "ghost writer", name: "gh") == nil
                 && CommandBarLinks.trailingArgument(query: "gh", name: "gh") == nil,
@@ -2410,7 +2410,7 @@ enum CommandBarFeatureTests {
                 && editedCompletion == nil,
                "Tab remembers the fuzzy search unless the completed field is edited")
 
-        let learningDefaultsName = "com.vitruviansoftware.vitruvian.tests.command-bar-learning"
+        let learningDefaultsName = "com.vitruviansoftware.atrium.tests.command-bar-learning"
         let learningDefaults = ScratchDefaults.suite(named: learningDefaultsName)!
         learningDefaults.removePersistentDomain(forName: learningDefaultsName)
         let firstInstallationKey = CommandBarLearning.installationKey(in: learningDefaults)

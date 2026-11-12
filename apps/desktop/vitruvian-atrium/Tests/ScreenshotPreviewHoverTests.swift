@@ -4,10 +4,10 @@
 import AppKit
 import CoreGraphics
 import Foundation
-import VitruvianCore
-import VitruvianDesign
-import VitruvianServices
-import VitruvianUI
+import VitruvianAtriumCore
+import VitruvianAtriumDesign
+import VitruvianAtriumServices
+import VitruvianAtriumUI
 
 /// The production preview's hover handling and dismissal run with a
 /// controlled clock. Pointer crossings are supplied explicitly; the preview
