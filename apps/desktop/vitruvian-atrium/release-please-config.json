@@ -1,0 +1,24 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "simple",
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": true,
+  "last-release-sha": "a404b5a54eeb01c16b0120d7c775e49863e406b6",
+  "include-component-in-tag": true,
+  "include-v-in-tag": true,
+  "tag-separator": "-",
+  "packages": {
+    "apps/desktop/vitruvian-atrium": {
+      "package-name": "vitruvian-atrium",
+      "component": "vitruvian-atrium",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        {
+          "type": "xml",
+          "path": "Resources/Info.plist",
+          "xpath": "//key[.='CFBundleShortVersionString']/following-sibling::string[1]"
+        }
+      ]
+    }
+  }
+}
