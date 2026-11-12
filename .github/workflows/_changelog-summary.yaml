@@ -20,7 +20,7 @@
 
 # Reusable "render CHANGELOG.md onto the run's step summary before a gated
 # deploy" job, deduped from four near-identical copies (foundation-app-deploy,
-# foundation-net-deploy, foundation-proj-deploy, tabula-deploy). The caller
+# foundation-net-deploy, foundation-proj-deploy, delivery-vitruvian-tabs). The caller
 # controls WHEN this runs via its own job-level `if:` on the `uses:` call --
 # this workflow has no opinion on that, it only renders.
 #

@@ -203,7 +203,7 @@ fn no_changed_files_vs_head_itself() {
 #[test]
 fn extra_path_match_deploys_without_touching_td() {
     let fx = Fx::new();
-    let sha = fx.file("tabula/infra/app/main.go");
+    let sha = fx.file("vitruvian-tabs/infra/app/main.go");
     let log = fx.work.join("td-args");
     let log_s = log.to_str().unwrap();
     let o = fx.expect(
@@ -212,17 +212,17 @@ fn extra_path_match_deploys_without_touching_td() {
         "true",
         &[
             ("DEPLOY_TARGETS", "//x"),
-            ("EXTRA_PATH_REGEX", "tabula/infra/app/"),
+            ("EXTRA_PATH_REGEX", "vitruvian-tabs/infra/app/"),
             ("FAKE_TD_RC", "1"),
             ("TD_ARGS_LOG", log_s),
         ],
     );
-    assert_has(&o.stdout, "path matched tabula/infra/app/)", "reason");
+    assert_has(&o.stdout, "path matched vitruvian-tabs/infra/app/)", "reason");
     assert!(!log.exists(), "target-determinator must not run");
     // The changed files are listed, indented.
     assert_has(
         &o.stdout,
-        "deploy-affected: changed files:\n  tabula/infra/app/main.go\n",
+        "deploy-affected: changed files:\n  vitruvian-tabs/infra/app/main.go\n",
         "listing",
     );
 }
@@ -596,15 +596,15 @@ fn release_commit_chore_main_skips() {
 fn release_commit_chore_release_skips() {
     let fx = Fx::new();
     let sha = fx.commit(
-        "tabula/package.json",
+        "vitruvian-tabs/package.json",
         r#"{"version":"2.0.0"}"#,
-        "chore(release): release tabula 2.0.0",
+        "chore(release): release vitruvian-tabs 2.0.0",
     );
     fx.expect(
         "chore(release): release",
         &sha,
         "false",
-        &[("EXTRA_PATH_REGEX", "tabula/"), ("FAKE_TD_RC", "1")],
+        &[("EXTRA_PATH_REGEX", "vitruvian-tabs/"), ("FAKE_TD_RC", "1")],
     );
 }
 
@@ -658,20 +658,20 @@ fn an_all_release_commit_range_still_skips() {
     let fx = Fx::new();
     let base = fx.head();
     fx.commit(
-        "tabula/package.json",
+        "vitruvian-tabs/package.json",
         r#"{"version":"2.0.1"}"#,
-        "chore(main): release tabula 2.0.1",
+        "chore(main): release vitruvian-tabs 2.0.1",
     );
     fx.commit(
-        "tabula/extension/package.json",
+        "vitruvian-tabs/extension/package.json",
         r#"{"version":"0.1.38"}"#,
-        "chore(main): release tabula-extension 0.1.38",
+        "chore(main): release vitruvian-tabs-extension 0.1.38",
     );
     fx.expect(
         "all-release range",
         &base,
         "false",
-        &[("EXTRA_PATH_REGEX", "tabula/"), ("FAKE_TD_RC", "1")],
+        &[("EXTRA_PATH_REGEX", "vitruvian-tabs/"), ("FAKE_TD_RC", "1")],
     );
 }
 
@@ -681,17 +681,17 @@ fn after_rev_bounds_the_range() {
     // change AFTER the release commit must not count against it.
     let fx = Fx::new();
     let before = fx.commit(
-        "tabula/package.json",
+        "vitruvian-tabs/package.json",
         r#"{"version":"3.0.0"}"#,
-        "chore(main): release tabula 3.0.0",
+        "chore(main): release vitruvian-tabs 3.0.0",
     );
     let release = fx.head();
-    fx.commit("tabula/app.ts", "x", "feat(tabula): later work");
+    fx.commit("vitruvian-tabs/app.ts", "x", "feat(vitruvian-tabs): later work");
     fx.expect(
         "AFTER_REV",
         &before,
         "false",
-        &[("EXTRA_PATH_REGEX", "tabula/"), ("AFTER_REV", &release)],
+        &[("EXTRA_PATH_REGEX", "vitruvian-tabs/"), ("AFTER_REV", &release)],
     );
 }
 

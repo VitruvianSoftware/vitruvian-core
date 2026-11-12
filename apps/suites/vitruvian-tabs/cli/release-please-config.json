@@ -1,0 +1,11 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "packages": {
+    "apps/suites/vitruvian-tabs/cli": {
+      "release-type": "node",
+      "package-name": "@vitruvian-tabs/cli",
+      "component": "vitruvian-tabs-cli",
+      "include-component-in-tag": true
+    }
+  }
+}

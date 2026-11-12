@@ -72,7 +72,7 @@ on:
 
 # Serialize applies of this stack; never cancel an in-flight pulumi up.
 # Mirrors the identical guard on the sibling _oauth-identity-apply.yaml /
-# _tabula-identity-apply.yaml (which this workflow otherwise matches step
+# _vitruvian-tabs-identity-apply.yaml (which this workflow otherwise matches step
 # for step — same tailnet-tunnel + pulumi-up shape). Without this, two
 # manual dispatches within the same window (or one double-click) could run
 # `pulumi up --yes` on the SAME Zitadel OIDC client stack concurrently;

@@ -372,11 +372,11 @@ mod tests {
     #[test]
     fn decode_fills_defaults() {
         let u = decode_unit(
-            br#"{"schema": 1, "name": "tabula-api", "package": "tabula/api",
+            br#"{"schema": 1, "name": "vitruvian-tabs-api", "package": "apps/suites/vitruvian-tabs/api",
                 "test_targets": [":integration_tests"], "persona": "backend"}"#,
         )
         .unwrap();
-        assert_eq!(u.concurrency_group, "pipeline-tabula-api");
+        assert_eq!(u.concurrency_group, "pipeline-vitruvian-tabs-api");
         assert_eq!(u.timeout_minutes, 30);
         assert_eq!(u.runner, "ubuntu-26.04");
         assert_eq!(u.tier, "L1");

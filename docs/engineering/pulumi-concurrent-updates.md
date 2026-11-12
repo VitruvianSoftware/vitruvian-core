@@ -8,10 +8,10 @@ one per stack, not one per project. While any stack is updating, an update to
 *any other* stack is rejected immediately:
 
 ```
-error: [409] Conflict: You have a running update for the stack 'pulumi_tabula_web/development'.
+error: [409] Conflict: You have a running update for the stack '__KEEP_TABULA_36__/development'.
 Individual user accounts do not support concurrent updates. Create an organization to have
 concurrent updates, wait for this update to complete, or run
-`pulumi cancel -s pulumi_tabula_web/development` to cancel the ongoing update.
+`pulumi cancel -s __KEEP_TABULA_36__/development` to cancel the ongoing update.
 ```
 
 Note what the message names: the stack holding the lock is a **completely
@@ -22,7 +22,7 @@ unrelated one**. A failure here says nothing about the stack you were deploying.
 On 2026-08-20, `oauth-user-inspector` v1.11.0's **production** promotion
 ([run 32355118334](https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/32355118334))
 failed at 16:09:19Z. Two seconds earlier, at 16:09:17Z, an unrelated
-`tabula-web` **development** deploy had begun its own update. The production
+`__KEEP_TABULA_33__` **development** deploy had begun its own update. The production
 rollout was rejected with the 409 above.
 
 Blast radius was limited only because the rollout is blue-green and fail-closed:
@@ -41,7 +41,7 @@ Each app delivers through its own generated workflow,
 app's approval wait from holding back another app, but it also means two apps'
 Pulumi applies can now run at the same time. Inside one app's workflow it was
 never prevented either: on 2026-10-06 one run of the old shared workflow lost
-`tabula-build-stack-shared` and `oauth-user-inspector-identity-development` to
+`__KEEP_TABULA_23__` and `oauth-user-inspector-identity-development` to
 this 409, from parallel jobs in the same run.
 
 Each workflow also deliberately does *not* serialize:
@@ -66,7 +66,7 @@ code, [`tools/pulumi/src/retry_concurrent_update.rs`](../../tools/pulumi/src/ret
   in-process with it;
 - the CI applies that run without Bazel (the
   `.github/actions/pulumi-run-captured` composite action, used by the identity
-  applies, tabula's build stack and the foundation workflows, and the inline
+  applies, vitruvian-tabs's build stack and the foundation workflows, and the inline
   `pulumi up` / `pulumi refresh` in the zitadel-apps workflows) build
   `//tools/pulumi:retry-concurrent-update` with the runner's own `rustc`
   (`rustc --edition 2021 -O tools/pulumi/src/bin/retry_concurrent_update.rs`)

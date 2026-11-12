@@ -559,7 +559,7 @@ export const DataCatalog: StoryObj = {
   render: () => (
     <div style={{ background: "var(--color-bg)", minHeight: "100vh" }}>
       <Nav
-        brand="VITRUVIAN · TABULA"
+        brand="VITRUVIAN · TABS"
         actions={
           <Button size="sm" variant="primary">
             + Register Dataset

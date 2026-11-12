@@ -1,0 +1,42 @@
+{
+  "app": "vitruvian-tabs",
+  "build": "",
+  "build_context": "",
+  "changelog_inputs": {},
+  "companions": [],
+  "environments": [
+    "publish"
+  ],
+  "exclude_paths": [],
+  "extra_paths": [
+    "apps/suites/vitruvian-tabs/infra/app/",
+    "apps/suites/vitruvian-tabs/extension/scripts/src/"
+  ],
+  "gate_var": "",
+  "github_environment": "",
+  "graph_targets": [
+    "//apps/suites/vitruvian-tabs/api:image_push",
+    "//apps/suites/vitruvian-tabs/extension:chrome_zip"
+  ],
+  "image_digest_output": "",
+  "image_repository_path": "",
+  "kind": "publish",
+  "legacy_job": "",
+  "legacy_workflow": "",
+  "name": "vitruvian-tabs-dev-latest",
+  "package": "apps/suites/vitruvian-tabs/extension",
+  "preflight": "",
+  "preview": {
+    "compute": "cloud-run",
+    "database": "",
+    "domain": "{app}.preview.vitruviansoftware.dev",
+    "enabled": true
+  },
+  "promotion": "",
+  "render": "transcribed",
+  "run": "//apps/suites/vitruvian-tabs/extension:publish-dev-latest",
+  "schema": 1,
+  "shared_build": "",
+  "soak": false,
+  "workflow_inputs": {}
+}

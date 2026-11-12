@@ -47,11 +47,11 @@ func TestDeployEnvironmentsArePinnedToMain(t *testing.T) {
 		gate func(string) envGate
 		envs map[string]want
 	}{
-		{"tabula", tabulaEnvGate, map[string]want{
+		{"tabula", vitruvianTabsEnvGate, map[string]want{
 			"development":   {mainOnly: true},
-			"build":         {mainOnly: true, tags: []string{"tabula-api-v*", "tabula-web-v*"}},
-			"nonproduction": {mainOnly: true, tags: []string{"tabula-api-v*", "tabula-web-v*"}},
-			"production":    {mainOnly: true, tags: []string{"tabula-api-v*", "tabula-web-v*"}, reviewer: true},
+			"build":         {mainOnly: true, tags: []string{"vitruvian-tabs-api-v*", "vitruvian-tabs-web-v*"}},
+			"nonproduction": {mainOnly: true, tags: []string{"vitruvian-tabs-api-v*", "vitruvian-tabs-web-v*"}},
+			"production":    {mainOnly: true, tags: []string{"vitruvian-tabs-api-v*", "vitruvian-tabs-web-v*"}, reviewer: true},
 			"preview":       {},
 		}},
 		{"oauth-user-inspector", oauthEnvGate, map[string]want{
@@ -87,7 +87,7 @@ func TestTagPolicyResourceNamesAreStable(t *testing.T) {
 		tags []envTagPolicy
 		want []string
 	}{
-		{"tabula", tabulaReleaseTags, []string{"tags", "tags-web"}},
+		{"tabula", vitruvianTabsReleaseTags, []string{"tags", "tags-web"}},
 		{"oauth-user-inspector", oauthReleaseTags, []string{"tags"}},
 	} {
 		var got []string
@@ -119,7 +119,7 @@ func (m *envGateMocks) Call(args pulumi.MockCallArgs) (resource.PropertyMap, err
 // main/tag rows. An Environment this table does not know fails, so a new one
 // cannot slip in open by default.
 func TestDeployEnvironmentResourcesArePinnedToMain(t *testing.T) {
-	tabulaTags := []string{"branch:main", "tag:tabula-api-v*", "tag:tabula-web-v*"}
+	tabulaTags := []string{"branch:main", "tag:vitruvian-tabs-api-v*", "tag:vitruvian-tabs-web-v*"}
 	oauthTags := []string{"branch:main", "tag:oauth-user-inspector-v*"}
 	want := map[string][]string{ // nil = deliberately open
 		"tabula-preview":                     nil,
@@ -143,7 +143,7 @@ func TestDeployEnvironmentResourcesArePinnedToMain(t *testing.T) {
 			return err
 		}
 		cfg := config.New(ctx, "")
-		if err := tabulaEnvironments(ctx, cfg, repo); err != nil {
+		if err := vitruvianTabsEnvironments(ctx, cfg, repo); err != nil {
 			return err
 		}
 		return oauthEnvironment(ctx, cfg, repo)
@@ -205,7 +205,7 @@ func TestDeployEnvironmentResourcesArePinnedToMain(t *testing.T) {
 
 // A gate nobody wrote a case for must come out pinned, not open.
 func TestUnknownEnvironmentGateIsClosed(t *testing.T) {
-	for app, gate := range map[string]func(string) envGate{"tabula": tabulaEnvGate, "oauth-user-inspector": oauthEnvGate} {
+	for app, gate := range map[string]func(string) envGate{"tabula": vitruvianTabsEnvGate, "oauth-user-inspector": oauthEnvGate} {
 		if g := gate("staging"); !g.mainOnly {
 			t.Errorf("%s gate for an unlisted env = %+v, want mainOnly (default closed)", app, g)
 		}

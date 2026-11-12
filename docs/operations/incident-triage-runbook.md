@@ -6,7 +6,7 @@ This document serves as the standard operational incident response guide across 
 
 | Severity | Definition | Response Target | Channels |
 | :--- | :--- | :--- | :--- |
-| **SEV-1 (Critical)** | Core outage affecting public production traffic (e.g. Backstage, Tabula, Zitadel SSO down). | < 15 mins | `#incidents-critical`, ntfy priority 5 |
+| **SEV-1 (Critical)** | Core outage affecting public production traffic (e.g. Backstage, Vitruvian Tabs, Zitadel SSO down). | < 15 mins | `#incidents-critical`, ntfy priority 5 |
 | **SEV-2 (Major)** | Degraded service performance, partial feature disruption, or failed deployment rollouts. | < 30 mins | `#incidents`, ntfy priority 4 |
 | **SEV-3 (Minor)** | Non-blocking bug, CI/CD pipeline slowdown, or non-production environment failure. | < 2 hours | `#alerts` |
 
@@ -17,7 +17,7 @@ This document serves as the standard operational incident response guide across 
 | Service | Namespace | Deployment Type | Rollback Command |
 | :--- | :--- | :--- | :--- |
 | **backstage** | `backstage` | Kubernetes (ArgoCD) | `argocd app rollback backstage` |
-| **tabula** | N/A | Cloud Run | `gcloud run services rollback tabula` |
+| **vitruvian-tabs** | N/A | Cloud Run | `gcloud run services rollback tabula-api-<env>` |
 | **oauth-user-inspector**| N/A | Cloud Run | `gcloud run services rollback oauth-user-inspector` |
 | **buzz** | `buzz` | Kubernetes (Helm) | `helm rollback buzz -n buzz` |
 | **mcp-slack** | `mcp-slack` | Kubernetes (Deployment) | `kubectl rollout undo deployment mcp-slack -n mcp-slack` |
@@ -62,14 +62,14 @@ This document serves as the standard operational incident response guide across 
 3. If the failure is expected or a false positive, you can promote: `kubectl argo rollouts promote whoami -n whoami`.
 4. If it's a real regression, abort and rollback: `kubectl argo rollouts abort whoami -n whoami` followed by `kubectl argo rollouts undo whoami -n whoami`.
 
-### Cloud Run Deployment Failures (`tabula`)
-**Symptoms**: New versions of `tabula` fail to start or serve traffic on Cloud Run.
-**Context**: `tabula` uses a blue-green deployment model on Cloud Run across dev/nonprod/prod environments, integrated with Zitadel SSO.
+### Cloud Run Deployment Failures (`vitruvian-tabs`)
+**Symptoms**: New versions of `vitruvian-tabs` fail to start or serve traffic on Cloud Run.
+**Context**: `vitruvian-tabs` uses a blue-green deployment model on Cloud Run across dev/nonprod/prod environments, integrated with Zitadel SSO.
 **Resolution**:
 1. Check Cloud Run logs in the GCP Console.
 2. Verify that the service account has the necessary permissions.
 3. Check if Zitadel SSO configurations (client IDs, secrets) are valid for the environment.
-4. If the new revision is broken, rollback traffic immediately: `gcloud run services update-traffic tabula --to-revisions=<stable-revision>=100`.
+4. If the new revision is broken, rollback traffic immediately: `gcloud run services update-traffic tabula-api-<env> --to-revisions=<stable-revision>=100`.
 
 ### Sealed Secrets Rotation
 **Symptoms**: Pods fail to start due to missing or invalid secrets.

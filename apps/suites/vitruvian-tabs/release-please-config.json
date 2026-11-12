@@ -1,0 +1,18 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "packages": {
+    "apps/suites/vitruvian-tabs": {
+      "release-type": "node",
+      "package-name": "vitruvian-tabs",
+      "component": "vitruvian-tabs-shared",
+      "include-component-in-tag": true,
+      "exclude-paths": [
+        "apps/suites/vitruvian-tabs/infra",
+        "apps/suites/vitruvian-tabs/api",
+        "apps/suites/vitruvian-tabs/cli",
+        "apps/suites/vitruvian-tabs/extension",
+        "apps/suites/vitruvian-tabs/web"
+      ]
+    }
+  }
+}

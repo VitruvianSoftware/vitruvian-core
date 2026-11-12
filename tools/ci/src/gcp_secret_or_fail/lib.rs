@@ -22,7 +22,7 @@
 //! version, or fail loudly with actionable context. Prints only the value on
 //! stdout, so workflows capture it with `VALUE="$(bazel-bin/.../gcp_secret_or_fail
 //! <secret-id> <project> [context])"` (_deploy-cloud-run.yaml,
-//! tabula-data-stack.yaml). Replaces gcp-secret-or-fail.sh.
+//! vitruvian-tabs-data-stack.yaml). Replaces gcp-secret-or-fail.sh.
 //!
 //! WHY an explicit exit-code check, not just an empty-string check: gcloud can
 //! exit 0 while still printing ERROR to stderr, and a genuinely missing secret

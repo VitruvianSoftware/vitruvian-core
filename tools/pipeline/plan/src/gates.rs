@@ -155,19 +155,15 @@ pub fn check_global_impact(files: &[String]) -> (bool, String) {
 
 const FRONTEND_PREFIXES: &[&str] = &[
     "packages/design-system/",
-    "tabula/web/",
-    "apps/suites/tabula/web/",
-    "tabula/extension/",
-    "apps/suites/tabula/extension/",
+    "apps/suites/vitruvian-tabs/web/",
+    "apps/suites/vitruvian-tabs/extension/",
     "backstage/packages/app/",
     "apps/web/backstage/packages/app/",
 ];
 
 const BACKEND_PREFIXES: &[&str] = &[
-    "tabula/api/",
-    "apps/suites/tabula/api/",
-    "tabula/cli/",
-    "apps/suites/tabula/cli/",
+    "apps/suites/vitruvian-tabs/api/",
+    "apps/suites/vitruvian-tabs/cli/",
     "devx/",
     "apps/cli/devx/",
     "homelab/",

@@ -224,7 +224,7 @@ jobs:
           QUEUED: ${{ steps.queued.outputs.verdict }}
           QUEUED_RUN: ${{ steps.queued.outputs.run }}
           FAST_LANE: ${{ steps.fastlane.outputs.verdict }}
-          ALL_UNITS: '["antigravity-ext-marketplace","antigravity-gh-watch","antigravity-hookify","antigravity-live-context","antigravity-plugins-conformance","antigravity-ralph-loop","antigravity-receipts-report","antigravity-savvy-fleet","antigravity-security-guidance","antigravity-worktree-band","backstage-backend","courier-app-macos","courier-engine-macos","design-system","backstage-app","design-system-android","devx-cli","gods-eye-view","homelab","mcp-slack-service","oauth-user-inspector","peripherals","pulumi-repo-config","relay-spike-service","remote","remote-boot","remote-mac-agent","remote-mac-menu","tabula-shared","tabula-api","tabula-cli","tabula-extension","tabula-web","vitruvian-code-src","vitruvian-code-bridge","vitruvian-code-macos","vitruvian-desktop-macos","vitruvian-sdk","vitruvian-tool-github","wand-android","wand-linux","wand-macos"]'
+          ALL_UNITS: '["antigravity-ext-marketplace","antigravity-gh-watch","antigravity-hookify","antigravity-live-context","antigravity-plugins-conformance","antigravity-ralph-loop","antigravity-receipts-report","antigravity-savvy-fleet","antigravity-security-guidance","antigravity-worktree-band","backstage-backend","courier-app-macos","courier-engine-macos","design-system","backstage-app","design-system-android","devx-cli","gods-eye-view","homelab","mcp-slack-service","oauth-user-inspector","peripherals","pulumi-repo-config","relay-spike-service","remote","remote-boot","remote-mac-agent","remote-mac-menu","vitruvian-code-src","vitruvian-code-bridge","vitruvian-code-macos","vitruvian-desktop-macos","vitruvian-sdk","vitruvian-tabs-shared","vitruvian-tabs-api","vitruvian-tabs-cli","vitruvian-tabs-extension","vitruvian-tabs-web","vitruvian-tool-github","wand-android","wand-linux","wand-macos"]'
         run: |
           set +e -u -o pipefail
           if [ "$RELEASE_SKIP" = "true" ]; then
@@ -1477,221 +1477,6 @@ jobs:
           fi
           bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/mobile/android-remote/macmenu:RemoteMenuTests //apps/mobile/android-remote/macmenu:RemoteToolTests //apps/mobile/android-remote/macmenu:paths_match_installer_test //apps/mobile/android-remote/macmenu:tool_conformance_test //apps/mobile/android-remote/macmenu:tool_version_test //apps/mobile/android-remote/macmenu:zip_tool_test || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/mobile/android-remote/macmenu:RemoteMenuTests //apps/mobile/android-remote/macmenu:RemoteToolTests //apps/mobile/android-remote/macmenu:paths_match_installer_test //apps/mobile/android-remote/macmenu:tool_conformance_test //apps/mobile/android-remote/macmenu:tool_version_test //apps/mobile/android-remote/macmenu:zip_tool_test; else exit $rc; fi; }
 
-  unit-tabula-shared:
-    name: tabula-shared
-    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
-    timeout-minutes: 15
-    needs: [plan]
-    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'tabula-shared')) }}
-    env:
-      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-
-      - name: Free up runner disk space
-        uses: ./.github/actions/free-disk-space
-
-      - name: Set up Bazel
-        uses: ./.github/actions/setup-bazel
-
-      - name: Restore the extracted LLVM toolchain
-        id: llvm-contents
-        uses: ./.github/actions/llvm-cache-restore
-
-      - name: Build & Test Unit tabula-shared
-        run: |
-          set -euo pipefail
-          cache_flags=()
-          extra_flags=()
-          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
-            cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
-          fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/tabula/shared:lib || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/tabula/shared:lib; else exit $rc; fi; }
-
-      - name: LLVM cache tripwire
-        if: always()
-        uses: ./.github/actions/llvm-cache-tripwire
-        with:
-          restore-outcome: ${{ steps.llvm-contents.outputs.outcome }}
-          cache-hit: ${{ steps.llvm-contents.outputs.cache-hit }}
-          pre-count: ${{ steps.llvm-contents.outputs.pre-count }}
-          pin-path: ${{ steps.llvm-contents.outputs.pin-path }}
-
-  unit-tabula-api:
-    name: tabula-api
-    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
-    timeout-minutes: 20
-    needs: [plan, unit-tabula-shared]
-    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'tabula-api')) }}
-    env:
-      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-
-      - name: Free up runner disk space
-        uses: ./.github/actions/free-disk-space
-
-      - name: Set up Bazel
-        uses: ./.github/actions/setup-bazel
-
-      - name: Restore the extracted LLVM toolchain
-        id: llvm-contents
-        uses: ./.github/actions/llvm-cache-restore
-
-      - name: Build & Test Unit tabula-api
-        run: |
-          set -euo pipefail
-          cache_flags=()
-          extra_flags=()
-          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
-            cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
-          fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/tabula/api:integration_tests //apps/suites/tabula/api:migrate_deploy_itest //apps/suites/tabula/api:tabula_api_tools_test //apps/suites/tabula/infra/app:deploy_launcher_test || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/tabula/api:integration_tests //apps/suites/tabula/api:migrate_deploy_itest //apps/suites/tabula/api:tabula_api_tools_test //apps/suites/tabula/infra/app:deploy_launcher_test; else exit $rc; fi; }
-
-      - name: LLVM cache tripwire
-        if: always()
-        uses: ./.github/actions/llvm-cache-tripwire
-        with:
-          restore-outcome: ${{ steps.llvm-contents.outputs.outcome }}
-          cache-hit: ${{ steps.llvm-contents.outputs.cache-hit }}
-          pre-count: ${{ steps.llvm-contents.outputs.pre-count }}
-          pin-path: ${{ steps.llvm-contents.outputs.pin-path }}
-
-  unit-tabula-cli:
-    name: tabula-cli
-    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
-    timeout-minutes: 15
-    needs: [plan, unit-tabula-shared]
-    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'tabula-cli')) }}
-    env:
-      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-
-      - name: Free up runner disk space
-        uses: ./.github/actions/free-disk-space
-
-      - name: Set up Bazel
-        uses: ./.github/actions/setup-bazel
-
-      - name: Restore the extracted LLVM toolchain
-        id: llvm-contents
-        uses: ./.github/actions/llvm-cache-restore
-
-      - name: Build & Test Unit tabula-cli
-        run: |
-          set -euo pipefail
-          cache_flags=()
-          extra_flags=()
-          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
-            cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
-          fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/tabula/cli:unit_tests //apps/suites/tabula/cli:tabcli_test || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/tabula/cli:unit_tests //apps/suites/tabula/cli:tabcli_test; else exit $rc; fi; }
-
-      - name: LLVM cache tripwire
-        if: always()
-        uses: ./.github/actions/llvm-cache-tripwire
-        with:
-          restore-outcome: ${{ steps.llvm-contents.outputs.outcome }}
-          cache-hit: ${{ steps.llvm-contents.outputs.cache-hit }}
-          pre-count: ${{ steps.llvm-contents.outputs.pre-count }}
-          pin-path: ${{ steps.llvm-contents.outputs.pin-path }}
-
-  unit-tabula-extension:
-    name: tabula-extension
-    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
-    timeout-minutes: 15
-    needs: [plan, unit-tabula-shared]
-    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'tabula-extension')) }}
-    env:
-      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-
-      - name: Free up runner disk space
-        uses: ./.github/actions/free-disk-space
-
-      - name: Set up Bazel
-        uses: ./.github/actions/setup-bazel
-
-      - name: Restore the extracted LLVM toolchain
-        id: llvm-contents
-        uses: ./.github/actions/llvm-cache-restore
-
-      - name: Build & Test Unit tabula-extension
-        run: |
-          set -euo pipefail
-          cache_flags=()
-          extra_flags=()
-          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
-            cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
-          fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/tabula/extension:unit_tests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/tabula/extension:unit_tests; else exit $rc; fi; }
-
-      - name: LLVM cache tripwire
-        if: always()
-        uses: ./.github/actions/llvm-cache-tripwire
-        with:
-          restore-outcome: ${{ steps.llvm-contents.outputs.outcome }}
-          cache-hit: ${{ steps.llvm-contents.outputs.cache-hit }}
-          pre-count: ${{ steps.llvm-contents.outputs.pre-count }}
-          pin-path: ${{ steps.llvm-contents.outputs.pin-path }}
-
-  unit-tabula-web:
-    name: tabula-web
-    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
-    timeout-minutes: 15
-    needs: [plan, unit-design-system, unit-tabula-shared]
-    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'tabula-web')) }}
-    env:
-      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-
-      - name: Free up runner disk space
-        uses: ./.github/actions/free-disk-space
-
-      - name: Set up Bazel
-        uses: ./.github/actions/setup-bazel
-
-      - name: Restore the extracted LLVM toolchain
-        id: llvm-contents
-        uses: ./.github/actions/llvm-cache-restore
-
-      - name: Build & Test Unit tabula-web
-        run: |
-          set -euo pipefail
-          cache_flags=()
-          extra_flags=()
-          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
-            cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
-          fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/tabula/web:unit_tests //apps/suites/tabula/web:typecheck_typecheck_test //apps/suites/tabula/infra/web:deploy_launcher_test || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/tabula/web:unit_tests //apps/suites/tabula/web:typecheck_typecheck_test //apps/suites/tabula/infra/web:deploy_launcher_test; else exit $rc; fi; }
-
-      - name: LLVM cache tripwire
-        if: always()
-        uses: ./.github/actions/llvm-cache-tripwire
-        with:
-          restore-outcome: ${{ steps.llvm-contents.outputs.outcome }}
-          cache-hit: ${{ steps.llvm-contents.outputs.cache-hit }}
-          pre-count: ${{ steps.llvm-contents.outputs.pre-count }}
-          pin-path: ${{ steps.llvm-contents.outputs.pin-path }}
-
   unit-vitruvian-code-src:
     name: vitruvian-code-src
     runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
@@ -1859,6 +1644,221 @@ jobs:
             cache_flags=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
           bazel test "${extra_flags[@]}" "${cache_flags[@]}" //packages/vitruvian-sdk/go/toolkit:toolkit_test //packages/vitruvian-sdk/kits/rust:protocol_test //packages/vitruvian-sdk/kits/rust:tool_test //packages/vitruvian-sdk/kits/typescript:kit_test //tools/sdk-codegen:in_sync_test //tools/sdk-codegen:sdk_codegen_test //packages/vitruvian-sdk:VitruvianToolCLITests //packages/vitruvian-sdk:VitruvianToolKitTests //packages/vitruvian-sdk:VitruvianToolProtocolTests //packages/vitruvian-sdk:conformance_test //packages/vitruvian-sdk:go_kit_vet_test //packages/vitruvian-sdk:go_sample_test //packages/vitruvian-sdk:go_template_test //packages/vitruvian-sdk:guide_test //packages/vitruvian-sdk:init_test //packages/vitruvian-sdk:kit_samples_test //packages/vitruvian-sdk:mirror_workflows_test //packages/vitruvian-sdk:protocol_examples_test //packages/vitruvian-sdk:python_kit_apple_python_test //packages/vitruvian-sdk:python_kit_test //packages/vitruvian-sdk:release_version_test //packages/vitruvian-sdk:rust_sample_test //packages/vitruvian-sdk:samples_test //packages/vitruvian-sdk:swift_samples_test //packages/vitruvian-sdk:swift_template_cleanup_test //packages/vitruvian-sdk:swift_template_test //packages/vitruvian-sdk:templates_in_sync_test || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //packages/vitruvian-sdk/go/toolkit:toolkit_test //packages/vitruvian-sdk/kits/rust:protocol_test //packages/vitruvian-sdk/kits/rust:tool_test //packages/vitruvian-sdk/kits/typescript:kit_test //tools/sdk-codegen:in_sync_test //tools/sdk-codegen:sdk_codegen_test //packages/vitruvian-sdk:VitruvianToolCLITests //packages/vitruvian-sdk:VitruvianToolKitTests //packages/vitruvian-sdk:VitruvianToolProtocolTests //packages/vitruvian-sdk:conformance_test //packages/vitruvian-sdk:go_kit_vet_test //packages/vitruvian-sdk:go_sample_test //packages/vitruvian-sdk:go_template_test //packages/vitruvian-sdk:guide_test //packages/vitruvian-sdk:init_test //packages/vitruvian-sdk:kit_samples_test //packages/vitruvian-sdk:mirror_workflows_test //packages/vitruvian-sdk:protocol_examples_test //packages/vitruvian-sdk:python_kit_apple_python_test //packages/vitruvian-sdk:python_kit_test //packages/vitruvian-sdk:release_version_test //packages/vitruvian-sdk:rust_sample_test //packages/vitruvian-sdk:samples_test //packages/vitruvian-sdk:swift_samples_test //packages/vitruvian-sdk:swift_template_cleanup_test //packages/vitruvian-sdk:swift_template_test //packages/vitruvian-sdk:templates_in_sync_test; else exit $rc; fi; }
+
+  unit-vitruvian-tabs-shared:
+    name: vitruvian-tabs-shared
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
+    timeout-minutes: 15
+    needs: [plan]
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'vitruvian-tabs-shared')) }}
+    env:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Free up runner disk space
+        uses: ./.github/actions/free-disk-space
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: Restore the extracted LLVM toolchain
+        id: llvm-contents
+        uses: ./.github/actions/llvm-cache-restore
+
+      - name: Build & Test Unit vitruvian-tabs-shared
+        run: |
+          set -euo pipefail
+          cache_flags=()
+          extra_flags=()
+          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
+            cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+          fi
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/vitruvian-tabs/shared:lib || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/vitruvian-tabs/shared:lib; else exit $rc; fi; }
+
+      - name: LLVM cache tripwire
+        if: always()
+        uses: ./.github/actions/llvm-cache-tripwire
+        with:
+          restore-outcome: ${{ steps.llvm-contents.outputs.outcome }}
+          cache-hit: ${{ steps.llvm-contents.outputs.cache-hit }}
+          pre-count: ${{ steps.llvm-contents.outputs.pre-count }}
+          pin-path: ${{ steps.llvm-contents.outputs.pin-path }}
+
+  unit-vitruvian-tabs-api:
+    name: vitruvian-tabs-api
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
+    timeout-minutes: 20
+    needs: [plan, unit-vitruvian-tabs-shared]
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'vitruvian-tabs-api')) }}
+    env:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Free up runner disk space
+        uses: ./.github/actions/free-disk-space
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: Restore the extracted LLVM toolchain
+        id: llvm-contents
+        uses: ./.github/actions/llvm-cache-restore
+
+      - name: Build & Test Unit vitruvian-tabs-api
+        run: |
+          set -euo pipefail
+          cache_flags=()
+          extra_flags=()
+          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
+            cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+          fi
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/vitruvian-tabs/api:integration_tests //apps/suites/vitruvian-tabs/api:migrate_deploy_itest //apps/suites/vitruvian-tabs/api:vitruvian_tabs_api_tools_test //apps/suites/vitruvian-tabs/infra/app:deploy_launcher_test || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/vitruvian-tabs/api:integration_tests //apps/suites/vitruvian-tabs/api:migrate_deploy_itest //apps/suites/vitruvian-tabs/api:vitruvian_tabs_api_tools_test //apps/suites/vitruvian-tabs/infra/app:deploy_launcher_test; else exit $rc; fi; }
+
+      - name: LLVM cache tripwire
+        if: always()
+        uses: ./.github/actions/llvm-cache-tripwire
+        with:
+          restore-outcome: ${{ steps.llvm-contents.outputs.outcome }}
+          cache-hit: ${{ steps.llvm-contents.outputs.cache-hit }}
+          pre-count: ${{ steps.llvm-contents.outputs.pre-count }}
+          pin-path: ${{ steps.llvm-contents.outputs.pin-path }}
+
+  unit-vitruvian-tabs-cli:
+    name: vitruvian-tabs-cli
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
+    timeout-minutes: 15
+    needs: [plan, unit-vitruvian-tabs-shared]
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'vitruvian-tabs-cli')) }}
+    env:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Free up runner disk space
+        uses: ./.github/actions/free-disk-space
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: Restore the extracted LLVM toolchain
+        id: llvm-contents
+        uses: ./.github/actions/llvm-cache-restore
+
+      - name: Build & Test Unit vitruvian-tabs-cli
+        run: |
+          set -euo pipefail
+          cache_flags=()
+          extra_flags=()
+          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
+            cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+          fi
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/vitruvian-tabs/cli:unit_tests //apps/suites/vitruvian-tabs/cli:vitruvian_tabs_cli_test || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/vitruvian-tabs/cli:unit_tests //apps/suites/vitruvian-tabs/cli:vitruvian_tabs_cli_test; else exit $rc; fi; }
+
+      - name: LLVM cache tripwire
+        if: always()
+        uses: ./.github/actions/llvm-cache-tripwire
+        with:
+          restore-outcome: ${{ steps.llvm-contents.outputs.outcome }}
+          cache-hit: ${{ steps.llvm-contents.outputs.cache-hit }}
+          pre-count: ${{ steps.llvm-contents.outputs.pre-count }}
+          pin-path: ${{ steps.llvm-contents.outputs.pin-path }}
+
+  unit-vitruvian-tabs-extension:
+    name: vitruvian-tabs-extension
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
+    timeout-minutes: 15
+    needs: [plan, unit-vitruvian-tabs-shared]
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'vitruvian-tabs-extension')) }}
+    env:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Free up runner disk space
+        uses: ./.github/actions/free-disk-space
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: Restore the extracted LLVM toolchain
+        id: llvm-contents
+        uses: ./.github/actions/llvm-cache-restore
+
+      - name: Build & Test Unit vitruvian-tabs-extension
+        run: |
+          set -euo pipefail
+          cache_flags=()
+          extra_flags=()
+          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
+            cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+          fi
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/vitruvian-tabs/extension:unit_tests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/vitruvian-tabs/extension:unit_tests; else exit $rc; fi; }
+
+      - name: LLVM cache tripwire
+        if: always()
+        uses: ./.github/actions/llvm-cache-tripwire
+        with:
+          restore-outcome: ${{ steps.llvm-contents.outputs.outcome }}
+          cache-hit: ${{ steps.llvm-contents.outputs.cache-hit }}
+          pre-count: ${{ steps.llvm-contents.outputs.pre-count }}
+          pin-path: ${{ steps.llvm-contents.outputs.pin-path }}
+
+  unit-vitruvian-tabs-web:
+    name: vitruvian-tabs-web
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
+    timeout-minutes: 15
+    needs: [plan, unit-design-system, unit-vitruvian-tabs-shared]
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'vitruvian-tabs-web')) }}
+    env:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Free up runner disk space
+        uses: ./.github/actions/free-disk-space
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: Restore the extracted LLVM toolchain
+        id: llvm-contents
+        uses: ./.github/actions/llvm-cache-restore
+
+      - name: Build & Test Unit vitruvian-tabs-web
+        run: |
+          set -euo pipefail
+          cache_flags=()
+          extra_flags=()
+          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
+            cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+          fi
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/vitruvian-tabs/web:unit_tests //apps/suites/vitruvian-tabs/web:typecheck_typecheck_test //apps/suites/vitruvian-tabs/infra/web:deploy_launcher_test || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/vitruvian-tabs/web:unit_tests //apps/suites/vitruvian-tabs/web:typecheck_typecheck_test //apps/suites/vitruvian-tabs/infra/web:deploy_launcher_test; else exit $rc; fi; }
+
+      - name: LLVM cache tripwire
+        if: always()
+        uses: ./.github/actions/llvm-cache-tripwire
+        with:
+          restore-outcome: ${{ steps.llvm-contents.outputs.outcome }}
+          cache-hit: ${{ steps.llvm-contents.outputs.cache-hit }}
+          pre-count: ${{ steps.llvm-contents.outputs.pre-count }}
+          pin-path: ${{ steps.llvm-contents.outputs.pin-path }}
 
   unit-vitruvian-tool-github:
     name: vitruvian-tool-github
@@ -2073,7 +2073,7 @@ jobs:
 
   gate:
     name: gate/all-required-passed
-    needs: [plan, unit-antigravity-ext-marketplace, unit-antigravity-gh-watch, unit-antigravity-hookify, unit-antigravity-live-context, unit-antigravity-plugins-conformance, unit-antigravity-ralph-loop, unit-antigravity-receipts-report, unit-antigravity-savvy-fleet, unit-antigravity-security-guidance, unit-antigravity-worktree-band, unit-backstage-backend, unit-courier-app-macos, unit-courier-engine-macos, unit-design-system, unit-backstage-app, unit-design-system-android, unit-devx-cli, unit-gods-eye-view, unit-homelab, unit-mcp-slack-service, unit-oauth-user-inspector, unit-peripherals, unit-pulumi-repo-config, unit-relay-spike-service, unit-remote, unit-remote-boot, unit-remote-mac-agent, unit-remote-mac-menu, unit-tabula-shared, unit-tabula-api, unit-tabula-cli, unit-tabula-extension, unit-tabula-web, unit-vitruvian-code-src, unit-vitruvian-code-bridge, unit-vitruvian-code-macos, unit-vitruvian-desktop-macos, unit-vitruvian-sdk, unit-vitruvian-tool-github, unit-wand-android, unit-wand-linux, unit-wand-macos]
+    needs: [plan, unit-antigravity-ext-marketplace, unit-antigravity-gh-watch, unit-antigravity-hookify, unit-antigravity-live-context, unit-antigravity-plugins-conformance, unit-antigravity-ralph-loop, unit-antigravity-receipts-report, unit-antigravity-savvy-fleet, unit-antigravity-security-guidance, unit-antigravity-worktree-band, unit-backstage-backend, unit-courier-app-macos, unit-courier-engine-macos, unit-design-system, unit-backstage-app, unit-design-system-android, unit-devx-cli, unit-gods-eye-view, unit-homelab, unit-mcp-slack-service, unit-oauth-user-inspector, unit-peripherals, unit-pulumi-repo-config, unit-relay-spike-service, unit-remote, unit-remote-boot, unit-remote-mac-agent, unit-remote-mac-menu, unit-vitruvian-code-src, unit-vitruvian-code-bridge, unit-vitruvian-code-macos, unit-vitruvian-desktop-macos, unit-vitruvian-sdk, unit-vitruvian-tabs-shared, unit-vitruvian-tabs-api, unit-vitruvian-tabs-cli, unit-vitruvian-tabs-extension, unit-vitruvian-tabs-web, unit-vitruvian-tool-github, unit-wand-android, unit-wand-linux, unit-wand-macos]
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 5

@@ -111,7 +111,7 @@ permissions:
 # WHY WORKFLOW-LEVEL AND NOT PER-UNIT (spec §4.3 asks for
 # `delivery-<unit>-<env>` groups): every fan-out job below is a `uses:`
 # caller, and this repo has already paid for that experiment — #1607 put a
-# `concurrency:` on the calling jobs in tabula-deploy.yaml and every
+# `concurrency:` on the calling jobs in a deploy workflow and every
 # dispatch failed INSTANTLY with no runner assigned, reproducibly, even
 # with a static expression-free group string; workflow-level was the only
 # placement that worked. A per-workflow group is strictly STRONGER
@@ -136,7 +136,7 @@ permissions:
 # dispatching it. That is not hypothetical: two releases published in the
 # same minute during the Phase-2 rollout evicted each other (runs
 # 32345258539 / 32344982262 — harmless only because both tags were infra
-# ones with no rung of their own; a tabula-api-v + tabula-web-v pair would
+# ones with no rung of their own; a vitruvian-tabs-api-v + vitruvian-tabs-web-v pair would
 # have dropped one service's promotion). Keying release runs on the tag
 # gives every tag its own lane: two tags never evict each other, while two
 # runs of the SAME tag (a re-publish) still serialize, which is the case

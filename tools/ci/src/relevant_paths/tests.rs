@@ -80,7 +80,7 @@ fn verdict_with(ignore: &str, files: &[&str], path: Option<&str>) -> String {
     let dir = TempDir::new();
     let repo = dir.path();
     git(repo, &["init", "-q", "."]);
-    for d in ["docs", "gitops/argocd", "tabula/api"] {
+    for d in ["docs", "gitops/argocd", "vitruvian-tabs/api"] {
         std::fs::create_dir_all(repo.join(d)).unwrap();
     }
     write(repo.join("docs/.keep"), "base\n");
@@ -148,18 +148,18 @@ fn default_ignore_set_for_the_bazel_build_lanes() {
     );
     // agent-guard's Antigravity wiring is code: //tools/agent-guard:agent_guard_test reads it.
     case(".agents/hooks.json RUNS", true, "", &[".agents/hooks.json"]);
-    case("source change runs", true, "", &["tabula/api/src/index.ts"]);
+    case("source change runs", true, "", &["vitruvian-tabs/api/src/index.ts"]);
     case(
         "mixed docs+source runs",
         true,
         "",
-        &["docs/guide.md", "tabula/api/src/index.ts"],
+        &["docs/guide.md", "vitruvian-tabs/api/src/index.ts"],
     );
     case(
         "mixed metadata+source runs",
         true,
         "",
-        &["catalog-info.yaml", "tabula/api/src/index.ts"],
+        &["catalog-info.yaml", "vitruvian-tabs/api/src/index.ts"],
     );
 }
 
@@ -185,13 +185,13 @@ fn license_check_set_never_skips_gitops_or_catalog_info() {
         "nested docs/ runs (conservative)",
         true,
         &re,
-        &["tabula/docs/notes.txt"],
+        &["vitruvian-tabs/docs/notes.txt"],
     );
     case(
         "source change runs",
         true,
         &re,
-        &["tabula/api/src/index.ts"],
+        &["vitruvian-tabs/api/src/index.ts"],
     );
 }
 
@@ -292,7 +292,7 @@ fn tidy_check_set_skips_only_what_tidy_cannot_change() {
         "source change runs",
         true,
         &re,
-        &["tabula/api/src/index.ts"],
+        &["vitruvian-tabs/api/src/index.ts"],
     );
 }
 
@@ -415,7 +415,7 @@ fn runs_with_reason(got: &str, what: &str) {
 #[test]
 fn an_invalid_ignore_regex_runs() {
     for bad in ["(", "[z-a]"] {
-        let got = verdict(bad, &["tabula/api/src/index.ts"]);
+        let got = verdict(bad, &["vitruvian-tabs/api/src/index.ts"]);
         runs_with_reason(&got, &format!("invalid IGNORE_REGEX {bad:?}"));
         // A docs-only diff too: the bad regex must not be read as "all ignored".
         let got = verdict(bad, &["docs/guide.md"]);

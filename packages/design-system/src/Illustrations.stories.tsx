@@ -82,7 +82,7 @@ export const OfficialBrandLogos: StoryObj = {
         <Label accent>II. Official Wordmark Lockups</Label>
         <div className="flex flex-col gap-4 py-2">
           <BrandLogo markSize={34} />
-          <BrandLogo title="VITRUVIAN" subtitle="TABULA SUITE" markSize={28} />
+          <BrandLogo title="VITRUVIAN" subtitle="VITRUVIAN TABS" markSize={28} />
         </div>
         <span className="text-xs text-steel-dim font-mono">
           IBM Plex Sans + JetBrains Mono lockup

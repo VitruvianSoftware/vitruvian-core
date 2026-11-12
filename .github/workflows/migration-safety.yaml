@@ -18,11 +18,11 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Migration-safety gate (issue #819): Squawk-lint Tabula's Prisma migrations so a
+# Migration-safety gate (issue #819): Squawk-lint Vitruvian Tabs's Prisma migrations so a
 # backward-INCOMPATIBLE change (drop/rename a column, narrow a type, add a
 # validated constraint) can't reach main and break the OLD Cloud Run revision
 # during the blue-green traffic shift (see tools/ci/src/migration_safety/lib.rs and
-# tabula/api/prisma/.squawk.toml for the WHY and the tuned rule set).
+# apps/suites/vitruvian-tabs/api/prisma/.squawk.toml for the WHY and the tuned rule set).
 name: migration-safety
 
 on:
@@ -61,7 +61,7 @@ permissions:
 #
 # `github.sha` is unique per commit, so every pushed commit gets its own group
 # and its own verdict: nothing cancels it, nothing queues it behind a sibling.
-# Same pattern as tabula-e2e.yaml (#1311); guarded by //tools/conformance:check.
+# Same pattern as vitruvian-tabs-e2e.yaml (#1311); guarded by //tools/conformance:check.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}

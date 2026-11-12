@@ -94,7 +94,7 @@ func contains(names []string, want string) bool {
 
 // The sample-floating and OSS-floating projects are documented as SEPARATELY
 // toggle-gated, and business units differ in which they want: bu1 has both,
-// while bu2 (tabula) wants only the OSS project and no -sample-floating.
+// while bu2 (vitruvian-tabs) wants only the OSS project and no -sample-floating.
 // Regression guard for the two gates being genuinely independent — an early
 // `if !FloatingProjectEnabled { return nil }` silently made the OSS project
 // unreachable, which a preview caught only because bu2 is the first caller to

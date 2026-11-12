@@ -5,7 +5,7 @@ self-hosted variable fonts, a React component library built on top of it,
 codex-inspired technical vector illustrations, and the Storybook that documents
 all of them.
 
-Unlike the per-app packages under `apps/suites/tabula/`, `apps/cli/devx/` and friends, this one is
+Unlike the per-app packages under `apps/suites/vitruvian-tabs/`, `apps/cli/devx/` and friends, this one is
 platform-level: every app is meant to depend on it, so it lives in `packages/`
 and its default visibility is `//:__subpackages__` — the whole monorepo, rather
 than a single app. Only `:pkg` is `//visibility:public`, because rules_js roots
@@ -111,7 +111,7 @@ Two constraints are worth knowing before editing the build files:
   store — cannot find this package's framework by bare name. Resolving through
   `require.resolve(...)` is Storybook's documented answer for strict layouts.
 - **The BUILD file is hand-authored and `# gazelle:ignore`d,** like
-  `//apps/mcp/slack` and `//apps/suites/tabula/shared`: gazelle would rewrite it with a broken
+  `//apps/mcp/slack` and `//apps/suites/vitruvian-tabs/shared`: gazelle would rewrite it with a broken
   empty `src` glob, split out a `src/BUILD`, and try to generate targets for
   `.storybook/`.
 

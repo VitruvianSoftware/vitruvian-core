@@ -114,7 +114,7 @@ kind: Resource
 metadata:
   name: gcp-foundation-projects
   title: GCP Foundation — Projects
-  description: Foundation Phase 4 — Workload GCP project provisioning with random suffixes (BU1 OSS floating projects, BU2 Tabula projects) and Service Usage API enablement
+  description: Foundation Phase 4 — Workload GCP project provisioning with random suffixes (BU1 OSS floating projects, BU2 Vitruvian Tabs projects) and Service Usage API enablement
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
     backstage.io/techdocs-ref: dir:..

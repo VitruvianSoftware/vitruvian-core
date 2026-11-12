@@ -68,7 +68,7 @@ or `pulumi login`. The agent drives these tools, so every credential has to be a
 >    `VITRUVIAN_ESC_SA`) and refuses any other account.
 > 4. It reads the profile's secrets from Secret Manager with that token. The ESC
 >    account has `secretAccessor` on exactly the `claude-cloud-*` secrets, declared
->    in the tabula build stack (`apps/suites/tabula/infra/build`).
+>    in the vitruvian-tabs build stack (`apps/suites/vitruvian-tabs/infra/build`).
 >
 > The token is used only at session start and is not exported. A value already set
 > on the environment still wins over Secret Manager.
@@ -250,7 +250,7 @@ provider and no caller moves.
    half of a secret is code (principles §2.3).
 2. **Seed the secret values** (the half that cannot be committed, §2.4):
    ```sh
-   bazel run //tools/gcp-secrets:seed -- apps/suites/tabula/infra/build claude-cloud-core-github-token
+   bazel run //tools/gcp-secrets:seed -- apps/suites/vitruvian-tabs/infra/build claude-cloud-core-github-token
    ```
 3. **Add the row** to `profiles.tsv`.
 4. **Set the cloud environment's variables** to `PULUMI_ACCESS_TOKEN` (and

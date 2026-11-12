@@ -98,7 +98,7 @@ impl Hold {
             .env("REPO", "owner/repo")
             .env("RUN_ID", "999")
             .env("DEV_JOB", DEV_JOB)
-            .env("COMPONENT", "tabula-api")
+            .env("COMPONENT", "vitruvian-tabs-api")
             .env_remove("SOURCE")
             .env_remove("TRIGGERED_BY")
             .env_remove("FAKE_PR_LIST_RC")
@@ -143,7 +143,7 @@ fn assert_no_mutation(h: &Hold, what: &str) {
     }
 }
 
-const LIST: &str = "pr list --repo owner/repo --head release-please--branches--main--components--tabula-api --state open --json number --jq .[0].number // empty";
+const LIST: &str = "pr list --repo owner/repo --head release-please--branches--main--components--vitruvian-tabs-api --state open --json number --jq .[0].number // empty";
 const VIEW: &str =
     "run view 999 --repo owner/repo --json jobs --jq .jobs[] | \"\\(.name)\\t\\(.conclusion)\"";
 const LABELS: &str = "pr view 42 --repo owner/repo --json labels --jq .labels[].name";
@@ -211,7 +211,7 @@ fn empty_pr_list_exits_cleanly() {
     assert_eq!(o.code, 0, "{o:?}");
     assert_has(
         &o.stdout,
-        "No open release PR on release-please--branches--main--components--tabula-api",
+        "No open release PR on release-please--branches--main--components--vitruvian-tabs-api",
         "nothing open",
     );
     assert_eq!(h.calls("run view"), 0, "{}", h.log());
@@ -425,7 +425,7 @@ fn failure_adds_own_label_disables_auto_merge_and_comments() {
     assert_lacks(&log, "--squash --auto", "never armed while red");
     assert_has(
         &o.stdout,
-        "::warning title=release PR held::tabula-api's development deploy concluded 'failure' \u{2014} holding release PR #42 out of auto-merge",
+        "::warning title=release PR held::vitruvian-tabs-api's development deploy concluded 'failure' \u{2014} holding release PR #42 out of auto-merge",
         "held warning",
     );
 }
@@ -440,7 +440,7 @@ fn hold_comment_names_component_conclusion_and_run() {
     ]);
     assert_eq!(
         h.comment(),
-        "Held out of auto-merge: `tabula-api`'s development deploy concluded **timed_out** in \
+        "Held out of auto-merge: `vitruvian-tabs-api`'s development deploy concluded **timed_out** in \
          [run 999](https://github.com/owner/repo/actions/runs/999).\n\nMerging this release would \
          promote an artifact whose development deploy is red, and nonproduction has no reviewer to \
          catch it. This PR is released automatically once development is green again."
@@ -503,23 +503,23 @@ fn unrecognised_conclusion_leaves_the_pr_untouched() {
 fn source_differing_from_trigger_skips_with_zero_gh_calls() {
     let h = Hold::new();
     let o = h.run(&[
-        ("SOURCE", "tabula-deploy"),
+        ("SOURCE", "delivery-vitruvian-tabs"),
         ("TRIGGERED_BY", "oauth-user-inspector-deploy"),
     ]);
     assert_eq!(o.code, 0, "{o:?}");
     assert_eq!(h.log(), "", "no gh calls at all");
-    assert_has(&o.stdout, "this entry is for 'tabula-deploy'", "says why");
+    assert_has(&o.stdout, "this entry is for 'delivery-vitruvian-tabs'", "says why");
 }
 
 #[test]
 fn matching_source_or_a_lone_source_still_evaluates() {
     for ov in [
         vec![
-            ("SOURCE", "delivery-tabula"),
-            ("TRIGGERED_BY", "delivery-tabula"),
+            ("SOURCE", "delivery-vitruvian-tabs"),
+            ("TRIGGERED_BY", "delivery-vitruvian-tabs"),
         ],
-        vec![("SOURCE", "delivery-tabula")],
-        vec![("TRIGGERED_BY", "delivery-tabula")],
+        vec![("SOURCE", "delivery-vitruvian-tabs")],
+        vec![("TRIGGERED_BY", "delivery-vitruvian-tabs")],
     ] {
         let h = Hold::new();
         let mut all = vec![("FAKE_PR_LIST_OUT", "42"), ("FAKE_RUN_VIEW_OUT", "")];
@@ -542,7 +542,7 @@ fn a_missing_required_variable_fails_before_any_gh_call() {
                 .env("REPO", "owner/repo")
                 .env("RUN_ID", "999")
                 .env("DEV_JOB", DEV_JOB)
-                .env("COMPONENT", "tabula-api");
+                .env("COMPONENT", "vitruvian-tabs-api");
             let r = if how == "unset" {
                 r.env_remove(var)
             } else {

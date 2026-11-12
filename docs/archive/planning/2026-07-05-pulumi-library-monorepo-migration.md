@@ -71,7 +71,7 @@ runs in CI:
   will reconcile anything the hand/standalone-gazelle generation got subtly
   wrong, and regenerate `MODULE.bazel.lock` under the One Version Rule.
 - **TS Bazel targets** (`ts_project`/`npm_package` + vitest test targets) are a
-  follow-up. `pulumi/library` is `# gazelle:exclude`-d (like `tabula` and
+  follow-up. `pulumi/library` is `# gazelle:exclude`-d (like `vitruvian-tabs` and
   `infrastructure`): the Go BUILD files are hand-authored, and the TS packages
   have no Bazel targets yet — they build/test natively via pnpm+vitest and are
   available in the pnpm workspace. Generating the TS targets needs a

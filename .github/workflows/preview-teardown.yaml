@@ -156,7 +156,7 @@ jobs:
         run: |
           "$RUNNER_TEMP/teardown-bin/pr-comment" \
             --pr "${PR_NUMBER}" \
-            --app "tabula" \
+            --app "vitruvian-tabs" \
             --status "teardown"
 
       - name: Publish Teardown Summary

@@ -20,7 +20,7 @@
 
 # Hermetic per-test PostgreSQL: initdb into the service TMPDIR and run on the
 # rules_itest-assigned loopback port. Consumed as itest_service exe (see
-# //apps/suites/tabula/api).
+# //apps/suites/vitruvian-tabs/api).
 
 # gazelle:ignore
 

@@ -103,7 +103,7 @@ there too.
 ## Grafana: the datasource works, its health check does not
 
 The Cloud Monitoring datasource **serves queries correctly** — verified by
-querying tabula's production project through Grafana and getting real data
+querying vitruvian-tabs's production project through Grafana and getting real data
 back:
 
 ```

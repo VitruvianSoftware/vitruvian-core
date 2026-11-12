@@ -18,14 +18,14 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! //tools/ci:migration_safety — Squawk migration-safety gate for Tabula's Prisma
+//! //tools/ci:migration_safety — Squawk migration-safety gate for Vitruvian Tabs's Prisma
 //! migrations (issue #819).
 
 use shell_compat::{capture, cat, err, mktemp_dir, out, status, subst, write_file};
 use std::process::Command;
 
 const SQUAWK_VERSION: &str = "2.67.0";
-const MIG_DIR: &str = "apps/suites/tabula/api/prisma/migrations";
+const MIG_DIR: &str = "apps/suites/vitruvian-tabs/api/prisma/migrations";
 
 fn fail(msg: &[u8]) -> i32 {
     err(&cat(&[b"::error::migration-safety: ", msg, b"\n"]));
@@ -100,7 +100,7 @@ fn selftest(config: &[u8], tmp: &[u8]) -> i32 {
     );
 
     if squawk_quiet(config, &[&good]) != 0 {
-        return fail(b"self-test FAILED -- a backward-COMPATIBLE fixture (ADD nullable COLUMN) was REJECTED. apps/suites/tabula/api/prisma/.squawk.toml is mis-tuned and would block safe expand migrations.");
+        return fail(b"self-test FAILED -- a backward-COMPATIBLE fixture (ADD nullable COLUMN) was REJECTED. apps/suites/vitruvian-tabs/api/prisma/.squawk.toml is mis-tuned and would block safe expand migrations.");
     }
     if squawk_quiet(config, &[&bad]) == 0 {
         return fail(b"self-test FAILED -- a backward-INCOMPATIBLE fixture (DROP COLUMN + type narrow) PASSED. The gate is not catching hazards; check that ban-drop-column / changing-column-type are not in excluded_rules.");
@@ -230,7 +230,7 @@ fn lint_changed(root: &[u8], config: &[u8], base: &[u8]) -> i32 {
 
 pub fn run(args: &[Vec<u8>]) -> i32 {
     let root = find_root();
-    let config = cat(&[&root, b"/apps/suites/tabula/api/prisma/.squawk.toml"]);
+    let config = cat(&[&root, b"/apps/suites/vitruvian-tabs/api/prisma/.squawk.toml"]);
 
     let tmp = match mktemp_dir() {
         Ok(t) => t,
@@ -251,7 +251,7 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
     }
 
     // The expand-phase status parser is guarded by
-    // //apps/suites/tabula/api:tabula_api_tools_test (it is Rust now), not here.
+    // //apps/suites/vitruvian-tabs/api:vitruvian_tabs_api_tools_test (it is Rust now), not here.
 
     if !args.is_empty() && !args[0].is_empty() {
         if lint_changed(&root, &config, &args[0]) != 0 {
@@ -270,61 +270,61 @@ mod tests {
     #[test]
     fn contract_migration_detected() {
         assert!(is_contract_migration(
-            b"apps/suites/tabula/api/prisma/migrations/20260702000000_drop_ws_id_contract/migration.sql"
+            b"apps/suites/vitruvian-tabs/api/prisma/migrations/20260702000000_drop_ws_id_contract/migration.sql"
         ));
     }
 
     #[test]
     fn expand_migration_not_contract() {
         assert!(!is_contract_migration(
-            b"apps/suites/tabula/api/prisma/migrations/20260701000000_add_col/migration.sql"
+            b"apps/suites/vitruvian-tabs/api/prisma/migrations/20260701000000_add_col/migration.sql"
         ));
     }
 
     #[test]
     fn contract_terms_is_not_a_contract_migration() {
         assert!(!is_contract_migration(
-            b"apps/suites/tabula/api/prisma/migrations/20260701000000_contract_terms/migration.sql"
+            b"apps/suites/vitruvian-tabs/api/prisma/migrations/20260701000000_contract_terms/migration.sql"
         ));
     }
 
     #[test]
     fn non_sql_file_is_not_contract() {
         assert!(!is_contract_migration(
-            b"apps/suites/tabula/api/prisma/migrations/20260702000000_drop_ws_id_contract/README.md"
+            b"apps/suites/vitruvian-tabs/api/prisma/migrations/20260702000000_drop_ws_id_contract/README.md"
         ));
     }
 
     #[test]
     fn parse_added_migration() {
         let diff =
-            b"A\tapps/suites/tabula/api/prisma/migrations/20260701000000_add_col/migration.sql\n";
+            b"A\tapps/suites/vitruvian-tabs/api/prisma/migrations/20260701000000_add_col/migration.sql\n";
         let result = parse_changed_migrations(diff, MIG_DIR);
         assert_eq!(result.len(), 1);
         assert_eq!(
             result[0],
-            b"apps/suites/tabula/api/prisma/migrations/20260701000000_add_col/migration.sql"
+            b"apps/suites/vitruvian-tabs/api/prisma/migrations/20260701000000_add_col/migration.sql"
         );
     }
 
     #[test]
     fn parse_modified_migration() {
         let diff =
-            b"M\tapps/suites/tabula/api/prisma/migrations/20260701000000_add_col/migration.sql\n";
+            b"M\tapps/suites/vitruvian-tabs/api/prisma/migrations/20260701000000_add_col/migration.sql\n";
         let result = parse_changed_migrations(diff, MIG_DIR);
         assert_eq!(result.len(), 1);
     }
 
     #[test]
     fn parse_rename_r100_skipped() {
-        let diff = b"R100\told/path/migration.sql\tapps/suites/tabula/api/prisma/migrations/20260701000000_add_col/migration.sql\n";
+        let diff = b"R100\told/path/migration.sql\tapps/suites/vitruvian-tabs/api/prisma/migrations/20260701000000_add_col/migration.sql\n";
         let result = parse_changed_migrations(diff, MIG_DIR);
         assert!(result.is_empty());
     }
 
     #[test]
     fn parse_partial_rename_included() {
-        let diff = b"R080\told/path/migration.sql\tapps/suites/tabula/api/prisma/migrations/20260701000000_add_col/migration.sql\n";
+        let diff = b"R080\told/path/migration.sql\tapps/suites/vitruvian-tabs/api/prisma/migrations/20260701000000_add_col/migration.sql\n";
         let result = parse_changed_migrations(diff, MIG_DIR);
         assert_eq!(result.len(), 1);
     }
@@ -332,23 +332,23 @@ mod tests {
     #[test]
     fn parse_deleted_migration_excluded() {
         let diff =
-            b"D\tapps/suites/tabula/api/prisma/migrations/20260701000000_add_col/migration.sql\n";
+            b"D\tapps/suites/vitruvian-tabs/api/prisma/migrations/20260701000000_add_col/migration.sql\n";
         let result = parse_changed_migrations(diff, MIG_DIR);
         assert!(result.is_empty());
     }
 
     #[test]
     fn parse_non_migration_file_excluded() {
-        let diff = b"A\tapps/suites/tabula/api/prisma/schema.prisma\n";
+        let diff = b"A\tapps/suites/vitruvian-tabs/api/prisma/schema.prisma\n";
         let result = parse_changed_migrations(diff, MIG_DIR);
         assert!(result.is_empty());
     }
 
     #[test]
     fn parse_mixed_diff_output() {
-        let diff = b"A\tapps/suites/tabula/api/prisma/migrations/20260701000000_add_col/migration.sql\n\
-                      D\tapps/suites/tabula/api/prisma/migrations/20260601000000_old/migration.sql\n\
-                      M\tapps/suites/tabula/api/prisma/migrations/20260702000000_fix/migration.sql\n\
+        let diff = b"A\tapps/suites/vitruvian-tabs/api/prisma/migrations/20260701000000_add_col/migration.sql\n\
+                      D\tapps/suites/vitruvian-tabs/api/prisma/migrations/20260601000000_old/migration.sql\n\
+                      M\tapps/suites/vitruvian-tabs/api/prisma/migrations/20260702000000_fix/migration.sql\n\
                       A\tsrc/index.ts\n";
         let result = parse_changed_migrations(diff, MIG_DIR);
         assert_eq!(result.len(), 2);
@@ -369,7 +369,7 @@ mod tests {
 
     #[test]
     fn copy_status_included() {
-        let diff = b"C100\toriginal.sql\tapps/suites/tabula/api/prisma/migrations/20260701000000_add_col/migration.sql\n";
+        let diff = b"C100\toriginal.sql\tapps/suites/vitruvian-tabs/api/prisma/migrations/20260701000000_add_col/migration.sql\n";
         let result = parse_changed_migrations(diff, MIG_DIR);
         assert_eq!(result.len(), 1);
     }

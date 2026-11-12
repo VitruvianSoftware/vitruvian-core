@@ -20,7 +20,7 @@
 
 name: Auto-merge release PRs
 
-# release-please (foundation-release, apps-release, tabula-release,
+# release-please (foundation-release, apps-release, vitruvian-tabs-release,
 # pulumi-library-release) opens ONE PR per released component on a
 # `release-please--*` branch, authored by the vitruvian-copybara-sync App. That
 # App is a bypass actor on the merge-queue ruleset's required-review rule (#804),

@@ -8,7 +8,7 @@
 <!-- Check all affected components -->
 - [ ] `apps/cli/devx`
 - [ ] `apps/cli/homelab`
-- [ ] `apps/suites/tabula`
+- [ ] `apps/suites/vitruvian-tabs`
 - [ ] `apps/mcp/slack`
 - [ ] `apps/desktop/vitruvian-code`
 - [ ] `apps/web/oauth-user-inspector`

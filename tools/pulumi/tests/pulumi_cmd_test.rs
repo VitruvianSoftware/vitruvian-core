@@ -54,7 +54,7 @@ impl Fx {
         let d = tempdir("pulumi-cmd");
         let ws = d.join("ws");
         for p in [
-            "tabula/infra/web",
+            "apps/suites/vitruvian-tabs/infra/web",
             "infra/minted",
             "infrastructure/pulumi/platform/dev-local",
         ] {
@@ -119,7 +119,7 @@ fn exec(c: std::process::Command, log: &Path, count: &Path) -> Res {
     }
 }
 
-/// The shell suite's run_cmd: tabula/infra/web, `--stack development --yes`,
+/// The shell suite's run_cmd: apps/suites/vitruvian-tabs/infra/web, `--stack development --yes`,
 /// CI=1, the three backend inputs set (possibly empty), retry delay 0.
 fn run_cmd(
     fx: &Fx,
@@ -132,7 +132,7 @@ fn run_cmd(
     extra: &[(&str, &str)],
 ) -> Res {
     let (mut c, log, count) = fx.cmd(
-        "tabula/infra/web",
+        "apps/suites/vitruvian-tabs/infra/web",
         &[subcmd, "--stack", "development", "--yes"],
     );
     c.env("STUB_FAIL", if fail { "1" } else { "0" })
@@ -457,7 +457,7 @@ fn gap_empty_google_cloud_project_falls_back_to_gcp_project_id() {
 #[test]
 fn gap_non_interactive_matches_exact_token_only() {
     let fx = Fx::new();
-    let (mut c, log, count) = fx.cmd("tabula/infra/web", &["preview", "--non-interactive=false"]);
+    let (mut c, log, count) = fx.cmd("apps/suites/vitruvian-tabs/infra/web", &["preview", "--non-interactive=false"]);
     c.env("PULUMI_BACKEND_URL", "gs://b").env("CI", "1");
     let r = exec(c, &log, &count);
     assert!(
@@ -473,7 +473,7 @@ fn gap_non_interactive_matches_exact_token_only() {
 #[test]
 fn explicit_non_interactive_not_duplicated() {
     let fx = Fx::new();
-    let (mut c, log, count) = fx.cmd("tabula/infra/web", &["preview", "--non-interactive"]);
+    let (mut c, log, count) = fx.cmd("apps/suites/vitruvian-tabs/infra/web", &["preview", "--non-interactive"]);
     c.env("PULUMI_BACKEND_URL", "gs://b").env("CI", "1");
     let r = exec(c, &log, &count);
     assert!(
@@ -489,7 +489,7 @@ fn runs_in_project_dir_with_gowork_off() {
     let r = run_cmd(&fx, "up", false, "ok", "gs://b", "", "", &[]);
     assert!(
         r.log
-            .contains(&format!("pwd={}/tabula/infra/web ", fx.ws.display())),
+            .contains(&format!("pwd={}/apps/suites/vitruvian-tabs/infra/web ", fx.ws.display())),
         "{}",
         r.log
     );
@@ -540,7 +540,7 @@ fn dev_local_caller_stack_wins() {
 fn pulumi_org_qualifies_bare_stack_names_on_cloud_backend() {
     let fx = Fx::new();
     let (mut c, log, count) = fx.cmd(
-        "tabula/infra/web",
+        "apps/suites/vitruvian-tabs/infra/web",
         &[
             "preview",
             "--stack",
@@ -565,7 +565,7 @@ fn pulumi_org_qualifies_bare_stack_names_on_cloud_backend() {
 #[test]
 fn pulumi_org_ignored_on_gcs_backend() {
     let fx = Fx::new();
-    let (mut c, log, count) = fx.cmd("tabula/infra/web", &["preview", "--stack", "dev"]);
+    let (mut c, log, count) = fx.cmd("apps/suites/vitruvian-tabs/infra/web", &["preview", "--stack", "dev"]);
     c.env("PULUMI_BACKEND_URL", "gs://b")
         .env("PULUMI_ORG", "vitruvian")
         .env("CI", "1");
@@ -580,14 +580,14 @@ fn pulumi_org_ignored_on_gcs_backend() {
 #[test]
 fn ambient_credentials_skip_the_pin() {
     let fx = Fx::new();
-    fx.pin("tabula/infra/web  someone@example.com  prj-x  row\n");
+    fx.pin("apps/suites/vitruvian-tabs/infra/web  someone@example.com  prj-x  row\n");
     fx.gcloud_stub();
     for var in [
         "GOOGLE_OAUTH_ACCESS_TOKEN",
         "GOOGLE_APPLICATION_CREDENTIALS",
         "CLOUDSDK_AUTH_ACCESS_TOKEN",
     ] {
-        let (mut c, log, count) = fx.cmd("tabula/infra/web", &["preview"]);
+        let (mut c, log, count) = fx.cmd("apps/suites/vitruvian-tabs/infra/web", &["preview"]);
         c.env("PULUMI_BACKEND_URL", "gs://b")
             .env(var, "ambient")
             .env("CI", "1");
@@ -608,8 +608,8 @@ fn ambient_credentials_skip_the_pin() {
 #[test]
 fn pinned_identity_without_gcloud_exits_1() {
     let fx = Fx::new();
-    fx.pin("tabula/infra/web  someone@example.com  prj-x  row\n");
-    let (mut c, log, count) = fx.cmd("tabula/infra/web", &["preview"]);
+    fx.pin("apps/suites/vitruvian-tabs/infra/web  someone@example.com  prj-x  row\n");
+    let (mut c, log, count) = fx.cmd("apps/suites/vitruvian-tabs/infra/web", &["preview"]);
     c.env("PULUMI_BACKEND_URL", "gs://b").env("CI", "1");
     let r = exec(c, &log, &count);
     assert_eq!((r.rc, r.n), (1, 0));
@@ -623,9 +623,9 @@ fn pinned_identity_without_gcloud_exits_1() {
 #[test]
 fn pinned_identity_with_no_token_exits_1() {
     let fx = Fx::new();
-    fx.pin("tabula/infra/web  someone@example.com  prj-x  row\n");
+    fx.pin("apps/suites/vitruvian-tabs/infra/web  someone@example.com  prj-x  row\n");
     fx.gcloud_stub();
-    let (mut c, log, count) = fx.cmd("tabula/infra/web", &["preview"]);
+    let (mut c, log, count) = fx.cmd("apps/suites/vitruvian-tabs/infra/web", &["preview"]);
     c.env("PULUMI_BACKEND_URL", "gs://b")
         .env("CI", "1")
         .env("GCLOUD_TOKEN", "");
@@ -644,18 +644,18 @@ fn missing_pulumi_exits_1() {
     let fx = Fx::new();
     let mut c = cmd(&bin("PULUMI_CMD_BIN"), "/usr/bin:/bin");
     c.env("BUILD_WORKSPACE_DIRECTORY", &fx.ws)
-        .args(["tabula/infra/web", "preview"]);
+        .args(["apps/suites/vitruvian-tabs/infra/web", "preview"]);
     let o = run(c);
     assert_eq!(code(&o), 1);
     assert!(stderr(&o)
-        .contains("pulumi CLI not found on PATH. Run 'bazel run //tabula/infra/web:setup' first,"));
+        .contains("pulumi CLI not found on PATH. Run 'bazel run //apps/suites/vitruvian-tabs/infra/web:setup' first,"));
 }
 
 #[test]
 fn missing_workspace_exits_1() {
     let fx = Fx::new();
     let mut c = cmd(&bin("PULUMI_CMD_BIN"), &fx.path());
-    c.args(["tabula/infra/web", "preview"]);
+    c.args(["apps/suites/vitruvian-tabs/infra/web", "preview"]);
     let o = run(c);
     assert_eq!(code(&o), 1);
     assert!(stderr(&o).contains("must be invoked via 'bazel run'"));

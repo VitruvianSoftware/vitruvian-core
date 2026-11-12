@@ -1,6 +1,6 @@
 # Committed stack config for the vitruviansoftware.dev foundation bootstrap.
 #
-# Holds ONLY non-secret identifiers (config-as-code, like repo_config/tabula).
+# Holds ONLY non-secret identifiers (config-as-code, like repo_config/vitruvian-tabs).
 # There are NO secret keys here — the monorepo WIF adaptation removed the
 # github token path. Backend is Pulumi Cloud (ipv1337).
 #

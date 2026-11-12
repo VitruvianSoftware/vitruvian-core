@@ -1,0 +1,11 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "packages": {
+    "apps/suites/vitruvian-tabs/infra/app": {
+      "release-type": "simple",
+      "package-name": "vitruvian-tabs-api-infra",
+      "component": "vitruvian-tabs-api-infra",
+      "include-component-in-tag": true
+    }
+  }
+}

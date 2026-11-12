@@ -147,7 +147,7 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
 
-  apps/suites/tabula/api:
+  apps/suites/vitruvian-tabs/api:
     dependencies:
       '@fastify/cors':
         specifier: ^11.4.0
@@ -229,7 +229,7 @@ importers:
         specifier: ^7.3.2
         version: 7.3.2
 
-  apps/suites/tabula/cli:
+  apps/suites/vitruvian-tabs/cli:
     dependencies:
       chalk:
         specifier: ^6.0.1
@@ -275,7 +275,7 @@ importers:
         specifier: ^17.0.0
         version: 17.0.0
 
-  apps/suites/tabula/extension:
+  apps/suites/vitruvian-tabs/extension:
     dependencies:
       '@dnd-kit/core':
         specifier: ^6.3.1
@@ -289,7 +289,7 @@ importers:
       '@openfeature/web-sdk':
         specifier: ^1.1.0
         version: 1.10.0(@openfeature/core@1.12.0)
-      '@tabula/shared':
+      '@vitruvian-tabs/shared':
         specifier: workspace:*
         version: link:../shared
       '@vitruviansoftware/design-system':
@@ -390,11 +390,11 @@ importers:
         specifier: ^7.3.1
         version: 7.3.1(js-yaml@4.3.2)(json5@2.2.3)(webpack-dev-server@5.2.6)(webpack@5.112.2)
 
-  apps/suites/tabula/shared: {}
+  apps/suites/vitruvian-tabs/shared: {}
 
-  apps/suites/tabula/web:
+  apps/suites/vitruvian-tabs/web:
     dependencies:
-      '@tabula/shared':
+      '@vitruvian-tabs/shared':
         specifier: workspace:*
         version: link:../shared
       '@vitruviansoftware/design-system':

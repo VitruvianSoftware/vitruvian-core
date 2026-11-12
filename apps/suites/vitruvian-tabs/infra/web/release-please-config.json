@@ -1,0 +1,11 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "packages": {
+    "apps/suites/vitruvian-tabs/infra/web": {
+      "release-type": "simple",
+      "package-name": "vitruvian-tabs-web-infra",
+      "component": "vitruvian-tabs-web-infra",
+      "include-component-in-tag": true
+    }
+  }
+}

@@ -174,7 +174,7 @@ exports_files(
         ".github/workflows/_changelog-summary.yaml",
         ".github/workflows/_deploy-cloud-run.yaml",
         ".github/workflows/_oauth-identity-apply.yaml",
-        ".github/workflows/_tabula-identity-apply.yaml",
+        ".github/workflows/_vitruvian-tabs-identity-apply.yaml",
         ".github/workflows/release-hold.yaml",
     ],
     visibility = ["//tools/delivery/gen:__pkg__"],

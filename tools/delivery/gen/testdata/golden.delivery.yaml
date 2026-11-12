@@ -61,30 +61,30 @@
 #   - stripe  kind=pulumi  run=//infrastructure/pulumi/platform/stripe:up  envs=sandbox,production  promotion=push-all
 #       paths:  infrastructure/pulumi/platform/stripe/
 #       render: transcribed
-#   - tabula-api  kind=cloud-run  run=//apps/suites/tabula/infra/app:deploy  envs=development,nonproduction,production  promotion=release:tabula-api-v
-#       paths:  apps/suites/tabula/infra/app/ apps/suites/tabula/infra/web/ apps/suites/tabula/web/ tools/deploy/ \.github/workflows/_deploy-cloud-run\.yaml
-#       graph:  //apps/suites/tabula/api:image_push //apps/suites/tabula/extension:chrome_zip
-#       build:  shared "tabula" → image-digest
-#       soak:   promotion blocked while development is red
-#       skip:   preflight=revision-name (deploy skipped when live already serves the desired revision)
-#   - tabula-build-stack  kind=pulumi  run=//apps/suites/tabula/infra/build:up  envs=shared  promotion=push-all
-#       paths:  apps/suites/tabula/infra/build/
-#       render: transcribed from .github/workflows/tabula-build-stack.yaml job "deploy"
-#   - tabula-dev-latest  kind=publish  run=//apps/suites/tabula/extension:publish-dev-latest  envs=publish  promotion=push-all
-#       paths:  apps/suites/tabula/infra/app/ apps/suites/tabula/extension/scripts/src/
-#       graph:  //apps/suites/tabula/api:image_push //apps/suites/tabula/extension:chrome_zip
-#       render: transcribed from .github/workflows/tabula-dev-latest.yaml job "publish"
-#   - tabula-identity  kind=pulumi  run=//apps/suites/tabula/infra/identity:up  envs=development,nonproduction,production  promotion=push-all
-#       paths:  apps/suites/tabula/infra/identity/ \.github/workflows/_tabula-identity-apply\.yaml
-#       render: reusable from .github/workflows/tabula-identity-stack.yaml job "development"
-#   - tabula-web  kind=cloud-run  run=//apps/suites/tabula/infra/web:deploy  envs=development,nonproduction,production  promotion=release:tabula-web-v
-#       paths:  apps/suites/tabula/infra/app/ apps/suites/tabula/infra/web/ apps/suites/tabula/web/ tools/deploy/ \.github/workflows/_deploy-cloud-run\.yaml
-#       graph:  //apps/suites/tabula/api:image_push //apps/suites/tabula/extension:chrome_zip
-#       build:  shared "tabula" → web-image-digest
-#       soak:   promotion blocked while development is red
 #   - vitruvian  kind=publish  run=//apps/desktop/vitruvian:publish  envs=beta,production  promotion=release:vitruvian-v
 #       paths:  apps/desktop/vitruvian/
 #       render: transcribed from .github/workflows/vitruvian-release.yaml job "package"
+#   - vitruvian-tabs-api  kind=cloud-run  run=//apps/suites/vitruvian-tabs/infra/app:deploy  envs=development,nonproduction,production  promotion=release:vitruvian-tabs-api-v
+#       paths:  apps/suites/vitruvian-tabs/infra/app/ apps/suites/vitruvian-tabs/infra/web/ apps/suites/vitruvian-tabs/web/ tools/deploy/ \.github/workflows/_deploy-cloud-run\.yaml
+#       graph:  //apps/suites/vitruvian-tabs/api:image_push //apps/suites/vitruvian-tabs/extension:chrome_zip
+#       build:  shared "vitruvian-tabs" → image-digest
+#       soak:   promotion blocked while development is red
+#       skip:   preflight=revision-name (deploy skipped when live already serves the desired revision)
+#   - vitruvian-tabs-build-stack  kind=pulumi  run=//apps/suites/vitruvian-tabs/infra/build:up  envs=shared  promotion=push-all
+#       paths:  apps/suites/vitruvian-tabs/infra/build/
+#       render: transcribed
+#   - vitruvian-tabs-dev-latest  kind=publish  run=//apps/suites/vitruvian-tabs/extension:publish-dev-latest  envs=publish  promotion=push-all
+#       paths:  apps/suites/vitruvian-tabs/infra/app/ apps/suites/vitruvian-tabs/extension/scripts/src/
+#       graph:  //apps/suites/vitruvian-tabs/api:image_push //apps/suites/vitruvian-tabs/extension:chrome_zip
+#       render: transcribed
+#   - vitruvian-tabs-identity  kind=pulumi  run=//apps/suites/vitruvian-tabs/infra/identity:up  envs=development,nonproduction,production  promotion=push-all
+#       paths:  apps/suites/vitruvian-tabs/infra/identity/ \.github/workflows/_vitruvian-tabs-identity-apply\.yaml
+#       render: reusable
+#   - vitruvian-tabs-web  kind=cloud-run  run=//apps/suites/vitruvian-tabs/infra/web:deploy  envs=development,nonproduction,production  promotion=release:vitruvian-tabs-web-v
+#       paths:  apps/suites/vitruvian-tabs/infra/app/ apps/suites/vitruvian-tabs/infra/web/ apps/suites/vitruvian-tabs/web/ tools/deploy/ \.github/workflows/_deploy-cloud-run\.yaml
+#       graph:  //apps/suites/vitruvian-tabs/api:image_push //apps/suites/vitruvian-tabs/extension:chrome_zip
+#       build:  shared "vitruvian-tabs" → web-image-digest
+#       soak:   promotion blocked while development is red
 #   - zitadel-apps  kind=pulumi  run=//infrastructure/pulumi/platform/zitadel-apps:up  envs=development,nonproduction,production  promotion=release:oauth-user-inspector-v
 #       paths:  infrastructure/pulumi/platform/zitadel-apps/ \.github/workflows/_zitadel-apps-apply\.yaml
 
@@ -119,7 +119,7 @@ permissions:
 # WHY WORKFLOW-LEVEL AND NOT PER-UNIT (spec §4.3 asks for
 # `delivery-<unit>-<env>` groups): every fan-out job below is a `uses:`
 # caller, and this repo has already paid for that experiment — #1607 put a
-# `concurrency:` on the calling jobs in tabula-deploy.yaml and every
+# `concurrency:` on the calling jobs in a deploy workflow and every
 # dispatch failed INSTANTLY with no runner assigned, reproducibly, even
 # with a static expression-free group string; workflow-level was the only
 # placement that worked. A per-workflow group is strictly STRONGER
@@ -144,7 +144,7 @@ permissions:
 # dispatching it. That is not hypothetical: two releases published in the
 # same minute during the Phase-2 rollout evicted each other (runs
 # 32345258539 / 32344982262 — harmless only because both tags were infra
-# ones with no rung of their own; a tabula-api-v + tabula-web-v pair would
+# ones with no rung of their own; a vitruvian-tabs-api-v + vitruvian-tabs-web-v pair would
 # have dropped one service's promotion). Keying release runs on the tag
 # gives every tag its own lane: two tags never evict each other, while two
 # runs of the SAME tag (a re-publish) still serialize, which is the case
@@ -186,12 +186,12 @@ jobs:
       affected_oauth_user_inspector: ${{ steps.manifest.outputs.affected_oauth_user_inspector }}
       affected_oauth_user_inspector_identity: ${{ steps.manifest.outputs.affected_oauth_user_inspector_identity }}
       affected_stripe: ${{ steps.manifest.outputs.affected_stripe }}
-      affected_tabula_api: ${{ steps.manifest.outputs.affected_tabula_api }}
-      affected_tabula_build_stack: ${{ steps.manifest.outputs.affected_tabula_build_stack }}
-      affected_tabula_dev_latest: ${{ steps.manifest.outputs.affected_tabula_dev_latest }}
-      affected_tabula_identity: ${{ steps.manifest.outputs.affected_tabula_identity }}
-      affected_tabula_web: ${{ steps.manifest.outputs.affected_tabula_web }}
       affected_vitruvian: ${{ steps.manifest.outputs.affected_vitruvian }}
+      affected_vitruvian_tabs_api: ${{ steps.manifest.outputs.affected_vitruvian_tabs_api }}
+      affected_vitruvian_tabs_build_stack: ${{ steps.manifest.outputs.affected_vitruvian_tabs_build_stack }}
+      affected_vitruvian_tabs_dev_latest: ${{ steps.manifest.outputs.affected_vitruvian_tabs_dev_latest }}
+      affected_vitruvian_tabs_identity: ${{ steps.manifest.outputs.affected_vitruvian_tabs_identity }}
+      affected_vitruvian_tabs_web: ${{ steps.manifest.outputs.affected_vitruvian_tabs_web }}
       affected_zitadel_apps: ${{ steps.manifest.outputs.affected_zitadel_apps }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -252,7 +252,7 @@ jobs:
           # The units THIS workflow delivers. The engine judges only these, so
           # one app's workflow never pays for another app's target-determinator
           # sweep. A name the engine cannot find fails the manifest open.
-          ORCHESTRATE_UNITS: charts esp32-s3 gravastar-mouse-publish oauth-user-inspector oauth-user-inspector-identity stripe tabula-api tabula-build-stack tabula-dev-latest tabula-identity tabula-web vitruvian zitadel-apps
+          ORCHESTRATE_UNITS: charts esp32-s3 gravastar-mouse-publish oauth-user-inspector oauth-user-inspector-identity stripe vitruvian vitruvian-tabs-api vitruvian-tabs-build-stack vitruvian-tabs-dev-latest vitruvian-tabs-identity vitruvian-tabs-web zitadel-apps
         run: bazel run //tools/delivery/orchestrate -- --out delivery-manifest.json
       - name: Upload the delivery manifest
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

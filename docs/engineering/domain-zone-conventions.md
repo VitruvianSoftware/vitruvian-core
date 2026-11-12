@@ -27,11 +27,11 @@ of platform or lab infrastructure regardless of what it serves:
 Use it when the app is a product: closed source, or open-core with a paid tier,
 or anything a customer would be billed for.
 
-- `tabula-api.vitruviansoftware.dev` — partially open source, paid tier planned
+- `__KEEP_TABULA_11__` — partially open source, paid tier planned
 
 The distinction is **commercial intent, not repository visibility.** An app can
 live in a public repo and still belong on `vitruviansoftware.dev` if it has (or
-will have) paying users. Tabula is exactly that case.
+will have) paying users. Vitruvian Tabs is exactly that case.
 
 > ⚠️ `vitruviansoftware.dev` is **also the GCP organization's identity domain** —
 > Cloud Identity accounts (`james@vitruviansoftware.dev`), the org's Google
@@ -48,9 +48,9 @@ the bare name; the lower environments are subdomains:
 
 | environment | pattern | example |
 | --- | --- | --- |
-| development | `<app>.dev.<zone>` | `tabula-api.dev.vitruviansoftware.dev` |
-| nonproduction | `<app>.staging.<zone>` | `tabula-api.staging.vitruviansoftware.dev` |
-| production | `<app>.<zone>` | `tabula-api.vitruviansoftware.dev` |
+| development | `<app>.dev.<zone>` | `__KEEP_TABULA_9__` |
+| nonproduction | `<app>.staging.<zone>` | `__KEEP_TABULA_10__` |
+| production | `<app>.<zone>` | `__KEEP_TABULA_11__` |
 
 Note that **nonproduction maps to `staging`** in DNS. The environment is called
 `nonproduction` everywhere else (GCP project, GitHub environment, Pulumi stack);
@@ -75,9 +75,9 @@ front of Google's certificate provisioning and the mapping never goes routable.
 Three config keys drive it, all in the app's `Pulumi.<env>.yaml`:
 
 ```yaml
-  tabula-app:cloudflareZone: vitruviansoftware.dev
-  tabula-app:cloudflareZoneId: fa827eb1be98b4f6059cf34f90c64774
-  tabula-app:customDomain: tabula-api.dev.vitruviansoftware.dev
+  __KEEP_TABULA_31__:cloudflareZone: vitruviansoftware.dev
+  __KEEP_TABULA_31__:cloudflareZoneId: fa827eb1be98b4f6059cf34f90c64774
+  __KEEP_TABULA_31__:customDomain: __KEEP_TABULA_9__
 ```
 
 `cloudflareZoneId` is **pinned** rather than looked up so that a token-less PR
@@ -108,7 +108,7 @@ records here must declare named records, never "the zone".
 | Records | Written by |
 | --- | --- |
 | apex CNAME, `www` CNAME, and the `_github-pages-challenge-vitruviansoftware` TXT | `repo-config`, `internal/site_domain` (protected; the apex and TXT were hand-made before 2026-10-12, `www` was created by it) |
-| `tabula`, `tabula.dev`, `tabula.staging`, `tabula-api`, `tabula-api.dev`, `tabula-api.staging` | the tabula Pulumi stacks (`apps/suites/tabula/infra`) |
+| __KEEP_TABULA_16__ | the vitruvian-tabs Pulumi stacks (`apps/suites/vitruvian-tabs/infra`) |
 | three apex `google-site-verification` TXT, marked "do not delete" | `//tools/ci:ensure_site_verification` |
 | `backstage`, `storybook` (with their `heritage=external-dns` ownership TXT) | external-dns in the cluster |
 | 5 MX, SPF, DKIM, `mail`, `calendar`, `drive`, `groups`, the other `google-site-verification` TXT | Google Workspace, by hand |
@@ -155,7 +155,7 @@ describe actually happened:
 4. Register each hostname in every external allow-list the app uses.
 5. If the app ships a client with a **compiled-in** API URL — a browser
    extension, a mobile app — stand the custom domain up and repoint the client
-   **before** cutover. Decommissioning tabula's old service while its extension
+   **before** cutover. Decommissioning vitruvian-tabs's old service while its extension
    still had the `run.app` URL baked into `host_permissions` took that extension
    offline.
 

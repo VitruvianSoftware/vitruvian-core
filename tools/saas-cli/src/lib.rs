@@ -232,7 +232,7 @@ pub fn exec_failure(name: &[u8], e: &std::io::Error) -> (Vec<u8>, i32) {
 fn body(args: &[Vec<u8>]) -> Result<(), Exit> {
     let neonctl = sh::env_or("NEONCTL_VERSION", b"2.15.0");
     let upstash = sh::env_or("UPSTASH_CLI_VERSION", b"1.0.2");
-    let cred_dir = sh::env_or("CRED_DIR", b"tabula/infra/build");
+    let cred_dir = sh::env_or("CRED_DIR", b"apps/suites/vitruvian-tabs/infra/build");
     let gcloud = sh::env_or("GCLOUD_BIN", b"gcloud");
     let npx = sh::env_or("NPX_BIN", b"npx");
 
@@ -366,7 +366,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            resolve_identity(map.as_bytes(), b"tabula/infra/build"),
+            resolve_identity(map.as_bytes(), b"apps/suites/vitruvian-tabs/infra/build"),
             (b"sa@p.iam.gserviceaccount.com".to_vec(), b"prj-p".to_vec())
         );
         assert_eq!(resolve_identity(map.as_bytes(), b"other"), (vec![], vec![]));

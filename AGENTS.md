@@ -13,7 +13,7 @@
 > - **No tool-specific instructions in this file.** If setup only applies to one vendor,
 >   it goes in `docs/` and is linked from here (as the homelab access section does) —
 >   everything in this guide should be actionable by every agent that reads it.
-> - **Nested `AGENTS.md` files scope to their subtree** (`apps/cli/devx/`, `apps/suites/tabula/`, `apps/suites/wand/`,
+> - **Nested `AGENTS.md` files scope to their subtree** (`apps/cli/devx/`, `apps/suites/vitruvian-tabs/`, `apps/suites/wand/`,
 >   `apps/web/oauth-user-inspector/`, `apps/web/vitruviansoftware-dev/`, `apps/mobile/android-remote/`, `apps/desktop/`, `apps/desktop/home-speaker/`,
 >   `apps/desktop/vitruvian/`, `apps/embedded/esp32-s3/`) — put per-component detail there, not here. Note that an
 >   `AGENTS.md` only applies to the directory it sits in and below, so one in a

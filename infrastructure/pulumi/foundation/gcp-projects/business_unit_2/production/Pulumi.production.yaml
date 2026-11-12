@@ -28,7 +28,7 @@ config:
 
   # --- Project-type enablement: FLOATING ONLY ---
   foundation-projects-bu2-production:floating_project_enabled: "false"
-  # OSS apps home (bu2 = tabula): second floating project prj-{env}-bu2-oss-floating
+  # OSS apps home (bu2 = vitruvian-tabs): second floating project prj-{env}-bu2-oss-floating
   foundation-projects-bu2-production:oss_floating_project_enabled: "true"
   # Read-only access for homelab-cluster workloads federated in by
   # gcp-bootstrap (docs/gcp-cluster-federation.md). The identity is
@@ -46,14 +46,14 @@ config:
   foundation-projects-bu2-production:enforce_vpcsc: "false"
 
   # App-infra pipeline identity (sa-app-infra-bu2): applies the stage-5
-  # gcp-app-infra/business_unit_2/production leaf. tabula's per-app deploy SA
-  # stays in tabula/infra/identity; this only mints the pipeline SA.
+  # gcp-app-infra/business_unit_2/production leaf. vitruvian-tabs's per-app deploy SA
+  # stays in apps/suites/vitruvian-tabs/infra/identity; this only mints the pipeline SA.
   foundation-projects-bu2-production:apps: "tabula"
   # --- Platform-issued app deploy identity (stage-5 workloads consume this) ---
-  # Minted HERE, one stage above the 5-app-infra workload it deploys, so tabula's
+  # Minted HERE, one stage above the 5-app-infra workload it deploys, so vitruvian-tabs's
   # pipeline can never edit the stack defining its own permissions (§4.1).
   # The account id, role set and IAM conditions are replicated EXACTLY from
-  # tabula/infra/identity, which owned them before adoption -- verified against
+  # apps/suites/vitruvian-tabs/infra/identity, which owned them before adoption -- verified against
   # the LIVE policy with `gcloud projects get-iam-policy`. Adoption must be
   # permission-neutral: app_deploy_identity creates the SA with
   # CreateIgnoreAlreadyExists, and because projects.IAMMember is

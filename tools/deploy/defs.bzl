@@ -24,7 +24,7 @@ prefix, pulumi dir, region, smoke path) into a `:deploy` `bazel run` target that
 wraps //tools/deploy:cloud-run — the blue-green (candidate -> smoke -> promote)
 sequencer. The operator supplies the per-invocation values after `--`:
 
-    bazel run //tabula/infra/app:deploy -- \\
+    bazel run //apps/suites/vitruvian-tabs/infra/app:deploy -- \\
         --env development --project prj-d-bu2-oss-floating-c3d1 \\
         --image-digest <ref@sha256:..>
 
@@ -59,11 +59,11 @@ def cloud_run_deploy(
         appended at run time, e.g. tabula-api-development).
       env_prefix: the <PREFIX>_ env-var namespace the Pulumi program reads, e.g.
         "TABULA".
-      pulumi_dir: workspace-relative Pulumi project dir, e.g. "tabula/infra/app".
+      pulumi_dir: workspace-relative Pulumi project dir, e.g. "apps/suites/vitruvian-tabs/infra/app".
       region: GCP region, e.g. "us-central1".
       smoke_path: HTTP path to smoke on the candidate, e.g. "/health".
       custom_smoke_script: optional shell run against $CAND instead of a plain GET.
-      refresh: pass --refresh to the underlying `pulumi up` (e.g. tabula's
+      refresh: pass --refresh to the underlying `pulumi up` (e.g. vitruvian-tabs's
         DomainMapping heal, mirroring the deploy workflow's pulumi-refresh: true).
       visibility: target visibility.
     """

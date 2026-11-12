@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "name": "vitruvian-tabs-cli",
+  "package": "apps/suites/vitruvian-tabs/cli",
+  "test_targets": ["//apps/suites/vitruvian-tabs/cli:unit_tests"],
+  "tier": "L1",
+  "runner": "ubuntu-26.04",
+  "persona": "backend",
+  "concurrency_group": "pipeline-vitruvian-tabs-cli",
+  "timeout_minutes": 15,
+  "depends_on": ["vitruvian-tabs-shared"]
+}

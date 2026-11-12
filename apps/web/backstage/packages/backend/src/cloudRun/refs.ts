@@ -24,7 +24,7 @@
  * The annotation is explicit rather than derived. Deriving
  * `<app>-<env>` from the entity name and an environments list would be
  * shorter, but it is wrong the moment a service does not follow that shape --
- * tabula has TWO services per environment (api and web), and the projects are
+ * vitruvian-tabs has TWO services per environment (api and web), and the projects are
  * random-suffixed (`prj-d-bu2-oss-floating-c3d1`), so nothing about the
  * location is guessable from the entity.
  */

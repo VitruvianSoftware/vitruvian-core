@@ -73,7 +73,7 @@ pub const REQUIRED_SUBTREES: &[&str] = &[
     "infrastructure",
     "gitops",
     "tools",
-    "apps/suites/tabula",
+    "apps/suites/vitruvian-tabs",
 ];
 
 pub fn is_ignored(name: &str) -> bool {
@@ -358,9 +358,9 @@ mod tests {
             "approvers:\n  - @VitruvianSoftware/devx-team\nper_file:\n  - pattern: \"*.md\"\n    approvers:\n      - @VitruvianSoftware/docs-team\n",
         )
         .unwrap();
-        fs::create_dir_all(format!("{root}/tabula")).unwrap();
+        fs::create_dir_all(format!("{root}/vitruvian-tabs")).unwrap();
         fs::write(
-            format!("{root}/tabula/OWNERS"),
+            format!("{root}/vitruvian-tabs/OWNERS"),
             "approvers:\n  - @VitruvianSoftware/tabula-team\noptions:\n  no_parent_owners: true\n",
         )
         .unwrap();
@@ -368,14 +368,14 @@ mod tests {
         e.discover().unwrap();
         assert_eq!(e.nodes["devx"].effective.len(), 2);
         assert_eq!(
-            e.nodes["tabula"].effective,
+            e.nodes["vitruvian-tabs"].effective,
             vec!["@VitruvianSoftware/tabula-team"]
         );
         let c = e.compile();
         assert!(c.contains("* @VitruvianSoftware/platform-team"));
         assert!(c.contains("/devx/ @VitruvianSoftware/devx-team @VitruvianSoftware/platform-team"));
         assert!(c.contains("/devx/*.md @VitruvianSoftware/docs-team"));
-        assert!(c.contains("/tabula/ @VitruvianSoftware/tabula-team"));
+        assert!(c.contains("/vitruvian-tabs/ @VitruvianSoftware/tabula-team"));
         fs::remove_dir_all(&root).unwrap();
     }
 

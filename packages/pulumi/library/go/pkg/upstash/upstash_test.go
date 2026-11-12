@@ -72,13 +72,13 @@ func run(t *testing.T, args *RedisArgs) (map[string]resource.PropertyMap, *Redis
 
 func TestNewRedis(t *testing.T) {
 	t.Run("passes the database name through", func(t *testing.T) {
-		inputs, _ := run(t, &RedisArgs{Name: "tabula-shared", Region: "us-east-1"})
+		inputs, _ := run(t, &RedisArgs{Name: "vitruvian-tabs-shared", Region: "us-east-1"})
 		in, ok := inputs["cache"]
 		if !ok {
 			t.Fatalf("no resource registered; got %v", inputs)
 		}
-		if got := in["databaseName"].StringValue(); got != "tabula-shared" {
-			t.Errorf("databaseName = %q, want tabula-shared", got)
+		if got := in["databaseName"].StringValue(); got != "vitruvian-tabs-shared" {
+			t.Errorf("databaseName = %q, want vitruvian-tabs-shared", got)
 		}
 		// Region deliberately does NOT pass through as `region` — see the
 		// global-tier case below.

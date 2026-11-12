@@ -23,7 +23,7 @@
 # GitHub Release tagged esp32-s3-vX.Y.Z.
 #
 # This is RELEASE MACHINERY, not delivery (the same split as
-# tabula-release.yaml): it publishes no artifact. The release it cuts is what
+# vitruvian-tabs-release.yaml): it publishes no artifact. The release it cuts is what
 # the generated delivery-esp32-s3.yaml's `esp32-s3-production` rung listens for, and the
 # beta rolling prerelease is that unit's push rung. Nothing here matches the
 # conformance side-effect firewall, so it needs no delivery-legacy.tsv row.
@@ -59,7 +59,7 @@ jobs:
 
       # release-please PRs must be authored by an App (not GITHUB_TOKEN) so the
       # PR triggers the merge queue's required checks -- same as apps-release
-      # and tabula-release. No fallback: a GITHUB_TOKEN-authored release PR
+      # and vitruvian-tabs-release. No fallback: a GITHUB_TOKEN-authored release PR
       # can never enter the merge queue, which is a silently stalled release.
       - name: Mint App token for the release PR
         id: app-token

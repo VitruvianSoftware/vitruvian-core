@@ -51,7 +51,7 @@ on:
 #
 # `github.sha` is unique per commit, so every pushed commit gets its own group
 # and its own verdict: nothing cancels it, nothing queues it behind a sibling.
-# Same pattern as tabula-e2e.yaml (#1311); guarded by //tools/conformance:check.
+# Same pattern as vitruvian-tabs-e2e.yaml (#1311); guarded by //tools/conformance:check.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -1081,7 +1081,7 @@ jobs:
     #
     # Until this lane existed, race coverage came only from the `go-test` matrix
     # above -- standalone `go test -race` over exactly two modules, devx and
-    # homelab. Every other Go target in the repo, including all of tabula's, had
+    # homelab. Every other Go target in the repo, including all of vitruvian-tabs's, had
     # never been race-tested anywhere. `bazel test` does not enable -race (there
     # was no race config in any bazelrc), which the go-test job's own comment
     # noted without closing.

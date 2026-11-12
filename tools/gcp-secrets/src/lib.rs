@@ -42,7 +42,7 @@ const USAGE: &str = "usage:
   bazel run //tools/gcp-secrets:seed   -- <infra-dir> [--force] [SECRET_NAME...]
 
 <infra-dir> is the app's Pulumi infra directory as it appears in
-infrastructure/gcp-identities.tsv, e.g. tabula/infra/build \u{2014} the identity and
+infrastructure/gcp-identities.tsv, e.g. apps/suites/vitruvian-tabs/infra/build \u{2014} the identity and
 target project are resolved from there, never from ambient gcloud.
 ";
 
@@ -368,11 +368,11 @@ mod tests {
         let map = format!("{}/ids-{}.tsv", base, std::process::id());
         std::fs::write(
             &map,
-            "# comment\ntabula/infra/build  sa@p.iam.gserviceaccount.com  prj-p  purpose text\n-  x@y  -  ref\n",
+            "# comment\napps/suites/vitruvian-tabs/infra/build  sa@p.iam.gserviceaccount.com  prj-p  purpose text\n-  x@y  -  ref\n",
         )
         .unwrap();
         assert_eq!(
-            resolve_identity(map.as_bytes(), b"tabula/infra/build"),
+            resolve_identity(map.as_bytes(), b"apps/suites/vitruvian-tabs/infra/build"),
             (b"sa@p.iam.gserviceaccount.com".to_vec(), b"prj-p".to_vec())
         );
         assert_eq!(resolve_identity(map.as_bytes(), b"other"), (vec![], vec![]));

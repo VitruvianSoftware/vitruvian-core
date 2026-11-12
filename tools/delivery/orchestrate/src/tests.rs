@@ -345,8 +345,8 @@ fn two_units() -> (FakeBazel, TmpDir) {
     let miss = write_meta(
         &bin.path(),
         &decl(
-            "tabula-api",
-            serde_json::json!({"extra_paths": ["tabula/api/"]}),
+            "vitruvian-tabs-api",
+            serde_json::json!({"extra_paths": ["apps/suites/vitruvian-tabs/api/"]}),
         ),
     );
     (
@@ -489,11 +489,11 @@ fn graph_targets_export_deploy_targets() {
     let label = write_meta(
         &bin.path(),
         &decl(
-            "tabula-api",
+            "vitruvian-tabs-api",
             serde_json::json!({
-                "build": "", "shared_build": "tabula",
-                "graph_targets": ["//tabula/api:image_push", "//tabula/extension:chrome_zip"],
-                "extra_paths": ["tabula/infra/app/"],
+                "build": "", "shared_build": "vitruvian-tabs",
+                "graph_targets": ["//apps/suites/vitruvian-tabs/api:image_push", "//apps/suites/vitruvian-tabs/extension:chrome_zip"],
+                "extra_paths": ["apps/suites/vitruvian-tabs/infra/app/"],
             }),
         ),
     );
@@ -503,7 +503,7 @@ fn graph_targets_export_deploy_targets() {
         ..Default::default()
     };
     let r = Harness::new(&repos().global_impact, fake, bin).run();
-    let u = r.unit("tabula-api");
+    let u = r.unit("vitruvian-tabs-api");
     assert_eq!(u["computed_by"], COMPUTED_BY_GRAPH);
     assert_eq!(u["affected"], true);
     assert!(u["reason"].as_str().unwrap().contains("global-impact"));
@@ -527,12 +527,12 @@ fn decide_exports_the_declared_graph_universe() {
     let cases = [
         (
             UnitMeta {
-                name: "tabula-api".into(),
-                run: "//tabula/infra/app:deploy".into(),
-                graph_targets: v(&["//tabula/api:image_push", "//tabula/extension:chrome_zip"]),
+                name: "vitruvian-tabs-api".into(),
+                run: "//apps/suites/vitruvian-tabs/infra/app:deploy".into(),
+                graph_targets: v(&["//apps/suites/vitruvian-tabs/api:image_push", "//apps/suites/vitruvian-tabs/extension:chrome_zip"]),
                 ..Default::default()
             },
-            "DEPLOY_TARGETS=[//tabula/api:image_push //tabula/extension:chrome_zip]",
+            "DEPLOY_TARGETS=[//apps/suites/vitruvian-tabs/api:image_push //apps/suites/vitruvian-tabs/extension:chrome_zip]",
         ),
         (
             UnitMeta {
@@ -576,35 +576,35 @@ fn two_units_independent_verdicts() {
     let (f, k) = two_units();
     let r = Harness::new(&repos().declared, f, k).run();
     assert_eq!(r.unit("oauth-user-inspector")["affected"], true);
-    assert_eq!(r.unit("tabula-api")["affected"], false);
+    assert_eq!(r.unit("vitruvian-tabs-api")["affected"], false);
     let out = r.outputs();
     assert_eq!(out["affected_oauth_user_inspector"], "true");
-    assert_eq!(out["affected_tabula_api"], "false");
+    assert_eq!(out["affected_vitruvian_tabs_api"], "false");
 }
 
 #[test]
 fn unit_filter_judges_only_the_named_units() {
     let (f, k) = two_units();
     let r = Harness::new(&repos().declared, f, k)
-        .env("ORCHESTRATE_UNITS", "tabula-api")
+        .env("ORCHESTRATE_UNITS", "vitruvian-tabs-api")
         .run();
     assert_ne!(r.man["computed_by"], COMPUTED_BY_FAIL_OPEN, "{}", r.man_raw);
     assert_eq!(r.units(), 1);
-    assert_eq!(r.unit("tabula-api")["affected"], false);
+    assert_eq!(r.unit("vitruvian-tabs-api")["affected"], false);
     let out = r.outputs();
     assert!(!out.contains_key("affected_oauth_user_inspector"));
-    assert_eq!(out["affected_tabula_api"], "false");
+    assert_eq!(out["affected_vitruvian_tabs_api"], "false");
 }
 
 #[test]
 fn unit_filter_unknown_unit_fails_open() {
     let (f, k) = two_units();
     let r = Harness::new(&repos().declared, f, k)
-        .env("ORCHESTRATE_UNITS", "tabula-api ghost")
+        .env("ORCHESTRATE_UNITS", "vitruvian-tabs-api ghost")
         .run();
     assert_fail_open(&r, "ghost");
     r.unit("ghost");
-    r.unit("tabula-api");
+    r.unit("vitruvian-tabs-api");
     assert_eq!(r.units(), 2);
 }
 
@@ -613,11 +613,11 @@ fn unit_filter_query_failure_lists_the_named_units() {
     let (mut f, k) = two_units();
     f.fail_query = true;
     let r = Harness::new(&repos().declared, f, k)
-        .env("ORCHESTRATE_UNITS", "oauth-user-inspector tabula-api")
+        .env("ORCHESTRATE_UNITS", "oauth-user-inspector vitruvian-tabs-api")
         .run();
     assert_fail_open(&r, "bazel query");
     r.unit("oauth-user-inspector");
-    r.unit("tabula-api");
+    r.unit("vitruvian-tabs-api");
 }
 
 // --- spec §5 row 1: fail-open -------------------------------------------------
@@ -749,8 +749,8 @@ fn engine_non_zero_fails_open() {
     let fine = write_meta(
         &bin.path(),
         &decl(
-            "tabula-api",
-            serde_json::json!({"extra_paths": ["tabula/api/"]}),
+            "vitruvian-tabs-api",
+            serde_json::json!({"extra_paths": ["apps/suites/vitruvian-tabs/api/"]}),
         ),
     );
     let broken = write_meta(
@@ -764,7 +764,7 @@ fn engine_non_zero_fails_open() {
     };
     let r = Harness::new(&repos().undeclared, fake, bin).run();
     assert_fail_open(&r, "exited non-zero: exit status");
-    assert_eq!(r.unit("tabula-api")["affected"], true);
+    assert_eq!(r.unit("vitruvian-tabs-api")["affected"], true);
     assert_eq!(r.unit("no-signal")["affected"], true);
 }
 
@@ -846,7 +846,7 @@ fn unit_name_from_label_cases() {
 fn output_var_name_contract() {
     for (i, w) in [
         ("oauth-user-inspector", "oauth_user_inspector"),
-        ("tabula-api", "tabula_api"),
+        ("vitruvian-tabs-api", "vitruvian_tabs_api"),
         ("charts", "charts"),
         ("a.b/c", "a_b_c"),
     ] {

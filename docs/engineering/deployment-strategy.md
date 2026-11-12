@@ -1,7 +1,7 @@
 # Deployment strategy
 
 **Applies to every deployable in this monorepo** — apps (oauth-user-inspector,
-tabula, …) and the foundation stacks. One model, so "is it in production?"
+vitruvian-tabs, …) and the foundation stacks. One model, so "is it in production?"
 always has the same answer shape.
 
 ## The rule
@@ -29,7 +29,7 @@ jobs on `release_created`); this document is that pattern made repo-wide.
 
 - **Apps** trigger promotion on the GitHub **Release** event, filtered to the
   component's tag (e.g. `oauth-user-inspector-v*`). release-please
-  (`apps-release.yaml`, `tabula-release.yaml`) publishes the release when the PR
+  (`apps-release.yaml`, `vitruvian-tabs-release.yaml`) publishes the release when the PR
   merges; that fires the nonprod→prod rungs in that app's generated `delivery-<app>.yaml` for
   the unit whose tag prefix matches.
 - **Foundation** gates its in-line deploy jobs on the release-please action's
@@ -40,7 +40,7 @@ Either way the signal is "a release was cut", never "a commit landed".
 ### Why the `on: release` trigger fires (and when it wouldn't)
 
 release-please publishes the GitHub Release using a **GitHub App installation
-token** (`apps-release.yaml` / `tabula-release.yaml` mint one via
+token** (`apps-release.yaml` / `vitruvian-tabs-release.yaml` mint one via
 `create-github-app-token`), not the workflow's `GITHUB_TOKEN`. GitHub suppresses
 downstream workflow runs only for events raised by `GITHUB_TOKEN`; events raised
 by an App/PAT token **do** trigger workflows. So the published release fires the
@@ -58,8 +58,8 @@ out-of-band deploy. (Before the delivery orchestrator each app had its own
 dispatch; those per-app workflows are gone.)
 
 > First-run note: `oauth-user-inspector-v*` releases are already published in
-> this repo, so oauth's `on: release` path is exercised. tabula has not merged a
-> `tabula-api` release under this flow yet — confirm the **first** tabula-api
+> this repo, so oauth's `on: release` path is exercised. vitruvian-tabs has not merged a
+> `vitruvian-tabs-api` release under this flow yet — confirm the **first** tabula-api
 > release auto-promotes (or dispatch it) rather than assuming it.
 
 ## Ladder and gates

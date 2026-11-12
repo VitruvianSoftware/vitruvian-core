@@ -578,8 +578,8 @@ mod tests {
 
     #[test]
     fn yaml_value_label_counts() {
-        let c = "      with:\n        target: //apps/suites/tabula/api:image_push\n        description: 'e.g. //x:y'\n";
-        assert_eq!(labels(c), vec!["//apps/suites/tabula/api:image_push"]);
+        let c = "      with:\n        target: //apps/suites/vitruvian-tabs/api:image_push\n        description: 'e.g. //x:y'\n";
+        assert_eq!(labels(c), vec!["//apps/suites/vitruvian-tabs/api:image_push"]);
     }
 
     #[test]

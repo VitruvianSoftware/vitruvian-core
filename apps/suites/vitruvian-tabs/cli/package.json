@@ -1,0 +1,28 @@
+{
+  "name": "@vitruvian-tabs/cli",
+  "version": "0.1.24",
+  "private": true,
+  "description": "Vitruvian Tabs CLI - Command-line tool for managing Vitruvian Tabs infrastructure and operations",
+  "license": "MIT",
+  "bin": {
+    "vitruvian-tabs": "dist/index.js"
+  },
+  "dependencies": {
+    "chalk": "^6.0.1",
+    "commander": "^15.1.0",
+    "dotenv": "^18.0.9",
+    "inquirer": "^14.2.5",
+    "ora": "^10.0.0",
+    "table": "^6.10.1"
+  },
+  "devDependencies": {
+    "@swc/core": "catalog:",
+    "@swc/jest": "catalog:",
+    "@types/inquirer": "^10.0.0",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^26.6.6",
+    "jest": "catalog:",
+    "jest-cli": "^30.4.2",
+    "jest-junit": "^17.0.0"
+  }
+}

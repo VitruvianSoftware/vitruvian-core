@@ -428,7 +428,7 @@ jobs:
       business-unit: business_unit_1
     secrets: inherit
 
-  # business_unit_2 (tabula). Chained AFTER the whole bu1 ladder rather than in
+  # business_unit_2 (vitruvian-tabs). Chained AFTER the whole bu1 ladder rather than in
   # parallel: both BUs reuse the same foundation-proj-<env> GitHub Environments,
   # so two concurrent chains would queue two approval requests against the same
   # environment in one run and make it ambiguous which BU an approver is

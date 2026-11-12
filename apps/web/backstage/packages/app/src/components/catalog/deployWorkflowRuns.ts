@@ -80,7 +80,7 @@ type ApiRun = {
  * A deploy workflow in this repo reports `success` even when every deploy job
  * was skipped, because the affected-targets gate is a separate job that itself
  * succeeded. Reporting that as a green deploy is actively misleading -- it is
- * how tabula and oauth-user-inspector looked "deployed daily" while nothing had
+ * how vitruvian-tabs and oauth-user-inspector looked "deployed daily" while nothing had
  * ever shipped. When we have the run's jobs, flag that case explicitly.
  */
 export function mapRun(run: ApiRun, jobs?: ApiJob[]): DeployRun {

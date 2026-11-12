@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "name": "vitruvian-tabs-shared",
+  "package": "apps/suites/vitruvian-tabs/shared",
+  "test_targets": ["//apps/suites/vitruvian-tabs/shared:lib"],
+  "tier": "L1",
+  "runner": "ubuntu-26.04",
+  "persona": "all",
+  "concurrency_group": "pipeline-vitruvian-tabs-shared",
+  "timeout_minutes": 15
+}

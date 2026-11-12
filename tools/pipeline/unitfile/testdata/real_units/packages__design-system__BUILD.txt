@@ -22,7 +22,7 @@
 # CSS token layer + React component library + Storybook.
 #
 # This BUILD is hand-authored for the same reason as //mcp-slack and
-# //tabula/shared: a single co-located ts_project whose tsconfig (rootDir
+# //apps/suites/vitruvian-tabs/shared: a single co-located ts_project whose tsconfig (rootDir
 # ./src, outDir ./dist) resolves consistently, plus a Storybook devserver the
 # aspect JS/TS Gazelle extension does not model. Gazelle would rewrite this
 # file (leaving a broken empty src glob), emit a separate src/BUILD, and try to

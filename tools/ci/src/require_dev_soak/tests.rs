@@ -97,7 +97,7 @@ impl Gate {
             .env("GH_STUB_DIR", self.dir.path())
             .env("GH_BIN", self.dir.join("gh"))
             .env("REPO", "acme/repo")
-            .env("WORKFLOW_FILE", "tabula-deploy.yaml")
+            .env("WORKFLOW_FILE", "delivery-vitruvian-tabs.yaml")
             .env("DEV_JOB_NAME", JOB)
             .env("ALLOW_UNSOAKED", "false")
             .env("SCAN_LIMIT", "20")
@@ -348,7 +348,7 @@ fn explicit_workflow_file_overrides_run_id_resolution() {
     let o = g.run(&[("GITHUB_RUN_ID", "4242")]);
     assert_has(
         &o.stdout,
-        "searching tabula-deploy.yaml",
+        "searching delivery-vitruvian-tabs.yaml",
         "an explicit WORKFLOW_FILE wins",
     );
 }
@@ -591,7 +591,7 @@ fn run_list_filters_push_runs_on_main() {
     assert_eq!(o.code, 0, "{}", o.all());
     let argv = format!(" {} ", list_argv(&g).trim());
     for want in [
-        " -w tabula-deploy.yaml ",
+        " -w delivery-vitruvian-tabs.yaml ",
         " -b main ",
         " -e push ",
         " -L 20 ",
