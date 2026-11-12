@@ -208,24 +208,27 @@
 #      Hand-typing this defeats the per-project audience isolation the
 #      dedicated Zitadel project exists to provide.
 #
-#   3. slack.channelIds — real channel IDs, which requires the Slack admin
-#      session that has not happened. Note the standing constraint: no real
-#      channel goes in here while the endpoint is publicly reachable and
-#      caller identity is unenforced. That is a sequencing rule, not a
-#      preference — the allow-list bounds which conversations a caller can
-#      reach, and it is doing that work alone until caller identity lands.
+#   3. slack.channelIds — real channel IDs when running bot-only, or optional
+#      (may be "") when `slack.userTokenEnabled: true` mounts SLACK_USER_TOKEN.
+#      Note the standing constraint: no real channel (and no unrestricted user
+#      token) goes in here while the endpoint is publicly reachable and caller
+#      identity is unenforced. That is a sequencing rule, not a preference —
+#      when set, the allow-list bounds which conversations a caller can reach
+#      (across reads, writes, search, files and canvases), and when left empty
+#      with a user token, caller identity (`oidc.allowedSubjects` +
+#      `oidc.clientId`) is the sole boundary.
 #
-#      That rule got stricter, not looser, now that the app manifest carries
-#      groups:read and groups:history: the list gates PRIVATE channels too,
-#      so the thing it is holding back alone is private-conversation
-#      disclosure. Public-only would have been a defensible risk to carry for
-#      a short PoC window. This is not.
+#      The app manifest carries groups:read and groups:history, so when an
+#      allow-list is set it gates PRIVATE channels too (via
+#      `slack.privateChannelIds`), where a wrong entry is private-conversation
+#      disclosure rather than a wider public read.
 #
 #   4. The Secret `mcp-slack-tokens` exists in the mcp-slack namespace,
-#      carrying SLACK_BOT_TOKEN and SLACK_TEAM_ID and nothing else. Created
+#      carrying SLACK_BOT_TOKEN and SLACK_TEAM_ID, plus SLACK_USER_TOKEN when
+#      `slack.userTokenEnabled: true` (optional on HTTP; required only when
+#      impersonation or unrestricted channel access is enabled). Created
 #      out-of-band via a SealedSecret (the ntfy alertmanager-ntfy-endpoint
-#      precedent) because it needs that same Slack admin session. No user
-#      token is ever mounted here.
+#      precedent) because it needs that same Slack admin session.
 #
 #   5. THE BOT IS ALREADY IN EVERY CHANNEL NAMED IN slack.channelIds, AND
 #      THE INVITE HAPPENS BEFORE THE DEPLOY, NOT AFTER.

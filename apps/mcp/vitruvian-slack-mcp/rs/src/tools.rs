@@ -40,12 +40,19 @@ impl ToolDefinition {
 
 pub const HTTP_WITHHELD_ALWAYS: &[&str] = &["slack_download_file"];
 
+pub const HTTP_WITHHELD_DESTRUCTIVE: &[&str] = &[
+    "slack_delete_canvas",
+    "slack_set_user_group_enabled",
+    "slack_set_user_group_members",
+];
+
 pub const HTTP_WITHHELD_WITHOUT_USER_TOKEN: &[&str] = &[
     "slack_set_channel_topic",
     "slack_invite_to_channel",
     "slack_mark_read",
     "slack_list_unread",
     "slack_add_reaction",
+    "slack_remove_reaction",
     "slack_pin_message",
     "slack_unpin_message",
     "slack_add_bookmark",
@@ -111,7 +118,11 @@ fn str_array_prop(desc: &str) -> JsonValue {
 }
 
 pub fn all_tools() -> Vec<ToolDefinition> {
-    vec![
+    all_tools_with_compact_default(false)
+}
+
+pub fn all_tools_with_compact_default(compact_default: bool) -> Vec<ToolDefinition> {
+    let mut tools = vec![
         // Channels
         ToolDefinition {
             name: "slack_list_channels",
@@ -139,6 +150,11 @@ pub fn all_tools() -> Vec<ToolDefinition> {
                 vec![
                     ("channel_id", str_prop("The ID of the channel")),
                     ("limit", num_prop("Number of messages to retrieve (default 10)", Some(10))),
+                    ("oldest", str_prop("Only messages after this Slack timestamp (e.g. '1234567890.123456')")),
+                    ("latest", str_prop("Only messages before this Slack timestamp (e.g. '1234567890.123456')")),
+                    ("since", str_prop("Relative lookback window such as '30m', '24h', or '7d' (converted to oldest; ignored if oldest is provided)")),
+                    ("cursor", str_prop("Pagination cursor from response_metadata.next_cursor")),
+                    ("include_activity", bool_prop("Include channel/group join and leave notices (default true)", Some(true))),
                 ],
                 &["channel_id"],
             ),
@@ -150,6 +166,10 @@ pub fn all_tools() -> Vec<ToolDefinition> {
                 vec![
                     ("channel_id", str_prop("The ID of the channel containing the thread")),
                     ("thread_ts", str_prop("The timestamp of the parent message (format: '1234567890.123456')")),
+                    ("limit", num_prop("Maximum number of replies to return (max 200)", None)),
+                    ("cursor", str_prop("Pagination cursor from response_metadata.next_cursor")),
+                    ("oldest", str_prop("Only replies after this Slack timestamp")),
+                    ("latest", str_prop("Only replies before this Slack timestamp")),
                 ],
                 &["channel_id", "thread_ts"],
             ),
@@ -299,6 +319,11 @@ pub fn all_tools() -> Vec<ToolDefinition> {
                 &["user_id"],
             ),
         },
+        ToolDefinition {
+            name: "slack_whoami",
+            description: "Identify the Slack bot and (when configured) user accounts backing this server via auth.test",
+            input_schema: schema(vec![], &[]),
+        },
         // Search
         ToolDefinition {
             name: "slack_search_messages",
@@ -312,6 +337,12 @@ pub fn all_tools() -> Vec<ToolDefinition> {
                         ("description", "Sort order: 'score' (relevance) or 'timestamp'".into()),
                         ("default", "score".into()),
                     ])),
+                    ("sort_dir", JsonValue::object(vec![
+                        ("type", "string".into()),
+                        ("description", "Sort direction: 'asc' or 'desc'".into()),
+                        ("enum", JsonValue::Array(vec!["asc".into(), "desc".into()])),
+                    ])),
+                    ("page", num_prop("Page number of results to return (1-based)", None)),
                 ],
                 &["query"],
             ),
@@ -328,6 +359,12 @@ pub fn all_tools() -> Vec<ToolDefinition> {
                         ("description", "Sort order: 'score' (relevance) or 'timestamp'".into()),
                         ("default", "score".into()),
                     ])),
+                    ("sort_dir", JsonValue::object(vec![
+                        ("type", "string".into()),
+                        ("description", "Sort direction: 'asc' or 'desc'".into()),
+                        ("enum", JsonValue::Array(vec!["asc".into(), "desc".into()])),
+                    ])),
+                    ("page", num_prop("Page number of results to return (1-based)", None)),
                 ],
                 &["query"],
             ),
@@ -340,6 +377,9 @@ pub fn all_tools() -> Vec<ToolDefinition> {
                 vec![
                     ("channel_id", str_prop("The ID of the channel to post to")),
                     ("text", str_prop("The message text to post (supports Slack mrkdwn)")),
+                    ("thread_ts", str_prop("Optional parent message timestamp to post as a thread reply")),
+                    ("reply_broadcast", bool_prop("When replying to a thread, also post the reply to the channel", None)),
+                    ("unfurl_links", bool_prop("Enable or disable link unfurling for URLs in the message", None)),
                 ],
                 &["channel_id", "text"],
             ),
@@ -352,6 +392,8 @@ pub fn all_tools() -> Vec<ToolDefinition> {
                     ("channel_id", str_prop("The ID of the channel containing the thread")),
                     ("thread_ts", str_prop("The timestamp of the parent message (format: '1234567890.123456')")),
                     ("text", str_prop("The reply text (supports Slack mrkdwn)")),
+                    ("reply_broadcast", bool_prop("Also post the reply to the channel", None)),
+                    ("unfurl_links", bool_prop("Enable or disable link unfurling for URLs in the reply", None)),
                 ],
                 &["channel_id", "thread_ts", "text"],
             ),
@@ -378,6 +420,18 @@ pub fn all_tools() -> Vec<ToolDefinition> {
                     ("reaction", str_prop("The emoji name without colons (e.g. 'thumbsup')")),
                 ],
                 &["channel_id", "timestamp", "reaction"],
+            ),
+        },
+        ToolDefinition {
+            name: "slack_remove_reaction",
+            description: "Remove a reaction emoji from a message",
+            input_schema: schema(
+                vec![
+                    ("channel_id", str_prop("The ID of the channel containing the message")),
+                    ("timestamp", str_prop("The timestamp of the message to remove the reaction from")),
+                    ("emoji", str_prop("The emoji name without colons (e.g. 'thumbsup')")),
+                ],
+                &["channel_id", "timestamp", "emoji"],
             ),
         },
         // Pins
@@ -502,7 +556,7 @@ pub fn all_tools() -> Vec<ToolDefinition> {
         },
         ToolDefinition {
             name: "slack_read_file",
-            description: "Read the content of a text file shared in Slack. Binary files are refused; use slack_download_file for those.",
+            description: "Read the content of a text file or Slack canvas shared in Slack. Binary files are refused; use slack_download_file for those.",
             input_schema: schema(
                 vec![
                     ("file", str_prop("The file ID or a Slack file URL")),
@@ -603,20 +657,366 @@ pub fn all_tools() -> Vec<ToolDefinition> {
                 &["usergroup_id", "enabled"],
             ),
         },
-    ]
+    ];
+    for tool in &mut tools {
+        if let Some(entries) = tool.input_schema.as_object_mut() {
+            if let Some((_, props)) = entries.iter_mut().find(|(k, _)| k == "properties") {
+                props.insert(
+                    "compact",
+                    bool_prop(
+                        "Return compact JSON with Slack UI and profile avatar noise stripped",
+                        Some(compact_default),
+                    ),
+                );
+            }
+        }
+    }
+    tools
 }
 
 pub fn tools_for(config: &ServerConfig) -> Vec<ToolDefinition> {
-    let tools = all_tools();
+    let tools = all_tools_with_compact_default(config.compact_output);
     if config.transport == TransportMode::Stdio {
         return tools;
     }
     let has_user_token = config.slack.user_token.is_some();
+    let allow_destructive = config.http_allow_destructive;
     tools
         .into_iter()
         .filter(|tool| {
             !HTTP_WITHHELD_ALWAYS.contains(&tool.name)
                 && (has_user_token || !HTTP_WITHHELD_WITHOUT_USER_TOKEN.contains(&tool.name))
+                && (allow_destructive || !HTTP_WITHHELD_DESTRUCTIVE.contains(&tool.name))
         })
         .collect()
+}
+
+/// Strips Slack UI and avatar noise for opt-in `compact: true` output (spec C2).
+pub fn strip_slack_noise(value: &JsonValue) -> JsonValue {
+    match value {
+        JsonValue::Array(items) => JsonValue::Array(items.iter().map(strip_slack_noise).collect()),
+        JsonValue::Object(entries) => {
+            let has_non_empty_text = entries
+                .iter()
+                .any(|(k, v)| k == "text" && v.as_str().is_some_and(|s| !s.is_empty()));
+            let mut out = Vec::with_capacity(entries.len());
+            for (k, v) in entries {
+                if k == "blocks" && has_non_empty_text {
+                    continue;
+                }
+                if matches!(
+                    k.as_str(),
+                    "team"
+                        | "user_team"
+                        | "source_team"
+                        | "client_msg_id"
+                        | "user_profile"
+                        | "bot_profile"
+                        | "icons"
+                ) {
+                    continue;
+                }
+                if k == "emoji" {
+                    out.push((k.clone(), v.clone()));
+                } else if k == "profile" {
+                    out.push((k.clone(), strip_profile_noise(v)));
+                } else {
+                    out.push((k.clone(), strip_slack_noise(v)));
+                }
+            }
+            JsonValue::Object(out)
+        }
+        other => other.clone(),
+    }
+}
+
+fn strip_profile_noise(value: &JsonValue) -> JsonValue {
+    match value {
+        JsonValue::Object(entries) => {
+            let mut out = Vec::with_capacity(entries.len());
+            for (k, v) in entries {
+                if k == "avatar_hash" || k.starts_with("image_") {
+                    continue;
+                }
+                out.push((k.clone(), strip_slack_noise(v)));
+            }
+            JsonValue::Object(out)
+        }
+        other => strip_slack_noise(other),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::resolve_config;
+    use std::collections::BTreeMap;
+
+    fn live_http_env_without_destructive_flag() -> BTreeMap<String, String> {
+        let mut m = BTreeMap::new();
+        m.insert("MCP_TRANSPORT".to_string(), "http".to_string());
+        m.insert("SLACK_BOT_TOKEN".to_string(), "xoxb-test".to_string());
+        m.insert("SLACK_USER_TOKEN".to_string(), "xoxp-test".to_string());
+        m.insert("SLACK_TEAM_ID".to_string(), "T123".to_string());
+        m.insert("SLACK_CHANNEL_IDS".to_string(), "".to_string());
+        m.insert("SLACK_WRITE_MODE".to_string(), "user".to_string());
+        m.insert(
+            "OIDC_ISSUER".to_string(),
+            "https://auth.example.test".to_string(),
+        );
+        m.insert("OIDC_PROJECT_ID".to_string(), "999".to_string());
+        m.insert(
+            "OIDC_ALLOWED_SUBJECTS".to_string(),
+            "379361013981513322".to_string(),
+        );
+        m.insert(
+            "OIDC_ALLOWED_CLIENT_ID".to_string(),
+            "111222333".to_string(),
+        );
+        m
+    }
+
+    #[test]
+    fn tool_count_is_43_and_every_tool_declares_compact_param() {
+        let default_tools = all_tools();
+        assert_eq!(default_tools.len(), 43);
+        let names: Vec<&str> = default_tools.iter().map(|t| t.name).collect();
+        assert!(names.contains(&"slack_whoami"));
+        assert!(names.contains(&"slack_remove_reaction"));
+
+        for tool in &default_tools {
+            let compact = tool
+                .input_schema
+                .get("properties")
+                .and_then(|p| p.get("compact"))
+                .expect("every tool must expose optional compact");
+            assert_eq!(
+                compact.get("type").and_then(|v| v.as_str()),
+                Some("boolean")
+            );
+            assert_eq!(
+                compact.get("default").and_then(|v| v.as_bool()),
+                Some(false)
+            );
+        }
+
+        for tool in all_tools_with_compact_default(true) {
+            let compact = tool
+                .input_schema
+                .get("properties")
+                .and_then(|p| p.get("compact"))
+                .unwrap();
+            assert_eq!(compact.get("default").and_then(|v| v.as_bool()), Some(true));
+        }
+    }
+
+    #[test]
+    fn http_tool_list_matches_live_config_and_withholds_destructive_when_unset() {
+        // Prior 40 HTTP impersonation tools on main (41 minus stdio-only slack_download_file)
+        // plus slack_whoami and slack_remove_reaction.
+        let mut expected_live: Vec<&str> = vec![
+            "slack_list_channels",
+            "slack_get_channel_info",
+            "slack_get_channel_history",
+            "slack_get_thread_replies",
+            "slack_set_channel_topic",
+            "slack_get_message",
+            "slack_get_permalink",
+            "slack_join_channel",
+            "slack_leave_channel",
+            "slack_list_channel_members",
+            "slack_invite_to_channel",
+            "slack_list_unread",
+            "slack_mark_read",
+            "slack_list_emoji",
+            "slack_get_users",
+            "slack_get_user_profile",
+            "slack_whoami",
+            "slack_search_messages",
+            "slack_search_files",
+            "slack_post_message",
+            "slack_reply_to_thread",
+            "slack_update_message",
+            "slack_add_reaction",
+            "slack_remove_reaction",
+            "slack_list_pins",
+            "slack_pin_message",
+            "slack_unpin_message",
+            "slack_list_bookmarks",
+            "slack_add_bookmark",
+            "slack_create_canvas",
+            "slack_edit_canvas",
+            "slack_lookup_canvas_sections",
+            "slack_delete_canvas",
+            "slack_get_file_info",
+            "slack_read_file",
+            "slack_upload_file",
+            "slack_list_user_groups",
+            "slack_list_user_group_members",
+            "slack_create_user_group",
+            "slack_update_user_group",
+            "slack_set_user_group_members",
+            "slack_set_user_group_enabled",
+        ];
+
+        // Live deployment config sets SLACK_HTTP_ALLOW_DESTRUCTIVE=true in gitops values.yaml:
+        // preserves all destructive tools alongside slack_whoami and slack_remove_reaction.
+        let mut live_env = live_http_env_without_destructive_flag();
+        live_env.insert(
+            "SLACK_HTTP_ALLOW_DESTRUCTIVE".to_string(),
+            "true".to_string(),
+        );
+        let live_cfg = resolve_config(&live_env).unwrap();
+        let mut live_names: Vec<&str> = tools_for(&live_cfg).iter().map(|t| t.name).collect();
+        assert_eq!(live_names.len(), 42);
+        assert!(live_names.contains(&"slack_whoami"));
+        assert!(live_names.contains(&"slack_remove_reaction"));
+        assert!(live_names.contains(&"slack_delete_canvas"));
+        assert!(live_names.contains(&"slack_set_user_group_enabled"));
+        assert!(live_names.contains(&"slack_set_user_group_members"));
+        assert!(!live_names.contains(&"slack_download_file"));
+        live_names.sort_unstable();
+        expected_live.sort_unstable();
+        assert_eq!(live_names, expected_live);
+
+        // When SLACK_HTTP_ALLOW_DESTRUCTIVE is unset (new-install chart default),
+        // the 3 destructive tools are excluded while slack_whoami and slack_remove_reaction remain.
+        let unset_env = live_http_env_without_destructive_flag();
+        let unset_cfg = resolve_config(&unset_env).unwrap();
+        let unset_names: Vec<&str> = tools_for(&unset_cfg).iter().map(|t| t.name).collect();
+        assert_eq!(unset_names.len(), 39);
+        assert!(unset_names.contains(&"slack_whoami"));
+        assert!(unset_names.contains(&"slack_remove_reaction"));
+        for withheld in HTTP_WITHHELD_DESTRUCTIVE {
+            assert!(
+                !unset_names.contains(withheld),
+                "{withheld} must be excluded when SLACK_HTTP_ALLOW_DESTRUCTIVE is unset"
+            );
+        }
+
+        // Bot-only HTTP still offers slack_whoami, while withholding slack_remove_reaction.
+        let mut bot_http = live_http_env_without_destructive_flag();
+        bot_http.remove("SLACK_USER_TOKEN");
+        bot_http.remove("SLACK_WRITE_MODE");
+        bot_http.insert("SLACK_CHANNEL_IDS".to_string(), "C1".to_string());
+        let bot_names: Vec<&str> = tools_for(&resolve_config(&bot_http).unwrap())
+            .iter()
+            .map(|t| t.name)
+            .collect();
+        assert!(bot_names.contains(&"slack_whoami"));
+        assert!(!bot_names.contains(&"slack_remove_reaction"));
+    }
+
+    #[test]
+    fn strip_slack_noise_strips_ui_and_avatar_fields_recursively_while_keeping_content() {
+        let input = JsonValue::parse(
+            r#"{
+                "ok": true,
+                "messages": [
+                    {
+                        "text": "ship it",
+                        "ts": "1700000000.000100",
+                        "user": "U1",
+                        "thread_ts": "1700000000.000001",
+                        "reply_count": 2,
+                        "reactions": [{"name": "rocket", "count": 1}],
+                        "files": [{"id": "F1"}],
+                        "attachments": [{"fallback": "f"}],
+                        "edited": {"user": "U1", "ts": "1700000001.000000"},
+                        "subtype": "thread_broadcast",
+                        "blocks": [{"type": "rich_text"}],
+                        "team": "T1",
+                        "user_team": "T1",
+                        "source_team": "T1",
+                        "client_msg_id": "uuid-1",
+                        "user_profile": {"real_name": "Alice"},
+                        "bot_profile": {"name": "DeployBot"},
+                        "icons": {"emoji": ":robot_face:"}
+                    },
+                    {
+                        "text": "",
+                        "ts": "1700000002.000100",
+                        "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "blocks-only"}}]
+                    }
+                ],
+                "members": [
+                    {
+                        "id": "U1",
+                        "team_id": "T1",
+                        "profile": {
+                            "real_name": "Alice",
+                            "display_name": "alice",
+                            "avatar_hash": "deadbeef",
+                            "image_24": "https://img/24.png",
+                            "image_72": "https://img/72.png",
+                            "image_original": "https://img/orig.png"
+                        }
+                    }
+                ],
+                "emoji": {
+                    "team": "https://emoji/team.png",
+                    "icons": "https://emoji/icons.png"
+                }
+            }"#,
+        )
+        .unwrap();
+
+        let stripped = strip_slack_noise(&input);
+        let msgs = stripped.get("messages").and_then(|v| v.as_array()).unwrap();
+
+        // Message 0 had non-empty text: blocks and noise keys gone; content fields preserved.
+        let m0 = &msgs[0];
+        for dropped in [
+            "blocks",
+            "team",
+            "user_team",
+            "source_team",
+            "client_msg_id",
+            "user_profile",
+            "bot_profile",
+            "icons",
+        ] {
+            assert!(!m0.contains_key(dropped), "{dropped} must be stripped");
+        }
+        for kept in [
+            "text",
+            "ts",
+            "user",
+            "thread_ts",
+            "reply_count",
+            "reactions",
+            "files",
+            "attachments",
+            "edited",
+            "subtype",
+        ] {
+            assert!(m0.contains_key(kept), "{kept} must be kept");
+        }
+
+        // Message 1 had empty text: blocks must be kept!
+        let m1 = &msgs[1];
+        assert!(m1.contains_key("blocks"));
+
+        // Profile stripped avatar_hash and image_* while keeping real_name and display_name.
+        let prof = stripped.get("members").and_then(|v| v.as_array()).unwrap()[0]
+            .get("profile")
+            .unwrap();
+        assert_eq!(
+            prof.get("real_name").and_then(|v| v.as_str()),
+            Some("Alice")
+        );
+        assert_eq!(
+            prof.get("display_name").and_then(|v| v.as_str()),
+            Some("alice")
+        );
+        assert!(!prof.contains_key("avatar_hash"));
+        assert!(!prof.contains_key("image_24"));
+        assert!(!prof.contains_key("image_72"));
+        assert!(!prof.contains_key("image_original"));
+
+        // Custom emoji dictionary preserves entries named "team" or "icons".
+        let emoji = stripped.get("emoji").unwrap();
+        assert!(emoji.contains_key("team"));
+        assert!(emoji.contains_key("icons"));
+    }
 }

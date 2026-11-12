@@ -81,6 +81,7 @@ fn main() {
 
     let client_for_factory = client.clone();
     let tools_for_factory = advertised_tools.clone();
+    let compact_output = config.compact_output;
     let create_server = move || {
         McpServer::with_slack(
             SERVER_NAME,
@@ -88,6 +89,7 @@ fn main() {
             client_for_factory.clone(),
             tools_for_factory.clone(),
         )
+        .with_compact_output(compact_output)
     };
 
     if config.transport == TransportMode::Http {

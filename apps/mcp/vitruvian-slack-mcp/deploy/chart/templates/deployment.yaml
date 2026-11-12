@@ -127,10 +127,9 @@ spec:
             # the visibility split exists at all.
             - name: SLACK_PRIVATE_CHANNEL_IDS
               value: {{ .Values.slack.privateChannelIds | quote }}
-            # Bot token and team id only. SLACK_USER_TOKEN is deliberately
-            # absent: the server refuses to start on the HTTP transport if it
-            # is present, so this is enforced on both sides rather than by
-            # this file's omission alone.
+            # Always-present credentials: bot token (reads, and bot-mode writes)
+            # and workspace team id. SLACK_USER_TOKEN is optional on the HTTP
+            # transport and is mounted below only when slack.userTokenEnabled is true.
             - name: SLACK_BOT_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -142,11 +141,11 @@ spec:
                   name: {{ .Values.slack.secretName }}
                   key: SLACK_TEAM_ID
             {{- if .Values.slack.userTokenEnabled }}
-            # User-token impersonation: writes post as the authenticated
-            # human rather than the bot. The Zitadel `sub` allowlist and
-            # channel allowlist remain the security boundary — the token's
-            # blast radius is bounded by those controls rather than by the
-            # transport boundary alone.
+            # Optional user token on HTTP: unlocks user-scoped tools and posts as
+            # the authenticated human (unless writeMode is "bot"). With a user
+            # token present, SLACK_CHANNEL_IDS is optional: when set it still
+            # bounds every tool (including search and canvases), and when empty
+            # the Zitadel `sub` + `client_id` checks are the sole boundary.
             - name: SLACK_USER_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -155,6 +154,8 @@ spec:
             - name: SLACK_WRITE_MODE
               value: {{ .Values.slack.writeMode | default "user" | quote }}
             {{- end }}
+            - name: SLACK_HTTP_ALLOW_DESTRUCTIVE
+              value: {{ if .Values.slack.httpAllowDestructive }}"true"{{ else }}"false"{{ end }}
           ports:
             - name: http
               containerPort: 3000
