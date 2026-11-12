@@ -262,7 +262,11 @@ before(async () => {
   layOutImage(root);
   routes = upstreamRoutes(root);
   tleMirror = await startMirror();
-  keyless = await startServer(root, { CELESTRAK_TLE_MIRROR_URL: tleMirror.url });
+  keyless = await startServer(root, {
+    CELESTRAK_TLE_MIRROR_URL: tleMirror.url,
+    GEV_ENABLE_DIAGNOSTICS: 'true',
+    GEV_DIAGNOSTICS_TOKEN: 'test-diagnostic-token-12345',
+  });
   keyed = await startServer(root, { MAPILLARY_CLIENT_TOKEN: 'MLY|0|image-test' });
 });
 
@@ -341,6 +345,36 @@ test('the paid routes refuse requests a proxy forwarded', async () => {
     });
     assert.equal(response.status, 403, route);
   }
+});
+
+test('the sentry diagnostic endpoint triggers test exceptions and is gated', async () => {
+  // Loopback / direct request succeeds when diagnostics are enabled
+  const response = await fetch(`${keyless.base}/api/diagnostics/sentry-test`);
+  assert.equal(response.status, 200);
+  const data = await response.json();
+  assert.equal(data.status, 'ok');
+  assert.match(data.message, /Sentry server diagnostic test exception/);
+
+  // Runtime public config is served
+  const configRes = await fetch(`${keyless.base}/api/diagnostics/sentry-config`);
+  assert.equal(configRes.status, 200);
+  const config = await configRes.json();
+  assert.equal(config.diagnosticsEnabled, true);
+  assert.equal(config.tracesSampleRate, 0);
+
+  // Method not allowed for POST
+  const post = await fetch(`${keyless.base}/api/diagnostics/sentry-test`, { method: 'POST' });
+  assert.equal(post.status, 405);
+
+  // In production without GEV_ENABLE_DIAGNOSTICS or token, endpoint returns 404
+  const unconfigured = await fetch(`${keyed.base}/api/diagnostics/sentry-test`);
+  assert.equal(unconfigured.status, 404);
+
+  // Bearer token auth bypasses 404 and is admitted
+  const withToken = await fetch(`${keyless.base}/api/diagnostics/sentry-test`, {
+    headers: { Authorization: 'Bearer test-diagnostic-token-12345' },
+  });
+  assert.equal(withToken.status, 200);
 });
 
 test('the status route says whether a token is configured', async () => {
