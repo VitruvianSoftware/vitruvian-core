@@ -45,6 +45,12 @@ pub const VOLUME_LIMIT: Duration = Duration::from_secs(45);
 /// The oldest Home Speaker that answers `--state` and `--apply`. Older programs would take them
 /// for unknown arguments and start their menu-bar app.
 pub const MIN_HOME_SPEAKER_VERSION: &str = "1.41.0";
+/// The oldest Home Speaker whose `--apply` `switchTo` operation accepts `copy: true`.
+pub const MIN_DOOR_COPY_VERSION: &str = "1.41.0";
+
+pub fn supports_door_copy(version: &str) -> bool {
+    version_at_least(version, MIN_DOOR_COPY_VERSION)
+}
 /// Bounds on `--version` and `--state`.
 pub const VERSION_LIMIT: Duration = Duration::from_secs(15);
 pub const STATE_LIMIT: Duration = Duration::from_secs(15);
@@ -426,8 +432,6 @@ pub struct HomeSpeakerState {
     pub warnings: Vec<String>,
     /// Home Speaker's `settings[]` catalog passed through verbatim from `--state --json`.
     pub settings: Vec<JsonValue>,
-    /// Whether this helper accepts generic `settings` and door `copy` updates on `POST`.
-    pub generic_settings: bool,
     /// Home Speaker's summary of active outputs (`outputs_label`), when available.
     pub outputs_label: Option<String>,
     /// Home Speaker's explanation of active outputs (`outputs_footer`), when available.
@@ -522,7 +526,6 @@ impl Default for HomeSpeakerState {
             recent: Vec::new(),
             warnings: Vec::new(),
             settings: Vec::new(),
-            generic_settings: false,
             outputs_label: None,
             outputs_footer: None,
         }
@@ -885,8 +888,6 @@ impl HomeSpeakerState {
                 "settings".to_string(),
                 JsonValue::Array(self.settings.clone()),
             );
-        }
-        if self.generic_settings {
             m.insert("generic_settings".to_string(), JsonValue::Bool(true));
         }
         if let Some(ref s) = self.outputs_label {
@@ -1218,26 +1219,6 @@ impl ApplyOp {
             ApplyOp::Reset => "reset",
         }
     }
-
-    pub fn from_via(via: &str) -> Option<Self> {
-        match via {
-            "set" => Some(ApplyOp::Set),
-            "snooze" => Some(ApplyOp::Snooze),
-            "importAntigravity" => Some(ApplyOp::ImportAntigravity),
-            "setSecret" => Some(ApplyOp::SetSecret),
-            "clearChatToken" => Some(ApplyOp::ClearChatToken),
-            "setNetwork" => Some(ApplyOp::SetNetwork),
-            "setReadAnyway" => Some(ApplyOp::SetReadAnyway),
-            "setDefaultSpeaker" => Some(ApplyOp::SetDefaultSpeaker),
-            "removeSpeaker" => Some(ApplyOp::RemoveSpeaker),
-            "agentHook" => Some(ApplyOp::AgentHook),
-            "removeLegacyAgent" => Some(ApplyOp::RemoveLegacyAgent),
-            "saveOAuthClient" => Some(ApplyOp::SaveOAuthClient),
-            "switchTo" => Some(ApplyOp::SwitchTo),
-            "reset" => Some(ApplyOp::Reset),
-            _ => None,
-        }
-    }
 }
 
 /// Command-line invocations the helper runs on Home Speaker's binary.
@@ -1292,60 +1273,12 @@ impl CliAction {
             CliAction::TestMediaPause => vec!["--test-media-pause".to_string()],
         }
     }
-
-    pub fn from_via(via: &str) -> Option<Self> {
-        match via {
-            "--say" => Some(CliAction::Say {
-                text: String::new(),
-                no_history: false,
-            }),
-            "--say --no-history" => Some(CliAction::Say {
-                text: String::new(),
-                no_history: true,
-            }),
-            "--mute" => Some(CliAction::Mute(true)),
-            "--set-volume" => Some(CliAction::SetVolume(50)),
-            "--sign-in" => Some(CliAction::SignIn { chat: false }),
-            "--sign-out" => Some(CliAction::SignOut { chat: false }),
-            "--discover --save" => Some(CliAction::Discover { home: None }),
-            "--discover --save --home" => Some(CliAction::Discover {
-                home: Some("home-1".to_string()),
-            }),
-            "--sign-in --chat" => Some(CliAction::SignIn { chat: true }),
-            "--sign-out --chat" => Some(CliAction::SignOut { chat: true }),
-            "--chat-monitor start" => Some(CliAction::ChatMonitor { start: true }),
-            "--chat-monitor stop" => Some(CliAction::ChatMonitor { start: false }),
-            "--test-media-pause" => Some(CliAction::TestMediaPause),
-            _ => None,
-        }
-    }
 }
 
 /// Actions the helper performs itself without calling Home Speaker's `--apply` or CLI.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HelperAction {
     PreviewVoice,
-}
-
-impl HelperAction {
-    pub fn from_via(via: &str) -> Option<Self> {
-        match via {
-            "helper:preview-voice" => Some(HelperAction::PreviewVoice),
-            _ => None,
-        }
-    }
-}
-
-/// True iff `via` (from `controls.json`) maps to an `--apply` op, CLI flag, or helper action
-/// used by real dispatch.
-pub fn helper_supports(via: &str) -> bool {
-    if via.starts_with("helper:") {
-        HelperAction::from_via(via).is_some()
-    } else if via.starts_with("--") {
-        CliAction::from_via(via).is_some()
-    } else {
-        ApplyOp::from_via(via).is_some()
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -1704,14 +1637,11 @@ impl HomeSpeaker {
     /// Asks `program` for its version, once per request (`verified` remembers who has answered).
     /// Below `MIN_HOME_SPEAKER_VERSION` nothing else may be run on it: an old program would
     /// read `--state` as an unknown argument and start its menu-bar app.
-    fn check_version(
+    fn read_verified_version(
         &self,
         program: &HomeSpeakerProgram,
         verified: &mut Vec<PathBuf>,
-    ) -> Result<(), VersionProblem> {
-        if verified.contains(&program.binary) {
-            return Ok(());
-        }
+    ) -> Result<String, VersionProblem> {
         let args = vec!["--version".to_string()];
         let (stdout, _, code) = self
             .call_program(VERSION_LIMIT, program, &args)
@@ -1727,13 +1657,26 @@ impl HomeSpeaker {
             ));
         };
         if version_at_least(&have, MIN_HOME_SPEAKER_VERSION) {
-            verified.push(program.binary.clone());
-            return Ok(());
+            if !verified.contains(&program.binary) {
+                verified.push(program.binary.clone());
+            }
+            return Ok(have);
         }
         Err(VersionProblem::TooOld(format!(
             "Update Home Speaker on {} (have {have}, need {MIN_HOME_SPEAKER_VERSION})",
             crate::sampler::get_hostname()
         )))
+    }
+
+    fn check_version(
+        &self,
+        program: &HomeSpeakerProgram,
+        verified: &mut Vec<PathBuf>,
+    ) -> Result<(), VersionProblem> {
+        if verified.contains(&program.binary) {
+            return Ok(());
+        }
+        self.read_verified_version(program, verified).map(|_| ())
     }
 
     /// `--state --json` from `program`, after the version gate.
@@ -1902,7 +1845,36 @@ impl HomeSpeaker {
         } else {
             None
         };
-        let plan = plan_ops_with(&u, current_id.as_deref())?;
+        let copy_version = if u.copy == Some(true) && u.active_door.is_some() {
+            let from_doc = pre_doc
+                .as_ref()
+                .map(|doc| doc.get_str("home_speaker_version").to_string())
+                .filter(|v| !v.is_empty());
+            match from_doc {
+                Some(v) => Some(v),
+                None => {
+                    let active = self.active_program();
+                    if !file_exists(&active.binary) {
+                        return Err(ApplyError::Conflict(format!(
+                            "HomeSpeaker is not installed at {}",
+                            active.binary.display()
+                        )));
+                    }
+                    let have =
+                        self.read_verified_version(&active, verified)
+                            .map_err(|p| match p {
+                                VersionProblem::TooOld(sentence) => ApplyError::Conflict(sentence),
+                                VersionProblem::Unreadable(e) => ApplyError::Internal(format!(
+                                    "Could not read the Home Speaker version: {e}"
+                                )),
+                            })?;
+                    Some(have)
+                }
+            }
+        } else {
+            None
+        };
+        let plan = plan_ops_with(&u, current_id.as_deref(), copy_version.as_deref())?;
         let mut changed = Vec::new();
         if !plan.plain.is_empty() {
             self.run_apply(&plan.plain, verified)?;
@@ -2653,7 +2625,6 @@ fn map_state_doc(
         return st;
     };
     st.installed = true;
-    st.generic_settings = true;
     st.active_door = doc_str(d, "active_door");
     st.extension_installed = doc_bool(d, "extension_installed");
     st.app_installed = d.get_opt_bool("app_installed");
@@ -2952,19 +2923,28 @@ fn agent_hook_op(action: &str) -> Result<JsonValue, ApplyError> {
 /// Turns the phone's update into `--apply` operations. No checking of values here: Home
 /// Speaker's own rules are the one rule, and it answers a refusal.
 pub fn plan_ops(u: &HomeSpeakerUpdate) -> Result<OpPlan, ApplyError> {
-    plan_ops_with(u, None)
+    plan_ops_with(u, None, Some(MIN_DOOR_COPY_VERSION))
 }
 
-/// `plan_ops`, given the custom OAuth client id Home Speaker has now, for an update that
-/// carries a secret without an id (the phone does).
+/// `plan_ops`, given the custom OAuth client id Home Speaker has now (for an update that
+/// carries a secret without an id) and the active Home Speaker version (when gating `copy`).
 pub fn plan_ops_with(
     u: &HomeSpeakerUpdate,
     current_oauth_id: Option<&str>,
+    home_speaker_version: Option<&str>,
 ) -> Result<OpPlan, ApplyError> {
     if u.copy.is_some() && u.active_door.is_none() {
         return Err(ApplyError::BadRequest(
             "copy requires active_door".to_string(),
         ));
+    }
+    if u.copy == Some(true) {
+        let have = home_speaker_version.unwrap_or("");
+        if !supports_door_copy(have) {
+            return Err(ApplyError::Conflict(format!(
+                "copy requires Home Speaker {MIN_DOOR_COPY_VERSION} or newer"
+            )));
+        }
     }
     let mut plain = Vec::new();
     if u.reset_settings {
@@ -3794,7 +3774,321 @@ mod tests {
     }
 
     #[test]
-    fn test_controls_manifest_every_supported_via_is_mapped_by_helper() {
+    fn test_controls_manifest_every_supported_entry_dispatches_real_op_or_cli_flag() {
+        enum ManifestEndpoint {
+            Set(&'static str),
+            Say(&'static str),
+            Volume(&'static str),
+        }
+
+        enum ExpectedDispatch {
+            Apply {
+                op: &'static str,
+                must_contain: &'static str,
+            },
+            Cli(&'static [&'static str]),
+            HelperSay(&'static [&'static str]),
+        }
+
+        let cases: &[(&str, ManifestEndpoint, ExpectedDispatch)] = &[
+            (
+                "catalog-setting",
+                ManifestEndpoint::Set(r#"{"settings":{"speech_length":"headline"}}"#),
+                ExpectedDispatch::Apply {
+                    op: "set",
+                    must_contain: r#""key":"speech_length""#,
+                },
+            ),
+            (
+                "say",
+                ManifestEndpoint::Say(r#"{"text":"hello"}"#),
+                ExpectedDispatch::Cli(&["--say", "hello"]),
+            ),
+            (
+                "speak-clipboard",
+                ManifestEndpoint::Set(r#"{"speak_clipboard":true}"#),
+                ExpectedDispatch::Cli(&["--say", "clipboard announcement text"]),
+            ),
+            (
+                "snooze",
+                ManifestEndpoint::Set(r#"{"snooze_minutes":30}"#),
+                ExpectedDispatch::Apply {
+                    op: "snooze",
+                    must_contain: r#""minutes":30"#,
+                },
+            ),
+            (
+                "mute",
+                ManifestEndpoint::Volume(r#"{"muted":true}"#),
+                ExpectedDispatch::Cli(&["--mute"]),
+            ),
+            (
+                "volume",
+                ManifestEndpoint::Volume(r#"{"percent":50}"#),
+                ExpectedDispatch::Cli(&["--set-volume", "50"]),
+            ),
+            (
+                "sign-in",
+                ManifestEndpoint::Set(r#"{"sign_in":true}"#),
+                ExpectedDispatch::Cli(&["--sign-in"]),
+            ),
+            (
+                "sign-out",
+                ManifestEndpoint::Set(r#"{"sign_out":true}"#),
+                ExpectedDispatch::Cli(&["--sign-out"]),
+            ),
+            (
+                "import-antigravity",
+                ManifestEndpoint::Set(r#"{"import_antigravity":true}"#),
+                ExpectedDispatch::Apply {
+                    op: "importAntigravity",
+                    must_contain: r#""op":"importAntigravity""#,
+                },
+            ),
+            (
+                "find-speakers",
+                ManifestEndpoint::Set(r#"{"discover":true}"#),
+                ExpectedDispatch::Cli(&["--discover", "--save"]),
+            ),
+            (
+                "choose-home",
+                ManifestEndpoint::Set(r#"{"structure_id":"home-structure-2"}"#),
+                ExpectedDispatch::Cli(&["--discover", "--save", "--home", "home-structure-2"]),
+            ),
+            (
+                "save-gemini-key",
+                ManifestEndpoint::Set(r#"{"gemini_api_key":"AIza-test"}"#),
+                ExpectedDispatch::Apply {
+                    op: "setSecret",
+                    must_contain: r#""value":"AIza-test""#,
+                },
+            ),
+            (
+                "clear-gemini-key",
+                ManifestEndpoint::Set(r#"{"gemini_api_key":""}"#),
+                ExpectedDispatch::Apply {
+                    op: "setSecret",
+                    must_contain: r#""value":"""#,
+                },
+            ),
+            (
+                "save-slack-token",
+                ManifestEndpoint::Set(r#"{"slack_token":"xoxp-1"}"#),
+                ExpectedDispatch::Apply {
+                    op: "setSecret",
+                    must_contain: r#""name":"slack""#,
+                },
+            ),
+            (
+                "clear-slack-token",
+                ManifestEndpoint::Set(r#"{"slack_token":""}"#),
+                ExpectedDispatch::Apply {
+                    op: "clearChatToken",
+                    must_contain: r#""token":"slack""#,
+                },
+            ),
+            (
+                "save-beeper-token",
+                ManifestEndpoint::Set(r#"{"beeper_token":"bp-1"}"#),
+                ExpectedDispatch::Apply {
+                    op: "setSecret",
+                    must_contain: r#""name":"beeper""#,
+                },
+            ),
+            (
+                "clear-beeper-token",
+                ManifestEndpoint::Set(r#"{"beeper_token":""}"#),
+                ExpectedDispatch::Apply {
+                    op: "clearChatToken",
+                    must_contain: r#""token":"beeper""#,
+                },
+            ),
+            (
+                "save-courier-token",
+                ManifestEndpoint::Set(r#"{"courier_token":"cr-1"}"#),
+                ExpectedDispatch::Apply {
+                    op: "setSecret",
+                    must_contain: r#""name":"courier""#,
+                },
+            ),
+            (
+                "clear-courier-token",
+                ManifestEndpoint::Set(r#"{"courier_token":""}"#),
+                ExpectedDispatch::Apply {
+                    op: "clearChatToken",
+                    must_contain: r#""token":"courier""#,
+                },
+            ),
+            (
+                "grant-google-chat",
+                ManifestEndpoint::Set(r#"{"grant_chat":true}"#),
+                ExpectedDispatch::Cli(&["--sign-in", "--chat"]),
+            ),
+            (
+                "disconnect-google-chat",
+                ManifestEndpoint::Set(r#"{"disconnect_chat":true}"#),
+                ExpectedDispatch::Cli(&["--sign-out", "--chat"]),
+            ),
+            (
+                "beeper-network",
+                ManifestEndpoint::Set(r#"{"beeper_network":{"key":"signal","reading":false}}"#),
+                ExpectedDispatch::Apply {
+                    op: "setNetwork",
+                    must_contain: r#""app":"beeper""#,
+                },
+            ),
+            (
+                "courier-network",
+                ManifestEndpoint::Set(r#"{"courier_network":{"key":"imessage","reading":true}}"#),
+                ExpectedDispatch::Apply {
+                    op: "setNetwork",
+                    must_contain: r#""app":"courier""#,
+                },
+            ),
+            (
+                "courier-read-anyway",
+                ManifestEndpoint::Set(r#"{"courier_read_anyway":{"key":"slack","on":true}}"#),
+                ExpectedDispatch::Apply {
+                    op: "setReadAnyway",
+                    must_contain: r#""key":"slack""#,
+                },
+            ),
+            (
+                "start-chat-monitor",
+                ManifestEndpoint::Set(r#"{"chat_monitor_action":"start"}"#),
+                ExpectedDispatch::Cli(&["--chat-monitor", "start"]),
+            ),
+            (
+                "stop-chat-monitor",
+                ManifestEndpoint::Set(r#"{"chat_monitor_action":"stop"}"#),
+                ExpectedDispatch::Cli(&["--chat-monitor", "stop"]),
+            ),
+            (
+                "replay",
+                ManifestEndpoint::Say(r#"{"text":"hello","replay":true}"#),
+                ExpectedDispatch::Cli(&["--say", "hello", "--no-history"]),
+            ),
+            (
+                "test-media-pause",
+                ManifestEndpoint::Set(r#"{"test_media_pause":true}"#),
+                ExpectedDispatch::Cli(&["--test-media-pause"]),
+            ),
+            (
+                "voice-preview",
+                ManifestEndpoint::Set(r#"{"preview_voice":true}"#),
+                ExpectedDispatch::HelperSay(&[
+                    "say",
+                    "-v",
+                    "Ava",
+                    "This is how announcements will sound.",
+                ]),
+            ),
+            (
+                "set-default-speaker",
+                ManifestEndpoint::Set(r#"{"default_target":"kitchen"}"#),
+                ExpectedDispatch::Apply {
+                    op: "setDefaultSpeaker",
+                    must_contain: r#""key":"kitchen""#,
+                },
+            ),
+            (
+                "remove-speaker",
+                ManifestEndpoint::Set(r#"{"remove_target":"bedroom"}"#),
+                ExpectedDispatch::Apply {
+                    op: "removeSpeaker",
+                    must_contain: r#""key":"bedroom""#,
+                },
+            ),
+            (
+                "hook-install",
+                ManifestEndpoint::Set(r#"{"agent_hook_action":"install:claude-code"}"#),
+                ExpectedDispatch::Apply {
+                    op: "agentHook",
+                    must_contain: r#""action":"install""#,
+                },
+            ),
+            (
+                "hook-update",
+                ManifestEndpoint::Set(r#"{"agent_hook_action":"install:opencode"}"#),
+                ExpectedDispatch::Apply {
+                    op: "agentHook",
+                    must_contain: r#""agent":"opencode""#,
+                },
+            ),
+            (
+                "hook-remove",
+                ManifestEndpoint::Set(r#"{"agent_hook_action":"remove:claude-code"}"#),
+                ExpectedDispatch::Apply {
+                    op: "agentHook",
+                    must_contain: r#""action":"remove""#,
+                },
+            ),
+            (
+                "hook-add-instruction",
+                ManifestEndpoint::Set(r#"{"agent_hook_action":"add-instruction:antigravity"}"#),
+                ExpectedDispatch::Apply {
+                    op: "agentHook",
+                    must_contain: r#""action":"addInstruction""#,
+                },
+            ),
+            (
+                "hook-turn-off-rival",
+                ManifestEndpoint::Set(r#"{"agent_hook_action":"disable-rival:claude-code"}"#),
+                ExpectedDispatch::Apply {
+                    op: "agentHook",
+                    must_contain: r#""action":"disableRival""#,
+                },
+            ),
+            (
+                "remove-legacy-agent",
+                ManifestEndpoint::Set(r#"{"agent_hook_action":"remove-legacy-agent"}"#),
+                ExpectedDispatch::Apply {
+                    op: "removeLegacyAgent",
+                    must_contain: r#""op":"removeLegacyAgent""#,
+                },
+            ),
+            (
+                "save-oauth-client",
+                ManifestEndpoint::Set(r#"{"oauth_client_id":"cid","oauth_client_secret":"sec"}"#),
+                ExpectedDispatch::Apply {
+                    op: "saveOAuthClient",
+                    must_contain: r#""client_id":"cid""#,
+                },
+            ),
+            (
+                "clear-oauth-client",
+                ManifestEndpoint::Set(r#"{"oauth_client_id":""}"#),
+                ExpectedDispatch::Apply {
+                    op: "saveOAuthClient",
+                    must_contain: r#""client_id":"""#,
+                },
+            ),
+            (
+                "door-switch",
+                ManifestEndpoint::Set(r#"{"active_door":"extension"}"#),
+                ExpectedDispatch::Apply {
+                    op: "switchTo",
+                    must_contain: r#""side":"extension""#,
+                },
+            ),
+            (
+                "door-copy-settings",
+                ManifestEndpoint::Set(r#"{"active_door":"extension","copy":true}"#),
+                ExpectedDispatch::Apply {
+                    op: "switchTo",
+                    must_contain: r#""copy":true"#,
+                },
+            ),
+            (
+                "reset",
+                ManifestEndpoint::Set(r#"{"reset_settings":true}"#),
+                ExpectedDispatch::Apply {
+                    op: "reset",
+                    must_contain: r#""op":"reset""#,
+                },
+            ),
+        ];
+
         let raw = fs::read_to_string("apps/desktop/home-speaker/testdata/controls.json")
             .expect("controls.json must be in macagent_test data");
         let manifest = JsonValue::parse(&raw).expect("controls.json must parse as JSON");
@@ -3803,28 +4097,133 @@ mod tests {
             .expect("controls.json must be a JSON array");
         assert!(!entries.is_empty());
 
-        let mut supported_count = 0usize;
+        let state = golden_state();
+        let (h, _dir, calls) = relay_speaker(
+            "manifest_real_dispatch",
+            move |name: &str, args: &[String]| {
+                if name == "say" {
+                    return Ok((String::new(), String::new()));
+                }
+                match args {
+                [f] if f == "--version" => Ok(("HomeSpeaker 1.41.0\n".to_string(), String::new())),
+                [a, b] if a == "--state" && b == "--json" => Ok((state.clone(), String::new())),
+                [a, b, _] if a == "--apply" && b == "--json" => {
+                    Ok((format!(r#"{{"ok":true,"results":[],"state":{state}}}"#), String::new()))
+                }
+                [f] if f == "--mute" || f == "--unmute" => Ok((
+                    r#"{"available":true,"online":true,"percent":50,"muted":true,"speaker":"Office Mini"}"#
+                        .to_string(),
+                    String::new(),
+                )),
+                [a, _] if a == "--set-volume" => Ok((
+                    r#"{"available":true,"online":true,"percent":50,"muted":false,"speaker":"Office Mini"}"#
+                        .to_string(),
+                    String::new(),
+                )),
+                _ => Ok((String::new(), String::new())),
+            }
+            },
+        );
+        let phone = PhoneBridge::new();
+
+        let mut supported_ids = Vec::new();
         for item in entries {
             let id = item.get_str("id");
             let via = item.get_str("via");
-            let phone = item.get_str("phone");
+            let phone_status = item.get_str("phone");
             assert!(!id.is_empty() && !via.is_empty(), "bad entry: {item:?}");
-            if phone == "supported" {
-                supported_count += 1;
-                assert!(
-                    helper_supports(via),
-                    "supported control {id:?} uses via {via:?}, which helper_supports does not map"
-                );
+            if phone_status != "supported" {
+                continue;
+            }
+            supported_ids.push(id.to_string());
+            let (_, endpoint, expected) = cases
+                .iter()
+                .find(|(cid, _, _)| *cid == id)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "supported control {id:?} (via {via:?}) has no phone request in test map"
+                    )
+                });
+
+            calls.lock().unwrap().clear();
+            let resp = match endpoint {
+                ManifestEndpoint::Set(body) => {
+                    // Also check pure planner directly for `--apply` ops so planner output is verified directly.
+                    let update = HomeSpeakerUpdate::from_json(&JsonValue::parse(body).unwrap())
+                        .unwrap_or_else(|e| panic!("invalid HomeSpeakerUpdate for {id}: {e}"));
+                    if let ExpectedDispatch::Apply { op, must_contain } = expected {
+                        let plan = plan_ops_with(&update, None, Some(MIN_HOME_SPEAKER_VERSION))
+                            .unwrap_or_else(|e| {
+                                panic!("plan_ops_with failed for {id}: {}", e.message())
+                            });
+                        let all_ops: Vec<&JsonValue> = plan
+                            .plain
+                            .iter()
+                            .chain(plan.hook.iter())
+                            .chain(plan.switch.iter())
+                            .collect();
+                        assert!(
+                            all_ops.iter().any(|o| o.get_str("op") == *op
+                                && o.to_json_string().contains(must_contain)),
+                            "plan_ops_with for {id} (via {via}) did not produce op={op:?} with {must_contain}: got {all_ops:?}"
+                        );
+                    }
+                    h.handle_set(&post_req("/v1/homespeaker", body), &phone)
+                }
+                ManifestEndpoint::Say(body) => h.handle_say(&post_req("/v1/homespeaker/say", body)),
+                ManifestEndpoint::Volume(body) => {
+                    h.handle_set_volume(&post_req("/v1/homespeaker/volume", body))
+                }
+            };
+            assert_eq!(
+                resp.status,
+                200,
+                "control {id} failed HTTP dispatch: {}",
+                resp.body_string()
+            );
+
+            let recorded = calls.lock().unwrap().clone();
+            match expected {
+                ExpectedDispatch::Apply { op, must_contain } => {
+                    assert_eq!(
+                        *op, via,
+                        "test map op for {id} must match controls.json via"
+                    );
+                    let batches = applies(&calls);
+                    assert!(
+                        batches
+                            .iter()
+                            .any(|b| b.contains(&format!(r#""op":"{op}""#)) && b.contains(must_contain)),
+                        "control {id} did not emit --apply op {op:?} containing {must_contain}; batches={batches:?}"
+                    );
+                }
+                ExpectedDispatch::Cli(expected_args) => {
+                    let expected_vec: Vec<String> =
+                        expected_args.iter().map(|s| (*s).to_string()).collect();
+                    assert!(
+                        recorded.contains(&expected_vec),
+                        "control {id} (via {via}) did not invoke CLI {expected_vec:?}; calls={recorded:?}"
+                    );
+                }
+                ExpectedDispatch::HelperSay(expected_cmd) => {
+                    assert_eq!(via, "helper:preview-voice");
+                    let expected_vec: Vec<String> =
+                        expected_cmd.iter().map(|s| (*s).to_string()).collect();
+                    assert!(
+                        recorded.contains(&expected_vec),
+                        "control {id} did not invoke helper command {expected_vec:?}; calls={recorded:?}"
+                    );
+                }
             }
         }
-        assert!(
-            supported_count > 0,
-            "expected supported controls in manifest"
-        );
-        assert!(!helper_supports("extension-ui"));
-        assert!(!helper_supports("--login-item disable"));
-        assert!(!helper_supports("helper:unknown"));
-        assert!(!helper_supports("unknownOp"));
+
+        assert!(!supported_ids.is_empty());
+        for (cid, _, _) in cases {
+            assert!(
+                supported_ids.iter().any(|s| s == cid),
+                "stale test map entry {cid:?} is not a supported control in controls.json"
+            );
+        }
     }
 
     #[test]
@@ -5133,20 +5532,49 @@ mod tests {
         assert_eq!(resp.status, 200, "{}", resp.body_string());
         let b = body_of(&resp);
         assert_eq!(b.get_array("settings").unwrap().len(), 38);
+        assert!(b.get_bool("generic_settings"));
         assert_eq!(
             b.get_str("outputs_label"),
             "Office Mini + This Mac + Your phone"
         );
         assert!(!b.get_str("outputs_footer").is_empty());
 
-        // If a `--state` document carries `"settings": []`, the helper omits `settings` so the
-        // phone treats the catalog as absent rather than rendering empty choices.
+        // If a `--state` document carries `"settings": []`, the helper omits `settings` and
+        // `generic_settings` so the phone treats the catalog as absent rather than rendering empty choices.
         let empty_doc = r#"{"contract_version":1,"config_initialized":true,"program":{"version":"1.41.0","door":"app","active_door":"app","extension_installed":false},"settings":[],"speakers":[],"available_voices":[],"homes":[],"recent":[],"warnings":[]}"#;
         let mapped = JsonValue::parse(&state_from_doc_json(empty_doc).unwrap()).unwrap();
         assert!(mapped.get("available").unwrap().as_bool().unwrap());
         assert!(mapped.get("settings").is_none());
+        assert!(mapped.get("generic_settings").is_none());
         assert!(mapped.get("outputs_label").is_none());
         assert!(mapped.get("outputs_footer").is_none());
+
+        let uninit_doc = r#"{"contract_version":1,"config_initialized":false,"config_problem":"Not configured","settings":[{"key":"enabled","kind":"toggle","label":"Enabled","value":true,"shown":true}]}"#;
+        let uninit_mapped = JsonValue::parse(&state_from_doc_json(uninit_doc).unwrap()).unwrap();
+        assert!(uninit_mapped.get("generic_settings").is_none());
+    }
+
+    #[test]
+    fn test_door_copy_is_gated_on_its_own_homespeaker_version() {
+        assert!(supports_door_copy("1.41.0"));
+        assert!(supports_door_copy("1.42.0"));
+        assert!(!supports_door_copy("1.40.9"));
+        assert!(!supports_door_copy(""));
+
+        let u = HomeSpeakerUpdate::from_json(
+            &JsonValue::parse(r#"{"active_door":"extension","copy":true}"#).unwrap(),
+        )
+        .unwrap();
+        let err_old = plan_ops_with(&u, None, Some("1.40.9")).unwrap_err();
+        assert!(err_old.message().contains(MIN_DOOR_COPY_VERSION));
+        let err_none = plan_ops_with(&u, None, None).unwrap_err();
+        assert!(err_none.message().contains(MIN_DOOR_COPY_VERSION));
+        let ok = plan_ops_with(&u, None, Some("1.41.0")).unwrap();
+        assert!(ok
+            .switch
+            .unwrap()
+            .to_json_string()
+            .contains(r#""copy":true"#));
     }
 
     // ---- The helper no longer reads or writes Home Speaker's files. ----

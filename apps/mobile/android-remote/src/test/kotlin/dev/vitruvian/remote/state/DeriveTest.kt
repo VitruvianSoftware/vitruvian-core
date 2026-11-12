@@ -2887,6 +2887,31 @@ public class DeriveTest {
   }
 
   @Test
+  public fun `genericKeys returns undrawn keys in catalog order and placed refuses duplicates`() {
+    // Missing / unplaced key falls through to generic.
+    assertEquals(listOf("a", "c"), Derive.genericKeys(listOf("a", "b", "c"), setOf("b")))
+    // All drawn gives none.
+    assertEquals(emptyList<String>(), Derive.genericKeys(listOf("a", "b"), setOf("a", "b")))
+    // Catalog order is preserved.
+    assertEquals(
+        listOf("z", "m", "b"),
+        Derive.genericKeys(listOf("z", "a", "m", "b"), setOf("a")),
+    )
+
+    // placed() records on first call and refuses duplicates without running the second builder.
+    val placement = Derive.CatalogPlacement()
+    var duplicateInvoked = false
+    assertEquals("first-row", placement.placed("enabled") { "first-row" })
+    assertNull(
+        placement.placed("enabled") {
+          duplicateInvoked = true
+          "duplicate-row"
+        })
+    assertFalse("duplicate placed() must not invoke its builder", duplicateInvoked)
+    assertEquals(setOf("enabled"), placement.drawnKeys)
+  }
+
+  @Test
   public fun `every catalog setting in golden payload is either hand-placed or gets a generic row exactly once`() {
     val goldenJson = readRunfile("apps/mobile/android-remote/macagent/golden_homespeaker_v1.json")
     val sources = HomeSpeakerWire.sources(goldenJson)
@@ -2895,36 +2920,71 @@ public class DeriveTest {
     val catalogKeys = catalog.settings.map { it.key }
     assertEquals("duplicate keys in golden catalog", catalogKeys.toSet().size, catalogKeys.size)
 
-    val placed = catalogKeys.filter { it in Derive.placedHomeSpeakerKeys }
-    val generic =
-        Derive.genericHomeSpeakerRows(
-                catalog, includeHidden = true, genericSettingsSupported = sources.genericSettings)
-            .map { it.key }
-
-    val stalePlaced = Derive.placedHomeSpeakerKeys - catalogKeys.toSet()
-    assertTrue(
-        "placedHomeSpeakerKeys has keys absent from golden: $stalePlaced", stalePlaced.isEmpty())
-
-    val overlap = placed.toSet().intersect(generic.toSet())
-    assertTrue("keys both hand-placed and generic: $overlap", overlap.isEmpty())
-
-    val dropped = catalogKeys.filter { it !in placed && it !in generic }
-    assertTrue("catalog keys dropped (neither placed nor generic): $dropped", dropped.isEmpty())
-
-    assertEquals(catalogKeys.size, placed.size + generic.size)
-    assertTrue(
-        "expected beeper_address and courier_address in generic rows, got $generic",
-        generic.containsAll(listOf("beeper_address", "courier_address")),
-    )
-
     val remoteText =
         readRunfile(
             "apps/mobile/android-remote/src/main/kotlin/dev/vitruvian/remote/state/RemoteState.kt")
-    val unreferencedPlaced = Derive.placedHomeSpeakerKeys.filter { !remoteText.contains("\"$it\"") }
-    assertTrue(
-        "placedHomeSpeakerKeys claimed keys never referenced in RemoteState.kt: $unreferencedPlaced",
-        unreferencedPlaced.isEmpty(),
+    assertFalse(
+        "placedHomeSpeakerKeys constant must stay deleted",
+        remoteText.contains("placedHomeSpeakerKeys"),
     )
+    assertTrue(
+        "Other settings must read placement.drawnKeys",
+        remoteText.contains("drawnKeys = placement.drawnKeys"),
+    )
+
+    val placedCalls =
+        Regex("""\bplaced\("([a-z][a-z_]+)"\)""")
+            .findAll(remoteText)
+            .map { it.groupValues[1] }
+            .toList()
+    assertTrue("expected hand-placed catalog keys in RemoteState.kt", placedCalls.isNotEmpty())
+
+    val placement = Derive.CatalogPlacement()
+    val duplicatePlaced = mutableListOf<String>()
+    for (key in placedCalls) {
+      if (placement.placed(key) { key } == null) {
+        duplicatePlaced.add(key)
+      }
+    }
+    assertTrue(
+        "duplicate placed() calls in RemoteState.kt: $duplicatePlaced", duplicatePlaced.isEmpty())
+
+    val drawn = placement.drawnKeys
+    val stalePlaced = drawn - catalogKeys.toSet()
+    assertTrue("placed() has keys absent from golden catalog: $stalePlaced", stalePlaced.isEmpty())
+
+    // Any catalog key directly read by a hand row in RemoteState.kt must go through placed().
+    val handReferencedKeys =
+        Regex(
+                """\b(?:lbl|shown|sourceRow)\(\s*"([a-z][a-z_]+)"|catalog(?:Shown|Label)\([^,]+,\s*"([a-z][a-z_]+)"\)""")
+            .findAll(remoteText)
+            .map { it.groupValues[1].ifEmpty { it.groupValues[2] } }
+            .filter { it in catalogKeys }
+            .toSet()
+    val unplacedHandKeys = handReferencedKeys - drawn
+    assertTrue(
+        "hand-rendered catalog keys missing placed() wrapper (would double-render): $unplacedHandKeys",
+        unplacedHandKeys.isEmpty(),
+    )
+
+    val generic =
+        Derive.genericHomeSpeakerRows(
+                catalog,
+                drawnKeys = drawn,
+                includeHidden = true,
+                genericSettingsSupported = sources.genericSettings,
+            )
+            .map { it.key }
+    assertEquals(Derive.genericKeys(catalogKeys, drawn), generic)
+
+    val overlap = drawn.intersect(generic.toSet())
+    assertTrue("keys both hand-placed and generic: $overlap", overlap.isEmpty())
+
+    val dropped = catalogKeys.filter { it !in drawn && it !in generic }
+    assertTrue("catalog keys dropped (neither placed nor generic): $dropped", dropped.isEmpty())
+
+    assertEquals(catalogKeys.size, drawn.size + generic.size)
+    assertEquals(listOf("beeper_address", "courier_address"), generic)
   }
 
   @Test
@@ -2972,12 +3032,32 @@ public class DeriveTest {
     val remoteText =
         readRunfile(
             "apps/mobile/android-remote/src/main/kotlin/dev/vitruvian/remote/state/RemoteState.kt")
-    val unreferencedControls =
-        constFields.map { it.name }.filter { !remoteText.contains("HomeSpeakerControls.$it") }
-    assertTrue(
-        "HomeSpeakerControls constants not wired in RemoteState.kt: $unreferencedControls",
-        unreferencedControls.isEmpty(),
+    assertFalse("dead manifestId plumbing must stay removed", remoteText.contains("manifestId"))
+    assertFalse(
+        "dead resolvedManifestId plumbing must stay removed",
+        remoteText.contains("resolvedManifestId"),
     )
+    val unwiredControls =
+        constFields
+            .map { it.name }
+            .filter { name ->
+              !Regex("""controlId\s*=\s*HomeSpeakerControls\.${Regex.escape(name)}\b""")
+                  .containsMatchIn(remoteText)
+            }
+    assertTrue(
+        "HomeSpeakerControls constants missing `controlId = HomeSpeakerControls.X` in RemoteState.kt: $unwiredControls",
+        unwiredControls.isEmpty(),
+    )
+  }
+
+  @Test
+  public fun `hookWithoutHomeSpeaker matches Pages swift`() {
+    val pagesSwift =
+        readRunfile("apps/desktop/home-speaker/Sources/HomeSpeakerToolCore/Pages.swift")
+    val match =
+        Regex("""public static let hookWithoutHomeSpeaker\s*=\s*"([^"]+)"""").find(pagesSwift)
+    assertTrue("hookWithoutHomeSpeaker constant not found in Pages.swift", match != null)
+    assertEquals(match!!.groupValues[1], Derive.HOOK_WITHOUT_HOMESPEAKER)
   }
 
   @Test
@@ -3041,7 +3121,7 @@ public class DeriveTest {
             catalog = catalog,
             canAct = true,
             errors = mapOf("future_text" to "Refused"),
-            placedKeys = emptySet(),
+            drawnKeys = emptySet(),
         )
     assertEquals(
         listOf("future_toggle", "future_choice", "future_number", "future_text", "future_time"),
@@ -3116,7 +3196,11 @@ public class DeriveTest {
     assertEquals("default", speakers[0].trailing)
     assertEquals("", speakers[1].trailing)
 
-    // Door switch: offers "Copy settings from the <current>" with copy = true.
+    // Door switch: offers "Copy settings from the <current>" with copy = true, gated on version.
+    assertTrue(Derive.supportsDoorCopy("1.41.0"))
+    assertTrue(Derive.supportsDoorCopy("1.42.0"))
+    assertFalse(Derive.supportsDoorCopy("1.40.9"))
+    assertFalse(Derive.supportsDoorCopy(""))
     val fromApp =
         Derive.doorSwitchOptions(
             activeDoor = "app", appInstalled = true, extensionInstalled = true, canAct = true)
@@ -3124,7 +3208,6 @@ public class DeriveTest {
     val copyFromApp = fromApp.single { it.copy }
     assertEquals("extension", copyFromApp.targetDoor)
     assertEquals("Copy settings from the app", copyFromApp.label)
-    assertEquals(HomeSpeakerControls.DOOR_COPY_SETTINGS, copyFromApp.manifestId)
 
     val fromExtNoApp =
         Derive.doorSwitchOptions(
@@ -3199,19 +3282,26 @@ public class DeriveTest {
     assertTrue(olderSpec.showUpdate)
     assertFalse(olderSpec.showRemove)
 
-    // Chat monitor Start/Stop only when ownerRunning == true && anySourceEnabled.
+    // Chat monitor Start/Stop: hidden when ownerRunning is explicitly false; shown on older
+    // helpers where ownerRunning is null; gated on anySourceEnabled when ownerRunning is true.
     assertTrue(Derive.showsChatMonitorControl(ownerRunning = true, anySourceEnabled = true))
     assertFalse(Derive.showsChatMonitorControl(ownerRunning = true, anySourceEnabled = false))
     assertFalse(Derive.showsChatMonitorControl(ownerRunning = false, anySourceEnabled = true))
-    assertFalse(Derive.showsChatMonitorControl(ownerRunning = null, anySourceEnabled = true))
+    assertFalse(Derive.showsChatMonitorControl(ownerRunning = false, anySourceEnabled = false))
+    assertTrue(Derive.showsChatMonitorControl(ownerRunning = null, anySourceEnabled = true))
+    assertTrue(Derive.showsChatMonitorControl(ownerRunning = null, anySourceEnabled = false))
 
-    // Visibility parity in RemoteState.kt: Coding agents and Chat apps are not gated on hs.enabled.
+    // Visibility parity in RemoteState.kt: Coding agents and Chat apps are not gated on hs.enabled,
+    // while Poll interval and Skip messages I sent stay gated on anyChat.
     val remoteSrc =
         readRunfile(
             "apps/mobile/android-remote/src/main/kotlin/dev/vitruvian/remote/state/RemoteState.kt")
     assertFalse(remoteSrc.contains("if (hs.enabled && claude != null"))
     assertFalse(remoteSrc.contains("if (hs.enabled && slack != null"))
-    assertFalse(remoteSrc.contains("if (anyChat && Derive.catalogShown"))
-    assertFalse(remoteSrc.contains("if (anyChat && muteOwn != null)"))
+    assertTrue(
+        remoteSrc.contains(
+            """if (anyChat && Derive.catalogShown(hs.catalog, "poll_interval_seconds"))"""))
+    assertTrue(
+        Regex("""placed\("mute_own_messages"\)\s*\{\s*if \(anyChat\)""").containsMatchIn(remoteSrc))
   }
 }

@@ -457,15 +457,20 @@ public object Derive {
   public val hookAgentSlugs: Set<String> = setOf("claude-code", "antigravity", "opencode")
 
   /**
-   * True only when the active HomeSpeaker owner process is running on the Mac and at least one chat
-   * source is enabled (`Pages.swift` `chat.ownerRunning && anySourceEnabled`). Older helpers omit
-   * `owner_running` (`null`), so the phone hides Start/Stop rather than offering a control that
-   * could fail.
+   * True when the active HomeSpeaker owner process is running on the Mac and at least one chat
+   * source is enabled (`Pages.swift` `chat.ownerRunning && anySourceEnabled`). When an older helper
+   * omits `owner_running` (`null`), keeps the Start/Stop toggle visible as before for backward
+   * compatibility; hides it when `owner_running` is explicitly `false`.
    */
   public fun showsChatMonitorControl(
       ownerRunning: Boolean?,
       anySourceEnabled: Boolean,
-  ): Boolean = ownerRunning == true && anySourceEnabled
+  ): Boolean =
+      when (ownerRunning) {
+        false -> false
+        null -> true
+        true -> anySourceEnabled
+      }
 
   /** Subtitle for the Chat monitor row, surfacing the last poll relative time when running. */
   public fun chatMonitorSubtitle(
@@ -2707,49 +2712,31 @@ public object Derive {
   public fun showsCourierRow(courierEnabled: Boolean?): Boolean = courierEnabled != null
 
   /**
-   * Every Home Speaker catalog key (`settings[].key`) placed by a hand-designed section on the
-   * phone. Any catalog setting not in this set is drawn automatically in the `"Other settings"`
-   * group via [genericHomeSpeakerRows].
+   * Every catalog key in [catalogKeys] that was not claimed by a hand-designed row in [drawnKeys],
+   * preserving catalog order so `"Other settings"` draws every unplaced key in order and nothing is
+   * dropped.
    */
-  public val placedHomeSpeakerKeys: Set<String> =
-      setOf(
-          "enabled",
-          "default_target",
-          "speak_home",
-          "home_cast_voice",
-          "speak_local",
-          "local_voice",
-          "speak_phone",
-          "phone_pause_media",
-          "phone_headphones_only",
-          "local_engine",
-          "gemini_voice",
-          "speech_length",
-          "announcement_style",
-          "custom_style_prompt",
-          "style_model",
-          "speaker_volume",
-          "announce_volume_enabled",
-          "announce_volume",
-          "pause_media",
-          "pause_media_extra_seconds",
-          "quiet_hours_enabled",
-          "quiet_hours_start",
-          "quiet_hours_end",
-          "announce_claude_code",
-          "announce_antigravity",
-          "announce_opencode",
-          "slack_enabled",
-          "google_chat_enabled",
-          "google_chat_source",
-          "gws_account",
-          "beeper_enabled",
-          "beeper_announce",
-          "courier_enabled",
-          "courier_announce",
-          "poll_interval_seconds",
-          "mute_own_messages",
-      )
+  public fun genericKeys(
+      catalogKeys: List<String>,
+      drawnKeys: Set<String>,
+  ): List<String> = catalogKeys.filter { it !in drawnKeys }
+
+  /**
+   * Per-build tracker for hand-placed catalog settings in `homeSpeakerModule`. Calling [placed]
+   * records `key` once and returns `null` (draws nothing) if `key` was already recorded in this
+   * build; any catalog key not recorded falls through to [genericKeys] / [genericHomeSpeakerRows].
+   */
+  public class CatalogPlacement {
+    private val recorded = LinkedHashSet<String>()
+
+    public val drawnKeys: Set<String>
+      get() = recorded
+
+    public fun <T> placed(key: String, build: () -> T): T? {
+      if (!recorded.add(key)) return null
+      return build()
+    }
+  }
 
   /** Pure control model for a row in the generic `"Other settings"` group. */
   public sealed interface GenericSettingControl {
@@ -2939,29 +2926,30 @@ public object Derive {
 
   /**
    * Returns generic `"Other settings"` rows for every catalog entry in [catalog] not claimed by
-   * [placedKeys]. Returns an empty list when [genericSettingsSupported] is `false` so older Mac
-   * helpers without `POST` `settings` support never show a control that would fail. By default
-   * filters to `setting.shown == true`; pass `includeHidden = true` to audit full catalog coverage
-   * regardless of current visibility state.
+   * [drawnKeys] (via [genericKeys]). Returns an empty list when [genericSettingsSupported] is
+   * `false` so older Mac helpers without `POST` `settings` support never show a control that would
+   * fail. By default filters to `setting.shown == true`; pass `includeHidden = true` to audit full
+   * catalog coverage regardless of current visibility state.
    */
   public fun genericHomeSpeakerRows(
       catalog: HomeSpeakerCatalog,
       canAct: Boolean = true,
       errors: Map<String, String> = emptyMap(),
-      placedKeys: Set<String> = placedHomeSpeakerKeys,
+      drawnKeys: Set<String> = emptySet(),
       includeHidden: Boolean = false,
       genericSettingsSupported: Boolean = true,
   ): List<GenericSettingRow> {
     if (!genericSettingsSupported) return emptyList()
-    return catalog.settings
-        .filter { it.key !in placedKeys && (includeHidden || it.shown) }
-        .mapNotNull { setting ->
-          genericHomeSpeakerRow(
-              setting = setting,
-              canAct = canAct,
-              error = settingError(errors, setting.key),
-          )
-        }
+    val byKey = catalog.settings.associateBy { it.key }
+    return genericKeys(catalog.settings.map { it.key }, drawnKeys).mapNotNull { key ->
+      val setting = byKey[key] ?: return@mapNotNull null
+      if (!includeHidden && !setting.shown) return@mapNotNull null
+      genericHomeSpeakerRow(
+          setting = setting,
+          canAct = canAct,
+          error = settingError(errors, setting.key),
+      )
+    }
   }
 
   /** One selectable Google Home structure in the Home picker. */
@@ -3047,6 +3035,29 @@ public object Derive {
         )
       }
 
+  /** First Home Speaker release supporting `switchTo` with `copy: true`. */
+  public const val MIN_DOOR_COPY_HOMESPEAKER_VERSION: String = "1.41.0"
+
+  /**
+   * True when [homeSpeakerVersion] is at least [MIN_DOOR_COPY_HOMESPEAKER_VERSION], the version
+   * where `--apply {"op":"switchTo","door":...,"copy":true}` shipped. Blank or unparseable versions
+   * return `false` so older Home Speaker installations never offer a `copy` option that ignores or
+   * rejects `copy`.
+   */
+  public fun supportsDoorCopy(homeSpeakerVersion: String): Boolean {
+    val clean = homeSpeakerVersion.trim().removePrefix("v").substringBefore('-')
+    if (clean.isEmpty()) return false
+    val actual = clean.split('.').map { it.toIntOrNull() ?: return false }
+    val required = MIN_DOOR_COPY_HOMESPEAKER_VERSION.split('.').map { it.toInt() }
+    val len = maxOf(actual.size, required.size)
+    for (i in 0 until len) {
+      val a = actual.getOrElse(i) { 0 }
+      val b = required.getOrElse(i) { 0 }
+      if (a != b) return a > b
+    }
+    return true
+  }
+
   /** Pure choice option on the `"HomeSpeaker door"` row, including copy-on-switch. */
   public data class DoorSwitchOptionSpec(
       val targetDoor: String,
@@ -3054,7 +3065,6 @@ public object Derive {
       val copy: Boolean,
       val selected: Boolean,
       val enabled: Boolean,
-      val manifestId: String,
   )
 
   /**
@@ -3084,7 +3094,6 @@ public object Derive {
               copy = false,
               selected = true,
               enabled = false,
-              manifestId = HomeSpeakerControls.DOOR_SWITCH,
           ))
       if (otherInstalled) {
         add(
@@ -3094,7 +3103,6 @@ public object Derive {
                 copy = false,
                 selected = false,
                 enabled = canAct,
-                manifestId = HomeSpeakerControls.DOOR_SWITCH,
             ))
         if (copySupported) {
           add(
@@ -3104,7 +3112,6 @@ public object Derive {
                   copy = true,
                   selected = false,
                   enabled = canAct,
-                  manifestId = HomeSpeakerControls.DOOR_COPY_SETTINGS,
               ))
         }
       }

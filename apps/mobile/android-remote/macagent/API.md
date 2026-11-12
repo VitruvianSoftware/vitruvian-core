@@ -322,7 +322,7 @@ contract version answers `{available:false, reason:"…"}` with the cause, not a
   `poll_interval_seconds`). `targets` is `speakers` (`selected` is `is_default`); `quiet_hours`,
   `snooze_until`, `structure_*`, `homes` (`id`, `name`, `selected`), `available_voices` (`language` → `lang`),
   `custom_voices`, `local_voice_name`, `agents` (from `hooks`, including `stale_command` and `hook_program`), `legacy_launch_agent`,
-  `home_speaker_version`, `app_installed`, `owner_running`, `generic_settings` (`true` on agents that accept `POST` `settings` and `copy`), the `has_*` flags and monitor fields (from `sign_in` and `chat`) and
+  `home_speaker_version`, `app_installed`, `owner_running`, `generic_settings` (`true` when `--state` carries a non-empty `settings[]` catalog), the `has_*` flags and monitor fields (from `sign_in` and `chat`) and
   `recent` (the newest 5) / `last` come from the document under the same names.
 - `warnings` (`[string]`) is the program's own list of setup problems. It is new; older phones
   ignore it.

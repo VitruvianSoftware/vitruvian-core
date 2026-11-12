@@ -962,4 +962,43 @@ public class WireTest {
     assertFalse(older.genericSettings)
     assertEquals(listOf(AgentHome("h1", "Home", selected = false)), older.homes)
   }
+
+  @Test
+  public fun `encodeUpdateBody serialises generic settings toggle number and text values`() {
+    val body =
+        HomeSpeakerWire.encodeUpdateBody(
+            settings =
+                linkedMapOf(
+                    "future_toggle" to true,
+                    "future_int" to 65,
+                    "future_decimal" to 1.5,
+                    "future_text" to "http://127.0.0.1:23373/\"api\"",
+                ))
+    assertEquals(
+        """{"settings":{"future_toggle":true,"future_int":65,"future_decimal":1.5,"future_text":"http://127.0.0.1:23373/\"api\""}}""",
+        body,
+    )
+    val parsed = JsonReader(body).readValue() as Map<*, *>
+    val settings = parsed["settings"] as Map<*, *>
+    assertEquals(true, settings["future_toggle"])
+    assertEquals(65.0, settings["future_int"])
+    assertEquals(1.5, settings["future_decimal"])
+    assertEquals("http://127.0.0.1:23373/\"api\"", settings["future_text"])
+  }
+
+  @Test
+  public fun `encodeUpdateBody serialises stale hook remove request body`() {
+    val body = HomeSpeakerWire.encodeUpdateBody(agentHookAction = "remove:claude-code")
+    assertEquals("""{"agent_hook_action":"remove:claude-code"}""", body)
+    val parsed = JsonReader(body).readValue() as Map<*, *>
+    assertEquals(mapOf("agent_hook_action" to "remove:claude-code"), parsed)
+  }
+
+  @Test
+  public fun `encodeUpdateBody serialises door switch with copy true`() {
+    val body = HomeSpeakerWire.encodeUpdateBody(activeDoor = "extension", copy = true)
+    assertEquals("""{"active_door":"extension","copy":true}""", body)
+    val parsed = JsonReader(body).readValue() as Map<*, *>
+    assertEquals(mapOf("active_door" to "extension", "copy" to true), parsed)
+  }
 }

@@ -6,8 +6,8 @@ These JSON files capture the single rulebook for Home Speaker's settings catalog
 
 - **Swift engine tests (now):** `//apps/desktop/home-speaker:HomeSpeakerTests` (`Tests/HomeSpeakerTests/SharedRulebookCasesTests.swift` and `Tests/HomeSpeakerTests/ControlsManifestTests.swift`) loads every `.json` file in this directory and checks `HomeSpeakerCore` (`SettingsCatalog`, `SpeakerConfig`, `SpeakerDevice`, `ChatMonitorConfig`, `ChatMonitorStatus`, `HomeSpeakerStateContract.supportedOperations`) against it.
 - **Android remote tests:**
-  - Rust Mac helper tests: `//apps/mobile/android-remote/macagent:macagent_test` (reads `state_v1.json`; `controls.json` in step 2)
-  - Kotlin state & derivation tests (follow-up): `//apps/mobile/android-remote:derive_test` and `//apps/mobile/android-remote:wire_test` (read `state_v1.json` and `controls.json`)
+  - Rust Mac helper tests: `//apps/mobile/android-remote/macagent:macagent_test` (reads `state_v1.json` and `controls.json`)
+  - Kotlin state & derivation tests: `//apps/mobile/android-remote:derive_test` and `//apps/mobile/android-remote:wire_test` (read `state_v1.json` and `controls.json`)
 
 ## Files
 

@@ -338,6 +338,7 @@ test_suite(
 exports_files(
     [
         ".github/FUNDING.yml",
+        "Sources/HomeSpeakerToolCore/Pages.swift",
         "testdata/controls.json",
         "testdata/state_v1.json",
     ],
