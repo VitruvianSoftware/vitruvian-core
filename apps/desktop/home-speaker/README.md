@@ -234,6 +234,16 @@ is resumed; a video you restart by hand in the meantime is left alone.
 
 ---
 
+## Who an announcement is from
+
+With several agent sessions running, every announcement sounds the same. *Settings → AI Agents → Say who it's from* can start each agent's announcement with where it came from:
+
+- **Off** (the default): spoken as before.
+- **App name**: "Claude: the build passed." (also "Antigravity:", "OpenCode:").
+- **App and session name**: the same, plus the session when another session of the same app has spoken in the last 30 minutes: "Claude, Courier: the build passed." With one session running, you hear just "Claude:".
+
+The session name is at most three words. For Claude Code it comes from the session's title, with the project prefix dropped ("vitruvian-core: Courier" is "Courier"), else its folder. For Antigravity and OpenCode it is the folder the agent works in. Only agents' announcements get a label: chat messages, Quick Announce and your own `HomeSpeaker --say` never do. Recent Broadcasts lists the message without the label.
+
 ## Speaking on this Mac
 
 HomeSpeaker can read announcements aloud on this Mac too, or instead of the

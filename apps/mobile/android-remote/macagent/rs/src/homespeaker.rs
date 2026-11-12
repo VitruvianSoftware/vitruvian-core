@@ -4552,7 +4552,7 @@ mod tests {
             "settings[] must pass through as is"
         );
         let arr = got_settings.as_array().unwrap();
-        assert_eq!(arr.len(), 38);
+        assert_eq!(arr.len(), 39);
 
         let speech = arr
             .iter()
@@ -4619,7 +4619,7 @@ mod tests {
         );
         assert_eq!(resp.status, 200, "{}", resp.body_string());
         let b = body_of(&resp);
-        assert_eq!(b.get_array("settings").unwrap().len(), 38);
+        assert_eq!(b.get_array("settings").unwrap().len(), 39);
         assert_eq!(
             b.get_str("outputs_label"),
             "Office Mini + This Mac + Your phone"
