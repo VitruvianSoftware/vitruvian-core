@@ -92,6 +92,33 @@ Where audio goes:
 | **Rate limited** | You reached your provider's rate or quota limits. Wait a few moments or verify billing on your provider console. |
 | **No network** | Check your Mac's internet connection for cloud models, or confirm localhost server connectivity for local models. |
 
+## Read aloud (HomeSpeaker)
+
+Vitruvian Courier can read messages, summaries, and voice-note transcripts aloud.
+
+Where to find it:
+- **Messages:** Right-click a message and choose **Read Aloud**.
+- **Summaries:** Click the **Read aloud** button beside Copy on an AI summary in the AI pane.
+- **Voice notes:** Click the **Read aloud** button beside Copy on a voice-note transcript.
+
+Where speech plays:
+- **With HomeSpeaker installed** (the app in Applications, or the Vitruvian extension): Vitruvian Courier speaks on the outputs chosen in HomeSpeaker (Home speakers, this Mac, phone) and follows its quiet hours.
+- **Without HomeSpeaker:** Vitruvian Courier uses this Mac’s voice.
+
+### Per-chat announcements
+
+When HomeSpeaker is installed, choose **Read Aloud on HomeSpeaker** in the chat's ⓘ menu or info pane:
+- **Default:** Follows HomeSpeaker's general announcement settings.
+- **Every Message:** Reads every message in the chat, including when HomeSpeaker's Vitruvian Courier setting is "Direct messages and mentions". "Skip messages I sent", quiet hours and snooze still apply.
+- **Never:** Skips announcements for this chat on HomeSpeaker.
+
+Muted chats are never read. Choosing **Never** silences only HomeSpeaker, not notifications. Slack and Google Chat chats that HomeSpeaker already reads through its own Slack or Google Chat connection are read there, not through Vitruvian Courier, so this choice doesn't apply to them.
+
+### Integration settings
+
+Check connection status in **Settings ▸ Integrations ▸ HomeSpeaker**. The status row shows "Installed · reads Vitruvian Courier messages aloud", "Installed · not reading Vitruvian Courier (turn it on in HomeSpeaker)", or "Not installed · Read Aloud uses this Mac’s voice". An **Open HomeSpeaker** button appears when HomeSpeaker is installed (it opens the Vitruvian app when HomeSpeaker is its extension).
+
+
 ## Vitruvian Courier's Telegram app ID
 
 Telegram wants every app to register its own `api_id` and `api_hash`. Vitruvian Courier is built for people who will never type them, so a finished app carries Vitruvian Courier's own, and Telegram goes straight to its QR code.

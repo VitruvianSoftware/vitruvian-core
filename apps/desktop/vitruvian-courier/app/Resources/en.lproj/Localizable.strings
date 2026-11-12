@@ -2519,3 +2519,22 @@
 "OpenAI rejected the API key. Check it in Settings ▸ AI." = "OpenAI rejected the API key. Check it in Settings ▸ AI.";
 "OpenAI rate limit reached. Try again in a moment." = "OpenAI rate limit reached. Try again in a moment.";
 "Couldn’t reach OpenAI. Check your internet connection." = "Couldn’t reach OpenAI. Check your internet connection.";
+
+/* Read Aloud (docs/read-aloud.md): a message's menu, the buttons beside Copy, what is spoken, and HomeSpeaker's row. */
+"Read Aloud" = "Read Aloud";
+"Reading Aloud…" = "Reading Aloud…";
+"Read aloud" = "Read aloud";
+"You said: %@" = "You said: %@";
+"%@ says: %@" = "%1$@ says: %2$@";
+"Read Aloud on HomeSpeaker" = "Read Aloud on HomeSpeaker";
+"Every Message" = "Every Message";
+"Default" = "Default";
+"Muted chats are never read aloud." = "Muted chats are never read aloud.";
+"HomeSpeaker" = "HomeSpeaker";
+"Open HomeSpeaker" = "Open HomeSpeaker";
+"Installed" = "Installed";
+"Installed · reads Vitruvian Courier messages aloud" = "Installed · reads Vitruvian Courier messages aloud";
+"Installed · not reading Vitruvian Courier (turn it on in HomeSpeaker)" = "Installed · not reading Vitruvian Courier (turn it on in HomeSpeaker)";
+"Not installed · Read Aloud uses this Mac’s voice" = "Not installed · Read Aloud uses this Mac’s voice";
+"HomeSpeaker couldn’t read it aloud." = "HomeSpeaker couldn’t read it aloud.";
+"HomeSpeaker couldn’t read it aloud. %@" = "HomeSpeaker couldn’t read it aloud. %@";

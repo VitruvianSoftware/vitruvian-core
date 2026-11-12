@@ -87,7 +87,7 @@ func msTime(ms int64) time.Time {
 type prefs struct {
 	muted, lowPriority, hidden, markedUnread bool
 	pinnedAt, archivedAt                     int64 // Unix ms; 0 = not pinned / not archived
-	draft                                    string
+	draft, readAloud                         string
 	unreadFromTS, unreadFromSeq              int64 // Mark as Unread from a message: its (ts, seq); 0 = off
 }
 
@@ -97,9 +97,9 @@ func (s *Store) readPrefs(ctx context.Context, roomID string) (prefs, error) {
 	var muted, low, hidden, unread int
 	err := s.db.QueryRow(ctx, `SELECT COALESCE(p.muted, 0), COALESCE(p.pinned_at, 0), COALESCE(p.archived_at, 0),
 		COALESCE(p.low_priority, 0), COALESCE(p.hidden, 0), COALESCE(p.marked_unread, 0), COALESCE(p.draft, ''),
-		COALESCE(p.unread_from_ts, 0), COALESCE(p.unread_from_seq, 0)
+		COALESCE(p.unread_from_ts, 0), COALESCE(p.unread_from_seq, 0), COALESCE(p.read_aloud, '')
 		FROM rooms r LEFT JOIN room_prefs p ON p.room_id = r.room_id WHERE r.room_id = $1`, roomID).
-		Scan(&muted, &p.pinnedAt, &p.archivedAt, &low, &hidden, &unread, &p.draft, &p.unreadFromTS, &p.unreadFromSeq)
+		Scan(&muted, &p.pinnedAt, &p.archivedAt, &low, &hidden, &unread, &p.draft, &p.unreadFromTS, &p.unreadFromSeq, &p.readAloud)
 	if errors.Is(err, sql.ErrNoRows) {
 		return prefs{}, ErrNotFound
 	}
@@ -110,13 +110,13 @@ func (s *Store) readPrefs(ctx context.Context, roomID string) (prefs, error) {
 // writePrefs upserts roomID's whole prefs row, as SetMuted does, inside the caller's transaction.
 func (s *Store) writePrefs(ctx context.Context, roomID string, p prefs) error {
 	_, err := s.db.Exec(ctx, `INSERT INTO room_prefs (room_id, muted, pinned_at, archived_at, low_priority, hidden, marked_unread, draft,
-		  unread_from_ts, unread_from_seq)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+		  unread_from_ts, unread_from_seq, read_aloud)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
 		ON CONFLICT(room_id) DO UPDATE SET muted=excluded.muted, pinned_at=excluded.pinned_at, archived_at=excluded.archived_at,
 		  low_priority=excluded.low_priority, hidden=excluded.hidden, marked_unread=excluded.marked_unread, draft=excluded.draft,
-		  unread_from_ts=excluded.unread_from_ts, unread_from_seq=excluded.unread_from_seq`,
+		  unread_from_ts=excluded.unread_from_ts, unread_from_seq=excluded.unread_from_seq, read_aloud=excluded.read_aloud`,
 		roomID, b2i(p.muted), p.pinnedAt, p.archivedAt, b2i(p.lowPriority), b2i(p.hidden), b2i(p.markedUnread), p.draft,
-		p.unreadFromTS, p.unreadFromSeq)
+		p.unreadFromTS, p.unreadFromSeq, p.readAloud)
 	return err
 }
 
@@ -261,6 +261,23 @@ func (s *Store) SetArchived(ctx context.Context, roomIDs []string, archived bool
 // low-priority chat where it is.
 func (s *Store) SetLowPriority(ctx context.Context, roomIDs []string, on bool) ([]string, error) {
 	return s.setFlag(ctx, roomIDs, on, func(p *prefs) *bool { return &p.lowPriority })
+}
+
+// SetReadAloud sets chats' per-chat HomeSpeaker announcement override ("", "always", or "never"), and returns the
+// ones that changed. Any other value is ErrBadValue.
+func (s *Store) SetReadAloud(ctx context.Context, roomIDs []string, value string) ([]string, error) {
+	switch value {
+	case "", "always", "never":
+	default:
+		return nil, ErrBadValue
+	}
+	return s.changePrefs(ctx, roomIDs, func(_ context.Context, p *prefs) (bool, error) {
+		if p.readAloud == value {
+			return false, nil
+		}
+		p.readAloud = value
+		return true, nil
+	})
 }
 
 // SetHidden hides or shows chats, and returns the ones that changed. A new message leaves a hidden chat hidden.

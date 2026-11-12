@@ -48,7 +48,7 @@ type InboxRow struct {
 
 	PinnedAt                                     time.Time // zero when not pinned; pin order
 	Archived, LowPriority, MarkedUnread, Request bool
-	Draft                                        string
+	Draft, ReadAloud                             string
 	Labels                                       []int64   // by label ID
 	Reminder                                     *Reminder // nil when the chat has none
 }
@@ -170,7 +170,7 @@ var inboxColsSQL = `r.room_id, r.network,
   (SELECT COUNT(*) FROM events u WHERE ` + unreadSQL + ` AND ` + mentionsMeSQL + `),
   ` + mutedBySQL + `, CASE WHEN COALESCE(ap.muted, 0) = 1 THEN '' ELSE ` + mutedLabelSQL + ` END,
   COALESCE(p.pinned_at, 0), COALESCE(p.archived_at, 0), COALESCE(p.low_priority, 0), COALESCE(p.hidden, 0),
-  COALESCE(p.marked_unread, 0), r.request, COALESCE(p.draft, ''),
+  COALESCE(p.marked_unread, 0), r.request, COALESCE(p.draft, ''), COALESCE(p.read_aloud, ''),
   COALESCE((SELECT group_concat(rl.label_id) FROM room_labels rl WHERE rl.room_id = r.room_id), ''),
   rm.room_id IS NOT NULL, COALESCE(rm.condition, ''), COALESCE(rm.due_at, 0), COALESCE(rm.set_at, 0), COALESCE(rm.fired_at, 0)`
 
@@ -336,7 +336,7 @@ func (s *Store) scanInboxRow(row dbutil.Scannable) (InboxRow, error) {
 		&r.AvatarURI, &r.LocalAvatarURI, &r.SpamReportedAt, &r.MergeID,
 		&direct, &created, &r.LoginID,
 		&lastTS, &sender, &typ, &content, &r.PreviewStatus, &muted, &r.Unread, &r.UnreadMentions, &r.MutedBy, &r.MutedByName,
-		&pinnedAt, &archivedAt, &low, &hidden, &markedUnread, &request, &r.Draft, &labels,
+		&pinnedAt, &archivedAt, &low, &hidden, &markedUnread, &request, &r.Draft, &r.ReadAloud, &labels,
 		&hasReminder, &rem.Condition, &dueAt, &setAt, &firedAt); err != nil {
 		return InboxRow{}, err
 	}

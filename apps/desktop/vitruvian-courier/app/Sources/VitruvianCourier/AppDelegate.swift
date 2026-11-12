@@ -21,6 +21,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The message menu, its keys and commands; the open chat's scheduled messages.
     let messageActions: MessageActionsModel
     let scheduled: ScheduledModel
+    /// Read Aloud: HomeSpeaker's `--say`, or this Mac's voice. One for every window.
+    let readAloud: ReadAloudService
     /// Settings ▸ Messages: one object for the composers, the conversation and Settings, which reads the defaults
     /// once (a copy would miss a change until the next launch). The same for the quick replies.
     let composerPreferences: ComposerPreferences
@@ -213,8 +215,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         inbox.onOpenMergedChat = { [weak conversation] merged in
             conversation?.openMergedChat(merged)
         }
+        // One Read Aloud service for the app: a second Read Aloud on this Mac's voice stops the first, in any window.
+        let readAloud = ReadAloudService()
+        self.readAloud = readAloud
         let messageActions = MessageActionsModel(conversation: conversation, appModel: model,
-                                                 preferences: composerPreferences, pasteboard: SystemPasteboard())
+                                                 preferences: composerPreferences, pasteboard: SystemPasteboard(),
+                                                 readAloud: readAloud)
         messageActions.quickReplies = quickReplies
         messageActions.bindAIProviderStore(aiProviderStore)
         messageActions.onToast = { [weak inbox] message in inbox?.announce(message) }
@@ -229,7 +235,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.accountsAndBridges = accountsAndBridges
         settingsNavigation.bind(accountsAndBridges: accountsAndBridges)
         storage = StorageModel(appModel: model, lifecycle: lifecycle)
-        integrations = IntegrationsModel(appModel: model, enginePath: enginePath, lifecycle: lifecycle)
+        integrations = IntegrationsModel(appModel: model, enginePath: enginePath, lifecycle: lifecycle,
+                                       readAloudService: readAloud)
         problemReport = ProblemReportModel(appModel: model)
         spaces = SpacesModel(appModel: model, inbox: inbox, lifecycle: lifecycle)
         labels = LabelsModel(appModel: model, lifecycle: lifecycle)
@@ -249,7 +256,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             makePasteboard: { SystemPasteboard() },
             openURL: { url in NSWorkspace.shared.open(url) },
             hotkeys: hotkeys,
-            aiProviderStore: aiProviderStore
+            aiProviderStore: aiProviderStore,
+            readAloud: readAloud
         )
         search = SearchModel(appModel: model, recents: RecentSearches(), open: { [model] in model.open($0) })
         let commandBar = CommandBarModel(

@@ -31,6 +31,7 @@ type chatOut struct {
 	IsMuted       bool             `json:"isMuted"`
 	IsPinned      bool             `json:"isPinned"`
 	IsLowPriority bool             `json:"isLowPriority"`
+	ReadAloud     string           `json:"readAloud"`
 	LastActivity  string           `json:"lastActivity"`
 	Participants  []participantOut `json:"participants"`
 }
@@ -715,4 +716,50 @@ func TestShortQueriesSayWhatTheyNeed(t *testing.T) {
 	require.Len(t, full.Messages, 3)
 	require.Nil(t, full.Note, "messages were searched")
 	require.Contains(t, fails(t, sess, "search", map[string]any{"query": "🙂"}), "no letters or numbers")
+}
+
+func TestChatReadAloudOmittedWhenDefaultAndExposedWhenSet(t *testing.T) {
+	w := newWorld(t, 2)
+	ctx := context.Background()
+	sess := w.session(t, false)
+
+	// Default ('') omits readAloud from get_chat, search_chats, and search/list_messages chat maps.
+	var rawChat map[string]json.RawMessage
+	ok(t, sess, "get_chat", map[string]any{"chatID": w.room}, &rawChat)
+	_, present := rawChat["readAloud"]
+	require.False(t, present, "default read_aloud must be omitted from chat JSON")
+
+	var rawPage struct {
+		Chats []map[string]json.RawMessage `json:"chats"`
+	}
+	ok(t, sess, "search_chats", nil, &rawPage)
+	require.Len(t, rawPage.Chats, 1)
+	_, present = rawPage.Chats[0]["readAloud"]
+	require.False(t, present, "default read_aloud must be omitted in search_chats")
+
+	// Setting 'always' and 'never' exposes readAloud; resetting to '' omits it again.
+	for _, mode := range []string{"always", "never"} {
+		_, err := w.s.SetReadAloud(ctx, []string{w.room}, mode)
+		require.NoError(t, err)
+
+		var got chatOut
+		ok(t, sess, "get_chat", map[string]any{"chatID": w.room}, &got)
+		require.Equal(t, mode, got.ReadAloud)
+
+		var page chatsPage
+		ok(t, sess, "search_chats", nil, &page)
+		require.Len(t, page.Chats, 1)
+		require.Equal(t, mode, page.Chats[0].ReadAloud)
+
+		var msgs messagesPage
+		ok(t, sess, "search_messages", map[string]any{"query": "message"}, &msgs)
+		require.Equal(t, mode, msgs.Chats[w.room].ReadAloud)
+	}
+
+	_, err := w.s.SetReadAloud(ctx, []string{w.room}, "")
+	require.NoError(t, err)
+	rawChat = nil
+	ok(t, sess, "get_chat", map[string]any{"chatID": w.room}, &rawChat)
+	_, present = rawChat["readAloud"]
+	require.False(t, present, "resetting to '' must omit readAloud again")
 }

@@ -331,6 +331,8 @@ CREATE TABLE settings (
 	// chat a floor (room_prefs.threads_read_*) below which every thread is read. The floor starts at the later of the
 	// chat's two read markers, so nothing read before this version comes back unread.
 	migration12SQL,
+	// 13: per-chat HomeSpeaker Read Aloud override ('', 'always', 'never').
+	`ALTER TABLE room_prefs ADD COLUMN read_aloud TEXT NOT NULL DEFAULT '';`,
 }
 
 // migration12SQL is migration 12, frozen as it ships: the floor is the later of the reads and local_reads markers
@@ -355,7 +357,7 @@ INSERT INTO room_prefs (room_id, threads_read_ts, threads_read_seq)
 }()
 
 // SchemaVersion is the latest courier.db schema version (PRAGMA user_version).
-const SchemaVersion = 12
+const SchemaVersion = 13
 
 // migrate brings db up to the latest version.
 func migrate(ctx context.Context, db *dbutil.Database) error { return migrateWith(ctx, db, migrations) }

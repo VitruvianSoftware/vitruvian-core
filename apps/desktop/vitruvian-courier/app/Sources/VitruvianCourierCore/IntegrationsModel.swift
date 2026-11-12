@@ -45,6 +45,8 @@ public final class IntegrationsModel: ObservableObject {
 
     /// The client asking to connect, while its prompt shows. One at a time, as the engine allows.
     @Published public private(set) var pairRequest: PairRequest?
+    /// HomeSpeaker status shown in `Settings ▸ Integrations ▸ HomeSpeaker`.
+    @Published public private(set) var homeSpeakerStatus: HomeSpeakerIntegrationStatus
 
     public static let minimumPort = 1024
     public static let maximumPort = 65535
@@ -56,6 +58,7 @@ public final class IntegrationsModel: ObservableObject {
     public let appModel: AppModel?
     /// Contents/Helpers/vitruvian-courier-engine: the stdio command runs it.
     public let enginePath: String
+    public let readAloudService: ReadAloudService
     private let networkAddress: () -> String?
     private let explicitLifecycle: SystemLifecycleModel?
 
@@ -66,10 +69,14 @@ public final class IntegrationsModel: ObservableObject {
         appModel: AppModel?,
         enginePath: String,
         lifecycle: SystemLifecycleModel? = nil,
+        readAloudService: ReadAloudService? = nil,
         networkAddress: @escaping () -> String? = { LocalNetworkAddress.current() }
     ) {
+        let resolvedReadAloud = readAloudService ?? ReadAloudService()
         self.appModel = appModel
         self.enginePath = enginePath
+        self.readAloudService = resolvedReadAloud
+        self.homeSpeakerStatus = resolvedReadAloud.isHomeSpeakerInstalled ? .installed : .notInstalled
         self.networkAddress = networkAddress
         self.explicitLifecycle = lifecycle
         appModel?.onConnect { [weak self] _ in await self?.refresh() }
@@ -89,6 +96,19 @@ public final class IntegrationsModel: ObservableObject {
     public var isEnabled: Bool { status?.enabled ?? false }
     public var isRemote: Bool { status?.remote ?? false }
     public var port: Int { status?.port ?? IntegrationsStatus.defaultPort }
+    public var isHomeSpeakerInstalled: Bool { homeSpeakerStatus != .notInstalled }
+
+    /// Probes `HomeSpeaker --state --json` off the main actor when the Integrations pane opens.
+    public func refreshHomeSpeaker() async {
+        guard !(lifecycle?.isLocked ?? false) else { return }
+        homeSpeakerStatus = await readAloudService.fetchIntegrationStatus()
+    }
+
+    @discardableResult
+    public func openHomeSpeaker() async -> Bool {
+        guard canChange else { return false }
+        return await readAloudService.openHomeSpeaker()
+    }
 
     /// "Listening on 127.0.0.1:23390", "Listening on all addresses, port 23390", "Off", or why it isn't listening.
     public var statusLine: String {
@@ -284,11 +304,19 @@ public final class IntegrationsModel: ObservableObject {
     }
 
     /// Shows a made connection without asking the engine: the snapshot harness, and tests.
-    public func setForTesting(status: IntegrationsStatus?, tokens: [APIToken] = [], created: CreateTokenResult? = nil) {
+    public func setForTesting(
+        status: IntegrationsStatus?,
+        tokens: [APIToken] = [],
+        created: CreateTokenResult? = nil,
+        homeSpeakerStatus: HomeSpeakerIntegrationStatus? = nil
+    ) {
         self.status = status
         self.tokens = tokens
         if let status { portText = String(status.port) }
         createdConnection = created
+        if let homeSpeakerStatus {
+            self.homeSpeakerStatus = homeSpeakerStatus
+        }
     }
 
     // MARK: - Setup commands for a new connection's secret

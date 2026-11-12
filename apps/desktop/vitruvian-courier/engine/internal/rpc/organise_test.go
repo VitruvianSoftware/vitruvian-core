@@ -307,6 +307,7 @@ func TestBulkLimits(t *testing.T) {
 	}{
 		{"room.setArchived", func(r []string) map[string]any { return map[string]any{"room_ids": r, "archived": true} }},
 		{"room.setLowPriority", func(r []string) map[string]any { return map[string]any{"room_ids": r, "on": true} }},
+		{"room.setReadAloud", func(r []string) map[string]any { return map[string]any{"room_ids": r, "read_aloud": "always"} }},
 		{"room.setHidden", func(r []string) map[string]any { return map[string]any{"room_ids": r, "on": true} }},
 		{"room.setMarkedUnread", func(r []string) map[string]any { return map[string]any{"room_ids": r, "on": true} }},
 		{"room.setLabel", func(r []string) map[string]any { return map[string]any{"room_ids": r, "label_id": 1, "on": true} }},
@@ -874,4 +875,43 @@ func TestRPCMergedChatsAndEventsList(t *testing.T) {
 	c.ok("merge.delete", map[string]any{"merge_id": created.MergeID}, nil)
 	c.ok("merge.list", nil, &listed)
 	require.Empty(t, listed.MergedChats)
+}
+
+func TestRoomSetReadAloudAndInboxWire(t *testing.T) {
+	w := newWorld(t)
+	c := dial(t, w.path)
+	c.hello()
+
+	readWireRow := func() map[string]json.RawMessage {
+		var raw struct {
+			Rooms []map[string]json.RawMessage `json:"rooms"`
+		}
+		c.ok("inbox.list", map[string]any{"room_ids": []string{w.room}}, &raw)
+		require.Len(t, raw.Rooms, 1)
+		return raw.Rooms[0]
+	}
+
+	// Default ('') omits read_aloud on the wire.
+	_, hasReadAloud := readWireRow()["read_aloud"]
+	require.False(t, hasReadAloud)
+
+	var changed struct {
+		RoomIDs []string `json:"room_ids"`
+	}
+	c.ok("room.setReadAloud", map[string]any{"room_ids": []string{w.room}, "read_aloud": "always"}, &changed)
+	require.Equal(t, []string{w.room}, changed.RoomIDs)
+	require.JSONEq(t, `"always"`, string(readWireRow()["read_aloud"]))
+
+	c.ok("room.setReadAloud", map[string]any{"room_ids": []string{w.room}, "read_aloud": "never"}, &changed)
+	require.Equal(t, []string{w.room}, changed.RoomIDs)
+	require.JSONEq(t, `"never"`, string(readWireRow()["read_aloud"]))
+
+	c.ok("room.setReadAloud", map[string]any{"room_ids": []string{w.room}, "read_aloud": ""}, &changed)
+	require.Equal(t, []string{w.room}, changed.RoomIDs)
+	_, hasReadAloud = readWireRow()["read_aloud"]
+	require.False(t, hasReadAloud)
+
+	c.fails(CodeBadValue, "room.setReadAloud", map[string]any{"room_ids": []string{w.room}, "read_aloud": "default"})
+	c.fails(CodeInvalidParams, "room.setReadAloud", map[string]any{"room_ids": []string{w.room}})
+	c.fails(CodeNotFound, "room.setReadAloud", map[string]any{"room_ids": []string{"!nope:courier.local"}, "read_aloud": "never"})
 }

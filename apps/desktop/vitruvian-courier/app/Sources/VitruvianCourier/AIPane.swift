@@ -22,6 +22,7 @@ public struct AIPane: View {
     public var onCancelSummarize: () -> Void
     public var onToggleSummaryExpanded: () -> Void
     public var onCopySummary: (String) -> Void
+    public var onReadAloudSummary: (String) -> Void
     public var onOpenAISettings: () -> Void
     public var onClose: () -> Void
     /// With glass in the main window the header is a toolbar item (`AIPaneHeader`, placed by `ConversationView`), so
@@ -48,6 +49,7 @@ public struct AIPane: View {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
         },
+        onReadAloudSummary: @escaping (String) -> Void = { _ in },
         onOpenAISettings: @escaping () -> Void = {},
         onClose: @escaping () -> Void = {},
         headerInToolbar: Bool = false
@@ -64,6 +66,7 @@ public struct AIPane: View {
         self.onCancelSummarize = onCancelSummarize
         self.onToggleSummaryExpanded = onToggleSummaryExpanded
         self.onCopySummary = onCopySummary
+        self.onReadAloudSummary = onReadAloudSummary
         self.onOpenAISettings = onOpenAISettings
         self.onClose = onClose
         self.headerInToolbar = headerInToolbar
@@ -254,6 +257,11 @@ public struct AIPane: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                     Spacer(minLength: 0)
+                    Button(String(localized: "Read aloud")) {
+                        onReadAloudSummary(AIOutputFormatter.plainText(summary.text))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
                     Button(String(localized: "Copy")) {
                         onCopySummary(AIOutputFormatter.plainText(summary.text))
                     }

@@ -24,7 +24,7 @@ Component package providing implementation for `packages/vitruvian-sdk/kits/type
 - `[panels.ts:toggle]`
 - `[panels.ts:field]`
 - `[panels.ts:list]`
-- Subdirectory: [generated](./generated/README.md)
+- Subdirectory: [generated](./generated/) (code written by `//tools/sdk-codegen`; do not edit)
 
 ## Invariants
 - None

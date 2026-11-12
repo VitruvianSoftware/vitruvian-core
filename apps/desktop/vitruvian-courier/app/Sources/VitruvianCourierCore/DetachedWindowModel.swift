@@ -51,7 +51,8 @@ public final class DetachedWindowSession: ObservableObject {
         openURL: (@MainActor (URL) -> Void)? = nil,
         hotkeys: HotkeyRegistry? = nil,
         lifecycle: SystemLifecycleModel? = nil,
-        aiProviderStore: AIProviderStore? = nil
+        aiProviderStore: AIProviderStore? = nil,
+        readAloud: ReadAloudService? = nil
     ) {
         self.target = target
         self.appModel = appModel
@@ -94,7 +95,8 @@ public final class DetachedWindowSession: ObservableObject {
                 conversation: conv,
                 appModel: appModel,
                 preferences: resolvedComposerPrefs,
-                pasteboard: resolvedPasteboard
+                pasteboard: resolvedPasteboard,
+                readAloud: readAloud
             )
 
         case let .thread(roomID, rootEventID):
@@ -124,7 +126,8 @@ public final class DetachedWindowSession: ObservableObject {
                 conversation: conv,
                 appModel: appModel,
                 preferences: resolvedComposerPrefs,
-                pasteboard: resolvedPasteboard
+                pasteboard: resolvedPasteboard,
+                readAloud: readAloud
             )
 
         case let .space(spaceID):
@@ -171,7 +174,8 @@ public final class DetachedWindowSession: ObservableObject {
                 conversation: conv,
                 appModel: appModel,
                 preferences: resolvedComposerPrefs,
-                pasteboard: resolvedPasteboard
+                pasteboard: resolvedPasteboard,
+                readAloud: readAloud
             )
         }
 
@@ -224,6 +228,7 @@ public final class DetachedWindowRegistry: ObservableObject {
     private let openURL: (@MainActor (URL) -> Void)?
     private weak var hotkeys: HotkeyRegistry?
     private weak var aiProviderStore: AIProviderStore?
+    private weak var readAloud: ReadAloudService?
     private var lifecycleSubscription: AnyCancellable?
 
     public var onOpen: ((DetachedWindowTarget) -> Void)?
@@ -246,6 +251,7 @@ public final class DetachedWindowRegistry: ObservableObject {
         openURL: (@MainActor (URL) -> Void)? = nil,
         hotkeys: HotkeyRegistry? = nil,
         aiProviderStore: AIProviderStore? = nil,
+        readAloud: ReadAloudService? = nil,
         onOpen: ((DetachedWindowTarget) -> Void)? = nil,
         onFocus: ((DetachedWindowTarget) -> Void)? = nil,
         onClose: ((DetachedWindowTarget) -> Void)? = nil
@@ -261,6 +267,7 @@ public final class DetachedWindowRegistry: ObservableObject {
         self.openURL = openURL
         self.hotkeys = hotkeys
         self.aiProviderStore = aiProviderStore
+        self.readAloud = readAloud
         self.onOpen = onOpen
         self.onFocus = onFocus
         self.onClose = onClose
@@ -291,7 +298,8 @@ public final class DetachedWindowRegistry: ObservableObject {
                 openURL: openURL,
                 hotkeys: hotkeys,
                 lifecycle: lifecycle,
-                aiProviderStore: aiProviderStore
+                aiProviderStore: aiProviderStore,
+                readAloud: readAloud
             )
         }
         openTargets.append(target)
