@@ -160,7 +160,7 @@ func TestUnknownIDsAndBadCursorsAreToolErrors(t *testing.T) {
 	sess := w.session(t, true)
 	const nope = "!nope:courier.local"
 	filePath := filepath.Join(t.TempDir(), "dummy.txt")
-	require.NoError(t, os.WriteFile(filePath, []byte("x"), 0600))
+	require.NoError(t, os.WriteFile(filePath, []byte("x"), 0o600))
 	for _, c := range []struct {
 		tool string
 		args map[string]any
@@ -403,7 +403,7 @@ func TestSendFileNeedsPermission(t *testing.T) {
 	tok, secret := w.token(t, false)
 	sess := w.connect(t, secret)
 	filePath := filepath.Join(t.TempDir(), "meme.png")
-	require.NoError(t, os.WriteFile(filePath, []byte("fake image data"), 0600))
+	require.NoError(t, os.WriteFile(filePath, []byte("fake image data"), 0o600))
 
 	msg := fails(t, sess, "send_file", map[string]any{"chatID": w.room, "filePath": filePath})
 	require.Contains(t, msg, "isn't allowed to send messages")

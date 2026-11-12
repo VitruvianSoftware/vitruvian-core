@@ -212,7 +212,7 @@ func TestLogsCarryNoTokensOrText(t *testing.T) {
 	_, secret := w.token(t, true)
 	sess := w.connect(t, secret)
 	secretFile := filepath.Join(t.TempDir(), "super_secret_file.png")
-	require.NoError(t, os.WriteFile(secretFile, []byte("confidential content"), 0600))
+	require.NoError(t, os.WriteFile(secretFile, []byte("confidential content"), 0o600))
 	ok(t, sess, "list_messages", map[string]any{"chatID": w.room}, nil)
 	ok(t, sess, "send_message", map[string]any{"chatID": w.room, "text": "a very private sentence"}, nil)
 	ok(t, sess, "send_file", map[string]any{"chatID": w.room, "filePath": secretFile}, nil)
